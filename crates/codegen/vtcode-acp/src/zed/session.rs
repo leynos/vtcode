@@ -14,6 +14,7 @@ use tracing::{error, info, warn};
 use vtcode_config::{SubagentDiscoveryInput, discover_subagents};
 use vtcode_core::config::VTCodeConfig;
 use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
+use vtcode_core::llm::factory::register_custom_providers;
 use vtcode_core::prompts::system::generate_system_instruction_with_config;
 
 use super::constants::{
@@ -22,6 +23,8 @@ use super::constants::{
 use super::helpers::PrimaryAgentCatalog;
 
 pub async fn run_acp_agent(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig, title: Option<String>) -> Result<()> {
+    register_acp_custom_providers(vt_cfg);
+
     let zed_config = &vt_cfg.acp.zed;
     let desired_trust_level = zed_config.workspace_trust.to_workspace_trust_level();
     let trust_synchronizer = DefaultWorkspaceTrustSynchronizer::new();
@@ -116,4 +119,51 @@ pub async fn run_acp_agent(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig, titl
         return Err(error);
     }
     Ok(())
+}
+
+fn register_acp_custom_providers(vt_cfg: &VTCodeConfig) {
+    register_custom_providers(&vt_cfg.custom_providers);
+}
+
+#[cfg(test)]
+mod tests {
+    use vtcode_config::core::CustomProviderConfig;
+    use vtcode_core::llm::factory::{ProviderConfig, create_provider_with_config};
+
+    use super::*;
+
+    #[test]
+    fn acp_launch_registers_runtime_custom_providers() {
+        let mut vt_cfg = VTCodeConfig::default();
+        vt_cfg.custom_providers.push(CustomProviderConfig {
+            name: "acp-test-provider".to_string(),
+            display_name: "ACP Test Provider".to_string(),
+            base_url: "https://example.invalid/v1".to_string(),
+            api_key_env: "ACP_TEST_API_KEY".to_string(),
+            model: "test-model".to_string(),
+            ..CustomProviderConfig::default()
+        });
+
+        register_acp_custom_providers(&vt_cfg);
+
+        let _provider = create_provider_with_config(
+            "acp-test-provider",
+            ProviderConfig {
+                api_key: Some("dummy-key".to_string()),
+                openai_chatgpt_auth: None,
+                copilot_auth: None,
+                base_url: None,
+                model: Some("test-model".to_string()),
+                prompt_cache: None,
+                timeouts: None,
+                openai: None,
+                anthropic: None,
+                model_behavior: None,
+                workspace_root: None,
+            },
+        )
+        .expect("ACP launch must register custom providers from runtime config");
+
+        register_custom_providers(&[]);
+    }
 }
