@@ -64,6 +64,7 @@ pub async fn run_acp_agent(
     let commands_config = vt_cfg.commands.clone();
     let custom_providers = vt_cfg.custom_providers.clone();
     let provider_timeouts = vt_cfg.timeouts.clone();
+    let vt_cfg_clone = vt_cfg.clone();
     let credential_storage_mode = vt_cfg.agent.credential_storage_mode;
     let discovered = discover_subagents(&SubagentDiscoveryInput::new(config.workspace.clone()))
         .context("Failed to discover primary agents for ACP bridge")?;
@@ -91,6 +92,7 @@ pub async fn run_acp_agent(
                 title_clone,
                 primary_agents,
                 skip_confirmations,
+                Some(&vt_cfg_clone),
             )
             .await;
             let agent: Arc<ZedAgent> = Arc::new(agent);
