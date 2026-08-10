@@ -586,6 +586,7 @@ mod tests {
             String::new(),
             Some("Zed".to_string()),
             primary_agents,
+            false,
         )
         .await
     }

@@ -22,7 +22,12 @@ use super::constants::{
 };
 use super::helpers::PrimaryAgentCatalog;
 
-pub async fn run_acp_agent(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig, title: Option<String>) -> Result<()> {
+pub async fn run_acp_agent(
+    config: &CoreAgentConfig,
+    vt_cfg: &VTCodeConfig,
+    title: Option<String>,
+    skip_confirmations: bool,
+) -> Result<()> {
     register_acp_custom_providers(vt_cfg);
 
     let zed_config = &vt_cfg.acp.zed;
@@ -81,6 +86,7 @@ pub async fn run_acp_agent(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig, titl
                 system_prompt,
                 title_clone,
                 primary_agents,
+                skip_confirmations,
             )
             .await;
             let agent: Arc<ZedAgent> = Arc::new(agent);

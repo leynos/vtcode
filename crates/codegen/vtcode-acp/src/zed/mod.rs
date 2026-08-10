@@ -17,7 +17,8 @@ pub struct ZedAcpAdapter;
 #[async_trait(?Send)]
 impl AcpClientAdapter for ZedAcpAdapter {
     async fn serve(&self, params: AcpLaunchParams<'_>) -> Result<()> {
-        run_acp_agent(params.agent_config, params.runtime_config, Some("Zed".to_string())).await
+        run_acp_agent(params.agent_config, params.runtime_config, Some("Zed".to_string()), params.skip_confirmations)
+            .await
     }
 }
 
@@ -27,7 +28,7 @@ pub struct StandardAcpAdapter;
 #[async_trait(?Send)]
 impl AcpClientAdapter for StandardAcpAdapter {
     async fn serve(&self, params: AcpLaunchParams<'_>) -> Result<()> {
-        run_acp_agent(params.agent_config, params.runtime_config, None).await
+        run_acp_agent(params.agent_config, params.runtime_config, None, params.skip_confirmations).await
     }
 }
 
@@ -108,6 +109,7 @@ mod tests {
             String::new(),
             Some("Zed".to_string()),
             primary_agents,
+            false,
         )
         .await
     }
