@@ -1052,6 +1052,24 @@ impl SessionArchive {
         Ok(SessionProgressPersistenceStatus::Persisted(path))
     }
 
+    /// Persist a durable checkpoint without applying the progress throttle.
+    ///
+    /// Callers use this at state boundaries where losing the most recent
+    /// message would make a resumed session inconsistent. History persistence
+    /// and payload-size policy still apply.
+    pub async fn persist_checkpoint_async(
+        &self,
+        args: SessionProgressArgs,
+    ) -> Result<SessionProgressPersistenceStatus> {
+        if !history_persistence_enabled() {
+            return Ok(SessionProgressPersistenceStatus::Disabled(self.path.clone()));
+        }
+
+        let snapshot = self.build_progress_snapshot(args);
+        let path = self.write_snapshot_async(snapshot).await?;
+        Ok(SessionProgressPersistenceStatus::Persisted(path))
+    }
+
     pub async fn persist_progress_async(&self, args: SessionProgressArgs) -> Result<PathBuf> {
         Ok(self.persist_progress_async_with_status(args).await?.path().to_path_buf())
     }
@@ -1098,6 +1116,11 @@ impl SessionArchive {
     /// Update loaded skills in the archive metadata
     pub fn set_loaded_skills(&mut self, skills: Vec<String>) {
         self.metadata.loaded_skills = skills;
+    }
+
+    /// Replace the metadata captured in subsequent snapshots.
+    pub fn replace_metadata(&mut self, metadata: SessionArchiveMetadata) {
+        self.metadata = metadata;
     }
 
     /// Update continuation metadata in the archive metadata.

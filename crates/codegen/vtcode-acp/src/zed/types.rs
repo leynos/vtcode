@@ -189,8 +189,9 @@ pub(crate) struct SessionHandle {
 }
 
 pub(crate) struct SessionData {
-    pub(crate) _session_id: acp::SessionId,
+    pub(crate) session_id: acp::SessionId,
     pub(crate) thread: ThreadRuntimeHandle,
+    pub(crate) archive: Option<vtcode_core::utils::session_archive::SessionArchive>,
     #[allow(dead_code, reason = "Intentional compatibility, platform, or test-only suppression.")]
     pub(crate) tool_notice_sent: AtomicBool,
     pub(crate) primary_agent: String,

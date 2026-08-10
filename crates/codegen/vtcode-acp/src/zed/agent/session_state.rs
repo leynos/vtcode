@@ -3,15 +3,18 @@ use crate::acp;
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use tracing::warn;
+use tracing::{debug, warn};
+use uuid::Uuid;
 use vtcode_config::auth::AuthCredentialsStoreMode;
 use vtcode_core::config::models::{ModelId, Provider};
 use vtcode_core::config::types::ReasoningEffortLevel;
 use vtcode_core::core::threads::{ThreadBootstrap, build_thread_archive_metadata};
 use vtcode_core::llm::ModelResolver;
 use vtcode_core::llm::factory::get_factory;
-use vtcode_core::llm::provider::{FinishReason, Message};
-use vtcode_core::utils::session_archive::find_session_by_identifier;
+use vtcode_core::llm::provider::{FinishReason, Message, MessageRole};
+use vtcode_core::utils::session_archive::{
+    SessionArchive, SessionMessage, SessionProgressArgs, find_session_by_identifier,
+};
 
 use super::super::constants::SESSION_PREFIX;
 use super::super::helpers::session_config_options;
@@ -93,14 +96,24 @@ impl ZedAgent {
         session_id: acp::SessionId,
         thread: vtcode_core::core::threads::ThreadRuntimeHandle,
     ) -> SessionHandle {
+        self.build_session_handle_with_archive(session_id, thread, None)
+    }
+
+    fn build_session_handle_with_archive(
+        &self,
+        session_id: acp::SessionId,
+        thread: vtcode_core::core::threads::ThreadRuntimeHandle,
+        archive: Option<SessionArchive>,
+    ) -> SessionHandle {
         let reasoning_effort = self.session_reasoning_effort_for_thread(&thread);
         let provider = self.session_provider_for_thread(&thread);
         let model = self.session_model_for_thread(&thread);
         let primary_agent = self.session_primary_agent_for_thread(&thread);
         SessionHandle {
             data: Arc::new(Mutex::new(SessionData {
-                _session_id: session_id,
+                session_id,
                 thread,
+                archive,
                 tool_notice_sent: std::sync::atomic::AtomicBool::new(false),
                 primary_agent,
                 reasoning_effort,
@@ -132,6 +145,26 @@ impl ZedAgent {
         session_id
     }
 
+    fn register_durable_session(&self) -> acp::SessionId {
+        let session_id = acp::SessionId::new(Arc::from(format!("{SESSION_PREFIX}-{}", Uuid::new_v4())));
+        let metadata = build_thread_archive_metadata(
+            self.config.workspace.as_path(),
+            &self.config.model,
+            &self.config.provider,
+            &self.config.theme,
+            self.config.reasoning_effort.as_str(),
+        )
+        .with_primary_agent(self.primary_agents.default_id());
+        let thread = self
+            .thread_manager
+            .start_thread_with_identifier(session_id.0.to_string(), ThreadBootstrap::new(Some(metadata)));
+        let handle = self.build_session_handle(session_id.clone(), thread);
+        if let Ok(mut guard) = self.sessions.lock() {
+            drop(guard.insert(session_id.clone(), handle));
+        }
+        session_id
+    }
+
     pub(crate) fn session_handle(&self, session_id: &acp::SessionId) -> Option<SessionHandle> {
         self.sessions.lock().unwrap_or_else(|e| e.into_inner()).get(session_id).cloned()
     }
@@ -140,6 +173,58 @@ impl ZedAgent {
         if let Ok(data) = session.data.lock() {
             data.thread.append_message(message);
         }
+    }
+
+    pub(super) async fn checkpoint_session(&self, session: &SessionHandle) -> anyhow::Result<()> {
+        let (existing_archive, snapshot, session_identifier) = {
+            let data = session
+                .data
+                .lock()
+                .map_err(|error| anyhow::anyhow!("ACP session lock poisoned: {error}"))?;
+            let snapshot = data.thread.snapshot();
+            (data.archive.clone(), snapshot, data.session_id.0.to_string())
+        };
+
+        let metadata = snapshot
+            .metadata
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("ACP session is missing archive metadata"))?;
+        let mut archive = match existing_archive {
+            Some(archive) => archive,
+            None => {
+                let archive = SessionArchive::new_with_identifier(metadata.clone(), session_identifier).await?;
+                let mut data = session
+                    .data
+                    .lock()
+                    .map_err(|error| anyhow::anyhow!("ACP session lock poisoned: {error}"))?;
+                data.archive = Some(archive.clone());
+                archive
+            }
+        };
+        archive.replace_metadata(metadata);
+
+        let messages = snapshot.messages.iter().map(SessionMessage::from).collect::<Vec<_>>();
+        let recent_start = messages.len().saturating_sub(20);
+        let recent_messages = messages[recent_start..].to_vec();
+        let turn_number = snapshot
+            .messages
+            .iter()
+            .filter(|message| message.role == MessageRole::User)
+            .count();
+        let status = archive
+            .persist_checkpoint_async(SessionProgressArgs {
+                total_messages: messages.len(),
+                distinct_tools: Vec::new(),
+                messages,
+                recent_messages,
+                turn_number,
+                token_usage: None,
+                max_context_tokens: None,
+                loaded_skills: Some(snapshot.loaded_skills),
+            })
+            .await?;
+        debug!(path = %status.path().display(), ?status, "Processed ACP session checkpoint");
+        Ok(())
     }
 
     #[allow(dead_code, reason = "Intentional compatibility, platform, or test-only suppression.")]
@@ -339,10 +424,11 @@ impl ZedAgent {
         let listing = find_session_by_identifier(identifier)
             .await?
             .ok_or_else(|| anyhow::anyhow!("unknown archived session '{identifier}'"))?;
+        let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
         let thread = self
             .thread_manager
             .start_thread_with_identifier(listing.identifier(), ThreadBootstrap::from_listing(listing));
-        let handle = self.build_session_handle(session_id.clone(), thread);
+        let handle = self.build_session_handle_with_archive(session_id.clone(), thread, Some(archive));
         if let Ok(mut guard) = self.sessions.lock() {
             drop(guard.insert(session_id.clone(), handle.clone()));
         }
@@ -364,7 +450,7 @@ impl ZedAgent {
         &self,
         _req: acp::NewSessionRequest,
     ) -> Result<acp::NewSessionResponse, acp::Error> {
-        let session_id = self.register_session();
+        let session_id = self.register_durable_session();
         let config_options = self
             .session_handle(&session_id)
             .map(|session| self.current_session_config_options(&session))
@@ -650,6 +736,53 @@ mod tests {
         assert_eq!(reasoning_effort(&handle), ReasoningEffortLevel::XHigh);
         assert_eq!(provider(&handle), "openai");
         assert_eq!(model(&handle), "gpt-5.4");
+    }
+
+    #[tokio::test]
+    async fn checkpoint_session_persists_messages_for_a_fresh_runtime() {
+        let temp = TempDir::new().unwrap();
+        let agent = build_agent(temp.path()).await;
+        let path = temp.path().join("vtcode-zed-session-resume.json");
+        let metadata =
+            SessionArchiveMetadata::new("vtcode", temp.path().to_string_lossy(), "gpt-5.4", "openai", "test", "low")
+                .with_primary_agent("build");
+        let listing = SessionListing {
+            path: path.clone(),
+            snapshot: SessionSnapshot {
+                metadata: metadata.clone(),
+                started_at: Utc::now(),
+                ended_at: Utc::now(),
+                total_messages: 0,
+                distinct_tools: Vec::new(),
+                transcript: Vec::new(),
+                messages: Vec::new(),
+                progress: None,
+                error_logs: Vec::new(),
+            },
+        };
+        let archive = SessionArchive::resume_from_listing(&listing, metadata);
+        let thread = agent
+            .thread_manager
+            .start_thread_with_identifier("vtcode-zed-session-resume", ThreadBootstrap::from_listing(listing));
+        let handle = agent.build_session_handle_with_archive(
+            acp::SessionId::new("vtcode-zed-session-resume"),
+            thread,
+            Some(archive),
+        );
+        agent.push_message(&handle, Message::user("continue".to_string()));
+        agent.push_message(&handle, Message::assistant("resumed response".to_string()));
+
+        agent.checkpoint_session(&handle).await.unwrap();
+
+        let raw = fs::read_to_string(&path).unwrap();
+        let snapshot: SessionSnapshot = serde_json::from_str(&raw).unwrap();
+        let reloaded = SessionListing { path, snapshot };
+        let fresh_thread = agent
+            .thread_manager
+            .start_thread_with_identifier("vtcode-zed-session-fresh-runtime", ThreadBootstrap::from_listing(reloaded));
+        assert_eq!(fresh_thread.messages().len(), 2);
+        assert_eq!(fresh_thread.messages()[0].content.as_text(), "continue");
+        assert_eq!(fresh_thread.messages()[1].content.as_text(), "resumed response");
     }
 
     #[tokio::test]

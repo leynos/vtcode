@@ -294,8 +294,11 @@ Common cases:
 
 ## Runtime behaviour
 
-- **Session management** – Each prompt owns a dedicated ACP session with history maintained in VT
-  Code, mirroring the Claude and Codex bridges.
+- **Session management** – ACP session IDs are stable across VT Code process and editor restarts.
+  VT Code checkpoints the user message, assistant tool requests, tool results, completed assistant
+  response, and any incomplete streamed response to the normal session archive. An ACP client can
+  pass that ID to `session/load` to restore the checkpointed history. Set `history.persistence =
+  "none"` to disable durable archives; the session then remains process-local.
 - **Sub-agent delegation** – When ACP sub-agents are enabled, the session exposes the canonical
   `agent` tool. Its actions are `spawn`, `spawn_subprocess`, `send_input`, `wait`, `resume`, and
   `close`. Before delegation, VT Code synchronises the current parent ACP session identity and
