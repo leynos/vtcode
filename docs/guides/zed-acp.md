@@ -307,6 +307,13 @@ Common cases:
 - **Provider request capacity** – For a custom provider with `max_in_flight_requests` configured,
   one request slot is reserved for the parent ACP request and child concurrency is capped at the
   remaining slots. A limit of `1` therefore disables ACP sub-agents so the parent retains its slot.
+- **Provider diagnostics** – Debug logs record queue depth, active and maximum provider permits,
+  retry count and disposition, time to first output, generation duration, output tokens, and
+  tokens per second. Buffered responses label their time-to-first-token observation as the full
+  buffered response latency. VT Code does not currently gate provider requests with a circuit
+  breaker, so provider events report `circuit_breaker_state = "not_configured"`; the tool and MCP
+  circuit breakers are separate. HTTP 408, 429, 500, 502, 503, and 504 failures are eligible for
+  the configured bounded retry policy before output becomes visible.
 - **Tool-call budgets** – ACP applies `agent.harness.max_tool_calls_per_turn` and the optional
   `agent.harness.max_tool_calls_per_session` to local tool execution. Set either value to `0` to
   disable that cap. The separate `tools.max_tool_loops` provider-loop guard also accepts `0` for

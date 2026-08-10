@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tracing::debug;
 use vtcode_config::TimeoutsConfig;
 use vtcode_config::core::{CustomProviderConfig, CustomProviderRequestPolicyConfig};
 use vtcode_core::retry::RetryPolicy;
@@ -17,6 +19,21 @@ pub(crate) struct ProviderRequestRuntime {
     queue_timeout: Duration,
     retry_policy: RetryPolicy,
     deadline_policy: ProviderDeadlinePolicy,
+    counters: Arc<ProviderRequestCounters>,
+}
+
+#[derive(Debug, Default)]
+struct ProviderRequestCounters {
+    queued: AtomicUsize,
+    active: AtomicUsize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ProviderTelemetrySnapshot {
+    pub(crate) queue_depth: usize,
+    pub(crate) active_permits: usize,
+    pub(crate) permit_limit: Option<usize>,
+    pub(crate) circuit_breaker_state: &'static str,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -76,6 +93,7 @@ impl ProviderRequestRuntime {
             queue_timeout: Duration::from_secs(config.queue_timeout_seconds),
             retry_policy,
             deadline_policy,
+            counters: Arc::new(ProviderRequestCounters::default()),
         }
     }
 
@@ -98,20 +116,66 @@ impl ProviderRequestRuntime {
         timeouts.streaming_ceiling_seconds = total;
     }
 
+    pub(crate) fn telemetry_snapshot(&self) -> ProviderTelemetrySnapshot {
+        ProviderTelemetrySnapshot {
+            queue_depth: self.counters.queued.load(Ordering::Relaxed),
+            active_permits: self.counters.active.load(Ordering::Relaxed),
+            permit_limit: self.limit,
+            circuit_breaker_state: "not_configured",
+        }
+    }
+
+    fn provider_permit(&self, permit: Option<OwnedSemaphorePermit>) -> ProviderPermit {
+        let active_permits = self.counters.active.fetch_add(1, Ordering::Relaxed).saturating_add(1);
+        let snapshot = self.telemetry_snapshot();
+        debug!(
+            provider = self.provider_name(),
+            snapshot.queue_depth,
+            active_permits,
+            permit_limit = ?snapshot.permit_limit,
+            circuit_breaker_state = snapshot.circuit_breaker_state,
+            "Provider request admitted"
+        );
+        ProviderPermit {
+            _permit: permit,
+            provider_name: Arc::clone(&self.provider_name),
+            counters: Arc::clone(&self.counters),
+            limit: self.limit,
+        }
+    }
+
     pub(crate) async fn acquire(
         &self,
         cancellation: &SessionCancellation,
     ) -> Result<ProviderPermit, ProviderAdmissionError> {
         let Some(semaphore) = &self.semaphore else {
-            return Ok(ProviderPermit { _permit: None });
+            return Ok(self.provider_permit(None));
         };
 
+        let queue_depth = self.counters.queued.fetch_add(1, Ordering::Relaxed).saturating_add(1);
+        let queue_guard = ProviderQueueGuard {
+            provider_name: Arc::clone(&self.provider_name),
+            counters: Arc::clone(&self.counters),
+            limit: self.limit,
+        };
+        let snapshot = self.telemetry_snapshot();
+        debug!(
+            provider = self.provider_name(),
+            queue_depth,
+            active_permits = snapshot.active_permits,
+            permit_limit = ?snapshot.permit_limit,
+            circuit_breaker_state = snapshot.circuit_breaker_state,
+            "Provider request queued"
+        );
         let acquire = semaphore.clone().acquire_owned();
         tokio::select! {
             () = cancellation.cancelled() => Err(ProviderAdmissionError::Cancelled),
             result = tokio::time::timeout(self.queue_timeout, acquire) => {
                 match result {
-                    Ok(Ok(permit)) => Ok(ProviderPermit { _permit: Some(permit) }),
+                    Ok(Ok(permit)) => {
+                        drop(queue_guard);
+                        Ok(self.provider_permit(Some(permit)))
+                    },
                     Ok(Err(_closed)) => Err(ProviderAdmissionError::Closed {
                         provider: Arc::clone(&self.provider_name),
                     }),
@@ -129,6 +193,43 @@ impl ProviderRequestRuntime {
 #[derive(Debug)]
 pub(crate) struct ProviderPermit {
     _permit: Option<OwnedSemaphorePermit>,
+    provider_name: Arc<str>,
+    counters: Arc<ProviderRequestCounters>,
+    limit: Option<usize>,
+}
+
+impl Drop for ProviderPermit {
+    fn drop(&mut self) {
+        let active_permits = self.counters.active.fetch_sub(1, Ordering::Relaxed).saturating_sub(1);
+        debug!(
+            provider = self.provider_name.as_ref(),
+            queue_depth = self.counters.queued.load(Ordering::Relaxed),
+            active_permits,
+            permit_limit = ?self.limit,
+            circuit_breaker_state = "not_configured",
+            "Provider request permit released"
+        );
+    }
+}
+
+struct ProviderQueueGuard {
+    provider_name: Arc<str>,
+    counters: Arc<ProviderRequestCounters>,
+    limit: Option<usize>,
+}
+
+impl Drop for ProviderQueueGuard {
+    fn drop(&mut self) {
+        let queue_depth = self.counters.queued.fetch_sub(1, Ordering::Relaxed).saturating_sub(1);
+        debug!(
+            provider = self.provider_name.as_ref(),
+            queue_depth,
+            active_permits = self.counters.active.load(Ordering::Relaxed),
+            permit_limit = ?self.limit,
+            circuit_breaker_state = "not_configured",
+            "Provider request left queue"
+        );
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -197,6 +298,7 @@ mod tests {
             queue_timeout,
             retry_policy: RetryPolicy::default(),
             deadline_policy: ProviderDeadlinePolicy::from_config(&CustomProviderRequestPolicyConfig::default()),
+            counters: Arc::new(ProviderRequestCounters::default()),
         }
     }
 
@@ -205,11 +307,36 @@ mod tests {
         let runtime = runtime(1, Duration::from_secs(1));
         let cancellation = SessionCancellation::default();
         let first = runtime.acquire(&cancellation).await.expect("first permit");
+        assert_eq!(runtime.telemetry_snapshot().active_permits, 1);
         let second = tokio::time::timeout(Duration::from_millis(20), runtime.acquire(&cancellation)).await;
         assert!(second.is_err(), "second request must remain queued");
+        assert_eq!(runtime.telemetry_snapshot().queue_depth, 0, "cancelled wait must leave the queue");
 
         drop(first);
+        assert_eq!(runtime.telemetry_snapshot().active_permits, 0);
         let _released = runtime.acquire(&cancellation).await.expect("released permit");
+    }
+
+    #[tokio::test]
+    async fn telemetry_counts_a_waiting_request() {
+        let runtime = runtime(1, Duration::from_secs(1));
+        let cancellation = SessionCancellation::default();
+        let _first = runtime.acquire(&cancellation).await.expect("first permit");
+        let queued_runtime = runtime.clone();
+        let queued_cancellation = cancellation.clone();
+        let queued = tokio::spawn(async move { queued_runtime.acquire(&queued_cancellation).await });
+        tokio::task::yield_now().await;
+
+        let snapshot = runtime.telemetry_snapshot();
+        assert_eq!(snapshot.queue_depth, 1);
+        assert_eq!(snapshot.active_permits, 1);
+        assert_eq!(snapshot.permit_limit, Some(1));
+        assert_eq!(snapshot.circuit_breaker_state, "not_configured");
+
+        cancellation.cancel();
+        let error = queued.await.expect("queued task").expect_err("queue should be cancelled");
+        assert!(matches!(error, ProviderAdmissionError::Cancelled));
+        assert_eq!(runtime.telemetry_snapshot().queue_depth, 0);
     }
 
     #[tokio::test]
