@@ -72,6 +72,20 @@ When targeting models that cannot call tools (for example `openai/gpt-oss-20b:fr
 disable the `read_file` bridge. VT Code emits reasoning notices and structured logs when it detects
 models without function calling and automatically downgrades to plain completions.
 
+### MCP providers in ACP sessions
+
+ACP sessions initialise the enabled providers from the effective session MCP configuration before
+the first prompt. This makes the providers' direct MCP proxy tools available in the initial model
+tool catalogue rather than waiting for a later discovery step. Configure the providers and the
+global MCP switch in the [`[mcp]` configuration](mcp-integration.md).
+
+Direct MCP proxy tools remain subject to the same MCP provider allowlists and security checks as
+interactive sessions. The selected ACP primary agent's tool permissions also apply, so a provider
+or tool blocked by either policy is not exposed to, or executable by, the ACP session.
+
+MCP connections are scoped to the session that declares them. A subagent does not implicitly inherit
+its parent's MCP connections; declare the required MCP servers in the subagent's own configuration.
+
 ## Manual smoke test
 
 Run the bridge directly to ensure it starts cleanly:
