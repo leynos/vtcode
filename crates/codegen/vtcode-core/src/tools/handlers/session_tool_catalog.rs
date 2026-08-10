@@ -719,7 +719,9 @@ impl ToolCatalogEntry {
             return false;
         }
 
-        if !profile_allows_tool(config.tool_profile, self.public_name.as_str(), config.planning_active) {
+        let acp_subagent = config.surface == SessionSurface::Acp && self.public_name == tools::AGENT;
+        if !acp_subagent && !profile_allows_tool(config.tool_profile, self.public_name.as_str(), config.planning_active)
+        {
             return false;
         }
 
@@ -819,7 +821,10 @@ fn surface_allows_tool(surface: SessionSurface, tool_name: &str) -> bool {
         SessionSurface::Interactive => !matches!(tool_name, tools::READ_FILE | tools::LIST_FILES),
         SessionSurface::AgentRunner => true,
         SessionSurface::Acp => {
-            matches!(tool_name, tools::EXEC_COMMAND | tools::WRITE_STDIN | tools::APPLY_PATCH | tools::CODE_SEARCH)
+            matches!(
+                tool_name,
+                tools::EXEC_COMMAND | tools::WRITE_STDIN | tools::APPLY_PATCH | tools::CODE_SEARCH | tools::AGENT
+            )
         }
     }
 }
@@ -880,6 +885,9 @@ mod tests {
                 .with_behavior(ToolBehavior::apply_patch(ToolMutationModel::Mutating, false, true)),
             registration(tools::CODE_SEARCH)
                 .with_description("Search code")
+                .with_parameter_schema(empty_object_schema()),
+            registration(tools::AGENT)
+                .with_description("Delegate work")
                 .with_parameter_schema(empty_object_schema()),
             registration(tools::SEARCH_TOOLS)
                 .with_description("Discover deferred tools")
@@ -1169,6 +1177,9 @@ mod tests {
             registration(tools::CODE_SEARCH)
                 .with_description("Search code")
                 .with_parameter_schema(empty_object_schema()),
+            registration(tools::AGENT)
+                .with_description("Delegate work")
+                .with_parameter_schema(empty_object_schema()),
             registration(tools::LOAD_SKILL)
                 .with_description("Load a skill")
                 .with_parameter_schema(empty_object_schema()),
@@ -1192,6 +1203,7 @@ mod tests {
                 tools::WRITE_STDIN.to_string(),
                 tools::APPLY_PATCH.to_string(),
                 tools::CODE_SEARCH.to_string(),
+                tools::AGENT.to_string(),
             ]
         );
     }

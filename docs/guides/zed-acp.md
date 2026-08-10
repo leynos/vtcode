@@ -282,6 +282,14 @@ Common cases:
 
 - **Session management** – Each prompt owns a dedicated ACP session with history maintained in VT
   Code, mirroring the Claude and Codex bridges.
+- **Sub-agent delegation** – When ACP sub-agents are enabled, the session exposes the canonical
+  `agent` tool. Its actions are `spawn`, `spawn_subprocess`, `send_input`, `wait`, `resume`, and
+  `close`. Before delegation, VT Code synchronises the current parent ACP session identity and
+  parent context with the sub-agent controller. The active primary agent's tool permissions still
+  apply; delegation does not bypass its allowed or disallowed tools.
+- **Provider request capacity** – For a custom provider with `max_in_flight_requests` configured,
+  one request slot is reserved for the parent ACP request and child concurrency is capped at the
+  remaining slots. A limit of `1` therefore disables ACP sub-agents so the parent retains its slot.
 - **Context ingestion** – URIs such as `file://`, `zed://`, or `zed-fs://` resolve through Zed's
   `fs.readTextFile` capability, following Goose's recommended structure.
 - **Embedded resources** – Inline text is wrapped in `<context>` blocks so the model can separate

@@ -7,14 +7,15 @@ use hashbrown::HashMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tracing::warn;
+use tracing::{debug, warn};
 use vtcode_config::TimeoutsConfig;
 use vtcode_config::auth::AuthCredentialsStoreMode;
 use vtcode_config::core::CustomProviderConfig;
 use vtcode_core::config::ToolDocumentationMode;
 use vtcode_core::config::types::{AgentConfig as CoreAgentConfig, CapabilityLevel};
-use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig};
+use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig, VTCodeConfig};
 use vtcode_core::core::threads::ThreadManager;
+use vtcode_core::subagents::{SubagentController, SubagentControllerConfig};
 use vtcode_core::tools::file_ops::FileOpsTool;
 use vtcode_core::tools::grep_file::GrepSearchManager;
 use vtcode_core::tools::handlers::{SessionSurface, SessionToolsConfig, ToolModelCapabilities};
@@ -56,6 +57,80 @@ pub(crate) struct ZedAgent {
     provider_timeouts: TimeoutsConfig,
 }
 
+fn effective_acp_subagent_concurrency(configured: usize, max_in_flight: Option<usize>) -> Option<usize> {
+    match max_in_flight {
+        Some(0 | 1) => None,
+        Some(limit) => Some(configured.min(limit - 1)),
+        None => Some(configured),
+    }
+}
+
+async fn attach_acp_subagent_controller(
+    registry: &CoreToolRegistry,
+    config: &CoreAgentConfig,
+    custom_providers: &[CustomProviderConfig],
+    vt_cfg: Option<&VTCodeConfig>,
+) {
+    let Some(mut controller_vt_cfg) = vt_cfg.filter(|config| config.subagents.enabled).cloned() else {
+        return;
+    };
+
+    if let Some(max_in_flight) = custom_providers
+        .iter()
+        .find(|provider| provider.name.eq_ignore_ascii_case(&config.provider))
+        .and_then(|provider| provider.request_policy.max_in_flight_requests)
+    {
+        match effective_acp_subagent_concurrency(controller_vt_cfg.subagents.max_concurrent, Some(max_in_flight)) {
+            None => {
+                warn!(
+                    provider = %config.provider,
+                    max_in_flight,
+                    "ACP subagents disabled because the provider request limit reserves no child capacity"
+                );
+                return;
+            }
+            Some(max_subagents) if controller_vt_cfg.subagents.max_concurrent > max_subagents => {
+                debug!(
+                    provider = %config.provider,
+                    max_in_flight,
+                    configured_subagents = controller_vt_cfg.subagents.max_concurrent,
+                    effective_subagents = max_subagents,
+                    "Capping ACP subagent concurrency to preserve provider request capacity"
+                );
+                controller_vt_cfg.subagents.max_concurrent = max_subagents;
+            }
+            Some(_) => {}
+        }
+    }
+
+    let controller_config = SubagentControllerConfig {
+        workspace_root: config.workspace.clone(),
+        parent_session_id: "vtcode-acp".to_string(),
+        parent_model: config.model.clone(),
+        parent_provider: config.provider.clone(),
+        parent_reasoning_effort: config.reasoning_effort,
+        api_key: config.api_key.clone(),
+        vt_cfg: controller_vt_cfg.clone(),
+        openai_chatgpt_auth: config.openai_chatgpt_auth.clone(),
+        depth: 0,
+        exec_sessions: registry.exec_session_manager(),
+        pty_manager: registry.pty_manager().clone(),
+        managed_background_runtime: false,
+    };
+    match SubagentController::new(controller_config).await {
+        Ok(controller) => {
+            let controller = Arc::new(controller);
+            if controller_vt_cfg.subagents.background.auto_restore
+                && let Err(error) = controller.restore_background_subagents().await
+            {
+                warn!(%error, "Failed to restore ACP background subagents");
+            }
+            registry.set_subagent_controller(controller);
+        }
+        Err(error) => warn!(%error, "Failed to initialize ACP subagent controller"),
+    }
+}
+
 impl ZedAgent {
     pub(crate) async fn new(
         config: CoreAgentConfig,
@@ -69,6 +144,7 @@ impl ZedAgent {
         title: Option<String>,
         primary_agents: PrimaryAgentCatalog,
         skip_confirmations: bool,
+        vt_cfg: Option<&VTCodeConfig>,
     ) -> Self {
         let read_file_enabled = zed_config.tools.read_file;
         let workspace_root = config.workspace.clone();
@@ -88,6 +164,7 @@ impl ZedAgent {
         {
             warn!(%error, "Failed to apply tools configuration to ACP tool registry");
         }
+        attach_acp_subagent_controller(&core_tool_registry, &config, custom_providers, vt_cfg).await;
         let local_definitions = core_tool_registry
             .model_tools(
                 SessionToolsConfig::full_public(
@@ -149,5 +226,22 @@ impl ZedAgent {
     /// Optional human-readable title used during `initialize`.
     fn title(&self) -> Option<String> {
         self.title.clone()
+    }
+}
+
+#[cfg(test)]
+mod concurrency_tests {
+    use super::effective_acp_subagent_concurrency;
+
+    #[test]
+    fn provider_limit_reserves_one_request_for_the_parent() {
+        assert_eq!(effective_acp_subagent_concurrency(3, Some(3)), Some(2));
+        assert_eq!(effective_acp_subagent_concurrency(3, Some(6)), Some(3));
+        assert_eq!(effective_acp_subagent_concurrency(3, None), Some(3));
+    }
+
+    #[test]
+    fn single_request_provider_capacity_disables_acp_subagents() {
+        assert_eq!(effective_acp_subagent_concurrency(3, Some(1)), None);
     }
 }
