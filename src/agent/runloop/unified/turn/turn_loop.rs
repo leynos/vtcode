@@ -623,6 +623,7 @@ pub(crate) async fn run_turn_loop(
     {
         let (max_per_turn, max_per_session) = resolve_safety_tool_call_limits(
             ctx.harness_state.max_tool_calls,
+            ctx.vt_cfg.and_then(|cfg| cfg.agent.harness.max_tool_calls_per_session),
             turn_config.max_session_turns,
             ctx.is_planning_active(),
         );
@@ -670,8 +671,12 @@ pub(crate) async fn run_turn_loop(
             current_max_tool_loops = current_max_tool_loops.max(turn_config.max_tool_loops);
             ctx.harness_state.max_tool_calls =
                 super::turn_loop_helpers::effective_max_tool_calls_for_turn(ctx.harness_state.max_tool_calls, true);
-            let (max_per_turn, max_per_session) =
-                resolve_safety_tool_call_limits(ctx.harness_state.max_tool_calls, turn_config.max_session_turns, true);
+            let (max_per_turn, max_per_session) = resolve_safety_tool_call_limits(
+                ctx.harness_state.max_tool_calls,
+                ctx.vt_cfg.and_then(|cfg| cfg.agent.harness.max_tool_calls_per_session),
+                turn_config.max_session_turns,
+                true,
+            );
             ctx.safety_validator.set_limits(max_per_turn, max_per_session);
         }
 

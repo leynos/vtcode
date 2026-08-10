@@ -417,6 +417,11 @@ pub struct AgentHarnessConfig {
     /// Set to `0` to disable the cap.
     #[serde(default = "default_harness_max_tool_calls_per_turn")]
     pub max_tool_calls_per_turn: usize,
+    /// Optional maximum number of tool calls allowed per session.
+    /// Set to `0` to disable the cap. When omitted, each runtime keeps its
+    /// existing session-budget policy.
+    #[serde(default)]
+    pub max_tool_calls_per_session: Option<usize>,
     /// Maximum wall clock time (seconds) for tool execution in a turn
     #[serde(default = "default_harness_max_tool_wall_clock_secs")]
     pub max_tool_wall_clock_secs: u64,
@@ -523,6 +528,7 @@ impl Default for AgentHarnessConfig {
     fn default() -> Self {
         Self {
             max_tool_calls_per_turn: default_harness_max_tool_calls_per_turn(),
+            max_tool_calls_per_session: None,
             max_tool_wall_clock_secs: default_harness_max_tool_wall_clock_secs(),
             max_tool_retries: default_harness_max_tool_retries(),
             max_parallel_tool_calls: default_harness_max_parallel_tool_calls(),
@@ -1887,9 +1893,15 @@ mod tests {
     #[test]
     fn test_harness_config_tool_call_budget_defaults_to_120() {
         assert_eq!(AgentHarnessConfig::default().max_tool_calls_per_turn, tool_limits::DEFAULT_MAX_TOOL_CALLS_PER_TURN);
+        assert_eq!(AgentHarnessConfig::default().max_tool_calls_per_session, None);
 
         let parsed: AgentHarnessConfig = toml::from_str("").expect("default harness config");
         assert_eq!(parsed.max_tool_calls_per_turn, tool_limits::DEFAULT_MAX_TOOL_CALLS_PER_TURN);
+        assert_eq!(parsed.max_tool_calls_per_session, None);
+
+        let unlimited: AgentHarnessConfig =
+            toml::from_str("max_tool_calls_per_session = 0").expect("unlimited session tool budget");
+        assert_eq!(unlimited.max_tool_calls_per_session, Some(0));
     }
 
     #[test]

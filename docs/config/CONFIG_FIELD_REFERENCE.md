@@ -70,6 +70,7 @@ python3 scripts/generate_config_field_reference.py
 | `agent.harness.max_budget_usd` | `null \| number` | no | `null` | Optional maximum estimated API cost in USD before VT Code stops the session. |
 | `agent.harness.max_parallel_tool_calls` | `integer` | no | `4` | Maximum number of tool calls that may execute concurrently within a single parallel batch. Set to `0` to disable the cap (unlimited concurrency). Default: 4. |
 | `agent.harness.max_revision_rounds` | `integer` | no | `2` | Maximum generator revision rounds after evaluator rejection. |
+| `agent.harness.max_tool_calls_per_session` | `integer \| null` | no | `null` | Optional maximum number of tool calls allowed per session. Set to `0` to disable the cap. When omitted, each runtime keeps its existing session-budget policy. |
 | `agent.harness.max_tool_calls_per_turn` | `integer` | no | `120` | Maximum number of tool calls allowed per turn. Set to `0` to disable the cap. |
 | `agent.harness.max_tool_retries` | `integer` | no | `2` | Maximum retries for retryable tool errors |
 | `agent.harness.max_tool_wall_clock_secs` | `integer` | no | `600` | Maximum wall clock time (seconds) for tool execution in a turn |

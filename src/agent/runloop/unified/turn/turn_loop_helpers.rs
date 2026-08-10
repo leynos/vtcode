@@ -64,6 +64,7 @@ pub(super) enum ToolLoopLimitAction {
 #[inline]
 pub(super) fn resolve_safety_tool_call_limits(
     max_tool_calls_per_turn: usize,
+    max_tool_calls_per_session: Option<usize>,
     max_session_turns: usize,
     planning_active: bool,
 ) -> (usize, usize) {
@@ -72,10 +73,11 @@ pub(super) fn resolve_safety_tool_call_limits(
     } else {
         max_tool_calls_per_turn
     };
-    let session_limit = if planning_active || max_tool_calls_per_turn == 0 {
-        usize::MAX
-    } else {
-        max_tool_calls_per_turn.saturating_mul(max_session_turns.max(1))
+    let session_limit = match max_tool_calls_per_session {
+        Some(0) => usize::MAX,
+        Some(limit) => limit,
+        None if planning_active || max_tool_calls_per_turn == 0 => usize::MAX,
+        None => max_tool_calls_per_turn.saturating_mul(max_session_turns.max(1)),
     };
 
     (turn_limit, session_limit)
@@ -720,17 +722,23 @@ mod tests {
 
     #[test]
     fn resolve_safety_tool_call_limits_maps_zero_turn_budget_to_unbounded_limits() {
-        assert_eq!(resolve_safety_tool_call_limits(0, 50, false), (usize::MAX, usize::MAX));
+        assert_eq!(resolve_safety_tool_call_limits(0, None, 50, false), (usize::MAX, usize::MAX));
     }
 
     #[test]
     fn resolve_safety_tool_call_limits_scales_session_limit_from_turn_budget() {
-        assert_eq!(resolve_safety_tool_call_limits(12, 40, false), (12, 480));
+        assert_eq!(resolve_safety_tool_call_limits(12, None, 40, false), (12, 480));
     }
 
     #[test]
     fn resolve_safety_tool_call_limits_keeps_planning_workflow_session_unbounded() {
-        assert_eq!(resolve_safety_tool_call_limits(48, 40, true), (48, usize::MAX));
+        assert_eq!(resolve_safety_tool_call_limits(48, None, 40, true), (48, usize::MAX));
+    }
+
+    #[test]
+    fn resolve_safety_tool_call_limits_honours_explicit_session_budget() {
+        assert_eq!(resolve_safety_tool_call_limits(12, Some(7), 40, false), (12, 7));
+        assert_eq!(resolve_safety_tool_call_limits(12, Some(0), 40, false), (12, usize::MAX));
     }
 
     #[test]

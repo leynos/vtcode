@@ -730,8 +730,12 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                                 .as_ref()
                                 .map(|cfg| cfg.agent.max_conversation_turns)
                                 .unwrap_or(vtcode_config::constants::defaults::DEFAULT_MAX_CONVERSATION_TURNS);
-                            let (max_per_turn, max_per_session) =
-                                resolve_safety_tool_call_limits(build_tool_limit, max_session_turns, false);
+                            let (max_per_turn, max_per_session) = resolve_safety_tool_call_limits(
+                                build_tool_limit,
+                                harness_config.max_tool_calls_per_session,
+                                max_session_turns,
+                                false,
+                            );
                             safety_validator.reset_for_fresh_execution(max_per_turn, max_per_session);
                             crate::agent::runloop::unified::planning_workflow::emit_context_reset(
                                 harness_emitter.as_ref(),
@@ -1163,8 +1167,12 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                             .as_ref()
                             .map(|cfg| cfg.agent.max_conversation_turns)
                             .unwrap_or(vtcode_config::constants::defaults::DEFAULT_MAX_CONVERSATION_TURNS);
-                        let (max_per_turn, max_per_session) =
-                            resolve_safety_tool_call_limits(build_tool_limit, max_session_turns, false);
+                        let (max_per_turn, max_per_session) = resolve_safety_tool_call_limits(
+                            build_tool_limit,
+                            harness_config.max_tool_calls_per_session,
+                            max_session_turns,
+                            false,
+                        );
                         safety_validator.reset_for_fresh_execution(max_per_turn, max_per_session);
                         crate::agent::runloop::unified::planning_workflow::emit_context_reset(
                             harness_emitter.as_ref(),

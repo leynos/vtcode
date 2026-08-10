@@ -440,6 +440,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
 
     let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
     let _turn_guard = TurnGuard::begin(thread)?;
+    agent.local_tool_registry.safety_gateway().start_turn();
     session.cancellation.reset();
 
     let user_message = tokio::select! {
