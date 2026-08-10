@@ -45,7 +45,7 @@ use agent_client_protocol::{
 use futures::StreamExt;
 use serde_json::json;
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use vtcode_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
 use vtcode_core::core::threads::ThreadRuntimeHandle;
 use vtcode_core::llm::factory::ProviderConfig;
@@ -134,6 +134,36 @@ async fn generate_with_retry(
                 attempt_index = attempt_index.saturating_add(1);
             }
         }
+    }
+}
+
+fn response_reasoning_update(response: &LLMResponse) -> Option<acp::SessionUpdate> {
+    response
+        .reasoning
+        .as_deref()
+        .filter(|reasoning| !reasoning.is_empty())
+        .map(|reasoning| acp::SessionUpdate::AgentThoughtChunk(text_chunk(reasoning.to_string())))
+}
+
+async fn emit_response_reasoning(agent: &ZedAgent, session_id: &acp::SessionId, response: &LLMResponse) {
+    let has_tool_calls = response.tool_calls.as_ref().is_some_and(|calls| !calls.is_empty());
+    let Some(update) = response_reasoning_update(response) else {
+        debug!(
+            %session_id,
+            has_tool_calls,
+            "Provider response did not include exposed reasoning for ACP"
+        );
+        return;
+    };
+
+    debug!(
+        %session_id,
+        reasoning_bytes = response.reasoning.as_ref().map_or(0, String::len),
+        has_tool_calls,
+        "Sending provider reasoning to ACP client"
+    );
+    if let Err(error) = agent.send_update(session_id, update).await {
+        warn!(%session_id, %error, "Failed to send provider reasoning to ACP client");
     }
 }
 
@@ -719,6 +749,12 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 break;
             }
 
+            emit_response_reasoning(&agent, &args.session_id, &response).await;
+            if session.cancellation.is_cancelled() {
+                stop_reason = acp::StopReason::Cancelled;
+                break;
+            }
+
             if tools_allowed && let Some(tool_calls) = response.tool_calls.clone().filter(|calls| !calls.is_empty()) {
                 if agent.tool_loop_limit_reached(tool_loop_count) {
                     let message = agent.tool_loop_limit_message();
@@ -799,19 +835,6 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 assistant_message = content.clone();
             }
 
-            if let Some(reasoning) = response.reasoning.filter(|reasoning| !reasoning.is_empty()) {
-                if session.cancellation.is_cancelled() {
-                    stop_reason = acp::StopReason::Cancelled;
-                    break;
-                }
-                let chunk = text_chunk(reasoning);
-                drop(
-                    agent
-                        .send_update(&args.session_id, acp::SessionUpdate::AgentThoughtChunk(chunk))
-                        .await,
-                );
-            }
-
             stop_reason = ZedAgent::stop_reason_from_finish(response.finish_reason);
             break;
         }
@@ -875,6 +898,29 @@ mod tests {
 
         assert!(TurnGuard::begin(thread.clone()).is_err());
         assert!(thread.messages().is_empty());
+    }
+
+    #[test]
+    fn reasoning_remains_visible_when_response_requests_a_tool() {
+        let response = LLMResponse {
+            reasoning: Some("Inspect the call graph before editing.".to_string()),
+            tool_calls: Some(vec![vtcode_core::llm::provider::ToolCall {
+                id: "call-1".to_string(),
+                call_type: "function".to_string(),
+                function: None,
+                text: Some("read_file".to_string()),
+                thought_signature: None,
+            }]),
+            ..LLMResponse::default()
+        };
+
+        let Some(acp::SessionUpdate::AgentThoughtChunk(chunk)) = response_reasoning_update(&response) else {
+            panic!("reasoning should produce an ACP thought update");
+        };
+        let acp::ContentBlock::Text(text) = chunk.content else {
+            panic!("reasoning update should contain text");
+        };
+        assert_eq!(text.text, "Inspect the call graph before editing.");
     }
 
     struct FlakyProvider {
