@@ -61,6 +61,7 @@ impl ZedAgent {
         system_prompt: String,
         title: Option<String>,
         primary_agents: PrimaryAgentCatalog,
+        skip_confirmations: bool,
     ) -> Self {
         let read_file_enabled = zed_config.tools.read_file;
         let workspace_root = config.workspace.clone();
@@ -98,7 +99,10 @@ impl ZedAgent {
             local_definitions,
         ));
         let permission_prompter: Arc<dyn AcpPermissionPrompter + Send + Sync> =
-            Arc::new(DefaultPermissionPrompter::new(Arc::clone(&acp_tool_registry) as Arc<_>));
+            Arc::new(DefaultPermissionPrompter::with_skip_confirmations(
+                Arc::clone(&acp_tool_registry) as Arc<_>,
+                skip_confirmations,
+            ));
 
         Self {
             config,
