@@ -65,7 +65,8 @@ impl CustomProviderBackendRouter {
             model_behavior.clone(),
             custom_provider_auth.clone(),
             Some(supported_models.clone()),
-        );
+        )
+        .with_custom_provider_config(custom_config.clone());
         let openai_chat = OpenAIProvider::from_custom_config(
             provider_key.clone(),
             display_name.clone(),
@@ -79,7 +80,8 @@ impl CustomProviderBackendRouter {
             custom_provider_auth.clone(),
             Some(supported_models.clone()),
         )
-        .with_api_format_override(Some(CustomProviderApiFormat::OpenAIChat));
+        .with_api_format_override(Some(CustomProviderApiFormat::OpenAIChat))
+        .with_custom_provider_config(custom_config.clone());
         let openai_responses = OpenAIProvider::from_custom_config(
             provider_key.clone(),
             display_name.clone(),
@@ -93,7 +95,8 @@ impl CustomProviderBackendRouter {
             custom_provider_auth.clone(),
             Some(supported_models.clone()),
         )
-        .with_api_format_override(Some(CustomProviderApiFormat::OpenAIResponses));
+        .with_api_format_override(Some(CustomProviderApiFormat::OpenAIResponses))
+        .with_custom_provider_config(custom_config.clone());
         let anthropic = AnthropicProvider::from_config(
             api_key,
             Some(default_model.clone()),
@@ -366,8 +369,9 @@ mod tests {
     use super::CustomProviderBackendRouter;
     use crate::provider::{LLMProvider, LLMRequest, Message, SamplingOverrides};
     use crate::providers::openai::CustomProviderAuthHandle;
-    use serde_json::json;
+    use serde_json::{Value, json};
     use std::path::Path;
+    use std::sync::{Arc, Mutex};
     use tempfile::TempDir;
     use vtcode_config::constants::models;
     use vtcode_config::core::{
@@ -606,7 +610,7 @@ mod tests {
         }
     }
 
-    fn anthropic_response_body(text: &str) -> serde_json::Value {
+    fn anthropic_response_body(text: &str) -> Value {
         json!({
             "content": [{
                 "type": "text",
@@ -626,10 +630,10 @@ mod tests {
     async fn anthropic_command_auth_refreshes_and_uses_protocol_headers() {
         let server = MockServer::start().await;
         let tempdir = TempDir::new().expect("tempdir");
-        let seen_keys = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen_keys = Arc::new(Mutex::new(Vec::new()));
         let auth_config = auth_fixture(&tempdir, &["first-token", "second-token"]);
 
-        let seen_for_mock = std::sync::Arc::clone(&seen_keys);
+        let seen_for_mock = Arc::clone(&seen_keys);
         Mock::given(method("POST"))
             .and(path("/messages"))
             .respond_with(move |request: &wiremock::Request| {
@@ -708,5 +712,74 @@ mod tests {
             seen_keys.lock().expect("mutex").as_slice(),
             &["first-token".to_string(), "second-token".to_string()]
         );
+    }
+
+    #[tokio::test]
+    async fn openai_chat_custom_profile_preserves_reasoning_and_serialises_controls() {
+        let server = MockServer::start().await;
+        let captured: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
+        let captured_for_mock = Arc::clone(&captured);
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(move |request: &wiremock::Request| {
+                *captured_for_mock.lock().expect("capture mutex") = serde_json::from_slice(&request.body).ok();
+                ResponseTemplate::new(200).set_body_json(json!({
+                    "choices": [{
+                        "message": {
+                            "content": "answer",
+                            "reasoning_content": "think first"
+                        },
+                        "finish_reason": "stop"
+                    }]
+                }))
+            })
+            .mount(&server)
+            .await;
+
+        let model = "DeepSeek-V4-Flash-0731".to_owned();
+        let mut config = CustomProviderConfig {
+            name: "deepseek-custom".to_owned(),
+            display_name: "DeepSeek Custom".to_owned(),
+            base_url: server.uri(),
+            api_format: CustomProviderApiFormat::OpenAIChat,
+            model: model.clone(),
+            models: vec![model.clone()],
+            ..Default::default()
+        };
+        config.profiles.insert(
+            model.clone(),
+            CustomProviderProfileConfig {
+                supports_reasoning: Some(true),
+                supports_reasoning_effort: Some(true),
+                ..Default::default()
+            },
+        );
+
+        let provider = CustomProviderBackendRouter::from_config(
+            config,
+            Some("test-key".to_owned()),
+            Some(model.clone()),
+            server.uri(),
+            None,
+            None,
+            None,
+            Some(AnthropicConfig::default()),
+            None,
+            None,
+        );
+        let response = provider
+            .generate(LLMRequest {
+                model,
+                messages: vec![Message::user("hello".to_owned())].into(),
+                reasoning_effort: Some(vtcode_config::types::ReasoningEffortLevel::High),
+                ..Default::default()
+            })
+            .await
+            .expect("custom OpenAI chat response should parse");
+
+        assert_eq!(response.reasoning.as_deref(), Some("think first"));
+        let payload = captured.lock().expect("capture mutex").clone().expect("request captured");
+        assert_eq!(payload["include_reasoning"], true);
+        assert_eq!(payload["reasoning_effort"], "high");
     }
 }

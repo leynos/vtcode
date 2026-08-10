@@ -29,8 +29,8 @@ use vtcode_config::TimeoutsConfig;
 use vtcode_config::auth::{OpenAIChatGptAuthHandle, OpenAIChatGptSession};
 use vtcode_config::constants::models;
 use vtcode_config::core::{
-    AnthropicConfig, ModelConfig, OpenAIConfig, OpenAIHostedShellConfig, OpenAIPromptCacheSettings, OpenAIServiceTier,
-    PromptCachingConfig,
+    AnthropicConfig, CustomProviderConfig, ModelConfig, OpenAIConfig, OpenAIHostedShellConfig,
+    OpenAIPromptCacheSettings, OpenAIServiceTier, PromptCachingConfig,
 };
 
 // Import from extracted modules
@@ -80,6 +80,7 @@ pub struct OpenAIProvider {
     prompt_cache_enabled: bool,
     prompt_cache_settings: OpenAIPromptCacheSettings,
     model_behavior: Option<ModelConfig>,
+    custom_provider_config: Option<Arc<CustomProviderConfig>>,
     websocket_mode: bool,
     responses_store: Option<bool>,
     responses_include: Vec<String>,
@@ -102,8 +103,15 @@ impl OpenAIProvider {
         find_family_for_model(model).supports_reasoning_summaries
     }
 
-    fn normalize_reasoning_output(model: &str, mut response: provider::LLMResponse) -> provider::LLMResponse {
-        if !Self::model_supports_reasoning_summaries(model) {
+    fn model_supports_reasoning(&self, model: &str) -> bool {
+        self.custom_provider_config
+            .as_ref()
+            .and_then(|config| config.resolved_profile(model).supports_reasoning)
+            .unwrap_or_else(|| Self::model_supports_reasoning_summaries(model))
+    }
+
+    fn normalize_reasoning_output(&self, model: &str, mut response: provider::LLMResponse) -> provider::LLMResponse {
+        if !self.model_supports_reasoning(model) {
             response.reasoning = None;
             response.reasoning_details = None;
         }
@@ -188,6 +196,7 @@ impl OpenAIProvider {
             prompt_cache_settings: Default::default(),
             responses_api_modes: Mutex::new(HashMap::new()),
             model_behavior: None,
+            custom_provider_config: None,
             websocket_mode: false,
             responses_store: None,
             responses_include: Vec::new(),
@@ -263,6 +272,11 @@ impl OpenAIProvider {
         }
         provider.supported_models_override = supported_models_override;
         provider
+    }
+
+    pub(crate) fn with_custom_provider_config(mut self, config: CustomProviderConfig) -> Self {
+        self.custom_provider_config = Some(Arc::new(config));
+        self
     }
 
     pub(crate) fn with_api_format_override(mut self, api_format: Option<CustomProviderApiFormat>) -> Self {
@@ -354,6 +368,7 @@ impl OpenAIProvider {
             prompt_cache_enabled,
             prompt_cache_settings,
             model_behavior,
+            custom_provider_config: None,
             websocket_mode,
             responses_store,
             responses_include,
@@ -687,6 +702,8 @@ impl OpenAIProvider {
             supports_tools: self.supports_tools(&request.model),
             supports_parallel_tool_config: self.supports_parallel_tool_config(&request.model),
             supports_temperature: Self::supports_temperature_parameter(&request.model),
+            include_reasoning: self.custom_provider_config.is_some() && self.supports_reasoning(&request.model),
+            supports_reasoning_effort: self.supports_reasoning_effort(&request.model),
             prompt_cache_key,
             default_service_tier,
         };
@@ -749,7 +766,7 @@ impl OpenAIProvider {
         let include_cached_prompt_tokens = self.prompt_cache_enabled && self.prompt_cache_settings.surface_metrics;
         let response =
             response_parser::parse_chat_response(response_json, model.clone(), include_cached_prompt_tokens)?;
-        Ok(Self::normalize_reasoning_output(&model, response))
+        Ok(self.normalize_reasoning_output(&model, response))
     }
 
     fn parse_openai_responses_response(
@@ -759,7 +776,7 @@ impl OpenAIProvider {
     ) -> Result<provider::LLMResponse, provider::LLMError> {
         let include_metrics = self.prompt_cache_enabled && self.prompt_cache_settings.surface_metrics;
         let response = parse_responses_payload(response_json, model.clone(), include_metrics)?;
-        Ok(Self::normalize_reasoning_output(&model, response))
+        Ok(self.normalize_reasoning_output(&model, response))
     }
 }
 
