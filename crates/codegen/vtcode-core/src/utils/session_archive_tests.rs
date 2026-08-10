@@ -986,6 +986,56 @@ async fn forced_async_progress_persists_latest_message_after_throttle() -> Resul
 
 #[serial_test::serial(session_dir_override)]
 #[tokio::test]
+async fn durable_checkpoint_rewrites_history_within_the_same_turn() -> Result<()> {
+    let _settings_lock = lock_history_test_guard().await;
+    let _history_guard = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let temp_dir = tempfile::tempdir().context("failed to create temp dir")?;
+    let _guard = EnvGuard::set(SESSION_DIR_ENV, temp_dir.path());
+
+    let metadata = SessionArchiveMetadata::new("ACP", "/tmp/acp", "model", "provider", "dark", "medium");
+    let archive = SessionArchive::new(metadata, None).await?;
+    let initial_messages = vec![SessionMessage::new(MessageRole::User, "continue")];
+    archive
+        .persist_checkpoint_async(SessionProgressArgs {
+            total_messages: initial_messages.len(),
+            distinct_tools: Vec::new(),
+            messages: initial_messages.clone(),
+            recent_messages: initial_messages,
+            turn_number: 1,
+            token_usage: None,
+            max_context_tokens: None,
+            loaded_skills: None,
+            turn_diagnostics: None,
+        })
+        .await?;
+
+    let completed_messages = vec![
+        SessionMessage::new(MessageRole::User, "continue"),
+        SessionMessage::new(MessageRole::Assistant, "resumed response"),
+    ];
+    let status = archive
+        .persist_checkpoint_async(SessionProgressArgs {
+            total_messages: completed_messages.len(),
+            distinct_tools: Vec::new(),
+            messages: completed_messages.clone(),
+            recent_messages: completed_messages.clone(),
+            turn_number: 1,
+            token_usage: None,
+            max_context_tokens: None,
+            loaded_skills: None,
+            turn_diagnostics: None,
+        })
+        .await?;
+
+    assert!(status.is_persisted());
+    let stored = fs::read_to_string(archive.path()).context("read durable ACP checkpoint")?;
+    let snapshot: SessionSnapshot = serde_json::from_str(&stored).context("parse durable ACP checkpoint")?;
+    assert_eq!(snapshot.messages, completed_messages);
+    Ok(())
+}
+
+#[serial_test::serial(session_dir_override)]
+#[tokio::test]
 async fn session_archive_skips_writes_when_history_persistence_is_disabled() -> Result<()> {
     let _settings_lock = lock_history_test_guard().await;
     let _history_guard = HistorySettingsGuard::set(HistoryPersistence::None, None);
