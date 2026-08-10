@@ -51,7 +51,16 @@ where
 
 /// Replace a Tokio command's inherited environment with the filtered set.
 pub(crate) fn sanitize_tokio_command_environment(command: &mut TokioCommand, allowed_env_vars: &[&str]) {
-    let _ = command.env_clear().envs(filtered_provider_environment(allowed_env_vars));
+    sanitize_tokio_command_environment_from(command, std::env::vars_os(), allowed_env_vars);
+}
+
+fn sanitize_tokio_command_environment_from<I>(command: &mut TokioCommand, environment: I, allowed_env_vars: &[&str])
+where
+    I: IntoIterator<Item = (OsString, OsString)>,
+{
+    let _ = command
+        .env_clear()
+        .envs(filter_provider_environment(environment, allowed_env_vars));
 }
 
 /// Replace a synchronous command's inherited environment with the filtered set.
@@ -70,7 +79,10 @@ pub(crate) fn sanitize_pty_command_environment(command: &mut portable_pty::Comma
 
 #[cfg(test)]
 mod tests {
-    use super::{COPILOT_AUTH_ENV_VARS, filter_provider_environment, sanitize_tokio_command_environment};
+    use super::{
+        COPILOT_AUTH_ENV_VARS, filter_provider_environment, sanitize_tokio_command_environment,
+        sanitize_tokio_command_environment_from,
+    };
     use std::ffi::OsString;
     use tokio::process::Command;
 
@@ -147,10 +159,12 @@ mod tests {
     #[test]
     fn copilot_exception_preserves_only_its_auth_token() {
         let mut command = Command::new("copilot");
-        let _ = command.env("GITHUB_TOKEN", "github-secret");
-        let _ = command.env("OPENAI_API_KEY", "openai-secret");
+        let environment = [
+            (OsString::from("GITHUB_TOKEN"), OsString::from("github-secret")),
+            (OsString::from("OPENAI_API_KEY"), OsString::from("openai-secret")),
+        ];
 
-        sanitize_tokio_command_environment(&mut command, COPILOT_AUTH_ENV_VARS);
+        sanitize_tokio_command_environment_from(&mut command, environment, COPILOT_AUTH_ENV_VARS);
 
         let configured_names: Vec<String> = command
             .as_std()
