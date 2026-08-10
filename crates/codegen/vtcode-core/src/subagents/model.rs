@@ -555,7 +555,7 @@ mod memory_cache_tests {
         let second = load_primary_memory_appendix(workspace.path(), "reviewer", Some(SubagentMemoryScope::Project))
             .expect("updated memory")
             .expect("updated appendix");
-        assert!(second.contains("new guidance"));
+        assert!(second.contains("new detailed guidance"));
     }
 
     #[test]
