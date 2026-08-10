@@ -307,6 +307,9 @@ async fn handle_prompt(
         let agent = Arc::clone(&agent);
         async move {
             let result = run_prompt(agent, req).await;
+            if let Err(error) = &result {
+                warn!(%error, "ACP prompt failed");
+            }
             if let Err(error) = request_cx.respond_with_result(result) {
                 warn!(%error, "Failed to send prompt response");
             }
