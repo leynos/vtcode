@@ -131,6 +131,17 @@ async fn attach_acp_subagent_controller(
     }
 }
 
+fn configure_acp_tool_call_limits(registry: &CoreToolRegistry, vt_cfg: Option<&VTCodeConfig>) {
+    let Some(harness) = vt_cfg.map(|config| &config.agent.harness) else {
+        return;
+    };
+    let safety_gateway = registry.safety_gateway();
+    let max_per_session = harness
+        .max_tool_calls_per_session
+        .unwrap_or_else(|| safety_gateway.max_per_session());
+    safety_gateway.set_limits(harness.max_tool_calls_per_turn, max_per_session);
+}
+
 impl ZedAgent {
     pub(crate) async fn new(
         config: CoreAgentConfig,
@@ -158,6 +169,7 @@ impl ZedAgent {
         };
         let list_files_enabled = file_ops_tool.is_some();
         let core_tool_registry = CoreToolRegistry::new(config.workspace.clone()).await;
+        configure_acp_tool_call_limits(&core_tool_registry, vt_cfg);
         if let Err(error) = core_tool_registry
             .apply_tool_runtime_config(&commands_config, &tools_config)
             .await
@@ -231,7 +243,10 @@ impl ZedAgent {
 
 #[cfg(test)]
 mod concurrency_tests {
-    use super::effective_acp_subagent_concurrency;
+    use super::{configure_acp_tool_call_limits, effective_acp_subagent_concurrency};
+    use std::path::PathBuf;
+    use vtcode_core::config::VTCodeConfig;
+    use vtcode_core::tools::ToolRegistry;
 
     #[test]
     fn provider_limit_reserves_one_request_for_the_parent() {
@@ -243,5 +258,17 @@ mod concurrency_tests {
     #[test]
     fn single_request_provider_capacity_disables_acp_subagents() {
         assert_eq!(effective_acp_subagent_concurrency(3, Some(1)), None);
+    }
+
+    #[tokio::test]
+    async fn acp_applies_unlimited_harness_tool_call_budgets() {
+        let registry = ToolRegistry::new(PathBuf::from("/tmp/vtcode-acp-tool-limit-test")).await;
+        let mut config = VTCodeConfig::default();
+        config.agent.harness.max_tool_calls_per_turn = 0;
+        config.agent.harness.max_tool_calls_per_session = Some(0);
+
+        configure_acp_tool_call_limits(&registry, Some(&config));
+
+        assert_eq!(registry.safety_gateway().max_per_session(), 0);
     }
 }
