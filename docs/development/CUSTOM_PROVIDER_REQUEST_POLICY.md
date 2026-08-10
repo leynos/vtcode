@@ -22,6 +22,27 @@ Omit `max_in_flight_requests` to leave admission unrestricted. The other
 defaults are a 600-second queue timeout, two retries, 500 ms initial backoff,
 10,000 ms maximum backoff, and jitter enabled.
 
+## Provider deadlines
+
+Provider failure detection uses four independent deadlines:
+
+- `connect_timeout_seconds` limits HTTP connection establishment (30 seconds
+  by default).
+- `first_token_timeout_seconds` starts after the streaming response is
+  established and limits the wait for the first text or reasoning event (180
+  seconds by default).
+- `stream_idle_timeout_seconds` resets whenever text or reasoning arrives and
+  detects a stream that stops making progress (120 seconds by default).
+- `total_generation_timeout_seconds` limits one complete generation attempt
+  without being reset by output (600 seconds by default).
+
+Set any deadline to `0` to disable that deadline. Buffered, non-streaming
+provider calls expose no token boundary, so they use the connection and total
+generation deadlines; first-token and inter-token-idle deadlines apply to
+streaming calls. A timeout before visible output follows the normal transient
+retry policy. A timeout after visible output is surfaced without replaying the
+stream.
+
 ## Retry and output safety
 
 For a transient provider failure, VT Code retries the request according to

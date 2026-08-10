@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use vtcode_config::TimeoutsConfig;
 use vtcode_config::core::{CustomProviderConfig, CustomProviderRequestPolicyConfig};
 use vtcode_core::retry::RetryPolicy;
 
@@ -15,10 +16,47 @@ pub(crate) struct ProviderRequestRuntime {
     semaphore: Option<Arc<Semaphore>>,
     queue_timeout: Duration,
     retry_policy: RetryPolicy,
+    deadline_policy: ProviderDeadlinePolicy,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ProviderDeadlinePolicy {
+    pub(crate) connect: Option<Duration>,
+    pub(crate) first_token: Option<Duration>,
+    pub(crate) stream_idle: Option<Duration>,
+    pub(crate) total_generation: Option<Duration>,
+}
+
+impl ProviderDeadlinePolicy {
+    fn from_config(config: &CustomProviderRequestPolicyConfig) -> Self {
+        Self {
+            connect: optional_seconds(config.connect_timeout_seconds),
+            first_token: optional_seconds(config.first_token_timeout_seconds),
+            stream_idle: optional_seconds(config.stream_idle_timeout_seconds),
+            total_generation: optional_seconds(config.total_generation_timeout_seconds),
+        }
+    }
+
+    fn from_timeouts(config: &TimeoutsConfig) -> Self {
+        Self {
+            connect: optional_seconds(config.connect_timeout_seconds),
+            first_token: optional_seconds(config.first_token_timeout_seconds),
+            stream_idle: optional_seconds(config.stream_idle_timeout_seconds),
+            total_generation: optional_seconds(config.streaming_ceiling_seconds),
+        }
+    }
+}
+
+fn optional_seconds(seconds: u64) -> Option<Duration> {
+    (seconds > 0).then(|| Duration::from_secs(seconds))
 }
 
 impl ProviderRequestRuntime {
-    fn new(provider_name: impl Into<Arc<str>>, config: &CustomProviderRequestPolicyConfig) -> Self {
+    fn new(
+        provider_name: impl Into<Arc<str>>,
+        config: &CustomProviderRequestPolicyConfig,
+        deadline_policy: ProviderDeadlinePolicy,
+    ) -> Self {
         let provider_name = provider_name.into();
         let semaphore = config.max_in_flight_requests.map(|limit| Arc::new(Semaphore::new(limit)));
         let mut retry_policy = RetryPolicy::from_retries(
@@ -37,6 +75,7 @@ impl ProviderRequestRuntime {
             semaphore,
             queue_timeout: Duration::from_secs(config.queue_timeout_seconds),
             retry_policy,
+            deadline_policy,
         }
     }
 
@@ -46,6 +85,17 @@ impl ProviderRequestRuntime {
 
     pub(crate) fn provider_name(&self) -> &str {
         &self.provider_name
+    }
+
+    pub(crate) fn deadline_policy(&self) -> ProviderDeadlinePolicy {
+        self.deadline_policy
+    }
+
+    pub(crate) fn apply_http_timeouts(&self, timeouts: &mut TimeoutsConfig) {
+        timeouts.connect_timeout_seconds = self.deadline_policy.connect.map_or(0, |duration| duration.as_secs());
+        let total = self.deadline_policy.total_generation.map_or(0, |duration| duration.as_secs());
+        timeouts.default_ceiling_seconds = total;
+        timeouts.streaming_ceiling_seconds = total;
     }
 
     pub(crate) async fn acquire(
@@ -101,20 +151,28 @@ pub(crate) struct ProviderRuntimeRegistry {
 }
 
 impl ProviderRuntimeRegistry {
-    pub(crate) fn new(custom_providers: &[CustomProviderConfig]) -> Self {
+    pub(crate) fn new(custom_providers: &[CustomProviderConfig], timeouts: &TimeoutsConfig) -> Self {
         let default_config = CustomProviderRequestPolicyConfig::default();
         let custom_runtimes = custom_providers
             .iter()
             .map(|provider| {
                 (
                     provider.name.to_ascii_lowercase(),
-                    ProviderRequestRuntime::new(provider.name.clone(), &provider.request_policy),
+                    ProviderRequestRuntime::new(
+                        provider.name.clone(),
+                        &provider.request_policy,
+                        ProviderDeadlinePolicy::from_config(&provider.request_policy),
+                    ),
                 )
             })
             .collect();
 
         Self {
-            default_runtime: ProviderRequestRuntime::new("default", &default_config),
+            default_runtime: ProviderRequestRuntime::new(
+                "default",
+                &default_config,
+                ProviderDeadlinePolicy::from_timeouts(timeouts),
+            ),
             custom_runtimes,
         }
     }
@@ -138,6 +196,7 @@ mod tests {
             semaphore: Some(Arc::new(Semaphore::new(limit))),
             queue_timeout,
             retry_policy: RetryPolicy::default(),
+            deadline_policy: ProviderDeadlinePolicy::from_config(&CustomProviderRequestPolicyConfig::default()),
         }
     }
 
@@ -193,12 +252,16 @@ mod tests {
             },
             ..CustomProviderConfig::default()
         };
-        let runtime = ProviderRuntimeRegistry::new(&[provider]).for_provider("arli");
+        let runtime = ProviderRuntimeRegistry::new(&[provider], &TimeoutsConfig::default()).for_provider("arli");
 
         assert_eq!(runtime.limit, Some(3));
         assert_eq!(runtime.retry_policy.max_attempts, 5);
         assert_eq!(runtime.retry_policy.initial_delay, Duration::from_millis(250));
         assert_eq!(runtime.retry_policy.max_delay, Duration::from_secs(5));
-        assert_eq!(runtime.retry_policy.jitter, 0.0);
+        assert!(runtime.retry_policy.jitter.abs() < f64::EPSILON);
+        assert_eq!(runtime.deadline_policy.connect, Some(Duration::from_secs(30)));
+        assert_eq!(runtime.deadline_policy.first_token, Some(Duration::from_secs(180)));
+        assert_eq!(runtime.deadline_policy.stream_idle, Some(Duration::from_secs(120)));
+        assert_eq!(runtime.deadline_policy.total_generation, Some(Duration::from_secs(600)));
     }
 }
