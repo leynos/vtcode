@@ -11,6 +11,7 @@ use std::sync::Arc;
 use tokio::time::Instant;
 use vtcode_core::config::constants::tools;
 use vtcode_core::llm::provider::ToolCall as ProviderToolCall;
+use vtcode_core::tools::apply_patch::decode_apply_patch_input;
 
 use super::super::types::{RunTerminalMode, SessionHandle, ToolCallResult};
 
@@ -82,6 +83,7 @@ impl ZedAgent {
         let initial_call = acp::ToolCall::new(call_id.clone(), title)
             .kind(kind)
             .status(acp::ToolCallStatus::Pending)
+            .content(Self::initial_tool_content(&func_ref.name, args_value_for_input.as_ref()))
             .raw_input(args_value_for_input.clone());
 
         self.send_update(session_id, acp::SessionUpdate::ToolCall(initial_call.clone()))
@@ -175,6 +177,16 @@ impl ZedAgent {
             .as_ref()
             .map(|function| function.name.as_str())
             .unwrap_or("unknown")
+    }
+
+    fn initial_tool_content(tool_name: &str, args: Option<&Value>) -> Vec<acp::ToolCallContent> {
+        if tool_name != tools::APPLY_PATCH {
+            return Vec::new();
+        }
+
+        args.and_then(|args| decode_apply_patch_input(args).ok().flatten())
+            .map(|patch| vec![acp::ToolCallContent::from(patch.text)])
+            .unwrap_or_default()
     }
 
     fn tool_call_result_from_report(call: &ProviderToolCall, report: ToolExecutionReport) -> ToolCallResult {
@@ -337,4 +349,28 @@ impl ZedAgent {
 
 fn should_route_terminal_via_client(tool_name: &str, _args: &Value) -> bool {
     matches!(tool_name, tools::RUN_PTY_CMD | tools::EXEC_COMMAND)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apply_patch_call_exposes_patch_text_before_execution() {
+        let patch = "*** Begin Patch\n*** Add File: visible.txt\n+hello\n*** End Patch\n";
+        let content = ZedAgent::initial_tool_content(tools::APPLY_PATCH, Some(&json!({ "patch": patch })));
+
+        let [acp::ToolCallContent::Content(content)] = content.as_slice() else {
+            panic!("apply_patch should expose one text content block");
+        };
+        let acp::ContentBlock::Text(text) = &content.content else {
+            panic!("apply_patch preview should be text");
+        };
+        assert_eq!(text.text, patch);
+    }
+
+    #[test]
+    fn other_tool_calls_do_not_echo_raw_arguments_as_content() {
+        assert!(ZedAgent::initial_tool_content(tools::EXEC_COMMAND, Some(&json!({ "command": "true" }))).is_empty());
+    }
 }
