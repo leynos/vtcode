@@ -289,14 +289,21 @@ Common cases:
   prompt payload.
 - **Streaming updates** – Token deltas and reasoning updates arrive via `session/update`
   notifications, keeping Zed's UI responsive during generation.
+- **Provider reasoning** – When a provider response exposes reasoning alongside tool calls, VT Code
+  sends it to ACP as an `AgentThoughtChunk` before executing those tools. Exposed reasoning on the
+  final provider response is sent as an `AgentThoughtChunk` as well. Debug logs distinguish
+  `Sending provider reasoning to ACP client` from `Provider response did not include exposed reasoning
+  for ACP`; they record metadata only and never the reasoning content.
 - **Plan tracking** – Every prompt emits an ACP plan describing analysis, optional context gathering,
   and final response drafting. VT Code updates each entry as it progresses so Zed can visualise the
   bridge's workflow in real time.
 - **Tool execution** – The `read_file` tool forwards to Zed when enabled. The `list_files` tool
   uses VT Code's local workspace access, mirroring the CLI experience. When the model lacks
   function calling or the tool toggle is disabled, VT Code surfaces a reasoning notice and skips the
-  invocation. Paths supplied by tools are normalised against the trusted workspace so relative
-  segments stay inside the project before the request reaches the client.
+  invocation. Pending `apply_patch` calls include the decoded patch text as ACP tool-call content so
+  the client can show the proposed edit before execution. Paths supplied by tools are normalised
+  against the trusted workspace so relative segments stay inside the project before the request
+  reaches the client.
 - **Tool policy compatibility** – VT Code advertises the current core tool suite
   through ACP when the model supports function calling, including `exec_command`,
   `write_stdin`, `apply_patch`, and advanced `code_search` where enabled. The
@@ -348,6 +355,7 @@ Common cases:
 | Empty responses in Zed | Confirm ACP env vars are present in the `env` map and that ACP is enabled in `vtcode.toml`. |
 | `read_file` returns placeholders | Validate the referenced URI is accessible from Zed's workspace. |
 | Tool calls report "Unsupported tool" | Disable the tool bridge or switch to a model that supports function calling. VT Code emits a reasoning notice when the downgrade occurs. |
+| Missing thought traces in Zed | Enable debug logging and inspect whether VT Code reports `Sending provider reasoning to ACP client` or `Provider response did not include exposed reasoning for ACP`. The latter means the provider response exposed no reasoning; verify that the selected provider/model and API format return reasoning. Neither message logs reasoning content. |
 | Sessions cancel unexpectedly | Inspect VT Code logs (and Zed's ACP logs) for cancellations triggered by the client. |
 
 ## Next steps
