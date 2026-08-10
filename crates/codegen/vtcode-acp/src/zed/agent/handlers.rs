@@ -55,7 +55,7 @@ use vtcode_core::core::threads::ThreadRuntimeHandle;
 use vtcode_core::llm::factory::ProviderConfig;
 use vtcode_core::llm::factory::create_provider_with_config;
 use vtcode_core::llm::provider::{LLMError, LLMProvider, LLMRequest, LLMResponse, LLMStreamEvent, Message};
-use vtcode_core::retry::RetryPolicyCoreExt;
+use vtcode_core::retry::{RetryDecision, RetryPolicyCoreExt};
 
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderDeadlinePolicy, ProviderRequestRuntime};
 
@@ -217,6 +217,112 @@ struct StreamDeadlineTracker {
     total: Option<Instant>,
 }
 
+struct GenerationTelemetry {
+    started_at: Instant,
+    first_output_at: Option<Instant>,
+    estimated_output_tokens: u64,
+}
+
+impl GenerationTelemetry {
+    fn start() -> Self {
+        Self {
+            started_at: Instant::now(),
+            first_output_at: None,
+            estimated_output_tokens: 0,
+        }
+    }
+
+    fn observe_output(&mut self, runtime: &ProviderRequestRuntime, delta: &str, retry_count: u32) {
+        let estimated_delta = u64::try_from(delta.chars().count().div_ceil(4)).unwrap_or(u64::MAX);
+        self.estimated_output_tokens = self.estimated_output_tokens.saturating_add(estimated_delta);
+        if self.first_output_at.is_some() {
+            return;
+        }
+
+        let now = Instant::now();
+        self.first_output_at = Some(now);
+        let snapshot = runtime.telemetry_snapshot();
+        info!(
+            provider = runtime.provider_name(),
+            time_to_first_token_ms = duration_millis(now.duration_since(self.started_at)),
+            retry_count,
+            queue_depth = snapshot.queue_depth,
+            active_provider_permits = snapshot.active_permits,
+            permit_limit = ?snapshot.permit_limit,
+            circuit_breaker_state = snapshot.circuit_breaker_state,
+            "ACP provider produced its first output"
+        );
+    }
+
+    fn complete(&self, runtime: &ProviderRequestRuntime, response: &LLMResponse, retry_count: u32, buffered: bool) {
+        let elapsed = self.started_at.elapsed();
+        let elapsed_ms = duration_millis(elapsed).max(1);
+        let (output_tokens, token_count_source) = response
+            .usage
+            .as_ref()
+            .filter(|usage| usage.completion_tokens > 0)
+            .map(|usage| (u64::from(usage.completion_tokens), "provider"))
+            .unwrap_or((self.estimated_output_tokens, "estimated"));
+        let tokens_per_second = output_tokens.saturating_mul(1_000) / elapsed_ms;
+        let snapshot = runtime.telemetry_snapshot();
+        info!(
+            provider = runtime.provider_name(),
+            generation_elapsed_ms = elapsed_ms,
+            time_to_first_token_ms = self
+                .first_output_at
+                .map(|first| duration_millis(first.duration_since(self.started_at)))
+                .unwrap_or(elapsed_ms),
+            ttft_observation = if buffered { "buffered_response" } else { "stream_event" },
+            output_tokens,
+            token_count_source,
+            tokens_per_second,
+            retry_count,
+            queue_depth = snapshot.queue_depth,
+            active_provider_permits = snapshot.active_permits,
+            permit_limit = ?snapshot.permit_limit,
+            circuit_breaker_state = snapshot.circuit_breaker_state,
+            "ACP provider generation completed"
+        );
+    }
+
+    fn failed(
+        &self,
+        runtime: &ProviderRequestRuntime,
+        retry_count: u32,
+        retry_disposition: &'static str,
+        error: &LLMError,
+    ) {
+        let snapshot = runtime.telemetry_snapshot();
+        warn!(
+            provider = runtime.provider_name(),
+            generation_elapsed_ms = duration_millis(self.started_at.elapsed()),
+            retry_count,
+            max_retries = runtime.retry_policy().max_attempts.saturating_sub(1),
+            retry_disposition,
+            queue_depth = snapshot.queue_depth,
+            active_provider_permits = snapshot.active_permits,
+            permit_limit = ?snapshot.permit_limit,
+            circuit_breaker_state = snapshot.circuit_breaker_state,
+            provider_error = %error,
+            "ACP provider generation attempt failed"
+        );
+    }
+}
+
+fn duration_millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+fn retry_disposition(decision: &RetryDecision) -> &'static str {
+    if decision.retryable {
+        "retry_scheduled"
+    } else if decision.category.is_retryable() {
+        "retry_exhausted"
+    } else {
+        "non_retryable"
+    }
+}
+
 impl StreamDeadlineTracker {
     fn new(policy: ProviderDeadlinePolicy, total: Option<Instant>) -> Self {
         Self {
@@ -255,6 +361,7 @@ async fn generate_with_retry(
 
     loop {
         let permit = runtime.acquire(cancellation).await?;
+        let mut telemetry = GenerationTelemetry::start();
         let deadline_policy = runtime.deadline_policy();
         let total_deadline = deadline_after(deadline_policy.total_generation);
         let result = tokio::select! {
@@ -268,12 +375,22 @@ async fn generate_with_retry(
             }
             result = provider.generate(request.clone()) => result,
         };
-        drop(permit);
-
         match result {
-            Ok(response) => return Ok(response),
+            Ok(response) => {
+                if let Some(content) = response.content.as_deref() {
+                    telemetry.observe_output(runtime, content, attempt_index);
+                }
+                if let Some(reasoning) = response.reasoning.as_deref() {
+                    telemetry.observe_output(runtime, reasoning, attempt_index);
+                }
+                telemetry.complete(runtime, &response, attempt_index, true);
+                drop(permit);
+                return Ok(response);
+            }
             Err(error) => {
                 let decision = policy.decision_for_llm_error(&error, attempt_index);
+                telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
+                drop(permit);
                 if !decision.retryable {
                     return Err(ProviderCallError::Failed(error.to_string()));
                 }
@@ -281,6 +398,8 @@ async fn generate_with_retry(
                 info!(
                     provider = runtime.provider_name(),
                     next_attempt = attempt_index + 2,
+                    retry_count = attempt_index + 1,
+                    max_retries = policy.max_attempts.saturating_sub(1),
                     ?delay,
                     "Retrying transient ACP provider request"
                 );
@@ -708,6 +827,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 }
                 Err(error) => return Err(SdkError::internal_error().data(error.to_string())),
             };
+            let mut telemetry = GenerationTelemetry::start();
             let total_deadline = deadline_after(deadline_policy.total_generation);
             let stream_result = tokio::select! {
                 () = session.cancellation.cancelled() => {
@@ -726,8 +846,9 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             let mut stream = match stream_result {
                 Ok(stream) => stream,
                 Err(error) => {
-                    drop(permit);
                     let decision = policy.decision_for_llm_error(&error, attempt_index);
+                    telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
+                    drop(permit);
                     if !decision.retryable {
                         return Err(SdkError::internal_error().data(error.to_string()));
                     }
@@ -735,6 +856,8 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     info!(
                         provider = provider_runtime.provider_name(),
                         next_attempt = attempt_index + 2,
+                        retry_count = attempt_index + 1,
+                        max_retries = policy.max_attempts.saturating_sub(1),
                         ?delay,
                         "Retrying transient ACP provider stream"
                     );
@@ -779,6 +902,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         metadata: None,
                     };
                     if emitted_output {
+                        telemetry.failed(&provider_runtime, attempt_index, "partial_output_visible", &error);
                         return Err(checkpoint_incomplete_stream(
                             &agent,
                             &session,
@@ -789,8 +913,9 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         .await);
                     }
                     drop(stream);
-                    drop(permit);
                     let decision = policy.decision_for_llm_error(&error, attempt_index);
+                    telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
+                    drop(permit);
                     if !decision.retryable {
                         return Err(SdkError::internal_error().data(error.to_string()));
                     }
@@ -798,6 +923,8 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     info!(
                         provider = provider_runtime.provider_name(),
                         next_attempt = attempt_index + 2,
+                        retry_count = attempt_index + 1,
+                        max_retries = policy.max_attempts.saturating_sub(1),
                         ?delay,
                         "Retrying ACP provider stream that ended before completion"
                     );
@@ -819,8 +946,9 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     Ok(event) => event,
                     Err(error) if !emitted_output => {
                         drop(stream);
-                        drop(permit);
                         let decision = policy.decision_for_llm_error(&error, attempt_index);
+                        telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
+                        drop(permit);
                         if !decision.retryable {
                             return Err(SdkError::internal_error().data(error.to_string()));
                         }
@@ -828,6 +956,8 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         info!(
                             provider = provider_runtime.provider_name(),
                             next_attempt = attempt_index + 2,
+                            retry_count = attempt_index + 1,
+                            max_retries = policy.max_attempts.saturating_sub(1),
                             ?delay,
                             "Retrying transient ACP provider stream before output"
                         );
@@ -846,6 +976,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         }
                     }
                     Err(error) => {
+                        telemetry.failed(&provider_runtime, attempt_index, "partial_output_visible", &error);
                         return Err(checkpoint_incomplete_stream(
                             &agent,
                             &session,
@@ -862,6 +993,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         if !delta.is_empty() {
                             emitted_output = true;
                             stream_deadlines.observe_output();
+                            telemetry.observe_output(&provider_runtime, &delta, attempt_index);
                             assistant_message.push_str(&delta);
                             let chunk = text_chunk(delta);
                             drop(
@@ -875,6 +1007,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         if !delta.is_empty() {
                             emitted_output = true;
                             stream_deadlines.observe_output();
+                            telemetry.observe_output(&provider_runtime, &delta, attempt_index);
                             assistant_reasoning.push_str(&delta);
                             let chunk = text_chunk(delta);
                             drop(
@@ -887,6 +1020,15 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     LLMStreamEvent::ReasoningStage { .. } => {}
                     LLMStreamEvent::ReasoningSignature { .. } => {}
                     LLMStreamEvent::Completed { response } => {
+                        if telemetry.first_output_at.is_none() {
+                            if let Some(content) = response.content.as_deref() {
+                                telemetry.observe_output(&provider_runtime, content, attempt_index);
+                            }
+                            if let Some(reasoning) = response.reasoning.as_deref() {
+                                telemetry.observe_output(&provider_runtime, reasoning, attempt_index);
+                            }
+                        }
+                        telemetry.complete(&provider_runtime, &response, attempt_index, false);
                         if assistant_message.is_empty()
                             && let Some(content) = response.content
                         {
@@ -1079,7 +1221,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use vtcode_config::core::{CustomProviderConfig, CustomProviderRequestPolicyConfig};
     use vtcode_core::core::threads::{ThreadBootstrap, ThreadManager};
-    use vtcode_core::llm::provider::LLMError;
+    use vtcode_core::llm::provider::{LLMError, LLMErrorMetadata};
 
     use super::*;
 
@@ -1160,6 +1302,10 @@ mod tests {
 
     struct PendingProvider;
 
+    struct BadGatewayProvider {
+        attempts: AtomicUsize,
+    }
+
     #[async_trait]
     impl LLMProvider for PendingProvider {
         fn name(&self) -> &str {
@@ -1176,6 +1322,45 @@ mod tests {
 
         async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
             std::future::pending().await
+        }
+    }
+
+    #[async_trait]
+    impl LLMProvider for BadGatewayProvider {
+        fn name(&self) -> &str {
+            "bad-gateway-test"
+        }
+
+        fn supported_models(&self) -> Vec<String> {
+            vec!["test-model".to_string()]
+        }
+
+        fn supports_streaming(&self) -> bool {
+            false
+        }
+
+        fn supports_tools(&self, _model: &str) -> bool {
+            false
+        }
+
+        fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+            Ok(())
+        }
+
+        async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+            let _previous_attempts = self.attempts.fetch_add(1, Ordering::SeqCst);
+            Err(LLMError::Provider {
+                message: "OpenAI Chat Completions error (status 502 Bad Gateway)".to_string(),
+                metadata: Some(LLMErrorMetadata::new(
+                    "openai",
+                    Some(502),
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some("502 Bad Gateway".to_string()),
+                )),
+            })
         }
     }
 
@@ -1296,6 +1481,25 @@ mod tests {
 
         assert_eq!(response.content.as_deref(), Some("recovered"));
         assert_eq!(provider.attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn bad_gateway_retries_until_the_configured_budget_is_exhausted() {
+        let provider = BadGatewayProvider { attempts: AtomicUsize::new(0) };
+
+        let result = generate_with_retry(
+            &provider,
+            LLMRequest::default(),
+            &retry_runtime(),
+            &super::super::super::types::SessionCancellation::default(),
+        )
+        .await;
+
+        let Err(ProviderCallError::Failed(error)) = result else {
+            panic!("persistent 502 response should exhaust the retry budget");
+        };
+        assert!(error.contains("502 Bad Gateway"));
+        assert_eq!(provider.attempts.load(Ordering::SeqCst), 3);
     }
 
     #[tokio::test]
