@@ -9,11 +9,22 @@ use crate::config::types::AgentConfig as CoreAgentConfig;
 pub struct AcpLaunchParams<'a> {
     pub agent_config: &'a CoreAgentConfig,
     pub runtime_config: &'a VTCodeConfig,
+    pub skip_confirmations: bool,
 }
 
 impl<'a> AcpLaunchParams<'a> {
     pub fn new(agent_config: &'a CoreAgentConfig, runtime_config: &'a VTCodeConfig) -> Self {
-        Self { agent_config, runtime_config }
+        Self {
+            agent_config,
+            runtime_config,
+            skip_confirmations: false,
+        }
+    }
+
+    #[must_use]
+    pub fn with_skip_confirmations(mut self, skip_confirmations: bool) -> Self {
+        self.skip_confirmations = skip_confirmations;
+        self
     }
 }
 
