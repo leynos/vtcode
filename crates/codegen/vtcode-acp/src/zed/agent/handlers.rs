@@ -29,7 +29,7 @@
 
 use super::super::constants::*;
 use super::super::helpers::{agent_implementation_info, text_chunk};
-use super::super::types::{PlanProgress, ToolRuntime};
+use super::super::types::{PlanProgress, SessionHandle, ToolRuntime};
 use super::ZedAgent;
 use crate::acp;
 use crate::acp::Error as SdkError;
@@ -46,9 +46,11 @@ use futures::StreamExt;
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::Instant;
 use tracing::{debug, info, warn};
 use vtcode_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
+use vtcode_core::core::message_metadata::MessageMetadata;
 use vtcode_core::core::threads::ThreadRuntimeHandle;
 use vtcode_core::llm::factory::ProviderConfig;
 use vtcode_core::llm::factory::create_provider_with_config;
@@ -118,6 +120,52 @@ fn provider_timeout_error(provider: &str, phase: &str, timeout: Option<Duration>
         message: format!("provider '{provider}' exceeded its {phase} timeout ({duration})"),
         metadata: None,
     }
+}
+
+fn unix_timestamp_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|elapsed| u64::try_from(elapsed.as_millis()).ok())
+        .unwrap_or_default()
+}
+
+fn incomplete_assistant_message(content: &str, reasoning: &str, error: &LLMError) -> Message {
+    let mut message = Message::assistant(content.to_string());
+    if !reasoning.is_empty() {
+        message.reasoning = Some(reasoning.to_string());
+    }
+    message.metadata = Some(MessageMetadata::incomplete_llm_response(
+        unix_timestamp_millis(),
+        message.estimate_tokens(),
+        error.to_string(),
+    ));
+    message
+}
+
+fn checkpoint_incomplete_stream(
+    agent: &ZedAgent,
+    session: &SessionHandle,
+    content: &str,
+    reasoning: &str,
+    error: &LLMError,
+) -> SdkError {
+    let checkpointed = !content.is_empty() || !reasoning.is_empty();
+    if checkpointed {
+        agent.push_message(session, incomplete_assistant_message(content, reasoning, error));
+    }
+    warn!(
+        provider_error = %error,
+        partial_text_bytes = content.len(),
+        partial_reasoning_bytes = reasoning.len(),
+        checkpointed,
+        "ACP provider stream failed after publishing output"
+    );
+    SdkError::internal_error().data(json!({
+        "reason": "provider_stream_incomplete",
+        "detail": error.to_string(),
+        "partial_output_checkpointed": checkpointed,
+    }))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -589,6 +637,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
 
     let stop_reason: acp::StopReason;
     let mut assistant_message = String::with_capacity(4096);
+    let mut assistant_reasoning = String::with_capacity(2048);
     let client_supports_read_text_file = agent.client_supports_read_text_file();
     let provider_supports_tools = provider.supports_tools(&session_model);
     let mut primary_agent = {
@@ -719,7 +768,13 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         metadata: None,
                     };
                     if emitted_output {
-                        return Err(SdkError::internal_error().data(error.to_string()));
+                        return Err(checkpoint_incomplete_stream(
+                            &agent,
+                            &session,
+                            &assistant_message,
+                            &assistant_reasoning,
+                            &error,
+                        ));
                     }
                     drop(stream);
                     drop(permit);
@@ -778,7 +833,15 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             }
                         }
                     }
-                    Err(error) => return Err(SdkError::internal_error().data(error.to_string())),
+                    Err(error) => {
+                        return Err(checkpoint_incomplete_stream(
+                            &agent,
+                            &session,
+                            &assistant_message,
+                            &assistant_reasoning,
+                            &error,
+                        ));
+                    }
                 };
 
                 match event {
@@ -799,6 +862,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         if !delta.is_empty() {
                             emitted_output = true;
                             stream_deadlines.observe_output();
+                            assistant_reasoning.push_str(&delta);
                             let chunk = text_chunk(delta);
                             drop(
                                 agent
@@ -1049,6 +1113,26 @@ mod tests {
             panic!("reasoning update should contain text");
         };
         assert_eq!(text.text, "Inspect the call graph before editing.");
+    }
+
+    #[test]
+    fn partial_stream_message_preserves_output_and_marks_it_incomplete() {
+        let error = LLMError::Network {
+            message: "stream disconnected".to_string(),
+            metadata: None,
+        };
+
+        let message = incomplete_assistant_message("partial answer", "partial reasoning", &error);
+
+        assert_eq!(message.content.as_text(), "partial answer");
+        assert_eq!(message.reasoning.as_deref(), Some("partial reasoning"));
+        let metadata = message.metadata.as_ref().expect("incomplete response metadata");
+        assert!(metadata.is_incomplete());
+        assert!(
+            metadata
+                .incomplete_reason()
+                .is_some_and(|reason| reason.contains("stream disconnected"))
+        );
     }
 
     struct FlakyProvider {
