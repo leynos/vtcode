@@ -67,6 +67,7 @@ async fn build_agent_with_tools_config(workspace: &Path, tools_config: ToolsConf
         String::new(),
         Some("Zed".to_string()),
         primary_agents,
+        false,
     )
     .await
 }
