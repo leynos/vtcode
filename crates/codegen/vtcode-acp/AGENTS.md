@@ -6,7 +6,7 @@
 
 `capabilities/` protocol negotiation | `client/` legacy client (deprecated) | `client_v2/` current ACP client | `discovery/` agent registry | `session/` session lifecycle | `transport/` StdioTransport | `jsonrpc/` JSON-RPC types | `tooling/` tool adapters | `zed/` Zed-specific adapter | `workspace/` workspace helpers | `permissions/` permission flow | `reports/` reporting | `error/` AcpError
 
-`zed/agent/handlers.rs` is the canonical SACP handler wiring; `zed/connection.rs` wraps the SACP `ConnectionTo<Client>` handle.
+`zed/agent/handlers.rs` is the canonical SACP handler wiring; `zed/connection.rs` wraps the SACP `ConnectionTo<Client>` handle; `ZedAgent::new` attaches and refreshes parent MCP providers before snapshotting model tools.
 
 ## Rules
 
