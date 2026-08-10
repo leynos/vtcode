@@ -205,7 +205,7 @@ impl ZedAgent {
 
         let messages = snapshot.messages.iter().map(SessionMessage::from).collect::<Vec<_>>();
         let recent_start = messages.len().saturating_sub(20);
-        let recent_messages = messages[recent_start..].to_vec();
+        let recent_messages = messages.iter().skip(recent_start).cloned().collect();
         let turn_number = snapshot
             .messages
             .iter()
