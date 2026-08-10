@@ -322,7 +322,7 @@ fn editor_command_from_settings(editor_config: &EditorToolConfig) -> Option<Stri
 }
 
 fn editor_command_requires_terminal(command: &str) -> bool {
-    TerminalAppLauncher::editor_command_requires_terminal(Some(command))
+    !command.trim().is_empty() && TerminalAppLauncher::editor_command_requires_terminal(Some(command))
 }
 
 fn launch_config_from_settings(editor_config: &EditorToolConfig, wait_for_editor: bool) -> EditorLaunchConfig {
