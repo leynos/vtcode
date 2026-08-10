@@ -6,6 +6,7 @@ mod agent;
 pub(crate) mod connection;
 pub(crate) mod constants;
 mod helpers;
+mod provider_runtime;
 mod session;
 mod types;
 
@@ -55,7 +56,7 @@ mod tests {
     use std::path::Path;
     use tokio::fs;
     use vtcode_config::auth::AuthCredentialsStoreMode;
-    use vtcode_config::{SubagentDiscoveryInput, discover_subagents};
+    use vtcode_config::{SubagentDiscoveryInput, TimeoutsConfig, discover_subagents};
     use vtcode_core::config::core::PromptCachingConfig;
     use vtcode_core::config::models::{ModelId, Provider};
     use vtcode_core::config::types::{
@@ -106,6 +107,8 @@ mod tests {
             zed_config,
             tools_config,
             CommandsConfig::default(),
+            &[],
+            TimeoutsConfig::default(),
             String::new(),
             Some("Zed".to_string()),
             primary_agents,

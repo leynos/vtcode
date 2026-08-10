@@ -2,12 +2,15 @@ use crate::acp;
 use crate::permissions::{AcpPermissionPrompter, DefaultPermissionPrompter};
 use crate::tooling::AcpToolRegistry;
 use crate::zed::connection::ConnectionHandle;
+use crate::zed::provider_runtime::ProviderRuntimeRegistry;
 use hashbrown::HashMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing::warn;
+use vtcode_config::TimeoutsConfig;
 use vtcode_config::auth::AuthCredentialsStoreMode;
+use vtcode_config::core::CustomProviderConfig;
 use vtcode_core::config::ToolDocumentationMode;
 use vtcode_core::config::types::{AgentConfig as CoreAgentConfig, CapabilityLevel};
 use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig};
@@ -49,6 +52,8 @@ pub(crate) struct ZedAgent {
     primary_agents: PrimaryAgentCatalog,
     tool_loop_limit: usize,
     tool_call_delay: Option<Duration>,
+    provider_runtime: ProviderRuntimeRegistry,
+    provider_timeouts: TimeoutsConfig,
 }
 
 impl ZedAgent {
@@ -58,6 +63,8 @@ impl ZedAgent {
         zed_config: AgentClientProtocolZedConfig,
         tools_config: ToolsConfig,
         commands_config: CommandsConfig,
+        custom_providers: &[CustomProviderConfig],
+        provider_timeouts: TimeoutsConfig,
         system_prompt: String,
         title: Option<String>,
         primary_agents: PrimaryAgentCatalog,
@@ -121,6 +128,8 @@ impl ZedAgent {
             primary_agents,
             tool_loop_limit,
             tool_call_delay,
+            provider_runtime: ProviderRuntimeRegistry::new(custom_providers),
+            provider_timeouts,
         }
     }
 
