@@ -26,7 +26,7 @@ pub use automation::{AutomationConfig, FullAutoConfig, ScheduledTasksConfig};
 pub use commands::CommandsConfig;
 pub use custom_provider::{
     CustomProviderApiFormat, CustomProviderCommandAuthConfig, CustomProviderConfig, CustomProviderProfileConfig,
-    ResolvedCustomProviderProfile,
+    CustomProviderRequestPolicyConfig, ResolvedCustomProviderProfile,
 };
 pub use dotfile_protection::DotfileProtectionConfig;
 pub use model::ModelConfig;

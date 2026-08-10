@@ -64,6 +64,8 @@ async fn build_agent_with_tools_config(workspace: &Path, tools_config: ToolsConf
         zed_config,
         tools_config,
         CommandsConfig::default(),
+        &[],
+        vtcode_config::TimeoutsConfig::default(),
         String::new(),
         Some("Zed".to_string()),
         primary_agents,

@@ -62,6 +62,8 @@ pub async fn run_acp_agent(
     };
     let tools_config = vt_cfg.tools.clone();
     let commands_config = vt_cfg.commands.clone();
+    let custom_providers = vt_cfg.custom_providers.clone();
+    let provider_timeouts = vt_cfg.timeouts.clone();
     let credential_storage_mode = vt_cfg.agent.credential_storage_mode;
     let discovered = discover_subagents(&SubagentDiscoveryInput::new(config.workspace.clone()))
         .context("Failed to discover primary agents for ACP bridge")?;
@@ -83,6 +85,8 @@ pub async fn run_acp_agent(
                 zed_config_clone,
                 tools_config_clone,
                 commands_config_clone,
+                &custom_providers,
+                provider_timeouts,
                 system_prompt,
                 title_clone,
                 primary_agents,

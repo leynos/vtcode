@@ -8,7 +8,6 @@ use crate::zed::connection::ConnectionHandle;
 use anyhow::Result;
 use serde_json::{Value, json};
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use tokio::time::Instant;
 use vtcode_core::config::constants::tools;
 use vtcode_core::llm::provider::ToolCall as ProviderToolCall;
@@ -88,7 +87,7 @@ impl ZedAgent {
         self.send_update(session_id, acp::SessionUpdate::ToolCall(initial_call.clone()))
             .await?;
 
-        let cancel_active = session.cancel_flag.load(Ordering::Relaxed);
+        let cancel_active = session.cancellation.is_cancelled();
         let permission_override = if let (false, Some(descriptor), Ok(args_value)) =
             (cancel_active, tool_descriptor, args_value_result.as_ref())
         {
@@ -105,7 +104,7 @@ impl ZedAgent {
             None
         };
 
-        let cancel_after_permission = session.cancel_flag.load(Ordering::Relaxed);
+        let cancel_after_permission = session.cancellation.is_cancelled();
         if tool_descriptor.is_some() && permission_override.is_none() && !cancel_after_permission {
             let in_progress_fields = acp::ToolCallUpdateFields::default().status(acp::ToolCallStatus::InProgress);
             let progress_update = acp::ToolCallUpdate::new(call_id.clone(), in_progress_fields);
@@ -137,7 +136,7 @@ impl ZedAgent {
             }
         };
 
-        if session.cancel_flag.load(Ordering::Relaxed) && matches!(report.status, acp::ToolCallStatus::Completed) {
+        if session.cancellation.is_cancelled() && matches!(report.status, acp::ToolCallStatus::Completed) {
             report = ToolExecutionReport::cancelled(&func_ref.name);
         }
 
