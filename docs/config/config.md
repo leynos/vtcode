@@ -255,6 +255,10 @@ max_retries = 3
 retry_initial_backoff_ms = 500
 retry_max_backoff_ms = 10000
 retry_jitter = true
+connect_timeout_seconds = 30
+first_token_timeout_seconds = 180
+stream_idle_timeout_seconds = 120
+total_generation_timeout_seconds = 600
 ```
 
 Notes:
@@ -263,7 +267,10 @@ Notes:
 - `request_policy` controls admission and transient retries for this provider.
   The defaults are `queue_timeout_seconds = 600`, `max_retries = 2`,
   `retry_initial_backoff_ms = 500`, `retry_max_backoff_ms = 10000`, and
-  `retry_jitter = true`; omit `max_in_flight_requests` for unrestricted
+  `retry_jitter = true`. Provider deadlines default to 30 seconds to connect,
+  180 seconds to the first streamed token, 120 seconds between streamed
+  tokens, and 600 seconds for the whole generation. Set an individual timeout
+  to `0` to disable it; omit `max_in_flight_requests` for unrestricted
   concurrency.
 - Admission is per provider and per VT Code process. Requests for every model
   routed through one configured provider share its limit, while another
@@ -272,6 +279,9 @@ Notes:
 - In ACP sessions, a request waits for an in-process permit for at most
   `queue_timeout_seconds`. Transient failures are retried with bounded backoff;
   a stream is retried only before text or reasoning has been published.
+  Connection setup, time to first token, inter-token idle time, and total
+  generation time are measured independently, so a healthy long-running
+  stream is not mistaken for a stalled one.
   Cancellation stops the wait, backoff, or request and prevents a cancelled
   turn from publishing late output. Exhausted failures retain the user request
   and completed tool context for a subsequent `continue` prompt.

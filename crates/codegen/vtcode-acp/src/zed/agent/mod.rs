@@ -298,7 +298,7 @@ impl ZedAgent {
             primary_agents,
             tool_loop_limit,
             tool_call_delay,
-            provider_runtime: ProviderRuntimeRegistry::new(custom_providers),
+            provider_runtime: ProviderRuntimeRegistry::new(custom_providers, &provider_timeouts),
             provider_timeouts,
         }
     }

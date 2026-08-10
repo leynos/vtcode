@@ -45,6 +45,8 @@ use agent_client_protocol::{
 use futures::StreamExt;
 use serde_json::json;
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::time::Instant;
 use tracing::{debug, info, warn};
 use vtcode_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
 use vtcode_core::core::threads::ThreadRuntimeHandle;
@@ -53,7 +55,7 @@ use vtcode_core::llm::factory::create_provider_with_config;
 use vtcode_core::llm::provider::{LLMError, LLMProvider, LLMRequest, LLMResponse, LLMStreamEvent, Message};
 use vtcode_core::retry::RetryPolicyCoreExt;
 
-use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderRequestRuntime};
+use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderDeadlinePolicy, ProviderRequestRuntime};
 
 struct TurnGuard {
     thread: ThreadRuntimeHandle,
@@ -90,12 +92,100 @@ impl From<ProviderAdmissionError> for ProviderCallError {
 }
 
 async fn cancellable_backoff(
-    delay: std::time::Duration,
+    delay: Duration,
     cancellation: &super::super::types::SessionCancellation,
 ) -> Result<(), ProviderCallError> {
     tokio::select! {
         () = cancellation.cancelled() => Err(ProviderCallError::Cancelled),
         () = tokio::time::sleep(delay) => Ok(()),
+    }
+}
+
+async fn sleep_until_optional(deadline: Option<Instant>) {
+    match deadline {
+        Some(deadline) => tokio::time::sleep_until(deadline).await,
+        None => std::future::pending().await,
+    }
+}
+
+fn deadline_after(timeout: Option<Duration>) -> Option<Instant> {
+    timeout.map(|timeout| Instant::now() + timeout)
+}
+
+fn provider_timeout_error(provider: &str, phase: &str, timeout: Option<Duration>) -> LLMError {
+    let duration = timeout.map_or_else(|| "configured deadline".to_string(), |timeout| format!("{timeout:?}"));
+    LLMError::Network {
+        message: format!("provider '{provider}' exceeded its {phase} timeout ({duration})"),
+        metadata: None,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StreamTimeoutPhase {
+    FirstToken,
+    InterTokenIdle,
+    TotalGeneration,
+}
+
+async fn sleep_until_stream_deadline(deadline: Option<(StreamTimeoutPhase, Instant)>) -> StreamTimeoutPhase {
+    match deadline {
+        Some((phase, deadline)) => {
+            tokio::time::sleep_until(deadline).await;
+            phase
+        }
+        None => std::future::pending().await,
+    }
+}
+
+impl StreamTimeoutPhase {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::FirstToken => "time to first token",
+            Self::InterTokenIdle => "inter-token idle",
+            Self::TotalGeneration => "total generation",
+        }
+    }
+
+    const fn timeout(self, policy: ProviderDeadlinePolicy) -> Option<Duration> {
+        match self {
+            Self::FirstToken => policy.first_token,
+            Self::InterTokenIdle => policy.stream_idle,
+            Self::TotalGeneration => policy.total_generation,
+        }
+    }
+}
+
+struct StreamDeadlineTracker {
+    policy: ProviderDeadlinePolicy,
+    first_token: Option<Instant>,
+    idle: Option<Instant>,
+    total: Option<Instant>,
+}
+
+impl StreamDeadlineTracker {
+    fn new(policy: ProviderDeadlinePolicy, total: Option<Instant>) -> Self {
+        Self {
+            policy,
+            first_token: deadline_after(policy.first_token),
+            idle: None,
+            total,
+        }
+    }
+
+    fn observe_output(&mut self) {
+        self.first_token = None;
+        self.idle = deadline_after(self.policy.stream_idle);
+    }
+
+    fn next(&self) -> Option<(StreamTimeoutPhase, Instant)> {
+        [
+            self.first_token.map(|deadline| (StreamTimeoutPhase::FirstToken, deadline)),
+            self.idle.map(|deadline| (StreamTimeoutPhase::InterTokenIdle, deadline)),
+            self.total.map(|deadline| (StreamTimeoutPhase::TotalGeneration, deadline)),
+        ]
+        .into_iter()
+        .flatten()
+        .min_by_key(|(_phase, deadline)| *deadline)
     }
 }
 
@@ -110,8 +200,17 @@ async fn generate_with_retry(
 
     loop {
         let permit = runtime.acquire(cancellation).await?;
+        let deadline_policy = runtime.deadline_policy();
+        let total_deadline = deadline_after(deadline_policy.total_generation);
         let result = tokio::select! {
             () = cancellation.cancelled() => return Err(ProviderCallError::Cancelled),
+            () = sleep_until_optional(total_deadline) => {
+                Err(provider_timeout_error(
+                    runtime.provider_name(),
+                    "total generation",
+                    deadline_policy.total_generation,
+                ))
+            }
             result = provider.generate(request.clone()) => result,
         };
         drop(permit);
@@ -459,8 +558,9 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
     };
 
     let session_api_key = resolve_api_key_for_provider(&agent, &session_provider_name);
+    let provider_runtime = agent.provider_runtime.for_provider(&session_provider_name);
     let mut provider_timeouts = agent.provider_timeouts.clone();
-    provider_timeouts.default_ceiling_seconds = provider_timeouts.streaming_ceiling_seconds;
+    provider_runtime.apply_http_timeouts(&mut provider_timeouts);
     let provider = create_provider_with_config(
         &session_provider_name,
         ProviderConfig {
@@ -518,8 +618,6 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         drop(controller.set_turn_delegation_hints_from_input(&user_message).await);
     }
     let allow_streaming = supports_streaming && !tools_allowed;
-    let provider_runtime = agent.provider_runtime.for_provider(&session_provider_name);
-
     let mut plan = PlanProgress::new(tools_allowed);
     if plan.has_entries() {
         drop(agent.send_plan_update(&args.session_id, &plan).await);
@@ -540,6 +638,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         };
 
         let policy = provider_runtime.retry_policy();
+        let deadline_policy = provider_runtime.deadline_policy();
         let mut attempt_index = 0u32;
         let mut emitted_output = false;
 
@@ -552,10 +651,18 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 }
                 Err(error) => return Err(SdkError::internal_error().data(error.to_string())),
             };
+            let total_deadline = deadline_after(deadline_policy.total_generation);
             let stream_result = tokio::select! {
                 () = session.cancellation.cancelled() => {
                     stop_reason = acp::StopReason::Cancelled;
                     break;
+                }
+                () = sleep_until_optional(total_deadline) => {
+                    Err(provider_timeout_error(
+                        provider_runtime.provider_name(),
+                        "total generation",
+                        deadline_policy.total_generation,
+                    ))
                 }
                 result = provider.stream(request.clone()) => result,
             };
@@ -591,12 +698,21 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             };
 
             drop(agent.advance_plan_to_response(&args.session_id, &mut plan).await);
+            let mut stream_deadlines = StreamDeadlineTracker::new(deadline_policy, total_deadline);
 
             loop {
+                let next_deadline = stream_deadlines.next();
                 let event = tokio::select! {
                     () = session.cancellation.cancelled() => {
                         stop_reason = acp::StopReason::Cancelled;
                         break 'stream_attempts;
+                    }
+                    phase = sleep_until_stream_deadline(next_deadline) => {
+                        Some(Err(provider_timeout_error(
+                            provider_runtime.provider_name(),
+                            phase.label(),
+                            phase.timeout(deadline_policy),
+                        )))
                     }
                     event = stream.next() => event,
                 };
@@ -672,6 +788,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     LLMStreamEvent::Token { delta } => {
                         if !delta.is_empty() {
                             emitted_output = true;
+                            stream_deadlines.observe_output();
                             assistant_message.push_str(&delta);
                             let chunk = text_chunk(delta);
                             drop(
@@ -684,6 +801,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     LLMStreamEvent::Reasoning { delta } => {
                         if !delta.is_empty() {
                             emitted_output = true;
+                            stream_deadlines.observe_output();
                             let chunk = text_chunk(delta);
                             drop(
                                 agent
@@ -942,6 +1060,27 @@ mod tests {
         invalid_request: bool,
     }
 
+    struct PendingProvider;
+
+    #[async_trait]
+    impl LLMProvider for PendingProvider {
+        fn name(&self) -> &str {
+            "timeout-test"
+        }
+
+        fn supported_models(&self) -> Vec<String> {
+            vec!["test-model".to_string()]
+        }
+
+        fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+            Ok(())
+        }
+
+        async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+            std::future::pending().await
+        }
+    }
+
     #[async_trait]
     impl LLMProvider for FlakyProvider {
         fn name(&self) -> &str {
@@ -983,7 +1122,61 @@ mod tests {
             },
             ..CustomProviderConfig::default()
         };
-        super::super::super::provider_runtime::ProviderRuntimeRegistry::new(&[provider]).for_provider("retry-test")
+        super::super::super::provider_runtime::ProviderRuntimeRegistry::new(
+            &[provider],
+            &vtcode_config::TimeoutsConfig::default(),
+        )
+        .for_provider("retry-test")
+    }
+
+    fn timeout_runtime() -> ProviderRequestRuntime {
+        let provider = CustomProviderConfig {
+            name: "timeout-test".to_string(),
+            request_policy: CustomProviderRequestPolicyConfig {
+                max_retries: 0,
+                total_generation_timeout_seconds: 1,
+                ..CustomProviderRequestPolicyConfig::default()
+            },
+            ..CustomProviderConfig::default()
+        };
+        super::super::super::provider_runtime::ProviderRuntimeRegistry::new(
+            &[provider],
+            &vtcode_config::TimeoutsConfig::default(),
+        )
+        .for_provider("timeout-test")
+    }
+
+    #[tokio::test]
+    async fn buffered_generation_obeys_total_generation_timeout() {
+        let result = generate_with_retry(
+            &PendingProvider,
+            LLMRequest::default(),
+            &timeout_runtime(),
+            &super::super::super::types::SessionCancellation::default(),
+        )
+        .await;
+
+        let Err(ProviderCallError::Failed(error)) = result else {
+            panic!("pending generation should fail at its total deadline");
+        };
+        assert!(error.contains("total generation"));
+    }
+
+    #[test]
+    fn stream_deadline_moves_from_first_token_to_idle_without_resetting_total() {
+        let policy = ProviderDeadlinePolicy {
+            connect: Some(Duration::from_secs(30)),
+            first_token: Some(Duration::from_secs(180)),
+            stream_idle: Some(Duration::from_secs(120)),
+            total_generation: Some(Duration::from_secs(600)),
+        };
+        let total = deadline_after(policy.total_generation);
+        let mut tracker = StreamDeadlineTracker::new(policy, total);
+
+        assert_eq!(tracker.next().map(|(phase, _deadline)| phase), Some(StreamTimeoutPhase::FirstToken));
+        tracker.observe_output();
+        assert_eq!(tracker.next().map(|(phase, _deadline)| phase), Some(StreamTimeoutPhase::InterTokenIdle));
+        assert_eq!(tracker.total, total, "observing output must not extend the total generation deadline");
     }
 
     #[tokio::test]
