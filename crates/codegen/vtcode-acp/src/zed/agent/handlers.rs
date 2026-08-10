@@ -344,6 +344,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
     };
 
     agent.push_message(&session, Message::user(user_message.clone()));
+    persist_session_checkpoint(&agent, &session, "user_message").await;
 
     let (session_provider_name, session_model, session_reasoning_effort) = {
         let data = session.data.lock().map_err(|_err| SdkError::internal_error())?;
@@ -522,7 +523,8 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             &assistant_message,
                             &assistant_reasoning,
                             &error,
-                        ));
+                        )
+                        .await);
                     }
                     drop(stream);
                     drop(permit);
@@ -588,7 +590,8 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             &assistant_message,
                             &assistant_reasoning,
                             &error,
-                        ));
+                        )
+                        .await);
                     }
                 };
 
@@ -715,6 +718,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     &session,
                     Message::assistant_with_tools(response.content.clone().unwrap_or_default(), tool_calls.clone()),
                 );
+                persist_session_checkpoint(&agent, &session, "assistant_tool_calls").await;
                 if let Some(controller) = agent.local_tool_registry.subagent_controller() {
                     controller.set_parent_session_id(args.session_id.to_string()).await;
                     controller.set_parent_messages(&agent.resolved_messages(&session)).await;
@@ -732,6 +736,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 ),
                             );
                         }
+                        persist_session_checkpoint(&agent, &session, "interrupted_tool_results").await;
                         return Err(error);
                     }
                 };
@@ -741,6 +746,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 for result in tool_results {
                     agent.push_message(&session, Message::tool_response(result.tool_call_id, result.llm_response));
                 }
+                persist_session_checkpoint(&agent, &session, "tool_results").await;
                 if session.cancellation.is_cancelled() {
                     stop_reason = acp::StopReason::Cancelled;
                     break;
@@ -782,6 +788,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
 
     if stop_reason != acp::StopReason::Cancelled && !assistant_message.is_empty() {
         agent.push_message(&session, Message::assistant(assistant_message));
+        persist_session_checkpoint(&agent, &session, "assistant_response").await;
     }
 
     if stop_reason != acp::StopReason::Cancelled {
@@ -1199,7 +1206,12 @@ fn incomplete_assistant_message(content: &str, reasoning: &str, error: &LLMError
     message
 }
 
-fn checkpoint_incomplete_stream(
+async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, boundary: &'static str) {
+    if let Err(error) = agent.checkpoint_session(session).await {
+        warn!(%error, boundary, "Failed to persist ACP session checkpoint");
+    }
+}
+async fn checkpoint_incomplete_stream(
     agent: &ZedAgent,
     session: &SessionHandle,
     content: &str,
@@ -1209,6 +1221,7 @@ fn checkpoint_incomplete_stream(
     let checkpointed = !content.is_empty() || !reasoning.is_empty();
     if checkpointed {
         agent.push_message(session, incomplete_assistant_message(content, reasoning, error));
+        persist_session_checkpoint(agent, session, "incomplete_provider_stream").await;
     }
     warn!(
         provider_error = %error,
