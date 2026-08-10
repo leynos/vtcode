@@ -7,6 +7,7 @@ use hashbrown::HashMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::time::timeout;
 use tracing::{debug, warn};
 use vtcode_config::TimeoutsConfig;
 use vtcode_config::auth::AuthCredentialsStoreMode;
@@ -15,11 +16,14 @@ use vtcode_core::config::ToolDocumentationMode;
 use vtcode_core::config::types::{AgentConfig as CoreAgentConfig, CapabilityLevel};
 use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig, VTCodeConfig};
 use vtcode_core::core::threads::ThreadManager;
+use vtcode_core::mcp::plugin_providers::discover_plugin_mcp_providers;
+use vtcode_core::mcp::{McpClient, McpSandboxContext, validate_mcp_config};
 use vtcode_core::subagents::{SubagentController, SubagentControllerConfig};
 use vtcode_core::tools::file_ops::FileOpsTool;
 use vtcode_core::tools::grep_file::GrepSearchManager;
 use vtcode_core::tools::handlers::{SessionSurface, SessionToolsConfig, ToolModelCapabilities};
 use vtcode_core::tools::registry::ToolRegistry as CoreToolRegistry;
+use vtcode_core::tools::registry::sandbox_policy_from_runtime_config;
 
 use super::helpers::PrimaryAgentCatalog;
 use super::types::SessionHandle;
@@ -131,6 +135,82 @@ async fn attach_acp_subagent_controller(
     }
 }
 
+/// Attach the parent session's MCP client and eagerly discover its tools.
+///
+/// ACP model tools are snapshotted during [`ZedAgent::new`], so MCP must be
+/// initialized before the local registry is projected into ACP definitions.
+/// The client is owned exclusively by this parent registry; subagent
+/// controllers construct their own clients from their resolved child config.
+async fn attach_acp_mcp_client(
+    registry: &CoreToolRegistry,
+    vt_cfg: Option<&VTCodeConfig>,
+    workspace_root: &std::path::Path,
+) {
+    let Some(config) = vt_cfg.filter(|config| config.mcp.enabled) else {
+        return;
+    };
+
+    let plugin_workspace = workspace_root.to_path_buf();
+    let plugin_providers =
+        match tokio::task::spawn_blocking(move || discover_plugin_mcp_providers(&plugin_workspace)).await {
+            Ok(providers) => providers,
+            Err(error) => {
+                warn!(%error, "Failed to discover Agent Plugin MCP providers during ACP startup");
+                Vec::new()
+            }
+        };
+    let mcp_config = effective_acp_mcp_config(config, plugin_providers);
+
+    if let Err(error) = validate_mcp_config(&mcp_config) {
+        warn!(%error, "MCP configuration validation error during ACP startup");
+    }
+
+    let sandbox_context = if config.sandbox.enabled
+        && !matches!(config.sandbox.default_policy, vtcode_config::SandboxPolicy::DangerFullAccess)
+    {
+        match sandbox_policy_from_runtime_config(&config.sandbox, workspace_root) {
+            Ok(policy) => Some(McpSandboxContext::new(policy, workspace_root)),
+            Err(error) => {
+                warn!(%error, "Unable to construct the ACP MCP sandbox policy");
+                // Never fall back to an unsandboxed stdio launch when the
+                // configured sandbox cannot be constructed.
+                return;
+            }
+        }
+    } else {
+        None
+    };
+
+    let startup_timeout_secs = mcp_config.startup_timeout_seconds.unwrap_or(30);
+    let mut client = McpClient::with_sandbox_context(mcp_config, sandbox_context);
+    match timeout(Duration::from_secs(startup_timeout_secs), client.initialize()).await {
+        Ok(Ok(())) => debug!("ACP MCP client initialized successfully"),
+        Ok(Err(error)) => {
+            warn!(%error, "ACP MCP client initialization failed; continuing without MCP tools");
+            return;
+        }
+        Err(_) => {
+            warn!(startup_timeout_secs, "ACP MCP client initialization timed out; continuing without MCP tools");
+            return;
+        }
+    }
+
+    let client = Arc::new(client);
+    registry.set_mcp_client(client).await;
+    if let Err(error) = registry.refresh_mcp_tools().await {
+        warn!(%error, "Failed to register ACP MCP proxy tools after initialization");
+    }
+}
+
+fn effective_acp_mcp_config(
+    config: &VTCodeConfig,
+    plugin_providers: impl IntoIterator<Item = vtcode_config::mcp::McpProviderConfig>,
+) -> vtcode_config::mcp::McpClientConfig {
+    let mut mcp_config = config.mcp.clone();
+    mcp_config.providers.extend(plugin_providers);
+    mcp_config
+}
+
 fn configure_acp_tool_call_limits(registry: &CoreToolRegistry, vt_cfg: Option<&VTCodeConfig>) {
     let Some(harness) = vt_cfg.map(|config| &config.agent.harness) else {
         return;
@@ -177,6 +257,7 @@ impl ZedAgent {
             warn!(%error, "Failed to apply tools configuration to ACP tool registry");
         }
         attach_acp_subagent_controller(&core_tool_registry, &config, custom_providers, vt_cfg).await;
+        attach_acp_mcp_client(&core_tool_registry, vt_cfg, workspace_root.as_path()).await;
         let local_definitions = core_tool_registry
             .model_tools(
                 SessionToolsConfig::full_public(
@@ -243,8 +324,9 @@ impl ZedAgent {
 
 #[cfg(test)]
 mod concurrency_tests {
-    use super::{configure_acp_tool_call_limits, effective_acp_subagent_concurrency};
+    use super::{configure_acp_tool_call_limits, effective_acp_mcp_config, effective_acp_subagent_concurrency};
     use std::path::PathBuf;
+    use vtcode_config::mcp::{McpProviderConfig, McpStdioServerConfig, McpTransportConfig};
     use vtcode_core::config::VTCodeConfig;
     use vtcode_core::tools::ToolRegistry;
 
@@ -270,5 +352,28 @@ mod concurrency_tests {
         configure_acp_tool_call_limits(&registry, Some(&config));
 
         assert_eq!(registry.safety_gateway().max_per_session(), 0);
+    }
+
+    #[test]
+    fn acp_mcp_config_preserves_configured_and_plugin_providers() {
+        let mut config = VTCodeConfig::default();
+        config.mcp.providers.push(McpProviderConfig {
+            name: "configured".to_string(),
+            transport: McpTransportConfig::Stdio(McpStdioServerConfig::default()),
+            ..McpProviderConfig::default()
+        });
+        let plugin = McpProviderConfig {
+            name: "plugin".to_string(),
+            transport: McpTransportConfig::Stdio(McpStdioServerConfig::default()),
+            ..McpProviderConfig::default()
+        };
+
+        let effective = effective_acp_mcp_config(&config, [plugin]);
+        let names = effective
+            .providers
+            .iter()
+            .map(|provider| provider.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["configured", "plugin"]);
     }
 }
