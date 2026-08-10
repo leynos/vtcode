@@ -329,6 +329,11 @@ Common cases:
   `max_in_flight_requests` configured, one request slot is reserved for the
   parent ACP request and child concurrency is capped at the remaining slots. A
   limit of `1` therefore disables ACP sub-agents so the parent retains its slot.
+- **Tool-call budgets** – ACP applies `agent.harness.max_tool_calls_per_turn`
+  and the optional `agent.harness.max_tool_calls_per_session` to local tool
+  execution. Set either value to `0` to disable that cap. The separate
+  `tools.max_tool_loops` provider-loop guard also accepts `0` for unlimited
+  turns.
 - **Context ingestion** – URIs such as `file://`, `zed://`, or `zed-fs://`
   resolve through Zed's `fs.readTextFile` capability, following Goose's
   recommended structure.

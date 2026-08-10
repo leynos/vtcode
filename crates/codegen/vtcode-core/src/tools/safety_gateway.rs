@@ -144,9 +144,9 @@ pub struct SafetyCheckResult {
 /// Configuration for the safety gateway
 #[derive(Debug, Clone)]
 pub struct SafetyGatewayConfig {
-    /// Maximum tool calls per turn
+    /// Maximum tool calls per turn. Set to `0` to disable the cap.
     pub max_per_turn: usize,
-    /// Maximum tool calls per session
+    /// Maximum tool calls per session. Set to `0` to disable the cap.
     pub max_per_session: usize,
     /// Rate limit: calls per second
     pub rate_limit_per_second: usize,
@@ -725,11 +725,11 @@ impl SafetyGateway {
             }
         }
 
-        if state.current_turn_count >= config.max_per_turn {
+        if config.max_per_turn > 0 && state.current_turn_count >= config.max_per_turn {
             return Err(SafetyError::TurnLimitReached { max: config.max_per_turn });
         }
 
-        if state.session_count >= config.max_per_session {
+        if config.max_per_session > 0 && state.session_count >= config.max_per_session {
             return Err(SafetyError::SessionLimitReached { max: config.max_per_session });
         }
 
@@ -1073,6 +1073,70 @@ mod tests {
         assert!(third.decision.is_denied());
         assert!(third.retry_after.is_some());
         assert!(matches!(third.violation, Some(SafetyError::RateLimitExceeded { .. })));
+    }
+
+    #[tokio::test]
+    async fn zero_turn_and_session_limits_allow_repeated_calls() {
+        let config = SafetyGatewayConfig {
+            max_per_turn: 0,
+            max_per_session: 0,
+            enforce_rate_limits: false,
+            ..Default::default()
+        };
+        let gateway = SafetyGateway::with_config(config);
+        let ctx = make_ctx();
+
+        for _ in 0..150 {
+            let result = gateway.check_and_record(&ctx, "read_file", &serde_json::json!({})).await;
+            assert!(result.decision.is_allowed());
+        }
+    }
+
+    #[tokio::test]
+    async fn zero_disables_only_the_selected_tool_limit() {
+        let ctx = make_ctx();
+        let turn_limited = SafetyGateway::with_config(SafetyGatewayConfig {
+            max_per_turn: 1,
+            max_per_session: 0,
+            enforce_rate_limits: false,
+            ..Default::default()
+        });
+        assert!(
+            turn_limited
+                .check_and_record(&ctx, "read_file", &serde_json::json!({}))
+                .await
+                .decision
+                .is_allowed()
+        );
+        assert!(
+            turn_limited
+                .check_and_record(&ctx, "read_file", &serde_json::json!({}))
+                .await
+                .decision
+                .is_denied()
+        );
+
+        let session_limited = SafetyGateway::with_config(SafetyGatewayConfig {
+            max_per_turn: 0,
+            max_per_session: 1,
+            enforce_rate_limits: false,
+            ..Default::default()
+        });
+        assert!(
+            session_limited
+                .check_and_record(&ctx, "read_file", &serde_json::json!({}))
+                .await
+                .decision
+                .is_allowed()
+        );
+        session_limited.start_turn();
+        assert!(
+            session_limited
+                .check_and_record(&ctx, "read_file", &serde_json::json!({}))
+                .await
+                .decision
+                .is_denied()
+        );
     }
 
     #[tokio::test]
