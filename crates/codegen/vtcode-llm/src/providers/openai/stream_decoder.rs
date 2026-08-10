@@ -20,13 +20,12 @@ use futures::StreamExt;
 use hashbrown::HashMap;
 use serde_json::{Value, json};
 use std::time::Instant;
-use vtcode_commons::model_family::find_family_for_model;
 
 use super::responses_api::parse_responses_payload;
 use super::streaming::OpenAIStreamTelemetry;
 
-fn strip_reasoning_for_model(model: &str, mut response: provider::LLMResponse) -> provider::LLMResponse {
-    if !find_family_for_model(model).supports_reasoning_summaries {
+fn strip_reasoning(retain_reasoning: bool, mut response: provider::LLMResponse) -> provider::LLMResponse {
+    if !retain_reasoning {
         response.reasoning = None;
         response.reasoning_details = None;
     }
@@ -222,12 +221,15 @@ impl ResponsesToolCallState {
     }
 }
 
-pub(crate) fn create_chat_stream(response: reqwest::Response, model: String) -> provider::LLMStream {
+pub(crate) fn create_chat_stream(
+    response: reqwest::Response,
+    model: String,
+    retain_reasoning: bool,
+) -> provider::LLMStream {
     let stream = try_stream! {
         let mut body_stream = response.bytes_stream();
         let mut buf: Vec<u8> = Vec::new();
         let mut offset = 0usize;
-        let retain_reasoning_summaries = find_family_for_model(&model).supports_reasoning_summaries;
         let mut aggregator = crate::providers::shared::StreamAggregator::new(model.clone());
         let telemetry = OpenAIStreamTelemetry;
 
@@ -272,7 +274,7 @@ pub(crate) fn create_chat_stream(response: reqwest::Response, model: String) -> 
                                     }
                                 }
 
-                                if retain_reasoning_summaries
+                                if retain_reasoning
                                     && let Some(reasoning) = delta.get("reasoning_content").and_then(|v| v.as_str())
                                     && let Some(delta) = aggregator.handle_reasoning(reasoning) {
                                         telemetry.on_reasoning_delta(&delta);
@@ -307,7 +309,7 @@ pub(crate) fn create_chat_stream(response: reqwest::Response, model: String) -> 
         }
 
         let response = aggregator.finalize();
-        let response = strip_reasoning_for_model(&model, response);
+        let response = strip_reasoning(retain_reasoning, response);
         yield provider::LLMStreamEvent::Completed { response: Box::new(response) };
     };
 
@@ -320,13 +322,13 @@ pub(crate) fn create_responses_stream(
     include_metrics: bool,
     _debug_model: Option<String>,
     _request_timer: Option<Instant>,
+    retain_reasoning: bool,
 ) -> provider::LLMStream {
     let stream = try_stream! {
         let mut body_stream = response.bytes_stream();
         let mut buf: Vec<u8> = Vec::new();
         let mut offset = 0usize;
         let mut aggregator = crate::providers::shared::StreamAggregator::new(model.clone());
-        let retain_reasoning_summaries = find_family_for_model(&model).supports_reasoning_summaries;
         let mut final_response: Option<Value> = None;
         let mut done = false;
         let mut tool_call_state = ResponsesToolCallState::default();
@@ -430,7 +432,7 @@ pub(crate) fn create_responses_stream(
                                         StreamAssemblyError::MissingField("delta")
                                             .into_llm_error("OpenAI")
                                     })?;
-                                if retain_reasoning_summaries
+                                if retain_reasoning
                                     && let Some(delta) = aggregator.handle_reasoning(delta) {
                                     telemetry.on_reasoning_delta(&delta);
                                     yield provider::LLMStreamEvent::Reasoning { delta };
@@ -444,7 +446,7 @@ pub(crate) fn create_responses_stream(
                                         StreamAssemblyError::MissingField("delta")
                                             .into_llm_error("OpenAI")
                                     })?;
-                                if retain_reasoning_summaries
+                                if retain_reasoning
                                     && let Some(delta) = aggregator.handle_reasoning(delta) {
                                     telemetry.on_reasoning_delta(&delta);
                                     yield provider::LLMStreamEvent::Reasoning { delta };
@@ -453,7 +455,7 @@ pub(crate) fn create_responses_stream(
                             "response.reasoning_text.done" => {
                                 let text = optional_string_field(&payload, "text")?;
                                 let delta = optional_string_field(&payload, "delta")?;
-                                if retain_reasoning_summaries
+                                if retain_reasoning
                                     && let Some(text) = text.or(delta)
                                     && let Some(delta) = aggregator.handle_reasoning(&text) {
                                     telemetry.on_reasoning_delta(&delta);
@@ -577,7 +579,7 @@ pub(crate) fn create_responses_stream(
             response.tool_calls = final_aggregator_response.tool_calls;
         }
 
-        let response = strip_reasoning_for_model(&model, response);
+        let response = strip_reasoning(retain_reasoning, response);
         yield provider::LLMStreamEvent::Completed { response: Box::new(response) };
     };
 
