@@ -68,7 +68,7 @@ impl OpenAIProvider {
                 .await?;
 
             if response.status().is_success() {
-                let emit_reasoning = Self::model_supports_reasoning_summaries(&model);
+                let emit_reasoning = self.model_supports_reasoning(&model);
                 let parse_model = model.clone();
                 return Ok(create_responses_normalized_stream(
                     response,
@@ -79,8 +79,12 @@ impl OpenAIProvider {
                         include_cached_prompt_metrics: include_metrics,
                     },
                     move |value| {
-                        let response = parse_responses_payload(value, parse_model.clone(), include_metrics)?;
-                        Ok(Self::normalize_reasoning_output(&parse_model, response))
+                        let mut response = parse_responses_payload(value, parse_model.clone(), include_metrics)?;
+                        if !emit_reasoning {
+                            response.reasoning = None;
+                            response.reasoning_details = None;
+                        }
+                        Ok(response)
                     },
                 ));
             }
@@ -170,7 +174,14 @@ impl OpenAIProvider {
                 .await?;
 
             if response.status().is_success() {
-                return Ok(stream_decoder::create_responses_stream(response, model, include_metrics, None, None));
+                return Ok(stream_decoder::create_responses_stream(
+                    response,
+                    model.clone(),
+                    include_metrics,
+                    None,
+                    None,
+                    self.model_supports_reasoning(&model),
+                ));
             }
 
             let status = response.status();
@@ -263,7 +274,7 @@ impl OpenAIProvider {
             return Err(provider::LLMError::Provider { message: formatted_error, metadata: None });
         }
 
-        Ok(stream_decoder::create_chat_stream(response, model))
+        Ok(stream_decoder::create_chat_stream(response, model.clone(), self.model_supports_reasoning(&model)))
     }
 
     async fn stream_chat_completions_normalized(
