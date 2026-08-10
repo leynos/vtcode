@@ -45,11 +45,97 @@ use agent_client_protocol::{
 use futures::StreamExt;
 use serde_json::json;
 use std::sync::Arc;
-use tracing::warn;
+use tracing::{info, warn};
 use vtcode_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
+use vtcode_core::core::threads::ThreadRuntimeHandle;
 use vtcode_core::llm::factory::ProviderConfig;
 use vtcode_core::llm::factory::create_provider_with_config;
-use vtcode_core::llm::provider::{LLMRequest, LLMStreamEvent, Message};
+use vtcode_core::llm::provider::{LLMError, LLMProvider, LLMRequest, LLMResponse, LLMStreamEvent, Message};
+use vtcode_core::retry::RetryPolicyCoreExt;
+
+use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderRequestRuntime};
+
+struct TurnGuard {
+    thread: ThreadRuntimeHandle,
+}
+
+impl TurnGuard {
+    fn begin(thread: ThreadRuntimeHandle) -> Result<Self, SdkError> {
+        let _submission_id = thread.begin_turn().map_err(|error| {
+            SdkError::internal_error().data(json!({ "reason": "turn_in_progress", "detail": error.to_string() }))
+        })?;
+        Ok(Self { thread })
+    }
+}
+
+impl Drop for TurnGuard {
+    fn drop(&mut self) {
+        self.thread.finish_turn();
+    }
+}
+
+#[derive(Debug)]
+enum ProviderCallError {
+    Cancelled,
+    Failed(String),
+}
+
+impl From<ProviderAdmissionError> for ProviderCallError {
+    fn from(error: ProviderAdmissionError) -> Self {
+        match error {
+            ProviderAdmissionError::Cancelled => Self::Cancelled,
+            other => Self::Failed(other.to_string()),
+        }
+    }
+}
+
+async fn cancellable_backoff(
+    delay: std::time::Duration,
+    cancellation: &super::super::types::SessionCancellation,
+) -> Result<(), ProviderCallError> {
+    tokio::select! {
+        () = cancellation.cancelled() => Err(ProviderCallError::Cancelled),
+        () = tokio::time::sleep(delay) => Ok(()),
+    }
+}
+
+async fn generate_with_retry(
+    provider: &dyn LLMProvider,
+    request: LLMRequest,
+    runtime: &ProviderRequestRuntime,
+    cancellation: &super::super::types::SessionCancellation,
+) -> Result<LLMResponse, ProviderCallError> {
+    let policy = runtime.retry_policy();
+    let mut attempt_index = 0;
+
+    loop {
+        let permit = runtime.acquire(cancellation).await?;
+        let result = tokio::select! {
+            () = cancellation.cancelled() => return Err(ProviderCallError::Cancelled),
+            result = provider.generate(request.clone()) => result,
+        };
+        drop(permit);
+
+        match result {
+            Ok(response) => return Ok(response),
+            Err(error) => {
+                let decision = policy.decision_for_llm_error(&error, attempt_index);
+                if !decision.retryable {
+                    return Err(ProviderCallError::Failed(error.to_string()));
+                }
+                let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
+                info!(
+                    provider = runtime.provider_name(),
+                    next_attempt = attempt_index + 2,
+                    ?delay,
+                    "Retrying transient ACP provider request"
+                );
+                cancellable_backoff(delay, cancellation).await?;
+                attempt_index = attempt_index.saturating_add(1);
+            }
+        }
+    }
+}
 
 /// Register every SACP `AgentToClient` request/notification handler that the
 /// vtcode bridge implements. The agent must be `Send + Sync + 'static` so
@@ -281,7 +367,7 @@ async fn handle_set_session_config_option(
 
 async fn handle_cancel(agent: Arc<ZedAgent>, notif: CancelNotification) -> Result<(), SdkError> {
     if let Some(session) = agent.session_handle(&notif.session_id) {
-        session.cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        session.cancellation.cancel();
     }
     Ok(())
 }
@@ -322,9 +408,14 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         return Err(SdkError::invalid_params().data(json!({ "reason": "unknown_session" })));
     };
 
-    session.cancel_flag.store(false, std::sync::atomic::Ordering::Relaxed);
+    let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
+    let _turn_guard = TurnGuard::begin(thread)?;
+    session.cancellation.reset();
 
-    let user_message = agent.resolve_prompt(&args.session_id, &args.prompt).await?;
+    let user_message = tokio::select! {
+        () = session.cancellation.cancelled() => return Ok(PromptResponse::new(acp::StopReason::Cancelled)),
+        result = agent.resolve_prompt(&args.session_id, &args.prompt) => result?,
+    };
 
     agent.push_message(&session, Message::user(user_message.clone()));
 
@@ -334,6 +425,8 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
     };
 
     let session_api_key = resolve_api_key_for_provider(&agent, &session_provider_name);
+    let mut provider_timeouts = agent.provider_timeouts.clone();
+    provider_timeouts.default_ceiling_seconds = provider_timeouts.streaming_ceiling_seconds;
     let provider = create_provider_with_config(
         &session_provider_name,
         ProviderConfig {
@@ -347,7 +440,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             base_url: None,
             model: Some(session_model.clone()),
             prompt_cache: Some(agent.config.prompt_cache.clone()),
-            timeouts: None,
+            timeouts: Some(provider_timeouts),
             openai: None,
             anthropic: None,
             model_behavior: agent.config.model_behavior.clone(),
@@ -363,7 +456,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         None
     };
 
-    let mut stop_reason = acp::StopReason::EndTurn;
+    let stop_reason: acp::StopReason;
     let mut assistant_message = String::with_capacity(4096);
     let client_supports_read_text_file = agent.client_supports_read_text_file();
     let provider_supports_tools = provider.supports_tools(&session_model);
@@ -386,6 +479,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         .map(Arc::new);
     let mut messages = agent.resolved_messages(&session);
     let allow_streaming = supports_streaming && !tools_allowed;
+    let provider_runtime = agent.provider_runtime.for_provider(&session_provider_name);
 
     let mut plan = PlanProgress::new(tools_allowed);
     if plan.has_entries() {
@@ -406,78 +500,195 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             ..Default::default()
         };
 
-        let mut stream = provider
-            .stream(request)
-            .await
-            .map_err(|err| SdkError::internal_error().data(err.to_string()))?;
+        let policy = provider_runtime.retry_policy();
+        let mut attempt_index = 0u32;
+        let mut emitted_output = false;
 
-        drop(agent.advance_plan_to_response(&args.session_id, &mut plan).await);
-
-        while let Some(event) = stream.next().await {
-            let event = event.map_err(|err| SdkError::internal_error().data(err.to_string()))?;
-
-            if session.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
-                stop_reason = acp::StopReason::Cancelled;
-                break;
-            }
-
-            match event {
-                LLMStreamEvent::Token { delta } => {
-                    if !delta.is_empty() {
-                        assistant_message.push_str(&delta);
-                        let chunk = text_chunk(delta);
-                        drop(
-                            agent
-                                .send_update(&args.session_id, acp::SessionUpdate::AgentMessageChunk(chunk))
-                                .await,
-                        );
+        'stream_attempts: loop {
+            let permit = match provider_runtime.acquire(&session.cancellation).await {
+                Ok(permit) => permit,
+                Err(ProviderAdmissionError::Cancelled) => {
+                    stop_reason = acp::StopReason::Cancelled;
+                    break;
+                }
+                Err(error) => return Err(SdkError::internal_error().data(error.to_string())),
+            };
+            let stream_result = tokio::select! {
+                () = session.cancellation.cancelled() => {
+                    stop_reason = acp::StopReason::Cancelled;
+                    break;
+                }
+                result = provider.stream(request.clone()) => result,
+            };
+            let mut stream = match stream_result {
+                Ok(stream) => stream,
+                Err(error) => {
+                    drop(permit);
+                    let decision = policy.decision_for_llm_error(&error, attempt_index);
+                    if !decision.retryable {
+                        return Err(SdkError::internal_error().data(error.to_string()));
+                    }
+                    let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
+                    info!(
+                        provider = provider_runtime.provider_name(),
+                        next_attempt = attempt_index + 2,
+                        ?delay,
+                        "Retrying transient ACP provider stream"
+                    );
+                    match cancellable_backoff(delay, &session.cancellation).await {
+                        Ok(()) => {
+                            attempt_index = attempt_index.saturating_add(1);
+                            continue;
+                        }
+                        Err(ProviderCallError::Cancelled) => {
+                            stop_reason = acp::StopReason::Cancelled;
+                            break;
+                        }
+                        Err(ProviderCallError::Failed(error)) => {
+                            return Err(SdkError::internal_error().data(error));
+                        }
                     }
                 }
-                LLMStreamEvent::Reasoning { delta } => {
-                    if !delta.is_empty() {
-                        let chunk = text_chunk(delta);
-                        drop(
-                            agent
-                                .send_update(&args.session_id, acp::SessionUpdate::AgentThoughtChunk(chunk))
-                                .await,
-                        );
+            };
+
+            drop(agent.advance_plan_to_response(&args.session_id, &mut plan).await);
+
+            loop {
+                let event = tokio::select! {
+                    () = session.cancellation.cancelled() => {
+                        stop_reason = acp::StopReason::Cancelled;
+                        break 'stream_attempts;
                     }
-                }
-                LLMStreamEvent::ReasoningStage { .. } => {}
-                LLMStreamEvent::ReasoningSignature { .. } => {}
-                LLMStreamEvent::Completed { response } => {
-                    if assistant_message.is_empty()
-                        && let Some(content) = response.content
-                    {
-                        if !content.is_empty() {
-                            let chunk = text_chunk(content.clone());
+                    event = stream.next() => event,
+                };
+                let Some(event) = event else {
+                    let error = LLMError::Network {
+                        message: "provider stream ended before a completion event".to_string(),
+                        metadata: None,
+                    };
+                    if emitted_output {
+                        return Err(SdkError::internal_error().data(error.to_string()));
+                    }
+                    drop(stream);
+                    drop(permit);
+                    let decision = policy.decision_for_llm_error(&error, attempt_index);
+                    if !decision.retryable {
+                        return Err(SdkError::internal_error().data(error.to_string()));
+                    }
+                    let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
+                    info!(
+                        provider = provider_runtime.provider_name(),
+                        next_attempt = attempt_index + 2,
+                        ?delay,
+                        "Retrying ACP provider stream that ended before completion"
+                    );
+                    match cancellable_backoff(delay, &session.cancellation).await {
+                        Ok(()) => {
+                            attempt_index = attempt_index.saturating_add(1);
+                            continue 'stream_attempts;
+                        }
+                        Err(ProviderCallError::Cancelled) => {
+                            stop_reason = acp::StopReason::Cancelled;
+                            break 'stream_attempts;
+                        }
+                        Err(ProviderCallError::Failed(error)) => {
+                            return Err(SdkError::internal_error().data(error));
+                        }
+                    }
+                };
+                let event = match event {
+                    Ok(event) => event,
+                    Err(error) if !emitted_output => {
+                        drop(stream);
+                        drop(permit);
+                        let decision = policy.decision_for_llm_error(&error, attempt_index);
+                        if !decision.retryable {
+                            return Err(SdkError::internal_error().data(error.to_string()));
+                        }
+                        let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
+                        info!(
+                            provider = provider_runtime.provider_name(),
+                            next_attempt = attempt_index + 2,
+                            ?delay,
+                            "Retrying transient ACP provider stream before output"
+                        );
+                        match cancellable_backoff(delay, &session.cancellation).await {
+                            Ok(()) => {
+                                attempt_index = attempt_index.saturating_add(1);
+                                continue 'stream_attempts;
+                            }
+                            Err(ProviderCallError::Cancelled) => {
+                                stop_reason = acp::StopReason::Cancelled;
+                                break 'stream_attempts;
+                            }
+                            Err(ProviderCallError::Failed(error)) => {
+                                return Err(SdkError::internal_error().data(error));
+                            }
+                        }
+                    }
+                    Err(error) => return Err(SdkError::internal_error().data(error.to_string())),
+                };
+
+                match event {
+                    LLMStreamEvent::Token { delta } => {
+                        if !delta.is_empty() {
+                            emitted_output = true;
+                            assistant_message.push_str(&delta);
+                            let chunk = text_chunk(delta);
                             drop(
                                 agent
                                     .send_update(&args.session_id, acp::SessionUpdate::AgentMessageChunk(chunk))
                                     .await,
                             );
                         }
-                        assistant_message.push_str(&content);
                     }
-
-                    if let Some(reasoning) = response.reasoning.filter(|reasoning| !reasoning.is_empty()) {
-                        let chunk = text_chunk(reasoning);
-                        drop(
-                            agent
-                                .send_update(&args.session_id, acp::SessionUpdate::AgentThoughtChunk(chunk))
-                                .await,
-                        );
+                    LLMStreamEvent::Reasoning { delta } => {
+                        if !delta.is_empty() {
+                            emitted_output = true;
+                            let chunk = text_chunk(delta);
+                            drop(
+                                agent
+                                    .send_update(&args.session_id, acp::SessionUpdate::AgentThoughtChunk(chunk))
+                                    .await,
+                            );
+                        }
                     }
+                    LLMStreamEvent::ReasoningStage { .. } => {}
+                    LLMStreamEvent::ReasoningSignature { .. } => {}
+                    LLMStreamEvent::Completed { response } => {
+                        if assistant_message.is_empty()
+                            && let Some(content) = response.content
+                        {
+                            if !content.is_empty() {
+                                let chunk = text_chunk(content.clone());
+                                drop(
+                                    agent
+                                        .send_update(&args.session_id, acp::SessionUpdate::AgentMessageChunk(chunk))
+                                        .await,
+                                );
+                            }
+                            assistant_message.push_str(&content);
+                        }
 
-                    stop_reason = ZedAgent::stop_reason_from_finish(response.finish_reason);
-                    break;
+                        if let Some(reasoning) = response.reasoning.filter(|reasoning| !reasoning.is_empty()) {
+                            let chunk = text_chunk(reasoning);
+                            drop(
+                                agent
+                                    .send_update(&args.session_id, acp::SessionUpdate::AgentThoughtChunk(chunk))
+                                    .await,
+                            );
+                        }
+
+                        stop_reason = ZedAgent::stop_reason_from_finish(response.finish_reason);
+                        break 'stream_attempts;
+                    }
                 }
             }
         }
     } else {
         let mut tool_loop_count = 0usize;
         loop {
-            if session.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+            if session.cancellation.is_cancelled() {
                 stop_reason = acp::StopReason::Cancelled;
                 break;
             }
@@ -491,12 +702,19 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 ..Default::default()
             };
 
-            let response = provider
-                .generate(request)
-                .await
-                .map_err(|err| SdkError::internal_error().data(err.to_string()))?;
+            let response =
+                match generate_with_retry(provider.as_ref(), request, &provider_runtime, &session.cancellation).await {
+                    Ok(response) => response,
+                    Err(ProviderCallError::Cancelled) => {
+                        stop_reason = acp::StopReason::Cancelled;
+                        break;
+                    }
+                    Err(ProviderCallError::Failed(error)) => {
+                        return Err(SdkError::internal_error().data(error));
+                    }
+                };
 
-            if session.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+            if session.cancellation.is_cancelled() {
                 stop_reason = acp::StopReason::Cancelled;
                 break;
             }
@@ -529,7 +747,16 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     Ok(results) => results,
                     Err(error) => {
                         warn!(%error, "Tool execution failed");
-                        break;
+                        for call in &tool_calls {
+                            agent.push_message(
+                                &session,
+                                Message::tool_response(
+                                    call.id.clone(),
+                                    format!("Tool execution was interrupted: {error}"),
+                                ),
+                            );
+                        }
+                        return Err(error);
                     }
                 };
                 if plan.complete_context() {
@@ -538,7 +765,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 for result in tool_results {
                     agent.push_message(&session, Message::tool_response(result.tool_call_id, result.llm_response));
                 }
-                if session.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+                if session.cancellation.is_cancelled() {
                     stop_reason = acp::StopReason::Cancelled;
                     break;
                 }
@@ -558,7 +785,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             if let Some(content) = &response.content {
                 if !content.is_empty() {
                     drop(agent.advance_plan_to_response(&args.session_id, &mut plan).await);
-                    if session.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+                    if session.cancellation.is_cancelled() {
                         stop_reason = acp::StopReason::Cancelled;
                         break;
                     }
@@ -573,7 +800,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             }
 
             if let Some(reasoning) = response.reasoning.filter(|reasoning| !reasoning.is_empty()) {
-                if session.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+                if session.cancellation.is_cancelled() {
                     stop_reason = acp::StopReason::Cancelled;
                     break;
                 }
@@ -612,4 +839,132 @@ fn resolve_api_key_for_provider(agent: &ZedAgent, provider: &str) -> String {
     }
 
     get_api_key_with_mode(provider, &ApiKeySources::default(), agent.credential_storage_mode).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use async_trait::async_trait;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use vtcode_config::core::{CustomProviderConfig, CustomProviderRequestPolicyConfig};
+    use vtcode_core::core::threads::{ThreadBootstrap, ThreadManager};
+    use vtcode_core::llm::provider::LLMError;
+
+    use super::*;
+
+    #[test]
+    fn failed_turn_releases_session_and_preserves_gathered_context() {
+        let thread = ThreadManager::new().start_thread_with_identifier("acp-recovery", ThreadBootstrap::new(None));
+        thread.append_message(Message::user("original request".to_string()));
+
+        {
+            let _guard = TurnGuard::begin(thread.clone()).expect("first turn should begin");
+            thread.append_message(Message::assistant("context gathered from a file read".to_string()));
+        }
+
+        let messages = thread.messages();
+        assert_eq!(messages.len(), 2, "failed turn history must remain available to continue");
+        let next_turn = thread.begin_turn().expect("failed turn must release the in-flight marker");
+        drop(next_turn);
+        thread.finish_turn();
+    }
+
+    #[test]
+    fn concurrent_prompt_is_rejected_without_mutating_history() {
+        let thread = ThreadManager::new().start_thread_with_identifier("acp-serial", ThreadBootstrap::new(None));
+        let _guard = TurnGuard::begin(thread.clone()).expect("first turn should begin");
+
+        assert!(TurnGuard::begin(thread.clone()).is_err());
+        assert!(thread.messages().is_empty());
+    }
+
+    struct FlakyProvider {
+        attempts: AtomicUsize,
+        network_failures: usize,
+        invalid_request: bool,
+    }
+
+    #[async_trait]
+    impl LLMProvider for FlakyProvider {
+        fn name(&self) -> &str {
+            "retry-test"
+        }
+
+        fn supported_models(&self) -> Vec<String> {
+            vec!["test-model".to_string()]
+        }
+
+        fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+            Ok(())
+        }
+
+        async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+            let attempt = self.attempts.fetch_add(1, Ordering::SeqCst);
+            if self.invalid_request {
+                return Err(LLMError::InvalidRequest { message: "bad request".to_string(), metadata: None });
+            }
+            if attempt < self.network_failures {
+                return Err(LLMError::Network {
+                    message: "temporary disconnect".to_string(),
+                    metadata: None,
+                });
+            }
+            Ok(LLMResponse::new("test-model", "recovered"))
+        }
+    }
+
+    fn retry_runtime() -> ProviderRequestRuntime {
+        let provider = CustomProviderConfig {
+            name: "retry-test".to_string(),
+            request_policy: CustomProviderRequestPolicyConfig {
+                max_retries: 2,
+                retry_initial_backoff_ms: 1,
+                retry_max_backoff_ms: 2,
+                retry_jitter: false,
+                ..CustomProviderRequestPolicyConfig::default()
+            },
+            ..CustomProviderConfig::default()
+        };
+        super::super::super::provider_runtime::ProviderRuntimeRegistry::new(&[provider]).for_provider("retry-test")
+    }
+
+    #[tokio::test]
+    async fn transient_network_failure_retries_and_recovers() {
+        let provider = FlakyProvider {
+            attempts: AtomicUsize::new(0),
+            network_failures: 1,
+            invalid_request: false,
+        };
+
+        let response = generate_with_retry(
+            &provider,
+            LLMRequest::default(),
+            &retry_runtime(),
+            &super::super::super::types::SessionCancellation::default(),
+        )
+        .await
+        .expect("transient request should recover");
+
+        assert_eq!(response.content.as_deref(), Some("recovered"));
+        assert_eq!(provider.attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn invalid_request_is_not_retried() {
+        let provider = FlakyProvider {
+            attempts: AtomicUsize::new(0),
+            network_failures: 0,
+            invalid_request: true,
+        };
+
+        let result = generate_with_retry(
+            &provider,
+            LLMRequest::default(),
+            &retry_runtime(),
+            &super::super::super::types::SessionCancellation::default(),
+        )
+        .await;
+
+        assert!(matches!(result, Err(ProviderCallError::Failed(_))));
+        assert_eq!(provider.attempts.load(Ordering::SeqCst), 1);
+    }
 }

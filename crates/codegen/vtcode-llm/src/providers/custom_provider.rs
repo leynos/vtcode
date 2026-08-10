@@ -465,6 +465,7 @@ mod tests {
             model: models::anthropic::DEFAULT_MODEL.to_string(),
             models: vec![models::anthropic::DEFAULT_MODEL.to_string()],
             profiles: std::collections::BTreeMap::new(),
+            request_policy: Default::default(),
         };
 
         let router = CustomProviderBackendRouter::from_config(

@@ -1,5 +1,7 @@
 # Config Field Reference
 
+<!-- markdownlint-disable MD013 MD060 -->
+
 Generated from `vtcode-config` schema (`VTCodeConfig`) for complete field coverage.
 
 Regenerate:
@@ -264,6 +266,12 @@ python3 scripts/generate_config_field_reference.py
 | `custom_providers[].models` | `array` | no | `[]` | Optional list of additional model identifiers offered by the provider. Useful for OpenAI-compatible aggregators such as Atlas Cloud that expose many models behind a single endpoint. When set, the `/model` picker shows one entry per model. When empty, the picker falls back to the single [`model`](Self::model) field. |
 | `custom_providers[].models[]` | `string` | no | `-` | - |
 | `custom_providers[].name` | `string` | yes | `-` | Stable provider key used for routing and persistence (e.g., "mycorp"). Must be lowercase alphanumeric with optional hyphens/underscores. |
+| `custom_providers[].request_policy.max_in_flight_requests` | `integer \| null` | no | `-` | Maximum number of concurrent requests for this provider within one VT Code process. Omit to leave concurrency unrestricted. |
+| `custom_providers[].request_policy.max_retries` | `integer` | no | `2` | Number of retries after the initial request for transient failures. Streams are retried only before text or reasoning is published. |
+| `custom_providers[].request_policy.queue_timeout_seconds` | `integer` | no | `600` | Maximum time, in seconds, to wait for an in-process provider permit before the request fails. |
+| `custom_providers[].request_policy.retry_initial_backoff_ms` | `integer` | no | `500` | Initial delay between retries, in milliseconds. |
+| `custom_providers[].request_policy.retry_jitter` | `boolean` | no | `true` | Add deterministic jitter to retry delays to avoid synchronized reconnects. |
+| `custom_providers[].request_policy.retry_max_backoff_ms` | `integer` | no | `10000` | Maximum delay between retries, in milliseconds. |
 | `debug.debug_log_dir` | `null \| string` | no | `null` | Directory for debug logs |
 | `debug.enable_tracing` | `boolean` | no | `false` | Enable structured logging for development and troubleshooting |
 | `debug.max_debug_log_age_days` | `integer` | no | `7` | Maximum age of debug logs to keep (in days) |

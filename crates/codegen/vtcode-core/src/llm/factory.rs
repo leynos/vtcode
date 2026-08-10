@@ -516,6 +516,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            request_policy: Default::default(),
         }]);
 
         let provider = create_provider_with_config(
@@ -565,6 +566,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            request_policy: Default::default(),
         }]);
 
         let provider = create_provider_with_config(
@@ -641,6 +643,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: vec!["gpt-5-mini".to_string(), "claude-sonnet-4-6".to_string()],
             profiles,
+            request_policy: Default::default(),
         }
     }
 
@@ -799,6 +802,7 @@ mod tests {
                 "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B".to_string(),
             ],
             profiles: BTreeMap::new(),
+            request_policy: Default::default(),
         }
     }
 

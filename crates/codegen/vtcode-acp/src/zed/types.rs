@@ -2,6 +2,7 @@ use crate::acp;
 use std::mem::discriminant;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
+use tokio::sync::Notify;
 use tokio::time::Instant;
 use vtcode_core::config::types::ReasoningEffortLevel;
 use vtcode_core::core::threads::ThreadRuntimeHandle;
@@ -145,14 +146,46 @@ pub(crate) struct ToolCallResult {
     pub(crate) llm_response: String,
 }
 
+/// Cancellation signal that can be checked synchronously or awaited.
+#[derive(Clone, Default)]
+pub(crate) struct SessionCancellation {
+    cancelled: Arc<AtomicBool>,
+    notify: Arc<Notify>,
+}
+
+impl SessionCancellation {
+    pub(crate) fn cancel(&self) {
+        self.cancelled.store(true, std::sync::atomic::Ordering::Release);
+        self.notify.notify_waiters();
+    }
+
+    pub(crate) fn reset(&self) {
+        self.cancelled.store(false, std::sync::atomic::Ordering::Release);
+    }
+
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.cancelled.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    pub(crate) async fn cancelled(&self) {
+        loop {
+            let notified = self.notify.notified();
+            if self.is_cancelled() {
+                return;
+            }
+            notified.await;
+        }
+    }
+}
+
 /// Per-session handle. `Arc`-shared so the agent can hand a clone to a
 /// spawned task that drives the prompt loop. The data is `Send + Sync`
-/// (backed by `Mutex`/`AtomicBool`) so it can travel across the
+/// (backed by thread-safe synchronization primitives) so it can travel across the
 /// `LocalSet`-less task boundary that SACP's `cx.spawn` enforces.
 #[derive(Clone)]
 pub(crate) struct SessionHandle {
     pub(crate) data: Arc<Mutex<SessionData>>,
-    pub(crate) cancel_flag: Arc<AtomicBool>,
+    pub(crate) cancellation: SessionCancellation,
 }
 
 pub(crate) struct SessionData {
@@ -165,4 +198,40 @@ pub(crate) struct SessionData {
     pub(crate) provider: String,
     pub(crate) model: String,
     pub(crate) last_tool_call_at: Option<Instant>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::SessionCancellation;
+
+    #[tokio::test]
+    async fn cancellation_wakes_a_pending_operation() {
+        let cancellation = SessionCancellation::default();
+        let waiter = cancellation.clone();
+        let task = tokio::spawn(async move { waiter.cancelled().await });
+
+        tokio::task::yield_now().await;
+        cancellation.cancel();
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("cancellation waiter should wake")
+            .expect("waiter task should finish");
+    }
+
+    #[tokio::test]
+    async fn reset_allows_the_signal_to_be_reused_for_the_next_turn() {
+        let cancellation = SessionCancellation::default();
+        cancellation.cancel();
+        cancellation.cancelled().await;
+        cancellation.reset();
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(10), cancellation.cancelled())
+                .await
+                .is_err(),
+            "reset signal must wait for a fresh cancellation"
+        );
+    }
 }

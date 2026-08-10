@@ -309,6 +309,8 @@ def render_markdown(entries: list[FieldEntry]) -> str:
     lines = [
         "# Config Field Reference",
         "",
+        "<!-- markdownlint-disable MD013 MD060 -->",
+        "",
         "Generated from `vtcode-config` schema (`VTCodeConfig`) for complete field coverage.",
         "",
         "Regenerate:",
