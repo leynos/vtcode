@@ -4,6 +4,15 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TimeoutsConfig {
+    /// Maximum duration (in seconds) for establishing provider HTTP connections.
+    #[serde(default = "TimeoutsConfig::default_connect_timeout_seconds")]
+    pub connect_timeout_seconds: u64,
+    /// Maximum duration (in seconds) to wait for the first streamed token.
+    #[serde(default = "TimeoutsConfig::default_first_token_timeout_seconds")]
+    pub first_token_timeout_seconds: u64,
+    /// Maximum duration (in seconds) between streamed tokens.
+    #[serde(default = "TimeoutsConfig::default_stream_idle_timeout_seconds")]
+    pub stream_idle_timeout_seconds: u64,
     /// Maximum duration (in seconds) for standard, non-PTY tools.
     #[serde(default = "TimeoutsConfig::default_default_ceiling_seconds")]
     pub default_ceiling_seconds: u64,
@@ -36,6 +45,9 @@ pub struct TimeoutsConfig {
 impl Default for TimeoutsConfig {
     fn default() -> Self {
         Self {
+            connect_timeout_seconds: Self::default_connect_timeout_seconds(),
+            first_token_timeout_seconds: Self::default_first_token_timeout_seconds(),
+            stream_idle_timeout_seconds: Self::default_stream_idle_timeout_seconds(),
             default_ceiling_seconds: Self::default_default_ceiling_seconds(),
             pty_ceiling_seconds: Self::default_pty_ceiling_seconds(),
             mcp_ceiling_seconds: Self::default_mcp_ceiling_seconds(),
@@ -51,6 +63,18 @@ impl Default for TimeoutsConfig {
 
 impl TimeoutsConfig {
     const MIN_CEILING_SECONDS: u64 = 15;
+
+    const fn default_connect_timeout_seconds() -> u64 {
+        30
+    }
+
+    const fn default_first_token_timeout_seconds() -> u64 {
+        180
+    }
+
+    const fn default_stream_idle_timeout_seconds() -> u64 {
+        120
+    }
 
     const fn default_default_ceiling_seconds() -> u64 {
         180
@@ -116,6 +140,24 @@ impl TimeoutsConfig {
         ensure!(self.adaptive_min_floor_ms >= 100, "timeouts.adaptive_min_floor_ms must be at least 100ms");
 
         ensure!(
+            self.connect_timeout_seconds == 0 || self.connect_timeout_seconds >= Self::MIN_CEILING_SECONDS,
+            "timeouts.connect_timeout_seconds must be at least {} seconds (or 0 to disable)",
+            Self::MIN_CEILING_SECONDS
+        );
+
+        ensure!(
+            self.first_token_timeout_seconds == 0 || self.first_token_timeout_seconds >= Self::MIN_CEILING_SECONDS,
+            "timeouts.first_token_timeout_seconds must be at least {} seconds (or 0 to disable)",
+            Self::MIN_CEILING_SECONDS
+        );
+
+        ensure!(
+            self.stream_idle_timeout_seconds == 0 || self.stream_idle_timeout_seconds >= Self::MIN_CEILING_SECONDS,
+            "timeouts.stream_idle_timeout_seconds must be at least {} seconds (or 0 to disable)",
+            Self::MIN_CEILING_SECONDS
+        );
+
+        ensure!(
             self.default_ceiling_seconds == 0 || self.default_ceiling_seconds >= Self::MIN_CEILING_SECONDS,
             "timeouts.default_ceiling_seconds must be at least {} seconds (or 0 to disable)",
             Self::MIN_CEILING_SECONDS
@@ -171,6 +213,9 @@ mod tests {
     #[test]
     fn default_values_are_safe() {
         let config = TimeoutsConfig::default();
+        assert_eq!(config.connect_timeout_seconds, 30);
+        assert_eq!(config.first_token_timeout_seconds, 180);
+        assert_eq!(config.stream_idle_timeout_seconds, 120);
         assert_eq!(config.default_ceiling_seconds, 180);
         assert_eq!(config.pty_ceiling_seconds, 300);
         assert_eq!(config.mcp_ceiling_seconds, 120);

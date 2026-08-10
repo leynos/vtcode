@@ -229,6 +229,22 @@ const fn default_provider_retry_jitter() -> bool {
     true
 }
 
+const fn default_provider_connect_timeout_seconds() -> u64 {
+    30
+}
+
+const fn default_provider_first_token_timeout_seconds() -> u64 {
+    180
+}
+
+const fn default_provider_stream_idle_timeout_seconds() -> u64 {
+    120
+}
+
+const fn default_provider_total_generation_timeout_seconds() -> u64 {
+    600
+}
+
 /// Runtime admission and retry policy for a custom provider.
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
@@ -257,6 +273,22 @@ pub struct CustomProviderRequestPolicyConfig {
     /// Add deterministic jitter to retry delays to avoid synchronized reconnects.
     #[serde(default = "default_provider_retry_jitter")]
     pub retry_jitter: bool,
+
+    /// Maximum time to establish the provider connection. Zero disables the limit.
+    #[serde(default = "default_provider_connect_timeout_seconds")]
+    pub connect_timeout_seconds: u64,
+
+    /// Maximum time to wait for the first streamed event. Zero disables the limit.
+    #[serde(default = "default_provider_first_token_timeout_seconds")]
+    pub first_token_timeout_seconds: u64,
+
+    /// Maximum time between streamed events. Zero disables the limit.
+    #[serde(default = "default_provider_stream_idle_timeout_seconds")]
+    pub stream_idle_timeout_seconds: u64,
+
+    /// Maximum duration of one provider generation attempt. Zero disables the limit.
+    #[serde(default = "default_provider_total_generation_timeout_seconds")]
+    pub total_generation_timeout_seconds: u64,
 }
 
 impl Default for CustomProviderRequestPolicyConfig {
@@ -268,6 +300,10 @@ impl Default for CustomProviderRequestPolicyConfig {
             retry_initial_backoff_ms: default_provider_retry_initial_backoff_ms(),
             retry_max_backoff_ms: default_provider_retry_max_backoff_ms(),
             retry_jitter: default_provider_retry_jitter(),
+            connect_timeout_seconds: default_provider_connect_timeout_seconds(),
+            first_token_timeout_seconds: default_provider_first_token_timeout_seconds(),
+            stream_idle_timeout_seconds: default_provider_stream_idle_timeout_seconds(),
+            total_generation_timeout_seconds: default_provider_total_generation_timeout_seconds(),
         }
     }
 }
@@ -1018,6 +1054,10 @@ max_retries = 4
 retry_initial_backoff_ms = 250
 retry_max_backoff_ms = 5000
 retry_jitter = false
+connect_timeout_seconds = 45
+first_token_timeout_seconds = 240
+stream_idle_timeout_seconds = 150
+total_generation_timeout_seconds = 900
 "#,
         )
         .expect("custom provider request policy should parse");
@@ -1028,6 +1068,10 @@ retry_jitter = false
         assert_eq!(parsed.request_policy.retry_initial_backoff_ms, 250);
         assert_eq!(parsed.request_policy.retry_max_backoff_ms, 5_000);
         assert!(!parsed.request_policy.retry_jitter);
+        assert_eq!(parsed.request_policy.connect_timeout_seconds, 45);
+        assert_eq!(parsed.request_policy.first_token_timeout_seconds, 240);
+        assert_eq!(parsed.request_policy.stream_idle_timeout_seconds, 150);
+        assert_eq!(parsed.request_policy.total_generation_timeout_seconds, 900);
         assert!(parsed.validate().is_ok());
     }
 

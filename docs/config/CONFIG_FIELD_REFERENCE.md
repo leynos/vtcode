@@ -267,12 +267,16 @@ python3 scripts/generate_config_field_reference.py
 | `custom_providers[].models` | `array` | no | `[]` | Optional list of additional model identifiers offered by the provider. Useful for OpenAI-compatible aggregators such as Atlas Cloud that expose many models behind a single endpoint. When set, the `/model` picker shows one entry per model. When empty, the picker falls back to the single [`model`](Self::model) field. |
 | `custom_providers[].models[]` | `string` | no | `-` | - |
 | `custom_providers[].name` | `string` | yes | `-` | Stable provider key used for routing and persistence (e.g., "mycorp"). Must be lowercase alphanumeric with optional hyphens/underscores. |
+| `custom_providers[].request_policy.connect_timeout_seconds` | `integer` | no | `30` | Maximum time to establish the provider connection. Zero disables the limit. |
+| `custom_providers[].request_policy.first_token_timeout_seconds` | `integer` | no | `180` | Maximum time to wait for the first streamed event. Zero disables the limit. |
 | `custom_providers[].request_policy.max_in_flight_requests` | `integer \| null` | no | `-` | Maximum number of concurrent requests for this provider within one VT Code process. Omit to leave concurrency unrestricted. |
 | `custom_providers[].request_policy.max_retries` | `integer` | no | `2` | Number of retries after the initial request for transient failures. Streams are retried only before text or reasoning is published. |
 | `custom_providers[].request_policy.queue_timeout_seconds` | `integer` | no | `600` | Maximum time, in seconds, to wait for an in-process provider permit before the request fails. |
 | `custom_providers[].request_policy.retry_initial_backoff_ms` | `integer` | no | `500` | Initial delay between retries, in milliseconds. |
 | `custom_providers[].request_policy.retry_jitter` | `boolean` | no | `true` | Add deterministic jitter to retry delays to avoid synchronized reconnects. |
 | `custom_providers[].request_policy.retry_max_backoff_ms` | `integer` | no | `10000` | Maximum delay between retries, in milliseconds. |
+| `custom_providers[].request_policy.stream_idle_timeout_seconds` | `integer` | no | `120` | Maximum time between streamed events. Zero disables the limit. |
+| `custom_providers[].request_policy.total_generation_timeout_seconds` | `integer` | no | `600` | Maximum duration of one provider generation attempt. Zero disables the limit. |
 | `debug.debug_log_dir` | `null \| string` | no | `null` | Directory for debug logs |
 | `debug.enable_tracing` | `boolean` | no | `false` | Enable structured logging for development and troubleshooting |
 | `debug.max_debug_log_age_days` | `integer` | no | `7` | Maximum age of debug logs to keep (in days) |
@@ -719,11 +723,14 @@ python3 scripts/generate_config_field_reference.py
 | `timeouts.adaptive_decay_ratio` | `number` | no | `0.875` | Adaptive timeout decay ratio (0.1-1.0). Lower relaxes faster back to ceiling. |
 | `timeouts.adaptive_min_floor_ms` | `integer` | no | `1000` | Minimum timeout floor in milliseconds when applying adaptive clamps. |
 | `timeouts.adaptive_success_streak` | `integer` | no | `5` | Number of consecutive successes before relaxing adaptive ceiling. |
+| `timeouts.connect_timeout_seconds` | `integer` | no | `30` | Maximum duration (in seconds) for establishing provider HTTP connections. |
 | `timeouts.default_ceiling_seconds` | `integer` | no | `180` | Maximum duration (in seconds) for standard, non-PTY tools. |
+| `timeouts.first_token_timeout_seconds` | `integer` | no | `180` | Maximum duration (in seconds) to wait for the first streamed token. |
 | `timeouts.long_running_command_ceiling_seconds` | `integer` | no | `3600` | Maximum duration (in seconds) for one explicit `write_stdin`/`unified_exec` command wait. A wait deadline below this ceiling returns an in-progress reusable session instead of terminating it. |
 | `timeouts.mcp_ceiling_seconds` | `integer` | no | `120` | Maximum duration (in seconds) for MCP calls. |
 | `timeouts.pty_ceiling_seconds` | `integer` | no | `300` | Maximum duration (in seconds) for PTY-backed commands. |
 | `timeouts.streaming_ceiling_seconds` | `integer` | no | `600` | Maximum duration (in seconds) for streaming API responses. |
+| `timeouts.stream_idle_timeout_seconds` | `integer` | no | `120` | Maximum duration (in seconds) between streamed tokens. |
 | `timeouts.warning_threshold_percent` | `integer` | no | `80` | Percentage (0-100) of the ceiling after which the UI should warn. |
 | `tools.client_tool_search` | `boolean` | no | `true` | Enables client-local deferred loading for providers without hosted tool search. The initial request keeps core execution/editing and `search_tools`; unused built-ins, MCP, skill, and plugin schemas are omitted until ranked discovery expands them in the next request segment. Set `false` to restore eager exposure. |
 | `tools.default_policy` | `string` | no | `"prompt"` | Default policy for tools not explicitly listed |
