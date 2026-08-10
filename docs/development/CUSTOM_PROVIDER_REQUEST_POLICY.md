@@ -50,7 +50,11 @@ For a transient provider failure, VT Code retries the request according to
 `retry_initial_backoff_ms` through `retry_max_backoff_ms`. Jitter can be
 disabled with `retry_jitter = false`. A stream is retried only before it has
 published text or reasoning. Once output is visible, VT Code surfaces a later
-failure instead of risking duplicate output.
+failure instead of risking duplicate output. The visible partial text and
+reasoning are checkpointed as an assistant message whose serialized metadata
+marks delivery as incomplete and records the provider error. A later
+`continue` therefore retains the partial response without pretending that the
+provider completed it.
 
 ## Cancellation and turn safety
 

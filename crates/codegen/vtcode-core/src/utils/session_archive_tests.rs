@@ -159,6 +159,11 @@ fn session_message_converts_back_and_forth() {
     let mut original = Message::assistant("Test response".to_owned());
     original.reasoning = Some("Model thoughts".to_owned());
     original.phase = Some(AssistantPhase::FinalAnswer);
+    original.metadata = Some(crate::core::message_metadata::MessageMetadata::incomplete_llm_response(
+        2_000,
+        12,
+        "stream disconnected",
+    ));
     let stored = SessionMessage::from(&original);
     let restored = Message::from(&stored);
 
@@ -169,6 +174,18 @@ fn session_message_converts_back_and_forth() {
     assert_eq!(original.tool_call_id, restored.tool_call_id);
     assert_eq!(original.phase, stored.phase);
     assert_eq!(original.phase, restored.phase);
+    assert!(
+        stored
+            .metadata
+            .as_deref()
+            .is_some_and(crate::core::message_metadata::MessageMetadata::is_incomplete)
+    );
+    assert!(
+        restored
+            .metadata
+            .as_ref()
+            .is_some_and(crate::core::message_metadata::MessageMetadata::is_incomplete)
+    );
 }
 
 #[test]
