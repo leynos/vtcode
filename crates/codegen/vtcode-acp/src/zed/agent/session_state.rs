@@ -108,7 +108,7 @@ impl ZedAgent {
                 model,
                 last_tool_call_at: None,
             })),
-            cancel_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            cancellation: super::super::types::SessionCancellation::default(),
         }
     }
 
@@ -583,6 +583,8 @@ mod tests {
             AgentClientProtocolZedConfig::default(),
             ToolsConfig::default(),
             CommandsConfig::default(),
+            &[],
+            vtcode_config::TimeoutsConfig::default(),
             String::new(),
             Some("Zed".to_string()),
             primary_agents,

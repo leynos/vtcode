@@ -247,11 +247,34 @@ api_key_env = "MYCORP_API_KEY"
 model = "gpt-5.6-sol"
 # context_window = 256000   # Optional context window size in tokens (provider capability)
 # api_format = "auto"      # Optional provider-level API format hint: auto|openai-chat|openai-responses|anthropic-messages
+
+[custom_providers.request_policy]
+max_in_flight_requests = 4
+queue_timeout_seconds = 120
+max_retries = 3
+retry_initial_backoff_ms = 500
+retry_max_backoff_ms = 10000
+retry_jitter = true
 ```
 
 Notes:
 - `context_window` declares the provider's capability in tokens and drives the context size shown in the UI, compaction thresholds, and preflight token checks.
 - `api_format` is a hint to VT Code about how this provider / endpoint expects model traffic. Accepted values are: `auto`, `openai-chat`, `openai-responses`, and `anthropic-messages`. When omitted VT Code preserves legacy behavior and will try to autodetect; an explicit value is honored and VT Code will not silently fallback to a different format.
+- `request_policy` controls admission and transient retries for this provider.
+  The defaults are `queue_timeout_seconds = 600`, `max_retries = 2`,
+  `retry_initial_backoff_ms = 500`, `retry_max_backoff_ms = 10000`, and
+  `retry_jitter = true`; omit `max_in_flight_requests` for unrestricted
+  concurrency.
+- Admission is per provider and per VT Code process. Requests for every model
+  routed through one configured provider share its limit, while another
+  provider has its own limit. Separate VT Code processes do not share permits
+  or counters, so use the provider gateway for an installation-wide limit.
+- In ACP sessions, a request waits for an in-process permit for at most
+  `queue_timeout_seconds`. Transient failures are retried with bounded backoff;
+  a stream is retried only before text or reasoning has been published.
+  Cancellation stops the wait, backoff, or request and prevents a cancelled
+  turn from publishing late output. Exhausted failures retain the user request
+  and completed tool context for a subsequent `continue` prompt.
 
 Capability defaults and per-model profiles
 

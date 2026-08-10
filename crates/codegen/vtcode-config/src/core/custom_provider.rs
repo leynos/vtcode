@@ -303,6 +303,95 @@ impl CustomProviderCommandAuthConfig {
     }
 }
 
+const fn default_provider_queue_timeout_seconds() -> u64 {
+    600
+}
+
+const fn default_provider_max_retries() -> u32 {
+    2
+}
+
+const fn default_provider_retry_initial_backoff_ms() -> u64 {
+    500
+}
+
+const fn default_provider_retry_max_backoff_ms() -> u64 {
+    10_000
+}
+
+const fn default_provider_retry_jitter() -> bool {
+    true
+}
+
+/// Runtime admission and retry policy for a custom provider.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CustomProviderRequestPolicyConfig {
+    /// Maximum provider requests that one VT Code process may keep in flight.
+    /// `None` leaves concurrency unrestricted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_in_flight_requests: Option<usize>,
+
+    /// Maximum time to wait for an in-process provider permit.
+    #[serde(default = "default_provider_queue_timeout_seconds")]
+    pub queue_timeout_seconds: u64,
+
+    /// Number of retries after the initial request for transient failures.
+    #[serde(default = "default_provider_max_retries")]
+    pub max_retries: u32,
+
+    /// Initial retry backoff duration in milliseconds.
+    #[serde(default = "default_provider_retry_initial_backoff_ms")]
+    pub retry_initial_backoff_ms: u64,
+
+    /// Maximum retry backoff duration in milliseconds.
+    #[serde(default = "default_provider_retry_max_backoff_ms")]
+    pub retry_max_backoff_ms: u64,
+
+    /// Add deterministic jitter to retry delays to avoid synchronized reconnects.
+    #[serde(default = "default_provider_retry_jitter")]
+    pub retry_jitter: bool,
+}
+
+impl Default for CustomProviderRequestPolicyConfig {
+    fn default() -> Self {
+        Self {
+            max_in_flight_requests: None,
+            queue_timeout_seconds: default_provider_queue_timeout_seconds(),
+            max_retries: default_provider_max_retries(),
+            retry_initial_backoff_ms: default_provider_retry_initial_backoff_ms(),
+            retry_max_backoff_ms: default_provider_retry_max_backoff_ms(),
+            retry_jitter: default_provider_retry_jitter(),
+        }
+    }
+}
+
+impl CustomProviderRequestPolicyConfig {
+    fn validate(&self, provider_name: &str) -> Result<(), String> {
+        if self.max_in_flight_requests == Some(0) {
+            return Err(format!(
+                "custom_providers[{provider_name}].request_policy: `max_in_flight_requests` must be greater than 0"
+            ));
+        }
+        if self.queue_timeout_seconds == 0 {
+            return Err(format!(
+                "custom_providers[{provider_name}].request_policy: `queue_timeout_seconds` must be greater than 0"
+            ));
+        }
+        if self.retry_initial_backoff_ms == 0 {
+            return Err(format!(
+                "custom_providers[{provider_name}].request_policy: `retry_initial_backoff_ms` must be greater than 0"
+            ));
+        }
+        if self.retry_max_backoff_ms < self.retry_initial_backoff_ms {
+            return Err(format!(
+                "custom_providers[{provider_name}].request_policy: `retry_max_backoff_ms` must be greater than or equal to `retry_initial_backoff_ms`"
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Configuration for a user-defined OpenAI-compatible provider endpoint.
 ///
 /// Allows users to define multiple named custom endpoints (e.g., corporate
@@ -431,6 +520,10 @@ pub struct CustomProviderConfig {
     /// Exact model-keyed sparse capability profiles.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub profiles: BTreeMap<String, CustomProviderProfileConfig>,
+
+    /// Per-process request admission and transient retry policy.
+    #[serde(default)]
+    pub request_policy: CustomProviderRequestPolicyConfig,
 }
 
 impl CustomProviderConfig {
@@ -588,6 +681,8 @@ impl CustomProviderConfig {
             return Err(format!("custom_providers[{}]: `models` entries must not be empty", self.name));
         }
 
+        self.request_policy.validate(&self.name)?;
+
         for (profile_key, profile) in &self.profiles {
             if profile_key.trim().is_empty() || profile_key.trim() != profile_key {
                 return Err(format!(
@@ -648,7 +743,8 @@ mod tests {
 
     use super::{
         CustomProviderApiFormat, CustomProviderCommandAuthConfig, CustomProviderConfig, CustomProviderProfileConfig,
-        ResolvedCustomProviderProfile, default_auth_refresh_interval_ms, default_auth_timeout_ms,
+        CustomProviderRequestPolicyConfig, ResolvedCustomProviderProfile, default_auth_refresh_interval_ms,
+        default_auth_timeout_ms,
     };
 
     #[test]
@@ -680,6 +776,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         assert!(config.validate().is_ok());
@@ -715,6 +812,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         let err = config.validate().expect_err("invalid name should fail");
@@ -756,6 +854,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         let err = config.validate().expect_err("conflicting auth should fail");
@@ -797,6 +896,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         assert!(config.validate().is_ok());
@@ -832,6 +932,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: vec!["valid-model".to_string(), "   ".to_string()],
             profiles: BTreeMap::new(),
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         let err = config.validate().expect_err("blank models entry should fail");
@@ -867,6 +968,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         let err = config.validate().expect_err("zero context window should fail");
@@ -927,6 +1029,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles,
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         let err = config.validate().expect_err("profile key with whitespace should fail");
@@ -971,6 +1074,7 @@ mod tests {
                 "minimaxai/minimax-m3".to_string(),
             ],
             profiles: BTreeMap::new(),
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         assert_eq!(
@@ -1059,6 +1163,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles,
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         let resolved = config.resolved_profile("gpt-5-mini");
@@ -1142,6 +1247,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles,
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         let resolved = config.resolved_profile("gpt-5-mini");
@@ -1172,6 +1278,55 @@ model = "gpt-5-mini"
         assert_eq!(parsed.api_format, CustomProviderApiFormat::Auto);
         assert!(parsed.profiles.is_empty());
         assert_eq!(parsed.resolved_profile("gpt-5-mini"), ResolvedCustomProviderProfile::default());
+        assert_eq!(parsed.request_policy, CustomProviderRequestPolicyConfig::default());
+    }
+
+    #[test]
+    fn request_policy_deserializes_provider_limits_and_retries() {
+        let parsed: CustomProviderConfig = toml::from_str(
+            r#"
+name = "mycorp"
+display_name = "MyCorp"
+base_url = "https://llm.example/v1"
+model = "gpt-5-mini"
+
+[request_policy]
+max_in_flight_requests = 3
+queue_timeout_seconds = 120
+max_retries = 4
+retry_initial_backoff_ms = 250
+retry_max_backoff_ms = 5000
+retry_jitter = false
+"#,
+        )
+        .expect("custom provider request policy should parse");
+
+        assert_eq!(parsed.request_policy.max_in_flight_requests, Some(3));
+        assert_eq!(parsed.request_policy.queue_timeout_seconds, 120);
+        assert_eq!(parsed.request_policy.max_retries, 4);
+        assert_eq!(parsed.request_policy.retry_initial_backoff_ms, 250);
+        assert_eq!(parsed.request_policy.retry_max_backoff_ms, 5_000);
+        assert!(!parsed.request_policy.retry_jitter);
+        assert!(parsed.validate().is_ok());
+    }
+
+    #[test]
+    fn request_policy_validation_rejects_unsafe_bounds() {
+        let mut config = CustomProviderConfig {
+            name: "mycorp".to_string(),
+            display_name: "MyCorp".to_string(),
+            base_url: "https://llm.example/v1".to_string(),
+            model: "gpt-5-mini".to_string(),
+            ..CustomProviderConfig::default()
+        };
+
+        config.request_policy.max_in_flight_requests = Some(0);
+        assert!(config.validate().is_err_and(|error| error.contains("max_in_flight_requests")));
+
+        config.request_policy.max_in_flight_requests = Some(1);
+        config.request_policy.retry_initial_backoff_ms = 2_000;
+        config.request_policy.retry_max_backoff_ms = 1_000;
+        assert!(config.validate().is_err_and(|error| error.contains("retry_max_backoff_ms")));
     }
 
     #[test]

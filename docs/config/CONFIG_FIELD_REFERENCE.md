@@ -1,5 +1,7 @@
 # Config Field Reference
 
+<!-- markdownlint-disable MD013 MD060 -->
+
 Generated from `vtcode-config` schema (`VTCodeConfig`) for complete field coverage.
 
 Regenerate:
@@ -287,6 +289,12 @@ python3 scripts/generate_config_field_reference.py
 | `custom_providers[].temperature` | `null \| number` | no | `-` | Optional sampling temperature default (0.0-2.0) for models served by this endpoint unless a profile overrides it. |
 | `custom_providers[].top_k` | `integer \| null` | no | `-` | Optional top-k default (>= 0). |
 | `custom_providers[].top_p` | `null \| number` | no | `-` | Optional nucleus-sampling default (0.0-1.0). |
+| `custom_providers[].request_policy.max_in_flight_requests` | `integer \| null` | no | `-` | Maximum number of concurrent requests for this provider within one VT Code process. Omit to leave concurrency unrestricted. |
+| `custom_providers[].request_policy.max_retries` | `integer` | no | `2` | Number of retries after the initial request for transient failures. Streams are retried only before text or reasoning is published. |
+| `custom_providers[].request_policy.queue_timeout_seconds` | `integer` | no | `600` | Maximum time, in seconds, to wait for an in-process provider permit before the request fails. |
+| `custom_providers[].request_policy.retry_initial_backoff_ms` | `integer` | no | `500` | Initial delay between retries, in milliseconds. |
+| `custom_providers[].request_policy.retry_jitter` | `boolean` | no | `true` | Add deterministic jitter to retry delays to avoid synchronized reconnects. |
+| `custom_providers[].request_policy.retry_max_backoff_ms` | `integer` | no | `10000` | Maximum delay between retries, in milliseconds. |
 | `debug.debug_log_dir` | `null \| string` | no | `null` | Directory for debug logs |
 | `debug.enable_tracing` | `boolean` | no | `false` | Enable structured logging for development and troubleshooting |
 | `debug.max_debug_log_age_days` | `integer` | no | `7` | Maximum age of debug logs to keep (in days) |
