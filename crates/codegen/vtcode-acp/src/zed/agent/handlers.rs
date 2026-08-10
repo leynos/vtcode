@@ -511,6 +511,11 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         .tool_definitions(provider_supports_tools, &enabled_tools, &primary_agent)
         .map(Arc::new);
     let mut messages = agent.resolved_messages(&session);
+    if let Some(controller) = agent.local_tool_registry.subagent_controller() {
+        controller.set_parent_session_id(args.session_id.to_string()).await;
+        controller.set_parent_messages(&messages).await;
+        drop(controller.set_turn_delegation_hints_from_input(&user_message).await);
+    }
     let allow_streaming = supports_streaming && !tools_allowed;
     let provider_runtime = agent.provider_runtime.for_provider(&session_provider_name);
 
@@ -782,6 +787,10 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     &session,
                     Message::assistant_with_tools(response.content.clone().unwrap_or_default(), tool_calls.clone()),
                 );
+                if let Some(controller) = agent.local_tool_registry.subagent_controller() {
+                    controller.set_parent_session_id(args.session_id.to_string()).await;
+                    controller.set_parent_messages(&agent.resolved_messages(&session)).await;
+                }
                 let tool_results = match agent.execute_tool_calls(&session, &args.session_id, &tool_calls).await {
                     Ok(results) => results,
                     Err(error) => {

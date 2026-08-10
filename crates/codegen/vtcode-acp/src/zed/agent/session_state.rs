@@ -589,6 +589,7 @@ mod tests {
             Some("Zed".to_string()),
             primary_agents,
             false,
+            None,
         )
         .await
     }
