@@ -25,6 +25,7 @@
 //! registry, so the deadlock constraint is enforced at the call site.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use agent_client_protocol::{
     Client, ConnectionTo, Error,
@@ -72,7 +73,16 @@ impl ConnectionHandle {
         &self,
         request: RequestPermissionRequest,
     ) -> Result<RequestPermissionResponse, Error> {
-        self.cx.send_request(request).block_task().await
+        let started_at = Instant::now();
+        tracing::debug!(rpc = "session/request_permission", "Sending ACP client request");
+        let result = self.cx.send_request(request).block_task().await;
+        tracing::debug!(
+            rpc = "session/request_permission",
+            elapsed_ms = started_at.elapsed().as_millis() as u64,
+            success = result.is_ok(),
+            "ACP client request completed"
+        );
+        result
     }
 
     /// Send an `fs/read_text_file` request and await the response.
@@ -80,7 +90,16 @@ impl ConnectionHandle {
     /// **Only call from a `cx.spawn` task** — see
     /// [`ConnectionHandle::request_permission`].
     pub async fn read_text_file(&self, request: ReadTextFileRequest) -> Result<ReadTextFileResponse, Error> {
-        self.cx.send_request(request).block_task().await
+        let started_at = Instant::now();
+        tracing::debug!(rpc = "fs/read_text_file", "Sending ACP client request");
+        let result = self.cx.send_request(request).block_task().await;
+        tracing::debug!(
+            rpc = "fs/read_text_file",
+            elapsed_ms = started_at.elapsed().as_millis() as u64,
+            success = result.is_ok(),
+            "ACP client request completed"
+        );
+        result
     }
 
     /// Send a `terminal/create` request and await the response.
@@ -88,7 +107,16 @@ impl ConnectionHandle {
     /// **Only call from a `cx.spawn` task** — see
     /// [`ConnectionHandle::request_permission`].
     pub async fn create_terminal(&self, request: CreateTerminalRequest) -> Result<CreateTerminalResponse, Error> {
-        self.cx.send_request(request).block_task().await
+        let started_at = Instant::now();
+        tracing::debug!(rpc = "terminal/create", "Sending ACP client request");
+        let result = self.cx.send_request(request).block_task().await;
+        tracing::debug!(
+            rpc = "terminal/create",
+            elapsed_ms = started_at.elapsed().as_millis() as u64,
+            success = result.is_ok(),
+            "ACP client request completed"
+        );
+        result
     }
 }
 

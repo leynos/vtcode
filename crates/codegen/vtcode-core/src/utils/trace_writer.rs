@@ -5,14 +5,13 @@
 //! allowing an explicit `flush_trace_log()` call on process exit or signal.
 
 use std::fs::{File, OpenOptions};
-use std::io::{BufWriter, Write};
+use std::io::{LineWriter, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use anyhow::{Context, Result};
 
-/// Capacity of the internal `BufWriter` (64 KiB — large enough to batch many
-/// log lines before issuing a single `write` syscall).
+/// Capacity of the internal `LineWriter`.
 const BUF_CAPACITY: usize = 64 * 1024;
 
 /// Global handle to the active trace log writer so `flush_trace_log` can be
@@ -24,7 +23,7 @@ static GLOBAL_WRITER: OnceLock<FlushableWriter> = OnceLock::new();
 /// so it can be passed directly to `tracing_subscriber::fmt::layer().with_writer(..)`.
 #[derive(Clone)]
 pub struct FlushableWriter {
-    inner: Arc<Mutex<BufWriter<File>>>,
+    inner: Arc<Mutex<LineWriter<File>>>,
 }
 
 impl FlushableWriter {
@@ -35,7 +34,7 @@ impl FlushableWriter {
             .append(true)
             .open(path)
             .with_context(|| format!("Failed to open trace log file: {}", path.display()))?;
-        let writer = BufWriter::with_capacity(BUF_CAPACITY, file);
+        let writer = LineWriter::with_capacity(BUF_CAPACITY, file);
         let flushable = Self { inner: Arc::new(Mutex::new(writer)) };
         // Store globally so `flush_trace_log` works from anywhere.
         let _ = GLOBAL_WRITER.set(flushable.clone());
@@ -50,7 +49,7 @@ impl FlushableWriter {
         let _ = self.flush_locked();
     }
 
-    fn lock_writer(&self) -> std::io::Result<MutexGuard<'_, BufWriter<File>>> {
+    fn lock_writer(&self) -> std::io::Result<MutexGuard<'_, LineWriter<File>>> {
         self.inner
             .lock()
             .map_err(|e| std::io::Error::other(format!("trace writer lock poisoned: {e}")))
@@ -80,5 +79,23 @@ impl Write for FlushableWriter {
 pub fn flush_trace_log() {
     if let Some(writer) = GLOBAL_WRITER.get() {
         writer.flush();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FlushableWriter;
+    use std::io::Write;
+
+    #[test]
+    fn newline_terminated_events_are_visible_without_explicit_flush() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let log_path = temp_dir.path().join("debug.log");
+        let mut writer = FlushableWriter::open(&log_path)?;
+
+        writer.write_all(b"ACP request started\n")?;
+
+        assert_eq!(std::fs::read_to_string(log_path)?, "ACP request started\n");
+        Ok(())
     }
 }
