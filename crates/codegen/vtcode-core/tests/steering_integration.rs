@@ -4,12 +4,14 @@
 )]
 use anyhow::Result;
 use tokio::sync::mpsc;
+use vtcode_core::config::VTCodeConfig;
 use vtcode_core::config::models::ModelId;
 use vtcode_core::config::types::ReasoningEffortLevel;
 use vtcode_core::core::agent::runner::{AgentRunner, RunnerSettings};
 use vtcode_core::core::agent::steering::SteeringMessage;
 use vtcode_core::core::agent::task::{Task, TaskOutcome};
 use vtcode_core::core::agent::types::AgentType;
+use vtcode_core::core::threads::ThreadBootstrap;
 
 #[tokio::test]
 async fn test_agent_steering_stop() -> Result<()> {
@@ -29,8 +31,10 @@ async fn test_agent_steering_stop() -> Result<()> {
     let model_id = ModelId::Gemini31ProPreview;
     let api_key = "dummy-key".to_string();
     let session_id = "test-session".to_string();
+    let mut config = VTCodeConfig::default();
+    config.agent.provider = "gemini".to_string();
 
-    let mut runner = Box::pin(AgentRunner::new(
+    let mut runner = Box::pin(AgentRunner::new_with_bootstrap(
         AgentType::Single,
         model_id,
         api_key,
@@ -41,6 +45,9 @@ async fn test_agent_steering_stop() -> Result<()> {
             verbosity: None,
         },
         Some(steering_rx),
+        ThreadBootstrap::new(None),
+        Some(config),
+        None,
     ))
     .await?;
 

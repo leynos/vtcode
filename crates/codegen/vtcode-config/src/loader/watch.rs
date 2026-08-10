@@ -384,6 +384,7 @@ mod tests {
         watcher.add_watch_path(extra_config.clone());
         watcher.seed_current_mtimes();
         watcher.set_debounce_duration(0);
+        std::thread::sleep(Duration::from_millis(30));
         std::fs::write(&extra_config, "mode = \"command\"\n").expect("modify config");
         open_check_window(&mut watcher);
 

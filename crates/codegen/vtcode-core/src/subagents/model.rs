@@ -546,12 +546,12 @@ mod memory_cache_tests {
             .expect("memory appendix");
         assert!(first.contains("old guidance"));
 
-        std::fs::write(&path, "# Reviewer Memory\n\n- new guidance\n").expect("new memory");
+        std::fs::write(&path, "# Reviewer Memory\n\n- new detailed guidance\n").expect("new memory");
         primary_memory_cache().force_metadata_poll();
         let second = load_primary_memory_appendix(workspace.path(), "reviewer", Some(SubagentMemoryScope::Project))
             .expect("updated memory")
             .expect("updated appendix");
-        assert!(second.contains("new guidance"));
+        assert!(second.contains("new detailed guidance"));
     }
 
     #[test]
