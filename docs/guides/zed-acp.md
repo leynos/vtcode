@@ -345,11 +345,14 @@ These stores are independent: disabling one does not disable the others. In
 particular, `context.dynamic` settings do not control durable session archives,
 and `[history]` settings do not control ACP audit output.
 
-- **Session management** – With durable history enabled, ACP session IDs remain
-  usable across VT Code process and editor restarts. An ACP client can pass the
-  session ID to `session/load` to restore the checkpointed history. Set
-  `history.persistence = "none"` to disable durable archives; the session then
-  remains process-local.
+- **Session management** – ACP advertises and implements `session/list` and
+  `session/resume` while retaining the legacy `session/load` method. With
+  durable history enabled, `session/list` discovers durable archives and, when
+  the client supplies `cwd`, returns only archives belonging to that workspace.
+  An ACP client can pass a returned session ID to either `session/load` or
+  `session/resume`; both restore that archive by exact session ID, including
+  after a VT Code process or editor restart. Set `history.persistence = "none"`
+  to disable durable archives and discovery; sessions then remain process-local.
 - **Sub-agent delegation** – When ACP sub-agents are enabled, the session exposes the canonical
   `agent` tool. Its actions are `spawn`, `spawn_subprocess`, `send_input`, `wait`, `resume`, and
   `close`. Before delegation, VT Code synchronises the current parent ACP session identity and
