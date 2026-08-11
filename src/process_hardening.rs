@@ -18,7 +18,7 @@ use nix::sys::resource::{RLIM_INFINITY, Resource, getrlimit, setrlimit};
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn prctl_set_dumpable() -> std::io::Result<()> {
-    prctl::set_dumpable(false).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{e}")))
+    prctl::set_dumpable(false).map_err(std::io::Error::other)
 }
 
 #[cfg(unix)]

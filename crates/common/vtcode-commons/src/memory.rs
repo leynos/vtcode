@@ -1,8 +1,3 @@
-#![expect(
-    clippy::cast_possible_truncation,
-    reason = "The macOS Mach message count is defined as the platform ABI's bounded integer type."
-)]
-
 //! Resident Set Size (RSS) sampling for memory diagnostics.
 //!
 //! Used by the allocator benchmark (`vtcode bench-allocator`) to measure whether
@@ -25,7 +20,8 @@ fn resident_set_size_mb() -> Option<f64> {
     // produces a valid (all-zero) starting value before `task_info` fills it.
     let mut info: libc::mach_task_basic_info = unsafe { std::mem::zeroed() };
     let mut count = (std::mem::size_of::<libc::mach_task_basic_info>() / std::mem::size_of::<libc::integer_t>())
-        as libc::mach_msg_type_number_t;
+        .try_into()
+        .ok()?;
     // SAFETY: `mach_task_self()` returns a send-right to the current task with
     // no preconditions; it cannot fail to produce a valid port name.
     let task = unsafe { libc::mach_task_self() };

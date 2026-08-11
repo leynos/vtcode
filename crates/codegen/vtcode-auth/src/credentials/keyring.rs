@@ -42,10 +42,9 @@ pub(crate) fn is_functional() -> bool {
             }
 
             let functional = entry.get_password().is_ok();
+            let cleaned_up = entry.delete_credential().is_ok();
 
-            let _ = entry.delete_credential();
-
-            functional
+            functional && cleaned_up
         }
     })
 }

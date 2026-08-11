@@ -102,7 +102,7 @@ impl MemoryMonitor {
                 if parts.len() >= 2 {
                     let kb: usize = parts[1]
                         .parse()
-                        .map_err(|_| MemoryError::Parse(format!("invalid VmRSS value: {}", parts[1])))?;
+                        .map_err(|error| MemoryError::Parse(format!("invalid VmRSS value {}: {error}", parts[1])))?;
                     return Ok(kb * 1024); // Convert KB to bytes
                 }
             }
