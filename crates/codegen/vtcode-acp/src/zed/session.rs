@@ -30,6 +30,7 @@ pub async fn run_acp_agent(
     skip_confirmations: bool,
 ) -> Result<()> {
     register_acp_custom_providers(vt_cfg);
+    vtcode_core::utils::session_archive::apply_session_history_config_from_vtcode(vt_cfg);
 
     let zed_config = &vt_cfg.acp.zed;
     let desired_trust_level = zed_config.workspace_trust.to_workspace_trust_level();

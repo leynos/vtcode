@@ -14,7 +14,7 @@ use vtcode_core::llm::ModelResolver;
 use vtcode_core::llm::factory::get_factory;
 use vtcode_core::llm::provider::{FinishReason, Message, MessageRole};
 use vtcode_core::utils::session_archive::{
-    SessionArchive, SessionMessage, SessionProgressArgs, find_session_by_identifier,
+    SessionArchive, SessionMessage, SessionProgressArgs, find_session_by_identifier, history_persistence_enabled,
 };
 
 use super::super::constants::SESSION_PREFIX;
@@ -247,6 +247,11 @@ impl ZedAgent {
     }
 
     pub(super) async fn checkpoint_session(&self, session: &SessionHandle) -> anyhow::Result<()> {
+        if !history_persistence_enabled() {
+            debug!("Skipped ACP session checkpoint because history persistence is disabled");
+            return Ok(());
+        }
+
         let (existing_archive, snapshot, session_identifier) = {
             let data = session
                 .data
@@ -706,6 +711,9 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::Path;
+    use std::sync::LazyLock;
+    use tokio::sync::Mutex as AsyncMutex;
+    use vtcode_config::codex::HistoryPersistence;
     use vtcode_config::{SubagentDiscoveryInput, discover_subagents};
     use vtcode_core::config::core::PromptCachingConfig;
     use vtcode_core::config::types::{AgentConfig as CoreAgentConfig, ModelSelectionSource, UiSurfacePreference};
@@ -714,6 +722,28 @@ mod tests {
         DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
     };
     use vtcode_core::utils::session_archive::{SessionArchiveMetadata, SessionListing, SessionSnapshot};
+
+    static HISTORY_TEST_LOCK: LazyLock<AsyncMutex<()>> = LazyLock::new(|| AsyncMutex::new(()));
+
+    struct HistorySettingsGuard;
+
+    impl HistorySettingsGuard {
+        fn set(persistence: HistoryPersistence, max_bytes: Option<usize>) -> Self {
+            let mut config = vtcode_core::config::VTCodeConfig::default();
+            config.history.persistence = persistence;
+            config.history.max_bytes = max_bytes;
+            vtcode_core::utils::session_archive::apply_session_history_config_from_vtcode(&config);
+            Self
+        }
+    }
+
+    impl Drop for HistorySettingsGuard {
+        fn drop(&mut self) {
+            vtcode_core::utils::session_archive::apply_session_history_config_from_vtcode(
+                &vtcode_core::config::VTCodeConfig::default(),
+            );
+        }
+    }
 
     async fn build_agent(workspace: &Path) -> ZedAgent {
         build_agent_with_default_primary_agent(workspace, "duck").await
@@ -826,6 +856,8 @@ mod tests {
 
     #[tokio::test]
     async fn checkpoint_session_persists_messages_for_a_fresh_runtime() {
+        let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+        let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
         let temp = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
         let path = temp.path().join("vtcode-zed-session-resume.json");
@@ -870,6 +902,24 @@ mod tests {
         assert_eq!(fresh_thread.messages().len(), 2);
         assert_eq!(fresh_thread.messages()[0].content.as_text(), "continue");
         assert_eq!(fresh_thread.messages()[1].content.as_text(), "resumed response");
+    }
+
+    #[tokio::test]
+    async fn checkpoint_session_skips_fresh_archive_when_history_persistence_is_disabled() {
+        let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+        for persistence in [HistoryPersistence::None, HistoryPersistence::Unknown] {
+            let _history_settings = HistorySettingsGuard::set(persistence, None);
+            let temp = TempDir::new().unwrap();
+            let agent = build_agent(temp.path()).await;
+            let session_id = agent.register_durable_session();
+            let session = agent.session_handle(&session_id).unwrap();
+            agent.push_message(&session, Message::user("do not persist".to_string()));
+
+            agent.checkpoint_session(&session).await.unwrap();
+
+            assert!(session.data.lock().unwrap().archive.is_none());
+            assert!(find_session_by_identifier(&session_id.0).await.unwrap().is_none());
+        }
     }
 
     #[tokio::test]
