@@ -79,6 +79,7 @@ async fn build_agent_with_config(
         primary_agents,
         false,
         vt_cfg,
+        None,
     ))
     .await
 }

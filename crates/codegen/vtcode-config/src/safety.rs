@@ -5,7 +5,7 @@
 //! that don't declare a `[safety.audit]` table get the defaults from
 //! [`ToolAuditConfig::default`].
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -27,6 +27,7 @@ pub struct SafetyConfig {
 }
 
 /// Subset of `[safety.audit]` controlling the audit log sink.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolAuditConfig {
     /// When true, the runloop persists audit entries. Default `false`.
@@ -42,6 +43,32 @@ pub struct ToolAuditConfig {
     /// Default `4`.
     #[serde(default = "default_max_files")]
     max_files: usize,
+}
+
+impl ToolAuditConfig {
+    /// Whether this audit sink should be constructed.
+    #[must_use]
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// Configured JSONL path, before any environment-specific expansion.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Maximum size of the active JSONL file before rotation.
+    #[must_use]
+    pub fn max_size_bytes(&self) -> u64 {
+        self.max_size_bytes
+    }
+
+    /// Maximum number of JSONL files retained, including the active file.
+    #[must_use]
+    pub fn max_files(&self) -> usize {
+        self.max_files
+    }
 }
 
 impl Default for ToolAuditConfig {

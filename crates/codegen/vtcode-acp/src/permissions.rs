@@ -293,7 +293,7 @@ where
                 }
                 Some(PersistentPermissionDecision::Reject) => {
                     debug!(session_id = %session_id, tool = tool.name, "ACP permission rejected by session decision");
-                    return Ok(Some(ToolExecutionReport::failure(tool.name, TOOL_PERMISSION_DENIED_MESSAGE)));
+                    return Ok(Some(ToolExecutionReport::blocked(tool.name, TOOL_PERMISSION_DENIED_MESSAGE)));
                 }
                 None => {}
             }
@@ -314,7 +314,7 @@ where
         match client.request_permission(request).await {
             Ok(response) => match response.outcome {
                 acp::RequestPermissionOutcome::Cancelled => {
-                    Ok(Some(ToolExecutionReport::failure(tool.name, TOOL_PERMISSION_CANCELLED_MESSAGE)))
+                    Ok(Some(ToolExecutionReport::cancelled_with_message(tool.name, TOOL_PERMISSION_CANCELLED_MESSAGE)))
                 }
                 acp::RequestPermissionOutcome::Selected(outcome) => {
                     let option_id_str = outcome.option_id.0.as_ref();
@@ -324,16 +324,16 @@ where
                         self.remember_persistent_decision(session_id, tool.name, PersistentPermissionDecision::Allow);
                         Ok(None)
                     } else if option_id_str == TOOL_PERMISSION_DENY_OPTION_ID {
-                        Ok(Some(ToolExecutionReport::failure(tool.name, TOOL_PERMISSION_DENIED_MESSAGE)))
+                        Ok(Some(ToolExecutionReport::blocked(tool.name, TOOL_PERMISSION_DENIED_MESSAGE)))
                     } else if option_id_str == TOOL_PERMISSION_DENY_ALWAYS_OPTION_ID {
                         self.remember_persistent_decision(session_id, tool.name, PersistentPermissionDecision::Reject);
-                        Ok(Some(ToolExecutionReport::failure(tool.name, TOOL_PERMISSION_DENIED_MESSAGE)))
+                        Ok(Some(ToolExecutionReport::blocked(tool.name, TOOL_PERMISSION_DENIED_MESSAGE)))
                     } else {
                         warn!("{}", TOOL_PERMISSION_UNKNOWN_OPTION_LOG);
-                        Ok(Some(ToolExecutionReport::failure(tool.name, TOOL_PERMISSION_DENIED_MESSAGE)))
+                        Ok(Some(ToolExecutionReport::blocked(tool.name, TOOL_PERMISSION_DENIED_MESSAGE)))
                     }
                 }
-                _ => Ok(Some(ToolExecutionReport::failure(tool.name, TOOL_PERMISSION_DENIED_MESSAGE))),
+                _ => Ok(Some(ToolExecutionReport::blocked(tool.name, TOOL_PERMISSION_DENIED_MESSAGE))),
             },
             Err(error) => {
                 error!(%error, "{}", TOOL_PERMISSION_REQUEST_FAILURE_LOG);

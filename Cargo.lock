@@ -7580,12 +7580,14 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.19",
  "tokio",
+ "toml",
  "tracing",
  "url",
  "uuid",
  "vtcode-commons",
  "vtcode-config",
  "vtcode-core",
+ "vtcode-safety",
 ]
 
 [[package]]

@@ -145,6 +145,7 @@ impl PlanProgress {
 pub(crate) struct ToolCallResult {
     pub(crate) tool_call_id: String,
     pub(crate) llm_response: String,
+    pub(crate) audit_status: vtcode_safety::audit_log::ToolAuditStatus,
 }
 
 /// Cancellation signal that can be checked synchronously or awaited.
