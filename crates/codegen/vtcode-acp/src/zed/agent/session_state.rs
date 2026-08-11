@@ -14,7 +14,8 @@ use vtcode_core::llm::ModelResolver;
 use vtcode_core::llm::factory::get_factory;
 use vtcode_core::llm::provider::{FinishReason, Message, MessageRole};
 use vtcode_core::utils::session_archive::{
-    SessionArchive, SessionMessage, SessionProgressArgs, find_session_by_identifier, history_persistence_enabled,
+    SessionArchive, SessionListing, SessionMessage, SessionProgressArgs, find_session_by_identifier,
+    history_persistence_enabled, list_recent_sessions, session_listing_matches_workspace, session_workspace_path,
 };
 
 use super::super::constants::SESSION_PREFIX;
@@ -22,6 +23,8 @@ use super::super::helpers::session_config_options;
 use super::super::types::{SessionData, SessionHandle};
 
 impl ZedAgent {
+    const SESSION_LIST_PAGE_SIZE: usize = 100;
+
     pub(crate) async fn run_session_start_hooks(&self, session: &SessionHandle) -> anyhow::Result<()> {
         if !session.mark_session_started() {
             return Ok(());
@@ -496,10 +499,15 @@ impl ZedAgent {
         &self,
         session_id: &acp::SessionId,
         identifier: &str,
+        workspace: &std::path::Path,
     ) -> anyhow::Result<SessionHandle> {
         let listing = find_session_by_identifier(identifier)
             .await?
             .ok_or_else(|| anyhow::anyhow!("unknown archived session '{identifier}'"))?;
+        anyhow::ensure!(
+            session_listing_matches_workspace(&listing, workspace),
+            "archived session '{identifier}' belongs to a different workspace"
+        );
         let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
         let thread = self
             .thread_manager
@@ -514,6 +522,91 @@ impl ZedAgent {
             drop(guard.insert(session_id.clone(), handle.clone()));
         }
         Ok(handle)
+    }
+
+    async fn attach_or_get_session(
+        &self,
+        session_id: &acp::SessionId,
+        workspace: &std::path::Path,
+    ) -> anyhow::Result<SessionHandle> {
+        if let Some(session) = self.session_handle(session_id) {
+            let matches_workspace = session
+                .data
+                .lock()
+                .ok()
+                .and_then(|data| data.thread.metadata())
+                .is_some_and(|metadata| std::path::Path::new(&metadata.workspace_path) == workspace);
+            anyhow::ensure!(matches_workspace, "active session belongs to a different workspace");
+            return Ok(session);
+        }
+
+        anyhow::ensure!(history_persistence_enabled(), "durable session history is disabled");
+
+        self.attach_thread_from_archive(session_id, session_id.0.as_ref(), workspace)
+            .await
+    }
+
+    fn session_list_offset(cursor: Option<&str>) -> Result<usize, acp::Error> {
+        let Some(cursor) = cursor else {
+            return Ok(0);
+        };
+        cursor
+            .strip_prefix("offset:")
+            .and_then(|offset| offset.parse().ok())
+            .ok_or_else(|| acp::Error::invalid_params().data("invalid session list cursor"))
+    }
+
+    fn session_list_response(
+        args: &acp::ListSessionsRequest,
+        listings: Vec<SessionListing>,
+    ) -> Result<acp::ListSessionsResponse, acp::Error> {
+        let offset = Self::session_list_offset(args.cursor.as_deref())?;
+        let mut sessions = listings
+            .into_iter()
+            .filter(|listing| {
+                args.cwd
+                    .as_deref()
+                    .is_none_or(|workspace| session_listing_matches_workspace(listing, workspace))
+            })
+            .filter_map(|listing| {
+                let cwd = session_workspace_path(&listing)?;
+                cwd.is_absolute().then(|| {
+                    acp::SessionInfo::new(listing.identifier(), cwd)
+                        .title(listing.first_prompt_preview().or_else(|| listing.first_reply_preview()))
+                        .updated_at(listing.snapshot.ended_at.to_rfc3339())
+                })
+            })
+            .skip(offset)
+            .take(Self::SESSION_LIST_PAGE_SIZE + 1)
+            .collect::<Vec<_>>();
+
+        let has_more = sessions.len() > Self::SESSION_LIST_PAGE_SIZE;
+        sessions.truncate(Self::SESSION_LIST_PAGE_SIZE);
+        let next_cursor = has_more.then(|| format!("offset:{}", offset + sessions.len()));
+        Ok(acp::ListSessionsResponse::new(sessions).next_cursor(next_cursor))
+    }
+
+    /// Programmatic equivalent of the SACP `session/list` handler.
+    pub(crate) async fn list_sessions(
+        &self,
+        args: acp::ListSessionsRequest,
+    ) -> Result<acp::ListSessionsResponse, acp::Error> {
+        if !history_persistence_enabled() {
+            return Ok(acp::ListSessionsResponse::new(Vec::new()));
+        }
+
+        let listings = list_recent_sessions(0)
+            .await
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+        let response = Self::session_list_response(&args, listings)?;
+        debug!(
+            session_count = response.sessions.len(),
+            workspace = ?args.cwd,
+            cursor = ?args.cursor,
+            has_more = response.next_cursor.is_some(),
+            "Listed durable ACP sessions"
+        );
+        Ok(response)
     }
 
     pub(super) fn stop_reason_from_finish(finish: FinishReason) -> acp::StopReason {
@@ -547,6 +640,8 @@ impl ZedAgent {
             warn!(%error, "Failed to advertise initial slash commands");
         }
 
+        debug!(%session_id, "Created ACP session");
+
         Ok(acp::NewSessionResponse::new(session_id).config_options(config_options))
     }
 
@@ -555,14 +650,10 @@ impl ZedAgent {
         &self,
         args: acp::LoadSessionRequest,
     ) -> Result<acp::LoadSessionResponse, acp::Error> {
-        let session = if let Some(session) = self.session_handle(&args.session_id) {
-            session
-        } else {
-            let identifier = args.session_id.0.as_ref();
-            self.attach_thread_from_archive(&args.session_id, identifier)
-                .await
-                .map_err(|err| acp::Error::internal_error().data(err.to_string()))?
-        };
+        let session = self
+            .attach_or_get_session(&args.session_id, &args.cwd)
+            .await
+            .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
 
         if let Err(error) = self.send_available_commands_update(&args.session_id).await {
             warn!(%error, "Failed to advertise slash commands on session load");
@@ -572,7 +663,30 @@ impl ZedAgent {
         self.run_session_start_hooks(&session)
             .await
             .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+        debug!(session_id = %args.session_id, "Loaded durable ACP session through legacy session/load");
         Ok(acp::LoadSessionResponse::new().config_options(config_options))
+    }
+
+    /// Programmatic equivalent of the SACP `session/resume` handler.
+    pub(crate) async fn resume_session(
+        &self,
+        args: acp::ResumeSessionRequest,
+    ) -> Result<acp::ResumeSessionResponse, acp::Error> {
+        let session = self
+            .attach_or_get_session(&args.session_id, &args.cwd)
+            .await
+            .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
+
+        if let Err(error) = self.send_available_commands_update(&args.session_id).await {
+            warn!(%error, "Failed to advertise slash commands on session resume");
+        }
+
+        let config_options = self.current_session_config_options(&session);
+        self.run_session_start_hooks(&session)
+            .await
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+        debug!(session_id = %args.session_id, "Resumed durable ACP session");
+        Ok(acp::ResumeSessionResponse::new().config_options(config_options))
     }
 
     /// Programmatic equivalent of the SACP `session/set_config_option`
@@ -905,6 +1019,76 @@ mod tests {
         assert_eq!(fresh_thread.messages()[1].content.as_text(), "resumed response");
     }
 
+    fn archived_listing(identifier: &str, workspace: &Path, prompt: &str) -> SessionListing {
+        let now = Utc::now();
+        SessionListing {
+            path: workspace.join(format!("{identifier}.json")),
+            snapshot: SessionSnapshot {
+                metadata: SessionArchiveMetadata::new(
+                    "workspace",
+                    workspace.to_string_lossy(),
+                    "gpt-5.4",
+                    "openai",
+                    "test",
+                    "low",
+                ),
+                started_at: now,
+                ended_at: now,
+                total_messages: 1,
+                distinct_tools: Vec::new(),
+                transcript: Vec::new(),
+                messages: vec![SessionMessage::new(MessageRole::User, prompt)],
+                progress: None,
+                error_logs: Vec::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn session_list_filters_archives_by_workspace() {
+        let first_workspace = Path::new("/workspace/first");
+        let second_workspace = Path::new("/workspace/second");
+        let request = acp::ListSessionsRequest::new().cwd(first_workspace);
+
+        let response = ZedAgent::session_list_response(
+            &request,
+            vec![
+                archived_listing("session-first", first_workspace, "First task"),
+                archived_listing("session-second", second_workspace, "Second task"),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(response.sessions.len(), 1);
+        assert_eq!(response.sessions[0].session_id, acp::SessionId::new("session-first"));
+        assert_eq!(response.sessions[0].cwd, first_workspace);
+        assert_eq!(response.sessions[0].title.as_deref(), Some("First task"));
+        assert!(response.next_cursor.is_none());
+    }
+
+    #[test]
+    fn session_list_rejects_unknown_cursor() {
+        let request = acp::ListSessionsRequest::new().cursor("not-a-vtcode-cursor");
+        assert!(ZedAgent::session_list_response(&request, Vec::new()).is_err());
+    }
+
+    #[test]
+    fn session_list_cursor_advances_to_the_next_page() {
+        let workspace = Path::new("/workspace/page");
+        let listings = (0..=ZedAgent::SESSION_LIST_PAGE_SIZE)
+            .map(|index| archived_listing(&format!("session-{index}"), workspace, "task"))
+            .collect::<Vec<_>>();
+
+        let first = ZedAgent::session_list_response(&acp::ListSessionsRequest::new(), listings.clone()).unwrap();
+        assert_eq!(first.sessions.len(), ZedAgent::SESSION_LIST_PAGE_SIZE);
+        let cursor = first.next_cursor.expect("first page should provide a cursor");
+
+        let second =
+            ZedAgent::session_list_response(&acp::ListSessionsRequest::new().cursor(cursor), listings).unwrap();
+        assert_eq!(second.sessions.len(), 1);
+        assert!(second.next_cursor.is_none());
+    }
+
     #[tokio::test]
     async fn checkpoint_session_skips_fresh_archive_when_history_persistence_is_disabled() {
         let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
@@ -921,6 +1105,20 @@ mod tests {
             assert!(session.data.lock().unwrap().archive.is_none());
             assert!(find_session_by_identifier(&session_id.0).await.unwrap().is_none());
         }
+    }
+
+    #[tokio::test]
+    async fn resume_archive_is_disabled_when_history_persistence_is_disabled() {
+        let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+        let _history_settings = HistorySettingsGuard::set(HistoryPersistence::None, None);
+        let temp = TempDir::new().unwrap();
+        let agent = build_agent(temp.path()).await;
+
+        let result = agent
+            .resume_session(acp::ResumeSessionRequest::new("archived-session", temp.path()))
+            .await;
+
+        assert!(result.is_err());
     }
 
     #[tokio::test]

@@ -47,7 +47,7 @@ mod tests {
         SESSION_CONFIG_THOUGHT_LEVEL_ID,
     };
     use agent_client_protocol::schema::v1::{
-        LoadSessionRequest, NewSessionRequest, SetSessionConfigOptionRequest, ToolCallStatus,
+        LoadSessionRequest, NewSessionRequest, ResumeSessionRequest, SetSessionConfigOptionRequest, ToolCallStatus,
     };
     use agent_client_protocol::schema::v1::{SessionConfigKind, SessionConfigSelectOptions};
     use assert_fs::TempDir;
@@ -291,6 +291,50 @@ mod tests {
                             == crate::acp::SessionConfigValueId::new("gpt-5.6-sol")
                 )
         }));
+    }
+
+    #[tokio::test]
+    async fn resume_session_returns_existing_session_state() {
+        let temp = TempDir::new().unwrap();
+        let agent = build_agent(temp.path()).await;
+        let session_id = agent.register_session();
+        let session = agent.session_handle(&session_id).unwrap();
+        session
+            .data
+            .lock()
+            .unwrap()
+            .thread
+            .append_message(vtcode_core::llm::provider::Message::user("continue".to_string()));
+
+        let response = agent
+            .resume_session(ResumeSessionRequest::new(session_id.clone(), temp.path()))
+            .await
+            .unwrap();
+
+        assert!(response.modes.is_none());
+        assert!(response.config_options.is_some());
+        assert!(
+            session
+                .data
+                .lock()
+                .unwrap()
+                .thread
+                .messages()
+                .iter()
+                .any(|message| message.content.as_text() == "continue")
+        );
+    }
+
+    #[tokio::test]
+    async fn resume_session_rejects_a_different_workspace() {
+        let temp = TempDir::new().unwrap();
+        let other = TempDir::new().unwrap();
+        let agent = build_agent(temp.path()).await;
+        let session_id = agent.register_session();
+
+        let result = agent.resume_session(ResumeSessionRequest::new(session_id, other.path())).await;
+
+        assert!(result.is_err());
     }
 
     #[tokio::test]
