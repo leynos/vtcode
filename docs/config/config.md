@@ -605,7 +605,11 @@ Notes:
 
 - `agent.harness.auto_compaction_enabled` enables automatic compaction when prompt-side token pressure crosses the configured threshold.
 - `agent.harness.auto_compaction_threshold_tokens` applies to both provider-native compaction and VT Code's local fallback compaction.
-- `context.dynamic.persist_history = true` lets VT Code persist compaction artifacts and the session memory envelope so later resumes and summarized forks can reuse that context.
+- `context.dynamic.enabled = true` and `context.dynamic.persist_history = true`
+  let VT Code persist compaction artifacts and the session memory envelope for
+  summarisation and working-memory recovery. These artifacts are distinct from
+  the durable session archive used for ACP resume; see [ACP storage
+  boundaries](../guides/zed-acp.md#storage-boundaries).
 - `context.dynamic.retained_user_messages` controls how many recent real user messages VT Code preserves verbatim on the local fallback compaction path and in summarized forks. The default is `4`.
 - The session memory envelope is VT Code's durable working-memory artifact. It is refreshed at turn boundaries and after completed child-agent results, then persisted beside history artifacts as `.memory.json`.
 - A soft compaction threshold at 90% of the effective hard threshold defers compaction to the next outer turn boundary; the hard threshold compacts before the next model request. Compaction does not issue a hidden summary request from inside an active tool loop.
