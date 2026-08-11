@@ -35,7 +35,8 @@ use crate::acp;
 use crate::acp::Error as SdkError;
 use agent_client_protocol::schema::v1::{
     AuthenticateRequest, AuthenticateResponse, CancelNotification, InitializeRequest, InitializeResponse,
-    LoadSessionRequest, LoadSessionResponse, NewSessionRequest, NewSessionResponse, PromptRequest, PromptResponse,
+    ListSessionsRequest, ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
+    NewSessionResponse, PromptRequest, PromptResponse, ResumeSessionRequest, ResumeSessionResponse,
     SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
 };
 use agent_client_protocol::{
@@ -496,6 +497,26 @@ where
         .on_receive_request(
             {
                 let agent = Arc::clone(&agent);
+                move |req: ListSessionsRequest, request_cx: Responder<ListSessionsResponse>, _cx| {
+                    let agent = Arc::clone(&agent);
+                    async move { handle_list_sessions(agent, req, request_cx).await }
+                }
+            },
+            on_receive_request!(),
+        )
+        .on_receive_request(
+            {
+                let agent = Arc::clone(&agent);
+                move |req: ResumeSessionRequest, request_cx: Responder<ResumeSessionResponse>, _cx| {
+                    let agent = Arc::clone(&agent);
+                    async move { handle_resume_session(agent, req, request_cx).await }
+                }
+            },
+            on_receive_request!(),
+        )
+        .on_receive_request(
+            {
+                let agent = Arc::clone(&agent);
                 move |req: SetSessionConfigOptionRequest, request_cx: Responder<SetSessionConfigOptionResponse>, _cx| {
                     let agent = Arc::clone(&agent);
                     async move { handle_set_session_config_option(agent, req, request_cx).await }
@@ -541,13 +562,12 @@ async fn handle_initialize(
             INITIALIZE_VERSION_MISMATCH_LOG
         );
     }
-    let mut capabilities = acp::AgentCapabilities::default();
+    let mut capabilities = advertised_agent_capabilities();
     capabilities.prompt_capabilities.embedded_context = true;
     capabilities.prompt_capabilities.image = true;
     capabilities.prompt_capabilities.audio = true;
     capabilities.mcp_capabilities.http = true;
     capabilities.mcp_capabilities.sse = false;
-    capabilities.load_session = true;
 
     let auth_methods = build_auth_methods();
     let response = InitializeResponse::new(acp::ProtocolVersion::V1)
@@ -555,6 +575,15 @@ async fn handle_initialize(
         .agent_info(agent_implementation_info(agent.title()))
         .auth_methods(auth_methods);
     request_cx.respond(response)
+}
+
+fn advertised_agent_capabilities() -> acp::AgentCapabilities {
+    let mut capabilities = acp::AgentCapabilities::default();
+    capabilities.load_session = true;
+    capabilities.session_capabilities = acp::SessionCapabilities::new()
+        .list(acp::SessionListCapabilities::new())
+        .resume(acp::SessionResumeCapabilities::new());
+    capabilities
 }
 
 fn build_auth_methods() -> Vec<acp::AuthMethod> {
@@ -660,6 +689,24 @@ async fn handle_load_session(
     request_cx: Responder<LoadSessionResponse>,
 ) -> Result<(), SdkError> {
     let response = agent.load_session(req).await?;
+    request_cx.respond(response)
+}
+
+async fn handle_list_sessions(
+    agent: Arc<ZedAgent>,
+    req: ListSessionsRequest,
+    request_cx: Responder<ListSessionsResponse>,
+) -> Result<(), SdkError> {
+    let response = agent.list_sessions(req).await?;
+    request_cx.respond(response)
+}
+
+async fn handle_resume_session(
+    agent: Arc<ZedAgent>,
+    req: ResumeSessionRequest,
+    request_cx: Responder<ResumeSessionResponse>,
+) -> Result<(), SdkError> {
+    let response = agent.resume_session(req).await?;
     request_cx.respond(response)
 }
 
@@ -1329,6 +1376,15 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use vtcode_config::core::{CustomProviderConfig, CustomProviderRequestPolicyConfig};
     use vtcode_core::core::threads::{ThreadBootstrap, ThreadManager};
+
+    #[test]
+    fn advertised_capabilities_include_session_discovery_and_resume() {
+        let capabilities = advertised_agent_capabilities();
+
+        assert!(capabilities.load_session);
+        assert!(capabilities.session_capabilities.list.is_some());
+        assert!(capabilities.session_capabilities.resume.is_some());
+    }
     use vtcode_core::llm::provider::{LLMError, LLMErrorMetadata};
 
     use super::*;
