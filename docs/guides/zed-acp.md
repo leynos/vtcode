@@ -83,6 +83,29 @@ Direct MCP proxy tools remain subject to the same MCP provider allowlists and se
 interactive sessions. The selected ACP primary agent's tool permissions also apply, so a provider
 or tool blocked by either policy is not exposed to, or executable by, the ACP session.
 
+### Lifecycle hooks in ACP
+
+The canonical `[hooks.lifecycle]` configuration is also used by ACP sessions;
+no ACP-specific hook schema is required. Hooks are scoped to each ACP session
+and follow this ordering: `SessionStart` once for `session/new` or resumed
+sessions, `UserPromptSubmit` before provider work, `PreToolUse` and
+`PermissionRequest` before a tool runs, `PostToolUse` after its result,
+`PreCompact` before automatic compaction, and `Stop` before ACP reports a final
+turn. A blocking prompt is refused; a blocking stop hook feeds its reason back
+into the same turn and continues until the hook allows the draft or the turn
+is cancelled.
+
+For `PermissionRequest`, hook `updatedInput` is applied to the tool call. ACP
+does not persist hook permission scopes or apply `permission_updates`; it logs
+an explicit warning when those fields are returned. An `interrupt` decision
+fails the tool safely.
+
+`SessionEnd` is emitted when the ACP connection actually closes (with a bounded
+shutdown wait), not after every prompt. Notification hooks are not invented for
+ACP protocol messages; they run only for real VT Code notification events. The
+current ACP subagent controller does not expose child lifecycle callbacks, so
+ACP does not currently emit `SubagentStart` or `SubagentStop`.
+
 MCP connections are scoped to the session that declares them. A subagent does not implicitly inherit
 its parent's MCP connections; declare the required MCP servers in the subagent's own configuration.
 

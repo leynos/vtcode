@@ -552,6 +552,11 @@ impl LifecycleHookEngine {
         Ok(outcome)
     }
 
+    /// Return whether this engine has any configured `Stop` hooks.
+    pub fn has_stop_hooks(&self) -> bool {
+        !self.inner.hooks.stop.is_empty()
+    }
+
     /// Update the transcript path that hooks can access via the `VT_TRANSCRIPT_PATH` env var.
     pub async fn update_transcript_path(&self, path: Option<PathBuf>) {
         let mut state = self.inner.state.lock().await;

@@ -14,6 +14,7 @@ use tracing::{error, info, warn};
 use vtcode_config::{SubagentDiscoveryInput, discover_subagents};
 use vtcode_core::config::VTCodeConfig;
 use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
+use vtcode_core::hooks::SessionEndReason;
 use vtcode_core::llm::factory::register_custom_providers;
 use vtcode_core::prompts::system::generate_system_instruction_with_config;
 
@@ -107,7 +108,7 @@ pub async fn run_acp_agent(
             // lives for the entire connection lifetime (and is cancelled
             // automatically when the connection closes).
             let attach_agent = Arc::clone(&agent);
-            builder
+            let connection_result = builder
                 .connect_with(Stdio::new(), async move |cx: ConnectionTo<Client>| {
                     let handle = ConnectionHandle::new(cx);
                     if let Err(existing) = register_acp_connection(Arc::clone(&handle)) {
@@ -120,7 +121,22 @@ pub async fn run_acp_agent(
                     Ok(())
                 })
                 .await
-                .map_err(|error| anyhow::anyhow!("ACP stdio connection failed: {error}"))?;
+                .map_err(|error| anyhow::anyhow!("ACP stdio connection failed: {error}"));
+
+            let end_reason = if connection_result.is_ok() {
+                SessionEndReason::Exit
+            } else {
+                SessionEndReason::Error
+            };
+            let end_result =
+                tokio::time::timeout(std::time::Duration::from_secs(3), agent.run_session_end_hooks(end_reason))
+                    .await
+                    .map_err(|timeout_error| {
+                        anyhow::anyhow!("ACP SessionEnd hooks exceeded shutdown timeout: {timeout_error}")
+                    });
+
+            connection_result?;
+            end_result?;
 
             Ok::<(), anyhow::Error>(())
         }))

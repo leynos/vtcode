@@ -5,11 +5,12 @@ use anyhow::{Context, Result};
 use std::sync::Arc;
 use tokio::time::{Instant, sleep_until};
 use tracing::{info, warn};
-use vtcode_core::compaction::ManualCompactionOptions;
 use vtcode_core::compaction::auto::{AutoCompactionInput, auto_compact_messages};
 use vtcode_core::compaction::memory_envelope::{
     MemoryEnvelopePlacement, effective_compaction_threshold, local_compaction_config,
 };
+use vtcode_core::compaction::{CompactionStrategy, ManualCompactionOptions, manual_compaction_strategy};
+use vtcode_core::exec::events::{CompactionMode, CompactionTrigger};
 use vtcode_core::llm::provider::{LLMProvider, Message, ToolDefinition};
 
 const DEFAULT_OUTPUT_RESERVE_TOKENS: usize = 16_384;
@@ -93,6 +94,17 @@ impl ZedAgent {
         let original_len = history.len();
         let force_compaction = admission_budget.is_some_and(|budget| prompt_tokens >= budget)
             && configured_threshold.is_none_or(|threshold| prompt_tokens < threshold);
+
+        if let Some(hooks) = session.lifecycle_hooks() {
+            let compaction_mode = lifecycle_compaction_mode(manual_compaction_strategy(provider, model));
+            let outcome = hooks
+                .run_pre_compact(CompactionTrigger::Auto, compaction_mode, original_len, 0, None)
+                .await
+                .context("ACP PreCompact hooks failed")?;
+            for message in outcome.messages {
+                warn!(level = ?message.level, message = %message.text, "ACP PreCompact hook");
+            }
+        }
 
         let permit = runtime.acquire(&session.cancellation).await.map_err(|error| match error {
             ProviderAdmissionError::Cancelled => anyhow::anyhow!("ACP compaction cancelled"),
@@ -191,6 +203,13 @@ impl ZedAgent {
     }
 }
 
+fn lifecycle_compaction_mode(strategy: CompactionStrategy) -> CompactionMode {
+    match strategy {
+        CompactionStrategy::Local => CompactionMode::Local,
+        CompactionStrategy::NativeStandalone | CompactionStrategy::NativeInline => CompactionMode::Provider,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,5 +263,12 @@ mod tests {
         let provider = ContextProvider { context_size: 32_768 };
 
         assert_eq!(admission_prompt_budget(&provider, "test"), Some(15_360));
+    }
+
+    #[test]
+    fn lifecycle_compaction_mode_preserves_local_and_native_strategy() {
+        assert_eq!(lifecycle_compaction_mode(CompactionStrategy::Local), CompactionMode::Local);
+        assert_eq!(lifecycle_compaction_mode(CompactionStrategy::NativeStandalone), CompactionMode::Provider);
+        assert_eq!(lifecycle_compaction_mode(CompactionStrategy::NativeInline), CompactionMode::Provider);
     }
 }
