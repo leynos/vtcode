@@ -48,6 +48,11 @@ Open your `vtcode.toml` (project-local copy or the default in the repo root) and
 [acp]
 enabled = true
 
+    [acp.audit]
+    # Optional; disabled by default. Entries contain metadata and hashes only.
+    enabled = false
+    path = "~/.vtcode/audit/acp-tools.jsonl"
+
     [acp.zed]
     enabled = true
     transport = "stdio"

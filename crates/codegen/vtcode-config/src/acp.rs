@@ -1,4 +1,5 @@
 use crate::constants::env::acp::AgentClientProtocolEnvKey;
+use crate::safety::ToolAuditConfig;
 use serde::{Deserialize, Serialize};
 
 fn parse_env_bool(key: AgentClientProtocolEnvKey, default: bool) -> bool {
@@ -50,6 +51,10 @@ pub struct AgentClientProtocolConfig {
     #[serde(default = "default_enabled")]
     pub enabled: bool,
 
+    /// Explicit, opt-in ACP tool invocation audit configuration.
+    #[serde(default)]
+    pub audit: ToolAuditConfig,
+
     /// Agent Client Protocol settings
     #[serde(default)]
     pub zed: AgentClientProtocolZedConfig,
@@ -59,6 +64,7 @@ impl Default for AgentClientProtocolConfig {
     fn default() -> Self {
         Self {
             enabled: default_enabled(),
+            audit: ToolAuditConfig::default(),
             zed: AgentClientProtocolZedConfig::default(),
         }
     }
@@ -263,10 +269,30 @@ mod tests {
     #[test]
     fn defaults_use_stdio_transport() {
         let cfg = AgentClientProtocolConfig::default();
+        assert!(!cfg.audit.enabled());
         assert!(matches!(cfg.zed.transport, AgentClientProtocolTransport::Stdio));
         assert!(cfg.zed.tools.read_file);
         assert!(cfg.zed.tools.list_files);
         assert!(matches!(cfg.zed.workspace_trust, AgentClientProtocolZedWorkspaceTrustMode::FullAuto));
+    }
+
+    #[test]
+    fn parses_explicit_acp_audit_config() {
+        let cfg: AgentClientProtocolConfig = toml::from_str(
+            r#"
+            [audit]
+            enabled = true
+            path = "/tmp/acp-audit.jsonl"
+            max_size_bytes = 4096
+            max_files = 2
+            "#,
+        )
+        .expect("ACP audit config should parse");
+
+        assert!(cfg.audit.enabled());
+        assert_eq!(cfg.audit.path(), std::path::Path::new("/tmp/acp-audit.jsonl"));
+        assert_eq!(cfg.audit.max_size_bytes(), 4096);
+        assert_eq!(cfg.audit.max_files(), 2);
     }
 
     #[test]

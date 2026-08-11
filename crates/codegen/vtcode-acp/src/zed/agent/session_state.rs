@@ -791,6 +791,7 @@ mod tests {
             primary_agents,
             false,
             None,
+            None,
         ))
         .await
     }

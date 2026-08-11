@@ -13,6 +13,10 @@ python3 scripts/generate_config_field_reference.py
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `acp.enabled` | `boolean` | no | `false` | Globally enable the ACP bridge |
+| `acp.audit.enabled` | `boolean` | no | `false` | Persist ACP tool invocation metadata as hash-only JSONL audit entries |
+| `acp.audit.max_files` | `integer` | no | `4` | Maximum number of ACP audit files to retain |
+| `acp.audit.max_size_bytes` | `integer` | no | `33554432` | Maximum active ACP audit file size before rotation |
+| `acp.audit.path` | `string` | no | `"~/.vtcode/audit/tools.jsonl"` | JSONL path for the opt-in ACP tool audit |
 | `acp.zed.auth.auth_url` | `null \| string` | no | `null` | URL where users can get their API key (optional, for UI display) |
 | `acp.zed.auth.default_method` | `string` | no | `"agent"` | Default authentication method for ACP agents Options: "agent" (default - agent handles auth), "env_var", "terminal" |
 | `acp.zed.auth.env_var_name` | `null \| string` | no | `null` | Environment variable name for auth (used when default_method is "env_var") Examples: "OPENAI_API_KEY", "ANTHROPIC_API_KEY" |
