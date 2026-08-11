@@ -939,6 +939,22 @@ Notes:
   intents: at most 16 pending intents and the most recent 64 applied IDs are
   retained for restart recovery.
 
+### Durable session archives
+
+Durable ACP session archives are controlled separately by `[history]`:
+
+```toml
+[history]
+persistence = "file"  # default; use "none" to disable durable archives
+# max_bytes = 1048576   # Optional per-archive snapshot bound
+```
+
+With `persistence = "file"`, ACP `session/list` discovers the saved archives
+for a requested workspace, and `session/load` and `session/resume` restore an
+archive by its exact session ID. `persistence = "none"` disables archive
+discovery and cross-process resume. These settings do not control
+`context.dynamic` compaction artifacts or the opt-in `[acp.audit]` JSONL audit.
+
 ## MCP integration
 
 ### mcp
