@@ -322,11 +322,34 @@ Common cases:
 
 ## Runtime behaviour
 
-- **Session management** – ACP session IDs are stable across VT Code process and editor restarts.
-  VT Code checkpoints the user message, assistant tool requests, tool results, completed assistant
-  response, and any incomplete streamed response to the normal session archive. An ACP client can
-  pass that ID to `session/load` to restore the checkpointed history. Set `history.persistence =
-  "none"` to disable durable archives; the session then remains process-local.
+### Storage boundaries
+
+ACP continuity uses three independent stores:
+
+1. **Compaction history/artifacts** – Stored under
+   `<workspace>/.vtcode/history/` and controlled by `[context.dynamic] enabled`
+   and `persist_history`. These artifacts support summarisation and
+   working-memory recovery, including the session memory envelope. They are not
+   a complete resumable session and are not read by ACP `session/load`.
+2. **Durable session archive** – Stored under `$VT_SESSION_DIR`, or the
+   resolved VT Code configuration directory's `sessions/`, and controlled by
+   `[history].persistence` and `max_bytes`. These JSON snapshots are used by
+   ACP `session/load` and checkpoint user messages, assistant tool requests,
+   tool results, completed responses, and incomplete turns.
+3. **ACP security tool audit** – Written to `[acp.audit].path` only when
+   `[acp.audit].enabled = true`. This append-only JSONL contains invocation
+   metadata, status, timing, and hashes. It does not contain conversation,
+   request, or result bodies and cannot be used for resume or compaction.
+
+These stores are independent: disabling one does not disable the others. In
+particular, `context.dynamic` settings do not control durable session archives,
+and `[history]` settings do not control ACP audit output.
+
+- **Session management** – With durable history enabled, ACP session IDs remain
+  usable across VT Code process and editor restarts. An ACP client can pass the
+  session ID to `session/load` to restore the checkpointed history. Set
+  `history.persistence = "none"` to disable durable archives; the session then
+  remains process-local.
 - **Sub-agent delegation** – When ACP sub-agents are enabled, the session exposes the canonical
   `agent` tool. Its actions are `spawn`, `spawn_subprocess`, `send_input`, `wait`, `resume`, and
   `close`. Before delegation, VT Code synchronises the current parent ACP session identity and
