@@ -2,18 +2,22 @@ use super::ZedAgent;
 use crate::acp;
 use crate::acp::Error as SdkError;
 use crate::permissions::PermissionToolContext;
-use crate::reports::{TOOL_RESPONSE_KEY_STATUS, TOOL_RESPONSE_KEY_TOOL, TOOL_SUCCESS_LABEL, ToolExecutionReport};
+use crate::reports::{
+    TOOL_RESPONSE_KEY_STATUS, TOOL_RESPONSE_KEY_TOOL, TOOL_SUCCESS_LABEL, ToolExecutionReport, create_diff_content,
+};
 use crate::tooling::{SupportedTool, ToolDescriptor};
 use crate::zed::connection::ConnectionHandle;
 use anyhow::Result;
 use serde_json::{Value, json};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::time::Instant;
+use vtcode_commons::fs::canonicalize_with_context_async;
 use vtcode_core::config::constants::tools;
 use vtcode_core::hooks::{PermissionDecisionBehavior, PreToolHookDecision};
 use vtcode_core::llm::provider::ToolCall as ProviderToolCall;
 use vtcode_core::permissions::build_permission_request;
-use vtcode_core::tools::apply_patch::decode_apply_patch_input;
+use vtcode_core::tools::apply_patch::{Patch, PatchOperation, decode_apply_patch_input};
 
 use super::super::types::{RunTerminalMode, SessionHandle, ToolCallResult};
 
@@ -198,6 +202,13 @@ impl ZedAgent {
                 .await?;
         }
 
+        let apply_patch_snapshot =
+            if permission_override.is_none() && !cancel_after_permission && func_ref.name == tools::APPLY_PATCH {
+                self.capture_apply_patch_snapshot(effective_args.as_ref()).await
+            } else {
+                None
+            };
+
         let mut report = if let Some(report) = permission_override {
             report
         } else if cancel_after_permission {
@@ -230,6 +241,8 @@ impl ZedAgent {
         if session.cancellation.is_cancelled() && matches!(report.status, acp::ToolCallStatus::Completed) {
             report = ToolExecutionReport::cancelled(&func_ref.name);
         }
+
+        attach_apply_patch_diff_content(&mut report, apply_patch_snapshot.as_ref()).await;
 
         if should_run_post_tool_hook(&report.status)
             && let Some(hooks) = session.lifecycle_hooks()
@@ -333,6 +346,24 @@ impl ZedAgent {
         args.and_then(|args| decode_apply_patch_input(args).ok().flatten())
             .map(|patch| vec![acp::ToolCallContent::from(patch.text)])
             .unwrap_or_default()
+    }
+
+    async fn capture_apply_patch_snapshot(&self, args: Option<&Value>) -> Option<ApplyPatchSnapshot> {
+        let args = args?;
+        let decoded = decode_apply_patch_input(args).ok().flatten()?;
+        let patch = Patch::parse(&decoded.text).ok()?;
+        let workspace = self.absolute_workspace_root().await?;
+        capture_apply_patch_snapshot_for_workspace(&workspace, &patch).await
+    }
+
+    async fn absolute_workspace_root(&self) -> Option<PathBuf> {
+        if self.workspace_root().is_absolute() {
+            Some(self.workspace_root().to_path_buf())
+        } else {
+            canonicalize_with_context_async(self.workspace_root(), "ACP workspace")
+                .await
+                .ok()
+        }
     }
 
     fn tool_call_result_from_report(call: &ProviderToolCall, report: ToolExecutionReport) -> ToolCallResult {
@@ -493,6 +524,95 @@ impl ZedAgent {
     }
 }
 
+struct ApplyPatchSnapshot {
+    files: Vec<ApplyPatchFileSnapshot>,
+}
+
+struct ApplyPatchFileSnapshot {
+    path: PathBuf,
+    old_text: Option<String>,
+    new_text: ApplyPatchNewText,
+}
+
+enum ApplyPatchNewText {
+    Empty,
+    ReadAfterWrite,
+}
+
+async fn capture_apply_patch_snapshot_for_workspace(
+    workspace: &std::path::Path,
+    patch: &Patch,
+) -> Option<ApplyPatchSnapshot> {
+    let mut files = Vec::new();
+
+    for operation in patch.operations() {
+        match operation {
+            PatchOperation::AddFile { path, .. } => files.push(ApplyPatchFileSnapshot {
+                path: workspace.join(path),
+                old_text: None,
+                new_text: ApplyPatchNewText::ReadAfterWrite,
+            }),
+            PatchOperation::DeleteFile { path } => files.push(ApplyPatchFileSnapshot {
+                path: workspace.join(path),
+                old_text: Some(tokio::fs::read_to_string(workspace.join(path)).await.ok()?),
+                new_text: ApplyPatchNewText::Empty,
+            }),
+            PatchOperation::UpdateFile { path, new_path, .. } => {
+                let source_path = workspace.join(path);
+                let old_text = tokio::fs::read_to_string(&source_path).await.ok()?;
+                let destination_path = new_path
+                    .as_deref()
+                    .filter(|candidate| *candidate != path.as_str())
+                    .map(|destination| workspace.join(destination));
+
+                files.push(ApplyPatchFileSnapshot {
+                    path: source_path,
+                    old_text: Some(old_text),
+                    new_text: if destination_path.is_some() {
+                        ApplyPatchNewText::Empty
+                    } else {
+                        ApplyPatchNewText::ReadAfterWrite
+                    },
+                });
+                if let Some(destination_path) = destination_path {
+                    files.push(ApplyPatchFileSnapshot {
+                        path: destination_path,
+                        old_text: None,
+                        new_text: ApplyPatchNewText::ReadAfterWrite,
+                    });
+                }
+            }
+        }
+    }
+
+    Some(ApplyPatchSnapshot { files })
+}
+
+async fn attach_apply_patch_diff_content(report: &mut ToolExecutionReport, snapshot: Option<&ApplyPatchSnapshot>) {
+    if !matches!(report.status, acp::ToolCallStatus::Completed) {
+        return;
+    }
+    let Some(snapshot) = snapshot else {
+        return;
+    };
+    let Some(content) = render_apply_patch_diff_content(snapshot).await else {
+        return;
+    };
+    report.content = content;
+}
+
+async fn render_apply_patch_diff_content(snapshot: &ApplyPatchSnapshot) -> Option<Vec<acp::ToolCallContent>> {
+    let mut content = Vec::with_capacity(snapshot.files.len());
+    for file in &snapshot.files {
+        let new_text = match file.new_text {
+            ApplyPatchNewText::Empty => String::new(),
+            ApplyPatchNewText::ReadAfterWrite => tokio::fs::read_to_string(&file.path).await.ok()?,
+        };
+        content.push(create_diff_content(file.path.to_string_lossy().as_ref(), file.old_text.as_deref(), &new_text));
+    }
+    Some(content)
+}
+
 fn should_route_terminal_via_client(tool_name: &str, _args: &Value) -> bool {
     matches!(tool_name, tools::RUN_PTY_CMD | tools::EXEC_COMMAND)
 }
@@ -504,6 +624,8 @@ fn should_run_post_tool_hook(status: &acp::ToolCallStatus) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert_fs::TempDir;
+    use std::fs;
 
     #[test]
     fn apply_patch_call_exposes_patch_text_before_execution() {
@@ -530,5 +652,71 @@ mod tests {
         assert!(!should_run_post_tool_hook(&acp::ToolCallStatus::Failed));
         assert!(!should_run_post_tool_hook(&acp::ToolCallStatus::InProgress));
         assert!(!should_run_post_tool_hook(&acp::ToolCallStatus::Pending));
+    }
+
+    #[tokio::test]
+    async fn apply_patch_diff_content_covers_update_add_delete_move_and_multi_file() {
+        let temp = TempDir::new().unwrap();
+        fs::write(temp.path().join("update.txt"), "old update").unwrap();
+        fs::write(temp.path().join("delete.txt"), "old delete").unwrap();
+        fs::write(temp.path().join("move.txt"), "old move").unwrap();
+        let patch = Patch::parse(
+            "*** Begin Patch\n*** Update File: update.txt\n@@\n-old update\n+new update\n*** Add File: add.txt\n+new add\n*** Delete File: delete.txt\n*** Update File: move.txt\n*** Move to: moved.txt\n@@\n-old move\n+new move\n*** End Patch\n",
+        )
+        .unwrap();
+
+        let snapshot = capture_apply_patch_snapshot_for_workspace(temp.path(), &patch).await.unwrap();
+        assert_eq!(snapshot.files.len(), 5);
+        assert!(snapshot.files.iter().all(|file| file.path.is_absolute()));
+        assert_eq!(snapshot.files[0].old_text.as_deref(), Some("old update"));
+        assert_eq!(snapshot.files[1].old_text, None);
+        assert_eq!(snapshot.files[2].old_text.as_deref(), Some("old delete"));
+        assert_eq!(snapshot.files[3].old_text.as_deref(), Some("old move"));
+        assert_eq!(snapshot.files[4].old_text, None);
+
+        fs::write(temp.path().join("update.txt"), "new update").unwrap();
+        fs::write(temp.path().join("add.txt"), "new add").unwrap();
+        fs::remove_file(temp.path().join("delete.txt")).unwrap();
+        fs::remove_file(temp.path().join("move.txt")).unwrap();
+        fs::write(temp.path().join("moved.txt"), "new move").unwrap();
+
+        let content = render_apply_patch_diff_content(&snapshot).await.unwrap();
+        assert_eq!(content.len(), 5);
+        let diffs = content
+            .iter()
+            .map(|block| {
+                let acp::ToolCallContent::Diff(diff) = block else {
+                    panic!("expected ACP diff content");
+                };
+                diff
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(diffs[0].old_text.as_deref(), Some("old update"));
+        assert_eq!(diffs[0].new_text, "new update");
+        assert_eq!(diffs[1].old_text, None);
+        assert_eq!(diffs[1].new_text, "new add");
+        assert_eq!(diffs[2].old_text.as_deref(), Some("old delete"));
+        assert_eq!(diffs[2].new_text, "");
+        assert_eq!(diffs[3].old_text.as_deref(), Some("old move"));
+        assert_eq!(diffs[3].new_text, "");
+        assert_eq!(diffs[4].old_text, None);
+        assert_eq!(diffs[4].new_text, "new move");
+        assert_eq!(diffs[0].path, temp.path().join("update.txt"));
+        assert_eq!(diffs[4].path, temp.path().join("moved.txt"));
+    }
+
+    #[tokio::test]
+    async fn failed_or_cancelled_apply_patch_does_not_attach_diff_content() {
+        let snapshot = ApplyPatchSnapshot { files: Vec::new() };
+
+        let mut failed = ToolExecutionReport::failure(tools::APPLY_PATCH, "failed");
+        let failed_content = failed.content.clone();
+        attach_apply_patch_diff_content(&mut failed, Some(&snapshot)).await;
+        assert_eq!(failed.content, failed_content);
+
+        let mut cancelled = ToolExecutionReport::cancelled(tools::APPLY_PATCH);
+        let cancelled_content = cancelled.content.clone();
+        attach_apply_patch_diff_content(&mut cancelled, Some(&snapshot)).await;
+        assert_eq!(cancelled.content, cancelled_content);
     }
 }
