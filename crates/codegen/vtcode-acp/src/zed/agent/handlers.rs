@@ -785,6 +785,19 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         .tool_definitions(provider_supports_tools, &enabled_tools, &primary_agent)
         .map(Arc::new);
     let mut messages = agent.resolved_messages(&session);
+    if agent
+        .maybe_compact_session(
+            &session,
+            provider.as_ref(),
+            &provider_runtime,
+            &session_model,
+            tool_definitions.as_ref(),
+        )
+        .await
+        .map_err(|error| SdkError::internal_error().data(error.to_string()))?
+    {
+        messages = agent.resolved_messages(&session);
+    }
     if let Some(controller) = agent.local_tool_registry.subagent_controller() {
         controller.set_parent_session_id(args.session_id.to_string()).await;
         controller.set_parent_messages(&messages).await;
@@ -1061,6 +1074,23 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             if session.cancellation.is_cancelled() {
                 stop_reason = acp::StopReason::Cancelled;
                 break;
+            }
+
+            if agent
+                .maybe_compact_session(
+                    &session,
+                    provider.as_ref(),
+                    &provider_runtime,
+                    &session_model,
+                    tool_definitions.as_ref(),
+                )
+                .await
+                .map_err(|error| SdkError::internal_error().data(error.to_string()))?
+            {
+                messages = agent.resolved_messages(&session);
+                if let Some(controller) = agent.local_tool_registry.subagent_controller() {
+                    controller.set_parent_messages(&messages).await;
+                }
             }
 
             let request = LLMRequest {

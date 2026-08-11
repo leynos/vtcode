@@ -78,7 +78,7 @@ impl ConnectionHandle {
         let result = self.cx.send_request(request).block_task().await;
         tracing::debug!(
             rpc = "session/request_permission",
-            elapsed_ms = started_at.elapsed().as_millis() as u64,
+            elapsed_ms = elapsed_millis(started_at),
             success = result.is_ok(),
             "ACP client request completed"
         );
@@ -95,7 +95,7 @@ impl ConnectionHandle {
         let result = self.cx.send_request(request).block_task().await;
         tracing::debug!(
             rpc = "fs/read_text_file",
-            elapsed_ms = started_at.elapsed().as_millis() as u64,
+            elapsed_ms = elapsed_millis(started_at),
             success = result.is_ok(),
             "ACP client request completed"
         );
@@ -112,7 +112,7 @@ impl ConnectionHandle {
         let result = self.cx.send_request(request).block_task().await;
         tracing::debug!(
             rpc = "terminal/create",
-            elapsed_ms = started_at.elapsed().as_millis() as u64,
+            elapsed_ms = elapsed_millis(started_at),
             success = result.is_ok(),
             "ACP client request completed"
         );
@@ -124,4 +124,7 @@ impl std::fmt::Debug for ConnectionHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConnectionHandle").finish_non_exhaustive()
     }
+}
+fn elapsed_millis(started_at: Instant) -> u64 {
+    u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX)
 }

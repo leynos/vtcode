@@ -110,6 +110,13 @@ it marks compaction pending and defers the work to the next outer turn
 boundary. The hard threshold compacts before the next model request. No hidden
 summary model call is issued in the middle of an active tool loop.
 
+ACP sessions use the same compaction orchestrator before provider admission.
+The ACP prompt budget includes resolved system and session messages plus tool
+definitions, and reserves output capacity and a safety margin from the
+provider's effective context window. When compaction changes the history, ACP
+replaces the live thread and persists a durable checkpoint before rebuilding
+the provider request.
+
 The fork/branch history builder (`build_summarized_fork_history`) deliberately
 omits the continuity tail and produces a minimal resume artifact (envelope +
 summary + retained users only).

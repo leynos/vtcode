@@ -199,6 +199,7 @@ pub(crate) struct SessionData {
     pub(crate) provider: String,
     pub(crate) model: String,
     pub(crate) last_tool_call_at: Option<Instant>,
+    pub(crate) auto_compact_suppressed: u8,
 }
 
 #[cfg(test)]
