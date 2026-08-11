@@ -10,7 +10,9 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio::time::Instant;
 use vtcode_core::config::constants::tools;
+use vtcode_core::hooks::{PermissionDecisionBehavior, PreToolHookDecision};
 use vtcode_core::llm::provider::ToolCall as ProviderToolCall;
+use vtcode_core::permissions::build_permission_request;
 use vtcode_core::tools::apply_patch::decode_apply_patch_input;
 
 use super::super::types::{RunTerminalMode, SessionHandle, ToolCallResult};
@@ -86,22 +88,104 @@ impl ZedAgent {
             .content(Self::initial_tool_content(&func_ref.name, args_value_for_input.as_ref()))
             .raw_input(args_value_for_input.clone());
 
+        let pre_tool_decision = if let Some(hooks) = session.lifecycle_hooks() {
+            let outcome = hooks
+                .run_pre_tool_use(&func_ref.name, args_value_for_input.as_ref(), Some(call.id.as_str()))
+                .await
+                .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
+            for message in outcome.messages {
+                tracing::warn!(level = ?message.level, message = %message.text, "ACP PreToolUse hook");
+            }
+            outcome.decision
+        } else {
+            PreToolHookDecision::Continue
+        };
+
         self.send_update(session_id, acp::SessionUpdate::ToolCall(initial_call.clone()))
             .await?;
 
+        if matches!(pre_tool_decision, PreToolHookDecision::Deny) {
+            let report = ToolExecutionReport::failure(&func_ref.name, "Tool execution denied by PreToolUse hook");
+            let update = acp::ToolCallUpdate::new(call_id, Self::update_fields_from_report(&report));
+            self.send_update(session_id, acp::SessionUpdate::ToolCallUpdate(update)).await?;
+            return Ok(Self::tool_call_result_from_report(call, report));
+        }
+
         let cancel_active = session.cancellation.is_cancelled();
-        let permission_override = if let (false, Some(descriptor), Ok(args_value)) =
-            (cancel_active, tool_descriptor, args_value_result.as_ref())
+        let permission_hook_decision = if let (false, Some(descriptor), Some(args_value)) =
+            (cancel_active, tool_descriptor, args_value_for_input.as_ref())
         {
-            self.request_tool_permission(
-                client,
-                session_id,
-                &initial_call,
-                descriptor,
-                PermissionToolContext::new(&func_ref.name, kind, initial_call.title.as_str()),
-                args_value,
-            )
-            .await?
+            self.run_permission_hook(session, &func_ref.name, descriptor, args_value)
+                .await?
+        } else {
+            None
+        };
+        let mut effective_args = args_value_for_input.clone();
+        let permission_override = if let Some(decision) = permission_hook_decision {
+            if let Some(updated_input) = decision.updated_input.clone() {
+                effective_args = Some(updated_input);
+            }
+            if decision.scope != vtcode_core::hooks::PermissionDecisionScope::Once {
+                tracing::warn!(tool = %func_ref.name, scope = ?decision.scope, "ACP PermissionRequest hook scope is not persisted");
+            }
+            if !decision.permission_updates.is_empty() {
+                tracing::warn!(tool = %func_ref.name, "ACP PermissionRequest hook permission updates are unsupported");
+            }
+            if decision.interrupt {
+                tracing::warn!(tool = %func_ref.name, "ACP PermissionRequest hook interrupted tool execution");
+                Some(ToolExecutionReport::failure(
+                    &func_ref.name,
+                    "Tool execution interrupted by PermissionRequest hook",
+                ))
+            } else {
+                match decision.behavior {
+                    PermissionDecisionBehavior::Allow => None,
+                    PermissionDecisionBehavior::Deny => Some(ToolExecutionReport::failure(
+                        &func_ref.name,
+                        "Tool execution denied by PermissionRequest hook",
+                    )),
+                }
+            }
+        } else if matches!(pre_tool_decision, PreToolHookDecision::Allow) {
+            None
+        } else if let (false, Some(descriptor), Some(args_value)) =
+            (cancel_active, tool_descriptor, effective_args.as_ref())
+        {
+            let force_prompt = matches!(pre_tool_decision, PreToolHookDecision::Ask);
+            match descriptor {
+                ToolDescriptor::Acp(tool) if force_prompt => {
+                    self.permission_prompter
+                        .request_tool_permission_forced(client, session_id, &initial_call, tool, args_value)
+                        .await?
+                }
+                ToolDescriptor::Acp(tool) => {
+                    self.permission_prompter
+                        .request_tool_permission(client, session_id, &initial_call, tool, args_value)
+                        .await?
+                }
+                ToolDescriptor::Local if force_prompt => {
+                    self.permission_prompter
+                        .request_named_tool_permission_forced(
+                            client,
+                            session_id,
+                            &initial_call,
+                            PermissionToolContext::new(&func_ref.name, kind, initial_call.title.as_str()),
+                            args_value,
+                        )
+                        .await?
+                }
+                ToolDescriptor::Local => {
+                    self.permission_prompter
+                        .request_named_tool_permission(
+                            client,
+                            session_id,
+                            &initial_call,
+                            PermissionToolContext::new(&func_ref.name, kind, initial_call.title.as_str()),
+                            args_value,
+                        )
+                        .await?
+                }
+            }
         } else {
             None
         };
@@ -119,22 +203,27 @@ impl ZedAgent {
         } else if cancel_after_permission {
             ToolExecutionReport::cancelled(&func_ref.name)
         } else {
-            match (tool_descriptor, args_value_result) {
-                (Some(descriptor), Ok(args_value)) => {
+            match (tool_descriptor, effective_args.as_ref()) {
+                (Some(descriptor), Some(args_value)) => {
                     self.execute_descriptor(
                         descriptor,
                         &func_ref.name,
                         client,
                         session_id,
                         call.id.as_str(),
-                        &args_value,
+                        args_value,
                     )
                     .await
                 }
-                (None, Ok(_)) => ToolExecutionReport::failure(&func_ref.name, "Unsupported tool"),
-                (_, Err(error)) => {
-                    ToolExecutionReport::failure(&func_ref.name, &format!("Invalid JSON arguments: {error}"))
+                (None, Some(_)) => ToolExecutionReport::failure(&func_ref.name, "Unsupported tool"),
+                (Some(_), None) => {
+                    let error = match args_value_result.as_ref() {
+                        Ok(_) => "Invalid JSON arguments".to_string(),
+                        Err(error) => format!("Invalid JSON arguments: {error}"),
+                    };
+                    ToolExecutionReport::failure(&func_ref.name, &error)
                 }
+                (None, None) => ToolExecutionReport::failure(&func_ref.name, "Invalid JSON arguments"),
             }
         };
 
@@ -142,10 +231,67 @@ impl ZedAgent {
             report = ToolExecutionReport::cancelled(&func_ref.name);
         }
 
+        if should_run_post_tool_hook(&report.status)
+            && let Some(hooks) = session.lifecycle_hooks()
+        {
+            let output = report
+                .raw_output
+                .as_ref()
+                .cloned()
+                .unwrap_or_else(|| Value::String(report.llm_response.clone()));
+            let outcome = hooks
+                .run_post_tool_use(&func_ref.name, effective_args.as_ref(), &output, Some(call.id.as_str()))
+                .await
+                .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
+            for message in outcome.messages {
+                tracing::warn!(level = ?message.level, message = %message.text, "ACP PostToolUse hook");
+            }
+            for context in outcome.additional_context {
+                if !context.trim().is_empty() {
+                    report.llm_response.push_str("\nHook context: ");
+                    report.llm_response.push_str(&context);
+                }
+            }
+            if let Some(reason) = outcome.block_reason {
+                report.llm_response.push_str("\nHook feedback: ");
+                report.llm_response.push_str(&reason);
+            }
+        }
+
         let update = acp::ToolCallUpdate::new(call_id, Self::update_fields_from_report(&report));
         self.send_update(session_id, acp::SessionUpdate::ToolCallUpdate(update)).await?;
 
         Ok(Self::tool_call_result_from_report(call, report))
+    }
+
+    async fn run_permission_hook(
+        &self,
+        session: &SessionHandle,
+        tool_name: &str,
+        descriptor: ToolDescriptor,
+        args: &Value,
+    ) -> Result<Option<vtcode_core::hooks::PermissionRequestHookDecision>, SdkError> {
+        let Some(hooks) = session.lifecycle_hooks() else {
+            return Ok(None);
+        };
+        let request = build_permission_request(&self.config.workspace, &self.config.workspace, tool_name, Some(args));
+        let suggestions = match descriptor {
+            ToolDescriptor::Acp(tool) => self
+                .permission_prompter
+                .permission_options(tool, Some(args))
+                .into_iter()
+                .filter_map(|option| serde_json::to_value(option).ok())
+                .collect::<Vec<_>>(),
+            ToolDescriptor::Local => Vec::new(),
+        };
+        let outcome = hooks
+            .run_permission_request(tool_name, Some(args), &request, &suggestions)
+            .await
+            .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
+        for message in outcome.messages {
+            tracing::warn!(level = ?message.level, message = %message.text, "ACP PermissionRequest hook");
+        }
+        Ok(outcome.decision)
     }
 
     async fn pace_tool_call(&self, session: &SessionHandle) {
@@ -351,6 +497,10 @@ fn should_route_terminal_via_client(tool_name: &str, _args: &Value) -> bool {
     matches!(tool_name, tools::RUN_PTY_CMD | tools::EXEC_COMMAND)
 }
 
+fn should_run_post_tool_hook(status: &acp::ToolCallStatus) -> bool {
+    matches!(status, acp::ToolCallStatus::Completed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -372,5 +522,13 @@ mod tests {
     #[test]
     fn other_tool_calls_do_not_echo_raw_arguments_as_content() {
         assert!(ZedAgent::initial_tool_content(tools::EXEC_COMMAND, Some(&json!({ "command": "true" }))).is_empty());
+    }
+
+    #[test]
+    fn post_tool_hook_only_runs_for_successful_completion() {
+        assert!(should_run_post_tool_hook(&acp::ToolCallStatus::Completed));
+        assert!(!should_run_post_tool_hook(&acp::ToolCallStatus::Failed));
+        assert!(!should_run_post_tool_hook(&acp::ToolCallStatus::InProgress));
+        assert!(!should_run_post_tool_hook(&acp::ToolCallStatus::Pending));
     }
 }

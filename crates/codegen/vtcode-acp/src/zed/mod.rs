@@ -56,18 +56,23 @@ mod tests {
     use std::path::Path;
     use tokio::fs;
     use vtcode_config::auth::AuthCredentialsStoreMode;
+    use vtcode_config::hooks::{HookCommandConfig, HookGroupConfig};
     use vtcode_config::{SubagentDiscoveryInput, TimeoutsConfig, discover_subagents};
     use vtcode_core::config::core::PromptCachingConfig;
     use vtcode_core::config::models::{ModelId, Provider};
     use vtcode_core::config::types::{
         AgentConfig as CoreAgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference,
     };
-    use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig};
+    use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig, VTCodeConfig};
     use vtcode_core::core::agent::snapshots::{
         DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
     };
 
     async fn build_agent(workspace: &Path) -> ZedAgent {
+        build_agent_with_vt_config(workspace, None).await
+    }
+
+    async fn build_agent_with_vt_config(workspace: &Path, vt_cfg: Option<&VTCodeConfig>) -> ZedAgent {
         let core_config = CoreAgentConfig {
             model: "gpt-5.6-sol".to_string(),
             api_key: String::new(),
@@ -113,7 +118,7 @@ mod tests {
             Some("Zed".to_string()),
             primary_agents,
             false,
-            None,
+            vt_cfg,
         ))
         .await
     }
@@ -285,6 +290,38 @@ mod tests {
                             == crate::acp::SessionConfigValueId::new("gpt-5.6-sol")
                 )
         }));
+    }
+
+    #[tokio::test]
+    async fn lifecycle_hooks_are_attached_to_new_acp_sessions_and_end_on_connection_shutdown() {
+        let temp = TempDir::new().unwrap();
+        let marker = temp.path().join("acp-hook-events.log");
+        let mut vt_cfg = VTCodeConfig::default();
+        let command = format!("printf '%s\\n' \"$VT_HOOK_EVENT:$VT_SESSION_ID\" >> '{}'", marker.display());
+        vt_cfg.hooks.lifecycle.session_start = vec![HookGroupConfig {
+            matcher: Some("new_session".to_string()),
+            hooks: vec![HookCommandConfig {
+                command: command.clone(),
+                ..HookCommandConfig::default()
+            }],
+        }];
+        vt_cfg.hooks.lifecycle.session_end = vec![HookGroupConfig {
+            matcher: Some("exit".to_string()),
+            hooks: vec![HookCommandConfig { command, ..HookCommandConfig::default() }],
+        }];
+
+        let agent = build_agent_with_vt_config(temp.path(), Some(&vt_cfg)).await;
+        let response = agent.new_session(NewSessionRequest::new(temp.path())).await.unwrap();
+        let session_id = response.session_id;
+        let session = agent.session_handle(&session_id).unwrap();
+        assert!(session.lifecycle_hooks().is_some(), "new ACP session should have its own lifecycle engine");
+        assert_eq!(fs::read_to_string(&marker).await.unwrap().lines().count(), 1);
+
+        agent.run_session_end_hooks(vtcode_core::hooks::SessionEndReason::Exit).await;
+        agent.run_session_end_hooks(vtcode_core::hooks::SessionEndReason::Exit).await;
+        let events = fs::read_to_string(&marker).await.unwrap();
+        assert_eq!(events.lines().count(), 2);
+        assert!(events.lines().all(|line| line.contains(&session_id.to_string())));
     }
 
     #[tokio::test]

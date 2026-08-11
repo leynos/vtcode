@@ -9,6 +9,7 @@ use vtcode_config::auth::AuthCredentialsStoreMode;
 use vtcode_core::config::models::{ModelId, Provider};
 use vtcode_core::config::types::ReasoningEffortLevel;
 use vtcode_core::core::threads::{ThreadBootstrap, build_thread_archive_metadata};
+use vtcode_core::hooks::{LifecycleHookEngine, SessionEndReason, SessionStartTrigger};
 use vtcode_core::llm::ModelResolver;
 use vtcode_core::llm::factory::get_factory;
 use vtcode_core::llm::provider::{FinishReason, Message, MessageRole};
@@ -21,6 +22,56 @@ use super::super::helpers::session_config_options;
 use super::super::types::{SessionData, SessionHandle};
 
 impl ZedAgent {
+    pub(crate) async fn run_session_start_hooks(&self, session: &SessionHandle) -> anyhow::Result<()> {
+        if !session.mark_session_started() {
+            return Ok(());
+        }
+
+        session.update_transcript_path().await;
+        let Some(hooks) = session.lifecycle_hooks() else {
+            return Ok(());
+        };
+        let outcome = hooks.run_session_start().await?;
+        for message in outcome.messages {
+            warn!(level = ?message.level, message = %message.text, "ACP SessionStart hook");
+        }
+        for context in outcome.additional_context {
+            if !context.trim().is_empty() {
+                self.push_message(session, Message::system(context));
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn run_session_end_hooks(&self, reason: SessionEndReason) {
+        let sessions = self
+            .sessions
+            .lock()
+            .map(|sessions| sessions.values().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        for session in sessions {
+            if !session.mark_session_ended() {
+                continue;
+            }
+            let Some(hooks) = session.lifecycle_hooks() else {
+                continue;
+            };
+            let turn_id = session
+                .data
+                .lock()
+                .map(|data| data.session_id.to_string())
+                .unwrap_or_else(|_| "acp-session".to_string());
+            match hooks.run_session_end(&turn_id, reason).await {
+                Ok(messages) => {
+                    for message in messages {
+                        warn!(level = ?message.level, message = %message.text, "ACP SessionEnd hook");
+                    }
+                }
+                Err(error) => warn!(%error, "ACP SessionEnd hooks failed"),
+            }
+        }
+    }
+
     fn session_reasoning_effort_for_thread(
         &self,
         thread: &vtcode_core::core::threads::ThreadRuntimeHandle,
@@ -95,8 +146,9 @@ impl ZedAgent {
         &self,
         session_id: acp::SessionId,
         thread: vtcode_core::core::threads::ThreadRuntimeHandle,
+        trigger: SessionStartTrigger,
     ) -> SessionHandle {
-        self.build_session_handle_with_archive(session_id, thread, None)
+        self.build_session_handle_with_archive(session_id, thread, None, trigger)
     }
 
     fn build_session_handle_with_archive(
@@ -104,11 +156,26 @@ impl ZedAgent {
         session_id: acp::SessionId,
         thread: vtcode_core::core::threads::ThreadRuntimeHandle,
         archive: Option<SessionArchive>,
+        trigger: SessionStartTrigger,
     ) -> SessionHandle {
         let reasoning_effort = self.session_reasoning_effort_for_thread(&thread);
         let provider = self.session_provider_for_thread(&thread);
         let model = self.session_model_for_thread(&thread);
         let primary_agent = self.session_primary_agent_for_thread(&thread);
+        let lifecycle_hooks = self.vt_config.as_ref().and_then(|config| {
+            match LifecycleHookEngine::new_with_session(
+                self.config.workspace.clone(),
+                &config.hooks,
+                trigger,
+                session_id.0.to_string(),
+            ) {
+                Ok(hooks) => hooks,
+                Err(error) => {
+                    warn!(%error, "Failed to initialize ACP lifecycle hooks");
+                    None
+                }
+            }
+        });
         SessionHandle {
             data: Arc::new(Mutex::new(SessionData {
                 session_id,
@@ -121,6 +188,9 @@ impl ZedAgent {
                 model,
                 last_tool_call_at: None,
                 auto_compact_suppressed: 0,
+                lifecycle_hooks,
+                session_started: false,
+                session_ended: false,
             })),
             cancellation: super::super::types::SessionCancellation::default(),
         }
@@ -139,7 +209,7 @@ impl ZedAgent {
         let thread = self
             .thread_manager
             .start_thread_with_identifier(session_id.0.to_string(), ThreadBootstrap::new(Some(metadata)));
-        let handle = self.build_session_handle(session_id.clone(), thread);
+        let handle = self.build_session_handle(session_id.clone(), thread, SessionStartTrigger::NewSession);
         if let Ok(mut guard) = self.sessions.lock() {
             drop(guard.insert(session_id.clone(), handle));
         }
@@ -159,7 +229,7 @@ impl ZedAgent {
         let thread = self
             .thread_manager
             .start_thread_with_identifier(session_id.0.to_string(), ThreadBootstrap::new(Some(metadata)));
-        let handle = self.build_session_handle(session_id.clone(), thread);
+        let handle = self.build_session_handle(session_id.clone(), thread, SessionStartTrigger::NewSession);
         if let Ok(mut guard) = self.sessions.lock() {
             drop(guard.insert(session_id.clone(), handle));
         }
@@ -429,7 +499,12 @@ impl ZedAgent {
         let thread = self
             .thread_manager
             .start_thread_with_identifier(listing.identifier(), ThreadBootstrap::from_listing(listing));
-        let handle = self.build_session_handle_with_archive(session_id.clone(), thread, Some(archive));
+        let handle = self.build_session_handle_with_archive(
+            session_id.clone(),
+            thread,
+            Some(archive),
+            SessionStartTrigger::Resume,
+        );
         if let Ok(mut guard) = self.sessions.lock() {
             drop(guard.insert(session_id.clone(), handle.clone()));
         }
@@ -452,9 +527,15 @@ impl ZedAgent {
         _req: acp::NewSessionRequest,
     ) -> Result<acp::NewSessionResponse, acp::Error> {
         let session_id = self.register_durable_session();
-        let config_options = self
-            .session_handle(&session_id)
-            .map(|session| self.current_session_config_options(&session))
+        let session = self.session_handle(&session_id);
+        if let Some(session) = &session {
+            self.run_session_start_hooks(session)
+                .await
+                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+        }
+        let config_options = session
+            .as_ref()
+            .map(|session| self.current_session_config_options(session))
             .unwrap_or_default();
 
         if let Err(error) = self.send_available_commands_update(&session_id).await {
@@ -483,6 +564,9 @@ impl ZedAgent {
         }
 
         let config_options = self.current_session_config_options(&session);
+        self.run_session_start_hooks(&session)
+            .await
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
         Ok(acp::LoadSessionResponse::new().config_options(config_options))
     }
 
@@ -731,7 +815,8 @@ mod tests {
             .thread_manager
             .start_thread_with_identifier("session-vtcode-acp-archive", ThreadBootstrap::from_listing(listing));
 
-        let handle = agent.build_session_handle(acp::SessionId::new("session-1"), thread);
+        let handle =
+            agent.build_session_handle(acp::SessionId::new("session-1"), thread, SessionStartTrigger::NewSession);
 
         assert_eq!(primary_agent(&handle), "build");
         assert_eq!(reasoning_effort(&handle), ReasoningEffortLevel::XHigh);
@@ -769,6 +854,7 @@ mod tests {
             acp::SessionId::new("vtcode-zed-session-resume"),
             thread,
             Some(archive),
+            SessionStartTrigger::Resume,
         );
         agent.push_message(&handle, Message::user("continue".to_string()));
         agent.push_message(&handle, Message::assistant("resumed response".to_string()));
@@ -816,7 +902,8 @@ mod tests {
             .thread_manager
             .start_thread_with_identifier("session-vtcode-acp-archive", ThreadBootstrap::from_listing(listing));
 
-        let handle = agent.build_session_handle(acp::SessionId::new("session-1"), thread);
+        let handle =
+            agent.build_session_handle(acp::SessionId::new("session-1"), thread, SessionStartTrigger::NewSession);
 
         assert_eq!(primary_agent(&handle), "duck");
     }
