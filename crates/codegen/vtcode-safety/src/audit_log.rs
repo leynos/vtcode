@@ -116,6 +116,22 @@ pub struct ToolAuditEntry {
     reason: Option<String>,
 }
 
+/// Metadata and bodies supplied to [`ToolAuditEntry::from_invocation`]. The
+/// body slices are hashed and never copied into the resulting entry.
+pub struct ToolAuditInvocation<'a> {
+    pub timestamp_unix_ms: u64,
+    pub session_id: &'a str,
+    pub turn_id: &'a str,
+    pub tool_call_id: &'a str,
+    pub tool_name: &'a str,
+    pub arguments: &'a [u8],
+    pub result: &'a [u8],
+    pub duration_ms: u64,
+    pub status: ToolAuditStatus,
+    pub model_id: Option<&'a str>,
+    pub reason: Option<&'a str>,
+}
+
 /// Trait every audit sink implements.
 pub trait ToolAuditSink: Send + Sync {
     /// Persist a single entry. Implementations must never block on network I/O
@@ -299,7 +315,11 @@ impl ToolAuditSink for JsonlFileSink {
             Err(poisoned) => poisoned.into_inner(),
         };
         if let Some(writer) = state.writer.as_mut() {
-            drop(writer.flush());
+            if let Err(error) = writer.flush() {
+                tracing::warn!(error = %error, path = %self.path.display(), "JsonlFileSink: flush failed");
+            } else if let Err(error) = writer.get_ref().sync_all() {
+                tracing::warn!(error = %error, path = %self.path.display(), "JsonlFileSink: durable sync failed");
+            }
         }
     }
 }
@@ -375,6 +395,11 @@ impl std::fmt::Debug for ToolAuditLogger {
 }
 
 impl ToolAuditLogger {
+    /// Construct a durable JSONL-backed audit logger.
+    pub fn jsonl_file(path: impl Into<PathBuf>, max_size_bytes: u64, max_files: usize) -> std::io::Result<Self> {
+        Ok(Self::new(Arc::new(JsonlFileSink::open(path, max_size_bytes, max_files)?)))
+    }
+
     /// Wrap a sink in a logger.
     #[must_use]
     fn new(sink: Arc<dyn ToolAuditSink>) -> Self {
@@ -388,12 +413,12 @@ impl ToolAuditLogger {
     }
 
     /// Persist a single entry through the underlying sink.
-    fn record(&self, entry: ToolAuditEntry) {
+    pub fn record(&self, entry: ToolAuditEntry) {
         self.sink.write(&entry);
     }
 
     /// Flush the underlying sink.
-    fn flush(&self) {
+    pub fn flush(&self) {
         self.sink.flush();
     }
 
@@ -401,6 +426,37 @@ impl ToolAuditLogger {
     #[must_use]
     pub fn sink(&self) -> &Arc<dyn ToolAuditSink> {
         &self.sink
+    }
+}
+
+impl ToolAuditEntry {
+    /// Build an entry from invocation metadata without retaining either body.
+    ///
+    /// The arguments and result are hashed immediately and are never included
+    /// in the serialised entry. Callers should perform the surrounding file
+    /// I/O on a blocking boundary.
+    #[must_use]
+    pub fn from_invocation(invocation: ToolAuditInvocation<'_>) -> Self {
+        Self {
+            timestamp_unix_ms: invocation.timestamp_unix_ms,
+            session_id: invocation.session_id.to_owned(),
+            turn_id: invocation.turn_id.to_owned(),
+            tool_call_id: invocation.tool_call_id.to_owned(),
+            tool_name: invocation.tool_name.to_owned(),
+            arguments_hash: sha256_hex(invocation.arguments),
+            arguments_redacted: None,
+            result_hash: sha256_hex(invocation.result),
+            result_summary: None,
+            duration_ms: invocation.duration_ms,
+            status: invocation.status,
+            sandbox_policy: None,
+            transport: None,
+            server_address: None,
+            server_port: None,
+            model_id: invocation.model_id.map(str::to_owned),
+            prompt_injection_flagged: false,
+            reason: invocation.reason.map(str::to_owned),
+        }
     }
 }
 

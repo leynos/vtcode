@@ -1,6 +1,7 @@
 use crate::acp;
 use serde_json::{Value, json};
 use std::path::PathBuf;
+use vtcode_safety::audit_log::ToolAuditStatus;
 
 pub(crate) const TOOL_FAILURE_PREFIX: &str = "Tool execution failed";
 pub(crate) const TOOL_SUCCESS_LABEL: &str = "success";
@@ -32,6 +33,7 @@ pub struct ToolExecutionReport {
     pub(crate) content: Vec<acp::ToolCallContent>,
     pub(crate) locations: Vec<acp::ToolCallLocation>,
     pub(crate) raw_output: Option<Value>,
+    pub(crate) audit_status: ToolAuditStatus,
 }
 
 impl ToolExecutionReport {
@@ -46,6 +48,7 @@ impl ToolExecutionReport {
             content,
             locations,
             raw_output: Some(payload),
+            audit_status: ToolAuditStatus::Success,
         }
     }
 
@@ -61,11 +64,24 @@ impl ToolExecutionReport {
             content: vec![acp::ToolCallContent::from(format!("{TOOL_FAILURE_PREFIX}: {message}"))],
             locations: Vec::new(),
             raw_output: Some(payload),
+            audit_status: ToolAuditStatus::Failure,
         }
     }
 
+    pub(crate) fn blocked(tool_name: &str, message: &str) -> Self {
+        let mut report = Self::failure(tool_name, message);
+        report.audit_status = ToolAuditStatus::Blocked;
+        report
+    }
+
     pub(crate) fn cancelled(tool_name: &str) -> Self {
-        Self::failure(tool_name, TOOL_EXECUTION_CANCELLED_MESSAGE)
+        Self::cancelled_with_message(tool_name, TOOL_EXECUTION_CANCELLED_MESSAGE)
+    }
+
+    pub(crate) fn cancelled_with_message(tool_name: &str, message: &str) -> Self {
+        let mut report = Self::failure(tool_name, message);
+        report.audit_status = ToolAuditStatus::Cancelled;
+        report
     }
 }
 
@@ -73,4 +89,21 @@ pub(crate) fn create_diff_content(path: &str, old_text: Option<&str>, new_text: 
     acp::ToolCallContent::Diff(
         acp::Diff::new(PathBuf::from(path), new_text.to_string()).old_text(old_text.map(|s| s.to_string())),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vtcode_safety::audit_log::ToolAuditStatus;
+
+    #[test]
+    fn maps_success_denied_and_failure_to_audit_statuses() {
+        assert_eq!(
+            ToolExecutionReport::success(Vec::new(), Vec::new(), json!({})).audit_status,
+            ToolAuditStatus::Success
+        );
+        assert_eq!(ToolExecutionReport::blocked("read_file", "denied").audit_status, ToolAuditStatus::Blocked);
+        assert_eq!(ToolExecutionReport::failure("read_file", "failed").audit_status, ToolAuditStatus::Failure);
+        assert_eq!(ToolExecutionReport::cancelled("read_file").audit_status, ToolAuditStatus::Cancelled);
+    }
 }
