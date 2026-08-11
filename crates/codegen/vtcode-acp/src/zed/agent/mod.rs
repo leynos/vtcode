@@ -28,6 +28,7 @@ use vtcode_core::tools::registry::sandbox_policy_from_runtime_config;
 use super::helpers::PrimaryAgentCatalog;
 use super::types::SessionHandle;
 
+mod compaction;
 pub(crate) mod handlers;
 mod prompt;
 mod session_state;
@@ -59,6 +60,7 @@ pub(crate) struct ZedAgent {
     tool_call_delay: Option<Duration>,
     provider_runtime: ProviderRuntimeRegistry,
     provider_timeouts: TimeoutsConfig,
+    vt_config: Option<Box<VTCodeConfig>>,
 }
 
 fn effective_acp_subagent_concurrency(configured: usize, max_in_flight: Option<usize>) -> Option<usize> {
@@ -223,6 +225,10 @@ fn configure_acp_tool_call_limits(registry: &CoreToolRegistry, vt_cfg: Option<&V
 }
 
 impl ZedAgent {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "ACP startup composes independent protocol, provider, tool, credential, and UI configuration roots."
+    )]
     pub(crate) async fn new(
         config: CoreAgentConfig,
         credential_storage_mode: AuthCredentialsStoreMode,
@@ -256,7 +262,7 @@ impl ZedAgent {
         {
             warn!(%error, "Failed to apply tools configuration to ACP tool registry");
         }
-        attach_acp_subagent_controller(&core_tool_registry, &config, custom_providers, vt_cfg).await;
+        Box::pin(attach_acp_subagent_controller(&core_tool_registry, &config, custom_providers, vt_cfg)).await;
         attach_acp_mcp_client(&core_tool_registry, vt_cfg, workspace_root.as_path()).await;
         let local_definitions = core_tool_registry
             .model_tools(
@@ -300,6 +306,7 @@ impl ZedAgent {
             tool_call_delay,
             provider_runtime: ProviderRuntimeRegistry::new(custom_providers, &provider_timeouts),
             provider_timeouts,
+            vt_config: vt_cfg.cloned().map(Box::new),
         }
     }
 

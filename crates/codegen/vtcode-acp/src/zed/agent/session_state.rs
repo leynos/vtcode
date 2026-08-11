@@ -120,6 +120,7 @@ impl ZedAgent {
                 provider,
                 model,
                 last_tool_call_at: None,
+                auto_compact_suppressed: 0,
             })),
             cancellation: super::super::types::SessionCancellation::default(),
         }
@@ -663,7 +664,7 @@ mod tests {
         let discovered = discover_subagents(&discovery_input).expect("discover primary agents");
         let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, default_primary_agent);
 
-        ZedAgent::new(
+        Box::pin(ZedAgent::new(
             core_config,
             AuthCredentialsStoreMode::default(),
             AgentClientProtocolZedConfig::default(),
@@ -676,7 +677,7 @@ mod tests {
             primary_agents,
             false,
             None,
-        )
+        ))
         .await
     }
 

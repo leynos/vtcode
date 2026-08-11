@@ -80,7 +80,7 @@ pub async fn run_acp_agent(
         .run_until(Box::pin(async move {
             let tools_config_clone = tools_config.clone();
             let commands_config_clone = commands_config.clone();
-            let agent = ZedAgent::new(
+            let agent = Box::pin(ZedAgent::new(
                 config_clone,
                 credential_storage_mode,
                 zed_config_clone,
@@ -93,7 +93,7 @@ pub async fn run_acp_agent(
                 primary_agents,
                 skip_confirmations,
                 Some(&vt_cfg_clone),
-            )
+            ))
             .await;
             let agent: Arc<ZedAgent> = Arc::new(agent);
 
