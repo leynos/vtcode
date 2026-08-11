@@ -6,6 +6,7 @@ use tokio::sync::Notify;
 use tokio::time::Instant;
 use vtcode_core::config::types::ReasoningEffortLevel;
 use vtcode_core::core::threads::ThreadRuntimeHandle;
+use vtcode_core::hooks::LifecycleHookEngine;
 
 use super::constants::{PLAN_STEP_ANALYZE, PLAN_STEP_GATHER_CONTEXT, PLAN_STEP_RESPOND};
 
@@ -200,6 +201,61 @@ pub(crate) struct SessionData {
     pub(crate) model: String,
     pub(crate) last_tool_call_at: Option<Instant>,
     pub(crate) auto_compact_suppressed: u8,
+    pub(crate) lifecycle_hooks: Option<LifecycleHookEngine>,
+    pub(crate) session_started: bool,
+    pub(crate) session_ended: bool,
+}
+
+impl SessionHandle {
+    pub(crate) fn lifecycle_hooks(&self) -> Option<LifecycleHookEngine> {
+        self.data.lock().ok().and_then(|data| data.lifecycle_hooks.clone())
+    }
+
+    pub(crate) fn has_stop_hooks(&self) -> bool {
+        self.lifecycle_hooks().is_some_and(|hooks| hooks.has_stop_hooks())
+    }
+
+    pub(crate) fn mark_session_started(&self) -> bool {
+        self.data
+            .lock()
+            .map(|mut data| {
+                if data.session_started {
+                    false
+                } else {
+                    data.session_started = true;
+                    true
+                }
+            })
+            .unwrap_or(false)
+    }
+
+    pub(crate) fn mark_session_ended(&self) -> bool {
+        self.data
+            .lock()
+            .map(|mut data| {
+                if data.session_ended {
+                    false
+                } else {
+                    data.session_ended = true;
+                    true
+                }
+            })
+            .unwrap_or(false)
+    }
+
+    pub(crate) async fn update_transcript_path(&self) {
+        let (hooks, path) = self
+            .data
+            .lock()
+            .ok()
+            .map(|data| {
+                (data.lifecycle_hooks.clone(), data.archive.as_ref().map(|archive| archive.path().to_path_buf()))
+            })
+            .unwrap_or((None, None));
+        if let Some(hooks) = hooks {
+            hooks.update_transcript_path(path).await;
+        }
+    }
 }
 
 #[cfg(test)]

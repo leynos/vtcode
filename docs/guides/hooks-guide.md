@@ -62,6 +62,38 @@ hooks = [
 
 ## Hook Events
 
+### ACP sessions
+
+The same `[hooks.lifecycle]` configuration applies to Agent Client Protocol
+(ACP) sessions. ACP creates one lifecycle engine per `session/new` or resumed
+session, so `VT_SESSION_ID` and transcript state remain isolated between ACP
+sessions.
+
+ACP runs hooks in this order:
+
+- `SessionStart` runs once for a new or resumed session.
+- `UserPromptSubmit` runs before provider work for each prompt; a blocking
+  outcome prevents that prompt from being sent to the provider.
+- `PreToolUse` runs before ACP permission handling and tool execution, and
+  `PostToolUse` runs after the tool result is available.
+- `PermissionRequest` runs before ACP asks the client through
+  `session/request_permission`. If it has no allow/deny decision, the normal
+  ACP client permission request is preserved. `updatedInput` is used for the
+  actual tool call; ACP does not persist hook permission scopes or apply
+  `permission_updates`, and logs an explicit warning for those fields.
+- `PreCompact` runs before automatic context compaction.
+- `Stop` runs after the assistant draft is available and before ACP reports the
+  final turn. A blocking outcome feeds its reason back into the same ACP turn,
+  which continues until the hook allows the draft or the turn is cancelled.
+- `SessionEnd` runs when the ACP connection actually closes, with a bounded
+  shutdown wait. It does not run merely because an individual prompt ends.
+
+ACP does not synthesize `Notification` events: notification hooks run only for
+actual VT Code notification events. The current ACP subagent controller does
+not expose child lifecycle callbacks, so `SubagentStart` and `SubagentStop`
+remain available to runtimes that provide those triggers but are not emitted
+for ACP subagents today.
+
 ### PreToolUse
 
 -   Runs after VT Code creates tool parameters and before processing the tool call

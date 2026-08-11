@@ -147,6 +147,7 @@ async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, b
     if let Err(error) = agent.checkpoint_session(session).await {
         warn!(%error, boundary, "Failed to persist ACP session checkpoint");
     }
+    session.update_transcript_path().await;
 }
 
 async fn checkpoint_incomplete_stream(
@@ -721,6 +722,28 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         result = agent.resolve_prompt(&args.session_id, &args.prompt) => result?,
     };
 
+    if let Some(hooks) = session.lifecycle_hooks() {
+        let outcome = hooks
+            .run_user_prompt_submit(&args.session_id.to_string(), &user_message)
+            .await
+            .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
+        for message in outcome.messages {
+            warn!(level = ?message.level, message = %message.text, "ACP UserPromptSubmit hook");
+        }
+        for context in outcome.additional_context {
+            if !context.trim().is_empty() {
+                agent.push_message(&session, Message::system(context));
+            }
+        }
+        if !outcome.allow_prompt {
+            let reason = outcome
+                .block_reason
+                .unwrap_or_else(|| "Prompt blocked by lifecycle hook".to_string());
+            warn!(%reason, "ACP UserPromptSubmit hook blocked prompt");
+            return Ok(PromptResponse::new(acp::StopReason::Refusal));
+        }
+    }
+
     agent.push_message(&session, Message::user(user_message.clone()));
     persist_session_checkpoint(&agent, &session, "user_message").await;
 
@@ -762,9 +785,11 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         None
     };
 
-    let stop_reason: acp::StopReason;
+    let mut stop_reason: acp::StopReason;
     let mut assistant_message = String::with_capacity(4096);
     let mut assistant_reasoning = String::with_capacity(2048);
+    let mut stop_hook_active = false;
+    let mut stop_hook_checked = false;
     let client_supports_read_text_file = agent.client_supports_read_text_file();
     let provider_supports_tools = provider.supports_tools(&session_model);
     let mut primary_agent = {
@@ -803,7 +828,9 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         controller.set_parent_messages(&messages).await;
         drop(controller.set_turn_delegation_hints_from_input(&user_message).await);
     }
-    let allow_streaming = supports_streaming && !tools_allowed;
+    // Stop hooks need a complete draft before a blocking reason can feed back
+    // into the same turn. Other lifecycle hooks do not disable streaming.
+    let allow_streaming = should_allow_streaming(supports_streaming, tools_allowed, session.has_stop_hooks());
     let mut plan = PlanProgress::new(tools_allowed);
     if plan.has_entries() {
         drop(agent.send_plan_update(&args.session_id, &plan).await);
@@ -1129,14 +1156,6 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 if agent.tool_loop_limit_reached(tool_loop_count) {
                     let message = agent.tool_loop_limit_message();
                     drop(agent.advance_plan_to_response(&args.session_id, &mut plan).await);
-                    drop(
-                        agent
-                            .send_update(
-                                &args.session_id,
-                                acp::SessionUpdate::AgentMessageChunk(text_chunk(message.clone())),
-                            )
-                            .await,
-                    );
                     assistant_message = message;
                     stop_reason = acp::StopReason::EndTurn;
                     break;
@@ -1202,24 +1221,52 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         stop_reason = acp::StopReason::Cancelled;
                         break;
                     }
-                    let chunk = text_chunk(content.clone());
-                    drop(
-                        agent
-                            .send_update(&args.session_id, acp::SessionUpdate::AgentMessageChunk(chunk))
-                            .await,
-                    );
                 }
                 assistant_message = content.clone();
             }
 
             stop_reason = ZedAgent::stop_reason_from_finish(response.finish_reason);
+            if stop_reason != acp::StopReason::Cancelled
+                && let Some(reason) = agent.run_stop_hook(&session, &assistant_message, stop_hook_active).await?
+            {
+                stop_hook_active = true;
+                agent.push_message(&session, Message::assistant(assistant_message.clone()));
+                agent.push_message(&session, Message::system(reason));
+                messages = agent.resolved_messages(&session);
+                assistant_message.clear();
+                assistant_reasoning.clear();
+                stop_hook_checked = false;
+                continue;
+            } else if stop_reason != acp::StopReason::Cancelled {
+                stop_hook_checked = true;
+            }
             break;
         }
     }
 
-    if stop_reason != acp::StopReason::Cancelled && !assistant_message.is_empty() {
-        agent.push_message(&session, Message::assistant(assistant_message));
-        persist_session_checkpoint(&agent, &session, "assistant_response").await;
+    if stop_reason != acp::StopReason::Cancelled {
+        if !stop_hook_checked
+            && let Some(reason) = agent.run_stop_hook(&session, &assistant_message, stop_hook_active).await?
+        {
+            warn!(%reason, "ACP Stop hook blocked final turn");
+            agent.push_message(&session, Message::system(reason));
+            persist_session_checkpoint(&agent, &session, "stop_hook_blocked").await;
+            return Ok(PromptResponse::new(acp::StopReason::Refusal));
+        }
+        if !assistant_message.is_empty() {
+            if should_emit_buffered_final_chunk(allow_streaming) {
+                drop(
+                    agent
+                        .send_update(
+                            &args.session_id,
+                            acp::SessionUpdate::AgentMessageChunk(text_chunk(assistant_message.clone())),
+                        )
+                        .await,
+                );
+            }
+            agent.push_message(&session, Message::assistant(assistant_message));
+            persist_session_checkpoint(&agent, &session, "assistant_response").await;
+        }
     }
 
     if stop_reason != acp::StopReason::Cancelled {
@@ -1234,12 +1281,43 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
     Ok(PromptResponse::new(stop_reason))
 }
 
+impl ZedAgent {
+    async fn run_stop_hook(
+        &self,
+        session: &SessionHandle,
+        assistant_message: &str,
+        stop_hook_active: bool,
+    ) -> Result<Option<String>, SdkError> {
+        let Some(hooks) = session.lifecycle_hooks() else {
+            return Ok(None);
+        };
+        let outcome = hooks
+            .run_stop(assistant_message, stop_hook_active)
+            .await
+            .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
+        for message in outcome.messages {
+            warn!(level = ?message.level, message = %message.text, "ACP Stop hook");
+        }
+        Ok(outcome.block_reason)
+    }
+}
+
 fn resolve_api_key_for_provider(agent: &ZedAgent, provider: &str) -> String {
     if provider.eq_ignore_ascii_case(&agent.config.provider) && !agent.config.api_key.is_empty() {
         return agent.config.api_key.clone();
     }
 
     get_api_key_with_mode(provider, &ApiKeySources::default(), agent.credential_storage_mode).unwrap_or_default()
+}
+
+/// Streaming is safe unless a Stop hook needs to inspect the complete draft.
+/// Other lifecycle hooks do not affect whether ACP can receive streamed text.
+fn should_allow_streaming(supports_streaming: bool, tools_allowed: bool, has_stop_hooks: bool) -> bool {
+    supports_streaming && !tools_allowed && !has_stop_hooks
+}
+
+fn should_emit_buffered_final_chunk(allow_streaming: bool) -> bool {
+    !allow_streaming
 }
 
 #[cfg(test)]
@@ -1276,6 +1354,92 @@ mod tests {
 
         assert!(TurnGuard::begin(thread.clone()).is_err());
         assert!(thread.messages().is_empty());
+    }
+
+    #[tokio::test]
+    async fn configured_non_stop_hooks_do_not_disable_streaming() {
+        use assert_fs::TempDir;
+        use vtcode_core::config::{HookCommandConfig, HookGroupConfig, HooksConfig, LifecycleHooksConfig};
+        use vtcode_core::hooks::{LifecycleHookEngine, SessionStartTrigger};
+
+        let workspace = TempDir::new().expect("temporary hook workspace");
+        let config = HooksConfig {
+            lifecycle: LifecycleHooksConfig {
+                user_prompt_submit: vec![HookGroupConfig {
+                    matcher: None,
+                    hooks: vec![HookCommandConfig {
+                        command: "printf ok".to_string(),
+                        ..Default::default()
+                    }],
+                }],
+                ..Default::default()
+            },
+        };
+        let engine = LifecycleHookEngine::new(workspace.path().to_path_buf(), &config, SessionStartTrigger::NewSession)
+            .expect("non-stop hook engine")
+            .expect("configured non-stop hook");
+
+        assert!(!engine.has_stop_hooks());
+        assert!(should_allow_streaming(true, false, engine.has_stop_hooks()));
+        assert!(!should_allow_streaming(true, true, engine.has_stop_hooks()));
+        assert!(!should_allow_streaming(false, false, engine.has_stop_hooks()));
+    }
+
+    #[test]
+    fn finalization_only_emits_buffered_responses() {
+        assert!(!should_emit_buffered_final_chunk(true), "streamed deltas are already visible");
+        assert!(should_emit_buffered_final_chunk(false), "buffered drafts need one final chunk");
+    }
+
+    #[tokio::test]
+    async fn blocked_stop_draft_is_not_visible_until_hook_allows_it() {
+        use assert_fs::TempDir;
+        use vtcode_core::config::{HookCommandConfig, HookGroupConfig, HooksConfig, LifecycleHooksConfig};
+        use vtcode_core::hooks::{LifecycleHookEngine, SessionStartTrigger};
+
+        let workspace = TempDir::new().expect("temporary hook workspace");
+        let config = HooksConfig {
+            lifecycle: LifecycleHooksConfig {
+                stop: vec![HookGroupConfig {
+                    matcher: None,
+                    hooks: vec![HookCommandConfig {
+                        command: r#"count=$(cat "$VT_PROJECT_DIR/stop-count" 2>/dev/null || printf 0); count=$((count + 1)); printf '%s' "$count" > "$VT_PROJECT_DIR/stop-count"; if [ "$count" -eq 1 ]; then printf '%s' '{"continue":false,"stopReason":"retry the draft"}'; fi"#
+                            .to_string(),
+                        ..HookCommandConfig::default()
+                    }],
+                }],
+                ..LifecycleHooksConfig::default()
+            },
+        };
+        let engine = LifecycleHookEngine::new_with_session(
+            workspace.path().to_path_buf(),
+            &config,
+            SessionStartTrigger::NewSession,
+            "acp-stop-visibility",
+        )
+        .expect("stop hook engine")
+        .expect("stop hook should be configured");
+
+        assert!(engine.has_stop_hooks());
+        let first = engine.run_stop("blocked draft", false).await.expect("first stop hook");
+        let second = engine.run_stop("allowed draft", true).await.expect("second stop hook");
+
+        let mut visible = Vec::new();
+        let mut history = Vec::new();
+        if let Some(reason) = first.block_reason {
+            history.push(Message::assistant("blocked draft".to_string()));
+            history.push(Message::system(reason));
+        } else {
+            visible.push("blocked draft".to_string());
+        }
+        if second.block_reason.is_none() {
+            visible.push("allowed draft".to_string());
+        }
+
+        assert_eq!(visible, vec!["allowed draft"]);
+        assert_eq!(history.len(), 2, "blocked drafts belong in model history only");
+        assert_eq!(history[0].content.as_text(), "blocked draft");
+        assert_eq!(history[1].content.as_text(), "retry the draft");
     }
 
     #[test]
