@@ -119,6 +119,7 @@ mod tests {
             primary_agents,
             false,
             vt_cfg,
+            None,
         ))
         .await
     }

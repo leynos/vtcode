@@ -56,6 +56,11 @@ and enable the bridge:
 [acp]
 enabled = true
 
+    [acp.audit]
+    # Optional; disabled by default. Entries contain metadata and hashes only.
+    enabled = false
+    path = "~/.vtcode/audit/acp-tools.jsonl"
+
     [acp.zed]
     enabled = true
     transport = "stdio"

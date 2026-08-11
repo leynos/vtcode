@@ -1,6 +1,7 @@
 //! Top-level glue: wire the [`ZedAgent`] into an SACP `AgentToClient`
 //! connection over stdio.
 
+use crate::audit::AcpAuditLogger;
 use crate::register_acp_connection;
 use crate::workspace::{DefaultWorkspaceTrustSynchronizer, WorkspaceTrustSyncOutcome, WorkspaceTrustSynchronizer};
 use crate::zed::agent::ZedAgent;
@@ -30,6 +31,10 @@ pub async fn run_acp_agent(
     skip_confirmations: bool,
 ) -> Result<()> {
     register_acp_custom_providers(vt_cfg);
+    let audit_logger = AcpAuditLogger::from_config(&vt_cfg.acp.audit)
+        .await
+        .context("Failed to initialise ACP audit logger")?
+        .map(Arc::new);
     vtcode_core::utils::session_archive::apply_session_history_config_from_vtcode(vt_cfg);
 
     let zed_config = &vt_cfg.acp.zed;
@@ -95,6 +100,7 @@ pub async fn run_acp_agent(
                 primary_agents,
                 skip_confirmations,
                 Some(&vt_cfg_clone),
+                audit_logger.clone(),
             ))
             .await;
             let agent: Arc<ZedAgent> = Arc::new(agent);

@@ -1,4 +1,5 @@
 use crate::acp;
+use crate::audit::AcpAuditLogger;
 use crate::permissions::{AcpPermissionPrompter, DefaultPermissionPrompter};
 use crate::tooling::AcpToolRegistry;
 use crate::zed::connection::ConnectionHandle;
@@ -61,6 +62,7 @@ pub(crate) struct ZedAgent {
     provider_runtime: ProviderRuntimeRegistry,
     provider_timeouts: TimeoutsConfig,
     vt_config: Option<Box<VTCodeConfig>>,
+    audit_logger: Option<Arc<AcpAuditLogger>>,
 }
 
 fn effective_acp_subagent_concurrency(configured: usize, max_in_flight: Option<usize>) -> Option<usize> {
@@ -242,6 +244,7 @@ impl ZedAgent {
         primary_agents: PrimaryAgentCatalog,
         skip_confirmations: bool,
         vt_cfg: Option<&VTCodeConfig>,
+        audit_logger: Option<Arc<AcpAuditLogger>>,
     ) -> Self {
         let read_file_enabled = zed_config.tools.read_file;
         let workspace_root = config.workspace.clone();
@@ -307,6 +310,7 @@ impl ZedAgent {
             provider_runtime: ProviderRuntimeRegistry::new(custom_providers, &provider_timeouts),
             provider_timeouts,
             vt_config: vt_cfg.cloned().map(Box::new),
+            audit_logger,
         }
     }
 

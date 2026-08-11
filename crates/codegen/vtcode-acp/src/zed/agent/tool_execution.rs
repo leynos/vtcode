@@ -1,6 +1,7 @@
 use super::ZedAgent;
 use crate::acp;
 use crate::acp::Error as SdkError;
+use crate::audit::timestamp_unix_ms;
 use crate::permissions::PermissionToolContext;
 use crate::reports::{
     TOOL_RESPONSE_KEY_STATUS, TOOL_RESPONSE_KEY_TOOL, TOOL_SUCCESS_LABEL, ToolExecutionReport, create_diff_content,
@@ -11,6 +12,7 @@ use anyhow::Result;
 use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant as StdInstant;
 use tokio::time::Instant;
 use vtcode_commons::fs::canonicalize_with_context_async;
 use vtcode_core::config::constants::tools;
@@ -32,29 +34,105 @@ impl ZedAgent {
             return Ok(Vec::new());
         }
 
+        let turn_id = uuid::Uuid::new_v4().to_string();
         let Some(client) = self.client() else {
-            return Ok(calls
-                .iter()
-                .map(|call| {
-                    Self::tool_call_result_from_report(
-                        call,
-                        ToolExecutionReport::failure(Self::tool_name_from_call(call), "Client connection unavailable"),
-                    )
-                })
-                .collect());
+            let mut results = Vec::with_capacity(calls.len());
+            for call in calls {
+                let report =
+                    ToolExecutionReport::failure(Self::tool_name_from_call(call), "Client connection unavailable");
+                let result = Self::tool_call_result_from_report(call, report);
+                self.record_tool_audit(session_id, &turn_id, call, Ok((&result.llm_response, result.audit_status)), 0)
+                    .await;
+                results.push(result);
+            }
+            return Ok(results);
         };
 
         let mut results = Vec::with_capacity(calls.len());
 
         for call in calls {
             self.pace_tool_call(session).await;
-            results.push(self.execute_tool_call(session, session_id, call, client.as_ref()).await?);
+            results.push(
+                self.execute_tool_call(session, session_id, &turn_id, call, client.as_ref())
+                    .await?,
+            );
         }
 
         Ok(results)
     }
 
     async fn execute_tool_call(
+        &self,
+        session: &SessionHandle,
+        session_id: &acp::SessionId,
+        turn_id: &str,
+        call: &ProviderToolCall,
+        client: &ConnectionHandle,
+    ) -> Result<ToolCallResult, SdkError> {
+        let started = StdInstant::now();
+        let result = self.execute_tool_call_inner(session, session_id, call, client).await;
+        let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        self.record_tool_audit(
+            session_id,
+            turn_id,
+            call,
+            match &result {
+                Ok(result) => Ok((&result.llm_response, result.audit_status)),
+                Err(_) => Err("ACP tool execution failed"),
+            },
+            duration_ms,
+        )
+        .await;
+        result
+    }
+
+    async fn record_tool_audit(
+        &self,
+        session_id: &acp::SessionId,
+        turn_id: &str,
+        call: &ProviderToolCall,
+        result: Result<(&str, vtcode_safety::audit_log::ToolAuditStatus), &str>,
+        duration_ms: u64,
+    ) {
+        let Some(logger) = self.audit_logger.as_ref() else {
+            return;
+        };
+        let tool_name = Self::tool_name_from_call(call);
+        let original_args = call
+            .function
+            .as_ref()
+            .map_or_else(|| b"".to_vec(), |function| function.arguments.as_bytes().to_vec());
+        let (status, reason, result_bytes) = match result {
+            Ok((output, status)) => {
+                let reason = match status {
+                    vtcode_safety::audit_log::ToolAuditStatus::Blocked => Some("denied".to_owned()),
+                    vtcode_safety::audit_log::ToolAuditStatus::Cancelled => Some("cancelled".to_owned()),
+                    _ => None,
+                };
+                (status, reason, output.as_bytes().to_vec())
+            }
+            Err(_) => (vtcode_safety::audit_log::ToolAuditStatus::Failure, None, Vec::new()),
+        };
+        let entry =
+            vtcode_safety::audit_log::ToolAuditEntry::from_invocation(vtcode_safety::audit_log::ToolAuditInvocation {
+                timestamp_unix_ms: timestamp_unix_ms(),
+                session_id: &session_id.to_string(),
+                turn_id,
+                tool_call_id: &call.id,
+                tool_name,
+                arguments: &original_args,
+                result: &result_bytes,
+                duration_ms,
+                status,
+                model_id: Some(&self.config.model),
+                reason: reason.as_deref(),
+            });
+        if let Err(error) = logger.record(entry).await {
+            tracing::warn!(%error, tool = tool_name, call_id = %call.id, "Failed to write ACP tool audit entry");
+        }
+    }
+
+    async fn execute_tool_call_inner(
         &self,
         session: &SessionHandle,
         session_id: &acp::SessionId,
@@ -109,7 +187,7 @@ impl ZedAgent {
             .await?;
 
         if matches!(pre_tool_decision, PreToolHookDecision::Deny) {
-            let report = ToolExecutionReport::failure(&func_ref.name, "Tool execution denied by PreToolUse hook");
+            let report = ToolExecutionReport::blocked(&func_ref.name, "Tool execution denied by PreToolUse hook");
             let update = acp::ToolCallUpdate::new(call_id, Self::update_fields_from_report(&report));
             self.send_update(session_id, acp::SessionUpdate::ToolCallUpdate(update)).await?;
             return Ok(Self::tool_call_result_from_report(call, report));
@@ -144,7 +222,7 @@ impl ZedAgent {
             } else {
                 match decision.behavior {
                     PermissionDecisionBehavior::Allow => None,
-                    PermissionDecisionBehavior::Deny => Some(ToolExecutionReport::failure(
+                    PermissionDecisionBehavior::Deny => Some(ToolExecutionReport::blocked(
                         &func_ref.name,
                         "Tool execution denied by PermissionRequest hook",
                     )),
@@ -370,6 +448,7 @@ impl ZedAgent {
         ToolCallResult {
             tool_call_id: call.id.clone(),
             llm_response: report.llm_response,
+            audit_status: report.audit_status,
         }
     }
 
