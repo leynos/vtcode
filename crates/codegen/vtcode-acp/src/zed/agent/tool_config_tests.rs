@@ -66,7 +66,7 @@ async fn build_agent_with_config(
     let discovered = discover_subagents(&discovery_input).expect("discover primary agents");
     let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, "duck");
 
-    ZedAgent::new(
+    Box::pin(ZedAgent::new(
         core_config,
         AuthCredentialsStoreMode::default(),
         zed_config,
@@ -79,7 +79,7 @@ async fn build_agent_with_config(
         primary_agents,
         false,
         vt_cfg,
-    )
+    ))
     .await
 }
 
