@@ -101,7 +101,7 @@ mod tests {
         let discovered = discover_subagents(&discovery_input).expect("discover primary agents");
         let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, "duck");
 
-        ZedAgent::new(
+        Box::pin(ZedAgent::new(
             core_config,
             AuthCredentialsStoreMode::default(),
             zed_config,
@@ -114,7 +114,7 @@ mod tests {
             primary_agents,
             false,
             None,
-        )
+        ))
         .await
     }
 
