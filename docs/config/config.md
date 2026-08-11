@@ -920,9 +920,11 @@ Notes:
   context windows.
 - `context.max_context_tokens = 0` preserves provider-only threshold resolution
   for compatibility; a known provider capacity is still a hard upper bound.
-- `context.dynamic.persist_history = true` lets VT Code persist compaction
-  artifacts and the session memory envelope so later resumes and summarized
-  forks can reuse that context.
+- `context.dynamic.enabled = true` and `context.dynamic.persist_history = true`
+  let VT Code persist compaction artifacts and the session memory envelope for
+  summarization and working-memory recovery. These artifacts are distinct from
+  the durable session archive used for ACP resume; see [ACP storage
+  boundaries](../guides/zed-acp.md#storage-boundaries).
 - `context.dynamic.retained_user_messages` controls how many recent real user
   messages VT Code preserves verbatim on the local fallback compaction path and
   in summarized forks. The default is `4`.
