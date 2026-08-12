@@ -240,7 +240,7 @@ pub fn write_stdin_parameters() -> Value {
         "required": ["session_id"],
         "properties": {
             "session_id": {"type": "string", "description": "Active execution session id."},
-            "action": {"type": "string", "enum": ["write", "poll", "wait"], "description": "Use wait to block until the command exits or wait_timeout_seconds expires; wait never kills the session."},
+            "action": {"type": "string", "enum": ["write", "poll", "wait"], "description": "Use write with chars to send input, poll to fetch fresh output without input, or wait to block until the command exits or wait_timeout_seconds expires; wait never kills the session."},
             "chars": {"type": "string", "description": "Bytes to write to stdin. Pass an empty string to poll without sending input."},
             "yield_time_ms": {"type": "integer", "description": "Wait before returning fresh session output (ms).", "default": 1000},
             "wait_timeout_seconds": {"type": "integer", "minimum": 1, "description": "Explicit wait deadline in seconds. A deadline returns an in-progress session that can be waited on again."},
@@ -249,6 +249,7 @@ pub fn write_stdin_parameters() -> Value {
         },
         "anyOf": [
             {"required": ["chars"]},
+            {"required": ["action"], "properties": {"action": {"const": "poll"}}},
             {"required": ["action"], "properties": {"action": {"const": "wait"}}}
         ],
         "additionalProperties": false
@@ -479,7 +480,9 @@ mod tests {
         assert_eq!(stdin_params["properties"]["action"]["enum"], json!(["write", "poll", "wait"]));
         assert!(stdin_params["properties"]["wait_timeout_seconds"].is_object());
         assert_eq!(stdin_params["anyOf"][1]["required"], json!(["action"]));
-        assert_eq!(stdin_params["anyOf"][1]["properties"]["action"]["const"], "wait");
+        assert_eq!(stdin_params["anyOf"][1]["properties"]["action"]["const"], "poll");
+        assert_eq!(stdin_params["anyOf"][2]["required"], json!(["action"]));
+        assert_eq!(stdin_params["anyOf"][2]["properties"]["action"]["const"], "wait");
         assert!(
             stdin_params["properties"]["chars"]["description"]
                 .as_str()
