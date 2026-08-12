@@ -1,0 +1,12 @@
+name: "arli-physics"
+matcher: "^/v1/physics/chat/completions$"
+priority: 110
+response_template: "arli/physics_response.json.j2"
+error_template: "arli/error.json.j2"
+status_code: "200"
+stream:
+  enabled: true
+  lifecycle:
+    on_start: { template_path: "arli/physics_stream_start.j2" }
+    on_chunk: { template_path: "arli/physics_stream_chunk.j2" }
+    on_stop: { template_path: "arli/physics_stream_stop.j2" }

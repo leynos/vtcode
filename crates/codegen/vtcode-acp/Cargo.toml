@@ -36,6 +36,7 @@ vtcode-safety = { workspace = true }
 
 [dev-dependencies]
 assert_fs = { workspace = true }
+proptest = "1.11"
 toml = { workspace = true }
 
 [lib]
