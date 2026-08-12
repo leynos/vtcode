@@ -231,6 +231,7 @@ pub(crate) fn create_chat_stream(
         let mut buf: Vec<u8> = Vec::new();
         let mut offset = 0usize;
         let mut aggregator = crate::providers::shared::StreamAggregator::new(model.clone());
+        let mut saw_terminal_frame = false;
         let telemetry = OpenAIStreamTelemetry;
 
         while let Some(chunk_result) = body_stream.next().await {
@@ -250,7 +251,11 @@ pub(crate) fn create_chat_stream(
 
                 if let Some(data_payload) = extract_data_payload(event) {
                     let trimmed_payload = data_payload.trim();
-                    if trimmed_payload.is_empty() || trimmed_payload == "[DONE]" {
+                    if trimmed_payload.is_empty() {
+                        continue;
+                    }
+                    if trimmed_payload == "[DONE]" {
+                        saw_terminal_frame = true;
                         continue;
                     }
 
@@ -288,6 +293,7 @@ pub(crate) fn create_chat_stream(
                             }
 
                             if let Some(reason) = choice.get("finish_reason").and_then(|v| v.as_str()) {
+                                saw_terminal_frame = true;
                                 aggregator.set_finish_reason(match reason {
                                     "stop" => provider::FinishReason::Stop,
                                     "length" => provider::FinishReason::Length,
@@ -306,6 +312,14 @@ pub(crate) fn create_chat_stream(
                 buf.drain(..offset);
                 offset = 0;
             }
+        }
+
+        if !saw_terminal_frame {
+            let formatted_error = error_display::format_llm_error(
+                "OpenAI",
+                "Streaming error: response ended before a terminal frame",
+            );
+            Err(provider::LLMError::Network { message: formatted_error, metadata: None })?;
         }
 
         let response = aggregator.finalize();

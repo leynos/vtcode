@@ -57,6 +57,7 @@ hotpath = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_fs = { workspace = true }
+proptest = "1.11"
 tempfile = { workspace = true }
 wiremock = "0.6.5"
 

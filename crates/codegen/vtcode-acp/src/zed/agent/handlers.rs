@@ -140,7 +140,11 @@ async fn sleep_until_optional(deadline: Option<Instant>) {
 }
 
 fn deadline_after(timeout: Option<Duration>) -> Option<Instant> {
-    timeout.map(|timeout| Instant::now() + timeout)
+    deadline_from(Instant::now(), timeout)
+}
+
+fn deadline_from(started_at: Instant, timeout: Option<Duration>) -> Option<Instant> {
+    timeout.map(|timeout| started_at + timeout)
 }
 
 fn provider_timeout_error(provider: &str, phase: &str, timeout: Option<Duration>) -> LLMError {
@@ -386,18 +390,22 @@ fn retry_disposition(decision: &RetryDecision) -> &'static str {
 }
 
 impl StreamDeadlineTracker {
-    fn new(policy: ProviderDeadlinePolicy, total: Option<Instant>) -> Self {
+    fn new(policy: ProviderDeadlinePolicy, started_at: Instant) -> Self {
         Self {
             policy,
-            first_token: deadline_after(policy.first_token),
+            first_token: deadline_from(started_at, policy.first_token),
             idle: None,
-            total,
+            total: deadline_from(started_at, policy.total_generation),
         }
     }
 
     fn observe_output(&mut self) {
+        self.observe_output_at(Instant::now());
+    }
+
+    fn observe_output_at(&mut self, observed_at: Instant) {
         self.first_token = None;
-        self.idle = deadline_after(self.policy.stream_idle);
+        self.idle = deadline_from(observed_at, self.policy.stream_idle);
     }
 
     fn next(&self) -> Option<(StreamTimeoutPhase, Instant)> {
@@ -948,11 +956,12 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
     }
 
     if allow_streaming {
-        let request = LLMRequest {
+        let mut tool_loop_count = 0usize;
+        let mut request = LLMRequest {
             messages: Arc::new(messages.clone()),
             model: session_model.clone(),
             stream: true,
-            tools: tool_definitions,
+            tools: tool_definitions.clone(),
             tool_choice: agent.tool_choice(tools_allowed),
             reasoning_effort,
             ..Default::default()
@@ -968,22 +977,23 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 Ok(permit) => permit,
                 Err(ProviderAdmissionError::Cancelled) => {
                     stop_reason = acp::StopReason::Cancelled;
-                    break;
+                    break 'stream_attempts;
                 }
                 Err(error) => return Err(SdkError::internal_error().data(error.to_string())),
             };
             let mut telemetry = GenerationTelemetry::start();
-            let total_deadline = deadline_after(deadline_policy.total_generation);
+            let mut stream_deadlines = StreamDeadlineTracker::new(deadline_policy, Instant::now());
+            let next_deadline = stream_deadlines.next();
             let stream_result = tokio::select! {
                 () = session.cancellation.cancelled() => {
                     stop_reason = acp::StopReason::Cancelled;
-                    break;
+                    break 'stream_attempts;
                 }
-                () = sleep_until_optional(total_deadline) => {
+                phase = sleep_until_stream_deadline(next_deadline) => {
                     Err(provider_timeout_error(
                         provider_runtime.provider_name(),
-                        "total generation",
-                        deadline_policy.total_generation,
+                        phase.label(),
+                        phase.timeout(deadline_policy),
                     ))
                 }
                 result = provider.stream(request.clone()) => result,
@@ -1021,7 +1031,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         }
                         Err(ProviderCallError::Cancelled) => {
                             stop_reason = acp::StopReason::Cancelled;
-                            break;
+                            break 'stream_attempts;
                         }
                         Err(ProviderCallError::Failed(error)) => {
                             return Ok(finish_failed_provider_turn(
@@ -1039,7 +1049,6 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             };
 
             drop(agent.advance_plan_to_response(&args.session_id, &mut plan).await);
-            let mut stream_deadlines = StreamDeadlineTracker::new(deadline_policy, total_deadline);
 
             loop {
                 let next_deadline = stream_deadlines.next();
@@ -1215,6 +1224,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     LLMStreamEvent::ReasoningStage { .. } => {}
                     LLMStreamEvent::ReasoningSignature { .. } => {}
                     LLMStreamEvent::Completed { response } => {
+                        let response = *response;
                         if telemetry.first_output_at.is_none() {
                             if let Some(content) = response.content.as_deref() {
                                 telemetry.observe_output(&provider_runtime, content, attempt_index);
@@ -1238,13 +1248,118 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             assistant_message.push_str(&content);
                         }
 
-                        if let Some(reasoning) = response.reasoning.filter(|reasoning| !reasoning.is_empty()) {
-                            let chunk = text_chunk(reasoning);
+                        if assistant_reasoning.is_empty()
+                            && let Some(reasoning) = response.reasoning.filter(|reasoning| !reasoning.is_empty())
+                        {
+                            let chunk = text_chunk(reasoning.clone());
                             drop(
                                 agent
                                     .send_update(&args.session_id, acp::SessionUpdate::AgentThoughtChunk(chunk))
                                     .await,
                             );
+                            assistant_reasoning.push_str(&reasoning);
+                        }
+
+                        drop(stream);
+                        drop(permit);
+
+                        if tools_allowed
+                            && let Some(tool_calls) = response.tool_calls.clone().filter(|calls| !calls.is_empty())
+                        {
+                            if agent.tool_loop_limit_reached(tool_loop_count) {
+                                let message = agent.tool_loop_limit_message();
+                                drop(agent.advance_plan_to_response(&args.session_id, &mut plan).await);
+                                assistant_message = message;
+                                stop_reason = acp::StopReason::EndTurn;
+                                break 'stream_attempts;
+                            }
+                            tool_loop_count = tool_loop_count.saturating_add(1);
+                            if plan.start_context() {
+                                drop(agent.send_plan_update(&args.session_id, &plan).await);
+                            }
+                            let mut assistant_tool_message =
+                                Message::assistant_with_tools(assistant_message.clone(), tool_calls.clone());
+                            if !assistant_reasoning.is_empty() {
+                                assistant_tool_message.reasoning = Some(assistant_reasoning.clone());
+                            }
+                            agent.push_message(&session, assistant_tool_message);
+                            persist_session_checkpoint(&agent, &session, "assistant_tool_calls").await;
+                            if let Some(controller) = agent.local_tool_registry.subagent_controller() {
+                                controller.set_parent_session_id(args.session_id.to_string()).await;
+                                controller.set_parent_messages(&agent.resolved_messages(&session)).await;
+                            }
+                            let tool_results =
+                                match agent.execute_tool_calls(&session, &args.session_id, &tool_calls).await {
+                                    Ok(results) => results,
+                                    Err(error) => {
+                                        warn!(%error, "Tool execution failed");
+                                        for call in &tool_calls {
+                                            agent.push_message(
+                                                &session,
+                                                Message::tool_response(
+                                                    call.id.clone(),
+                                                    format!("Tool execution was interrupted: {error}"),
+                                                ),
+                                            );
+                                        }
+                                        persist_session_checkpoint(&agent, &session, "interrupted_tool_results").await;
+                                        return Err(error);
+                                    }
+                                };
+                            if plan.complete_context() {
+                                drop(agent.send_plan_update(&args.session_id, &plan).await);
+                            }
+                            for result in tool_results {
+                                agent.push_message(
+                                    &session,
+                                    Message::tool_response(result.tool_call_id, result.llm_response),
+                                );
+                            }
+                            persist_session_checkpoint(&agent, &session, "tool_results").await;
+                            if session.cancellation.is_cancelled() {
+                                stop_reason = acp::StopReason::Cancelled;
+                                break 'stream_attempts;
+                            }
+                            messages = agent.resolved_messages(&session);
+                            primary_agent = {
+                                let data = session.data.lock().map_err(|_err| SdkError::internal_error())?;
+                                data.primary_agent.clone()
+                            };
+                            has_local_tools = agent.local_tools_available(&primary_agent);
+                            tools_allowed = provider_supports_tools && (!enabled_tools.is_empty() || has_local_tools);
+                            tool_definitions = agent
+                                .tool_definitions(provider_supports_tools, &enabled_tools, &primary_agent)
+                                .map(Arc::new);
+                            if agent
+                                .maybe_compact_session(
+                                    &session,
+                                    provider.as_ref(),
+                                    &provider_runtime,
+                                    &session_model,
+                                    tool_definitions.as_ref(),
+                                )
+                                .await
+                                .map_err(|error| SdkError::internal_error().data(error.to_string()))?
+                            {
+                                messages = agent.resolved_messages(&session);
+                                if let Some(controller) = agent.local_tool_registry.subagent_controller() {
+                                    controller.set_parent_messages(&messages).await;
+                                }
+                            }
+                            request = LLMRequest {
+                                messages: Arc::new(messages.clone()),
+                                model: session_model.clone(),
+                                stream: true,
+                                tools: tool_definitions.clone(),
+                                tool_choice: agent.tool_choice(tools_allowed),
+                                reasoning_effort,
+                                ..Default::default()
+                            };
+                            assistant_message.clear();
+                            assistant_reasoning.clear();
+                            attempt_index = 0;
+                            emitted_output = false;
+                            continue 'stream_attempts;
                         }
 
                         stop_reason = ZedAgent::stop_reason_from_finish(response.finish_reason);
@@ -1430,7 +1545,11 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         .await,
                 );
             }
-            agent.push_message(&session, Message::assistant(assistant_message));
+            let mut completed_message = Message::assistant(assistant_message);
+            if !assistant_reasoning.is_empty() {
+                completed_message.reasoning = Some(assistant_reasoning);
+            }
+            agent.push_message(&session, completed_message);
             persist_session_checkpoint(&agent, &session, "assistant_response").await;
         }
     }
@@ -1478,8 +1597,8 @@ fn resolve_api_key_for_provider(agent: &ZedAgent, provider: &str) -> String {
 
 /// Streaming is safe unless a Stop hook needs to inspect the complete draft.
 /// Other lifecycle hooks do not affect whether ACP can receive streamed text.
-fn should_allow_streaming(supports_streaming: bool, tools_allowed: bool, has_stop_hooks: bool) -> bool {
-    supports_streaming && !tools_allowed && !has_stop_hooks
+fn should_allow_streaming(supports_streaming: bool, _tools_allowed: bool, has_stop_hooks: bool) -> bool {
+    supports_streaming && !has_stop_hooks
 }
 
 fn should_emit_buffered_final_chunk(allow_streaming: bool) -> bool {
@@ -1491,7 +1610,9 @@ mod tests {
     use agent_client_protocol::{Channel, on_receive_notification};
     use assert_fs::TempDir;
     use async_trait::async_trait;
+    use proptest::prelude::*;
     use std::collections::BTreeMap;
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::{Mutex as AsyncMutex, mpsc};
     use vtcode_config::SubagentDiscoveryInput;
@@ -1536,6 +1657,45 @@ mod tests {
     use vtcode_core::llm::provider::{LLMError, LLMErrorMetadata};
 
     use super::*;
+
+    proptest! {
+        #[test]
+        fn streaming_eligibility_depends_only_on_provider_support_and_stop_hooks(
+            supports_streaming in any::<bool>(),
+            tools_allowed in any::<bool>(),
+            has_stop_hooks in any::<bool>(),
+        ) {
+            prop_assert_eq!(
+                should_allow_streaming(supports_streaming, tools_allowed, has_stop_hooks),
+                supports_streaming && !has_stop_hooks,
+            );
+        }
+
+        #[test]
+        fn observing_stream_output_replaces_only_the_first_token_deadline(
+            first_token_secs in prop::option::of(1u64..3_601),
+            idle_secs in prop::option::of(1u64..3_601),
+            total_secs in prop::option::of(1u64..7_201),
+            observed_after_secs in 0u64..3_601,
+        ) {
+            let policy = ProviderDeadlinePolicy {
+                connect: None,
+                first_token: first_token_secs.map(Duration::from_secs),
+                stream_idle: idle_secs.map(Duration::from_secs),
+                total_generation: total_secs.map(Duration::from_secs),
+            };
+            let started_at = Instant::now();
+            let observed_at = started_at + Duration::from_secs(observed_after_secs);
+            let mut tracker = StreamDeadlineTracker::new(policy, started_at);
+            let original_total = tracker.total;
+
+            tracker.observe_output_at(observed_at);
+
+            prop_assert_eq!(tracker.first_token, None);
+            prop_assert_eq!(tracker.idle, deadline_from(observed_at, policy.stream_idle));
+            prop_assert_eq!(tracker.total, original_total);
+        }
+    }
 
     #[test]
     fn failed_turn_releases_session_and_preserves_gathered_context() {
@@ -1603,8 +1763,9 @@ mod tests {
 
         assert!(!engine.has_stop_hooks());
         assert!(should_allow_streaming(true, false, engine.has_stop_hooks()));
-        assert!(!should_allow_streaming(true, true, engine.has_stop_hooks()));
+        assert!(should_allow_streaming(true, true, engine.has_stop_hooks()));
         assert!(!should_allow_streaming(false, false, engine.has_stop_hooks()));
+        assert!(!should_allow_streaming(true, true, true));
     }
 
     #[test]
@@ -1723,6 +1884,112 @@ mod tests {
         calls: Arc<AtomicUsize>,
     }
 
+    struct StreamToolThenAnswerProvider {
+        calls: Arc<AtomicUsize>,
+        requests: Arc<Mutex<Vec<LLMRequest>>>,
+    }
+
+    struct PartialThenFailProvider;
+
+    #[async_trait]
+    impl LLMProvider for StreamToolThenAnswerProvider {
+        fn name(&self) -> &str {
+            "wire-test"
+        }
+
+        fn supported_models(&self) -> Vec<String> {
+            vec!["wire-model".to_string()]
+        }
+
+        fn supports_streaming(&self) -> bool {
+            true
+        }
+
+        fn supports_tools(&self, _model: &str) -> bool {
+            true
+        }
+
+        fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+            Ok(())
+        }
+
+        async fn stream(&self, request: LLMRequest) -> Result<vtcode_core::llm::provider::LLMStream, LLMError> {
+            self.requests.lock().expect("stream requests").push(request);
+            let response_index = self.calls.fetch_add(1, Ordering::SeqCst);
+            let events = if response_index == 0 {
+                let response = LLMResponse {
+                    content: Some("Checking files.".to_string()),
+                    reasoning: Some("I need the workspace listing.".to_string()),
+                    tool_calls: Some(vec![vtcode_core::llm::provider::ToolCall::function(
+                        "call-list".to_string(),
+                        "list_files".to_string(),
+                        r#"{"path":""}"#.to_string(),
+                    )]),
+                    finish_reason: vtcode_core::llm::provider::FinishReason::ToolCalls,
+                    model: "wire-model".to_string(),
+                    ..LLMResponse::default()
+                };
+                vec![
+                    Ok(LLMStreamEvent::Reasoning { delta: "I need the workspace listing.".to_string() }),
+                    Ok(LLMStreamEvent::Token { delta: "Checking files.".to_string() }),
+                    Ok(LLMStreamEvent::Completed { response: Box::new(response) }),
+                ]
+            } else {
+                let response = LLMResponse {
+                    content: Some("Tool complete.".to_string()),
+                    finish_reason: vtcode_core::llm::provider::FinishReason::Stop,
+                    model: "wire-model".to_string(),
+                    ..LLMResponse::default()
+                };
+                vec![
+                    Ok(LLMStreamEvent::Token { delta: "Tool complete.".to_string() }),
+                    Ok(LLMStreamEvent::Completed { response: Box::new(response) }),
+                ]
+            };
+            Ok(Box::pin(futures::stream::iter(events)))
+        }
+
+        async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+            Err(LLMError::InvalidRequest {
+                message: "tool-enabled ACP turn used buffered generation".to_string(),
+                metadata: None,
+            })
+        }
+    }
+
+    #[async_trait]
+    impl LLMProvider for PartialThenFailProvider {
+        fn name(&self) -> &str {
+            "wire-test"
+        }
+
+        fn supported_models(&self) -> Vec<String> {
+            vec!["wire-model".to_string()]
+        }
+
+        fn supports_streaming(&self) -> bool {
+            true
+        }
+
+        fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+            Ok(())
+        }
+
+        async fn stream(&self, _request: LLMRequest) -> Result<vtcode_core::llm::provider::LLMStream, LLMError> {
+            Ok(Box::pin(futures::stream::iter(vec![
+                Ok(LLMStreamEvent::Token { delta: "partial answer".to_string() }),
+                Err(LLMError::Network {
+                    message: "fixture stream disconnected".to_string(),
+                    metadata: None,
+                }),
+            ])))
+        }
+
+        async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+            panic!("partial-stream test must not use buffered generation")
+        }
+    }
+
     #[async_trait]
     impl LLMProvider for FailThenSucceedProvider {
         fn name(&self) -> &str {
@@ -1797,7 +2064,7 @@ mod tests {
             String::new(),
             Some("Wire test".to_string()),
             primary_agents,
-            false,
+            true,
             None,
             None,
         ))
@@ -1917,6 +2184,189 @@ mod tests {
             metadata.acp_meta.as_ref().and_then(|meta| meta.get("requestId")),
             Some(&serde_json::json!("prompt-1"))
         );
+    }
+
+    #[tokio::test]
+    async fn streamed_tool_call_runs_tool_loop_before_streamed_final_answer() {
+        let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+        let calls = Arc::new(AtomicUsize::new(0));
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let factory_calls = Arc::clone(&calls);
+        let factory_requests = Arc::clone(&requests);
+        let _factory_guard = PromptProviderFactoryGuard::install(
+            "wire-test",
+            Arc::new(move || {
+                Box::new(StreamToolThenAnswerProvider {
+                    calls: Arc::clone(&factory_calls),
+                    requests: Arc::clone(&factory_requests),
+                })
+            }),
+        );
+        let workspace = TempDir::new().expect("wire test workspace");
+        std::fs::write(workspace.path().join("visible.txt"), "fixture").expect("write workspace fixture");
+        let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+        let (agent_channel, client_channel) = Channel::duplex();
+        let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
+
+        let agent_connection = install_handlers(Agent.builder().name("vtcode-stream-tool-test"), Arc::clone(&agent))
+            .connect_with(agent_channel, {
+                let agent = Arc::clone(&agent);
+                async move |cx: ConnectionTo<Client>| {
+                    agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                    std::future::pending::<agent_client_protocol::Result<()>>().await
+                }
+            });
+        let agent_task = tokio::spawn(agent_connection);
+
+        let client_connection = Client
+            .builder()
+            .on_receive_notification(
+                async move |notification: acp::SessionNotification, _cx| {
+                    drop(updates_tx.send(notification));
+                    Ok(())
+                },
+                on_receive_notification!(),
+            )
+            .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+                drop(
+                    cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                        .block_task()
+                        .await?,
+                );
+                let session = cx
+                    .send_request(NewSessionRequest::new(workspace.path().to_path_buf()))
+                    .block_task()
+                    .await?;
+                let response = cx
+                    .send_request(PromptRequest::new(
+                        session.session_id,
+                        vec![acp::ContentBlock::Text(acp::TextContent::new("Inspect the workspace"))],
+                    ))
+                    .block_task()
+                    .await?;
+                assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+                Ok(())
+            });
+
+        tokio::time::timeout(Duration::from_secs(5), client_connection)
+            .await
+            .expect("client connection should finish")
+            .expect("streamed tool protocol flow should succeed");
+        agent_task.abort();
+        drop(agent_task.await);
+
+        let updates = std::iter::from_fn(|| updates_rx.try_recv().ok()).collect::<Vec<_>>();
+        let visible_text = updates
+            .iter()
+            .filter_map(|notification| match &notification.update {
+                acp::SessionUpdate::AgentMessageChunk(chunk) => match &chunk.content {
+                    acp::ContentBlock::Text(text) => Some(text.text.as_str()),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(visible_text.contains(&"Checking files."));
+        assert!(visible_text.contains(&"Tool complete."));
+        assert_eq!(calls.load(Ordering::SeqCst), 2, "one stream before and one stream after the tool");
+
+        let requests = requests.lock().expect("stream requests");
+        assert_eq!(requests.len(), 2);
+        assert!(requests.iter().all(|request| request.stream));
+        assert!(
+            requests[1].messages.iter().any(Message::is_tool_response),
+            "the second stream must include the executed tool result"
+        );
+        assert!(
+            requests[1]
+                .messages
+                .iter()
+                .any(|message| message.reasoning.as_deref() == Some("I need the workspace listing.")),
+            "the assistant tool-call checkpoint must retain streamed reasoning"
+        );
+    }
+
+    #[tokio::test]
+    async fn visible_stream_failure_checkpoints_an_incomplete_turn_over_acp() {
+        let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+        let _factory_guard =
+            PromptProviderFactoryGuard::install("wire-test", Arc::new(|| Box::new(PartialThenFailProvider)));
+        let workspace = TempDir::new().expect("wire test workspace");
+        let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+        let (agent_channel, client_channel) = Channel::duplex();
+        let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
+
+        let agent_connection = install_handlers(Agent.builder().name("vtcode-partial-stream-test"), Arc::clone(&agent))
+            .connect_with(agent_channel, {
+                let agent = Arc::clone(&agent);
+                async move |cx: ConnectionTo<Client>| {
+                    agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                    std::future::pending::<agent_client_protocol::Result<()>>().await
+                }
+            });
+        let agent_task = tokio::spawn(agent_connection);
+
+        let client_connection = Client
+            .builder()
+            .on_receive_notification(
+                async move |notification: acp::SessionNotification, _cx| {
+                    drop(updates_tx.send(notification));
+                    Ok(())
+                },
+                on_receive_notification!(),
+            )
+            .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+                drop(
+                    cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                        .block_task()
+                        .await?,
+                );
+                let session = cx
+                    .send_request(NewSessionRequest::new(workspace.path().to_path_buf()))
+                    .block_task()
+                    .await?;
+                let response = cx
+                    .send_request(PromptRequest::new(
+                        session.session_id,
+                        vec![acp::ContentBlock::Text(acp::TextContent::new("Begin a response"))],
+                    ))
+                    .block_task()
+                    .await?;
+                assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+                Ok(())
+            });
+
+        tokio::time::timeout(Duration::from_secs(5), client_connection)
+            .await
+            .expect("client connection should finish")
+            .expect("partial-stream protocol flow should end normally");
+        agent_task.abort();
+        drop(agent_task.await);
+
+        let visible_text = std::iter::from_fn(|| updates_rx.try_recv().ok())
+            .filter_map(|notification| match notification.update {
+                acp::SessionUpdate::AgentMessageChunk(chunk) => match chunk.content {
+                    acp::ContentBlock::Text(text) => Some(text.text),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect::<String>();
+        assert!(visible_text.contains("partial answer"));
+        assert!(visible_text.contains("You can retry the prompt"));
+
+        let session = agent
+            .sessions
+            .lock()
+            .expect("ACP session map")
+            .values()
+            .next()
+            .expect("wire session")
+            .clone();
+        let messages = session.data.lock().expect("wire session data").thread.messages();
+        let incomplete = messages.last().expect("incomplete assistant message");
+        assert!(incomplete.content.as_text().contains("partial answer"));
+        assert!(incomplete.metadata.as_ref().is_some_and(MessageMetadata::is_incomplete));
     }
 
     #[tokio::test]
@@ -2115,12 +2565,15 @@ mod tests {
             stream_idle: Some(Duration::from_secs(120)),
             total_generation: Some(Duration::from_secs(600)),
         };
-        let total = deadline_after(policy.total_generation);
-        let mut tracker = StreamDeadlineTracker::new(policy, total);
+        let started_at = Instant::now();
+        let total = deadline_from(started_at, policy.total_generation);
+        let mut tracker = StreamDeadlineTracker::new(policy, started_at);
 
         assert_eq!(tracker.next().map(|(phase, _deadline)| phase), Some(StreamTimeoutPhase::FirstToken));
-        tracker.observe_output();
+        let first_output_at = started_at + Duration::from_secs(20);
+        tracker.observe_output_at(first_output_at);
         assert_eq!(tracker.next().map(|(phase, _deadline)| phase), Some(StreamTimeoutPhase::InterTokenIdle));
+        assert_eq!(tracker.idle, deadline_from(first_output_at, policy.stream_idle));
         assert_eq!(tracker.total, total, "observing output must not extend the total generation deadline");
     }
 
