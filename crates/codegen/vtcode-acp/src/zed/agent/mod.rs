@@ -8,7 +8,6 @@ use hashbrown::HashMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::time::timeout;
 use tracing::{debug, warn};
 use vtcode_config::TimeoutsConfig;
 use vtcode_config::auth::AuthCredentialsStoreMode;
@@ -185,16 +184,11 @@ async fn attach_acp_mcp_client(
         None
     };
 
-    let startup_timeout_secs = mcp_config.startup_timeout_seconds.unwrap_or(30);
     let mut client = McpClient::with_sandbox_context(mcp_config, sandbox_context);
-    match timeout(Duration::from_secs(startup_timeout_secs), client.initialize()).await {
-        Ok(Ok(())) => debug!("ACP MCP client initialized successfully"),
-        Ok(Err(error)) => {
+    match client.initialize().await {
+        Ok(()) => debug!("ACP MCP client initialized successfully"),
+        Err(error) => {
             warn!(%error, "ACP MCP client initialization failed; continuing without MCP tools");
-            return;
-        }
-        Err(_) => {
-            warn!(startup_timeout_secs, "ACP MCP client initialization timed out; continuing without MCP tools");
             return;
         }
     }
