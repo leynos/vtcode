@@ -209,7 +209,7 @@ fn try_load_codex_chatgpt_session_once() -> Result<Option<OpenAIChatGptSession>>
 
 /// Try to load a ChatGPT session from Codex's `auth.json`.
 ///
-/// Wraps [`try_load_codex_chatgpt_session_once`] with a small bounded
+/// Wraps the single-attempt loader with a small bounded
 /// synchronous retry loop. Codex writes `auth.json` by truncating and
 /// rewriting without an atomic rename, so a concurrent Codex refresh can make
 /// the file momentarily empty or partial. The retry absorbs that transient
@@ -356,7 +356,7 @@ impl OpenAIChatGptSessionRefresher for CodexAuthJsonRefresher {
 }
 
 /// Create a shared [`CodexAuthJsonRefresher`] handle for use with
-/// [`OpenAIChatGptAuthHandle::new_external`].
+/// [`OpenAIChatGptAuthHandle::new_external`](crate::OpenAIChatGptAuthHandle::new_external).
 pub fn codex_auth_json_refresher() -> Arc<dyn OpenAIChatGptSessionRefresher> {
     Arc::new(CodexAuthJsonRefresher)
 }

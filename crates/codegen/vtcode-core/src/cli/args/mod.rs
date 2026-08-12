@@ -730,7 +730,7 @@ pub enum Commands {
     ///   vtcode plugins list
     ///   vtcode plugins info my-plugin
     ///   vtcode plugins validate ./path/to/plugin
-    ///   vtcode plugins add https://github.com/example/plugin
+    ///   vtcode plugins add <https://github.com/example/plugin>
     ///   vtcode plugins remove my-plugin
     #[command(subcommand)]
     Plugins(PluginsSubcommand),
