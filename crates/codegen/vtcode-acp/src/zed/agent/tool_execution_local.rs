@@ -31,8 +31,14 @@ impl ZedAgent {
             );
         }
 
-        let policy = ExecutionPolicySnapshot::default().with_invocation_id(Some(call_id.to_string()));
-        let request = ToolExecutionRequest::new(tool_name, args.clone()).with_policy(policy);
+        let prepared = match self.local_tool_registry.admit_public_tool_call(tool_name, args) {
+            Ok(prepared) => prepared,
+            Err(error) => return ToolExecutionReport::failure(tool_name, &error.to_string()),
+        };
+        let policy = ExecutionPolicySnapshot::default()
+            .with_invocation_id(Some(call_id.to_string()))
+            .with_prevalidated(prepared.already_preflighted);
+        let request = ToolExecutionRequest::new(prepared.canonical_name, prepared.effective_args).with_policy(policy);
         let outcome = self.local_tool_registry.execute_public_tool_request(request).await;
         match (outcome.output, outcome.error) {
             (Some(output), None) => {
