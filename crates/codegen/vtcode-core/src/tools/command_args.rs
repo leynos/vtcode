@@ -27,12 +27,21 @@ impl WriteStdinDispatch {
 
 pub(crate) fn write_stdin_dispatch(args: &Value) -> Result<WriteStdinDispatch, &'static str> {
     let payload = args.as_object().ok_or("write_stdin requires a JSON object")?;
-    if payload
-        .get("action")
-        .and_then(Value::as_str)
-        .is_some_and(|action| action.eq_ignore_ascii_case("wait"))
-    {
-        return Ok(WriteStdinDispatch::Wait);
+    if let Some(action) = payload.get("action").and_then(Value::as_str) {
+        if action.eq_ignore_ascii_case("poll") {
+            return Ok(WriteStdinDispatch::Poll);
+        }
+        if action.eq_ignore_ascii_case("wait") {
+            return Ok(WriteStdinDispatch::Wait);
+        }
+        if action.eq_ignore_ascii_case("write") {
+            payload
+                .get("chars")
+                .and_then(Value::as_str)
+                .ok_or("write_stdin action write requires string chars")?;
+            return Ok(WriteStdinDispatch::Write);
+        }
+        return Err("write_stdin action must be write, poll, or wait");
     }
     let chars = payload
         .get("chars")
@@ -622,6 +631,26 @@ mod tests {
         assert_eq!(
             write_stdin_dispatch(&json!({"action": "wait", "session_id": "run-1"})),
             Ok(WriteStdinDispatch::Wait)
+        );
+    }
+
+    #[test]
+    fn write_stdin_dispatch_accepts_explicit_poll_without_chars() {
+        assert_eq!(
+            write_stdin_dispatch(&json!({"action": "poll", "session_id": "run-1"})),
+            Ok(WriteStdinDispatch::Poll)
+        );
+    }
+
+    #[test]
+    fn write_stdin_dispatch_requires_chars_for_explicit_write() {
+        assert_eq!(
+            write_stdin_dispatch(&json!({"action": "write", "session_id": "run-1"})),
+            Err("write_stdin action write requires string chars")
+        );
+        assert_eq!(
+            write_stdin_dispatch(&json!({"action": "write", "session_id": "run-1", "chars": ""})),
+            Ok(WriteStdinDispatch::Write)
         );
     }
 

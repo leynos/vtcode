@@ -987,6 +987,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_stdin_preflight_accepts_explicit_poll_without_chars() -> Result<()> {
+        let (_temp, registry) = new_test_registry().await;
+
+        let result = preflight_validate_call(
+            &registry,
+            tool_names::WRITE_STDIN,
+            &json!({"action": "poll", "session_id": "run-1"}),
+        )?;
+
+        assert_eq!(result.effective_args["action"], "poll");
+        assert!(result.effective_args.get("input").is_none());
+        assert!(result.readonly_classification);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn write_stdin_preflight_accepts_explicit_wait_without_chars() -> Result<()> {
+        let (_temp, registry) = new_test_registry().await;
+
+        let result = preflight_validate_call(
+            &registry,
+            tool_names::WRITE_STDIN,
+            &json!({"action": "wait", "session_id": "run-1"}),
+        )?;
+
+        assert_eq!(result.effective_args["action"], "wait");
+        assert!(result.readonly_classification);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn write_stdin_preflight_rejects_explicit_write_without_chars() {
+        let (_temp, registry) = new_test_registry().await;
+
+        let error = preflight_validate_call(
+            &registry,
+            tool_names::WRITE_STDIN,
+            &json!({"action": "write", "session_id": "run-1"}),
+        )
+        .expect_err("explicit write without chars should fail preflight");
+
+        assert!(error.to_string().contains("write_stdin action write requires string chars"));
+    }
+
+    #[tokio::test]
     async fn write_stdin_poll_preflight_rejects_non_string_session_id() {
         let (_temp, registry) = new_test_registry().await;
 
