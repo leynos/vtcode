@@ -7831,6 +7831,7 @@ dependencies = [
  "dunce",
  "filetime",
  "flate2",
+ "fs2",
  "futures",
  "glob",
  "hashbrown 0.17.1",

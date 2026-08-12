@@ -832,12 +832,16 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
 
     let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
     let _turn_guard = TurnGuard::begin(thread)?;
-    agent.local_tool_registry.safety_gateway().start_turn();
+    if let Some(runtime) = session.workspace_runtime() {
+        runtime.local_tool_registry.safety_gateway().start_turn();
+    } else {
+        agent.local_tool_registry.safety_gateway().start_turn();
+    }
     session.cancellation.reset();
 
     let user_message = tokio::select! {
         () = session.cancellation.cancelled() => return Ok(PromptResponse::new(acp::StopReason::Cancelled)),
-        result = agent.resolve_prompt(&args.session_id, &args.prompt) => result?,
+        result = agent.resolve_prompt(&session, &args.session_id, &args.prompt) => result?,
     };
 
     if let Some(hooks) = session.lifecycle_hooks() {
@@ -892,7 +896,11 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             openai: None,
             anthropic: None,
             model_behavior: agent.config.model_behavior.clone(),
-            workspace_root: Some(agent.config.workspace.clone()),
+            workspace_root: Some(
+                session
+                    .workspace_runtime()
+                    .map_or_else(|| agent.config.workspace.clone(), |runtime| runtime.workspace_root.clone()),
+            ),
         },
     )
     .map_err(|err| SdkError::internal_error().data(err.to_string()))?;
@@ -923,10 +931,10 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         }
     }
 
-    let mut has_local_tools = agent.local_tools_available(&primary_agent);
+    let mut has_local_tools = agent.session_local_tools_available(&session, &primary_agent);
     let mut tools_allowed = provider_supports_tools && (!enabled_tools.is_empty() || has_local_tools);
     let mut tool_definitions = agent
-        .tool_definitions(provider_supports_tools, &enabled_tools, &primary_agent)
+        .session_tool_definitions(&session, provider_supports_tools, &enabled_tools, &primary_agent)
         .map(Arc::new);
     let mut messages = agent.resolved_messages(&session);
     if agent
@@ -942,7 +950,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
     {
         messages = agent.resolved_messages(&session);
     }
-    if let Some(controller) = agent.local_tool_registry.subagent_controller() {
+    if let Some(controller) = agent.session_subagent_controller(&session) {
         controller.set_parent_session_id(args.session_id.to_string()).await;
         controller.set_parent_messages(&messages).await;
         drop(controller.set_turn_delegation_hints_from_input(&user_message).await);
@@ -1287,7 +1295,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             }
                             agent.push_message(&session, assistant_tool_message);
                             persist_session_checkpoint(&agent, &session, "assistant_tool_calls").await;
-                            if let Some(controller) = agent.local_tool_registry.subagent_controller() {
+                            if let Some(controller) = agent.session_subagent_controller(&session) {
                                 controller.set_parent_session_id(args.session_id.to_string()).await;
                                 controller.set_parent_messages(&agent.resolved_messages(&session)).await;
                             }
@@ -1328,10 +1336,15 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 let data = session.data.lock().map_err(|_err| SdkError::internal_error())?;
                                 data.primary_agent.clone()
                             };
-                            has_local_tools = agent.local_tools_available(&primary_agent);
+                            has_local_tools = agent.session_local_tools_available(&session, &primary_agent);
                             tools_allowed = provider_supports_tools && (!enabled_tools.is_empty() || has_local_tools);
                             tool_definitions = agent
-                                .tool_definitions(provider_supports_tools, &enabled_tools, &primary_agent)
+                                .session_tool_definitions(
+                                    &session,
+                                    provider_supports_tools,
+                                    &enabled_tools,
+                                    &primary_agent,
+                                )
                                 .map(Arc::new);
                             if agent
                                 .maybe_compact_session(
@@ -1345,7 +1358,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 .map_err(|error| SdkError::internal_error().data(error.to_string()))?
                             {
                                 messages = agent.resolved_messages(&session);
-                                if let Some(controller) = agent.local_tool_registry.subagent_controller() {
+                                if let Some(controller) = agent.session_subagent_controller(&session) {
                                     controller.set_parent_messages(&messages).await;
                                 }
                             }
@@ -1391,7 +1404,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 .map_err(|error| SdkError::internal_error().data(error.to_string()))?
             {
                 messages = agent.resolved_messages(&session);
-                if let Some(controller) = agent.local_tool_registry.subagent_controller() {
+                if let Some(controller) = agent.session_subagent_controller(&session) {
                     controller.set_parent_messages(&messages).await;
                 }
             }
@@ -1453,7 +1466,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     Message::assistant_with_tools(response.content.clone().unwrap_or_default(), tool_calls.clone()),
                 );
                 persist_session_checkpoint(&agent, &session, "assistant_tool_calls").await;
-                if let Some(controller) = agent.local_tool_registry.subagent_controller() {
+                if let Some(controller) = agent.session_subagent_controller(&session) {
                     controller.set_parent_session_id(args.session_id.to_string()).await;
                     controller.set_parent_messages(&agent.resolved_messages(&session)).await;
                 }
@@ -1490,10 +1503,10 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     let data = session.data.lock().map_err(|_err| SdkError::internal_error())?;
                     data.primary_agent.clone()
                 };
-                has_local_tools = agent.local_tools_available(&primary_agent);
+                has_local_tools = agent.session_local_tools_available(&session, &primary_agent);
                 tools_allowed = provider_supports_tools && (!enabled_tools.is_empty() || has_local_tools);
                 tool_definitions = agent
-                    .tool_definitions(provider_supports_tools, &enabled_tools, &primary_agent)
+                    .session_tool_definitions(&session, provider_supports_tools, &enabled_tools, &primary_agent)
                     .map(Arc::new);
                 continue;
             }
@@ -2205,9 +2218,12 @@ mod tests {
                 })
             }),
         );
-        let workspace = TempDir::new().expect("wire test workspace");
+        let launch_workspace = TempDir::new().expect("wire test launch workspace");
+        let workspace = TempDir::new().expect("wire test requested workspace");
         std::fs::write(workspace.path().join("visible.txt"), "fixture").expect("write workspace fixture");
-        let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+        std::fs::write(launch_workspace.path().join("wrong-root.txt"), "fixture")
+            .expect("write launch workspace fixture");
+        let agent = Arc::new(build_wire_test_agent(launch_workspace.path()).await);
         let (agent_channel, client_channel) = Channel::duplex();
         let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
 
@@ -2280,6 +2296,14 @@ mod tests {
             requests[1].messages.iter().any(Message::is_tool_response),
             "the second stream must include the executed tool result"
         );
+        let tool_response = requests[1]
+            .messages
+            .iter()
+            .find(|message| message.is_tool_response())
+            .map(|message| message.content.as_text())
+            .expect("list_files tool response");
+        assert!(tool_response.contains("visible.txt"), "tool must use session/new cwd: {tool_response}");
+        assert!(!tool_response.contains("wrong-root.txt"), "tool must not use the ACP launch cwd: {tool_response}");
         assert!(
             requests[1]
                 .messages

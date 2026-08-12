@@ -139,20 +139,27 @@ impl ZedAgent {
         call: &ProviderToolCall,
         client: &ConnectionHandle,
     ) -> Result<ToolCallResult, SdkError> {
+        let workspace_runtime = session.workspace_runtime();
+        let acp_tool_registry = workspace_runtime
+            .as_ref()
+            .map_or(self.acp_tool_registry.as_ref(), |runtime| runtime.acp_tool_registry.as_ref());
+        let permission_prompter = workspace_runtime
+            .as_ref()
+            .map_or(self.permission_prompter.as_ref(), |runtime| runtime.permission_prompter.as_ref());
         let Some(func_ref) = call.function.as_ref() else {
             return Ok(Self::tool_call_result_from_report(
                 call,
                 ToolExecutionReport::failure("unknown", "Malformed tool call: missing function payload"),
             ));
         };
-        let tool_descriptor = self.acp_tool_registry.lookup(&func_ref.name);
+        let tool_descriptor = acp_tool_registry.lookup(&func_ref.name);
         let args_value_result: Result<Value, _> = serde_json::from_str(&func_ref.arguments);
         let args_value_for_input = args_value_result.as_ref().ok().cloned();
         let title = match (tool_descriptor, args_value_for_input.as_ref()) {
-            (Some(descriptor), Some(args)) => self.acp_tool_registry.render_title(descriptor, &func_ref.name, args),
+            (Some(descriptor), Some(args)) => acp_tool_registry.render_title(descriptor, &func_ref.name, args),
             (Some(descriptor), None) => {
                 let null_args = Value::Null;
-                self.acp_tool_registry.render_title(descriptor, &func_ref.name, &null_args)
+                acp_tool_registry.render_title(descriptor, &func_ref.name, &null_args)
             }
             (None, _) => format!("{} (unsupported)", func_ref.name),
         };
@@ -160,9 +167,9 @@ impl ZedAgent {
         let call_id = acp::ToolCallId::new(Arc::from(call.id.clone()));
         let kind = match tool_descriptor {
             Some(ToolDescriptor::Acp(tool)) => tool.kind(),
-            Some(ToolDescriptor::Local) | None => self
-                .acp_tool_registry
-                .tool_kind_for_call(&func_ref.name, args_value_for_input.as_ref()),
+            Some(ToolDescriptor::Local) | None => {
+                acp_tool_registry.tool_kind_for_call(&func_ref.name, args_value_for_input.as_ref())
+            }
         };
         let initial_call = acp::ToolCall::new(call_id.clone(), title)
             .kind(kind)
@@ -236,17 +243,17 @@ impl ZedAgent {
             let force_prompt = matches!(pre_tool_decision, PreToolHookDecision::Ask);
             match descriptor {
                 ToolDescriptor::Acp(tool) if force_prompt => {
-                    self.permission_prompter
+                    permission_prompter
                         .request_tool_permission_forced(client, session_id, &initial_call, tool, args_value)
                         .await?
                 }
                 ToolDescriptor::Acp(tool) => {
-                    self.permission_prompter
+                    permission_prompter
                         .request_tool_permission(client, session_id, &initial_call, tool, args_value)
                         .await?
                 }
                 ToolDescriptor::Local if force_prompt => {
-                    self.permission_prompter
+                    permission_prompter
                         .request_named_tool_permission_forced(
                             client,
                             session_id,
@@ -257,7 +264,7 @@ impl ZedAgent {
                         .await?
                 }
                 ToolDescriptor::Local => {
-                    self.permission_prompter
+                    permission_prompter
                         .request_named_tool_permission(
                             client,
                             session_id,
@@ -282,7 +289,7 @@ impl ZedAgent {
 
         let apply_patch_snapshot =
             if permission_override.is_none() && !cancel_after_permission && func_ref.name == tools::APPLY_PATCH {
-                self.capture_apply_patch_snapshot(effective_args.as_ref()).await
+                self.capture_apply_patch_snapshot(session, effective_args.as_ref()).await
             } else {
                 None
             };
@@ -295,6 +302,7 @@ impl ZedAgent {
             match (tool_descriptor, effective_args.as_ref()) {
                 (Some(descriptor), Some(args_value)) => {
                     self.execute_descriptor(
+                        session,
                         descriptor,
                         &func_ref.name,
                         client,
@@ -365,7 +373,10 @@ impl ZedAgent {
         let Some(hooks) = session.lifecycle_hooks() else {
             return Ok(None);
         };
-        let request = build_permission_request(&self.config.workspace, &self.config.workspace, tool_name, Some(args));
+        let workspace = session
+            .workspace_runtime()
+            .map_or_else(|| self.config.workspace.clone(), |runtime| runtime.workspace_root.clone());
+        let request = build_permission_request(&workspace, &workspace, tool_name, Some(args));
         let suggestions = match descriptor {
             ToolDescriptor::Acp(tool) => self
                 .permission_prompter
@@ -426,21 +437,26 @@ impl ZedAgent {
             .unwrap_or_default()
     }
 
-    async fn capture_apply_patch_snapshot(&self, args: Option<&Value>) -> Option<ApplyPatchSnapshot> {
+    async fn capture_apply_patch_snapshot(
+        &self,
+        session: &SessionHandle,
+        args: Option<&Value>,
+    ) -> Option<ApplyPatchSnapshot> {
         let args = args?;
         let decoded = decode_apply_patch_input(args).ok().flatten()?;
         let patch = Patch::parse(&decoded.text).ok()?;
-        let workspace = self.absolute_workspace_root().await?;
+        let workspace = self.absolute_workspace_root(session).await?;
         capture_apply_patch_snapshot_for_workspace(&workspace, &patch).await
     }
 
-    async fn absolute_workspace_root(&self) -> Option<PathBuf> {
-        if self.workspace_root().is_absolute() {
-            Some(self.workspace_root().to_path_buf())
+    async fn absolute_workspace_root(&self, session: &SessionHandle) -> Option<PathBuf> {
+        let workspace = session
+            .workspace_runtime()
+            .map_or_else(|| self.workspace_root().to_path_buf(), |runtime| runtime.workspace_root.clone());
+        if workspace.is_absolute() {
+            Some(workspace)
         } else {
-            canonicalize_with_context_async(self.workspace_root(), "ACP workspace")
-                .await
-                .ok()
+            canonicalize_with_context_async(&workspace, "ACP workspace").await.ok()
         }
     }
 
@@ -468,6 +484,7 @@ impl ZedAgent {
 
     async fn execute_descriptor(
         &self,
+        session: &SessionHandle,
         descriptor: ToolDescriptor,
         tool_name: &str,
         client: &ConnectionHandle,
@@ -476,14 +493,16 @@ impl ZedAgent {
         args: &Value,
     ) -> ToolExecutionReport {
         if should_route_terminal_via_client(tool_name, args)
-            && let Some(report) = self.execute_terminal_via_client(tool_name, client, session_id, args).await
+            && let Some(report) = self
+                .execute_terminal_via_client(session, tool_name, client, session_id, args)
+                .await
         {
             return report;
         }
 
         match descriptor {
-            ToolDescriptor::Acp(tool) => self.execute_acp_tool(tool, client, session_id, args).await,
-            ToolDescriptor::Local => self.execute_local_tool(tool_name, args, call_id).await,
+            ToolDescriptor::Acp(tool) => self.execute_acp_tool(session, tool, client, session_id, args).await,
+            ToolDescriptor::Local => self.execute_session_local_tool(session, tool_name, args, call_id).await,
         }
     }
 
@@ -512,6 +531,7 @@ impl ZedAgent {
 
     async fn execute_terminal_via_client(
         &self,
+        session: &SessionHandle,
         tool_name: &str,
         client: &ConnectionHandle,
         session_id: &acp::SessionId,
@@ -524,7 +544,7 @@ impl ZedAgent {
         match Self::requested_terminal_mode(args) {
             Ok(RunTerminalMode::Terminal) => None,
             Ok(RunTerminalMode::Pty) => {
-                Some(match self.launch_client_terminal(tool_name, client, session_id, args).await {
+                Some(match self.launch_client_terminal(session, tool_name, client, session_id, args).await {
                     Ok(report) => report,
                     Err(message) => ToolExecutionReport::failure(tool_name, &message),
                 })
@@ -535,6 +555,7 @@ impl ZedAgent {
 
     async fn launch_client_terminal(
         &self,
+        session: &SessionHandle,
         tool_name: &str,
         client: &ConnectionHandle,
         session_id: &acp::SessionId,
@@ -545,8 +566,8 @@ impl ZedAgent {
             .split_first()
             .ok_or_else(|| "command array cannot be empty".to_string())?;
 
-        let working_dir = self.resolve_terminal_working_dir(args)?;
-        let location_display = self.describe_terminal_location(working_dir.as_ref());
+        let working_dir = self.resolve_session_terminal_working_dir(session, args)?;
+        let location_display = self.describe_session_terminal_location(session, working_dir.as_ref());
         let command_display = command_parts.join(" ");
 
         let request = acp::CreateTerminalRequest::new(session_id.clone(), program.to_string())
@@ -585,6 +606,7 @@ impl ZedAgent {
 
     async fn execute_acp_tool(
         &self,
+        session: &SessionHandle,
         tool: SupportedTool,
         client: &ConnectionHandle,
         session_id: &acp::SessionId,
@@ -592,11 +614,11 @@ impl ZedAgent {
     ) -> ToolExecutionReport {
         match tool {
             SupportedTool::ReadFile => self
-                .run_read_file(client, session_id, args)
+                .run_read_file(session, client, session_id, args)
                 .await
                 .unwrap_or_else(|message| ToolExecutionReport::failure(tools::READ_FILE, &message)),
             SupportedTool::ListFiles => self
-                .run_list_files(args)
+                .run_session_list_files(session, args)
                 .await
                 .unwrap_or_else(|message| ToolExecutionReport::failure(tools::LIST_FILES, &message)),
         }
