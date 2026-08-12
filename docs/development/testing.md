@@ -130,6 +130,31 @@ needs deterministic file modification times; process-isolated cases can use
 the workspace's `rusty-fork` test dependency. These dependencies are for test
 fixtures and do not change the runtime dependency surface.
 
+### ACP provider streaming
+
+ACP streaming changes use complementary layers rather than one oversized
+integration test:
+
+- pure deadline and eligibility rules use deterministic instants and Proptest;
+- the official ACP Rust SDK duplex harness covers session updates, tool
+  execution, follow-up streams, and incomplete-turn checkpointing;
+- WireMock replays exact OpenAI-compatible SSE, including fragmented tool-call
+  arguments and truncated terminal sequences; and
+- ignored VidaiMock tests exercise real TTFT, inter-token cadence, and
+  mid-stream disconnect physics through the custom-provider adapter.
+
+Run the deterministic layers with normal crate tests. Run the wall-clock
+physics layer explicitly when VidaiMock 0.1.3 is installed:
+
+```bash
+cargo nextest run --run-ignored ignored-only \
+  -p vtcode-llm vidaimock_
+```
+
+The physics tests bind only to an ephemeral localhost port. Their fixtures are
+under `tests/fixtures/vidaimock/`; never put API keys, request bodies, or
+unsanitised provider captures there.
+
 ### Structural Rule Checks
 
 VT Code bundles a generic `ast-grep` project scaffold and materializes it into the current workspace when you run `vtcode init`.
