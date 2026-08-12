@@ -3,8 +3,10 @@
 pub use crate::config::WorkspaceTrustLevel;
 use crate::config::constants::defaults;
 use crate::utils::path::canonicalize_workspace;
+use fs2::FileExt;
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use tokio::fs;
@@ -290,14 +292,24 @@ impl DotManager {
             return Ok(DotConfig::default());
         }
 
-        let content = String::from_utf8(
-            vtcode_commons::fs::read_private_file_no_follow(&self.config_file)
-                .await
-                .map_err(|error| DotError::Io(std::io::Error::other(error.to_string())))?,
-        )
-        .map_err(|error| DotError::Io(std::io::Error::other(error.to_string())))?;
-
-        toml::from_str(&content).map_err(DotError::TomlDe)
+        const MAX_PARSE_ATTEMPTS: usize = 5;
+        for attempt in 1..=MAX_PARSE_ATTEMPTS {
+            let content = String::from_utf8(
+                vtcode_commons::fs::read_private_file_no_follow(&self.config_file)
+                    .await
+                    .map_err(|error| DotError::Io(std::io::Error::other(error.to_string())))?,
+            )
+            .map_err(|error| DotError::Io(std::io::Error::other(error.to_string())))?;
+            match toml::from_str(&content) {
+                Ok(config) => return Ok(config),
+                Err(error) if attempt < MAX_PARSE_ATTEMPTS => {
+                    tracing::debug!(attempt, %error, "Retrying transient VT Code configuration parse failure");
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+                Err(error) => return Err(DotError::TomlDe(error)),
+            }
+        }
+        unreachable!("configuration parse attempts always return")
     }
 
     /// Save configuration to disk.
@@ -321,10 +333,25 @@ impl DotManager {
     where
         F: FnOnce(&mut DotConfig),
     {
+        let lock_path = self.config_dir.join("config.lock");
+        let lock_file = tokio::task::spawn_blocking(move || {
+            let file = OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .read(true)
+                .write(true)
+                .open(lock_path)?;
+            file.lock_exclusive()?;
+            Ok::<_, std::io::Error>(file)
+        })
+        .await
+        .map_err(|error| DotError::LockJoin(error.to_string()))??;
         let mut config = self.load_config().await?;
         updater(&mut config);
         config.last_updated = unix_timestamp_secs()?;
-        self.save_config(&config).await
+        let result = self.save_config(&config).await;
+        FileExt::unlock(&lock_file)?;
+        result
     }
 
     /// Load the trust level recorded for a workspace, if any.
@@ -627,6 +654,10 @@ pub enum DotError {
     /// The dot manager mutex was poisoned.
     #[error("Dot manager lock poisoned: {0}")]
     LockPoisoned(String),
+
+    /// A blocking configuration-lock task failed to join.
+    #[error("Configuration lock task failed: {0}")]
+    LockJoin(String),
 }
 
 fn unix_timestamp_secs() -> Result<u64, DotError> {
@@ -833,5 +864,31 @@ mod tests {
         let other_workspace = temp_dir.path().join("other");
         std::fs::create_dir_all(&other_workspace).unwrap();
         assert!(manager.lifecycle_hook_approval(&other_workspace).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn concurrent_config_updates_preserve_both_changes() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_dir = temp_dir.path().join(".vtcode");
+        let manager = DotManager {
+            config_dir: config_dir.clone(),
+            cache_dir: config_dir.join("cache"),
+            state_dir: config_dir.join("state"),
+            config_file: config_dir.join("config.toml"),
+        };
+        manager.initialize().await.unwrap();
+
+        let first = manager.clone();
+        let second = manager.clone();
+        let (first_result, second_result) = tokio::join!(
+            first.update_config(|config| config.preferences.default_model = "first".to_string()),
+            second.update_config(|config| config.preferences.default_provider = "second".to_string())
+        );
+        first_result.unwrap();
+        second_result.unwrap();
+
+        let config = manager.load_config().await.unwrap();
+        assert_eq!(config.preferences.default_model, "first");
+        assert_eq!(config.preferences.default_provider, "second");
     }
 }

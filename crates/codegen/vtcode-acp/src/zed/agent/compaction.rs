@@ -115,12 +115,16 @@ impl ZedAgent {
             .total_generation
             .map(|timeout| Instant::now() + timeout);
         let outcome_result = {
+            let workspace_runtime = session.workspace_runtime();
+            let workspace_root = workspace_runtime
+                .as_ref()
+                .map_or(self.config.workspace.as_path(), |runtime| runtime.workspace_root.as_path());
             let compaction = auto_compact_messages(
                 AutoCompactionInput {
                     provider,
                     model,
                     session_id: &session_id,
-                    workspace_root: self.config.workspace.as_path(),
+                    workspace_root,
                     vt_cfg: Some(vt_config),
                     current_token_usage: prompt_tokens,
                     touched_files: &[],

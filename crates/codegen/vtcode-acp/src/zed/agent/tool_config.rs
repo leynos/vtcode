@@ -11,7 +11,7 @@ use vtcode_core::tools::command_args;
 use vtcode_core::utils::path::ensure_path_within_workspace;
 
 use super::super::constants::*;
-use super::super::types::{RunTerminalMode, ToolRuntime};
+use super::super::types::{RunTerminalMode, SessionHandle, ToolRuntime};
 
 impl ZedAgent {
     pub(super) fn local_tools_available(&self, primary_agent: &str) -> bool {
@@ -44,6 +44,45 @@ impl ZedAgent {
                     }),
             )
         }
+    }
+
+    pub(super) fn session_local_tools_available(&self, session: &SessionHandle, primary_agent: &str) -> bool {
+        let Some(runtime) = session.workspace_runtime() else {
+            return self.local_tools_available(primary_agent);
+        };
+        runtime.acp_tool_registry.definitions_for(&[], true).iter().any(|definition| {
+            runtime
+                .primary_agents
+                .allows_local_tool(primary_agent, definition.function_name())
+        })
+    }
+
+    pub(super) fn session_tool_definitions(
+        &self,
+        session: &SessionHandle,
+        provider_supports_tools: bool,
+        enabled_tools: &[SupportedTool],
+        primary_agent: &str,
+    ) -> Option<Vec<ToolDefinition>> {
+        let Some(runtime) = session.workspace_runtime() else {
+            return self.tool_definitions(provider_supports_tools, enabled_tools, primary_agent);
+        };
+        if !provider_supports_tools {
+            return None;
+        }
+        let include_local = self.session_local_tools_available(session, primary_agent);
+        if enabled_tools.is_empty() && !include_local {
+            return None;
+        }
+        Some(
+            runtime
+                .acp_tool_registry
+                .definitions_for_filtered(enabled_tools, include_local, |tool_name| {
+                    runtime
+                        .primary_agents
+                        .allows_tool(primary_agent, tool_name, &runtime.workspace_root)
+                }),
+        )
     }
 
     pub(super) fn tool_choice(&self, tools_available: bool) -> Option<ToolChoice> {
@@ -168,10 +207,51 @@ impl ZedAgent {
         Ok(Some(normalized))
     }
 
+    pub(super) fn resolve_session_terminal_working_dir(
+        &self,
+        session: &SessionHandle,
+        args: &Value,
+    ) -> Result<Option<PathBuf>, String> {
+        let Some(runtime) = session.workspace_runtime() else {
+            return self.resolve_terminal_working_dir(args);
+        };
+        let Some(raw_dir) = command_args::working_dir_text(args) else {
+            return Ok(None);
+        };
+        let candidate = Path::new(raw_dir);
+        let resolved = if candidate.is_absolute() {
+            candidate.to_path_buf()
+        } else {
+            runtime.workspace_root.join(candidate)
+        };
+        ensure_path_within_workspace(&resolved, &runtime.workspace_root)
+            .map(Some)
+            .map_err(|_error| "working_dir must stay within the workspace".to_string())
+    }
+
     pub(super) fn describe_terminal_location(&self, working_dir: Option<&PathBuf>) -> Option<String> {
         let workspace = &self.config.workspace;
         working_dir.and_then(|path| {
             path.strip_prefix(workspace).ok().map(|relative| {
+                if relative.as_os_str().is_empty() {
+                    ".".to_string()
+                } else {
+                    format!("./{}", relative.to_string_lossy())
+                }
+            })
+        })
+    }
+
+    pub(super) fn describe_session_terminal_location(
+        &self,
+        session: &SessionHandle,
+        working_dir: Option<&PathBuf>,
+    ) -> Option<String> {
+        let Some(runtime) = session.workspace_runtime() else {
+            return self.describe_terminal_location(working_dir);
+        };
+        working_dir.and_then(|path| {
+            path.strip_prefix(&runtime.workspace_root).ok().map(|relative| {
                 if relative.as_os_str().is_empty() {
                     ".".to_string()
                 } else {
@@ -190,7 +270,7 @@ impl ZedAgent {
         (truncated, true)
     }
 
-    fn argument_message(template: &str, argument: &str) -> String {
+    pub(super) fn argument_message(template: &str, argument: &str) -> String {
         template.replace("{argument}", argument)
     }
 
@@ -239,14 +319,14 @@ impl ZedAgent {
         Ok(Some(value))
     }
 
-    pub(super) fn parse_tool_path(&self, args: &Value) -> Result<PathBuf, String> {
+    pub(super) fn parse_tool_path(&self, session: &SessionHandle, args: &Value) -> Result<PathBuf, String> {
         if let Some(path) = args
             .get(TOOL_READ_FILE_PATH_ARG)
             .and_then(Value::as_str)
             .filter(|value| !value.is_empty())
         {
             let candidate = PathBuf::from(path);
-            return self.resolve_workspace_path(candidate, TOOL_READ_FILE_PATH_ARG);
+            return self.resolve_session_workspace_path(session, candidate, TOOL_READ_FILE_PATH_ARG);
         }
 
         if let Some(uri) = args
@@ -254,7 +334,7 @@ impl ZedAgent {
             .and_then(Value::as_str)
             .filter(|value| !value.is_empty())
         {
-            return self.parse_resource_path(uri);
+            return self.parse_resource_path(session, uri);
         }
 
         Err(format!("{TOOL_FAILURE_PREFIX}: missing {TOOL_READ_FILE_PATH_ARG} or {TOOL_READ_FILE_URI_ARG}"))

@@ -61,6 +61,455 @@ use vtcode_core::retry::{RetryDecision, RetryPolicyCoreExt};
 
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderDeadlinePolicy, ProviderRequestRuntime};
 
+#[cfg(test)]
+type PromptProviderFactory = dyn Fn() -> Box<dyn LLMProvider> + Send + Sync;
+
+#[cfg(test)]
+struct PromptProviderOverride {
+    provider_name: String,
+    factory: Arc<PromptProviderFactory>,
+}
+
+#[cfg(test)]
+static PROMPT_PROVIDER_OVERRIDE: std::sync::LazyLock<std::sync::Mutex<Option<PromptProviderOverride>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+
+fn create_prompt_provider(provider_name: &str, config: ProviderConfig) -> Result<Box<dyn LLMProvider>, LLMError> {
+    #[cfg(test)]
+    if let Some(provider) = PROMPT_PROVIDER_OVERRIDE.lock().ok().and_then(|guard| {
+        guard
+            .as_ref()
+            .filter(|provider_override| provider_override.provider_name == provider_name)
+            .map(|provider_override| (provider_override.factory)())
+    }) {
+        return Ok(provider);
+    }
+
+    create_provider_with_config(provider_name, config)
+}
+
+struct TurnGuard {
+    thread: ThreadRuntimeHandle,
+}
+
+impl TurnGuard {
+    fn begin(thread: ThreadRuntimeHandle) -> Result<Self, SdkError> {
+        let _submission_id = thread.begin_turn().map_err(|error| {
+            SdkError::internal_error().data(json!({ "reason": "turn_in_progress", "detail": error.to_string() }))
+        })?;
+        Ok(Self { thread })
+    }
+}
+
+impl Drop for TurnGuard {
+    fn drop(&mut self) {
+        self.thread.finish_turn();
+    }
+}
+
+#[derive(Debug)]
+enum ProviderCallError {
+    Cancelled,
+    Failed(String),
+}
+
+impl From<ProviderAdmissionError> for ProviderCallError {
+    fn from(error: ProviderAdmissionError) -> Self {
+        match error {
+            ProviderAdmissionError::Cancelled => Self::Cancelled,
+            other => Self::Failed(other.to_string()),
+        }
+    }
+}
+
+async fn cancellable_backoff(
+    delay: Duration,
+    cancellation: &super::super::types::SessionCancellation,
+) -> Result<(), ProviderCallError> {
+    tokio::select! {
+        () = cancellation.cancelled() => Err(ProviderCallError::Cancelled),
+        () = tokio::time::sleep(delay) => Ok(()),
+    }
+}
+
+async fn sleep_until_optional(deadline: Option<Instant>) {
+    match deadline {
+        Some(deadline) => tokio::time::sleep_until(deadline).await,
+        None => std::future::pending().await,
+    }
+}
+
+fn deadline_after(timeout: Option<Duration>) -> Option<Instant> {
+    deadline_from(Instant::now(), timeout)
+}
+
+fn deadline_from(started_at: Instant, timeout: Option<Duration>) -> Option<Instant> {
+    timeout.map(|timeout| started_at + timeout)
+}
+
+fn provider_timeout_error(provider: &str, phase: &str, timeout: Option<Duration>) -> LLMError {
+    let duration = timeout.map_or_else(|| "configured deadline".to_string(), |timeout| format!("{timeout:?}"));
+    LLMError::Network {
+        message: format!("provider '{provider}' exceeded its {phase} timeout ({duration})"),
+        metadata: None,
+    }
+}
+
+fn unix_timestamp_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|elapsed| u64::try_from(elapsed.as_millis()).ok())
+        .unwrap_or_default()
+}
+
+struct IncompleteProviderTurn {
+    message: Message,
+    visible_update: String,
+    response: PromptResponse,
+}
+
+impl IncompleteProviderTurn {
+    fn from_failure(content: &str, reasoning: &str, error: &str) -> Self {
+        let sanitized_error = strip_ansi_codes(error).trim().to_string();
+        let error_detail = if sanitized_error.is_empty() {
+            "The provider did not report any additional details."
+        } else {
+            sanitized_error.as_str()
+        };
+        let notice = format!(
+            "The provider could not complete this turn. You can retry the prompt.\n\nProvider error: {error_detail}"
+        );
+        let visible_update = if content.is_empty() {
+            notice
+        } else {
+            format!("\n\n{notice}")
+        };
+        let message_content = format!("{content}{visible_update}");
+        let message = incomplete_assistant_message(&message_content, reasoning, error_detail);
+        Self {
+            message,
+            visible_update,
+            response: PromptResponse::new(acp::StopReason::EndTurn),
+        }
+    }
+}
+
+fn incomplete_assistant_message(content: &str, reasoning: &str, error: &str) -> Message {
+    let mut message = Message::assistant(content.to_string());
+    if !reasoning.is_empty() {
+        message.reasoning = Some(reasoning.to_string());
+    }
+    message.metadata = Some(MessageMetadata::incomplete_llm_response(
+        unix_timestamp_millis(),
+        message.estimate_tokens(),
+        strip_ansi_codes(error).trim(),
+    ));
+    message
+}
+
+async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, boundary: &'static str) {
+    if let Err(error) = agent.checkpoint_session(session).await {
+        warn!(%error, boundary, "Failed to persist ACP session checkpoint");
+    }
+    session.update_transcript_path().await;
+}
+
+async fn finish_failed_provider_turn(
+    agent: &ZedAgent,
+    session: &SessionHandle,
+    session_id: &acp::SessionId,
+    content: &str,
+    reasoning: &str,
+    error: &str,
+) -> PromptResponse {
+    let IncompleteProviderTurn { message, visible_update, response } =
+        IncompleteProviderTurn::from_failure(content, reasoning, error);
+    drop(
+        agent
+            .send_update(session_id, acp::SessionUpdate::AgentMessageChunk(text_chunk(visible_update)))
+            .await,
+    );
+    agent.push_message(session, message);
+    persist_session_checkpoint(agent, session, "incomplete_provider_turn").await;
+    warn!(
+        provider_error = %strip_ansi_codes(error),
+        partial_text_bytes = content.len(),
+        partial_reasoning_bytes = reasoning.len(),
+        "ACP provider failed to complete the turn"
+    );
+    response
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StreamTimeoutPhase {
+    FirstToken,
+    InterTokenIdle,
+    TotalGeneration,
+}
+
+async fn sleep_until_stream_deadline(deadline: Option<(StreamTimeoutPhase, Instant)>) -> StreamTimeoutPhase {
+    match deadline {
+        Some((phase, deadline)) => {
+            tokio::time::sleep_until(deadline).await;
+            phase
+        }
+        None => std::future::pending().await,
+    }
+}
+
+impl StreamTimeoutPhase {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::FirstToken => "time to first token",
+            Self::InterTokenIdle => "inter-token idle",
+            Self::TotalGeneration => "total generation",
+        }
+    }
+
+    const fn timeout(self, policy: ProviderDeadlinePolicy) -> Option<Duration> {
+        match self {
+            Self::FirstToken => policy.first_token,
+            Self::InterTokenIdle => policy.stream_idle,
+            Self::TotalGeneration => policy.total_generation,
+        }
+    }
+}
+
+struct StreamDeadlineTracker {
+    policy: ProviderDeadlinePolicy,
+    first_token: Option<Instant>,
+    idle: Option<Instant>,
+    total: Option<Instant>,
+}
+
+struct GenerationTelemetry {
+    started_at: Instant,
+    first_output_at: Option<Instant>,
+    estimated_output_tokens: u64,
+}
+
+impl GenerationTelemetry {
+    fn start() -> Self {
+        Self {
+            started_at: Instant::now(),
+            first_output_at: None,
+            estimated_output_tokens: 0,
+        }
+    }
+
+    fn observe_output(&mut self, runtime: &ProviderRequestRuntime, delta: &str, retry_count: u32) {
+        let estimated_delta = u64::try_from(delta.chars().count().div_ceil(4)).unwrap_or(u64::MAX);
+        self.estimated_output_tokens = self.estimated_output_tokens.saturating_add(estimated_delta);
+        if self.first_output_at.is_some() {
+            return;
+        }
+
+        let now = Instant::now();
+        self.first_output_at = Some(now);
+        let snapshot = runtime.telemetry_snapshot();
+        info!(
+            provider = runtime.provider_name(),
+            time_to_first_token_ms = duration_millis(now.duration_since(self.started_at)),
+            retry_count,
+            queue_depth = snapshot.queue_depth,
+            active_provider_permits = snapshot.active_permits,
+            permit_limit = ?snapshot.permit_limit,
+            circuit_breaker_state = snapshot.circuit_breaker_state,
+            "ACP provider produced its first output"
+        );
+    }
+
+    fn complete(&self, runtime: &ProviderRequestRuntime, response: &LLMResponse, retry_count: u32, buffered: bool) {
+        let elapsed = self.started_at.elapsed();
+        let elapsed_ms = duration_millis(elapsed).max(1);
+        let (output_tokens, token_count_source) = response
+            .usage
+            .as_ref()
+            .filter(|usage| usage.completion_tokens > 0)
+            .map(|usage| (u64::from(usage.completion_tokens), "provider"))
+            .unwrap_or((self.estimated_output_tokens, "estimated"));
+        let tokens_per_second = output_tokens.saturating_mul(1_000) / elapsed_ms;
+        let snapshot = runtime.telemetry_snapshot();
+        info!(
+            provider = runtime.provider_name(),
+            generation_elapsed_ms = elapsed_ms,
+            time_to_first_token_ms = self
+                .first_output_at
+                .map(|first| duration_millis(first.duration_since(self.started_at)))
+                .unwrap_or(elapsed_ms),
+            ttft_observation = if buffered { "buffered_response" } else { "stream_event" },
+            output_tokens,
+            token_count_source,
+            tokens_per_second,
+            retry_count,
+            queue_depth = snapshot.queue_depth,
+            active_provider_permits = snapshot.active_permits,
+            permit_limit = ?snapshot.permit_limit,
+            circuit_breaker_state = snapshot.circuit_breaker_state,
+            "ACP provider generation completed"
+        );
+    }
+
+    fn failed(
+        &self,
+        runtime: &ProviderRequestRuntime,
+        retry_count: u32,
+        retry_disposition: &'static str,
+        error: &LLMError,
+    ) {
+        let snapshot = runtime.telemetry_snapshot();
+        warn!(
+            provider = runtime.provider_name(),
+            generation_elapsed_ms = duration_millis(self.started_at.elapsed()),
+            retry_count,
+            max_retries = runtime.retry_policy().max_attempts.saturating_sub(1),
+            retry_disposition,
+            queue_depth = snapshot.queue_depth,
+            active_provider_permits = snapshot.active_permits,
+            permit_limit = ?snapshot.permit_limit,
+            circuit_breaker_state = snapshot.circuit_breaker_state,
+            provider_error = %error,
+            "ACP provider generation attempt failed"
+        );
+    }
+}
+
+fn duration_millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+fn retry_disposition(decision: &RetryDecision) -> &'static str {
+    if decision.retryable {
+        "retry_scheduled"
+    } else if decision.category.is_retryable() {
+        "retry_exhausted"
+    } else {
+        "non_retryable"
+    }
+}
+
+impl StreamDeadlineTracker {
+    fn new(policy: ProviderDeadlinePolicy, started_at: Instant) -> Self {
+        Self {
+            policy,
+            first_token: deadline_from(started_at, policy.first_token),
+            idle: None,
+            total: deadline_from(started_at, policy.total_generation),
+        }
+    }
+
+    fn observe_output(&mut self) {
+        self.observe_output_at(Instant::now());
+    }
+
+    fn observe_output_at(&mut self, observed_at: Instant) {
+        self.first_token = None;
+        self.idle = deadline_from(observed_at, self.policy.stream_idle);
+    }
+
+    fn next(&self) -> Option<(StreamTimeoutPhase, Instant)> {
+        [
+            self.first_token.map(|deadline| (StreamTimeoutPhase::FirstToken, deadline)),
+            self.idle.map(|deadline| (StreamTimeoutPhase::InterTokenIdle, deadline)),
+            self.total.map(|deadline| (StreamTimeoutPhase::TotalGeneration, deadline)),
+        ]
+        .into_iter()
+        .flatten()
+        .min_by_key(|(_phase, deadline)| *deadline)
+    }
+}
+
+async fn generate_with_retry(
+    provider: &dyn LLMProvider,
+    request: LLMRequest,
+    runtime: &ProviderRequestRuntime,
+    cancellation: &super::super::types::SessionCancellation,
+) -> Result<LLMResponse, ProviderCallError> {
+    let policy = runtime.retry_policy();
+    let mut attempt_index = 0;
+
+    loop {
+        let permit = runtime.acquire(cancellation).await?;
+        let mut telemetry = GenerationTelemetry::start();
+        let deadline_policy = runtime.deadline_policy();
+        let total_deadline = deadline_after(deadline_policy.total_generation);
+        let result = tokio::select! {
+            () = cancellation.cancelled() => return Err(ProviderCallError::Cancelled),
+            () = sleep_until_optional(total_deadline) => {
+                Err(provider_timeout_error(
+                    runtime.provider_name(),
+                    "total generation",
+                    deadline_policy.total_generation,
+                ))
+            }
+            result = provider.generate(request.clone()) => result,
+        };
+        match result {
+            Ok(response) => {
+                if let Some(content) = response.content.as_deref() {
+                    telemetry.observe_output(runtime, content, attempt_index);
+                }
+                if let Some(reasoning) = response.reasoning.as_deref() {
+                    telemetry.observe_output(runtime, reasoning, attempt_index);
+                }
+                telemetry.complete(runtime, &response, attempt_index, true);
+                drop(permit);
+                return Ok(response);
+            }
+            Err(error) => {
+                let decision = policy.decision_for_llm_error(&error, attempt_index);
+                telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
+                drop(permit);
+                if !decision.retryable {
+                    return Err(ProviderCallError::Failed(error.to_string()));
+                }
+                let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
+                info!(
+                    provider = runtime.provider_name(),
+                    next_attempt = attempt_index + 2,
+                    retry_count = attempt_index + 1,
+                    max_retries = policy.max_attempts.saturating_sub(1),
+                    ?delay,
+                    "Retrying transient ACP provider request"
+                );
+                cancellable_backoff(delay, cancellation).await?;
+                attempt_index = attempt_index.saturating_add(1);
+            }
+        }
+    }
+}
+
+fn response_reasoning_update(response: &LLMResponse) -> Option<acp::SessionUpdate> {
+    response
+        .reasoning
+        .as_deref()
+        .filter(|reasoning| !reasoning.is_empty())
+        .map(|reasoning| acp::SessionUpdate::AgentThoughtChunk(text_chunk(reasoning.to_string())))
+}
+
+async fn emit_response_reasoning(agent: &ZedAgent, session_id: &acp::SessionId, response: &LLMResponse) {
+    let has_tool_calls = response.tool_calls.as_ref().is_some_and(|calls| !calls.is_empty());
+    let Some(update) = response_reasoning_update(response) else {
+        debug!(
+            %session_id,
+            has_tool_calls,
+            "Provider response did not include exposed reasoning for ACP"
+        );
+        return;
+    };
+
+    debug!(
+        %session_id,
+        reasoning_bytes = response.reasoning.as_ref().map_or(0, String::len),
+        has_tool_calls,
+        "Sending provider reasoning to ACP client"
+    );
+    if let Err(error) = agent.send_update(session_id, update).await {
+        warn!(%session_id, %error, "Failed to send provider reasoning to ACP client");
+    }
+}
+
 /// Register every SACP `AgentToClient` request/notification handler that the
 /// vtcode bridge implements. The agent must be `Send + Sync + 'static` so
 /// that the SACP `Builder` can move the handlers onto its background task.
@@ -204,6 +653,7 @@ fn advertised_agent_capabilities() -> acp::AgentCapabilities {
         .resume(acp::SessionResumeCapabilities::new());
     capabilities
 }
+
 fn build_auth_methods() -> Vec<acp::AuthMethod> {
     let mut methods = vec![
         acp::AuthMethod::Agent(
@@ -327,6 +777,7 @@ async fn handle_resume_session(
     let response = agent.resume_session(req).await?;
     request_cx.respond(response)
 }
+
 async fn handle_set_session_config_option(
     agent: Arc<ZedAgent>,
     req: SetSessionConfigOptionRequest,
@@ -381,12 +832,16 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
 
     let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
     let _turn_guard = TurnGuard::begin(thread)?;
-    agent.local_tool_registry.safety_gateway().start_turn();
+    if let Some(runtime) = session.workspace_runtime() {
+        runtime.local_tool_registry.safety_gateway().start_turn();
+    } else {
+        agent.local_tool_registry.safety_gateway().start_turn();
+    }
     session.cancellation.reset();
 
     let user_message = tokio::select! {
         () = session.cancellation.cancelled() => return Ok(PromptResponse::new(acp::StopReason::Cancelled)),
-        result = agent.resolve_prompt(&args.session_id, &args.prompt) => result?,
+        result = agent.resolve_prompt(&session, &args.session_id, &args.prompt) => result?,
     };
 
     if let Some(hooks) = session.lifecycle_hooks() {
@@ -441,7 +896,11 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             openai: None,
             anthropic: None,
             model_behaviour: agent.config.model_behaviour.clone(),
-            workspace_root: Some(agent.config.workspace.clone()),
+            workspace_root: Some(
+                session
+                    .workspace_runtime()
+                    .map_or_else(|| agent.config.workspace.clone(), |runtime| runtime.workspace_root.clone()),
+            ),
         },
     )
     .map_err(|err| SdkError::internal_error().data(err.to_string()))?;
@@ -472,10 +931,10 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         }
     }
 
-    let mut has_local_tools = agent.local_tools_available(&primary_agent);
+    let mut has_local_tools = agent.session_local_tools_available(&session, &primary_agent);
     let mut tools_allowed = provider_supports_tools && (!enabled_tools.is_empty() || has_local_tools);
     let mut tool_definitions = agent
-        .tool_definitions(provider_supports_tools, &enabled_tools, &primary_agent)
+        .session_tool_definitions(&session, provider_supports_tools, &enabled_tools, &primary_agent)
         .map(Arc::new);
     let mut messages = agent.resolved_messages(&session);
     if agent
@@ -491,7 +950,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
     {
         messages = agent.resolved_messages(&session);
     }
-    if let Some(controller) = agent.local_tool_registry.subagent_controller() {
+    if let Some(controller) = agent.session_subagent_controller(&session) {
         controller.set_parent_session_id(args.session_id.to_string()).await;
         controller.set_parent_messages(&messages).await;
         drop(controller.set_turn_delegation_hints_from_input(&user_message).await);
@@ -836,7 +1295,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             }
                             agent.push_message(&session, assistant_tool_message);
                             persist_session_checkpoint(&agent, &session, "assistant_tool_calls").await;
-                            if let Some(controller) = agent.local_tool_registry.subagent_controller() {
+                            if let Some(controller) = agent.session_subagent_controller(&session) {
                                 controller.set_parent_session_id(args.session_id.to_string()).await;
                                 controller.set_parent_messages(&agent.resolved_messages(&session)).await;
                             }
@@ -877,10 +1336,15 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 let data = session.data.lock().map_err(|_err| SdkError::internal_error())?;
                                 data.primary_agent.clone()
                             };
-                            has_local_tools = agent.local_tools_available(&primary_agent);
+                            has_local_tools = agent.session_local_tools_available(&session, &primary_agent);
                             tools_allowed = provider_supports_tools && (!enabled_tools.is_empty() || has_local_tools);
                             tool_definitions = agent
-                                .tool_definitions(provider_supports_tools, &enabled_tools, &primary_agent)
+                                .session_tool_definitions(
+                                    &session,
+                                    provider_supports_tools,
+                                    &enabled_tools,
+                                    &primary_agent,
+                                )
                                 .map(Arc::new);
                             if agent
                                 .maybe_compact_session(
@@ -894,7 +1358,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 .map_err(|error| SdkError::internal_error().data(error.to_string()))?
                             {
                                 messages = agent.resolved_messages(&session);
-                                if let Some(controller) = agent.local_tool_registry.subagent_controller() {
+                                if let Some(controller) = agent.session_subagent_controller(&session) {
                                     controller.set_parent_messages(&messages).await;
                                 }
                             }
@@ -940,7 +1404,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 .map_err(|error| SdkError::internal_error().data(error.to_string()))?
             {
                 messages = agent.resolved_messages(&session);
-                if let Some(controller) = agent.local_tool_registry.subagent_controller() {
+                if let Some(controller) = agent.session_subagent_controller(&session) {
                     controller.set_parent_messages(&messages).await;
                 }
             }
@@ -1002,7 +1466,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     Message::assistant_with_tools(response.content.clone().unwrap_or_default(), tool_calls.clone()),
                 );
                 persist_session_checkpoint(&agent, &session, "assistant_tool_calls").await;
-                if let Some(controller) = agent.local_tool_registry.subagent_controller() {
+                if let Some(controller) = agent.session_subagent_controller(&session) {
                     controller.set_parent_session_id(args.session_id.to_string()).await;
                     controller.set_parent_messages(&agent.resolved_messages(&session)).await;
                 }
@@ -1039,10 +1503,10 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     let data = session.data.lock().map_err(|_err| SdkError::internal_error())?;
                     data.primary_agent.clone()
                 };
-                has_local_tools = agent.local_tools_available(&primary_agent);
+                has_local_tools = agent.session_local_tools_available(&session, &primary_agent);
                 tools_allowed = provider_supports_tools && (!enabled_tools.is_empty() || has_local_tools);
                 tool_definitions = agent
-                    .tool_definitions(provider_supports_tools, &enabled_tools, &primary_agent)
+                    .session_tool_definitions(&session, provider_supports_tools, &enabled_tools, &primary_agent)
                     .map(Arc::new);
                 continue;
             }
@@ -1138,6 +1602,7 @@ impl ZedAgent {
         Ok(outcome.block_reason)
     }
 }
+
 fn resolve_api_key_for_provider(agent: &ZedAgent, provider: &str) -> String {
     if provider.eq_ignore_ascii_case(&agent.config.provider) && !agent.config.api_key.is_empty() {
         return agent.config.api_key.clone();
@@ -1155,6 +1620,7 @@ fn should_allow_streaming(supports_streaming: bool, _tools_allowed: bool, has_st
 fn should_emit_buffered_final_chunk(allow_streaming: bool) -> bool {
     !allow_streaming
 }
+
 #[cfg(test)]
 mod tests {
     use agent_client_protocol::{Channel, on_receive_notification};
@@ -1594,7 +2060,7 @@ mod tests {
             checkpointing_max_snapshots: DEFAULT_MAX_SNAPSHOTS,
             checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
             max_conversation_turns: 1000,
-            model_behavior: None,
+            model_behaviour: None,
             openai_chatgpt_auth: None,
         };
         let mut discovery_input = SubagentDiscoveryInput::new(workspace.to_path_buf());
@@ -1752,9 +2218,12 @@ mod tests {
                 })
             }),
         );
-        let workspace = TempDir::new().expect("wire test workspace");
+        let launch_workspace = TempDir::new().expect("wire test launch workspace");
+        let workspace = TempDir::new().expect("wire test requested workspace");
         std::fs::write(workspace.path().join("visible.txt"), "fixture").expect("write workspace fixture");
-        let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+        std::fs::write(launch_workspace.path().join("wrong-root.txt"), "fixture")
+            .expect("write launch workspace fixture");
+        let agent = Arc::new(build_wire_test_agent(launch_workspace.path()).await);
         let (agent_channel, client_channel) = Channel::duplex();
         let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
 
@@ -1827,6 +2296,14 @@ mod tests {
             requests[1].messages.iter().any(Message::is_tool_response),
             "the second stream must include the executed tool result"
         );
+        let tool_response = requests[1]
+            .messages
+            .iter()
+            .find(|message| message.is_tool_response())
+            .map(|message| message.content.as_text())
+            .expect("list_files tool response");
+        assert!(tool_response.contains("visible.txt"), "tool must use session/new cwd: {tool_response}");
+        assert!(!tool_response.contains("wrong-root.txt"), "tool must not use the ACP launch cwd: {tool_response}");
         assert!(
             requests[1]
                 .messages
@@ -2187,448 +2664,3 @@ mod tests {
         assert_eq!(provider.attempts.load(Ordering::SeqCst), 1);
     }
 }
-
-struct TurnGuard {
-    thread: ThreadRuntimeHandle,
-}
-
-impl From<ProviderAdmissionError> for ProviderCallError {
-    fn from(error: ProviderAdmissionError) -> Self {
-        match error {
-            ProviderAdmissionError::Cancelled => Self::Cancelled,
-            other => Self::Failed(other.to_string()),
-        }
-    }
-}
-
-async fn generate_with_retry(
-    provider: &dyn LLMProvider,
-    request: LLMRequest,
-    runtime: &ProviderRequestRuntime,
-    cancellation: &super::super::types::SessionCancellation,
-) -> Result<LLMResponse, ProviderCallError> {
-    let policy = runtime.retry_policy();
-    let mut attempt_index = 0;
-
-    loop {
-        let permit = runtime.acquire(cancellation).await?;
-        let mut telemetry = GenerationTelemetry::start();
-        let deadline_policy = runtime.deadline_policy();
-        let total_deadline = deadline_after(deadline_policy.total_generation);
-        let result = tokio::select! {
-            () = cancellation.cancelled() => return Err(ProviderCallError::Cancelled),
-            () = sleep_until_optional(total_deadline) => {
-                Err(provider_timeout_error(
-                    runtime.provider_name(),
-                    "total generation",
-                    deadline_policy.total_generation,
-                ))
-            }
-            result = provider.generate(request.clone()) => result,
-        };
-        match result {
-            Ok(response) => {
-                if let Some(content) = response.content.as_deref() {
-                    telemetry.observe_output(runtime, content, attempt_index);
-                }
-                if let Some(reasoning) = response.reasoning.as_deref() {
-                    telemetry.observe_output(runtime, reasoning, attempt_index);
-                }
-                telemetry.complete(runtime, &response, attempt_index, true);
-                drop(permit);
-                return Ok(response);
-            }
-            Err(error) => {
-                let decision = policy.decision_for_llm_error(&error, attempt_index);
-                telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
-                drop(permit);
-                if !decision.retryable {
-                    return Err(ProviderCallError::Failed(error.to_string()));
-                }
-                let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
-                info!(
-                    provider = runtime.provider_name(),
-                    next_attempt = attempt_index + 2,
-                    retry_count = attempt_index + 1,
-                    max_retries = policy.max_attempts.saturating_sub(1),
-                    ?delay,
-                    "Retrying transient ACP provider request"
-                );
-                cancellable_backoff(delay, cancellation).await?;
-                attempt_index = attempt_index.saturating_add(1);
-            }
-        }
-    }
-}
-
-fn response_reasoning_update(response: &LLMResponse) -> Option<acp::SessionUpdate> {
-    response
-        .reasoning
-        .as_deref()
-        .filter(|reasoning| !reasoning.is_empty())
-        .map(|reasoning| acp::SessionUpdate::AgentThoughtChunk(text_chunk(reasoning.to_string())))
-}
-
-async fn emit_response_reasoning(agent: &ZedAgent, session_id: &acp::SessionId, response: &LLMResponse) {
-    let has_tool_calls = response.tool_calls.as_ref().is_some_and(|calls| !calls.is_empty());
-    let Some(update) = response_reasoning_update(response) else {
-        debug!(
-            %session_id,
-            has_tool_calls,
-            "Provider response did not include exposed reasoning for ACP"
-        );
-        return;
-    };
-
-    debug!(
-        %session_id,
-        reasoning_bytes = response.reasoning.as_ref().map_or(0, String::len),
-        has_tool_calls,
-        "Sending provider reasoning to ACP client"
-    );
-    if let Err(error) = agent.send_update(session_id, update).await {
-        warn!(%session_id, %error, "Failed to send provider reasoning to ACP client");
-    }
-}
-
-impl TurnGuard {
-    fn begin(thread: ThreadRuntimeHandle) -> Result<Self, SdkError> {
-        let _submission_id = thread.begin_turn().map_err(|error| {
-            SdkError::internal_error().data(json!({ "reason": "turn_in_progress", "detail": error.to_string() }))
-        })?;
-        Ok(Self { thread })
-    }
-}
-
-async fn cancellable_backoff(
-    delay: Duration,
-    cancellation: &super::super::types::SessionCancellation,
-) -> Result<(), ProviderCallError> {
-    tokio::select! {
-        () = cancellation.cancelled() => Err(ProviderCallError::Cancelled),
-        () = tokio::time::sleep(delay) => Ok(()),
-    }
-}
-
-async fn sleep_until_optional(deadline: Option<Instant>) {
-    match deadline {
-        Some(deadline) => tokio::time::sleep_until(deadline).await,
-        None => std::future::pending().await,
-    }
-}
-
-fn deadline_after(timeout: Option<Duration>) -> Option<Instant> {
-    deadline_from(Instant::now(), timeout)
-}
-
-fn deadline_from(started_at: Instant, timeout: Option<Duration>) -> Option<Instant> {
-    timeout.map(|timeout| started_at + timeout)
-}
-fn provider_timeout_error(provider: &str, phase: &str, timeout: Option<Duration>) -> LLMError {
-    let duration = timeout.map_or_else(|| "configured deadline".to_string(), |timeout| format!("{timeout:?}"));
-    LLMError::Network {
-        message: format!("provider '{provider}' exceeded its {phase} timeout ({duration})"),
-        metadata: None,
-    }
-}
-
-fn unix_timestamp_millis() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .ok()
-        .and_then(|elapsed| u64::try_from(elapsed.as_millis()).ok())
-        .unwrap_or_default()
-}
-
-struct IncompleteProviderTurn {
-    message: Message,
-    visible_update: String,
-    response: PromptResponse,
-}
-
-impl IncompleteProviderTurn {
-    fn from_failure(content: &str, reasoning: &str, error: &str) -> Self {
-        let sanitized_error = strip_ansi_codes(error).trim().to_string();
-        let error_detail = if sanitized_error.is_empty() {
-            "The provider did not report any additional details."
-        } else {
-            sanitized_error.as_str()
-        };
-        let notice = format!(
-            "The provider could not complete this turn. You can retry the prompt.\n\nProvider error: {error_detail}"
-        );
-        let visible_update = if content.is_empty() {
-            notice
-        } else {
-            format!("\n\n{notice}")
-        };
-        let message_content = format!("{content}{visible_update}");
-        let message = incomplete_assistant_message(&message_content, reasoning, error_detail);
-        Self {
-            message,
-            visible_update,
-            response: PromptResponse::new(acp::StopReason::EndTurn),
-        }
-    }
-}
-fn incomplete_assistant_message(content: &str, reasoning: &str, error: &str) -> Message {
-    let mut message = Message::assistant(content.to_string());
-    if !reasoning.is_empty() {
-        message.reasoning = Some(reasoning.to_string());
-    }
-    message.metadata = Some(MessageMetadata::incomplete_llm_response(
-        unix_timestamp_millis(),
-        message.estimate_tokens(),
-        strip_ansi_codes(error).trim(),
-    ));
-    message
-}
-
-async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, boundary: &'static str) {
-    if let Err(error) = agent.checkpoint_session(session).await {
-        warn!(%error, boundary, "Failed to persist ACP session checkpoint");
-    }
-    session.update_transcript_path().await;
-}
-
-async fn finish_failed_provider_turn(
-    agent: &ZedAgent,
-    session: &SessionHandle,
-    session_id: &acp::SessionId,
-    content: &str,
-    reasoning: &str,
-    error: &str,
-) -> PromptResponse {
-    let IncompleteProviderTurn { message, visible_update, response } =
-        IncompleteProviderTurn::from_failure(content, reasoning, error);
-    drop(
-        agent
-            .send_update(session_id, acp::SessionUpdate::AgentMessageChunk(text_chunk(visible_update)))
-            .await,
-    );
-    agent.push_message(session, message);
-    persist_session_checkpoint(agent, session, "incomplete_provider_turn").await;
-    warn!(
-        provider_error = %strip_ansi_codes(error),
-        partial_text_bytes = content.len(),
-        partial_reasoning_bytes = reasoning.len(),
-        "ACP provider failed to complete the turn"
-    );
-    response
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum StreamTimeoutPhase {
-    FirstToken,
-    InterTokenIdle,
-    TotalGeneration,
-}
-
-async fn sleep_until_stream_deadline(deadline: Option<(StreamTimeoutPhase, Instant)>) -> StreamTimeoutPhase {
-    match deadline {
-        Some((phase, deadline)) => {
-            tokio::time::sleep_until(deadline).await;
-            phase
-        }
-        None => std::future::pending().await,
-    }
-}
-
-impl StreamTimeoutPhase {
-    const fn label(self) -> &'static str {
-        match self {
-            Self::FirstToken => "time to first token",
-            Self::InterTokenIdle => "inter-token idle",
-            Self::TotalGeneration => "total generation",
-        }
-    }
-
-    const fn timeout(self, policy: ProviderDeadlinePolicy) -> Option<Duration> {
-        match self {
-            Self::FirstToken => policy.first_token,
-            Self::InterTokenIdle => policy.stream_idle,
-            Self::TotalGeneration => policy.total_generation,
-        }
-    }
-}
-
-struct StreamDeadlineTracker {
-    policy: ProviderDeadlinePolicy,
-    first_token: Option<Instant>,
-    idle: Option<Instant>,
-    total: Option<Instant>,
-}
-
-struct GenerationTelemetry {
-    started_at: Instant,
-    first_output_at: Option<Instant>,
-    estimated_output_tokens: u64,
-}
-
-impl GenerationTelemetry {
-    fn start() -> Self {
-        Self {
-            started_at: Instant::now(),
-            first_output_at: None,
-            estimated_output_tokens: 0,
-        }
-    }
-
-    fn observe_output(&mut self, runtime: &ProviderRequestRuntime, delta: &str, retry_count: u32) {
-        let estimated_delta = u64::try_from(delta.chars().count().div_ceil(4)).unwrap_or(u64::MAX);
-        self.estimated_output_tokens = self.estimated_output_tokens.saturating_add(estimated_delta);
-        if self.first_output_at.is_some() {
-            return;
-        }
-
-        let now = Instant::now();
-        self.first_output_at = Some(now);
-        let snapshot = runtime.telemetry_snapshot();
-        info!(
-            provider = runtime.provider_name(),
-            time_to_first_token_ms = duration_millis(now.duration_since(self.started_at)),
-            retry_count,
-            queue_depth = snapshot.queue_depth,
-            active_provider_permits = snapshot.active_permits,
-            permit_limit = ?snapshot.permit_limit,
-            circuit_breaker_state = snapshot.circuit_breaker_state,
-            "ACP provider produced its first output"
-        );
-    }
-
-    fn complete(&self, runtime: &ProviderRequestRuntime, response: &LLMResponse, retry_count: u32, buffered: bool) {
-        let elapsed = self.started_at.elapsed();
-        let elapsed_ms = duration_millis(elapsed).max(1);
-        let (output_tokens, token_count_source) = response
-            .usage
-            .as_ref()
-            .filter(|usage| usage.completion_tokens > 0)
-            .map(|usage| (u64::from(usage.completion_tokens), "provider"))
-            .unwrap_or((self.estimated_output_tokens, "estimated"));
-        let tokens_per_second = output_tokens.saturating_mul(1_000) / elapsed_ms;
-        let snapshot = runtime.telemetry_snapshot();
-        info!(
-            provider = runtime.provider_name(),
-            generation_elapsed_ms = elapsed_ms,
-            time_to_first_token_ms = self
-                .first_output_at
-                .map(|first| duration_millis(first.duration_since(self.started_at)))
-                .unwrap_or(elapsed_ms),
-            ttft_observation = if buffered { "buffered_response" } else { "stream_event" },
-            output_tokens,
-            token_count_source,
-            tokens_per_second,
-            retry_count,
-            queue_depth = snapshot.queue_depth,
-            active_provider_permits = snapshot.active_permits,
-            permit_limit = ?snapshot.permit_limit,
-            circuit_breaker_state = snapshot.circuit_breaker_state,
-            "ACP provider generation completed"
-        );
-    }
-
-    fn failed(
-        &self,
-        runtime: &ProviderRequestRuntime,
-        retry_count: u32,
-        retry_disposition: &'static str,
-        error: &LLMError,
-    ) {
-        let snapshot = runtime.telemetry_snapshot();
-        warn!(
-            provider = runtime.provider_name(),
-            generation_elapsed_ms = duration_millis(self.started_at.elapsed()),
-            retry_count,
-            max_retries = runtime.retry_policy().max_attempts.saturating_sub(1),
-            retry_disposition,
-            queue_depth = snapshot.queue_depth,
-            active_provider_permits = snapshot.active_permits,
-            permit_limit = ?snapshot.permit_limit,
-            circuit_breaker_state = snapshot.circuit_breaker_state,
-            provider_error = %error,
-            "ACP provider generation attempt failed"
-        );
-    }
-}
-
-fn duration_millis(duration: Duration) -> u64 {
-    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
-}
-
-fn retry_disposition(decision: &RetryDecision) -> &'static str {
-    if decision.retryable {
-        "retry_scheduled"
-    } else if decision.category.is_retryable() {
-        "retry_exhausted"
-    } else {
-        "non_retryable"
-    }
-}
-impl StreamDeadlineTracker {
-    fn new(policy: ProviderDeadlinePolicy, started_at: Instant) -> Self {
-        Self {
-            policy,
-            first_token: deadline_from(started_at, policy.first_token),
-            idle: None,
-            total: deadline_from(started_at, policy.total_generation),
-        }
-    }
-
-    fn observe_output(&mut self) {
-        self.observe_output_at(Instant::now());
-    }
-
-    fn observe_output_at(&mut self, observed_at: Instant) {
-        self.first_token = None;
-        self.idle = deadline_from(observed_at, self.policy.stream_idle);
-    }
-
-    fn next(&self) -> Option<(StreamTimeoutPhase, Instant)> {
-        [
-            self.first_token.map(|deadline| (StreamTimeoutPhase::FirstToken, deadline)),
-            self.idle.map(|deadline| (StreamTimeoutPhase::InterTokenIdle, deadline)),
-            self.total.map(|deadline| (StreamTimeoutPhase::TotalGeneration, deadline)),
-        ]
-        .into_iter()
-        .flatten()
-        .min_by_key(|(_phase, deadline)| *deadline)
-    }
-}
-
-#[derive(Debug)]
-enum ProviderCallError {
-    Cancelled,
-    Failed(String),
-}
-
-impl Drop for TurnGuard {
-    fn drop(&mut self) {
-        self.thread.finish_turn();
-    }
-}
-
-#[cfg(test)]
-type PromptProviderFactory = dyn Fn() -> Box<dyn LLMProvider> + Send + Sync;
-
-fn create_prompt_provider(provider_name: &str, config: ProviderConfig) -> Result<Box<dyn LLMProvider>, LLMError> {
-    #[cfg(test)]
-    if let Some(provider) = PROMPT_PROVIDER_OVERRIDE.lock().ok().and_then(|guard| {
-        guard
-            .as_ref()
-            .filter(|provider_override| provider_override.provider_name == provider_name)
-            .map(|provider_override| (provider_override.factory)())
-    }) {
-        return Ok(provider);
-    }
-
-    create_provider_with_config(provider_name, config)
-}
-
-#[cfg(test)]
-struct PromptProviderOverride {
-    provider_name: String,
-    factory: Arc<PromptProviderFactory>,
-}
-
-#[cfg(test)]
-static PROMPT_PROVIDER_OVERRIDE: std::sync::LazyLock<std::sync::Mutex<Option<PromptProviderOverride>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
