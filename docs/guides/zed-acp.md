@@ -77,6 +77,19 @@ When targeting models that cannot call tools (for example `openai/gpt-oss-20b:fr
 disable the `read_file` bridge. VT Code emits reasoning notices and structured logs when it detects
 models without function calling and automatically downgrades to plain completions.
 
+### Session working directories
+
+The ACP client selects the workspace for each new session through the absolute
+`cwd` in `session/new`. VT Code canonicalizes that directory before creating
+the session and rejects missing, relative, or non-directory paths. It does not
+silently fall back to the directory from which the ACP server was launched.
+
+The canonical session workspace scopes archive metadata, system instructions,
+prompt templates, lifecycle hooks, compaction artefacts, local and ACP tools,
+MCP sandboxing, and subagents. Multiple sessions on one ACP connection may use
+different workspaces; their tool registries and mutable harness state are kept
+separate.
+
 ### MCP providers in ACP sessions
 
 ACP sessions initialise the enabled providers from the effective session MCP configuration before

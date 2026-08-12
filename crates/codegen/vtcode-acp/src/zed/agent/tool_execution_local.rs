@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 use tracing::warn;
 use vtcode_core::config::constants::tools;
+use vtcode_core::tools::file_ops::FileOpsTool;
 use vtcode_core::tools::registry::{ExecutionPolicySnapshot, ToolExecutionRequest};
 use vtcode_core::tools::traits::Tool;
 use vtcode_core::utils::ansi_parser::strip_ansi;
@@ -23,6 +24,31 @@ const RESTRICTED_LOCAL_TOOLS: &[&str] = &["debug_agent", "analyze_agent", "execu
 
 impl ZedAgent {
     pub(super) async fn execute_local_tool(&self, tool_name: &str, args: &Value, call_id: &str) -> ToolExecutionReport {
+        self.execute_local_tool_with_registry(&self.local_tool_registry, tool_name, args, call_id)
+            .await
+    }
+
+    pub(super) async fn execute_session_local_tool(
+        &self,
+        session: &super::super::types::SessionHandle,
+        tool_name: &str,
+        args: &Value,
+        call_id: &str,
+    ) -> ToolExecutionReport {
+        let Some(runtime) = session.workspace_runtime() else {
+            return self.execute_local_tool(tool_name, args, call_id).await;
+        };
+        self.execute_local_tool_with_registry(&runtime.local_tool_registry, tool_name, args, call_id)
+            .await
+    }
+
+    async fn execute_local_tool_with_registry(
+        &self,
+        registry: &vtcode_core::tools::registry::ToolRegistry,
+        tool_name: &str,
+        args: &Value,
+        call_id: &str,
+    ) -> ToolExecutionReport {
         if RESTRICTED_LOCAL_TOOLS.contains(&tool_name) {
             warn!(tool = tool_name, "Attempted execution of restricted tool from external ACP client");
             return ToolExecutionReport::failure(
@@ -31,7 +57,7 @@ impl ZedAgent {
             );
         }
 
-        let prepared = match self.local_tool_registry.admit_public_tool_call(tool_name, args) {
+        let prepared = match registry.admit_public_tool_call(tool_name, args) {
             Ok(prepared) => prepared,
             Err(error) => return ToolExecutionReport::failure(tool_name, &error.to_string()),
         };
@@ -39,7 +65,7 @@ impl ZedAgent {
             .with_invocation_id(Some(call_id.to_string()))
             .with_prevalidated(prepared.already_preflighted);
         let request = ToolExecutionRequest::new(prepared.canonical_name, prepared.effective_args).with_policy(policy);
-        let outcome = self.local_tool_registry.execute_public_tool_request(request).await;
+        let outcome = registry.execute_public_tool_request(request).await;
         match (outcome.output, outcome.error) {
             (Some(output), None) => {
                 let content = self.render_local_tool_content(tool_name, &output);
@@ -128,11 +154,12 @@ impl ZedAgent {
 
     pub(super) async fn run_read_file(
         &self,
+        session: &super::super::types::SessionHandle,
         client: &ConnectionHandle,
         session_id: &acp::SessionId,
         args: &Value,
     ) -> Result<ToolExecutionReport, String> {
-        let path = self.parse_tool_path(args)?;
+        let path = self.parse_tool_path(session, args)?;
         let line = Self::parse_positive_argument(args, TOOL_READ_FILE_LINE_ARG)?;
         let limit = Self::parse_positive_argument(args, TOOL_READ_FILE_LIMIT_ARG)?;
 
@@ -166,11 +193,32 @@ impl ZedAgent {
     }
 
     pub(crate) async fn run_list_files(&self, args: &Value) -> Result<ToolExecutionReport, String> {
-        let Some(tool) = &self.file_ops_tool else {
+        self.run_list_files_for_tool(self.file_ops_tool.as_ref(), None, args).await
+    }
+
+    pub(super) async fn run_session_list_files(
+        &self,
+        session: &super::super::types::SessionHandle,
+        args: &Value,
+    ) -> Result<ToolExecutionReport, String> {
+        let Some(runtime) = session.workspace_runtime() else {
+            return self.run_list_files(args).await;
+        };
+        self.run_list_files_for_tool(runtime.file_ops_tool.as_ref(), Some(session), args)
+            .await
+    }
+
+    async fn run_list_files_for_tool(
+        &self,
+        tool: Option<&FileOpsTool>,
+        session: Option<&super::super::types::SessionHandle>,
+        args: &Value,
+    ) -> Result<ToolExecutionReport, String> {
+        let Some(tool) = tool else {
             return Err("List files tool is unavailable".to_string());
         };
 
-        let resolved_path = self.resolve_list_files_path(args)?.unwrap_or_else(|| ".".into());
+        let resolved_path = self.resolve_list_files_path(session, args)?.unwrap_or_else(|| ".".into());
 
         let mut normalized_args = match args.clone() {
             Value::Object(map) => map,
@@ -196,7 +244,11 @@ impl ZedAgent {
         Ok(ToolExecutionReport::success(content, locations, payload))
     }
 
-    fn resolve_list_files_path(&self, args: &Value) -> Result<Option<String>, String> {
+    fn resolve_list_files_path(
+        &self,
+        session: Option<&super::super::types::SessionHandle>,
+        args: &Value,
+    ) -> Result<Option<String>, String> {
         if let Some(path) = args
             .get(TOOL_LIST_FILES_PATH_ARG)
             .and_then(Value::as_str)
@@ -210,8 +262,16 @@ impl ZedAgent {
             .and_then(Value::as_str)
             .filter(|value| !value.trim().is_empty())
         {
-            let resolved = self.parse_resource_path(uri)?;
-            let workspace_root = self.workspace_root();
+            let resolved = if let Some(session) = session {
+                self.parse_resource_path(session, uri)?
+            } else {
+                let candidate = Self::decode_resource_uri(uri)?;
+                self.resolve_workspace_path(candidate, TOOL_LIST_FILES_URI_ARG)?
+            };
+            let workspace_runtime = session.and_then(super::super::types::SessionHandle::workspace_runtime);
+            let workspace_root = workspace_runtime
+                .as_ref()
+                .map_or_else(|| self.workspace_root(), |runtime| runtime.workspace_root.as_path());
             let normalized = ensure_path_within_workspace(&resolved, workspace_root)
                 .map_err(|_err| "list_files path must stay within the workspace".to_string())?;
 

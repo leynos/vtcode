@@ -1,10 +1,13 @@
 use super::ZedAgent;
 use crate::acp;
+use crate::workspace::{DefaultWorkspaceTrustSynchronizer, WorkspaceTrustSynchronizer};
+use anyhow::Context;
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, warn};
 use uuid::Uuid;
+use vtcode_commons::fs::canonicalize_with_context_async;
 use vtcode_config::auth::AuthCredentialsStoreMode;
 use vtcode_core::config::models::{ModelId, Provider};
 use vtcode_core::config::types::ReasoningEffortLevel;
@@ -21,6 +24,27 @@ use vtcode_core::utils::session_archive::{
 use super::super::constants::SESSION_PREFIX;
 use super::super::helpers::session_config_options;
 use super::super::types::{SessionData, SessionHandle};
+
+async fn canonical_session_workspace(requested_workspace: &std::path::Path) -> Result<std::path::PathBuf, acp::Error> {
+    if !requested_workspace.is_absolute() {
+        return Err(acp::Error::invalid_params().data("ACP session cwd must be an absolute directory"));
+    }
+    let workspace = canonicalize_with_context_async(requested_workspace, "ACP session cwd")
+        .await
+        .map_err(|error| {
+            acp::Error::invalid_params()
+                .data(format!("Unable to resolve ACP session cwd '{}': {error}", requested_workspace.display()))
+        })?;
+    let metadata = tokio::fs::metadata(&workspace).await.map_err(|error| {
+        acp::Error::invalid_params()
+            .data(format!("Unable to inspect ACP session cwd '{}': {error}", requested_workspace.display()))
+    })?;
+    if !metadata.is_dir() {
+        return Err(acp::Error::invalid_params()
+            .data(format!("ACP session cwd '{}' is not a directory", requested_workspace.display())));
+    }
+    Ok(workspace)
+}
 
 impl ZedAgent {
     const SESSION_LIST_PAGE_SIZE: usize = 100;
@@ -123,13 +147,17 @@ impl ZedAgent {
             .unwrap_or_else(|| self.config.model.clone())
     }
 
-    fn session_primary_agent_for_thread(&self, thread: &vtcode_core::core::threads::ThreadRuntimeHandle) -> String {
+    fn session_primary_agent_for_thread(
+        &self,
+        thread: &vtcode_core::core::threads::ThreadRuntimeHandle,
+        primary_agents: &super::super::helpers::PrimaryAgentCatalog,
+    ) -> String {
         thread
             .metadata()
             .and_then(|metadata| metadata.primary_agent)
-            .and_then(|primary_agent| self.primary_agents.resolve_id(&primary_agent))
+            .and_then(|primary_agent| primary_agents.resolve_id(&primary_agent))
             .map(ToString::to_string)
-            .unwrap_or_else(|| self.primary_agents.default_id().to_string())
+            .unwrap_or_else(|| primary_agents.default_id().to_string())
     }
 
     fn sync_thread_primary_agent(&self, thread: &vtcode_core::core::threads::ThreadRuntimeHandle, primary_agent: &str) {
@@ -164,7 +192,7 @@ impl ZedAgent {
         thread: vtcode_core::core::threads::ThreadRuntimeHandle,
         trigger: SessionStartTrigger,
     ) -> SessionHandle {
-        self.build_session_handle_with_archive(session_id, thread, None, trigger)
+        self.build_session_handle_with_archive(session_id, thread, None, trigger, None)
     }
 
     fn build_session_handle_with_archive(
@@ -173,14 +201,21 @@ impl ZedAgent {
         thread: vtcode_core::core::threads::ThreadRuntimeHandle,
         archive: Option<SessionArchive>,
         trigger: SessionStartTrigger,
+        workspace_runtime: Option<Arc<super::SessionWorkspaceRuntime>>,
     ) -> SessionHandle {
         let reasoning_effort = self.session_reasoning_effort_for_thread(&thread);
         let provider = self.session_provider_for_thread(&thread);
         let model = self.session_model_for_thread(&thread);
-        let primary_agent = self.session_primary_agent_for_thread(&thread);
+        let primary_agents = workspace_runtime
+            .as_ref()
+            .map_or(&self.primary_agents, |runtime| &runtime.primary_agents);
+        let primary_agent = self.session_primary_agent_for_thread(&thread, primary_agents);
+        let hook_workspace = workspace_runtime
+            .as_ref()
+            .map_or_else(|| self.config.workspace.clone(), |runtime| runtime.workspace_root.clone());
         let lifecycle_hooks = self.vt_config.as_ref().and_then(|config| {
             match LifecycleHookEngine::new_with_session(
-                self.config.workspace.clone(),
+                hook_workspace,
                 &config.hooks,
                 trigger,
                 session_id.0.to_string(),
@@ -197,6 +232,7 @@ impl ZedAgent {
                 session_id,
                 thread,
                 archive,
+                workspace_runtime,
                 tool_notice_sent: std::sync::atomic::AtomicBool::new(false),
                 primary_agent,
                 reasoning_effort,
@@ -232,20 +268,30 @@ impl ZedAgent {
         session_id
     }
 
-    fn register_durable_session(&self, acp_meta: Option<acp::Meta>) -> acp::SessionId {
+    fn register_durable_session(
+        &self,
+        workspace_runtime: Arc<super::SessionWorkspaceRuntime>,
+        acp_meta: Option<acp::Meta>,
+    ) -> acp::SessionId {
         let session_id = acp::SessionId::new(Arc::from(format!("{SESSION_PREFIX}-{}", Uuid::new_v4())));
         let metadata = build_thread_archive_metadata(
-            self.config.workspace.as_path(),
+            workspace_runtime.workspace_root.as_path(),
             &self.config.model,
             &self.config.provider,
             &self.config.theme,
             self.config.reasoning_effort.as_str(),
         )
-        .with_primary_agent(self.primary_agents.default_id());
+        .with_primary_agent(workspace_runtime.primary_agents.default_id());
         let thread = self
             .thread_manager
             .start_thread_with_identifier(session_id.0.to_string(), ThreadBootstrap::new(Some(metadata)));
-        let handle = self.build_session_handle(session_id.clone(), thread, SessionStartTrigger::NewSession);
+        let handle = self.build_session_handle_with_archive(
+            session_id.clone(),
+            thread,
+            None,
+            SessionStartTrigger::NewSession,
+            Some(workspace_runtime),
+        );
         self.merge_session_acp_meta(&handle, acp_meta);
         if let Ok(mut guard) = self.sessions.lock() {
             drop(guard.insert(session_id.clone(), handle));
@@ -337,7 +383,11 @@ impl ZedAgent {
     }
 
     pub(super) fn update_session_primary_agent(&self, session: &SessionHandle, primary_agent: String) -> bool {
-        let Some(primary_agent) = self.primary_agents.resolve_id(&primary_agent) else {
+        let workspace_runtime = session.workspace_runtime();
+        let primary_agents = workspace_runtime
+            .as_ref()
+            .map_or(&self.primary_agents, |runtime| &runtime.primary_agents);
+        let Some(primary_agent) = primary_agents.resolve_id(&primary_agent) else {
             return false;
         };
         let mut data = match session.data.lock() {
@@ -471,9 +521,13 @@ impl ZedAgent {
         };
         let provider_options = self.provider_select_options(&data.provider);
         let model_options = self.model_select_options(&data.provider, &data.model);
+        let primary_agents = data
+            .workspace_runtime
+            .as_ref()
+            .map_or(&self.primary_agents, |runtime| &runtime.primary_agents);
         let config_options = session_config_options(
             &data.primary_agent,
-            &self.primary_agents,
+            primary_agents,
             data.reasoning_effort,
             self.model_supports_thought_level(&data.provider, &data.model),
             &data.provider,
@@ -494,15 +548,22 @@ impl ZedAgent {
     }
 
     pub(super) fn resolved_messages(&self, session: &SessionHandle) -> Vec<Message> {
+        let workspace_runtime = session.workspace_runtime();
+        let system_prompt = workspace_runtime
+            .as_ref()
+            .map_or(self.system_prompt.as_str(), |runtime| runtime.system_prompt.as_str());
         let mut messages = Vec::with_capacity(10);
-        if !self.system_prompt.trim().is_empty() {
-            messages.push(Message::system(self.system_prompt.clone()));
+        if !system_prompt.trim().is_empty() {
+            messages.push(Message::system(system_prompt.to_string()));
         }
 
         let Ok(history) = session.data.lock() else {
             return messages;
         };
-        if let Some(prompt) = self.primary_agents.prompt(&history.primary_agent) {
+        let primary_agents = workspace_runtime
+            .as_ref()
+            .map_or(&self.primary_agents, |runtime| &runtime.primary_agents);
+        if let Some(prompt) = primary_agents.prompt(&history.primary_agent) {
             messages.push(Message::system(prompt.to_string()));
         }
         messages.extend(history.thread.messages());
@@ -526,11 +587,22 @@ impl ZedAgent {
         let thread = self
             .thread_manager
             .start_thread_with_identifier(listing.identifier(), ThreadBootstrap::from_listing(listing));
+        let runtime = Arc::new(
+            super::SessionWorkspaceRuntime::build(
+                &self.config,
+                workspace.to_path_buf(),
+                &self.workspace_runtime_config,
+                self.vt_config.as_deref(),
+            )
+            .await
+            .context("Failed to initialise archived ACP session workspace")?,
+        );
         let handle = self.build_session_handle_with_archive(
             session_id.clone(),
             thread,
             Some(archive),
             SessionStartTrigger::Resume,
+            Some(runtime),
         );
         if let Ok(mut guard) = self.sessions.lock() {
             drop(guard.insert(session_id.clone(), handle.clone()));
@@ -635,7 +707,28 @@ impl ZedAgent {
     /// Programmatic equivalent of the SACP `session/new` handler — exposed
     /// for tests and for the SACP handler shim to call.
     pub(crate) async fn new_session(&self, req: acp::NewSessionRequest) -> Result<acp::NewSessionResponse, acp::Error> {
-        let session_id = self.register_durable_session(req.meta);
+        let requested_workspace = req.cwd;
+        let workspace = canonical_session_workspace(&requested_workspace).await?;
+        let desired_trust = self
+            .workspace_runtime_config
+            .zed_config
+            .workspace_trust
+            .to_workspace_trust_level();
+        let _trust_outcome = DefaultWorkspaceTrustSynchronizer::new()
+            .synchronize(&workspace, desired_trust)
+            .await
+            .map_err(|error| acp::Error::internal_error().data(format!("Failed to trust ACP session cwd: {error}")))?;
+        let workspace_runtime = Arc::new(
+            super::SessionWorkspaceRuntime::build(
+                &self.config,
+                workspace,
+                &self.workspace_runtime_config,
+                self.vt_config.as_deref(),
+            )
+            .await
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?,
+        );
+        let session_id = self.register_durable_session(workspace_runtime, req.meta);
         let session = self.session_handle(&session_id);
         if let Some(session) = &session {
             self.run_session_start_hooks(session)
@@ -661,8 +754,9 @@ impl ZedAgent {
         &self,
         args: acp::LoadSessionRequest,
     ) -> Result<acp::LoadSessionResponse, acp::Error> {
+        let workspace = canonical_session_workspace(&args.cwd).await?;
         let session = self
-            .attach_or_get_session(&args.session_id, &args.cwd)
+            .attach_or_get_session(&args.session_id, &workspace)
             .await
             .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
 
@@ -683,8 +777,9 @@ impl ZedAgent {
         &self,
         args: acp::ResumeSessionRequest,
     ) -> Result<acp::ResumeSessionResponse, acp::Error> {
+        let workspace = canonical_session_workspace(&args.cwd).await?;
         let session = self
-            .attach_or_get_session(&args.session_id, &args.cwd)
+            .attach_or_get_session(&args.session_id, &workspace)
             .await
             .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
 
@@ -729,7 +824,11 @@ impl ZedAgent {
         };
         let updated = match config_id.as_str() {
             SESSION_CONFIG_PRIMARY_AGENT_ID => {
-                let Some(primary_agent) = self.primary_agents.resolve_id(&value) else {
+                let workspace_runtime = session.workspace_runtime();
+                let primary_agents = workspace_runtime
+                    .as_ref()
+                    .map_or(&self.primary_agents, |runtime| &runtime.primary_agents);
+                let Some(primary_agent) = primary_agents.resolve_id(&value) else {
                     return Err(acp::Error::invalid_params().data(serde_json::json!({
                         "reason": "unknown_primary_agent",
                         "value": value,
@@ -1013,6 +1112,7 @@ mod tests {
             thread,
             Some(archive),
             SessionStartTrigger::Resume,
+            None,
         );
         agent.push_message(&handle, Message::user("continue".to_string()));
         agent.push_message(&handle, Message::assistant("resumed response".to_string()));
@@ -1130,13 +1230,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn new_session_canonicalizes_and_isolates_requested_workspaces() {
+        let launch_workspace = TempDir::new().unwrap();
+        let first_workspace = TempDir::new().unwrap();
+        let second_workspace = TempDir::new().unwrap();
+        let agent = build_agent(launch_workspace.path()).await;
+
+        let (first, second) = tokio::join!(
+            agent.new_session(acp::NewSessionRequest::new(first_workspace.path())),
+            agent.new_session(acp::NewSessionRequest::new(second_workspace.path()))
+        );
+        let first = first.unwrap();
+        let second = second.unwrap();
+
+        let first_session = agent.session_handle(&first.session_id).unwrap();
+        let second_session = agent.session_handle(&second.session_id).unwrap();
+        let first_root = first_session.workspace_runtime().unwrap().workspace_root.clone();
+        let second_root = second_session.workspace_runtime().unwrap().workspace_root.clone();
+        assert_eq!(first_root, vtcode_commons::canonicalize(first_workspace.path()).unwrap());
+        assert_eq!(second_root, vtcode_commons::canonicalize(second_workspace.path()).unwrap());
+        assert_ne!(first_root, second_root);
+        assert_ne!(first_root, vtcode_commons::canonicalize(launch_workspace.path()).unwrap());
+
+        let first_metadata = first_session.data.lock().unwrap().thread.metadata().unwrap();
+        let second_metadata = second_session.data.lock().unwrap().thread.metadata().unwrap();
+        assert_eq!(Path::new(&first_metadata.workspace_path), first_root);
+        assert_eq!(Path::new(&second_metadata.workspace_path), second_root);
+    }
+
+    #[tokio::test]
+    async fn new_session_rejects_invalid_workspaces_without_registering_a_session() {
+        let launch_workspace = TempDir::new().unwrap();
+        let agent = build_agent(launch_workspace.path()).await;
+        let missing = launch_workspace.path().join("missing");
+
+        let error = agent
+            .new_session(acp::NewSessionRequest::new(missing))
+            .await
+            .expect_err("missing cwd must be rejected");
+
+        assert_eq!(error.code, acp::ErrorCode::InvalidParams);
+        assert!(agent.sessions.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn checkpoint_session_skips_fresh_archive_when_history_persistence_is_disabled() {
         let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
         for persistence in [HistoryPersistence::None, HistoryPersistence::Unknown] {
             let _history_settings = HistorySettingsGuard::set(persistence, None);
             let temp = TempDir::new().unwrap();
             let agent = build_agent(temp.path()).await;
-            let session_id = agent.register_durable_session(None);
+            let session_id = agent
+                .new_session(acp::NewSessionRequest::new(temp.path()))
+                .await
+                .unwrap()
+                .session_id;
             let session = agent.session_handle(&session_id).unwrap();
             agent.push_message(&session, Message::user("do not persist".to_string()));
 

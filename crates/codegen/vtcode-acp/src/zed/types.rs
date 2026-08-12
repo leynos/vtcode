@@ -194,6 +194,7 @@ pub(crate) struct SessionData {
     pub(crate) session_id: acp::SessionId,
     pub(crate) thread: ThreadRuntimeHandle,
     pub(crate) archive: Option<vtcode_core::utils::session_archive::SessionArchive>,
+    pub(crate) workspace_runtime: Option<Arc<super::agent::SessionWorkspaceRuntime>>,
     #[allow(dead_code, reason = "Intentional compatibility, platform, or test-only suppression.")]
     pub(crate) tool_notice_sent: AtomicBool,
     pub(crate) primary_agent: String,
@@ -208,6 +209,10 @@ pub(crate) struct SessionData {
 }
 
 impl SessionHandle {
+    pub(crate) fn workspace_runtime(&self) -> Option<Arc<super::agent::SessionWorkspaceRuntime>> {
+        self.data.lock().ok().and_then(|data| data.workspace_runtime.clone())
+    }
+
     pub(crate) fn lifecycle_hooks(&self) -> Option<LifecycleHookEngine> {
         self.data.lock().ok().and_then(|data| data.lifecycle_hooks.clone())
     }
