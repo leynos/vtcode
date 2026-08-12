@@ -855,6 +855,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
     }
 
     agent.push_message(&session, Message::user(user_message.clone()));
+    agent.merge_session_acp_meta(&session, args.meta.clone());
     persist_session_checkpoint(&agent, &session, "user_message").await;
 
     let (session_provider_name, session_model, session_reasoning_effort) = {
@@ -1845,14 +1846,20 @@ mod tests {
                     .block_task()
                     .await?;
                 let session = cx
-                    .send_request(NewSessionRequest::new(workspace.path().to_path_buf()))
+                    .send_request(NewSessionRequest::new(workspace.path().to_path_buf()).meta(acp::Meta::from_iter([
+                        ("client".to_string(), serde_json::json!("wire-test")),
+                        ("requestId".to_string(), serde_json::json!("create-1")),
+                    ])))
                     .block_task()
                     .await?;
                 let first = cx
-                    .send_request(PromptRequest::new(
-                        session.session_id.clone(),
-                        vec![acp::ContentBlock::Text(acp::TextContent::new("first prompt"))],
-                    ))
+                    .send_request(
+                        PromptRequest::new(
+                            session.session_id.clone(),
+                            vec![acp::ContentBlock::Text(acp::TextContent::new("first prompt"))],
+                        )
+                        .meta(acp::Meta::from_iter([("requestId".to_string(), serde_json::json!("prompt-1"))])),
+                    )
                     .block_task()
                     .await?;
                 assert_eq!(first.stop_reason, acp::StopReason::EndTurn);
@@ -1892,6 +1899,27 @@ mod tests {
             _ => false,
         }));
         assert_eq!(calls.load(Ordering::SeqCst), 2);
+        let metadata = agent
+            .sessions
+            .lock()
+            .expect("ACP session map")
+            .values()
+            .next()
+            .expect("wire ACP session")
+            .data
+            .lock()
+            .expect("wire ACP session data")
+            .thread
+            .metadata()
+            .expect("wire ACP session metadata");
+        assert_eq!(
+            metadata.acp_meta.as_ref().and_then(|meta| meta.get("client")),
+            Some(&serde_json::json!("wire-test"))
+        );
+        assert_eq!(
+            metadata.acp_meta.as_ref().and_then(|meta| meta.get("requestId")),
+            Some(&serde_json::json!("prompt-1"))
+        );
     }
 
     struct FlakyProvider {
