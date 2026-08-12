@@ -405,13 +405,15 @@ and `[history]` settings do not control ACP audit output.
   limit of `1` therefore disables ACP sub-agents so the parent retains its slot.
 - **Provider diagnostics** – Debug logs record queue depth, active and
   maximum provider permits, retry count and disposition, time to first output,
-  generation duration, output tokens, and tokens per second. Buffered responses
-  label their time-to-first-token observation as the full buffered response
-  latency. VT Code does not currently gate provider requests with a circuit
-  breaker, so provider events report `circuit_breaker_state = "not_configured"`;
-  the tool and MCP circuit breakers are separate. HTTP 408, 429, 500, 502, 503,
-  and 504 failures are eligible for the configured bounded retry policy before
-  output becomes visible.
+  generation duration, output tokens, and tokens per second. Providers that
+  support streaming report first-output latency from before stream establishment,
+  so response-header delay counts toward the first-output timeout. Buffered
+  responses label their time-to-first-token observation as the full buffered
+  response latency. VT Code does not currently gate provider requests with a
+  circuit breaker, so provider events report
+  `circuit_breaker_state = "not_configured"`; the tool and MCP circuit breakers
+  are separate. HTTP 408, 429, 500, 502, 503, and 504 failures are eligible for
+  the configured bounded retry policy before output becomes visible.
 - **Tool-call budgets** – ACP applies `agent.harness.max_tool_calls_per_turn`
   and the optional `agent.harness.max_tool_calls_per_session` to local tool
   execution. Set either value to `0` to disable that cap. The separate
@@ -425,6 +427,12 @@ and `[history]` settings do not control ACP audit output.
   is acknowledged but omitted from the prompt payload.
 - **Streaming updates** – Token deltas and reasoning updates arrive via
   `session/update` notifications, keeping Zed's UI responsive during generation.
+  Tool-enabled turns remain streamed: VT Code waits for the provider's completed
+  tool-call arguments, executes the tool, appends its result, and opens the next
+  provider stream. A configured `Stop` lifecycle hook is the deliberate
+  exception; VT Code buffers that draft so the hook can accept or block it
+  before any text becomes visible. A stream failure after visible output is
+  never replayed and checkpoints an incomplete assistant response instead.
 - **Provider reasoning** – When a provider response exposes reasoning alongside
   tool calls, VT Code sends it to ACP as an `AgentThoughtChunk` before executing
   those tools. Exposed reasoning on the final provider response is sent as an

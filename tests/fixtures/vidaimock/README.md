@@ -14,14 +14,28 @@ directory in this directory:
 
 ```bash
 cd /home/leynos/Projects/vtcode-arli-toolcall-fixture
+VT_FIXTURES=/home/leynos/Projects/VTCode/tests/fixtures/vidaimock
 VIDAIMOCK_ISOLATED=true vidaimock \
-  --config /home/leynos/Projects/VTCode/tests/fixtures/vidaimock/scenarios/success.toml \
-  --config-dir /home/leynos/Projects/VTCode/tests/fixtures/vidaimock
+  --config "$VT_FIXTURES/scenarios/success.toml" \
+  --config-dir "$VT_FIXTURES"
 ```
 
-The provider route is defined in [`providers/arli-replay.yaml`](providers/arli-replay.yaml).
-Run the ACP Rust SDK harness against the mock's local endpoint, then repeat
-with another file in `scenarios/`.
+The captured replay route is defined in
+[`providers/arli-replay.yaml`](providers/arli-replay.yaml). The separate
+[`providers/arli-physics.yaml`](providers/arli-physics.yaml) route generates
+four distinct content chunks at `/v1/physics/chat/completions`; it exists so
+VidaiMock applies latency, trickle, and disconnect behaviour to actual model
+frames rather than to an already-rendered capture.
+
+Run the ignored adapter physics tests explicitly:
+
+```bash
+cargo nextest run --run-ignored ignored-only \
+  -p vtcode-llm vidaimock_
+```
+
+These tests require VidaiMock 0.1.3 on `PATH`, bind it to an ephemeral
+localhost port, and terminate each child process after the scenario.
 
 All scenario files use VidaiMock's exact configuration sections and keys:
 
