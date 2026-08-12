@@ -1,0 +1,11 @@
+[latency]
+mode = "realistic"
+base_ms = 5000
+jitter_pct = 0.0
+
+[chaos]
+enabled = false
+drop_pct = 0.0
+malformed_pct = 0.0
+trickle_ms = 0
+disconnect_pct = 0.0
