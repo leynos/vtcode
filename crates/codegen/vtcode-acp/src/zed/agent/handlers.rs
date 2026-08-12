@@ -50,6 +50,7 @@ use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::Instant;
 use tracing::{debug, info, warn};
+use vtcode_commons::ansi::strip_ansi_codes;
 use vtcode_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
 use vtcode_core::core::message_metadata::MessageMetadata;
 use vtcode_core::core::threads::ThreadRuntimeHandle;
@@ -59,6 +60,33 @@ use vtcode_core::llm::provider::{LLMError, LLMProvider, LLMRequest, LLMResponse,
 use vtcode_core::retry::{RetryDecision, RetryPolicyCoreExt};
 
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderDeadlinePolicy, ProviderRequestRuntime};
+
+#[cfg(test)]
+type PromptProviderFactory = dyn Fn() -> Box<dyn LLMProvider> + Send + Sync;
+
+#[cfg(test)]
+struct PromptProviderOverride {
+    provider_name: String,
+    factory: Arc<PromptProviderFactory>,
+}
+
+#[cfg(test)]
+static PROMPT_PROVIDER_OVERRIDE: std::sync::LazyLock<std::sync::Mutex<Option<PromptProviderOverride>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+
+fn create_prompt_provider(provider_name: &str, config: ProviderConfig) -> Result<Box<dyn LLMProvider>, LLMError> {
+    #[cfg(test)]
+    if let Some(provider) = PROMPT_PROVIDER_OVERRIDE.lock().ok().and_then(|guard| {
+        guard
+            .as_ref()
+            .filter(|provider_override| provider_override.provider_name == provider_name)
+            .map(|provider_override| (provider_override.factory)())
+    }) {
+        return Ok(provider);
+    }
+
+    create_provider_with_config(provider_name, config)
+}
 
 struct TurnGuard {
     thread: ThreadRuntimeHandle,
@@ -131,7 +159,39 @@ fn unix_timestamp_millis() -> u64 {
         .unwrap_or_default()
 }
 
-fn incomplete_assistant_message(content: &str, reasoning: &str, error: &LLMError) -> Message {
+struct IncompleteProviderTurn {
+    message: Message,
+    visible_update: String,
+    response: PromptResponse,
+}
+
+impl IncompleteProviderTurn {
+    fn from_failure(content: &str, reasoning: &str, error: &str) -> Self {
+        let sanitized_error = strip_ansi_codes(error).trim().to_string();
+        let error_detail = if sanitized_error.is_empty() {
+            "The provider did not report any additional details."
+        } else {
+            sanitized_error.as_str()
+        };
+        let notice = format!(
+            "The provider could not complete this turn. You can retry the prompt.\n\nProvider error: {error_detail}"
+        );
+        let visible_update = if content.is_empty() {
+            notice
+        } else {
+            format!("\n\n{notice}")
+        };
+        let message_content = format!("{content}{visible_update}");
+        let message = incomplete_assistant_message(&message_content, reasoning, error_detail);
+        Self {
+            message,
+            visible_update,
+            response: PromptResponse::new(acp::StopReason::EndTurn),
+        }
+    }
+}
+
+fn incomplete_assistant_message(content: &str, reasoning: &str, error: &str) -> Message {
     let mut message = Message::assistant(content.to_string());
     if !reasoning.is_empty() {
         message.reasoning = Some(reasoning.to_string());
@@ -139,7 +199,7 @@ fn incomplete_assistant_message(content: &str, reasoning: &str, error: &LLMError
     message.metadata = Some(MessageMetadata::incomplete_llm_response(
         unix_timestamp_millis(),
         message.estimate_tokens(),
-        error.to_string(),
+        strip_ansi_codes(error).trim(),
     ));
     message
 }
@@ -151,30 +211,30 @@ async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, b
     session.update_transcript_path().await;
 }
 
-async fn checkpoint_incomplete_stream(
+async fn finish_failed_provider_turn(
     agent: &ZedAgent,
     session: &SessionHandle,
+    session_id: &acp::SessionId,
     content: &str,
     reasoning: &str,
-    error: &LLMError,
-) -> SdkError {
-    let checkpointed = !content.is_empty() || !reasoning.is_empty();
-    if checkpointed {
-        agent.push_message(session, incomplete_assistant_message(content, reasoning, error));
-        persist_session_checkpoint(agent, session, "incomplete_provider_stream").await;
-    }
+    error: &str,
+) -> PromptResponse {
+    let IncompleteProviderTurn { message, visible_update, response } =
+        IncompleteProviderTurn::from_failure(content, reasoning, error);
+    drop(
+        agent
+            .send_update(session_id, acp::SessionUpdate::AgentMessageChunk(text_chunk(visible_update)))
+            .await,
+    );
+    agent.push_message(session, message);
+    persist_session_checkpoint(agent, session, "incomplete_provider_turn").await;
     warn!(
-        provider_error = %error,
+        provider_error = %strip_ansi_codes(error),
         partial_text_bytes = content.len(),
         partial_reasoning_bytes = reasoning.len(),
-        checkpointed,
-        "ACP provider stream failed after publishing output"
+        "ACP provider failed to complete the turn"
     );
-    SdkError::internal_error().data(json!({
-        "reason": "provider_stream_incomplete",
-        "detail": error.to_string(),
-        "partial_output_checkpointed": checkpointed,
-    }))
+    response
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -803,7 +863,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
     let provider_runtime = agent.provider_runtime.for_provider(&session_provider_name);
     let mut provider_timeouts = agent.provider_timeouts.clone();
     provider_runtime.apply_http_timeouts(&mut provider_timeouts);
-    let provider = create_provider_with_config(
+    let provider = create_prompt_provider(
         &session_provider_name,
         ProviderConfig {
             api_key: Some(session_api_key),
@@ -934,7 +994,15 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                     drop(permit);
                     if !decision.retryable {
-                        return Err(SdkError::internal_error().data(error.to_string()));
+                        return Ok(finish_failed_provider_turn(
+                            &agent,
+                            &session,
+                            &args.session_id,
+                            &assistant_message,
+                            &assistant_reasoning,
+                            &error.to_string(),
+                        )
+                        .await);
                     }
                     let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                     info!(
@@ -955,7 +1023,15 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             break;
                         }
                         Err(ProviderCallError::Failed(error)) => {
-                            return Err(SdkError::internal_error().data(error));
+                            return Ok(finish_failed_provider_turn(
+                                &agent,
+                                &session,
+                                &args.session_id,
+                                &assistant_message,
+                                &assistant_reasoning,
+                                &error,
+                            )
+                            .await);
                         }
                     }
                 }
@@ -987,12 +1063,13 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     };
                     if emitted_output {
                         telemetry.failed(&provider_runtime, attempt_index, "partial_output_visible", &error);
-                        return Err(checkpoint_incomplete_stream(
+                        return Ok(finish_failed_provider_turn(
                             &agent,
                             &session,
+                            &args.session_id,
                             &assistant_message,
                             &assistant_reasoning,
-                            &error,
+                            &error.to_string(),
                         )
                         .await);
                     }
@@ -1001,7 +1078,15 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                     drop(permit);
                     if !decision.retryable {
-                        return Err(SdkError::internal_error().data(error.to_string()));
+                        return Ok(finish_failed_provider_turn(
+                            &agent,
+                            &session,
+                            &args.session_id,
+                            &assistant_message,
+                            &assistant_reasoning,
+                            &error.to_string(),
+                        )
+                        .await);
                     }
                     let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                     info!(
@@ -1022,7 +1107,15 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             break 'stream_attempts;
                         }
                         Err(ProviderCallError::Failed(error)) => {
-                            return Err(SdkError::internal_error().data(error));
+                            return Ok(finish_failed_provider_turn(
+                                &agent,
+                                &session,
+                                &args.session_id,
+                                &assistant_message,
+                                &assistant_reasoning,
+                                &error,
+                            )
+                            .await);
                         }
                     }
                 };
@@ -1034,7 +1127,15 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                         drop(permit);
                         if !decision.retryable {
-                            return Err(SdkError::internal_error().data(error.to_string()));
+                            return Ok(finish_failed_provider_turn(
+                                &agent,
+                                &session,
+                                &args.session_id,
+                                &assistant_message,
+                                &assistant_reasoning,
+                                &error.to_string(),
+                            )
+                            .await);
                         }
                         let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                         info!(
@@ -1055,18 +1156,27 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 break 'stream_attempts;
                             }
                             Err(ProviderCallError::Failed(error)) => {
-                                return Err(SdkError::internal_error().data(error));
+                                return Ok(finish_failed_provider_turn(
+                                    &agent,
+                                    &session,
+                                    &args.session_id,
+                                    &assistant_message,
+                                    &assistant_reasoning,
+                                    &error,
+                                )
+                                .await);
                             }
                         }
                     }
                     Err(error) => {
                         telemetry.failed(&provider_runtime, attempt_index, "partial_output_visible", &error);
-                        return Err(checkpoint_incomplete_stream(
+                        return Ok(finish_failed_provider_turn(
                             &agent,
                             &session,
+                            &args.session_id,
                             &assistant_message,
                             &assistant_reasoning,
-                            &error,
+                            &error.to_string(),
                         )
                         .await);
                     }
@@ -1184,7 +1294,15 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         break;
                     }
                     Err(ProviderCallError::Failed(error)) => {
-                        return Err(SdkError::internal_error().data(error));
+                        return Ok(finish_failed_provider_turn(
+                            &agent,
+                            &session,
+                            &args.session_id,
+                            &assistant_message,
+                            &assistant_reasoning,
+                            &error,
+                        )
+                        .await);
                     }
                 };
 
@@ -1369,10 +1487,42 @@ fn should_emit_buffered_final_chunk(allow_streaming: bool) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use agent_client_protocol::{Channel, on_receive_notification};
+    use assert_fs::TempDir;
     use async_trait::async_trait;
+    use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::sync::{Mutex as AsyncMutex, mpsc};
+    use vtcode_config::SubagentDiscoveryInput;
+    use vtcode_config::auth::AuthCredentialsStoreMode;
     use vtcode_config::core::{CustomProviderConfig, CustomProviderRequestPolicyConfig};
+    use vtcode_core::config::core::PromptCachingConfig;
+    use vtcode_core::config::types::{
+        AgentConfig as CoreAgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference,
+    };
+    use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig};
+    use vtcode_core::core::agent::snapshots::{
+        DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
+    };
     use vtcode_core::core::threads::{ThreadBootstrap, ThreadManager};
+
+    static PROMPT_PROVIDER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
+
+    struct PromptProviderFactoryGuard;
+
+    impl PromptProviderFactoryGuard {
+        fn install(provider_name: &str, factory: Arc<PromptProviderFactory>) -> Self {
+            *PROMPT_PROVIDER_OVERRIDE.lock().expect("prompt provider factory lock") =
+                Some(PromptProviderOverride { provider_name: provider_name.to_string(), factory });
+            Self
+        }
+    }
+
+    impl Drop for PromptProviderFactoryGuard {
+        fn drop(&mut self) {
+            *PROMPT_PROVIDER_OVERRIDE.lock().expect("prompt provider factory lock") = None;
+        }
+    }
 
     #[test]
     fn advertised_capabilities_include_session_discovery_and_resume() {
@@ -1393,11 +1543,26 @@ mod tests {
 
         {
             let _guard = TurnGuard::begin(thread.clone()).expect("first turn should begin");
-            thread.append_message(Message::assistant("context gathered from a file read".to_string()));
+            let failed_turn = IncompleteProviderTurn::from_failure(
+                "context gathered from a file read",
+                "partial reasoning",
+                "\u{1b}[31m502 Bad Gateway\u{1b}[0m",
+            );
+            assert_eq!(failed_turn.response.stop_reason, acp::StopReason::EndTurn);
+            assert!(failed_turn.visible_update.starts_with("\n\n"));
+            assert!(failed_turn.visible_update.contains("You can retry the prompt"));
+            assert!(!failed_turn.visible_update.contains('\u{1b}'));
+            thread.append_message(failed_turn.message);
         }
 
         let messages = thread.messages();
         assert_eq!(messages.len(), 2, "failed turn history must remain available to continue");
+        assert!(messages[1].content.as_text().contains("context gathered from a file read"));
+        assert!(messages[1].content.as_text().contains("You can retry the prompt"));
+        assert_eq!(messages[1].reasoning.as_deref(), Some("partial reasoning"));
+        let metadata = messages[1].metadata.as_ref().expect("incomplete response metadata");
+        assert!(metadata.is_incomplete());
+        assert_eq!(metadata.incomplete_reason(), Some("502 Bad Gateway"));
         let next_turn = thread.begin_turn().expect("failed turn must release the in-flight marker");
         drop(next_turn);
         thread.finish_turn();
@@ -1523,14 +1688,12 @@ mod tests {
 
     #[test]
     fn partial_stream_message_preserves_output_and_marks_it_incomplete() {
-        let error = LLMError::Network {
-            message: "stream disconnected".to_string(),
-            metadata: None,
-        };
+        let failed_turn =
+            IncompleteProviderTurn::from_failure("partial answer", "partial reasoning", "stream disconnected");
+        let message = failed_turn.message;
 
-        let message = incomplete_assistant_message("partial answer", "partial reasoning", &error);
-
-        assert_eq!(message.content.as_text(), "partial answer");
+        assert!(message.content.as_text().starts_with("partial answer"));
+        assert!(message.content.as_text().contains("You can retry the prompt"));
         assert_eq!(message.reasoning.as_deref(), Some("partial reasoning"));
         let metadata = message.metadata.as_ref().expect("incomplete response metadata");
         assert!(metadata.is_incomplete());
@@ -1539,6 +1702,193 @@ mod tests {
                 .incomplete_reason()
                 .is_some_and(|reason| reason.contains("stream disconnected"))
         );
+    }
+
+    #[test]
+    fn provider_failure_without_output_becomes_a_normal_retryable_turn() {
+        let failed_turn = IncompleteProviderTurn::from_failure("", "", "\u{1b}[31m502 Bad Gateway\u{1b}[0m");
+
+        assert_eq!(failed_turn.response.stop_reason, acp::StopReason::EndTurn);
+        assert_eq!(failed_turn.message.content.as_text(), failed_turn.visible_update);
+        assert!(failed_turn.visible_update.contains("You can retry the prompt"));
+        assert!(failed_turn.visible_update.contains("502 Bad Gateway"));
+        assert!(!failed_turn.visible_update.contains('\u{1b}'));
+        let metadata = failed_turn.message.metadata.as_ref().expect("incomplete response metadata");
+        assert!(metadata.is_incomplete());
+        assert_eq!(metadata.incomplete_reason(), Some("502 Bad Gateway"));
+    }
+
+    struct FailThenSucceedProvider {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl LLMProvider for FailThenSucceedProvider {
+        fn name(&self) -> &str {
+            "wire-test"
+        }
+
+        fn supported_models(&self) -> Vec<String> {
+            vec!["wire-model".to_string()]
+        }
+
+        fn supports_streaming(&self) -> bool {
+            false
+        }
+
+        fn supports_tools(&self, _model: &str) -> bool {
+            false
+        }
+
+        fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+            Ok(())
+        }
+
+        async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+            if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                Err(LLMError::InvalidRequest {
+                    message: "\u{1b}[31mfirst turn failed\u{1b}[0m".to_string(),
+                    metadata: None,
+                })
+            } else {
+                Ok(LLMResponse::new("wire-model", "second turn succeeded"))
+            }
+        }
+    }
+
+    async fn build_wire_test_agent(workspace: &std::path::Path) -> ZedAgent {
+        let core_config = CoreAgentConfig {
+            model: "wire-model".to_string(),
+            api_key: "test-key".to_string(),
+            provider: "wire-test".to_string(),
+            api_key_env: "WIRE_TEST_API_KEY".to_string(),
+            workspace: workspace.to_path_buf(),
+            verbose: false,
+            quiet: false,
+            theme: "test".to_string(),
+            reasoning_effort: ReasoningEffortLevel::Low,
+            ui_surface: UiSurfacePreference::default(),
+            prompt_cache: PromptCachingConfig::default(),
+            model_source: ModelSelectionSource::WorkspaceConfig,
+            custom_api_keys: BTreeMap::new(),
+            checkpointing_enabled: DEFAULT_CHECKPOINTS_ENABLED,
+            checkpointing_storage_dir: None,
+            checkpointing_max_snapshots: DEFAULT_MAX_SNAPSHOTS,
+            checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
+            max_conversation_turns: 1000,
+            model_behavior: None,
+            openai_chatgpt_auth: None,
+        };
+        let mut discovery_input = SubagentDiscoveryInput::new(workspace.to_path_buf());
+        discovery_input.include_user_agents = false;
+        let discovered = vtcode_config::discover_subagents(&discovery_input).expect("discover primary agents");
+        let primary_agents =
+            crate::zed::helpers::PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, "duck");
+
+        Box::pin(ZedAgent::new(
+            core_config,
+            AuthCredentialsStoreMode::default(),
+            AgentClientProtocolZedConfig::default(),
+            ToolsConfig::default(),
+            CommandsConfig::default(),
+            &[],
+            vtcode_config::TimeoutsConfig::default(),
+            String::new(),
+            Some("Wire test".to_string()),
+            primary_agents,
+            false,
+            None,
+            None,
+        ))
+        .await
+    }
+
+    #[tokio::test]
+    async fn provider_failure_is_normal_end_turn_and_same_session_accepts_a_second_prompt() {
+        let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+        let calls = Arc::new(AtomicUsize::new(0));
+        let factory_calls = Arc::clone(&calls);
+        let _factory_guard = PromptProviderFactoryGuard::install(
+            "wire-test",
+            Arc::new(move || Box::new(FailThenSucceedProvider { calls: Arc::clone(&factory_calls) })),
+        );
+        let workspace = TempDir::new().expect("wire test workspace");
+        let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+        let (agent_channel, client_channel) = Channel::duplex();
+        let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
+
+        let agent_connection = install_handlers(Agent.builder().name("vtcode-wire-test"), Arc::clone(&agent))
+            .connect_with(agent_channel, {
+                let agent = Arc::clone(&agent);
+                async move |cx: ConnectionTo<Client>| {
+                    agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                    std::future::pending::<agent_client_protocol::Result<()>>().await
+                }
+            });
+        let agent_task = tokio::spawn(agent_connection);
+
+        let client_connection = Client
+            .builder()
+            .on_receive_notification(
+                async move |notification: acp::SessionNotification, _cx| {
+                    drop(updates_tx.send(notification));
+                    Ok(())
+                },
+                on_receive_notification!(),
+            )
+            .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+                let _initialize = cx
+                    .send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                    .block_task()
+                    .await?;
+                let session = cx
+                    .send_request(NewSessionRequest::new(workspace.path().to_path_buf()))
+                    .block_task()
+                    .await?;
+                let first = cx
+                    .send_request(PromptRequest::new(
+                        session.session_id.clone(),
+                        vec![acp::ContentBlock::Text(acp::TextContent::new("first prompt"))],
+                    ))
+                    .block_task()
+                    .await?;
+                assert_eq!(first.stop_reason, acp::StopReason::EndTurn);
+                let second = cx
+                    .send_request(PromptRequest::new(
+                        session.session_id,
+                        vec![acp::ContentBlock::Text(acp::TextContent::new("second prompt"))],
+                    ))
+                    .block_task()
+                    .await?;
+                assert_eq!(second.stop_reason, acp::StopReason::EndTurn);
+                Ok(())
+            });
+
+        tokio::time::timeout(Duration::from_secs(5), client_connection)
+            .await
+            .expect("client connection should finish")
+            .expect("client protocol flow should succeed");
+        agent_task.abort();
+        drop(agent_task.await);
+
+        let updates = std::iter::from_fn(|| updates_rx.try_recv().ok()).collect::<Vec<_>>();
+        assert!(updates.iter().any(|notification| match &notification.update {
+            acp::SessionUpdate::AgentMessageChunk(chunk) => match &chunk.content {
+                acp::ContentBlock::Text(text) => {
+                    text.text.contains("You can retry the prompt") && !text.text.contains('\u{1b}')
+                }
+                _ => false,
+            },
+            _ => false,
+        }));
+        assert!(updates.iter().any(|notification| match &notification.update {
+            acp::SessionUpdate::AgentMessageChunk(chunk) => match &chunk.content {
+                acp::ContentBlock::Text(text) => text.text == "second turn succeeded",
+                _ => false,
+            },
+            _ => false,
+        }));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
 
     struct FlakyProvider {

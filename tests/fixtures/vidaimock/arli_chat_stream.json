@@ -1,0 +1,11 @@
+{
+  "capture": "sanitised mitmproxy reverse-proxy transaction",
+  "captured_at": "2026-08-12T17:08:51+02:00",
+  "http_status": 200,
+  "connect_seconds": 0.000094,
+  "time_to_first_byte_seconds": 2.189632,
+  "total_seconds": 2.189752,
+  "content_type": "text/event-stream; charset=utf-8",
+  "request_headers_retained": false,
+  "request_body_retained": false
+}
