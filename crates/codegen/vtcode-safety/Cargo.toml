@@ -34,6 +34,7 @@ tracing = { workspace = true }
 vtcode-commons = { workspace = true }
 
 [dev-dependencies]
+proptest = "1.11"
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 

@@ -67,16 +67,14 @@ pub fn contains_dynamic_shell_syntax(command: &str) -> bool {
 /// Returns whether a `find` command contains shell syntax that can change the
 /// literal option tokens after approval-time tokenization.
 pub fn contains_dynamic_find_syntax(script: &str) -> bool {
-    if let Ok(commands) = parse_shell_commands_tree_sitter(script)
-        && commands.iter().any(|command| {
+    if let Ok(commands) = parse_shell_commands_tree_sitter(script) {
+        return commands.iter().any(|command| {
             command
                 .first()
                 .map(|program| base_command_name(program) == "find")
                 .unwrap_or(false)
-                && command.iter().any(|word| contains_dynamic_shell_syntax(word))
-        })
-    {
-        return true;
+                && find_command_contains_dynamic_syntax(command)
+        });
     }
 
     // Be conservative when the grammar cannot identify the command shape: a
@@ -87,6 +85,25 @@ pub fn contains_dynamic_find_syntax(script: &str) -> bool {
         base_command_name(command) == "find"
     });
     has_find_word && contains_dynamic_shell_syntax(script)
+}
+
+fn find_command_contains_dynamic_syntax(command: &[String]) -> bool {
+    let mut in_exec_arguments = false;
+
+    command.iter().any(|word| {
+        if matches!(word.as_str(), "-exec" | "-execdir") {
+            in_exec_arguments = true;
+        }
+
+        let is_static_find_exec_token = in_exec_arguments && matches!(word.as_str(), "{}" | "\\;");
+        let dynamic = !is_static_find_exec_token && contains_dynamic_shell_syntax(word);
+
+        if in_exec_arguments && matches!(word.as_str(), ";" | "\\;" | "+") {
+            in_exec_arguments = false;
+        }
+
+        dynamic
+    })
 }
 
 /// Gets or initializes the bash parser
@@ -203,7 +220,20 @@ fn extract_command_from_node(node: tree_sitter::Node, source: &str) -> Option<Ve
             continue;
         }
 
-        if matches!(child.kind(), "word" | "string" | "simple_expansion" | "variable_expansion") {
+        if matches!(
+            child.kind(),
+            "word"
+                | "string"
+                | "raw_string"
+                | "ansi_c_string"
+                | "concatenation"
+                | "brace_expression"
+                | "expansion"
+                | "simple_expansion"
+                | "variable_expansion"
+                | "command_substitution"
+                | "process_substitution"
+        ) {
             let text = child.utf8_text(source.as_bytes());
             if let Ok(arg) = text {
                 let trimmed = arg.trim();
@@ -306,6 +336,7 @@ pub fn parse_bash_lc_commands(command: &[String]) -> Option<Vec<Vec<String>>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn tokenize_simple_command() {
@@ -469,6 +500,30 @@ mod tests {
     fn dynamic_find_syntax_is_detected_without_rejecting_quoted_globs() {
         assert!(contains_dynamic_find_syntax("find src -maxdepth 0 -exe$''c touch /tmp/VT_BYPASS_POC {} +"));
         assert!(!contains_dynamic_find_syntax("find src -type f -name '*.rs'"));
+    }
+
+    #[test]
+    fn find_exec_placeholder_is_distinct_from_dynamic_braces_and_expansions() {
+        assert!(!contains_dynamic_find_syntax("find src -type f -exec printf '%s\\n' {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find src -type f -execdir wc -l {} +"));
+        assert!(contains_dynamic_find_syntax("find src -name {}"));
+        assert!(contains_dynamic_find_syntax("find src -name {one,two}"));
+        assert!(contains_dynamic_find_syntax("find src -exec printf '%s\\n' ${path} \\;"));
+    }
+
+    proptest! {
+        #[test]
+        fn literal_placeholder_remains_static_across_find_exec_commands(
+            root in "[a-zA-Z0-9_./-]{1,40}",
+            utility in "[a-zA-Z][a-zA-Z0-9_-]{0,20}",
+            argument in "[a-zA-Z0-9_./:-]{1,40}",
+            exec_option in prop_oneof![Just("-exec"), Just("-execdir")],
+            terminator in prop_oneof![Just("+"), Just("\\;")],
+        ) {
+            let script = format!("find {root} -type f {exec_option} {utility} {argument} {{}} {terminator}");
+
+            prop_assert!(!contains_dynamic_find_syntax(&script), "unexpectedly dynamic: {script}");
+        }
     }
 }
 
