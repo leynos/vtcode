@@ -35,7 +35,11 @@ impl ZedAgent {
 
     pub(super) async fn send_available_commands_update(&self, session_id: &acp::SessionId) -> Result<(), SdkError> {
         let slash_commands = visible_commands();
-        let prompt_templates = discover_prompt_templates(&self.config.workspace).await;
+        let workspace = self
+            .session_handle(session_id)
+            .and_then(|session| session.workspace_runtime())
+            .map_or_else(|| self.config.workspace.clone(), |runtime| runtime.workspace_root.clone());
+        let prompt_templates = discover_prompt_templates(&workspace).await;
         let available_commands = build_available_commands(&slash_commands, &prompt_templates);
 
         tracing::debug!(

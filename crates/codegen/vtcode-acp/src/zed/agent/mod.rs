@@ -9,15 +9,16 @@ use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing::{debug, warn};
-use vtcode_config::TimeoutsConfig;
 use vtcode_config::auth::AuthCredentialsStoreMode;
 use vtcode_config::core::CustomProviderConfig;
+use vtcode_config::{SubagentDiscoveryInput, TimeoutsConfig, discover_subagents};
 use vtcode_core::config::ToolDocumentationMode;
 use vtcode_core::config::types::{AgentConfig as CoreAgentConfig, CapabilityLevel};
 use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig, VTCodeConfig};
 use vtcode_core::core::threads::ThreadManager;
 use vtcode_core::mcp::plugin_providers::discover_plugin_mcp_providers;
 use vtcode_core::mcp::{McpClient, McpSandboxContext, validate_mcp_config};
+use vtcode_core::prompts::system::generate_system_instruction_with_config;
 use vtcode_core::subagents::{SubagentController, SubagentControllerConfig};
 use vtcode_core::tools::file_ops::FileOpsTool;
 use vtcode_core::tools::grep_file::GrepSearchManager;
@@ -62,6 +63,26 @@ pub(crate) struct ZedAgent {
     provider_timeouts: TimeoutsConfig,
     vt_config: Option<Box<VTCodeConfig>>,
     audit_logger: Option<Arc<AcpAuditLogger>>,
+    workspace_runtime_config: WorkspaceRuntimeConfig,
+}
+
+pub(crate) struct SessionWorkspaceRuntime {
+    workspace_root: std::path::PathBuf,
+    system_prompt: String,
+    primary_agents: PrimaryAgentCatalog,
+    acp_tool_registry: Arc<AcpToolRegistry>,
+    permission_prompter: Arc<dyn AcpPermissionPrompter + Send + Sync>,
+    local_tool_registry: CoreToolRegistry,
+    file_ops_tool: Option<FileOpsTool>,
+}
+
+#[derive(Clone)]
+struct WorkspaceRuntimeConfig {
+    zed_config: AgentClientProtocolZedConfig,
+    tools_config: ToolsConfig,
+    commands_config: CommandsConfig,
+    custom_providers: Vec<CustomProviderConfig>,
+    skip_confirmations: bool,
 }
 
 fn effective_acp_subagent_concurrency(configured: usize, max_in_flight: Option<usize>) -> Option<usize> {
@@ -220,6 +241,79 @@ fn configure_acp_tool_call_limits(registry: &CoreToolRegistry, vt_cfg: Option<&V
     safety_gateway.set_limits(harness.max_tool_calls_per_turn, max_per_session);
 }
 
+impl SessionWorkspaceRuntime {
+    async fn build(
+        base_config: &CoreAgentConfig,
+        workspace_root: std::path::PathBuf,
+        runtime_config: &WorkspaceRuntimeConfig,
+        vt_cfg: Option<&VTCodeConfig>,
+    ) -> anyhow::Result<Self> {
+        let mut session_config = base_config.clone();
+        session_config.workspace = workspace_root.clone();
+        let content = generate_system_instruction_with_config(&Default::default(), &workspace_root, vt_cfg).await;
+        let system_prompt = content
+            .parts
+            .first()
+            .and_then(|part| part.as_text())
+            .map_or_else(String::new, ToString::to_string);
+        let discovered = discover_subagents(&SubagentDiscoveryInput::new(workspace_root.clone()))?;
+        let default_primary_agent = vt_cfg.map_or("duck", |config| config.default_primary_agent.as_str());
+        let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, default_primary_agent);
+        let file_ops_tool = if runtime_config.zed_config.tools.list_files {
+            let search_root = workspace_root.clone();
+            Some(FileOpsTool::new(workspace_root.clone(), Arc::new(GrepSearchManager::new(search_root))))
+        } else {
+            None
+        };
+        let list_files_enabled = file_ops_tool.is_some();
+        let local_tool_registry = CoreToolRegistry::new(workspace_root.clone()).await;
+        configure_acp_tool_call_limits(&local_tool_registry, vt_cfg);
+        local_tool_registry
+            .apply_tool_runtime_config(&runtime_config.commands_config, &runtime_config.tools_config)
+            .await?;
+        Box::pin(attach_acp_subagent_controller(
+            &local_tool_registry,
+            &session_config,
+            &runtime_config.custom_providers,
+            vt_cfg,
+        ))
+        .await;
+        attach_acp_mcp_client(&local_tool_registry, vt_cfg, &workspace_root).await;
+        let local_definitions = local_tool_registry
+            .model_tools(
+                SessionToolsConfig::full_public(
+                    SessionSurface::Acp,
+                    CapabilityLevel::CodeSearch,
+                    ToolDocumentationMode::default(),
+                    ToolModelCapabilities::default(),
+                )
+                .with_tool_profile(runtime_config.tools_config.profile),
+            )
+            .await;
+        let acp_tool_registry = Arc::new(AcpToolRegistry::new(
+            &workspace_root,
+            runtime_config.zed_config.tools.read_file,
+            list_files_enabled,
+            local_definitions,
+        ));
+        let permission_prompter: Arc<dyn AcpPermissionPrompter + Send + Sync> =
+            Arc::new(DefaultPermissionPrompter::with_skip_confirmations(
+                Arc::clone(&acp_tool_registry) as Arc<_>,
+                runtime_config.skip_confirmations,
+            ));
+
+        Ok(Self {
+            workspace_root,
+            system_prompt,
+            primary_agents,
+            acp_tool_registry,
+            permission_prompter,
+            local_tool_registry,
+            file_ops_tool,
+        })
+    }
+}
+
 impl ZedAgent {
     #[allow(
         clippy::too_many_arguments,
@@ -283,6 +377,13 @@ impl ZedAgent {
                 Arc::clone(&acp_tool_registry) as Arc<_>,
                 skip_confirmations,
             ));
+        let workspace_runtime_config = WorkspaceRuntimeConfig {
+            zed_config,
+            tools_config,
+            commands_config,
+            custom_providers: custom_providers.to_vec(),
+            skip_confirmations,
+        };
 
         Self {
             config,
@@ -305,7 +406,15 @@ impl ZedAgent {
             provider_timeouts,
             vt_config: vt_cfg.cloned().map(Box::new),
             audit_logger,
+            workspace_runtime_config,
         }
+    }
+
+    fn session_subagent_controller(&self, session: &SessionHandle) -> Option<Arc<SubagentController>> {
+        session
+            .workspace_runtime()
+            .and_then(|runtime| runtime.local_tool_registry.subagent_controller())
+            .or_else(|| self.local_tool_registry.subagent_controller())
     }
 
     /// Attach the live SACP `cx` handle. Called once after the SACP
