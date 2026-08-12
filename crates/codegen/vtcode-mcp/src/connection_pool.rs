@@ -24,6 +24,8 @@ pub(crate) struct McpConnectionPool {
     max_concurrent_connections: usize,
     /// Connection timeout
     connection_timeout: Duration,
+    /// Default provider initialization timeout when no provider override exists.
+    default_startup_timeout: Option<Duration>,
 }
 
 impl McpConnectionPool {
@@ -33,7 +35,13 @@ impl McpConnectionPool {
             connection_semaphore: Arc::new(Semaphore::new(max_concurrent_connections)),
             max_concurrent_connections,
             connection_timeout: Duration::from_secs(connection_timeout_seconds),
+            default_startup_timeout: None,
         }
+    }
+
+    pub(crate) fn with_startup_timeout(mut self, startup_timeout: Option<Duration>) -> Self {
+        self.default_startup_timeout = startup_timeout;
+        self
     }
 
     /// Initialize multiple providers in parallel with controlled concurrency
@@ -241,7 +249,11 @@ impl McpConnectionPool {
 
     /// Resolve startup timeout based on provider configuration
     fn resolve_startup_timeout(&self, config: &McpProviderConfig) -> Option<Duration> {
-        config.startup_timeout_ms.map(Duration::from_millis)
+        match config.startup_timeout_ms {
+            Some(0) => None,
+            Some(timeout_ms) => Some(Duration::from_millis(timeout_ms)),
+            None => self.default_startup_timeout,
+        }
     }
 }
 
