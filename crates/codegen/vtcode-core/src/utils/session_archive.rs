@@ -146,6 +146,12 @@ pub struct SessionArchiveMetadata {
     pub provider: String,
     pub theme: String,
     pub reasoning_effort: String,
+    /// Opaque metadata received from ACP session and prompt requests.
+    ///
+    /// VT Code preserves these values for correlation and diagnostics without
+    /// interpreting their keys or contents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acp_meta: Option<serde_json::Map<String, serde_json::Value>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub debug_log_path: Option<String>,
     /// Names of skills loaded in this session
@@ -255,6 +261,7 @@ impl SessionArchiveMetadata {
             provider: provider.into(),
             theme: theme.into(),
             reasoning_effort: reasoning_effort.into(),
+            acp_meta: None,
             debug_log_path: None,
             loaded_skills: Vec::new(),
             prompt_cache_lineage_id: None,
@@ -329,6 +336,7 @@ impl SessionArchiveMetadata {
             provider: self.provider.clone(),
             theme: self.theme.clone(),
             reasoning_effort: self.reasoning_effort.clone(),
+            acp_meta: self.acp_meta.clone(),
             debug_log_path: self.debug_log_path.clone(),
             loaded_skills: self.loaded_skills.clone(),
             prompt_cache_lineage_id: self.prompt_cache_lineage_id.clone(),

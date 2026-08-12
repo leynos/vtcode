@@ -96,6 +96,19 @@ impl ZedAgent {
         }
     }
 
+    pub(super) fn merge_session_acp_meta(&self, session: &SessionHandle, acp_meta: Option<acp::Meta>) {
+        let Some(acp_meta) = acp_meta.filter(|meta| !meta.is_empty()) else {
+            return;
+        };
+        let Ok(data) = session.data.lock() else {
+            return;
+        };
+        if let Some(mut metadata) = data.thread.metadata() {
+            metadata.acp_meta.get_or_insert_default().extend(acp_meta);
+            data.thread.replace_metadata(Some(metadata));
+        }
+    }
+
     fn session_provider_for_thread(&self, thread: &vtcode_core::core::threads::ThreadRuntimeHandle) -> String {
         thread
             .metadata()
@@ -219,7 +232,7 @@ impl ZedAgent {
         session_id
     }
 
-    fn register_durable_session(&self) -> acp::SessionId {
+    fn register_durable_session(&self, acp_meta: Option<acp::Meta>) -> acp::SessionId {
         let session_id = acp::SessionId::new(Arc::from(format!("{SESSION_PREFIX}-{}", Uuid::new_v4())));
         let metadata = build_thread_archive_metadata(
             self.config.workspace.as_path(),
@@ -233,6 +246,7 @@ impl ZedAgent {
             .thread_manager
             .start_thread_with_identifier(session_id.0.to_string(), ThreadBootstrap::new(Some(metadata)));
         let handle = self.build_session_handle(session_id.clone(), thread, SessionStartTrigger::NewSession);
+        self.merge_session_acp_meta(&handle, acp_meta);
         if let Ok(mut guard) = self.sessions.lock() {
             drop(guard.insert(session_id.clone(), handle));
         }
@@ -620,11 +634,8 @@ impl ZedAgent {
 
     /// Programmatic equivalent of the SACP `session/new` handler — exposed
     /// for tests and for the SACP handler shim to call.
-    pub(crate) async fn new_session(
-        &self,
-        _req: acp::NewSessionRequest,
-    ) -> Result<acp::NewSessionResponse, acp::Error> {
-        let session_id = self.register_durable_session();
+    pub(crate) async fn new_session(&self, req: acp::NewSessionRequest) -> Result<acp::NewSessionResponse, acp::Error> {
+        let session_id = self.register_durable_session(req.meta);
         let session = self.session_handle(&session_id);
         if let Some(session) = &session {
             self.run_session_start_hooks(session)
@@ -1090,13 +1101,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn session_metadata_captures_and_merges_acp_meta() {
+        let temp = TempDir::new().unwrap();
+        let agent = build_agent(temp.path()).await;
+        let creation_meta = acp::Meta::from_iter([
+            ("client".to_string(), serde_json::json!("zed")),
+            ("requestId".to_string(), serde_json::json!("create-1")),
+        ]);
+
+        let response = agent
+            .new_session(acp::NewSessionRequest::new(temp.path()).meta(creation_meta))
+            .await
+            .unwrap();
+        let session = agent.session_handle(&response.session_id).unwrap();
+        agent.merge_session_acp_meta(
+            &session,
+            Some(acp::Meta::from_iter([
+                ("requestId".to_string(), serde_json::json!("prompt-1")),
+                ("traceparent".to_string(), serde_json::json!("00-test-trace")),
+            ])),
+        );
+
+        let metadata = session.data.lock().unwrap().thread.metadata().unwrap();
+        let serialized = serde_json::to_value(metadata).unwrap();
+        assert_eq!(serialized["acp_meta"]["client"], "zed");
+        assert_eq!(serialized["acp_meta"]["requestId"], "prompt-1");
+        assert_eq!(serialized["acp_meta"]["traceparent"], "00-test-trace");
+    }
+
+    #[tokio::test]
     async fn checkpoint_session_skips_fresh_archive_when_history_persistence_is_disabled() {
         let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
         for persistence in [HistoryPersistence::None, HistoryPersistence::Unknown] {
             let _history_settings = HistorySettingsGuard::set(persistence, None);
             let temp = TempDir::new().unwrap();
             let agent = build_agent(temp.path()).await;
-            let session_id = agent.register_durable_session();
+            let session_id = agent.register_durable_session(None);
             let session = agent.session_handle(&session_id).unwrap();
             agent.push_message(&session, Message::user("do not persist".to_string()));
 
