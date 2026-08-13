@@ -59,6 +59,13 @@ provider completed it.
 The defaults start at 10 seconds and cap at 160 seconds. With five retries,
 the unjittered delays are therefore 10, 20, 40, 80, and 160 seconds.
 
+OpenAI-compatible transport failures retain reqwest's structured category in
+the error metadata code (`reqwest_connect_error`, `reqwest_timeout_error`,
+`reqwest_request_error`, `reqwest_body_error`, `reqwest_decode_error`,
+`reqwest_redirect_error`, or `reqwest_status_error`). The bounded, redacted
+source chain is retained in metadata for diagnostics without making display
+text a parsing contract.
+
 ## Cancellation and turn safety
 
 Cancellation is observed while a request waits for admission, sleeps between
