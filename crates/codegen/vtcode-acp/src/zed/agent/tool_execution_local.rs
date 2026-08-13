@@ -91,6 +91,10 @@ impl ZedAgent {
     }
 
     fn render_local_tool_content(&self, tool_name: &str, output: &Value) -> Vec<acp::ToolCallContent> {
+        if matches!(tool_name, tools::EXEC_COMMAND | tools::RUN_PTY_CMD | tools::WRITE_STDIN) {
+            return self.render_exec_command_content(output);
+        }
+
         if tool_name == tools::EDIT_FILE || tool_name == tools::WRITE_FILE || tool_name == tools::CREATE_FILE {
             if let (Some(path), Some(old_text), Some(new_text)) = (
                 output.get("path").and_then(Value::as_str),
