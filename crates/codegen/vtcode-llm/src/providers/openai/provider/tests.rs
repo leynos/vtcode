@@ -1077,6 +1077,47 @@ async fn custom_provider_auth_retries_with_refreshed_tokens_after_401() {
     );
 }
 
+#[tokio::test]
+async fn custom_provider_network_error_preserves_display_name_and_reqwest_classification() {
+    let Some(server) = start_mock_server_or_skip().await else {
+        return;
+    };
+    Mock::given(path("/redirect-loop"))
+        .respond_with(ResponseTemplate::new(302).insert_header("location", format!("{}/redirect-loop", server.uri())))
+        .mount(&server)
+        .await;
+    let provider = OpenAIProvider::from_custom_config(
+        "arli".to_string(),
+        "Arli AI".to_string(),
+        Some("test-key".to_string()),
+        Some("test-model".to_string()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(1))
+        .build()
+        .expect("redirect-limited test client should build");
+
+    let error = provider
+        .send_authorized(|_| client.get(format!("{}/redirect-loop", server.uri())))
+        .await
+        .expect_err("redirect loop should exceed the configured limit");
+
+    match error {
+        provider::LLMError::Network { message, metadata } => {
+            assert!(message.contains("Arli AI"), "custom provider display name missing: {message}");
+            assert_eq!(metadata.as_ref().and_then(|value| value.code.as_deref()), Some("reqwest_redirect_error"));
+        }
+        other => panic!("expected a network error, got {other:?}"),
+    }
+}
+
 fn chat_completion_response_body(text: &str) -> Value {
     json!({
         "id": "chatcmpl-test",

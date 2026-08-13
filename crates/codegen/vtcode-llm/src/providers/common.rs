@@ -465,7 +465,7 @@ pub(crate) async fn send_chat_completions(
         .json(payload)
         .send()
         .await
-        .map_err(|error| super::error_handling::format_network_error(provider_name, &error))
+        .map_err(|error| super::error_handling::format_reqwest_network_error(provider_name, &error))
 }
 
 /// Aborts the spawned streaming task when the consumer stream is dropped.
