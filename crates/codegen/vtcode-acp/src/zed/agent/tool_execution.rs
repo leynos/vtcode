@@ -146,6 +146,9 @@ impl ZedAgent {
         let permission_prompter = workspace_runtime
             .as_ref()
             .map_or(self.permission_prompter.as_ref(), |runtime| runtime.permission_prompter.as_ref());
+        let local_tool_registry = workspace_runtime
+            .as_ref()
+            .map_or(&self.local_tool_registry, |runtime| &runtime.local_tool_registry);
         let Some(func_ref) = call.function.as_ref() else {
             return Ok(Self::tool_call_result_from_report(
                 call,
@@ -280,6 +283,16 @@ impl ZedAgent {
         };
 
         let cancel_after_permission = session.cancellation.is_cancelled();
+        if matches!(tool_descriptor, Some(ToolDescriptor::Local))
+            && effective_args.is_some()
+            && permission_override.is_none()
+            && !cancel_after_permission
+        {
+            // ACP has already completed (or explicitly bypassed) its permission
+            // flow. Authorize exactly this execution in the core registry so a
+            // local `prompt` policy does not fail closed a second time.
+            local_tool_registry.mark_tool_preapproved(&func_ref.name).await;
+        }
         if tool_descriptor.is_some() && permission_override.is_none() && !cancel_after_permission {
             let in_progress_fields = acp::ToolCallUpdateFields::default().status(acp::ToolCallStatus::InProgress);
             let progress_update = acp::ToolCallUpdate::new(call_id.clone(), in_progress_fields);
