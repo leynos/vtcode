@@ -19,8 +19,8 @@ Admission is both per provider and per VT Code process:
   provider gateway when that is required.
 
 Omit `max_in_flight_requests` to leave admission unrestricted. The other
-defaults are a 600-second queue timeout, two retries, 500 ms initial backoff,
-10,000 ms maximum backoff, and jitter enabled.
+defaults are a 600-second queue timeout, two retries, 10,000 ms initial
+backoff, 160,000 ms maximum backoff, and jitter enabled.
 
 ## Provider deadlines
 
@@ -55,6 +55,9 @@ reasoning are checkpointed as an assistant message whose serialized metadata
 marks delivery as incomplete and records the provider error. A later
 `continue` therefore retains the partial response without pretending that the
 provider completed it.
+
+The defaults start at 10 seconds and cap at 160 seconds. With five retries,
+the unjittered delays are therefore 10, 20, 40, 80, and 160 seconds.
 
 ## Cancellation and turn safety
 
