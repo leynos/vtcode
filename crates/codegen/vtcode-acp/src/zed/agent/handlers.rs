@@ -2176,19 +2176,20 @@ mod tests {
             _ => false,
         }));
         assert_eq!(calls.load(Ordering::SeqCst), 2);
-        let metadata = agent
+        let session = agent
             .sessions
             .lock()
             .expect("ACP session map")
             .values()
             .next()
             .expect("wire ACP session")
-            .data
-            .lock()
-            .expect("wire ACP session data")
-            .thread
-            .metadata()
-            .expect("wire ACP session metadata");
+            .clone();
+        let (metadata, archive_path) = {
+            let data = session.data.lock().expect("wire ACP session data");
+            let metadata = data.thread.metadata().expect("wire ACP session metadata");
+            let archive_path = data.archive.as_ref().expect("wire ACP session archive").path().to_path_buf();
+            (metadata, archive_path)
+        };
         assert_eq!(
             metadata.acp_meta.as_ref().and_then(|meta| meta.get("client")),
             Some(&serde_json::json!("wire-test"))
@@ -2197,6 +2198,12 @@ mod tests {
             metadata.acp_meta.as_ref().and_then(|meta| meta.get("requestId")),
             Some(&serde_json::json!("prompt-1"))
         );
+        let persisted: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&archive_path).expect("read persisted wire ACP session archive"))
+                .expect("parse persisted wire ACP session archive");
+        assert_eq!(persisted["metadata"]["acp_meta"]["client"], "wire-test");
+        assert_eq!(persisted["metadata"]["acp_meta"]["requestId"], "prompt-1");
+        std::fs::remove_file(archive_path).expect("remove persisted wire ACP session archive");
     }
 
     #[tokio::test]
