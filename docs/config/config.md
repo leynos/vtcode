@@ -174,8 +174,8 @@ model = "gpt-5.4"
 max_in_flight_requests = 4
 queue_timeout_seconds = 120
 max_retries = 3
-retry_initial_backoff_ms = 500
-retry_max_backoff_ms = 10000
+retry_initial_backoff_ms = 10000
+retry_max_backoff_ms = 160000
 retry_jitter = true
 connect_timeout_seconds = 30
 first_token_timeout_seconds = 180
@@ -188,7 +188,7 @@ Notes:
 - `api_format` is a hint to VT Code about how this provider / endpoint expects model traffic. Accepted values are: `auto`, `openai-chat`, `openai-responses`, and `anthropic-messages`. When omitted VT Code preserves legacy behavior and will try to autodetect; an explicit value is honored and VT Code will not silently fallback to a different format.
 - `request_policy` controls admission and transient retries for this provider.
   The defaults are `queue_timeout_seconds = 600`, `max_retries = 2`,
-  `retry_initial_backoff_ms = 500`, `retry_max_backoff_ms = 10000`, and
+  `retry_initial_backoff_ms = 10000`, `retry_max_backoff_ms = 160000`, and
   `retry_jitter = true`. Provider deadlines default to 30 seconds to connect,
   180 seconds to the first streamed token, 120 seconds between streamed
   tokens, and 600 seconds for the whole generation. Set an individual timeout

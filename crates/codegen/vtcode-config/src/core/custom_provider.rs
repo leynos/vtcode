@@ -218,11 +218,11 @@ const fn default_provider_max_retries() -> u32 {
 }
 
 const fn default_provider_retry_initial_backoff_ms() -> u64 {
-    500
+    10_000
 }
 
 const fn default_provider_retry_max_backoff_ms() -> u64 {
-    10_000
+    160_000
 }
 
 const fn default_provider_retry_jitter() -> bool {
@@ -1036,6 +1036,14 @@ model = "gpt-5-mini"
         assert!(parsed.profiles.is_empty());
         assert_eq!(parsed.resolved_profile("gpt-5-mini"), ResolvedCustomProviderProfile::default());
         assert_eq!(parsed.request_policy, CustomProviderRequestPolicyConfig::default());
+    }
+
+    #[test]
+    fn request_policy_defaults_allow_five_exponential_retry_delays() {
+        let policy = CustomProviderRequestPolicyConfig::default();
+
+        assert_eq!(policy.retry_initial_backoff_ms, 10_000);
+        assert_eq!(policy.retry_max_backoff_ms, 160_000);
     }
 
     #[test]
