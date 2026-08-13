@@ -121,6 +121,7 @@ impl ZedAgent {
     }
 
     pub(super) fn merge_session_acp_meta(&self, session: &SessionHandle, acp_meta: Option<acp::Meta>) {
+        debug!(acp_meta_key_count = acp_meta.as_ref().map_or(0, acp::Meta::len), "Received ACP request metadata");
         let Some(acp_meta) = acp_meta.filter(|meta| !meta.is_empty()) else {
             return;
         };
@@ -274,7 +275,7 @@ impl ZedAgent {
         acp_meta: Option<acp::Meta>,
     ) -> acp::SessionId {
         let session_id = acp::SessionId::new(Arc::from(format!("{SESSION_PREFIX}-{}", Uuid::new_v4())));
-        let metadata = build_thread_archive_metadata(
+        let mut metadata = build_thread_archive_metadata(
             workspace_runtime.workspace_root.as_path(),
             &self.config.model,
             &self.config.provider,
@@ -282,6 +283,7 @@ impl ZedAgent {
             self.config.reasoning_effort.as_str(),
         )
         .with_primary_agent(workspace_runtime.primary_agents.default_id());
+        metadata.acp_meta = Some(serde_json::Map::new());
         let thread = self
             .thread_manager
             .start_thread_with_identifier(session_id.0.to_string(), ThreadBootstrap::new(Some(metadata)));
@@ -1227,6 +1229,19 @@ mod tests {
         assert_eq!(serialized["acp_meta"]["client"], "zed");
         assert_eq!(serialized["acp_meta"]["requestId"], "prompt-1");
         assert_eq!(serialized["acp_meta"]["traceparent"], "00-test-trace");
+    }
+
+    #[tokio::test]
+    async fn session_metadata_records_absent_acp_meta_as_an_empty_object() {
+        let temp = TempDir::new().unwrap();
+        let agent = build_agent(temp.path()).await;
+
+        let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
+        let session = agent.session_handle(&response.session_id).unwrap();
+        let metadata = session.data.lock().unwrap().thread.metadata().unwrap();
+        let serialized = serde_json::to_value(metadata).unwrap();
+
+        assert_eq!(serialized["acp_meta"], serde_json::json!({}));
     }
 
     #[tokio::test]
