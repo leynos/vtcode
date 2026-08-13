@@ -482,12 +482,9 @@ impl OpenAIProvider {
         format!("vtcode-{}", Uuid::new_v4())
     }
 
-    fn format_network_error(&self, error: impl std::fmt::Display) -> provider::LLMError {
+    fn format_network_error(&self, error: &reqwest::Error) -> provider::LLMError {
         let label = self.provider_display_override.as_deref().unwrap_or("OpenAI");
-        provider::LLMError::Network {
-            message: error_display::format_llm_error(label, &format!("Network error: {error}")),
-            metadata: None,
-        }
+        super::super::error_handling::format_reqwest_network_error(label, error)
     }
 
     fn format_auth_error(&self, error: impl std::fmt::Display) -> provider::LLMError {
@@ -565,14 +562,14 @@ impl OpenAIProvider {
         F: Fn(&OpenAIRequestAuth) -> reqwest::RequestBuilder,
     {
         let auth = self.current_request_auth().await?;
-        let response = build_request(&auth).send().await.map_err(|e| self.format_network_error(e))?;
+        let response = build_request(&auth).send().await.map_err(|e| self.format_network_error(&e))?;
 
         if self.uses_refreshable_auth() && Self::auth_retryable_status(response.status()) {
             let retry_auth = self.refresh_request_auth_for_retry().await?;
             return build_request(&retry_auth)
                 .send()
                 .await
-                .map_err(|e| self.format_network_error(e));
+                .map_err(|e| self.format_network_error(&e));
         }
 
         Ok(response)
