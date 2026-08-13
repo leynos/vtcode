@@ -435,6 +435,25 @@ async fn local_tool_execution_uses_registry_request_path() {
         .await;
 
     assert_eq!(report.status, crate::acp::ToolCallStatus::Completed);
+    assert_eq!(report.content.len(), 3);
+    let rendered_blocks = report
+        .content
+        .iter()
+        .map(|block| {
+            let crate::acp::ToolCallContent::Content(content) = block else {
+                panic!("exec_command output should use ACP text content blocks");
+            };
+            let crate::acp::ContentBlock::Text(text) = &content.content else {
+                panic!("exec_command output should be represented as ACP text");
+            };
+            text.text.as_str()
+        })
+        .collect::<Vec<_>>();
+    assert!(rendered_blocks[0].contains("Command: printf sample.txt"));
+    assert!(rendered_blocks[0].contains("Working directory:"));
+    assert!(rendered_blocks[0].contains("Exit code: 0"));
+    assert_eq!(rendered_blocks[1], "Command output\nsample.txt");
+    assert!(rendered_blocks[2].contains("Execution details"));
     let payload = report.raw_output.expect("successful tool output");
     assert_eq!(payload["status"], "success");
     assert_eq!(payload["tool"], tools::EXEC_COMMAND);
