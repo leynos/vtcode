@@ -29,7 +29,7 @@
 
 use super::super::constants::*;
 use super::super::helpers::{agent_implementation_info, text_chunk};
-use super::super::types::{PlanProgress, SessionHandle, ToolRuntime};
+use super::super::types::{SessionHandle, ToolRuntime};
 use super::ZedAgent;
 use crate::acp;
 use crate::acp::Error as SdkError;
@@ -977,14 +977,6 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
     // Stop hooks need a complete draft before a blocking reason can feed back
     // into the same turn. Other lifecycle hooks do not disable streaming.
     let allow_streaming = should_allow_streaming(supports_streaming, tools_allowed, session.has_stop_hooks());
-    let mut plan = PlanProgress::new(tools_allowed);
-    if plan.has_entries() {
-        drop(agent.send_plan_update(&args.session_id, &plan).await);
-        if plan.complete_analysis() {
-            drop(agent.send_plan_update(&args.session_id, &plan).await);
-        }
-    }
-
     if allow_streaming {
         let mut tool_loop_count = 0usize;
         let mut request = LLMRequest {
@@ -1077,8 +1069,6 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     }
                 }
             };
-
-            drop(agent.advance_plan_to_response(&args.session_id, &mut plan).await);
 
             loop {
                 let next_deadline = stream_deadlines.next();
@@ -1298,15 +1288,11 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         {
                             if agent.tool_loop_limit_reached(tool_loop_count) {
                                 let message = agent.tool_loop_limit_message();
-                                drop(agent.advance_plan_to_response(&args.session_id, &mut plan).await);
                                 assistant_message = message;
                                 stop_reason = acp::StopReason::EndTurn;
                                 break 'stream_attempts;
                             }
                             tool_loop_count = tool_loop_count.saturating_add(1);
-                            if plan.start_context() {
-                                drop(agent.send_plan_update(&args.session_id, &plan).await);
-                            }
                             let mut assistant_tool_message =
                                 Message::assistant_with_tools(assistant_message.clone(), tool_calls.clone());
                             if !assistant_reasoning.is_empty() {
@@ -1336,9 +1322,6 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                         return Err(error);
                                     }
                                 };
-                            if plan.complete_context() {
-                                drop(agent.send_plan_update(&args.session_id, &plan).await);
-                            }
                             for result in tool_results {
                                 agent.push_message(
                                     &session,
@@ -1471,15 +1454,11 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             if tools_allowed && let Some(tool_calls) = response.tool_calls.clone().filter(|calls| !calls.is_empty()) {
                 if agent.tool_loop_limit_reached(tool_loop_count) {
                     let message = agent.tool_loop_limit_message();
-                    drop(agent.advance_plan_to_response(&args.session_id, &mut plan).await);
                     assistant_message = message;
                     stop_reason = acp::StopReason::EndTurn;
                     break;
                 }
                 tool_loop_count = tool_loop_count.saturating_add(1);
-                if plan.start_context() {
-                    drop(agent.send_plan_update(&args.session_id, &plan).await);
-                }
                 agent.push_message(
                     &session,
                     Message::assistant_with_tools(response.content.clone().unwrap_or_default(), tool_calls.clone()),
@@ -1506,9 +1485,6 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         return Err(error);
                     }
                 };
-                if plan.complete_context() {
-                    drop(agent.send_plan_update(&args.session_id, &plan).await);
-                }
                 for result in tool_results {
                     agent.push_message(&session, Message::tool_response(result.tool_call_id, result.llm_response));
                 }
@@ -1532,7 +1508,6 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
 
             if let Some(content) = &response.content {
                 if !content.is_empty() {
-                    drop(agent.advance_plan_to_response(&args.session_id, &mut plan).await);
                     if session.cancellation.is_cancelled() {
                         stop_reason = acp::StopReason::Cancelled;
                         break;
@@ -1586,15 +1561,6 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             }
             agent.push_message(&session, completed_message);
             persist_session_checkpoint(&agent, &session, "assistant_response").await;
-        }
-    }
-
-    if stop_reason != acp::StopReason::Cancelled {
-        if plan.complete_context() {
-            drop(agent.send_plan_update(&args.session_id, &plan).await);
-        }
-        if plan.complete_response() {
-            drop(agent.send_plan_update(&args.session_id, &plan).await);
         }
     }
 
@@ -2330,6 +2296,12 @@ mod tests {
         drop(agent_task.await);
 
         let updates = std::iter::from_fn(|| updates_rx.try_recv().ok()).collect::<Vec<_>>();
+        assert!(
+            updates
+                .iter()
+                .all(|notification| !matches!(&notification.update, acp::SessionUpdate::Plan(_))),
+            "ACP must not publish synthetic progress entries unrelated to model-managed tasks"
+        );
         let visible_text = updates
             .iter()
             .filter_map(|notification| match &notification.update {
