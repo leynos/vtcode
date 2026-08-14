@@ -23,6 +23,7 @@ fn default_acp_tool_names() -> Vec<String> {
         tools::EXEC_COMMAND.to_string(),
         tools::WRITE_STDIN.to_string(),
         tools::APPLY_PATCH.to_string(),
+        tools::TASK_TRACKER.to_string(),
     ]
 }
 
