@@ -33,8 +33,8 @@ pub use prompt::{
 pub use types::{
     BackgroundRecord, BackgroundSubprocessEntry, BackgroundSubprocessSnapshot, BackgroundSubprocessStatus, ChildRecord,
     ChildRunResult, ControllerState, PersistedBackgroundRecord, PersistedBackgroundState, SendInputRequest,
-    SpawnAgentRequest, SpawnBackgroundSubprocessRequest, StatusEntryBuilder, SubagentInputItem, SubagentStatus,
-    SubagentStatusEntry, SubagentThreadSnapshot, TurnDelegationHints,
+    SpawnAgentRequest, SpawnBackgroundSubprocessRequest, StatusEntryBuilder, SubagentInputItem, SubagentProgressEvent,
+    SubagentStatus, SubagentStatusEntry, SubagentThreadSnapshot, TurnDelegationHints,
 };
 
 // VerificationResult is defined in this module (below) and re-exported at the
@@ -85,7 +85,7 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::{Notify, RwLock};
+use tokio::sync::{Notify, RwLock, broadcast};
 
 use crate::config::VTCodeConfig;
 use crate::config::types::ReasoningEffortLevel;
@@ -159,11 +159,13 @@ pub struct SubagentController {
     /// state. Set only while `close_tree`/`signal_shutdown` are tearing a
     /// subtree down.
     closing: Arc<AtomicBool>,
+    progress_tx: broadcast::Sender<SubagentProgressEvent>,
 }
 
 impl SubagentController {
     /// Creates a new controller, discovering subagent specs and loading persisted background state.
     pub async fn new(config: SubagentControllerConfig) -> Result<Self> {
+        let (progress_tx, _progress_rx) = broadcast::channel(128);
         let discovered = discover_controller_subagents(&config.workspace_root).await?;
         let workspace_gated = config.workspace_gated;
         let lifecycle_hooks = LifecycleHookEngine::new_with_session_gated(
@@ -195,6 +197,7 @@ impl SubagentController {
             })),
             shutdown_requested: Arc::new(AtomicBool::new(false)),
             closing: Arc::new(AtomicBool::new(false)),
+            progress_tx,
         })
     }
 
@@ -248,6 +251,51 @@ impl SubagentController {
     pub async fn status_entries(&self) -> Vec<SubagentStatusEntry> {
         let state = self.state.read().await;
         state.children.values().map(ChildRecord::build_status_entry).collect()
+    }
+
+    /// Subscribes to future delegated-child and background-process lifecycle
+    /// snapshots. A lagging receiver may miss intermediate snapshots and
+    /// should continue from the next available state.
+    #[must_use]
+    pub fn subscribe_progress(&self) -> broadcast::Receiver<SubagentProgressEvent> {
+        self.progress_tx.subscribe()
+    }
+
+    fn publish_progress(&self, event: SubagentProgressEvent) {
+        let _ = self.progress_tx.send(event);
+    }
+
+    pub(crate) async fn publish_subagent_progress(&self, task: SubagentStatusEntry) {
+        let parent_session_id = self.parent_session_id.read().await.clone();
+        self.publish_progress(SubagentProgressEvent::Subagent { parent_session_id, task });
+    }
+
+    pub(crate) async fn publish_background_progress(&self, task: BackgroundSubprocessEntry) {
+        let parent_session_id = self.parent_session_id.read().await.clone();
+        self.publish_progress(SubagentProgressEvent::BackgroundProcess { parent_session_id, task });
+    }
+
+    pub(crate) async fn publish_child_status(&self, child_id: &str) {
+        let entry = {
+            let state = self.state.read().await;
+            state.children.get(child_id).map(ChildRecord::build_status_entry)
+        };
+        if let Some(entry) = entry {
+            self.publish_subagent_progress(entry).await;
+        }
+    }
+
+    pub(crate) async fn publish_background_status(&self, record_id: &str) {
+        let entry = {
+            let state = self.state.read().await;
+            state
+                .background_children
+                .get(record_id)
+                .map(BackgroundRecord::build_status_entry)
+        };
+        if let Some(entry) = entry {
+            self.publish_background_progress(entry).await;
+        }
     }
 }
 

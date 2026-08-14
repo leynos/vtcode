@@ -30,8 +30,8 @@ use std::time::Instant;
 use agent_client_protocol::{
     Client, ConnectionTo, Error,
     schema::v1::{
-        CreateTerminalRequest, CreateTerminalResponse, ReadTextFileRequest, ReadTextFileResponse,
-        RequestPermissionRequest, RequestPermissionResponse, SessionNotification,
+        AgentNotification, CreateTerminalRequest, CreateTerminalResponse, ExtNotification, ReadTextFileRequest,
+        ReadTextFileResponse, RequestPermissionRequest, RequestPermissionResponse, SessionNotification,
     },
 };
 
@@ -63,6 +63,11 @@ impl ConnectionHandle {
     /// any context (handler, spawned task, or synchronous setup).
     pub fn send_session_notification(&self, notification: SessionNotification) -> Result<(), Error> {
         self.cx.send_notification(notification)
+    }
+
+    /// Send a namespaced ACP extension notification.
+    pub fn send_ext_notification(&self, notification: ExtNotification) -> Result<(), Error> {
+        self.cx.send_notification(AgentNotification::ExtNotification(notification))
     }
 
     /// Send a `session/request_permission` request and await the response.
