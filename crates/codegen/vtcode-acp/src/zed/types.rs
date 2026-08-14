@@ -82,6 +82,15 @@ pub(crate) struct SessionData {
     pub(crate) lifecycle_hooks: Option<LifecycleHookEngine>,
     pub(crate) session_started: bool,
     pub(crate) session_ended: bool,
+    pub(crate) task_lifecycle_forwarder: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl Drop for SessionData {
+    fn drop(&mut self) {
+        if let Some(forwarder) = self.task_lifecycle_forwarder.take() {
+            forwarder.abort();
+        }
+    }
 }
 
 impl SessionHandle {
