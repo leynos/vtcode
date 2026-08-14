@@ -4,6 +4,7 @@ use crate::tooling::{SupportedTool, TOOL_READ_FILE_PATH_ARG, TOOL_READ_FILE_URI_
 use anyhow::Result;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
+use vtcode_core::config::constants::tools;
 use vtcode_core::config::tool_loop_limit_reached;
 use vtcode_core::llm::provider::ToolChoice;
 use vtcode_core::llm::provider::ToolDefinition;
@@ -13,12 +14,19 @@ use vtcode_core::utils::path::ensure_path_within_workspace;
 use super::super::constants::*;
 use super::super::types::{RunTerminalMode, SessionHandle, ToolRuntime};
 
+fn is_acp_session_tool(tool_name: &str) -> bool {
+    // Task tracking belongs to the ACP session rather than to a selected
+    // primary agent's filesystem/tool policy. Runtime permission and safety
+    // checks still authorize each concrete call before execution.
+    tool_name == tools::TASK_TRACKER
+}
+
 impl ZedAgent {
     pub(super) fn local_tools_available(&self, primary_agent: &str) -> bool {
-        self.acp_tool_registry
-            .definitions_for(&[], true)
-            .iter()
-            .any(|definition| self.primary_agents.allows_local_tool(primary_agent, definition.function_name()))
+        self.acp_tool_registry.definitions_for(&[], true).iter().any(|definition| {
+            is_acp_session_tool(definition.function_name())
+                || self.primary_agents.allows_local_tool(primary_agent, definition.function_name())
+        })
     }
 
     pub(super) fn tool_definitions(
@@ -39,8 +47,10 @@ impl ZedAgent {
             Some(
                 self.acp_tool_registry
                     .definitions_for_filtered(enabled_tools, include_local, |tool_name| {
-                        self.primary_agents
-                            .allows_tool(primary_agent, tool_name, workspace_root.as_path())
+                        is_acp_session_tool(tool_name)
+                            || self
+                                .primary_agents
+                                .allows_tool(primary_agent, tool_name, workspace_root.as_path())
                     }),
             )
         }
@@ -51,9 +61,10 @@ impl ZedAgent {
             return self.local_tools_available(primary_agent);
         };
         runtime.acp_tool_registry.definitions_for(&[], true).iter().any(|definition| {
-            runtime
-                .primary_agents
-                .allows_local_tool(primary_agent, definition.function_name())
+            is_acp_session_tool(definition.function_name())
+                || runtime
+                    .primary_agents
+                    .allows_local_tool(primary_agent, definition.function_name())
         })
     }
 
@@ -78,9 +89,10 @@ impl ZedAgent {
             runtime
                 .acp_tool_registry
                 .definitions_for_filtered(enabled_tools, include_local, |tool_name| {
-                    runtime
-                        .primary_agents
-                        .allows_tool(primary_agent, tool_name, &runtime.workspace_root)
+                    is_acp_session_tool(tool_name)
+                        || runtime
+                            .primary_agents
+                            .allows_tool(primary_agent, tool_name, &runtime.workspace_root)
                 }),
         )
     }

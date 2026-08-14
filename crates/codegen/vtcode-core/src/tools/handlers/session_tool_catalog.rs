@@ -719,8 +719,10 @@ impl ToolCatalogEntry {
             return false;
         }
 
-        let acp_subagent = config.surface == SessionSurface::Acp && self.public_name == tools::AGENT;
-        if !acp_subagent && !profile_allows_tool(config.tool_profile, self.public_name.as_str(), config.planning_active)
+        let acp_core_tool = config.surface == SessionSurface::Acp
+            && matches!(self.public_name.as_str(), tools::AGENT | tools::TASK_TRACKER);
+        if !acp_core_tool
+            && !profile_allows_tool(config.tool_profile, self.public_name.as_str(), config.planning_active)
         {
             return false;
         }
@@ -829,7 +831,12 @@ fn surface_allows_tool(surface: SessionSurface, entry: &ToolCatalogEntry) -> boo
             // hidden.
             matches!(
                 tool_name,
-                tools::EXEC_COMMAND | tools::WRITE_STDIN | tools::APPLY_PATCH | tools::CODE_SEARCH | tools::AGENT
+                tools::EXEC_COMMAND
+                    | tools::WRITE_STDIN
+                    | tools::APPLY_PATCH
+                    | tools::CODE_SEARCH
+                    | tools::AGENT
+                    | tools::TASK_TRACKER
             ) || tool_name == tools::MCP
                 || matches!(entry.source, ToolCatalogSource::Mcp)
                 || (matches!(entry.source, ToolCatalogSource::Dynamic) && entry.registration_name.starts_with("mcp::"))
@@ -1188,6 +1195,9 @@ mod tests {
             registration(tools::AGENT)
                 .with_description("Delegate work")
                 .with_parameter_schema(empty_object_schema()),
+            registration(tools::TASK_TRACKER)
+                .with_description("Track task progress")
+                .with_parameter_schema(empty_object_schema()),
             registration(tools::LOAD_SKILL)
                 .with_description("Load a skill")
                 .with_parameter_schema(empty_object_schema()),
@@ -1212,8 +1222,26 @@ mod tests {
                 tools::APPLY_PATCH.to_string(),
                 tools::CODE_SEARCH.to_string(),
                 tools::AGENT.to_string(),
+                tools::TASK_TRACKER.to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn acp_surface_exposes_task_tracker_with_default_profile() {
+        let registration = registration(tools::TASK_TRACKER)
+            .with_description("Track task progress")
+            .with_parameter_schema(empty_object_schema());
+        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
+
+        let names = catalog.public_tool_names(SessionToolsConfig::full_public(
+            SessionSurface::Acp,
+            CapabilityLevel::CodeSearch,
+            ToolDocumentationMode::Full,
+            ToolModelCapabilities::default(),
+        ));
+
+        assert_eq!(names, vec![tools::TASK_TRACKER.to_string()]);
     }
 
     #[test]

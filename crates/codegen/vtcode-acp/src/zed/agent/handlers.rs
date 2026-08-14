@@ -2320,6 +2320,13 @@ mod tests {
         assert_eq!(requests.len(), 2);
         assert!(requests.iter().all(|request| request.stream));
         assert!(
+            requests[0]
+                .tools
+                .as_deref()
+                .is_some_and(|definitions| definitions.iter().any(|tool| tool.function_name() == "task_tracker")),
+            "ACP provider requests must expose task_tracker to the model"
+        );
+        assert!(
             requests[1].messages.iter().any(Message::is_tool_response),
             "the second stream must include the executed tool result"
         );
