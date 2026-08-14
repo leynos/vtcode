@@ -765,6 +765,10 @@ impl ZedAgent {
             .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
         self.ensure_task_lifecycle_forwarder(&session);
 
+        if let Err(error) = self.replay_persisted_task_plan(&session, &args.session_id).await {
+            warn!(%error, session_id = %args.session_id, "Failed to replay persisted ACP task plan on session load");
+        }
+
         if let Err(error) = self.send_available_commands_update(&args.session_id).await {
             warn!(%error, "Failed to advertise slash commands on session load");
         }
@@ -788,6 +792,10 @@ impl ZedAgent {
             .await
             .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
         self.ensure_task_lifecycle_forwarder(&session);
+
+        if let Err(error) = self.replay_persisted_task_plan(&session, &args.session_id).await {
+            warn!(%error, session_id = %args.session_id, "Failed to replay persisted ACP task plan on session resume");
+        }
 
         if let Err(error) = self.send_available_commands_update(&args.session_id).await {
             warn!(%error, "Failed to advertise slash commands on session resume");

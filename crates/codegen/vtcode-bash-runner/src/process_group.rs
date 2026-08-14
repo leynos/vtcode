@@ -422,10 +422,8 @@ mod tests {
         // Just verify it doesn't panic
         #[cfg(target_os = "linux")]
         {
-            let parent_pid = unistd::getpid().as_raw();
-            // Note: This will likely fail in tests since we're not in pre_exec
-            // but it should not panic
-            let _ = set_parent_death_signal(parent_pid);
+            let parent_pid = unistd::getppid().as_raw();
+            assert!(set_parent_death_signal(parent_pid).is_ok());
         }
         #[cfg(not(target_os = "linux"))]
         {

@@ -849,6 +849,10 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         return Err(SdkError::invalid_params().data(json!({ "reason": "unknown_session" })));
     };
 
+    if let Err(error) = agent.replay_persisted_task_plan(&session, &args.session_id).await {
+        warn!(%error, session_id = %args.session_id, "Failed to replay persisted ACP task plan");
+    }
+
     let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
     let _turn_guard = TurnGuard::begin(thread)?;
     if let Some(runtime) = session.workspace_runtime() {
@@ -2419,8 +2423,16 @@ mod tests {
                     .await?;
                 let response = cx
                     .send_request(PromptRequest::new(
-                        session.session_id,
+                        session.session_id.clone(),
                         vec![acp::ContentBlock::Text(acp::TextContent::new("Track this work"))],
+                    ))
+                    .block_task()
+                    .await?;
+                assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+                let response = cx
+                    .send_request(PromptRequest::new(
+                        session.session_id,
+                        vec![acp::ContentBlock::Text(acp::TextContent::new("Continue this work"))],
                     ))
                     .block_task()
                     .await?;
@@ -2435,7 +2447,7 @@ mod tests {
         agent_task.abort();
         drop(agent_task.await);
 
-        assert_eq!(calls.load(Ordering::SeqCst), 2, "the tracker result must return to the provider");
+        assert_eq!(calls.load(Ordering::SeqCst), 3, "the tracker result and next prompt must reach the provider");
         let updates = std::iter::from_fn(|| updates_rx.try_recv().ok()).collect::<Vec<_>>();
         let plans = updates
             .iter()
@@ -2444,7 +2456,7 @@ mod tests {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert_eq!(plans.len(), 1, "one real tracker result must produce one ACP plan replacement");
+        assert_eq!(plans.len(), 2, "the tracker result and following prompt must each publish the persisted ACP plan");
         let plan = plans[0];
         assert_eq!(plan.entries.len(), 2);
         assert_eq!(plan.entries[0].content, "Implement ACP plan rendering");
@@ -2466,6 +2478,7 @@ mod tests {
                 }
             }))
         );
+        assert_eq!(plans[1], plan, "the next prompt must replay the same persisted plan");
     }
 
     #[tokio::test]
