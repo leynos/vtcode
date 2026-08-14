@@ -22,6 +22,7 @@ use vtcode_core::permissions::build_permission_request;
 use vtcode_core::tools::apply_patch::{Patch, PatchOperation, decode_apply_patch_input};
 
 use super::super::types::{RunTerminalMode, SessionHandle, ToolCallResult};
+use super::task_progress::task_plan_from_report;
 
 impl ZedAgent {
     pub(super) async fn execute_tool_calls(
@@ -372,6 +373,11 @@ impl ZedAgent {
 
         let update = acp::ToolCallUpdate::new(call_id, Self::update_fields_from_report(&report));
         self.send_update(session_id, acp::SessionUpdate::ToolCallUpdate(update)).await?;
+        if func_ref.name == tools::TASK_TRACKER
+            && let Some(plan) = task_plan_from_report(&report)
+        {
+            self.send_update(session_id, acp::SessionUpdate::Plan(plan)).await?;
+        }
 
         Ok(Self::tool_call_result_from_report(call, report))
     }
