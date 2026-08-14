@@ -235,7 +235,11 @@ impl SubagentController {
             self.restart_child(&request.target).await?;
         }
 
-        self.status_for(&request.target).await
+        let status = self.status_for(&request.target).await?;
+        if !maybe_restart {
+            self.publish_subagent_progress(status.clone()).await;
+        }
+        Ok(status)
     }
 
     /// Resumes a closed or errored subagent and its children by re-queuing their prompts.
@@ -400,7 +404,10 @@ impl SubagentController {
         record.updated_at = Utc::now();
         record.completed_at = Some(Utc::now());
         record.notify.notify_waiters();
-        Ok(record.build_status_entry())
+        let entry = record.build_status_entry();
+        drop(state);
+        self.publish_subagent_progress(entry.clone()).await;
+        Ok(entry)
     }
 
     pub(super) async fn background_status_for(&self, target: &str) -> Result<BackgroundSubprocessEntry> {
@@ -512,6 +519,7 @@ impl SubagentController {
                 },
             );
         }
+        self.publish_background_status(&record_id).await;
 
         let launch = build_background_launch_spec(
             &self.config.workspace_root,
@@ -576,6 +584,7 @@ impl SubagentController {
             record.error = None;
             record.summary = Some("Background subagent is running".to_string());
         }
+        self.publish_background_status(&record_id).await;
 
         self.save_background_state().await?;
         self.background_status_for(&record_id).await
@@ -607,12 +616,18 @@ impl SubagentController {
     /// are aborted so subagent tasks do not outlive the parent session.
     pub async fn signal_shutdown(&self) {
         self.shutdown_requested.store(true, Ordering::Relaxed);
-        let mut state = self.state.write().await;
-        for record in state.children.values_mut() {
-            if let Some(handle) = record.handle.take() {
-                handle.abort();
+        let entries = {
+            let mut state = self.state.write().await;
+            for record in state.children.values_mut() {
+                if let Some(handle) = record.handle.take() {
+                    handle.abort();
+                }
+                record.status = SubagentStatus::Closed;
             }
-            record.status = SubagentStatus::Closed;
+            state.children.values().map(ChildRecord::build_status_entry).collect::<Vec<_>>()
+        };
+        for entry in entries {
+            self.publish_subagent_progress(entry).await;
         }
     }
 

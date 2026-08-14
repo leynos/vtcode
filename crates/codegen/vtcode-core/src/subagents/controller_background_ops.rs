@@ -207,6 +207,7 @@ impl SubagentController {
             };
 
             let respawn = self.update_background_record_state(&record_id, snapshot).await?;
+            let respawning = respawn.is_some();
 
             if let Some((agent_name, stable_id, restart_attempts)) = respawn {
                 self.ensure_background_record_running(
@@ -225,6 +226,10 @@ impl SubagentController {
                 })
             };
             changed |= changed_this_record;
+
+            if changed_this_record && !respawning {
+                self.publish_background_status(&record_id).await;
+            }
 
             self.refresh_background_archive_metadata(&record_id).await?;
         }
@@ -355,7 +360,9 @@ impl SubagentController {
 
         self.refresh_background_archive_metadata(target).await?;
         self.save_background_state().await?;
-        self.background_status_for(target).await
+        let status = self.background_status_for(target).await?;
+        self.publish_background_progress(status.clone()).await;
+        Ok(status)
     }
 
     /// Force-cancels a background subprocess, closing its exec session immediately.
@@ -386,7 +393,9 @@ impl SubagentController {
 
         self.refresh_background_archive_metadata(target).await?;
         self.save_background_state().await?;
-        self.background_status_for(target).await
+        let status = self.background_status_for(target).await?;
+        self.publish_background_progress(status.clone()).await;
+        Ok(status)
     }
 
     /// Returns a thread snapshot for a tracked child subagent by its target id.

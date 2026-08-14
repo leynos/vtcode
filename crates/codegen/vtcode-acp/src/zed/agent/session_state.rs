@@ -244,6 +244,7 @@ impl ZedAgent {
                 lifecycle_hooks,
                 session_started: false,
                 session_ended: false,
+                task_lifecycle_forwarder: None,
             })),
             cancellation: super::super::types::SessionCancellation::default(),
         }
@@ -733,6 +734,7 @@ impl ZedAgent {
         let session_id = self.register_durable_session(workspace_runtime, req.meta);
         let session = self.session_handle(&session_id);
         if let Some(session) = &session {
+            self.ensure_task_lifecycle_forwarder(session);
             self.run_session_start_hooks(session)
                 .await
                 .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
@@ -761,6 +763,7 @@ impl ZedAgent {
             .attach_or_get_session(&args.session_id, &workspace)
             .await
             .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
+        self.ensure_task_lifecycle_forwarder(&session);
 
         if let Err(error) = self.send_available_commands_update(&args.session_id).await {
             warn!(%error, "Failed to advertise slash commands on session load");
@@ -784,6 +787,7 @@ impl ZedAgent {
             .attach_or_get_session(&args.session_id, &workspace)
             .await
             .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
+        self.ensure_task_lifecycle_forwarder(&session);
 
         if let Err(error) = self.send_available_commands_update(&args.session_id).await {
             warn!(%error, "Failed to advertise slash commands on session resume");
