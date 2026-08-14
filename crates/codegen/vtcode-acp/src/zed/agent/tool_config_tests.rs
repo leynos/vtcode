@@ -289,10 +289,17 @@ async fn primary_agent_catalogues_respect_inspection_and_mutation_permissions() 
             .expect("resolve build catalogue"),
     );
 
-    assert_eq!(duck_names, vec![tools::LIST_FILES.to_string()]);
+    assert_eq!(duck_names, vec![tools::LIST_FILES.to_string(), tools::TASK_TRACKER.to_string()]);
     // Planning permits shell inspection; its execution policy separately
     // rejects mutations. Duck deliberately has no shell capability.
-    assert_eq!(plan_names, vec![tools::LIST_FILES.to_string(), tools::EXEC_COMMAND.to_string()]);
+    assert_eq!(
+        plan_names,
+        vec![
+            tools::LIST_FILES.to_string(),
+            tools::EXEC_COMMAND.to_string(),
+            tools::TASK_TRACKER.to_string(),
+        ]
+    );
     let removed_tool = format!("switch_{}", "mode");
     assert!(!build_names.contains(&removed_tool));
     assert!(build_names.contains(&tools::LIST_FILES.to_string()));

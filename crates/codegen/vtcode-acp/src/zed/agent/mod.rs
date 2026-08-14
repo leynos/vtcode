@@ -71,6 +71,7 @@ pub(crate) struct ZedAgent {
 
 pub(crate) struct SessionWorkspaceRuntime {
     workspace_root: std::path::PathBuf,
+    workspace_hooks_gated: bool,
     system_prompt: String,
     primary_agents: PrimaryAgentCatalog,
     acp_tool_registry: Arc<AcpToolRegistry>,
@@ -101,6 +102,7 @@ async fn attach_acp_subagent_controller(
     config: &CoreAgentConfig,
     custom_providers: &[CustomProviderConfig],
     vt_cfg: Option<&VTCodeConfig>,
+    workspace_gated: bool,
 ) {
     let Some(mut controller_vt_cfg) = vt_cfg.filter(|config| config.subagents.enabled).cloned() else {
         return;
@@ -144,6 +146,7 @@ async fn attach_acp_subagent_controller(
         vt_cfg: controller_vt_cfg.clone(),
         openai_chatgpt_auth: config.openai_chatgpt_auth.clone(),
         depth: 0,
+        workspace_gated,
         exec_sessions: registry.exec_session_manager(),
         pty_manager: registry.pty_manager().clone(),
         managed_background_runtime: false,
@@ -262,6 +265,15 @@ impl SessionWorkspaceRuntime {
         let discovered = discover_subagents(&SubagentDiscoveryInput::new(workspace_root.clone()))?;
         let default_primary_agent = vt_cfg.map_or("duck", |config| config.default_primary_agent.as_str());
         let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, default_primary_agent);
+        let workspace_hooks_gated = vt_cfg
+            .and_then(|config| config.workspace_lifecycle_hooks.as_ref())
+            .is_some_and(|hooks| !hooks.is_empty())
+            || vtcode_core::ActivePrimaryAgentState::from_specs_with_default(
+                &discovered.effective,
+                default_primary_agent,
+            )
+            .active()
+            .contributes_workspace_controlled_hooks();
         let file_ops_tool = if runtime_config.zed_config.tools.list_files {
             let search_root = workspace_root.clone();
             Some(FileOpsTool::new(workspace_root.clone(), Arc::new(GrepSearchManager::new(search_root))))
@@ -279,6 +291,7 @@ impl SessionWorkspaceRuntime {
             &session_config,
             &runtime_config.custom_providers,
             vt_cfg,
+            workspace_hooks_gated,
         ))
         .await;
         attach_acp_mcp_client(&local_tool_registry, vt_cfg, &workspace_root).await;
@@ -307,6 +320,7 @@ impl SessionWorkspaceRuntime {
 
         Ok(Self {
             workspace_root,
+            workspace_hooks_gated,
             system_prompt,
             primary_agents,
             acp_tool_registry,
@@ -356,7 +370,17 @@ impl ZedAgent {
         {
             warn!(%error, "Failed to apply tools configuration to ACP tool registry");
         }
-        Box::pin(attach_acp_subagent_controller(&core_tool_registry, &config, custom_providers, vt_cfg)).await;
+        let workspace_hooks_gated = vt_cfg
+            .and_then(|config| config.workspace_lifecycle_hooks.as_ref())
+            .is_some_and(|hooks| !hooks.is_empty());
+        Box::pin(attach_acp_subagent_controller(
+            &core_tool_registry,
+            &config,
+            custom_providers,
+            vt_cfg,
+            workspace_hooks_gated,
+        ))
+        .await;
         attach_acp_mcp_client(&core_tool_registry, vt_cfg, workspace_root.as_path()).await;
         let local_definitions = core_tool_registry
             .model_tools(

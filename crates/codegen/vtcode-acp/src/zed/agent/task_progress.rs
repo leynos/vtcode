@@ -1,6 +1,9 @@
+use super::super::types::SessionHandle;
+use super::ZedAgent;
 use crate::acp;
 use crate::reports::ToolExecutionReport;
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
+use vtcode_core::config::constants::tools;
 
 const VT_CODE_META_KEY: &str = "vtcode";
 const TASK_TRACKER_META_KEY: &str = "taskTracker";
@@ -11,7 +14,11 @@ pub(super) fn task_plan_from_report(report: &ToolExecutionReport) -> Option<acp:
         return None;
     }
 
-    let checklist = report.raw_output.as_ref()?.get("result")?.get("checklist")?;
+    task_plan_from_tracker_result(report.raw_output.as_ref()?.get("result")?)
+}
+
+fn task_plan_from_tracker_result(result: &Value) -> Option<acp::Plan> {
+    let checklist = result.get("checklist")?;
     let checklist_object = checklist.as_object()?;
     let items = checklist_object.get("items")?.as_array()?;
     let entries = items.iter().map(plan_entry_from_item).collect::<Option<Vec<_>>>()?;
@@ -20,6 +27,35 @@ pub(super) fn task_plan_from_report(report: &ToolExecutionReport) -> Option<acp:
     let _ = summary.remove("items");
 
     Some(acp::Plan::new(entries).meta(namespaced_task_meta(Value::Object(summary))))
+}
+
+impl ZedAgent {
+    /// Re-emits the workspace's persisted tracker as the current ACP plan.
+    ///
+    /// Reading through the registered tracker tool keeps parsing and
+    /// planning-mode persistence in one place. It does not fabricate a
+    /// model-visible tool call or pass through interactive permissions.
+    pub(super) async fn replay_persisted_task_plan(
+        &self,
+        session: &SessionHandle,
+        session_id: &acp::SessionId,
+    ) -> anyhow::Result<()> {
+        let tracker = session
+            .workspace_runtime()
+            .and_then(|runtime| runtime.local_tool_registry.get_tool(tools::TASK_TRACKER))
+            .or_else(|| self.local_tool_registry.get_tool(tools::TASK_TRACKER));
+        let Some(tracker) = tracker else {
+            return Ok(());
+        };
+
+        let result = tracker.execute(json!({ "action": "list" })).await?;
+        if let Some(plan) = task_plan_from_tracker_result(&result) {
+            self.send_update(session_id, acp::SessionUpdate::Plan(plan))
+                .await
+                .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        }
+        Ok(())
+    }
 }
 
 fn plan_entry_from_item(item: &Value) -> Option<acp::PlanEntry> {
@@ -56,8 +92,11 @@ fn namespaced_task_meta(task_tracker: Value) -> Map<String, Value> {
 mod tests {
     use super::*;
     use crate::reports::ToolExecutionReport;
+    use assert_fs::TempDir;
     use proptest::prelude::*;
     use serde_json::json;
+    use vtcode_core::tools::handlers::{PlanningWorkflowState, TaskTrackerTool};
+    use vtcode_core::tools::traits::Tool;
 
     fn completed_report(checklist: Value) -> ToolExecutionReport {
         ToolExecutionReport::success(
@@ -145,6 +184,33 @@ mod tests {
         let failed = ToolExecutionReport::failure("task_tracker", "no checklist");
         assert!(task_plan_from_report(&failed).is_none());
         assert!(task_plan_from_report(&completed_report(json!({ "items": [{}] }))).is_none());
+    }
+
+    #[tokio::test]
+    async fn a_fresh_tracker_instance_rehydrates_the_persisted_plan() {
+        let workspace = TempDir::new().expect("tracker workspace");
+        let planning = PlanningWorkflowState::new(workspace.path().to_path_buf());
+        let first = TaskTrackerTool::new(workspace.path().to_path_buf(), planning.clone());
+        let _created = first
+            .execute(json!({
+                "action": "create",
+                "title": "Durable work",
+                "items": [
+                    { "description": "Resume this task", "status": "in_progress" },
+                    { "description": "Wait for input", "status": "blocked" }
+                ]
+            }))
+            .await
+            .expect("persist task tracker");
+
+        let fresh = TaskTrackerTool::new(workspace.path().to_path_buf(), planning);
+        let result = fresh.execute(json!({ "action": "list" })).await.expect("reload task tracker");
+        let plan = task_plan_from_tracker_result(&result).expect("persisted ACP plan");
+
+        assert_eq!(plan.entries.len(), 2);
+        assert_eq!(plan.entries[0].content, "Resume this task");
+        assert_eq!(plan.entries[0].status, acp::PlanEntryStatus::InProgress);
+        assert_eq!(plan.entries[1].content, "Wait for input [blocked]");
     }
 
     proptest! {

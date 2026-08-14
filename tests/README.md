@@ -8,7 +8,7 @@ This directory contains snapshot tests for the VT Code terminal user interface
 ### 1. Component Tests (`tui_snapshot_tests.rs`)
 
 - Tests individual UI components like themes, message segments, and header
-    contexts
+  contexts
 - Uses string representation snapshots for debugging
 - Ensures component structures remain consistent
 
