@@ -852,6 +852,10 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         return Err(SdkError::invalid_params().data(json!({ "reason": "unknown_session" })));
     };
 
+    if let Err(error) = agent.replay_persisted_task_plan(&session, &args.session_id).await {
+        warn!(%error, session_id = %args.session_id, "Failed to replay persisted ACP task plan");
+    }
+
     let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
     let _turn_guard = TurnGuard::begin(thread)?;
     if let Some(runtime) = session.workspace_runtime() {
@@ -1786,9 +1790,15 @@ mod tests {
                 ..Default::default()
             },
         };
-        let engine = LifecycleHookEngine::new(workspace.path().to_path_buf(), &config, SessionStartTrigger::NewSession)
-            .expect("non-stop hook engine")
-            .expect("configured non-stop hook");
+        let engine = LifecycleHookEngine::new_with_session_gated(
+            workspace.path().to_path_buf(),
+            &config,
+            SessionStartTrigger::NewSession,
+            "acp-non-stop-streaming",
+            false,
+        )
+        .expect("non-stop hook engine")
+        .expect("configured non-stop hook");
 
         assert!(!engine.has_stop_hooks());
         assert!(should_allow_streaming(true, false, engine.has_stop_hooks()));
@@ -1823,11 +1833,12 @@ mod tests {
                 ..LifecycleHooksConfig::default()
             },
         };
-        let engine = LifecycleHookEngine::new_with_session(
+        let engine = LifecycleHookEngine::new_with_session_gated(
             workspace.path().to_path_buf(),
             &config,
             SessionStartTrigger::NewSession,
             "acp-stop-visibility",
+            false,
         )
         .expect("stop hook engine")
         .expect("stop hook should be configured");
@@ -2422,8 +2433,16 @@ mod tests {
                     .await?;
                 let response = cx
                     .send_request(PromptRequest::new(
-                        session.session_id,
+                        session.session_id.clone(),
                         vec![acp::ContentBlock::Text(acp::TextContent::new("Track this work"))],
+                    ))
+                    .block_task()
+                    .await?;
+                assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+                let response = cx
+                    .send_request(PromptRequest::new(
+                        session.session_id,
+                        vec![acp::ContentBlock::Text(acp::TextContent::new("Continue this work"))],
                     ))
                     .block_task()
                     .await?;
@@ -2438,7 +2457,7 @@ mod tests {
         agent_task.abort();
         drop(agent_task.await);
 
-        assert_eq!(calls.load(Ordering::SeqCst), 2, "the tracker result must return to the provider");
+        assert_eq!(calls.load(Ordering::SeqCst), 3, "the tracker result and next prompt must reach the provider");
         let updates = std::iter::from_fn(|| updates_rx.try_recv().ok()).collect::<Vec<_>>();
         let plans = updates
             .iter()
@@ -2447,7 +2466,7 @@ mod tests {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert_eq!(plans.len(), 1, "one real tracker result must produce one ACP plan replacement");
+        assert_eq!(plans.len(), 2, "the tracker result and following prompt must each publish the persisted ACP plan");
         let plan = plans[0];
         assert_eq!(plan.entries.len(), 2);
         assert_eq!(plan.entries[0].content, "Implement ACP plan rendering");
@@ -2469,6 +2488,7 @@ mod tests {
                 }
             }))
         );
+        assert_eq!(plans[1], plan, "the next prompt must replay the same persisted plan");
     }
 
     #[tokio::test]
@@ -2664,18 +2684,30 @@ mod tests {
     async fn acp_local_exec_preserves_multiline_public_command_arguments() {
         let workspace = TempDir::new().expect("wire test workspace");
         let agent = build_wire_test_agent(workspace.path()).await;
-        let heredoc = "sh <<'EOF'\nprintf 'ACP heredoc survived\\n'\nEOF";
+        let multiline = "printf '%s' 'ACP first line\nACP second line\n'";
 
         for args in [
-            serde_json::json!({"cmd": heredoc}),
-            serde_json::json!({"cmd": heredoc, "justification": "exercise ACP argument routing"}),
+            serde_json::json!({"cmd": multiline}),
+            serde_json::json!({"cmd": multiline, "justification": "exercise ACP argument routing"}),
         ] {
             let report = agent
-                .execute_local_tool(vtcode_core::config::constants::tools::EXEC_COMMAND, &args, "call-heredoc")
+                .execute_local_tool(vtcode_core::config::constants::tools::EXEC_COMMAND, &args, "call-multiline")
                 .await;
 
-            assert_eq!(report.status, acp::ToolCallStatus::Completed);
-            assert!(report.llm_response.contains("ACP heredoc survived"));
+            assert_eq!(
+                report.status,
+                acp::ToolCallStatus::Completed,
+                "multiline public command failed: {}",
+                report.llm_response
+            );
+            let payload: serde_json::Value =
+                serde_json::from_str(&report.llm_response).expect("successful command response must be JSON");
+            let output = payload["result"]
+                .get("output")
+                .or_else(|| payload["result"].get("stdout"))
+                .and_then(serde_json::Value::as_str)
+                .expect("successful command response must contain text output");
+            assert_eq!(output, "ACP first line\nACP second line\n");
             assert!(!report.llm_response.contains("Missing required argument: command"));
         }
     }

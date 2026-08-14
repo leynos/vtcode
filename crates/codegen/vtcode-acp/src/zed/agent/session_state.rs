@@ -214,12 +214,22 @@ impl ZedAgent {
         let hook_workspace = workspace_runtime
             .as_ref()
             .map_or_else(|| self.config.workspace.clone(), |runtime| runtime.workspace_root.clone());
+        let workspace_hooks_gated = workspace_runtime.as_ref().map_or_else(
+            || {
+                self.vt_config
+                    .as_ref()
+                    .and_then(|config| config.workspace_lifecycle_hooks.as_ref())
+                    .is_some_and(|hooks| !hooks.is_empty())
+            },
+            |runtime| runtime.workspace_hooks_gated,
+        );
         let lifecycle_hooks = self.vt_config.as_ref().and_then(|config| {
-            match LifecycleHookEngine::new_with_session(
+            match LifecycleHookEngine::new_with_session_gated(
                 hook_workspace,
                 &config.hooks,
                 trigger,
                 session_id.0.to_string(),
+                workspace_hooks_gated,
             ) {
                 Ok(hooks) => hooks,
                 Err(error) => {
@@ -765,6 +775,10 @@ impl ZedAgent {
             .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
         self.ensure_task_lifecycle_forwarder(&session);
 
+        if let Err(error) = self.replay_persisted_task_plan(&session, &args.session_id).await {
+            warn!(%error, session_id = %args.session_id, "Failed to replay persisted ACP task plan on session load");
+        }
+
         if let Err(error) = self.send_available_commands_update(&args.session_id).await {
             warn!(%error, "Failed to advertise slash commands on session load");
         }
@@ -788,6 +802,10 @@ impl ZedAgent {
             .await
             .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
         self.ensure_task_lifecycle_forwarder(&session);
+
+        if let Err(error) = self.replay_persisted_task_plan(&session, &args.session_id).await {
+            warn!(%error, session_id = %args.session_id, "Failed to replay persisted ACP task plan on session resume");
+        }
 
         if let Err(error) = self.send_available_commands_update(&args.session_id).await {
             warn!(%error, "Failed to advertise slash commands on session resume");

@@ -259,7 +259,9 @@ mod tests {
     fn prompt_below_soft_context_budget_does_not_compact() {
         let provider = ContextProvider { context_size: 524_288 };
 
-        assert!(!should_compact(&provider, "test", 400_000));
+        // The default 160,000-token session budget reaches its 90% threshold
+        // before this provider's larger context window does.
+        assert!(!should_compact(&provider, "test", 143_999));
     }
 
     #[test]

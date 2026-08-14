@@ -2381,7 +2381,7 @@ async fn progress_subscribers_receive_child_shutdown_transitions() {
         let mut state = controller.state.write().await;
         let _ = state.children.insert(
             "child-1".to_string(),
-            test_child_record("child-1", "parent-session", &spec, SubagentStatus::Running, 1),
+            test_child_record("child-1", "child-1-session", "parent-session", &spec, SubagentStatus::Running, 1, None),
         );
     }
 

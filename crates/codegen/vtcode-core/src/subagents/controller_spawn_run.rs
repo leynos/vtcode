@@ -244,7 +244,7 @@ impl SubagentController {
 
     /// Resumes a closed or errored subagent and its descendants by re-queuing
     /// their prompts. Cascades recursively through child-scoped controllers so
-    /// grandchildren closed by [`Self::close_tree`] are resumed too, not merely
+    /// grandchildren closed by `Self::close_tree` are resumed too, not merely
     /// un-gated.
     pub async fn resume(&self, target: &str) -> Result<SubagentStatusEntry> {
         self.resume_tree(target).await
