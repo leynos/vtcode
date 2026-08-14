@@ -33,6 +33,7 @@ mod compaction;
 pub(crate) mod handlers;
 mod prompt;
 mod session_state;
+mod task_progress;
 mod tool_config;
 #[cfg(test)]
 mod tool_config_tests;
