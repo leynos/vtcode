@@ -46,6 +46,14 @@ impl ToolRegistry {
                 return Ok(error);
             }
         }
+        for operation in patch.operations() {
+            if let Some(conflict) = self
+                .detect_patch_operation_conflict(operation, override_snapshot.clone())
+                .await?
+            {
+                return Ok(conflict.to_tool_output(self.workspace_root()));
+            }
+        }
         let planned_writes = self.planned_patch_writes(&patch, &captured_paths).await?;
         let (before, after) = self.planned_patch_states(&captured_paths, &planned_writes);
         let canonical_operations = self.canonical_patch_operations(&patch).await?;
@@ -79,15 +87,6 @@ impl ToolRegistry {
                 return Ok(repeated_no_op_error(signature, occurrence));
             }
         }
-        for operation in patch.operations() {
-            if let Some(conflict) = self
-                .detect_patch_operation_conflict(operation, override_snapshot.clone())
-                .await?
-            {
-                return Ok(conflict.to_tool_output(self.workspace_root()));
-            }
-        }
-
         let results = patch.apply(&self.workspace_root_owned()).await?;
         for write in planned_writes {
             let (path, result) = match write {

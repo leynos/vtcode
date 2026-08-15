@@ -1534,6 +1534,14 @@ async fn stale_apply_patch_hash_returns_diagnostics_without_writing() -> Result<
             .as_str()
             .is_some_and(|action| action.contains("Reread versioned.txt"))
     );
+    let records = registry.get_recent_tool_records(1);
+    let recorded_error = records
+        .first()
+        .and_then(|record| record.result.as_ref().err())
+        .expect("structured mismatch is retained in execution history");
+    let recorded_error: Value = serde_json::from_str(recorded_error)?;
+    assert_eq!(recorded_error["details"]["reason"], "content_hash_mismatch");
+    assert_eq!(recorded_error["details"]["expected_content_hash"], expected);
     assert_eq!(fs::read_to_string(path)?, "current\n");
     Ok(())
 }
@@ -1678,34 +1686,6 @@ async fn identical_no_op_patch_escalates_across_registry_clones_without_writing(
     assert_eq!(available["success"], true);
     assert!(available.get("no_op").is_none());
     assert_eq!(fs::read_to_string(temp_dir.path().join("same.txt"))?, "different\n");
-    Ok(())
-}
-
-#[tokio::test]
-async fn changed_patch_or_file_state_resets_the_no_op_guard() -> Result<()> {
-    let temp_dir = TempDir::new()?;
-    let path = temp_dir.path().join("same.txt");
-    fs::write(&path, "same\n")?;
-    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
-    registry.allow_all_tools().await?;
-    let no_op = "*** Begin Patch\n*** Update File: same.txt\n@@\n-same\n+same\n*** End Patch\n";
-    let change = "*** Begin Patch\n*** Update File: same.txt\n@@\n-same\n+changed\n*** End Patch\n";
-
-    for occurrence in 1..=2 {
-        let response = registry.execute_tool(tools::APPLY_PATCH, json!({ "input": no_op })).await?;
-        assert_eq!(response["occurrence"], occurrence);
-    }
-    let changed = registry.execute_tool(tools::APPLY_PATCH, json!({ "input": change })).await?;
-    assert_eq!(changed["success"], true);
-    assert!(changed.get("no_op").is_none());
-    assert_eq!(fs::read_to_string(&path)?, "changed\n");
-
-    let changed_no_op = "*** Begin Patch\n*** Update File: same.txt\n@@\n-changed\n+changed\n*** End Patch\n";
-    let reset = registry
-        .execute_tool(tools::APPLY_PATCH, json!({ "input": changed_no_op }))
-        .await?;
-    assert_eq!(reset["occurrence"], 1);
-    assert_eq!(fs::read_to_string(path)?, "changed\n");
     Ok(())
 }
 

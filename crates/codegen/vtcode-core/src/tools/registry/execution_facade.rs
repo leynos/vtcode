@@ -85,6 +85,9 @@ fn tool_error_value_to_string(value: &Value) -> String {
     if let Some(message) = value.as_str() {
         return message.to_string();
     }
+    if value.get("details").is_some() {
+        return value.to_string();
+    }
     if let Some(message) = value.get("message").and_then(Value::as_str) {
         return message.to_string();
     }
