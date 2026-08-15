@@ -39,6 +39,7 @@ use super::{
 use vtcode_config::constants::execution::{LOOP_THROTTLE_MAX_MS, LOOP_THROTTLE_REGISTRY_BASE_MS};
 
 const REENTRANCY_STACK_DEPTH_LIMIT: usize = 64;
+
 /// When a read-only tool call has been repeated this many times, stop returning
 /// cached results and return a hard error instead.  Must be greater than
 /// MIN_READONLY_IDENTICAL_LIMIT (currently 2).
@@ -105,6 +106,7 @@ enum ReentrancyStackKey {
 
 static TOOL_REENTRANCY_STACKS: Lazy<Mutex<HashMap<ReentrancyStackKey, Vec<String>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+
 static NEXT_REENTRANCY_SCOPE_ID: AtomicU64 = AtomicU64::new(1);
 tokio::task_local! {
     static REENTRANCY_SCOPE_ID: u64;
@@ -999,11 +1001,15 @@ impl ToolRegistry {
             }
         }
 
-        let skip_loop_detection = self.should_skip_loop_detection_for_exec_continuation(&tool_name, args).await;
+        // `apply_patch` owns a content-aware no-op ladder keyed by canonical
+        // paths, patch structure, and file versions. The generic args-only
+        // detector would otherwise block its third diagnostic occurrence.
+        let skip_loop_detection = tool_name == tools::APPLY_PATCH
+            || self.should_skip_loop_detection_for_exec_continuation(&tool_name, args).await;
         if skip_loop_detection {
             trace!(
                 tool = %tool_name,
-                "Skipping identical-call loop detection for stateful exec continuation"
+                "Skipping generic identical-call loop detection for a tool with dedicated state tracking"
             );
         }
 
