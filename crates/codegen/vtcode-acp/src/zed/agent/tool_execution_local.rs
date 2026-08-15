@@ -1,3 +1,24 @@
+use super::ZedAgent;
+use crate::acp;
+use crate::reports::{
+    TOOL_RESPONSE_KEY_CONTENT, TOOL_RESPONSE_KEY_CONTENT_HASH, TOOL_RESPONSE_KEY_PATH, TOOL_RESPONSE_KEY_STATUS,
+    TOOL_RESPONSE_KEY_TOOL, TOOL_RESPONSE_KEY_TRUNCATED, TOOL_SUCCESS_LABEL, ToolExecutionReport, create_diff_content,
+};
+use crate::tooling::{
+    TOOL_LIST_FILES_ITEMS_KEY, TOOL_LIST_FILES_MESSAGE_KEY, TOOL_LIST_FILES_PATH_ARG, TOOL_LIST_FILES_RESULT_KEY,
+    TOOL_LIST_FILES_SUMMARY_MAX_ITEMS, TOOL_LIST_FILES_URI_ARG, TOOL_READ_FILE_LIMIT_ARG, TOOL_READ_FILE_LINE_ARG,
+};
+use crate::zed::connection::ConnectionHandle;
+use anyhow::Result;
+use serde_json::{Value, json};
+use std::path::PathBuf;
+use tracing::warn;
+use vtcode_core::config::constants::tools;
+use vtcode_core::tools::file_ops::FileOpsTool;
+use vtcode_core::tools::registry::{ExecutionPolicySnapshot, ToolExecutionRequest};
+use vtcode_core::tools::traits::Tool;
+use vtcode_core::utils::ansi_parser::strip_ansi;
+use vtcode_core::utils::path::ensure_path_within_workspace;
 //! Implements workspace-local ACP file tools and converts their results for the Zed client.
 mod list_files;
 
@@ -238,6 +259,20 @@ impl ZedAgent {
                 None => return Ok(ToolExecutionReport::cancelled(tools::READ_FILE)),
             };
 
+        let version_result = if let Some(runtime) = session.workspace_runtime() {
+            runtime
+                .local_tool_registry
+                .file_ops_tool()
+                .capture_read_content_hash(&path)
+                .await
+        } else {
+            self.local_tool_registry.file_ops_tool().capture_read_content_hash(&path).await
+        };
+        let content_hash = version_result.map_err(|error| {
+            warn!(%error, path = ?path, "Failed to capture ACP read file version");
+            format!("Unable to version file: {error}")
+        })?;
+
         let plain_response = strip_ansi(&response.content);
         let (truncated_content, truncated) = self.truncate_text(&plain_response);
         let mut tool_content = truncated_content.clone();
@@ -250,6 +285,7 @@ impl ZedAgent {
             TOOL_RESPONSE_KEY_TOOL: tools::READ_FILE,
             TOOL_RESPONSE_KEY_PATH: path.to_string_lossy(),
             TOOL_RESPONSE_KEY_CONTENT: truncated_content,
+            TOOL_RESPONSE_KEY_CONTENT_HASH: content_hash,
             TOOL_RESPONSE_KEY_TRUNCATED: truncated,
         });
 
