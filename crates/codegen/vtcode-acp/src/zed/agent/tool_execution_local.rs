@@ -84,7 +84,7 @@ impl ZedAgent {
                     attempts = outcome.attempts,
                     "Failed to execute local tool"
                 );
-                ToolExecutionReport::failure(tool_name, &message)
+                ToolExecutionReport::structured_failure(&error)
             }
             (None, None) => ToolExecutionReport::failure(tool_name, "Tool execution finished without output or error"),
         }

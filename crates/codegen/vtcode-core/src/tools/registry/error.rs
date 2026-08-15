@@ -31,6 +31,8 @@ pub struct ToolExecutionError {
     pub rollback_performed: bool,
     pub debug_context: Option<ToolErrorDebugContext>,
     pub original_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,6 +100,7 @@ impl ToolExecutionError {
             rollback_performed: false,
             debug_context: None,
             original_error: None,
+            details: None,
         }
     }
 
@@ -192,6 +195,12 @@ impl ToolExecutionError {
     pub fn with_debug_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         let debug = self.debug_context.get_or_insert_with(ToolErrorDebugContext::default);
         debug.metadata.push((key.into(), value.into()));
+        self
+    }
+
+    #[must_use]
+    pub fn with_details(mut self, details: Value) -> Self {
+        self.details = Some(details);
         self
     }
 
@@ -355,6 +364,7 @@ impl ToolExecutionError {
                 "rollback_performed": self.rollback_performed,
                 "debug_context": self.debug_context,
                 "original_error": self.original_error,
+                "details": self.details,
             }
         })
     }
@@ -547,6 +557,16 @@ mod tests {
             let structured = ToolExecutionError::new("grep_search".to_string(), error_type, "boom".to_string());
             assert_eq!(structured.retryable, category.is_retryable(), "retryable mismatch for {error_type:?}");
         }
+    }
+
+    #[test]
+    fn structured_details_survive_the_tool_output_round_trip() {
+        let error = ToolExecutionError::new("apply_patch", ToolErrorType::InvalidParameters, "version mismatch")
+            .with_details(serde_json::json!({"reason": "content_hash_mismatch"}));
+
+        let restored = ToolExecutionError::from_tool_output(&error.to_json_value()).expect("structured tool error");
+
+        assert_eq!(restored.details, error.details);
     }
 
     #[test]

@@ -69,6 +69,26 @@ impl ToolExecutionReport {
         }
     }
 
+    pub(crate) fn structured_failure(error: &vtcode_core::tools::registry::ToolExecutionError) -> Self {
+        let payload = json!({
+            TOOL_RESPONSE_KEY_STATUS: TOOL_ERROR_LABEL,
+            TOOL_RESPONSE_KEY_TOOL: error.tool_name,
+            TOOL_RESPONSE_KEY_MESSAGE: error.user_message(),
+            "error": error,
+        });
+        Self {
+            status: acp::ToolCallStatus::Failed,
+            llm_response: payload.to_string(),
+            content: vec![acp::ToolCallContent::from(format!(
+                "{TOOL_FAILURE_PREFIX}: {}",
+                error.user_message()
+            ))],
+            locations: Vec::new(),
+            raw_output: Some(payload),
+            audit_status: ToolAuditStatus::Failure,
+        }
+    }
+
     pub(crate) fn blocked(tool_name: &str, message: &str) -> Self {
         let mut report = Self::failure(tool_name, message);
         report.audit_status = ToolAuditStatus::Blocked;
@@ -106,5 +126,20 @@ mod tests {
         assert_eq!(ToolExecutionReport::blocked("read_file", "denied").audit_status, ToolAuditStatus::Blocked);
         assert_eq!(ToolExecutionReport::failure("read_file", "failed").audit_status, ToolAuditStatus::Failure);
         assert_eq!(ToolExecutionReport::cancelled("read_file").audit_status, ToolAuditStatus::Cancelled);
+    }
+
+    #[test]
+    fn structured_failure_preserves_model_visible_error_details() {
+        let error = vtcode_core::tools::registry::ToolExecutionError::new(
+            "apply_patch",
+            vtcode_core::tools::registry::ToolErrorType::InvalidParameters,
+            "version mismatch",
+        )
+        .with_details(json!({"reason": "content_hash_mismatch"}));
+
+        let report = ToolExecutionReport::structured_failure(&error);
+
+        assert_eq!(report.raw_output.as_ref().expect("raw output")["error"]["details"], error.details.unwrap());
+        assert!(report.llm_response.contains("content_hash_mismatch"));
     }
 }

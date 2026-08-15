@@ -106,6 +106,10 @@ pub fn apply_patch_parameter_schema(input_description: &str) -> Value {
             "patch": {
                 "type": "string",
                 "description": with_semantic_anchor_guidance(APPLY_PATCH_ALIAS_DESCRIPTION)
+            },
+            "expected_content_hash": {
+                "type": "string",
+                "description": "Optional full-file precondition from read_file. Must be sha256: followed by 64 lower-case hexadecimal digits. Valid only for a patch with exactly one pre-existing source file."
             }
         },
         "anyOf": [
@@ -559,6 +563,12 @@ mod tests {
                 {"required": ["input"]},
                 {"required": ["patch"]}
             ])
+        );
+        assert_eq!(schema["properties"]["expected_content_hash"]["type"], "string");
+        assert!(
+            schema["properties"]["expected_content_hash"]["description"]
+                .as_str()
+                .is_some_and(|description| description.contains("sha256:"))
         );
     }
 }
