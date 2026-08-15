@@ -162,7 +162,7 @@ impl ZedAgent {
                     attempts = outcome.attempts,
                     "Failed to execute local tool"
                 );
-                ToolExecutionReport::failure(invocation.tool_name, &message)
+                ToolExecutionReport::structured_failure(&error)
             }
             (None, None) => {
                 ToolExecutionReport::failure(invocation.tool_name, "Tool execution finished without output or error")
@@ -306,3 +306,4 @@ impl ZedAgent {
         self.run_session_list_files_inner(session, args).await
     }
 }
+// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/tool_execution_local.rs' for per-hunk detail, 'weave check' to verify your resolution
