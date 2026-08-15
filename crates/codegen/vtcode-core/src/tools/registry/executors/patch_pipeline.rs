@@ -1,5 +1,6 @@
 use super::ToolRegistry;
 use crate::tools::edited_file_monitor::{MutationLease, conflict_override_snapshot};
+use crate::tools::registry::{ToolErrorType, ToolExecutionError};
 use anyhow::{Context, Result, anyhow};
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -19,6 +20,23 @@ impl ToolRegistry {
         let patch = crate::tools::editing::Patch::parse(&patch_input.text)?;
         let mutation_paths = self.patch_mutation_paths(&patch).await?;
         let _mutation_leases = self.acquire_patch_mutations(&mutation_paths).await;
+        let expected_hash = match crate::tools::apply_patch::expected_content_hash_from_args(&args) {
+            Ok(value) => value.map(ToOwned::to_owned),
+            Err(error) => {
+                return Ok(invalid_patch_precondition(
+                    error.to_string(),
+                    json!({
+                        "reason": "invalid_expected_content_hash",
+                        "next_action": "Reread the file and use the exact content_hash returned by read_file."
+                    }),
+                ));
+            }
+        };
+        if let Some(expected_hash) = expected_hash {
+            if let Some(error) = self.validate_patch_content_hash(&patch, &expected_hash).await? {
+                return Ok(error);
+            }
+        }
         let planned_writes = self.planned_patch_writes(&patch).await?;
         for operation in patch.operations() {
             if let Some(conflict) = self
@@ -59,6 +77,53 @@ impl ToolRegistry {
                 .map(|path| path.to_string_lossy().into_owned())
                 .collect::<Vec<_>>(),
         }))
+    }
+
+    async fn validate_patch_content_hash(
+        &self,
+        patch: &crate::tools::editing::Patch,
+        expected_hash: &str,
+    ) -> Result<Option<Value>> {
+        let source_paths = crate::tools::apply_patch::patch_precondition_source_paths(patch);
+        if source_paths.len() != 1 {
+            let message = if source_paths.is_empty() {
+                "expected_content_hash is not valid for an add-only patch"
+            } else {
+                "expected_content_hash requires exactly one pre-existing source file; split the patch by source file"
+            };
+            return Ok(Some(invalid_patch_precondition(
+                message,
+                json!({
+                    "reason": "invalid_precondition_scope",
+                    "source_file_count": source_paths.len(),
+                    "next_action": "Split the patch by source file, reread each file, and retry with its content_hash."
+                }),
+            )));
+        }
+
+        let source_path = source_paths.first().expect("single source path");
+        let canonical_path = self.file_ops_tool().normalize_user_path(source_path).await?;
+        let snapshot = crate::tools::edited_file_monitor::EditedFileMonitor::current_snapshot(&canonical_path).await?;
+        let current_hash = format!("sha256:{}", snapshot.sha256);
+        if current_hash == expected_hash {
+            return Ok(None);
+        }
+
+        let (can_safely_rebase, anchor_failures) =
+            crate::tools::apply_patch::assess_patch_rebase(patch, &canonical_path).await;
+        let details = json!({
+            "reason": "content_hash_mismatch",
+            "path": source_path,
+            "expected_content_hash": expected_hash,
+            "current_content_hash": current_hash,
+            "anchor_failures": anchor_failures,
+            "can_safely_rebase": can_safely_rebase,
+            "next_action": format!("Reread {source_path} and regenerate the patch using the new content_hash."),
+        });
+        Ok(Some(invalid_patch_precondition(
+            format!("File version changed before apply_patch: {source_path}"),
+            details,
+        )))
     }
 
     async fn patch_mutation_paths(&self, patch: &crate::tools::editing::Patch) -> Result<Vec<PathBuf>> {
@@ -196,4 +261,10 @@ impl ToolRegistry {
             }
         }
     }
+}
+
+fn invalid_patch_precondition(message: impl Into<String>, details: Value) -> Value {
+    ToolExecutionError::new(crate::config::constants::tools::APPLY_PATCH, ToolErrorType::InvalidParameters, message)
+        .with_details(details)
+        .to_json_value()
 }

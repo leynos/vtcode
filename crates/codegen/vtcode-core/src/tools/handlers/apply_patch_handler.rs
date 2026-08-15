@@ -37,12 +37,15 @@ pub struct ApplyPatchHandler;
 pub struct ApplyPatchToolArgs {
     pub input: Option<String>,
     pub patch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_content_hash: Option<String>,
 }
 
 /// Request for apply_patch runtime
 #[derive(Clone, Debug)]
 pub struct ApplyPatchRequest {
     pub patch: String,
+    pub expected_content_hash: Option<String>,
     pub cwd: PathBuf,
     pub timeout_ms: Option<u64>,
     pub user_explicitly_approved: bool,
@@ -131,6 +134,8 @@ impl ToolRuntime<ApplyPatchRequest, ExecToolCallOutput> for ApplyPatchRuntime {
             });
         }
 
+        validate_request_content_hash(req, &patch).await?;
+
         // Apply the patch
         match patch.apply(&req.cwd).await {
             Ok(results) => {
@@ -175,11 +180,14 @@ impl ToolHandler for ApplyPatchHandler {
         } = invocation;
 
         // Extract patch input from payload
-        let patch_input = match payload {
+        let (patch_input, expected_content_hash) = match payload {
             ToolPayload::Function { arguments } => {
                 let args: Value = serde_json::from_str(&arguments)
                     .map_err(|e| ToolCallError::respond(format!("Failed to parse function arguments: {e}")))?;
-                crate::tools::apply_patch::decode_apply_patch_input(&args)
+                let expected_content_hash = crate::tools::apply_patch::expected_content_hash_from_args(&args)
+                    .map_err(|e| ToolCallError::respond(format!("Invalid expected_content_hash: {e}")))?
+                    .map(ToOwned::to_owned);
+                let patch_input = crate::tools::apply_patch::decode_apply_patch_input(&args)
                     .map_err(|e| ToolCallError::respond(format!("Failed to decode patch input: {e}")))?
                     .map(|input| input.text)
                     .ok_or_else(|| {
@@ -187,9 +195,10 @@ impl ToolHandler for ApplyPatchHandler {
                             "Missing patch input {}",
                             crate::tools::error_helpers::PATCH_PARAMETER_HINT
                         ))
-                    })?
+                    })?;
+                (patch_input, expected_content_hash)
             }
-            ToolPayload::Custom { input } => input,
+            ToolPayload::Custom { input } => (input, None),
             _ => {
                 return Err(ToolCallError::respond("apply_patch handler received unsupported payload"));
             }
@@ -210,6 +219,7 @@ impl ToolHandler for ApplyPatchHandler {
         // Create request
         let req = ApplyPatchRequest {
             patch: patch_input.clone(),
+            expected_content_hash,
             cwd: turn.cwd.clone(),
             timeout_ms: None,
             user_explicitly_approved: true,
@@ -235,6 +245,39 @@ impl ToolHandler for ApplyPatchHandler {
 
         Ok(ToolOutput::Function { content, content_items: None, success: Some(true) })
     }
+}
+
+async fn validate_request_content_hash(req: &ApplyPatchRequest, patch: &Patch) -> Result<(), ToolError> {
+    let Some(expected_hash) = req.expected_content_hash.as_deref() else {
+        return Ok(());
+    };
+    let source_paths = crate::tools::apply_patch::patch_precondition_source_paths(patch);
+    if source_paths.len() != 1 {
+        return Err(ToolError::Rejected(
+            "expected_content_hash requires exactly one pre-existing source file; split add-only or multi-source patches"
+                .to_string(),
+        ));
+    }
+    let source_path = source_paths.first().expect("single source path");
+    let disk_path = req.cwd.join(source_path);
+    let bytes = tokio::fs::read(&disk_path)
+        .await
+        .map_err(|error| ToolError::Rejected(format!("Failed to read {source_path} for hash validation: {error}")))?;
+    let current_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(&bytes));
+    if current_hash == expected_hash {
+        return Ok(());
+    }
+    let (can_safely_rebase, anchor_failures) = crate::tools::apply_patch::assess_patch_rebase(patch, &disk_path).await;
+    let details = serde_json::json!({
+        "reason": "content_hash_mismatch",
+        "path": source_path,
+        "expected_content_hash": expected_hash,
+        "current_content_hash": current_hash,
+        "anchor_failures": anchor_failures,
+        "can_safely_rebase": can_safely_rebase,
+        "next_action": format!("Reread {source_path} and regenerate the patch using the new content_hash."),
+    });
+    Err(ToolError::Rejected(format!("apply_patch precondition failed: {details}")))
 }
 
 /// Convert patch operations to file changes for tracking
@@ -432,6 +475,34 @@ mod tests {
 
         assert_eq!(parsed.input, None);
         assert_eq!(parsed.patch.as_deref(), Some("*** Begin Patch\n*** End Patch\n"));
+    }
+
+    #[tokio::test]
+    async fn json_handler_enforces_expected_content_hash_before_apply() {
+        let workspace = tempfile::TempDir::new().expect("temporary workspace");
+        std::fs::write(workspace.path().join("versioned.txt"), "current\n").expect("write fixture");
+        let patch =
+            Patch::parse("*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n")
+                .expect("valid patch");
+        let request = ApplyPatchRequest {
+            patch: String::new(),
+            expected_content_hash: Some(format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"))),
+            cwd: workspace.path().to_path_buf(),
+            timeout_ms: None,
+            user_explicitly_approved: true,
+        };
+
+        let error = validate_request_content_hash(&request, &patch)
+            .await
+            .expect_err("stale handler precondition");
+
+        let message = error.to_string();
+        assert!(message.contains("content_hash_mismatch"));
+        assert!(message.contains("current_content_hash"));
+        assert_eq!(
+            std::fs::read_to_string(workspace.path().join("versioned.txt")).expect("read unchanged fixture"),
+            "current\n"
+        );
     }
 
     #[test]
