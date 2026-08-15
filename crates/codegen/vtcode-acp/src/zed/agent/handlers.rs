@@ -68,13 +68,9 @@ use vtcode_core::retry::{RetryDecision, RetryPolicyCoreExt};
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderDeadlinePolicy, ProviderRequestRuntime};
 
 mod client;
-
 mod prompt;
-
 mod provider;
-
 mod session;
-
 #[cfg(test)]
 mod tests;
 
@@ -160,4 +156,3 @@ async fn handle_prompt(
     .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
     Ok(())
 }
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers.rs' for per-hunk detail, 'weave check' to verify your resolution
