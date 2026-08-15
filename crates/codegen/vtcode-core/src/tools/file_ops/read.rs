@@ -199,14 +199,6 @@ fn is_full_text_read(args: &Value, is_spool_output: bool) -> bool {
 
 use super::restore_exact_text_content;
 
-fn response_size_bytes(response: &Value) -> Option<u64> {
-    response
-        .get("metadata")
-        .and_then(|metadata| metadata.get("data"))
-        .and_then(|data| data.get("size_bytes"))
-        .and_then(Value::as_u64)
-}
-
 fn apply_spool_chunk_defaults(handler_args_json: &mut Value, raw_args: &Value) -> SpoolChunkPlan {
     let mut offset = 1usize;
     let mut limit = SPOOL_CHUNK_DEFAULT_LIMIT_LINES;
@@ -303,44 +295,13 @@ fn build_history_cache_key(path: &Path, metadata: &std::fs::Metadata, args: &Val
 }
 
 impl FileOpsTool {
-    async fn track_read_snapshot(&self, path: &Path) {
-        if let Err(err) = self.edited_file_monitor.track_read(path).await {
-            tracing::warn!(
-                path = %path.display(),
-                error = %err,
-                "Failed to record edited-file read snapshot"
-            );
+    /// Capture and record the current full-file version for a successful read.
+    pub async fn capture_read_content_hash(&self, path: &Path) -> Result<String> {
+        let snapshot = self.edited_file_monitor.capture_read_snapshot(path).await?;
+        if !snapshot.exists || snapshot.sha256.is_empty() {
+            return Err(anyhow!("Unable to version file after reading it: {}", path.display()));
         }
-    }
-
-    fn track_read_text_snapshot(&self, path: &Path, content: &str) {
-        if let Err(err) = self.edited_file_monitor.record_read_text(path, content) {
-            tracing::warn!(
-                path = %path.display(),
-                error = %err,
-                "Failed to record edited-file read snapshot"
-            );
-        }
-    }
-
-    async fn track_exact_text_snapshot(&self, path: &Path, content: &str, size_bytes: u64) {
-        if let Some(exact_content) = restore_exact_text_content(content, size_bytes) {
-            self.track_read_text_snapshot(path, &exact_content);
-        } else {
-            self.track_read_snapshot(path).await;
-        }
-    }
-
-    async fn track_cached_read_snapshot(&self, path: &Path, args: &Value, response: &Value) {
-        if is_full_text_read(args, false)
-            && let Some(content) = response.get("content").and_then(Value::as_str)
-            && let Some(size_bytes) = response_size_bytes(response)
-        {
-            self.track_exact_text_snapshot(path, content, size_bytes).await;
-            return;
-        }
-
-        self.track_read_snapshot(path).await;
+        Ok(format!("sha256:{}", snapshot.sha256))
     }
 
     pub async fn read_file(&self, args: Value) -> Result<Value> {
@@ -416,9 +377,12 @@ impl FileOpsTool {
             if let Some(key) = cache_key.as_ref()
                 && let Some(cached) = FILE_CACHE.get_file(key).await
             {
-                perf.tag("cache", "hit");
-                self.track_cached_read_snapshot(&canonical, &args, &cached).await;
-                return Ok(cached);
+                let current_hash = self.capture_read_content_hash(&canonical).await?;
+                if cached.get("content_hash").and_then(Value::as_str) == Some(current_hash.as_str()) {
+                    perf.tag("cache", "hit");
+                    return Ok(cached);
+                }
+                perf.tag("cache", "stale");
             }
             perf.tag("cache", if cache_key.is_some() { "miss" } else { "skip" });
 
@@ -447,12 +411,14 @@ impl FileOpsTool {
                         } else {
                             content.clone()
                         };
+                        let content_hash = self.capture_read_content_hash(&canonical).await?;
 
                         let mut builder = ToolResponseBuilder::new(tools::READ_FILE)
                             .success()
                             .message(format!("Successfully read file {requested_path}"))
                             .content(&response_content)
                             .field("path", json!(requested_path.clone()))
+                            .field("content_hash", json!(content_hash))
                             .field("no_spool", json!(true))
                             .field("content_kind", json!("text"))
                             .field("encoding", json!("utf8"))
@@ -519,11 +485,6 @@ impl FileOpsTool {
 
                         let response = builder.build_json();
 
-                        if full_text_read {
-                            self.track_exact_text_snapshot(&canonical, &response_content, size_bytes).await;
-                        } else {
-                            self.track_read_snapshot(&canonical).await;
-                        }
                         if let Some(key) = cache_key.as_ref() {
                             FILE_CACHE.put_file(key.clone(), response.clone()).await;
                         }
@@ -555,6 +516,7 @@ impl FileOpsTool {
             } else {
                 self.read_file_legacy(&canonical, &input).await?
             };
+            let content_hash = self.capture_read_content_hash(&canonical).await?;
 
             let mut builder = ToolResponseBuilder::new(tools::READ_FILE)
                 .success()
@@ -565,6 +527,7 @@ impl FileOpsTool {
                 ))
                 .content(&content)
                 .field("path", json!(self.workspace_relative_display(&canonical)))
+                .field("content_hash", json!(content_hash))
                 .field("no_spool", json!(true));
 
             // Merge legacy metadata - extract actual data fields, not wrapper structure
@@ -611,14 +574,7 @@ impl FileOpsTool {
                 }
             }
 
-            let content_kind = metadata.get("content_kind").and_then(Value::as_str).unwrap_or("text");
-            let full_legacy_text_read = !use_paging && !truncated && content_kind == "text";
             let response = builder.build_json();
-            if full_legacy_text_read {
-                self.track_exact_text_snapshot(&canonical, &content, size_bytes).await;
-            } else {
-                self.track_read_snapshot(&canonical).await;
-            }
             if let Some(key) = cache_key.as_ref() {
                 FILE_CACHE.put_file(key.clone(), response.clone()).await;
             }
@@ -674,6 +630,11 @@ mod read_tests {
     use std::fs;
     use std::path::Path;
     use tempfile::TempDir;
+    use vtcode_commons::utils::calculate_sha256;
+
+    fn expected_content_hash(content: &[u8]) -> String {
+        format!("sha256:{}", calculate_sha256(content))
+    }
 
     #[test]
     fn history_jsonl_detection() {
@@ -1015,6 +976,42 @@ mod read_tests {
         let content = result["content"].as_str().unwrap();
         assert!(content.len() <= 10);
         assert!(content.starts_with("line1"));
+        assert_eq!(result["content_hash"], expected_content_hash(test_content.as_bytes()));
+    }
+
+    #[tokio::test]
+    async fn history_cache_revalidates_the_full_file_version() {
+        let temp_dir = TempDir::new().unwrap();
+        let workspace_root = temp_dir.path().to_path_buf();
+        let history_dir = workspace_root.join(".vtcode/history");
+        fs::create_dir_all(&history_dir).unwrap();
+        let history_path = history_dir.join("session.jsonl");
+        let original = "a".repeat(300_000);
+        let changed = "b".repeat(300_000);
+        fs::write(&history_path, &original).unwrap();
+
+        let grep_manager = std::sync::Arc::new(GrepSearchManager::new(workspace_root.clone()));
+        let file_ops = FileOpsTool::new(workspace_root, grep_manager);
+        let args = json!({
+            "path": ".vtcode/history/session.jsonl",
+            "offset_lines": 0,
+            "page_size_lines": 1
+        });
+
+        let first = file_ops.read_file(args.clone()).await.unwrap();
+        let original_mtime = fs::metadata(&history_path).unwrap().modified().unwrap();
+        fs::write(&history_path, &changed).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&history_path)
+            .unwrap()
+            .set_modified(original_mtime)
+            .unwrap();
+        let second = file_ops.read_file(args).await.unwrap();
+
+        assert_eq!(first["content_hash"], expected_content_hash(original.as_bytes()));
+        assert_eq!(second["content_hash"], expected_content_hash(changed.as_bytes()));
+        assert_ne!(first["content_hash"], second["content_hash"]);
     }
 
     #[tokio::test]
@@ -1030,6 +1027,36 @@ mod read_tests {
         let result = file_ops.read_file(json!({ "path": "note.txt" })).await.unwrap();
 
         assert_eq!(result["content"].as_str(), Some("hello\n"));
+        assert_eq!(result["content_hash"], expected_content_hash(b"hello\n"));
+    }
+
+    #[tokio::test]
+    async fn read_file_pages_report_the_full_raw_file_version() {
+        let temp_dir = TempDir::new().unwrap();
+        let workspace_root = temp_dir.path().to_path_buf();
+        let test_file = workspace_root.join("versioned.txt");
+        let raw_content = b"alpha\r\nbeta\r\ngamma\r\n";
+        fs::write(&test_file, raw_content).unwrap();
+
+        let grep_manager = std::sync::Arc::new(GrepSearchManager::new(workspace_root.clone()));
+        let file_ops = FileOpsTool::new(workspace_root, grep_manager);
+        let expected = expected_content_hash(raw_content);
+
+        let modern_page = file_ops
+            .read_file(json!({ "path": "versioned.txt", "offset": 2, "limit": 1 }))
+            .await
+            .unwrap();
+        let legacy_page = file_ops
+            .read_file(json!({
+                "path": "versioned.txt",
+                "offset_lines": 1,
+                "page_size_lines": 1
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(modern_page["content_hash"], expected);
+        assert_eq!(legacy_page["content_hash"], expected);
     }
 
     #[tokio::test]
