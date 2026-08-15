@@ -11,10 +11,14 @@
 use serde_json::{Value, json};
 
 mod collaboration;
+
 mod json_schema;
+
 #[cfg(feature = "mcp")]
 mod mcp_tool;
+
 mod responses_api;
+
 mod tool_kind;
 
 pub use collaboration::{
@@ -38,14 +42,18 @@ pub const SEMANTIC_ANCHOR_GUIDANCE: &str =
 /// identical, complete format guidance (see checkpoint turn_615 for the
 /// failure this prevents).
 pub const APPLY_PATCH_ALIAS_DESCRIPTION: &str = "Patch in VT Code format (*** Begin Patch, *** Update File: path, @@ hunk, -/+ lines, *** End Patch). Same envelope as 'input'; do NOT use unified diff (--- /+++ format). Every patch path must be workspace-relative; never use absolute paths, `..`, or traversal-like forms.";
+
 pub const DEFAULT_APPLY_PATCH_INPUT_DESCRIPTION: &str = "Patch in VT Code format: *** Begin Patch, *** Update File: path, @@ hunk, -/+ lines, *** End Patch. Every patch path must be workspace-relative; never use absolute paths, `..`, or traversal-like forms.";
 
 /// Default model-visible preview budget for function-tool results.
 pub const DEFAULT_MAX_OUTPUT_TOKENS: usize = 10_000;
+
 /// Smallest valid model-visible preview budget for a function-tool result.
 pub const MIN_MAX_OUTPUT_TOKENS: usize = 1;
+
 /// Largest valid model-visible preview budget for a function-tool result.
 pub const MAX_MAX_OUTPUT_TOKENS: usize = 50_000;
+
 /// Canonical JSON property name for the common result-preview budget field.
 ///
 /// Centralized so the strict dedicated validator in `vtcode-core` and any
@@ -106,6 +114,10 @@ pub fn apply_patch_parameter_schema(input_description: &str) -> Value {
             "patch": {
                 "type": "string",
                 "description": with_semantic_anchor_guidance(APPLY_PATCH_ALIAS_DESCRIPTION)
+            },
+            "expected_content_hash": {
+                "type": "string",
+                "description": "Optional full-file precondition from read_file. Must be sha256: followed by 64 lower-case hexadecimal digits. Valid only for a patch with exactly one pre-existing source file."
             }
         },
         "anyOf": [
@@ -565,6 +577,12 @@ mod tests {
                 {"required": ["input"]},
                 {"required": ["patch"]}
             ])
+        );
+        assert_eq!(schema["properties"]["expected_content_hash"]["type"], "string");
+        assert!(
+            schema["properties"]["expected_content_hash"]["description"]
+                .as_str()
+                .is_some_and(|description| description.contains("sha256:"))
         );
     }
 }
