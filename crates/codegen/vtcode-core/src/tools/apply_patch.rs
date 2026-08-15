@@ -7,8 +7,9 @@ use anyhow::Context;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::path::PathBuf;
+use serde_json::{Value, json};
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 
 pub use crate::tools::editing::{Patch, PatchError, PatchHunk, PatchLine, PatchOperation};
 pub use vtcode_utility_tool_specs::{
@@ -20,6 +21,8 @@ pub use vtcode_utility_tool_specs::{
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ApplyPatchInput {
     pub input: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_content_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +30,118 @@ pub struct DecodedApplyPatchInput {
     pub text: String,
     pub source_bytes: usize,
     pub was_base64: bool,
+}
+
+pub const EXPECTED_CONTENT_HASH_ARG: &str = "expected_content_hash";
+
+pub fn expected_content_hash_from_args(args: &Value) -> anyhow::Result<Option<&str>> {
+    let Some(value) = args.get(EXPECTED_CONTENT_HASH_ARG) else {
+        return Ok(None);
+    };
+    let hash = value
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("{EXPECTED_CONTENT_HASH_ARG} must be a string"))?;
+    let digest = hash.strip_prefix("sha256:").ok_or_else(|| {
+        anyhow::anyhow!("{EXPECTED_CONTENT_HASH_ARG} must use sha256:<64 lower-case hexadecimal digits>")
+    })?;
+    if digest.len() != 64
+        || !digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(anyhow::anyhow!("{EXPECTED_CONTENT_HASH_ARG} must use sha256:<64 lower-case hexadecimal digits>"));
+    }
+    Ok(Some(hash))
+}
+
+pub fn patch_precondition_source_paths(patch: &Patch) -> Vec<&str> {
+    patch
+        .operations()
+        .iter()
+        .filter_map(|operation| match operation {
+            PatchOperation::AddFile { .. } => None,
+            PatchOperation::DeleteFile { path } | PatchOperation::UpdateFile { path, .. } => Some(path.as_str()),
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+pub async fn assess_patch_rebase(patch: &Patch, source_path: &Path) -> (bool, Vec<Value>) {
+    if patch.operations().len() != 1 {
+        return (false, Vec::new());
+    }
+    let Some(PatchOperation::UpdateFile { path, new_path, chunks }) = patch
+        .operations()
+        .iter()
+        .find(|operation| matches!(operation, PatchOperation::UpdateFile { .. }))
+    else {
+        return (false, Vec::new());
+    };
+    if new_path.as_ref().is_some_and(|destination| destination != path) {
+        return (false, Vec::new());
+    }
+    let Ok(current) = tokio::fs::read_to_string(source_path).await else {
+        return (false, Vec::new());
+    };
+    match crate::tools::editing::patch::render_patch_update_content(source_path, &current, chunks, path).await {
+        Ok(_) => (true, Vec::new()),
+        Err(_) => {
+            let mut failures = Vec::new();
+            for chunk in chunks.iter().take(3) {
+                if crate::tools::editing::patch::render_patch_update_content(
+                    source_path,
+                    &current,
+                    std::slice::from_ref(chunk),
+                    path,
+                )
+                .await
+                .is_err()
+                {
+                    failures.push(patch_anchor_failure(chunk, &current));
+                }
+            }
+            (false, failures)
+        }
+    }
+}
+
+fn patch_anchor_failure(chunk: &PatchHunk, current: &str) -> Value {
+    let current_lines = current.lines().collect::<Vec<_>>();
+    let expected_lines = chunk
+        .lines()
+        .iter()
+        .filter(|line| !matches!(line, PatchLine::Addition(_)))
+        .map(PatchLine::as_str)
+        .take(3)
+        .collect::<Vec<_>>();
+    let expected_excerpt = bounded_excerpt(&expected_lines.join("\n"));
+    let first_expected = expected_lines.first().copied().unwrap_or_default().trim();
+    let best_line = current_lines
+        .iter()
+        .enumerate()
+        .map(|(index, line)| (line_match_score(first_expected, line.trim()), index))
+        .max_by_key(|(score, index)| (*score, std::cmp::Reverse(*index)))
+        .map(|(_, index)| index)
+        .unwrap_or(0);
+    let start = best_line.saturating_sub(1);
+    let end = (best_line + 2).min(current_lines.len());
+    json!({
+        "anchor": chunk.change_context().unwrap_or(first_expected),
+        "expected_excerpt": expected_excerpt,
+        "current_excerpt": bounded_excerpt(&current_lines[start..end].join("\n")),
+    })
+}
+
+fn line_match_score(expected: &str, candidate: &str) -> usize {
+    expected
+        .split_whitespace()
+        .filter(|token| candidate.split_whitespace().any(|candidate_token| candidate_token == *token))
+        .count()
+}
+
+fn bounded_excerpt(excerpt: &str) -> String {
+    excerpt.chars().take(240).collect()
 }
 
 pub fn patch_source_from_args(args: &Value) -> Option<&str> {
@@ -203,9 +318,11 @@ pub fn parameter_schema(input_description: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::{
-        APPLY_PATCH_ALIAS_DESCRIPTION, SEMANTIC_ANCHOR_GUIDANCE, decode_apply_patch_input, mutation_target_paths,
-        parameter_schema, patch_mutation_target_paths, patch_source_from_args, with_semantic_anchor_guidance,
+        APPLY_PATCH_ALIAS_DESCRIPTION, SEMANTIC_ANCHOR_GUIDANCE, decode_apply_patch_input,
+        expected_content_hash_from_args, mutation_target_paths, parameter_schema, patch_mutation_target_paths,
+        patch_source_from_args, with_semantic_anchor_guidance,
     };
+    use proptest::prelude::*;
     use serde_json::json;
     use std::path::PathBuf;
 
@@ -217,6 +334,21 @@ mod tests {
         );
         assert_eq!(patch_source_from_args(&json!({"input": "x"})), Some("x"));
         assert_eq!(patch_source_from_args(&json!({"patch": "y"})), Some("y"));
+    }
+
+    proptest! {
+        #[test]
+        fn expected_content_hash_accepts_only_the_canonical_wire_shape(candidate in ".{0,100}") {
+            let digest = candidate.strip_prefix("sha256:");
+            let canonical = digest.is_some_and(|digest| {
+                digest.len() == 64
+                    && digest.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            });
+            prop_assert_eq!(
+                expected_content_hash_from_args(&json!({"expected_content_hash": candidate})).is_ok(),
+                canonical
+            );
+        }
     }
 
     #[test]
