@@ -494,7 +494,7 @@ mod tests {
 
     #[tokio::test]
     async fn json_handler_enforces_expected_content_hash_before_apply() {
-        let workspace = tempfile::TempDir::new().expect("temporary workspace");
+        let workspace = TempDir::new().expect("temporary workspace");
         std::fs::write(workspace.path().join("versioned.txt"), "current\n").expect("write fixture");
         let patch =
             Patch::parse("*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n")
@@ -576,6 +576,7 @@ mod tests {
         };
         let request = ApplyPatchRequest {
             patch: "*** Begin Patch\n*** Add File: created.txt\n+must not exist\n*** End Patch\n".to_string(),
+            expected_content_hash: None,
             cwd: escaped_cwd,
             timeout_ms: None,
             user_explicitly_approved: true,
