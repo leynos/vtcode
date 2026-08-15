@@ -160,4 +160,3 @@ async fn handle_prompt(
     .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
     Ok(())
 }
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers.rs' for per-hunk detail, 'weave check' to verify your resolution
