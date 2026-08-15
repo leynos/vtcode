@@ -109,7 +109,7 @@ pub fn apply_patch_parameter_schema(input_description: &str) -> Value {
             },
             "expected_content_hash": {
                 "type": "string",
-                "description": "Optional full-file precondition from read_file. Must be sha256: followed by 64 lower-case hexadecimal digits. Valid only for a patch with exactly one pre-existing source file."
+                "description": "Optional full-file precondition from read_file. Carry read_file.content_hash into this field when editing that file. Must be sha256: followed by 64 lower-case hexadecimal digits and is valid only for a patch with exactly one pre-existing source file. On a mismatch, reread the file and regenerate the patch. Do not retry an identical no-op patch payload."
             }
         },
         "anyOf": [
@@ -565,10 +565,12 @@ mod tests {
             ])
         );
         assert_eq!(schema["properties"]["expected_content_hash"]["type"], "string");
-        assert!(
-            schema["properties"]["expected_content_hash"]["description"]
-                .as_str()
-                .is_some_and(|description| description.contains("sha256:"))
-        );
+        let description = schema["properties"]["expected_content_hash"]["description"]
+            .as_str()
+            .expect("expected-content-hash guidance");
+        assert!(description.contains("sha256:"));
+        assert!(description.contains("read_file.content_hash"));
+        assert!(description.contains("reread the file"));
+        assert!(description.contains("Do not retry an identical no-op"));
     }
 }
