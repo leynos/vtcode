@@ -1,8 +1,8 @@
 use super::ZedAgent;
 use crate::acp;
 use crate::reports::{
-    TOOL_RESPONSE_KEY_CONTENT, TOOL_RESPONSE_KEY_PATH, TOOL_RESPONSE_KEY_STATUS, TOOL_RESPONSE_KEY_TOOL,
-    TOOL_RESPONSE_KEY_TRUNCATED, TOOL_SUCCESS_LABEL, ToolExecutionReport, create_diff_content,
+    TOOL_RESPONSE_KEY_CONTENT, TOOL_RESPONSE_KEY_CONTENT_HASH, TOOL_RESPONSE_KEY_PATH, TOOL_RESPONSE_KEY_STATUS,
+    TOOL_RESPONSE_KEY_TOOL, TOOL_RESPONSE_KEY_TRUNCATED, TOOL_SUCCESS_LABEL, ToolExecutionReport, create_diff_content,
 };
 use crate::tooling::{
     TOOL_LIST_FILES_ITEMS_KEY, TOOL_LIST_FILES_MESSAGE_KEY, TOOL_LIST_FILES_PATH_ARG, TOOL_LIST_FILES_RESULT_KEY,
@@ -176,6 +176,20 @@ impl ZedAgent {
             format!("Unable to read file: {error}")
         })?;
 
+        let version_result = if let Some(runtime) = session.workspace_runtime() {
+            runtime
+                .local_tool_registry
+                .file_ops_tool()
+                .capture_read_content_hash(&path)
+                .await
+        } else {
+            self.local_tool_registry.file_ops_tool().capture_read_content_hash(&path).await
+        };
+        let content_hash = version_result.map_err(|error| {
+            warn!(%error, path = ?path, "Failed to capture ACP read file version");
+            format!("Unable to version file: {error}")
+        })?;
+
         let plain_response = strip_ansi(&response.content);
         let (truncated_content, truncated) = self.truncate_text(&plain_response);
         let mut tool_content = truncated_content.clone();
@@ -188,6 +202,7 @@ impl ZedAgent {
             TOOL_RESPONSE_KEY_TOOL: tools::READ_FILE,
             TOOL_RESPONSE_KEY_PATH: path.to_string_lossy(),
             TOOL_RESPONSE_KEY_CONTENT: truncated_content,
+            TOOL_RESPONSE_KEY_CONTENT_HASH: content_hash,
             TOOL_RESPONSE_KEY_TRUNCATED: truncated,
         });
 

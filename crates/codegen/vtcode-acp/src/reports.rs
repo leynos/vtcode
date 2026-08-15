@@ -10,6 +10,7 @@ pub(crate) const TOOL_RESPONSE_KEY_STATUS: &str = "status";
 pub(crate) const TOOL_RESPONSE_KEY_TOOL: &str = "tool";
 pub(crate) const TOOL_RESPONSE_KEY_PATH: &str = "path";
 pub(crate) const TOOL_RESPONSE_KEY_CONTENT: &str = "content";
+pub(crate) const TOOL_RESPONSE_KEY_CONTENT_HASH: &str = "content_hash";
 pub(crate) const TOOL_RESPONSE_KEY_TRUNCATED: &str = "truncated";
 const TOOL_RESPONSE_KEY_MESSAGE: &str = "message";
 
