@@ -316,9 +316,16 @@ impl EditedFileMonitor {
     }
 
     pub async fn track_read(&self, path: &Path) -> Result<()> {
+        self.capture_read_snapshot(path).await.map(|_| ())
+    }
+
+    /// Capture the file's current raw-byte snapshot and record it as the
+    /// version most recently observed by the model.
+    pub async fn capture_read_snapshot(&self, path: &Path) -> Result<FileSnapshot> {
         let path = normalize_event_path(path);
         let snapshot = snapshot_path_async(path.clone()).await?;
-        self.record_read_snapshot(&path, snapshot)
+        self.record_read_snapshot(&path, snapshot.clone())?;
+        Ok(snapshot)
     }
 
     pub async fn accept_disk_version(&self, path: &Path) -> Result<()> {
