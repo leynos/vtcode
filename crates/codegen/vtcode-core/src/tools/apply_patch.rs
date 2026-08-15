@@ -68,6 +68,17 @@ pub fn patch_precondition_source_paths(patch: &Patch) -> Vec<&str> {
 }
 
 pub async fn assess_patch_rebase(patch: &Patch, source_path: &Path) -> (bool, Vec<Value>) {
+    let Ok(current) = tokio::fs::read_to_string(source_path).await else {
+        return (false, Vec::new());
+    };
+    assess_patch_rebase_with_content(patch, source_path, &current).await
+}
+
+pub(crate) async fn assess_patch_rebase_with_content(
+    patch: &Patch,
+    source_path: &Path,
+    current: &str,
+) -> (bool, Vec<Value>) {
     if patch.operations().len() != 1 {
         return (false, Vec::new());
     }
@@ -81,24 +92,21 @@ pub async fn assess_patch_rebase(patch: &Patch, source_path: &Path) -> (bool, Ve
     if new_path.as_ref().is_some_and(|destination| destination != path) {
         return (false, Vec::new());
     }
-    let Ok(current) = tokio::fs::read_to_string(source_path).await else {
-        return (false, Vec::new());
-    };
-    match crate::tools::editing::patch::render_patch_update_content(source_path, &current, chunks, path).await {
+    match crate::tools::editing::patch::render_patch_update_content(source_path, current, chunks, path).await {
         Ok(_) => (true, Vec::new()),
         Err(_) => {
             let mut failures = Vec::new();
             for chunk in chunks.iter().take(3) {
                 if crate::tools::editing::patch::render_patch_update_content(
                     source_path,
-                    &current,
+                    current,
                     std::slice::from_ref(chunk),
                     path,
                 )
                 .await
                 .is_err()
                 {
-                    failures.push(patch_anchor_failure(chunk, &current));
+                    failures.push(patch_anchor_failure(chunk, current));
                 }
             }
             (false, failures)
