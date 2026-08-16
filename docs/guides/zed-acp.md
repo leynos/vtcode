@@ -369,6 +369,13 @@ and `[history]` settings do not control ACP audit output.
   `session/resume`; both restore that archive by exact session ID, including
   after a VT Code process or editor restart. Set `history.persistence = "none"`
   to disable durable archives and discovery; sessions then remain process-local.
+- **Interrupted tool recovery** – Before executing model-requested tools, ACP
+  checkpoints the assistant request with one incomplete Tool result per call.
+  Normal completion replaces those placeholders with real results before the
+  provider continuation. Loading a legacy archive repairs any unresolved call
+  in the same form, marks its side effects as uncertain, and tells the model to
+  verify workspace state and resubmit only if needed. VT Code never replays a
+  recovered tool call automatically because it may already have mutated state.
 - **Sub-agent delegation** – When ACP sub-agents are enabled, the session exposes the canonical
   `agent` tool. Its actions are `spawn`, `spawn_subprocess`, `send_input`, `wait`, `resume`, and
   `close`. Before delegation, VT Code synchronises the current parent ACP session identity and
