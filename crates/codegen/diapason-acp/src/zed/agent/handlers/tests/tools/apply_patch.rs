@@ -82,6 +82,20 @@ async fn approved_apply_patch_executes_and_emits_preview_and_diff_over_acp() {
     );
     assert_eq!(calls.load(Ordering::SeqCst), 2, "the tool result must return to the provider");
 
+    let requests = requests.lock().expect("stream requests");
+    let tool_response = requests[1]
+        .messages
+        .iter()
+        .find(|message| message.is_tool_response())
+        .map(|message| message.content.as_text())
+        .expect("apply_patch tool response");
+    assert!(tool_response.contains("\"success\":true"));
+    assert!(
+        !tool_response.contains("\"status\":\"incomplete\""),
+        "write-ahead placeholders must be replaced before provider continuation"
+    );
+    drop(requests);
+
     let updates = std::iter::from_fn(|| updates_rx.try_recv().ok()).collect::<Vec<_>>();
     let preview_visible = updates.iter().any(|notification| {
         let acp::SessionUpdate::ToolCall(call) = &notification.update else {

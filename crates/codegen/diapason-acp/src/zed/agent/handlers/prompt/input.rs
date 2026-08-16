@@ -17,12 +17,13 @@ pub(super) async fn prepare_prompt_input(
         return Ok(PromptInputOutcome::Response(PromptResponse::new(acp::StopReason::Cancelled)));
     }
 
+    let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
+    let turn_guard = TurnGuard::begin(thread)?;
+
     if let Err(error) = agent.replay_persisted_task_plan(&session, &args.session_id).await {
         warn!(%error, session_id = %args.session_id, "Failed to replay persisted ACP task plan");
     }
 
-    let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
-    let turn_guard = TurnGuard::begin(thread)?;
     start_prompt_safety_budget(&agent, &session, &args.session_id)?;
     if !session.cancellation.reset() {
         return Ok(PromptInputOutcome::Response(PromptResponse::new(acp::StopReason::Cancelled)));
