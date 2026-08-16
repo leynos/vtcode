@@ -114,9 +114,12 @@ from both lower layers.
   head.
 - [x] (2026-08-16) Located the prompt turn guard, tool-call checkpoint gap,
   durable archive attachment path, and generic stale-session error path.
-- [ ] EP-M1: add red unit, property, and ACP wire tests for write-ahead tool
-  results, legacy repair, no replay, and prompt ordering.
-- [ ] EP-M2: implement ACP write-ahead terminalisation and durable repair.
+- [x] (2026-08-16) EP-M1: added red unit and 1,024-case property tests for
+  missing-result repair, plus deterministic archive and official ACP duplex
+  tests for no replay, real-result replacement, and prompt ordering.
+- [x] (2026-08-16) EP-M2: implemented ACP write-ahead terminalisation,
+  idempotent legacy repair during archive attachment, and guard-first prompt
+  admission. Focused unit, property, archive, and ACP wire tests pass.
 - [ ] EP-M3: implement typed stale `write_stdin` classification and focused
   error tests.
 - [ ] EP-M4: update user/developer documentation, run all commit gates, install
@@ -148,11 +151,30 @@ from both lower layers.
   Impact: exception-path cleanup remains useful, but durable safety must not
   depend on the future reaching that cleanup block.
 
+- Observation: archive attachment has no path into the tool executor; it only
+  rehydrates messages, builds the workspace runtime, and checkpoints repaired
+  history.
+  Evidence: `attach_thread_from_listing` owns the complete post-discovery load
+  path, and the legacy mutation regression leaves a real file unchanged while
+  persisting the synthetic Tool result.
+  Impact: no-replay is proved directly at the archive attachment seam, while
+  the official ACP duplex harness separately proves continuation-result
+  replacement and prompt admission. No test-only executor bypass was added.
+
 - Observation: `with_tool_call_context` marks every command tool as possibly
   mutating, even when a typed pre-execution lookup proves that a
   `write_stdin` session does not exist.
   Evidence: `crates/codegen/vtcode-core/src/tools/registry/error.rs`.
   Impact: stale-session classification must survive this decoration step.
+
+- Observation: the first full `vtcode-acp` run reported one trust-sync load
+  failure in an existing concurrent-workspace test, while all 20 isolated
+  repetitions and the complete 187-test rerun passed.
+  Evidence: `/tmp/nextest-vtcode-acp-VTCode-fix-acp-unresolved-tool-recovery-2.out`,
+  `/tmp/alchemist-h1-trust-sync-vtcode-20260816-qualified.log`, and
+  `/tmp/nextest-vtcode-acp-VTCode-fix-acp-unresolved-tool-recovery-3.out`.
+  Impact: the race hypothesis remains inconclusive, so no unrelated trust-store
+  change is included without a deterministic reproducer.
 
 ## Decision log
 
@@ -184,9 +206,35 @@ from both lower layers.
 
 ## Outcomes & retrospective
 
-Implementation is in progress. This section will record the final behaviour,
-gate evidence, installed binary identity, pull-request URL, and any residual
-gap after every conformance item has been reconciled.
+EP-M1/EP-M2 plateau: an assistant tool request and one conservative incomplete
+Tool result per call now enter the thread before execution and are persisted in
+one write-ahead checkpoint. Successful execution replaces those placeholders
+before provider continuation. Legacy load performs the same closure repair as
+a pure, idempotent transformation and checkpoints it without executing any
+tool. The resumed model receives explicit uncertain-state, no-replay, verify,
+and conditional-resubmit guidance. Prompt admission now precedes task-plan
+replay and all other prompt-scoped work.
+
+Red/green evidence:
+
+- Red: `/tmp/red-tool-recovery-vtcode-fix-acp-custom-provider-routing.out`
+  recorded four expected failures before production integration.
+- Pure recovery green:
+  `/tmp/green-tool-recovery-vtcode-fix-acp-unresolved-tool-recovery-3.out`
+  passed all six initial focused tests.
+- Archive and official transport green:
+  `/tmp/test-wire-recovery-vtcode-fix-acp-unresolved-tool-recovery-4.out`
+  passed six tests, including 1,024 generated histories, mutation non-replay,
+  placeholder replacement, and concurrent-prompt rejection.
+- Formatting:
+  `/tmp/fmt-write-ahead-vtcode-fix-acp-unresolved-tool-recovery.out` is clean.
+- Milestone gates: formatter, all-target ACP Clippy, all 187 ACP tests,
+  Markdown lint, and diff checks passed. Canonical logs use the suffix
+  `VTCode-fix-acp-unresolved-tool-recovery-2.out` for formatter/Clippy and
+  `-3.out` for nextest/diff check; Markdown lint is `-6.out`.
+
+The remaining work is EP-M3 stale exec-session classification, documentation,
+full gates, release installation, and stacked publication.
 
 ## Context and orientation
 
@@ -294,16 +342,21 @@ ACP-REC-6 -> EP-M3 -> typed exec-session and structured-error tests
 - Obligation: INV-NO-REPLAY. Loading an archive with an unresolved mutating call
   performs zero tool executions and gives the next provider request an
   incomplete result containing explicit verify-and-resubmit guidance.
-  Method: official ACP SDK duplex test with an execution-counting injected
-  tool/provider seam.
-  Rationale: this crosses the durable loader, handler, and provider-context
-  boundaries while remaining deterministic.
+  Method: deterministic archive-attachment test against a real mutation target,
+  combined with the official ACP SDK duplex continuation test.
+  Rationale: archive attachment has no executor edge, so testing that seam
+  directly proves zero replay without a test-only bypass; the duplex test
+  proves Tool messages cross the provider boundary correctly.
   Domain: a legacy `apply_patch`-named call with no Tool result.
-  Artefact: ACP wire tests in `handlers.rs` or `session_state.rs`.
-  Evidence: execution count remains zero after load; captured provider messages
-  contain `replay` false, uncertain-state language, and the next action.
-  Non-vacuity: the injected tool increments on any execution, and a seeded
-  auto-replay mutation makes the assertion fail.
+  Artefact: archive tests in `session_state.rs` and ACP wire tests in
+  `handlers.rs`.
+  Evidence: a real patch target remains byte-identical after attachment; the
+  repaired message contains `replayed: false`, uncertain-state language, and
+  verify-and-resubmit guidance; a normal continuation contains the real result
+  rather than the placeholder.
+  Non-vacuity: the archived `apply_patch` payload would change the asserted
+  fixture if executed, and the test verifies that the repaired archive was
+  written to disk.
 
 - Obligation: INV-PROMPT-SERIALITY. A second prompt performs no task replay,
   history append, provider call, or tool call while the first prompt owns the
@@ -448,9 +501,10 @@ acceptance set is:
 - a deterministic red failure before ACP recovery implementation;
 - passing unit and property tests for closure, ordering, preservation, and
   idempotence;
-- an ACP SDK duplex test that observes an incomplete durable result during a
-  blocked tool and a real result after completion;
-- a durable load/resume test proving no recovered mutating call executes;
+- a deterministic write-ahead seam test plus an ACP SDK duplex continuation
+  test proving incomplete results are staged and only real results reach the
+  provider after completion;
+- a durable attachment test proving a recovered mutating call does not execute;
 - an overlapping prompt test proving no prompt-scoped work runs before
   admission;
 - structured stale-session tests proving accurate retry, partial-state,
