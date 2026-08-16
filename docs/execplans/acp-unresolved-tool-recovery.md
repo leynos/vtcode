@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision Log`, `Outcomes & Retrospective`, `Conformance Basis`, and
 `Verification Plan` must be kept up to date as work proceeds.
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -123,8 +123,9 @@ from both lower layers.
 - [x] (2026-08-16) EP-M3: added typed missing exec-session errors and mapped
   stale `write_stdin` write, poll, and wait calls to non-retryable,
   non-circuit-breaking `ResourceNotFound` results without partial-state claims.
-- [ ] EP-M4: update user/developer documentation, run all commit gates, install
-  the release binary, push the branch, and create the stacked draft PR.
+- [x] (2026-08-16) EP-M4: updated user/developer documentation, passed the
+  complete repository gate, installed the release binary, pushed the branch,
+  and opened stacked draft PR #13 on PR #12.
 
 ## Surprises & discoveries
 
@@ -234,8 +235,19 @@ Red/green evidence:
   `VTCode-fix-acp-unresolved-tool-recovery-2.out` for formatter/Clippy and
   `-3.out` for nextest/diff check; Markdown lint is `-6.out`.
 
-The remaining work is the final full gate run, release installation, and
-stacked publication.
+The complete repository gate passed at `49c2da7fd`: formatting, workflow
+security, structured logging, governance checks, 72 ast-grep tests, all-target
+and all-feature Clippy, the workspace build, 6,582 nextest tests with 16
+configured skips, PTY/TUI harness tests, and documentation. The transcript is
+`/tmp/check-full-VTCode-fix-acp-unresolved-tool-recovery.out`.
+
+The release built from that implementation tip was installed at user level.
+The target binary, Cargo-installed binary, and `~/.local/bin/vtcode` all had
+SHA-256
+`c6c43a1b3ee32ea1f1060a42e03027e8b6c4f52741744614df1ce2f7e830432a`.
+Draft PR #13, <https://github.com/leynos/vtcode/pull/13>, is based on
+`feat/model-visible-file-versions-noop-patch-guard` (draft PR #12), preserving
+the requested three-layer stack. No implementation work remains.
 
 EP-M3 plateau: every exec-session lookup now preserves a typed missing-session
 cause. At the registry boundary, `write_stdin` maps that cause to
@@ -599,3 +611,6 @@ or wire schema is required.
 current ACP handler, archive attachment, and exec-session error paths. The plan
 turns the already falsified false-success hypothesis into write-ahead recovery,
 legacy migration, prompt-seriality, and typed stale-session milestones.
+
+2026-08-16: Closed the plan after both implementation commits, all focused and
+full gates, release installation, and publication of stacked draft PR #13.
