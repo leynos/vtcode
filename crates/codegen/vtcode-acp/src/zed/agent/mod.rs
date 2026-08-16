@@ -122,6 +122,7 @@ mod tool_config_tests;
 mod tool_execution;
 mod tool_execution_local;
 mod tool_execution_output;
+mod tool_recovery;
 mod updates;
 
 #[cfg(test)]

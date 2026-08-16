@@ -5,7 +5,7 @@ use std::future::Future;
 use std::path::Path;
 use std::time::Instant;
 use tracing::{Instrument, debug, warn};
-use vtcode_core::core::threads::ThreadBootstrap;
+use vtcode_core::core::threads::{ThreadBootstrap, messages_from_session_listing};
 use vtcode_core::hooks::SessionStartTrigger;
 use vtcode_core::llm::provider::MessageRole;
 use vtcode_core::utils::session_archive::{
@@ -19,6 +19,7 @@ use crate::zed::types::{SessionHandle, lock_poison_error};
 
 use super::{SessionHandleBootstrap, ZedAgent, safe_internal_error, safe_invalid_params_error};
 use crate::zed::agent::log_suppressed_error;
+use crate::zed::agent::tool_recovery::{RecoveryReport, repair_unresolved_tool_calls};
 
 pub(super) fn trace_storage_operation<'a, T: 'a, E: 'a, F>(
     operation: &'static str,
@@ -121,70 +122,92 @@ impl ZedAgent {
             let listing = find_session_by_identifier(identifier)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("unknown archived session '{identifier}'"))?;
-            let workspace_match = session_listing_workspace_match(&listing, workspace.path())
-                .with_context(|| format!("resolving workspace ownership for archived session '{identifier}'"))?;
-            anyhow::ensure!(
-                workspace_match == WorkspaceMatch::Matches,
-                "archived session '{identifier}' belongs to a different workspace"
-            );
-            let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
-            let thread = self
-                .thread_manager
-                .start_thread_with_identifier(listing.identifier(), ThreadBootstrap::from_listing(listing));
-            let workspace_lease = self
-                .workspace_runtime_for(workspace)
+            self.attach_thread_from_listing(session_id, identifier, workspace, listing)
                 .await
-                .context("Failed to initialize archived ACP session workspace")?;
-            let handle = self.build_session_handle(
-                thread,
-                SessionHandleBootstrap {
-                    session_id: session_id.clone(),
-                    archive: Some(archive),
-                    trigger: SessionStartTrigger::Resume,
-                    workspace_runtime: Some(workspace_lease.runtime().clone()),
-                    workspace_lease: Some(workspace_lease),
-                },
-            );
-            let registration = self
-                .sessions
-                .lock()
-                .map_err(|error| lock_poison_error("registering resumed ACP session", error))
-                .map(|mut sessions| {
-                    if let Some(existing) = sessions.get(session_id) {
-                        return Some(existing.clone());
-                    }
-                    let replaced = sessions.insert(session_id.clone(), handle.clone());
-                    debug_assert!(replaced.is_none(), "resumed session registration must not replace a handle");
-                    None
-                });
-            let existing = match registration {
-                Ok(existing) => existing,
-                Err(error) => {
-                    if let Err(cleanup_error) = handle.release_workspace_lease().await {
-                        log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
-                        warn!(
-                            operation = "archive_attach",
-                            error_category = "workspace_lease_cleanup_failed",
-                            "Failed to release ACP workspace lease after resumed session registration failed"
-                        );
-                    }
-                    return Err(error);
+        })
+        .await
+    }
+
+    pub(super) async fn attach_thread_from_listing(
+        &self,
+        session_id: &acp::SessionId,
+        identifier: &str,
+        workspace: &AcpSessionWorkspace,
+        mut listing: SessionListing,
+    ) -> anyhow::Result<SessionHandle> {
+        let workspace_match = session_listing_workspace_match(&listing, workspace.path())
+            .with_context(|| format!("resolving workspace ownership for archived session '{identifier}'"))?;
+        anyhow::ensure!(
+            workspace_match == WorkspaceMatch::Matches,
+            "archived session '{identifier}' belongs to a different workspace"
+        );
+        let recovery = repair_archived_tool_calls(&mut listing);
+        let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
+        let thread = self
+            .thread_manager
+            .start_thread_with_identifier(listing.identifier(), ThreadBootstrap::from_listing(listing));
+        let workspace_lease = self
+            .workspace_runtime_for(workspace)
+            .await
+            .context("Failed to initialize archived ACP session workspace")?;
+        let handle = self.build_session_handle(
+            thread,
+            SessionHandleBootstrap {
+                session_id: session_id.clone(),
+                archive: Some(archive),
+                trigger: SessionStartTrigger::Resume,
+                workspace_runtime: Some(workspace_lease.runtime().clone()),
+                workspace_lease: Some(workspace_lease),
+            },
+        );
+        let registration = self
+            .sessions
+            .lock()
+            .map_err(|error| lock_poison_error("registering resumed ACP session", error))
+            .map(|mut sessions| {
+                if let Some(existing) = sessions.get(session_id) {
+                    return Some(existing.clone());
                 }
-            };
-            if let Some(existing) = existing {
+                let replaced = sessions.insert(session_id.clone(), handle.clone());
+                debug_assert!(replaced.is_none(), "resumed session registration must not replace a handle");
+                None
+            });
+        let existing = match registration {
+            Ok(existing) => existing,
+            Err(error) => {
                 if let Err(cleanup_error) = handle.release_workspace_lease().await {
                     log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
                     warn!(
                         operation = "archive_attach",
                         error_category = "workspace_lease_cleanup_failed",
-                        "Failed to release ACP workspace lease for a concurrently registered resumed session"
+                        "Failed to release ACP workspace lease after resumed session registration failed"
                     );
                 }
-                return Ok(existing);
+                return Err(error);
             }
-            Ok(handle)
-        })
-        .await
+        };
+        if let Some(existing) = existing {
+            if let Err(cleanup_error) = handle.release_workspace_lease().await {
+                log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
+                warn!(
+                    operation = "archive_attach",
+                    error_category = "workspace_lease_cleanup_failed",
+                    "Failed to release ACP workspace lease for a concurrently registered resumed session"
+                );
+            }
+            return Ok(existing);
+        }
+        if recovery.repaired_calls > 0 {
+            self.checkpoint_session(&handle)
+                .await
+                .context("Failed to persist repaired ACP tool-call history")?;
+            warn!(
+                session_id = %session_id,
+                repaired_calls = recovery.repaired_calls,
+                "Repaired unresolved tool calls while loading durable ACP session"
+            );
+        }
+        Ok(handle)
     }
 
     pub(super) async fn attach_or_get_session(
@@ -494,3 +517,14 @@ pub(super) fn session_listing_workspace_match(
         .ok_or_else(|| anyhow::anyhow!("archived session '{}' has no stored workspace path", listing.identifier()))?;
     canonical_workspace_match(&stored_workspace, requested_workspace)
 }
+
+pub(super) fn repair_archived_tool_calls(listing: &mut SessionListing) -> RecoveryReport {
+    let mut messages = messages_from_session_listing(listing);
+    let report = repair_unresolved_tool_calls(&mut messages);
+    if report.repaired_calls > 0 {
+        listing.snapshot.total_messages = messages.len();
+        listing.snapshot.messages = messages.iter().map(SessionMessage::from).collect();
+    }
+    report
+}
+// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/session_state/archive.rs' for per-hunk detail, 'weave check' to verify your resolution

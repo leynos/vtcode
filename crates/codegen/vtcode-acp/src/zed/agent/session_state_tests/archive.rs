@@ -380,3 +380,84 @@ fn session_list_cursor_advances_to_the_next_page() {
     assert_eq!(second.sessions.len(), 1);
     assert!(second.next_cursor.is_none());
 }
+
+use super::super::archive::repair_archived_tool_calls;
+use vtcode_core::core::threads::messages_from_session_listing;
+use vtcode_core::llm::provider::ToolCall;
+
+#[test]
+fn legacy_archive_repair_closes_tool_call_before_later_user_message() {
+    let temp = TempDir::new().unwrap();
+    let mut listing = archived_listing("legacy-unresolved", temp.path(), "continue");
+    let unresolved = Message::assistant_with_tools(
+        String::new(),
+        vec![ToolCall::function(
+            "legacy-call".to_string(),
+            "apply_patch".to_string(),
+            "{}".to_string(),
+        )],
+    );
+    listing.snapshot.messages = vec![
+        SessionMessage::from(&unresolved),
+        SessionMessage::from(&Message::user("continue".to_string())),
+    ];
+
+    let report = repair_archived_tool_calls(&mut listing);
+    let repaired = messages_from_session_listing(&listing);
+
+    assert_eq!(report.repaired_calls, 1);
+    assert_eq!(repaired.len(), 3);
+    assert_eq!(repaired[0].role, MessageRole::Assistant);
+    assert_eq!(repaired[1].role, MessageRole::Tool);
+    assert_eq!(repaired[1].tool_call_id.as_deref(), Some("legacy-call"));
+    assert!(repaired[1].content.as_text().contains("\"replayed\":false"));
+    assert_eq!(repaired[2].role, MessageRole::User);
+}
+
+#[tokio::test]
+async fn attaching_legacy_archive_repairs_without_replaying_mutating_call() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let temp = TempDir::new().unwrap();
+    let target = temp.path().join("must-not-change.txt");
+    fs::write(&target, "original\n").unwrap();
+    let patch =
+        format!("*** Begin Patch\n*** Update File: {}\n@@\n-original\n+replayed\n*** End Patch\n", target.display());
+    let unresolved = Message::assistant_with_tools(
+        String::new(),
+        vec![ToolCall::function(
+            "legacy-apply-patch".to_string(),
+            "apply_patch".to_string(),
+            serde_json::json!({"patch": patch}).to_string(),
+        )],
+    );
+    let mut listing = archived_listing("legacy-mutating", temp.path(), "edit the file");
+    listing.snapshot.messages = vec![SessionMessage::from(&unresolved)];
+    listing.snapshot.total_messages = 1;
+    let archive_path = listing.path.clone();
+    let agent = build_agent(temp.path()).await;
+
+    let handle = agent
+        .attach_thread_from_listing(
+            &acp::SessionId::new("loaded-legacy-mutating"),
+            "legacy-mutating",
+            &AcpSessionWorkspace::from_client_cwd(temp.path()).await.unwrap(),
+            listing,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(fs::read_to_string(&target).unwrap(), "original\n");
+    let messages = handle.data.lock().unwrap().thread.messages();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].role, MessageRole::Assistant);
+    assert_eq!(messages[1].role, MessageRole::Tool);
+    let recovery = messages[1].content.as_text();
+    assert!(recovery.contains("\"replayed\":false"));
+    assert!(recovery.contains("Verify the current workspace state"));
+    assert!(recovery.contains("resubmit the tool call only if"));
+
+    let persisted: SessionSnapshot = serde_json::from_str(&fs::read_to_string(archive_path).unwrap()).unwrap();
+    assert_eq!(persisted.messages.len(), 2);
+    assert_eq!(persisted.messages[1].role, MessageRole::Tool);
+}

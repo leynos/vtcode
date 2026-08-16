@@ -1,6 +1,7 @@
 //! Coordinates ACP prompt preparation, hooks, compaction, and provider-turn execution.
 use super::super::log_suppressed_error;
 use super::super::tool_config::SessionToolDefinitionRequest;
+use super::super::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
 use super::provider::IncompleteProviderTurn;
 use super::*;
 
@@ -218,34 +219,20 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
     } else {
         Message::assistant_with_tools(assistant_message.to_string(), tool_calls.to_vec())
     };
-    push_session_message(agent, session, session_id, assistant_tool_message)?;
-    persist_session_checkpoint(agent, session, "assistant_tool_calls").await;
+    let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
+    drop(stage_thread_tool_calls(&thread, assistant_tool_message));
+    persist_session_checkpoint(agent, session, "assistant_tool_calls_write_ahead").await;
 
     let tool_results = match agent.execute_tool_calls(session, session_id, tool_calls).await {
         Ok(results) => results,
         Err(error) => {
             warn!(%error, "Tool execution failed");
-            for call in tool_calls {
-                push_session_message(
-                    agent,
-                    session,
-                    session_id,
-                    Message::tool_response(call.id.clone(), format!("Tool execution was interrupted: {error}")),
-                )?;
-            }
             persist_session_checkpoint(agent, session, "interrupted_tool_results").await;
             return Err(error);
         }
     };
 
-    for result in tool_results {
-        push_session_message(
-            agent,
-            session,
-            session_id,
-            Message::tool_response(result.tool_call_id, result.llm_response),
-        )?;
-    }
+    let _finalized = replace_thread_tool_results(&thread, &tool_results);
     persist_session_checkpoint(agent, session, "tool_results").await;
 
     Ok(if session.cancellation.is_cancelled() {
