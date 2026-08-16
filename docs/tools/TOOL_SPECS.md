@@ -71,6 +71,12 @@ Example:
 {"session_id":42,"chars":"q"}
 ```
 
+Session identifiers are process-local and expire when the command finishes,
+the session is closed, or VT Code restarts. A stale identifier returns a
+non-retryable `ResourceNotFound` result with `reason: "stale_exec_session"`.
+Start a new `exec_command` and use its returned session ID; VT Code does not
+claim that the failed lookup could have made partial changes.
+
 ### `apply_patch`
 
 Applies a freeform patch through VT Code's workspace-boundary and edit-safety
