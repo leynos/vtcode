@@ -208,7 +208,9 @@ impl ToolExecutionError {
     pub fn with_tool_call_context(mut self, tool_name: &str, args: &Value) -> Self {
         self.tool_name = tool_name.to_string();
 
-        if tool_name == crate::config::constants::tools::APPLY_PATCH {
+        if tool_name == crate::config::constants::tools::APPLY_PATCH
+            || (tool_name == crate::config::constants::tools::WRITE_STDIN && self.is_stale_exec_session())
+        {
             return self;
         }
 
@@ -218,6 +220,14 @@ impl ToolExecutionError {
         }
 
         self
+    }
+
+    fn is_stale_exec_session(&self) -> bool {
+        self.details
+            .as_ref()
+            .and_then(|details| details.get("reason"))
+            .and_then(Value::as_str)
+            == Some("stale_exec_session")
     }
 
     #[must_use]
@@ -419,6 +429,29 @@ fn format_retry_delay(delay_ms: u64) -> String {
 }
 
 fn apply_explicit_error_state(mut error: ToolExecutionError, tool_name: &str, source: &Error) -> ToolExecutionError {
+    if tool_name == crate::config::constants::tools::WRITE_STDIN
+        && let Some(missing) = source.downcast_ref::<crate::tools::exec_session::ExecSessionNotFound>()
+    {
+        error.category = ErrorCategory::ResourceNotFound;
+        error.error_type = ToolErrorType::ResourceNotFound;
+        error.retryable = false;
+        error.is_recoverable = true;
+        error.recovery_suggestions = vec![Cow::Borrowed(
+            "Start a new exec_command and use the new active session ID",
+        )];
+        error.retry_delay_ms = None;
+        error.retry_after_ms = None;
+        error.circuit_breaker_impact = false;
+        error.partial_state_possible = false;
+        error.rollback_performed = false;
+        error.details = Some(json!({
+            "reason": "stale_exec_session",
+            "session_id": missing.session_id,
+            "next_action": "Start a new exec_command and use the returned session ID."
+        }));
+        return error;
+    }
+
     if tool_name != crate::config::constants::tools::APPLY_PATCH {
         return error;
     }
@@ -593,6 +626,54 @@ mod tests {
 
         assert!(error.partial_state_possible);
         assert!(!error.rollback_performed);
+    }
+
+    #[test]
+    fn stale_write_stdin_session_has_precise_non_mutating_recovery() {
+        let source =
+            Error::new(crate::tools::exec_session::ExecSessionNotFound { session_id: "run-stale".to_string() });
+
+        let error = ToolExecutionError::from_anyhow(
+            crate::config::constants::tools::WRITE_STDIN,
+            &source,
+            0,
+            false,
+            false,
+            Some("tool_registry"),
+        )
+        .with_tool_call_context(
+            crate::config::constants::tools::WRITE_STDIN,
+            &serde_json::json!({"session_id": "run-stale", "chars": ""}),
+        );
+
+        assert_eq!(error.category, ErrorCategory::ResourceNotFound);
+        assert_eq!(error.error_type, ToolErrorType::ResourceNotFound);
+        assert!(!error.retryable);
+        assert!(error.is_recoverable);
+        assert!(!error.circuit_breaker_impact);
+        assert!(!error.partial_state_possible);
+        assert!(!error.rollback_performed);
+        assert_eq!(error.retry_delay_ms, None);
+        assert_eq!(error.retry_after_ms, None);
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|details| details.get("reason"))
+                .and_then(Value::as_str),
+            Some("stale_exec_session")
+        );
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|details| details.get("session_id"))
+                .and_then(Value::as_str),
+            Some("run-stale")
+        );
+        let message = error.user_message();
+        assert!(!message.contains("Partial changes may still exist"));
+        assert!(message.contains("Start a new exec_command"));
     }
 
     #[test]
