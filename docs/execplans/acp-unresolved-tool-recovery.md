@@ -120,8 +120,9 @@ from both lower layers.
 - [x] (2026-08-16) EP-M2: implemented ACP write-ahead terminalisation,
   idempotent legacy repair during archive attachment, and guard-first prompt
   admission. Focused unit, property, archive, and ACP wire tests pass.
-- [ ] EP-M3: implement typed stale `write_stdin` classification and focused
-  error tests.
+- [x] (2026-08-16) EP-M3: added typed missing exec-session errors and mapped
+  stale `write_stdin` write, poll, and wait calls to non-retryable,
+  non-circuit-breaking `ResourceNotFound` results without partial-state claims.
 - [ ] EP-M4: update user/developer documentation, run all commit gates, install
   the release binary, push the branch, and create the stacked draft PR.
 
@@ -233,8 +234,31 @@ Red/green evidence:
   `VTCode-fix-acp-unresolved-tool-recovery-2.out` for formatter/Clippy and
   `-3.out` for nextest/diff check; Markdown lint is `-6.out`.
 
-The remaining work is EP-M3 stale exec-session classification, documentation,
-full gates, release installation, and stacked publication.
+The remaining work is the final full gate run, release installation, and
+stacked publication.
+
+EP-M3 plateau: every exec-session lookup now preserves a typed missing-session
+cause. At the registry boundary, `write_stdin` maps that cause to
+`ResourceNotFound`, disables retries and circuit-breaker impact, leaves partial
+state false, and provides a structured `stale_exec_session` reason plus the
+next action to start a new `exec_command`. The same contract holds for write,
+poll, and wait dispatch, while ordinary command errors retain their existing
+partial-state semantics.
+
+Focused evidence:
+
+- `/tmp/test-stale-exec-vtcode-fix-acp-unresolved-tool-recovery-3.out`
+  passed the typed-cause, structured-error, and three-mode registry tests.
+- `/tmp/fmt-stale-exec-vtcode-fix-acp-unresolved-tool-recovery.out` is clean.
+- Commit gates passed: all-target `vtcode-core` Clippy, 3,330 core tests with
+  8 configured skips, formatting, and diff checks. Logs are
+  `/tmp/clippy-vtcode-core-VTCode-fix-acp-unresolved-tool-recovery.out` and
+  `/tmp/nextest-vtcode-core-VTCode-fix-acp-unresolved-tool-recovery.out`.
+- The ExecPlan passes Markdownlint. `TOOL_SPECS.md` and `zed-acp.md` retain
+  their unchanged baselines of 21 and 136 legacy findings respectively; a
+  HEAD/current diagnostic comparison proves this diff adds none. Evidence is
+  in `/tmp/markdownlint-baseline-tools-VTCode-fix-acp-unresolved-tool-recovery.out`
+  and `/tmp/markdownlint-baseline-zed-VTCode-fix-acp-unresolved-tool-recovery.out`.
 
 ## Context and orientation
 

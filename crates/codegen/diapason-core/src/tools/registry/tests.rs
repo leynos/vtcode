@@ -25,6 +25,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 
+use vtcode_commons::{ErrorCategory, canonicalize};
+
+//! Tool registry policy, dispatch, and session behaviour against isolated fixtures.
+};
+
 #[path = "../../../tests/support/config_defaults.rs"]
 mod config_defaults;
 
@@ -32,7 +37,9 @@ mod config_defaults;
 mod pipe_session;
 
 mod no_op_ladder;
+
 mod patch_failure_bound;
+
 mod patch_safety;
 
 const CUSTOM_TOOL_NAME: &str = "custom_test_tool";
@@ -890,6 +897,49 @@ async fn active_exec_continuations_bypass_identical_call_loop_detection(
         third.get("exit_code").is_some() || third.get("next_continue_args").is_some(),
         "continuation should either remain active or complete cleanly"
     );
+
+    Ok(())
+}
+
+#[rstest]
+#[tokio::test]
+async fn stale_write_stdin_modes_are_resource_not_found_without_partial_state(
+    #[future] command_session_fixture: Result<CommandSessionFixture>,
+) -> Result<()> {
+    let fixture_res = command_session_fixture.await;
+    let fixture = fixture_res?;
+    let registry = &fixture.registry;
+    registry.allow_all_tools().await?;
+    let modes = [
+        json!({"session_id": "run-stale", "chars": "input"}),
+        json!({"action": "poll", "session_id": "run-stale"}),
+        json!({"action": "wait", "session_id": "run-stale", "yield_time_ms": 1}),
+    ];
+
+    for args in modes {
+        let policy = ExecutionPolicySnapshot::default()
+            .with_prevalidated(true)
+            .with_safety_prevalidated(true);
+        let outcome = registry
+            .execute_public_tool_request(ToolExecutionRequest::new(tools::WRITE_STDIN, args).with_policy(policy))
+            .await;
+        let error = outcome.error.expect("stale continuation should return a structured error");
+
+        assert_eq!(error.category, ErrorCategory::ResourceNotFound);
+        assert_eq!(error.error_type, ToolErrorType::ResourceNotFound);
+        assert!(!error.retryable);
+        assert!(!error.circuit_breaker_impact);
+        assert!(!error.partial_state_possible);
+        assert!(!error.user_message().contains("Partial changes may still exist"));
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|details| details.get("reason"))
+                .and_then(Value::as_str),
+            Some("stale_exec_session")
+        );
+    }
 
     Ok(())
 }
@@ -2151,7 +2201,7 @@ async fn timeout_errors_are_structured_and_track_failures() -> Result<()> {
     let error = outcome.error.expect("timeout outcome should include error");
     assert_eq!(error.tool_name, SLOW_TIMEOUT_TOOL_NAME);
     assert!(matches!(error.error_type, ToolErrorType::Timeout));
-    assert_eq!(error.category, diapason_commons::ErrorCategory::Timeout);
+    assert_eq!(error.category, ErrorCategory::Timeout);
     assert!(error.is_recoverable);
     assert!(error.retry_after_ms.is_some());
     assert!(error.message.contains("exceeded the standard timeout ceiling"));
@@ -2209,3 +2259,4 @@ async fn code_search_executes_with_policy_capped_max_results() -> Result<()> {
     assert_eq!(response["results"].as_array().map(Vec::len), Some(1));
     Ok(())
 }
+// weave: run 'weave explain crates/codegen/diapason-core/src/tools/registry/tests.rs' for per-hunk detail, 'weave check' to verify your resolution
