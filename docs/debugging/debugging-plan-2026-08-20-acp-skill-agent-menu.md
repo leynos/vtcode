@@ -15,7 +15,7 @@ agent.
 ## Problem Statement
 
 ACP agents receive neither the model-visible skill catalogue discovered from
-`~/.codex/skills` nor a catalogue of the named sub-agents discovered from
+`~/.agents/skills` nor a catalogue of the named sub-agents discovered from
 `~/.claude/agents`. The expected behaviour is that the system prompt names
 eligible skills and that the collaboration tool tells the model which concrete
 agent types it may select. The missing routing context makes agents rediscover
@@ -62,8 +62,8 @@ skills section cannot run for ACP.
 `generate_system_instruction_with_config`, whose implementation passes no
 prompt context.
 
-**Prediction**: If this hypothesis holds, an eligible skill placed in an
-isolated Codex home appears when composing with a loaded `PromptContext`, but
+**Prediction**: If this hypothesis holds, an eligible skill from the documented
+Agent Skills roots appears when composing with a loaded `PromptContext`, but
 does not appear through ACP's compatibility builder for the same workspace and
 configuration.
 
@@ -153,6 +153,11 @@ ______________________________________________________________________
 
 ### H1: Not falsified
 
+The active loader follows the documented discovery order: ancestor
+`.agents/skills`, user `~/.agents/skills`, admin `/etc/codex/skills`, and the
+bundled system cache. Its `codex_home` field selects that system cache; it does
+not make `~/.codex/skills` the user catalogue.
+
 The ACP entry points in `crates/codegen/vtcode-acp/src/zed/session.rs` and
 `crates/codegen/vtcode-acp/src/zed/agent/mod.rs` call
 `generate_system_instruction_with_config`. That compatibility path calls
@@ -213,8 +218,8 @@ call it from both ordinary and ACP session setup. ACP should:
    specs, filtering out primary-only definitions;
 3. use the same full, summarized, and token-budgeted sub-agent rendering as the
    unified runner; and
-4. add an ACP construction regression proving an isolated Codex skill and
-   isolated Claude agent both reach the provider-facing system prompt.
+4. add an ACP construction regression proving that an isolated user skill and
+   Claude agent both reach the provider-facing system prompt.
 
 Keeping the generic `agent_type` schema is compatible with the existing
 unified runner if the prompt catalogue is restored. Enriching it with dynamic
