@@ -1058,7 +1058,6 @@ mod tests {
             CommandsConfig::default(),
             &[],
             vtcode_config::TimeoutsConfig::default(),
-            String::new(),
             Some("Zed".to_string()),
             primary_agents,
             false,

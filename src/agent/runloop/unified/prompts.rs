@@ -7,6 +7,7 @@ use vtcode_core::prompts::system::{
     SystemPromptReport, compose_system_instruction_with_report, default_lightweight_prompt, default_system_prompt,
     minimal_system_prompt, specialized_system_prompt,
 };
+use vtcode_core::prompts::{SubagentPromptEntry, render_subagent_section};
 
 fn fallback_base_system_prompt(vt_cfg: Option<&vtcode_core::config::VTCodeConfig>) -> &'static str {
     match vt_cfg.map(|cfg| cfg.agent.system_prompt_mode) {
@@ -20,10 +21,10 @@ fn fallback_base_system_prompt(vt_cfg: Option<&vtcode_core::config::VTCodeConfig
 pub(crate) async fn read_system_prompt(
     workspace: &Path,
     session_addendum: Option<&str>,
-    available_subagents: &[(String, String, bool)],
+    available_subagents: &[SubagentPromptEntry],
 ) -> (String, SystemPromptReport) {
     let mut prompt_context = PromptContext::from_workspace_tools(workspace, std::iter::empty::<String>());
-    prompt_context.load_available_skills();
+    prompt_context.load_available_skills_async().await;
 
     let vt_cfg = ConfigManager::load_from_workspace(workspace)
         .ok()
@@ -63,17 +64,11 @@ pub(crate) async fn read_system_prompt(
     );
 
     if !available_subagents.is_empty() {
-        let subagent_chars = estimate_subagent_section_chars(available_subagents);
         let max_chars = (remaining_budget * 4) as usize;
-        let section = if available_subagents.len() > 3 {
-            build_summarized_subagent_section(available_subagents)
-        } else if subagent_chars > max_chars {
-            budget_subagent_section(available_subagents, max_chars)
-        } else {
-            build_full_subagent_section(available_subagents)
-        };
-        prompt.push_str("\n\n");
-        prompt.push_str(&section);
+        if let Some(section) = render_subagent_section(available_subagents, max_chars) {
+            prompt.push_str("\n\n");
+            prompt.push_str(&section);
+        }
     }
 
     let token_estimate = prompt.len().div_ceil(4) as u64;
@@ -90,74 +85,6 @@ fn budget_addendum(addendum: &str, remaining_budget_tokens: u64) -> String {
     let max_chars = (remaining_budget_tokens * 4) as usize;
     let truncated: String = addendum.chars().take(max_chars).collect();
     format!("{truncated}...")
-}
-
-fn estimate_subagent_section_chars(subagents: &[(String, String, bool)]) -> usize {
-    let header = "## Subagents\nDelegated child agents available in this session. Treat the main thread as the controller: keep the next blocking step local, and delegate only bounded independent work. Read-only agents may be used proactively when their description matches; write-capable agents require explicit delegation.\nUsers can explicitly target one with natural language or an `@agent-<name>` mention.\nIf the user explicitly selects a subagent for the task, delegate with `spawn_agent` to that subagent instead of handling the task on the main thread. Join child results back into the parent flow before you depend on them.\n";
-    let entries: usize = subagents
-        .iter()
-        .map(|(name, desc, read_only)| {
-            let suffix = if *read_only {
-                " Read-only."
-            } else {
-                " Explicit delegation only."
-            };
-            name.len() + desc.len() + suffix.len() + 3 // "- " + "\n"
-        })
-        .sum();
-    header.len() + entries
-}
-
-fn build_full_subagent_section(subagents: &[(String, String, bool)]) -> String {
-    let mut lines = Vec::with_capacity(4 + subagents.len());
-    lines.push("## Subagents".to_string());
-    lines.push("Delegated child agents available in this session. Treat the main thread as the controller: keep the next blocking step local, and delegate only bounded independent work. Read-only agents may be used proactively when their description matches; write-capable agents require explicit delegation.".to_string());
-    lines.push("Users can explicitly target one with natural language or an `@agent-<name>` mention.".to_string());
-    lines.push("If the user explicitly selects a subagent for the task, delegate with `spawn_agent` to that subagent instead of handling the task on the main thread. Join child results back into the parent flow before you depend on them.".to_string());
-    for (name, description, read_only) in subagents {
-        let suffix = if *read_only {
-            " Read-only."
-        } else {
-            " Explicit delegation only."
-        };
-        lines.push(format!("- {name}: {description}{suffix}"));
-    }
-    lines.join("\n")
-}
-
-fn build_summarized_subagent_section(subagents: &[(String, String, bool)]) -> String {
-    let count = subagents.len();
-    let read_only = subagents.iter().filter(|(_, _, ro)| *ro).count();
-    let writable = count - read_only;
-    format!(
-        "## Subagents\n{count} subagents available ({} read-only, {} writable). Use `/agent` to inspect and `spawn_agent` to delegate.",
-        read_only, writable
-    )
-}
-
-fn budget_subagent_section(subagents: &[(String, String, bool)], max_chars: usize) -> String {
-    let mut lines = Vec::with_capacity(4 + subagents.len());
-    lines.push("## Subagents".to_string());
-    lines.push("Delegated child agents available in this session. Treat the main thread as the controller: keep the next blocking step local, and delegate only bounded independent work. Read-only agents may be used proactively when their description matches; write-capable agents require explicit delegation.".to_string());
-    lines.push("Users can explicitly target one with natural language or an `@agent-<name>` mention.".to_string());
-    lines.push("If the user explicitly selects a subagent for the task, delegate with `spawn_agent` to that subagent instead of handling the task on the main thread. Join child results back into the parent flow before you depend on them.".to_string());
-    let mut remaining = max_chars.saturating_sub(lines.join("\n").len());
-    for (name, description, read_only) in subagents {
-        let suffix = if *read_only {
-            " Read-only."
-        } else {
-            " Explicit delegation only."
-        };
-        let entry = format!("- {name}: {description}{suffix}");
-        let entry_len = entry.len();
-        if entry_len > remaining {
-            lines.push(format!("- ... ({} more agents truncated)", subagents.len() - lines.len() + 4));
-            break;
-        }
-        lines.push(entry);
-        remaining = remaining.saturating_sub(entry_len + 1);
-    }
-    lines.join("\n")
 }
 
 #[cfg(test)]
@@ -202,7 +129,11 @@ mod tests {
         let (prompt, _report) = read_system_prompt(
             workspace.path(),
             None,
-            &[("explorer".to_string(), "Read-only repo explorer".to_string(), true)],
+            &[SubagentPromptEntry {
+                name: "explorer".to_string(),
+                description: "Read-only repo explorer".to_string(),
+                read_only: true,
+            }],
         )
         .await;
 
@@ -214,8 +145,12 @@ mod tests {
     #[tokio::test]
     async fn test_read_system_prompt_summarizes_large_subagent_list() {
         let workspace = tempfile::TempDir::new().expect("workspace");
-        let subagents: Vec<(String, String, bool)> = (0..5)
-            .map(|i| (format!("agent-{i}"), format!("Description {i}"), i % 2 == 0))
+        let subagents: Vec<SubagentPromptEntry> = (0..5)
+            .map(|i| SubagentPromptEntry {
+                name: format!("agent-{i}"),
+                description: format!("Description {i}"),
+                read_only: i % 2 == 0,
+            })
             .collect();
 
         let (prompt, _report) = read_system_prompt(workspace.path(), None, &subagents).await;
@@ -223,6 +158,7 @@ mod tests {
         assert!(prompt.contains("5 subagents available"));
         assert!(prompt.contains("read-only"));
         assert!(prompt.contains("writable"));
+        assert!(prompt.contains("`agent-0`"));
         assert!(!prompt.contains("Description 0"));
     }
 
@@ -230,8 +166,16 @@ mod tests {
     async fn test_read_system_prompt_lists_small_subagent_list_in_full() {
         let workspace = tempfile::TempDir::new().expect("workspace");
         let subagents = vec![
-            ("explorer".to_string(), "Read-only repo explorer".to_string(), true),
-            ("builder".to_string(), "Write-capable implementation agent".to_string(), false),
+            SubagentPromptEntry {
+                name: "explorer".to_string(),
+                description: "Read-only repo explorer".to_string(),
+                read_only: true,
+            },
+            SubagentPromptEntry {
+                name: "builder".to_string(),
+                description: "Write-capable implementation agent".to_string(),
+                read_only: false,
+            },
         ];
 
         let (prompt, _report) = read_system_prompt(workspace.path(), None, &subagents).await;

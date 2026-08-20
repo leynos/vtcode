@@ -74,7 +74,6 @@ async fn build_agent_with_config(
         CommandsConfig::default(),
         &[],
         vtcode_config::TimeoutsConfig::default(),
-        String::new(),
         Some("Zed".to_string()),
         primary_agents,
         false,
@@ -115,12 +114,20 @@ async fn tool_loop_limit_uses_tools_config() {
 #[tokio::test]
 async fn enabled_subagents_are_exposed_to_acp_build_agents() {
     let temp = TempDir::new().unwrap();
+    let agent_dir = temp.path().join(".claude/agents");
+    fs::create_dir_all(&agent_dir).expect("create agent directory");
+    fs::write(
+        agent_dir.join("acp-controller-marker.md"),
+        "---\nname: acp-controller-marker\ndescription: ACP controller marker\nmode: subagent\npermissions:\n  default: deny\n---\nInspect without editing.\n",
+    )
+    .expect("write agent");
     let mut vt_cfg = VTCodeConfig::default();
     vt_cfg.subagents.enabled = true;
     vt_cfg.subagents.background.auto_restore = false;
     let agent = build_agent_with_config(temp.path(), ToolsConfig::default(), Some(&vt_cfg)).await;
 
     assert!(agent.local_tool_registry.has_subagent_controller());
+    assert!(agent.system_prompt.contains("`acp-controller-marker`"));
     let names = definition_names(agent.tool_definitions(true, &[], "build").expect("build agent tools"));
     assert!(names.iter().any(|name| name == tools::AGENT));
 }
@@ -131,6 +138,7 @@ async fn unavailable_subagent_controller_keeps_agent_tool_hidden() {
     let agent = build_agent(temp.path()).await;
 
     assert!(!agent.local_tool_registry.has_subagent_controller());
+    assert!(!agent.system_prompt.contains("## Subagents"));
     let names = definition_names(agent.tool_definitions(true, &[], "build").expect("build agent tools"));
     assert!(!names.iter().any(|name| name == tools::AGENT));
 }

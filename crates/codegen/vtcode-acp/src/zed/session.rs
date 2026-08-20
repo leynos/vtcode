@@ -17,7 +17,6 @@ use vtcode_core::config::VTCodeConfig;
 use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
 use vtcode_core::hooks::SessionEndReason;
 use vtcode_core::llm::factory::register_custom_providers;
-use vtcode_core::prompts::system::generate_system_instruction_with_config;
 
 use super::constants::{
     WORKSPACE_TRUST_ALREADY_SATISFIED_LOG, WORKSPACE_TRUST_DOWNGRADE_SKIPPED_LOG, WORKSPACE_TRUST_UPGRADE_LOG,
@@ -61,12 +60,6 @@ pub async fn run_acp_agent(
         }
     }
 
-    let content = generate_system_instruction_with_config(&Default::default(), &config.workspace, Some(vt_cfg)).await;
-    let system_prompt = if let Some(text) = content.parts.first().and_then(|p| p.as_text()) {
-        text.to_string()
-    } else {
-        String::new()
-    };
     let tools_config = vt_cfg.tools.clone();
     let commands_config = vt_cfg.commands.clone();
     let custom_providers = vt_cfg.custom_providers.clone();
@@ -95,7 +88,6 @@ pub async fn run_acp_agent(
                 commands_config_clone,
                 &custom_providers,
                 provider_timeouts,
-                system_prompt,
                 title_clone,
                 primary_agents,
                 skip_confirmations,

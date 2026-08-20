@@ -297,10 +297,7 @@ pub(crate) async fn initialize_session(
             .await
             .into_iter()
             .filter(|spec| spec.is_subagent())
-            .map(|spec| {
-                let read_only = spec.is_read_only();
-                (spec.name, spec.description, read_only)
-            })
+            .map(|spec| vtcode_core::prompts::SubagentPromptEntry::from(&spec))
             .collect::<Vec<_>>()
     } else {
         Vec::new()

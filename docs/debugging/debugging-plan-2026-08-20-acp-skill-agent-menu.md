@@ -227,6 +227,30 @@ enum metadata is a possible follow-up, but duplicating the catalogue in both
 the schema and prompt would create two independently budgeted sources of truth.
 The shared prompt route is therefore the smaller and more congruent first fix.
 
+## Implementation Outcome
+
+The repair follows that boundary. The subagent catalogue renderer now lives in
+`vtcode-core` and is shared by ordinary and ACP sessions. Large catalogues keep
+every runnable name while omitting descriptions, rather than returning only a
+count and asking the model to use an unavailable `/agent` inspection command.
+
+ACP now assembles its system prompt after its local tool registry, MCP tools,
+and subagent controller are ready. It loads skill metadata through
+`PromptContext::load_available_skills_async`, supplies the actual model-visible
+tool names, and derives the subagent list from the controller's effective
+specifications. Both initial and client-selected workspace runtimes use this
+path. A disabled or provider-capped-out controller produces no subagent
+catalogue.
+
+Focused regression coverage proves that:
+
+- the shared renderer preserves full small catalogues, every name in large
+  catalogues, access posture, budget truncation, and empty omission;
+- an ACP provider-facing system prompt contains a workspace skill catalogue
+  and discovered Claude subagent name; and
+- the fully constructed ACP agent advertises the `agent` tool and includes an
+  effective-controller agent in its system prompt.
+
 ## Notes for Executing Agent
 
 Work read-only unless a test seam is strictly necessary. Do not edit production

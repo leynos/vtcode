@@ -90,6 +90,24 @@ MCP sandboxing, and subagents. Multiple sessions on one ACP connection may use
 different workspaces; their tool registries and mutable harness state are kept
 separate.
 
+### Skills and delegated agents
+
+ACP composes the same model-visible capability catalogues as an ordinary VT
+Code session. Skill discovery includes the nearest workspace
+`.agents/skills/` directories, the user catalogue at `~/.agents/skills/`,
+administrator skills, and enabled bundled skills. The prompt contains the lean
+skill index and directs the model to `list_skills` when the complete catalogue
+does not fit.
+
+When subagents are enabled, ACP derives its subagent catalogue from the active
+session controller after provider concurrency limits and plugin discovery have
+been applied. Small catalogues include names and descriptions; larger ones
+retain every runnable name so the model can pass a valid `agent_type` to the
+`agent` tool. Project and user Claude agent definitions in `.claude/agents/`
+and `~/.claude/agents/` participate in the normal subagent discovery order.
+ACP omits the catalogue when no controller is active rather than advertising
+agents that cannot run.
+
 ### MCP providers in ACP sessions
 
 ACP sessions initialise the enabled providers from the effective session MCP configuration before

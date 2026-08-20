@@ -2200,7 +2200,6 @@ mod tests {
             CommandsConfig::default(),
             &[],
             vtcode_config::TimeoutsConfig::default(),
-            String::new(),
             Some("Wire test".to_string()),
             primary_agents,
             true,

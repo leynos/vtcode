@@ -8,6 +8,7 @@ pub(crate) mod constants;
 mod helpers;
 mod provider_runtime;
 mod session;
+mod system_prompt;
 mod types;
 
 use session::run_acp_agent;
@@ -114,7 +115,6 @@ mod tests {
             CommandsConfig::default(),
             &[],
             TimeoutsConfig::default(),
-            String::new(),
             Some("Zed".to_string()),
             primary_agents,
             false,

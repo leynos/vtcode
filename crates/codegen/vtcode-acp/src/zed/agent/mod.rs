@@ -18,7 +18,6 @@ use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsCon
 use vtcode_core::core::threads::ThreadManager;
 use vtcode_core::mcp::plugin_providers::discover_plugin_mcp_providers;
 use vtcode_core::mcp::{McpClient, McpSandboxContext, validate_mcp_config};
-use vtcode_core::prompts::system::generate_system_instruction_with_config;
 use vtcode_core::subagents::{SubagentController, SubagentControllerConfig};
 use vtcode_core::tools::file_ops::FileOpsTool;
 use vtcode_core::tools::grep_file::GrepSearchManager;
@@ -27,6 +26,7 @@ use vtcode_core::tools::registry::ToolRegistry as CoreToolRegistry;
 use vtcode_core::tools::registry::sandbox_policy_from_runtime_config;
 
 use super::helpers::PrimaryAgentCatalog;
+use super::system_prompt::build_acp_system_prompt;
 use super::types::SessionHandle;
 
 mod compaction;
@@ -254,12 +254,6 @@ impl SessionWorkspaceRuntime {
     ) -> anyhow::Result<Self> {
         let mut session_config = base_config.clone();
         session_config.workspace = workspace_root.clone();
-        let content = generate_system_instruction_with_config(&Default::default(), &workspace_root, vt_cfg).await;
-        let system_prompt = content
-            .parts
-            .first()
-            .and_then(|part| part.as_text())
-            .map_or_else(String::new, ToString::to_string);
         let discovered = discover_subagents(&SubagentDiscoveryInput::new(workspace_root.clone()))?;
         let default_primary_agent = vt_cfg.map_or("duck", |config| config.default_primary_agent.as_str());
         let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, default_primary_agent);
@@ -294,6 +288,15 @@ impl SessionWorkspaceRuntime {
                 .with_tool_profile(runtime_config.tools_config.profile),
             )
             .await;
+        let available_tools = local_definitions
+            .iter()
+            .map(|definition| definition.function_name().to_string())
+            .collect::<Vec<_>>();
+        let active_subagents = match local_tool_registry.subagent_controller() {
+            Some(controller) => controller.effective_specs().await,
+            None => Vec::new(),
+        };
+        let system_prompt = build_acp_system_prompt(&workspace_root, vt_cfg, &available_tools, &active_subagents).await;
         let acp_tool_registry = Arc::new(AcpToolRegistry::new(
             &workspace_root,
             runtime_config.zed_config.tools.read_file,
@@ -331,7 +334,6 @@ impl ZedAgent {
         commands_config: CommandsConfig,
         custom_providers: &[CustomProviderConfig],
         provider_timeouts: TimeoutsConfig,
-        system_prompt: String,
         title: Option<String>,
         primary_agents: PrimaryAgentCatalog,
         skip_confirmations: bool,
@@ -370,6 +372,15 @@ impl ZedAgent {
                 .with_tool_profile(tools_config.profile),
             )
             .await;
+        let available_tools = local_definitions
+            .iter()
+            .map(|definition| definition.function_name().to_string())
+            .collect::<Vec<_>>();
+        let active_subagents = match core_tool_registry.subagent_controller() {
+            Some(controller) => controller.effective_specs().await,
+            None => Vec::new(),
+        };
+        let system_prompt = build_acp_system_prompt(&workspace_root, vt_cfg, &available_tools, &active_subagents).await;
         let acp_tool_registry = Arc::new(AcpToolRegistry::new(
             workspace_root.as_path(),
             read_file_enabled,

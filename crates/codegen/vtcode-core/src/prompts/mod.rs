@@ -17,6 +17,7 @@ pub mod runtime_contract;
 pub(crate) mod runtime_guidance;
 pub mod sections;
 pub mod static_prompts;
+pub mod subagents;
 pub mod system;
 pub mod system_prompt_cache;
 pub mod templates;
@@ -41,6 +42,7 @@ pub use static_prompts::{
     agent_identity_label, default_lightweight_prompt, default_system_prompt, minimal_instruction_text,
     specialized_instruction_text, specialized_system_prompt,
 };
+pub use subagents::{SubagentPromptEntry, render_subagent_section};
 pub use system::SystemPromptReport;
 pub use system::{
     apply_output_style, generate_lightweight_instruction, generate_specialized_instruction,
