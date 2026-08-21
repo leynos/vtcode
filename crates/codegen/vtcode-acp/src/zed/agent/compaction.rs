@@ -4,18 +4,33 @@ use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderRequestRuntim
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tokio::time::{Instant, sleep_until};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use vtcode_core::compaction::auto::{AutoCompactionInput, auto_compact_messages};
 use vtcode_core::compaction::memory_envelope::{
     MemoryEnvelopePlacement, effective_compaction_threshold, local_compaction_config,
 };
 use vtcode_core::compaction::{CompactionStrategy, ManualCompactionOptions, manual_compaction_strategy};
 use vtcode_core::exec::events::{CompactionMode, CompactionTrigger};
-use vtcode_core::llm::provider::{LLMProvider, Message, ToolDefinition};
+use vtcode_core::llm::provider::{LLMProvider, Message, MessageRole, ToolDefinition};
 
 const DEFAULT_OUTPUT_RESERVE_TOKENS: usize = 16_384;
 const ADMISSION_SAFETY_MARGIN_TOKENS: usize = 1_024;
 const COMPACTION_SUMMARY_MAX_TOKENS: u32 = 4_096;
+const PROMPT_ESTIMATE_SAFETY_PERCENT: usize = 20;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PromptTokenEstimate {
+    conversation_tokens: usize,
+    system_tokens: usize,
+    tool_definition_tokens: usize,
+    raw_total_tokens: usize,
+    guarded_total_tokens: usize,
+}
+
+fn guarded_prompt_tokens(raw_tokens: usize) -> usize {
+    let safety_tokens = raw_tokens.saturating_mul(PROMPT_ESTIMATE_SAFETY_PERCENT).div_ceil(100);
+    raw_tokens.saturating_add(safety_tokens)
+}
 
 fn estimated_tool_tokens(tools: Option<&Arc<Vec<ToolDefinition>>>) -> usize {
     tools
@@ -23,12 +38,27 @@ fn estimated_tool_tokens(tools: Option<&Arc<Vec<ToolDefinition>>>) -> usize {
         .map_or(0, |encoded| encoded.len().div_ceil(4))
 }
 
-fn estimated_prompt_tokens(messages: &[Message], tools: Option<&Arc<Vec<ToolDefinition>>>) -> usize {
-    messages
-        .iter()
-        .map(Message::estimate_tokens)
-        .sum::<usize>()
-        .saturating_add(estimated_tool_tokens(tools))
+fn estimated_prompt_tokens(messages: &[Message], tools: Option<&Arc<Vec<ToolDefinition>>>) -> PromptTokenEstimate {
+    let (system_tokens, conversation_tokens) = messages.iter().fold((0usize, 0usize), |totals, message| {
+        let tokens = message.estimate_tokens();
+        if matches!(message.role, MessageRole::System) {
+            (totals.0.saturating_add(tokens), totals.1)
+        } else {
+            (totals.0, totals.1.saturating_add(tokens))
+        }
+    });
+    let tool_definition_tokens = estimated_tool_tokens(tools);
+    let raw_total_tokens = system_tokens
+        .saturating_add(conversation_tokens)
+        .saturating_add(tool_definition_tokens);
+
+    PromptTokenEstimate {
+        conversation_tokens,
+        system_tokens,
+        tool_definition_tokens,
+        raw_total_tokens,
+        guarded_total_tokens: guarded_prompt_tokens(raw_total_tokens),
+    }
 }
 
 fn admission_prompt_budget(provider: &dyn LLMProvider, model: &str) -> Option<usize> {
@@ -54,7 +84,7 @@ fn should_compact(provider: &dyn LLMProvider, model: &str, prompt_tokens: usize)
         .into_iter()
         .chain(admission_budget)
         .min()
-        .is_some_and(|budget| prompt_tokens >= budget)
+        .is_some_and(|budget| guarded_prompt_tokens(prompt_tokens) >= budget)
 }
 
 impl ZedAgent {
@@ -71,10 +101,25 @@ impl ZedAgent {
         };
 
         let resolved_messages = self.resolved_messages(session);
-        let prompt_tokens = estimated_prompt_tokens(&resolved_messages, tools);
+        let prompt_estimate = estimated_prompt_tokens(&resolved_messages, tools);
+        let prompt_tokens = prompt_estimate.guarded_total_tokens;
         let configured_threshold = effective_compaction_threshold(Some(vt_config), provider, model);
         let admission_budget = admission_prompt_budget(provider, model);
         let trigger = configured_threshold.into_iter().chain(admission_budget).min();
+        debug!(
+            provider = provider.name(),
+            model,
+            context_size = provider.effective_context_size(model),
+            conversation_tokens = prompt_estimate.conversation_tokens,
+            system_tokens = prompt_estimate.system_tokens,
+            tool_definition_tokens = prompt_estimate.tool_definition_tokens,
+            raw_prompt_tokens = prompt_estimate.raw_total_tokens,
+            guarded_prompt_tokens = prompt_estimate.guarded_total_tokens,
+            prompt_estimate_safety_percent = PROMPT_ESTIMATE_SAFETY_PERCENT,
+            ?configured_threshold,
+            ?admission_budget,
+            "Evaluated ACP provider context admission"
+        );
         if trigger.is_none_or(|budget| prompt_tokens < budget) {
             return Ok(false);
         }
@@ -185,7 +230,8 @@ impl ZedAgent {
         if let Err(error) = self.checkpoint_session(session).await {
             warn!(%error, "Failed to persist compacted ACP session checkpoint");
         }
-        let compacted_prompt_tokens = estimated_prompt_tokens(&self.resolved_messages(session), tools);
+        let compacted_prompt_estimate = estimated_prompt_tokens(&self.resolved_messages(session), tools);
+        let compacted_prompt_tokens = compacted_prompt_estimate.guarded_total_tokens;
         if admission_budget.is_some_and(|budget| compacted_prompt_tokens >= budget) {
             anyhow::bail!(
                 "ACP compaction reduced the prompt from an estimated {prompt_tokens} to {compacted_prompt_tokens} tokens, which still exceeds its safe provider admission budget"
@@ -196,6 +242,8 @@ impl ZedAgent {
             model,
             prompt_tokens,
             compacted_prompt_tokens,
+            raw_prompt_tokens = prompt_estimate.raw_total_tokens,
+            compacted_raw_prompt_tokens = compacted_prompt_estimate.raw_total_tokens,
             original_len,
             compacted_len = outcome.compacted_len,
             compaction_mode = outcome.mode.as_str(),
@@ -218,6 +266,7 @@ fn lifecycle_compaction_mode(strategy: CompactionStrategy) -> CompactionMode {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use proptest::prelude::*;
     use vtcode_core::llm::provider::{LLMError, LLMRequest, LLMResponse};
 
     struct ContextProvider {
@@ -252,6 +301,8 @@ mod tests {
         let provider = ContextProvider { context_size: 524_288 };
 
         assert_eq!(admission_prompt_budget(&provider, "test"), Some(470_836));
+        assert_eq!(guarded_prompt_tokens(464_165), 556_998);
+        assert!(should_compact(&provider, "test", 464_165));
         assert!(should_compact(&provider, "test", 507_905));
     }
 
@@ -259,7 +310,7 @@ mod tests {
     fn prompt_below_soft_context_budget_does_not_compact() {
         let provider = ContextProvider { context_size: 524_288 };
 
-        assert!(!should_compact(&provider, "test", 400_000));
+        assert!(!should_compact(&provider, "test", 300_000));
     }
 
     #[test]
@@ -274,5 +325,28 @@ mod tests {
         assert_eq!(lifecycle_compaction_mode(CompactionStrategy::Local), CompactionMode::Local);
         assert_eq!(lifecycle_compaction_mode(CompactionStrategy::NativeStandalone), CompactionMode::Provider);
         assert_eq!(lifecycle_compaction_mode(CompactionStrategy::NativeInline), CompactionMode::Provider);
+    }
+
+    proptest! {
+        #[test]
+        fn guarded_estimate_is_monotonic_and_never_smaller(
+            first in 0usize..1_000_000_000,
+            second in 0usize..1_000_000_000,
+        ) {
+            let lower = first.min(second);
+            let upper = first.max(second);
+
+            prop_assert!(guarded_prompt_tokens(lower) >= lower);
+            prop_assert!(guarded_prompt_tokens(upper) >= guarded_prompt_tokens(lower));
+        }
+
+        #[test]
+        fn admission_budget_never_exceeds_context_window(context_size in 1usize..1_000_000_000) {
+            let provider = ContextProvider { context_size };
+            let budget = admission_prompt_budget(&provider, "test").expect("positive context has a budget");
+
+            prop_assert!(budget >= 1);
+            prop_assert!(budget <= context_size.max(1));
+        }
     }
 }
