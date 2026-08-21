@@ -411,6 +411,17 @@ and `[history]` settings do not control ACP audit output.
   breaker, so provider events report `circuit_breaker_state = "not_configured"`; the tool and MCP
   circuit breakers are separate. HTTP 408, 429, 500, 502, 503, and 504 failures are eligible for
   the configured bounded retry policy before output becomes visible.
+- **Context admission and recovery** – Before each provider dispatch, ACP
+  estimates conversation, system-prompt, and tool-definition tokens separately.
+  Because the local tokenizer is an approximation for OpenAI-compatible models,
+  admission applies 20% safety headroom before comparing the prompt with the
+  provider's configured context window and output reserve. Debug logs expose
+  the raw and guarded totals, their components, the configured threshold, and
+  the resulting admission budget. If a provider still returns a context-window
+  or `input_tokens` rejection before output is visible, ACP forces one
+  compaction pass and retries that request exactly once. It never replays after
+  visible output or repeatedly retries a provider that rejects the compacted
+  request.
 - **Tool-call budgets** – ACP applies `agent.harness.max_tool_calls_per_turn` and the optional
   `agent.harness.max_tool_calls_per_session` to local tool execution. Set either value to `0` to
   disable that cap. The separate `tools.max_tool_loops` provider-loop guard also accepts `0` for
