@@ -9,7 +9,7 @@ use vtcode_core::compaction::auto::{AutoCompactionInput, auto_compact_messages};
 use vtcode_core::compaction::memory_envelope::{
     MemoryEnvelopePlacement, effective_compaction_threshold, local_compaction_config,
 };
-use vtcode_core::compaction::{CompactionStrategy, ManualCompactionOptions, manual_compaction_strategy};
+use vtcode_core::compaction::{CompactionStrategy, ManualCompactionOptions, SUPPRESS_NONE, manual_compaction_strategy};
 use vtcode_core::exec::events::{CompactionMode, CompactionTrigger};
 use vtcode_core::llm::provider::{LLMProvider, Message, MessageRole, ToolDefinition};
 
@@ -25,6 +25,12 @@ struct PromptTokenEstimate {
     tool_definition_tokens: usize,
     raw_total_tokens: usize,
     guarded_total_tokens: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum AcpCompactionCause {
+    PreflightEstimate,
+    ProviderContextRejection,
 }
 
 fn guarded_prompt_tokens(raw_tokens: usize) -> usize {
@@ -95,6 +101,7 @@ impl ZedAgent {
         runtime: &ProviderRequestRuntime,
         model: &str,
         tools: Option<&Arc<Vec<ToolDefinition>>>,
+        cause: AcpCompactionCause,
     ) -> Result<bool> {
         let Some(vt_config) = self.vt_config.as_ref() else {
             return Ok(false);
@@ -120,7 +127,8 @@ impl ZedAgent {
             ?admission_budget,
             "Evaluated ACP provider context admission"
         );
-        if trigger.is_none_or(|budget| prompt_tokens < budget) {
+        let provider_context_rejection = cause == AcpCompactionCause::ProviderContextRejection;
+        if !provider_context_rejection && trigger.is_none_or(|budget| prompt_tokens < budget) {
             return Ok(false);
         }
 
@@ -137,8 +145,12 @@ impl ZedAgent {
             )
         };
         let original_len = history.len();
-        let force_compaction = admission_budget.is_some_and(|budget| prompt_tokens >= budget)
-            && configured_threshold.is_none_or(|threshold| prompt_tokens < threshold);
+        if provider_context_rejection {
+            auto_compact_suppressed = SUPPRESS_NONE;
+        }
+        let force_compaction = provider_context_rejection
+            || (admission_budget.is_some_and(|budget| prompt_tokens >= budget)
+                && configured_threshold.is_none_or(|threshold| prompt_tokens < threshold));
 
         if let Some(hooks) = session.lifecycle_hooks() {
             let compaction_mode = lifecycle_compaction_mode(manual_compaction_strategy(provider, model));
@@ -216,9 +228,10 @@ impl ZedAgent {
                 prompt_tokens,
                 ?configured_threshold,
                 ?admission_budget,
+                ?cause,
                 "ACP context pressure crossed its admission budget but compaction made no change"
             );
-            if admission_budget.is_some_and(|budget| prompt_tokens >= budget) {
+            if provider_context_rejection || admission_budget.is_some_and(|budget| prompt_tokens >= budget) {
                 anyhow::bail!(
                     "ACP prompt uses an estimated {prompt_tokens} tokens, exceeds its safe provider admission budget, and automatic compaction made no change"
                 );
@@ -247,6 +260,7 @@ impl ZedAgent {
             original_len,
             compacted_len = outcome.compacted_len,
             compaction_mode = outcome.mode.as_str(),
+            ?cause,
             ?configured_threshold,
             ?admission_budget,
             "Applied automatic ACP conversation compaction"

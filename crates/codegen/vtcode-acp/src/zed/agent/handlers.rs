@@ -56,9 +56,12 @@ use vtcode_core::core::message_metadata::MessageMetadata;
 use vtcode_core::core::threads::ThreadRuntimeHandle;
 use vtcode_core::llm::factory::ProviderConfig;
 use vtcode_core::llm::factory::create_provider_with_config;
-use vtcode_core::llm::provider::{LLMError, LLMProvider, LLMRequest, LLMResponse, LLMStreamEvent, Message};
+use vtcode_core::llm::provider::{
+    LLMError, LLMProvider, LLMRequest, LLMResponse, LLMStreamEvent, Message, ToolDefinition,
+};
 use vtcode_core::retry::{RetryDecision, RetryPolicyCoreExt};
 
+use super::compaction::AcpCompactionCause;
 use super::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderDeadlinePolicy, ProviderRequestRuntime};
 
@@ -111,14 +114,14 @@ impl Drop for TurnGuard {
 #[derive(Debug)]
 enum ProviderCallError {
     Cancelled,
-    Failed(String),
+    Failed(LLMError),
 }
 
 impl From<ProviderAdmissionError> for ProviderCallError {
     fn from(error: ProviderAdmissionError) -> Self {
         match error {
             ProviderAdmissionError::Cancelled => Self::Cancelled,
-            other => Self::Failed(other.to_string()),
+            other => Self::Failed(LLMError::Provider { message: other.to_string(), metadata: None }),
         }
     }
 }
@@ -298,13 +301,88 @@ struct ProviderErrorTelemetry<'a> {
 }
 
 fn provider_error_telemetry(error: &LLMError) -> ProviderErrorTelemetry<'_> {
-    let LLMError::Network { metadata: Some(metadata), .. } = error else {
+    let metadata = match error {
+        LLMError::Authentication { metadata, .. }
+        | LLMError::RateLimit { metadata }
+        | LLMError::InvalidRequest { metadata, .. }
+        | LLMError::Network { metadata, .. }
+        | LLMError::Provider { metadata, .. } => metadata.as_deref(),
+    };
+    let Some(metadata) = metadata else {
         return ProviderErrorTelemetry::default();
     };
     ProviderErrorTelemetry {
         code: metadata.code.as_deref(),
         status: metadata.status,
         detail: metadata.message.as_deref(),
+    }
+}
+
+fn is_context_limit_error(error: &LLMError) -> bool {
+    let telemetry = provider_error_telemetry(error);
+    let display = strip_ansi_codes(&error.to_string()).to_ascii_lowercase();
+    let detail = telemetry.detail.unwrap_or_default().to_ascii_lowercase();
+    let code = telemetry.code.unwrap_or_default().to_ascii_lowercase();
+    let explicit_context_marker = code.contains("context_length")
+        || display.contains("maximum context length")
+        || detail.contains("maximum context length")
+        || display.contains("context window") && display.contains("exceed")
+        || detail.contains("context window") && detail.contains("exceed");
+    let input_token_marker = code.contains("input_token")
+        || display.contains("input_tokens")
+        || detail.contains("input_tokens")
+        || display.contains("prompt is too long")
+        || detail.contains("prompt is too long");
+    let bad_request = telemetry.status == Some(400)
+        || display.contains("400 bad request")
+        || matches!(error, LLMError::InvalidRequest { .. });
+
+    explicit_context_marker || bad_request && input_token_marker
+}
+
+impl ZedAgent {
+    async fn compact_after_context_rejection(
+        &self,
+        session: &SessionHandle,
+        provider: &dyn LLMProvider,
+        runtime: &ProviderRequestRuntime,
+        model: &str,
+        tools: Option<&Arc<Vec<ToolDefinition>>>,
+        error: &LLMError,
+    ) -> bool {
+        if !is_context_limit_error(error) {
+            return false;
+        }
+
+        info!(
+            provider = runtime.provider_name(),
+            model,
+            provider_error = %error,
+            "Provider rejected ACP context; forcing one compaction recovery"
+        );
+        match self
+            .maybe_compact_session(
+                session,
+                provider,
+                runtime,
+                model,
+                tools,
+                AcpCompactionCause::ProviderContextRejection,
+            )
+            .await
+        {
+            Ok(true) => true,
+            Ok(false) => false,
+            Err(compaction_error) => {
+                warn!(
+                    provider = runtime.provider_name(),
+                    model,
+                    %compaction_error,
+                    "ACP context-rejection recovery could not compact the session"
+                );
+                false
+            }
+        }
     }
 }
 
@@ -485,7 +563,7 @@ async fn generate_with_retry(
                 telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
                 drop(permit);
                 if !decision.retryable {
-                    return Err(ProviderCallError::Failed(error.to_string()));
+                    return Err(ProviderCallError::Failed(error));
                 }
                 let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                 info!(
@@ -941,6 +1019,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
     let mut assistant_reasoning = String::with_capacity(2048);
     let mut stop_hook_active = false;
     let mut stop_hook_checked = false;
+    let mut context_recovery_attempted = false;
     let client_supports_read_text_file = agent.client_supports_read_text_file();
     let provider_supports_tools = provider.supports_tools(&session_model);
     let mut primary_agent = {
@@ -968,6 +1047,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             &provider_runtime,
             &session_model,
             tool_definitions.as_ref(),
+            AcpCompactionCause::PreflightEstimate,
         )
         .await
         .map_err(|error| SdkError::internal_error().data(error.to_string()))?
@@ -1031,6 +1111,28 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     let decision = policy.decision_for_llm_error(&error, attempt_index);
                     telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                     drop(permit);
+                    if !context_recovery_attempted && is_context_limit_error(&error) {
+                        context_recovery_attempted = true;
+                        if agent
+                            .compact_after_context_rejection(
+                                &session,
+                                provider.as_ref(),
+                                &provider_runtime,
+                                &session_model,
+                                tool_definitions.as_ref(),
+                                &error,
+                            )
+                            .await
+                        {
+                            messages = agent.resolved_messages(&session);
+                            request.messages = Arc::new(messages.clone());
+                            if let Some(controller) = agent.session_subagent_controller(&session) {
+                                controller.set_parent_messages(&messages).await;
+                            }
+                            attempt_index = 0;
+                            continue 'stream_attempts;
+                        }
+                    }
                     if !decision.retryable {
                         return Ok(finish_failed_provider_turn(
                             &agent,
@@ -1067,7 +1169,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 &args.session_id,
                                 &assistant_message,
                                 &assistant_reasoning,
-                                &error,
+                                &error.to_string(),
                             )
                             .await);
                         }
@@ -1148,7 +1250,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 &args.session_id,
                                 &assistant_message,
                                 &assistant_reasoning,
-                                &error,
+                                &error.to_string(),
                             )
                             .await);
                         }
@@ -1161,6 +1263,28 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         let decision = policy.decision_for_llm_error(&error, attempt_index);
                         telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                         drop(permit);
+                        if !context_recovery_attempted && is_context_limit_error(&error) {
+                            context_recovery_attempted = true;
+                            if agent
+                                .compact_after_context_rejection(
+                                    &session,
+                                    provider.as_ref(),
+                                    &provider_runtime,
+                                    &session_model,
+                                    tool_definitions.as_ref(),
+                                    &error,
+                                )
+                                .await
+                            {
+                                messages = agent.resolved_messages(&session);
+                                request.messages = Arc::new(messages.clone());
+                                if let Some(controller) = agent.session_subagent_controller(&session) {
+                                    controller.set_parent_messages(&messages).await;
+                                }
+                                attempt_index = 0;
+                                continue 'stream_attempts;
+                            }
+                        }
                         if !decision.retryable {
                             return Ok(finish_failed_provider_turn(
                                 &agent,
@@ -1197,7 +1321,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                     &args.session_id,
                                     &assistant_message,
                                     &assistant_reasoning,
-                                    &error,
+                                    &error.to_string(),
                                 )
                                 .await);
                             }
@@ -1346,6 +1470,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                     &provider_runtime,
                                     &session_model,
                                     tool_definitions.as_ref(),
+                                    AcpCompactionCause::PreflightEstimate,
                                 )
                                 .await
                                 .map_err(|error| SdkError::internal_error().data(error.to_string()))?
@@ -1392,6 +1517,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     &provider_runtime,
                     &session_model,
                     tool_definitions.as_ref(),
+                    AcpCompactionCause::PreflightEstimate,
                 )
                 .await
                 .map_err(|error| SdkError::internal_error().data(error.to_string()))?
@@ -1419,13 +1545,33 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         break;
                     }
                     Err(ProviderCallError::Failed(error)) => {
+                        if !context_recovery_attempted && is_context_limit_error(&error) {
+                            context_recovery_attempted = true;
+                            if agent
+                                .compact_after_context_rejection(
+                                    &session,
+                                    provider.as_ref(),
+                                    &provider_runtime,
+                                    &session_model,
+                                    tool_definitions.as_ref(),
+                                    &error,
+                                )
+                                .await
+                            {
+                                messages = agent.resolved_messages(&session);
+                                if let Some(controller) = agent.session_subagent_controller(&session) {
+                                    controller.set_parent_messages(&messages).await;
+                                }
+                                continue;
+                            }
+                        }
                         return Ok(finish_failed_provider_turn(
                             &agent,
                             &session,
                             &args.session_id,
                             &assistant_message,
                             &assistant_reasoning,
-                            &error,
+                            &error.to_string(),
                         )
                         .await);
                     }
@@ -1604,7 +1750,7 @@ mod tests {
     use vtcode_core::config::types::{
         AgentConfig as CoreAgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference,
     };
-    use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig};
+    use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig, VTCodeConfig};
     use vtcode_core::core::agent::snapshots::{
         DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
     };
@@ -1663,6 +1809,49 @@ mod tests {
                 detail: Some("operation timed out"),
             }
         );
+    }
+
+    #[test]
+    fn context_limit_detection_accepts_structured_and_openai_compatible_errors() {
+        let structured = LLMError::InvalidRequest {
+            message: "prompt is too long".to_string(),
+            metadata: Some(LLMErrorMetadata::new(
+                "Arli AI",
+                Some(400),
+                Some("input_tokens".to_string()),
+                None,
+                None,
+                None,
+                Some("maximum context length exceeded".to_string()),
+            )),
+        };
+        let compatible = LLMError::Provider {
+            message:
+                "OpenAI Chat Completions error (status 400 Bad Request) param=input_tokens: maximum context length"
+                    .to_string(),
+            metadata: None,
+        };
+
+        assert!(is_context_limit_error(&structured));
+        assert!(is_context_limit_error(&compatible));
+    }
+
+    #[test]
+    fn context_limit_detection_rejects_unrelated_bad_requests() {
+        let error = LLMError::InvalidRequest {
+            message: "invalid tool schema".to_string(),
+            metadata: Some(LLMErrorMetadata::new(
+                "provider",
+                Some(400),
+                Some("invalid_request".to_string()),
+                None,
+                None,
+                None,
+                Some("tools[0].name is required".to_string()),
+            )),
+        };
+
+        assert!(!is_context_limit_error(&error));
     }
 
     proptest! {
@@ -1989,9 +2178,57 @@ mod tests {
 
     struct PartialThenFailProvider;
 
+    struct ContextRejectThenCompactProvider {
+        calls: Arc<AtomicUsize>,
+        requests: Arc<Mutex<Vec<LLMRequest>>>,
+    }
+
     struct BlockingPromptProvider {
         started: Arc<Notify>,
         release: Arc<Notify>,
+    }
+
+    #[async_trait]
+    impl LLMProvider for ContextRejectThenCompactProvider {
+        fn name(&self) -> &str {
+            "wire-test"
+        }
+
+        fn supported_models(&self) -> Vec<String> {
+            vec!["wire-model".to_string()]
+        }
+
+        fn effective_context_size(&self, _model: &str) -> usize {
+            10_000_000
+        }
+
+        fn supports_streaming(&self) -> bool {
+            false
+        }
+
+        fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+            Ok(())
+        }
+
+        async fn generate(&self, request: LLMRequest) -> Result<LLMResponse, LLMError> {
+            self.requests.lock().expect("context recovery requests").push(request);
+            match self.calls.fetch_add(1, Ordering::SeqCst) {
+                0 => Err(LLMError::InvalidRequest {
+                    message: "maximum context length exceeded; parameter=input_tokens".to_string(),
+                    metadata: Some(LLMErrorMetadata::new(
+                        "wire-test",
+                        Some(400),
+                        Some("context_length_exceeded".to_string()),
+                        None,
+                        None,
+                        None,
+                        Some("prompt is too long".to_string()),
+                    )),
+                }),
+                1 => Ok(LLMResponse::new("wire-model", "Compacted conversation summary.")),
+                _ => Ok(LLMResponse::new("wire-model", "recovered after compaction")),
+            }
+        }
     }
 
     #[async_trait]
@@ -2164,6 +2401,13 @@ mod tests {
     }
 
     async fn build_wire_test_agent(workspace: &std::path::Path) -> ZedAgent {
+        build_wire_test_agent_with_config(workspace, None).await
+    }
+
+    async fn build_wire_test_agent_with_config(
+        workspace: &std::path::Path,
+        vt_config: Option<&VTCodeConfig>,
+    ) -> ZedAgent {
         let core_config = CoreAgentConfig {
             model: "wire-model".to_string(),
             api_key: "test-key".to_string(),
@@ -2203,7 +2447,7 @@ mod tests {
             Some("Wire test".to_string()),
             primary_agents,
             true,
-            None,
+            vt_config,
             None,
         ))
         .await
@@ -2329,6 +2573,103 @@ mod tests {
         assert_eq!(persisted["metadata"]["acp_meta"]["client"], "wire-test");
         assert_eq!(persisted["metadata"]["acp_meta"]["requestId"], "prompt-1");
         std::fs::remove_file(archive_path).expect("remove persisted wire ACP session archive");
+    }
+
+    #[tokio::test]
+    async fn provider_context_rejection_compacts_once_and_retries_the_same_acp_turn() {
+        let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+        let calls = Arc::new(AtomicUsize::new(0));
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let factory_calls = Arc::clone(&calls);
+        let factory_requests = Arc::clone(&requests);
+        let _factory_guard = PromptProviderFactoryGuard::install(
+            "wire-test",
+            Arc::new(move || {
+                Box::new(ContextRejectThenCompactProvider {
+                    calls: Arc::clone(&factory_calls),
+                    requests: Arc::clone(&factory_requests),
+                })
+            }),
+        );
+        let workspace = TempDir::new().expect("context recovery workspace");
+        let vt_config = VTCodeConfig::default();
+        let agent = Arc::new(build_wire_test_agent_with_config(workspace.path(), Some(&vt_config)).await);
+        let (agent_channel, client_channel) = Channel::duplex();
+        let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
+
+        let agent_connection = install_handlers(Agent.builder().name("vtcode-context-recovery"), Arc::clone(&agent))
+            .connect_with(agent_channel, {
+                let agent = Arc::clone(&agent);
+                async move |cx: ConnectionTo<Client>| {
+                    agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                    std::future::pending::<agent_client_protocol::Result<()>>().await
+                }
+            });
+        let agent_task = tokio::spawn(agent_connection);
+
+        let client_connection = Client
+            .builder()
+            .on_receive_notification(
+                async move |notification: acp::SessionNotification, _cx| {
+                    drop(updates_tx.send(notification));
+                    Ok(())
+                },
+                on_receive_notification!(),
+            )
+            .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+                let _initialize = cx
+                    .send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                    .block_task()
+                    .await?;
+                let session = cx
+                    .send_request(NewSessionRequest::new(workspace.path().to_path_buf()))
+                    .block_task()
+                    .await?;
+                let response = cx
+                    .send_request(PromptRequest::new(
+                        session.session_id,
+                        vec![acp::ContentBlock::Text(acp::TextContent::new("recover this turn"))],
+                    ))
+                    .block_task()
+                    .await?;
+                assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+                Ok(())
+            });
+
+        tokio::time::timeout(Duration::from_secs(5), client_connection)
+            .await
+            .expect("context recovery client should finish")
+            .expect("context recovery protocol flow should succeed");
+        agent_task.abort();
+        drop(agent_task.await);
+
+        let updates = std::iter::from_fn(|| updates_rx.try_recv().ok()).collect::<Vec<_>>();
+        assert!(updates.iter().any(|notification| match &notification.update {
+            acp::SessionUpdate::AgentMessageChunk(chunk) => match &chunk.content {
+                acp::ContentBlock::Text(text) => text.text == "recovered after compaction",
+                _ => false,
+            },
+            _ => false,
+        }));
+        assert_eq!(calls.load(Ordering::SeqCst), 3, "reject, compact, then retry exactly once");
+        assert_eq!(requests.lock().expect("context recovery requests").len(), 3);
+
+        let archive_path = agent
+            .sessions
+            .lock()
+            .expect("ACP session map")
+            .values()
+            .next()
+            .expect("context recovery ACP session")
+            .data
+            .lock()
+            .expect("context recovery session data")
+            .archive
+            .as_ref()
+            .expect("context recovery session archive")
+            .path()
+            .to_path_buf();
+        std::fs::remove_file(archive_path).expect("remove context recovery session archive");
     }
 
     #[tokio::test]
@@ -3093,7 +3434,7 @@ mod tests {
         let Err(ProviderCallError::Failed(error)) = result else {
             panic!("pending generation should fail at its total deadline");
         };
-        assert!(error.contains("total generation"));
+        assert!(error.to_string().contains("total generation"));
     }
 
     #[test]
@@ -3152,7 +3493,7 @@ mod tests {
         let Err(ProviderCallError::Failed(error)) = result else {
             panic!("persistent 502 response should exhaust the retry budget");
         };
-        assert!(error.contains("502 Bad Gateway"));
+        assert!(error.to_string().contains("502 Bad Gateway"));
         assert_eq!(provider.attempts.load(Ordering::SeqCst), 3);
     }
 
