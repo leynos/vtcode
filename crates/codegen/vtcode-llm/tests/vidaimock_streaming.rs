@@ -225,6 +225,10 @@ async fn vidaimock_provider_drop_surfaces_before_completion() -> Result<()> {
     let observation = observe_stream("provider-drop-500.toml").await?;
 
     assert!(!observation.completed, "dropped request must not complete: {observation:?}");
-    assert!(observation.error.is_some(), "provider drop should surface as an error: {observation:?}");
+    let error = observation
+        .error
+        .as_deref()
+        .context("provider drop should surface as an error")?;
+    assert!(error.contains("500"), "HTTP status should survive adapter conversion: {observation:?}");
     Ok(())
 }
