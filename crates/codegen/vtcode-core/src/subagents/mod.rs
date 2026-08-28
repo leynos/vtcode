@@ -16,12 +16,13 @@ mod types;
 
 pub use background::{
     background_record_id, build_background_subagent_command, extract_tail_lines, load_archive_preview,
-    subagent_display_label,
+    normalize_output_tail_lines, subagent_display_label,
 };
 pub use config::{
     ResolvedAgentRuntimeView, build_child_config, compose_subagent_instructions, filter_child_tools,
     normalize_background_child_max_turns, normalize_child_max_turns, prepare_child_runtime_config,
 };
+pub use constants::{DEFAULT_SUBAGENT_OUTPUT_TAIL_LINES, MAX_SUBAGENT_OUTPUT_TAIL_LINES};
 pub use model::{
     agent_type_for_spec, load_memory_appendix, load_memory_appendix_async, load_primary_memory_appendix,
     load_primary_memory_appendix_async,
@@ -149,6 +150,7 @@ pub struct SubagentControllerConfig {
 #[derive(Clone)]
 pub struct SubagentController {
     config: Arc<SubagentControllerConfig>,
+    background_owner_session_id: Option<String>,
     parent_session_id: Arc<RwLock<String>>,
     lifecycle_hooks: Option<LifecycleHookEngine>,
     state: Arc<RwLock<ControllerState>>,
@@ -165,6 +167,19 @@ pub struct SubagentController {
 impl SubagentController {
     /// Creates a new controller, discovering subagent specs and loading persisted background state.
     pub async fn new(config: SubagentControllerConfig) -> Result<Self> {
+        Box::pin(Self::new_with_background_owner(config, None)).await
+    }
+
+    /// Creates a controller scoped to one persisted background owner.
+    ///
+    /// Interactive ACP sessions use this constructor so a per-session
+    /// controller cannot load or restore another session's background records.
+    /// Callers such as the CLI use [`Self::new`] to retain restore-all
+    /// behaviour.
+    pub async fn new_with_background_owner(
+        config: SubagentControllerConfig,
+        owner_session_id: Option<&str>,
+    ) -> Result<Self> {
         let (progress_tx, _progress_rx) = broadcast::channel(128);
         let discovered = discover_controller_subagents(&config.workspace_root).await?;
         let workspace_gated = config.workspace_gated;
@@ -182,9 +197,11 @@ impl SubagentController {
             .await?
             .records
             .into_iter()
+            .filter(|record| owner_session_id.is_none_or(|owner| record.owner_session_id.as_deref() == Some(owner)))
             .map(|record| (record.id.clone(), BackgroundRecord::from_persisted(record)))
             .collect();
         Ok(Self {
+            background_owner_session_id: owner_session_id.map(str::to_owned),
             parent_session_id: Arc::new(RwLock::new(config.parent_session_id.clone())),
             lifecycle_hooks,
             config: Arc::new(config),

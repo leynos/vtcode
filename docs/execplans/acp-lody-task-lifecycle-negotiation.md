@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision log`, `Outcomes & retrospective`, `Conformance basis`, and
 `Verification plan` must be kept up to date as work proceeds.
 
-Status: IN PROGRESS — EP-M2 ROBUST CORE EXPANSION
+Status: IN PROGRESS — EP-M3 PROVIDER USAGE
 
 ## Purpose / big picture
 
@@ -113,8 +113,13 @@ management requests return only tasks owned by the requested ACP session.
   The user approved the robust expansion: persist explicit ownership, hide
   legacy ownerless records from ACP management and add a bounded output-tail
   API before registering any management handlers.
-- [ ] EP-M2: implement and negotiate background tasks plus session-scoped
-  subagent list, cancel and output methods.
+- [x] (2026-08-28) EP-M2: implement and negotiate background tasks plus
+  session-scoped subagent list, cancel and output methods. The core expansion
+  persists optional `owner_session_id`, hides legacy ownerless records from
+  ACP, and exposes bounded output tails (default 200, maximum 10,000) while
+  preserving the existing 24-line preview API. The exact extension dispatcher
+  and real ACP duplex tests cover negotiation, owned list/output/cancel and
+  foreign-task indistinguishability from unknown tasks.
 - [ ] EP-M3: emit negotiated provider usage and opt custom providers into
   streaming usage.
 - [ ] EP-M4: update documentation, run release gates, install the binary, push
@@ -164,13 +169,39 @@ management requests return only tasks owned by the requested ACP session.
   SDK strips the leading underscore before constructing `ExtRequest`.
   Impact: EP-M2 must use a custom untyped dispatcher or a carefully scoped
   `ClientRequest` catch-all that returns `Handled::No` for standard requests.
+- Observation: filtering persisted records only when a controller loads is not
+  sufficient isolation: an owner-scoped save would otherwise delete foreign
+  and legacy records from the shared workspace state file.
+  Evidence: `save_background_state` previously replaced the whole persisted
+  record set with the controller's in-memory subset.
+  Impact: scoped controllers now receive their real ACP session ID before
+  restore and merge only their owner's records under a process-wide
+  persistence lock; unscoped CLI controllers retain replace-all semantics.
+
+- Observation: truthful background-task negotiation is controlled by
+  `background_subagents_enabled`, not by the broader
+  `managed_background_runtime` predicate.
+  Evidence: the EP-M2 capability and duplex tests exercise the configured
+  background-subagent feature flag directly.
+  Impact: ACP advertises background tasks only when that capability is enabled;
+  unrelated runtime state cannot cause an unsupported promise.
+
+- Observation: EP-M2's red tests exposed absent ownership and management
+  plumbing; the expanded core and ACP suites then passed the contract.
+  Evidence: `/tmp/red-vtcode-core-epm2.out`,
+  `/tmp/green-vtcode-core-epm2-final.out` (5/5),
+  `/tmp/red-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm2-acp.out`,
+  and `/tmp/test-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm2-final.out`
+  (6/6).
+  Impact: EP-M2 is complete; provider usage and custom-provider streaming
+  opt-in are the remaining implementation work.
 
 - Observation: VTCode already emits the model's task tracker as a standard ACP
   `Plan`, including blocked-task labels and durable replay.
   Evidence: `crates/codegen/vtcode-acp/src/zed/agent/task_progress.rs` and its
   duplex tests in `zed/agent/handlers.rs`.
   Impact: no new plan/task-tracker protocol is required. The Lody `tasks`
-  capability will advertise only managed background work.
+  capability will advertise only enabled background-subagent work.
 - Observation: `_vtcode/taskLifecycle` is neither a standard ACP task update nor
   a Lody-recognized legacy extension, and its discriminator is incompatible
   with Lody's Claude compatibility parser.
@@ -211,7 +242,8 @@ management requests return only tasks owned by the requested ACP session.
   clients, unlike a provider-specific lifecycle notification.
   Date/Author: 2026-08-28 / Codex.
 - Decision: negotiate `usage: {version: 1}` unconditionally, `tasks:
-  {version: 1, background: true}` only when managed background work is enabled,
+  {version: 1, background: true}` only when `background_subagents_enabled` is
+  true,
   and `subagents` only when a controller exists. Advertise list, cancel and
   output only after their handlers land in the same coherent commit.
   Rationale: capabilities are promises, not product marketing.
@@ -236,6 +268,12 @@ management requests return only tasks owned by the requested ACP session.
   old records deserializable without granting them new authority, and a new
   bounded API avoids silently changing existing preview behaviour.
   Date/Author: 2026-08-28 / Codex, approved by the user as option 1.
+- Decision: gate the advertised background-task capability with
+  `background_subagents_enabled`.
+  Rationale: negotiation must describe the ACP feature that is actually
+  enabled, rather than infer support from a separate runtime-management
+  predicate.
+  Date/Author: 2026-08-28 / Codex.
 
 ## Outcomes & retrospective
 
@@ -244,9 +282,10 @@ now receive task-shaped tool calls, Lody receives `_meta.lody.task`, and
 capability negotiation is truthful. EP-M2 crossed its explicit security
 tolerance only after the user approved an additive persisted-model expansion:
 explicit owner identifiers, fail-closed handling of legacy ownerless records,
-and bounded caller-selected output tails. No management handler or capability
-was exposed prematurely. On completion, this section will compare the
-management and usage results against the remaining purpose above.
+and bounded caller-selected output tails. The exact dispatcher now serves
+negotiated list, output and cancel requests, with real duplex coverage for
+owned and foreign tasks. The core and ACP focused suites passed (5/5 and 6/6
+respectively). EP-M3 is now the active milestone.
 
 ## Context and orientation
 
@@ -422,7 +461,7 @@ bounded tail (default 200 lines, hard maximum 10,000) from the existing child
 snapshot or background preview. Unknown or foreign task IDs will share one
 not-found response. The same commit will add `list`, `cancel` and `output`
 negotiation flags, plus `tasks: {version: 1, background: true}` only when the
-controller reports managed background support.
+`background_subagents_enabled` capability is enabled.
 
 EP-M3 emits a canonical `_lody/session/usage_update` after each provider
 response that contains usage, including intermediate tool-loop responses.
@@ -596,6 +635,27 @@ RED:   /tmp/red-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm1.out
 GREEN: /tmp/green-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm1.out
        5 passed: status mapping, stable-ID property, official ACP duplex and
        capability present/absent tests.
+```
+
+EP-M2 Robust Core Expansion and Management evidence:
+
+```plaintext
+RED:   /tmp/red-vtcode-core-epm2.out
+GREEN: /tmp/green-vtcode-core-epm2-final.out
+       5/5 core tests passed, including owner persistence, legacy loading and
+       bounded output-tail properties.
+RED:   /tmp/red-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm2-acp.out
+GREEN: /tmp/test-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm2-final.out
+       6/6 ACP tests passed, including real duplex negotiation, owned
+       list/output/cancel and foreign-task indistinguishability from unknown.
+GREEN: /tmp/rgr-core-owner-scope-green.out
+       Owner-scoped loading includes only the exact owner while the CLI remains
+       unscoped.
+GREEN: /tmp/rgr-core-owner-persistence-green.out
+       Scoped persistence updates owned state without deleting foreign or
+       legacy records.
+GREEN: /tmp/rgr-acp-owner-scope-green.out
+       A new ACP session does not restore another session's background record.
 ```
 
 Baseten's documented streamed-usage request is:

@@ -7,9 +7,9 @@ use chrono::Utc;
 use futures::future::{BoxFuture, select_all};
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::{Notify, RwLock};
+use std::sync::{Arc, OnceLock};
+use tokio::sync::{Mutex, Notify, RwLock};
 
 use crate::config::VTCodeConfig;
 use crate::config::types::ReasoningEffortLevel;
@@ -30,6 +30,14 @@ use self::constants::*;
 use self::discovery::discover_controller_subagents;
 use self::model::*;
 use vtcode_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
+
+use super::background::{load_background_state, persist_background_state};
+
+static BACKGROUND_STATE_PERSISTENCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn background_state_persistence_lock() -> &'static Mutex<()> {
+    BACKGROUND_STATE_PERSISTENCE_LOCK.get_or_init(|| Mutex::new(()))
+}
 
 #[allow(
     unused_imports,
@@ -560,6 +568,7 @@ impl SubagentController {
             state.background_children.get(&record_id).map(|record| {
                 (
                     record.created_at,
+                    record.owner_session_id.clone(),
                     record.prompt.clone(),
                     record.max_turns,
                     record.model_override.clone(),
@@ -567,6 +576,7 @@ impl SubagentController {
                 )
             })
         };
+        let is_new_record = previous_record.is_none();
         let parent_session_id = self.parent_session_id.read().await.clone();
         let session_id = format!(
             "{}-{}-{}",
@@ -575,8 +585,15 @@ impl SubagentController {
             Utc::now().format("%Y%m%dT%H%M%S%3fZ")
         );
         let exec_session_id = format!("exec-{session_id}");
-        let (created_at, previous_prompt, previous_max_turns, previous_model_override, previous_reasoning_override) =
-            previous_record.unwrap_or((Utc::now(), String::new(), None, None, None));
+        let (
+            created_at,
+            previous_owner_session_id,
+            previous_prompt,
+            previous_max_turns,
+            previous_model_override,
+            previous_reasoning_override,
+        ) = previous_record.unwrap_or((Utc::now(), None, String::new(), None, None, None));
+        let owner_session_id = previous_owner_session_id.or_else(|| is_new_record.then(|| parent_session_id.clone()));
         let prompt = overrides
             .as_ref()
             .and_then(|overrides| overrides.prompt.clone())
@@ -615,6 +632,7 @@ impl SubagentController {
                 record_id.clone(),
                 BackgroundRecord {
                     id: record_id.clone(),
+                    owner_session_id,
                     agent_name: spec.name.clone(),
                     display_label: subagent_display_label(&spec),
                     description: spec.description.clone(),
@@ -807,7 +825,15 @@ impl SubagentController {
                 .map(BackgroundRecord::into_persisted)
                 .collect()
         };
-        persist_background_state(&self.config.workspace_root, records).await
+        let _guard = background_state_persistence_lock().lock().await;
+        if let Some(owner_session_id) = self.background_owner_session_id.as_deref() {
+            let mut persisted_records = load_background_state(&self.config.workspace_root).await?.records;
+            persisted_records.retain(|record| record.owner_session_id.as_deref() != Some(owner_session_id));
+            persisted_records.extend(records);
+            persist_background_state(&self.config.workspace_root, persisted_records).await
+        } else {
+            persist_background_state(&self.config.workspace_root, records).await
+        }
     }
 
     pub(super) async fn find_spec(&self, candidate: &str) -> Option<SubagentSpec> {

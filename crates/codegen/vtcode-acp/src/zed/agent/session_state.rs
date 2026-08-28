@@ -293,10 +293,10 @@ impl ZedAgent {
 
     fn register_durable_session(
         &self,
+        session_id: acp::SessionId,
         workspace_runtime: Arc<super::SessionWorkspaceRuntime>,
         acp_meta: Option<acp::Meta>,
     ) -> acp::SessionId {
-        let session_id = acp::SessionId::new(Arc::from(format!("{SESSION_PREFIX}-{}", Uuid::new_v4())));
         let mut metadata = build_thread_archive_metadata(
             workspace_runtime.workspace_root.as_path(),
             &self.config.model,
@@ -629,6 +629,7 @@ impl ZedAgent {
                 workspace.to_path_buf(),
                 &self.workspace_runtime_config,
                 self.vt_config.as_deref(),
+                session_id.0.as_ref(),
             )
             .await
             .context("Failed to initialise archived ACP session workspace")?,
@@ -764,17 +765,19 @@ impl ZedAgent {
             .synchronize(&workspace, desired_trust)
             .await
             .map_err(|error| acp::Error::internal_error().data(format!("Failed to trust ACP session cwd: {error}")))?;
+        let session_id = acp::SessionId::new(Arc::from(format!("{SESSION_PREFIX}-{}", Uuid::new_v4())));
         let workspace_runtime = Arc::new(
             super::SessionWorkspaceRuntime::build(
                 &self.config,
                 workspace,
                 &self.workspace_runtime_config,
                 self.vt_config.as_deref(),
+                session_id.0.as_ref(),
             )
             .await
             .map_err(|error| acp::Error::internal_error().data(error.to_string()))?,
         );
-        let session_id = self.register_durable_session(workspace_runtime, req.meta);
+        let session_id = self.register_durable_session(session_id, workspace_runtime, req.meta);
         let session = self.session_handle(&session_id);
         if let Some(session) = &session {
             self.ensure_task_lifecycle_forwarder(session);
@@ -998,7 +1001,7 @@ mod tests {
     use vtcode_config::{SubagentDiscoveryInput, discover_subagents};
     use vtcode_core::config::core::PromptCachingConfig;
     use vtcode_core::config::types::{AgentConfig as CoreAgentConfig, ModelSelectionSource, UiSurfacePreference};
-    use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig};
+    use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig, VTCodeConfig};
     use vtcode_core::core::agent::snapshots::{
         DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
     };
@@ -1011,7 +1014,7 @@ mod tests {
 
     impl HistorySettingsGuard {
         fn set(persistence: HistoryPersistence, max_bytes: Option<usize>) -> Self {
-            let mut config = vtcode_core::config::VTCodeConfig::default();
+            let mut config = VTCodeConfig::default();
             config.history.persistence = persistence;
             config.history.max_bytes = max_bytes;
             vtcode_core::utils::session_archive::apply_session_history_config_from_vtcode(&config);
@@ -1021,9 +1024,7 @@ mod tests {
 
     impl Drop for HistorySettingsGuard {
         fn drop(&mut self) {
-            vtcode_core::utils::session_archive::apply_session_history_config_from_vtcode(
-                &vtcode_core::config::VTCodeConfig::default(),
-            );
+            vtcode_core::utils::session_archive::apply_session_history_config_from_vtcode(&VTCodeConfig::default());
         }
     }
 
@@ -1032,6 +1033,14 @@ mod tests {
     }
 
     async fn build_agent_with_default_primary_agent(workspace: &Path, default_primary_agent: &str) -> ZedAgent {
+        build_agent_with_vt_config(workspace, default_primary_agent, None).await
+    }
+
+    async fn build_agent_with_vt_config(
+        workspace: &Path,
+        default_primary_agent: &str,
+        vt_config: Option<VTCodeConfig>,
+    ) -> ZedAgent {
         let core_config = CoreAgentConfig {
             model: "gpt-5.6-sol".to_string(),
             api_key: String::new(),
@@ -1072,7 +1081,7 @@ mod tests {
             Some("Zed".to_string()),
             primary_agents,
             false,
-            None,
+            vt_config.as_ref(),
             None,
         ))
         .await
@@ -1377,6 +1386,62 @@ mod tests {
         let serialized = serde_json::to_value(metadata).unwrap();
 
         assert_eq!(serialized["acp_meta"], serde_json::json!({}));
+    }
+
+    #[tokio::test]
+    async fn new_session_does_not_restore_a_background_record_owned_by_another_session() {
+        let temp = TempDir::new().unwrap();
+        let state_dir = temp.path().join(".vtcode/state");
+        fs::create_dir_all(&state_dir).unwrap();
+        fs::write(
+            state_dir.join("background_subagents.json"),
+            serde_json::json!({
+                "records": [{
+                    "id": "foreign-worker",
+                    "agent_name": "worker",
+                    "display_label": "worker",
+                    "description": "worker",
+                    "source": "builtin",
+                    "color": null,
+                    "owner_session_id": "prior-session",
+                    "session_id": "child-session",
+                    "exec_session_id": "exec-session",
+                    "desired_enabled": true,
+                    "status": "stopped",
+                    "created_at": "2026-08-28T00:00:00Z",
+                    "updated_at": "2026-08-28T00:00:00Z",
+                    "started_at": null,
+                    "ended_at": null,
+                    "pid": null,
+                    "prompt": "work",
+                    "summary": null,
+                    "error": null,
+                    "archive_path": null,
+                    "transcript_path": null,
+                    "max_turns": null,
+                    "model_override": null,
+                    "reasoning_override": null,
+                    "restart_attempts": 0
+                }]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let mut vt_config = VTCodeConfig::default();
+        vt_config.subagents.enabled = true;
+        vt_config.subagents.background.enabled = true;
+        vt_config.subagents.background.auto_restore = true;
+        let agent = build_agent_with_vt_config(temp.path(), "duck", Some(vt_config)).await;
+        let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
+        let session = agent.session_handle(&response.session_id).unwrap();
+        let runtime = session.workspace_runtime().expect("session workspace runtime");
+        let controller = runtime
+            .local_tool_registry
+            .subagent_controller()
+            .expect("per-session subagent controller");
+
+        assert!(controller.background_status_entries().await.is_empty());
     }
 
     #[tokio::test]
