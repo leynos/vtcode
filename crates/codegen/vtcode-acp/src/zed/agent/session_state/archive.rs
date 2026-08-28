@@ -176,9 +176,13 @@ impl ZedAgent {
             .workspace_runtime_for(workspace)
             .await
             .context("Failed to initialize archived ACP session workspace")?;
+        let subagent_controller = self
+            .build_session_subagent_controller(workspace_lease.runtime(), session_id)
+            .await;
         let handle = self.build_session_handle(
             thread,
             SessionHandleBootstrap {
+                subagent_controller,
                 session_id: session_id.clone(),
                 archive: Some(archive),
                 trigger: SessionStartTrigger::Resume,
