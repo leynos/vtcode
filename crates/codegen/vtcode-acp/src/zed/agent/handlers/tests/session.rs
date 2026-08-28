@@ -433,6 +433,7 @@ fn advertised_capabilities_include_lody_subagent_management_with_subagents() {
     assert_eq!(lody["subagents"]["cancel"], true);
     assert_eq!(lody["subagents"]["output"], true);
     assert!(lody.get("tasks").is_none());
+    assert_eq!(lody["usage"]["version"], 1);
 }
 
 #[test]
