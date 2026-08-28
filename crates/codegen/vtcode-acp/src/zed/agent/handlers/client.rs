@@ -59,7 +59,7 @@ async fn handle_initialize(
             INITIALIZE_VERSION_MISMATCH_LOG
         );
     }
-    let mut capabilities = advertised_agent_capabilities();
+    let mut capabilities = advertised_agent_capabilities(agent.local_tool_registry.subagent_controller().is_some());
     capabilities.prompt_capabilities.embedded_context = true;
     capabilities.prompt_capabilities.image = true;
     capabilities.prompt_capabilities.audio = true;
@@ -74,13 +74,16 @@ async fn handle_initialize(
     request_cx.respond(response)
 }
 
-pub(super) fn advertised_agent_capabilities() -> acp::AgentCapabilities {
+pub(super) fn advertised_agent_capabilities(has_subagent_controller: bool) -> acp::AgentCapabilities {
     let mut capabilities = acp::AgentCapabilities::default();
     capabilities.load_session = true;
     capabilities.session_capabilities = acp::SessionCapabilities::new()
         .list(acp::SessionListCapabilities::new())
         .resume(acp::SessionResumeCapabilities::new())
         .close(acp::SessionCloseCapabilities::new());
+    if has_subagent_controller {
+        super::super::lody::add_lody_subagent_lifecycle_capability(&mut capabilities);
+    }
     capabilities
 }
 
