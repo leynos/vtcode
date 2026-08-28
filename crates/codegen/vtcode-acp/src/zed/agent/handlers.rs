@@ -653,7 +653,7 @@ async fn handle_initialize(
             INITIALIZE_VERSION_MISMATCH_LOG
         );
     }
-    let mut capabilities = advertised_agent_capabilities();
+    let mut capabilities = advertised_agent_capabilities(agent.local_tool_registry.subagent_controller().is_some());
     capabilities.prompt_capabilities.embedded_context = true;
     capabilities.prompt_capabilities.image = true;
     capabilities.prompt_capabilities.audio = true;
@@ -668,12 +668,15 @@ async fn handle_initialize(
     request_cx.respond(response)
 }
 
-fn advertised_agent_capabilities() -> acp::AgentCapabilities {
+fn advertised_agent_capabilities(has_subagent_controller: bool) -> acp::AgentCapabilities {
     let mut capabilities = acp::AgentCapabilities::default();
     capabilities.load_session = true;
     capabilities.session_capabilities = acp::SessionCapabilities::new()
         .list(acp::SessionListCapabilities::new())
         .resume(acp::SessionResumeCapabilities::new());
+    if has_subagent_controller {
+        super::lody::add_lody_subagent_lifecycle_capability(&mut capabilities);
+    }
     capabilities
 }
 
@@ -1633,11 +1636,25 @@ mod tests {
 
     #[test]
     fn advertised_capabilities_include_session_discovery_and_resume() {
-        let capabilities = advertised_agent_capabilities();
+        let capabilities = advertised_agent_capabilities(false);
 
         assert!(capabilities.load_session);
         assert!(capabilities.session_capabilities.list.is_some());
         assert!(capabilities.session_capabilities.resume.is_some());
+        assert!(capabilities.meta.is_none());
+    }
+
+    #[test]
+    fn advertised_capabilities_include_lody_lifecycle_only_with_subagents() {
+        let capabilities = advertised_agent_capabilities(true);
+        let lody = &capabilities.meta.expect("Lody capability metadata")["lody"];
+
+        assert_eq!(lody["subagents"]["version"], 1);
+        assert_eq!(lody["subagents"]["lifecycle"], true);
+        assert!(lody["subagents"].get("list").is_none());
+        assert!(lody["subagents"].get("cancel").is_none());
+        assert!(lody["subagents"].get("output").is_none());
+        assert!(lody.get("tasks").is_none());
     }
     use vtcode_core::llm::provider::{LLMError, LLMErrorMetadata};
 
