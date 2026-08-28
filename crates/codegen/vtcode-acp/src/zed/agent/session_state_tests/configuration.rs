@@ -25,6 +25,7 @@ async fn build_session_handle_falls_back_for_unknown_metadata_primary_agent() {
     let handle = agent.build_session_handle(
         thread,
         SessionHandleBootstrap {
+            subagent_controller: None,
             session_id: acp::SessionId::new("session-1"),
             archive: None,
             trigger: SessionStartTrigger::NewSession,
@@ -191,6 +192,7 @@ async fn session_subagent_controller_stays_with_its_workspace_runtime() {
     let session = agent.build_session_handle(
         thread,
         SessionHandleBootstrap {
+            subagent_controller: None,
             session_id: acp::SessionId::new("session-without-workspace-controller"),
             archive: None,
             trigger: SessionStartTrigger::NewSession,

@@ -96,6 +96,7 @@ struct BackgroundRunIdentity {
 }
 
 struct BackgroundRunPlan {
+    owner_session_id: Option<String>,
     spec: SubagentSpec,
     record_id: String,
     parent_session_id: String,
@@ -167,6 +168,46 @@ impl SubagentController {
         };
 
         Ok(BackgroundSubprocessSnapshot { entry, preview })
+    }
+
+    /// Returns a caller-selected tail of background output.
+    ///
+    /// `None` requests the 200-line default. Values above
+    /// [`MAX_SUBAGENT_OUTPUT_TAIL_LINES`] are rejected to keep ACP responses
+    /// bounded; the existing [`Self::background_snapshot`] 24-line preview is
+    /// unchanged.
+    pub async fn background_output_tail(&self, target: &str, max_lines: Option<usize>) -> Result<String> {
+        let max_lines = normalize_output_tail_lines(max_lines)?;
+        let _ = self.refresh_background_processes().await?;
+
+        let entry = {
+            let state = self.state.read().await;
+            state
+                .background_children
+                .get(target)
+                .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?
+                .build_status_entry()
+        };
+
+        if entry.exec_session_id.is_empty() {
+            return Ok(String::new());
+        }
+
+        match self
+            .config
+            .exec_sessions
+            .read_session_output(&entry.exec_session_id, false)
+            .await
+        {
+            Ok(Some(output)) => Ok(extract_tail_lines(&output, max_lines)),
+            Ok(None) | Err(_) => {
+                if let Some(path) = entry.transcript_path.as_ref().or(entry.archive_path.as_ref()) {
+                    load_archive_output_tail(path, max_lines).await
+                } else {
+                    Ok(String::new())
+                }
+            }
+        }
     }
 
     /// Returns whether background subagents are enabled in the configuration.
@@ -828,7 +869,12 @@ impl SubagentController {
                     .map(|effort| effort.as_str().to_string())
             });
 
+        let owner_session_id = match previous_record {
+            Some(record) => record.owner_session_id.clone(),
+            None => Some(identity.parent_session_id.clone()),
+        };
         Ok(BackgroundRunPlan {
+            owner_session_id,
             spec: identity.spec,
             record_id: identity.record_id,
             parent_session_id: identity.parent_session_id,
@@ -849,6 +895,7 @@ impl SubagentController {
             state.background_children.insert(
                 plan.record_id.clone(),
                 BackgroundRecord {
+                    owner_session_id: plan.owner_session_id.clone(),
                     id: plan.record_id.clone(),
                     agent_name: plan.spec.name.clone(),
                     display_label: subagent_display_label(&plan.spec),

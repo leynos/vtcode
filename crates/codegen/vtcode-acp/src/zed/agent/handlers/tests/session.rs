@@ -5,7 +5,7 @@ use std::time::Duration;
 
 #[test]
 fn advertised_capabilities_include_session_discovery_and_resume() {
-    let capabilities = advertised_agent_capabilities(false);
+    let capabilities = advertised_agent_capabilities(false, false);
 
     assert!(capabilities.load_session);
     assert!(capabilities.session_capabilities.list.is_some());
@@ -36,7 +36,13 @@ async fn close_session_cancels_and_waits_for_admitted_prompt_work() {
     .await
     .expect("session close should publish cancellation");
     assert!(!close_task.is_finished(), "close must wait for admitted prompt work");
-    assert!(agent.session_handle(&session_id).expect("session lookup after close").is_none());
+    assert!(
+        agent
+            .session_handle(&session_id)
+            .expect("session lookup")
+            .expect("session lookup after close")
+            .is_none()
+    );
     assert!(agent.begin_session_prompt(&session_id).is_err(), "close must reject new prompt admission");
 
     drop(prompt_guard);
@@ -414,15 +420,215 @@ async fn concurrent_prompt_is_rejected_over_official_acp_transport() {
     assert_eq!(user_messages, 1, "the rejected prompt must not mutate durable history");
 }
 
+use vtcode_core::subagents::SpawnBackgroundSubprocessRequest;
+
 #[test]
-fn advertised_capabilities_include_lody_lifecycle_only_with_subagents() {
-    let capabilities = advertised_agent_capabilities(true);
+fn advertised_capabilities_include_lody_subagent_management_with_subagents() {
+    let capabilities = advertised_agent_capabilities(true, false);
     let lody = &capabilities.meta.expect("Lody capability metadata")["lody"];
 
     assert_eq!(lody["subagents"]["version"], 1);
     assert_eq!(lody["subagents"]["lifecycle"], true);
-    assert!(lody["subagents"].get("list").is_none());
-    assert!(lody["subagents"].get("cancel").is_none());
-    assert!(lody["subagents"].get("output").is_none());
+    assert_eq!(lody["subagents"]["list"], true);
+    assert_eq!(lody["subagents"]["cancel"], true);
+    assert_eq!(lody["subagents"]["output"], true);
     assert!(lody.get("tasks").is_none());
+}
+
+#[test]
+fn advertised_capabilities_include_background_tasks_only_when_enabled() {
+    let capabilities = advertised_agent_capabilities(true, true);
+    let lody = &capabilities.meta.expect("Lody capability metadata")["lody"];
+
+    assert_eq!(lody["tasks"]["version"], 1);
+    assert_eq!(lody["tasks"]["background"], true);
+}
+
+#[tokio::test]
+async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex() {
+    let workspace = TempDir::new().expect("Lody management workspace");
+    write_lody_background_fixture(workspace.path());
+    let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+    let mut vt_config = vtcode_core::config::VTCodeConfig::default();
+    vt_config.subagents.enabled = true;
+    vt_config.subagents.background.enabled = true;
+    Box::pin(super::super::attach_acp_subagent_controller(
+        &agent.local_tool_registry,
+        &agent.config,
+        &[],
+        Some(&vt_config),
+        None,
+        false,
+    ))
+    .await;
+    assert!(agent.local_tool_registry.has_subagent_controller());
+    let controller = agent
+        .local_tool_registry
+        .subagent_controller()
+        .expect("Lody management controller");
+
+    let (agent_channel, client_channel) = Channel::duplex();
+    let agent_connection = install_handlers(Agent.builder().name("vtcode-lody-management-test"), Arc::clone(&agent))
+        .connect_with(agent_channel, {
+            let agent = Arc::clone(&agent);
+            async move |cx: ConnectionTo<Client>| {
+                agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                std::future::pending::<agent_client_protocol::Result<()>>().await
+            }
+        });
+    let agent_task = tokio::spawn(agent_connection);
+
+    let workspace_path = workspace.path().to_path_buf();
+    let client_connection = Client
+        .builder()
+        .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+            let initialized = cx
+                .send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                .block_task()
+                .await?;
+            let lody = &initialized.agent_capabilities.meta.expect("Lody capabilities")["lody"];
+            assert_eq!(lody["subagents"]["list"], true);
+            assert_eq!(lody["tasks"]["background"], true);
+
+            let session = cx
+                .send_request(NewSessionRequest::new(workspace_path.clone()))
+                .block_task()
+                .await?;
+            controller.set_parent_session_id(session.session_id.to_string()).await;
+            let background = controller
+                .spawn_background_subprocess(SpawnBackgroundSubprocessRequest {
+                    agent_type: Some("background-demo".to_string()),
+                    ..SpawnBackgroundSubprocessRequest::default()
+                })
+                .await
+                .expect("spawn owned background task");
+            let params = serde_json::value::to_raw_value(&serde_json::json!({
+                "sessionId": session.session_id,
+                "activeOnly": false,
+            }))?;
+            let response = cx
+                .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                    super::super::lody::LODY_SUBAGENTS_LIST_METHOD,
+                    params.into(),
+                )))
+                .block_task()
+                .await?;
+            assert_eq!(response["tasks"][0]["taskId"], background.id);
+
+            let mut output = serde_json::Value::Null;
+            for _ in 0..20 {
+                let params = serde_json::value::to_raw_value(&serde_json::json!({
+                    "sessionId": session.session_id,
+                    "taskId": background.id,
+                    "tail": 1,
+                }))?;
+                output = cx
+                    .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                        super::super::lody::LODY_SUBAGENTS_OUTPUT_METHOD,
+                        params.into(),
+                    )))
+                    .block_task()
+                    .await?;
+                if output["output"] == "lody-output-two" {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            assert_eq!(output["output"], "lody-output-two");
+
+            let foreign_session = cx
+                .send_request(NewSessionRequest::new(workspace_path.clone()))
+                .block_task()
+                .await?;
+            let params = serde_json::value::to_raw_value(&serde_json::json!({
+                "sessionId": foreign_session.session_id,
+                "activeOnly": false,
+            }))?;
+            let foreign_list = cx
+                .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                    super::super::lody::LODY_SUBAGENTS_LIST_METHOD,
+                    params.into(),
+                )))
+                .block_task()
+                .await?;
+            assert_eq!(foreign_list, serde_json::json!({ "tasks": [] }));
+
+            let foreign_error = lody_output_error(&cx, &foreign_session.session_id, &background.id).await;
+            let unknown_error = lody_output_error(&cx, &session.session_id, "unknown-task").await;
+            assert_eq!(foreign_error, unknown_error);
+            assert_eq!(foreign_error.data, Some(serde_json::json!({ "reason": "unknown_task" })));
+
+            let params = serde_json::value::to_raw_value(&serde_json::json!({
+                "sessionId": session.session_id,
+                "taskId": background.id,
+                "reason": "test complete",
+            }))?;
+            let cancelled = cx
+                .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                    super::super::lody::LODY_SUBAGENTS_CANCEL_METHOD,
+                    params.into(),
+                )))
+                .block_task()
+                .await?;
+            assert_eq!(cancelled, serde_json::json!({}));
+            Ok(())
+        });
+
+    tokio::time::timeout(Duration::from_secs(5), client_connection)
+        .await
+        .expect("Lody management client should finish")
+        .expect("Lody management protocol flow should succeed");
+    agent_task.abort();
+    drop(agent_task.await);
+}
+
+async fn lody_output_error(connection: &ConnectionTo<Agent>, session_id: &acp::SessionId, task_id: &str) -> acp::Error {
+    let params = serde_json::value::to_raw_value(&serde_json::json!({
+        "sessionId": session_id,
+        "taskId": task_id,
+    }))
+    .expect("serialize Lody output request");
+    connection
+        .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+            super::super::lody::LODY_SUBAGENTS_OUTPUT_METHOD,
+            params.into(),
+        )))
+        .block_task()
+        .await
+        .expect_err("Lody output request should fail")
+}
+
+fn write_lody_background_fixture(workspace: &std::path::Path) {
+    let agent_dir = workspace.join(".vtcode/agents");
+    std::fs::create_dir_all(&agent_dir).expect("create Lody test agent directory");
+    std::fs::write(
+        agent_dir.join("background-demo.md"),
+        r#"---
+name: background-demo
+description: Lody management protocol fixture.
+tools:
+  - command_session
+background: true
+maxTurns: 2
+initialPrompt: Report readiness once.
+---
+
+Run the managed background fixture.
+"#,
+    )
+    .expect("write Lody test agent");
+    let scripts_dir = workspace.join("scripts");
+    std::fs::create_dir_all(&scripts_dir).expect("create Lody test scripts directory");
+    let script = scripts_dir.join("demo-background-subagent.sh");
+    std::fs::write(&script, "#!/bin/sh\nprintf 'lody-output-one\\nlody-output-two\\n'\nsleep 30\n")
+        .expect("write Lody background script");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = std::fs::metadata(&script)
+            .expect("Lody background script metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(script, permissions).expect("make Lody background script executable");
+    }
 }
