@@ -108,6 +108,10 @@ async fn complete_stream_response(
     request
         .telemetry
         .complete(&request.turn.provider_runtime, &response, request.attempt_index, false);
+    request
+        .turn
+        .agent
+        .publish_lody_usage(&request.turn.args.session_id, &request.turn.session_model, &response);
     emit_response_fallback(request.turn, request.output, &response).await;
     StreamAttemptOutcome::Completed(Box::new(response))
 }
