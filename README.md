@@ -167,6 +167,10 @@ diapason webmcp serve --origin <origin> --allowed-root <dir>
 [Provider Guides](./docs/providers/PROVIDER_GUIDES.md) is the source of truth
 for credentials and model defaults.
 
+Custom providers support opt-in pricing in USD per million tokens. ACP emits
+`costUSD` only when both input and output rates are configured; see
+[custom-provider pricing](./docs/config/config.md).
+
 ```bash
 diapason models list
 diapason models config

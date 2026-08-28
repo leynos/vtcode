@@ -6,7 +6,9 @@ use crate::provider::{
 pub use crate::providers::ReasoningBuffer;
 use crate::providers::common::{extract_reasoning_text_from_serialized_details, map_finish_reason_common};
 mod responses_adapter;
+
 mod responses_stream;
+
 mod tag_sanitizer;
 use crate::providers::split_reasoning_from_text;
 pub(crate) use responses_stream::{ResponsesNormalizedStreamOptions, create_responses_normalized_stream};
@@ -1678,6 +1680,7 @@ mod tests {
                 "prompt_tokens": 100,
                 "completion_tokens": 50,
                 "total_tokens": 150,
+                "completion_tokens_details": {"reasoning_tokens": 30},
                 "prompt_cache_hit_tokens": 30,
                 "prompt_cache_miss_tokens": 70
             }
@@ -1691,6 +1694,7 @@ mod tests {
         assert_eq!(usage.prompt_tokens, 100);
         assert_eq!(usage.cached_prompt_tokens, None);
         assert_eq!(usage.cache_creation_tokens, None);
+        assert_eq!(usage.reasoning_output_tokens, Some(30));
 
         // With include_cache_metrics = true (DeepSeek behaviour)
         let mut aggregator2 = StreamAggregator::new("test-model".to_string());
@@ -1701,5 +1705,6 @@ mod tests {
         assert_eq!(usage2.prompt_tokens, 100);
         assert_eq!(usage2.cached_prompt_tokens, Some(30));
         assert_eq!(usage2.cache_creation_tokens, Some(70));
+        assert_eq!(usage2.reasoning_output_tokens, Some(30));
     }
 }

@@ -13,7 +13,14 @@ pub(in crate::zed::agent::handlers) struct ProviderErrorTelemetry<'a> {
 }
 
 pub(in crate::zed::agent::handlers) fn provider_error_telemetry(error: &LLMError) -> ProviderErrorTelemetry<'_> {
-    let LLMError::Network { metadata: Some(metadata), .. } = error else {
+    let metadata = match error {
+        LLMError::Authentication { metadata, .. }
+        | LLMError::RateLimit { metadata }
+        | LLMError::InvalidRequest { metadata, .. }
+        | LLMError::Network { metadata, .. }
+        | LLMError::Provider { metadata, .. } => metadata.as_deref(),
+    };
+    let Some(metadata) = metadata else {
         return ProviderErrorTelemetry::default();
     };
     let code = metadata.code.as_deref();

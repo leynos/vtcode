@@ -126,6 +126,7 @@ async fn buffered_generation_obeys_total_generation_timeout() {
         LLMRequest::default(),
         &timeout_runtime(),
         &SessionCancellation::default(),
+        None,
     )
     .await;
 
@@ -164,7 +165,7 @@ async fn transient_network_failure_retries_and_recovers() {
     };
 
     let response =
-        generate_with_retry(&provider, LLMRequest::default(), &retry_runtime(), &SessionCancellation::default())
+        generate_with_retry(&provider, LLMRequest::default(), &retry_runtime(), &SessionCancellation::default(), None)
             .await
             .expect("transient request should recover");
 
@@ -177,7 +178,8 @@ async fn bad_gateway_retries_until_the_configured_budget_is_exhausted() {
     let provider = BadGatewayProvider { attempts: AtomicUsize::new(0) };
 
     let result =
-        generate_with_retry(&provider, LLMRequest::default(), &retry_runtime(), &SessionCancellation::default()).await;
+        generate_with_retry(&provider, LLMRequest::default(), &retry_runtime(), &SessionCancellation::default(), None)
+            .await;
 
     let Err(ProviderCallError::Failed(error)) = result else {
         panic!("persistent 502 response should exhaust the retry budget");
@@ -195,8 +197,33 @@ async fn invalid_request_is_not_retried() {
     };
 
     let result =
-        generate_with_retry(&provider, LLMRequest::default(), &retry_runtime(), &SessionCancellation::default()).await;
+        generate_with_retry(&provider, LLMRequest::default(), &retry_runtime(), &SessionCancellation::default(), None)
+            .await;
 
     assert!(matches!(result, Err(ProviderCallError::Failed(_))));
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn provider_error_telemetry_exposes_rate_limit_diagnostics() {
+    let error = LLMError::RateLimit {
+        metadata: Some(LLMErrorMetadata::new(
+            "baseten",
+            Some(429),
+            Some("rate_limit_error".to_string()),
+            None,
+            None,
+            Some("17".to_string()),
+            Some("capacity temporarily exhausted".to_string()),
+        )),
+    };
+
+    assert_eq!(
+        provider_error_telemetry(&error),
+        ProviderErrorTelemetry {
+            code: Some("rate_limit_error"),
+            status: Some(429),
+            timeout_phase: None,
+        }
+    );
 }
