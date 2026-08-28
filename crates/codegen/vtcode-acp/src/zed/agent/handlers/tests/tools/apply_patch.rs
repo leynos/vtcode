@@ -18,6 +18,7 @@ async fn approved_apply_patch_executes_and_emits_preview_and_diff_over_acp() {
         "wire-test",
         Arc::new(move || {
             Box::new(StreamToolThenAnswerProvider {
+                emit_usage: false,
                 calls: Arc::clone(&factory_calls),
                 requests: Arc::clone(&factory_requests),
                 tool_name: "apply_patch",

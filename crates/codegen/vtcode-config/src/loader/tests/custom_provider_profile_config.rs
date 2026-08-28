@@ -24,6 +24,7 @@ fn custom_provider_round_trip_config() -> CustomProviderConfig {
         supports_parallel_tool_calls: Some(false),
         supports_context_caching: Some(true),
         supports_responses_compaction: Some(false),
+        supports_stream_usage: Some(true),
         supports_context_edits: Some(true),
         api_key_env: "MYCORP_API_KEY".to_string(),
         auth: None,
@@ -49,6 +50,7 @@ fn custom_provider_round_trip_config() -> CustomProviderConfig {
                 supports_parallel_tool_calls: None,
                 supports_context_caching: None,
                 supports_responses_compaction: None,
+                supports_stream_usage: Some(false),
                 supports_context_edits: None,
             },
         )]),
@@ -70,6 +72,7 @@ fn assert_custom_provider_round_trip(provider: &CustomProviderConfig) {
     assert_eq!(provider.supports_parallel_tool_calls, Some(false));
     assert_eq!(provider.supports_context_caching, Some(true));
     assert_eq!(provider.supports_responses_compaction, Some(false));
+    assert_eq!(provider.supports_stream_usage, Some(true));
     assert_eq!(provider.supports_context_edits, Some(true));
     assert_eq!(provider.api_key_env, "MYCORP_API_KEY");
     assert_eq!(provider.model, "gpt-5-mini");
@@ -94,6 +97,7 @@ fn assert_custom_provider_round_trip(provider: &CustomProviderConfig) {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            supports_stream_usage: Some(false),
             supports_context_edits: None,
         }
     );
@@ -132,10 +136,12 @@ base_url = "https://llm.corp.example/v1"
 api_format = "openai-chat"
 context_window = 256000
 supports_tools = true
+supports_stream_usage = true
 
 [custom_providers.profiles."gpt-5-mini"]
 supports_tools = false
 supports_parallel_tool_calls = true
+supports_stream_usage = false
 "#,
     )
     .expect("nested custom provider config should parse");
@@ -169,6 +175,7 @@ supports_parallel_tool_calls = true
             supports_parallel_tool_calls: Some(true),
             supports_context_caching: None,
             supports_responses_compaction: None,
+            supports_stream_usage: Some(false),
             supports_context_edits: None,
         }
     );
