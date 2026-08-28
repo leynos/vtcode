@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision log`, `Outcomes & retrospective`, `Conformance basis`, and
 `Verification plan` must be kept up to date as work proceeds.
 
-Status: BLOCKED AT EP-M2 SECURITY TOLERANCE
+Status: IN PROGRESS — EP-M2 ROBUST CORE EXPANSION
 
 ## Purpose / big picture
 
@@ -107,9 +107,12 @@ management requests return only tasks owned by the requested ACP session.
   standard task lifecycle updates, conditional negotiation and stable IDs.
 - [x] (2026-08-28 15:24Z) EP-M1: replace `_vtcode/taskLifecycle` with standard
   task-carrying ACP tool updates and negotiate subagent lifecycle.
-- [ ] (blocked 2026-08-28 15:24Z) Resolve the EP-M2 security tolerance:
+- [x] (2026-08-28 16:02Z) Resolve the EP-M2 security tolerance:
   persisted background records do not carry an explicit owning ACP session,
   so foreign-task isolation cannot be proved without expanding the core model.
+  The user approved the robust expansion: persist explicit ownership, hide
+  legacy ownerless records from ACP management and add a bounded output-tail
+  API before registering any management handlers.
 - [ ] EP-M2: implement and negotiate background tasks plus session-scoped
   subagent list, cancel and output methods.
 - [ ] EP-M3: emit negotiated provider usage and opt custom providers into
@@ -223,16 +226,27 @@ management requests return only tasks owned by the requested ACP session.
   while hostname inference is brittle and would expose other proxies to known
   400 responses.
   Date/Author: 2026-08-28 / Codex.
+- Decision: extend persisted background records with an optional owning ACP
+  session identifier, treat a missing identifier as legacy unowned state, and
+  exclude such records from every ACP list, cancel and output operation. Add a
+  controller API that returns a caller-requested output tail under a hard
+  bound, while preserving the existing 24-line preview API for current callers.
+  Rationale: explicit ownership is the only available basis for proving
+  session isolation across process restarts. An optional additive field keeps
+  old records deserializable without granting them new authority, and a new
+  bounded API avoids silently changing existing preview behaviour.
+  Date/Author: 2026-08-28 / Codex, approved by the user as option 1.
 
 ## Outcomes & retrospective
 
 EP-M1 landed as an independently gated lifecycle repair. Standard ACP clients
 now receive task-shaped tool calls, Lody receives `_meta.lody.task`, and
-capability negotiation is truthful. EP-M2 is paused at the explicit security
-tolerance because the existing persisted background model cannot establish
-ACP-session ownership. No management handler or capability has been exposed
-prematurely. On resolution, this section will compare the management and usage
-results against the remaining purpose above.
+capability negotiation is truthful. EP-M2 crossed its explicit security
+tolerance only after the user approved an additive persisted-model expansion:
+explicit owner identifiers, fail-closed handling of legacy ownerless records,
+and bounded caller-selected output tails. No management handler or capability
+was exposed prematurely. On completion, this section will compare the
+management and usage results against the remaining purpose above.
 
 ## Context and orientation
 
