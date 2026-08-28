@@ -641,27 +641,23 @@ async fn new_session_restores_matching_workspace_hook_approval_before_session_st
     let dot_config = TempDir::new().unwrap();
     let marker = workspace.path().join("approved-session-start");
     let command = format!("touch {}", marker.display());
+    assert!(dot_config.path().join("diapason/config.toml").is_file());
     let env_guard = diapason_commons::env_lock::lock();
     let previous = std::env::var_os("XDG_CONFIG_HOME");
     env_guard.set_var("XDG_CONFIG_HOME", dot_config.path());
     diapason_core::utils::dot_config::initialize_dot_folder().await.unwrap();
-    assert!(dot_config.path().join("diapason/config.toml").is_file());
 
     let mut vt_config = diapason_core::config::DiapasonConfig::default();
-    vt_config
-        .hooks
-        .lifecycle
-        .session_start
-        .push(diapason_core::config::HookGroupConfig {
-            matcher: None,
-            hooks: vec![diapason_core::config::HookCommandConfig {
-                kind: Default::default(),
-                command: command.clone(),
-                timeout_seconds: None,
-            }],
-        });
-    vt_config.workspace_lifecycle_hooks = Some(diapason_config::hooks::WorkspaceLifecycleHooks {
-        commands: vec![diapason_config::hooks::WorkspaceHookCommand {
+    vt_config.hooks.lifecycle.session_start.push(HookGroupConfig {
+        matcher: None,
+        hooks: vec![HookCommandConfig {
+            kind: Default::default(),
+            command: command.clone(),
+            timeout_seconds: None,
+        }],
+    });
+    vt_config.workspace_lifecycle_hooks = Some(WorkspaceLifecycleHooks {
+        commands: vec![WorkspaceHookCommand {
             event: "session_start".to_string(),
             matcher: None,
             command: command.clone(),
@@ -800,3 +796,54 @@ async fn new_session_does_not_restore_a_background_record_owned_by_another_sessi
 
     assert!(controller.background_status_entries().await.is_empty());
 }
+
+use diapason_config::{HookCommandConfig, HookGroupConfig, WorkspaceHookCommand, WorkspaceLifecycleHooks};
+
+#[tokio::test]
+async fn new_session_preserves_workspace_hook_provenance_gate() {
+    for (workspace_controlled, expected_gated) in [(true, true), (false, false)] {
+        let workspace = TempDir::new().expect("temporary ACP hook workspace");
+        let command = ":".to_string();
+        let mut config = DiapasonConfig::default();
+        config.hooks.lifecycle.session_start = vec![HookGroupConfig {
+            matcher: None,
+            hooks: vec![HookCommandConfig {
+                command: command.clone(),
+                ..HookCommandConfig::default()
+            }],
+        }];
+        config.workspace_lifecycle_hooks = Some(if workspace_controlled {
+            WorkspaceLifecycleHooks {
+                commands: vec![WorkspaceHookCommand {
+                    event: "session_start".to_string(),
+                    matcher: None,
+                    command,
+                    timeout_seconds: None,
+                }],
+            }
+        } else {
+            WorkspaceLifecycleHooks::default()
+        });
+
+        let agent = build_agent_with_vt_config(workspace.path(), "duck", Some(&config)).await;
+        let session_id = agent
+            .new_session(acp::NewSessionRequest::new(workspace.path()))
+            .await
+            .expect("construct ACP session with lifecycle hooks")
+            .session_id;
+        let hooks = agent
+            .session_handle(&session_id)
+            .expect("ACP session lookup")
+            .expect("registered ACP session")
+            .lifecycle_hooks()
+            .expect("lifecycle hook lookup")
+            .expect("configured lifecycle hook engine");
+
+        assert_eq!(
+            hooks.workspace_gated(),
+            expected_gated,
+            "ACP session must preserve whether the loader attributed hooks to the workspace"
+        );
+    }
+}
+// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/session_state_tests/workspace.rs' for per-hunk detail, 'weave check' to verify your resolution

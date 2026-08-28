@@ -40,7 +40,9 @@ pub enum NormalizedStreamEvent {
 }
 
 pub type LLMStream = Pin<Box<dyn futures::Stream<Item = Result<LLMStreamEvent, LLMError>> + Send>>;
+
 pub type BorrowedLLMStream<'a> = Pin<Box<dyn futures::Stream<Item = Result<LLMStreamEvent, LLMError>> + Send + 'a>>;
+
 pub type LLMNormalizedStream = Pin<Box<dyn futures::Stream<Item = Result<NormalizedStreamEvent, LLMError>> + Send>>;
 
 impl LLMStreamEvent {
@@ -76,6 +78,7 @@ mod tests {
                 usage: Some(Usage {
                     prompt_tokens: 10,
                     completion_tokens: 5,
+                    reasoning_output_tokens: None,
                     total_tokens: 15,
                     cached_prompt_tokens: None,
                     cache_creation_tokens: None,

@@ -24,8 +24,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 pub(crate) mod client;
+
 pub(crate) mod parser;
+
 pub mod pull;
+
 pub(crate) mod url;
 
 pub(crate) use client::OllamaClient;
@@ -617,6 +620,7 @@ impl OllamaProvider {
         Some(Usage {
             prompt_tokens: prompt,
             completion_tokens: completion,
+            reasoning_output_tokens: None,
             total_tokens: prompt + completion,
             cached_prompt_tokens: None,
             cache_creation_tokens: None,
