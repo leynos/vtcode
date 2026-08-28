@@ -37,8 +37,8 @@ use crate::acp::Error as SdkError;
 use crate::tooling::SupportedTool;
 use agent_client_protocol::schema::v1::{CancelNotification, PromptRequest, PromptResponse};
 use agent_client_protocol::{
-    Agent, Builder, Client, ConnectionTo, HandleDispatchFrom, Responder, RunWithConnectionTo, on_receive_notification,
-    on_receive_request,
+    Agent, Builder, Client, ConnectionTo, Dispatch, HandleDispatchFrom, Handled, Responder, RunWithConnectionTo,
+    on_receive_notification, on_receive_request,
 };
 #[cfg(test)]
 use client::advertised_agent_capabilities;
@@ -88,7 +88,7 @@ where
     let builder = register_client_handlers(builder, Arc::clone(&agent));
     let builder = register_session_handlers(builder, Arc::clone(&agent));
     let builder = register_session_config_handler(builder, Arc::clone(&agent));
-    register_prompt_handlers(builder, agent)
+    register_prompt_handlers(builder, Arc::clone(&agent)).with_handler(LodySubagentManagementHandler { agent })
 }
 
 fn register_prompt_handlers<H, R>(
@@ -155,4 +155,40 @@ async fn handle_prompt(
     })
     .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
     Ok(())
+}
+
+struct LodySubagentManagementHandler {
+    agent: Arc<ZedAgent>,
+}
+
+impl HandleDispatchFrom<Client> for LodySubagentManagementHandler {
+    async fn handle_dispatch_from(
+        &mut self,
+        message: Dispatch,
+        connection: ConnectionTo<Client>,
+    ) -> Result<Handled<Dispatch>, SdkError> {
+        let Dispatch::Request(request, responder) = message else {
+            return Ok(Handled::No { message, retry: false });
+        };
+        if !super::lody::is_lody_subagent_management_method(request.method()) {
+            return Ok(Handled::No {
+                message: Dispatch::Request(request, responder),
+                retry: false,
+            });
+        }
+
+        let (method, params) = request.into_parts();
+        let agent = Arc::clone(&self.agent);
+        connection
+            .spawn(async move {
+                let result = super::lody::handle_lody_subagent_management(&agent, &method, params).await;
+                responder.respond_with_result(result)
+            })
+            .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
+        Ok(Handled::Yes)
+    }
+
+    fn describe_chain(&self) -> impl std::fmt::Debug {
+        "LodySubagentManagementHandler"
+    }
 }

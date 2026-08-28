@@ -15,7 +15,7 @@ use vtcode_core::config::core::PromptCachingConfig;
 use vtcode_core::config::types::{
     AgentConfig as CoreAgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference,
 };
-use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig};
+use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig, VTCodeConfig};
 use vtcode_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS};
 use vtcode_core::utils::session_archive::{
     SessionArchiveMetadata, SessionListing, SessionMessage, SessionSnapshot, find_session_by_identifier,
@@ -83,7 +83,7 @@ async fn build_agent_with_default_primary_agent(workspace: &Path, default_primar
 async fn build_agent_with_vt_config(
     workspace: &Path,
     default_primary_agent: &str,
-    vt_config: Option<&vtcode_core::config::VTCodeConfig>,
+    vt_config: Option<VTCodeConfig>,
 ) -> ZedAgent {
     let core_config = CoreAgentConfig {
         model: "gpt-5.6-sol".to_string(),
