@@ -11,6 +11,11 @@ fn advertised_capabilities_include_session_discovery_and_resume() {
     assert!(capabilities.session_capabilities.list.is_some());
     assert!(capabilities.session_capabilities.resume.is_some());
     assert!(capabilities.session_capabilities.close.is_some());
+    let lody = &capabilities.meta.expect("Lody capability metadata")["lody"];
+    assert_eq!(lody["usage"]["version"], 1);
+    assert_eq!(lody["compaction"]["version"], 1);
+    assert!(lody.get("rateLimits").is_none(), "no trustworthy quota source is configured");
+    assert!(lody.get("subagents").is_none());
 }
 
 #[tokio::test]
@@ -749,9 +754,12 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
 /// mock has to be registered in the global factory for the duration of the
 /// test.
 const NESTED_PROVIDER: &str = "nested-delegation-mock";
+
 const NESTED_MODEL: &str = vtcode_config::constants::models::anthropic::CLAUDE_SONNET_5;
+
 /// Task handed to the `default` child.
 const NESTED_CHILD_TASK: &str = "Survey the delegated fixture and report readiness.";
+
 /// Task the child delegates to its read-only grandchild.
 const NESTED_GRANDCHILD_TASK: &str = "grandchild-marker: list every source file and report each path.";
 
