@@ -7,7 +7,13 @@ mod messages;
 #[cfg(test)]
 mod tests;
 
-use self::messages::{LifecycleUpdate, send_task_lifecycle};
+use self::messages::send_task_lifecycle;
+use super::lody::lody_task_id;
+use hashbrown::HashSet;
+use vtcode_core::subagents::SubagentProgressEvent;
+type LifecycleUpdate = SubagentProgressEvent;
+#[cfg(test)]
+mod projection_tests;
 use super::super::types::{SessionHandle, lock_poison_error};
 use super::ZedAgent;
 use crate::acp;
@@ -22,7 +28,6 @@ use tracing::{Span, debug, field, info_span, warn};
 use vtcode_core::metrics::{TaskLifecycleNotificationQueueDrop, TaskLifecycleNotificationQueueMetricsObserver};
 use vtcode_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver, SubagentStatusEntry};
 
-pub(super) const TASK_LIFECYCLE_METHOD: &str = "_vtcode/taskLifecycle";
 const SESSION_CORRELATION_HEX_LENGTH: usize = 12;
 const TASK_LIFECYCLE_SEND_FAILURE_CATEGORY: &str = "notification_send_failed";
 
@@ -216,7 +221,11 @@ impl ZedAgent {
             .unwrap_or_else(|| self.local_tool_registry.metrics_collector());
         let (sender, receiver) = mpsc::channel(128);
         let queue = Arc::new(LifecycleQueueTracker::new(metrics));
-        let observer = Arc::new(AcpTaskLifecycleObserver { sender, queue: Arc::clone(&queue) });
+        let observer = Arc::new(AcpTaskLifecycleObserver {
+            sender,
+            queue: Arc::clone(&queue),
+            session_id: session_id.to_string(),
+        });
         let registration = controller.register_progress_observer(session_id.0.to_string(), observer);
         let forwarder = spawn_task_lifecycle_forwarder(receiver, session_id, client, queue);
 
@@ -242,17 +251,24 @@ impl ZedAgent {
 }
 
 struct AcpTaskLifecycleObserver {
+    session_id: String,
     sender: mpsc::Sender<LifecycleUpdate>,
     queue: Arc<LifecycleQueueTracker>,
 }
 
 impl SubagentProgressObserver for AcpTaskLifecycleObserver {
     fn subagent_status_changed(&self, entry: SubagentStatusEntry) {
-        self.try_send(LifecycleUpdate::Subagent(entry));
+        self.try_send(SubagentProgressEvent::Subagent {
+            parent_session_id: self.session_id.clone(),
+            task: entry,
+        });
     }
 
     fn background_status_changed(&self, entry: BackgroundSubprocessEntry) {
-        self.try_send(LifecycleUpdate::BackgroundProcess(entry));
+        self.try_send(SubagentProgressEvent::BackgroundProcess {
+            parent_session_id: self.session_id.clone(),
+            task: entry,
+        });
     }
 }
 
@@ -290,10 +306,16 @@ fn spawn_task_lifecycle_forwarder(
         async move {
             let _queue_guard = queue_guard;
             let mut forwarder_span = TaskLifecycleForwarderSpan::new(Span::current());
+            let mut emitted_task_ids = HashSet::new();
             while let Some(update) = receiver.recv().await {
                 queue.dequeued();
+                if update.parent_session_id() != session_id.0.as_ref() {
+                    continue;
+                }
+                let task_id = lody_task_id(&update).to_string();
+                let previously_emitted = emitted_task_ids.contains(&task_id);
                 let send_started_at = Instant::now();
-                let send_result = send_task_lifecycle(&client, &session_id, update);
+                let send_result = send_task_lifecycle(&client, &session_id, update, previously_emitted);
                 let notification_send_elapsed_ms =
                     u64::try_from(send_started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
                 match send_result {
@@ -302,6 +324,7 @@ fn spawn_task_lifecycle_forwarder(
                         warn_task_lifecycle_notification_failure(&session_correlation, notification_send_elapsed_ms);
                     }
                     Ok(()) => {
+                        let _ = emitted_task_ids.insert(task_id);
                         forwarder_span.record_sent();
                         debug!(notification_send_elapsed_ms, "Forwarded ACP task lifecycle notification");
                     }
