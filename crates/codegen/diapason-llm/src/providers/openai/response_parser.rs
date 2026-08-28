@@ -2,6 +2,7 @@
 
 use crate::error_display;
 use crate::provider;
+use crate::providers::common::parse_reasoning_tokens_from_usage;
 use crate::providers::extract_reasoning_trace;
 use crate::providers::shared::parse_cache_write_tokens_from_usage;
 use crate::providers::shared::parse_openai_tool_calls;
@@ -103,6 +104,7 @@ pub(crate) fn parse_chat_response(
                     .and_then(|ct| ct.as_u64())
                     .and_then(|v| u32::try_from(v).ok())
                     .unwrap_or(0),
+                reasoning_output_tokens: parse_reasoning_tokens_from_usage(usage_value),
                 total_tokens: usage_value
                     .get("total_tokens")
                     .and_then(|tt| tt.as_u64())
@@ -122,4 +124,33 @@ pub(crate) fn parse_chat_response(
         organization_id: None,
         compaction: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_chat_response;
+    use serde_json::json;
+
+    #[test]
+    fn parse_chat_response_preserves_nested_reasoning_token_usage() {
+        let parsed = parse_chat_response(
+            json!({
+                "choices": [{
+                    "message": {"content": "answer"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 8,
+                    "total_tokens": 18,
+                    "completion_tokens_details": {"reasoning_tokens": 3}
+                }
+            }),
+            "baseten-model".to_string(),
+            false,
+        )
+        .expect("chat response should parse");
+
+        assert_eq!(parsed.usage.and_then(|usage| usage.reasoning_output_tokens), Some(3));
+    }
 }

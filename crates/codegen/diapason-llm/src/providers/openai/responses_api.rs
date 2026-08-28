@@ -3,7 +3,7 @@ use crate::provider::{
     AssistantPhase, ContentPart, FinishReason, LLMError, LLMRequest, LLMResponse, MessageContent, MessageRole,
     ToolCall, Usage,
 };
-use crate::providers::common::append_normalized_reasoning_detail_items;
+use crate::providers::common::{append_normalized_reasoning_detail_items, parse_reasoning_tokens_from_usage};
 use crate::providers::openai::types::OpenAIResponsesPayload;
 use crate::providers::shared::{
     collect_tool_references_from_tool_search_output, function_output_value_from_message_content,
@@ -420,6 +420,7 @@ pub(crate) fn parse_responses_payload(
                 .and_then(|ct| ct.as_u64())
                 .and_then(|v| u32::try_from(v).ok())
                 .unwrap_or(0),
+            reasoning_output_tokens: parse_reasoning_tokens_from_usage(usage_value),
             total_tokens: usage_value
                 .get("total_tokens")
                 .and_then(|tt| tt.as_u64())
@@ -1255,6 +1256,26 @@ mod tests {
         let parsed = parse_responses_payload(response, "gpt-5".to_string(), true).expect("payload should parse");
 
         assert_eq!(parsed.usage.and_then(|usage| usage.cached_prompt_tokens), Some(42));
+    }
+
+    #[test]
+    fn parse_responses_payload_extracts_reasoning_tokens_from_output_details() {
+        let response = json!({
+            "output": [{
+                "type": "message",
+                "content": [{"type": "output_text", "text": "answer"}]
+            }],
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "total_tokens": 120,
+                "output_tokens_details": {"reasoning_tokens": 12}
+            }
+        });
+
+        let parsed = parse_responses_payload(response, "gpt-5".to_string(), false).expect("payload should parse");
+
+        assert_eq!(parsed.usage.and_then(|usage| usage.reasoning_output_tokens), Some(12));
     }
 
     #[test]

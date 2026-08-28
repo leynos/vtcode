@@ -123,8 +123,12 @@ async fn next_buffered_generation(
                 .map(BufferedGenerationStep::Finished);
         }
     };
-    turn.agent
-        .publish_lody_usage(&turn.args.session_id, &turn.session_model, &response);
+    turn.agent.publish_lody_usage(
+        &turn.args.session_id,
+        turn.provider_runtime.provider_name(),
+        &turn.session_model,
+        &response,
+    );
     if turn.session.cancellation.is_cancelled() {
         store_buffered_output(turn, output);
         return Ok(BufferedGenerationStep::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)));
@@ -143,7 +147,14 @@ fn store_buffered_output(turn: &mut PromptExecution, output: &mut ProviderOutput
 
 async fn generate_buffered_response(turn: &mut PromptExecution) -> Result<BufferedGenerationOutcome, SdkError> {
     let request = prepare_buffered_request(turn).await?;
-    match generate_with_retry(turn.provider.as_ref(), request, &turn.provider_runtime, &turn.session.cancellation).await
+    match generate_with_retry(
+        turn.provider.as_ref(),
+        request,
+        &turn.provider_runtime,
+        &turn.session.cancellation,
+        Some((&turn.agent, &turn.args.session_id)),
+    )
+    .await
     {
         Ok(response) => Ok(BufferedGenerationOutcome::Response(Box::new(response))),
         Err(ProviderCallError::Cancelled) => Ok(BufferedGenerationOutcome::Cancelled),
