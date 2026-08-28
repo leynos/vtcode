@@ -126,6 +126,12 @@ management requests return only tasks owned by the requested ACP session.
   streaming usage is opt-in through profile resolution.
 - [ ] EP-M4: update documentation, run release gates, install the binary, push
   the stack and open the draft PR.
+  - Current ACP/Lody negotiation, task/subagent management and usage are now
+    documented alongside the custom-provider streamed-usage opt-in.
+  - The config-reference generator completed; its unrelated pre-existing
+    full-file drift was excluded and the two new schema rows were retained.
+  - Both user-level Baseten profiles now opt into streamed usage. Final docs
+    gates, the post-commit installation, push and draft PR remain.
 
 ## Surprises & discoveries
 
@@ -319,6 +325,14 @@ management requests return only tasks owned by the requested ACP session.
   Rationale: OpenAI-compatible proxies vary in support for
   `stream_options.include_usage`, so an explicit opt-in preserves existing
   request compatibility while enabling Baseten-shaped terminal usage.
+  Date/Author: 2026-08-28 / Codex.
+- Decision: keep the generated configuration reference change scoped to the
+  two new `supports_stream_usage` rows rather than committing the generator's
+  unrelated full-file drift.
+  Rationale: `scripts/generate_config_field_reference.py` completed and proved
+  both schema paths exist, but the checked-in reference had broad pre-existing
+  drift across hundreds of unrelated fields. A full regeneration would obscure
+  this feature and violate the stacked PR's review boundary.
   Date/Author: 2026-08-28 / Codex.
 
 ## Outcomes & retrospective
@@ -731,6 +745,17 @@ RED:   /tmp/test-vtcode-acp-usage-duplex-fix-acp-lody-task-lifecycle-negotiation
        The initial duplex assertion exposed ACP's normalized extension method
        name (the leading underscore is stripped) and notification timing.
        The official-channel green rerun above covers the corrected boundary.
+GATE:  /tmp/check-VTCode-fix-acp-lody-task-lifecycle-negotiation-epm3-2.out
+       Full release gate passed: 6588 tests passed and 16 were skipped, with
+       formatting, security, logging, governance, Clippy, build, PTY/TUI and
+       documentation checks green.
+INSTALL: /tmp/install-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm3.out
+         Commit b18a674dc installed successfully at user level; the existing
+         locked-yanked chacha20 0.10.1 warning was non-fatal.
+SCHEMA: /tmp/generate-config-reference-VTCode-fix-acp-lody-task-lifecycle-negotiation-epm4.out
+        Exported 836 schema fields successfully; only the two feature-specific
+        reference rows are retained because the remaining generated diff was
+        unrelated pre-existing drift.
 ```
 
 Baseten's documented streamed-usage request is:
