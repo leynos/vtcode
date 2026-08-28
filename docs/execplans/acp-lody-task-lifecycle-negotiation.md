@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision log`, `Outcomes & retrospective`, `Conformance basis`, and
 `Verification plan` must be kept up to date as work proceeds.
 
-Status: IN PROGRESS — EP-M4 DOCUMENTATION AND DELIVERY
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -124,14 +124,18 @@ management requests return only tasks owned by the requested ACP session.
   providers into streaming usage. Per-response usage deltas now use the
   canonical `_lody/session/usage_update` method, and custom-provider
   streaming usage is opt-in through profile resolution.
-- [ ] EP-M4: update documentation, run release gates, install the binary, push
-  the stack and open the draft PR.
+- [x] (2026-08-28) EP-M4: update documentation, run release gates, install the
+  binary, push the stack and open the draft PR.
   - Current ACP/Lody negotiation, task/subagent management and usage are now
     documented alongside the custom-provider streamed-usage opt-in.
   - The config-reference generator completed; its unrelated pre-existing
     full-file drift was excluded and the two new schema rows were retained.
-  - Both user-level Baseten profiles now opt into streamed usage. Final docs
-    gates, the post-commit installation, push and draft PR remain.
+  - Both user-level Baseten profiles now opt into streamed usage.
+  - The final release gate passed with 6,588 tests and 16 skips; the user-level
+    binary was reinstalled and resolves through `/home/leynos/.local/bin/vtcode`.
+  - Draft PR [#14](https://github.com/leynos/vtcode/pull/14) targets
+    `fix/acp-unresolved-tool-recovery`. PRs #11 through #14 form stack #16,
+    preserving the intended four-layer base chain.
 
 ## Surprises & discoveries
 
@@ -347,8 +351,11 @@ negotiated list, output and cancel requests, with real duplex coverage for
 owned and foreign tasks. The core and ACP focused suites passed (5/5 and 6/6
 respectively). EP-M3 then added canonical per-response Lody usage updates,
 profile-controlled custom-provider streamed usage and local Baseten-shaped
-playback/physics coverage. EP-M3 is complete; EP-M4 is now the active
-milestone for documentation, release gates and publication.
+playback/physics coverage. EP-M4 documented the negotiated extensions and
+custom-provider opt-in, passed the complete release gate, installed the user
+binary and published draft PR #14 as the fourth layer of stack #16. The plan is
+complete. Provider limits, compaction metadata, notices, final-answer phase
+metadata and scheduled tasks remain explicitly independent follow-ups.
 
 ## Context and orientation
 
@@ -626,11 +633,10 @@ readlink -f /home/leynos/.local/bin/vtcode
 /home/leynos/.local/bin/vtcode --version
 ```
 
-Before publication, inspect and submit the stack non-interactively:
+Before publication, inspect and submit the complete stack non-interactively:
 
 ```bash
-gh stack link 13 fix/acp-lody-task-lifecycle-negotiation
-gh stack submit --auto
+gh stack link 11 12 13 14
 gh stack view --json
 ```
 
@@ -800,7 +806,8 @@ No new library dependency or deployed persistent-format migration is planned.
 
 ---
 
-Revision note (2026-08-28): EP-M3 is complete. Canonical per-response usage
+Revision note (2026-08-28): EP-M4 is complete. Canonical per-response usage
 updates, custom-provider streamed-usage opt-in, wiremock playback,
-vidai-mock physics and official ACP duplex coverage are recorded above. EP-M4
-is active for documentation, release gates, installation and publication.
+vidai-mock physics and official ACP duplex coverage are recorded above. The
+complete release gate and user installation passed, and draft PR #14 is the
+fourth layer of stack #16.
