@@ -131,9 +131,33 @@ fails the tool safely.
 
 `SessionEnd` is emitted when the ACP connection actually closes (with a bounded
 shutdown wait), not after every prompt. Notification hooks are not invented for
-ACP protocol messages; they run only for real VT Code notification events. The
-current ACP subagent controller does not expose child lifecycle callbacks, so
-ACP does not currently emit `SubagentStart` or `SubagentStop`.
+ACP protocol messages; they run only for real VT Code notification events.
+
+### ACP capability negotiation and Lody extensions
+
+During `initialize`, VT Code always advertises the Lody usage capability at
+version 1 (`_meta.lody.usage`). If the session has a subagent controller, it
+also advertises version-1 subagent lifecycle and management capabilities:
+`lifecycle`, `list`, `cancel`, and `output`. The `_meta.lody.tasks.background`
+capability is advertised only when background subagents are enabled. Clients
+should inspect the handshake before using any conditional extension.
+
+Subagent and background-process lifecycle is represented with standard ACP
+`session/update` tool calls and tool-call updates. Their standard title, kind,
+content, and status fields are accompanied by `_meta.lody.task`, which carries
+the VT Code/Lody task snapshot and its additional identifiers, actor, timing,
+summary, or error fields. VT Code does not require non-standard `SubagentStart`
+or `SubagentStop` update types.
+
+When subagent management is advertised, the following Lody requests are
+available: `_lody/subagents/list`, `_lody/subagents/cancel`, and
+`_lody/subagents/output`. They list owned tasks, request cancellation, and
+return a bounded output tail respectively.
+
+Provider usage is sent as the `_lody/session/usage_update` extension
+notification. Its parameters contain `sessionId`, a per-response `usage` delta
+(input, output, and cache token counts), and `modelUsage` keyed by model name.
+No usage notification is sent when the provider response contains no usage data.
 
 MCP connections are scoped to the session that declares them. A subagent does
 not implicitly inherit its parent's MCP connections; declare the required MCP
