@@ -1,18 +1,74 @@
-# ACP (Agent Communication Protocol) Integration Guide
+# ACP (Agent Client Protocol) Integration Guide
 
 ## Overview
 
-VT Code now supports Agent Communication Protocol (ACP) for inter-agent communication. This enables vtcode to act as an ACP client, discovering and communicating with other agents in a distributed system.
+VT Code exposes two ACP-related surfaces. The current integration is a
+stdio-based ACP server for editor clients such as Zed. It negotiates the ACP
+capabilities during `initialize`, serves sessions, and sends `session/update`
+notifications over the protocol connection. This is the integration described
+in the [Zed ACP guide](../guides/zed-acp.md).
+
+This document also retains the original REST-based `AcpClient` reference. That
+client is a legacy inter-agent API and is not the transport used by the current
+ACP server; its sections are explicitly marked below.
 
 **Key Features:**
 
--   REST-based HTTP protocol (no special SDKs required)
--   Agent discovery (online and offline metadata)
--   Synchronous and asynchronous request handling
--   Health monitoring and agent registry management
--   Three MCP tools for main agent integration
+-   stdio ACP server with `session/new`, `session/prompt`, and session resume
+    support
+-   capability negotiation for usage, task progress, and subagent management
+-   streaming message, thought, and tool updates through `session/update`
+-   the legacy REST client and its registry remain available for existing
+    inter-agent callers
 
-## Architecture
+## Current ACP server
+
+### Initialization and capability negotiation
+
+The server responds to ACP `initialize` with protocol version 1 and advertises
+the standard session capabilities it implements. It always includes the Lody
+extension capability `_meta.lody.usage = { "version": 1 }`. Usage notifications
+are sent only when the provider response includes usage data.
+
+When the session has a subagent controller, the response additionally includes
+`_meta.lody.subagents` version 1 with `lifecycle`, `list`, `cancel`, and `output`
+set to `true`. If background subagents are enabled, it also includes
+`_meta.lody.tasks = { "version": 1, "background": true }`. These extension
+capabilities are conditional; a client must not assume that subagent
+management or background tasks are available when they are absent from the
+handshake.
+
+Subagent and background-process progress uses ordinary ACP `session/update`
+tool calls and tool-call updates. The update carries the task description and
+status in the standard fields, while `meta.lody.task` contains the additional
+Lody task snapshot (for example task ID, kind, actor, timestamps, summary, and
+error details).
+
+The following Lody extension requests are available when subagent management
+was advertised:
+
+- `_lody/subagents/list` lists the caller session's owned tasks;
+- `_lody/subagents/cancel` requests cancellation of an owned task; and
+- `_lody/subagents/output` returns a bounded output tail for an owned task.
+
+Usage is reported with the `_lody/session/usage_update` extension notification.
+Its parameters contain `sessionId`, a `usage` object with normalized input,
+output, and cache token counts, and `modelUsage`, keyed by model name. The
+notification represents the usage delta for one provider response, not a
+running total.
+
+The current server is launched with `vtcode acp` and communicates over stdio;
+it does not expose the legacy `/messages`, `/metadata`, or `/health` HTTP
+endpoints described in the reference below.
+
+## Legacy REST/client reference
+
+The material in the remaining sections documents the original REST-based
+`AcpClient`, agent registry, and MCP wrappers. Keep it for callers that still
+use that API, but do not use it as the launch or wire-format documentation for
+the current stdio ACP server.
+
+## Legacy REST/client architecture
 
 ```
 
@@ -44,7 +100,7 @@ VT Code now supports Agent Communication Protocol (ACP) for inter-agent communic
 
 ```
 
-## Module Structure
+## Legacy REST/client module structure
 
 ### `vtcode-acp` Library
 

@@ -1,5 +1,64 @@
 # ACP Quick Reference
 
+The current VT Code ACP integration is a stdio server. The REST `AcpClient`
+snippets below are retained as a legacy client reference and do not describe
+the server handshake or transport.
+
+## Current ACP server
+
+Launch the server with:
+
+```bash
+vtcode acp
+```
+
+The server negotiates protocol version 1 during `initialize`. Its Lody usage
+capability is always advertised as `_meta.lody.usage = { "version": 1 }`.
+When a subagent controller is configured, the handshake also advertises
+`_meta.lody.subagents` version 1 with `lifecycle`, `list`, `cancel`, and `output`
+operations. The `_meta.lody.tasks = { "version": 1, "background": true }`
+capability is included only when background subagents are enabled.
+
+Subagent and background-process progress is sent through standard ACP
+`session/update` tool calls and tool-call updates. The standard task fields
+carry the title and status; the additional task snapshot is in
+`_meta.lody.task`.
+
+The conditional Lody management requests are:
+
+```text
+_lody/subagents/list
+_lody/subagents/cancel
+_lody/subagents/output
+```
+
+The server reports per-response provider usage through the extension
+notification `_lody/session/usage_update`. Its parameters contain:
+
+```json
+{
+  "sessionId": "session-id",
+  "usage": {
+    "inputTokens": 123,
+    "outputTokens": 45,
+    "cacheReadInputTokens": 0
+  },
+  "modelUsage": {
+    "model-name": {
+      "inputTokens": 123,
+      "outputTokens": 45,
+      "cacheReadInputTokens": 0
+    }
+  }
+}
+```
+
+`modelUsage` is keyed by the response model. The values are deltas for one
+provider response, and no notification is emitted when the provider supplies
+no usage data.
+
+## Legacy REST ACP client reference
+
 ## Initialize ACP Client
 
 ```rust
