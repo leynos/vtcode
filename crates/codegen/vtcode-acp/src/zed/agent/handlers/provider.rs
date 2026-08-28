@@ -253,6 +253,7 @@ pub(super) async fn generate_with_retry(
     request: LLMRequest,
     runtime: &ProviderRequestRuntime,
     cancellation: &SessionCancellation,
+    notice_target: Option<(&ZedAgent, &acp::SessionId)>,
 ) -> Result<LLMResponse, ProviderCallError> {
     let policy = runtime.retry_policy();
     let mut attempt_index = 0;
@@ -292,10 +293,18 @@ pub(super) async fn generate_with_retry(
                 let decision = policy.decision_for_llm_error(&error, attempt_index);
                 telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
                 drop(permit);
+                let retry_delay = decision
+                    .retryable
+                    .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
+                if let Some((agent, session_id)) = notice_target {
+                    agent
+                        .publish_rate_limit_notice(session_id, runtime.provider_name(), &error, retry_delay)
+                        .await;
+                }
                 if !decision.retryable {
                     return Err(ProviderCallError::Failed(error.to_string()));
                 }
-                let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
+                let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                 info!(
                     provider = runtime.provider_name(),
                     next_attempt = attempt_index + 2,

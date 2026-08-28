@@ -1842,6 +1842,7 @@ mod tests {
                 usage: crate::provider::Usage {
                     prompt_tokens: 10,
                     completion_tokens: 4,
+                    reasoning_output_tokens: None,
                     total_tokens: 14,
                     cached_prompt_tokens: None,
                     cache_creation_tokens: None,

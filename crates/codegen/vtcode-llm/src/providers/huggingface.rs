@@ -674,6 +674,7 @@ Enable that provider in your HuggingFace Inference Providers settings, or switch
                 .or_else(|| usage_value.get("completion_tokens"))
                 .and_then(|ct| ct.as_u64())
                 .unwrap_or(0) as u32,
+            reasoning_output_tokens: crate::providers::common::parse_reasoning_tokens_from_usage(usage_value),
             total_tokens: usage_value.get("total_tokens").and_then(|tt| tt.as_u64()).unwrap_or(0) as u32,
             cached_prompt_tokens: None,
             cache_creation_tokens: None,
@@ -1047,6 +1048,7 @@ impl HuggingFaceProvider {
                                     aggregator.set_usage(crate::provider::Usage {
                                         prompt_tokens: usage_value.get("prompt_tokens").and_then(|pt| pt.as_u64()).unwrap_or(0) as u32,
                                         completion_tokens: usage_value.get("completion_tokens").and_then(|ct| ct.as_u64()).unwrap_or(0) as u32,
+                                        reasoning_output_tokens: crate::providers::common::parse_reasoning_tokens_from_usage(usage_value),
                                         total_tokens: usage_value.get("total_tokens").and_then(|tt| tt.as_u64()).unwrap_or(0) as u32,
                                         cached_prompt_tokens: None,
                                         cache_creation_tokens: None,

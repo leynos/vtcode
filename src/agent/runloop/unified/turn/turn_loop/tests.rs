@@ -937,6 +937,7 @@ fn accumulate_turn_usage_merges_prompt_completion_and_cached_tokens() {
         &Some(uni::Usage {
             prompt_tokens: 100,
             completion_tokens: 20,
+            reasoning_output_tokens: None,
             total_tokens: 120,
             cached_prompt_tokens: Some(15),
             cache_creation_tokens: None,
@@ -950,6 +951,7 @@ fn accumulate_turn_usage_merges_prompt_completion_and_cached_tokens() {
         &Some(uni::Usage {
             prompt_tokens: 40,
             completion_tokens: 10,
+            reasoning_output_tokens: None,
             total_tokens: 50,
             cached_prompt_tokens: None,
             cache_creation_tokens: None,
@@ -974,6 +976,7 @@ fn accumulate_turn_usage_normalizes_anthropic_exclusive_input() {
         &Some(uni::Usage {
             prompt_tokens: 100,
             completion_tokens: 20,
+            reasoning_output_tokens: None,
             total_tokens: 120,
             cached_prompt_tokens: None,
             cache_creation_tokens: Some(50),

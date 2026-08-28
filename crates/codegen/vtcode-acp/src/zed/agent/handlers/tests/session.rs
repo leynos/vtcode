@@ -11,6 +11,11 @@ fn advertised_capabilities_include_session_discovery_and_resume() {
     assert!(capabilities.session_capabilities.list.is_some());
     assert!(capabilities.session_capabilities.resume.is_some());
     assert!(capabilities.session_capabilities.close.is_some());
+    let lody = &capabilities.meta.expect("Lody capability metadata")["lody"];
+    assert_eq!(lody["usage"]["version"], 1);
+    assert_eq!(lody["compaction"]["version"], 1);
+    assert!(lody.get("rateLimits").is_none(), "no trustworthy quota source is configured");
+    assert!(lody.get("subagents").is_none());
 }
 
 #[tokio::test]
@@ -279,3 +284,6 @@ async fn blocked_stop_draft_is_not_visible_until_hook_allows_it() {
     assert_eq!(history[0].content.as_text(), "blocked draft");
     assert_eq!(history[1].content.as_text(), "retry the draft");
 }
+
+
+
