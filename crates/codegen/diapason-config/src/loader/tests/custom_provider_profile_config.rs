@@ -9,6 +9,12 @@ fn custom_provider_round_trip_config() -> CustomProviderConfig {
         base_url: "https://llm.corp.example/v1".to_string(),
         api_format: CustomProviderApiFormat::OpenAIChat,
         context_window: Some(256_000),
+        pricing: CustomProviderPricingConfig {
+            input_per_million_usd: Some(0.13),
+            output_per_million_usd: Some(0.26),
+            cache_read_per_million_usd: Some(0.028),
+            cache_write_per_million_usd: None,
+        },
         temperature: None,
         top_p: None,
         top_k: None,
@@ -35,6 +41,10 @@ fn custom_provider_round_trip_config() -> CustomProviderConfig {
             CustomProviderProfileConfig {
                 api_format: CustomProviderApiFormat::OpenAIResponses,
                 context_window: None,
+                pricing: CustomProviderPricingConfig {
+                    output_per_million_usd: Some(0.50),
+                    ..Default::default()
+                },
                 temperature: Some(0.2),
                 top_p: Some(0.9),
                 top_k: Some(40),
@@ -64,6 +74,7 @@ fn assert_custom_provider_round_trip(provider: &CustomProviderConfig) {
     assert_eq!(provider.base_url, "https://llm.corp.example/v1");
     assert_eq!(provider.api_format, CustomProviderApiFormat::OpenAIChat);
     assert_eq!(provider.context_window, Some(256_000));
+    assert_eq!(provider.pricing.input_per_million_usd, Some(0.13));
     assert_eq!(provider.supports_tools, Some(true));
     assert_eq!(provider.supports_reasoning, Some(false));
     assert_eq!(provider.supports_reasoning_effort, Some(true));
@@ -82,6 +93,10 @@ fn assert_custom_provider_round_trip(provider: &CustomProviderConfig) {
         CustomProviderProfileConfig {
             api_format: CustomProviderApiFormat::OpenAIResponses,
             context_window: None,
+            pricing: CustomProviderPricingConfig {
+                output_per_million_usd: Some(0.50),
+                ..Default::default()
+            },
             temperature: Some(0.2),
             top_p: Some(0.9),
             top_k: Some(40),
@@ -160,6 +175,7 @@ supports_stream_usage = false
         crate::core::ResolvedCustomProviderProfile {
             api_format: Some(CustomProviderApiFormat::OpenAIChat),
             context_window: Some(256_000),
+            pricing: Default::default(),
             temperature: None,
             top_p: None,
             top_k: None,

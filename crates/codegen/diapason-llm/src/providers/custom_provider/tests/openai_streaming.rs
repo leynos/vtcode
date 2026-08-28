@@ -265,7 +265,7 @@ async fn openai_chat_stream_usage_obeys_profile_precedence_and_decodes_terminal_
                 .insert_header("content-type", "text/event-stream")
                 .set_body_string(
                     "data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"answer\"},\"finish_reason\":null}]}\n\n\
-                     data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[],\"usage\":{\"prompt_tokens\":13,\"completion_tokens\":5,\"total_tokens\":18}}\n\n\
+                     data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[],\"usage\":{\"prompt_tokens\":13,\"completion_tokens\":5,\"total_tokens\":18,\"completion_tokens_details\":{\"reasoning_tokens\":3}}}\n\n\
                      data: [DONE]\n\n",
                 )
         })
@@ -306,6 +306,7 @@ async fn openai_chat_stream_usage_obeys_profile_precedence_and_decodes_terminal_
     let response = collect_completed_response(&router, OPTED_IN_MODEL).await;
     let usage = response.usage.expect("terminal Baseten usage should be retained");
     assert_eq!((usage.prompt_tokens, usage.completion_tokens, usage.total_tokens), (13, 5, 18));
+    assert_eq!(usage.reasoning_output_tokens, Some(3));
     drop(collect_completed_response(&router, OPTED_OUT_MODEL).await);
 
     let requests = captured.lock().expect("capture mutex");
