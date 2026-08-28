@@ -16,6 +16,7 @@ async fn streamed_tool_calls_audit_success_and_failure_before_streamed_final_ans
         "wire-test",
         Arc::new(move || {
             Box::new(StreamToolThenAnswerProvider {
+                emit_usage: true,
                 calls: Arc::clone(&factory_calls),
                 requests: Arc::clone(&factory_requests),
                 tool_name: "list_files",
@@ -71,7 +72,7 @@ async fn streamed_tool_calls_audit_success_and_failure_before_streamed_final_ans
             .expect("create ACP test agent"),
     );
     let (agent_channel, client_channel) = Channel::duplex();
-    let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
+    let (notifications_tx, mut notifications_rx) = mpsc::unbounded_channel();
 
     let agent_connection = install_handlers(Agent.builder().name("vtcode-stream-tool-test"), Arc::clone(&agent))
         .connect_with(agent_channel, {
@@ -87,8 +88,8 @@ async fn streamed_tool_calls_audit_success_and_failure_before_streamed_final_ans
     let client_connection = Client
         .builder()
         .on_receive_notification(
-            async move |notification: acp::SessionNotification, _cx| {
-                drop(updates_tx.send(notification));
+            async move |notification: acp::AgentNotification, _cx| {
+                drop(notifications_tx.send(notification));
                 Ok(())
             },
             on_receive_notification!(),
@@ -122,7 +123,31 @@ async fn streamed_tool_calls_audit_success_and_failure_before_streamed_final_ans
     agent_task.abort();
     drop(agent_task.await);
 
-    let updates = std::iter::from_fn(|| updates_rx.try_recv().ok()).collect::<Vec<_>>();
+    let notifications = std::iter::from_fn(|| notifications_rx.try_recv().ok()).collect::<Vec<_>>();
+    let updates = notifications
+        .iter()
+        .filter_map(|notification| match notification {
+            acp::AgentNotification::SessionNotification(notification) => Some(notification),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let usage_updates = notifications
+        .iter()
+        .filter_map(|notification| match notification {
+            acp::AgentNotification::ExtNotification(notification)
+                if notification.method.as_ref().trim_start_matches('_')
+                    == crate::zed::agent::lody_usage::LODY_SESSION_USAGE_UPDATE_METHOD.trim_start_matches('_') =>
+            {
+                serde_json::from_str::<serde_json::Value>(notification.params.get()).ok()
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(usage_updates.len(), 2, "each tool-loop response must publish one usage delta");
+    assert_eq!(usage_updates[0]["usage"]["inputTokens"], 100);
+    assert_eq!(usage_updates[0]["usage"]["outputTokens"], 11);
+    assert_eq!(usage_updates[1]["usage"]["inputTokens"], 101);
+    assert_eq!(usage_updates[1]["usage"]["outputTokens"], 12);
     assert!(
         updates
             .iter()

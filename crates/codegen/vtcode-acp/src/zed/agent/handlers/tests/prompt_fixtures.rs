@@ -25,6 +25,7 @@ pub(super) struct FailThenSucceedProvider {
 }
 
 pub(super) struct StreamToolThenAnswerProvider {
+    pub(super) emit_usage: bool,
     pub(super) calls: Arc<AtomicUsize>,
     pub(super) requests: Arc<Mutex<Vec<LLMRequest>>>,
     pub(super) tool_name: &'static str,
@@ -88,6 +89,11 @@ impl LLMProvider for StreamToolThenAnswerProvider {
                 tool_calls: Some(tool_calls),
                 finish_reason: vtcode_core::llm::provider::FinishReason::ToolCalls,
                 model: "wire-model".to_string(),
+                usage: self.emit_usage.then(|| vtcode_core::llm::Usage {
+                    prompt_tokens: u32::try_from(100 + response_index).expect("fixture usage fits u32"),
+                    completion_tokens: if response_index == 0 { 11 } else { 12 },
+                    ..Default::default()
+                }),
                 ..LLMResponse::default()
             };
             vec![
@@ -100,6 +106,11 @@ impl LLMProvider for StreamToolThenAnswerProvider {
                 content: Some("Tool complete.".to_string()),
                 finish_reason: vtcode_core::llm::provider::FinishReason::Stop,
                 model: "wire-model".to_string(),
+                usage: self.emit_usage.then(|| vtcode_core::llm::Usage {
+                    prompt_tokens: u32::try_from(100 + response_index).expect("fixture usage fits u32"),
+                    completion_tokens: if response_index == 0 { 11 } else { 12 },
+                    ..Default::default()
+                }),
                 ..LLMResponse::default()
             };
             vec![
