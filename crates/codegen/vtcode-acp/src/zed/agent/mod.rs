@@ -31,6 +31,7 @@ use super::types::SessionHandle;
 
 mod compaction;
 pub(crate) mod handlers;
+mod lody;
 mod prompt;
 mod session_state;
 mod task_lifecycle;

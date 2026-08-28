@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision log`, `Outcomes & retrospective`, `Conformance basis`, and
 `Verification plan` must be kept up to date as work proceeds.
 
-Status: DRAFT
+Status: IN PROGRESS
 
 ## Purpose / big picture
 
@@ -77,7 +77,7 @@ management requests return only tasks owned by the requested ACP session.
   forests; validate ownership before list, cancel and output.
 - Risk: `SubagentStatus::Closed` and background `Stopped` do not encode every
   Lody terminal reason. Severity: medium. Likelihood: high. Mitigation: define
-  one explicit, documented mapping; use `killed` for a closed child and
+  one explicit, documented mapping; use `failed` for a closed child and
   `completed` for a normally stopped background process, preserving errors and
   raw summaries where the Lody schema permits them.
 - Risk: provider usage may be absent or incomplete. Severity: medium.
@@ -102,7 +102,9 @@ management requests return only tasks owned by the requested ACP session.
   current Lody extension contract.
 - [x] (2026-08-28 11:28Z) Confirm Baseten's streamed-usage contract and the
   current custom-provider opt-in gap.
-- [ ] Obtain approval for this ExecPlan.
+- [x] (2026-08-28 12:39Z) Obtain approval for this ExecPlan and begin EP-M1.
+- [x] (2026-08-28 13:28Z) Complete EP-M1 red and focused green tests for
+  standard task lifecycle updates, conditional negotiation and stable IDs.
 - [ ] EP-M1: replace `_vtcode/taskLifecycle` with standard task-carrying ACP
   tool updates and negotiate subagent lifecycle.
 - [ ] EP-M2: implement and negotiate background tasks plus session-scoped
@@ -113,6 +115,19 @@ management requests return only tasks owned by the requested ACP session.
   the stack and open the draft PR.
 
 ## Surprises & discoveries
+
+- Observation: Lody's version-1 task schema accepts only `pending`,
+  `in_progress`, `completed` and `failed`; it does not accept `killed`.
+  Evidence: `packages/shared/src/acp/claude-subagent-task.ts` in the checked-out
+  Lody source defines the closed status enum used by `_meta.lody.task`.
+  Impact: a closed child maps to `failed`, with its error retained, rather than
+  the unsupported `killed` value in the draft risk mitigation.
+- Observation: the EP-M1 red run failed at compile time because
+  `lody_task_session_update` was intentionally absent.
+  Evidence: `/tmp/red-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm1.out`
+  reports `E0425` from the new task lifecycle unit test.
+  Impact: the red test directly proves that the new standard ACP adapter is
+  required; the existing private notification cannot satisfy it.
 
 - Observation: VTCode already emits the model's task tracker as a standard ACP
   `Plan`, including blocked-task labels and durable replay.
@@ -521,6 +536,16 @@ Branch: fix/acp-lody-task-lifecycle-negotiation
 Base:   80bcd6530c58e4f8b03d5d53e99781024d6f4f58 (PR #13)
 Lody Core: 23c792b910a903b74601e346473827106f991715
 Lody client: dd241fd4108ba5de2f7e2d8d627713152d812a06
+```
+
+EP-M1 Red-Green-Refactor evidence:
+
+```plaintext
+RED:   /tmp/red-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm1.out
+       E0425: lody_task_session_update was absent.
+GREEN: /tmp/green-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm1.out
+       5 passed: status mapping, stable-ID property, official ACP duplex and
+       capability present/absent tests.
 ```
 
 Baseten's documented streamed-usage request is:
