@@ -71,6 +71,7 @@ pub fn create_stream(
                             aggregator.set_usage(Usage {
                                 prompt_tokens: message.usage.input_tokens,
                                 completion_tokens: 0,
+                                reasoning_output_tokens: None,
                                 total_tokens: message.usage.input_tokens,
                                 cached_prompt_tokens: message.usage.cache_read_input_tokens,
                                 cache_creation_tokens: message.usage.cache_creation_input_tokens,

@@ -52,10 +52,32 @@ was advertised:
 - `_lody/subagents/output` returns a bounded output tail for an owned task.
 
 Usage is reported with the `_lody/session/usage_update` extension notification.
-Its parameters contain `sessionId`, a `usage` object with normalized input,
-output, and cache token counts, and `modelUsage`, keyed by model name. The
-notification represents the usage delta for one provider response, not a
-running total.
+Its parameters contain `sessionId`, a `usage` object, and `modelUsage`, keyed by
+model name. The notification represents the usage delta for one provider
+response, not a running total. The normalized usage object may contain:
+
+- `inputTokens`, `outputTokens`, `cacheReadInputTokens`, and
+  `cacheCreationInputTokens`;
+- `reasoningOutputTokens`, when the provider reports reasoning usage (including
+  the nested `completion_tokens_details.reasoning_tokens` field used by
+  Baseten's OpenAI-compatible responses). `outputTokens` is the visible output
+  portion after reasoning tokens are split out;
+- `contextWindow`, from the resolved provider/model profile; and
+- `costUSD`, only when opt-in custom-provider pricing resolves both input and
+  output rates. Pricing is configured in USD per million tokens, with optional
+  cache-read and cache-write rates.
+
+Automatic context compaction is advertised as `_meta.lody.compaction = {
+"version": 1 }`. Each compaction is represented by standard ACP
+`tool_call`/`tool_call_update` session updates. The updates use a stable tool
+call ID and carry `_meta.lody.activity` with the activity kind, token counts,
+duration, and any failure reason; no private ACP update type is required.
+
+VT Code does not advertise `_meta.lody.rateLimits` unless it has trustworthy
+quota state. A Baseten HTTP 429 is not treated as a quota window: the response
+and any `Retry-After` value are surfaced through warning notices and provider
+telemetry instead. This avoids presenting fabricated reset times or usage
+percentages.
 
 The current server is launched with `vtcode acp` and communicates over stdio;
 it does not expose the legacy `/messages`, `/metadata`, or `/health` HTTP

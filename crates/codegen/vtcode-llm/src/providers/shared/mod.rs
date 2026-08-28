@@ -1677,6 +1677,7 @@ mod tests {
                 "prompt_tokens": 100,
                 "completion_tokens": 50,
                 "total_tokens": 150,
+                "completion_tokens_details": {"reasoning_tokens": 30},
                 "prompt_cache_hit_tokens": 30,
                 "prompt_cache_miss_tokens": 70
             }
@@ -1690,6 +1691,7 @@ mod tests {
         assert_eq!(usage.prompt_tokens, 100);
         assert_eq!(usage.cached_prompt_tokens, None);
         assert_eq!(usage.cache_creation_tokens, None);
+        assert_eq!(usage.reasoning_output_tokens, Some(30));
 
         // With include_cache_metrics = true (DeepSeek behavior)
         let mut aggregator2 = StreamAggregator::new("test-model".to_string());
@@ -1700,5 +1702,6 @@ mod tests {
         assert_eq!(usage2.prompt_tokens, 100);
         assert_eq!(usage2.cached_prompt_tokens, Some(30));
         assert_eq!(usage2.cache_creation_tokens, Some(70));
+        assert_eq!(usage2.reasoning_output_tokens, Some(30));
     }
 }
