@@ -739,6 +739,7 @@ fn advertised_agent_capabilities(has_subagent_controller: bool, background_enabl
     capabilities.session_capabilities = acp::SessionCapabilities::new()
         .list(acp::SessionListCapabilities::new())
         .resume(acp::SessionResumeCapabilities::new());
+    super::lody_usage::add_lody_usage_capability(&mut capabilities);
     if has_subagent_controller {
         super::lody::add_lody_subagent_management_capability(&mut capabilities, background_enabled);
     }
@@ -1330,6 +1331,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             }
                         }
                         telemetry.complete(&provider_runtime, &response, attempt_index, false);
+                        agent.publish_lody_usage(&args.session_id, &session_model, &response);
                         if assistant_message.is_empty()
                             && let Some(content) = response.content
                         {
@@ -1524,6 +1526,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     }
                 };
 
+            agent.publish_lody_usage(&args.session_id, &session_model, &response);
             if session.cancellation.is_cancelled() {
                 stop_reason = acp::StopReason::Cancelled;
                 break;
@@ -1724,6 +1727,7 @@ mod tests {
         DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
     };
     use vtcode_core::core::threads::{ThreadBootstrap, ThreadManager};
+    use vtcode_core::llm::Usage;
     use vtcode_core::subagents::SpawnBackgroundSubprocessRequest;
 
     static PROMPT_PROVIDER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
@@ -1751,7 +1755,9 @@ mod tests {
         assert!(capabilities.load_session);
         assert!(capabilities.session_capabilities.list.is_some());
         assert!(capabilities.session_capabilities.resume.is_some());
-        assert!(capabilities.meta.is_none());
+        let lody = &capabilities.meta.expect("Lody capability metadata")["lody"];
+        assert_eq!(lody["usage"]["version"], 1);
+        assert!(lody.get("subagents").is_none());
     }
 
     #[test]
@@ -1764,6 +1770,7 @@ mod tests {
         assert_eq!(lody["subagents"]["list"], true);
         assert_eq!(lody["subagents"]["cancel"], true);
         assert_eq!(lody["subagents"]["output"], true);
+        assert_eq!(lody["usage"]["version"], 1);
         assert!(lody.get("tasks").is_none());
     }
 
@@ -2327,6 +2334,7 @@ Run the managed background fixture.
         requests: Arc<Mutex<Vec<LLMRequest>>>,
         tool_calls: Vec<(String, String)>,
         mutation_before_call: Option<(usize, PathBuf, String)>,
+        emit_usage: bool,
     }
 
     struct PartialThenFailProvider;
@@ -2423,6 +2431,11 @@ Run the managed background fixture.
                     )]),
                     finish_reason: vtcode_core::llm::provider::FinishReason::ToolCalls,
                     model: "wire-model".to_string(),
+                    usage: self.emit_usage.then(|| Usage {
+                        prompt_tokens: u32::try_from(100 + response_index).expect("fixture usage fits u32"),
+                        completion_tokens: 11,
+                        ..Usage::default()
+                    }),
                     ..LLMResponse::default()
                 };
                 vec![
@@ -2435,6 +2448,11 @@ Run the managed background fixture.
                     content: Some("Tool complete.".to_string()),
                     finish_reason: vtcode_core::llm::provider::FinishReason::Stop,
                     model: "wire-model".to_string(),
+                    usage: self.emit_usage.then(|| Usage {
+                        prompt_tokens: u32::try_from(100 + response_index).expect("fixture usage fits u32"),
+                        completion_tokens: 12,
+                        ..Usage::default()
+                    }),
                     ..LLMResponse::default()
                 };
                 vec![
@@ -2822,6 +2840,7 @@ Run the managed background fixture.
                     requests: Arc::clone(&factory_requests),
                     tool_calls: vec![("list_files".to_string(), r#"{"path":""}"#.to_string())],
                     mutation_before_call: None,
+                    emit_usage: true,
                 })
             }),
         );
@@ -2832,7 +2851,7 @@ Run the managed background fixture.
             .expect("write launch workspace fixture");
         let agent = Arc::new(build_wire_test_agent(launch_workspace.path()).await);
         let (agent_channel, client_channel) = Channel::duplex();
-        let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
+        let (notifications_tx, mut notifications_rx) = mpsc::unbounded_channel();
 
         let agent_connection = install_handlers(Agent.builder().name("vtcode-stream-tool-test"), Arc::clone(&agent))
             .connect_with(agent_channel, {
@@ -2847,8 +2866,8 @@ Run the managed background fixture.
         let client_connection = Client
             .builder()
             .on_receive_notification(
-                async move |notification: acp::SessionNotification, _cx| {
-                    drop(updates_tx.send(notification));
+                async move |notification: acp::AgentNotification, _cx| {
+                    drop(notifications_tx.send(notification));
                     Ok(())
                 },
                 on_receive_notification!(),
@@ -2881,7 +2900,31 @@ Run the managed background fixture.
         agent_task.abort();
         drop(agent_task.await);
 
-        let updates = std::iter::from_fn(|| updates_rx.try_recv().ok()).collect::<Vec<_>>();
+        let notifications = std::iter::from_fn(|| notifications_rx.try_recv().ok()).collect::<Vec<_>>();
+        let updates = notifications
+            .iter()
+            .filter_map(|notification| match notification {
+                acp::AgentNotification::SessionNotification(notification) => Some(notification),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let usage_updates = notifications
+            .iter()
+            .filter_map(|notification| match notification {
+                acp::AgentNotification::ExtNotification(notification)
+                    if notification.method.as_ref().trim_start_matches('_')
+                        == super::super::lody_usage::LODY_SESSION_USAGE_UPDATE_METHOD.trim_start_matches('_') =>
+                {
+                    serde_json::from_str::<serde_json::Value>(notification.params.get()).ok()
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(usage_updates.len(), 2, "each tool-loop response must publish one usage delta");
+        assert_eq!(usage_updates[0]["usage"]["inputTokens"], 100);
+        assert_eq!(usage_updates[0]["usage"]["outputTokens"], 11);
+        assert_eq!(usage_updates[1]["usage"]["inputTokens"], 101);
+        assert_eq!(usage_updates[1]["usage"]["outputTokens"], 12);
         assert!(
             updates
                 .iter()
@@ -2966,6 +3009,7 @@ Run the managed background fixture.
                     requests: Arc::clone(&factory_requests),
                     tool_calls: vec![("task_tracker".to_string(), task_arguments.clone())],
                     mutation_before_call: None,
+                    emit_usage: false,
                 })
             }),
         );
@@ -3142,6 +3186,7 @@ Run the managed background fixture.
                     requests: Arc::clone(&factory_requests),
                     tool_calls: vec![("apply_patch".to_string(), patch_arguments.clone())],
                     mutation_before_call: None,
+                    emit_usage: false,
                 })
             }),
         );
@@ -3284,6 +3329,7 @@ Run the managed background fixture.
                     requests: Arc::clone(&factory_requests),
                     tool_calls: tool_calls.clone(),
                     mutation_before_call: Some((1, mutation_path.clone(), "current\n".to_string())),
+                    emit_usage: false,
                 })
             }),
         );
