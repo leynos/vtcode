@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision log`, `Outcomes & retrospective`, `Conformance basis`, and
 `Verification plan` must be kept up to date as work proceeds.
 
-Status: IN PROGRESS
+Status: BLOCKED AT EP-M2 SECURITY TOLERANCE
 
 ## Purpose / big picture
 
@@ -105,8 +105,11 @@ management requests return only tasks owned by the requested ACP session.
 - [x] (2026-08-28 12:39Z) Obtain approval for this ExecPlan and begin EP-M1.
 - [x] (2026-08-28 13:28Z) Complete EP-M1 red and focused green tests for
   standard task lifecycle updates, conditional negotiation and stable IDs.
-- [ ] EP-M1: replace `_vtcode/taskLifecycle` with standard task-carrying ACP
-  tool updates and negotiate subagent lifecycle.
+- [x] (2026-08-28 15:24Z) EP-M1: replace `_vtcode/taskLifecycle` with standard
+  task-carrying ACP tool updates and negotiate subagent lifecycle.
+- [ ] (blocked 2026-08-28 15:24Z) Resolve the EP-M2 security tolerance:
+  persisted background records do not carry an explicit owning ACP session,
+  so foreign-task isolation cannot be proved without expanding the core model.
 - [ ] EP-M2: implement and negotiate background tasks plus session-scoped
   subagent list, cancel and output methods.
 - [ ] EP-M3: emit negotiated provider usage and opt custom providers into
@@ -128,6 +131,36 @@ management requests return only tasks owned by the requested ACP session.
   reports `E0425` from the new task lifecycle unit test.
   Impact: the red test directly proves that the new standard ACP adapter is
   required; the existing private notification cannot satisfy it.
+- Observation: EP-M1 passed the complete repository release gate and was
+  committed as `16ba7b516`.
+  Evidence: `/tmp/check-VTCode-fix-acp-lody-task-lifecycle-negotiation-2.out`
+  records rustfmt, policy checks, Clippy, build, 6,582 tests, harness
+  regressions and rustdoc passing.
+  Impact: the standard lifecycle repair is a complete, independently
+  releasable plateau.
+- Observation: persisted background records are loaded into every controller
+  for a workspace without an explicit owning ACP session, while background
+  cancellation itself performs no ACP ownership check.
+  Evidence: `SubagentController::new` loads `background_children` from
+  workspace state; `BackgroundSubprocessEntry` contains generated runtime and
+  exec session IDs but no parent ACP session ID.
+  Impact: EP-M2 cannot prove `SESSION-ISOLATION` for background list, cancel or
+  output using the existing controller state. This activates the plan's
+  security tolerance and requires a deliberate persisted-model/API expansion
+  or removal of background management from this stack.
+- Observation: the current public background snapshot API hard-limits previews
+  to 24 lines, while the approved Lody output contract specifies a caller
+  default of 200 and a hard maximum of 10,000.
+  Evidence: `SUBAGENT_PREVIEW_LINES` and `background_snapshot()` clamp both
+  live and archived output before the ACP adapter can apply a requested tail.
+  Impact: meeting the output contract also requires extending the controller
+  API rather than adding only an ACP adapter.
+- Observation: ACP SDK `ExtRequest` is a schema value, not a directly
+  registerable typed request handler.
+  Evidence: `ClientRequest::ExtMethodRequest` owns extension dispatch and the
+  SDK strips the leading underscore before constructing `ExtRequest`.
+  Impact: EP-M2 must use a custom untyped dispatcher or a carefully scoped
+  `ClientRequest` catch-all that returns `Handled::No` for standard requests.
 
 - Observation: VTCode already emits the model's task tracker as a standard ACP
   `Plan`, including blocked-task labels and durable replay.
@@ -193,10 +226,13 @@ management requests return only tasks owned by the requested ACP session.
 
 ## Outcomes & retrospective
 
-No runtime change has landed yet. At completion this section will compare the
-observed Lody transcript, task panel, management operations and usage totals
-against the purpose above, and will record any deliberately omitted fields or
-provider limitations.
+EP-M1 landed as an independently gated lifecycle repair. Standard ACP clients
+now receive task-shaped tool calls, Lody receives `_meta.lody.task`, and
+capability negotiation is truthful. EP-M2 is paused at the explicit security
+tolerance because the existing persisted background model cannot establish
+ACP-session ownership. No management handler or capability has been exposed
+prematurely. On resolution, this section will compare the management and usage
+results against the remaining purpose above.
 
 ## Context and orientation
 
