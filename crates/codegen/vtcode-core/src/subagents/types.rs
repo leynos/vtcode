@@ -107,6 +107,8 @@ pub struct SubagentStatusEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackgroundSubprocessEntry {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_session_id: Option<String>,
     pub session_id: String,
     pub exec_session_id: String,
     pub agent_name: String,
@@ -304,6 +306,8 @@ pub(crate) struct ChildRunRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedBackgroundRecord {
     pub(crate) id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) owner_session_id: Option<String>,
     agent_name: String,
     display_label: String,
     description: String,
@@ -342,6 +346,7 @@ pub struct PersistedBackgroundState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackgroundRecord {
     pub(crate) id: String,
+    pub(crate) owner_session_id: Option<String>,
     pub(crate) agent_name: String,
     pub(crate) display_label: String,
     pub(crate) description: String,
@@ -382,6 +387,7 @@ impl StatusEntryBuilder for BackgroundRecord {
     fn build_status_entry(&self) -> BackgroundSubprocessEntry {
         BackgroundSubprocessEntry {
             id: self.id.clone(),
+            owner_session_id: self.owner_session_id.clone(),
             session_id: self.session_id.clone(),
             exec_session_id: self.exec_session_id.clone(),
             agent_name: self.agent_name.clone(),
@@ -501,6 +507,7 @@ impl BackgroundRecord {
     pub(crate) fn into_persisted(self) -> PersistedBackgroundRecord {
         PersistedBackgroundRecord {
             id: self.id,
+            owner_session_id: self.owner_session_id,
             agent_name: self.agent_name,
             display_label: self.display_label,
             description: self.description,
@@ -531,6 +538,7 @@ impl BackgroundRecord {
     pub(crate) fn from_persisted(record: PersistedBackgroundRecord) -> Self {
         Self {
             id: record.id,
+            owner_session_id: record.owner_session_id,
             agent_name: record.agent_name,
             display_label: record.display_label,
             description: record.description,

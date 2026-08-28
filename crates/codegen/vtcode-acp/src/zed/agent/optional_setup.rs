@@ -18,6 +18,7 @@ use vtcode_core::tools::registry::sandbox_policy_from_runtime_config;
 const OPTIONAL_SETUP_OPERATION: &str = "optional_component_setup";
 
 pub(super) struct AcpSubagentControllerSetup<'a> {
+    pub(super) owner_session_id: Option<&'a str>,
     pub(super) registry: &'a CoreToolRegistry,
     pub(super) agent_config: &'a CoreAgentConfig,
     pub(super) custom_providers: &'a [CustomProviderConfig],
@@ -201,6 +202,7 @@ pub(super) fn report_optional_workspace_setup_outcomes(outcomes: &OptionalWorksp
 
 pub(super) async fn attach_acp_subagent_controller(setup: AcpSubagentControllerSetup<'_>) -> OptionalSetupOutcome {
     let AcpSubagentControllerSetup {
+        owner_session_id,
         registry,
         agent_config,
         custom_providers,
@@ -215,7 +217,7 @@ pub(super) async fn attach_acp_subagent_controller(setup: AcpSubagentControllerS
 
     let controller_config = SubagentControllerConfig {
         workspace_root: agent_config.workspace.clone(),
-        parent_session_id: "vtcode-acp".to_string(),
+        parent_session_id: owner_session_id.unwrap_or("vtcode-acp").to_string(),
         parent_model: agent_config.model.clone(),
         parent_provider: agent_config.provider.clone(),
         parent_reasoning_effort: agent_config.reasoning_effort,
@@ -228,14 +230,18 @@ pub(super) async fn attach_acp_subagent_controller(setup: AcpSubagentControllerS
         pty_manager: registry.pty_manager().clone(),
         managed_background_runtime: false,
     };
-    let controller = match SubagentController::new(controller_config).await {
+    let controller = match SubagentController::new_with_background_owner(controller_config, owner_session_id).await {
         Ok(controller) => Arc::new(controller),
         Err(error) => {
             log_suppressed_error(&error, OPTIONAL_SETUP_OPERATION, "subagent_controller_unavailable");
             return OptionalSetupOutcome::Failed(OptionalSetupFailure::SubagentControllerUnavailable);
         }
     };
-    let failures = restore_configured_background_subagents(&controller, &controller_vt_cfg).await;
+    let failures = if owner_session_id.is_some() {
+        restore_configured_background_subagents(&controller, &controller_vt_cfg).await
+    } else {
+        Vec::new()
+    };
     registry.set_subagent_controller(controller);
     OptionalSetupOutcome::attached_with_degradation(failures)
 }

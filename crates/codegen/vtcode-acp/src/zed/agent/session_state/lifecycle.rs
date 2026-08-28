@@ -159,6 +159,15 @@ impl ZedAgent {
         if let Err(error) = Self::run_session_end_hooks_for(session, reason).await {
             let _ = first_error.get_or_insert(error);
         }
+        let controller = session
+            .data
+            .lock()
+            .map_err(|error| lock_poison_error("taking session subagent controller for shutdown", error))?
+            .subagent_controller
+            .take();
+        if let Some(controller) = controller {
+            controller.signal_shutdown().await;
+        }
         if let Err(error) = session.release_workspace_lease().await {
             let _ = first_error.get_or_insert(error);
         }

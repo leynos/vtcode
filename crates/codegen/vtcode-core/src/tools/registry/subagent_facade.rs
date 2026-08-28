@@ -4,6 +4,13 @@ use super::ToolRegistry;
 use crate::subagents::SubagentController;
 
 impl ToolRegistry {
+    /// Shares workspace resources while isolating delegated-agent ownership.
+    pub fn with_subagent_controller(&self, controller: Option<Arc<SubagentController>>) -> Self {
+        let mut registry = self.clone();
+        registry.subagent_controller = Arc::new(std::sync::RwLock::new(controller));
+        registry
+    }
+
     pub fn set_subagent_controller(&self, controller: Arc<SubagentController>) {
         if let Ok(mut slot) = self.subagent_controller.write() {
             *slot = Some(controller);

@@ -150,6 +150,7 @@ async fn build_session_handle_restores_session_config_from_thread_metadata() {
     let handle = agent.build_session_handle(
         thread,
         SessionHandleBootstrap {
+            subagent_controller: None,
             session_id: acp::SessionId::new("session-1"),
             archive: None,
             trigger: SessionStartTrigger::NewSession,
@@ -190,6 +191,7 @@ async fn checkpoint_session_persists_messages_for_a_fresh_runtime() {
     let handle = agent.build_session_handle(
         thread,
         SessionHandleBootstrap {
+            subagent_controller: None,
             session_id: acp::SessionId::new("vtcode-zed-session-resume"),
             archive: Some(archive),
             trigger: SessionStartTrigger::Resume,
