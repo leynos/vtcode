@@ -5,7 +5,7 @@ use std::time::Duration;
 
 #[test]
 fn advertised_capabilities_include_session_discovery_and_resume() {
-    let capabilities = advertised_agent_capabilities();
+    let capabilities = advertised_agent_capabilities(false);
 
     assert!(capabilities.load_session);
     assert!(capabilities.session_capabilities.list.is_some());
@@ -412,4 +412,17 @@ async fn concurrent_prompt_is_rejected_over_official_acp_transport() {
         .filter(|message| message.role == vtcode_core::llm::provider::MessageRole::User)
         .count();
     assert_eq!(user_messages, 1, "the rejected prompt must not mutate durable history");
+}
+
+#[test]
+fn advertised_capabilities_include_lody_lifecycle_only_with_subagents() {
+    let capabilities = advertised_agent_capabilities(true);
+    let lody = &capabilities.meta.expect("Lody capability metadata")["lody"];
+
+    assert_eq!(lody["subagents"]["version"], 1);
+    assert_eq!(lody["subagents"]["lifecycle"], true);
+    assert!(lody["subagents"].get("list").is_none());
+    assert!(lody["subagents"].get("cancel").is_none());
+    assert!(lody["subagents"].get("output").is_none());
+    assert!(lody.get("tasks").is_none());
 }
