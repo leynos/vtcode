@@ -1036,6 +1036,7 @@ impl MergeGatewayProvider {
         Some(Usage {
             prompt_tokens,
             completion_tokens,
+            reasoning_output_tokens: crate::providers::common::parse_reasoning_tokens_from_usage(usage),
             total_tokens,
             cached_prompt_tokens: None,
             cache_creation_tokens: None,

@@ -302,6 +302,7 @@ impl OpenAIProvider {
             usage: Some(provider::Usage {
                 prompt_tokens: prompt_tokens.len().try_into().unwrap_or(u32::MAX),
                 completion_tokens: completion_tokens.len().try_into().unwrap_or(u32::MAX),
+                reasoning_output_tokens: None,
                 total_tokens: (prompt_tokens.len() + completion_tokens.len()).try_into().unwrap_or(u32::MAX),
                 cached_prompt_tokens: None,
                 cache_creation_tokens: None,

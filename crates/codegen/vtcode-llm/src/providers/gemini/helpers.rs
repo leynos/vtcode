@@ -631,6 +631,7 @@ impl GeminiProvider {
             usage: response.usage.map(|usage| vtcode_commons::llm::Usage {
                 prompt_tokens: usage.total_input_tokens.unwrap_or_default(),
                 completion_tokens: usage.total_output_tokens.unwrap_or_default(),
+                reasoning_output_tokens: None,
                 total_tokens: usage.total_tokens.unwrap_or_default(),
                 cached_prompt_tokens: usage.total_cached_tokens,
                 cache_creation_tokens: None,

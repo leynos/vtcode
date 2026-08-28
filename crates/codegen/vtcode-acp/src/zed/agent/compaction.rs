@@ -82,44 +82,76 @@ impl ZedAgent {
         };
 
         let snapshot = CompactionSessionSnapshot::load(session)?;
-        let original_len = snapshot.history.len();
-        let attempt = self
-            .run_compaction(CompactionRun {
-                session,
-                provider,
-                runtime,
-                model,
-                vt_config,
-                decision,
-                snapshot,
-            })
-            .await?;
-        let Some(outcome) = verify_compaction_result(attempt.outcome, decision)? else {
-            return Ok(false);
-        };
+        let acp_session_id = crate::acp::SessionId::new(snapshot.session_id.clone());
+        let activity = super::lody_activity::CompactionActivity::begin(&acp_session_id, prompt_tokens);
+        match activity.started_update() {
+            Ok(update) => {
+                if let Err(error) = self.send_update(&acp_session_id, update).await {
+                    warn!(%error, session_id = %acp_session_id, "Failed to publish ACP compaction start update");
+                }
+            }
+            Err(error) => {
+                warn!(%error, session_id = %acp_session_id, "Failed to serialize ACP compaction start update")
+            }
+        }
+        let compaction_result: Result<bool> = async {
+            let original_len = snapshot.history.len();
+            let attempt = self
+                .run_compaction(CompactionRun {
+                    session,
+                    provider,
+                    runtime,
+                    model,
+                    vt_config,
+                    decision,
+                    snapshot,
+                })
+                .await?;
+            let Some(outcome) = verify_compaction_result(attempt.outcome, decision)? else {
+                return Ok(false);
+            };
 
-        let compacted_prompt_tokens = self
-            .commit_compacted_history(CompactionCommit {
-                session,
-                thread: attempt.thread,
-                history: attempt.history,
-                tools,
-                decision,
-            })
-            .await?;
-        info!(
-            provider = provider.name(),
-            model,
-            prompt_tokens = decision.prompt_tokens,
-            compacted_prompt_tokens,
-            original_len,
-            compacted_len = outcome.compacted_len,
-            compaction_mode = outcome.mode.as_str(),
-            configured_threshold = ?decision.configured_threshold,
-            admission_budget = ?decision.admission_budget,
-            "Applied automatic ACP conversation compaction"
-        );
-        Ok(true)
+            let compacted_prompt_tokens = self
+                .commit_compacted_history(CompactionCommit {
+                    session,
+                    thread: attempt.thread,
+                    history: attempt.history,
+                    tools,
+                    decision,
+                })
+                .await?;
+            info!(
+                provider = provider.name(),
+                model,
+                prompt_tokens = decision.prompt_tokens,
+                compacted_prompt_tokens,
+                original_len,
+                compacted_len = outcome.compacted_len,
+                compaction_mode = outcome.mode.as_str(),
+                configured_threshold = ?decision.configured_threshold,
+                admission_budget = ?decision.admission_budget,
+                "Applied automatic ACP conversation compaction"
+            );
+            Ok(true)
+        }
+        .await;
+        let used_tokens_after = compaction_result.as_ref().ok().and_then(|_| {
+            self.resolved_messages(session)
+                .ok()
+                .map(|messages| estimated_prompt_tokens(&messages, tools))
+        });
+        let failure_reason = compaction_result.as_ref().err().map(ToString::to_string);
+        match activity.finished_update(used_tokens_after, failure_reason.as_deref()) {
+            Ok(update) => {
+                if let Err(error) = self.send_update(&acp_session_id, update).await {
+                    warn!(%error, session_id = %acp_session_id, "Failed to publish ACP compaction terminal update");
+                }
+            }
+            Err(error) => {
+                warn!(%error, session_id = %acp_session_id, "Failed to serialize ACP compaction terminal update")
+            }
+        }
+        compaction_result
     }
 
     async fn run_compaction(&self, run: CompactionRun<'_>) -> Result<CompactionAttempt> {

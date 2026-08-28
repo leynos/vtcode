@@ -55,8 +55,8 @@ fn parse_responses_sse_event(event: &str) -> Result<ParsedResponsesSseEvent, pro
 }
 
 fn capture_chat_usage(payload: &mut Value, aggregator: &mut crate::providers::shared::StreamAggregator) {
-    if let Some(usage) = payload.get_mut("usage")
-        && let Ok(usage) = serde_json::from_value::<provider::Usage>(std::mem::take(usage))
+    if payload.get("usage").is_some()
+        && let Some(usage) = crate::providers::common::parse_usage_openai_format(payload, false)
     {
         aggregator.set_usage(usage);
     }
@@ -126,6 +126,7 @@ fn merge_final_response_metadata(
                 .and_then(Value::as_u64)
                 .and_then(|value| u32::try_from(value).ok())
                 .unwrap_or(0),
+            reasoning_output_tokens: crate::providers::common::parse_reasoning_tokens_from_usage(usage_value),
             total_tokens: usage_value
                 .get("total_tokens")
                 .and_then(Value::as_u64)
@@ -820,6 +821,25 @@ mod tests {
         assert_eq!(usage.completion_tokens, 5);
         assert_eq!(usage.total_tokens, 17);
         assert_eq!(usage.cached_prompt_tokens, Some(9));
+    }
+
+    #[test]
+    fn responses_final_metadata_preserves_reasoning_tokens() {
+        let mut response = LLMResponse::default();
+        merge_final_response_metadata(
+            &mut response,
+            &json!({
+                "usage": {
+                    "input_tokens": 12,
+                    "output_tokens": 5,
+                    "total_tokens": 17,
+                    "output_tokens_details": {"reasoning_tokens": 4}
+                }
+            }),
+            false,
+        );
+
+        assert_eq!(response.usage.and_then(|usage| usage.reasoning_output_tokens), Some(4));
     }
 
     #[test]
