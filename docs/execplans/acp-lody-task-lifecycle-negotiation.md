@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision log`, `Outcomes & retrospective`, `Conformance basis`, and
 `Verification plan` must be kept up to date as work proceeds.
 
-Status: IN PROGRESS — EP-M3 PROVIDER USAGE
+Status: IN PROGRESS — EP-M4 DOCUMENTATION AND DELIVERY
 
 ## Purpose / big picture
 
@@ -120,8 +120,10 @@ management requests return only tasks owned by the requested ACP session.
   preserving the existing 24-line preview API. The exact extension dispatcher
   and real ACP duplex tests cover negotiation, owned list/output/cancel and
   foreign-task indistinguishability from unknown tasks.
-- [ ] EP-M3: emit negotiated provider usage and opt custom providers into
-  streaming usage.
+- [x] (2026-08-28) EP-M3: emit negotiated provider usage and opt custom
+  providers into streaming usage. Per-response usage deltas now use the
+  canonical `_lody/session/usage_update` method, and custom-provider
+  streaming usage is opt-in through profile resolution.
 - [ ] EP-M4: update documentation, run release gates, install the binary, push
   the stack and open the draft PR.
 
@@ -223,6 +225,36 @@ management requests return only tasks owned by the requested ACP session.
   `vtcode-llm/src/providers/openai/provider/streaming.rs`.
   Impact: negotiated Lody usage would remain empty for the user's Baseten
   sessions without a provider-profile opt-in.
+- Observation: Lody's canonical usage extension is the version-1
+  `_lody/session/usage_update` method, and VTCode must advertise
+  `usage: {version: 1}` even when a provider does not return usage.
+  Evidence: the Lody Core usage method and the EP-M3 capability and mapping
+  tests; `/tmp/test-vtcode-acp-fix-acp-lody-task-lifecycle-negotiation-epm3-final.out`.
+  Impact: usage negotiation is stable across providers, while a response with
+  no normalized usage produces no notification rather than invented counts.
+- Observation: usage is emitted once per provider response, including each
+  response in a tool loop, and the normalized terminal `choices: []` usage
+  chunk is retained by the custom OpenAI-compatible adapter.
+  Evidence: the official ACP duplex test and the custom-provider wiremock and
+  vidai-mock tests recorded in the EP-M3 artefacts below.
+  Impact: Lody receives additive deltas for intermediate and final responses,
+  including Baseten-style terminal usage, without double-counting.
+- Observation: custom-provider `supports_stream_usage` is sparse and defaults
+  to false; resolved profile precedence controls the request, while native
+  OpenAI request behaviour is unchanged.
+  Evidence: the configuration precedence and request-shape tests in
+  `/tmp/test-vtcode-config-fix-acp-lody-task-lifecycle-negotiation-epm3.out`
+  and `/tmp/test-vtcode-llm-wiremock-fix-acp-lody-task-lifecycle-negotiation-epm3.out`.
+  Impact: existing proxy configurations remain safe, and only an explicitly
+  opted-in compatible endpoint receives `stream_options.include_usage`.
+- Observation: the first standalone ACP usage duplex check exposed timing and
+  extension-method normalization assumptions; the final test uses the
+  official ACP extension channel and passes after those boundaries were made
+  explicit.
+  Evidence: the final green transcript is
+  `/tmp/test-vtcode-acp-usage-duplex-fix-acp-lody-task-lifecycle-negotiation-epm3-green.out`.
+  Impact: the behavioural test validates the wire contract rather than a
+  direct helper invocation.
 - Observation: Baseten's aggregate `/v1/model_apis/usage` endpoint is bucketed
   across requests and API keys.
   Evidence: Baseten's model API pricing and limits documentation.
@@ -274,6 +306,20 @@ management requests return only tasks owned by the requested ACP session.
   enabled, rather than infer support from a separate runtime-management
   predicate.
   Date/Author: 2026-08-28 / Codex.
+- Decision: advertise Lody usage version 1 unconditionally, but emit the
+  canonical `_lody/session/usage_update` only when a provider response carries
+  normalized usage. Emit one delta per response, including every tool-loop
+  response, and mirror the delta in the response model's `modelUsage` entry.
+  Rationale: capability negotiation is stable, absent provider data is not
+  fabricated, and Lody's accumulator expects additive per-response values.
+  Date/Author: 2026-08-28 / Codex.
+- Decision: make custom-provider streamed usage a sparse profile capability,
+  defaulting to false and following resolved profile precedence; leave native
+  OpenAI behaviour unchanged.
+  Rationale: OpenAI-compatible proxies vary in support for
+  `stream_options.include_usage`, so an explicit opt-in preserves existing
+  request compatibility while enabling Baseten-shaped terminal usage.
+  Date/Author: 2026-08-28 / Codex.
 
 ## Outcomes & retrospective
 
@@ -285,7 +331,10 @@ explicit owner identifiers, fail-closed handling of legacy ownerless records,
 and bounded caller-selected output tails. The exact dispatcher now serves
 negotiated list, output and cancel requests, with real duplex coverage for
 owned and foreign tasks. The core and ACP focused suites passed (5/5 and 6/6
-respectively). EP-M3 is now the active milestone.
+respectively). EP-M3 then added canonical per-response Lody usage updates,
+profile-controlled custom-provider streamed usage and local Baseten-shaped
+playback/physics coverage. EP-M3 is complete; EP-M4 is now the active
+milestone for documentation, release gates and publication.
 
 ## Context and orientation
 
@@ -464,14 +513,15 @@ negotiation flags, plus `tasks: {version: 1, background: true}` only when the
 `background_subagents_enabled` capability is enabled.
 
 EP-M3 emits a canonical `_lody/session/usage_update` after each provider
-response that contains usage, including intermediate tool-loop responses.
-`usage` and the matching `modelUsage[model]` entry are per-response deltas.
-The custom-provider profile gains `supports_stream_usage`; resolved profile
-precedence controls whether custom OpenAI-chat streams include
-`stream_options.include_usage`. The stream decoder's existing base token
-support is reused. Nested Baseten cached/reasoning detail remains optional:
-cached tokens will be included only if already represented reliably in the
-normalized `Usage`, and reasoning tokens will not be fabricated.
+response that contains normalized usage, including every intermediate
+tool-loop response. `usage` and the matching `modelUsage[model]` entry are
+per-response deltas; a response without usage emits no notification. The
+custom-provider profile gains sparse `supports_stream_usage` opt-in with
+resolved profile precedence, while native OpenAI request behaviour remains
+unchanged. The existing stream decoder preserves terminal `choices: []`
+usage. Nested Baseten cached/reasoning detail remains optional: cached tokens
+are included only when represented reliably in normalized `Usage`, and
+reasoning tokens are not fabricated.
 
 EP-M4 updates `docs/acp/ACP_INTEGRATION.md`,
 `docs/acp/ACP_QUICK_REFERENCE.md`, the custom-provider configuration reference
@@ -507,12 +557,15 @@ commit and a user-level binary installation before the next milestone begins.
   Recovery: revert handler registration and remove its advertised flags.
   Remaining gaps: provider usage.
   Compatibility decision: none; these are new versioned extension methods.
-- Identifier and outcome: EP-M3, provider usage reaches Lody, including opted-in
-  Baseten streams.
+- Identifier and outcome: EP-M3, provider usage reaches Lody, including
+  explicitly opted-in Baseten streams.
   Requirements and gaps: discharges USER-USAGE.
-  Acceptance evidence: mapping properties, playback, vidai-mock physics and ACP
-  usage notification tests pass.
-  Conformance check: proxy-safe default remains off; absent metrics stay absent.
+  Acceptance evidence: configuration tests (4/4), custom-provider
+  wiremock playback (1/1), ACP usage and tool-loop tests (9/9), the official
+  ACP usage duplex test (1/1), and vidai-mock physics (1/1) pass; see the
+  EP-M3 artefact block below.
+  Conformance check: usage is canonical and additive, absent metrics stay
+  absent, and the proxy-safe default remains off.
   Recovery: disable the profile flag or revert the usage commit.
   Remaining gaps: documentation/publication only.
   Compatibility decision: the new optional config field defaults off, so
@@ -658,6 +711,28 @@ GREEN: /tmp/rgr-acp-owner-scope-green.out
        A new ACP session does not restore another session's background record.
 ```
 
+EP-M3 Provider Usage evidence:
+
+```plaintext
+GREEN: /tmp/test-vtcode-config-fix-acp-lody-task-lifecycle-negotiation-epm3.out
+       4/4 configuration parsing and profile-precedence tests passed.
+GREEN: /tmp/test-vtcode-llm-wiremock-fix-acp-lody-task-lifecycle-negotiation-epm3.out
+       1/1 custom-provider request-shape and terminal-usage playback test passed.
+GREEN: /tmp/test-vtcode-acp-fix-acp-lody-task-lifecycle-negotiation-epm3-final.out
+       9/9 ACP capability, usage-mapping, tool-loop and recovery tests passed.
+GREEN: /tmp/test-vtcode-acp-usage-duplex-fix-acp-lody-task-lifecycle-negotiation-epm3-green.out
+       1/1 official ACP extension-channel usage duplex test passed.
+GREEN: /tmp/test-vtcode-llm-vidaimock-fix-acp-lody-task-lifecycle-negotiation-epm3.out
+       1/1 Baseten-shaped terminal usage physics test passed.
+FORMAT: /tmp/fmt-check-VTCode-fix-acp-lody-task-lifecycle-negotiation-epm3.out
+        Captured the EP-M3 formatting check and its rustfmt diagnostics; the
+        final release gate remains the authoritative clean-format check.
+RED:   /tmp/test-vtcode-acp-usage-duplex-fix-acp-lody-task-lifecycle-negotiation-epm3.out
+       The initial duplex assertion exposed ACP's normalized extension method
+       name (the leading underscore is stripped) and notification timing.
+       The official-channel green rerun above covers the corrected boundary.
+```
+
 Baseten's documented streamed-usage request is:
 
 ```json
@@ -700,6 +775,7 @@ No new library dependency or deployed persistent-format migration is planned.
 
 ---
 
-Revision note (2026-08-28): created the initial draft after verifying VTCode's
-ACP and subagent paths, Lody Core/client contracts and Baseten's streamed-usage
-requirements. Implementation remains blocked on explicit plan approval.
+Revision note (2026-08-28): EP-M3 is complete. Canonical per-response usage
+updates, custom-provider streamed-usage opt-in, wiremock playback,
+vidai-mock physics and official ACP duplex coverage are recorded above. EP-M4
+is active for documentation, release gates, installation and publication.

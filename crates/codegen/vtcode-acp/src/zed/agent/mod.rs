@@ -34,6 +34,7 @@ pub(crate) mod handlers;
 mod lody;
 #[cfg(test)]
 mod lody_tests;
+mod lody_usage;
 mod prompt;
 mod session_state;
 mod task_lifecycle;

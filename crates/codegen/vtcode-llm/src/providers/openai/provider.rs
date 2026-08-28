@@ -384,6 +384,15 @@ impl OpenAIProvider {
         self.provider_key_override.is_none() && self.backend_setup.is_native_openai_api()
     }
 
+    fn requests_stream_usage(&self, model: &str) -> bool {
+        self.is_native_openai_api()
+            || self
+                .custom_provider_config
+                .as_ref()
+                .and_then(|config| config.resolved_profile(model).supports_stream_usage)
+                .unwrap_or(false)
+    }
+
     fn supports_manual_openai_compaction_for_model(&self, model: &str) -> bool {
         self.is_native_openai_api()
             && !self.uses_chatgpt_auth()

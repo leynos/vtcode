@@ -86,11 +86,17 @@ pub(super) fn add_lody_subagent_lifecycle_capability(capabilities: &mut acp::Age
     let _ = subagents.insert("version".to_string(), Value::from(LODY_EXTENSION_VERSION));
     let _ = subagents.insert("lifecycle".to_string(), Value::Bool(true));
 
-    let mut lody = Map::new();
-    let _ = lody.insert("subagents".to_string(), Value::Object(subagents));
+    if let Some(lody) = lody_capabilities_mut(capabilities) {
+        let _ = lody.insert("subagents".to_string(), Value::Object(subagents));
+    }
+}
 
+pub(super) fn lody_capabilities_mut(capabilities: &mut acp::AgentCapabilities) -> Option<&mut Map<String, Value>> {
     let meta = capabilities.meta.get_or_insert_with(Map::new);
-    let _ = meta.insert("lody".to_string(), Value::Object(lody));
+    if !matches!(meta.get("lody"), Some(Value::Object(_))) {
+        let _ = meta.insert("lody".to_string(), Value::Object(Map::new()));
+    }
+    meta.get_mut("lody").and_then(Value::as_object_mut)
 }
 
 pub(super) fn add_lody_subagent_management_capability(
