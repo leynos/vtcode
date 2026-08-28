@@ -292,6 +292,16 @@ model = "gpt-5.6-sol"
 # api_format = "auto"      # Optional provider-level API format hint: auto|openai-chat|openai-responses|anthropic-messages
 # supports_stream_usage = true # Opt in only when this OpenAI-chat endpoint emits a terminal usage chunk
 
+# Optional explicit pricing for ACP usage cost reporting. Values are USD per
+# million tokens; costUSD is emitted only when both input and output rates are
+# configured (cache rates are optional).
+[custom_providers.pricing]
+# input_per_million_usd = 0.15
+# output_per_million_usd = 0.50
+# cache_read_per_million_usd = 0.03
+# cache_write_per_million_usd = 0.00
+
+
 [custom_providers.request_policy]
 max_in_flight_requests = 4
 queue_timeout_seconds = 120
@@ -361,7 +371,7 @@ live in `custom_providers.profiles."<model-id>"` and only modify runtime
 defaults for that specific model identifier. IMPORTANT: profiles do not add or
 enable models in the picker — `model` / `models` remain the allowlist/default.
 A profile only changes how VT Code treats an already-selected model at runtime
-(capabilities, context window, api_format, sampling values, etc.).
+(capabilities, context window, api_format, sampling values, pricing, etc.).
 
 Example per-model profile:
 
@@ -384,6 +394,14 @@ supports_context_caching = false
 supports_responses_compaction = true
 supports_context_edits = false
 supports_stream_usage = true # only for endpoints with a terminal usage chunk
+
+[custom_providers.profiles."gpt-5.4".pricing]
+# Rates are USD per million tokens. Both input and output are required before
+# ACP usage updates include costUSD.
+input_per_million_usd = 0.15
+output_per_million_usd = 0.50
+cache_read_per_million_usd = 0.03
+cache_write_per_million_usd = 0.00
 ```
 
 Precedence and semantics
@@ -417,6 +435,10 @@ Additional rules:
   request `stream_options.include_usage = true`; the endpoint should return usage
   in the terminal empty-choices chunk. When omitted or `false`, VT Code does not
   request streamed usage. Native OpenAI requests are unaffected.
+- `pricing` follows the same precedence and is opt-in. Rates are configured as
+  USD per million tokens with separate input, output, cache-read, and cache-write
+  fields. ACP `costUSD` is omitted unless both input and output rates resolve;
+  cache rates are used when the provider reports cache token counts.
 - Profiles do not make a model available in the picker — use `model` or
   `models` to control availability.
 - Wire delivery depends on the backend's API format. The OpenAI Chat shape sends

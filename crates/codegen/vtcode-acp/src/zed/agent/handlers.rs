@@ -322,7 +322,14 @@ struct ProviderErrorTelemetry<'a> {
 }
 
 fn provider_error_telemetry(error: &LLMError) -> ProviderErrorTelemetry<'_> {
-    let LLMError::Network { metadata: Some(metadata), .. } = error else {
+    let metadata = match error {
+        LLMError::Authentication { metadata, .. }
+        | LLMError::RateLimit { metadata }
+        | LLMError::InvalidRequest { metadata, .. }
+        | LLMError::Network { metadata, .. }
+        | LLMError::Provider { metadata, .. } => metadata.as_deref(),
+    };
+    let Some(metadata) = metadata else {
         return ProviderErrorTelemetry::default();
     };
     ProviderErrorTelemetry {
@@ -471,6 +478,7 @@ async fn generate_with_retry(
     request: LLMRequest,
     runtime: &ProviderRequestRuntime,
     cancellation: &super::super::types::SessionCancellation,
+    notice_target: Option<(&ZedAgent, &acp::SessionId)>,
 ) -> Result<LLMResponse, ProviderCallError> {
     let policy = runtime.retry_policy();
     let mut attempt_index = 0;
@@ -507,10 +515,18 @@ async fn generate_with_retry(
                 let decision = policy.decision_for_llm_error(&error, attempt_index);
                 telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
                 drop(permit);
+                let retry_delay = decision
+                    .retryable
+                    .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
+                if let Some((agent, session_id)) = notice_target {
+                    agent
+                        .publish_rate_limit_notice(session_id, runtime.provider_name(), &error, retry_delay)
+                        .await;
+                }
                 if !decision.retryable {
                     return Err(ProviderCallError::Failed(error.to_string()));
                 }
-                let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
+                let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                 info!(
                     provider = runtime.provider_name(),
                     next_attempt = attempt_index + 2,
@@ -740,6 +756,7 @@ fn advertised_agent_capabilities(has_subagent_controller: bool, background_enabl
         .list(acp::SessionListCapabilities::new())
         .resume(acp::SessionResumeCapabilities::new());
     super::lody_usage::add_lody_usage_capability(&mut capabilities);
+    super::lody_activity::add_lody_compaction_capability(&mut capabilities);
     if has_subagent_controller {
         super::lody::add_lody_subagent_management_capability(&mut capabilities, background_enabled);
     }
@@ -1103,6 +1120,17 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     let decision = policy.decision_for_llm_error(&error, attempt_index);
                     telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                     drop(permit);
+                    let retry_delay = decision
+                        .retryable
+                        .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
+                    agent
+                        .publish_rate_limit_notice(
+                            &args.session_id,
+                            provider_runtime.provider_name(),
+                            &error,
+                            retry_delay,
+                        )
+                        .await;
                     if !decision.retryable {
                         return Ok(finish_failed_provider_turn(
                             &agent,
@@ -1114,7 +1142,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         )
                         .await);
                     }
-                    let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
+                    let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                     info!(
                         provider = provider_runtime.provider_name(),
                         next_attempt = attempt_index + 2,
@@ -1233,6 +1261,17 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         let decision = policy.decision_for_llm_error(&error, attempt_index);
                         telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                         drop(permit);
+                        let retry_delay = decision
+                            .retryable
+                            .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
+                        agent
+                            .publish_rate_limit_notice(
+                                &args.session_id,
+                                provider_runtime.provider_name(),
+                                &error,
+                                retry_delay,
+                            )
+                            .await;
                         if !decision.retryable {
                             return Ok(finish_failed_provider_turn(
                                 &agent,
@@ -1244,7 +1283,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             )
                             .await);
                         }
-                        let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
+                        let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                         info!(
                             provider = provider_runtime.provider_name(),
                             next_attempt = attempt_index + 2,
@@ -1277,6 +1316,9 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     }
                     Err(error) => {
                         telemetry.failed(&provider_runtime, attempt_index, "partial_output_visible", &error);
+                        agent
+                            .publish_rate_limit_notice(&args.session_id, provider_runtime.provider_name(), &error, None)
+                            .await;
                         return Ok(finish_failed_provider_turn(
                             &agent,
                             &session,
@@ -1331,7 +1373,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             }
                         }
                         telemetry.complete(&provider_runtime, &response, attempt_index, false);
-                        agent.publish_lody_usage(&args.session_id, &session_model, &response);
+                        agent.publish_lody_usage(&args.session_id, &session_provider_name, &session_model, &response);
                         if assistant_message.is_empty()
                             && let Some(content) = response.content
                         {
@@ -1506,27 +1548,34 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 ..Default::default()
             };
 
-            let response =
-                match generate_with_retry(provider.as_ref(), request, &provider_runtime, &session.cancellation).await {
-                    Ok(response) => response,
-                    Err(ProviderCallError::Cancelled) => {
-                        stop_reason = acp::StopReason::Cancelled;
-                        break;
-                    }
-                    Err(ProviderCallError::Failed(error)) => {
-                        return Ok(finish_failed_provider_turn(
-                            &agent,
-                            &session,
-                            &args.session_id,
-                            &assistant_message,
-                            &assistant_reasoning,
-                            &error,
-                        )
-                        .await);
-                    }
-                };
+            let response = match generate_with_retry(
+                provider.as_ref(),
+                request,
+                &provider_runtime,
+                &session.cancellation,
+                Some((&agent, &args.session_id)),
+            )
+            .await
+            {
+                Ok(response) => response,
+                Err(ProviderCallError::Cancelled) => {
+                    stop_reason = acp::StopReason::Cancelled;
+                    break;
+                }
+                Err(ProviderCallError::Failed(error)) => {
+                    return Ok(finish_failed_provider_turn(
+                        &agent,
+                        &session,
+                        &args.session_id,
+                        &assistant_message,
+                        &assistant_reasoning,
+                        &error,
+                    )
+                    .await);
+                }
+            };
 
-            agent.publish_lody_usage(&args.session_id, &session_model, &response);
+            agent.publish_lody_usage(&args.session_id, &session_provider_name, &session_model, &response);
             if session.cancellation.is_cancelled() {
                 stop_reason = acp::StopReason::Cancelled;
                 break;
@@ -1757,6 +1806,8 @@ mod tests {
         assert!(capabilities.session_capabilities.resume.is_some());
         let lody = &capabilities.meta.expect("Lody capability metadata")["lody"];
         assert_eq!(lody["usage"]["version"], 1);
+        assert_eq!(lody["compaction"]["version"], 1);
+        assert!(lody.get("rateLimits").is_none(), "no trustworthy quota source is configured");
         assert!(lody.get("subagents").is_none());
     }
 
@@ -2003,6 +2054,30 @@ Run the managed background fixture.
                 code: Some("reqwest_timeout_error"),
                 status: Some(504),
                 detail: Some("operation timed out"),
+            }
+        );
+    }
+
+    #[test]
+    fn provider_error_telemetry_exposes_rate_limit_diagnostics() {
+        let error = LLMError::RateLimit {
+            metadata: Some(LLMErrorMetadata::new(
+                "baseten",
+                Some(429),
+                Some("rate_limit_error".to_string()),
+                None,
+                None,
+                Some("17".to_string()),
+                Some("capacity temporarily exhausted".to_string()),
+            )),
+        };
+
+        assert_eq!(
+            provider_error_telemetry(&error),
+            ProviderErrorTelemetry {
+                code: Some("rate_limit_error"),
+                status: Some(429),
+                detail: Some("capacity temporarily exhausted"),
             }
         );
     }
@@ -3683,6 +3758,7 @@ Run the managed background fixture.
             LLMRequest::default(),
             &timeout_runtime(),
             &super::super::super::types::SessionCancellation::default(),
+            None,
         )
         .await;
 
@@ -3725,6 +3801,7 @@ Run the managed background fixture.
             LLMRequest::default(),
             &retry_runtime(),
             &super::super::super::types::SessionCancellation::default(),
+            None,
         )
         .await
         .expect("transient request should recover");
@@ -3742,6 +3819,7 @@ Run the managed background fixture.
             LLMRequest::default(),
             &retry_runtime(),
             &super::super::super::types::SessionCancellation::default(),
+            None,
         )
         .await;
 
@@ -3765,6 +3843,7 @@ Run the managed background fixture.
             LLMRequest::default(),
             &retry_runtime(),
             &super::super::super::types::SessionCancellation::default(),
+            None,
         )
         .await;
 
