@@ -151,6 +151,7 @@ fn apply_persistent_memory_header_guide_sets_badge_and_highlight() {
 fn background_local_agent_visibility_hides_stopped_entries() {
     let entry = vtcode_core::subagents::BackgroundSubprocessEntry {
         id: "background-default".to_string(),
+        owner_session_id: None,
         session_id: "session-456".to_string(),
         exec_session_id: String::new(),
         agent_name: "default".to_string(),
@@ -260,6 +261,7 @@ fn delegated_local_agent_preview_uses_failure_message() {
 fn background_local_agent_preview_uses_status_placeholder() {
     let entry = vtcode_core::subagents::BackgroundSubprocessEntry {
         id: "background-default".to_string(),
+        owner_session_id: None,
         session_id: "session-456".to_string(),
         exec_session_id: String::new(),
         agent_name: "default".to_string(),

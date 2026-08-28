@@ -6,6 +6,7 @@ use crate::llm::provider::ToolDefinition;
 use crate::tools::exec_session::ExecSessionManager;
 use crate::tools::registry::PtySessionManager;
 use anyhow::{Result, anyhow};
+use proptest::prelude::*;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -43,6 +44,37 @@ fn test_controller_config(workspace_root: PathBuf, vt_cfg: VTCodeConfig) -> Suba
         pty_manager: pty_sessions.manager().clone(),
         managed_background_runtime: false,
     }
+}
+
+fn persisted_background_record_for_owner(id: &str, owner_session_id: Option<&str>) -> PersistedBackgroundRecord {
+    serde_json::from_value(serde_json::json!({
+        "id": id,
+        "agent_name": "worker",
+        "display_label": "worker",
+        "description": "worker",
+        "source": "builtin",
+        "color": null,
+        "owner_session_id": owner_session_id,
+        "session_id": format!("session-{id}"),
+        "exec_session_id": format!("exec-{id}"),
+        "desired_enabled": false,
+        "status": "stopped",
+        "created_at": "2026-08-28T00:00:00Z",
+        "updated_at": "2026-08-28T00:00:00Z",
+        "started_at": null,
+        "ended_at": "2026-08-28T00:00:00Z",
+        "pid": null,
+        "prompt": "work",
+        "summary": null,
+        "error": null,
+        "archive_path": null,
+        "transcript_path": null,
+        "max_turns": null,
+        "model_override": null,
+        "reasoning_override": null,
+        "restart_attempts": 0
+    }))
+    .expect("persisted background record")
 }
 
 fn test_child_record(
@@ -105,6 +137,219 @@ Run the managed background demo.
 "#,
     )
     .expect("write background agent");
+
+    let scripts_dir = workspace_root.join("scripts");
+    std::fs::create_dir_all(&scripts_dir).expect("scripts dir");
+    let script_path = scripts_dir.join("demo-background-subagent.sh");
+    std::fs::write(&script_path, "#!/bin/sh\nexit 0\n").expect("write background script");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = std::fs::metadata(&script_path)
+            .expect("background script metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&script_path, permissions).expect("background script permissions");
+    }
+}
+
+#[test]
+fn persisted_background_owner_round_trips_to_public_status() {
+    let record: PersistedBackgroundRecord = serde_json::from_value(serde_json::json!({
+        "id": "background-worker",
+        "agent_name": "worker",
+        "display_label": "worker",
+        "description": "worker",
+        "source": "builtin",
+        "color": null,
+        "owner_session_id": "parent-session",
+        "session_id": "child-session",
+        "exec_session_id": "exec-session",
+        "desired_enabled": true,
+        "status": "running",
+        "created_at": "2026-08-28T00:00:00Z",
+        "updated_at": "2026-08-28T00:00:00Z",
+        "started_at": "2026-08-28T00:00:00Z",
+        "ended_at": null,
+        "pid": 42,
+        "prompt": "work",
+        "summary": null,
+        "error": null,
+        "archive_path": null,
+        "transcript_path": null,
+        "max_turns": 4,
+        "model_override": null,
+        "reasoning_override": null,
+        "restart_attempts": 0
+    }))
+    .expect("deserialize persisted record");
+
+    let json = serde_json::to_string(&record).expect("serialize persisted record");
+    let decoded: PersistedBackgroundRecord = serde_json::from_str(&json).expect("deserialize persisted record");
+    let runtime = BackgroundRecord::from_persisted(decoded);
+
+    assert_eq!(runtime.owner_session_id.as_deref(), Some("parent-session"));
+    assert_eq!(runtime.build_status_entry().owner_session_id.as_deref(), Some("parent-session"));
+}
+
+#[test]
+fn legacy_background_record_without_owner_is_loadable_and_ownerless() {
+    let mut value = serde_json::json!({
+        "id": "background-worker",
+        "agent_name": "worker",
+        "display_label": "worker",
+        "description": "worker",
+        "source": "builtin",
+        "color": null,
+        "session_id": "child-session",
+        "exec_session_id": "exec-session",
+        "desired_enabled": true,
+        "status": "running",
+        "created_at": "2026-08-28T00:00:00Z",
+        "updated_at": "2026-08-28T00:00:00Z",
+        "started_at": null,
+        "ended_at": null,
+        "pid": null,
+        "prompt": "work",
+        "summary": null,
+        "error": null,
+        "archive_path": null,
+        "transcript_path": null,
+        "max_turns": null,
+        "model_override": null,
+        "reasoning_override": null,
+        "restart_attempts": 0
+    });
+    assert!(value.as_object_mut().expect("object").remove("owner_session_id").is_none());
+
+    let decoded: PersistedBackgroundRecord = serde_json::from_value(value).expect("legacy record remains loadable");
+    let runtime = BackgroundRecord::from_persisted(decoded);
+    assert!(runtime.owner_session_id.is_none());
+    assert!(runtime.build_status_entry().owner_session_id.is_none());
+}
+
+#[tokio::test]
+async fn owner_scoped_controller_loads_only_exact_owner_and_cli_remains_unscoped() {
+    let temp = TempDir::new().expect("tempdir");
+    let state_dir = temp.path().join(".vtcode/state");
+    std::fs::create_dir_all(&state_dir).expect("state dir");
+    let records = vec![
+        persisted_background_record_for_owner("owned", Some("session-a")),
+        persisted_background_record_for_owner("foreign", Some("session-b")),
+        persisted_background_record_for_owner("legacy", None),
+    ];
+    std::fs::write(
+        state_dir.join("background_subagents.json"),
+        serde_json::to_string(&PersistedBackgroundState { records }).expect("serialize state"),
+    )
+    .expect("write state");
+
+    let scoped = SubagentController::new_with_background_owner(
+        test_controller_config(temp.path().to_path_buf(), VTCodeConfig::default()),
+        Some("session-a"),
+    )
+    .await
+    .expect("scoped controller");
+    let scoped_entries = scoped.background_status_entries().await;
+    assert_eq!(scoped_entries.iter().map(|entry| entry.id.as_str()).collect::<Vec<_>>(), ["owned"]);
+
+    {
+        let mut state = scoped.state.write().await;
+        state.background_children.get_mut("owned").expect("owned record").summary =
+            Some("updated by session-a".to_string());
+    }
+    scoped.save_background_state().await.expect("save scoped state");
+    let persisted: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(state_dir.join("background_subagents.json")).unwrap())
+            .expect("persisted state");
+    let records = persisted["records"].as_array().expect("records array");
+    assert_eq!(records.len(), 3);
+    let by_id = records
+        .iter()
+        .map(|record| (record["id"].as_str().expect("record id"), record))
+        .collect::<std::collections::HashMap<_, _>>();
+    assert_eq!(by_id["owned"]["summary"], "updated by session-a");
+    assert_eq!(by_id["foreign"]["owner_session_id"], "session-b");
+    assert!(by_id["legacy"]["owner_session_id"].is_null());
+
+    let unscoped = SubagentController::new(test_controller_config(temp.path().to_path_buf(), VTCodeConfig::default()))
+        .await
+        .expect("unscoped controller");
+    assert_eq!(unscoped.background_status_entries().await.len(), 3);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn new_background_records_capture_controller_parent_session() {
+    let temp = TempDir::new().expect("tempdir");
+    write_test_background_subagent(temp.path());
+    let mut cfg = VTCodeConfig::default();
+    cfg.subagents.background.enabled = true;
+    let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf(), cfg))
+        .await
+        .expect("controller");
+
+    let entry = controller
+        .spawn_background_subprocess(SpawnBackgroundSubprocessRequest {
+            agent_type: Some("background-demo".to_string()),
+            ..SpawnBackgroundSubprocessRequest::default()
+        })
+        .await
+        .expect("background subprocess");
+
+    assert_eq!(entry.owner_session_id.as_deref(), Some("parent-session"));
+}
+
+#[test]
+fn output_tail_uses_default_and_rejects_values_above_hard_bound() {
+    assert_eq!(normalize_output_tail_lines(None).expect("default tail size"), DEFAULT_SUBAGENT_OUTPUT_TAIL_LINES);
+    assert!(normalize_output_tail_lines(Some(MAX_SUBAGENT_OUTPUT_TAIL_LINES + 1)).is_err());
+}
+
+proptest! {
+    #[test]
+    fn owner_round_trip_and_output_tail_never_exceeds_hard_bound(
+        owner_session_id in prop::option::of("[a-z0-9-]{1,32}"),
+        line_count in 0usize..=20_000,
+        requested in 0usize..=20_000,
+    ) {
+        let record: PersistedBackgroundRecord = serde_json::from_value(serde_json::json!({
+            "id": "background-worker",
+            "agent_name": "worker",
+            "display_label": "worker",
+            "description": "worker",
+            "source": "builtin",
+            "color": null,
+            "owner_session_id": owner_session_id.clone(),
+            "session_id": "child-session",
+            "exec_session_id": "exec-session",
+            "desired_enabled": true,
+            "status": "running",
+            "created_at": "2026-08-28T00:00:00Z",
+            "updated_at": "2026-08-28T00:00:00Z",
+            "started_at": null,
+            "ended_at": null,
+            "pid": null,
+            "prompt": "work",
+            "summary": null,
+            "error": null,
+            "archive_path": null,
+            "transcript_path": null,
+            "max_turns": null,
+            "model_override": null,
+            "reasoning_override": null,
+            "restart_attempts": 0
+        })).expect("generated persisted record");
+        let runtime = BackgroundRecord::from_persisted(record);
+        prop_assert_eq!(runtime.build_status_entry().owner_session_id, owner_session_id);
+
+        let content = (0..line_count).map(|line| line.to_string()).collect::<Vec<_>>().join("\n");
+        let effective = normalize_output_tail_lines(Some(requested));
+        prop_assert!(effective.is_err() || *effective.as_ref().expect("checked result") <= MAX_SUBAGENT_OUTPUT_TAIL_LINES);
+        if let Ok(limit) = effective {
+            prop_assert!(extract_tail_lines(&content, limit).lines().count() <= MAX_SUBAGENT_OUTPUT_TAIL_LINES);
+        }
+    }
 }
 
 fn write_test_primary_agent(workspace_root: &std::path::Path) {
@@ -1393,6 +1638,7 @@ async fn spawn_background_subprocess_returns_active_record_when_settings_match()
                 description: spec.description.clone(),
                 source: spec.source.label(),
                 color: spec.color.clone(),
+                owner_session_id: None,
                 session_id: "session-background-demo".to_string(),
                 exec_session_id: "exec-session-background-demo".to_string(),
                 desired_enabled: true,
@@ -1454,6 +1700,7 @@ async fn spawn_background_subprocess_rejects_conflicting_active_record_settings(
                 description: spec.description.clone(),
                 source: spec.source.label(),
                 color: spec.color.clone(),
+                owner_session_id: None,
                 session_id: "session-background-demo".to_string(),
                 exec_session_id: "exec-session-background-demo".to_string(),
                 desired_enabled: true,
