@@ -97,7 +97,7 @@ unicode-width = { workspace = true }
 crossterm = { workspace = true, features = ["event-stream"], optional = true }
 # Keep the optional SQLite feature on the stable toolchain: rusqlite 0.40
 # requires libsqlite3-sys 0.38, which uses unstable cfg_select.
-rusqlite = { version = "0.39", features = ["bundled"], optional = true }
+rusqlite = { version = "0.40", features = ["bundled"], optional = true }
 nix = { version = "0.31", features = ["user", "signal", "poll", "term"] }
 ratatui = { workspace = true, features = [
     "crossterm",
@@ -135,7 +135,7 @@ schemars = { workspace = true, optional = true }
 # MCP (Model Context Protocol) support
 # Phase 1: Upgrade to 0.9.0+ for improved transport and lifecycle management
 url = { workspace = true }
-jsonschema = "0.49"
+jsonschema = "0.52"
 uuid = { workspace = true, features = ["v4", "serde"] }
 which = "8.0.2"
 textwrap = "0.16"
