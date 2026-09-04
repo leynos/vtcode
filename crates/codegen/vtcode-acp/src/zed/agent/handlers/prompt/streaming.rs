@@ -26,6 +26,7 @@ struct StreamCollectionRequest<'a> {
     deadlines: &'a mut StreamDeadlineTracker,
     telemetry: &'a mut GenerationTelemetry,
     output: &'a mut ProviderOutput,
+    backoff: &'a mut RetryBackoff,
 }
 
 struct StreamFailureRequest<'a> {
@@ -34,6 +35,7 @@ struct StreamFailureRequest<'a> {
     output: &'a ProviderOutput,
     attempt_index: u32,
     error: LLMError,
+    backoff: &'a mut RetryBackoff,
 }
 
 struct StreamDeltaRequest<'a> {
@@ -56,6 +58,7 @@ pub(super) async fn run_streaming_provider_turn(turn: &mut PromptExecution) -> R
     let mut output = ProviderOutput::take_from(turn);
     let mut tool_loop_count = 0usize;
     let mut attempt_index = 0u32;
+    let mut backoff = RetryBackoff::new();
 
     loop {
         if turn.session.cancellation.is_cancelled() {
@@ -63,10 +66,13 @@ pub(super) async fn run_streaming_provider_turn(turn: &mut PromptExecution) -> R
             return Ok(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled));
         }
         let request = streaming_request(turn);
-        let attempt = collect_streaming_attempt(turn, &request, &mut output, attempt_index).await?;
+        let attempt = collect_streaming_attempt(turn, &request, &mut output, attempt_index, &mut backoff).await?;
         match handle_streaming_attempt(turn, &mut output, attempt, attempt_index, &mut tool_loop_count).await? {
             StreamingTurnOutcome::Retry => attempt_index = attempt_index.saturating_add(1),
-            StreamingTurnOutcome::ContinueAfterTools => attempt_index = 0,
+            StreamingTurnOutcome::ContinueAfterTools => {
+                attempt_index = 0;
+                backoff.reset();
+            }
             StreamingTurnOutcome::Finished(outcome) => {
                 return Ok(preserve_streaming_output(turn, output, outcome));
             }
@@ -172,6 +178,7 @@ async fn collect_streaming_attempt(
     request: &LLMRequest,
     output: &mut ProviderOutput,
     attempt_index: u32,
+    backoff: &mut RetryBackoff,
 ) -> Result<StreamAttemptOutcome, SdkError> {
     let provider_runtime = &turn.provider_runtime;
     let deadline_policy = provider_runtime.deadline_policy();
@@ -215,6 +222,7 @@ async fn collect_streaming_attempt(
                 output,
                 attempt_index,
                 error,
+                backoff,
             }));
         }
     };
@@ -229,6 +237,7 @@ async fn collect_streaming_attempt(
             deadlines: &mut deadlines,
             telemetry: &mut telemetry,
             output,
+            backoff,
         },
     )
     .await;

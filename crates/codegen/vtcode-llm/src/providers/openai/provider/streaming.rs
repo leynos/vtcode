@@ -10,7 +10,9 @@ use super::OpenAIProvider;
 use crate::error_display;
 use crate::provider::LLMProvider;
 use crate::provider::{self, LLMNormalizedStream};
-use crate::providers::error_handling::{is_rate_limit_error, parse_api_error};
+use crate::providers::error_handling::{
+    error_metadata_from_headers, is_rate_limit_error, parse_api_error_with_headers,
+};
 use crate::providers::shared::{ResponsesNormalizedStreamOptions, create_responses_normalized_stream};
 use async_stream::try_stream;
 use futures::StreamExt;
@@ -56,20 +58,25 @@ fn responses_model_fallback(model: &str, status: reqwest::StatusCode, error_text
 }
 
 fn responses_stream_error(
+    provider_name: &str,
+    rate_limit_headers: &vtcode_config::core::RateLimitHeaderConfig,
     status: reqwest::StatusCode,
     error_text: &str,
     headers: &reqwest::header::HeaderMap,
     request_id: &str,
 ) -> provider::LLMError {
     if is_rate_limit_error(status.as_u16(), error_text) {
-        return parse_api_error("OpenAI", status, error_text);
+        return parse_api_error_with_headers(provider_name, status, error_text, headers, rate_limit_headers);
     }
 
     let formatted_error = error_display::format_llm_error(
         "OpenAI",
         &format_openai_error(status, error_text, headers, "Responses API error", Some(request_id)),
     );
-    provider::LLMError::Provider { message: formatted_error, metadata: None }
+    provider::LLMError::Provider {
+        message: formatted_error,
+        metadata: Some(error_metadata_from_headers(provider_name, status, error_text, headers, rate_limit_headers)),
+    }
 }
 
 impl OpenAIProvider {
@@ -123,10 +130,26 @@ impl OpenAIProvider {
                 "OpenAI",
                 &format_openai_error(status, &error_text, &headers, "Model not available", Some(context.request_id)),
             );
-            return Err(provider::LLMError::Provider { message: formatted_error, metadata: None });
+            return Err(provider::LLMError::Provider {
+                message: formatted_error,
+                metadata: Some(error_metadata_from_headers(
+                    self.error_provider_name(),
+                    status,
+                    &error_text,
+                    &headers,
+                    &self.rate_limit_headers(),
+                )),
+            });
         }
 
-        Err(responses_stream_error(status, &error_text, &headers, context.request_id))
+        Err(responses_stream_error(
+            self.error_provider_name(),
+            &self.rate_limit_headers(),
+            status,
+            &error_text,
+            &headers,
+            context.request_id,
+        ))
     }
 
     fn should_fallback_to_chat_completions(
@@ -282,14 +305,29 @@ impl OpenAIProvider {
             let error_text = crate::providers::common::read_provider_error_body(response).await;
 
             if is_rate_limit_error(status.as_u16(), &error_text) {
-                return Err(parse_api_error("OpenAI", status, &error_text));
+                return Err(parse_api_error_with_headers(
+                    self.error_provider_name(),
+                    status,
+                    &error_text,
+                    &headers,
+                    &self.rate_limit_headers(),
+                ));
             }
 
             let formatted_error = error_display::format_llm_error(
                 "OpenAI",
                 &format_openai_error(status, &error_text, &headers, "Chat Completions error", Some(&client_request_id)),
             );
-            return Err(provider::LLMError::Provider { message: formatted_error, metadata: None });
+            return Err(provider::LLMError::Provider {
+                message: formatted_error,
+                metadata: Some(error_metadata_from_headers(
+                    self.error_provider_name(),
+                    status,
+                    &error_text,
+                    &headers,
+                    &self.rate_limit_headers(),
+                )),
+            });
         }
 
         Ok(stream_decoder::create_chat_stream(

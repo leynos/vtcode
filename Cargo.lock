@@ -7645,6 +7645,7 @@ dependencies = [
  "anyhow",
  "assert_fs",
  "async-trait",
+ "axum",
  "chrono",
  "dirs",
  "futures",
@@ -7668,6 +7669,7 @@ dependencies = [
  "vtcode-core",
  "vtcode-llm",
  "vtcode-safety",
+ "wiremock",
 ]
 
 [[package]]
@@ -7758,6 +7760,7 @@ dependencies = [
  "memchr",
  "once_cell",
  "percent-encoding",
+ "proptest",
  "rand 0.10.2",
  "regex",
  "reqwest 0.12.28",
@@ -7843,6 +7846,7 @@ dependencies = [
  "glob",
  "hashbrown 0.17.1",
  "hotpath",
+ "httpdate",
  "humantime",
  "ignore",
  "indexmap 2.14.1",

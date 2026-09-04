@@ -14,7 +14,8 @@ fn advertised_capabilities_include_session_discovery_and_resume() {
     let lody = &capabilities.meta.expect("Lody capability metadata")["lody"];
     assert_eq!(lody["usage"]["version"], 1);
     assert_eq!(lody["compaction"]["version"], 1);
-    assert!(lody.get("rateLimits").is_none(), "no trustworthy quota source is configured");
+    assert_eq!(lody["rateLimits"]["version"], 1);
+    assert!(lody["rateLimits"].get("query").is_none(), "header observations are push-only");
     assert!(lody.get("subagents").is_none());
 }
 

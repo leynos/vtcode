@@ -19,6 +19,191 @@ fn skip_serializing_custom_provider_api_format(api_format: &CustomProviderApiFor
     api_format.is_auto()
 }
 
+/// Semantic mapping from provider response metadata to rate-limit headers.
+///
+/// Header names are configurable because OpenAI-compatible providers expose
+/// equivalent quota information under different names. The default mapping
+/// covers the four Baseten/OpenAI-style per-minute headers.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RateLimitHeaderConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requests_limit_per_minute: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requests_remaining_per_minute: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens_limit_per_minute: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens_remaining_per_minute: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requests_limit_per_second: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requests_remaining_per_second: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens_limit_per_second: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens_remaining_per_second: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_limit_per_second: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_adjusted_prompt_tokens_limit_per_second: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generated_tokens_limit_per_second: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cached_prompt_tokens: Option<String>,
+    /// Header containing a provider-suggested reset interval in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reset_after_seconds: Option<String>,
+}
+
+impl Default for RateLimitHeaderConfig {
+    fn default() -> Self {
+        Self {
+            requests_limit_per_minute: Some("x-ratelimit-limit-requests".to_string()),
+            requests_remaining_per_minute: Some("x-ratelimit-remaining-requests".to_string()),
+            tokens_limit_per_minute: Some("x-ratelimit-limit-tokens".to_string()),
+            tokens_remaining_per_minute: Some("x-ratelimit-remaining-tokens".to_string()),
+            requests_limit_per_second: None,
+            requests_remaining_per_second: None,
+            tokens_limit_per_second: None,
+            tokens_remaining_per_second: None,
+            prompt_tokens_limit_per_second: None,
+            cache_adjusted_prompt_tokens_limit_per_second: None,
+            generated_tokens_limit_per_second: None,
+            prompt_tokens: None,
+            cached_prompt_tokens: None,
+            reset_after_seconds: None,
+        }
+    }
+}
+
+impl RateLimitHeaderConfig {
+    fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+
+    fn fireworks_defaults() -> Self {
+        Self {
+            prompt_tokens_limit_per_second: Some("x-ratelimit-limit-tokens-prompt".to_string()),
+            cache_adjusted_prompt_tokens_limit_per_second: Some(
+                "x-ratelimit-limit-tokens-cache-adjusted-prompt".to_string(),
+            ),
+            generated_tokens_limit_per_second: Some("x-ratelimit-limit-tokens-generated".to_string()),
+            prompt_tokens: Some("fireworks-prompt-tokens".to_string()),
+            cached_prompt_tokens: Some("fireworks-cached-prompt-tokens".to_string()),
+            ..Self::default()
+        }
+    }
+
+    fn together_defaults() -> Self {
+        Self {
+            requests_limit_per_second: Some("x-ratelimit-limit".to_string()),
+            requests_remaining_per_second: Some("x-ratelimit-remaining".to_string()),
+            tokens_limit_per_second: Some("x-tokenlimit-limit".to_string()),
+            tokens_remaining_per_second: Some("x-tokenlimit-remaining".to_string()),
+            reset_after_seconds: Some("x-ratelimit-reset".to_string()),
+            ..Self::default()
+        }
+    }
+
+    /// Return default mappings for a provider name.
+    ///
+    /// The four per-minute mappings are universal custom-provider defaults;
+    /// recognized Fireworks and Together aliases add their documented fields.
+    pub fn for_provider_name(provider_name: &str) -> Self {
+        let normalized_name = provider_name.to_ascii_lowercase();
+        if normalized_name.contains("fireworks") {
+            Self::fireworks_defaults()
+        } else if normalized_name.contains("together") {
+            Self::together_defaults()
+        } else {
+            Self::default()
+        }
+    }
+
+    fn fill_missing_from(&mut self, defaults: &Self) {
+        macro_rules! fill_missing {
+            ($($field:ident),+ $(,)?) => {
+                $(
+                    if self.$field.is_none() {
+                        self.$field.clone_from(&defaults.$field);
+                    }
+                )+
+            };
+        }
+
+        fill_missing!(
+            requests_limit_per_minute,
+            requests_remaining_per_minute,
+            tokens_limit_per_minute,
+            tokens_remaining_per_minute,
+            requests_limit_per_second,
+            requests_remaining_per_second,
+            tokens_limit_per_second,
+            tokens_remaining_per_second,
+            prompt_tokens_limit_per_second,
+            cache_adjusted_prompt_tokens_limit_per_second,
+            generated_tokens_limit_per_second,
+            prompt_tokens,
+            cached_prompt_tokens,
+            reset_after_seconds,
+        );
+    }
+
+    fn validate(&self, provider_name: &str) -> Result<(), String> {
+        let headers = [
+            ("requests_limit_per_minute", &self.requests_limit_per_minute),
+            ("requests_remaining_per_minute", &self.requests_remaining_per_minute),
+            ("tokens_limit_per_minute", &self.tokens_limit_per_minute),
+            ("tokens_remaining_per_minute", &self.tokens_remaining_per_minute),
+            ("requests_limit_per_second", &self.requests_limit_per_second),
+            ("requests_remaining_per_second", &self.requests_remaining_per_second),
+            ("tokens_limit_per_second", &self.tokens_limit_per_second),
+            ("tokens_remaining_per_second", &self.tokens_remaining_per_second),
+            ("prompt_tokens_limit_per_second", &self.prompt_tokens_limit_per_second),
+            ("cache_adjusted_prompt_tokens_limit_per_second", &self.cache_adjusted_prompt_tokens_limit_per_second),
+            ("generated_tokens_limit_per_second", &self.generated_tokens_limit_per_second),
+            ("prompt_tokens", &self.prompt_tokens),
+            ("cached_prompt_tokens", &self.cached_prompt_tokens),
+            ("reset_after_seconds", &self.reset_after_seconds),
+        ];
+
+        for (field, header) in headers {
+            if header.as_deref().is_some_and(|header| !is_valid_header_name(header)) {
+                return Err(format!(
+                    "custom_providers[{provider_name}].rate_limit_headers: `{field}` must be a valid HTTP header name"
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+fn is_valid_header_name(header: &str) -> bool {
+    !header.is_empty()
+        && header.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(
+                    byte,
+                    b'!' | b'#'
+                        | b'$'
+                        | b'%'
+                        | b'&'
+                        | b'\''
+                        | b'*'
+                        | b'+'
+                        | b'-'
+                        | b'.'
+                        | b'^'
+                        | b'_'
+                        | b'`'
+                        | b'|'
+                        | b'~'
+                )
+        })
+}
 /// Typed API format used by custom providers.
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -645,6 +830,10 @@ pub struct CustomProviderConfig {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub profiles: BTreeMap<String, CustomProviderProfileConfig>,
 
+    /// Provider response-header names carrying typed rate-limit metadata.
+    #[serde(default, skip_serializing_if = "RateLimitHeaderConfig::is_default")]
+    pub rate_limit_headers: RateLimitHeaderConfig,
+
     /// Per-process request admission and transient retry policy.
     #[serde(default)]
     pub request_policy: CustomProviderRequestPolicyConfig,
@@ -699,6 +888,14 @@ impl CustomProviderConfig {
         ResolvedCustomProviderProfile::from_layers(&defaults, self.profile(model))
     }
 
+    /// Resolve response header mappings, preserving every explicit mapping and
+    /// filling provider-specific fields that were not configured.
+    pub fn effective_rate_limit_headers(&self) -> RateLimitHeaderConfig {
+        let mut headers = self.rate_limit_headers.clone();
+        headers.fill_missing_from(&RateLimitHeaderConfig::for_provider_name(&self.name));
+        headers
+    }
+
     pub fn provider_defaults_profile(&self) -> CustomProviderProfileConfig {
         CustomProviderProfileConfig {
             api_format: self.api_format,
@@ -734,6 +931,7 @@ impl CustomProviderConfig {
         self.validate_api_key_env()?;
         self.validate_models()?;
         self.request_policy.validate(&self.name)?;
+        self.rate_limit_headers.validate(&self.name)?;
         self.validate_profiles()?;
         self.validate_name_is_not_reserved()
     }
@@ -951,8 +1149,8 @@ mod tests {
 
     use super::{
         CustomProviderApiFormat, CustomProviderCommandAuthConfig, CustomProviderConfig, CustomProviderPricingConfig,
-        CustomProviderProfileConfig, CustomProviderRequestPolicyConfig, ResolvedCustomProviderProfile,
-        default_auth_refresh_interval_ms, default_auth_timeout_ms,
+        CustomProviderProfileConfig, CustomProviderRequestPolicyConfig, RateLimitHeaderConfig,
+        ResolvedCustomProviderProfile, default_auth_refresh_interval_ms, default_auth_timeout_ms,
     };
 
     #[test]
@@ -1014,6 +1212,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1052,6 +1251,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1096,6 +1296,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1140,6 +1341,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1178,6 +1380,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: vec!["valid-model".to_string(), "   ".to_string()],
             profiles: BTreeMap::new(),
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1216,6 +1419,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1281,6 +1485,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles,
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1328,6 +1533,7 @@ mod tests {
                 "minimaxai/minimax-m3".to_string(),
             ],
             profiles: BTreeMap::new(),
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1461,6 +1667,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles,
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1493,7 +1700,85 @@ model = "gpt-5-mini"
         assert_eq!(parsed.api_format, CustomProviderApiFormat::Auto);
         assert!(parsed.profiles.is_empty());
         assert_eq!(parsed.resolved_profile("gpt-5-mini"), ResolvedCustomProviderProfile::default());
+        assert_eq!(parsed.rate_limit_headers, RateLimitHeaderConfig::default());
         assert_eq!(parsed.request_policy, CustomProviderRequestPolicyConfig::default());
+    }
+
+    #[test]
+    fn baseten_style_headers_are_the_default_for_custom_provider_aliases() {
+        let config = CustomProviderConfig {
+            name: "baseten-glm".to_string(),
+            ..CustomProviderConfig::default()
+        };
+
+        let headers = config.effective_rate_limit_headers();
+        assert_eq!(headers.requests_limit_per_minute.as_deref(), Some("x-ratelimit-limit-requests"));
+        assert_eq!(headers.requests_remaining_per_minute.as_deref(), Some("x-ratelimit-remaining-requests"));
+        assert_eq!(headers.tokens_limit_per_minute.as_deref(), Some("x-ratelimit-limit-tokens"));
+        assert_eq!(headers.tokens_remaining_per_minute.as_deref(), Some("x-ratelimit-remaining-tokens"));
+    }
+
+    #[test]
+    fn fireworks_defaults_keep_limits_and_request_counters_distinct() {
+        let config = CustomProviderConfig {
+            name: "fireworks-private".to_string(),
+            ..CustomProviderConfig::default()
+        };
+
+        let headers = config.effective_rate_limit_headers();
+        assert_eq!(headers.prompt_tokens_limit_per_second.as_deref(), Some("x-ratelimit-limit-tokens-prompt"));
+        assert_eq!(
+            headers.cache_adjusted_prompt_tokens_limit_per_second.as_deref(),
+            Some("x-ratelimit-limit-tokens-cache-adjusted-prompt")
+        );
+        assert_eq!(headers.generated_tokens_limit_per_second.as_deref(), Some("x-ratelimit-limit-tokens-generated"));
+        assert_eq!(headers.prompt_tokens.as_deref(), Some("fireworks-prompt-tokens"));
+        assert_eq!(headers.cached_prompt_tokens.as_deref(), Some("fireworks-cached-prompt-tokens"));
+    }
+
+    #[test]
+    fn together_defaults_preserve_per_second_units_and_reset_header() {
+        let config = CustomProviderConfig {
+            name: "together-router".to_string(),
+            ..CustomProviderConfig::default()
+        };
+
+        let headers = config.effective_rate_limit_headers();
+        assert_eq!(headers.requests_limit_per_second.as_deref(), Some("x-ratelimit-limit"));
+        assert_eq!(headers.tokens_limit_per_second.as_deref(), Some("x-tokenlimit-limit"));
+        assert_eq!(headers.reset_after_seconds.as_deref(), Some("x-ratelimit-reset"));
+    }
+
+    #[test]
+    fn explicit_header_mapping_wins_over_provider_defaults() {
+        let config = CustomProviderConfig {
+            name: "together-proxy".to_string(),
+            rate_limit_headers: RateLimitHeaderConfig {
+                tokens_limit_per_second: Some("x-proxy-token-limit".to_string()),
+                ..RateLimitHeaderConfig::default()
+            },
+            ..CustomProviderConfig::default()
+        };
+
+        let headers = config.effective_rate_limit_headers();
+        assert_eq!(headers.tokens_limit_per_second.as_deref(), Some("x-proxy-token-limit"));
+        assert_eq!(headers.reset_after_seconds.as_deref(), Some("x-ratelimit-reset"));
+    }
+
+    #[test]
+    fn validation_rejects_invalid_rate_limit_header_names() {
+        let config = CustomProviderConfig {
+            name: "mycorp".to_string(),
+            display_name: "MyCorp".to_string(),
+            base_url: "https://llm.example/v1".to_string(),
+            rate_limit_headers: RateLimitHeaderConfig {
+                prompt_tokens: Some("not a header".to_string()),
+                ..RateLimitHeaderConfig::default()
+            },
+            ..CustomProviderConfig::default()
+        };
+
+        assert!(config.validate().is_err_and(|error| error.contains("prompt_tokens")));
     }
 
     #[test]

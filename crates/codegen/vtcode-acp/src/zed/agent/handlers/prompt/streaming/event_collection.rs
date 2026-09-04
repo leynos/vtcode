@@ -60,6 +60,7 @@ fn classify_stream_poll_failure(request: &mut StreamCollectionRequest<'_>, error
         output: request.output,
         attempt_index: request.attempt_index,
         error,
+        backoff: &mut *request.backoff,
     })
 }
 
@@ -134,9 +135,16 @@ fn observe_response_output(request: &mut StreamCollectionRequest<'_>, response: 
 }
 
 pub(super) fn classify_stream_failure(request: StreamFailureRequest<'_>) -> StreamAttemptOutcome {
-    let StreamFailureRequest { turn, telemetry, output, attempt_index, error } = request;
+    let StreamFailureRequest {
+        turn,
+        telemetry,
+        output,
+        attempt_index,
+        error,
+        backoff,
+    } = request;
     let policy = turn.provider_runtime.retry_policy();
-    let decision = policy.decision_for_llm_error(&error, attempt_index);
+    let decision = policy.decision_for_llm_error_with_backoff(&error, attempt_index, backoff);
     let disposition = if output.emitted_output {
         "partial_output_visible"
     } else {

@@ -257,6 +257,7 @@ pub(super) async fn generate_with_retry(
 ) -> Result<LLMResponse, ProviderCallError> {
     let policy = runtime.retry_policy();
     let mut attempt_index = 0;
+    let mut backoff = RetryBackoff::new();
 
     loop {
         let permit = runtime.acquire(cancellation).await?;
@@ -290,7 +291,7 @@ pub(super) async fn generate_with_retry(
                 return Ok(response);
             }
             Err(error) => {
-                let decision = policy.decision_for_llm_error(&error, attempt_index);
+                let decision = policy.decision_for_llm_error_with_backoff(&error, attempt_index, &mut backoff);
                 telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
                 drop(permit);
                 let retry_delay = decision
