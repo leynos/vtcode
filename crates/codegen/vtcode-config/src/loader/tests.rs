@@ -4,6 +4,7 @@ use crate::constants::tool_limits;
 use crate::core::prompt_cache::PromptCacheRetention;
 use crate::core::{
     CustomProviderApiFormat, CustomProviderConfig, CustomProviderPricingConfig, CustomProviderProfileConfig,
+    RateLimitHeaderConfig,
 };
 use crate::defaults::{self, SyntaxHighlightingDefaults, WorkspacePathsDefaults};
 use crate::ide_context::{IdeContextProviderConfig, IdeContextProviderMode, IdeContextProvidersConfig};
@@ -835,6 +836,11 @@ fn custom_providers_fields_round_trip_through_toml() {
                 supports_context_edits: None,
             },
         )]),
+        rate_limit_headers: RateLimitHeaderConfig {
+            requests_limit_per_minute: Some("x-corp-request-limit".to_string()),
+            reset_after_seconds: Some("x-corp-reset-seconds".to_string()),
+            ..RateLimitHeaderConfig::default()
+        },
         request_policy: Default::default(),
     });
 
@@ -861,6 +867,8 @@ fn custom_providers_fields_round_trip_through_toml() {
     assert_eq!(provider.supports_responses_compaction, Some(false));
     assert_eq!(provider.supports_stream_usage, Some(true));
     assert_eq!(provider.supports_context_edits, Some(true));
+    assert_eq!(provider.rate_limit_headers.requests_limit_per_minute.as_deref(), Some("x-corp-request-limit"));
+    assert_eq!(provider.rate_limit_headers.reset_after_seconds.as_deref(), Some("x-corp-reset-seconds"));
     assert_eq!(provider.api_key_env, "MYCORP_API_KEY");
     assert_eq!(provider.model, "gpt-5-mini");
     assert_eq!(provider.models, vec!["gpt-5-mini".to_string(), "gpt-5-large".to_string()]);

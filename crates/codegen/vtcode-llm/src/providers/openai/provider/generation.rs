@@ -8,7 +8,9 @@ use super::OpenAIProvider;
 use crate::error_display;
 use crate::provider;
 use crate::provider::LLMProvider;
-use crate::providers::error_handling::{is_rate_limit_error, parse_api_error};
+use crate::providers::error_handling::{
+    error_metadata_from_headers, is_rate_limit_error, parse_api_error_with_headers,
+};
 use crate::providers::shared::parse_compacted_output_messages;
 use futures::StreamExt;
 use serde_json::{Value, json};
@@ -251,7 +253,16 @@ impl OpenAIProvider {
                     Some(&client_request_id),
                 ),
             );
-            return Err(provider::LLMError::Provider { message: formatted_error, metadata: None });
+            return Err(provider::LLMError::Provider {
+                message: formatted_error,
+                metadata: Some(error_metadata_from_headers(
+                    self.error_provider_name(),
+                    status,
+                    &error_text,
+                    &headers,
+                    &self.rate_limit_headers(),
+                )),
+            });
         }
 
         let response_json: Value = response.json().await.map_err(|e| {
@@ -425,7 +436,16 @@ impl OpenAIProvider {
                             Some(&effective_client_request_id),
                         ),
                     );
-                    return Err(provider::LLMError::Provider { message: formatted_error, metadata: None });
+                    return Err(provider::LLMError::Provider {
+                        message: formatted_error,
+                        metadata: Some(error_metadata_from_headers(
+                            self.error_provider_name(),
+                            status,
+                            &error_text,
+                            &headers,
+                            &self.rate_limit_headers(),
+                        )),
+                    });
                 } else if matches!(responses_state, ResponsesApiState::Allowed)
                     && is_responses_api_unsupported(status, &error_text)
                 {
@@ -444,9 +464,24 @@ impl OpenAIProvider {
                             Some(&effective_client_request_id),
                         ),
                     );
-                    return Err(provider::LLMError::Provider { message: formatted_error, metadata: None });
+                    return Err(provider::LLMError::Provider {
+                        message: formatted_error,
+                        metadata: Some(error_metadata_from_headers(
+                            self.error_provider_name(),
+                            status,
+                            &error_text,
+                            &headers,
+                            &self.rate_limit_headers(),
+                        )),
+                    });
                 } else if is_rate_limit_error(status.as_u16(), &error_text) {
-                    return Err(parse_api_error("OpenAI", status, &error_text));
+                    return Err(parse_api_error_with_headers(
+                        self.error_provider_name(),
+                        status,
+                        &error_text,
+                        &headers,
+                        &self.rate_limit_headers(),
+                    ));
                 } else {
                     let formatted_error = error_display::format_llm_error(
                         "OpenAI",
@@ -458,7 +493,16 @@ impl OpenAIProvider {
                             Some(&effective_client_request_id),
                         ),
                     );
-                    return Err(provider::LLMError::Provider { message: formatted_error, metadata: None });
+                    return Err(provider::LLMError::Provider {
+                        message: formatted_error,
+                        metadata: Some(error_metadata_from_headers(
+                            self.error_provider_name(),
+                            status,
+                            &error_text,
+                            &headers,
+                            &self.rate_limit_headers(),
+                        )),
+                    });
                 }
             } else {
                 let openai_response: Value = response.json().await.map_err(|e| {
@@ -535,7 +579,13 @@ impl OpenAIProvider {
             }
 
             if is_rate_limit_error(status.as_u16(), &error_text) {
-                return Err(parse_api_error("OpenAI", status, &error_text));
+                return Err(parse_api_error_with_headers(
+                    self.error_provider_name(),
+                    status,
+                    &error_text,
+                    &headers,
+                    &self.rate_limit_headers(),
+                ));
             }
 
             let formatted_error = error_display::format_llm_error(
@@ -548,7 +598,16 @@ impl OpenAIProvider {
                     Some(&effective_client_request_id),
                 ),
             );
-            return Err(provider::LLMError::Provider { message: formatted_error, metadata: None });
+            return Err(provider::LLMError::Provider {
+                message: formatted_error,
+                metadata: Some(error_metadata_from_headers(
+                    self.error_provider_name(),
+                    status,
+                    &error_text,
+                    &headers,
+                    &self.rate_limit_headers(),
+                )),
+            });
         }
 
         let openai_response: Value = response.json().await.map_err(|e| {

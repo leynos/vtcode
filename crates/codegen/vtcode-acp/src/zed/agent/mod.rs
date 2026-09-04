@@ -35,6 +35,7 @@ mod lody;
 mod lody_management;
 mod lody_activity;
 mod lody_notice;
+mod lody_rate_limits;
 #[cfg(test)]
 mod lody_tests;
 mod lody_usage;

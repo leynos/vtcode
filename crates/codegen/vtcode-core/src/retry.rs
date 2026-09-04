@@ -18,7 +18,7 @@ use crate::tools::tool_intent::is_command_tool;
 use crate::tools::unified_error::UnifiedToolError;
 use vtcode_commons::llm::{LLMError, LLMErrorMetadata};
 
-pub use vtcode_commons::retry::{RetryDecision, RetryPolicy};
+pub use vtcode_commons::retry::{RetryBackoff, RetryDecision, RetryPolicy};
 
 /// Domain-aware retry decisions layered over the shared [`RetryPolicy`].
 ///
@@ -35,6 +35,15 @@ pub trait RetryPolicyCoreExt {
     fn decision_for_anyhow(&self, error: &anyhow::Error, attempt_index: u32, tool_name: Option<&str>) -> RetryDecision;
 
     fn decision_for_llm_error(&self, error: &LLMError, attempt_index: u32) -> RetryDecision;
+
+    /// Classify an LLM error while retaining a provider retry floor across
+    /// attempts in the current logical segment.
+    fn decision_for_llm_error_with_backoff(
+        &self,
+        error: &LLMError,
+        attempt_index: u32,
+        backoff: &mut RetryBackoff,
+    ) -> RetryDecision;
 
     fn decision_for_tool_error(&self, error: &UnifiedToolError, attempt_index: u32) -> RetryDecision;
 
@@ -91,6 +100,16 @@ impl RetryPolicyCoreExt for RetryPolicy {
     fn decision_for_llm_error(&self, error: &LLMError, attempt_index: u32) -> RetryDecision {
         let retry_after = llm_metadata(error).and_then(retry_after_from_llm_metadata);
         decision_for_category_with_tool(self, ErrorCategory::from(error), attempt_index, retry_after, None)
+    }
+
+    fn decision_for_llm_error_with_backoff(
+        &self,
+        error: &LLMError,
+        attempt_index: u32,
+        backoff: &mut RetryBackoff,
+    ) -> RetryDecision {
+        let retry_after = llm_metadata(error).and_then(retry_after_from_llm_metadata);
+        self.decision_for_category_with_backoff(ErrorCategory::from(error), attempt_index, retry_after, backoff)
     }
 
     fn decision_for_tool_error(&self, error: &UnifiedToolError, attempt_index: u32) -> RetryDecision {
@@ -371,6 +390,41 @@ mod tests {
         assert!(decision.retryable);
         assert_eq!(decision.retry_after, Some(Duration::from_secs(7)));
         assert_eq!(decision.delay, Some(Duration::from_secs(7)));
+    }
+
+    #[test]
+    fn retry_backoff_retains_floor_when_later_provider_error_omits_header() {
+        let policy = RetryPolicy::from_retries(3, Duration::from_secs(1), Duration::from_secs(8), 2.0);
+        let first_error = LLMError::RateLimit {
+            metadata: Some(LLMErrorMetadata::new(
+                "Anthropic",
+                Some(429),
+                Some("rate_limit_error".to_string()),
+                None,
+                None,
+                Some("7".to_string()),
+                Some("too many requests".to_string()),
+            )),
+        };
+        let later_error = LLMError::RateLimit {
+            metadata: Some(LLMErrorMetadata::new(
+                "Anthropic",
+                Some(429),
+                Some("rate_limit_error".to_string()),
+                None,
+                None,
+                None,
+                Some("too many requests".to_string()),
+            )),
+        };
+        let mut backoff = RetryBackoff::new();
+
+        let first = policy.decision_for_llm_error_with_backoff(&first_error, 0, &mut backoff);
+        let later = policy.decision_for_llm_error_with_backoff(&later_error, 1, &mut backoff);
+
+        assert_eq!(first.delay, Some(Duration::from_secs(7)));
+        assert_eq!(later.retry_after, None);
+        assert_eq!(later.delay, Some(Duration::from_secs(14)));
     }
 
     #[test]

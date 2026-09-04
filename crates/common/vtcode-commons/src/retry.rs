@@ -1,6 +1,5 @@
 #![expect(
     clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
     reason = "Retry exponents and jitter are clamped to the supported retry range before conversion."
 )]
 
@@ -59,28 +58,44 @@ impl RetryPolicy {
     }
 
     pub fn delay_for_attempt(&self, attempt_index: u32) -> Duration {
-        let multiplier = self.multiplier.powi(attempt_index as i32);
-        let base_delay = Duration::try_from_secs_f64(self.initial_delay.as_secs_f64() * multiplier)
-            .unwrap_or(self.max_delay)
-            .min(self.max_delay);
+        self.delay_for_attempt_with_floor(attempt_index, None)
+    }
+
+    /// Calculate the delay for an attempt while respecting a provider's
+    /// minimum wait.
+    ///
+    /// The ordinary policy curve remains capped by [`Self::max_delay`]. When
+    /// a provider supplies a positive floor, its curve starts at the larger
+    /// of that floor and [`Self::initial_delay`] and grows without being
+    /// reduced by the local cap. Jitter is additive, so it can never shorten
+    /// either minimum.
+    pub fn delay_for_attempt_with_floor(&self, attempt_index: u32, provider_floor: Option<Duration>) -> Duration {
+        let policy_delay = exponential_delay(self.initial_delay, self.multiplier, attempt_index).min(self.max_delay);
+        let minimum_delay =
+            provider_floor
+                .filter(|provider_floor| !provider_floor.is_zero())
+                .map_or(policy_delay, |provider_floor| {
+                    let provider_base = self.initial_delay.max(provider_floor);
+                    policy_delay.max(exponential_delay(provider_base, self.multiplier, attempt_index))
+                });
 
         if !self.jitter.is_finite() || self.jitter <= 0.0 {
-            return base_delay;
+            return minimum_delay;
         }
 
         #[allow(
             clippy::cast_sign_loss,
             reason = "Intentional compatibility, platform, or test-only suppression."
         )]
-        let max_jitter_ms = (base_delay.as_millis() as f64 * self.jitter)
+        let max_jitter_ms = (minimum_delay.as_millis() as f64 * self.jitter)
             .round()
             .clamp(0.0, u64::MAX as f64) as u64;
         if max_jitter_ms == 0 {
-            return base_delay;
+            return minimum_delay;
         }
 
         let offset = (u64::from(attempt_index) * 31) % max_jitter_ms.saturating_add(1);
-        base_delay.saturating_add(Duration::from_millis(offset))
+        minimum_delay.saturating_add(Duration::from_millis(offset))
     }
 
     pub fn decision_for_category(
@@ -99,13 +114,33 @@ impl RetryPolicy {
             };
         }
 
-        let delay = retry_after.unwrap_or_else(|| self.delay_for_attempt(attempt_index));
+        let delay = self.delay_for_attempt_with_floor(attempt_index, retry_after);
         RetryDecision {
             category,
             retryable: true,
             delay: Some(delay),
             retry_after,
         }
+    }
+
+    /// Make a retry decision while retaining provider backoff state across
+    /// attempts. Later, larger floors raise the retained minimum; missing or
+    /// smaller floors do not lower it.
+    pub fn decision_for_category_with_backoff(
+        &self,
+        category: ErrorCategory,
+        attempt_index: u32,
+        retry_after: Option<Duration>,
+        backoff: &mut RetryBackoff,
+    ) -> RetryDecision {
+        backoff.observe(retry_after);
+
+        let mut decision = self.decision_for_category(category, attempt_index, None);
+        decision.retry_after = retry_after;
+        if decision.retryable {
+            decision.delay = Some(self.delay_for_attempt_with_floor(attempt_index, backoff.provider_floor));
+        }
+        decision
     }
 
     /// Classify an `anyhow::Error` for retry eligibility.
@@ -144,6 +179,52 @@ impl RetryPolicy {
     }
 }
 
+fn exponential_delay(base: Duration, multiplier: f64, attempt_index: u32) -> Duration {
+    let exponent = i32::try_from(attempt_index).unwrap_or(i32::MAX);
+    let multiplier = if multiplier.is_finite() && multiplier >= 1.0 {
+        multiplier
+    } else {
+        1.0
+    };
+    Duration::try_from_secs_f64(base.as_secs_f64() * multiplier.powi(exponent))
+        .unwrap_or(Duration::MAX)
+        .max(base)
+}
+
+/// Provider-supplied retry floor retained for one logical retry segment.
+///
+/// Reuse this value across the attempts belonging to one generation or tool
+/// segment, then call [`Self::reset`] before starting the next segment.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RetryBackoff {
+    provider_floor: Option<Duration>,
+}
+
+impl RetryBackoff {
+    /// Create empty backoff state for a new logical retry segment.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { provider_floor: None }
+    }
+
+    /// Return the largest provider floor observed in this segment.
+    #[must_use]
+    pub const fn provider_floor(&self) -> Option<Duration> {
+        self.provider_floor
+    }
+
+    /// Clear the retained floor before a new generation or tool segment.
+    pub fn reset(&mut self) {
+        self.provider_floor = None;
+    }
+
+    fn observe(&mut self, retry_after: Option<Duration>) {
+        if let Some(retry_after) = retry_after {
+            self.provider_floor = Some(self.provider_floor.map_or(retry_after, |floor| floor.max(retry_after)));
+        }
+    }
+}
+
 impl Default for RetryPolicy {
     fn default() -> Self {
         Self::from_retries(2, Duration::from_secs(1), Duration::from_secs(60), 2.0)
@@ -162,6 +243,7 @@ pub struct RetryDecision {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn default_policy_allows_two_retries() {
@@ -262,5 +344,119 @@ mod tests {
         assert!(decision.retryable);
         assert_eq!(decision.delay, Some(Duration::from_secs(7)));
         assert_eq!(decision.retry_after, Some(Duration::from_secs(7)));
+    }
+
+    #[test]
+    fn provider_floor_curve_doubles_beyond_local_cap() {
+        let policy = RetryPolicy::from_retries(4, Duration::from_secs(1), Duration::from_secs(8), 2.0);
+
+        assert_eq!(policy.delay_for_attempt_with_floor(0, Some(Duration::from_secs(7))), Duration::from_secs(7));
+        assert_eq!(policy.delay_for_attempt_with_floor(1, Some(Duration::from_secs(7))), Duration::from_secs(14));
+        assert_eq!(policy.delay_for_attempt_with_floor(2, Some(Duration::from_secs(7))), Duration::from_secs(28));
+    }
+
+    #[test]
+    fn provider_floor_never_reduces_the_initial_delay() {
+        let policy = RetryPolicy::from_retries(3, Duration::from_secs(5), Duration::from_secs(30), 2.0);
+
+        assert_eq!(policy.delay_for_attempt_with_floor(1, Some(Duration::from_secs(2))), Duration::from_secs(10));
+        assert_eq!(policy.delay_for_attempt_with_floor(4, Some(Duration::from_secs(2))), Duration::from_secs(80));
+    }
+
+    #[test]
+    fn zero_provider_floor_keeps_the_ordinary_cap() {
+        let policy = RetryPolicy::from_retries(6, Duration::from_secs(1), Duration::from_secs(8), 2.0);
+
+        assert_eq!(policy.delay_for_attempt_with_floor(5, Some(Duration::ZERO)), Duration::from_secs(8));
+    }
+
+    #[test]
+    fn retry_backoff_remembers_provider_floor_until_reset() {
+        let policy = RetryPolicy::from_retries(4, Duration::from_secs(1), Duration::from_secs(8), 2.0);
+        let mut backoff = RetryBackoff::new();
+
+        let first = policy.decision_for_category_with_backoff(
+            ErrorCategory::RateLimit,
+            0,
+            Some(Duration::from_secs(7)),
+            &mut backoff,
+        );
+        let second = policy.decision_for_category_with_backoff(ErrorCategory::RateLimit, 1, None, &mut backoff);
+
+        assert_eq!(first.delay, Some(Duration::from_secs(7)));
+        assert_eq!(second.delay, Some(Duration::from_secs(14)));
+        assert_eq!(second.retry_after, None);
+        assert_eq!(backoff.provider_floor(), Some(Duration::from_secs(7)));
+
+        backoff.reset();
+        let after_reset = policy.decision_for_category_with_backoff(ErrorCategory::RateLimit, 2, None, &mut backoff);
+        assert_eq!(after_reset.delay, Some(Duration::from_secs(4)));
+        assert_eq!(backoff.provider_floor(), None);
+    }
+
+    #[test]
+    fn additive_jitter_never_undercuts_provider_curve() {
+        let mut policy = RetryPolicy::from_retries(3, Duration::from_secs(1), Duration::from_secs(8), 2.0);
+        policy.jitter = 0.5;
+
+        assert!(policy.delay_for_attempt_with_floor(1, Some(Duration::from_secs(7))) >= Duration::from_secs(14));
+    }
+
+    #[test]
+    fn huge_provider_floor_and_attempt_saturate_without_panicking() {
+        let policy = RetryPolicy::from_retries(u32::MAX, Duration::from_secs(1), Duration::from_secs(8), f64::MAX);
+
+        assert_eq!(policy.delay_for_attempt_with_floor(u32::MAX, Some(Duration::MAX)), Duration::MAX);
+    }
+
+    #[test]
+    fn non_finite_multiplier_does_not_produce_an_invalid_duration() {
+        let mut policy = RetryPolicy::from_retries(3, Duration::from_secs(2), Duration::from_secs(8), 2.0);
+        policy.multiplier = f64::NAN;
+
+        assert_eq!(policy.delay_for_attempt(u32::MAX), Duration::from_secs(2));
+    }
+
+    proptest! {
+        #[test]
+        fn provider_floor_curve_is_monotonic_and_never_undercut(
+            initial_delay_ms in 0_u64..=1_000_000,
+            max_delay_ms in 0_u64..=1_000_000,
+            provider_floor_ms in 0_u64..=1_000_000,
+            attempt_index in 0_u32..=64,
+        ) {
+            let policy = RetryPolicy::from_retries(
+                u32::MAX,
+                Duration::from_millis(initial_delay_ms),
+                Duration::from_millis(max_delay_ms),
+                2.0,
+            );
+            let provider_floor = Duration::from_millis(provider_floor_ms);
+            let delay = policy.delay_for_attempt_with_floor(attempt_index, Some(provider_floor));
+            let next_delay = policy.delay_for_attempt_with_floor(
+                attempt_index.saturating_add(1),
+                Some(provider_floor),
+            );
+
+            prop_assert!(delay >= provider_floor);
+            prop_assert!(next_delay >= delay);
+        }
+    }
+
+    #[test]
+    fn exhausted_budget_never_schedules_a_delay() {
+        let policy = RetryPolicy::from_retries(1, Duration::from_secs(1), Duration::from_secs(8), 2.0);
+        let mut backoff = RetryBackoff::new();
+
+        let exhausted = policy.decision_for_category_with_backoff(
+            ErrorCategory::RateLimit,
+            1,
+            Some(Duration::from_secs(120)),
+            &mut backoff,
+        );
+
+        assert!(!exhausted.retryable);
+        assert_eq!(exhausted.delay, None);
+        assert_eq!(exhausted.retry_after, Some(Duration::from_secs(120)));
     }
 }
