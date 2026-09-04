@@ -1,0 +1,17 @@
+{
+  "rateLimits": [
+    {
+      "limitId": "baseten:model:requests-minute",
+      "scope": { "providerId": "baseten", "modelId": "model" },
+      "limitName": "Requests/min (limit 60)",
+      "windows": [
+        {
+          "usedPercent": 75.0,
+          "windowDurationSeconds": 60,
+          "resetsAtEpochSeconds": null
+        }
+      ]
+    }
+  ],
+  "fetchedAtEpochSeconds": 100
+}

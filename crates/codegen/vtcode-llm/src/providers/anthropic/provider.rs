@@ -15,7 +15,9 @@ use crate::provider::{
 };
 use vtcode_config::TimeoutsConfig;
 use vtcode_config::constants::{env_vars, models, urls};
-use vtcode_config::core::{AnthropicConfig, AnthropicPromptCacheSettings, ModelConfig, PromptCachingConfig};
+use vtcode_config::core::{
+    AnthropicConfig, AnthropicPromptCacheSettings, ModelConfig, PromptCachingConfig, RateLimitHeaderConfig,
+};
 
 use super::capabilities;
 use super::headers;
@@ -47,6 +49,7 @@ pub struct AnthropicProvider {
     prompt_cache_settings: AnthropicPromptCacheSettings,
     anthropic_config: AnthropicConfig,
     custom_provider_auth: Option<CustomProviderAuthHandle>,
+    rate_limit_headers: RateLimitHeaderConfig,
     model_behavior: Option<ModelConfig>,
 }
 
@@ -91,6 +94,7 @@ impl AnthropicProvider {
             prompt_cache_settings: AnthropicPromptCacheSettings::default(),
             anthropic_config: AnthropicConfig::default(),
             custom_provider_auth: None,
+            rate_limit_headers: RateLimitHeaderConfig::for_provider_name("Anthropic"),
             model_behavior: None,
         }
     }
@@ -151,12 +155,18 @@ impl AnthropicProvider {
             prompt_cache_settings,
             anthropic_config,
             custom_provider_auth: None,
+            rate_limit_headers: RateLimitHeaderConfig::for_provider_name("Anthropic"),
             model_behavior,
         }
     }
 
     pub(crate) fn with_custom_auth(mut self, custom_provider_auth: Option<CustomProviderAuthHandle>) -> Self {
         self.custom_provider_auth = custom_provider_auth;
+        self
+    }
+
+    pub(crate) fn with_rate_limit_headers(mut self, rate_limit_headers: RateLimitHeaderConfig) -> Self {
+        self.rate_limit_headers = rate_limit_headers;
         self
     }
 
@@ -510,7 +520,7 @@ impl AnthropicProvider {
             response
         };
 
-        let response = handle_anthropic_http_error(response).await?;
+        let response = handle_anthropic_http_error(response, &self.rate_limit_headers).await?;
 
         let request_id = response
             .headers()

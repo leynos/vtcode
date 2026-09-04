@@ -57,13 +57,21 @@ use vtcode_core::core::threads::ThreadRuntimeHandle;
 use vtcode_core::llm::factory::ProviderConfig;
 use vtcode_core::llm::factory::create_provider_with_config;
 use vtcode_core::llm::provider::{LLMError, LLMProvider, LLMRequest, LLMResponse, LLMStreamEvent, Message};
-use vtcode_core::retry::{RetryDecision, RetryPolicyCoreExt};
+use vtcode_core::retry::{RetryBackoff, RetryDecision, RetryPolicyCoreExt};
 
 use super::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderDeadlinePolicy, ProviderRequestRuntime};
 
 #[cfg(test)]
 type PromptProviderFactory = dyn Fn() -> Box<dyn LLMProvider> + Send + Sync;
+
+#[cfg(test)]
+#[path = "rate_limit_tests.rs"]
+mod rate_limit_tests;
+
+#[cfg(test)]
+#[path = "rate_limit_timing_tests.rs"]
+mod rate_limit_timing_tests;
 
 #[cfg(test)]
 struct PromptProviderOverride {
@@ -129,7 +137,7 @@ async fn cancellable_backoff(
 ) -> Result<(), ProviderCallError> {
     tokio::select! {
         () = cancellation.cancelled() => Err(ProviderCallError::Cancelled),
-        () = tokio::time::sleep(delay) => Ok(()),
+        () = sleep_until_optional(Instant::now().checked_add(delay)) => Ok(()),
     }
 }
 
@@ -459,6 +467,7 @@ async fn generate_with_retry(
 ) -> Result<LLMResponse, ProviderCallError> {
     let policy = runtime.retry_policy();
     let mut attempt_index = 0;
+    let mut backoff = RetryBackoff::new();
 
     loop {
         let permit = runtime.acquire(cancellation).await?;
@@ -489,7 +498,7 @@ async fn generate_with_retry(
                 return Ok(response);
             }
             Err(error) => {
-                let decision = policy.decision_for_llm_error(&error, attempt_index);
+                let decision = policy.decision_for_llm_error_with_backoff(&error, attempt_index, &mut backoff);
                 telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
                 drop(permit);
                 let retry_delay = decision
@@ -735,6 +744,7 @@ fn advertised_agent_capabilities(has_subagent_controller: bool, background_enabl
         .resume(acp::SessionResumeCapabilities::new());
     super::lody_usage::add_lody_usage_capability(&mut capabilities);
     super::lody_activity::add_lody_compaction_capability(&mut capabilities);
+    super::lody_rate_limits::add_lody_rate_limit_capability(&mut capabilities);
     if has_subagent_controller {
         super::lody::add_lody_subagent_management_capability(&mut capabilities, background_enabled);
     }
@@ -1064,6 +1074,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         let policy = provider_runtime.retry_policy();
         let deadline_policy = provider_runtime.deadline_policy();
         let mut attempt_index = 0u32;
+        let mut backoff = RetryBackoff::new();
         let mut emitted_output = false;
 
         'stream_attempts: loop {
@@ -1095,7 +1106,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             let mut stream = match stream_result {
                 Ok(stream) => stream,
                 Err(error) => {
-                    let decision = policy.decision_for_llm_error(&error, attempt_index);
+                    let decision = policy.decision_for_llm_error_with_backoff(&error, attempt_index, &mut backoff);
                     telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                     drop(permit);
                     let retry_delay = decision
@@ -1187,7 +1198,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         .await);
                     }
                     drop(stream);
-                    let decision = policy.decision_for_llm_error(&error, attempt_index);
+                    let decision = policy.decision_for_llm_error_with_backoff(&error, attempt_index, &mut backoff);
                     telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                     drop(permit);
                     if !decision.retryable {
@@ -1236,7 +1247,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     Ok(event) => event,
                     Err(error) if !emitted_output => {
                         drop(stream);
-                        let decision = policy.decision_for_llm_error(&error, attempt_index);
+                        let decision = policy.decision_for_llm_error_with_backoff(&error, attempt_index, &mut backoff);
                         telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                         drop(permit);
                         let retry_delay = decision
@@ -1460,6 +1471,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             assistant_message.clear();
                             assistant_reasoning.clear();
                             attempt_index = 0;
+                            backoff.reset();
                             emitted_output = false;
                             continue 'stream_attempts;
                         }
@@ -1713,12 +1725,12 @@ mod tests {
     use vtcode_core::llm::Usage;
     use vtcode_core::subagents::SpawnBackgroundSubprocessRequest;
 
-    static PROMPT_PROVIDER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
+    pub(super) static PROMPT_PROVIDER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
 
-    struct PromptProviderFactoryGuard;
+    pub(super) struct PromptProviderFactoryGuard;
 
     impl PromptProviderFactoryGuard {
-        fn install(provider_name: &str, factory: Arc<PromptProviderFactory>) -> Self {
+        pub(super) fn install(provider_name: &str, factory: Arc<PromptProviderFactory>) -> Self {
             *PROMPT_PROVIDER_OVERRIDE.lock().expect("prompt provider factory lock") =
                 Some(PromptProviderOverride { provider_name: provider_name.to_string(), factory });
             Self
@@ -1741,7 +1753,8 @@ mod tests {
         let lody = &capabilities.meta.expect("Lody capability metadata")["lody"];
         assert_eq!(lody["usage"]["version"], 1);
         assert_eq!(lody["compaction"]["version"], 1);
-        assert!(lody.get("rateLimits").is_none(), "no trustworthy quota source is configured");
+        assert_eq!(lody["rateLimits"]["version"], 1);
+        assert!(lody["rateLimits"].get("query").is_none(), "header observations are push-only");
         assert!(lody.get("subagents").is_none());
     }
 
@@ -2533,6 +2546,13 @@ Run the managed background fixture.
     }
 
     async fn build_wire_test_agent(workspace: &std::path::Path) -> ZedAgent {
+        build_wire_test_agent_with_providers(workspace, &[]).await
+    }
+
+    pub(super) async fn build_wire_test_agent_with_providers(
+        workspace: &std::path::Path,
+        providers: &[CustomProviderConfig],
+    ) -> ZedAgent {
         let core_config = CoreAgentConfig {
             model: "wire-model".to_string(),
             api_key: "test-key".to_string(),
@@ -2567,7 +2587,7 @@ Run the managed background fixture.
             AgentClientProtocolZedConfig::default(),
             ToolsConfig::default(),
             CommandsConfig::default(),
-            &[],
+            providers,
             vtcode_config::TimeoutsConfig::default(),
             String::new(),
             Some("Wire test".to_string()),

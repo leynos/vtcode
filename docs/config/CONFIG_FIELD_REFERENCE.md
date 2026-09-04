@@ -312,6 +312,8 @@ python3 scripts/generate_config_field_reference.py
 | `custom_providers[].request_policy.max_retries` | `integer` | no | `2` | Number of retries after the initial request for transient failures. Streams are retried only before text or reasoning is published. |
 | `custom_providers[].request_policy.queue_timeout_seconds` | `integer` | no | `600` | Maximum time, in seconds, to wait for an in-process provider permit before the request fails. |
 | `custom_providers[].request_policy.retry_initial_backoff_ms` | `integer` | no | `10000` | Initial delay between retries, in milliseconds. |
+| `custom_providers[].rate_limit_headers` | `object` | no | Baseten headers | Provider response-header mappings for quota observations and ACP 429 notices. See [mappings and units](../development/provider-rate-limit-headers.md). |
+| `custom_providers[].rate_limit_headers.reset_after_seconds` | `string` | yes | `-` | Header containing a suggested retry interval in seconds, such as Together's `x-ratelimit-reset`. Independent of the always-recognized `Retry-After` header. |
 | `custom_providers[].request_policy.retry_jitter` | `boolean` | no | `true` | Add deterministic jitter to retry delays to avoid synchronized reconnects. |
 | `custom_providers[].request_policy.retry_max_backoff_ms` | `integer` | no | `160000` | Maximum delay between retries, in milliseconds. |
 | `custom_providers[].request_policy.stream_idle_timeout_seconds` | `integer` | no | `120` | Maximum time between streamed events. Zero disables the limit. |

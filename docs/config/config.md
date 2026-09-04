@@ -275,6 +275,10 @@ Notes:
 - `context_window` declares the provider's capability in tokens and drives the context size shown in the UI, compaction thresholds, and preflight token checks.
 - `api_format` is a hint to VT Code about how this provider / endpoint expects model traffic. Accepted values are: `auto`, `openai-chat`, `openai-responses`, and `anthropic-messages`. When omitted VT Code preserves legacy behavior and will try to autodetect; an explicit value is honored and VT Code will not silently fallback to a different format.
 - `request_policy` controls admission and transient retries for this provider.
+  Optional `rate_limit_headers` maps quota response headers into ACP 429
+  notices, with Baseten's four per-minute headers as defaults. See
+  [provider rate-limit headers](../development/provider-rate-limit-headers.md)
+  for Fireworks/Together mappings and the exponential `Retry-After` floor.
   The defaults are `queue_timeout_seconds = 600`, `max_retries = 2`,
   `retry_initial_backoff_ms = 10000`, `retry_max_backoff_ms = 160000`, and
   `retry_jitter = true`. Provider deadlines default to 30 seconds to connect,
