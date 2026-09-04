@@ -54,7 +54,7 @@ use diapason_core::llm::provider::{
     LLMError, LLMErrorMetadata, LLMProvider, LLMRequest, LLMResponse, LLMStream, LLMStreamEvent, Message,
     ToolCall as LLMToolCall, ToolDefinition,
 };
-use diapason_core::retry::{RetryDecision, RetryPolicyCoreExt};
+use diapason_core::retry::{RetryBackoff, RetryDecision, RetryPolicyCoreExt};
 use futures::StreamExt;
 use serde_json::json;
 use session::{handle_cancel, register_session_config_handler, register_session_handlers};
@@ -192,3 +192,10 @@ impl HandleDispatchFrom<Client> for LodySubagentManagementHandler {
         "LodySubagentManagementHandler"
     }
 }
+
+#[cfg(test)]
+#[path = "rate_limit_tests.rs"]
+mod rate_limit_tests;
+#[cfg(test)]
+#[path = "rate_limit_timing_tests.rs"]
+mod rate_limit_timing_tests;

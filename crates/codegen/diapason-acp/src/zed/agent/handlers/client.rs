@@ -92,6 +92,7 @@ pub(super) fn advertised_agent_capabilities(
         .close(acp::SessionCloseCapabilities::new());
     super::super::lody_usage::add_lody_usage_capability(&mut capabilities);
     super::super::lody_activity::add_lody_compaction_capability(&mut capabilities);
+    super::super::lody_rate_limits::add_lody_rate_limit_capability(&mut capabilities);
     if has_subagent_controller {
         super::super::lody::add_lody_subagent_management_capability(&mut capabilities, background_enabled);
     }
