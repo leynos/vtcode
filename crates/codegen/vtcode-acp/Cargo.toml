@@ -37,11 +37,14 @@ vtcode-safety = { workspace = true }
 
 [dev-dependencies]
 assert_fs = { workspace = true }
+axum = "0.8"
 insta = { version = "1.39", features = ["json"] }
 proptest = "1.11"
 rstest = { workspace = true }
 tracing-subscriber = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
 toml = { workspace = true }
+wiremock = "0.6.5"
 vtcode-llm = { workspace = true }
 wiremock = "0.6.5"
 

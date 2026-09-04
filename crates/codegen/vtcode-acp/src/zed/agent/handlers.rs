@@ -63,7 +63,7 @@ use vtcode_core::llm::provider::{
     LLMError, LLMErrorMetadata, LLMProvider, LLMRequest, LLMResponse, LLMStream, LLMStreamEvent, Message,
     ToolCall as LLMToolCall, ToolDefinition,
 };
-use vtcode_core::retry::{RetryDecision, RetryPolicyCoreExt};
+use vtcode_core::retry::{RetryBackoff, RetryDecision, RetryPolicyCoreExt};
 
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderDeadlinePolicy, ProviderRequestRuntime};
 
@@ -192,3 +192,10 @@ impl HandleDispatchFrom<Client> for LodySubagentManagementHandler {
         "LodySubagentManagementHandler"
     }
 }
+
+#[cfg(test)]
+#[path = "rate_limit_tests.rs"]
+mod rate_limit_tests;
+#[cfg(test)]
+#[path = "rate_limit_timing_tests.rs"]
+mod rate_limit_timing_tests;

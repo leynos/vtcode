@@ -9,13 +9,13 @@ pub(super) use failure_providers::PartialThenFailProvider;
 pub(super) use failure_providers::PartialThenRateLimitProvider;
 pub(super) use failure_providers::RetryableRateLimitThenAnswerProvider;
 
-pub(super) static PROMPT_PROVIDER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
+pub(in crate::zed::agent::handlers) static PROMPT_PROVIDER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
 
-pub(super) struct PromptProviderFactoryGuard;
+pub(in crate::zed::agent::handlers) struct PromptProviderFactoryGuard;
 
 impl PromptProviderFactoryGuard {
     /// Install the factory override for the named provider until dropped.
-    pub(super) fn install(provider_name: &str, factory: Arc<PromptProviderFactory>) -> Self {
+    pub(in crate::zed::agent::handlers) fn install(provider_name: &str, factory: Arc<PromptProviderFactory>) -> Self {
         *PROMPT_PROVIDER_OVERRIDE.lock().expect("prompt provider factory lock") =
             Some(PromptProviderOverride { provider_name: provider_name.to_string(), factory });
         Self
@@ -273,6 +273,22 @@ pub(super) async fn build_wire_test_agent_with_options(
     vt_config: Option<&VTCodeConfig>,
     audit_logger: Option<Arc<crate::audit::AcpAuditLogger>>,
 ) -> ZedAgent {
+    build_wire_test_agent_with_providers_and_options(workspace, &[], vt_config, audit_logger).await
+}
+
+pub(in crate::zed::agent::handlers) async fn build_wire_test_agent_with_providers(
+    workspace: &std::path::Path,
+    providers: &[CustomProviderConfig],
+) -> ZedAgent {
+    build_wire_test_agent_with_providers_and_options(workspace, providers, None, None).await
+}
+
+pub(super) async fn build_wire_test_agent_with_providers_and_options(
+    workspace: &std::path::Path,
+    providers: &[CustomProviderConfig],
+    vt_config: Option<&VTCodeConfig>,
+    audit_logger: Option<Arc<crate::audit::AcpAuditLogger>>,
+) -> ZedAgent {
     let audit_logger = match (audit_logger, vt_config) {
         (Some(audit_logger), _) => Some(audit_logger),
         (None, Some(vt_config)) => crate::audit::initialize_acp_audit_logger(vt_config)
@@ -317,7 +333,7 @@ pub(super) async fn build_wire_test_agent_with_options(
         zed_config,
         tools_config: ToolsConfig::default(),
         commands_config: CommandsConfig::default(),
-        custom_providers: &[],
+        custom_providers: providers,
         provider_timeouts: vtcode_config::TimeoutsConfig::default(),
         system_prompt: String::new(),
         title: Some("Wire test".to_string()),
@@ -361,3 +377,4 @@ pub(super) fn compaction_config(enabled: bool) -> VTCodeConfig {
     config.agent.harness.auto_compaction_threshold_tokens = Some(1);
     config
 }
+// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/tests/prompt_fixtures.rs' for per-hunk detail, 'weave check' to verify your resolution

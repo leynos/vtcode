@@ -86,7 +86,8 @@ impl CustomProviderBackendRouter {
             Some(anthropic_config.clone()),
             model_behaviour,
         )
-        .with_custom_auth(custom_provider_auth);
+        .with_custom_auth(custom_provider_auth)
+        .with_rate_limit_headers(custom_config.effective_rate_limit_headers());
 
         Self {
             provider_key,

@@ -5,6 +5,7 @@ use crate::constants::tool_limits;
 use crate::core::prompt_cache::PromptCacheRetention;
 use crate::core::{
     CustomProviderApiFormat, CustomProviderConfig, CustomProviderPricingConfig, CustomProviderProfileConfig,
+    RateLimitHeaderConfig,
 };
 use crate::defaults::{self, SyntaxHighlightingDefaults, WorkspacePathsDefaults};
 use crate::ide_context::{IdeContextProviderConfig, IdeContextProviderMode, IdeContextProvidersConfig};
