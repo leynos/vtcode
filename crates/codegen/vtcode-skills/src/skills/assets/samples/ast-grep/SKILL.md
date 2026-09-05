@@ -55,6 +55,7 @@ metadata:
         - python-api
         - meta-variables
         - optional-chaining
+        - rule-catalogue
         - rule-catalog
         - walrus-operator
         - list-comprehension

@@ -2,7 +2,7 @@
 
 use crate::config::ToolDocumentationMode;
 use crate::tools::handlers::compact::{compact_parameters, compact_tool_description};
-use crate::tools::handlers::session_tool_catalog::ToolCatalogEntry;
+use crate::tools::handlers::session_tool_catalogue::ToolCatalogueEntry;
 use serde::Serialize;
 use serde_json::Value;
 use std::sync::OnceLock;
@@ -56,7 +56,7 @@ impl ToolProjectionCache {
     pub(super) fn get_or_init(
         &self,
         entry_index: usize,
-        entry: &ToolCatalogEntry,
+        entry: &ToolCatalogueEntry,
         documentation_mode: ToolDocumentationMode,
     ) -> &ToolEntryProjection {
         self.entries[entry_index][documentation_mode_index(documentation_mode)].get_or_init(|| {

@@ -18,7 +18,7 @@ use crate::core::agent::completion::{check_completion_candidate, check_for_respo
 use crate::core::agent::events::ExecEventRecorder;
 use crate::core::agent::harness_artefacts::existing_harness_artefact_paths;
 use crate::core::agent::harness_kernel::{
-    HarnessRequestPlanInput, SessionToolCatalogSnapshot, build_harness_request_plan,
+    HarnessRequestPlanInput, SessionToolCatalogueSnapshot, build_harness_request_plan,
 };
 use crate::core::agent::hash_utils::stable_system_prefix_hash;
 use crate::core::agent::runtime::{AgentRuntime, RuntimeControl};
@@ -39,7 +39,7 @@ use tracing::{debug, warn};
 
 pub(super) struct RuntimePromptBundle {
     request_envelope: crate::core::agent::request_envelope::SessionRequestEnvelope,
-    tool_snapshot: SessionToolCatalogSnapshot,
+    tool_snapshot: SessionToolCatalogueSnapshot,
     /// Estimated token overhead of `request_tools`, computed once per
     /// snapshot (see [`crate::llm::usage_cost::estimate_tool_definition_tokens`]).
     tool_def_tokens: u64,
@@ -131,7 +131,7 @@ impl AgentRunner {
 
         let system_instruction_prefix_hash = stable_system_prefix_hash(&system_prompt);
         let request_envelope = crate::core::agent::request_envelope::SessionRequestEnvelope::new(
-            format!("{}-catalog-{}-{}", self.session_id, tool_snapshot.version, tool_snapshot.epoch),
+            format!("{}-catalogue-{}-{}", self.session_id, tool_snapshot.version, tool_snapshot.epoch),
             system_prompt,
             request_tools.as_deref().map_or_else(Vec::new, |tools| tools.clone()),
             system_instruction_prefix_hash,
@@ -184,25 +184,25 @@ impl AgentRunner {
             |runner, bundle| {
                 let planning_active = runner.tool_registry.is_planning_active();
                 let request_user_input_enabled = runner.features().request_user_input_enabled(planning_active, false);
-                prompt_alignment::validate_prompt_catalog_alignment(
+                prompt_alignment::validate_prompt_catalogue_alignment(
                     bundle.request_envelope.system_prompt().as_ref(),
                     &bundle.tool_snapshot,
                     planning_active,
                     request_user_input_enabled,
                 )
             },
-            "prompt/catalog alignment mismatch; rebuilding runtime prompt bundle",
-            "prompt/catalog alignment mismatch persisted after rebuild",
+            "prompt/catalogue alignment mismatch; rebuilding runtime prompt bundle",
+            "prompt/catalogue alignment mismatch persisted after rebuild",
         )
         .await
     }
 
-    async fn refresh_runtime_prompt_bundle_if_catalog_changed(
+    async fn refresh_runtime_prompt_bundle_if_catalogue_changed(
         &self,
         bundle: &mut RuntimePromptBundle,
         is_simple_task: bool,
     ) -> Result<bool> {
-        let current_version = self.tool_registry.tool_catalog_state().current_version();
+        let current_version = self.tool_registry.tool_catalogue_state().current_version();
         if current_version == bundle.tool_snapshot.version {
             return Ok(false);
         }
@@ -210,7 +210,7 @@ impl AgentRunner {
         debug!(
             old_version = bundle.tool_snapshot.version,
             new_version = current_version,
-            "Tool catalog changed mid-task; refreshing runtime prompt bundle"
+            "Tool catalogue changed mid-task; refreshing runtime prompt bundle"
         );
         *bundle = self.build_validated_runtime_prompt_bundle(is_simple_task).await?;
         Ok(true)
@@ -681,7 +681,7 @@ impl AgentRunner {
                         Some(&self.session_id),
                     ),
                     prompt_cache_profile: None,
-                    tool_catalog_hash: prompt_bundle.request_envelope.catalog_hash(),
+                    tool_catalogue_hash: prompt_bundle.request_envelope.catalogue_hash(),
                     system_prompt_prefix_hash: Some(prompt_bundle.request_envelope.prefix_hash()),
                 })
                 .request;
@@ -1085,13 +1085,13 @@ impl AgentRunner {
                     super::tool_dispatch_common::drain_and_record_runtime_events(&mut runtime, &mut event_recorder);
                 }
 
-                // Refresh tool definitions if the catalog was mutated during tool
+                // Refresh tool definitions if the catalogue was mutated during tool
                 // execution (e.g. tools.load / tools.unload / skill activation).
                 if self
-                    .refresh_runtime_prompt_bundle_if_catalog_changed(&mut prompt_bundle, is_simple_task)
+                    .refresh_runtime_prompt_bundle_if_catalogue_changed(&mut prompt_bundle, is_simple_task)
                     .await?
                 {
-                    tracing::debug!("runtime prompt bundle refreshed after tool catalog mutation");
+                    tracing::debug!("runtime prompt bundle refreshed after tool catalogue mutation");
                 }
 
                 // --- Emit tool latency events ---

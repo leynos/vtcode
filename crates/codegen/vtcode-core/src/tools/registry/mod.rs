@@ -6,7 +6,7 @@ mod availability_facade;
 mod builder;
 mod builtins;
 mod cache;
-mod catalog_facade;
+mod catalogue_facade;
 mod cgp_facade;
 mod circuit_breaker;
 mod commands_facade;
@@ -64,7 +64,7 @@ mod telemetry;
 mod timeout;
 mod timeout_category;
 mod timeout_facade;
-mod tool_catalog_facade;
+mod tool_catalogue_facade;
 mod tool_executor_impl;
 mod tool_search_index;
 mod trait_impls;
@@ -87,7 +87,7 @@ pub use justification::{ApprovalPattern, JustificationManager, ToolJustification
 pub use justification_extractor::JustificationExtractor;
 pub use pty::{PtySessionGuard, PtySessionManager};
 pub use registration::{
-    NativeCgpToolFactory, ToolCatalogSource, ToolExecutorFn, ToolHandler, ToolRegistration,
+    NativeCgpToolFactory, ToolCatalogueSource, ToolExecutorFn, ToolHandler, ToolRegistration,
     ToolRegistrationSpec as ToolMetadata,
 };
 pub use resiliency::{ResiliencyContext, ToolFailureTracker};
@@ -95,11 +95,11 @@ pub use risk_scorer::{RiskLevel, ToolRiskContext, ToolRiskScorer, ToolSource, Wo
 pub use shell_policy::ShellPolicyChecker;
 pub use telemetry::ToolTelemetryEvent;
 pub use timeout::{AdaptiveTimeoutTuning, ToolLatencyStats, ToolTimeoutCategory, ToolTimeoutPolicy};
-pub use tool_catalog_facade::{SessionToolCatalogState, ToolGroup, tool_groups};
+pub use tool_catalogue_facade::{SessionToolCatalogueState, ToolGroup, tool_groups};
 
 // Re-export trait interfaces for external consumers.
 pub use interfaces::{
-    McpBridge, PtySessionControl, SharedRegistry, ToolCatalog, ToolMetrics, ToolRegistryApi, ToolResilience,
+    McpBridge, PtySessionControl, SharedRegistry, ToolCatalogue, ToolMetrics, ToolRegistryApi, ToolResilience,
     ToolSecurity,
 };
 
@@ -211,10 +211,10 @@ pub struct ToolRegistry {
     safety_gateway: Arc<SafetyGateway>,
     /// Active CGP runtime mode for wrapping registrations added after startup.
     cgp_runtime_mode: Arc<RwLock<Option<CgpRuntimeMode>>>,
-    /// Canonical manifest-driven tool assembly used by routing, catalog projections, and policy sync.
+    /// Canonical manifest-driven tool assembly used by routing, catalogue projections, and policy sync.
     tool_assembly: Arc<RwLock<ToolAssembly>>,
-    /// Registry-owned tool catalog snapshot cache shared by harnesses.
-    tool_catalog_state: Arc<SessionToolCatalogState>,
+    /// Registry-owned tool catalogue snapshot cache shared by harnesses.
+    tool_catalogue_state: Arc<SessionToolCatalogueState>,
     /// Shared subagent controller when the session enables delegated child agents.
     subagent_controller: Arc<RwLock<Option<Arc<SubagentController>>>>,
     /// Session-scoped scheduled prompts for interactive loops and cron tools.

@@ -2,7 +2,7 @@ use crate::agent::runloop::unified::turn::context::TurnProcessingContext;
 use vtcode_core::llm::provider::{Message, ToolDefinition};
 
 #[derive(Copy, Clone)]
-pub(super) struct ToolCatalogCacheMetrics<'a> {
+pub(super) struct ToolCatalogueCacheMetrics<'a> {
     pub step_count: usize,
     pub model: &'a str,
     pub cache_hit: bool,
@@ -10,16 +10,19 @@ pub(super) struct ToolCatalogCacheMetrics<'a> {
     pub request_user_input_enabled: bool,
     pub available_tools: usize,
     pub stable_prefix_hash: u64,
-    pub tool_catalog_hash: Option<u64>,
+    pub tool_catalogue_hash: Option<u64>,
     pub prefix_change_reason: &'a str,
     pub ordered_wire_tool_names: Option<&'a [String]>,
-    pub catalog_tool_count: Option<usize>,
+    pub catalogue_tool_count: Option<usize>,
     pub wire_tool_count: Option<usize>,
     pub deferred_tool_count: Option<usize>,
     pub active_loaded_skill_names: Option<&'a [String]>,
 }
 
-pub(super) fn emit_tool_catalog_cache_metrics(ctx: &TurnProcessingContext<'_>, metrics: ToolCatalogCacheMetrics<'_>) {
+pub(super) fn emit_tool_catalogue_cache_metrics(
+    ctx: &TurnProcessingContext<'_>,
+    metrics: ToolCatalogueCacheMetrics<'_>,
+) {
     tracing::info!(
         target: "vtcode.turn.metrics",
         metric = "tool_catalog_cache",
@@ -32,10 +35,10 @@ pub(super) fn emit_tool_catalog_cache_metrics(ctx: &TurnProcessingContext<'_>, m
         request_user_input_enabled = metrics.request_user_input_enabled,
         available_tools = metrics.available_tools,
         stable_prefix_hash = metrics.stable_prefix_hash,
-        tool_catalog_hash = metrics.tool_catalog_hash,
+        tool_catalog_hash = metrics.tool_catalogue_hash,
         prefix_change_reason = metrics.prefix_change_reason,
         ordered_wire_tool_names = ?metrics.ordered_wire_tool_names,
-        catalog_tool_count = metrics.catalog_tool_count,
+        catalog_tool_count = metrics.catalogue_tool_count,
         wire_tool_count = metrics.wire_tool_count,
         deferred_tool_count = metrics.deferred_tool_count,
         active_loaded_skill_names = ?metrics.active_loaded_skill_names,
@@ -43,7 +46,7 @@ pub(super) fn emit_tool_catalog_cache_metrics(ctx: &TurnProcessingContext<'_>, m
     );
 
     #[derive(serde::Serialize)]
-    struct ToolCatalogCacheRecord<'a> {
+    struct ToolCatalogueCacheRecord<'a> {
         kind: &'static str,
         turn: usize,
         model: &'a str,
@@ -52,12 +55,16 @@ pub(super) fn emit_tool_catalog_cache_metrics(ctx: &TurnProcessingContext<'_>, m
         request_user_input_enabled: bool,
         available_tools: usize,
         stable_prefix_hash: u64,
-        tool_catalog_hash: Option<u64>,
+        /// Wire name remains `tool_catalog_hash`; fixed by the telemetry schema.
+        #[serde(rename = "tool_catalog_hash")]
+        tool_catalogue_hash: Option<u64>,
         prefix_change_reason: &'a str,
         #[serde(skip_serializing_if = "Option::is_none")]
         ordered_wire_tool_names: Option<&'a [String]>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        catalog_tool_count: Option<usize>,
+        /// Wire name remains `catalog_tool_count`; fixed by the telemetry schema.
+        #[serde(rename = "catalog_tool_count")]
+        catalogue_tool_count: Option<usize>,
         #[serde(skip_serializing_if = "Option::is_none")]
         wire_tool_count: Option<usize>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -67,7 +74,7 @@ pub(super) fn emit_tool_catalog_cache_metrics(ctx: &TurnProcessingContext<'_>, m
         ts: i64,
     }
 
-    ctx.traj.log(&ToolCatalogCacheRecord {
+    ctx.traj.log(&ToolCatalogueCacheRecord {
         kind: "tool_catalog_cache_metrics",
         turn: metrics.step_count,
         model: metrics.model,
@@ -76,10 +83,10 @@ pub(super) fn emit_tool_catalog_cache_metrics(ctx: &TurnProcessingContext<'_>, m
         request_user_input_enabled: metrics.request_user_input_enabled,
         available_tools: metrics.available_tools,
         stable_prefix_hash: metrics.stable_prefix_hash,
-        tool_catalog_hash: metrics.tool_catalog_hash,
+        tool_catalogue_hash: metrics.tool_catalogue_hash,
         prefix_change_reason: metrics.prefix_change_reason,
         ordered_wire_tool_names: metrics.ordered_wire_tool_names,
-        catalog_tool_count: metrics.catalog_tool_count,
+        catalogue_tool_count: metrics.catalogue_tool_count,
         wire_tool_count: metrics.wire_tool_count,
         deferred_tool_count: metrics.deferred_tool_count,
         active_loaded_skill_names: metrics.active_loaded_skill_names,

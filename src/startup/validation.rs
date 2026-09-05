@@ -200,7 +200,7 @@ pub(super) async fn validate_startup_configuration(
         }
         Ok(_) => {}
         Err(e) if !quiet => {
-            eprintln!("could not validate configured model catalog: {e}");
+            eprintln!("could not validate configured model catalogue: {e}");
         }
         Err(_) => {}
     }

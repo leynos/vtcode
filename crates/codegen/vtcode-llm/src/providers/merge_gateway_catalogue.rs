@@ -1,6 +1,6 @@
-//! Merge Gateway authenticated model catalog discovery.
+//! Merge Gateway authenticated model catalogue discovery.
 //!
-//! This module fetches the native `/v1/models` catalog, paginates cursor-based
+//! This module fetches the native `/v1/models` catalogue, paginates cursor-based
 //! results, and normalizes vendor-specific capability data into vtcode-core
 //! friendly snapshot structures.
 
@@ -17,25 +17,25 @@ use vtcode_commons::tool_types::CompactStr;
 use vtcode_config::TimeoutsConfig;
 
 use super::merge_gateway_contract::{
-    MergeAvailabilityStatus, MergeInputModality, MergeModelCatalogResponse, MergeModelRecord, MergeModelsListQuery,
+    MergeAvailabilityStatus, MergeInputModality, MergeModelCatalogueResponse, MergeModelRecord, MergeModelsListQuery,
     MergeServiceTier, MergeVendorModelInfo,
 };
 
-const CATALOG_PAGE_LIMIT: u32 = 500;
-const MAX_CATALOG_PAGES: usize = 1_000;
+const CATALOGUE_PAGE_LIMIT: u32 = 500;
+const MAX_CATALOGUE_PAGES: usize = 1_000;
 const DEFAULT_CONNECT_TIMEOUT_SECS: u64 = 30;
 const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 120;
 
-/// Normalized catalog availability for vtcode-core.
+/// Normalized catalogue availability for vtcode-core.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum MergeCatalogAvailability {
+pub enum MergeCatalogueAvailability {
     Available,
     Deprecated,
     Unknown,
 }
 
-impl From<MergeAvailabilityStatus> for MergeCatalogAvailability {
+impl From<MergeAvailabilityStatus> for MergeCatalogueAvailability {
     fn from(value: MergeAvailabilityStatus) -> Self {
         match value {
             MergeAvailabilityStatus::Available => Self::Available,
@@ -45,17 +45,17 @@ impl From<MergeAvailabilityStatus> for MergeCatalogAvailability {
     }
 }
 
-/// Normalized service tiers for the catalog snapshot.
+/// Normalized service tiers for the catalogue snapshot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum MergeCatalogServiceTier {
+pub enum MergeCatalogueServiceTier {
     Standard,
     Flex,
     Priority,
     Unknown,
 }
 
-impl From<MergeServiceTier> for MergeCatalogServiceTier {
+impl From<MergeServiceTier> for MergeCatalogueServiceTier {
     fn from(value: MergeServiceTier) -> Self {
         match value {
             MergeServiceTier::Standard => Self::Standard,
@@ -66,49 +66,49 @@ impl From<MergeServiceTier> for MergeCatalogServiceTier {
     }
 }
 
-/// Optional Merge catalog filters preserved across pagination.
+/// Optional Merge catalogue filters preserved across pagination.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MergeCatalogFilters {
+pub struct MergeCatalogueFilters {
     pub model: Option<String>,
     pub provider: Option<String>,
     pub vendor: Option<String>,
 }
 
-/// Normalized Merge catalog model metadata.
+/// Normalized Merge catalogue model metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MergeCatalogModel {
+pub struct MergeCatalogueModel {
     pub model: String,
     pub provider: String,
     pub display_name: Option<String>,
-    pub availability: MergeCatalogAvailability,
+    pub availability: MergeCatalogueAvailability,
     pub context_window: Option<u32>,
     pub max_output_tokens: Option<u32>,
     pub supports_tool_use: bool,
     pub supports_streaming: bool,
     pub supports_vision: bool,
     pub supports_structured_output: bool,
-    pub service_tiers: Vec<MergeCatalogServiceTier>,
+    pub service_tiers: Vec<MergeCatalogueServiceTier>,
     pub supports_reasoning: bool,
     pub reasoning_disable_supported: bool,
     pub reasoning_controls: Vec<String>,
 }
 
-/// Full normalized snapshot of the Merge catalog.
+/// Full normalized snapshot of the Merge catalogue.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MergeCatalogSnapshot {
-    pub models: Vec<MergeCatalogModel>,
+pub struct MergeCatalogueSnapshot {
+    pub models: Vec<MergeCatalogueModel>,
     pub etag: Option<String>,
 }
 
 /// Authenticated Merge Gateway `/v1/models` discovery client.
 #[derive(Clone)]
-pub struct MergeGatewayCatalogClient {
+pub struct MergeGatewayCatalogueClient {
     api_key: String,
-    catalog_base_url: String,
+    catalogue_base_url: String,
     http_client: Client,
 }
 
-impl MergeGatewayCatalogClient {
+impl MergeGatewayCatalogueClient {
     /// Creates a client using an injected HTTP client.
     pub fn try_with_client(
         api_key: impl Into<String>,
@@ -128,13 +128,13 @@ impl MergeGatewayCatalogClient {
         Self::try_from_parts(api_key.into(), base_url.into(), http_client)
     }
 
-    /// Fetches the catalog snapshot. Returns `Ok(None)` when Merge replies `304 Not Modified`
+    /// Fetches the catalogue snapshot. Returns `Ok(None)` when Merge replies `304 Not Modified`
     /// and a non-empty `etag` validator was supplied.
     pub async fn fetch_snapshot(
         &self,
-        filters: &MergeCatalogFilters,
+        filters: &MergeCatalogueFilters,
         etag: Option<&str>,
-    ) -> Result<Option<MergeCatalogSnapshot>> {
+    ) -> Result<Option<MergeCatalogueSnapshot>> {
         let etag = normalize_optional_value(etag);
         let mut cursor: Option<String> = None;
         let mut seen_cursors: HashSet<String> = HashSet::new();
@@ -144,8 +144,8 @@ impl MergeGatewayCatalogClient {
 
         loop {
             ensure!(
-                page_index <= MAX_CATALOG_PAGES,
-                "Merge Gateway catalog exceeded the maximum of {MAX_CATALOG_PAGES} pages"
+                page_index <= MAX_CATALOGUE_PAGES,
+                "Merge Gateway catalogue exceeded the maximum of {MAX_CATALOGUE_PAGES} pages"
             );
             let query = build_wire_query(filters, cursor.as_deref());
             let mut request = self
@@ -163,7 +163,7 @@ impl MergeGatewayCatalogClient {
 
             let response = request.send().await.with_context(|| {
                 format!(
-                    "Merge Gateway catalog request failed on page {page_index} ({})",
+                    "Merge Gateway catalogue request failed on page {page_index} ({})",
                     describe_filters(filters, cursor.as_deref())
                 )
             })?;
@@ -174,13 +174,13 @@ impl MergeGatewayCatalogClient {
                 }
 
                 bail!(
-                    "Merge Gateway catalog returned 304 Not Modified on page {page_index} without a usable If-None-Match validator"
+                    "Merge Gateway catalogue returned 304 Not Modified on page {page_index} without a usable If-None-Match validator"
                 );
             }
 
             if !response.status().is_success() {
                 bail!(
-                    "Merge Gateway catalog request failed on page {page_index} with HTTP {} ({})",
+                    "Merge Gateway catalogue request failed on page {page_index} with HTTP {} ({})",
                     response.status(),
                     describe_filters(filters, cursor.as_deref())
                 );
@@ -193,12 +193,12 @@ impl MergeGatewayCatalogClient {
             let raw: Value = response
                 .json()
                 .await
-                .with_context(|| format!("Merge Gateway catalog response on page {page_index} was not valid JSON"))?;
-            validate_catalog_envelope(&raw, page_index)?;
-            let page: MergeModelCatalogResponse = serde_json::from_value(raw)
-                .with_context(|| format!("Merge Gateway catalog response on page {page_index} was malformed"))?;
+                .with_context(|| format!("Merge Gateway catalogue response on page {page_index} was not valid JSON"))?;
+            validate_catalogue_envelope(&raw, page_index)?;
+            let page: MergeModelCatalogueResponse = serde_json::from_value(raw)
+                .with_context(|| format!("Merge Gateway catalogue response on page {page_index} was malformed"))?;
 
-            models.extend(page.data.into_iter().map(normalize_catalog_model));
+            models.extend(page.data.into_iter().map(normalize_catalogue_model));
 
             if page.has_more {
                 let next_cursor = page
@@ -209,12 +209,12 @@ impl MergeGatewayCatalogClient {
                     .map(ToOwned::to_owned)
                     .ok_or_else(|| {
                         anyhow::anyhow!(
-                            "Merge Gateway catalog page {page_index} set has_more=true without a non-empty next_cursor"
+                            "Merge Gateway catalogue page {page_index} set has_more=true without a non-empty next_cursor"
                         )
                     })?;
 
                 if !seen_cursors.insert(next_cursor.clone()) {
-                    bail!("Merge Gateway catalog repeated pagination cursor `{next_cursor}` on page {page_index}");
+                    bail!("Merge Gateway catalogue repeated pagination cursor `{next_cursor}` on page {page_index}");
                 }
 
                 cursor = Some(next_cursor);
@@ -222,7 +222,7 @@ impl MergeGatewayCatalogClient {
                 continue;
             }
 
-            return Ok(Some(MergeCatalogSnapshot { models, etag: snapshot_etag }));
+            return Ok(Some(MergeCatalogueSnapshot { models, etag: snapshot_etag }));
         }
     }
 
@@ -230,12 +230,12 @@ impl MergeGatewayCatalogClient {
         let api_key = api_key.trim().to_owned();
         ensure!(!api_key.is_empty(), "Merge Gateway API key cannot be empty");
 
-        let catalog_base_url = normalize_catalog_base_url(&base_url)?;
-        Ok(Self { api_key, catalog_base_url, http_client })
+        let catalogue_base_url = normalize_catalogue_base_url(&base_url)?;
+        Ok(Self { api_key, catalogue_base_url, http_client })
     }
 
     fn models_endpoint_url(&self) -> String {
-        format!("{}/models", self.catalog_base_url)
+        format!("{}/models", self.catalogue_base_url)
     }
 }
 
@@ -248,16 +248,16 @@ fn build_http_client(timeouts: Option<&TimeoutsConfig>) -> Result<Client> {
         .timeout(request_timeout)
         .connect_timeout(Duration::from_secs(DEFAULT_CONNECT_TIMEOUT_SECS))
         .build()
-        .context("failed to build Merge Gateway catalog HTTP client")
+        .context("failed to build Merge Gateway catalogue HTTP client")
 }
 
-fn build_wire_query(filters: &MergeCatalogFilters, cursor: Option<&str>) -> MergeModelsListQuery {
+fn build_wire_query(filters: &MergeCatalogueFilters, cursor: Option<&str>) -> MergeModelsListQuery {
     MergeModelsListQuery {
         model: normalize_optional_value(filters.model.as_deref()),
         provider: normalize_optional_value(filters.provider.as_deref()),
         vendor: normalize_optional_value(filters.vendor.as_deref()),
         cursor: normalize_optional_value(cursor),
-        limit: Some(CATALOG_PAGE_LIMIT),
+        limit: Some(CATALOGUE_PAGE_LIMIT),
     }
 }
 
@@ -265,7 +265,7 @@ fn normalize_optional_value(value: Option<&str>) -> Option<CompactStr> {
     value.map(str::trim).filter(|value| !value.is_empty()).map(CompactStr::from)
 }
 
-fn normalize_catalog_base_url(base_url: &str) -> Result<String> {
+fn normalize_catalogue_base_url(base_url: &str) -> Result<String> {
     let mut normalized = base_url.trim().trim_end_matches('/').to_owned();
     ensure!(!normalized.is_empty(), "Merge Gateway base URL cannot be empty");
 
@@ -291,11 +291,11 @@ fn normalize_catalog_base_url(base_url: &str) -> Result<String> {
     Ok(normalized)
 }
 
-fn validate_catalog_envelope(raw: &Value, page_index: usize) -> Result<()> {
+fn validate_catalogue_envelope(raw: &Value, page_index: usize) -> Result<()> {
     let object = raw.as_object().and_then(|map| map.get("object")).and_then(Value::as_str);
     ensure!(
         object == Some("list"),
-        "Merge Gateway catalog envelope on page {page_index} must set object=\"list\""
+        "Merge Gateway catalogue envelope on page {page_index} must set object=\"list\""
     );
     Ok(())
 }
@@ -308,7 +308,7 @@ fn header_value_to_string(value: Option<&reqwest::header::HeaderValue>) -> Optio
         .map(ToOwned::to_owned)
 }
 
-fn describe_filters(filters: &MergeCatalogFilters, cursor: Option<&str>) -> String {
+fn describe_filters(filters: &MergeCatalogueFilters, cursor: Option<&str>) -> String {
     format!(
         "cursor={cursor:?}, model={:?}, provider={:?}, vendor={:?}",
         filters.model.as_deref(),
@@ -317,7 +317,7 @@ fn describe_filters(filters: &MergeCatalogFilters, cursor: Option<&str>) -> Stri
     )
 }
 
-fn normalize_catalog_model(record: MergeModelRecord) -> MergeCatalogModel {
+fn normalize_catalogue_model(record: MergeModelRecord) -> MergeCatalogueModel {
     let context_window = aggregate_min_context_window(&record.vendors);
     let max_output_tokens = aggregate_min_max_output_tokens(&record.vendors);
     let supports_tool_use = all_vendors_support(&record.vendors, |vendor| vendor.capabilities.supports_tool_calling);
@@ -340,7 +340,7 @@ fn normalize_catalog_model(record: MergeModelRecord) -> MergeCatalogModel {
             .all(|vendor| vendor.capabilities.reasoning_disable_supported());
     let reasoning_controls = aggregate_reasoning_controls(&record.vendors);
 
-    MergeCatalogModel {
+    MergeCatalogueModel {
         model: record.model.to_string(),
         provider: record.provider.to_string(),
         display_name: record.display_name.map(|value| value.to_string()),
@@ -373,15 +373,15 @@ fn all_vendors_support(
     !vendors.is_empty() && vendors.values().all(predicate)
 }
 
-fn aggregate_service_tiers(vendors: &BTreeMap<CompactStr, MergeVendorModelInfo>) -> Vec<MergeCatalogServiceTier> {
-    let mut intersection: Option<BTreeSet<MergeCatalogServiceTier>> = None;
+fn aggregate_service_tiers(vendors: &BTreeMap<CompactStr, MergeVendorModelInfo>) -> Vec<MergeCatalogueServiceTier> {
+    let mut intersection: Option<BTreeSet<MergeCatalogueServiceTier>> = None;
 
     for vendor in vendors.values() {
-        let tiers: BTreeSet<MergeCatalogServiceTier> = vendor
+        let tiers: BTreeSet<MergeCatalogueServiceTier> = vendor
             .service_tiers
             .iter()
             .copied()
-            .map(MergeCatalogServiceTier::from)
+            .map(MergeCatalogueServiceTier::from)
             .collect();
 
         intersection = Some(match intersection {

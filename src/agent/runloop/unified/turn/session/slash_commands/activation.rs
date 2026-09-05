@@ -56,14 +56,14 @@ pub(super) async fn try_attach_ready_mcp(ctx: &mut SlashCommandContext<'_>) -> R
                     refresh_tool_snapshot(
                         ctx.tool_registry,
                         ctx.tools,
-                        ctx.tool_catalog,
+                        ctx.tool_catalogue,
                         ctx.config,
                         ctx.vt_cfg.as_ref(),
                         tool_documentation_mode,
                         &deferred_tool_policy,
                     )
                     .await;
-                    ctx.tool_catalog.mark_pending_refresh("mcp_background_refresh");
+                    ctx.tool_catalogue.mark_pending_refresh("mcp_background_refresh");
                 }
                 sync_mcp_context_files(ctx, &client).await?;
             }

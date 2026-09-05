@@ -1,12 +1,12 @@
 //! VT Code GPU pod management.
 
-mod catalog;
+mod catalogue;
 mod manager;
 mod state;
 mod store;
 mod transport;
 
-pub use catalog::{PodCatalog, PodProfile};
+pub use catalogue::{PodCatalogue, PodProfile};
 pub use manager::{
     KnownModelsReport, PodListEntry, PodManager, PodStartRequest, PodStartResult, PodStatusDetail, PodStatusReport,
 };

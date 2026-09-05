@@ -529,7 +529,7 @@ impl ZedAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zed::helpers::PrimaryAgentCatalog;
+    use crate::zed::helpers::PrimaryAgentCatalogue;
     use assert_fs::TempDir;
     use chrono::Utc;
     use std::collections::BTreeMap;
@@ -575,7 +575,8 @@ mod tests {
         let mut discovery_input = SubagentDiscoveryInput::new(workspace.to_path_buf());
         discovery_input.include_user_agents = false;
         let discovered = discover_subagents(&discovery_input).expect("discover primary agents");
-        let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, default_primary_agent);
+        let primary_agents =
+            PrimaryAgentCatalogue::from_specs_with_default(&discovered.effective, default_primary_agent);
 
         ZedAgent::new(
             core_config,

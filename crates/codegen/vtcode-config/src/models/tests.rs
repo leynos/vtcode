@@ -427,51 +427,51 @@ fn test_core_capability_helpers() {
 
 #[test]
 fn test_generated_model_capability_lookup() {
-    let gpt54_catalog = model_catalog_entry("openai", "gpt-5.6-sol").expect("gpt-5.4 metadata");
-    assert_eq!(gpt54_catalog.context_window, 1_050_000);
-    assert!(gpt54_catalog.tool_call);
-    assert_eq!(gpt54_catalog.input_modalities, &["text", "image"]);
-    let gpt55_catalog = model_catalog_entry("openai", "gpt-5.6-sol").expect("gpt-5.5 metadata");
-    assert_eq!(gpt55_catalog.context_window, 1_050_000);
-    assert!(gpt55_catalog.tool_call);
-    assert_eq!(gpt55_catalog.input_modalities, &["text", "image"]);
+    let gpt54_catalogue = model_catalogue_entry("openai", "gpt-5.6-sol").expect("gpt-5.4 metadata");
+    assert_eq!(gpt54_catalogue.context_window, 1_050_000);
+    assert!(gpt54_catalogue.tool_call);
+    assert_eq!(gpt54_catalogue.input_modalities, &["text", "image"]);
+    let gpt55_catalogue = model_catalogue_entry("openai", "gpt-5.6-sol").expect("gpt-5.5 metadata");
+    assert_eq!(gpt55_catalogue.context_window, 1_050_000);
+    assert!(gpt55_catalogue.tool_call);
+    assert_eq!(gpt55_catalogue.input_modalities, &["text", "image"]);
 
-    let gemini_catalog = model_catalog_entry("google", "gemini-3.7-flash").expect("gemini-3.7-flash metadata");
-    assert_eq!(gemini_catalog.provider, "gemini");
-    assert_eq!(gemini_catalog.context_window, 1_048_576);
+    let gemini_catalogue = model_catalogue_entry("google", "gemini-3.7-flash").expect("gemini-3.7-flash metadata");
+    assert_eq!(gemini_catalogue.provider, "gemini");
+    assert_eq!(gemini_catalogue.context_window, 1_048_576);
 
-    let nvidia_catalog = model_catalog_entry("nvidia", models::nvidia::DEFAULT_MODEL).expect("NVIDIA metadata");
-    assert_eq!(nvidia_catalog.context_window, 1_000_000);
-    assert!(nvidia_catalog.reasoning);
-    assert!(nvidia_catalog.tool_call);
-    assert!(catalog_provider_keys().contains(&"nvidia"));
-    let merge_gateway_catalog =
-        model_catalog_entry("merge-gateway", models::merge_gateway::DEFAULT_ROUTING).expect("Merge metadata");
-    assert_eq!(merge_gateway_catalog.context_window, 128_000);
-    assert!(!merge_gateway_catalog.reasoning);
-    assert!(merge_gateway_catalog.tool_call);
-    assert!(catalog_provider_keys().contains(&"merge-gateway"));
-    let merge_gateway_gemini =
-        model_catalog_entry("merge-gateway", models::merge_gateway::GOOGLE_GEMINI_3_7_FLASH).expect("Gemini metadata");
+    let nvidia_catalogue = model_catalogue_entry("nvidia", models::nvidia::DEFAULT_MODEL).expect("NVIDIA metadata");
+    assert_eq!(nvidia_catalogue.context_window, 1_000_000);
+    assert!(nvidia_catalogue.reasoning);
+    assert!(nvidia_catalogue.tool_call);
+    assert!(catalogue_provider_keys().contains(&"nvidia"));
+    let merge_gateway_catalogue =
+        model_catalogue_entry("merge-gateway", models::merge_gateway::DEFAULT_ROUTING).expect("Merge metadata");
+    assert_eq!(merge_gateway_catalogue.context_window, 128_000);
+    assert!(!merge_gateway_catalogue.reasoning);
+    assert!(merge_gateway_catalogue.tool_call);
+    assert!(catalogue_provider_keys().contains(&"merge-gateway"));
+    let merge_gateway_gemini = model_catalogue_entry("merge-gateway", models::merge_gateway::GOOGLE_GEMINI_3_7_FLASH)
+        .expect("Gemini metadata");
     assert_eq!(merge_gateway_gemini.context_window, 1_000_000);
     assert!(merge_gateway_gemini.vision);
     let merge_gateway_gpt =
-        model_catalog_entry("merge-gateway", models::merge_gateway::OPENAI_GPT_5_6_SOL).expect("GPT metadata");
+        model_catalogue_entry("merge-gateway", models::merge_gateway::OPENAI_GPT_5_6_SOL).expect("GPT metadata");
     assert_eq!(merge_gateway_gpt.context_window, 1_100_000);
     assert!(merge_gateway_gpt.vision);
-    let ollama_cloud_catalog =
-        model_catalog_entry("ollama", models::ollama::DEEPSEEK_V4_FLASH_CLOUD).expect("Ollama Cloud metadata");
-    assert_eq!(ollama_cloud_catalog.context_window, 1_000_000);
+    let ollama_cloud_catalogue =
+        model_catalogue_entry("ollama", models::ollama::DEEPSEEK_V4_FLASH_CLOUD).expect("Ollama Cloud metadata");
+    assert_eq!(ollama_cloud_catalogue.context_window, 1_000_000);
 
-    let xai_catalog = model_catalog_entry("xai", models::xai::GROK_4_6).expect("grok-4.6 metadata");
-    assert_eq!(xai_catalog.context_window, 500_000);
-    assert!(xai_catalog.reasoning);
-    assert!(xai_catalog.tool_call);
-    assert_eq!(xai_catalog.input_modalities, &["text", "image"]);
+    let xai_catalogue = model_catalogue_entry("xai", models::xai::GROK_4_6).expect("grok-4.6 metadata");
+    assert_eq!(xai_catalogue.context_window, 500_000);
+    assert!(xai_catalogue.reasoning);
+    assert!(xai_catalogue.tool_call);
+    assert_eq!(xai_catalogue.input_modalities, &["text", "image"]);
 
     let openai_models = supported_models_for_provider("openai").expect("openai models");
     assert!(openai_models.contains(&models::GPT_5_6_SOL));
-    assert!(catalog_provider_keys().contains(&"openai"));
+    assert!(catalogue_provider_keys().contains(&"openai"));
     let openrouter_models = supported_models_for_provider("openrouter").expect("openrouter models");
     assert!(openrouter_models.contains(&"openai/gpt-5"));
     let meta_models = supported_models_for_provider("meta-ai").expect("Meta AI models");
@@ -481,7 +481,7 @@ fn test_generated_model_capability_lookup() {
     assert!(opencode_go_models.contains(&models::opencode_go::MINIMAX_M3));
     let xai_models = supported_models_for_provider("xai").expect("xai models");
     assert!(xai_models.contains(&models::xai::GROK_4_6));
-    assert!(catalog_provider_keys().contains(&"xai"));
+    assert!(catalogue_provider_keys().contains(&"xai"));
 
     assert_eq!(ModelId::GPT56Sol.input_modalities(), &["text", "image"]);
     assert_eq!(ModelId::GPT56Sol.input_modalities(), &["text", "image"]);
@@ -684,7 +684,7 @@ fn from_config_rejects_custom_model_for_unrelated_provider() {
 }
 
 #[test]
-fn from_config_falls_through_to_catalog_for_known_models() {
+fn from_config_falls_through_to_catalogue_for_known_models() {
     let parsed = ModelId::from_config("gpt-5.6-sol", "openai", &Default::default(), &[]).unwrap();
     assert_eq!(parsed, ModelId::GPT56Sol);
 }

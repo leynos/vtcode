@@ -259,7 +259,7 @@ impl ToolPack for SearchPack {
                 ToolRegistry::search_tools_executor,
             )
             .with_description(
-                "Search the deferred local tool catalog by capability. Matching definitions are expanded deterministically for the next request segment.",
+                "Search the deferred local tool catalogue by capability. Matching definitions are expanded deterministically for the next request segment.",
             )
             .with_parameter_schema(search_tools_parameters())
             .with_permission(ToolPolicy::Allow),

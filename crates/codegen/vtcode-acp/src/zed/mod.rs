@@ -41,7 +41,7 @@ mod tests {
     use super::*;
     use crate::tooling::{TOOL_LIST_FILES_ITEMS_KEY, TOOL_LIST_FILES_RESULT_KEY, TOOL_LIST_FILES_URI_ARG};
     use crate::zed::helpers::{
-        PrimaryAgentCatalog, SESSION_CONFIG_MODEL_ID, SESSION_CONFIG_PRIMARY_AGENT_ID, SESSION_CONFIG_PROVIDER_ID,
+        PrimaryAgentCatalogue, SESSION_CONFIG_MODEL_ID, SESSION_CONFIG_PRIMARY_AGENT_ID, SESSION_CONFIG_PROVIDER_ID,
         SESSION_CONFIG_THOUGHT_LEVEL_ID,
     };
     use agent_client_protocol::schema::v1::{
@@ -97,7 +97,7 @@ mod tests {
         let mut discovery_input = SubagentDiscoveryInput::new(workspace.to_path_buf());
         discovery_input.include_user_agents = false;
         let discovered = discover_subagents(&discovery_input).expect("discover primary agents");
-        let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, "duck");
+        let primary_agents = PrimaryAgentCatalogue::from_specs_with_default(&discovered.effective, "duck");
 
         ZedAgent::new(
             core_config,

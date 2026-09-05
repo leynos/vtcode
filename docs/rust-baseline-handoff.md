@@ -56,7 +56,9 @@ The complete PR train is not yet delivered.
   typecheck, all 41 WebMCP tests, and production build passed. A dedicated CLI
   regression covers canonical and legacy flag parsing. Optional ast-grep was
   unavailable; the four inherited rustdoc warnings remain.
-- `harden-lint-spelling-colour` is the active branch, based on #26.
+- [Draft PR #27](https://github.com/leynos/vtcode/pull/27) publishes
+  `harden-lint-spelling-colour` at
+  `431ab1bc4a173afb5dfa0208d41b33878f159174`, based on #26.
   It covers remaining native colour methods, table alignment, local bindings,
   terminal prose, and module guidance. External schemas and flags remain fixed.
   Its original Rust gates passed: 10,080 tests, 17 skips and 67 harness tests.
@@ -66,6 +68,14 @@ The complete PR train is not yet delivered.
   unavailable. Logs use the remaining-colour branch suffix. The two module
   guidance files retain 46 inherited Markdownlint findings, with no added or
   removed diagnostics; the handoff, Nixie, and cached diff checks passed.
+- `harden-lint-spelling-catalogue` is the active branch, based on #27.
+  It renames native catalogue APIs, modules, provider adapters, and callers,
+  preserving serialized and persisted names. Formatting, lint, and build
+  passed initially, but the full suite found a missing native skill-discovery
+  keyword. Both `rule-catalogue` and legacy `rule-catalog` are now retained,
+  with query regressions. The original full retry passed: 10,081 tests, 17 skipped,
+  and 67 harness tests. Formatting, lint, build, advisory, and changed Python
+  compilation passed. Optional ast-grep remained unavailable.
 - Remaining spelling changes are preserved separately while each layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
@@ -184,6 +194,16 @@ with verified bytes and modes at
 paths were restored to the index. The staged source layer was unchanged.
 The recovered edits remain available for the later user-documentation batch;
 do not discard that recovery archive or restore it wholesale over later work.
+
+The reviewed catalogue v2 patch is
+`/home/leynos/Projects/vtcode-catalogue-review-v2-live-20260905.patch`
+(SHA-256 `8f51e048ef723698217521d2f937f56ea28bac88da6c25741a405055910ff68c`).
+It was rechecked against the published remaining-colour source and applied
+with all current spelling repairs preserved. Its offline review corrected
+missing imports and callers and preserved the OpenCode caching/vision logic.
+The subsequent live discovery repair adds native and legacy catalogue keywords
+and query regressions; preserve it in all later layers. Retry logs use
+`/tmp/ACTION-2-vtcode-df12-onboarding-harden-lint-spelling-catalogue.out`.
 
 ## Measurement and continuation
 
@@ -357,3 +377,15 @@ and 67 harness tests. Logs use `restack-1` on `harden-lint-spelling-colour`;
 final handoff checks use `handoff-restack-1`. The optional ast-grep scan was
 skipped because the tool is unavailable. The push uses an explicit lease
 against the original published PR #27 head.
+
+## PR 28 review restack
+
+The catalogue layer is rebased onto PR #27 `431ab1bc4`. The replay completed
+without conflicts and the source patch is unchanged. Embedded catalogue
+bytes, persisted paths, telemetry wire names, native and legacy discovery
+queries, and separate vision and caching capabilities remain intact. All
+eight sequential gates passed, including typecheck, 10,085 workspace tests,
+17 skips and 67 harness tests. Logs use `restack-1` on
+`harden-lint-spelling-catalogue`; final handoff checks use `handoff-restack-1`.
+The optional ast-grep scan was skipped because the tool is unavailable. The
+push uses an explicit lease against the original published PR #28 head.

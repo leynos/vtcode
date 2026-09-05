@@ -153,7 +153,7 @@ fn test_unified_client_creation() {
     }
 
     // The legacy OpenCode GPT-5.4 alias now resolves to the current canonical
-    // GPT-5.6 OpenAI model after the model-catalog refresh.
+    // GPT-5.6 OpenAI model after the model-catalogue refresh.
     let openai_alias_client = create_provider_for_model("opencode/gpt-5.4", "test_key".to_string(), None, None);
     assert!(openai_alias_client.is_ok());
     if let Ok(client) = openai_alias_client {

@@ -19,7 +19,7 @@ use crate::agent::runloop::unified::run_loop_context::{HarnessTurnState, ToolBud
 use crate::agent::runloop::unified::state::{CtrlCState, SessionStats};
 use crate::agent::runloop::unified::status_line::InputStatusState;
 use crate::agent::runloop::unified::tool_call_safety::ToolCallSafetyValidator;
-use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
+use crate::agent::runloop::unified::tool_catalogue::ToolCatalogueState;
 use crate::agent::runloop::unified::turn::context::{
     PreparedAssistantToolCall, TurnHandlerOutcome, TurnProcessingContext, TurnProcessingContextParts,
 };
@@ -129,7 +129,7 @@ struct TestContextBacking {
     harness_state: HarnessTurnState,
     auto_finish_planning_attempted: bool,
     working_history: Vec<uni::Message>,
-    tool_catalog: Arc<ToolCatalogState>,
+    tool_catalogue: Arc<ToolCatalogueState>,
     default_placeholder: Option<String>,
     active_primary_agent: ActivePrimaryAgentState,
     runtime_steering: RuntimeSteering,
@@ -185,7 +185,7 @@ impl TestContextBacking {
         );
         let auto_finish_planning_attempted = false;
         let working_history = Vec::new();
-        let tool_catalog = Arc::new(ToolCatalogState::new());
+        let tool_catalogue = Arc::new(ToolCatalogueState::new());
         let default_placeholder = None;
         let config = AgentConfig {
             model: "noop-model".to_string(),
@@ -244,7 +244,7 @@ impl TestContextBacking {
             harness_state,
             auto_finish_planning_attempted,
             working_history,
-            tool_catalog,
+            tool_catalogue,
             default_placeholder,
             active_primary_agent: ActivePrimaryAgentState::default(),
             runtime_steering: RuntimeSteering::default(),
@@ -261,7 +261,7 @@ impl TestContextBacking {
             approval_recorder: &self.approval_recorder,
             tool_registry: &mut self.tool_registry,
             tools: &self.tools,
-            tool_catalog: &self.tool_catalog,
+            tool_catalogue: &self.tool_catalogue,
             tool_permission_cache: &self.tool_permission_cache,
             permissions_state: &self.permissions_state,
             safety_validator: &self.safety_validator,

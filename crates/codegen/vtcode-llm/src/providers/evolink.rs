@@ -19,7 +19,7 @@ const PRIMARY_API_KEY_ENV: &str = "EVOLINK_API_KEY";
 pub struct EvolinkSpec;
 
 /// Evolink's gateway expects bare upstream model names (e.g. `gpt-5.2`).
-/// The curated `ModelId` catalog namespaces entries as `evolink/<model>`, so
+/// The curated `ModelId` catalogue namespaces entries as `evolink/<model>`, so
 /// strip that prefix before sending the request upstream.
 fn normalize(model: &str) -> &str {
     model.trim().strip_prefix("evolink/").unwrap_or(model.trim())
@@ -50,7 +50,7 @@ impl OpenAiCompatSpec for EvolinkSpec {
     const DEFAULT_BASE_URL: &'static str = urls::EVOLINK_API_BASE;
     const BASE_URL_ENV: Option<&'static str> = Some(env_vars::EVOLINK_BASE_URL);
     const LISTED_MODELS: &'static [&'static str] = models::evolink::SUPPORTED_MODELS;
-    // Evolink is a gateway whose upstream catalog changes over time, so do
+    // Evolink is a gateway whose upstream catalogue changes over time, so do
     // not constrain requests to the curated `SUPPORTED_MODELS` list.
     const VALIDATION_ALLOWLIST: Option<&'static [&'static str]> = None;
 
@@ -64,7 +64,7 @@ impl OpenAiCompatSpec for EvolinkSpec {
     }
 
     /// Evolink's gateway expects bare upstream model names (e.g. `gpt-5.2`).
-    /// The curated `ModelId` catalog namespaces entries as `evolink/<model>`, so
+    /// The curated `ModelId` catalogue namespaces entries as `evolink/<model>`, so
     /// strip that prefix before sending the request upstream.
     fn normalize_model(model: String) -> String {
         normalize(&model).to_string()
@@ -357,7 +357,7 @@ impl LLMProvider for EvolinkProvider {
     }
 
     fn validate_request(&self, request: &LLMRequest) -> Result<(), LLMError> {
-        // Evolink is a gateway whose upstream catalog changes over time, so do
+        // Evolink is a gateway whose upstream catalogue changes over time, so do
         // not constrain requests to the curated `SUPPORTED_MODELS` list (see
         // `EvolinkSpec::VALIDATION_ALLOWLIST`).
         self.core.validate(request)

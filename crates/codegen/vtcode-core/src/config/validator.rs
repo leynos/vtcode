@@ -11,7 +11,7 @@ use crate::config::api_keys::ApiKeySources;
 use crate::config::api_keys::get_api_key_with_mode;
 use crate::config::constants::models::openai::RESPONSES_API_MODELS;
 use crate::config::loader::VTCodeConfig;
-use crate::config::models::{Provider, model_catalog_entry, supported_models_for_provider};
+use crate::config::models::{Provider, model_catalogue_entry, supported_models_for_provider};
 use crate::utils::file_utils::read_file_with_context_sync;
 use vtcode_config::PromptCacheRetention;
 
@@ -81,7 +81,7 @@ impl ModelsDatabase {
     /// Get context window size for model
     pub fn get_context_window(&self, provider: &str, model: &str) -> Option<usize> {
         match self {
-            Self::Generated => model_catalog_entry(provider, model)
+            Self::Generated => model_catalogue_entry(provider, model)
                 .map(|entry| entry.context_window)
                 .filter(|context_window| *context_window > 0),
             Self::File { providers } => providers
@@ -98,7 +98,7 @@ pub struct ConfigValidator {
 }
 
 impl ConfigValidator {
-    /// Create a validator backed by the build-generated model catalog.
+    /// Create a validator backed by the build-generated model catalogue.
     pub fn generated() -> Self {
         Self { models_db: ModelsDatabase::generated() }
     }
@@ -419,7 +419,7 @@ mod tests {
     }
 
     #[test]
-    fn custom_provider_skips_builtin_model_catalog_checks() {
+    fn custom_provider_skips_builtin_model_catalogue_checks() {
         let dir = create_test_models_db();
         let validator = ConfigValidator::new(&dir.path().join("models.json")).unwrap();
         let mut config = VTCodeConfig::default();

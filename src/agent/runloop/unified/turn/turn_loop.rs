@@ -423,7 +423,7 @@ pub(crate) struct TurnLoopContext<'a> {
     pub decision_ledger: &'a Arc<RwLock<DecisionTracker>>,
     pub tool_registry: &'a mut ToolRegistry,
     pub tools: &'a Arc<RwLock<Vec<uni::ToolDefinition>>>,
-    pub tool_catalog: &'a Arc<crate::agent::runloop::unified::tool_catalog::ToolCatalogState>,
+    pub tool_catalogue: &'a Arc<crate::agent::runloop::unified::tool_catalogue::ToolCatalogueState>,
     pub ctrl_c_state: &'a Arc<crate::agent::runloop::unified::state::CtrlCState>,
     pub ctrl_c_notify: &'a Arc<tokio::sync::Notify>,
     pub context_manager: &'a mut crate::agent::runloop::unified::context_manager::ContextManager,
@@ -471,7 +471,7 @@ impl<'a> TurnLoopContext<'a> {
         decision_ledger: &'a Arc<RwLock<DecisionTracker>>,
         tool_registry: &'a mut ToolRegistry,
         tools: &'a Arc<RwLock<Vec<uni::ToolDefinition>>>,
-        tool_catalog: &'a Arc<crate::agent::runloop::unified::tool_catalog::ToolCatalogState>,
+        tool_catalogue: &'a Arc<crate::agent::runloop::unified::tool_catalogue::ToolCatalogueState>,
         ctrl_c_state: &'a Arc<crate::agent::runloop::unified::state::CtrlCState>,
         ctrl_c_notify: &'a Arc<tokio::sync::Notify>,
         context_manager: &'a mut crate::agent::runloop::unified::context_manager::ContextManager,
@@ -513,7 +513,7 @@ impl<'a> TurnLoopContext<'a> {
             decision_ledger,
             tool_registry,
             tools,
-            tool_catalog,
+            tool_catalogue,
             ctrl_c_state,
             ctrl_c_notify,
             context_manager,
@@ -594,7 +594,7 @@ impl<'a> TurnLoopContext<'a> {
             approval_recorder: self.approval_recorder,
             tool_registry: self.tool_registry,
             tools: self.tools,
-            tool_catalog: self.tool_catalog,
+            tool_catalogue: self.tool_catalogue,
             tool_permission_cache: self.tool_permission_cache,
             permissions_state: self.permissions_state,
             safety_validator: self.safety_validator,
@@ -747,7 +747,7 @@ pub(crate) async fn run_turn_loop(
         // triggers the inline interview). Keep the parser and request builder
         // on the same capability set immediately; otherwise this turn can
         // still inject another `request_user_input` call even though the
-        // catalog has already removed it.
+        // catalogue has already removed it.
         if ctx.plan_session.is_interview_denied() {
             turn_config.request_user_input_enabled = false;
         }
@@ -1236,7 +1236,7 @@ pub(crate) async fn run_turn_loop(
         }
         if !response.tool_references.is_empty() {
             turn_processing_ctx
-                .tool_catalog
+                .tool_catalogue
                 .note_tool_references(turn_processing_ctx.tools, &response.tool_references)
                 .await;
         }

@@ -732,7 +732,7 @@ pub fn builtin_primary_duck_agent() -> SubagentSpec {
 fn builtin_readonly_tool_ids() -> Vec<String> {
     // The direct read tools must be listed explicitly: read-only agents deny
     // `bash`, so the wire shaper hides `exec_command` for them — without
-    // grep_file/read_file/list_files their effective catalog collapses to
+    // grep_file/read_file/list_files their effective catalogue collapses to
     // bare `code_search` (the turn_912/913 planning failure shape). The
     // planning profile and Interactive surface intersect this list further
     // (e.g. read_file/list_files stay hidden on Interactive).
@@ -775,7 +775,7 @@ fn readonly_agent_permissions() -> AgentPermissionsConfig {
 /// Read-only agents that talk to the user (duck, plan) also list
 /// `request_user_input` in their tool set, so the permission rules must
 /// allow it explicitly: the default-deny fallback otherwise rejects it
-/// (semantic kind "other") and the wire catalog filter hides the only
+/// (semantic kind "other") and the wire catalogue filter hides the only
 /// interview tool even though `builtin_primary_readonly_tool_ids` lists it.
 fn readonly_interview_agent_permissions() -> AgentPermissionsConfig {
     let mut permissions = readonly_agent_permissions();
@@ -2453,9 +2453,9 @@ Legacy prompt."#,
             tools.iter().any(|t| t == tools::REQUEST_USER_INPUT),
             "plan agent should expose request_user_input for clarifying questions"
         );
-        // The wire catalog filters advertised tools through these permission
+        // The wire catalogue filters advertised tools through these permission
         // rules; a static tool-list entry is not enough (turn_912 regression:
-        // the planning wire catalog collapsed to only `code_search` because
+        // the planning wire catalogue collapsed to only `code_search` because
         // `request_user_input`/`exec_command` hit the default-deny fallback).
         assert!(
             spec.permissions.allow.iter().any(|rule| rule == "request_user_input"),
