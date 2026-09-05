@@ -55,7 +55,7 @@ pub fn generate_config(features: &[crate::terminal_setup::detector::TerminalFeat
                 instructions.push("To customize:".to_string());
                 instructions.push("1. Open Settings (Cmd+, or Ctrl+,)".to_string());
                 instructions.push("2. Search for 'workbench.colorCustomizations'".to_string());
-                instructions.push("3. Add terminal color overrides in settings.json".to_string());
+                instructions.push("3. Add terminal colour overrides in settings.json".to_string());
                 instructions.push(String::new());
             }
             crate::terminal_setup::detector::TerminalFeature::Notifications => {

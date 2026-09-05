@@ -105,9 +105,9 @@ def generate_matplotlib_comparison(reports, output_path):
     ax1 = fig.add_subplot(gs[0, 0])
     models = [m1['model'][:20], m2['model'][:20]]
     pass_rates = [s1['pass_at_1'] * 100, s2['pass_at_1'] * 100]
-    colors = ['#4CAF50' if s1['pass_at_1'] > s2['pass_at_1'] else '#2196F3',
+    colours = ['#4CAF50' if s1['pass_at_1'] > s2['pass_at_1'] else '#2196F3',
               '#4CAF50' if s2['pass_at_1'] > s1['pass_at_1'] else '#2196F3']
-    bars = ax1.bar(models, pass_rates, color=colors, alpha=0.8, edgecolor='black')
+    bars = ax1.bar(models, pass_rates, color=colours, alpha=0.8, edgecolor='black')
     ax1.set_ylabel('Pass@1 (%)')
     ax1.set_title('Pass@1 Comparison')
     ax1.set_ylim(0, 100)

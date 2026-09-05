@@ -234,8 +234,8 @@ mod regression_tests {
             ("PAGER", "cat"),     // For non-interactive output
             ("GIT_PAGER", "cat"), // For git commands
             ("LESS", "R"),        // Less options
-            ("CLICOLOR", "0"),    // Disable color
-            ("NO_COLOR", "1"),    // Color disable standard
+            ("CLICOLOR", "0"),    // Disable colour
+            ("NO_COLOR", "1"),    // Colour disable standard
         ];
 
         println!("✓ Environment overrides are still applied:");

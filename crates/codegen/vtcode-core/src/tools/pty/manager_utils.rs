@@ -63,13 +63,13 @@ pub(super) fn set_command_environment_with_sandbox(
     builder.env("LINES", size.rows.to_string());
     builder.env("WORKSPACE_DIR", workspace_root.as_os_str());
 
-    // Disable automatic color output from ls and other commands
+    // Disable automatic colour output from ls and other commands
     builder.env("CLICOLOR", "0");
     builder.env("CLICOLOR_FORCE", "0");
     builder.env("LS_COLORS", "");
     builder.env("NO_COLOR", "1");
 
-    // For Rust/Cargo, disable colors at the source
+    // For Rust/Cargo, disable colours at the source
     builder.env("CARGO_TERM_COLOR", "never");
 
     // Suppress macOS malloc debugging junk that can pollute PTY output
@@ -137,7 +137,7 @@ fn set_command_environment_from_snapshot(
     builder.env("LINES", size.rows.to_string());
     builder.env("WORKSPACE_DIR", workspace_root.as_os_str());
 
-    // Disable automatic color output
+    // Disable automatic colour output
     builder.env("CLICOLOR", "0");
     builder.env("CLICOLOR_FORCE", "0");
     builder.env("LS_COLORS", "");
