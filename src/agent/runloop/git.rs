@@ -231,7 +231,7 @@ pub(crate) fn compute_session_code_change_delta(
     Some(delta)
 }
 
-/// Summarise the current branch name and dirty flag.
+/// Summarize the current branch name and dirty flag.
 ///
 /// # Blocking
 ///

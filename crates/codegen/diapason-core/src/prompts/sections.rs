@@ -26,7 +26,7 @@ pub enum SectionKind {
     /// temporal context, working directory).
     EnvironmentAddenda,
     /// "## Active Tools" dynamic tool guidance derived from the active tool
-    /// catalog.
+    /// catalogue.
     ToolGuidelines,
     /// "## Shell Profile" guidance for the current command environment.
     ShellProfile,

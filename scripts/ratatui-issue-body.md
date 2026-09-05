@@ -16,7 +16,7 @@ bound violations in types related to `CellEffect` from the `tachyonfx` crate
 3. Change to ratatui 0.30.1 (or use `"0.30"` semver range) — compile fails with
    `Send` bound errors on `CellEffect`-related types
 
-## Expected behavior
+## Expected behaviour
 
 A patch version bump (0.30.0 to 0.30.1) should not break `Send` trait
 compatibility for downstream types.

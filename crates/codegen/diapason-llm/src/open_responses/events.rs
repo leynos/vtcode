@@ -1,6 +1,6 @@
 //! Semantic streaming events for Open Responses.
 //!
-//! Streaming is modeled as a series of semantic events, not raw text deltas.
+//! Streaming is modelled as a series of semantic events, not raw text deltas.
 //! Events describe meaningful transitions like state changes or content deltas.
 
 use serde::{Deserialize, Serialize};

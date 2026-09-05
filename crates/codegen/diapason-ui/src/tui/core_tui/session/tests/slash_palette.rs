@@ -193,9 +193,9 @@ fn slash_panel_renders_search_field_above_results() {
 #[test]
 fn slash_palette_uses_full_width_panel_background_and_divider() {
     let theme = InlineTheme {
-        foreground: Some(AnsiColorEnum::Rgb(RgbColor(0xEE, 0xEE, 0xEE))),
-        background: Some(AnsiColorEnum::Rgb(RgbColor(0x2B, 0x2D, 0x33))),
-        primary: Some(AnsiColorEnum::Rgb(RgbColor(0x88, 0x99, 0xFF))),
+        foreground: Some(AnsiColourEnum::Rgb(RgbColor(0xEE, 0xEE, 0xEE))),
+        background: Some(AnsiColourEnum::Rgb(RgbColor(0x2B, 0x2D, 0x33))),
+        primary: Some(AnsiColourEnum::Rgb(RgbColor(0x88, 0x99, 0xFF))),
         ..InlineTheme::default()
     };
     let mut session = AppSession::new_with_logs(

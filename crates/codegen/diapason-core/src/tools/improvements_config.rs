@@ -1,7 +1,7 @@
 //! Configuration management for tool improvements system
 //!
 //! Defines all tunable parameters for similarity scoring, time decay,
-//! pattern detection, and cache behavior.
+//! pattern detection, and cache behaviour.
 
 use crate::utils::file_utils::{read_file_with_context_sync, write_file_with_context_sync};
 use serde::{Deserialize, Serialize};

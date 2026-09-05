@@ -22,7 +22,7 @@ use super::first_run_prompts::{
     resolve_initial_persistent_memory_enabled, resolve_initial_provider,
 };
 
-/// Drive the first-run interactive setup wizard when a workspace lacks Diapason artifacts.
+/// Drive the first-run interactive setup wizard when a workspace lacks Diapason artefacts.
 pub(crate) async fn maybe_run_first_run_setup(
     args: &Cli,
     workspace: &Path,
