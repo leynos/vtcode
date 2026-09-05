@@ -61,7 +61,7 @@ impl MiddlewareChain {
         self
     }
 
-    /// Execute before hooks, with optional fail-open behavior.
+    /// Execute before hooks, with optional fail-open behaviour.
     ///
     /// When `fail_open` is `false` (the default), the first middleware error
     /// short-circuits the chain and is returned to the caller (fail-closed).

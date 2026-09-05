@@ -19,7 +19,7 @@ fn normalized_identity_value(args: &serde_json::Value, include_max_results: bool
     Some(identity)
 }
 
-/// Normalised identity for result caching and replay.
+/// Normalized identity for result caching and replay.
 ///
 /// The effective result limit affects both the returned results and echoed
 /// filters, so it is part of this identity.
@@ -27,7 +27,7 @@ pub fn normalized_identity(args: &serde_json::Value) -> Option<String> {
     serde_json::to_string(&normalized_identity_value(args, true)?).ok()
 }
 
-/// Normalised identity for detecting repeated search behaviour.
+/// Normalized identity for detecting repeated search behaviour.
 ///
 /// Loop detection deliberately ignores the result limit: changing only the
 /// requested extent does not make an otherwise repeated search distinct.
@@ -40,7 +40,7 @@ pub fn normalized_loop_identity(args: &serde_json::Value) -> Option<String> {
 ///
 /// Both paths are resolved against a canonical workspace root so relative and
 /// absolute tool arguments share one component-aware comparison. Existing
-/// prefixes are canonicalised while missing suffixes remain lexical, which
+/// prefixes are canonicalized while missing suffixes remain lexical, which
 /// keeps deleted and newly-created targets comparable.
 pub fn scope_contains_mutated_path(args: &serde_json::Value, mutated_path: &Path, workspace_root: &Path) -> bool {
     let Ok(request) = serde_json::from_value::<CodeSearchRequest>(args.clone()) else {
@@ -63,7 +63,7 @@ pub fn scope_contains_mutated_path(args: &serde_json::Value, mutated_path: &Path
     mutated_path.starts_with(&scope) || scope.starts_with(&mutated_path)
 }
 
-/// Canonicalise the longest existing prefix, then append any missing suffix.
+/// Canonicalize the longest existing prefix, then append any missing suffix.
 /// This resolves symlinked workspace roots and existing directory aliases while
 /// retaining deleted or newly-created mutation targets for replay checks.
 pub(super) fn canonicalize_existing_prefix(path: &Path) -> PathBuf {

@@ -353,8 +353,8 @@ fn active_subagent_input_border_adds_extra_height() {
     session.header_context.subagent_badges = vec![InlineHeaderBadge {
         text: "rust-engineer".to_string(),
         style: InlineTextStyle {
-            colour: Some(AnsiColorEnum::Rgb(RgbColor(0xFF, 0xFF, 0xFF))),
-            bg_colour: Some(AnsiColorEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))),
+            colour: Some(AnsiColourEnum::Rgb(RgbColor(0xFF, 0xFF, 0xFF))),
+            bg_colour: Some(AnsiColourEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))),
             ..InlineTextStyle::default()
         },
         full_background: true,
@@ -369,8 +369,8 @@ fn header_shows_active_subagent_badge_with_full_background() {
     session.header_context.subagent_badges = vec![InlineHeaderBadge {
         text: "rust-engineer".to_string(),
         style: InlineTextStyle {
-            colour: Some(AnsiColorEnum::Rgb(RgbColor(0xFF, 0xFF, 0xFF))),
-            bg_colour: Some(AnsiColorEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))),
+            colour: Some(AnsiColourEnum::Rgb(RgbColor(0xFF, 0xFF, 0xFF))),
+            bg_colour: Some(AnsiColourEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))),
             ..InlineTextStyle::default()
         },
         full_background: true,
@@ -395,8 +395,8 @@ fn input_block_shows_active_subagent_title_with_badge_style() {
     session.header_context.subagent_badges = vec![InlineHeaderBadge {
         text: "rust-engineer".to_string(),
         style: InlineTextStyle {
-            colour: Some(AnsiColorEnum::Rgb(RgbColor(0xFF, 0xFF, 0xFF))),
-            bg_colour: Some(AnsiColorEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))),
+            colour: Some(AnsiColourEnum::Rgb(RgbColor(0xFF, 0xFF, 0xFF))),
+            bg_colour: Some(AnsiColourEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))),
             ..InlineTextStyle::default()
         },
         full_background: true,

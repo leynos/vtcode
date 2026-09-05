@@ -3,7 +3,7 @@
 //! - Common changes:
 //!   - Session overview aggregation stays in this root.
 //!   - Timeline row shaping, redaction, and HTML presentation live in `timeline/presentation.rs`.
-//! - Constraints: Keep thread-event exports preferred over conversation fallback exports, and preserve redaction-on-export behavior.
+//! - Constraints: Keep thread-event exports preferred over conversation fallback exports, and preserve redaction-on-export behaviour.
 //! - Verify: `cargo check -p diapason && cargo test -p diapason --bin diapason timeline`
 
 use anyhow::Result;
@@ -23,8 +23,11 @@ use presentation::timeline_row_from_item;
 use presentation::{timeline_rows_from_messages, timeline_rows_from_thread_events};
 
 const TIMELINE_SOURCE_THREAD_EVENTS: &str = "thread_events";
+
 const TIMELINE_SOURCE_CONVERSATION_FALLBACK: &str = "conversation_fallback";
+
 const SUMMARY_PREVIEW_LIMIT: usize = 120;
+
 const REDACTION_NOTICE: &str = "Sensitive values are redacted by default in exported logs.";
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

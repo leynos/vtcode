@@ -44,7 +44,7 @@ pub struct BoundaryItem {
 /// Carries the current state context so the receiving agent can continue
 /// without re-explaining the situation. Enriched with test results, boundary
 /// status, known issues, and recommended next actions following the long-running
-/// harness pattern: the next agent must be able to orient from this artifact alone.
+/// harness pattern: the next agent must be able to orient from this artefact alone.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HandoffRequest {
     /// The target agent name (subagent spec name or alias).

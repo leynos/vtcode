@@ -733,8 +733,8 @@ fn pty_command_header_verb_uses_primary_colour_bullet_uses_theme_foreground() {
 
 #[test]
 fn pty_command_header_removes_dim_from_all_header_spans() {
-    let foreground = AnsiColorEnum::Rgb(RgbColor(0xCC, 0xCC, 0xCC));
-    let subdued = AnsiColorEnum::Rgb(RgbColor(0x66, 0x66, 0x66));
+    let foreground = AnsiColourEnum::Rgb(RgbColor(0xCC, 0xCC, 0xCC));
+    let subdued = AnsiColourEnum::Rgb(RgbColor(0x66, 0x66, 0x66));
     let dimmed = Arc::new(InlineTextStyle {
         colour: Some(subdued),
         effects: anstyle::Effects::DIMMED,
@@ -812,11 +812,11 @@ fn pty_command_headers_remain_opaque_after_prior_output() {
 
 #[test]
 fn pty_command_header_preserves_status_colour_on_bullet() {
-    let foreground = AnsiColorEnum::Rgb(RgbColor(0xCC, 0xCC, 0xCC));
+    let foreground = AnsiColourEnum::Rgb(RgbColor(0xCC, 0xCC, 0xCC));
     let mut session = Session::new(
         InlineTheme {
             foreground: Some(foreground),
-            tool_body: Some(AnsiColorEnum::Ansi(anstyle::AnsiColor::Green)),
+            tool_body: Some(AnsiColourEnum::Ansi(anstyle::AnsiColor::Green)),
             ..Default::default()
         },
         None,
@@ -827,7 +827,7 @@ fn pty_command_header_preserves_status_colour_on_bullet() {
         vec![InlineSegment {
             text: "• Ran find src/agent -type f".to_string(),
             style: Arc::new(InlineTextStyle {
-                colour: Some(AnsiColorEnum::Ansi(anstyle::AnsiColor::Red)),
+                colour: Some(AnsiColourEnum::Ansi(anstyle::AnsiColor::Red)),
                 ..InlineTextStyle::default()
             }),
         }],
@@ -851,11 +851,11 @@ fn pty_command_header_preserves_status_colour_on_bullet() {
 
 #[test]
 fn tool_command_header_does_not_use_accent_tool_body_as_fallback() {
-    let foreground = AnsiColorEnum::Rgb(RgbColor(0xCC, 0xCC, 0xCC));
+    let foreground = AnsiColourEnum::Rgb(RgbColor(0xCC, 0xCC, 0xCC));
     let mut session = Session::new(
         InlineTheme {
             foreground: Some(foreground),
-            tool_body: Some(AnsiColorEnum::Ansi(anstyle::AnsiColor::Green)),
+            tool_body: Some(AnsiColourEnum::Ansi(anstyle::AnsiColor::Green)),
             ..Default::default()
         },
         None,
@@ -866,7 +866,7 @@ fn tool_command_header_does_not_use_accent_tool_body_as_fallback() {
         vec![InlineSegment {
             text: "• Ran find src/agent -type f".to_string(),
             style: Arc::new(InlineTextStyle {
-                colour: Some(AnsiColorEnum::Ansi(anstyle::AnsiColor::Green)),
+                colour: Some(AnsiColourEnum::Ansi(anstyle::AnsiColor::Green)),
                 ..InlineTextStyle::default()
             }),
         }],
@@ -939,8 +939,8 @@ fn assistant_text_is_brighter_than_pty_output() {
     let agent_fg = Color::Rgb(0xEE, 0xEE, 0xEE);
     let pty_fg = Color::Rgb(0x7A, 0x7A, 0x7A);
     let theme = InlineTheme {
-        foreground: Some(AnsiColorEnum::Rgb(RgbColor(0xEE, 0xEE, 0xEE))),
-        pty_body: Some(AnsiColorEnum::Rgb(RgbColor(0x7A, 0x7A, 0x7A))),
+        foreground: Some(AnsiColourEnum::Rgb(RgbColor(0xEE, 0xEE, 0xEE))),
+        pty_body: Some(AnsiColourEnum::Rgb(RgbColor(0x7A, 0x7A, 0x7A))),
         ..Default::default()
     };
 
@@ -982,8 +982,8 @@ fn assistant_text_is_brighter_than_pty_output() {
 fn pty_ansi_detail_colours_are_attenuated_toward_background() {
     let mut session = Session::new(
         InlineTheme {
-            background: Some(AnsiColorEnum::Ansi(anstyle::AnsiColor::Black)),
-            pty_body: Some(AnsiColorEnum::Rgb(RgbColor(0x7A, 0x7A, 0x7A))),
+            background: Some(AnsiColourEnum::Ansi(anstyle::AnsiColor::Black)),
+            pty_body: Some(AnsiColourEnum::Rgb(RgbColor(0x7A, 0x7A, 0x7A))),
             ..Default::default()
         },
         None,
@@ -994,7 +994,7 @@ fn pty_ansi_detail_colours_are_attenuated_toward_background() {
         vec![InlineSegment {
             text: "SUCCESS: Code formatting is correct!".to_string(),
             style: Arc::new(InlineTextStyle {
-                colour: Some(AnsiColorEnum::Ansi(anstyle::AnsiColor::BrightGreen)),
+                colour: Some(AnsiColourEnum::Ansi(anstyle::AnsiColor::BrightGreen)),
                 ..InlineTextStyle::default()
             }),
         }],

@@ -6,7 +6,7 @@ pub(crate) use runtime::PtyStreamRuntime;
 
 #[cfg(test)]
 mod tests {
-    use anstyle::{AnsiColor, Color as AnsiColorEnum};
+    use anstyle::{AnsiColor, Color as AnsiColourEnum};
     use diapason_core::config::PtyConfig;
     use diapason_ui::tui::app::{InlineCommand, InlineHandle, InlineSegment};
     use std::sync::Arc;
@@ -218,7 +218,7 @@ mod tests {
             .iter()
             .find(|segment| segment.text.contains("ERR"))
             .expect("coloured text segment should be present");
-        assert_eq!(err_segment.style.colour, Some(AnsiColorEnum::Ansi(AnsiColor::Red)));
+        assert_eq!(err_segment.style.colour, Some(AnsiColourEnum::Ansi(AnsiColor::Red)));
     }
 
     #[test]

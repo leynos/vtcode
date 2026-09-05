@@ -269,7 +269,7 @@ pub fn build_two_pass_pass1_history(prefix: &[Message], compaction_prompt: &str)
 
 /// Pass2 sample history: system (from prefix) + NOTE₁ carrier + tail + special turn.
 ///
-/// Successor-visible artifact is the model output of *this* history only (NOTE₂).
+/// Successor-visible artefact is the model output of *this* history only (NOTE₂).
 pub fn build_two_pass_pass2_history(
     prefix: &[Message],
     tail: &[Message],
