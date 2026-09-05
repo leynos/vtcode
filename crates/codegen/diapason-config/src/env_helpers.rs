@@ -4,7 +4,7 @@
 //! `default_true` / `default_enabled` serde default functions that were
 //! previously duplicated across the crate.
 
-/// Read an environment variable, honoring the test-only override map.
+/// Read an environment variable, honouring the test-only override map.
 pub(crate) fn read_env_var(name: &str) -> Option<String> {
     #[cfg(test)]
     if let Some(override_value) = test_env_overrides::get(name) {

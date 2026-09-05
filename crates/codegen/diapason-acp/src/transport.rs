@@ -211,7 +211,7 @@ impl StdioTransport {
     ///
     /// # Errors
     ///
-    /// Returns an error if serialisation fails or the writer task has shut down.
+    /// Returns an error if serialization fails or the writer task has shut down.
     pub fn notify(&self, method: &str, params: Value) -> AcpResult<()> {
         let mut payload = serde_json::json!({
             "jsonrpc": "2.0",
@@ -229,7 +229,7 @@ impl StdioTransport {
     ///
     /// # Errors
     ///
-    /// Returns an error if serialisation fails or the writer task has shut down.
+    /// Returns an error if serialization fails or the writer task has shut down.
     fn respond(&self, id: i64, result: Value) -> AcpResult<()> {
         self.respond_value(Value::from(id), result)
     }
@@ -248,7 +248,7 @@ impl StdioTransport {
     ///
     /// # Errors
     ///
-    /// Returns an error if serialisation fails or the writer task has shut down.
+    /// Returns an error if serialization fails or the writer task has shut down.
     fn respond_error(&self, id: i64, code: i32, message: impl Into<String>) -> AcpResult<()> {
         self.respond_error_value(Value::from(id), code, message)
     }

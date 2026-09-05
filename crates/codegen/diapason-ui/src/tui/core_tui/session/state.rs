@@ -511,7 +511,7 @@ impl Session {
         start
     }
 
-    /// Ensure the prompt style has a color set
+    /// Ensure the prompt style has a colour set
     pub(crate) fn ensure_prompt_style_colour(&mut self) {
         if self.prompt_style.colour.is_none() {
             self.prompt_style.colour = self.theme.primary.or(self.theme.foreground);

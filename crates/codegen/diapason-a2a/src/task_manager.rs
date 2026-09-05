@@ -146,7 +146,7 @@ impl TaskManager {
         Ok(task.clone())
     }
 
-    /// Add an artifact to a task
+    /// Add an artefact to a task
     async fn add_artefact(&self, task_id: &str, artefact: Artefact) -> A2aResult<Task> {
         let mut state = self.state.write().await;
         let task = state
