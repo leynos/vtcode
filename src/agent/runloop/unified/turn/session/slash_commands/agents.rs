@@ -17,6 +17,7 @@ use crate::agent::runloop::slash_commands::{AgentDefinitionScope, AgentManagerAc
 
 #[path = "agents_authoring.rs"]
 mod authoring;
+
 #[path = "agents/runtime.rs"]
 mod runtime;
 
@@ -32,18 +33,31 @@ use runtime::{
 };
 
 const AGENT_ACTION_PREFIX: &str = "agents:";
+
 const AGENT_INSPECT_PREFIX: &str = "agents:inspect:";
+
 const THREAD_INSPECT_PREFIX: &str = "agents:thread:";
+
 const THREAD_TRANSCRIPT_PREFIX: &str = "agents:transcript:";
+
 const THREAD_CANCEL_PREFIX: &str = "agents:cancel:";
+
 const SUBPROCESS_TRANSCRIPT_PREFIX: &str = "subprocesses:transcript:";
+
 const SUBPROCESS_ARCHIVE_PREFIX: &str = "subprocesses:archive:";
+
 const SUBPROCESS_STOP_PREFIX: &str = "subprocesses:stop:";
+
 const SUBPROCESS_CANCEL_PREFIX: &str = "subprocesses:cancel:";
+
 const ACTIVE_AGENT_INSPECTOR_REFRESH_MS: u64 = 750;
+
 const DEFAULT_AGENT_DESCRIPTION_TEXT: &str = "Describe when Diapason should delegate to this agent.";
-const DEFAULT_AGENT_BODY_TEXT: &str = "\nYou are a focused Diapason subagent.\n\nScope:\n- Describe the tasks this agent should handle.\n- Keep behaviour narrow and task-specific.\n\nConstraints:\n- Use `exec_command` for shell inspection, `apply_patch` for edits, and advanced `code_search` for focused literal queries.\n- Prefer the narrowest tool set that fits the job.\n- Return concise, actionable results.\n\nOutput:\n- State what you checked.\n- Summarise findings or changes.\n- Call out verification or remaining risks when relevant.\n";
+
+const DEFAULT_AGENT_BODY_TEXT: &str = "\nYou are a focused Diapason subagent.\n\nScope:\n- Describe the tasks this agent should handle.\n- Keep behaviour narrow and task-specific.\n\nConstraints:\n- Use `exec_command` for shell inspection, `apply_patch` for edits, and advanced `code_search` for focused literal queries.\n- Prefer the narrowest tool set that fits the job.\n- Return concise, actionable results.\n\nOutput:\n- State what you checked.\n- Summarize findings or changes.\n- Call out verification or remaining risks when relevant.\n";
+
 const DEFAULT_AGENT_TOOL_IDS: [&str; 3] = [tools::EXEC_COMMAND, tools::APPLY_PATCH, tools::CODE_SEARCH];
+
 const SUBAGENT_CONTROLLER_INACTIVE_MESSAGE: &str = "Subagent controller is not active in this session.";
 
 pub(crate) async fn handle_manage_agents(

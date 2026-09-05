@@ -59,7 +59,7 @@ pub fn process_declaration_file(
                     line: Some(line),
                     column: Some(column),
                     name: Some(CompactStr::from(declaration.name.as_str())),
-                    snippet: Some(super::normalised_snippet(super::source_line(&source, line))),
+                    snippet: Some(super::normalized_snippet(super::source_line(&source, line))),
                 },
                 backend_ordinal: 0,
             });
@@ -117,7 +117,7 @@ pub fn classify_literal_candidates(
                     line: Some(literal.line),
                     column: Some(literal.column),
                     name: Some(CompactStr::from(literal.matched_text.as_str())),
-                    snippet: Some(super::normalised_snippet(&literal.snippet)),
+                    snippet: Some(super::normalized_snippet(&literal.snippet)),
                 },
                 backend_ordinal: 1,
             });
@@ -129,7 +129,7 @@ pub fn classify_literal_candidates(
                     line: Some(literal.line),
                     column: Some(literal.column),
                     name: None,
-                    snippet: Some(super::normalised_snippet(&literal.snippet)),
+                    snippet: Some(super::normalized_snippet(&literal.snippet)),
                 },
                 backend_ordinal: 2,
             });
