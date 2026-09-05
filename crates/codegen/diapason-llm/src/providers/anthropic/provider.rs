@@ -786,7 +786,7 @@ mod tests {
             messages: vec![Message {
                 role: crate::provider::MessageRole::User,
                 content: MessageContent::Parts(vec![
-                    ContentPart::text("Analyze this CSV".to_string()),
+                    ContentPart::text("Analyse this CSV".to_string()),
                     ContentPart::file_from_id("file_abc123".to_string()),
                 ]),
                 ..Default::default()

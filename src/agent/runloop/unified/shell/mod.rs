@@ -71,7 +71,7 @@ mod tests {
     #[test]
     fn test_detect_explicit_run_command_rejects_chained_instruction() {
         assert!(detect_explicit_run_command("run cargo clippy and fix issue").is_none());
-        assert!(detect_explicit_run_command("run cargo test then analyze failures").is_none());
+        assert!(detect_explicit_run_command("run cargo test then analyse failures").is_none());
     }
 
     #[test]

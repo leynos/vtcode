@@ -485,18 +485,18 @@ mod tests {
 
         // Valid names
         assert!(author.is_valid_skill_name("my-skill"));
-        assert!(author.is_valid_skill_name("pdf-analyzer"));
+        assert!(author.is_valid_skill_name("pdf-analyser"));
         assert!(author.is_valid_skill_name("skill-123"));
         assert!(author.is_valid_skill_name("a"));
         assert!(author.is_valid_skill_name("skill-v2-beta"));
 
         // Invalid: uppercase
         assert!(!author.is_valid_skill_name("My-Skill"));
-        assert!(!author.is_valid_skill_name("PDF-Analyzer"));
+        assert!(!author.is_valid_skill_name("PDF-Analyser"));
 
         // Invalid: underscore
         assert!(!author.is_valid_skill_name("my_skill"));
-        assert!(!author.is_valid_skill_name("pdf_analyzer"));
+        assert!(!author.is_valid_skill_name("pdf_analyser"));
 
         // Invalid: leading/trailing hyphens
         assert!(!author.is_valid_skill_name("-my-skill"));
@@ -623,7 +623,7 @@ Use bundled resources when needed.
         let author = SkillAuthor::new(tmp.path().to_path_buf());
 
         // Create test skills
-        let skill1_dir = author.create_skill("pdf-analyzer", Some(tmp.path().to_path_buf())).unwrap();
+        let skill1_dir = author.create_skill("pdf-analyser", Some(tmp.path().to_path_buf())).unwrap();
         let skill2_dir = author
             .create_skill("spreadsheet-generator", Some(tmp.path().to_path_buf()))
             .unwrap();
@@ -656,7 +656,7 @@ Use bundled resources when needed.
 
         // Verify structure
         assert!(rendered.contains("## Skills"));
-        assert!(rendered.contains("pdf-analyzer: Extract text and tables from PDFs"));
+        assert!(rendered.contains("pdf-analyser: Extract text and tables from PDFs"));
         assert!(rendered.contains("spreadsheet-generator: Create Excel spreadsheets with charts"));
         assert!(rendered.contains("(file:"));
         assert!(rendered.contains("SKILL.md, scope:"));
