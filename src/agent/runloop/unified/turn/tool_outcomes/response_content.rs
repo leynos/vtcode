@@ -310,7 +310,7 @@ fn tool_output_summary_feature(
         }
         // A bounded read (explicit offset/limit/line-range) is a deliberate
         // request for exact content. Summarizing it forces a wasteful raw
-        // re-read of the same slice, so honor the model's narrowing and return
+        // re-read of the same slice, so honour the model's narrowing and return
         // it verbatim. Only whole-file reads over the byte threshold are
         // summarized.
         if !read_extent::args_have_bounded_extent(args_val) && serialized_len > 6_000 {

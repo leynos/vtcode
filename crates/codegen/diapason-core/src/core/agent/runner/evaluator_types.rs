@@ -252,18 +252,18 @@ impl EvaluatorResponse {
     }
 }
 
-/// Single skeptic panel entry: model id + its evaluator response.
+/// Single sceptic panel entry: model id + its evaluator response.
 #[derive(Debug, Clone)]
-pub(super) struct SkepticPanelEntry {
+pub(super) struct ScepticPanelEntry {
     pub(super) response: EvaluatorResponse,
 }
 
-/// Aggregated result of the skeptic panel.
+/// Aggregated result of the sceptic panel.
 ///
-/// The panel passes only when every skeptic verdict is "pass" and every
+/// The panel passes only when every sceptic verdict is "pass" and every
 /// scorecard dimension meets the threshold across all panelists.
 #[derive(Debug, Clone)]
-pub(super) struct SkepticPanelAggregate {
+pub(super) struct ScepticPanelAggregate {
     pub(super) verdict: String,
     pub(super) summary: String,
     pub(super) scorecard: EvaluatorScorecard,
@@ -271,9 +271,9 @@ pub(super) struct SkepticPanelAggregate {
     pub(super) generalization_notes: Vec<GeneralizationNote>,
 }
 
-impl SkepticPanelAggregate {
-    /// Aggregate the strictest verdict/scorecard across all skeptics.
-    pub(super) fn from_entries(entries: Vec<SkepticPanelEntry>) -> Self {
+impl ScepticPanelAggregate {
+    /// Aggregate the strictest verdict/scorecard across all sceptics.
+    pub(super) fn from_entries(entries: Vec<ScepticPanelEntry>) -> Self {
         let all_passed = entries.iter().all(|e| e.response.passed());
         let verdict = if all_passed {
             "pass".to_string()
@@ -291,9 +291,9 @@ impl SkepticPanelAggregate {
             summaries.truncate(3);
         }
         let summary = if summaries.is_empty() {
-            "Skeptic panel: no responses.".to_string()
+            "Sceptic panel: no responses.".to_string()
         } else {
-            format!("Skeptic panel ({} models): {}", entries.len(), summaries.join(" | "))
+            format!("Sceptic panel ({} models): {}", entries.len(), summaries.join(" | "))
         };
         let mut scorecard = EvaluatorScorecard::default();
         for entry in &entries {
@@ -384,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn skeptic_panel_retains_bounded_task_scoped_notes() {
+    fn sceptic_panel_retains_bounded_task_scoped_notes() {
         let note = json!({
             "claim": "claim",
             "scope": "scope",
@@ -393,9 +393,9 @@ mod tests {
         });
         let first = response_with_notes(json!(vec![note.clone(); MAX_GENERALIZATION_NOTES]));
         let second = response_with_notes(json!([note]));
-        let aggregate = SkepticPanelAggregate::from_entries(vec![
-            SkepticPanelEntry { response: first },
-            SkepticPanelEntry { response: second },
+        let aggregate = ScepticPanelAggregate::from_entries(vec![
+            ScepticPanelEntry { response: first },
+            ScepticPanelEntry { response: second },
         ]);
         assert_eq!(aggregate.generalization_notes.len(), MAX_GENERALIZATION_NOTES);
     }

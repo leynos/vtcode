@@ -616,7 +616,7 @@ pub(crate) fn describe_tool_action(
 ) -> (String, HashSet<String>) {
     // Check if this is an MCP tool based on the original naming convention
     // MCP tools are named with an `mcp::`, `mcp__`, or `mcp_` prefix. A bare
-    // `fetch` is the built-in web-fetch tool and must not be labeled as MCP.
+    // `fetch` is the built-in web-fetch tool and must not be labelled as MCP.
     let is_mcp_tool = tool_name.starts_with("mcp::") || tool_name.starts_with("mcp_");
 
     // For the actual matching, we need to use the tool name without the "mcp_" prefix

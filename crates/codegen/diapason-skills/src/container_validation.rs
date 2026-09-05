@@ -77,7 +77,7 @@ impl ContainerSkillsValidator {
 
     /// Analyze a skill for container skills requirements
     pub fn analyse_skill(&self, skill: &Skill) -> ContainerValidationResult {
-        // Honor explicit manifest flags first; avoids keyword false-positives
+        // Honour explicit manifest flags first; avoids keyword false-positives
         if let Some(true) = skill.manifest.requires_container {
             return ContainerValidationResult {
                 requirement: ContainerSkillsRequirement::Required,

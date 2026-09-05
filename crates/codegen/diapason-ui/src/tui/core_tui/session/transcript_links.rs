@@ -956,7 +956,7 @@ fn looks_like_transcript_path(token: &str) -> bool {
         || token.contains('\\')
         // Has a file-like extension: non-empty stem + dot + 1-12 alphanumeric ext.
         // Called after suffix stripping so `a.rs` (not `a.rs:10`) is the input.
-        // `path.is_file()` is the final filter, so favor recall here.
+        // `path.is_file()` is the final filter, so favour recall here.
         || token.rsplit_once('.').is_some_and(|(stem, ext)| {
             !stem.is_empty()
                 && !ext.is_empty()
