@@ -113,7 +113,7 @@ The complete PR train is not yet delivered.
   `/tmp/ACTION-vtcode-df12-onboarding-harden-lint-spelling-source.out`.
 - [Draft PR #32](https://github.com/leynos/vtcode/pull/32) publishes
   `harden-lint-spelling-foundation` at
-  `1e5bfa6b33f0f3d1d9ec06b2ded4de94e78f1ad2`, based on #31.
+  `90858bff6edbde66bea79a9c68a91b1a903707db`, based on #31.
   It corrects authored foundation-crate prose and preserves the newly renamed
   colour aliases, existing wire values, and generated model metadata.
   Its original old-config gates passed: formatting, lint, build, 10,081 workspace
@@ -129,9 +129,9 @@ The complete PR train is not yet delivered.
   to `COLOUR_GUIDELINES.md` with both documentation-map links updated together.
   Preliminary Markdown checks found 41 new table-spacing and line-length
   diagnostics. Those were repaired, along with a stale native catalogue path.
-  The final 3,579 diagnostics match parent path, mapped line, and rule
+  The original 3,579 diagnostics match parent path, mapped line, and rule
   identities, with none added or removed. Nixie passed all 81 changed files.
-  All seven ordered code gates recorded exit zero: formatting, lint, build,
+  All seven original ordered code gates recorded exit zero: formatting, lint, build,
   10,081 workspace tests with 17 skipped, 67 harness tests, the optional
   ast-grep skip, and advisory. Logs use `ACTION-manifest` with the engineering
   branch suffix.
@@ -499,3 +499,27 @@ and 67 harness tests. Logs use `restack-1` on
 `harden-lint-spelling-foundation`; final handoff checks use `handoff-restack-1`.
 The optional ast-grep scan was skipped because the tool is unavailable. The
 push uses an explicit lease against the original published PR #32 head.
+
+## PR 33 review restack
+
+The engineering-documentation layer is rebased onto PR #32 `90858bff6`. The
+replay completed without conflicts. The testing and WebMCP guides retain the
+lower hermetic-fixture and fail-closed sandbox requirements alongside their
+spelling changes; the renamed colour guide and both map links are intact.
+All eight sequential code gates passed, including 10,085 workspace tests
+with 17 skipped and 67 harness tests. The optional ast-grep scan was skipped
+because the tool is unavailable. Logs use `ACTION-restack-1` with the
+engineering branch suffix.
+
+The fresh Markdown comparison found 3,103 diagnostics in both the current
+layer and its final parent, with no added or removed path, mapped-line, rule,
+and multiplicity identities. The comparison handles the renamed colour guide,
+spelling replacements, and unchanged end-of-file blank lines. Both raw logs
+confirm that 81 files were linted. Nixie validated the 81 changed files.
+
+The initial zero-diagnostic report was rejected because its logs contained no
+linter output: `--format json` selected stdin mode rather than JSON output.
+Corrected captures use `markdownlint-current-restack-2` and
+`markdownlint-parent-restack-3` with the engineering branch suffix; the
+comparison is `/tmp/vtcode-pr33-md-identity-root.json`. These fresh results
+supersede the original diagnostic count for this restack.
