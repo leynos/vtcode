@@ -1,133 +1,107 @@
-//! Opt-in, bounded compatibility probe. No workspace tools are executed.
+//! Opt-in, bounded Friendli Responses probes. Returned tools are never executed.
 
-use std::path::PathBuf;
+mod support;
+
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, ensure};
-use futures::StreamExt;
 use serde_json::json;
-use vtcode_config::core::{AnthropicConfig, CustomProviderApiFormat, CustomProviderConfig};
-use vtcode_llm::provider::{LLMProvider, LLMRequest, LLMResponse, LLMStreamEvent, Message, ToolChoice, ToolDefinition};
-use vtcode_llm::providers::CustomProviderBackendRouter;
+use support::friendli_probe::{
+    CapturedResponse, ProbeCase, ProbeOutcome, compatibility_failure, parse_selected_cases, reported_usage,
+    send_case_to,
+};
+use vtcode_config::core::CustomProviderRequestPolicyConfig;
 
-const MODEL: &str = "zai-org/GLM-5.3-Flash";
-const OUTPUT_CAP: u32 = 2048;
-const PROBE_COUNT: u32 = 4;
+fn selected_cases() -> Result<Vec<ProbeCase>> {
+    let raw = std::env::var("VTCODE_FRIENDLI_PROBE_CASES")
+        .context("set VTCODE_FRIENDLI_PROBE_CASES; implicit paid cases are forbidden")?;
+    parse_selected_cases(&raw)
+}
 
-fn live_provider() -> Result<CustomProviderBackendRouter> {
+fn private_capture_dir() -> Result<PathBuf> {
+    let path = PathBuf::from(
+        std::env::var_os("VTCODE_FRIENDLI_CAPTURE_DIR")
+            .context("set VTCODE_FRIENDLI_CAPTURE_DIR to an explicit private output directory")?,
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&path)
+            .with_context(|| format!("atomically create private capture directory {}", path.display()))?;
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir(&path)
+            .with_context(|| format!("atomically create private capture directory {}", path.display()))?;
+    }
+    Ok(path)
+}
+
+fn write_capture(directory: &Path, case: ProbeCase, response: &CapturedResponse, outcome: &ProbeOutcome) -> Result<()> {
+    let case_dir = directory.join(case.label());
+    std::fs::write(
+        case_dir.join("response-meta.json"),
+        serde_json::to_vec_pretty(&json!({
+            "status": response.status,
+            "safe_headers": &response.safe_headers,
+            "usage": reported_usage(response),
+            "transport_error": &response.transport_error,
+        }))?,
+    )?;
+    std::fs::write(case_dir.join("outcome.json"), serde_json::to_vec_pretty(outcome)?)?;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "paid Friendli API; explicit case/key/capture-directory opt-in required"]
+async fn friendli_responses_selected_compatibility_probes() -> Result<()> {
     ensure!(std::env::var("VTCODE_FRIENDLI_LIVE").as_deref() == Ok("1"), "explicit live opt-in is required");
     let key_path = PathBuf::from(std::env::var_os("VTCODE_FRIENDLI_LIVE_KEY_FILE").context("set key-file path")?);
     let key = std::fs::read_to_string(key_path).context("read Friendli key file")?;
     ensure!(!key.trim().is_empty(), "Friendli key file is empty");
-    let config = CustomProviderConfig {
-        name: "friendli-live-responses".into(),
-        display_name: "Friendli bounded Responses probe".into(),
-        base_url: "https://api.friendli.ai/serverless/v1".into(),
-        api_format: CustomProviderApiFormat::OpenAIResponses,
-        model: MODEL.into(),
-        models: vec![MODEL.into()],
-        supports_tools: Some(true),
-        supports_reasoning: Some(true),
-        supports_reasoning_effort: Some(false),
-        ..Default::default()
+    let cases = selected_cases()?;
+    let capture_dir = private_capture_dir()?;
+    let request_policy = CustomProviderRequestPolicyConfig {
+        max_retries: 0,
+        ..CustomProviderRequestPolicyConfig::default()
     };
-    let base_url = config.base_url.clone();
-    Ok(CustomProviderBackendRouter::from_config(
-        config,
-        Some(key.trim().into()),
-        Some(MODEL.into()),
-        base_url,
-        None,
-        None,
-        None,
-        Some(AnthropicConfig::default()),
-        None,
-        None,
-    ))
-}
+    ensure!(request_policy.max_retries == 0, "paid probe must not retry");
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(180))
+        .build()?;
+    let mut failed_cases = Vec::new();
 
-async fn streamed_response(provider: &CustomProviderBackendRouter, request: LLMRequest) -> Result<LLMResponse> {
-    let started = Instant::now();
-    let mut first_output_ms = None;
-    let mut fragments = 0_usize;
-    let mut stream = provider.stream(request).await?;
-    while let Some(event) = stream.next().await {
-        match event? {
-            LLMStreamEvent::Completed { response } => {
-                println!("stream first_output_ms={first_output_ms:?} fragments={fragments}");
-                return Ok(*response);
-            }
-            LLMStreamEvent::Token { .. } | LLMStreamEvent::Reasoning { .. } => {
-                let _first_output = first_output_ms.get_or_insert(started.elapsed().as_millis());
-                fragments += 1;
-            }
-            _ => {}
-        }
-    }
-    anyhow::bail!("Friendli stream ended without completion")
-}
-
-#[tokio::test]
-#[ignore = "paid Friendli API; explicit opt-in/key-file required; at most 8192 requested output tokens"]
-async fn friendli_responses_bounded_compatibility() -> Result<()> {
-    ensure!(OUTPUT_CAP * PROBE_COUNT <= 10_000, "live probe output budget exceeded");
-    let provider = live_provider()?;
-    let cases = [
-        ("buffered", "Reply with exactly OK.", None),
-        ("streamed", "Reply with exactly OK.", None),
-        (
-            "function",
-            "Call fixture_echo once with text equal to OK. Do not answer in prose.",
-            Some(ToolDefinition::function(
-                "fixture_echo".into(),
-                "Return a synthetic test string; no external effects.".into(),
-                json!({"type":"object","properties":{"text":{"type":"string"}},"required":["text"],"additionalProperties":false}),
-            )),
-        ),
-        (
-            "custom",
-            "Call fixture_raw once with the raw text OK. Do not answer in prose.",
-            Some(ToolDefinition::custom(
-                "fixture_raw".into(),
-                "Accept the raw string OK; this is a synthetic fixture, not a real command.".into(),
-            )),
-        ),
-    ];
-    ensure!(cases.len() == usize::try_from(PROBE_COUNT)?, "probe count changed; reassess the live budget");
-    for (label, prompt, tool) in cases {
-        let request = LLMRequest {
-            model: MODEL.into(),
-            messages: vec![Message::user(prompt.into())].into(),
-            tool_choice: tool.as_ref().map(|_| ToolChoice::Any),
-            tools: tool.map(|tool| vec![tool].into()),
-            max_tokens: Some(OUTPUT_CAP),
-            stream: label != "buffered",
-            ..Default::default()
-        };
+    for case in cases {
         let started = Instant::now();
-        let response = tokio::time::timeout(Duration::from_secs(180), async {
-            if label == "buffered" {
-                Ok(provider.generate(request).await?)
-            } else {
-                streamed_response(&provider, request).await
-            }
-        })
-        .await
-        .context("live probe deadline; no automatic retry")??;
+        let response = send_case_to(
+            &client,
+            key.trim(),
+            case,
+            request_policy.max_retries,
+            &capture_dir,
+            "https://api.friendli.ai/serverless/v1/responses",
+        )
+        .await?;
+        let outcome = support::friendli_probe::classify(case, &response);
+        write_capture(&capture_dir, case, &response, &outcome)?;
         println!(
             "{}",
-            json!({"probe":label,"elapsed_ms":started.elapsed().as_millis(),"usage":response.usage,"finish_reason":format!("{:?}",response.finish_reason),"tool_count":response.tool_calls.as_ref().map_or(0,Vec::len)})
+            json!({
+                "probe": case.label(),
+                "elapsed_ms": started.elapsed().as_millis(),
+                "status": response.status,
+                "usage": reported_usage(&response),
+                "outcome": outcome,
+            })
         );
-        if matches!(label, "function" | "custom") {
-            let calls = response.tool_calls.context("expected synthetic tool call")?;
-            ensure!(calls.len() == 1, "expected exactly one synthetic tool call");
-            ensure!(calls[0].is_custom() == (label == "custom"), "tool wire kind was not preserved");
-        } else {
-            ensure!(
-                response.content.as_deref().is_some_and(|text| text.contains("OK")),
-                "expected synthetic OK response"
-            );
+        if let Some(failure) = compatibility_failure(case, &outcome) {
+            failed_cases.push(failure);
         }
     }
+    ensure!(failed_cases.is_empty(), "compatibility failures: {}", failed_cases.join("; "));
     Ok(())
 }

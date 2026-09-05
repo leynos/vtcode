@@ -1,0 +1,564 @@
+event: response.created
+data: {"response":{"id":"resp_c5cf78c6-c793-4276-855e-df10535d338d","created_at":1788606815,"incomplete_details":null,"instructions":null,"metadata":null,"model":"zai-org/GLM-5.3-Flash","object":"response","output":[],"parallel_tool_calls":true,"temperature":1.0,"tool_choice":{"name":"fixture_raw","type":"custom"},"tools":[{"name":"fixture_raw","type":"custom","allowed_callers":null,"defer_loading":null,"description":"Accept the raw string OK; this is a synthetic fixture, not a real command.","format":null}],"top_p":0.95,"background":false,"max_output_tokens":2048,"max_tool_calls":null,"previous_response_id":null,"prompt":null,"reasoning":null,"service_tier":"auto","status":"in_progress","text":null,"top_logprobs":null,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+event: response.in_progress
+data: {"response":{"id":"resp_c5cf78c6-c793-4276-855e-df10535d338d","created_at":1788606815,"incomplete_details":null,"instructions":null,"metadata":null,"model":"zai-org/GLM-5.3-Flash","object":"response","output":[],"parallel_tool_calls":true,"temperature":1.0,"tool_choice":{"name":"fixture_raw","type":"custom"},"tools":[{"name":"fixture_raw","type":"custom","allowed_callers":null,"defer_loading":null,"description":"Accept the raw string OK; this is a synthetic fixture, not a real command.","format":null}],"top_p":0.95,"background":false,"max_output_tokens":2048,"max_tool_calls":null,"previous_response_id":null,"prompt":null,"reasoning":null,"service_tier":"auto","status":"in_progress","text":null,"top_logprobs":null,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+event: response.output_item.added
+data: {"item":{"id":"9ecdac7323b93a48","summary":[],"type":"reasoning","content":null,"encrypted_content":null,"status":"in_progress"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+event: response.reasoning_part.added
+data: {"content_index":0,"item_id":"9ecdac7323b93a48","output_index":0,"part":{"text":"","type":"reasoning_text"},"sequence_number":3,"type":"response.reasoning_part.added"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"The","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":4,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" user says","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":5,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":":","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":6,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" \"Call fixture_raw once with","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":7,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" the raw text OK. Do","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":8,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" not answer in prose.\"\n\nThis","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":9,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" appears to be a request about","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":10,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" calling","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":11,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" a function","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":12,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"/tool","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":13,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" named","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":14,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" `","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":15,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"fixture_raw`","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":16,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" with the raw text \"","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":17,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"OK\". However","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":18,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":", I don't have any","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":19,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" tool","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":20,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" called","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":21,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" `fixture_raw` available","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":22,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" in","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":23,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" my function","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":24,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" set","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":25,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":". There","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":26,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" are no tools defined","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":27,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" in","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":28,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" this conversation at","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":29,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" all.\n\nThe instruction","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":30,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" \"","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":31,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"Do not answer in prose\"","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":32,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" suggests they want me to just","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":33,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" make the tool","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":34,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" call, not write","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":35,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" explanatory text.\n\nBut","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":36,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" I cannot actually","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":37,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" call a function that","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":38,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" doesn't exist.","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":39,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" I should","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":40,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" not fabricate a tool","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":41,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" call to","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":42,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" a nonexistent function","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":43,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":". I","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":44,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" have","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":45,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" no tools available in","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":46,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" this environment.\n\nWhat","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":47,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" should I do? The","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":48,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" user wants me to call","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":49,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" a","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":50,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" function that","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":51,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" doesn't exist in","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":52,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" my available tools. I can","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":53,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"'t do","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":54,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" that. I","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":55,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" should indicate","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":56,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" that I don't have such","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":57,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" a tool","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":58,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" available,","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":59,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" but they","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":60,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" asked","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":61,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" me not","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":62,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" to answer in prose.","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":63,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" Hmm.\n\nThe","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":64,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" best","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":65,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" approach: I","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":66,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" cannot call a nonexistent","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":67,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" tool. Fabric","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":68,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"ating a function","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":69,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" call syntax","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":70,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" would be dishonest","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":71,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"/h","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":72,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"allucination","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":73,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":". I should briefly","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":74,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" state that no","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":75,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" such","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":76,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" tool is available.","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":77,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" Even","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":78,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" though they said \"do not","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":79,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" answer in prose,\" I have","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":80,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" to","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":81,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" respond somehow","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":82,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":",","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":83,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" and the","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":84,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" constraint","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":85,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" cannot","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":86,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" override","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":87,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" reality","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":88,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" —","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":89,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" I can't call","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":90,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" a tool that doesn't exist","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":91,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":".\n\nI should","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":92,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" keep the","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":93,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" response extremely","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":94,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" minimal.","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":95,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" Maybe","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":96,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":":","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":97,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" \"No tool named fixture_raw","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":98,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" is available to","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":99,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" me.\" That","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":100,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"'s one","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":101,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" sentence —","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":102,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" technically","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":103,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" prose,","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":104,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" but it's the","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":105,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" minimal","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":106,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" necessary","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":107,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" response. The","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":108,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" instruction not","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":109,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" to answer in prose presumably","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":110,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" applies","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":111,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" if","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":112,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" I were","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":113,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" making the call.","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":114,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" Since I can't,","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":115,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" I need","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":116,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" a","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":117,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" brief explanation.\n\nAlternatively","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":118,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":", could","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":119,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" they","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":120,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" mean for","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":121,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" me to output something","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":122,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" like `","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":123,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"fixture_raw(\"OK\")`","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":124,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"? If","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":125,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" they just","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":126,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" want the","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":127,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" literal call","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":128,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" syntax","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":129,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" as","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":130,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" text, maybe","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":131,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" they're","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":132,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" testing prompt","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":133,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" formatting. But without","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":134,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" a defined","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":135,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" tool, writing","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":136,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" `","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":137,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"fixture_raw(\"OK\")`","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":138,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" as","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":139,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" plain","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":140,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" text would be pretending","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":141,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":".","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":142,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" Actually","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":143,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":", in some","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":144,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" contexts (","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":145,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"like a","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":146,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" testing","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":147,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" harness), the","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":148,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" user might want","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":149,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" the","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":150,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" model","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":151,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" to emit","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":152,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" a specific","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":153,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" format. But I","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":154,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" have no tool","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":155,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" schema","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":156,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" for `","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":157,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"fixture_raw`, so","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":158,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" emitting","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":159,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" an antml-style invoke would be invalid and","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":160,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" would likely","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":161,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" just","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":162,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" render","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":163,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" as text.\n\nThe","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":164,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" safest, most honest","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":165,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" response: a","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":166,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" very short statement","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":167,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" that the","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":168,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" tool isn't available.","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":169,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" Keep it to","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":170,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" one line to","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":171,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" respect the \"","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":172,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"not","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":173,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" prose\" spirit","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":174,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" as much as possible.","item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":175,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.done
+data: {"content_index":0,"item_id":"9ecdac7323b93a48","output_index":0,"sequence_number":176,"text":"The user says: \"Call fixture_raw once with the raw text OK. Do not answer in prose.\"\n\nThis appears to be a request about calling a function/tool named `fixture_raw` with the raw text \"OK\". However, I don't have any tool called `fixture_raw` available in my function set. There are no tools defined in this conversation at all.\n\nThe instruction \"Do not answer in prose\" suggests they want me to just make the tool call, not write explanatory text.\n\nBut I cannot actually call a function that doesn't exist. I should not fabricate a tool call to a nonexistent function. I have no tools available in this environment.\n\nWhat should I do? The user wants me to call a function that doesn't exist in my available tools. I can't do that. I should indicate that I don't have such a tool available, but they asked me not to answer in prose. Hmm.\n\nThe best approach: I cannot call a nonexistent tool. Fabricating a function call syntax would be dishonest/hallucination. I should briefly state that no such tool is available. Even though they said \"do not answer in prose,\" I have to respond somehow, and the constraint cannot override reality — I can't call a tool that doesn't exist.\n\nI should keep the response extremely minimal. Maybe: \"No tool named fixture_raw is available to me.\" That's one sentence — technically prose, but it's the minimal necessary response. The instruction not to answer in prose presumably applies if I were making the call. Since I can't, I need a brief explanation.\n\nAlternatively, could they mean for me to output something like `fixture_raw(\"OK\")`? If they just want the literal call syntax as text, maybe they're testing prompt formatting. But without a defined tool, writing `fixture_raw(\"OK\")` as plain text would be pretending. Actually, in some contexts (like a testing harness), the user might want the model to emit a specific format. But I have no tool schema for `fixture_raw`, so emitting an antml-style invoke would be invalid and would likely just render as text.\n\nThe safest, most honest response: a very short statement that the tool isn't available. Keep it to one line to respect the \"not prose\" spirit as much as possible.","type":"response.reasoning_text.done"}
+
+event: response.reasoning_part.done
+data: {"content_index":0,"item_id":"9ecdac7323b93a48","output_index":0,"part":{"text":"The user says: \"Call fixture_raw once with the raw text OK. Do not answer in prose.\"\n\nThis appears to be a request about calling a function/tool named `fixture_raw` with the raw text \"OK\". However, I don't have any tool called `fixture_raw` available in my function set. There are no tools defined in this conversation at all.\n\nThe instruction \"Do not answer in prose\" suggests they want me to just make the tool call, not write explanatory text.\n\nBut I cannot actually call a function that doesn't exist. I should not fabricate a tool call to a nonexistent function. I have no tools available in this environment.\n\nWhat should I do? The user wants me to call a function that doesn't exist in my available tools. I can't do that. I should indicate that I don't have such a tool available, but they asked me not to answer in prose. Hmm.\n\nThe best approach: I cannot call a nonexistent tool. Fabricating a function call syntax would be dishonest/hallucination. I should briefly state that no such tool is available. Even though they said \"do not answer in prose,\" I have to respond somehow, and the constraint cannot override reality — I can't call a tool that doesn't exist.\n\nI should keep the response extremely minimal. Maybe: \"No tool named fixture_raw is available to me.\" That's one sentence — technically prose, but it's the minimal necessary response. The instruction not to answer in prose presumably applies if I were making the call. Since I can't, I need a brief explanation.\n\nAlternatively, could they mean for me to output something like `fixture_raw(\"OK\")`? If they just want the literal call syntax as text, maybe they're testing prompt formatting. But without a defined tool, writing `fixture_raw(\"OK\")` as plain text would be pretending. Actually, in some contexts (like a testing harness), the user might want the model to emit a specific format. But I have no tool schema for `fixture_raw`, so emitting an antml-style invoke would be invalid and would likely just render as text.\n\nThe safest, most honest response: a very short statement that the tool isn't available. Keep it to one line to respect the \"not prose\" spirit as much as possible.","type":"reasoning_text"},"sequence_number":177,"type":"response.reasoning_part.done"}
+
+event: response.output_item.done
+data: {"item":{"id":"9ecdac7323b93a48","summary":[],"type":"reasoning","content":[{"text":"The user says: \"Call fixture_raw once with the raw text OK. Do not answer in prose.\"\n\nThis appears to be a request about calling a function/tool named `fixture_raw` with the raw text \"OK\". However, I don't have any tool called `fixture_raw` available in my function set. There are no tools defined in this conversation at all.\n\nThe instruction \"Do not answer in prose\" suggests they want me to just make the tool call, not write explanatory text.\n\nBut I cannot actually call a function that doesn't exist. I should not fabricate a tool call to a nonexistent function. I have no tools available in this environment.\n\nWhat should I do? The user wants me to call a function that doesn't exist in my available tools. I can't do that. I should indicate that I don't have such a tool available, but they asked me not to answer in prose. Hmm.\n\nThe best approach: I cannot call a nonexistent tool. Fabricating a function call syntax would be dishonest/hallucination. I should briefly state that no such tool is available. Even though they said \"do not answer in prose,\" I have to respond somehow, and the constraint cannot override reality — I can't call a tool that doesn't exist.\n\nI should keep the response extremely minimal. Maybe: \"No tool named fixture_raw is available to me.\" That's one sentence — technically prose, but it's the minimal necessary response. The instruction not to answer in prose presumably applies if I were making the call. Since I can't, I need a brief explanation.\n\nAlternatively, could they mean for me to output something like `fixture_raw(\"OK\")`? If they just want the literal call syntax as text, maybe they're testing prompt formatting. But without a defined tool, writing `fixture_raw(\"OK\")` as plain text would be pretending. Actually, in some contexts (like a testing harness), the user might want the model to emit a specific format. But I have no tool schema for `fixture_raw`, so emitting an antml-style invoke would be invalid and would likely just render as text.\n\nThe safest, most honest response: a very short statement that the tool isn't available. Keep it to one line to respect the \"not prose\" spirit as much as possible.","type":"reasoning_text"}],"encrypted_content":null,"status":"completed"},"output_index":0,"sequence_number":178,"type":"response.output_item.done"}
+
+event: response.output_item.added
+data: {"item":{"id":"a8893a6f69e786f9","content":[],"role":"assistant","status":"in_progress","type":"message","phase":null},"output_index":1,"sequence_number":179,"type":"response.output_item.added"}
+
+event: response.content_part.added
+data: {"content_index":0,"item_id":"a8893a6f69e786f9","output_index":1,"part":{"annotations":[],"text":"","type":"output_text","logprobs":[]},"sequence_number":180,"type":"response.content_part.added"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"No tool named `","item_id":"a8893a6f69e786f9","logprobs":[],"output_index":1,"sequence_number":181,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"fixture_raw` is available to","item_id":"a8893a6f69e786f9","logprobs":[],"output_index":1,"sequence_number":182,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" me.","item_id":"a8893a6f69e786f9","logprobs":[],"output_index":1,"sequence_number":183,"type":"response.output_text.delta"}
+
+event: response.output_text.done
+data: {"content_index":0,"item_id":"a8893a6f69e786f9","logprobs":[],"output_index":1,"sequence_number":184,"text":"No tool named `fixture_raw` is available to me.","type":"response.output_text.done"}
+
+event: response.content_part.done
+data: {"content_index":0,"item_id":"a8893a6f69e786f9","output_index":1,"part":{"annotations":[],"text":"No tool named `fixture_raw` is available to me.","type":"output_text","logprobs":null},"sequence_number":185,"type":"response.content_part.done"}
+
+event: response.output_item.done
+data: {"item":{"id":"a8893a6f69e786f9","content":[{"annotations":[],"text":"No tool named `fixture_raw` is available to me.","type":"output_text","logprobs":null}],"role":"assistant","status":"completed","type":"message","phase":null,"summary":[]},"output_index":1,"sequence_number":186,"type":"response.output_item.done"}
+
+event: response.completed
+data: {"response":{"id":"resp_c5cf78c6-c793-4276-855e-df10535d338d","created_at":1788606815,"incomplete_details":null,"instructions":null,"metadata":null,"model":"zai-org/GLM-5.3-Flash","object":"response","output":[{"id":"rs_953fc0cb57996861","summary":[],"type":"reasoning","content":[{"text":"The user says: \"Call fixture_raw once with the raw text OK. Do not answer in prose.\"\n\nThis appears to be a request about calling a function/tool named `fixture_raw` with the raw text \"OK\". However, I don't have any tool called `fixture_raw` available in my function set. There are no tools defined in this conversation at all.\n\nThe instruction \"Do not answer in prose\" suggests they want me to just make the tool call, not write explanatory text.\n\nBut I cannot actually call a function that doesn't exist. I should not fabricate a tool call to a nonexistent function. I have no tools available in this environment.\n\nWhat should I do? The user wants me to call a function that doesn't exist in my available tools. I can't do that. I should indicate that I don't have such a tool available, but they asked me not to answer in prose. Hmm.\n\nThe best approach: I cannot call a nonexistent tool. Fabricating a function call syntax would be dishonest/hallucination. I should briefly state that no such tool is available. Even though they said \"do not answer in prose,\" I have to respond somehow, and the constraint cannot override reality — I can't call a tool that doesn't exist.\n\nI should keep the response extremely minimal. Maybe: \"No tool named fixture_raw is available to me.\" That's one sentence — technically prose, but it's the minimal necessary response. The instruction not to answer in prose presumably applies if I were making the call. Since I can't, I need a brief explanation.\n\nAlternatively, could they mean for me to output something like `fixture_raw(\"OK\")`? If they just want the literal call syntax as text, maybe they're testing prompt formatting. But without a defined tool, writing `fixture_raw(\"OK\")` as plain text would be pretending. Actually, in some contexts (like a testing harness), the user might want the model to emit a specific format. But I have no tool schema for `fixture_raw`, so emitting an antml-style invoke would be invalid and would likely just render as text.\n\nThe safest, most honest response: a very short statement that the tool isn't available. Keep it to one line to respect the \"not prose\" spirit as much as possible.","type":"reasoning_text"}],"encrypted_content":null,"status":null},{"id":"msg_9cf1ef839e71da5a","content":[{"annotations":[],"text":"No tool named `fixture_raw` is available to me.","type":"output_text","logprobs":null}],"role":"assistant","status":"completed","type":"message","phase":null}],"parallel_tool_calls":true,"temperature":1.0,"tool_choice":{"name":"fixture_raw","type":"custom"},"tools":[{"name":"fixture_raw","type":"custom","allowed_callers":null,"defer_loading":null,"description":"Accept the raw string OK; this is a synthetic fixture, not a real command.","format":null}],"top_p":0.95,"background":false,"max_output_tokens":2048,"max_tool_calls":null,"previous_response_id":null,"prompt":null,"reasoning":null,"service_tier":"auto","status":"completed","text":null,"top_logprobs":null,"truncation":"disabled","usage":{"input_tokens":28,"input_tokens_details":{"cached_tokens":0,"input_tokens_per_turn":[],"cached_tokens_per_turn":[]},"output_tokens":481,"output_tokens_details":{"reasoning_tokens":0,"tool_output_tokens":0,"output_tokens_per_turn":[],"tool_output_tokens_per_turn":[]},"total_tokens":509},"user":null},"sequence_number":187,"type":"response.completed"}
+

@@ -1,0 +1,1 @@
+{"model":"zai-org/GLM-5.3-Flash","input":[{"role":"user","content":"Call fixture_raw once with the raw text OK. Do not answer in prose."}],"tools":[{"type":"custom","name":"fixture_raw","description":"Accept the raw string OK; this is a synthetic fixture, not a real command."}],"tool_choice":"required","max_output_tokens":2048,"stream":true}
