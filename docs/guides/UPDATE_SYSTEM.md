@@ -15,7 +15,7 @@ updates from GitHub Releases. The system supports:
 
 - **Multiple release channels** (stable, beta, nightly)
 - **Version pinning** for staying on specific versions
-- **Configurable update behavior** via `update.toml` in the canonical user
+- **Configurable update behaviour** via `update.toml` in the canonical user
   config directory
 - **Download mirrors** for better availability
 
@@ -309,7 +309,7 @@ diapason update --pin 0.85.3
 diapason update --channel beta
 ```
 
-## Update Behavior
+## Update Behaviour
 
 ### Managed Installs
 
