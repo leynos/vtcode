@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-/// Model-specific behavior configuration
+/// Model-specific behaviour configuration
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ModelConfig {
-    /// Enable loop hang detection to identify when model is stuck in repetitive behavior
+    /// Enable loop hang detection to identify when model is stuck in repetitive behaviour
     #[serde(default = "default_loop_detection_enabled")]
     skip_loop_detection: bool,
 

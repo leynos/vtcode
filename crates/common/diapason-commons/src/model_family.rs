@@ -20,7 +20,7 @@ const MEDIUM_CONTEXT_WINDOW: i64 = 200_000;
 /// Shell tool type preference for a model family
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum ShellToolType {
-    /// Use default shell tool behavior
+    /// Use default shell tool behaviour
     #[default]
     Default,
     /// Use shell command tool
