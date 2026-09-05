@@ -67,7 +67,7 @@ pub(super) fn create_enhanced_cache_key(
     };
 
     if tool_name == tools::CODE_SEARCH
-        && let Some(identity) = diapason_core::tools::normalised_code_search_identity(args)
+        && let Some(identity) = diapason_core::tools::normalized_code_search_identity(args)
     {
         return ToolCacheKey::new(tool_name, &identity, &enhanced_target);
     }
@@ -375,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn caches_code_search_with_normalised_target() {
+    fn caches_code_search_with_normalized_target() {
         let args = json!({
             "query": "Widget",
             "path": " src ",

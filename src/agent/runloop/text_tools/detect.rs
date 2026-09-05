@@ -95,7 +95,7 @@ pub(crate) fn strip_textual_tool_call_regions(text: &str) -> String {
     // because `detect_textual_tool_call` cannot parse them (they are intentionally
     // non-parseable), but they are clearly tool-call intent by tag name alone.
     // Use close prefixes (without the trailing ">") so that both
-    // `</function>` and `</function=name>` (parameterised close tags) are
+    // `</function>` and `</function=name>` (parameterized close tags) are
     // consumed in full; the scanner advances past any suffix to the next ">".
     collect_pseudo_marker_regions(&lowered, "<function=", "</function", &mut regions);
     collect_pseudo_marker_regions(&lowered, "<parameter=", "</parameter", &mut regions);
