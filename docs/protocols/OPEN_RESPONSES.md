@@ -80,7 +80,7 @@ assert!(completed.is_success());
 
 ### Semantic Streaming Events
 
-Streaming is modeled as semantic events, not raw text deltas:
+Streaming is modelled as semantic events, not raw text deltas:
 
 | Event Type                   | Description                    |
 | ---------------------------- | ------------------------------ |
@@ -349,7 +349,7 @@ stream. When file output is enabled, the JSONL stream is written to
 and the authoritative source remains
 `<state>/workspaces/<workspace-hash>/sessions/<session_id>/events.jsonl`.
 
-There is no default separate Open Responses artifact; exports are derived
+There is no default separate Open Responses artefact; exports are derived
 beside the workspace-scoped canonical session stream.
 
 ### Programmatic Integration

@@ -2,7 +2,7 @@
 
 The harness treats a cache prefix as an immutable segment. Tool definitions use
 deterministic core-first ordering followed by tool name and type, and the
-serialized catalog is reused for the segment. Catalog expansion through tool
+serialized catalogue is reused for the segment. Catalogue expansion through tool
 discovery takes effect at the next segment boundary.
 
 Prompt caching lets Diapason reuse validated conversation prefixes across
@@ -50,7 +50,7 @@ surface_metrics = true
 - `prompt_cache_retention` — optional OpenAI Responses API retention policy
     for cached prefixes. Supported values are `"in_memory"` and `"24h"`.
 - Default: `None` (opt-in) - Diapason does not set prompt_cache_retention by
-    default; so OpenAI keeps its default `in_memory` behavior unless you opt in
+    default; so OpenAI keeps its default `in_memory` behaviour unless you opt in
     explicitly.
 - Example CLI override to enable 24h retention for Responses model:
 
@@ -79,7 +79,7 @@ keeps an exact prefix match. In Diapason, the most common cache breakers are:
 
 To reduce avoidable misses, Diapason keeps tool ordering deterministic and
 defers MCP `tools/list_changed` refreshes to turn boundaries so an active turn
-sees a stable tool catalog. Diapason enables
+sees a stable tool catalogue. Diapason enables
 `prompt_cache.cache_friendly_prompt_shaping = true` by default. When it is
 enabled, Diapason applies provider-aware shaping:
 
@@ -108,16 +108,16 @@ breakdown, and the last visible change reason.
 
 Each request prefix is frozen in an immutable `SessionRequestEnvelope` for a
 request segment. Compaction starts the next segment before the compacted
-history is installed; the old envelope, compacted-history artifact, and
+history is installed; the old envelope, compacted-history artefact, and
 `ThreadCompactBoundary` event remain recoverable. Automatic, manual, recovery,
 and model-switch compaction use the same boundary path. A change to the model,
-provider, mode, instruction snapshot, or tool-catalog epoch starts a new
+provider, mode, instruction snapshot, or tool-catalogue epoch starts a new
 segment; unchanged turns reuse the existing envelope byte-for-byte.
 
 The `tool_catalog_cache_metrics` trajectory record includes ordered wire tool
-names, catalog/wire/deferred counts, and active loaded-skill names on startup
-or when that catalog identity changes. Unchanged turns omit those repeated
-lists. `diapason trajectory` compares the ordered snapshots so a catalog
+names, catalogue/wire/deferred counts, and active loaded-skill names on startup
+or when that catalogue identity changes. Unchanged turns omit those repeated
+lists. `diapason trajectory` compares the ordered snapshots so a catalogue
 reorder across starts is visible instead of being hidden by an unchanged tool
 count.
 
@@ -186,8 +186,8 @@ report_savings = true
 enabled = true
 ```
 
-Z.AI handles caching server-side. When the override is enabled, Diapason honors
-upstream behavior and surfaces usage metrics when available.
+Z.AI handles caching server-side. When the override is enabled, Diapason honours
+upstream behaviour and surfaces usage metrics when available.
 
 ## Usage Telemetry
 
@@ -208,7 +208,7 @@ anywhere Diapason reports token accounting.
     validate cache control insertion and beta header composition.
 - `crates/codegen/diapason-core/src/llm/providers/openrouter.rs` exercises
     usage parsing to ensure cache metrics are preserved.
-- Local cache behavior tests in
+- Local cache behaviour tests in
     `crates/codegen/diapason-core/src/core/prompt_caching.rs` verify caching,
     eviction, and persistence.
 - Configuration loading tests ensure settings from `config.toml` are applied
@@ -236,7 +236,7 @@ The prompt caching system is implemented as a multi-layered architecture:
 When upgrading to the new prompt caching system:
 
 1. Add the `[prompt_cache]` section to your `config.toml` if you want to
-   customize caching behavior
+   customize caching behaviour
 2. Review provider-specific settings to optimize for your usage patterns
 3. Monitor cache metrics to verify the system is performing as expected
 

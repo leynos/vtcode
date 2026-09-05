@@ -2,7 +2,7 @@
 
 The Diapason terminal UI includes an interactive mode that combines
 keyboard-first navigation with quick commands for agent control. This page
-consolidates the shortcuts, input modes, and background execution behaviors
+consolidates the shortcuts, input modes, and background execution behaviours
 available while you are connected to a session.
 
 ## Keyboard Shortcuts
@@ -22,7 +22,7 @@ available while you are connected to a session.
 | `Alt+O`                | Open Transcript Review (compatibility alias).                                                                             | Useful when the terminal does not deliver `Ctrl+T`; mouse capture is required for clickable hints.                                                                                                                                                                             |
 | `Alt+T`                | Toggle compact or expanded tool summaries.                                                                                | Rebindable; the default compact presentation keeps live command output bounded.                                                                                                                                                                                                |
 | `Alt+G`                | Toggle the TODO task panel.                                                                                               | Rebindable via `toggle_task_panel`; works even when `ui.show_task_panel` is off.                                                                                                                                                                                               |
-| `Ctrl+O`               | Copy the latest assistant response, or the complete Transcript Review.                                                    | In review, always copies the complete ANSI-free conversation; otherwise it uses the latest-response behavior.                                                                                                                                                                  |
+| `Ctrl+O`               | Copy the latest assistant response, or the complete Transcript Review.                                                    | In review, always copies the complete ANSI-free conversation; otherwise it uses the latest-response behaviour.                                                                                                                                                                  |
 | `Ctrl+A`               | Move cursor to start of input line.                                                                                       | UNIX/readline-style editing.                                                                                                                                                                                                                                                   |
 | `Ctrl+E`               | Move cursor to end of input line (or open external editor when input is empty).                                           | Uses `tools.editor` config, then `VISUAL`/`EDITOR`. Configure it with `/config tools.editor`.                                                                                                                                                                                  |
 | `Ctrl+Home`            | Jump to the oldest visible transcript content.                                                                            | Fullscreen rendering only.                                                                                                                                                                                                                                                     |
@@ -111,7 +111,7 @@ Successful file writes and edits end the command group and show a separate
 glance row with the affected path, `(+N -M)` counts, and numbered diff lines;
 the complete result remains available in the review and agent history.
 
-Rich rendering is the default and reuses the transcript's colors, links, and
+Rich rendering is the default and reuses the transcript's colours, links, and
 width-aware wrapping. Press the configured render-mode binding (default `R`) to
 switch to ANSI-free raw rendering for copying or export. Copying with `Ctrl+O`,
 opening the editor with `v`, or handing the review to native scrollback with
@@ -232,7 +232,7 @@ enabled and compact display is the default.
   `what scheduled tasks do I have?`, and `cancel <job id|name>`.
 - Session-scoped scheduled prompts fire only at idle boundaries so they do not
   interrupt an in-flight turn.
-- For full behavior, limits, and CLI examples, see
+- For full behaviour, limits, and CLI examples, see
   [Scheduled Tasks](./scheduled-tasks.md).
 
 ## Vim Mode
@@ -255,7 +255,7 @@ Diapason supports an optional Vim-style prompt editor.
   such as task state, active jobs, recent errors, and recent file activity.
 - `Alt+P` requests one inline ghost-text suggestion for the current draft. If a
   ghost suggestion is visible, `Tab` accepts it; otherwise `Tab` keeps its
-  normal queue behavior.
+  normal queue behaviour.
 - Diapason routes prompt suggestion generation through
   `agent.prompt_suggestions` and falls back to deterministic local suggestions
   when the provider, model, or endpoint cannot service the request.
@@ -278,7 +278,7 @@ Diapason supports an optional Vim-style prompt editor.
   previews a snapshot modal, and `Ctrl+X` sends an interrupt to the selected
   job.
 - Pressing `Enter` on an empty draft opens `/jobs` when active jobs exist;
-  otherwise Diapason keeps the normal empty-enter behavior.
+  otherwise Diapason keeps the normal empty-enter behaviour.
 
 ## Active Run Steering
 
