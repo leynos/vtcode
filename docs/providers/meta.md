@@ -49,7 +49,7 @@ function tools, structured output, multimodal input, and reasoning effort
 controls through Meta's OpenAI-compatible Chat Completions API.
 
 See the
-[Meta model catalog](https://developer.meta.com/ai/models), [Chat Completions protocol](https://dev.meta.ai/docs/protocols/chat-completions.md),
+[Meta model catalogue](https://developer.meta.com/ai/models), [Chat Completions protocol](https://dev.meta.ai/docs/protocols/chat-completions.md),
 and [authentication guide](https://dev.meta.ai/docs/authentication.md) for
 provider-side details.
 

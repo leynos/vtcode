@@ -13,7 +13,7 @@ For the complete runtime lifecycle mapping, see
 
 `diapason schedule` uses this same exec runtime for durable prompt tasks. When
 a durable scheduled prompt fires, Diapason launches a fresh `diapason exec` run
-in the configured workspace and records the resulting status and artifacts. For
+in the configured workspace and records the resulting status and artefacts. For
 reminders, see [Scheduled Tasks](./scheduled-tasks.md).
 
 ## Launching exec mode
@@ -68,7 +68,7 @@ the same env-var works across every autonomous entry point.
 ## Dry-run mode
 
 Use `--dry-run` to force read-only execution while still allowing the agent to
-analyze and plan:
+analyse and plan:
 
 ```bash
 diapason exec --dry-run "identify required code changes for adding OAuth refresh token support"
@@ -91,7 +91,7 @@ first completion-sounding assistant message.
 
 When a run starts, Diapason uses `task_tracker` state as the completion
 contract. If the model has not created a tracker yet, exec mode creates an
-internal three-step scaffold (`analyze`, `change`, `verify`) and persists it
+internal three-step scaffold (`analyse`, `change`, `verify`) and persists it
 through the existing task-tracker files under `.diapason/`.
 
 Completion is accepted only when:

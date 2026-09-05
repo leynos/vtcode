@@ -19,7 +19,7 @@ The guided setup is available from the TUI:
 - The wizard configures `/edit`, `Ctrl+E` when the prompt is empty, and
   single-click file links in the TUI.
 - After saving editor settings, the flow can also take you to
-  `/config file_opener` for ANSI hyperlink URI behavior.
+  `/config file_opener` for ANSI hyperlink URI behaviour.
 - In the custom-command step, pressing `Enter` on an empty inline input keeps
   the displayed default command.
 
@@ -170,7 +170,7 @@ The `suspend_tui = true` setting (recommended) ensures:
 3. Pending events are drained (prevents input garbage)
 4. Raw mode is disabled for the editor
 5. Terminal state is restored when the editor closes
-6. Screen is cleared to remove artifacts
+6. Screen is cleared to remove artefacts
 
 This prevents terminal corruption and input conflicts when switching between VT
 Code and external editors.
@@ -228,7 +228,7 @@ If the editor is in PATH but not detected, set `EDITOR` explicitly:
 export EDITOR=/usr/bin/nvim
 ```
 
-### Editor behavior is unusual
+### Editor behaviour is unusual
 
 - Ensure `suspend_tui = true` to prevent terminal state issues
 - Check if your editor has special terminal requirements

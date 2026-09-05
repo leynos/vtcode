@@ -116,7 +116,7 @@ structured merge.
    ---
 
    Review recent code changes. Focus on correctness, risky assumptions, missing tests,
-   and behavior regressions. Return findings in priority order with file references.
+   and behaviour regressions. Return findings in priority order with file references.
    ```
 
 5. Invoke it with natural language or an explicit mention:
@@ -159,7 +159,7 @@ Use Markdown with YAML frontmatter in `.diapason/agents/` or `.claude/agents/`:
 ```markdown
 ---
 name: debugger
-description: Debugging specialist for failing tests, crashes, and broken behavior. Use proactively when something fails.
+description: Debugging specialist for failing tests, crashes, and broken behaviour. Use proactively when something fails.
 model: inherit
 color: "#4f8fd8"
 maxTurns: 8
@@ -250,7 +250,7 @@ Only `name` and `description` are required.
 | `tools`                                | allowlist of tool names                                               | use Diapason tool ids from `diapason schema tools`, such as `exec_command`, `write_stdin`, `apply_patch`, or advanced `code_search` |
 | `disallowedTools` / `disallowed_tools` | denylist removed from inherited or allowed tools                      | use the same Diapason tool ids as `tools`; applied before runtime filtering                                                         |
 | `model`                                | model override                                                        | defaults to `inherit`; also accepts `small`, `haiku`, `sonnet`, `opus`, or a full model id                                          |
-| `color`                                | TUI color metadata                                                    | optional; accepts simple color names such as `blue`, hex like `#4f8fd8`, or Git-style fg/bg strings such as `white #4f8fd8`         |
+| `color`                                | TUI colour metadata                                                    | optional; accepts simple colour names such as `blue`, hex like `#4f8fd8`, or Git-style fg/bg strings such as `white #4f8fd8`         |
 | `aliases`                              | alternate names for lookup                                            | exact `name` matches still win over aliases                                                                                         |
 | `reasoning_effort`                     | per-agent reasoning override                                          | `effort` and `model_reasoning_effort` are also accepted                                                                             |
 | `permissions`                          | granular permission policy                                            | required; set `default` plus optional `allow`, `ask`, `auto`, and `deny` tool lists                                                 |
@@ -315,7 +315,7 @@ Special model values:
   parent model
 - `haiku`, `sonnet`, and `opus` map to provider-appropriate siblings of the
   active provider
-- Diapason only honors `spawn_agent.model` when the current user turn explicitly
+- Diapason only honours `spawn_agent.model` when the current user turn explicitly
   asks for that model; opportunistic overrides from the model are ignored
 - if `spawn_agent.model` cannot be resolved, Diapason warns, ignores that
   override, and falls back to the agent file's `model` or the parent session
@@ -326,12 +326,12 @@ Special model values:
 When one or more child threads are active, Diapason shows each active agent
 name in the TUI header as a full-background badge.
 
-- Set `color` in the agent definition to control that badge color.
-- If the color string includes only one color, Diapason uses it as the badge
+- Set `colour` in the agent definition to control that badge colour.
+- If the colour string includes only one colour, Diapason uses it as the badge
   background and chooses a readable foreground automatically.
-- If the color string includes both foreground and background, Diapason uses
+- If the colour string includes both foreground and background, Diapason uses
   both directly.
-- If `color` is omitted, Diapason falls back to a default badge color.
+- If `colour` is omitted, Diapason falls back to a default badge colour.
 
 ## Control Capabilities
 
@@ -450,7 +450,7 @@ payload fields such as `parent_session_id`, `child_thread_id`, `agent_name`,
 
 ## Runtime Controls
 
-Subagent runtime behavior lives under `[subagents]` in `config.toml`:
+Subagent runtime behaviour lives under `[subagents]` in `config.toml`:
 
 ```toml
 [subagents]
@@ -461,7 +461,7 @@ default_timeout_seconds = 300
 auto_delegate_read_only = true
 ```
 
-Key behaviors:
+Key behaviours:
 
 - `max_depth = 1` keeps nested delegation off by default; set `max_depth = 2`
   or higher to allow delegated child agents to spawn their own children
@@ -671,7 +671,7 @@ explicitly opt-in:
 - in wide layouts, the sidebar shows a single `Local Agents` section instead of
   separate live-agent and subprocess sections
 - with an empty composer, `Down` opens the Local Agents drawer; otherwise
-  `Down` keeps its normal history behavior
+  `Down` keeps its normal history behaviour
 - inside the drawer, `Enter` inspects the selected item, `Alt+O` opens its
   transcript or archive, `Ctrl+K` requests a stop, and `Ctrl+X` force-cancels a
   background subprocess

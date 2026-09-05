@@ -10,7 +10,7 @@ diapason's terminal styling system using `anstyle-git` and `anstyle-ls` crates.
 Comprehensive research on `anstyle-git` and `anstyle-ls` crates:
 
 - What each crate does
-- How they parse color configurations
+- How they parse colour configurations
 - Current diapason styling architecture
 - Recommended improvements
 - Benefits and risks
@@ -39,9 +39,9 @@ Improving diapason's styling system to:
 
 1. Support **full ANSI text effects** (bold, dim, italic, underline,
    strikethrough, reverse)
-2. **Parse standard configs**: Git `.git/config` colors and `LS_COLORS`
+2. **Parse standard configs**: Git `.git/config` colours and `LS_COLORS`
    environment variable
-3. **Support background colors** in text styling
+3. **Support background colours** in text styling
 4. **Leverage ecosystem tools** instead of custom parsing code
 
 ### Key Benefits
@@ -50,7 +50,7 @@ Improving diapason's styling system to:
 | ----------------- | ----------------- | ---------------------------------------------------- |
 | Text Effects      | bold, italic      | bold, dim, italic, underline, strikethrough, reverse |
 | Config Sources    | Hard-coded themes | Git config, LS_COLORS, custom files                  |
-| Background Colors | Unsupported       | Full support                                         |
+| Background Colours | Unsupported       | Full support                                         |
 | Code Quality      | Custom parsing    | Leverage `anstyle-git`, `anstyle-ls`                 |
 
 ### Timeline
@@ -94,7 +94,7 @@ TUI Rendering (Terminal Output)
 - Theme definitions: `crates/codegen/diapason-core/src/ui/theme.rs`
 - Style conversion: `crates/codegen/diapason-core/src/ui/tui/style.rs`
 - Style types: `crates/codegen/diapason-core/src/ui/tui/types.rs`
-- File coloring:
+- File colouring:
   `crates/codegen/diapason-core/src/ui/tui/session/file_palette.rs`
 - Diff rendering: `crates/codegen/diapason-core/src/ui/diff_renderer.rs`
 - Main theme: `crates/codegen/diapason-core/src/ui/styled.rs`
@@ -111,7 +111,7 @@ TUI Rendering (Terminal Output)
 - [anstyle-git crate docs](https://docs.rs/anstyle-git/)
 - [anstyle-ls crate docs](https://docs.rs/anstyle-ls/)
 - [anstyle crate docs](https://docs.rs/anstyle/)
-- [Git color configuration](https://git-scm.com/book/en/v2/Git-Customization-Git-Configuration#Colors)
+- [Git colour configuration](https://git-scm.com/book/en/v2/Git-Customization-Git-Configuration#Colors)
 - [LS_COLORS format](https://linux.die.net/man/5/dir_colors)
 - [WCAG Contrast Requirements](https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum.html)
 

@@ -11,7 +11,7 @@ The pod manager keeps a small amount of state under the user state directory's
 
 - `state.json` stores the active pod, running model names, ports, PIDs, and GPU
   assignments.
-- `catalog.json` stores the model/profile catalog used by `pods known-models`
+- `catalog.json` stores the model/profile catalogue used by `pods known-models`
   and `pods start`.
 
 The current implementation is SSH-only. Diapason uploads a run script and a
@@ -44,7 +44,7 @@ Launches a model on the active pod.
 - `--ssh` provides the SSH target used for all remote operations.
 - `--gpu` entries define the visible GPU inventory as `ID:NAME`.
 - `--gpus` requests a specific GPU count when matching a profile.
-- `--profile` forces a catalog profile when you do not want automatic selection.
+- `--profile` forces a catalogue profile when you do not want automatic selection.
 - `--memory` and `--context` override the profile's default vLLM arguments.
 
 ### `list`
@@ -62,7 +62,7 @@ Streams the remote log file for the selected model.
 
 ### `known-models`
 
-Splits the catalog into compatible and incompatible profiles for the active
+Splits the catalogue into compatible and incompatible profiles for the active
 pod. Compatibility is based on the pod's GPU inventory and the profile's GPU
 requirements.
 
@@ -71,11 +71,11 @@ requirements.
 Stops a single model or every tracked model on the active pod, then updates the
 persisted state.
 
-## Behavior Notes
+## Behaviour Notes
 
 - The command family is isolated from the existing `models` commands.
 - The first version does not add config-file support or TUI controls.
-- The bundled catalog is intentionally editable at runtime by replacing
+- The bundled catalogue is intentionally editable at runtime by replacing
   `catalog.json`.
 - The default launch flow assumes `vllm serve`, but the command template is
   stored per profile.

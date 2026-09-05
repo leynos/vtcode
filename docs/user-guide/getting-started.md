@@ -108,7 +108,7 @@ Choose one of the supported LLM providers:
     configure `provider = "merge-gateway"`.
   - Default model: `default_routing`; curated routes include `openai/gpt-5.5`,
     `anthropic/claude-opus-5`, and `google/gemini-3.6-flash`.
-  - Native Requests API and authenticated `/v1/models` catalog discovery are
+  - Native Requests API and authenticated `/v1/models` catalogue discovery are
     used by default; see the
     [Merge Gateway provider guide](../providers/merge-gateway.md) for legacy
     `/v1/openai` compatibility.
@@ -277,11 +277,11 @@ numerous enhancements:
 ### Visual Improvements
 
 - Modern, clean interface with rounded borders and improved styling
-- Customizable color themes with Catppuccin color palette integration
+- Customizable colour themes with Catppuccin colour palette integration
 - Enhanced message formatting with distinct markers for different message types
-- Color-coded tool banners highlight execution summaries, detailed output, and
+- Colour-coded tool banners highlight execution summaries, detailed output, and
   MCP status updates
-- Real-time command output display with proper ANSI color support
+- Real-time command output display with proper ANSI colour support
 
 ### Interaction Features
 
@@ -295,7 +295,7 @@ numerous enhancements:
 - Real-time PTY (pseudo-terminal) integration for running shell commands
 - Dedicated terminal output panels with command summaries
 - Streaming output display for long-running processes
-- Proper handling of ANSI escape sequences and colors
+- Proper handling of ANSI escape sequences and colours
 
 ### Navigation & Controls
 
@@ -470,7 +470,7 @@ perfect for shell scripting and piping.
 
 ```bash
 # Comprehensive project analysis
-diapason analyze
+diapason analyse
 
 # Get detailed information
 diapason info

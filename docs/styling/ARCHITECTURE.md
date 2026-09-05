@@ -11,7 +11,7 @@ Visual diagrams and architectural details for the anstyle integration.
   Git Config            LS_COLORS Env Var     Custom Config   
   .git/config           "di=01;34:ln=01:36"  .diapasonrc
                                                               
- [color "diff"]                              ---              
+ [colour "diff"]                              ---
  new = green bold                                             
  old = red                                                    
 
@@ -31,7 +31,7 @@ Visual diagrams and architectural details for the anstyle integration.
                     (ANSI abstraction)  
                                         
                     - fg_color          
-                    - bg_color          
+                    - bg_colour
                     - effects (bold,    
                       dim, italic,      
                       underline, etc)   
@@ -46,8 +46,8 @@ Visual diagrams and architectural details for the anstyle integration.
                InlineTextStyle (NEW)             
                                                  
             
-           color: Option<AnsiColorEnum>       
-           bg_color: Option<AnsiColorEnum>     ← NEW
+           colour: Option<AnsiColourEnum>
+           bg_colour: Option<AnsiColourEnum>     ← NEW
            effects: Effects (bitmask)           ← NEW
             
          
@@ -88,7 +88,7 @@ User sets LS_COLORS env var
     
     → "di=01;34:ln=01;36:ex=01;32"
     
-    → ThemeConfigParser::parse_ls_colors()
+    → ThemeConfigParser::parse_ls_colours()
     
     → anstyle_ls::parse() [crate function]
     
@@ -97,8 +97,8 @@ User sets LS_COLORS env var
             → convert_style()
                     
                     → InlineTextStyle {
-                        color: Some(Blue),
-                        bg_color: None,
+                        colour: Some(Blue),
+                        bg_colour: None,
                         effects: BOLD
                     }
                         
@@ -130,16 +130,16 @@ diapason-core
      tui/
         style.rs (MODIFIED)
            convert_style()       [updated]
-           convert_ansi_color()  [existing]
+           convert_ansi_colour()  [existing]
            ratatui_style_from_inline()  [updated]
        
         types.rs (MODIFIED)
-           InlineTextStyle {color, bg_color, effects}  [expanded]
+           InlineTextStyle {colour, bg_colour, effects}  [expanded]
        
         theme_parser.rs (NEW)
            ThemeConfigParser
                parse_git_style()
-               parse_ls_colors()
+               parse_ls_colours()
                parse_flexible()
        
         mod.rs (MODIFIED)
@@ -147,12 +147,12 @@ diapason-core
        
         session/
            file_palette.rs (FUTURE: Phase 3)
-           FileColorizer [not yet added]
+           FileColourizer [not yet added]
        
         tui/ (existing, moved to diapason-ui)
     
      diff_renderer.rs (FUTURE: Phase 2)
-         GitColorConfig [not yet added]
+         GitColourConfig [not yet added]
 
 External Crates (Cargo.toml):
  anstyle = "1.0"         (existing)
@@ -174,11 +174,11 @@ ______________________________________________________________________
 | -------------------- | --------- | --------------------------------- |
 | **Bold**             | Yes       | Explicit `bold: bool` field       |
 | **Italic**           | Yes       | Explicit `italic: bool` field     |
-| **Dim**              | No        | Not modeled                       |
-| **Underline**        | No        | Not modeled                       |
-| **Strikethrough**    | No        | Not modeled                       |
-| **Reverse**          | No        | Not modeled                       |
-| **Background Color** | No        | InlineTextStyle has no `bg_color` |
+| **Dim**              | No        | Not modelled                       |
+| **Underline**        | No        | Not modelled                       |
+| **Strikethrough**    | No        | Not modelled                       |
+| **Reverse**          | No        | Not modelled                       |
+| **Background Colour** | No        | InlineTextStyle has no `bg_colour` |
 
 ### After Integration (Phase 1)
 
@@ -190,7 +190,7 @@ ______________________________________________________________________
 | **Underline**        | Yes       | From `Effects::UNDERLINE` bitmask           |
 | **Strikethrough**    | Yes       | From `Effects::STRIKETHROUGH` bitmask       |
 | **Reverse**          | Yes       | From `Effects::REVERSE` bitmask             |
-| **Background Color** | Yes       | New `bg_color: Option<AnsiColorEnum>` field |
+| **Background Colour** | Yes       | New `bg_colour: Option<AnsiColourEnum>` field |
 
 ______________________________________________________________________
 
@@ -200,8 +200,8 @@ ______________________________________________________________________
 
 ```rust
 pub struct InlineTextStyle {
-    pub color: Option<AnsiColorEnum>,
-    pub bold: bool,        // ← Limited effect modeling
+    pub colour: Option<AnsiColourEnum>,
+    pub bold: bool,        // ← Limited effect modelling
     pub italic: bool,      // ← Only 2 effects
 }
 ```
@@ -210,8 +210,8 @@ pub struct InlineTextStyle {
 
 ```rust
 pub struct InlineTextStyle {
-    pub color: Option<AnsiColorEnum>,          // Foreground
-    pub bg_color: Option<AnsiColorEnum>,       // ← NEW: Background
+    pub colour: Option<AnsiColourEnum>,          // Foreground
+    pub bg_colour: Option<AnsiColourEnum>,       // ← NEW: Background
     pub effects: Effects,                      // ← NEW: Full bitmask
 }
 ```
@@ -230,7 +230,7 @@ ______________________________________________________________________
 ### Current (Manual Parsing)
 
 ```
-Hard-coded colors → ThemePalette → convert_ansi_color() → InlineTextStyle
+Hard-coded colours → ThemePalette → convert_ansi_colour() → InlineTextStyle
                  (no parsing)    (limited)
 ```
 
@@ -252,7 +252,7 @@ ______________________________________________________________________
 | `session/input.rs`      | 215-217  | Update style field access | Low - Simple field rename      |
 | `session/header.rs`     | 234, 261 | Add to style tuple        | Low - Tuple context            |
 | `session/navigation.rs` | 251, 286 | Update fallback logic     | Low - Conditional changes      |
-| `session/slash.rs`      | 371, 380 | Update color merge        | Low - Method calls             |
+| `session/slash.rs`      | 371, 380 | Update colour merge        | Low - Method calls             |
 | `types.rs`              | 82-97    | Core struct expansion     | Medium - Must update default() |
 
 **Total Call Sites**: ~15-20 across 5-6 files **Risk Level**: Low (mostly
@@ -262,21 +262,21 @@ ______________________________________________________________________
 
 ## Configuration Resolution Priority (Future: Phase 2+)
 
-When styling a file or element, resolve colors in this order:
+When styling a file or element, resolve colours in this order:
 
 ```
 1. Explicit style (e.g., error message → red)
    ↓ (not specified)
 2. LS_COLORS (if available on system)
    ↓ (not available or key not found)
-3. Git config [color] section
+3. Git config [colour] section
    ↓ (not configured)
 4. Diapason theme (ThemePalette)
    ↓ (missing)
-5. Terminal default color
+5. Terminal default colour
 ```
 
-This allows layered customization: system colors → git colors → diapason theme
+This allows layered customization: system colours → git colours → diapason theme
 → fallback.
 
 ______________________________________________________________________
@@ -286,7 +286,7 @@ ______________________________________________________________________
 ### Safe Migration Path
 
 ```
-Step 1: Add new fields (bg_color, effects) to InlineTextStyle
+    Step 1: Add new fields (bg_colour, effects) to InlineTextStyle
 Step 2: Update constructor to use new fields
 Step 3: Create helper methods (bold(), italic(), etc.)
 Step 4: Update all InlineTextStyle { ... } expressions
@@ -322,7 +322,7 @@ Total style pipeline:              ~260 ns per call
 
 ```
 Immutable sources (cache forever):
- Git config colors      → Cache in lazy_static
+ Git config colours     → Cache in lazy_static
  Theme definitions      → Already cached
  LS_COLORS env var      → Cache at startup
 
@@ -351,7 +351,7 @@ User Input (config string)
     → Never panic, always render something
 ```
 
-**Design principle**: Styling should never crash the TUI. Invalid colors →
+**Design principle**: Styling should never crash the TUI. Invalid colours →
 fallback → continue.
 
 ______________________________________________________________________
@@ -361,20 +361,20 @@ ______________________________________________________________________
 ```
 Unit Tests (crates/codegen/diapason-core/src/ui/tui/)
  test_convert_style
-    Bold color conversion
-    Background color handling
+    Bold colour conversion
+    Background colour handling
     Effect bitmask handling
 
  test_ratatui_style_from_inline
-    Color mapping to ratatui
+    Colour mapping to ratatui
     Modifier application
-    Fallback color logic
+    Fallback colour logic
 
  test_theme_parser
      parse_git_style (valid inputs)
      parse_git_style (error cases)
-     parse_ls_colors (valid inputs)
-     parse_ls_colors (error cases)
+     parse_ls_colours (valid inputs)
+     parse_ls_colours (error cases)
      parse_flexible (fallback logic)
 
 Integration Tests (diapason-core/examples/)
@@ -386,8 +386,8 @@ Integration Tests (diapason-core/examples/)
 
 Visual Regression Tests (manual)
  Compare TUI output (before/after)
- File browser coloring
- Diff display colors
+ File browser colouring
+ Diff display colours
  Error message styling
  Different terminal emulators (iTerm2, Terminal.app, Linux)
 ```
@@ -412,14 +412,14 @@ Phase 1: Foundation (2-3 hours)
     Validate with cargo test + clippy
 
 Phase 2: Integration (2-3 hours)
- Week 2: Git Color Config
-    diff_renderer.rs (GitColorConfig)
-    session/header.rs (Git status colors)
+ Week 2: Git Colour Config
+    diff_renderer.rs (GitColourConfig)
+    session/header.rs (Git status colours)
     Integration tests
 
 Phase 3: Features (3-4 hours)
- Week 3: System Colors
-    session/file_palette.rs (FileColorizer)
+ Week 3: System Colours
+    session/file_palette.rs (FileColourizer)
     LS_COLORS env var parsing
     Config file support (.diapasonrc)
 ```
