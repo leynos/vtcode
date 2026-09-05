@@ -1113,7 +1113,7 @@ Outro"#
     #[test]
     fn build_interview_args_synthesizes_alignment_question_with_hints() {
         let text = r#"
-I've analyzed the current system prompt architecture.
+I've analysed the current system prompt architecture.
 The plan is drafted. I need clarification on 3 key decisions before finalizing the implementation approach.
 Key findings:
 • Redundancy exists between prompt variants (tool guidance, bias for action warnings)

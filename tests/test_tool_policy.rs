@@ -255,7 +255,7 @@ fn main() -> Result<()> {
     println!("• Automatic addition of new tools as 'prompt'");
     println!("• Removal of deleted tools from configuration");
     println!("• Policy setting and retrieval");
-    println!("• Status display with color coding");
+    println!("• Status display with colour coding");
 
     Ok(())
 }

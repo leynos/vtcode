@@ -137,7 +137,9 @@ The complete PR train is not yet delivered.
   10,081 workspace tests with 17 skipped, 67 harness tests, the optional
   ast-grep skip, and advisory. Logs use `ACTION-manifest` with the engineering
   branch suffix.
-- `harden-lint-spelling-user-docs` is active, based on #33.
+- [Draft PR #34](https://github.com/leynos/vtcode/pull/34) publishes
+  `harden-lint-spelling-user-docs` at
+  `b1328dc3fedc00e01da8a8688abceb19a2a53f21`, based on #33.
   It corrects 94 user, reference, and provider documents, including native
   colour aliases in examples. Fixed URLs, APIs, configuration keys, and
   protocol names remain intact. All seven original code gates recorded exit
@@ -149,6 +151,30 @@ The complete PR train is not yet delivered.
   path, mapped-line, and rule identities; five inherited instances removed.
   Two residual Oxford spellings found by reconnaissance are queued for the
   next source-fix layer before the final spelling scan and gate.
+- [Draft PR #38](https://github.com/leynos/vtcode/pull/38) tracks
+  `harden-lint-spelling-residual`; the rebased candidate targets
+  [Draft PR #34](https://github.com/leynos/vtcode/pull/34) at
+  `b1328dc3fedc00e01da8a8688abceb19a2a53f21`. The original residual validation
+  evidence below remains historical against its previous parent. This candidate
+  has completed fresh gates and supplement provenance checks, recorded below.
+  A fresh scan using
+  the reviewed external configuration found 1,086 candidates across 310 files.
+  These include fixed external names and intentional malformed inputs, so
+  classification precedes source fixes and narrow contract exemptions.
+  The scan used typos 1.50.1 and exited 2; its log is
+  `/tmp/spelling-measure-2-vtcode-df12-onboarding-harden-lint-spelling-residual.out`.
+  All seven ordered workspace gates passed: formatting, lint, build,
+  10,081 tests with 17 skipped, 67 harness tests, the optional ast-grep skip,
+  and advisory. Logs use `ACTION-manifest` with this branch suffix.
+  WebMCP typecheck, 41 tests, and build passed; VS Code bundled successfully;
+  Python compilation and shell syntax checks passed. The excluded Zed crate
+  passed its WASM check. Exact-parent comparisons found no added supplementary
+  failures: Zed retains 83 formatting hunks and three cache Arc-count test
+  failures (149 tests pass); VS Code retains 578 TypeScript diagnostics.
+  Markdown retains 3,384 inherited findings against 3,390 in the parent,
+  with no added mapped identities; Nixie passed all 57 changed documents.
+  A refined offline spelling scan found 335 candidates across 115 files;
+  further native sample and command-skill corrections precede the gate.
 - Remaining spelling changes are preserved separately while each layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
@@ -157,6 +183,8 @@ The complete PR train is not yet delivered.
   untouched. It will eventually rebase onto the lint train.
 - The user waived all Lody-session requirements. Upper PRs remain draft and
   stacked, with predecessor/successor links, reviewer entrypoints and gate evidence.
+  The user marked #20 ready for review and applied a GitHub stack to the
+  published train; preserve both when adding layers.
 
 ## Validation evidence
 
@@ -578,3 +606,40 @@ workflow tests, then `check-fmt`, `test`, `typecheck`, `lint`, `markdownlint`,
 and `nixie` sequentially. The PR #20 review loop remains a separate task under
 its own configuration. Distinct worktrees use separate Cargo target directories
 while retaining the shared default Cargo package cache.
+
+## PR 38 review restack
+
+The residual layer is rebased onto PR #34 `b1328dc3f`. All eight sequential
+code gates passed: formatting, lint, build, type checking, 10,085 workspace
+tests (17 skipped), 67 harness tests, the optional ast-grep skip, and advisory.
+The optional scan is unavailable, rather than a completed scan. Gate logs use
+`ACTION-pr38-restack-1` with the residual branch suffix.
+
+Markdownlint checked 57 changed documents: 3,384 current diagnostics versus
+3,390 in the final parent. Source-line mapping found no added identities and
+six removed instances. The rewritten parser-guide subtitle retains its existing
+MD036 finding; its corresponding source line was checked explicitly. Three
+obsolete list entries and three unsupported configuration rows account for the
+removed findings. These inherited failures are not a passing Markdownlint
+gate. Nixie passed all 57 files. The mapped comparison is
+`/tmp/vtcode-pr38-md-identity-root.json`.
+
+The original Zed, VS Code, and WebMCP supplement results above are carried
+forward, not rerun. Exact blob and mode comparison found identical 16-path
+changes across the original and rebased transitions. The four inherited
+WebMCP and Cargo differences match the parent transition. Evidence is in
+`/tmp/pr38-supplement-parity-final.json`; inherited supplement failures remain
+reported separately from the passing workspace gates.
+
+## Additional GitHub Actions validation requirement
+
+Import Netsuke's yamllint and actionlint validation, including hardening from
+revision `d0bb051fac02416cb38a8e76865b1b569d5ec163`. Preserve the existing
+workflow-security checks, require yamllint before actionlint, and test failure
+propagation. Pin yamllint 1.38.0 and actionlint 1.7.12; verify the actionlint
+archive before installation and use the reviewed installer revision.
+
+Workflow repairs precede the gate that requires them. The offline candidate
+and process-contract tests are under review and are not delivered. This
+addition retains mdtablefix 0.5.1, the requested shared-actions revision, and
+the project's unchanged primary Rust toolchain.

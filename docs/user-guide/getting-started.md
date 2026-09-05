@@ -366,7 +366,7 @@ vtcode chat
 
 The agent will greet you and await your instructions. Try asking:
 
--   "Analyze this codebase"
+-   "Analyse this codebase"
 -   "Add error handling to the user authentication"
 -   "Refactor this function to be more readable"
 -   "Create a new API endpoint for user registration"

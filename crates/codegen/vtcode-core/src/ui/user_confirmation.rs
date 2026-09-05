@@ -137,7 +137,7 @@ impl UserConfirmation {
             .map_err(Into::into)
     }
 
-    /// Display a warning message and wait for user acknowledgment
+    /// Display a warning message and wait for user acknowledgement
     #[cold]
     pub fn show_warning(message: &str) -> Result<()> {
         println!("{}", style(" Warning").red().bold());

@@ -354,7 +354,7 @@ import matplotlib.pyplot as plt
         # Ultra-concise SKILL.md (target: 25-30 lines)
         skill_md = """---
 name: excel-analysis-optimized
-description: Analyze Excel spreadsheets, create pivot tables, generate charts. Use for sales data, financial reports, data analysis. Use when user mentions Excel, spreadsheet, or .xlsx files.
+description: Analyse Excel spreadsheets, create pivot tables, generate charts. Use for sales data, financial reports, data analysis. Use when user mentions Excel, spreadsheet, or .xlsx files.
 version: 2.0.0
 author: VT Code Team
 category: data_analysis
@@ -559,8 +559,8 @@ This demonstration skill:
         
         print(f" Created token optimization demo (85% token savings)")
     
-    def analyze_skill_efficiency(self, skill_name: str) -> TokenMetrics:
-        """Analyze token efficiency of a skill."""
+    def analyse_skill_efficiency(self, skill_name: str) -> TokenMetrics:
+        """Analyse token efficiency of a skill."""
         
         skill_dir = self.skills_dir / skill_name
         if not skill_dir.exists():
@@ -618,7 +618,7 @@ This demonstration skill:
         for skill_dir in self.skills_dir.iterdir():
             if skill_dir.is_dir() and (skill_dir / "SKILL.md").exists():
                 try:
-                    metrics = self.analyze_skill_efficiency(skill_dir.name)
+                    metrics = self.analyse_skill_efficiency(skill_dir.name)
                     
                     result = {
                         'skill': skill_dir.name,
@@ -641,7 +641,7 @@ This demonstration skill:
                     print(f"  Status: {result['status']}")
                     
                 except Exception as e:
-                    print(f"  Could not analyze {skill_dir.name}: {e}")
+                    print(f"  Could not analyse {skill_dir.name}: {e}")
         
         return results
     
@@ -794,7 +794,7 @@ if __name__ == "__main__":
         
         skill_md = """---
 name: data-analysis-pipeline
-description: Complete data analysis pipeline: extract, clean, analyze, visualize. Requires data-processing-utils skill.
+description: Complete data analysis pipeline: extract, clean, analyse, visualize. Requires data-processing-utils skill.
 version: 1.0.0
 dependencies: ["data-processing-utils"]
 ---
@@ -815,7 +815,7 @@ vtcode skill run data-processing-utils:extract --source database.db --query "SEL
 vtcode skill run data-processing-utils:clean --input raw_data.csv --config cleaning_rules.json
 ```
 
-### 3. Analyze (this skill)
+### 3. Analyse (this skill)
 ```bash
 python scripts/analyze.py --cleaned-data cleaned_data.csv --config analysis.json
 ```
@@ -944,7 +944,7 @@ TEST_CASES = [
                 {
                     "name": "pipeline_orchestration",
                     "skills": ["data-analysis-pipeline", "data-processing-utils"],
-                    "query": "analyze sales data",
+                    "query": "analyse sales data",
                     "expected_dependencies": ["data-processing-utils"],
                     "success_criteria": [
                         "dependencies_resolved",
@@ -1004,7 +1004,7 @@ TEST_CASES = [
         # Summary
         print("\n" + "=" * 60)
         print(" Benchmark Summary:")
-        print(f"  Skills analyzed: {len(results)}")
+        print(f"  Skills analysed: {len(results)}")
         print(f"  Optimized: {len(results) - len(needs_optimization)}")
         print(f"  Need work: {len(needs_optimization)}")
         

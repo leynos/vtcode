@@ -12,7 +12,7 @@ Shared primitives and helper types reused across VT Code crates.
 
 This crate provides the foundational building blocks that both the core
 agent library (`vtcode-core`) and the terminal UI (`vtcode-ui`) depend on.
-Modules include ANSI processing, diff rendering, file traversal, color
+Modules include ANSI processing, diff rendering, file traversal, colour
 policy, error classification, and shared protocol types.
 
 Items live here (rather than `vtcode-ui`) when they are consumed by
@@ -28,7 +28,7 @@ See `docs/modules/vtcode_commons_reference.md` for ready-to-use adapters.
 |---|---|
 | `ansi`, `ansi_capabilities`, `ansi_codes` | ANSI escape helpers and terminal capability detection |
 | `async_utils` | Async convenience wrappers |
-| `colors`, `color_policy`, `color256_theme` | Color utilities and theming |
+| `colours`, `colour_policy`, `colour256_theme` | Colour utilities and theming |
 | `diff`, `diff_paths`, `diff_preview`, `diff_theme` | Unified diff rendering |
 | `errors`, `error_category` | Error formatting, reporting, and retry classification |
 | `formatting` | Text formatting helpers |

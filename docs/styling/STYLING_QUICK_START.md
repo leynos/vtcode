@@ -102,7 +102,7 @@ use anstyle::Color;
 Color::Ansi(AnsiColor::Red)           // Standard ANSI colour
 Color::Ansi(AnsiColor::BrightRed)     // Bright ANSI colour
 Color::Rgb(255, 0, 0)                 // RGB colour
-Color::Ansi256(196)                   // 256-color indexed
+Color::Ansi256(196)                   // 256-colour indexed
 ```
 
 ## Common Patterns

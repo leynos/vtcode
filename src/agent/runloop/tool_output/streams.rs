@@ -60,7 +60,7 @@ use vtcode_core::tools::tool_intent;
 use vtcode_core::ui::markdown;
 use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
-use super::files::colourise_diff_summary_line;
+use super::files::colourize_diff_summary_line;
 use super::styles::{GitStyles, LsStyles, select_line_style};
 #[path = "streams_helpers.rs"]
 mod streams_helpers;
@@ -413,7 +413,7 @@ pub(crate) fn render_diff_content_block(
         }
 
         if let Some(summary_line) =
-            colourise_diff_summary_line(&display_buffer, renderer.capabilities().supports_colour())
+            colourize_diff_summary_line(&display_buffer, renderer.capabilities().supports_colour())
         {
             render_preview_line(
                 renderer,

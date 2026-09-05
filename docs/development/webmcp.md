@@ -125,7 +125,7 @@ variables `WEBMCP_ORIGIN_TRIAL_TOKEN` and `WEBMCP_ORIGIN_TRIAL_TOKENS` to those
 build variables. Each token must be registered for the exact page origin; when
 tokens are absent, feature detection, the Chrome testing flag, and the
 in-memory fallback remain the supported paths. The Pages workflow deploys only
-GitHub Pages; a separately published ChatGPT Site artifact must receive the
+GitHub Pages; a separately published ChatGPT Site artefact must receive the
 same build variables from its own publisher if origin-trial access is needed.
 
 ## Transport and pairing
@@ -134,7 +134,7 @@ same build variables from its own publisher if origin-trial access is needed.
 
 The protocol uses `VersionedThreadEvent` for runtime events. `WebmcpEventHub` adds a bridge sequence, retains a bounded replay window for reconnects, reports sequence gaps, and removes clients whose bounded queue is full. Lifecycle events are not silently dropped for a slow client.
 
-The server rejects malformed JSON, binary frames, oversized frames, requests over the in-flight limit, disallowed origins, expired/revoked sessions, unsupported adapter operations, and unauthorised mutation requests. Mutation responses remain pending until the adapter reports a result so a transport timeout cannot be mistaken for a failed write. Adapter errors are returned as a generic runtime failure so filesystem details do not become a transport side channel; an intentionally unsupported operation uses the `unsupported` error code.
+The server rejects malformed JSON, binary frames, oversized frames, requests over the in-flight limit, disallowed origins, expired/revoked sessions, unsupported adapter operations, and unauthorized mutation requests. Mutation responses remain pending until the adapter reports a result so a transport timeout cannot be mistaken for a failed write. Adapter errors are returned as a generic runtime failure so filesystem details do not become a transport side channel; an intentionally unsupported operation uses the `unsupported` error code.
 
 An authenticated `status` response includes a `settings` object containing the
 non-secret listener host/port, pairing lease, frame limit, in-flight limit, and

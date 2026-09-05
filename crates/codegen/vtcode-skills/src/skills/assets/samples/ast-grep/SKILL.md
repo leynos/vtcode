@@ -786,7 +786,7 @@ Treat it as optional rewrite material only where the project explicitly prefers 
 - Regex syntax follows Rust `regex`, not PCRE. Do not assume look-around or backreferences are available, and usually pair `regex` with `kind` or `pattern` so the expensive text check only runs on the right node shapes.
 - `nthChild` accepts a number, an `An+B` string, or an object with `position`, `reverse`, and `ofRule`. Counting is 1-based and only considers named siblings.
 - `range` matches by source position with 0-based `line` and `column`; `start` is inclusive and `end` is exclusive.
-- Relational rules describe structure around the target node. Use `inside`, `has`, `follows`, and `precedes` when the match depends on ancestors, descendants, or neighboring nodes.
+- Relational rules describe structure around the target node. Use `inside`, `has`, `follows`, and `precedes` when the match depends on ancestors, descendants, or neighbouring nodes.
 - Read relational rules as: target node relates to surrounding node. The top-level rule still matches the target; the relational subrule matches the surrounding node that filters it.
 - Relational subrules can themselves use `pattern`, `kind`, composites, and captures. Those captures can still be referenced later in `fix`, which is a practical way to extract surrounding syntax while keeping the target node as the match.
 - Add relational `field` when the surrounding node matters by semantic role, not just by shape. `field` only applies to `inside` and `has`.

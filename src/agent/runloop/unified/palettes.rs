@@ -116,7 +116,7 @@ pub(crate) fn show_theme_palette(renderer: &mut AnsiRenderer, mode: ThemePalette
 }
 
 fn theme_search_value(theme_id: &str, theme_label: &str) -> String {
-    format!("{theme_label} {theme_id} theme appearance colors")
+    format!("{theme_label} {theme_id} theme appearance colours")
 }
 
 pub(crate) fn show_mode_palette(

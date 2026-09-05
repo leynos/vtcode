@@ -1563,7 +1563,7 @@ mod tests {
     }
 
     #[test]
-    fn parallel_support_comes_from_behavior_metadata() {
+    fn parallel_support_comes_from_behaviour_metadata() {
         let registration = registration("parallel_catalogue_tool")
             .with_description("parallel-safe test tool")
             .with_parameter_schema(empty_object_schema())
@@ -2390,7 +2390,7 @@ mod tests {
     /// that would defer (MCP present, over the count threshold, or over the
     /// schema-token budget) is the only non-noisy warning case -- the count/
     /// budget thresholds *triggering* deferral when enabled is correct
-    /// behavior, not a warning condition.
+    /// behaviour, not a warning condition.
     #[test]
     fn catalogue_would_benefit_from_deferral_detects_each_trigger() {
         // Small builtin-only catalogue: no benefit (deferral would not engage).

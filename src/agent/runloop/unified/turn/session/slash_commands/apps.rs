@@ -88,7 +88,7 @@ pub(crate) async fn handle_open_donate_links(ctx: SlashCommandContext<'_>) -> Re
         footer_hint: Some("Esc cancels".to_string()),
         items: vec![
             InlineListItem {
-                title: "Sponsor VT Code developement".to_string(),
+                title: "Sponsor VT Code development".to_string(),
                 subtitle: Some(DONATE_URL.to_string()),
                 badge: Some("Support".to_string()),
                 indent: 0,
@@ -96,7 +96,7 @@ pub(crate) async fn handle_open_donate_links(ctx: SlashCommandContext<'_>) -> Re
                 search_value: None,
             },
             InlineListItem {
-                title: "Sponsor VT Code developement on GitHub".to_string(),
+                title: "Sponsor VT Code development on GitHub".to_string(),
                 subtitle: Some(PROJECT_URL.to_string()),
                 badge: Some("GitHub".to_string()),
                 indent: 0,

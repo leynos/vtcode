@@ -58,7 +58,7 @@ impl ThemeManager {
             if git_config_path.exists() {
                 match GitColourConfig::from_git_config(&git_config_path) {
                     Ok(config) => {
-                        tracing::info!("Loaded Git color configuration from: {}", git_config_path.display());
+                        tracing::info!("Loaded Git colour configuration from: {}", git_config_path.display());
                         Some(config)
                     }
                     Err(e) => {

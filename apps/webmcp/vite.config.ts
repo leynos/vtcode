@@ -47,7 +47,7 @@ export function webmcpOriginTrialPlugin(
 }
 
 export default defineConfig({
-  // Both public deployments can serve the same artifact: GitHub Pages beneath
+  // Both public deployments can serve the same artefact: GitHub Pages beneath
   // /VTCode/ and the ChatGPT Site at its host root. Relative assets work for
   // both paths and for the local Vite server.
   base: "./",

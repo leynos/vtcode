@@ -230,8 +230,7 @@ benches/
 src/
  lib.rs                 # Unit tests for library exports
  tools.rs               # Unit tests for tool registry
- tree_sitter/
-     analyzer.rs        # Unit tests for tree-sitter analyzer
+ tree_sitter_runtime.rs # Tree-sitter runtime and unit tests
 ```
 
 ## **Test Profiles & Groups**
@@ -340,17 +339,12 @@ async fn test_exec_command_lists_files() {
 
 ### Tree-sitter Testing
 
-Test code analysis capabilities:
+Tree-sitter runtime coverage lives with
+`crates/codegen/vtcode-core/src/tools/tree_sitter_runtime.rs`; there is no
+`create_test_analyser` helper. Run a focused current test with:
 
-```rust
-#[test]
-fn test_parse_rust_code() {
-    let analyzer = create_test_analyzer();
-
-    let rust_code = r#"fn main() { println!("Hello"); }"#;
-    let result = analyzer.parse(rust_code, LanguageSupport::Rust);
-    assert!(result.is_ok());
-}
+```bash
+cargo nextest run -p vtcode-core tree_sitter_usage_allowlist_is_frozen
 ```
 
 ### Search Functionality Testing

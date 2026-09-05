@@ -35,7 +35,7 @@ concurrency:
 # https://docs.github.com/billing/managing-billing-for-github-actions/about-billing-for-github-actions
 # - Linux builds run on ubuntu-latest using Cross
 # - Windows build is on by default and can be disabled per-run via input
-# - Minimal artifact retention (7 days)
+# - Minimal artefact retention (7 days)
 # - Efficient caching
 
 jobs:
@@ -181,7 +181,7 @@ jobs:
             shasum -a 256 vtcode-${{ inputs.tag }}-${{ matrix.target }}.tar.gz > vtcode-${{ inputs.tag }}-${{ matrix.target }}.sha256
           fi
 
-      - name: Upload Artifacts
+      - name: Upload Artefacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: vtcode-${{ inputs.tag }}-${{ matrix.target }}
@@ -262,7 +262,7 @@ jobs:
           $hash = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLower()
           Set-Content -Path "vtcode-${{ inputs.tag }}-x86_64-pc-windows-msvc.sha256" -Value $hash -NoNewline
 
-      - name: Upload Artifacts
+      - name: Upload Artefacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: vtcode-${{ inputs.tag }}-x86_64-pc-windows-msvc

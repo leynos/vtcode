@@ -20,7 +20,7 @@ const BUF_CAPACITY: usize = 64 * 1024;
 /// through the entire call stack.
 static GLOBAL_WRITER: OnceLock<FlushableWriter> = OnceLock::new();
 
-/// A clonable, thread-safe buffered writer that implements `std::io::Write`
+/// A cloneable, thread-safe buffered writer that implements `std::io::Write`
 /// so it can be passed directly to `tracing_subscriber::fmt::layer().with_writer(..)`.
 #[derive(Clone)]
 pub struct FlushableWriter {

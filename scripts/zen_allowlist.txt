@@ -44,7 +44,7 @@ vtcode-core/src/skills/executor.rs:385 | serde_json serialization of sandbox per
 vtcode-core/src/skills/executor.rs:389 | serde_json::to_value on merged permissions; infallible
 vtcode-core/src/tools/editing/patch/semantic.rs:19 | static regex for semantic identifier parsing
 vtcode-core/src/tools/registry/distributed.rs:50 | OnceCell is initialized after first set() call
-vtcode-core/src/tools/registry/mod.rs:252 | registry self-reference lock is initialised before concurrent access
+vtcode-core/src/tools/registry/mod.rs:252 | registry self-reference lock is initialized before concurrent access
 vtcode-core/src/tools/registry/mod.rs:258 | registry self-reference is set during construction
 vtcode-core/src/tools/registry/executors/cargo_failure_diagnostics.rs:7 | static regex for cargo error selector parsing
 vtcode-core/src/tools/registry/executors/cargo_failure_diagnostics.rs:12 | static regex for cargo fail-line parsing

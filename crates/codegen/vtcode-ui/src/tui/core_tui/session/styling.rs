@@ -183,7 +183,7 @@ impl SessionStyles {
         InlineTextStyle { colour, ..InlineTextStyle::default() }
     }
 
-    /// Get the fallback text color for a message kind
+    /// Get the fallback text colour for a message kind
     pub(crate) fn text_fallback(&self, kind: InlineMessageKind) -> Option<AnsiColourEnum> {
         match kind {
             // Assistant content should be legible and clearly distinct from subdued PTY output.

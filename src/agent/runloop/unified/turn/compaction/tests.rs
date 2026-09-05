@@ -1195,7 +1195,7 @@ fn refresh_session_memory_envelope_prefers_structured_verify_metadata() {
             .join(".vtcode")
             .join("tasks")
             .join("current_task.md"),
-        "# Ship compaction cleanup\n- [x] Analyze current continuity path\n  outcome: Existing envelope flow reviewed.\n- [ ] Update verification preservation\n  verify: cargo check -p vtcode\n- [ ] Run focused regression\n  verify:\n    - cargo test -p vtcode --bin vtcode agent::runloop::unified::turn::compaction::tests::refresh_session_memory_envelope_prefers_structured_verify_metadata -- --exact\n",
+        "# Ship compaction cleanup\n- [x] Analyse current continuity path\n  outcome: Existing envelope flow reviewed.\n- [ ] Update verification preservation\n  verify: cargo check -p vtcode\n- [ ] Run focused regression\n  verify:\n    - cargo test -p vtcode --bin vtcode agent::runloop::unified::turn::compaction::tests::refresh_session_memory_envelope_prefers_structured_verify_metadata -- --exact\n",
     )
     .expect("write task");
 

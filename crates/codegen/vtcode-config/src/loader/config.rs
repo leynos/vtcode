@@ -1089,7 +1089,7 @@ allowed_tools = [
     "grep_file",
 ]
 
-# Require profile acknowledgment before using full auto
+# Require profile acknowledgement before using full auto
 require_profile_ack = true
 
 # Path to full auto profile configuration

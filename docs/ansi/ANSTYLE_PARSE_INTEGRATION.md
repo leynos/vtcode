@@ -1,6 +1,10 @@
 # anstyle-parse Integration Guide
 
-**Implementation Steps for vtcode System**
+**Illustrative parser sketch**
+
+The live parser is `vtcode_commons::ansi`; the core and UI parser modules
+re-export it. This retained sketch illustrates `anstyle-parse` integration and
+uses the project spelling for locally owned fields and helpers.
 
 ## Step 1: Add Dependency
 
@@ -28,8 +32,8 @@ use anstyle_parse::{Parser, Perform};
 #[derive(Debug, Clone)]
 pub struct StyledSegment {
     pub text: String,
-    pub fg_color: Option<Color>,
-    pub bg_color: Option<Color>,
+    pub fg_colour: Option<Color>,
+    pub bg_colour: Option<Color>,
     pub bold: bool,
     pub italic: bool,
     pub underline: bool,
@@ -47,8 +51,8 @@ struct AnsiParser {
     plain_text: String,
     segments: Vec<StyledSegment>,
     current_segment: StyledSegment,
-    fg_color: Option<Color>,
-    bg_color: Option<Color>,
+    fg_colour: Option<Color>,
+    bg_colour: Option<Color>,
     bold: bool,
     italic: bool,
     underline: bool,
@@ -61,14 +65,14 @@ impl AnsiParser {
             segments: Vec::new(),
             current_segment: StyledSegment {
                 text: String::new(),
-                fg_color: None,
-                bg_color: None,
+                fg_colour: None,
+                bg_colour: None,
                 bold: false,
                 italic: false,
                 underline: false,
             },
-            fg_color: None,
-            bg_color: None,
+            fg_colour: None,
+            bg_colour: None,
             bold: false,
             italic: false,
             underline: false,
@@ -83,8 +87,8 @@ impl AnsiParser {
     }
 
     fn update_style(&mut self) {
-        self.current_segment.fg_color = self.fg_color;
-        self.current_segment.bg_color = self.bg_color;
+        self.current_segment.fg_colour = self.fg_colour;
+        self.current_segment.bg_colour = self.bg_colour;
         self.current_segment.bold = self.bold;
         self.current_segment.italic = self.italic;
         self.current_segment.underline = self.underline;
@@ -127,27 +131,27 @@ impl Perform for AnsiParser {
 
     fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, _action: u8) {}
 
-    fn set_fg_color(&mut self, color: anstyle_parse::Color) {
+    fn set_fg_color(&mut self, colour: anstyle_parse::Color) {
         self.flush_segment();
-        self.fg_color = convert_color(color);
+        self.fg_colour = convert_colour(colour);
         self.update_style();
     }
 
-    fn set_bg_color(&mut self, color: anstyle_parse::Color) {
+    fn set_bg_color(&mut self, colour: anstyle_parse::Color) {
         self.flush_segment();
-        self.bg_color = convert_color(color);
+        self.bg_colour = convert_colour(colour);
         self.update_style();
     }
 
     fn set_fg_color_default(&mut self) {
         self.flush_segment();
-        self.fg_color = None;
+        self.fg_colour = None;
         self.update_style();
     }
 
     fn set_bg_color_default(&mut self) {
         self.flush_segment();
-        self.bg_color = None;
+        self.bg_colour = None;
         self.update_style();
     }
 
@@ -189,8 +193,8 @@ impl Perform for AnsiParser {
 
     fn unset_all(&mut self) {
         self.flush_segment();
-        self.fg_color = None;
-        self.bg_color = None;
+        self.fg_colour = None;
+        self.bg_colour = None;
         self.bold = false;
         self.italic = false;
         self.underline = false;
@@ -199,8 +203,8 @@ impl Perform for AnsiParser {
 }
 
 /// Convert anstyle-parse Color to anstyle Color
-fn convert_color(color: anstyle_parse::Color) -> Option<Color> {
-    match color {
+fn convert_colour(colour: anstyle_parse::Color) -> Option<Color> {
+    match colour {
         anstyle_parse::Color::Named(name) => Some(Color::Ansi(match name {
             anstyle_parse::NamedColor::Black => anstyle::AnsiColor::Black,
             anstyle_parse::NamedColor::Red => anstyle::AnsiColor::Red,
@@ -231,7 +235,7 @@ fn convert_color(color: anstyle_parse::Color) -> Option<Color> {
 /// ```ignore
 /// let parsed = parse_ansi("\x1b[31mRed text\x1b[0m");
 /// assert_eq!(parsed.plain_text, "Red text");
-/// assert_eq!(parsed.segments[0].fg_color, Some(Color::Ansi(AnsiColor::Red)));
+/// assert_eq!(parsed.segments[0].fg_colour, Some(Color::Ansi(AnsiColor::Red)));
 /// ```
 pub fn parse_ansi(text: &str) -> ParsedAnsi {
     let mut performer = AnsiParser::new();
@@ -269,7 +273,7 @@ mod tests {
     fn test_plain_text() {
         let result = parse_ansi("hello world");
         assert_eq!(result.plain_text, "hello world");
-        assert!(result.segments.is_empty() || result.segments[0].fg_color.is_none());
+        assert!(result.segments.is_empty() || result.segments[0].fg_colour.is_none());
     }
 
     #[test]
@@ -441,14 +445,14 @@ pub fn ansi_to_ratatui(parsed: &ParsedAnsi) -> Vec<(String, Style)> {
         .iter()
         .map(|seg| {
             let style = Style::default()
-                .fg(seg.fg_color.and_then(|c| anstyle_to_ratatui(c)))
-                .bg(seg.bg_color.and_then(|c| anstyle_to_ratatui(c)));
+                .fg(seg.fg_colour.and_then(anstyle_to_ratatui_colour))
+                .bg(seg.bg_colour.and_then(anstyle_to_ratatui_colour));
             (seg.text.clone(), style)
         })
         .collect()
 }
 
-fn anstyle_to_ratatui(colour: Color) -> Option<RatColour> {
+fn anstyle_to_ratatui_colour(colour: Color) -> Option<RatColour> {
     match colour {
         Color::Ansi(ac) => {
             // Convert anstyle::AnsiColor to ratatui::style::Color

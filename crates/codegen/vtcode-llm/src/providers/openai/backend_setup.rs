@@ -32,7 +32,7 @@ pub(crate) enum OpenAIBackendKind {
 pub(crate) enum ChatGptSubscriptionAuthSource {
     /// Default ChatGPT subscription path. VT Code snapshots/refreshed stored
     /// sessions, then hands the access token/account pair to Rig's public
-    /// ChatGPT auth primitive for request authorisation. Rig's lower refresh
+    /// ChatGPT auth primitive for request authorization. Rig's lower refresh
     /// store is not public, so VT Code keeps the stored-session boundary.
     /// Protected by `chatgpt_auth_backend_setup_uses_rig_chatgpt_by_default`,
     /// `chatgpt_auth_backend_setup_applies_account_headers_without_session_id`, and

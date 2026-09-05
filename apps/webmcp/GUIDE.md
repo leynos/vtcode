@@ -100,7 +100,7 @@ Chrome's [WebMCP origin trial](https://developer.chrome.com/blog/ai-webmcp-origi
 is an optional way to test either deployed page without relying on the testing
 flag. Tokens are origin-specific: request one for
 `https://vtcode.vinhnx.chatgpt.site` and another for `https://vinhnx.github.io`
-when one artifact serves both sites. Configure the repository Actions variable
+when one artefact serves both sites. Configure the repository Actions variable
 `WEBMCP_ORIGIN_TRIAL_TOKENS`; the Pages workflow injects the comma- or
 whitespace-separated values through `VITE_WEBMCP_ORIGIN_TRIAL_TOKENS`. The
 legacy singular variable remains supported for a single-origin build. No token
@@ -178,7 +178,7 @@ page effect:
 
 The repository's deterministic version of these checks is in
 `evals/webmcp-evals.ts` and runs as part of `bun run test`. It validates the tool
-contract and failure behavior; the Chrome inspector pass is still needed to
+contract and failure behaviour; the Chrome inspector pass is still needed to
 measure probabilistic tool selection.
 
 ## Edit and apply a change

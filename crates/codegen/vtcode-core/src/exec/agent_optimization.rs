@@ -118,7 +118,7 @@ pub struct FailurePatterns {
     pub recovery_patterns: Vec<RecoveryPattern>,
 }
 
-/// Analyzes agent behaviour from metrics history
+/// Analyses agent behaviour from metrics history
 #[derive(Default)]
 pub struct AgentBehaviourAnalyser {
     skill_stats: SkillStatistics,
@@ -127,7 +127,7 @@ pub struct AgentBehaviourAnalyser {
 }
 
 impl AgentBehaviourAnalyser {
-    /// Create a new behaviour analyzer
+    /// Create a new behaviour analyser
     pub fn new() -> Self {
         Self::default()
     }

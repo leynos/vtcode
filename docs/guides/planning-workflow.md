@@ -14,13 +14,13 @@ During planning, the agent can:
 
 The planning agent does not implement changes, shell-write plan files, or use file-writing tools for plan persistence. It emits exactly one final `<proposed_plan>` block when the plan is ready. The runtime validates and persists that plan, then exposes approval controls. During an approved handoff, the runtime creates and persists the `task_tracker` before handing off to the write-capable `build` agent or configured `auto` workflow.
 
-The built-in `plan` agent's permission rules allow `read`, `request_user_input`, and `bash` so its wire catalog keeps `exec_command`, `code_search`, `grep_file`, and the interview tool visible. Read-only enforcement is not delegated to those permissions: the planning dispatch gate hard-blocks every mutating tool call (and non-allow-listed shell command) before execution, so granting `bash` admits the tool without weakening plan-mode safety. The `plan` agent is also excluded by name from approved-plan execution routing — selecting it always re-enters planning, never implementation.
+The built-in `plan` agent's permission rules allow `read`, `request_user_input`, and `bash` so its wire catalogue keeps `exec_command`, `code_search`, `grep_file`, and the interview tool visible. Read-only enforcement is not delegated to those permissions: the planning dispatch gate hard-blocks every mutating tool call (and non-allow-listed shell command) before execution, so granting `bash` admits the tool without weakening plan-mode safety. The `plan` agent is also excluded by name from approved-plan execution routing — selecting it always re-enters planning, never implementation.
 
 ## Bounded blocked-call recovery
 
 Blocked and denied tool calls are bounded per turn to prevent retry churn. The configured `tools.max_consecutive_blocked_tool_calls_per_turn` value remains the consecutive-call cap. The total fuse is two times that cap in normal mode, four times that cap in Plan Mode, and the consecutive cap in recovery mode. The fuse is strict: with a cap of `3`, Plan Mode permits 12 non-consecutive blocked calls and stops on call 13. A successful or otherwise allowed call resets the consecutive streak, but not the turn's total blocked-call count.
 
-When a turn stops because of blocked behavior, VT Code forces a session-history checkpoint before writing the blocked handoff. The handoff advertises `vtcode --resume <archive-id>` only after that archive is successfully persisted and its identifier is verified. If history persistence is disabled or the checkpoint fails, the handoff explains that resume is unavailable and does not advertise a misleading command. Interactive sessions return to the next input after the handoff.
+When a turn stops because of blocked behaviour, VT Code forces a session-history checkpoint before writing the blocked handoff. The handoff advertises `vtcode --resume <archive-id>` only after that archive is successfully persisted and its identifier is verified. If history persistence is disabled or the checkpoint fails, the handoff explains that resume is unavailable and does not advertise a misleading command. Interactive sessions return to the next input after the handoff.
 
 Runner paths that do not create session archives also omit the resume command and state that limitation in the handoff.
 
@@ -35,7 +35,7 @@ Shell commands in plan mode are validated against a read-only allow-list. Allowe
 
 Rejected: file redirections (`>`, `>>`), command substitution (`$(...)`, backticks), dynamic `;` chains, in-place edits (`sed -i`), and any chain with a mutating or unknown segment (`rm`, `mv`, `cargo build`, `git push`, arbitrary scripts).
 
-During planning, the dispatch gate denies mutating tools. Plan remains read-only; the runtime alone persists validated planning artifacts under `.vtcode/plans/`.
+During planning, the dispatch gate denies mutating tools. Plan remains read-only; the runtime alone persists validated planning artefacts under `.vtcode/plans/`.
 
 `task_tracker` is available for checklist state. Planning output should use `<proposed_plan>...</proposed_plan>` when the agent is ready for user review.
 
@@ -147,7 +147,7 @@ turn revalidates the handoff, exits any stale planning gate, and refreshes the
 selected agent's permission snapshot before tools are exposed. Mouse-wheel
 events outside the floating overlay are passed through to the transcript, so
 the full plan can be reviewed without dismissing the approval gate. Approval
-also distills the plan's numbered and checkbox steps into the `task_tracker`
+also distils the plan's numbered and checkbox steps into the `task_tracker`
 checklist; the implementation agent updates that checklist as work progresses.
 Approved-plan execution receives a separate implementation safety budget so
 planning research does not leave the build phase with only the ordinary
@@ -169,7 +169,7 @@ so an approved plan cannot switch to `build` and then wait for another
 
 ### Validated Approval Handoff
 
-Approval is accepted only for a persisted plan that passes the artifact validator and has a persisted task tracker. The canonical sections are `Summary`, `Implementation Steps`, `Test Cases and Validation`, and `Assumptions and Defaults`; the documented short aliases `Steps`, `Validation`, and `Assumptions` are accepted case-insensitively. Plans may also include optional `Expected Outcomes` and `Dependencies and Prerequisites` sections; the validator tolerates additional sections and enforces only the canonical four. Every numbered implementation step must name a concrete file, symbol, behavior, or other repository target and include a non-empty `verify:`/`verification:` command or check. Placeholder tokens and unresolved `Next open decision` or `Open question` entries block approval. Invalid candidates are rejected before persistence, so an existing valid draft is preserved. VT Code gives the model one bounded repair request; if the repaired artifact is still invalid, planning remains active with the validation reasons visible.
+Approval is accepted only for a persisted plan that passes the artefact validator and has a persisted task tracker. The canonical sections are `Summary`, `Implementation Steps`, `Test Cases and Validation`, and `Assumptions and Defaults`; the documented short aliases `Steps`, `Validation`, and `Assumptions` are accepted case-insensitively. Plans may also include optional `Expected Outcomes` and `Dependencies and Prerequisites` sections; the validator tolerates additional sections and enforces only the canonical four. Every numbered implementation step must name a concrete file, symbol, behaviour, or other repository target and include a non-empty `verify:`/`verification:` command or check. Placeholder tokens and unresolved `Next open decision` or `Open question` entries block approval. Invalid candidates are rejected before persistence, so an existing valid draft is preserved. VT Code gives the model one bounded repair request; if the repaired artefact is still invalid, planning remains active with the validation reasons visible.
 
 Creating the `task_tracker` checklist is part of the approval gate. If the tracker tool is unavailable, fails, or does not persist its tracker file, the planning workflow remains active and no write-capable execution turn is started. All approval routes share the same typed handoff, including direct, queued, automatic, and fresh-context execution.
 

@@ -105,7 +105,7 @@ export OPENAI_API_KEY="your-api-key"
 3. Enter your question
 4. Response appears in the output
 
-**Analyze Your Code:**
+**Analyse Your Code:**
 
 1. Highlight code in editor
 2. Right-click → "Ask with VT Code"
@@ -209,7 +209,7 @@ log_level = "debug"
 1. **Keyboard Shortcuts**: Bind VT Code commands to keybindings in Zed
 2. **Context**: The more context you provide, the better responses
 3. **Iterations**: Use "Ask the Agent" for follow-up questions in a conversation
-4. **Analysis**: Use "Analyze Workspace" for large refactoring tasks
+4. **Analysis**: Use "Analyse Workspace" for large refactoring tasks
 5. **Config as Code**: Version control your `vtcode.toml` in git
 
 ### Performance Tips

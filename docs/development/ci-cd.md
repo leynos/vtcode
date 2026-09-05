@@ -46,7 +46,7 @@ The project uses several GitHub Actions workflows to ensure code quality and aut
 
 - **Build Linux**: Compiles `x86_64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, and `aarch64-unknown-linux-gnu` binaries
 - **Build Windows**: Compiles `x86_64-pc-windows-msvc` binary
-- **Upload Artifacts**: Stores compiled binaries + extension-stripped `.sha256` sidecars for release
+- **Upload Artefacts**: Stores compiled binaries + extension-stripped `.sha256` sidecars for release
 
 **Required release target matrix** (enforced by `scripts/release.sh`):
 

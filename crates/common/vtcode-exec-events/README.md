@@ -3,7 +3,7 @@
 Structured execution telemetry event schema used across VT Code crates.
 
 This crate exposes the serialized schema for thread lifecycle updates,
-command execution results, and other timeline artifacts emitted by the
+command execution results, and other timeline artefacts emitted by the
 agent runtime. Downstream applications can deserialize these structures
 to drive dashboards, logging, or auditing pipelines without depending on
 the full `vtcode-core` crate.
@@ -13,7 +13,7 @@ the full `vtcode-core` crate.
 Structured execution telemetry events shared across VT Code crates.
 
 This crate exposes the serialized schema for thread lifecycle updates,
-command execution results, and other timeline artifacts emitted by the
+command execution results, and other timeline artefacts emitted by the
 automation runtime. Downstream applications can deserialize these
 structures to drive dashboards, logging, or auditing pipelines without
 depending on the full `vtcode-core` crate.

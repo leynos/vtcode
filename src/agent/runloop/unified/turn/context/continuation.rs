@@ -759,7 +759,7 @@ mod tests {
         assert!(ctx.recovery_is_tool_free());
 
         // Sanity: without recovery this exact text+history would continue.
-        // "Let me continue analyzing the results." is interim progress
+        // "Let me continue analysing the results." is interim progress
         // (<=800 chars, has "let me" intent clause, no question, no
         // conclusive marker) and recent_tool_activity is true → the raw
         // evaluator returns should_continue=true, is_relaxed_continuation=false.
@@ -768,7 +768,7 @@ mod tests {
                 true,
                 false,
                 ctx.working_history,
-                "Let me continue analyzing the results.",
+                "Let me continue analysing the results.",
                 0,
             )
             .should_continue
@@ -776,7 +776,7 @@ mod tests {
 
         // Under tool-free recovery, the turn loop must override to terminal.
         let outcome = ctx
-            .handle_text_response("Let me continue analyzing the results.".to_string(), Vec::new(), None, None, false)
+            .handle_text_response("Let me continue analysing the results.".to_string(), Vec::new(), None, None, false)
             .await
             .expect("recovery response should be handled");
 

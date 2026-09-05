@@ -83,7 +83,7 @@ pub fn resolve_scope(workspace_root: &Path, requested: &str) -> Result<ResolvedS
         bail!("code_search path must not contain '..' traversal");
     }
     let workspace_root = canonicalize(workspace_root)
-        .with_context(|| format!("failed to canonicalise workspace root {}", workspace_root.display()))?;
+        .with_context(|| format!("failed to canonicalize workspace root {}", workspace_root.display()))?;
     let candidate = if requested_path.is_absolute() {
         requested_path.to_path_buf()
     } else {

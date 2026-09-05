@@ -190,7 +190,7 @@ fn build_candidate_list() -> Vec<String> {
     candidates
 }
 
-/// Apply ANSI styling to text if the terminal supports color output.
+/// Apply ANSI styling to text if the terminal supports colour output.
 ///
 /// Uses `colorchoice::ColorChoice::global()` to respect `--color`, `--no-color`,
 /// and `NO_COLOR` env var. Falls back to raw text when colours are disabled.

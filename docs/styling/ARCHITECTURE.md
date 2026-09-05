@@ -429,7 +429,7 @@ Deployment
  Merge to main
  Update CHANGELOG.md
  Tag release version
- Build release artifacts
+ Build release artefacts
 
 Post-Deployment
  Monitor for crash reports

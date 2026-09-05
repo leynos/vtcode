@@ -202,45 +202,14 @@ pub enum StyleDialect {
 
 **Use Case**: When displaying files in the file picker modal, respect system `LS_COLORS` preferences
 
-**Location**: `crates/codegen/vtcode-core/src/ui/tui/session/file_palette.rs`
+**Current implementation**: `crates/codegen/vtcode-ui/src/tui/ui/file_colourizer.rs`
 
 ```rust
-use anstyle_ls;
-use std::env;
+use std::path::Path;
+use vtcode_core::ui::FileColourizer;
 
-pub struct FileColourizer {
-    ls_colors: Option<String>,
-}
-
-impl FileColourizer {
-    pub fn new() -> Self {
-        Self {
-            ls_colors: env::var("LS_COLORS").ok(),
-        }
-    }
-    
-    pub fn style_for_file(&self, path: &Path) -> Option<anstyle::Style> {
-        let ls_colors = self.ls_colors.as_ref()?;
-        
-        // Determine file type from path
-        let file_type = if path.is_dir() {
-            "di"  // directory
-        } else if path.is_symlink() {
-            "ln"  // symlink
-        } else {
-            // Try extension-based matching
-            path.extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| format!("*.{}", ext).leak())
-                .unwrap_or("fi")  // fallback: file
-        };
-        
-        // Parse LS_COLORS and extract style for this file type
-        anstyle_ls::parse(ls_colors)
-            .ok()
-            .and_then(|_| Some(anstyle::Style::new()))  // Placeholder
-    }
-}
+let colourizer = FileColourizer::new();
+let style = colourizer.style_for_path(Path::new("src/main.rs"));
 ```
 
 ### 5. Support Git Config Colour Parsing
@@ -377,7 +346,7 @@ pub fn ratatui_style_from_inline(
 6. Update tests for new styling capabilities
 
 ### Phase 3: Features (Lower Risk, High Value)
-7. Implement `FileColourizer` for LS_COLORS support
+7. Extend `FileColourizer` for LS_COLORS support
 8. Add environment variable parsing for system colours
 9. Support custom theme files with Git/LS syntax
 

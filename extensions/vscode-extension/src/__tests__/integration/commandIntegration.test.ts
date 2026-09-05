@@ -71,11 +71,11 @@ describe("Command Integration Tests", () => {
             );
 
             // Execute analyse command
-            const analyzeResult = await registry.executeCommand(
+            const analyseResult = await registry.executeCommand(
                 "vtcode.runAnalyze",
                 mockContext
             );
-            expect(analyzeResult).toBeUndefined();
+            expect(analyseResult).toBeUndefined();
             expect(vtcodeRunner.runVtcodeCommand).toHaveBeenCalledWith(
                 ["analyse"],
                 expect.any(Object)

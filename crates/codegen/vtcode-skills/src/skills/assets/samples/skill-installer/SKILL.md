@@ -70,7 +70,7 @@ Install multiple skills from the same repo:
 scripts/install-skill-from-github.py owner/repo path/to/skill1 path/to/skill2
 ```
 
-## Behavior and Options
+## Behaviour and Options
 
 ### Installation Location
 

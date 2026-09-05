@@ -314,7 +314,7 @@ shape; the async path reuses its single metadata result for directory checks.
 The same target also includes uncached filesystem workloads:
 `agent_harness_file_search_uncached` measures parallel traversal and bounded
 candidate aggregation, while `agent_harness_file_index_build` measures a full
-index construction per iteration. `agent_harness_tool_catalog_projection_repeat`
+index construction per iteration. `agent_harness_tool_catalogue_projection_repeat`
 measures repeated schema/model-tool projection after the catalogue is warm; its
 projection cache is private to an immutable catalogue and keyed by documentation
 mode. These benchmarks expose repeated work and synchronization cost rather
