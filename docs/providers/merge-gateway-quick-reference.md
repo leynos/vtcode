@@ -10,7 +10,7 @@
 | Curated routes | See the full list below; all are available in the model picker |
 | Default transport | Merge Responses API (`POST /responses`) |
 | Legacy transport | Explicit base URLs ending in `/v1/openai` use Chat Completions |
-| Catalog | Authenticated `GET /models`, paginated and cache-backed |
+| Catalogue | Authenticated `GET /models`, paginated and cache-backed |
 | Authentication | ****** |
 | Tool calls | Supported |
 | Streaming usage | Supported via native Responses SSE |

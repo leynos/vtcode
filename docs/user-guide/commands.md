@@ -9,13 +9,13 @@ Use `exec_command.cmd` with `rg` or `grep` for flexible shell text search.
 The default model-visible tools are `exec_command`, `write_stdin`, and
 `apply_patch`. `code_search` is available through the advanced VT Code profile.
 It accepts a required literal `query` plus optional `path`, `file_types`,
-`result_types`, and `max_results`. Its four result categories are recognised
+`result_types`, and `max_results`. Its four result categories are recognized
 definitions, exact syntactic usages, literal text, and matching paths. A usage
 is a same-spelling syntax occurrence, not a resolved reference. Queries use
 literal smart-case. When `truncated` is true, narrow a filter in another call;
 the response does not claim an exact repository-wide total.
 
-Use `exec_command` or the specialised ast-grep skill for arbitrary structural
+Use `exec_command` or the specialized ast-grep skill for arbitrary structural
 patterns.
 
 ## Storage diagnostics
@@ -142,8 +142,8 @@ Configure the behaviour under **Settings › Extensions › VT Code**:
 ### Slash-command notes
 
 - Slash commands are skill-backed. Each command routes through a namespaced command skill such as `cmd-status` or `cmd-review`.
-- The `/name` form remains the compatibility alias. You can also inspect or execute the same behavior through `/skills info cmd-name` and `/skills use cmd-name ...`.
-- Prompt-oriented slash commands such as `/review`, `/analyze`, and `/command` are shipped as bundled system skills in the release binary.
+- The `/name` form remains the compatibility alias. You can also inspect or execute the same behaviour through `/skills info cmd-name` and `/skills use cmd-name ...`.
+- Prompt-oriented slash commands such as `/review`, `/analyse`, and `/command` are shipped as bundled system skills in the release binary.
 - To keep the default prompt lean, command skills are not injected into the runtime `## Skills` prompt section; use slash completion or `/skills` discovery when you need them.
 - `/resume` opens archived sessions when the current run is idle.
 - `/fork` opens the session picker and then lets you choose between a full-copy fork and a summarized fork.
@@ -233,7 +233,7 @@ vtcode schedule delete 1a2b3c4d
 vtcode schedule serve
 ```
 
-See [Scheduled Tasks](./scheduled-tasks.md) for session reminders, durable daemon behavior, and service installation details.
+See [Scheduled Tasks](./scheduled-tasks.md) for session reminders, durable daemon behaviour, and service installation details.
 
 ## stats (session metrics)
 

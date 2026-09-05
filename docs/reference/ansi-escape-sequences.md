@@ -29,7 +29,7 @@ Any whitespaces between sequences and arguments should be ignored. They are pres
 
 ### VT100 Chapter 3 Parsing Semantics
 
-For parser behavior and recovery on malformed input, VT100 Chapter 3 is the reference:
+For parser behaviour and recovery on malformed input, VT100 Chapter 3 is the reference:
 
 -   Control characters may appear inside control sequences and are executed immediately.
 -   `ESC` inside a control sequence aborts the current sequence and starts a new one.
@@ -45,7 +45,7 @@ For `CSI` (`ESC [`), VT Code follows the standard byte classes:
 - Intermediate bytes: `0x20`–`0x2F`
 - Final byte: `0x40`–`0x7E`
 
-This mirrors ANSI/ECMA-48 behavior documented in the ANSI escape code article and helps keep parsing predictable on malformed streams.
+This mirrors ANSI/ECMA-48 behaviour documented in the ANSI escape code article and helps keep parsing predictable on malformed streams.
 
 ## General ASCII Codes
 
@@ -105,12 +105,12 @@ This mirrors ANSI/ECMA-48 behavior documented in the ANSI escape code article an
 
 > Note: Erasing the line won't move the cursor, meaning that the cursor will stay at the last position it was at before the line was erased. You can use `\r` after erasing the line, to return the cursor to the start of the current line.
 
-## Colors / Graphics Mode
+## Colours / Graphics Mode
 
 | ESC Code Sequence | Reset Sequence | Description                                                |
 | :---------------- | :------------- | :--------------------------------------------------------- |
 | `ESC[1;34;{...}m` |                | Set graphics modes for cell, separated by semicolon (`;`). |
-| `ESC[0m`          |                | reset all modes (styles and colors)                        |
+| `ESC[0m`          |                | reset all modes (styles and colours)                       |
 | `ESC[1m`          | `ESC[22m`      | set bold mode.                                             |
 | `ESC[2m`          | `ESC[22m`      | set dim/faint mode.                                        |
 | `ESC[3m`          | `ESC[23m`      | set italic mode.                                           |
@@ -124,25 +124,25 @@ This mirrors ANSI/ECMA-48 behavior documented in the ANSI escape code article an
 
 > **Note:** Both dim and bold modes are reset with the `ESC[22m` sequence. The `ESC[21m` sequence is a non-specified sequence for double underline mode and only work in some terminals and is reset with `ESC[24m`.
 
-### Color codes
+### Colour codes
 
-Most terminals support 8 and 16 colors, as well as 256 (8-bit) colors. These colors are set by the user, but have commonly defined meanings.
+Most terminals support 8 and 16 colours, as well as 256 (8-bit) colours. These colours are set by the user, but have commonly defined meanings.
 
-#### 8-16 Colors
+#### 8-16 Colours
 
-| Color Name | Foreground Color Code | Background Color Code |
-| :--------- | :-------------------- | :-------------------- |
-| Black      | `30`                  | `40`                  |
-| Red        | `31`                  | `41`                  |
-| Green      | `32`                  | `42`                  |
-| Yellow     | `33`                  | `43`                  |
-| Blue       | `34`                  | `44`                  |
-| Magenta    | `35`                  | `45`                  |
-| Cyan       | `36`                  | `46`                  |
-| White      | `37`                  | `47`                  |
-| Default    | `39`                  | `49`                  |
+| Colour Name | Foreground Colour Code | Background Colour Code |
+| :---------  | :--------------------  | :--------------------  |
+| Black       | `30`                   | `40`                   |
+| Red         | `31`                   | `41`                   |
+| Green       | `32`                   | `42`                   |
+| Yellow      | `33`                   | `43`                   |
+| Blue        | `34`                   | `44`                   |
+| Magenta     | `35`                   | `45`                   |
+| Cyan        | `36`                   | `46`                   |
+| White       | `37`                   | `47`                   |
+| Default     | `39`                   | `49`                   |
 
-Most terminals, apart from the basic set of 8 colors, also support the "bright" or "bold" colors. These have their own set of codes, mirroring the normal colors, but with an additional `;1` in their codes:
+Most terminals, apart from the basic set of 8 colours, also support the "bright" or "bold" colours. These have their own set of codes, mirroring the normal colours, but with an additional `;1` in their codes:
 
 ```sh
 # Set style to bold, red foreground.
@@ -151,50 +151,50 @@ Most terminals, apart from the basic set of 8 colors, also support the "bright" 
 \x1b[2;37;41mWorld
 ```
 
-Terminals that support the [aixterm specification](https://sites.ualberta.ca/dept/chemeng/AIX-43/share/man/info/C/a_doc_lib/cmds/aixcmds1/aixterm.htm) provides bright versions of the ISO colors, without the need to use the bold modifier:
+Terminals that support the [aixterm specification](https://sites.ualberta.ca/dept/chemeng/AIX-43/share/man/info/C/a_doc_lib/cmds/aixcmds1/aixterm.htm) provides bright versions of the ISO colours, without the need to use the bold modifier:
 
-| Color Name     | Foreground Color Code | Background Color Code |
-| :------------- | :-------------------- | :-------------------- |
-| Bright Black   | `90`                  | `100`                 |
-| Bright Red     | `91`                  | `101`                 |
-| Bright Green   | `92`                  | `102`                 |
-| Bright Yellow  | `93`                  | `103`                 |
-| Bright Blue    | `94`                  | `104`                 |
-| Bright Magenta | `95`                  | `105`                 |
-| Bright Cyan    | `96`                  | `106`                 |
-| Bright White   | `97`                  | `107`                 |
+| Colour Name     | Foreground Colour Code | Background Colour Code |
+| :-------------  | :--------------------  | :--------------------  |
+| Bright Black    | `90`                   | `100`                  |
+| Bright Red      | `91`                   | `101`                  |
+| Bright Green    | `92`                   | `102`                  |
+| Bright Yellow   | `93`                   | `103`                  |
+| Bright Blue     | `94`                   | `104`                  |
+| Bright Magenta  | `95`                   | `105`                  |
+| Bright Cyan     | `96`                   | `106`                  |
+| Bright White    | `97`                   | `107`                  |
 
-#### 256 Colors
+#### 256 Colours
 
-The following escape codes tells the terminal to use the given color ID:
+The following escape codes tells the terminal to use the given colour ID:
 
 | ESC Code Sequence | Description           |
 | :---------------- | :-------------------- |
-| `ESC[38;5;{ID}m`  | Set foreground color. |
-| `ESC[48;5;{ID}m`  | Set background color. |
+| `ESC[38;5;{ID}m`  | Set foreground colour.|
+| `ESC[48;5;{ID}m`  | Set background colour.|
 
-Where `{ID}` should be replaced with the color index from 0 to 255 of the following color table:
+Where `{ID}` should be replaced with the colour index from 0 to 255 of the following colour table:
 
-![256 Color table](https://user-images.githubusercontent.com/995050/47952855-ecb12480-df75-11e8-89d4-ac26c50e80b9.png)
+![256 Colour table](https://user-images.githubusercontent.com/995050/47952855-ecb12480-df75-11e8-89d4-ac26c50e80b9.png)
 
--   `0-7`: standard colors (as in `ESC [ 30–37 m`)
--   `8–15`: high intensity colors (as in `ESC [ 90–97 m`)
--   `16-231`: 6 × 6 × 6 cube (216 colors): `16 + 36 × r + 6 × g + b` (`0 ≤ r, g, b ≤ 5`)
+-   `0-7`: standard colours (as in `ESC [ 30–37 m`)
+-   `8–15`: high intensity colours (as in `ESC [ 90–97 m`)
+-   `16-231`: 6 × 6 × 6 cube (216 colours): `16 + 36 × r + 6 × g + b` (`0 ≤ r, g, b ≤ 5`)
     > Some emulators interpret these steps as linear increments (`256 / 24`) on all three channels while others may explicitly define these values.
 -   `232-255`: grayscale from dark to light in 24 steps.
 
-#### RGB Colors
+#### RGB Colours
 
-More modern terminals supports [Truecolor](https://en.wikipedia.org/wiki/Color_depth#True_color_.2824-bit.29) (24-bit RGB), which allows you to set foreground and background colors using RGB.
+More modern terminals supports [Truecolor](https://en.wikipedia.org/wiki/Color_depth#True_color_.2824-bit.29) (24-bit RGB), which allows you to set foreground and background colours using RGB.
 
 These escape sequences are usually not well documented.
 
 | ESC Code Sequence       | Description                  |
 | :---------------------- | :--------------------------- |
-| `ESC[38;2;{r};{g};{b}m` | Set foreground color as RGB. |
-| `ESC[48;2;{r};{g};{b}m` | Set background color as RGB. |
+| `ESC[38;2;{r};{g};{b}m` | Set foreground colour as RGB.|
+| `ESC[48;2;{r};{g};{b}m` | Set background colour as RGB.|
 
-> Note that `;38` and `;48` corresponds to the 16 color sequence and is interpreted by the terminal to set the foreground and background color respectively. Where as `;2` and `;5` sets the color format.
+> Note that `;38` and `;48` corresponds to the 16 colour sequence and is interpreted by the terminal to set the foreground and background colour respectively. Where as `;2` and `;5` sets the colour format.
 
 ## Screen Modes
 
@@ -204,20 +204,20 @@ These escape sequences are usually not well documented.
 | :---------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ESC[={value}h`   | Changes the screen width or type to the mode specified by value.                                                                                                      |
 | `ESC[=0h`         | 40 x 25 monochrome (text)                                                                                                                                             |
-| `ESC[=1h`         | 40 x 25 color (text)                                                                                                                                                  |
+| `ESC[=1h`         | 40 x 25 colour (text)                                                                                                                                                 |
 | `ESC[=2h`         | 80 x 25 monochrome (text)                                                                                                                                             |
-| `ESC[=3h`         | 80 x 25 color (text)                                                                                                                                                  |
-| `ESC[=4h`         | 320 x 200 4-color (graphics)                                                                                                                                          |
+| `ESC[=3h`         | 80 x 25 colour (text)                                                                                                                                                 |
+| `ESC[=4h`         | 320 x 200 4-colour (graphics)                                                                                                                                         |
 | `ESC[=5h`         | 320 x 200 monochrome (graphics)                                                                                                                                       |
 | `ESC[=6h`         | 640 x 200 monochrome (graphics)                                                                                                                                       |
 | `ESC[=7h`         | Enables line wrapping                                                                                                                                                 |
-| `ESC[=13h`        | 320 x 200 color (graphics)                                                                                                                                            |
-| `ESC[=14h`        | 640 x 200 color (16-color graphics)                                                                                                                                   |
-| `ESC[=15h`        | 640 x 350 monochrome (2-color graphics)                                                                                                                               |
-| `ESC[=16h`        | 640 x 350 color (16-color graphics)                                                                                                                                   |
-| `ESC[=17h`        | 640 x 480 monochrome (2-color graphics)                                                                                                                               |
-| `ESC[=18h`        | 640 x 480 color (16-color graphics)                                                                                                                                   |
-| `ESC[=19h`        | 320 x 200 color (256-color graphics)                                                                                                                                  |
+| `ESC[=13h`        | 320 x 200 colour (graphics)                                                                                                                                           |
+| `ESC[=14h`        | 640 x 200 colour (16-colour graphics)                                                                                                                                 |
+| `ESC[=15h`        | 640 x 350 monochrome (2-colour graphics)                                                                                                                              |
+| `ESC[=16h`        | 640 x 350 colour (16-colour graphics)                                                                                                                                 |
+| `ESC[=17h`        | 640 x 480 monochrome (2-colour graphics)                                                                                                                              |
+| `ESC[=18h`        | 640 x 480 colour (16-colour graphics)                                                                                                                                 |
+| `ESC[=19h`        | 320 x 200 colour (256-colour graphics)                                                                                                                                |
 | `ESC[={value}l`   | Resets the mode by using the same values that Set Mode uses, except for 7, which disables line wrapping. The last character in this escape sequence is a lowercase L. |
 
 ### Common Private Modes
@@ -357,14 +357,14 @@ When processing PTY output in VT Code, we need to handle ANSI escape sequences p
 
 1. **Strip for Display**: Remove escape sequences when showing output to users
 2. **Preserve for Raw Output**: Keep sequences intact when writing to files or logs
-3. **Parse for Formatting**: Extract color/style information for TUI rendering
+3. **Parse for Formatting**: Extract colour/style information for TUI rendering
 
 ### TUI Rendering
 
 The TUI uses ANSI sequences for:
 
 -   Cursor positioning during updates
--   Color-coded output (errors in red, success in green)
+-   Colour-coded output (errors in red, success in green)
 -   Progress indicators and spinners
 -   Status bar formatting
 

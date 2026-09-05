@@ -7,7 +7,7 @@ For the full specification, see the [ATIF RFC](https://github.com/laude-institut
 ## Overview
 
 When enabled, VT Code exports an `atif-trajectory.json` file under the
-canonical session's derived artifacts at session end. The file captures the
+canonical session's derived artefacts at session end. The file captures the
 complete session: user messages, agent responses, tool executions,
 observations, and per-step/aggregate LLM metrics.
 
@@ -26,7 +26,7 @@ Output location: `<workspace>/.vtcode/sessions/<session_id>/derived/atif-traject
 
 The canonical source stream is
 `<workspace>/.vtcode/sessions/<session_id>/events.jsonl`. Historical global
-artifacts under the legacy `VTCODE_HOME/sessions/` path are left untouched and are not imported
+artefacts under the legacy `VTCODE_HOME/sessions/` path are left untouched and are not imported
 or deleted automatically.
 
 ## Schema

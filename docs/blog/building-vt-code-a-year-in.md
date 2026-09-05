@@ -8,7 +8,7 @@ The agent at work. Streaming turns, tool calls, and a status line tracking token
 
 ## The model shelf, September 2026
 
-The provider abstraction's real test is whether it absorbs the frontier as it moves. What the catalog holds today, straight from `vtcode-config`'s model constants:
+The provider abstraction's real test is whether it absorbs the frontier as it moves. What the catalogue holds today, straight from `vtcode-config`'s model constants:
 
 | Lab       | Frontier models in the picker                                               |
 | --------- | --------------------------------------------------------------------------- |
@@ -40,7 +40,7 @@ The harness itself got measured too. A three-phase optimization pass on the prov
 | MBPP      | 974   | Basic Python programming     | Larger dataset           |
 | SWE-bench | 2,294 | Real-world bug fixing        | Production readiness     |
 
-One caveat: a HumanEval score through VT Code measures the harness plus the model, not the model alone. Tool formatting, prompt assembly, and retry behavior all move the number. That's the point of measuring end to end.
+One caveat: a HumanEval score through VT Code measures the harness plus the model, not the model alone. Tool formatting, prompt assembly, and retry behaviour all move the number. That's the point of measuring end to end.
 
 _Sources: [benchmark summary](https://github.com/vinhnx/VTCode/blob/main/docs/benchmarks/SUMMARY.md), [performance benchmarks](https://github.com/vinhnx/VTCode/blob/main/docs/benchmarks/performance_benchmarks.md), [benchmark comparison](https://github.com/vinhnx/VTCode/blob/main/docs/benchmarks/BENCHMARK_COMPARISON.md)._
 

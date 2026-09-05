@@ -2,7 +2,7 @@
 
 The harness treats a cache prefix as an immutable segment. Tool definitions use
 deterministic core-first ordering followed by tool name and type, and the
-serialized catalog is reused for the segment. Catalog expansion through tool
+serialized catalogue is reused for the segment. Catalogue expansion through tool
 discovery takes effect at the next segment boundary.
 
 Prompt caching lets VT Code reuse validated conversation prefixes across providers to reduce latency and token consumption. This guide explains how to configure the feature globally and fine-tune the per-provider behaviour exposed in `vtcode.toml`.
@@ -39,7 +39,7 @@ surface_metrics = true
 -   `idle_expiration_seconds` — how long (in seconds) a cached prefix can remain idle before expiry.
 -   `surface_metrics` — when enabled, OpenAI usage responses expose cache-hit statistics surfaced through VT Code’s usage telemetry.
 -   `prompt_cache_retention` — optional OpenAI Responses API retention policy for cached prefixes. Supported values are `"in_memory"` and `"24h"`.
--   Default: `None` (opt-in) - VT Code does not set prompt_cache_retention by default; so OpenAI keeps its default `in_memory` behavior unless you opt in explicitly.
+-   Default: `None` (opt-in) - VT Code does not set prompt_cache_retention by default; so OpenAI keeps its default `in_memory` behaviour unless you opt in explicitly.
 -   Example CLI override to enable 24h retention for Responses model:
 
     ```bash
@@ -62,7 +62,7 @@ Prompt caching on Responses-style providers only hits when the new request keeps
 -   Reordering tools between requests.
 -   Injecting new dynamic context above existing prompt items.
 
-To reduce avoidable misses, VT Code keeps tool ordering deterministic and defers MCP `tools/list_changed` refreshes to turn boundaries so an active turn sees a stable tool catalog.
+To reduce avoidable misses, VT Code keeps tool ordering deterministic and defers MCP `tools/list_changed` refreshes to turn boundaries so an active turn sees a stable tool catalogue.
 VT Code enables `prompt_cache.cache_friendly_prompt_shaping = true` by default. When it is enabled, VT Code applies provider-aware shaping:
 
 - OpenAI, Gemini, DeepSeek, OpenRouter, Moonshot, Z.AI: move volatile counters to a trailing `[Runtime Context]` block.
@@ -83,16 +83,17 @@ The share-log HTML overview also reports prompt-cache observations, churn breakd
 
 Each request prefix is frozen in an immutable `SessionRequestEnvelope` for a
 request segment. Compaction starts the next segment before the compacted
-history is installed; the old envelope, compacted-history artifact, and
+history is installed; the old envelope, compacted-history artefact, and
 `ThreadCompactBoundary` event remain recoverable. Automatic, manual, recovery,
 and model-switch compaction use the same boundary path. A change to the model,
-provider, mode, instruction snapshot, or tool-catalog epoch starts a new
+provider, mode, instruction snapshot, or tool-catalogue epoch starts a new
 segment; unchanged turns reuse the existing envelope byte-for-byte.
 
 The `tool_catalog_cache_metrics` trajectory record includes ordered wire tool
-names, catalog/wire/deferred counts, and active loaded-skill names on startup or
-when that catalog identity changes. Unchanged turns omit those repeated lists.
-`vtcode trajectory` compares the ordered snapshots so a catalog reorder across
+names, catalogue/wire/deferred counts, and active loaded-skill names on
+startup or
+when that catalogue identity changes. Unchanged turns omit those repeated lists.
+`vtcode trajectory` compares the ordered snapshots so a catalogue reorder across
 starts is visible instead of being hidden by an unchanged tool count.
 
 ### Anthropic (Claude)
@@ -150,7 +151,7 @@ report_savings = true
 enabled = true
 ```
 
-Z.AI handles caching server-side. When the override is enabled, VT Code honors upstream behavior and surfaces usage metrics when available.
+Z.AI handles caching server-side. When the override is enabled, VT Code honours upstream behaviour and surfaces usage metrics when available.
 
 ## Usage Telemetry
 
@@ -166,7 +167,7 @@ These metrics flow through `vtcode-core::llm::types::Usage` and appear anywhere 
 
 -   Unit tests in `crates/codegen/vtcode-core/src/llm/providers/anthropic.rs` validate cache control insertion and beta header composition.
 -   `crates/codegen/vtcode-core/src/llm/providers/openrouter.rs` exercises usage parsing to ensure cache metrics are preserved.
--   Local cache behavior tests in `crates/codegen/vtcode-core/src/core/prompt_caching.rs` verify caching, eviction, and persistence.
+-   Local cache behaviour tests in `crates/codegen/vtcode-core/src/core/prompt_caching.rs` verify caching, eviction, and persistence.
 -   Configuration loading tests ensure settings from `vtcode.toml` are applied correctly.
 -   Run `cargo test` to execute all fast tests after updating configuration logic.
 
@@ -183,7 +184,7 @@ The prompt caching system is implemented as a multi-layered architecture:
 
 When upgrading to the new prompt caching system:
 
-1. Add the `[prompt_cache]` section to your `vtcode.toml` if you want to customize caching behavior
+1. Add the `[prompt_cache]` section to your `vtcode.toml` if you want to customize caching behaviour
 2. Review provider-specific settings to optimize for your usage patterns
 3. Monitor cache metrics to verify the system is performing as expected
 

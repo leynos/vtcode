@@ -2,7 +2,7 @@
 
 ## Most Common Sequences
 
-### Colors (Foreground)
+### Colours (Foreground)
 
 ```
 \x1b[30m  Black
@@ -16,7 +16,7 @@
 \x1b[39m  Default   ← Reset to default
 ```
 
-### Bright Colors (90-97)
+### Bright Colours (90-97)
 
 ```
 \x1b[91m  Bright Red
@@ -148,7 +148,7 @@ r"\x1b\[[0-9;?]*[a-zA-Z]"
 r"\x1b(\[[0-9;?]*[a-zA-Z]|\][^\x07]*\x07|[=>])"
 ```
 
-### Extract Color Codes
+### Extract Colour Codes
 
 ```rust
 // Match foreground color: ESC[3Xm or ESC[9Xm

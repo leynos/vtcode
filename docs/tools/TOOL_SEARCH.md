@@ -77,13 +77,13 @@ Current VT Code scope for OpenAI:
 - Supported: hosted `tool_search`
 - Supported: deferred function schemas
 - Supported in the Responses parser: OpenAI function-call namespaces and `tool_search_output` tool references
-- Not yet modeled in shared tool definitions: MCP-server search surfaces
+- Not yet modelled in shared tool definitions: MCP-server search surfaces
 
 VT Code defers any MCP catalogue. For non-MCP catalogues, hosted search starts when at least 15 tools are deferable or their combined schema estimate exceeds about 4,000 tokens.
 
 ### When are tools deferred?
 
-Deferral is decided per-catalog by `SessionToolCatalog::model_tools`. A tool is flagged `defer_loading = true` when **all** of the following hold:
+Deferral is decided per-catalogue by `SessionToolCatalogue::model_tools`. A tool is flagged `defer_loading = true` when **all** of the following hold:
 
 1. The tool is not a core builtin (e.g. `exec_command`, `write_stdin`, or the active discovery tools) and is not listed in `always_available_tools`.
 2. The session is not running under the always-eager TUI surface.
@@ -95,10 +95,10 @@ The deferral policy is active when **any** of these is true:
 - **OpenAI** Responses (`model_supports_responses_compaction`): hosted `tool_search` is injected and non-core tools are deferred.
 - **Any provider** when `tools.client_tool_search = true` (default): client-local deferral is enabled. Unused built-ins, MCP tools, skill tools, and plugin tools are omitted from the initial payload; the generic `search_tools` tool expands ranked matches into the next request segment.
 
-Key changes from earlier behavior:
+Key changes from earlier behaviour:
 
-- **Non-core tools defer by default.** The initial catalog contains the execution/editing core plus discovery. Other built-ins, MCP tools, skill tools, and plugin tools are loaded only after discovery.
-- **Token-budget backstop.** A catalog is also deferred when its combined schema size exceeds ~4k tokens (≈16k chars), even if the tool count is below the numeric threshold. This catches single large servers whose schema dwarfs the whole builtin set.
+- **Non-core tools defer by default.** The initial catalogue contains the execution/editing core plus discovery. Other built-ins, MCP tools, skill tools, and plugin tools are loaded only after discovery.
+- **Token-budget backstop.** A catalogue is also deferred when its combined schema size exceeds ~4k tokens (≈16k chars), even if the tool count is below the numeric threshold. This catches single large servers whose schema dwarfs the whole builtin set.
 - **Client-local is the default.** Providers without a hosted tool search (e.g. Gemini) now default to client-local deferral, so MCP schemas are not sent eagerly.
 
 ### Client-local deferred loading
@@ -109,7 +109,7 @@ When `tools.client_tool_search` is enabled and no provider-hosted search is avai
 2. Appends a compact, cache-stable summary of discoverable groups.
 3. Keeps `search_tools` available. A ranked match expands the selected full definitions in a new request segment; expansion order is deterministic.
 
-Set `tools.client_tool_search = false` to restore the eager catalog for unsupported providers.
+Set `tools.client_tool_search = false` to restore the eager catalogue for unsupported providers.
 
 ```toml
 [tools]
@@ -152,7 +152,7 @@ anthropic-beta: advanced-tool-use-2025-11-20
 
 ## Limits and guidance
 
-- Maximum tools: 10,000 in catalog
+- Maximum tools: 10,000 in catalogue
 - Search results: 3-5 most relevant tools per search
 - Pattern length: Maximum 200 characters for regex patterns
 - Anthropic model support: Claude Sonnet 4.5+, Claude Opus 4.5+ only
@@ -163,7 +163,7 @@ anthropic-beta: advanced-tool-use-2025-11-20
 1. Keep 3-5 most frequently used tools as non-deferred
 2. Write clear, descriptive tool names and descriptions
 3. Use semantic keywords in descriptions that match how users describe tasks
-4. For OpenAI, prefer grouping tools conceptually and keep deferred catalogs focused
+4. For OpenAI, prefer grouping tools conceptually and keep deferred catalogues focused
 5. Monitor which tools Claude discovers to refine descriptions
 
 ## Auditing first-request token cost
@@ -186,7 +186,7 @@ Each turn emits a `token_budget_breakdown` metric to the `vtcode.turn.metrics` t
 Cache read/write/miss counts are not duplicated here — they are surfaced via `SessionStats` prompt-cache diagnostics.
 
 The `tool_catalog_cache_metrics` trajectory records additionally expose the
-cache-stable catalog identity when it changes: `ordered_wire_tool_names`,
+cache-stable catalogue identity when it changes: `ordered_wire_tool_names`,
 `catalog_tool_count`, `wire_tool_count`, `deferred_tool_count`, and
 `active_loaded_skill_names`. These are telemetry-only fields and are omitted
 from unchanged-turn records to keep the log compact; they are not added to any
@@ -198,10 +198,10 @@ Four categories of startup-time warnings flag token-overhead misconfiguration be
 
 - **System prompt over budget** — when the composed prompt exceeds `agent.max_system_prompt_tokens` (default `8000`) and `agent.system_prompt_budget_warning` is on (default). Checked both at startup (one-time) and per-request. Advisory unless `agent.trim_system_prompt` is enabled, in which case sections are dropped to fit.
 - **Deferred loading disabled but beneficial (config-level)** — when `tools.client_tool_search = false` and MCP servers are configured. All MCP tool schemas will be sent eagerly on every request.
-- **Deferred loading disabled but beneficial (catalog-level)** — when `tools.client_tool_search = false` and the catalog is large enough that deferral would engage (any MCP tool, ≥15 deferable tools, or combined schema > ~4k tokens). This warns that the full tool-schema tax is paid on every request and that re-enabling `client_tool_search` would omit the large/MCP schemas from the wire payload. Emitted once per process at first request.
+- **Deferred loading disabled but beneficial (catalogue-level)** — when `tools.client_tool_search = false` and the catalogue is large enough that deferral would engage (any MCP tool, ≥15 deferable tools, or combined schema > ~4k tokens). This warns that the full tool-schema tax is paid on every request and that re-enabling `client_tool_search` would omit the large/MCP schemas from the wire payload. Emitted once per process at first request.
 - **Other config advisories** — `agent.harness.auto_compaction_enabled = false` (normal history can grow without bound; the bounded post-tool recovery safety compaction remains available), `agent.tool_documentation_mode = 'full'` (sends complete tool docs every request), `agent.system_prompt_mode = 'specialized'` (larger base prompt), and `agent.max_system_prompt_tokens` set very low (< 4000).
 
-The count/schema-token thresholds *triggering* deferral when enabled are correct behavior, not warning conditions — they only warn when deferral is off and would have helped.
+The count/schema-token thresholds *triggering* deferral when enabled are correct behaviour, not warning conditions — they only warn when deferral is off and would have helped.
 
 ## Related Documentation
 

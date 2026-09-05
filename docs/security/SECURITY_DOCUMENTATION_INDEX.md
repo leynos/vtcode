@@ -22,7 +22,7 @@ Complete guide to VT Code's security documentation.
 
 **[Security Model](./SECURITY_MODEL.md)**
 - Complete security architecture
-- Defense-in-depth layers
+- Defence-in-depth layers
 - Threat model
 - Adding new commands safely
 - Security testing procedures

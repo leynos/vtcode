@@ -109,7 +109,7 @@ terminal.draw(|f| {
 VT Code now includes comprehensive guides based on these best practices:
 
 ### docs/FAQ.md (174 lines)
-Common questions about VT Code's architecture, terminal behavior, and configuration.
+Common questions about VT Code's architecture, terminal behaviour, and configuration.
 Includes Q&A on duplicate key events, async usage, terminal resizing, and character rendering.
 
 ### docs/guides/tui-event-handling.md (391 lines)
@@ -137,7 +137,7 @@ Guide to widget rendering and UI composition:
 - Layout computation and constraint-based designs
 - Widget composition patterns
 - Text reflow and terminal resize handling
-- Color and styling in Ratatui
+- Colour and styling in Ratatui
 - Performance considerations
 - Common rendering issues and solutions
 

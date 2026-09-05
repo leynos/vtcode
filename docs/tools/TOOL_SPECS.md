@@ -113,7 +113,7 @@ Example:
 
 ### `search_tools`
 
-Searches the deferred local catalog by name and description. `query` is
+Searches the deferred local catalogue by name and description. `query` is
 required; `limit` is optional (1–25), and `detail_level` accepts `name`,
 `name_description`, or `full`. Ranked matches are expanded deterministically
 for the next request segment.
@@ -136,8 +136,8 @@ It accepts exactly five inputs:
 - `max_results` optionally sets the returned limit from 1 to 100. It defaults
   to 20.
 
-Definitions are recognised declarations with an exact matching name. Usages
-are exact syntactic identifiers outside recognised declaration names. They are
+Definitions are recognized declarations with an exact matching name. Usages
+are exact syntactic identifiers outside recognized declaration names. They are
 not resolved references, so an unrelated identifier with the same spelling may
 appear. Text results cover comments, strings, prose, configuration, and other
 unclassified content. Path results match existing filenames or paths.
@@ -153,7 +153,7 @@ Example:
 {"query":"ToolProfile","path":"vtcode-core","file_types":["rust"],"result_types":["definition","usage"],"max_results":20}
 ```
 
-Use `exec_command` or the specialised ast-grep skill for arbitrary structural
+Use `exec_command` or the specialized ast-grep skill for arbitrary structural
 patterns.
 
 ## File Inspection

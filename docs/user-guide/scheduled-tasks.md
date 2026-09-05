@@ -23,7 +23,7 @@ remind me at 15:00 to push the release branch
 in 45 minutes, check whether the integration tests passed
 ```
 
-Behavior:
+Behaviour:
 
 - Tasks stay in memory only and disappear when the interactive VT Code session exits
 - VT Code checks for due tasks once per second
@@ -63,7 +63,7 @@ Command summary:
 - `vtcode schedule install-service` installs a user service for the daemon
 - `vtcode schedule uninstall-service` removes the installed user service
 
-Behavior:
+Behaviour:
 
 - Task definitions are stored under the VT Code config directory in `scheduled_tasks/tasks/`
 - Runtime state and claim files are stored under the VT Code data directory in `scheduled_tasks/`

@@ -256,7 +256,7 @@ When executing commands, VT Code now preserves these critical environment variab
 -   `EDITOR`, `VISUAL` - Default editors
 -   Custom environment variables set by the user
 
-**Note**: VT Code overrides `PAGER`, `GIT_PAGER`, `LESS`, `TERM`, color-related vars for consistency.
+**Note**: VT Code overrides `PAGER`, `GIT_PAGER`, `LESS`, `TERM`, colour-related vars for consistency.
 
 ## Configuration
 

@@ -36,7 +36,7 @@ variant captures a specific moment in the lifecycle of an execution thread:
 -   **Errors** – `ThreadErrorEvent` and `ErrorItem` record terminal failures alongside the
     human-readable messages surfaced to operators.F:crates/common/vtcode-exec-events/src/lib.rs†L41-L44F:crates/common/vtcode-exec-events/src/lib.rs†L242-L248
 
-The schema favors additive evolution: new fields default via `Option` or `#[serde(default)]`
+The schema favours additive evolution: new fields default via `Option` or `#[serde(default)]`
 so older consumers continue to deserialize previously known structures.
 
 ## Versioning and compatibility

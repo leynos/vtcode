@@ -2,7 +2,7 @@
 
 ## Overview
 
-VT Code implements a defense-in-depth security model for command execution to protect against argument injection attacks and other security threats. This document describes the security architecture and guidelines for maintaining it.
+VT Code implements a defence-in-depth security model for command execution to protect against argument injection attacks and other security threats. This document describes the security architecture and guidelines for maintaining it.
 
 ## Security Architecture Diagram
 
@@ -188,7 +188,7 @@ redirect requests or select a credential environment variable. The restriction
 still applies when `workspace.use_root_config` discards lower layers. System,
 user, explicitly selected config files, and explicit runtime overrides are
 trusted opt-in sources. Provider subprocess environment filtering remains an
-additional defense, not an approval mechanism for repository configuration.
+additional defence, not an approval mechanism for repository configuration.
 
 ## Threat Model
 

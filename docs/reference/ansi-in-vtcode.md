@@ -44,7 +44,7 @@ pub fn strip_ansi_bytes(input: &[u8]) -> Vec<u8>
 
 -   Exit summary rendering (`src/agent/runloop/unified/postamble.rs`)
 -   Terminal palette probing (`crates/codegen/vtcode-core/src/utils/terminal_color_probe.rs`)
--   Tool risk coloring (`crates/codegen/vtcode-core/src/tools/registry/risk_scorer.rs`)
+-   Tool risk colouring (`crates/codegen/vtcode-core/src/tools/registry/risk_scorer.rs`)
 -   Syntax highlight reset emission (`crates/codegen/vtcode-ui/src/tui/ui/syntax_highlight.rs`)
 -   HITL notifications (`crates/codegen/vtcode-core/src/notifications/mod.rs`, `src/agent/runloop/mcp_elicitation.rs`)
 
@@ -62,10 +62,10 @@ pub fn ansi_effects_to_ratatui_modifiers(effects: Effects) -> Modifier
 pub fn ansi_style_to_ratatui_style(style: AnsiStyle) -> Style
 ```
 
-**Color Support**:
+**Colour Support**:
 
--   8/16 colors (ANSI standard)
--   256 colors (8-bit)
+-   8/16 colours (ANSI standard)
+-   256 colours (8-bit)
 -   RGB/Truecolor (24-bit)
 
 ### 4. ANSI Renderer (`crates/codegen/vtcode-core/src/utils/ansi.rs`)
@@ -81,7 +81,7 @@ pub enum MessageStyle
 
 ## ANSI Sequences Used in VT Code
 
-### Colors (Most Common)
+### Colours (Most Common)
 
 | Usage            | ANSI Sequence      | VT Code Context       |
 | ---------------- | ------------------ | --------------------- |
@@ -171,9 +171,9 @@ if let Ok(s) = std::str::from_utf8(chunk) {
 
 ## TUI Rendering
 
-### Color Mapping
+### Colour Mapping
 
-**8/16 Colors** (from reference):
+**8/16 Colours** (from reference):
 
 ```
 Black=30/40   → Ratatui::Black
@@ -186,7 +186,7 @@ Cyan=36/46    → Ratatui::Cyan
 White=37/47   → Ratatui::White
 ```
 
-**Bright Colors** (90-97):
+**Bright Colours** (90-97):
 
 ```
 BrightRed=91     → Ratatui::LightRed
@@ -195,14 +195,14 @@ BrightYellow=93  → Ratatui::LightYellow
 BrightBlue=94    → Ratatui::LightBlue
 ```
 
-**256 Colors** (`ESC[38;5;{ID}m`):
+**256 Colours** (`ESC[38;5;{ID}m`):
 
 ```rust
 // Converted via ansi_color_to_ratatui_color()
 // Supports full 256-color palette
 ```
 
-**RGB Colors** (`ESC[38;2;{r};{g};{b}m`):
+**RGB Colours** (`ESC[38;2;{r};{g};{b}m`):
 
 ```rust
 AnsiColorType::Rgb(rgb_color) =>
@@ -288,7 +288,7 @@ fn test_strip_ansi_multiple() {
 #[test]
 fn test_ansi_color_conversion() {
     assert_eq!(
-        ansi_color_to_ratatui_color(&AnsiColorEnum::Ansi(AnsiColor::Red)),
+        ansi_color_to_ratatui_color(&AnsiColourEnum::Ansi(AnsiColor::Red)),
         Color::Red
     );
 }
@@ -296,8 +296,8 @@ fn test_ansi_color_conversion() {
 #[test]
 fn test_ansi_style_to_ratatui_style() {
     let ansi_style = anstyle::Style::new()
-        .fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::Green)))
-        .bg_color(Some(AnsiColorEnum::Ansi(AnsiColor::Blue)))
+        .fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Green)))
+        .bg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Blue)))
         .bold();
     let ratatui_style = ansi_style_to_ratatui_style(ansi_style);
     // Verify colors and modifiers
@@ -403,9 +403,9 @@ let s = String::from_utf8(chunk).unwrap(); // May panic
 | Set title          | `OSC 2 ;`       | `OSC_SET_TITLE_PREFIX`      |
 | Set icon name      | `OSC 1 ;`       | `OSC_SET_ICON_PREFIX`       |
 | Set icon+title     | `OSC 0 ;`       | `OSC_SET_ICON_AND_TITLE_PREFIX` |
-| Foreground color   | `OSC 10 ;`      | `OSC_FG_COLOR_PREFIX`       |
-| Background color   | `OSC 11 ;`      | `OSC_BG_COLOR_PREFIX`       |
-| Cursor color       | `OSC 12 ;`      | `OSC_CURSOR_COLOR_PREFIX`   |
+| Foreground colour | `OSC 10 ;`       | `OSC_FG_COLOR_PREFIX`       |
+| Background colour | `OSC 11 ;`       | `OSC_BG_COLOR_PREFIX`       |
+| Cursor colour     | `OSC 12 ;`       | `OSC_CURSOR_COLOR_PREFIX`   |
 | Hyperlink          | `OSC 8 ;`       | `OSC_HYPERLINK_PREFIX`      |
 | Clipboard          | `OSC 52 ;`      | `OSC_CLIPBOARD_PREFIX`      |
 
@@ -448,17 +448,17 @@ For complete ANSI sequence reference, see:
 
 1. **Parse ANSI for Structured Output**
 
-    - Extract color information for semantic analysis
-    - Detect error patterns by color (red = error)
+    - Extract colour information for semantic analysis
+    - Detect error patterns by colour (red = error)
 
 2. **Preserve Formatting in Logs**
 
     - Option to keep ANSI in log files
-    - HTML export with color preservation
+    - HTML export with colour preservation
 
-3. **Custom Color Schemes**
+3. **Custom Colour Schemes**
 
-    - User-configurable color mappings
+    - User-configurable colour mappings
     - Theme support for TUI
 
 4. **Advanced Cursor Control**
@@ -474,10 +474,10 @@ VT Code has comprehensive ANSI support:
 -   Parsing for style extraction (including 3-byte ESC sequences per xterm spec)
 -   Conversion to Ratatui styles
 -   Rendering for terminal output
--   Full color support (8/16/256/RGB)
+-   Full colour support (8/16/256/RGB)
 -   All standard text effects
 -   Cursor, screen, scroll region, and mouse tracking control
--   OSC sequences (title, colors, hyperlinks, clipboard)
+-   OSC sequences (title, colours, hyperlinks, clipboard)
 -   Device status and attribute queries
 -   Mouse tracking modes (X10, normal, button-event, any-event, SGR, URXVT)
 -   Terminal modes (bracketed paste, focus events, synchronized output)

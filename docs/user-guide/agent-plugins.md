@@ -2,7 +2,7 @@
 
 Agent Plugins are portable packages that bundle Agent Skills and MCP servers under a root `plugin.json` manifest, following the [Agent Plugins](https://agent-plugins.org/specification) spec. Install one and its skills and MCP servers become available to VT Code immediately.
 
-For the full reference — plugin layout, manifest fields, MCP transports, and security behavior — see the [Agent Plugins Guide](../guides/agent-plugins.md).
+For the full reference — plugin layout, manifest fields, MCP transports, and security behaviour — see the [Agent Plugins Guide](../guides/agent-plugins.md).
 
 ## What a plugin gives you
 
@@ -62,7 +62,7 @@ Inside an interactive session the same management is available through the `/plu
 
 Once installed, no further setup is needed:
 
-- **Plugin skills** are loaded into the agent's skill catalog at session start and are available to the agent like any other skill (ask it to use one by name).
+- **Plugin skills** are loaded into the agent's skill catalogue at session start and are available to the agent like any other skill (ask it to use one by name).
 - **Plugin MCP servers** appear in `/mcp` as `<plugin>.<server>` and connect automatically at session start.
 
 Plugin skills and MCP servers are discovered from both `<workspace>/.agents/plugins` and `~/.agents/plugins`.
@@ -81,7 +81,7 @@ vtcode plugins info vtcode-plugins
 # e.g. "Use the rust-skills skill"
 ```
 
-## Configure plugin behavior
+## Configure plugin behaviour
 
 The `tools.plugins` section of `vtcode.toml` governs the separate **marketplace tool plugin** runtime (TOML manifests registered via the `manifests` list):
 

@@ -96,7 +96,7 @@ All three models appear in the Z.AI section of the `/model` picker and support s
 
 GLM-5.3 Flash natively integrates visual capabilities into the coding loop — it can observe interfaces, rendered results, and interaction feedback and iteratively improve. Use cases highlighted by Z.AI include:
 
-- **Vision-driven UI coding:** Transform screenshots, multi-page images, URLs, or screen recordings into polished Next.js / frontend apps. Analyze design system, page relationships, shared components, navigation, interaction states, and animation logic, then build and iteratively refine against rendered screenshots.
+- **Vision-driven UI coding:** Transform screenshots, multi-page images, URLs, or screen recordings into polished Next.js / frontend apps. Analyse design system, page relationships, shared components, navigation, interaction states, and animation logic, then build and iteratively refine against rendered screenshots.
 - **Office deliverables:** Generate PPTX/PDF/DOCX/XLSX from research with visual validation (overflow, misalignment, overlapping, cropping).
 - **Financial research:** Multi-source research → valuation model → report with citations and auditable Excel.
 - **Video understanding & editing:** Inventory footage, identify speakers/events, structure story, generate subtitles, and verify A/V sync.

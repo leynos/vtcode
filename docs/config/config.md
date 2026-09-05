@@ -2,7 +2,7 @@
 
 VT Code configuration gives you fine-grained control over the model, execution environment, and integrations available to the CLI. Use this guide alongside the workflows in the extension, the participant system, and the tool approval mechanisms available in the application.
 
-VT Code uses a configuration file named `vtcode.toml` that can be placed at the root of your project workspace to customize behavior. Interactive sessions poll the active workspace, project, user, and explicit config layers and apply safe changes without restarting.
+VT Code uses a configuration file named `vtcode.toml` that can be placed at the root of your project workspace to customize behaviour. Interactive sessions poll the active workspace, project, user, and explicit config layers and apply safe changes without restarting.
 
 ## Quick navigation
 
@@ -74,7 +74,7 @@ file and does not remove secure credentials or any other layer.
 
 While a session is running, changes to watched configuration files are
 debounced and reloaded through the normal layered configuration service. Safe
-runtime settings such as UI appearance and theme, status-line behavior,
+runtime settings such as UI appearance and theme, status-line behaviour,
 permissions, sandbox and timeout policy, MCP approval policy, and custom
 provider definitions are applied without restarting. A provider/model identity
 selected for the current session remains stable until a later turn or session
@@ -91,7 +91,7 @@ back to the first available item.
 
 ## Feature flags
 
-Optional and experimental capabilities are toggled via the `[features]` table in `vtcode.toml`. These allow you to customize the behavior of various VT Code features.
+Optional and experimental capabilities are toggled via the `[features]` table in `vtcode.toml`. These allow you to customize the behaviour of various VT Code features.
 
 ```toml
 [features]
@@ -220,7 +220,7 @@ experimental_features = false
 - If the sidecar command is missing, VT Code disables the Codex runtime path early and falls back to another authenticated provider when available.
 - In the interactive UI you can open this section directly with `/config codex` or `/config agent.codex_app_server`.
 
-You can also enable the experimental Codex behavior for a single run:
+You can also enable the experimental Codex behaviour for a single run:
 
 ```bash
 vtcode --codex-experimental
@@ -251,7 +251,7 @@ model = "gpt-5.6-sol"
 
 Notes:
 - `context_window` declares the provider's capability in tokens and drives the context size shown in the UI, compaction thresholds, and preflight token checks.
-- `api_format` is a hint to VT Code about how this provider / endpoint expects model traffic. Accepted values are: `auto`, `openai-chat`, `openai-responses`, and `anthropic-messages`. When omitted VT Code preserves legacy behavior and will try to autodetect; an explicit value is honored and VT Code will not silently fallback to a different format.
+- `api_format` is a hint to VT Code about how this provider / endpoint expects model traffic. Accepted values are: `auto`, `openai-chat`, `openai-responses`, and `anthropic-messages`. When omitted VT Code preserves legacy behaviour and will try to autodetect; an explicit value is honoured and VT Code will not silently fallback to a different format.
 
 Capability defaults and per-model profiles
 
@@ -292,11 +292,11 @@ When determining a model's runtime shape VT Code applies values in the following
 3. model metadata discovered from the provider (or autodetection)
 4. conservative built-in fallback defaults
 
-Sampling values resolve on the same chain, with one extra global layer beneath the provider: profile → provider default → `agent.temperature` / `agent.reasoning_effort` globals → built-in per-task limits (`max_tokens` only). Two built-in behaviors sit above the profile chain: simple sub-tasks force `reasoning_effort = "minimal"` regardless of a profile pin, and backends that reject sampling during reasoning (native Anthropic/MiniMax, or custom profiles with `api_format = "anthropic-messages"`) drop `temperature` while reasoning is active.
+Sampling values resolve on the same chain, with one extra global layer beneath the provider: profile → provider default → `agent.temperature` / `agent.reasoning_effort` globals → built-in per-task limits (`max_tokens` only). Two built-in behaviours sit above the profile chain: simple sub-tasks force `reasoning_effort = "minimal"` regardless of a profile pin, and backends that reject sampling during reasoning (native Anthropic/MiniMax, or custom profiles with `api_format = "anthropic-messages"`) drop `temperature` while reasoning is active.
 
 Additional rules:
-- An explicit boolean `false` in any overriding layer is honored and prevents a higher-level implicit `true` from taking effect.
-- Omitting `api_format` preserves legacy autodetection behavior; explicitly setting `api_format` to a value instructs VT Code to use this API shape and not silently fall back.
+- An explicit boolean `false` in any overriding layer is honoured and prevents a higher-level implicit `true` from taking effect.
+- Omitting `api_format` preserves legacy autodetection behaviour; explicitly setting `api_format` to a value instructs VT Code to use this API shape and not silently fall back.
 - Profiles do not make a model available in the picker — use `model` or `models` to control availability.
 - Wire delivery depends on the backend's API format. The OpenAI Chat shape sends `temperature`, `top_p`, and both penalties; the OpenAI Responses shape sends them inside a nested `sampling_parameters` object that some compatible endpoints ignore, and currently does not emit `max_output_tokens` for non-native endpoints; `top_k` is accepted in configuration but not serialized for these shapes today (it applies only to backends whose own request builders expose it).
 - Name-based OpenAI sampling gates apply to custom endpoints too, by bare model-name match: models named `gpt`, `gpt-5.2`, `gpt-5.4`, `gpt-5.5*` accept sampling only while reasoning effort resolves to `none` (values are silently omitted otherwise), and `gpt-5`/`gpt-5-mini`/`gpt-5-nano` never receive sampling parameters. Prefer neutral model IDs on custom gateways if you need pinned values on such names.
@@ -388,7 +388,7 @@ Matching is case-insensitive.
 
 ### Model-specific settings
 
-You can also configure model-specific behavior:
+You can also configure model-specific behaviour:
 
 ```toml
 [agent.model_settings]
@@ -520,7 +520,7 @@ Notes:
 - `environment = "container_reference"` reuses an existing OpenAI container and ignores `file_ids` and `skills`.
 - `provider.openai.hosted_shell.network_policy` currently applies only to `container_auto`.
 - `type = "allowlist"` requires at least one `allowed_domains` entry. Each `domain_secrets[*].domain` must also appear in `allowed_domains`.
-- `version` may be omitted for the default `"latest"` behavior, or set to a pinned integer/string version when your hosted skill deployment requires it.
+- `version` may be omitted for the default `"latest"` behaviour, or set to a pinned integer/string version when your hosted skill deployment requires it.
 
 ## External editor
 
@@ -545,11 +545,11 @@ You can manage this feature without editing TOML directly:
 - `/config tools.editor` opens the dedicated editor setup wizard directly.
 - The guided flow can also take you to `/config file_opener` when you want to tune ANSI hyperlink URI handling separately.
 
-For full editor detection, launcher behavior, and examples, see [External Editor Configuration](../tools/EDITOR_CONFIG.md).
+For full editor detection, launcher behaviour, and examples, see [External Editor Configuration](../tools/EDITOR_CONFIG.md).
 
 ## Fullscreen interaction
 
-When VT Code is using alternate-screen rendering, you can tune fullscreen-specific mouse and transcript behavior with the `ui.fullscreen` table.
+When VT Code is using alternate-screen rendering, you can tune fullscreen-specific mouse and transcript behaviour with the `ui.fullscreen` table.
 
 ```toml
 [ui.fullscreen]
@@ -562,7 +562,7 @@ scroll_speed = 3
 - `copy_on_select` controls whether text selected inside VT Code is copied automatically on mouse release.
 - `scroll_speed` multiplies mouse-wheel scrolling from `1` to `20`. It only affects wheel accumulation; page-based keyboard navigation is unchanged.
 
-VT Code also honors these environment variables for default fullscreen behavior:
+VT Code also honours these environment variables for default fullscreen behaviour:
 
 - `VTCODE_FULLSCREEN_MOUSE_CAPTURE=0|1`
 - `VTCODE_FULLSCREEN_COPY_ON_SELECT=0|1`
@@ -702,9 +702,9 @@ Notes:
 - `agent.harness.auto_compaction_threshold_tokens` applies to both provider-native compaction and VT Code's local fallback compaction. It remains authoritative when set, but never exceeds the provider's hard context capacity.
 - When the harness threshold is unset, VT Code derives the effective hard threshold from `min(provider_context_size, context.max_context_tokens)` and applies the 90% trigger ratio. The default 160,000-token session budget therefore triggers at approximately 144,000 tokens for providers with larger context windows.
 - `context.max_context_tokens = 0` preserves provider-only threshold resolution for compatibility; a known provider capacity is still a hard upper bound.
-- `context.dynamic.persist_history = true` lets VT Code persist compaction artifacts and the session memory envelope so later resumes and summarized forks can reuse that context.
+- `context.dynamic.persist_history = true` lets VT Code persist compaction artefacts and the session memory envelope so later resumes and summarized forks can reuse that context.
 - `context.dynamic.retained_user_messages` controls how many recent real user messages VT Code preserves verbatim on the local fallback compaction path and in summarized forks. The default is `4`.
-- The session memory envelope is VT Code's durable working-memory artifact. It is refreshed at turn boundaries and after completed child-agent results, then persisted beside history artifacts as `.memory.json`.
+- The session memory envelope is VT Code's durable working-memory artefact. It is refreshed at turn boundaries and after completed child-agent results, then persisted beside history artefacts as `.memory.json`.
 - A soft compaction threshold at 90% of the effective hard threshold defers compaction to the next outer turn boundary; the hard threshold compacts before the next model request. Compaction does not issue a hidden summary request from inside an active tool loop.
 - Steering follow-ups are stored in schema-version 3 envelopes as UUID-tagged intents: at most 16 pending intents and the most recent 64 applied IDs are retained for restart recovery.
 
@@ -830,7 +830,7 @@ custom_tool_example = "deny"
 
 ### automation
 
-Control automation behavior in VT Code:
+Control automation behaviour in VT Code:
 
 ```toml
 [automation]
@@ -861,7 +861,7 @@ Set `VTCODE_DISABLE_CRON=1` to disable the scheduler entirely, regardless of con
 
 ### participants
 
-Controls the behavior of the participant system that provides context augmentation:
+Controls the behaviour of the participant system that provides context augmentation:
 
 ```toml
 [participants]
@@ -1035,7 +1035,7 @@ level = "minimal"
 
 ### logging
 
-Configure logging behavior in VT Code:
+Configure logging behaviour in VT Code:
 
 ```toml
 [logging]
@@ -1148,7 +1148,7 @@ The VT Code extension uses a command system that can be configured through the s
 # Whether to enable the ask agent command
 ask_agent_enabled = true
 
-# Whether to enable the analyze workspace command
+# Whether to enable the analyse workspace command
 analyze_enabled = true
 
 # Timeout for command execution (in seconds)
@@ -1216,7 +1216,7 @@ If VT Code is not behaving as expected with your configuration:
 For complete field coverage generated from the live `vtcode-config` schema, use
 [`docs/config/CONFIG_FIELD_REFERENCE.md`](./CONFIG_FIELD_REFERENCE.md).
 
-For harness behavior, read `agent.harness`, `automation.full_auto`, and `context.dynamic` together: they jointly define continuation,
+For harness behaviour, read `agent.harness`, `automation.full_auto`, and `context.dynamic` together: they jointly define continuation,
 turn limits, and context reuse for long-running exec sessions.
 
 | Key                                     | Type / Values                                     | Notes                                                                                                                                                                         |
@@ -1261,7 +1261,7 @@ turn limits, and context reuse for long-running exec sessions.
 | `auth.secure_storage`                   | boolean                                           | Store credentials securely (default: true).                                                                                                                                   |
 | `auth.validate_keys`                    | boolean                                           | Validate API keys on startup.                                                                                                                                                 |
 | `commands.ask_agent_enabled`            | boolean                                           | Enable the ask agent command.                                                                                                                                                 |
-| `commands.analyze_enabled`              | boolean                                           | Enable the analyze command.                                                                                                                                                   |
+| `commands.analyze_enabled`              | boolean                                           | Enable the analyse command.                                                                                                                                                   |
 | `commands.command_timeout`              | number                                            | Command execution timeout (seconds).                                                                                                                                          |
 | `profiles.*.agent.provider`             | string                                            | Provider override for a profile.                                                                                                                                              |
 | `profiles.*.security.human_in_the_loop` | boolean                                           | Security setting override for a profile.                                                                                                                                      |

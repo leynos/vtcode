@@ -63,7 +63,7 @@ vtcode ask "Summarize this repository"
 
 - Atlas Cloud's LLM endpoint is OpenAI-compatible.
 - VT Code registers `[[custom_providers]]` as OpenAI-compatible providers.
-- Custom providers bypass the built-in model catalog check, so Atlas-specific
+- Custom providers bypass the built-in model catalogue check, so Atlas-specific
   model IDs work as long as the upstream endpoint accepts them.
 - Custom providers default to a 128K context window. If your selected models
   support a larger window, set `context_window` in tokens (for example
@@ -80,7 +80,7 @@ vtcode ask "Summarize this repository"
   fast and stable model slug that is already verified across multiple Atlas integrations.
 - Use the `models` field in `[[custom_providers]]` to populate the model picker
   with the exact slugs you have access to. Run `GET /v1/models` against your
-  API key to see your full catalog.
+  API key to see your full catalogue.
 - If your account enables different models, update both `agent.default_model`
   and `[[custom_providers]].model` to the slug returned by Atlas Cloud.
 
@@ -125,6 +125,6 @@ vtcode ask --model moonshotai/kimi-k2.6 "Review this patch at a high level"
 
 ## References
 
-- [Atlas Cloud LLM Catalog](https://www.atlascloud.ai/models/list/llm)
+- [Atlas Cloud LLM Catalogue](https://www.atlascloud.ai/models/list/llm)
 - [Atlas Cloud API Docs](https://docs.atlascloud.ai)
 - [Atlas Cloud FAQ](https://www.atlascloud.ai/docs/en/faq)

@@ -1,10 +1,10 @@
 # VT Code Downloads
 
-Welcome to the VT Code downloads center! VT Code is available across multiple platforms and IDEs to enhance your coding experience with AI-powered assistance.
+Welcome to the VT Code downloads centre! VT Code is available across multiple platforms and IDEs to enhance your coding experience with AI-powered assistance.
 
 ## Available for Your IDE
 
-Choose your favorite code editor to download VT Code:
+Choose your favourite code editor to download VT Code:
 
 ### Visual Studio Code
 
@@ -31,7 +31,7 @@ VT Code is a Rust-based AI coding assistant that provides:
 -   **Semantic Code Understanding**: LLM-native code understanding and ripgrep integration
 -   **Multi-Provider AI**: Support for OpenAI, Anthropic, Google, xAI, DeepSeek, and more
 -   **Security First**: Built-in safeguards with human-in-the-loop controls
--   **Offline Analysis**: Analyze your codebase without sending code to external services
+-   **Offline Analysis**: Analyse your codebase without sending code to external services
 -   **Configurable**: Customizable through `vtcode.toml` configuration files
 
 ## Prerequisites
@@ -96,4 +96,4 @@ For detailed setup instructions, see our [Cursor and Windsurf Setup Guide](./cur
 
 ---
 
-_VT Code is designed to work with your favorite IDE to provide LLM-native code understanding and AI assistance. All VS Code compatible editors can use VT Code through the Open VSX registry._
+_VT Code is designed to work with your favourite IDE to provide LLM-native code understanding and AI assistance. All VS Code compatible editors can use VT Code through the Open VSX registry._

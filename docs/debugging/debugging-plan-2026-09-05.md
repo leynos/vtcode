@@ -76,7 +76,7 @@ It expects `Opus 4.8/5 only`, whereas the returned description says
 effort levels and related model metadata. Falsify H3 if the asserted older
 family remains supported and the production description is inconsistent.
 
-These are read-only source checks. Do not change runtime capability behavior
+These are read-only source checks. Do not change runtime capability behaviour
 or import changes from the separate capability-hardening train. Report precise
 source evidence before deciding whether either failure is a test-only repair.
 
@@ -182,7 +182,7 @@ historical result and was superseded by the completion-sweep run below.
 
 ## H9 result: sidecar fallback and current model support
 
-H9 was not falsified. `gpt-5-codex` is intentionally not catalog-supported,
+H9 was not falsified. `gpt-5-codex` is intentionally not catalogue-supported,
 so the sidecar fallback selects the current OpenAI default, `gpt-5.6-sol`,
 rather than preserving that unsupported identifier. A worker is adding tests
 for preservation of a current supported model and for fallback from an
@@ -217,7 +217,7 @@ The parent agent also updated the generic raw-extent check to exclude
 `CODE_SEARCH`, whose normalized identity already includes its limit and filters;
 existing positive coverage and the different-limit negative case remain. The
 separate capability-hardening train remains untouched. The required gate set is
-now green; PR metadata remains to be finalised.
+now green; PR metadata remains to be finalized.
 
 ## Completion-sweep status
 
@@ -251,4 +251,4 @@ result above passed. Scheduled gates are `make check-fmt`, `make lint`, full
 test, then build, harness, optional ast-grep, advisory, and documentation
 gates. The required gates passed; optional ast-grep was skipped because the
 tool was unavailable. Four old rustdoc warnings from the old configuration were
-accepted. PR metadata remains to be finalised.
+accepted. PR metadata remains to be finalized.

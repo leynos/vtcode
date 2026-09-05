@@ -12,7 +12,7 @@ enforcement, and security-sensitive module boundaries.
 | High | OpenRouter logout could report success after a storage deletion failure | `clear_oauth_token` and `Auto` mode discarded backend errors | Shared storage now propagates deletion failures and clears both new backends plus the legacy file when requested |
 | Medium | OpenAI and OpenRouter duplicated keyring, encrypted-file, and serialization logic | Each OAuth module owned a private storage implementation despite the existing `CredentialStorage` pattern used by MCP OAuth | Added typed `OpenAiSessionStorage` and `OpenRouterTokenStorage` boundaries over `CredentialStorage`; added shared JSON methods |
 | Medium | Refresh classification was coupled to credential deletion | `classify_refresh_status_error` parsed a response and mutated storage in the same function | Added pure `openai_refresh_policy` classification returning an explicit clear/preserve action; orchestration applies the action |
-| Medium | Filtered skill tools were not an execution boundary for non-fork sub-LLM calls | `execute_skill_with_sub_llm` removed tools from the model catalog but dispatched any model-emitted public name directly to `ToolRegistry` | Added `SkillToolScope`, enforced it immediately before dispatch, and split network/filesystem policy into `skills/skill_policy.rs` |
+| Medium | Filtered skill tools were not an execution boundary for non-fork sub-LLM calls | `execute_skill_with_sub_llm` removed tools from the model catalogue but dispatched any model-emitted public name directly to `ToolRegistry` | Added `SkillToolScope`, enforced it immediately before dispatch, and split network/filesystem policy into `skills/skill_policy.rs` |
 | Low | Unused refresh helper constructed a partial session with blank token fields | Private deprecated helper had no callers | Removed the dead helper |
 
 ## Compatibility and false-positive filtering
@@ -24,7 +24,7 @@ enforcement, and security-sensitive module boundaries.
 - No changes were made to public OAuth client IDs; they are public PKCE
   identifiers, not client secrets.
 - Test-only bulk restructuring was intentionally deferred; the review target
-  was production coupling and behavior.
+  was production coupling and behaviour.
 
 ## Refactoring guard rails
 
@@ -32,7 +32,7 @@ enforcement, and security-sensitive module boundaries.
 - Storage adapters expose typed save/load/clear operations and keep legacy
   format handling local to the adapter.
 - Provider operations that promise selected-backend scope use an exact-backend
-  boundary; the generic credential API retains fallback behavior for callers
+  boundary; the generic credential API retains fallback behaviour for callers
   that explicitly use that policy.
 - Refresh policy has no storage dependency; only the orchestration layer can
   delete a session.

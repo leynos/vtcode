@@ -20,7 +20,7 @@ VT Code's A2A implementation spans across modules:
 ```
 crates/codegen/vtcode-core/src/a2a/
 ├── mod.rs                  # Module organization & re-exports
-├── types.rs                # Core data structures (Task, Message, Part, Artifact)
+├── types.rs                # Core data structures (Task, Message, Part, Artefact)
 ├── rpc.rs                  # JSON-RPC 2.0 protocol (requests, responses, methods)
 ├── errors.rs               # A2A and JSON-RPC error codes
 ├── agent_card.rs           # Agent discovery metadata
@@ -43,7 +43,7 @@ pub enum TaskState {
     InputRequired,  // Awaiting user input
     Completed,      // Task finished successfully
     Failed,         // Task failed with error
-    Canceled,       // Task canceled by request
+    Cancelled,      // A2A wire value: "canceled"
     Rejected,       // Task rejected by agent
     AuthRequired,   // Requires authentication
     Unknown,        // Unknown state
@@ -81,19 +81,19 @@ pub struct Task {
     pub id: String,                         // Unique task ID
     pub context_id: Option<String>,         // Conversation context
     pub status: TaskStatus,                 // Current status & message
-    pub artifacts: Vec<Artifact>,           // Generated outputs
+    pub artefacts: Vec<Artefact>,           // Generated outputs
     pub history: Vec<Message>,              // Conversation history
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 ```
 
-### Artifact Structure
+### Artefact Structure
 
 Outputs produced by tasks:
 
 ```rust
-pub struct Artifact {
-    pub id: String,                         // Unique artifact ID
+pub struct Artefact {
+    pub id: String,                         // Unique artefact ID
     pub name: Option<String>,               // Human-readable name
     pub description: Option<String>,        // Description
     pub parts: Vec<Part>,                   // Content parts
@@ -119,8 +119,8 @@ impl TaskManager {
         message: Option<Message>
     ) -> A2aResult<Task>
 
-    /// Add an artifact to a task
-    pub async fn add_artifact(&self, task_id: &str, artifact: Artifact) -> A2aResult<Task>
+    /// Add an artefact to a task
+    pub async fn add_artefact(&self, task_id: &str, artefact: Artefact) -> A2aResult<Task>
 
     /// Get a task by ID
     pub async fn get_task(&self, task_id: &str) -> Option<Task>
@@ -308,7 +308,7 @@ let task = client.get_task(task_id).await?;
 let tasks = client.list_tasks(context_id).await?;
 
 // Cancel task
-let canceled = client.cancel_task(task_id).await?;
+let cancelled = client.cancel_task(task_id).await?;
 ```
 
 ## Error Handling
@@ -326,7 +326,7 @@ pub enum A2aErrorCode {
 
     // A2A-specific errors
     TaskNotFound,           // -32001
-    TaskNotCancelable,      // -32002
+    TaskNotCancellable,     // -32002
     PushNotificationNotSupported,  // -32003
     UnsupportedOperation,   // -32004
     ContentTypeNotSupported,// -32005
@@ -364,14 +364,14 @@ async fn main() {
         Some(Message::agent_text("Processing your request..."))
     ).await.ok();
 
-    // Add artifact
-    let artifact = Artifact::text("result-1", "Refactored code");
-    manager.add_artifact(&task.id, artifact).await.ok();
+    // Add artefact
+    let artefact = Artefact::text("result-1", "Refactored code");
+    manager.add_artefact(&task.id, artefact).await.ok();
 
     // Get task
     let updated = manager.get_task(&task.id).await.unwrap();
     println!("Task state: {:?}", updated.state());
-    println!("Artifacts: {}", updated.artifacts.len());
+    println!("Artefacts: {}", updated.artefacts.len());
 }
 ```
 
@@ -429,7 +429,7 @@ Integration tests cover:
 
 - Task lifecycle management
 - Message handling
-- Artifact management
+- Artefact management
 - Concurrent operations
 - State transitions
 - Error handling
@@ -461,7 +461,7 @@ cargo nextest run -p vtcode-a2a --features a2a-server
 ## Performance
 
 - In-memory task storage with RwLock concurrency
-- Efficient artifact streaming
+- Efficient artefact streaming
 - Best-effort webhook delivery
 - Broadcast channel for SSE streaming
 

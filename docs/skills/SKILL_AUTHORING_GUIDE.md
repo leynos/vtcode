@@ -23,7 +23,7 @@ By default this creates:
 Use the core Agent Skills frontmatter fields. VT Code also accepts the
 client-side `disable-model-invocation` flag when a skill should stay callable
 through explicit harness paths but should not be advertised in the model-facing
-startup catalog.
+startup catalogue.
 
 ```yaml
 ---

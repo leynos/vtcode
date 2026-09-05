@@ -46,7 +46,7 @@ All three models are exposed through the `/model` picker and support streaming,
 function tools, structured output, multimodal input, and reasoning effort
 controls through Meta's OpenAI-compatible Chat Completions API.
 
-See the [Meta model catalog](https://developer.meta.com/ai/models),
+See the [Meta model catalogue](https://developer.meta.com/ai/models),
 [Chat Completions protocol](https://dev.meta.ai/docs/protocols/chat-completions.md),
 and [authentication guide](https://dev.meta.ai/docs/authentication.md) for
 provider-side details.

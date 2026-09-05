@@ -493,7 +493,7 @@ cargo check
 2. **Review plugin source code when possible**
 3. **Keep plugins updated**
 4. **Use application-managed user plugin locations; do not treat project files as trust roots**
-5. **Monitor plugin behavior**
+5. **Monitor plugin behaviour**
 
 ## Compatibility
 

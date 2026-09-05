@@ -124,7 +124,9 @@ The complete PR train is not yet delivered.
   rule identities unchanged; Nixie passed all six changed Markdown files.
   Advisory passed; optional ast-grep remained unavailable. Logs use the
   foundation branch suffix, with `test-2` for the verified full-suite run.
-- `harden-lint-spelling-engineering-docs` is active, based on #32.
+- [Draft PR #33](https://github.com/leynos/vtcode/pull/33) publishes
+  `harden-lint-spelling-engineering-docs` at
+  `d94310f9a6be1cd8b5ba29cdb7c87e39f6368202`, based on #32.
   It corrects engineering, guide, and harness prose. The colour guide moves
   to `COLOUR_GUIDELINES.md` with both documentation-map links updated together.
   Preliminary Markdown checks found 41 new table-spacing and line-length
@@ -135,6 +137,18 @@ The complete PR train is not yet delivered.
   10,081 workspace tests with 17 skipped, 67 harness tests, the optional
   ast-grep skip, and advisory. Logs use `ACTION-manifest` with the engineering
   branch suffix.
+- `harden-lint-spelling-user-docs` is active, based on #33.
+  It corrects 94 user, reference, and provider documents, including native
+  colour aliases in examples. Fixed URLs, APIs, configuration keys, and
+  protocol names remain intact. All seven original code gates recorded exit
+  zero: formatting, lint, build, 10,081 workspace tests with 17 skipped,
+  67 harness tests, the optional ast-grep skip, and advisory. Logs use
+  `ACTION-manifest` with the user-docs branch suffix. Nixie passed all
+  95 changed documents. Original table and wrapping repairs left 5,069
+  inherited Markdown diagnostics against 5,074 in the parent: no added
+  path, mapped-line, and rule identities; five inherited instances removed.
+  Two residual Oxford spellings found by reconnaissance are queued for the
+  next source-fix layer before the final spelling scan and gate.
 - Remaining spelling changes are preserved separately while each layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
@@ -523,3 +537,44 @@ Corrected captures use `markdownlint-current-restack-2` and
 `markdownlint-parent-restack-3` with the engineering branch suffix; the
 comparison is `/tmp/vtcode-pr33-md-identity-root.json`. These fresh results
 supersede the original diagnostic count for this restack.
+
+## PR 34 review restack
+
+The user-documentation layer is rebased onto PR #33 `d94310f9a`. Its 95-path
+patch replayed without conflicts. Lower hermetic-fixture guidance, Anthropic
+prefill and system-fallback documentation, and the hook experiment record are
+preserved. Formatting, lint, build, type checking, all 10,085 workspace tests
+(17 skipped), all 67 selected harness tests, and advisory checks passed. The
+optional ast-grep scan remains unavailable. Logs use `ACTION-pr34-restack-1`
+with the user-documentation branch suffix.
+
+Fresh Markdownlint checked all 95 changed documents: 3,814 current diagnostics
+against 3,819 in the final parent. Source-line mapping found no added identities
+and five removed instances: one line-length finding in the LM Studio guide and
+four table-spacing findings in the ANSI reference and styling architecture.
+These are inherited failures, not a passing Markdownlint gate. Nixie passed all
+95 files. Raw logs use `markdownlint-pr34-{current,parent}-restack-1`; the mapped
+comparison is `/tmp/vtcode-pr34-md-identity-root.json`. This evidence supersedes
+the original diagnostic counts for this restack.
+
+## Additional Markdown-formatting requirement
+
+The onboarding now also includes a tracked-Markdown format gate imported from
+Netsuke revision `45174acf560d7810f87eb584c535986abbce5216`. Its checker
+formats temporary copies in one batch, preserves tracked files, accepts exact
+LF or CRLF canonical output, and fails closed on discovery or tool errors.
+Process-boundary tests cover unusual filenames, deleted and untracked files,
+empty discovery, mixed line endings, and the large-file broken-pipe regression.
+
+Mechanical formatting of the complete tracked Markdown baseline precedes the
+configuration that requires it. CI will install prebuilt mdtablefix 0.5.1 using
+shared-actions revision `c5a54701c8603a0fa756a6b34c49bc2af75a6c11`; every
+shared action and reusable workflow reference must use that revision. The main
+Rust toolchain remains unchanged. Checker, CI-contract tests, developer docs,
+and baseline formatting are being prepared separately; none is delivered yet.
+
+Validation for that addition runs formatter application, focused checker and
+workflow tests, then `check-fmt`, `test`, `typecheck`, `lint`, `markdownlint`,
+and `nixie` sequentially. The PR #20 review loop remains a separate task under
+its own configuration. Distinct worktrees use separate Cargo target directories
+while retaining the shared default Cargo package cache.

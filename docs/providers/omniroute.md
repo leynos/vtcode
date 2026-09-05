@@ -48,7 +48,7 @@ Using the server root would send requests to the wrong path.
 ## Model Selection
 
 `auto` delegates model selection and provider fallback to OmniRoute. To pin a
-specific model, query the gateway catalog and copy an exact model ID:
+specific model, query the gateway catalogue and copy an exact model ID:
 
 ```bash
 curl http://localhost:20128/v1/models \
@@ -69,7 +69,7 @@ model = "auto"
 models = ["auto", "auto/coding"]
 ```
 
-## Protocol Behavior
+## Protocol Behaviour
 
 - VT Code sends the configured key as a Bearer token.
 - Unknown model IDs such as `auto` use OpenAI Chat Completions.
