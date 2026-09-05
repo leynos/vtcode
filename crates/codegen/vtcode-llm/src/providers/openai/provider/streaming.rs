@@ -206,6 +206,7 @@ impl OpenAIProvider {
                         model: model.clone(),
                         emit_reasoning,
                         include_cached_prompt_metrics: include_metrics,
+                        allow_function_call_id_remap: self.allows_responses_function_call_id_remap(&model),
                     },
                     move |value| {
                         let mut response = parse_responses_payload(value, parse_model.clone(), include_metrics)?;
@@ -248,6 +249,7 @@ impl OpenAIProvider {
                     model.clone(),
                     include_metrics,
                     self.model_supports_reasoning(&model),
+                    self.allows_responses_function_call_id_remap(&model),
                 ))
             }
             ResponsesStreamRoute::ChatCompletions => self.stream_chat_completions(&request).await,

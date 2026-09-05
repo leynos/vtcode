@@ -31,6 +31,7 @@ fn custom_provider_round_trip_config() -> CustomProviderConfig {
         supports_context_caching: Some(true),
         supports_responses_compaction: Some(false),
         supports_stream_usage: Some(true),
+        responses_allow_function_call_id_remap: Some(true),
         supports_context_edits: Some(true),
         api_key_env: "MYCORP_API_KEY".to_string(),
         auth: None,
@@ -61,6 +62,7 @@ fn custom_provider_round_trip_config() -> CustomProviderConfig {
                 supports_context_caching: None,
                 supports_responses_compaction: None,
                 supports_stream_usage: Some(false),
+                responses_allow_function_call_id_remap: Some(false),
                 supports_context_edits: None,
             },
         )]),
@@ -89,6 +91,7 @@ fn assert_custom_provider_round_trip(provider: &CustomProviderConfig) {
     assert_eq!(provider.supports_context_caching, Some(true));
     assert_eq!(provider.supports_responses_compaction, Some(false));
     assert_eq!(provider.supports_stream_usage, Some(true));
+    assert_eq!(provider.responses_allow_function_call_id_remap, Some(true));
     assert_eq!(provider.supports_context_edits, Some(true));
     assert_eq!(provider.rate_limit_headers.requests_limit_per_minute.as_deref(), Some("x-corp-request-limit"));
     assert_eq!(provider.rate_limit_headers.reset_after_seconds.as_deref(), Some("x-corp-reset-seconds"));
@@ -120,6 +123,7 @@ fn assert_custom_provider_round_trip(provider: &CustomProviderConfig) {
             supports_context_caching: None,
             supports_responses_compaction: None,
             supports_stream_usage: Some(false),
+            responses_allow_function_call_id_remap: Some(false),
             supports_context_edits: None,
         }
     );
@@ -199,6 +203,7 @@ supports_stream_usage = false
             supports_context_caching: None,
             supports_responses_compaction: None,
             supports_stream_usage: Some(false),
+            responses_allow_function_call_id_remap: None,
             supports_context_edits: None,
         }
     );
