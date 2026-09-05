@@ -5,7 +5,7 @@ message: Use `??` instead of `||` when the intent is to coalesce null/undefined.
 note: |
   `||` treats falsy values (0, "", false, null, undefined) as fallback
   triggers. `??` only falls through on null and undefined, which is
-  usually the intended behavior. This rule flags `||` when the left-hand
+  usually the intended behaviour. This rule flags `||` when the left-hand
   side is a simple identifier or member expression (to reduce false
   positives on boolean logic).
 rule:

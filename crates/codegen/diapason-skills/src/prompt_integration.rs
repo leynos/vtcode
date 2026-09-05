@@ -177,7 +177,7 @@ fn test_skills_prompt_generation() {
 
     let manifest = SkillManifest {
         name: "pdf-analyzer".to_string(),
-        description: "Analyze PDF documents".to_string(),
+        description: "Analyse PDF documents".to_string(),
         ..Default::default()
     };
 
@@ -194,7 +194,7 @@ fn test_skills_prompt_generation() {
 
     let prompt = generate_skills_prompt(&skills);
     assert!(prompt.contains("pdf-analyzer"));
-    assert!(prompt.contains("Analyze PDF documents"));
+    assert!(prompt.contains("Analyse PDF documents"));
 }
 
 #[cfg(test)]

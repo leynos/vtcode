@@ -923,6 +923,7 @@ fn looks_like_diff(text: &str) -> bool {
 }
 
 const INLINE_JSON_COLLAPSE_BYTES: usize = 50_000;
+
 const INLINE_JSON_COLLAPSE_LINES: usize = 200;
 
 struct LargeJsonPayload<'a> {
@@ -1062,7 +1063,7 @@ impl InlineSink {
     fn inline_style_from_ratatui(&self, style: RatatuiStyle, fallback: &InlineTextStyle) -> InlineTextStyle {
         let mut resolved = fallback.clone();
         // Keep transcript segments theme-dynamic by default. Only persist a
-        // foreground color when ANSI parsing produced a color different from the
+        // foreground colour when ANSI parsing produced a colour different from the
         // logical fallback for this message kind.
         resolved.colour = None;
         if let Some(colour) = style.fg.and_then(Self::ansi_from_ratatui_colour)

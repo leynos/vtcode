@@ -323,7 +323,7 @@ async fn get_agent_task(agent_url: String, task_id: String) -> anyhow::Result<()
 
 /// Cancel a running task
 async fn cancel_agent_task(agent_url: String, task_id: String) -> anyhow::Result<()> {
-    println!("Canceling task {task_id} at: {agent_url}");
+    println!("Cancelling task {task_id} at: {agent_url}");
 
     let client = a2a_client(&agent_url)?;
     client.cancel_task(task_id).await?;

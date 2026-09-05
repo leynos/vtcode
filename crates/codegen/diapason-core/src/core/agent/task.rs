@@ -88,7 +88,7 @@ impl TaskOutcome {
     pub fn description(&self) -> String {
         match self {
             Self::Success => "Task completed successfully".into(),
-            Self::StoppedNoAction => "Stopped after agent signaled no further actions".into(),
+            Self::StoppedNoAction => "Stopped after agent signalled no further actions".into(),
             Self::TurnLimitReached { max_turns, actual_turns } => {
                 format!("Stopped after reaching turn limit (max: {max_turns}, reached: {actual_turns})")
             }

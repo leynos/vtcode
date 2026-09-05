@@ -135,7 +135,7 @@ Best for: Skills that provide multiple independent operations.
 
 ## Conditional Logic Pattern
 
-Best for: Skills with context-dependent behavior.
+Best for: Skills with context-dependent behaviour.
 
 ```markdown
 ## Handling Logic

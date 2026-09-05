@@ -51,7 +51,7 @@ parse("bold #0000ee ul").unwrap()       // bold, blue, underlined
 parse("italic yellow black").unwrap()   // italic yellow on black
 
 // Invalid (these will error)
-parse("unknown-color").unwrap()         //  unknown-color not recognised
+parse("unknown-color").unwrap()         //  unknown-color not recognized
 parse("#gg0000").unwrap()               //  invalid hex
 ```
 
@@ -181,7 +181,7 @@ use anstyle::Effects;
 
 let style = InlineTextStyle {
     colour: Some(colour),
-    bg_colour: Some(bg),
+    bg_colour: Some(background),
     effects: Effects::BOLD | Effects::UNDERLINE,
 };
 
@@ -192,13 +192,13 @@ let style = InlineTextStyle::default()
     .with_colour(colour);
 ```
 
-### 3. File Colourizer (Phase 3 Future)
+### 3. File Colourizer
 
 ```rust
 use diapason_ui::tui::ui::FileColourizer;
 
 let colourizer = FileColourizer::new();  // Reads LS_COLORS
-let style = colourizer.style_for_file(&path)?;
+let style = colourizer.style_for_path(&path);
 ```
 
 ______________________________________________________________________

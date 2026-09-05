@@ -852,8 +852,8 @@ mod tests {
             new_segment_id: Some("segment-0002".to_string()),
             previous_prefix_hash: Some("prefix-before".to_string()),
             new_prefix_hash: Some("prefix-after".to_string()),
-            previous_catalog_hash: Some("catalog-before".to_string()),
-            new_catalog_hash: Some("catalog-after".to_string()),
+            previous_catalogue_hash: Some("catalogue-before".to_string()),
+            new_catalogue_hash: Some("catalogue-after".to_string()),
         });
 
         builder.process_event_at(&event, fixed_ts());

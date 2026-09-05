@@ -291,6 +291,6 @@ default_participants = ["@workspace", "@code", "@terminal", "@git"]
 # Whether to enable the ask agent command
 ask_agent_enabled = true
 # Whether to enable the analyse workspace command
-analyze_enabled = true
+analyse_enabled = true
 # Timeout for command execution (in seconds)
 command_timeout = 300

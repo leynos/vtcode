@@ -109,7 +109,7 @@ pub(super) fn transcript_line_is_blank(line: &TranscriptLine) -> bool {
 /// or markdown paragraph gaps). Without the discount the content blank and the
 /// requested inter-block gap stack (2 rows for the default spacing of 1).
 /// With it the boundary contributes exactly `count` rows, preserving the
-/// `message_block_spacing` 0–2 range while keeping the cozy rhythm.
+/// `message_block_spacing` 0–2 range while keeping the cosy rhythm.
 pub(super) fn push_spacing_blanks(lines: &mut Vec<Line<'static>>, count: usize) {
     let mut remaining = count;
     if lines.last().is_some_and(line_is_blank) {

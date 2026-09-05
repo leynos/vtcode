@@ -11,7 +11,7 @@ impl ActionMatcher {
     fn new() -> Self {
         let mut verbs = HashMap::new();
 
-        // Core actions - prioritized by likehood
+        // Core actions - prioritized by likelihood
         verbs.insert("find", "Finding");
         verbs.insert("search", "Searching");
         verbs.insert("grep", "Searching");
