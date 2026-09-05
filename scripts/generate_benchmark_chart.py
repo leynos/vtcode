@@ -74,13 +74,13 @@ def generate_matplotlib_chart(data, output_path):
     fig.suptitle(f"HumanEval Benchmark: {meta['model']}", fontsize=16, fontweight='bold')
 
     # 1. Pass/Fail pie chart
-    colors = ['#4CAF50', '#F44336']
+    colours = ['#4CAF50', '#F44336']
     ax1.pie([passed, failed], labels=['Passed', 'Failed'], autopct='%1.1f%%',
-            colors=colors, startangle=90)
+            colors=colours, startangle=90)
     ax1.set_title(f"Pass@1: {summary['pass_at_1']*100:.1f}%")
 
     # 2. Pass/Fail bar chart
-    ax2.bar(['Passed', 'Failed'], [passed, failed], color=colors)
+    ax2.bar(['Passed', 'Failed'], [passed, failed], color=colours)
     ax2.set_ylabel('Number of Tests')
     ax2.set_title('Test Results Distribution')
     ax2.set_ylim(0, summary['n'])
