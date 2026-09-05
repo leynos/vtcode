@@ -541,10 +541,10 @@ impl McpProvider {
             self.client.store(new_client);
         }
 
-        // Invalidate all caches before re-initialisation.
+        // Invalidate all caches before re-initialization.
         self.invalidate_caches();
 
-        // Re-initialise (handshake + tool refresh).
+        // Re-initialize (handshake + tool refresh).
         let init_params = InitializeRequestParams::new(
             rmcp::model::ClientCapabilities::default(),
             super::utils::build_client_implementation(),
