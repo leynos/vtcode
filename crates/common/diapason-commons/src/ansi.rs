@@ -405,13 +405,13 @@ mod tests {
     }
 
     #[test]
-    fn strips_wikipedia_sgr_8bit_color_pattern() {
+    fn strips_wikipedia_sgr_8bit_colour_pattern() {
         let input = "x\x1b[38;5;196mred\x1b[0my";
         assert_eq!(strip_ansi(input), "xredy");
     }
 
     #[test]
-    fn strips_wikipedia_sgr_truecolor_pattern() {
+    fn strips_wikipedia_sgr_truecolour_pattern() {
         let input = "x\x1b[48;2;12;34;56mblock\x1b[0my";
         assert_eq!(strip_ansi(input), "xblocky");
     }

@@ -802,8 +802,8 @@ mod tests {
 
         // Simulate realistic Cargo warning output with ANSI codes
         // (these would normally be stripped by push_text via strip_ansi)
-        let ansi_colored = "warning: unused variable\n  --> src/main.rs:10:5\n   |\n10 | let x = 5;\n   |     ^ this is orange/yellow in colored output\n";
-        scrollback.push_text(ansi_colored);
+        let ansi_coloured = "warning: unused variable\n  --> src/main.rs:10:5\n   |\n10 | let x = 5;\n   |     ^ this is orange/yellow in colored output\n";
+        scrollback.push_text(ansi_coloured);
 
         let snapshot = scrollback.snapshot();
         // Verify no ANSI escape sequences remain
