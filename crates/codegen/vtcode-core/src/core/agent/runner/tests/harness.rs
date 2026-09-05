@@ -42,6 +42,27 @@ async fn exec_full_auto_continues_until_tracker_is_completed() {
 }
 
 #[tokio::test]
+async fn primary_runner_with_runtime_permissions_still_creates_internal_tracker() {
+    let temp = TempDir::new().expect("tempdir");
+    let workspace = workspace_root(&temp);
+    let mut vt_cfg = VTCodeConfig::default();
+    vt_cfg.agent.harness.orchestration_mode = vtcode_config::core::agent::HarnessOrchestrationMode::Single;
+    vt_cfg.runtime_agent_permissions = Some(AgentPermissionsConfig::new(PermissionDefault::Auto));
+    let mut runner = Box::pin(make_runner(&temp, vt_cfg, "primary-runtime-permissions")).await;
+    runner.enable_full_auto(&[]).await;
+
+    let _setup = runner
+        .prepare_task_execution(&task("Primary permissions", "exec-task"), &[])
+        .await
+        .expect("primary task setup");
+
+    assert!(
+        workspace.join(".vtcode/tasks/current_task.md").exists(),
+        "runtime permission overrides must not be treated as a child-role marker"
+    );
+}
+
+#[tokio::test]
 async fn runner_keeps_openai_requests_stateless_and_reuses_session_cache_key() {
     let temp = TempDir::new().expect("tempdir");
     let workspace = workspace_root(&temp);
@@ -413,6 +434,109 @@ async fn default_full_auto_exec_uses_plan_build_evaluate_harness() {
     assert!(events.contains(&HarnessEventKind::PlanningCompleted));
     assert!(events.contains(&HarnessEventKind::EvaluationStarted));
     assert!(events.contains(&HarnessEventKind::EvaluationPassed));
+}
+
+#[tokio::test]
+async fn malformed_planner_response_records_safe_terminal_turn_failure_without_tools() {
+    use crate::exec::events::ThreadItemDetails;
+
+    let temp = TempDir::new().expect("tempdir");
+    let workspace = workspace_root(&temp);
+    let mut vt_cfg = VTCodeConfig::default();
+    vt_cfg.agent.harness.orchestration_mode = vtcode_config::core::agent::HarnessOrchestrationMode::PlanBuildEvaluate;
+    let mut runner = Box::pin(make_runner(&temp, vt_cfg, "thread-malformed-planner")).await;
+    runner.enable_full_auto(&[tools::TASK_TRACKER.to_string()]).await;
+    let mut malformed = text_response(r#"{"items":"PRIVATE_PLANNER_CONTENT"}"#);
+    malformed.request_id = Some("req-safe-123".to_string());
+    runner.provider_client = Box::new(QueuedProvider::new(vec![malformed]));
+    let thread_handle = runner.thread_handle();
+
+    let error = Box::pin(runner.execute_task(&task("Malformed planner", "exec-task"), &[]))
+        .await
+        .expect_err("schema-invalid planner response must fail");
+
+    let rendered = error.to_string();
+    assert!(rendered.contains("phase=parse planner response"));
+    assert!(rendered.contains("finish_reason=stop"));
+    assert!(rendered.contains("content_bytes="));
+    assert!(rendered.contains("request_id=req-safe-123"));
+    assert!(rendered.contains("parse_class=schema"));
+    assert!(!rendered.contains("PRIVATE_PLANNER_CONTENT"));
+
+    let events = thread_handle.recent_events();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(event, ThreadEvent::TurnStarted(_)))
+            .count(),
+        1
+    );
+    let failures = events
+        .iter()
+        .filter_map(|event| match event {
+            ThreadEvent::TurnFailed(failure) => Some(failure),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(failures.len(), 1);
+    assert!(failures[0].message.contains("parse_class=schema"));
+    assert!(!events.iter().any(|event| {
+        let details = match event {
+            ThreadEvent::ItemStarted(event) => &event.item.details,
+            ThreadEvent::ItemUpdated(event) => &event.item.details,
+            ThreadEvent::ItemCompleted(event) => &event.item.details,
+            _ => return false,
+        };
+        matches!(
+            details,
+            ThreadItemDetails::ToolInvocation(_)
+                | ThreadItemDetails::ToolOutput(_)
+                | ThreadItemDetails::CommandExecution(_)
+                | ThreadItemDetails::McpToolCall(_)
+                | ThreadItemDetails::FileChange(_)
+                | ThreadItemDetails::WebSearch(_)
+        )
+    }));
+    let _submission = thread_handle
+        .begin_turn()
+        .expect("planner failure must close the in-flight turn");
+    thread_handle.finish_turn();
+
+    let event_path = workspace.join(".vtcode/sessions/thread-malformed-planner/events.jsonl");
+    let persisted = fs::read_to_string(event_path).expect("planner failure event log must be drained before return");
+    let persisted_events = persisted
+        .lines()
+        .map(|line| {
+            serde_json::from_str::<vtcode_exec_events::VersionedThreadEvent>(line)
+                .expect("decode persisted planner event")
+                .into_event()
+        })
+        .collect::<Vec<_>>();
+    assert!(persisted_events.iter().any(
+        |event| matches!(event, ThreadEvent::TurnFailed(failure) if failure.message.contains("parse_class=schema"))
+    ));
+}
+
+#[tokio::test]
+async fn planner_provider_failure_remains_distinct_from_parse_failure() {
+    let temp = TempDir::new().expect("tempdir");
+    let mut vt_cfg = VTCodeConfig::default();
+    vt_cfg.agent.harness.orchestration_mode = vtcode_config::core::agent::HarnessOrchestrationMode::PlanBuildEvaluate;
+    let mut runner = Box::pin(make_runner(&temp, vt_cfg, "thread-planner-provider-failure")).await;
+    runner.enable_full_auto(&[tools::TASK_TRACKER.to_string()]).await;
+    runner.provider_client = Box::new(QueuedProvider::new(Vec::new()));
+    let thread_handle = runner.thread_handle();
+
+    let error = Box::pin(runner.execute_task(&task("Provider failure", "exec-task"), &[]))
+        .await
+        .expect_err("provider failure must propagate");
+
+    let rendered = error.to_string();
+    assert!(rendered.contains("planner request failed"));
+    assert!(!rendered.contains("phase=parse planner response"));
+    assert!(thread_handle.recent_events().iter().any(
+        |event| matches!(event, ThreadEvent::TurnFailed(failure) if failure.message.contains("planner request failed"))
+    ));
 }
 
 #[tokio::test]

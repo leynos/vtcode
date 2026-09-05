@@ -66,6 +66,7 @@ pub(super) struct ContinuationController {
     review_like: bool,
     inferred_verify_commands: Vec<String>,
     manages_internal_scaffold: bool,
+    allow_internal_scaffold: bool,
     /// Optional durable progress ledger mirroring the task tracker, persisted
     /// across turns/compaction so long-horizon work can be resumed and stalled
     /// runs detected. `None` when progress tracking is disabled for the session.
@@ -98,11 +99,19 @@ impl ContinuationController {
             review_like,
             inferred_verify_commands,
             manages_internal_scaffold: false,
+            allow_internal_scaffold: true,
             progress: None,
             workspace_root,
             context_reset_mode,
             context_reset_stall_threshold,
         }
+    }
+
+    /// Disable automatic tracker creation for a delegated child while still
+    /// honouring a tracker that the child explicitly creates.
+    pub(super) fn without_internal_scaffold(mut self) -> Self {
+        self.allow_internal_scaffold = false;
+        self
     }
 
     /// Attach a durable progress monitor. Once set, the controller keeps the
@@ -130,6 +139,10 @@ impl ContinuationController {
             return Ok(());
         }
 
+        if !self.allow_internal_scaffold {
+            return Ok(());
+        }
+
         self.create_internal_scaffold(task).await?;
         self.manages_internal_scaffold = true;
         Ok(())
@@ -153,6 +166,10 @@ impl ContinuationController {
 
         let mut checklist = if let Some(checklist) = self.load_tracker().await? {
             checklist
+        } else if !self.allow_internal_scaffold {
+            return Ok(CompletionAssessment::SkipAccept {
+                reason: "Delegated child has no explicit task tracker.".to_string(),
+            });
         } else {
             self.create_internal_scaffold(task).await?;
             self.manages_internal_scaffold = true;
@@ -598,6 +615,45 @@ mod tests {
 
         let checklist = controller.load_tracker().await.expect("load").expect("checklist");
         assert!(is_internal_scaffold(&checklist));
+    }
+
+    #[tokio::test]
+    async fn delegated_child_without_tracker_skips_internal_scaffold_and_accepts_completion() {
+        let temp = TempDir::new().expect("tempdir");
+        let mut controller = make_controller(&temp, ContinuationPolicy::ExecOnly, false).without_internal_scaffold();
+
+        controller.prepare(&sample_task()).await.expect("prepare");
+        assert!(controller.load_tracker().await.expect("load").is_none());
+
+        let session_state = AgentSessionState::new("child-session".to_string(), 5, 5, 10_000);
+        let assessment = controller
+            .assess_completion(&sample_task(), &session_state)
+            .await
+            .expect("assessment");
+        assert!(matches!(assessment, CompletionAssessment::SkipAccept { .. }));
+    }
+
+    #[tokio::test]
+    async fn delegated_child_still_honours_explicit_tracker() {
+        let temp = TempDir::new().expect("tempdir");
+        let mut controller = make_controller(&temp, ContinuationPolicy::ExecOnly, false).without_internal_scaffold();
+        controller.prepare(&sample_task()).await.expect("prepare");
+        controller
+            .tracker_tool
+            .execute(serde_json::json!({
+                "action": "create",
+                "title": "Child-owned tracker",
+                "items": ["Explicit child step"],
+            }))
+            .await
+            .expect("create explicit tracker");
+
+        let session_state = AgentSessionState::new("child-session".to_string(), 5, 5, 10_000);
+        let assessment = controller
+            .assess_completion(&sample_task(), &session_state)
+            .await
+            .expect("assessment");
+        assert!(matches!(assessment, CompletionAssessment::Continue { .. }));
     }
 
     #[tokio::test]

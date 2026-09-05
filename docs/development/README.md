@@ -32,6 +32,8 @@ Entry point for VT Code contributor workflows.
 - [Configuration reset and live reload](./configuration-reload.md) - Shared reset service, watcher contract, runtime application, and verification.
 - [Responses Hardening](./responses-hardening.md) - Completion, reasoning,
   tool-input, usage and WebSocket recovery contracts and their verification.
+- [Subagent Planner Recovery](./subagents-planner-recovery.md) - Child-only
+  orchestration, safe structured-response diagnostics, and failed-run archives.
 - [Custom Provider Request Policy](./CUSTOM_PROVIDER_REQUEST_POLICY.md) -
   Per-process admission, retries, cancellation, and turn safety for custom
   providers.
