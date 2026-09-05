@@ -1,4 +1,5 @@
 use crate::skills::SkillMetadata;
+use crate::skills::command_skills::command_skill_id_alias;
 #[cfg(test)]
 use crate::skills::loader::discover_skill_metadata_lightweight_hermetic;
 use crate::skills::loader::{
@@ -282,18 +283,22 @@ impl SkillsManager {
     }
 
     /// Resolve a skill by name from the discovered set for the given cwd.
+    ///
+    /// The persisted `cmd-analyze` command-skill name remains an alias for
+    /// `cmd-analyse`.
     /// Returns `Err` if the skill is not found, enabling callers to fail loud.
     pub fn resolve_skill_by_name(&self, cwd: &Path, skill_name: &str) -> Result<SkillMetadata> {
         let outcome = self.skills_for_cwd(cwd);
         let available: Vec<String> = outcome.skills.iter().map(|s| s.name.clone()).collect();
-        outcome.skills.into_iter().find(|s| s.name == skill_name).ok_or_else(|| {
+        skill_metadata_by_name(&outcome.skills, skill_name).cloned().ok_or_else(|| {
             anyhow::anyhow!("Skill '{}' not found. Available skills: [{}]", skill_name, available.join(", "))
         })
     }
 
     /// Load skills by name from a list of skill names (e.g. from
     /// `LoopEngineConfig.preload_skills`). Returns metadata for each
-    /// found skill and logs warnings for missing ones.
+    /// found skill and logs warnings for missing ones. The persisted
+    /// `cmd-analyze` command-skill name remains an alias for `cmd-analyse`.
     pub fn loop_skills(&self, cwd: &Path, skill_names: &[String]) -> Vec<SkillMetadata> {
         if skill_names.is_empty() {
             return Vec::new();
@@ -304,8 +309,8 @@ impl SkillsManager {
 
         let mut loaded = Vec::new();
         for name in skill_names {
-            if let Some(meta) = available.get(name) {
-                loaded.push((*meta).clone());
+            if let Some(meta) = preloaded_skill_metadata_by_name(&outcome.skills, &available, name) {
+                loaded.push(meta.clone());
             } else {
                 tracing::warn!(
                     skill = %name,
@@ -341,6 +346,29 @@ impl SkillsManager {
     }
 }
 
+/// Find a skill by its requested name while preserving discovery order for the
+/// `cmd-analyse`/`cmd-analyze` persisted-name compatibility pair.
+fn skill_metadata_by_name<'a>(skills: &'a [SkillMetadata], name: &str) -> Option<&'a SkillMetadata> {
+    let alias = command_skill_id_alias(name);
+    skills
+        .iter()
+        .find(|skill| skill.name == name || alias.is_some_and(|alias| skill.name == alias))
+}
+
+/// Resolve metadata for persisted preload configuration without changing the
+/// existing last-duplicate selection of ordinary skill IDs.
+fn preloaded_skill_metadata_by_name<'a>(
+    skills: &'a [SkillMetadata],
+    available: &HashMap<String, &'a SkillMetadata>,
+    name: &str,
+) -> Option<&'a SkillMetadata> {
+    if command_skill_id_alias(name).is_some() {
+        skill_metadata_by_name(skills, name)
+    } else {
+        available.get(name).copied()
+    }
+}
+
 fn find_git_root(path: &Path) -> Option<PathBuf> {
     let mut current = path;
     loop {
@@ -361,6 +389,77 @@ mod tests {
     use serial_test::serial;
     use std::fs;
     use tempfile::TempDir;
+
+    fn skill_metadata(name: &str, path: &str) -> SkillMetadata {
+        SkillMetadata {
+            name: name.to_owned(),
+            description: "test skill".to_owned(),
+            short_description: None,
+            path: PathBuf::from(path),
+            scope: crate::skills::SkillScope::User,
+            manifest: None,
+        }
+    }
+
+    #[test]
+    fn preloaded_skill_metadata_preserves_discovery_order_across_analyse_spellings() {
+        let skills = vec![
+            skill_metadata("cmd-analyze", "/higher-priority/cmd-analyze"),
+            skill_metadata("cmd-analyse", "/lower-priority/cmd-analyse"),
+        ];
+        let available = skills.iter().map(|skill| (skill.name.clone(), skill)).collect();
+
+        let selected =
+            preloaded_skill_metadata_by_name(&skills, &available, "cmd-analyse").expect("compatibility match");
+
+        assert_eq!(
+            selected.path,
+            PathBuf::from("/higher-priority/cmd-analyze"),
+            "canonical requests must not bypass a higher-priority legacy skill",
+        );
+    }
+
+    #[test]
+    fn skill_metadata_lookup_resolves_legacy_analyse_name_to_canonical_skill() {
+        let skills = vec![skill_metadata("cmd-analyse", "/system/cmd-analyse")];
+
+        let selected = skill_metadata_by_name(&skills, "cmd-analyze").expect("legacy compatibility match");
+
+        assert_eq!(selected.name, "cmd-analyse");
+    }
+
+    #[test]
+    fn skill_metadata_lookup_keeps_first_exact_match_for_unrelated_duplicates() {
+        let skills = vec![
+            skill_metadata("review", "/first/review"),
+            skill_metadata("review", "/second/review"),
+        ];
+
+        let selected = skill_metadata_by_name(&skills, "review").expect("exact match");
+
+        assert_eq!(
+            selected.path,
+            PathBuf::from("/first/review"),
+            "unrelated skill IDs retain first-discovered exact-match selection",
+        );
+    }
+
+    #[test]
+    fn preloaded_skill_metadata_keeps_last_exact_match_for_unrelated_duplicates() {
+        let skills = vec![
+            skill_metadata("review", "/first/review"),
+            skill_metadata("review", "/second/review"),
+        ];
+        let available = skills.iter().map(|skill| (skill.name.clone(), skill)).collect();
+
+        let selected = preloaded_skill_metadata_by_name(&skills, &available, "review").expect("preloaded exact match");
+
+        assert_eq!(
+            selected.path,
+            PathBuf::from("/second/review"),
+            "preload lookup retains the HashMap last-duplicate selection for unrelated IDs",
+        );
+    }
 
     #[test]
     fn test_skills_manager_lazy_initialization() {

@@ -1,17 +1,17 @@
 ---
-name: cmd-analyze
-description: "Perform comprehensive codebase analysis and generate reports (usage: /analyze [full|security|performance])"
+name: cmd-analyse
+description: "Perform comprehensive codebase analysis and generate reports (usage: /analyse [full|security|performance])"
 disable-model-invocation: true
 metadata:
-  slash_alias: "/analyze"
-  usage: "/analyze [full|security|performance]"
+  slash_alias: "/analyse"
+  usage: "/analyse [full|security|performance]"
   category: "tools"
   backend: "traditional_skill"
 ---
 
-# Analyze Workspace
+# Analyse Workspace
 
-Interpret the user input as the raw argument string that follows `/analyze`.
+Interpret the user input as the raw argument string that follows `/analyse`.
 
 - If the input is empty, perform a full workspace analysis.
 - If the input is `full`, `security`, or `performance`, focus on that scope.
