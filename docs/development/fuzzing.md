@@ -46,15 +46,15 @@ cargo +nightly fuzz run exec_policy_command_validation -- -max_total_time=60
 cargo +nightly fuzz run unified_path_validation -- -max_total_time=60
 ```
 
-## Corpus and Artifacts
+## Corpus and Artefacts
 
 - Seed corpus: `fuzz/corpus/<target>/`
-- Crash artifacts: `fuzz/artifacts/<target>/`
+- Crash artefacts: `fuzz/artifacts/<target>/`
 - Coverage outputs: `fuzz/coverage/<target>/`
 
 ## Reproducing a Crash
 
-Given an artifact like `fuzz/artifacts/shell_parser/crash-...`:
+Given an artefact like `fuzz/artifacts/shell_parser/crash-...`:
 
 ```bash
 cargo +nightly fuzz run shell_parser fuzz/artifacts/shell_parser/crash-...

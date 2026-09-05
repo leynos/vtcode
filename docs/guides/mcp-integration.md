@@ -7,7 +7,7 @@ configuration surface documented below maps directly to the serde structures in
 CLI and the reusable `vtcode-config` crate. For the canonical protocol behaviour and the latest
 server/client expectations, consult the upstream MCP reference index at
 `https://modelcontextprotocol.io/llms.txt`. That index links to the full architecture, transport,
-authorisation, logging, and resource specification documents maintained by the MCP community.
+authorization, logging, and resource specification documents maintained by the MCP community.
 
 > **Developer Note:** If you're implementing MCP module features or integrating with the core MCP
 > APIs, see the [MCP Integration Guide](../mcp/MCP_INTEGRATION_GUIDE.md) for API reference, code patterns, and
@@ -37,7 +37,7 @@ and behavioural guarantees defined there.
 
 Open `vtcode.toml` and ensure the global MCP section is enabled. The top-level table mirrors the
 `McpClientConfig` defaults, letting you tune concurrency, timeout, and transport behaviour in one
-place. All values fall back to the defaults compiled into `vtcode-config`, summarised in the
+place. All values fall back to the defaults compiled into `vtcode-config`, summarized in the
 following table:
 
 | Key | Default | Purpose |

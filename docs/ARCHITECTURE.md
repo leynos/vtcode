@@ -13,7 +13,7 @@ ecosystem-style project.
 
 For internal composition, prefer explicit provider selection over "clever"
 trait resolution when a boundary starts depending on many overlapping impls,
-associated types, or context-specific behavior. In practice, VT Code treats
+associated types, or context-specific behaviour. In practice, VT Code treats
 `HasComponent<Name>::Provider` as an elaborated dictionary: the context chooses
 the provider once, and blanket consumer traits delegate through that explicit
 selection. See `crates/codegen/vtcode-core/src/components.rs` and `crates/codegen/vtcode-core/src/llm/cgp.rs`.
@@ -34,7 +34,7 @@ Harness primitives in VT Code map to the runtime like this:
 - **Instruction memory**: AGENTS.md loading, project docs, prompt assembly, onboarding guidance, and session bootstrap live in `crates/codegen/vtcode-core/src/prompts/`, `crates/codegen/vtcode-core/src/core/agent/`, and the workspace instruction loaders.
 - **Tools**: `crates/codegen/vtcode-core/src/tools/`, MCP integration, slash commands, and the tool registry expose shell execution, stdin continuation, patch editing, bounded syntactic code search, and protocol-backed capabilities to the model.
 - **Sandbox / execution environment**: `vtcode-bash-runner/`, `vtcode-safety/` (command safety, exec policy, sandboxing), workspace trust, command policies, and tool allow-lists define where generated code runs and what it can touch.
-- **Dynamic context**: context assembly, instruction merging, task tracker state, history, plan sidecars, and spooled tool outputs let VT Code rehydrate long-running work without keeping every token in the live window. The persisted `SessionMemoryEnvelope` is the harness working-memory artifact: it summarizes objective, constraints, touched files, grounded facts, verification status, verification TODOs, and delegated findings for resume and summarized-fork handoff.
+- **Dynamic context**: context assembly, instruction merging, task tracker state, history, plan sidecars, and spooled tool outputs let VT Code rehydrate long-running work without keeping every token in the live window. The persisted `SessionMemoryEnvelope` is the harness working-memory artefact: it summarizes objective, constraints, touched files, grounded facts, verification status, verification TODOs, and delegated findings for resume and summarized-fork handoff.
 - **Compaction / offloading**: split tool results, spool files, archive transcripts, and provider-aware auto-compaction reduce context rot while preserving recoverable state on disk. On VT Code's local compaction path, older repeated single-file reads are deduplicated before summarization so the summary prompt keeps the newest copy and avoids re-injecting stale file payloads.
 - **Hooks / middleware**: lifecycle hooks, tool middleware, guard rails, duplicate-call protection, and planning-workflow enforcement add deterministic control around the model loop.
 - **Continuation**: exec/full-auto now uses a harness-managed continuation controller that accepts completion only when tracker state is complete and verification commands pass.
@@ -45,16 +45,16 @@ Harness primitives in VT Code map to the runtime like this:
 
 ### Prompt guidance boundaries
 
-VT Code separates universal runtime behavior from project-specific developer
+VT Code separates universal runtime behaviour from project-specific developer
 instructions:
 
 - The compiled, cache-stable guidance in
   `crates/codegen/vtcode-core/src/prompts/runtime_guidance.rs` applies to every
   user and every static prompt profile. It contains only concise user-facing
-  behavior and is capped before prompt assembly.
+  behaviour and is capped before prompt assembly.
 - `AGENTS.md`, `CLAUDE.md`, and `.vtcode/rules/` remain dynamically loaded
   project/user instruction maps. Their precedence, path scoping, exclusions,
-  and active-directory behavior are preserved by the instruction loader.
+  and active-directory behaviour are preserved by the instruction loader.
 - Workspace instruction content is user-controlled context, not a security
   boundary. It cannot replace command policy, sandbox checks, approvals, or
   correctness-critical validation implemented in code, schemas, tests, and
@@ -75,9 +75,9 @@ When `agent.harness.orchestration_mode = "plan_build_evaluate"` is enabled for `
 planner/evaluator loop on top of the single-agent runtime instead of introducing a separate always-on agent subsystem:
 
 - The planner writes `.vtcode/tasks/current_spec.md` and `.vtcode/tasks/current_contract.md`, then seeds `current_task.md`.
-- The generator still runs on the main session, but it is constrained by those artifacts plus tracker completion and verification.
-- The evaluator performs a skeptical post-build pass over the spec, contract, tracker, verification results, warnings, and changed files, then writes `.vtcode/tasks/current_evaluation.md`.
-- Failed evaluation triggers bounded revision rounds rather than silent acceptance, and the artifacts survive blocked handoff, resume, and local compaction.
+- The generator still runs on the main session, but it is constrained by those artefacts plus tracker completion and verification.
+- The evaluator performs a sceptical post-build pass over the spec, contract, tracker, verification results, warnings, and changed files, then writes `.vtcode/tasks/current_evaluation.md`.
+- Failed evaluation triggers bounded revision rounds rather than silent acceptance, and the artefacts survive blocked handoff, resume, and local compaction.
 
 Broader multi-agent orchestration, dynamic tool assembly, and harness self-analysis remain follow-on work after this single-threaded
 plan/build/evaluate path is stable.
@@ -98,7 +98,7 @@ VT Code borrows selected request-shaping patterns from the Rig ecosystem without
 
 - Rig-backed usage in VT Code is limited to provider/model validation and provider-specific reasoning payload shaping.
 - The VT Code harness remains the execution engine for turns, tool routing, continuation, compaction, and resume flows.
-- Session continuity stays on VT Code primitives: `.vtcode/history/` artifacts, local/server compaction, and prompt-side memory injection.
+- Session continuity stays on VT Code primitives: `.vtcode/history/` artefacts, local/server compaction, and prompt-side memory injection.
 - This keeps VT Code’s existing tool registry, sandboxing, and resume semantics intact while still adopting Rig’s provider-facing patterns where they reduce duplication.
 
 ### CLI Architecture
@@ -106,7 +106,7 @@ VT Code borrows selected request-shaping patterns from the Rig ecosystem without
 The command-line interface is built on specific principles for robustness and interoperability:
 
 1.  **Strict Output Separation**: Data goes to `stdout`, diagnostics/logs go to `stderr`. This enables clean piping of machine-readable output.
-2.  **Standard Argument Parsing**: Uses `clap` for POSIX/GNU compliance, supporting standard flags and behavior.
+2.  **Standard Argument Parsing**: Uses `clap` for POSIX/GNU compliance, supporting standard flags and behaviour.
 3.  **Command Isolation**: Each sub-command (`ask`, `exec`, `chat`) is handled by a dedicated module in `src/cli/`, sharing core logic via `vtcode-core`.
 4.  **Signal Handling**: Graceful handling of `SIGINT`/`SIGTERM` to ensure resource cleanup (e.g., restoring terminal state). See [Signal Handling Architecture](signal_handling.md) for details.
 
@@ -201,7 +201,7 @@ pub trait CacheableTool: Tool {
 
 - Advanced-profile public tool with one required literal `query` and optional
   `path`, `file_types`, `result_types`, and `max_results`.
-- Combines recognised definitions, exact syntactic usages, literal text, and
+- Combines recognized definitions, exact syntactic usages, literal text, and
   matching paths behind typed internal components.
 - Usage classification is syntactic and does not resolve references.
 - Each component is bounded. Results merge deterministically, truncate once,
@@ -212,14 +212,14 @@ pub trait CacheableTool: Tool {
 ## Design Principles
 
 1. **Internal Traits, External Protocols** - Keep Rust traits as internal composition seams; prefer config, manifests, and protocols for third-party extension points so external integrations do not depend on compile-time impl slots in VT Code
-2. **Prefer Explicit Provider Dictionaries** - When internal Rust abstractions become coherence-sensitive, move behavior behind context-selected providers instead of adding more blanket impl magic
+2. **Prefer Explicit Provider Dictionaries** - When internal Rust abstractions become coherence-sensitive, move behaviour behind context-selected providers instead of adding more blanket impl magic
 3. **Mode-based Execution** - Single tools support multiple execution modes
 4. **Simplicity First** - Prefer simple algorithms and control flow until real workload data justifies more complexity
 5. **Data-Oriented Design** - Choose data structures and boundaries so the right algorithm is obvious
 6. **Backward Compatibility** - All existing APIs remain functional
 7. **Measured Optimization** - Profile and benchmark before keeping performance-motivated complexity
 8. **Clear Separation** - Each module has single responsibility
-9. **Handle/Context Before Clever Ownership** - When modeling complex Rust state, start with explicit handles/IDs and an owning context. Reach for self-referential layouts, raw pointers, lifetime-branding tricks, or custom `Send`/`Sync` only when a simpler handle-based design is demonstrably insufficient, and document the invariant at the boundary
+9. **Handle/Context Before Clever Ownership** - When modelling complex Rust state, start with explicit handles/IDs and an owning context. Reach for self-referential layouts, raw pointers, lifetime-branding tricks, or custom `Send`/`Sync` only when a simpler handle-based design is demonstrably insufficient, and document the invariant at the boundary
 
 ## Adding New Tools
 

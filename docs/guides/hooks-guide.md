@@ -128,7 +128,7 @@ hooks = [
 ### PreCompact
 
 -   Runs before VT Code compresses/summarizes the conversation context
--   Can influence compression behavior or save important context before it's compressed
+-   Can influence compression behaviour or save important context before it's compressed
 -   Receives current conversation state and compression parameters
 
 ### Notification

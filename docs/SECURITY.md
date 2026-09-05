@@ -22,7 +22,7 @@ When reporting a security vulnerability, please provide us with the following in
 
 ### What to Expect
 
-- **Acknowledgment**: We will acknowledge your report within 48 hours
+- **Acknowledgement**: We will acknowledge your report within 48 hours
 - **Updates**: We will provide regular updates on the status of the vulnerability and fix progress
 - **Resolution**: We will work to fix the vulnerability as quickly as possible and coordinate the release of the fix with you
 - **Credit**: We will publicly acknowledge your responsible disclosure (unless you prefer to remain anonymous)

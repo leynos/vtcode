@@ -224,7 +224,7 @@ pub async fn example_function(path: &str) -> Result<()> {
 
 - Use `#[tokio::main]` or `#[tokio::main(flavor = "multi_thread")]` for async main functions when needed
 - Prefer async/await for I/O operations
-- Use the multi-threaded flavor for CPU-intensive tasks
+- Use the multi-threaded flavour for CPU-intensive tasks
 
 ### Configuration
 

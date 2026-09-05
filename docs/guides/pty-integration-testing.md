@@ -23,11 +23,11 @@ cargo nextest run --test pty_tests
 ```
 
 The regression surface includes ANSI and carriage-return output, large
-output, command errors, labeled stdout/stderr pipe results, callback pressure,
+output, command errors, labelled stdout/stderr pipe results, callback pressure,
 and the complete session-local Transcript Review. Complete output remains
 available to the configured Transcript Review shortcut (default `Ctrl+T`) while the compact live view keeps only
 its bounded preview. Contiguous successful PTY calls may share one compact
-activity row, but failures, warnings, stderr, diffs, and artifacts remain
+activity row, but failures, warnings, stderr, diffs, and artefacts remain
 visible inline. The review must preserve conversation order and must not show
 duplicate output aliases. When the live
 preview queue is full, tests should observe a bounded coalesced/drop notice

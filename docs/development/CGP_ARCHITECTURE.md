@@ -19,7 +19,7 @@ two concrete architectural problems:
 
 ### 1. Provider Traits (explicit `Ctx` parameter)
 
-Traditional Rust traits bind behavior to `Self`. CGP moves `Self` to an explicit
+Traditional Rust traits bind behaviour to `Self`. CGP moves `Self` to an explicit
 generic `Ctx` parameter, allowing multiple overlapping implementations:
 
 ```rust
@@ -181,7 +181,7 @@ Ownership-first rule: prefer `wrap_native_tool_interactive()` /
 
 ## Named Providers
 
-| Provider                  | Implements         | Behavior                    |
+| Provider                  | Implements         | Behaviour                   |
 |---------------------------|--------------------|-----------------------------|
 | `AutoApproval`            | `ApprovalProvider` | Always approves             |
 | `DenyAllApproval`         | `ApprovalProvider` | Always denies               |
@@ -386,7 +386,7 @@ remain the fallback path:
   concrete tool registrations so builtins, skills, MCP proxies, and session
   setup tools use the same factory shape
 
-This keeps the migration incremental: existing pre-CGP registry behavior stays
+This keeps the migration incremental: existing pre-CGP registry behaviour stays
 unchanged, while runtime activation can progressively stop depending on
 `PassthroughExecutor` for selected tools.
 
@@ -404,7 +404,7 @@ The production runtime wiring stays conservative for now:
 
 - `InteractiveCtx` enables tracing only
 - `CiCtx` and `BenchCtx` keep logging/cache/retry disabled
-- cache and retry behavior are proved in dedicated CGP tests before broader rollout
+- cache and retry behaviour are proved in dedicated CGP tests before broader rollout
 
 ### Runtime Mode Selection
 

@@ -64,4 +64,4 @@ RUSTFLAGS='-D warnings' cargo check --locked --tests -p vtcode-config -p vtcode-
 
 Reset and reload tests must cover layer preservation, cache invalidation,
 explicit paths, symlink/non-regular-file rejection, malformed edits,
-creation/deletion, debounce behavior, and selection restoration.
+creation/deletion, debounce behaviour, and selection restoration.

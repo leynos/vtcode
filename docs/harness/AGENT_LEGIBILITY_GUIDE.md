@@ -1,6 +1,6 @@
 # Agent Legibility Guide
 
-In VT Code, "legibility" means that information is easily parseable by both AI agents and humans. We favor mechanical structure over aesthetic prose.
+In VT Code, "legibility" means that information is easily parseable by both AI agents and humans. We favour mechanical structure over aesthetic prose.
 
 ## Core Rules
 

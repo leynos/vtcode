@@ -126,7 +126,7 @@ All VT Code crates require Rust 1.88 or later due to dependencies (ratatui 0.30,
 | HuggingFace | Yes | `huggingface` | Inference Providers |
 | xAI | Yes | `xai` | Grok models |
 | NVIDIA | Yes | `nvidia` | NVIDIA NIM, OpenAI compatible |
-| Merge Gateway | Yes | `merge-gateway` | Native Merge Responses API and authenticated model catalog; explicit `/v1/openai` Chat compatibility |
+| Merge Gateway | Yes | `merge-gateway` | Native Merge Responses API and authenticated model catalogue; explicit `/v1/openai` Chat compatibility |
 | OpenCode Zen | Yes | `opencode-zen` | Full support |
 | OpenCode Go | Yes | `opencode-go` | Full support |
 | Mistral | Yes | `mistral` | Full support |
@@ -175,7 +175,7 @@ All VT Code crates require Rust 1.88 or later due to dependencies (ratatui 0.30,
 ### Cross-Platform Issues
 
 1. **File Permissions**: Unix permission model doesn't map cleanly to Windows ACLs
-2. **PTY Support**: Windows ConPTY has different behavior than Unix PTYs
+2. **PTY Support**: Windows ConPTY has different behaviour than Unix PTYs
 3. **Signal Handling**: Windows has limited signal support (Ctrl+C, Ctrl+Break only)
 4. **Keyring Fallback**: Auto-fallback from keyring to file storage when unavailable
 

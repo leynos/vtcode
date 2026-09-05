@@ -472,7 +472,7 @@ credentials_store_mode = "file"
 
 ## Environment Variables
 
-Control OAuth behavior via env vars:
+Control OAuth behaviour via env vars:
 
 ```bash
 # OpenAI OAuth client identity (override the default Codex CLI public client)

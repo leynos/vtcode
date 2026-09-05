@@ -15,7 +15,7 @@ contains the following metadata:
 -   `uses_pty`: whether the tool consumes a PTY session.
 -   `expose_in_llm`: opt-in flag for including the tool in generated function
     declarations.
--   `behavior`: small built-in execution metadata for tool surface kind,
+-   `behaviour`: small built-in execution metadata for tool surface kind,
     mutability classification, parallel-call support, and safe-mode prompting.
 -   `handler`: either a registry executor function (for built-in tools) or an
     `Arc<dyn Tool>` instance.
@@ -27,13 +27,13 @@ ownership at runtime.
 
 `ToolRegistry::register_tool` accepts a `ToolRegistration` and updates the
 internal index as well as the policy manager. Built-in registrations live in
-`ToolRegistry::builtin_tool_registrations`, so the registry can initialise its
+`ToolRegistry::builtin_tool_registrations`, so the registry can initialize its
 state from a single source of truth.
 
 The canonical default public surface is `exec_command`, `write_stdin`, and
 `apply_patch`. Advanced VT Code profiles may also expose `code_search` for one
 literal query with optional path, file-type, result-type, and result-limit
-filters. It returns recognised definitions, syntactic usages, literal text, and
+filters. It returns recognized definitions, syntactic usages, literal text, and
 matching paths. Legacy internal dispatcher and file helper names must not gain
 a second public declaration path.
 
@@ -63,7 +63,7 @@ First decide whether this should be a built-in VT Code tool at all.
 - Treat this as an extension-boundary rule, not just an implementation
   preference: public Rust trait seams create the same "everyone must target the
   first trait" pressure that Rust coherence makes hard to unwind later.
-- Add a built-in registry tool when VT Code must own the runtime behavior,
+- Add a built-in registry tool when VT Code must own the runtime behaviour,
   policy surface, or UX directly.
 
 1.  Implement the tool logic (usually by implementing the `Tool` trait or by
@@ -85,8 +85,8 @@ First decide whether this should be a built-in VT Code tool at all.
 
 3.  Register the tool. For built-in tooling update
     `ToolRegistry::builtin_tool_registrations`. For runtime additions invoke
-    `ToolRegistry::register_tool` from your initialisation code.
-4.  Verify the tool appears through the session catalog projections
+    `ToolRegistry::register_tool` from your initialization code.
+4.  Verify the tool appears through the session catalogue projections
     (`model_tools`, `schema_entries`, `acp_tools`, or `public_tool_names`) rather
     than adding a second declaration path or sidecar router mapping.
 5.  Add tests that cover both registration (`available_tools`/`has_tool`) and
@@ -96,7 +96,7 @@ First decide whether this should be a built-in VT Code tool at all.
 
 The `get_errors` tool is a built-in diagnostic tool that aggregates recent errors
 from session archives and returns concise suggestions and recent error samples.
-Register it as a builtin with `tools::GET_ERRORS` so the catalog can surface it
+Register it as a builtin with `tools::GET_ERRORS` so the catalogue can surface it
 through the shared projections. When used, agents should prefer `get_errors`
 output to guide self-diagnostic and self-fix logic.
 

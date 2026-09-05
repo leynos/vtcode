@@ -176,7 +176,7 @@ the Zed extension package.
 ### Extension manifest layout
 
 Add the VT Code agent definition under the `[agent_servers]` table in `extension.toml`. The copy in
-`extensions/zed-extension/extension.toml` uses the latest published macOS artifacts as a baseline (note the required top-level metadata):
+`extensions/zed-extension/extension.toml` uses the latest published macOS artefacts as a baseline (note the required top-level metadata):
 
 ```toml
 [agent_servers.vtcode]
@@ -231,7 +231,7 @@ sha256 = "replace-with-real-sha256"
 ### Building and publishing the archives
 
 1. Produce release builds for every platform you intend to support (see `scripts/` for cross-compiling
-   helpers). Bundle the artifacts as `.tar.gz` or `.zip` archives that include the `vtcode` binary at
+   helpers). Bundle the artefacts as `.tar.gz` or `.zip` archives that include the `vtcode` binary at
    the root, plus any support files (for example `vtcode.toml.example`).
 2. Create a GitHub release and upload each archive. Copy the asset URLs into `extensions/zed-extension/extension.toml`.
 3. Run `./scripts/release.sh` to execute the automated release flow. It rebuilds the binaries,
@@ -290,12 +290,12 @@ Common cases:
 - **Streaming updates** – Token deltas and reasoning updates arrive via `session/update`
   notifications, keeping Zed's UI responsive during generation.
 - **Plan tracking** – Every prompt emits an ACP plan describing analysis, optional context gathering,
-  and final response drafting. VT Code updates each entry as it progresses so Zed can visualise the
+  and final response drafting. VT Code updates each entry as it progresses so Zed can visualize the
   bridge's workflow in real time.
 - **Tool execution** – The `read_file` tool forwards to Zed when enabled. The `list_files` tool
   uses VT Code's local workspace access, mirroring the CLI experience. When the model lacks
   function calling or the tool toggle is disabled, VT Code surfaces a reasoning notice and skips the
-  invocation. Paths supplied by tools are normalised against the trusted workspace so relative
+  invocation. Paths supplied by tools are normalized against the trusted workspace so relative
   segments stay inside the project before the request reaches the client.
 - **Tool policy compatibility** – VT Code advertises the current core tool suite
   through ACP when the model supports function calling, including `exec_command`,

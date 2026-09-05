@@ -1,6 +1,6 @@
-# Terminal Color Guidelines
+# Terminal Colour Guidelines
 
-VT Code implements terminal color standards for accessibility, portability, and user preference compliance.
+VT Code implements terminal colour standards for accessibility, portability, and user preference compliance.
 
 ## Standards Implemented
 
@@ -8,7 +8,7 @@ VT Code implements terminal color standards for accessibility, portability, and 
 
 VT Code respects the [NO_COLOR standard](https://no-color.org/):
 
-- When `NO_COLOR` environment variable is set (and not empty), ANSI color output is suppressed
+- When `NO_COLOR` environment variable is set (and not empty), ANSI colour output is suppressed
 - The `--no-colour` CLI flag (with `--no-color` retained as an alias) also
   disables colour output
 - User configuration can override `NO_COLOR` per the standard
@@ -40,11 +40,11 @@ minimum_contrast = 4.5  # WCAG AA (default)
 # minimum_contrast = 7.0  # WCAG AAA for enhanced accessibility
 ```
 
-### Safe ANSI Color Palette
+### Safe ANSI Colour Palette
 
-Based on [terminal color portability research](https://blog.xoria.org/terminal-colors/), only **11 of 32** ANSI colors are safe across common terminal themes (Basic, Tango, Solarized).
+Based on [terminal colour portability research](https://blog.xoria.org/terminal-colors/), only **11 of 32** ANSI colours are safe across common terminal themes (Basic, Tango, Solarized).
 
-#### Safe Colors (Portable)
+#### Safe Colours (Portable)
 
 | Regular     | Bright         |
 | ----------- | -------------- |
@@ -55,9 +55,9 @@ Based on [terminal color portability research](https://blog.xoria.org/terminal-c
 | magenta (5) | brmagenta (13) |
 | cyan (6)    | brcyan (14)    |
 
-#### Problematic Colors (Avoid)
+#### Problematic Colours (Avoid)
 
-| Color         | Issue                                                 |
+| Colour        | Issue                                                 |
 | ------------- | ----------------------------------------------------- |
 | black (0)     | Low contrast on dark backgrounds                      |
 | white (7)     | Low contrast on light backgrounds                     |
@@ -75,7 +75,7 @@ safe_colors_only = true
 
 ## Configuration Reference
 
-All color accessibility settings in `[ui]` section:
+All colour accessibility settings in `[ui]` section:
 
 ```toml
 [ui]
@@ -94,7 +94,7 @@ color_scheme_mode = "auto"
 
 ## Light/Dark Mode Detection
 
-VT Code can auto-detect terminal color scheme via:
+VT Code can auto-detect terminal colour scheme via:
 
 1. **COLORFGBG** environment variable (rxvt, xterm, many others)
 2. **TERM_PROGRAM** heuristics (iTerm2, Ghostty, Apple Terminal)
@@ -114,11 +114,11 @@ color_scheme_mode = "auto"
 
 ## Bold-is-Bright Compatibility
 
-Some legacy terminals map bold text to bright colors. This can cause visibility issues when:
+Some legacy terminals map bold text to bright colours. This can cause visibility issues when:
 
 - Bold red becomes bright red (different shade)
 - Bold black becomes bright black (gray)
-- Text color changes unexpectedly
+- Text colour changes unexpectedly
 
 Enable compatibility mode to avoid bold styling:
 
@@ -149,7 +149,7 @@ VT Code includes light and dark themes:
 
 ## Theme Validation
 
-VT Code validates theme contrast at startup and logs warnings for colors that don't meet the configured minimum contrast ratio.
+VT Code validates theme contrast at startup and logs warnings for colours that don't meet the configured minimum contrast ratio.
 
 ## API Reference
 
@@ -157,21 +157,21 @@ For developers extending VT Code:
 
 ```rust
 use vtcode_core::ui::theme::{
-    ColorAccessibilityConfig,
-    set_color_accessibility_config,
+    ColourAccessibilityConfig,
+    set_colour_accessibility_config,
     get_minimum_contrast,
     is_bold_bright_mode,
-    is_safe_colors_only,
+    is_safe_colours_only,
     validate_theme_contrast,
     is_light_theme,
     suggest_theme_for_terminal,
 };
 
 use vtcode_core::utils::ansi_capabilities::{
-    detect_color_scheme,
-    ColorScheme,
-    is_no_color,
-    is_clicolor_force,
+    detect_colour_scheme,
+    ColourScheme,
+    is_no_colour,
+    is_clicolour_force,
 };
 ```
 
@@ -179,5 +179,5 @@ use vtcode_core::utils::ansi_capabilities::{
 
 - [NO_COLOR Standard](https://no-color.org/)
 - [Ghostty minimum-contrast](https://ghostty.org/docs/config/reference#minimum-contrast)
-- [Terminal Colors Research](https://blog.xoria.org/terminal-colors/)
+- [Terminal Colours Research](https://blog.xoria.org/terminal-colors/)
 - [WCAG 2.1 Contrast Requirements](https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum.html)

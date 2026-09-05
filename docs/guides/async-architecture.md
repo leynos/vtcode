@@ -316,7 +316,7 @@ apply the article's reliability rules inside the async transport instead:
 - The stdout reader owns response routing; EOF or a reader error wakes every
   pending call immediately instead of leaving callers to wait for a timeout.
 - Newline-delimited JSON-RPC frames are capped at 64 MiB; oversized frames are
-  drained and rejected so a malformed child cannot desynchronise later frames.
+  drained and rejected so a malformed child cannot desynchronize later frames.
 - Request guards remove pending entries on send failure, timeout, cancellation,
   or response completion, so abandoned calls cannot accumulate.
 - Stderr is continuously drained, retained per record only up to the provider

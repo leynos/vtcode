@@ -57,11 +57,11 @@ Code search with the advanced profile:
 Enable the advanced VT Code profile when a task needs bounded code search. The
 advanced profile keeps the default tools and adds `code_search`, with required
 `query` and optional `path`, `file_types`, `result_types`, and `max_results`.
-It returns recognised definitions, exact syntactic usages, literal text, and
+It returns recognized definitions, exact syntactic usages, literal text, and
 matching paths. Usage results are same-spelling syntax occurrences, not
 resolved references. Literal smart-case applies. A truncated result is refined
 by narrowing filters in another call and never claims an exact repository-wide
-total. Use `exec_command` or the specialised ast-grep skill for arbitrary
+total. Use `exec_command` or the specialized ast-grep skill for arbitrary
 structural patterns.
 
 ## File Tool Finding

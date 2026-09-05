@@ -8,7 +8,7 @@ interactive and exec sessions at:
 ```
 
 The session directory also contains the manifest, turn index, and derived
-artifacts. The canonical event sink uses bounded, non-blocking handoffs to a
+artefacts. The canonical event sink uses bounded, non-blocking handoffs to a
 dedicated blocking drain. Filesystem I/O does not run on the async executor.
 If a bounded queue fills, persistence fails closed and the run cannot be
 reported as successful; accepted events are drained before the failure is

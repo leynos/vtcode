@@ -29,7 +29,7 @@ defaults are:
 | Category | Environment variable | Default | Use |
 | --- | --- | --- | --- |
 | Config | `XDG_CONFIG_HOME` | `~/.config/vtcode` | `vtcode.toml`, rules, agents, MCP/tool policy, plugin manifests, and auth files |
-| Data | `XDG_DATA_HOME` | `~/.local/share/vtcode` | Installed plugins and skills, durable downloads, catalogs, and assets |
+| Data | `XDG_DATA_HOME` | `~/.local/share/vtcode` | Installed plugins and skills, durable downloads, catalogues, and assets |
 | State | `XDG_STATE_HOME` | `~/.local/state/vtcode` | Sessions, memory, scheduler/pod state, logs, audits, and migration backups |
 | Cache | `XDG_CACHE_HOME` | `~/.cache/vtcode` | Model/prompt/approval caches, installer state, web-fetch files, and output spools |
 | Runtime | `XDG_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/vtcode` | Private sockets, locks, and transient process coordination |

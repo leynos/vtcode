@@ -103,7 +103,7 @@ vtcode plugins remove <name>
 
 ## Config
 
-Plugin behavior is controlled by the existing `tools.plugins` section in `vtcode.toml`:
+Plugin behaviour is controlled by the existing `tools.plugins` section in `vtcode.toml`:
 
 ```toml
 [tools.plugins]

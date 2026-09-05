@@ -55,7 +55,7 @@ VT Code represents a modern approach to AI-powered software development, featuri
 | Local inference | Ollama, LM Studio, llama.cpp |
 
 See the complete [Provider Guides](./providers/PROVIDER_GUIDES.md) index for
-authentication, endpoints, model catalogs, and setup details.
+authentication, endpoints, model catalogues, and setup details.
 
 ## Documentation Overview
 
@@ -163,7 +163,7 @@ Deploying VT Code in production? Focus on enterprise features:
 ### Comprehensive Tool Suite
 
 - **File Operations** - Safe, validated file system operations
-- **Terminal Integration** - Enhanced PTY support with color-coded tool/MCP status banners and interactive commands
+- **Terminal Integration** - Enhanced PTY support with colour-coded tool/MCP status banners and interactive commands
 - **Search & Analysis** - Fast shell search through `rg`, plus advanced bounded code search through `code_search`
 - **Batch Processing** - Efficient multi-file operations
 - **Configuration Management** - Dynamic TOML-based settings
@@ -232,7 +232,7 @@ Logs for trajectory: check `.vtcode/logs/trajectory.jsonl`.
 ./run.sh chat "Implement user authentication system"
 
 # Codebase analysis
-./run.sh analyze
+./run.sh analyse
 ```
 
 ### Configuration Management

@@ -26,7 +26,7 @@ Last reviewed: 2026-08-28
 - [WebMCP Browser Bridge User Guide](user-guide/webmcp.md) - Connect a browser editor to an active VT Code session or a bounded standalone workspace bridge.
 - [Planning Workflow](guides/planning-workflow.md) - `/plan`, review gate, plan handoff to build/auto agents.
 - [Permissions Guide](guides/permissions.md) - Granular agent permissions and rule grammar.
-- [Provider Guides](providers/PROVIDER_GUIDES.md) - LLM provider setup and behavior.
+- [Provider Guides](providers/PROVIDER_GUIDES.md) - LLM provider setup and behaviour.
 - [Security Model](security/SECURITY_MODEL.md) - Security architecture.
 - [Process Hardening](development/PROCESS_HARDENING.md) - Runtime hardening controls.
 - [MCP Integration Guide](mcp/MCP_INTEGRATION_GUIDE.md) - MCP integration onboarding.
@@ -40,7 +40,7 @@ Last reviewed: 2026-08-28
 - [Extension Boundaries](development/EXTENSION_BOUNDARIES.md) - When to use internal Rust traits vs external protocol or manifest seams.
 - [Language Support Matrix](protocols/LANGUAGE_SUPPORT.md) - Tree-sitter and language support status.
 - [Signal Handling](signal_handling.md) - Ctrl+C / SIGINT priority guarantees and emergency exit.
-- [Indexer Notes](modules/vtcode_indexer.md) - Indexer behavior and usage.
+- [Indexer Notes](modules/vtcode_indexer.md) - Indexer behaviour and usage.
 - [Development Guide](development/README.md) - Local dev workflows.
 - [Roadmap](project/ROADMAP.md) - Planned work.
 - [Loop Engineering](loop-engineering.md) - Worktree isolation, propose/verify sub-agents, loop state, cost guardrails.

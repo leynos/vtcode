@@ -1,6 +1,6 @@
 # Zen Alignment for VT Code
 
-Full mapping of all 19 Zen of Python principles to VT Code controls, checks, and operating behavior.
+Full mapping of all 19 Zen of Python principles to VT Code controls, checks, and operating behaviour.
 
 Last reviewed: 2026-03-03
 
@@ -31,7 +31,7 @@ Last reviewed: 2026-03-03
 | 15 | Now is better than never. | Fix drift as soon as detected. | Link/allowlist cleanup applied | Active |
 | 16 | Although never is often better than right now. | Delay strict gating until baseline is understood. | `continue-on-error: true` in CI warn stage | Active |
 | 17 | If the implementation is hard to explain, it's a bad idea. | Keep governance tools single-purpose and small. | Focused scripts under `scripts/` | Active |
-| 18 | If the implementation is easy to explain, it may be a good idea. | Favor checks with clear, teachable remediation. | Remediation blocks in scripts and docs | Active |
+| 18 | If the implementation is easy to explain, it may be a good idea. | Favour checks with clear, teachable remediation. | Remediation blocks in scripts and docs | Active |
 | 19 | Namespaces are one honking great idea -- let's do more of those! | Keep boundaries explicit by domain and path. | Docs domain folders + crate/module boundaries | Active |
 
 ## Baseline Metrics (2026-03-03)

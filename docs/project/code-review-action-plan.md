@@ -19,10 +19,10 @@ Status legend: [x] DONE, [ ] PENDING
 **Effort:** 1 hour
 **Risk:** Low - follows established pattern in codebase
 
-### [x] 2. MiMoAuthMethod::Unknown silently falls back to PayAsYouGo behavior
+### [x] 2. MiMoAuthMethod::Unknown silently falls back to PayAsYouGo behaviour
 
 **Files:** `src/agent/runloop/unified/session_setup/init.rs` (`resolve_provider_label`), `crates/codegen/vtcode-llm/src/providers/mimo.rs`
-**Impact:** Invalid `mimo_auth_method` config values (e.g., `"oauth"`) silently use PayAsYouGo API key header format, base URL, and model list - wrong behavior with no warning.
+**Impact:** Invalid `mimo_auth_method` config values (e.g., `"oauth"`) silently use PayAsYouGo API key header format, base URL, and model list - wrong behaviour with no warning.
 **Fix applied:** `resolve_provider_label` in `src/agent/runloop/unified/session_setup/init.rs` now logs `warn!("Unrecognized MiMo auth method in config; falling back to API-key detection")` when the configured method is `Unknown` and falls through to API-key detection instead of silently treating it as PayAsYouGo.
 **Effort:** Small (30 minutes)
 **Risk:** Low - additive change (logging)
@@ -59,7 +59,7 @@ Status legend: [x] DONE, [ ] PENDING
 ### [x] 5. Duplicate AST_GREP_OVERRIDE statics
 
 **Files:** `crates/codegen/vtcode-core/src/tools/ast_grep_binary.rs`, `crates/codegen/vtcode-core/src/tools/editing/patch/semantic.rs`
-**Impact:** Two independent `Lazy<Mutex<AstGrepBinaryOverride>>` statics manage override state independently. Setting a path override in `semantic.rs` does not affect `ast_grep_binary.rs` and vice versa, leading to inconsistent behavior.
+**Impact:** Two independent `Lazy<Mutex<AstGrepBinaryOverride>>` statics manage override state independently. Setting a path override in `semantic.rs` does not affect `ast_grep_binary.rs` and vice versa, leading to inconsistent behaviour.
 **Fix applied (verified, no change needed):** Already consolidated — `semantic.rs:13` imports `AST_GREP_OVERRIDE` from `ast_grep_binary.rs`; all 7 matches reference the single definition site.
 **Effort:** Small (30 minutes)
 **Risk:** Low - straightforward consolidation
@@ -108,7 +108,7 @@ Status legend: [x] DONE, [ ] PENDING
 ### [x] 11. Mutex `.expect()` inconsistency across codebase
 
 **Files:** Multiple (some use `.expect()`, some use `.unwrap_or_else(|e| e.into_inner())`, some use `if let Ok()`)
-**Impact:** Inconsistent panic behavior - some code recovers from poisoned mutexes, some crashes.
+**Impact:** Inconsistent panic behaviour - some code recovers from poisoned mutexes, some crashes.
 **Fix applied:** Fixed `.expect()` on mutex in:
 - `src/updater/preflight.rs` - changed to `if let Ok()` / `.ok().and_then()`
 - `crates/codegen/vtcode-core/src/tools/ast_grep_binary.rs` - changed to `if let Ok()` for Drop, `.unwrap_or_else(|e| e.into_inner())` for others

@@ -111,7 +111,9 @@ The complete PR train is not yet delivered.
   exact path, line, and rule identities match the parent, with none added or
   removed. Advisory passed; optional ast-grep remained unavailable. Logs use
   `/tmp/ACTION-vtcode-df12-onboarding-harden-lint-spelling-source.out`.
-- `harden-lint-spelling-foundation` is the active branch, based on #31.
+- [Draft PR #32](https://github.com/leynos/vtcode/pull/32) publishes
+  `harden-lint-spelling-foundation` at
+  `1e5bfa6b33f0f3d1d9ec06b2ded4de94e78f1ad2`, based on #31.
   It corrects authored foundation-crate prose and preserves the newly renamed
   colour aliases, existing wire values, and generated model metadata.
   Its original old-config gates passed: formatting, lint, build, 10,081 workspace
@@ -122,6 +124,17 @@ The complete PR train is not yet delivered.
   rule identities unchanged; Nixie passed all six changed Markdown files.
   Advisory passed; optional ast-grep remained unavailable. Logs use the
   foundation branch suffix, with `test-2` for the verified full-suite run.
+- `harden-lint-spelling-engineering-docs` is active, based on #32.
+  It corrects engineering, guide, and harness prose. The colour guide moves
+  to `COLOUR_GUIDELINES.md` with both documentation-map links updated together.
+  Preliminary Markdown checks found 41 new table-spacing and line-length
+  diagnostics. Those were repaired, along with a stale native catalogue path.
+  The final 3,579 diagnostics match parent path, mapped line, and rule
+  identities, with none added or removed. Nixie passed all 81 changed files.
+  All seven ordered code gates recorded exit zero: formatting, lint, build,
+  10,081 workspace tests with 17 skipped, 67 harness tests, the optional
+  ast-grep skip, and advisory. Logs use `ACTION-manifest` with the engineering
+  branch suffix.
 - Remaining spelling changes are preserved separately while each layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly

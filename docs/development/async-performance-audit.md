@@ -14,7 +14,7 @@ Each module was reviewed for:
 
 - Blocking calls on async/runtime threads (`std::thread::sleep`, blocking I/O in async paths)
 - Awaiting external work while holding locks
-- Cancellation and timeout propagation behavior
+- Cancellation and timeout propagation behaviour
 - Scheduling fairness hazards (`select!`/`join!` use and long critical sections)
 - Sync primitives in async-facing hot paths
 
@@ -43,8 +43,8 @@ Each module was reviewed for:
 
 2. Deprecated synchronous retry middleware uses blocking sleep
 - File: `crates/codegen/vtcode-core/src/tools/middleware.rs`
-- Note: type is marked deprecated in favor of `AsyncRetryMiddleware`
-- Deferred action: keep behavior stable; avoid churn unless deprecated path is removed or reactivated in runtime-critical paths
+- Note: type is marked deprecated in favour of `AsyncRetryMiddleware`
+- Deferred action: keep behaviour stable; avoid churn unless deprecated path is removed or reactivated in runtime-critical paths
 
 ## Implemented Batch (Runtime-Critical)
 
@@ -70,7 +70,7 @@ Updated `crates/codegen/vtcode-core/src/notifications/mod.rs`:
 
 - switched lock types from `std::sync::{RwLock, Mutex}` to `parking_lot::{RwLock, Mutex}`
 - removed poisoning recovery branches (not applicable to parking_lot)
-- preserved public behavior and API surface
+- preserved public behaviour and API surface
 
 Outcome: lower-overhead lock path and simpler critical sections in notification flow.
 
@@ -92,7 +92,7 @@ Updated `crates/codegen/vtcode-bash-runner/src/process_group.rs` and `crates/cod
 
 - added `graceful_kill_process_group_default_async(pid)` that runs graceful kill in `spawn_blocking`
 - exported the async helper from crate root
-- added async unit test for nonexistent PID behavior
+- added async unit test for nonexistent PID behaviour
 
 Updated `src/agent/runloop/unified/tool_pipeline/execution_runtime.rs`:
 
@@ -148,7 +148,7 @@ Updated `src/agent/runloop/unified/turn/utils.rs`:
 
 - added `Drop` for `UIRedrawBatcher` that aborts `auto_flush_task` when batcher is dropped
 - prevents leaked background auto-flush task from outliving session/UI lifetime
-- keeps implementation minimal (no behavior changes to redraw batching while active)
+- keeps implementation minimal (no behaviour changes to redraw batching while active)
 
 ### 9) Runloop task lifecycle tightening (signal + progress updaters)
 
@@ -156,7 +156,7 @@ Updated `src/agent/runloop/unified/session_setup/signal.rs`:
 
 - replaced raw `JoinHandle<()>` return with RAII `SignalHandlerGuard`
 - `SignalHandlerGuard` aborts the background signal-listener task on drop
-- keeps existing cancel-token behavior and call-site usage unchanged
+- keeps existing cancel-token behaviour and call-site usage unchanged
 
 Updated `src/agent/runloop/unified/progress.rs`:
 
@@ -221,7 +221,7 @@ Updated `src/agent/runloop/unified/tool_pipeline/execution_runtime.rs`:
 
 - added RAII `ProgressCallbackGuard` for temporary PTY progress callback overrides
 - guarantees callback restoration on normal return and on future cancellation/drop
-- removed manual post-await restoration path in favor of drop-based restoration
+- removed manual post-await restoration path in favour of drop-based restoration
 - added focused unit test `progress_callback_guard_restores_previous_on_drop`
 
 ### 16) Async state-machine bloat patterns (Tweede Golf, May 2026)
@@ -280,7 +280,7 @@ boundaries without changing public wire contracts:
   `spawn_blocking`, where its synchronous tree walk and reads belong.
 - Child-agent memory appendices now have an async loader used by the child loop;
   the synchronous loader remains available for compatibility, and both paths
-  share the same rendering and error behavior.
+  share the same rendering and error behaviour.
 - Persistent-memory preference, repository, rollout, and note reads use
   `tokio::try_join!` where independent, then assemble results in the existing
   source order. Cleanup/consolidation preserve their error context and write

@@ -19,7 +19,7 @@ VT Code can match its own interface to the way you work in your terminal, but it
 - Use `/vim` to toggle session-local Vim prompt editing, or persist it with `ui.vim_mode = true`.
 - Use `/statusline` to generate a custom status-line script in the user or workspace config layer.
 - Use `[ui.status_line]` in `vtcode.toml` to customize the bottom status bar.
-- Keep terminal colors and fonts in your terminal app's own settings.
+- Keep terminal colours and fonts in your terminal app's own settings.
 
 Example status-line configuration:
 
@@ -66,7 +66,7 @@ VT Code supports several multiline input paths:
 - Set `ui.vim_mode = true` in `vtcode.toml` to enable Vim-style prompt editing by default.
 - Use `/vim`, `/vim on`, or `/vim off` to change Vim mode for the current session only.
 - VT Code currently supports a focused subset with `INSERT` and `NORMAL` modes only.
-- VT Code-specific controls such as `Enter`, `Tab`, `Ctrl+Enter`, `/`, `@`, and `!` still keep their existing behavior.
+- VT Code-specific controls such as `Enter`, `Tab`, `Ctrl+Enter`, `/`, `@`, and `!` still keep their existing behaviour.
 
 ## Paste Handling
 
@@ -82,7 +82,7 @@ VT Code has two separate notification paths: terminal-native alerts and lifecycl
 ### Terminal-native alerts
 
 - VT Code can emit terminal bell and terminal-notification escape sequences when supported.
-- Configure VT Code-side notification behavior in `vtcode.toml`:
+- Configure VT Code-side notification behaviour in `vtcode.toml`:
 
 ```toml
 [security]
@@ -98,7 +98,7 @@ completion_success = false
 
 - Some terminals surface these alerts directly:
     - `Ghostty` and `Kitty` support native alert flows well.
-    - `iTerm2` can show Notification Center alerts after enabling the relevant profile settings.
+    - `iTerm2` can show Notification Centre alerts after enabling the relevant profile settings.
     - Other terminals may only expose bell-based notifications.
 
 ### Lifecycle hook notifications
@@ -146,7 +146,7 @@ tool_output_spool_bytes = 200000
 `ui.tool_output_mode` controls result bodies. `ui.tool_display_mode` controls
 the transition summaries that precede them: `"compact"` is the default and
 groups only contiguous successful command calls while keeping live PTY output
-bounded. Failures, warnings, stderr, diffs, and artifacts remain inline;
+bounded. Failures, warnings, stderr, diffs, and artefacts remain inline;
 `"expanded"` keeps the existing per-call layout. `Alt+T` toggles the
 session-only display mode; `/config` persists it.
 

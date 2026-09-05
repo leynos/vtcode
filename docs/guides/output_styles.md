@@ -2,7 +2,7 @@
 
 ## Overview
 
-VT Code now supports output styles, allowing you to customize the behavior and response format of the assistant. This feature enables different modes of operation, from concise responses to detailed explanations, and even specialized workflows like learning and architectural design.
+VT Code now supports output styles, allowing you to customize the behaviour and response format of the assistant. This feature enables different modes of operation, from concise responses to detailed explanations, and even specialized workflows like learning and architectural design.
 
 ## How It Works
 
@@ -19,7 +19,7 @@ active_style = "default"  # Set the active output style
 
 ## Available Styles
 
-- `default`: Standard VT Code behavior with concise responses
+- `default`: Standard VT Code behaviour with concise responses
 - `explanatory`: Provides detailed explanations and educational insights
 - `learning`: Collaborative learning mode with guidance for users
 - `developer`: Optimized for coding tasks and technical work
@@ -35,7 +35,7 @@ Custom output styles can be created in the `.vtcode/output-styles/` directory as
 
 ## Benefits
 
-- **Flexibility**: Adapt VT Code's behavior to different tasks and contexts
+- **Flexibility**: Adapt VT Code's behaviour to different tasks and contexts
 - **Customization**: Create specialized workflows for your specific needs
 - **Learning**: Educational modes that help users improve their skills
 - **Productivity**: Optimized responses for different types of work
@@ -49,4 +49,4 @@ The output styles feature is implemented through:
 3. Integration with the system prompt generation pipeline
 4. Support for YAML frontmatter in markdown style files
 
-The system applies the selected output style during system prompt generation, ensuring that the assistant's behavior matches the selected style from the start of each interaction.
+The system applies the selected output style during system prompt generation, ensuring that the assistant's behaviour matches the selected style from the start of each interaction.

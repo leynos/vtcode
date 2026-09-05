@@ -34,7 +34,7 @@ Notes and semantics
 
 - model / models remain the allowlist/defaults used to control the `/model` picker and what models are available. Profiles do NOT make a model available; they only modify runtime defaults for a model identifier that is already selectable.
 - Precedence (highest wins): profile > provider defaults > model metadata / autodetect > conservative fallback.
-- Explicit boolean `false` is honored and may override an implicit `true` from a lower-precedence layer.
-- Omitting `api_format` preserves legacy behavior. Setting `api_format` explicitly instructs VT Code to treat the model with that API shape; it does not cause silent fallbacks.
+- Explicit boolean `false` is honoured and may override an implicit `true` from a lower-precedence layer.
+- Omitting `api_format` preserves legacy behaviour. Setting `api_format` explicitly instructs VT Code to treat the model with that API shape; it does not cause silent fallbacks.
 
 Keep examples small and conservative: prefer to declare only the fields you need to correct autodetection or to provide conservative capability signals for gateways that omit detailed model descriptors.

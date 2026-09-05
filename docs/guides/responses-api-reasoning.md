@@ -92,4 +92,4 @@ VT Code's default OpenAI profile keeps `gpt-5.5` on a compact execution contract
 -   Use reasoning effort tiers together with the status line’s `runtime.reasoning_effort` so your shell hook can show when the agent is "thinking" harder.
 -   Keep `.vtcode/logs/trajectory.jsonl` for post-run analysis and to debug why a tool call required an extra turn.
 
-Following these practices keeps VT Code aligned with current OpenAI Responses guidance, delivering better continuity, lower-cost cached prompts, and stronger long-horizon agent behavior.
+Following these practices keeps VT Code aligned with current OpenAI Responses guidance, delivering better continuity, lower-cost cached prompts, and stronger long-horizon agent behaviour.

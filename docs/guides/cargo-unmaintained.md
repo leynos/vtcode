@@ -100,7 +100,7 @@ cargo unmaintained --save-token
 
 | Option | Description |
 |--------|-------------|
-| `--color <WHEN>` | Color output: `always`, `auto`, or `never` (default: `auto`) |
+| `--color <WHEN>` | Colour output: `always`, `auto`, or `never` (default: `auto`) |
 | `--fail-fast` | Exit as soon as an unmaintained package is found |
 | `--json` | Output JSON (experimental) |
 | `--max-age <DAYS>` | Max age for repository commits (default: 365) |
