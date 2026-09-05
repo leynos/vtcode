@@ -66,7 +66,7 @@ pub struct RunningModel {
     pub gpu_ids: Vec<u32>,
     /// Remote process ID.
     pub pid: u32,
-    /// Name of the catalog profile used to launch this model.
+    /// Name of the catalogue profile used to launch this model.
     pub profile: String,
 }
 

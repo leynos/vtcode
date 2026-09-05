@@ -80,7 +80,7 @@ use crate::utils::path::{normalize_path, resolve_workspace_path};
 ///
 /// The separate `PER_TOOL_RATE_LIMITER` (token-bucket) in `rate_limiter.rs`
 /// handles **execution blocking** at the executor level. The `SafetyGateway`
-/// rate limiter is disabled by the runloop in favor of these two systems.
+/// rate limiter is disabled by the runloop in favour of these two systems.
 pub struct AutonomousExecutor {
     verification_tools: HashSet<String>,
     loop_detector: Arc<RwLock<LoopDetector>>,

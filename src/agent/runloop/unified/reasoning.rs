@@ -8,7 +8,7 @@
 //! Monitor agent reasoning in real-time to enable early intervention:
 //! - First tool call reveals understanding—monitor closely
 //! - Interrupt immediately if wrong approach detected
-//! - "Have your finger on the trigger to escape and interrupt any bad behavior"
+//! - "Have your finger on the trigger to escape and interrupt any bad behaviour"
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -83,7 +83,7 @@ pub(crate) fn is_giving_up_reasoning(text: &str) -> bool {
     giving_up_patterns.iter().any(|pattern| lower.contains(pattern))
 }
 
-/// Detects rushing behavior indicating context anxiety.
+/// Detects rushing behaviour indicating context anxiety.
 pub(crate) fn is_rushing_to_conclude(text: &str) -> bool {
     RUSHING_PATTERNS.is_match(text)
 }
@@ -109,7 +109,7 @@ pub(crate) fn is_decision_or_tool_line(text: &str) -> bool {
     DECISION_TOOL_PATTERNS.is_match(trimmed)
 }
 
-/// Analyzes reasoning text for multiple concern patterns.
+/// Analyses reasoning text for multiple concern patterns.
 pub(crate) fn analyse_reasoning(text: &str) -> ReasoningAnalysis {
     ReasoningAnalysis {
         is_giving_up: is_giving_up_reasoning(text),

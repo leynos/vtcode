@@ -84,7 +84,7 @@ pub struct MessageToolCorrelation {
     /// Original message text
     message_text: String,
 
-    /// Tools executed to fulfill this message
+    /// Tools executed to fulfil this message
     tool_executions: Vec<ToolExecution>,
 
     /// Overall success of fulfilling stated intent

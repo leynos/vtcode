@@ -86,7 +86,7 @@ pub(crate) enum StartupCommandKind {
     AppServer,
     /// Existing command-owned paths that intentionally do not use the LLM runtime.
     CommandOwned,
-    /// Unknown commands retain the conservative historical startup behavior.
+    /// Unknown commands retain the conservative historical startup behaviour.
     Conservative,
 }
 

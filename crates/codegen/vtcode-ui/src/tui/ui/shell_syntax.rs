@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use anstyle::{AnsiColor, Color as AnsiColorEnum, Effects, Style as AnsiStyle};
+use anstyle::{AnsiColor, Color as AnsiColourEnum, Effects, Style as AnsiStyle};
 use vtcode_commons::ui_protocol::{InlineSegment, InlineTextStyle, convert_style};
 
 use crate::tui::ui::syntax_highlight;
@@ -52,31 +52,31 @@ impl ShellLineStyles {
         let output = Arc::new(convert_style(pty_output));
         let magenta_bold = Arc::new(convert_style(
             AnsiStyle::new()
-                .fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::Magenta)))
+                .fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Magenta)))
                 .effects(Effects::BOLD),
         ));
         let accent_bold = Arc::new(convert_style(primary | Effects::BOLD));
-        let yellow = Arc::new(convert_style(AnsiStyle::new().fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::Yellow)))));
+        let yellow = Arc::new(convert_style(AnsiStyle::new().fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Yellow)))));
 
         Self {
             output: Arc::clone(&output),
-            bullet: Arc::new(convert_style(AnsiStyle::new().fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::Green))))),
+            bullet: Arc::new(convert_style(AnsiStyle::new().fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Green))))),
             glyph: Arc::clone(&output),
             verb: accent_bold,
             command: Arc::new(convert_style(
                 AnsiStyle::new()
-                    .fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::Green)))
+                    .fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Green)))
                     .effects(Effects::BOLD),
             )),
             args: Arc::new(convert_style(
                 AnsiStyle::new()
-                    .fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::White)))
+                    .fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::White)))
                     .effects(Effects::DIMMED),
             )),
             keyword: magenta_bold,
             variable: Arc::clone(&yellow),
             string: yellow,
-            option: Arc::new(convert_style(AnsiStyle::new().fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::Red))))),
+            option: Arc::new(convert_style(AnsiStyle::new().fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Red))))),
             truncation: Arc::new(convert_style(pty_output)),
             separator: Arc::new(convert_style(pty_output | Effects::DIMMED)),
             count: Arc::new(convert_style(primary | Effects::DIMMED)),
@@ -253,7 +253,7 @@ pub fn shell_syntax_segments(text: &str, styles: &ShellLineStyles, expect_comman
 
     let non_ws_count = semantic.iter().filter(|segment| !segment.text.trim().is_empty()).count();
     if non_ws_count > 1 {
-        let mut first_colours: Option<(Option<AnsiColorEnum>, Option<AnsiColorEnum>)> = None;
+        let mut first_colours: Option<(Option<AnsiColourEnum>, Option<AnsiColourEnum>)> = None;
         let mut has_distinct = false;
         for style in converted
             .iter()

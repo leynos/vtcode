@@ -1,6 +1,6 @@
 //! Bounded, evidence-backed explanations for failed tool executions.
 //!
-//! This module deliberately produces a small diagnostic artifact rather than
+//! This module deliberately produces a small diagnostic artefact rather than
 //! exposing provider reasoning. Tool output is untrusted evidence: it is
 //! sanitized, bounded, and placed inside a tool-free diagnosis prompt before
 //! an optional lightweight model is asked to classify it.

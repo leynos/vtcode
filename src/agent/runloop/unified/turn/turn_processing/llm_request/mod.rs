@@ -5,7 +5,7 @@
 //!   - Retry policy helpers live in `retry.rs`.
 //!   - Streaming bridge helpers live in `streaming.rs`.
 //!   - Copilot runtime integration lives in `copilot_runtime.rs`.
-//! - Constraints: Preserve retry semantics, previous-response-chain recovery, and prompt-cache telemetry behavior.
+//! - Constraints: Preserve retry semantics, previous-response-chain recovery, and prompt-cache telemetry behaviour.
 //! - Verify: `cargo check -p vtcode && cargo test -p vtcode --bin vtcode llm_request`
 
 mod context_management;

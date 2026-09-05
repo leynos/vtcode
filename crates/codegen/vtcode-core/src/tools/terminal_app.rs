@@ -100,7 +100,7 @@ impl TerminalAppLauncher {
     /// Launch an existing file without waiting for a GUI editor process.
     ///
     /// Recognized GUI editor adapters receive their focus/reuse-window flags,
-    /// while terminal editors retain the synchronous suspend-and-wait behavior.
+    /// while terminal editors retain the synchronous suspend-and-wait behaviour.
     pub fn launch_editor_target_non_waiting(
         &self,
         target: EditorTarget,
@@ -357,7 +357,7 @@ impl TerminalAppLauncher {
     /// 5. External command runs freely
     /// 6. Raw mode is re-enabled
     /// 7. Alternate screen is re-entered
-    /// 8. Terminal is cleared (removes artifacts)
+    /// 8. Terminal is cleared (removes artefacts)
     /// 9. Event handler is restarted (if applicable)
     ///
     /// # Errors

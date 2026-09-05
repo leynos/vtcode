@@ -29,7 +29,7 @@ pub enum OperationType {
     Custom(String),
 }
 
-/// Configuration for timeout detection and retry behavior
+/// Configuration for timeout detection and retry behaviour
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TimeoutConfig {
     /// Maximum time allowed for the operation

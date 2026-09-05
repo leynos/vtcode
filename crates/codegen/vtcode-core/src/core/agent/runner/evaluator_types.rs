@@ -14,7 +14,7 @@ const MAX_GENERALIZATION_NOTE_FIELD_CHARS: usize = 1_000;
 ///
 /// These notes deliberately do not model durable beliefs. Every note must
 /// carry the evidence that supports it and a concrete way to falsify it before
-/// it can enter an evaluation artifact or a tracker.
+/// it can enter an evaluation artefact or a tracker.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(super) struct GeneralizationNote {

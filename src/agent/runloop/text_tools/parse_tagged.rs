@@ -464,7 +464,7 @@ pub(super) fn collect_tagged_regions(text: &str, regions: &mut Vec<(usize, usize
 }
 
 /// Collect regions for the `<function=NAME>` dialect. The close tag can be
-/// either `</function>` (standard) or `</function=NAME>` (parameterised),
+/// either `</function>` (standard) or `</function=NAME>` (parameterized),
 /// so we match the `</function` prefix and extend to the next `>`.
 fn collect_function_equals_regions(text: &str, regions: &mut Vec<(usize, usize)>) {
     const FUNCTION_OPEN: &str = "<function=";

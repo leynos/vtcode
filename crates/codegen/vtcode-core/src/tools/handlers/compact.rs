@@ -1,4 +1,4 @@
-//! Tool schema compaction utilities for session tool catalog.
+//! Tool schema compaction utilities for session tool catalogue.
 
 use serde_json::{Value, json};
 use vtcode_config::ToolDocumentationMode;
