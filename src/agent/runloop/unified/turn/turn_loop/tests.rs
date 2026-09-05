@@ -1082,8 +1082,8 @@ async fn resumed_turn_cannot_complete_while_verification_is_pending() {
 
 #[tokio::test]
 async fn response_cap_preserves_commentary_as_one_blocked_final_harness_message() {
-    const FIRST_COMMENTARY: &str = "Let me continue analyzing the results from the first inspection.";
-    const SECOND_COMMENTARY: &str = "Let me continue analyzing the results from the second inspection.";
+    const FIRST_COMMENTARY: &str = "Let me continue analysing the results from the first inspection.";
+    const SECOND_COMMENTARY: &str = "Let me continue analysing the results from the second inspection.";
 
     #[derive(Clone)]
     struct RepeatedCommentaryProvider {

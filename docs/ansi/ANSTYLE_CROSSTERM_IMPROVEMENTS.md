@@ -10,52 +10,45 @@ This document outlines improvements made to Diapason's use of
 
 ## Key Improvements
 
-### 1. Enhanced Helper Functions (`ratatui_styles.rs`)
+### 1. Current Style Helpers (`crates/codegen/diapason-ui/src/design/style.rs`)
 
-Added three new convenience functions to support common styling patterns:
+The internal helper module provides focused conversion and style builders:
 
-#### `fg_bg_colors(fg, bg)`
+#### `fg_bg_style(fg, bg)`
 
 Combines foreground and background colours in a single style.
 
 ```rust
-use anstyle::{Colour, AnsiColor};
-use diapason_core::utils::ratatui_styles::fg_bg_colors;
+use anstyle::{Color, AnsiColor};
+use crate::design::style::fg_bg_style;
 
-let style = fg_bg_colors(
+let style = fg_bg_style(
     Color::Ansi(AnsiColor::Black),
     Color::Ansi(AnsiColor::Yellow),
 );
 ```
 
-#### `bg_colored_with_effects(bg, effects)`
+#### `bg_style(bg)`
 
-Applies effects to a background colour (complements `colored_with_effects` for
-foreground).
+Creates a background style. Apply effects with `Style::add_modifier` when
+needed.
 
 ```rust
-use anstyle::{Colour, AnsiColor, Effects};
-use diapason_core::utils::ratatui_styles::bg_colored_with_effects;
+use anstyle::{Color, AnsiColor, Effects};
+use crate::design::style::bg_style;
 
-let style = bg_colored_with_effects(
-    Color::Ansi(AnsiColor::Blue),
-    Effects::BOLD,
-);
+let style = bg_style(Color::Ansi(AnsiColor::Blue));
 ```
 
-#### `full_style(fg, bg, effects)`
+#### `with_effects(effects)`
 
-Creates a complete style from all three components in one call.
+Creates a style with ratatui modifiers derived from `anstyle::Effects`.
 
 ```rust
-use anstyle::{Colour, AnsiColor, Effects};
-use diapason_core::utils::ratatui_styles::full_style;
+use anstyle::Effects;
+use crate::design::style::with_effects;
 
-let style = full_style(
-    Some(Color::Ansi(AnsiColor::White)),
-    Some(Color::Ansi(AnsiColor::Blue)),
-    Effects::BOLD | Effects::ITALIC,
-);
+let style = with_effects(Effects::BOLD | Effects::ITALIC);
 ```
 
 ### 2. Improved Documentation
@@ -79,23 +72,17 @@ Improved `apply_attributes()` function with:
 
 ### 4. Comprehensive Test Coverage
 
-Added 4 new tests for the new helper functions:
+The current helper coverage includes:
 
 ```rust
 #[test]
-fn test_helper_fg_bg_colors() { /* ... */ }
+fn convenience_fg_bg_style() { /* ... */ }
 
 #[test]
-fn test_helper_bg_colored_with_effects() { /* ... */ }
+fn convenience_bg_style() { /* ... */ }
 
 #[test]
-fn test_helper_full_style() { /* ... */ }
-
-#[test]
-fn test_helper_full_style_partial() { /* ... */ }
-
-#[test]
-fn test_helper_full_style_no_effects() { /* ... */ }
+fn convenience_coloured_with_effects() { /* ... */ }
 ```
 
 All tests validate:
@@ -130,7 +117,7 @@ This ensures consistent rendering across different terminal colour schemes.
   (Colour + Effects)
 
 
-            anstyle_to_ratatui()
+            anstyle_to_ratatui_style()
 
 
  anstyle-crossterm     Conversion library
@@ -139,11 +126,11 @@ This ensures consistent rendering across different terminal colour schemes.
 
 
  crossterm Style       Terminal capabilities
- (Colour + Attrs)       (darker colours, indexed)
+ (Color + Attrs)       (darker colours, indexed)
 
 
-            crossterm_color_to_ratatui()
-            + apply_attributes()
+            anstyle_to_ratatui_colour()
+            + effects_to_modifiers()
 
 
   ratatui Style        TUI widget compatible
@@ -174,20 +161,20 @@ renderer.line_with_style(style, "styled text")?;
 Convert to ratatui style:
 
 ```rust
-use diapason_core::utils::ratatui_styles::{anstyle_to_ratatui, colored_with_effects};
+use crate::design::style::{anstyle_to_ratatui_style, coloured_with_effects};
 
 let anstyle_style = Style::new()
     .fg_color(Some(Color::Ansi(AnsiColor::Blue)))
     .effects(Effects::ITALIC);
 
-let ratatui_style = anstyle_to_ratatui(anstyle_style);
+let ratatui_style = anstyle_to_ratatui_style(anstyle_style);
 // Use with ratatui widgets
 ```
 
 Or use convenience helpers:
 
 ```rust
-let style = colored_with_effects(
+let style = coloured_with_effects(
     Color::Ansi(AnsiColor::Blue),
     Effects::BOLD | Effects::ITALIC,
 );
@@ -198,13 +185,10 @@ let style = colored_with_effects(
 All improvements are covered by comprehensive tests:
 
 ```bash
-cargo test -p diapason-core --lib utils::ratatui_styles
+cargo nextest run -p diapason-ui -E 'test(convenience_)'
 ```
 
-**Result**: 20 tests passed
-
-- 14 original tests (colour conversions, effects, combinations)
-- 6 new tests (new helper functions, edge cases)
+The tests cover colour conversion, effects, and the focused style builders.
 
 ## Performance Considerations
 
@@ -224,11 +208,10 @@ cargo test -p diapason-core --lib utils::ratatui_styles
 
 ## Related Files
 
-- **Main integration**:
-    `crates/codegen/diapason-core/src/utils/ratatui_styles.rs`
+- **Style bridge**: `crates/codegen/diapason-ui/src/design/style.rs`
+- **Colour conversion**: `crates/codegen/diapason-ui/src/design/colour.rs`
 - **CLI rendering**: `crates/codegen/diapason-core/src/utils/ansi.rs` (uses
-    `AnsiRenderer`)
-- **Documentation**: `docs/styling_integration.md`
+  `AnsiRenderer`)
 
 ## References
 
