@@ -49,6 +49,7 @@ impl OpenAIChatGptSessionRefresher for ExternalSessionRefresher {
 fn write_token_lines(dir: &std::path::Path, tokens: &[&str]) {
     std::fs::write(dir.join("tokens.txt"), tokens.join("\n")).expect("write tokens");
 }
+
 fn custom_provider_auth_fixture(dir: &TempDir, tokens: &[&str]) -> CustomProviderCommandAuthConfig {
     write_token_lines(dir.path(), tokens);
     #[cfg(unix)]
@@ -890,7 +891,9 @@ async fn api_key_responses_stream_sends_metadata_and_preserves_usage() {
             }
             provider::LLMStreamEvent::Reasoning { .. }
             | provider::LLMStreamEvent::ReasoningSignature { .. }
-            | provider::LLMStreamEvent::ReasoningStage { .. } => {}
+            | provider::LLMStreamEvent::ReasoningStage { .. }
+            | provider::LLMStreamEvent::ToolCallStart { .. }
+            | provider::LLMStreamEvent::ToolCallDelta { .. } => {}
         }
     }
 
@@ -984,7 +987,9 @@ async fn chatgpt_responses_stream_accepts_empty_final_output_after_text_delta() 
             }
             provider::LLMStreamEvent::Reasoning { .. }
             | provider::LLMStreamEvent::ReasoningSignature { .. }
-            | provider::LLMStreamEvent::ReasoningStage { .. } => {}
+            | provider::LLMStreamEvent::ReasoningStage { .. }
+            | provider::LLMStreamEvent::ToolCallStart { .. }
+            | provider::LLMStreamEvent::ToolCallDelta { .. } => {}
         }
     }
 

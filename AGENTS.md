@@ -13,6 +13,7 @@ security boundary.
 
 ## Rules
 
+- `origin` (`leynos/vtcode`) is the canonical hard fork. `upstream` is reference-only; do not merge its commits or target it with pull requests.
 - Conventional Commits (`type(scope): subject`).
 - 4-space indentation, `snake_case` fns, `PascalCase` types,
   `anyhow::Result<T>` + `.with_context()`.

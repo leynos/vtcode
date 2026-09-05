@@ -24,11 +24,11 @@ impl RunningVidaiMock {
         let version = Command::new("vidaimock")
             .arg("--version")
             .output()
-            .context("VidaiMock 0.1.3 is required for the ignored physics tests")?;
+            .context("VidaiMock 0.3.1 is required for the ignored physics tests")?;
         assert!(version.status.success(), "vidaimock --version should succeed");
         assert!(
-            String::from_utf8_lossy(&version.stdout).contains("0.1.3"),
-            "physics fixtures are pinned to VidaiMock 0.1.3"
+            String::from_utf8_lossy(&version.stdout).contains("0.3.1"),
+            "physics fixtures are pinned to VidaiMock 0.3.1"
         );
 
         let listener = TcpListener::bind(("127.0.0.1", 0)).context("reserve VidaiMock port")?;

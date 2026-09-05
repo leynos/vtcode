@@ -6,11 +6,31 @@ pub use vtcode_commons::llm::{FinishReason, LLMError, LLMResponse, Usage};
 
 #[derive(Debug, Clone)]
 pub enum LLMStreamEvent {
-    Token { delta: String },
-    Reasoning { delta: String },
-    ReasoningSignature { signature: String },
-    ReasoningStage { stage: String },
-    Completed { response: Box<LLMResponse> },
+    Token {
+        delta: String,
+    },
+    Reasoning {
+        delta: String,
+    },
+    ReasoningSignature {
+        signature: String,
+    },
+    ReasoningStage {
+        stage: String,
+    },
+    /// Provider-declared call metadata, not authorization to execute a call.
+    ToolCallStart {
+        call_id: String,
+        name: Option<String>,
+    },
+    /// Partial tool input. Execution requires a terminal completed response.
+    ToolCallDelta {
+        call_id: String,
+        delta: String,
+    },
+    Completed {
+        response: Box<LLMResponse>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -42,7 +62,9 @@ pub enum NormalizedStreamEvent {
 }
 
 pub type LLMStream = Pin<Box<dyn futures::Stream<Item = Result<LLMStreamEvent, LLMError>> + Send>>;
+
 pub type BorrowedLLMStream<'a> = Pin<Box<dyn futures::Stream<Item = Result<LLMStreamEvent, LLMError>> + Send + 'a>>;
+
 pub type LLMNormalizedStream = Pin<Box<dyn futures::Stream<Item = Result<NormalizedStreamEvent, LLMError>> + Send>>;
 
 impl LLMStreamEvent {
@@ -52,6 +74,8 @@ impl LLMStreamEvent {
             Self::Reasoning { delta } => vec![NormalizedStreamEvent::ReasoningDelta { delta }],
             Self::ReasoningSignature { .. } => Vec::new(),
             Self::ReasoningStage { stage } => vec![NormalizedStreamEvent::ReasoningStage { stage }],
+            Self::ToolCallStart { call_id, name } => vec![NormalizedStreamEvent::ToolCallStart { call_id, name }],
+            Self::ToolCallDelta { call_id, delta } => vec![NormalizedStreamEvent::ToolCallDelta { call_id, delta }],
             Self::Completed { response } => {
                 let mut events = Vec::new();
                 if let Some(usage) = response.usage.clone() {

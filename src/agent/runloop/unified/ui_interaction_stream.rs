@@ -828,6 +828,10 @@ pub(crate) async fn render_stream_with_options_and_copilot_runtime_impl(
             Ok(LLMStreamEvent::ReasoningSignature { .. }) => {
                 // Signature field not currently processed in UI stream
             }
+            Ok(LLMStreamEvent::ToolCallStart { .. } | LLMStreamEvent::ToolCallDelta { .. }) => {
+                // Partial input is provider progress, not an executable call.
+                // The completed response supplies the authoritative tool payload.
+            }
             Ok(LLMStreamEvent::Completed { response }) => {
                 final_response = Some(*response);
             }

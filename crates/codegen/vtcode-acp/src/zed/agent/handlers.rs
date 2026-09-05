@@ -214,3 +214,7 @@ mod rate_limit_test_support;
 
 #[cfg(test)]
 use prompt::run_prompt_with_metric_sink;
+
+#[cfg(test)]
+#[path = "responses_tests.rs"]
+mod responses_tests;

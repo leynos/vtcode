@@ -203,7 +203,7 @@ simdutf = { path = "patches/simdutf" }
 
 [workspace.lints]
 # Rust compiler lints
-rust.unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)', 'cfg(feature, values("schema", "default", "tui"))'] }
+rust.unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(tarpaulin)', 'cfg(feature, values("schema", "default", "tui"))'] }
 rust.unused_extern_crates = "warn"
 rust.unused_import_braces = "warn"
 rust.unused_qualifications = "warn"
