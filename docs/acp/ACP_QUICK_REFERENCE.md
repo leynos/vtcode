@@ -81,6 +81,18 @@ VT Code advertises push-only `_meta.lody.rateLimits` version 1 and emits
 pairs produce utilization windows; limit-only headers retain the absolute
 limit in `limitName` with no invented utilization. There is no query method.
 
+### Responses profiles
+
+| Boundary | Behaviour |
+| --- | --- |
+| HTTP/SSE completion | Requires `response.completed`; EOF is not success |
+| Partial output | Checkpointed as incomplete; no automatic generation replay |
+| Reasoning and custom inputs | Incremental visibility; done text reconciled as an aggregate |
+| Usage | Missing/null is absent; invalid or overflowing counts are errors |
+| Optional WebSockets | Cancelled exchanges discard their socket and continuation |
+
+See [Responses hardening and verification](../development/responses-hardening.md).
+
 ## Legacy REST ACP client reference
 
 ## Initialize ACP Client

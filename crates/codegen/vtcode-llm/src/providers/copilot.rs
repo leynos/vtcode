@@ -352,6 +352,8 @@ impl LLMProvider for CopilotProvider {
                 LLMStreamEvent::Reasoning { delta } => reasoning.push_str(&delta),
                 LLMStreamEvent::ReasoningSignature { .. } => {}
                 LLMStreamEvent::ReasoningStage { .. } => {}
+                // Partial tool input is progress only; Completed carries executable calls.
+                LLMStreamEvent::ToolCallStart { .. } | LLMStreamEvent::ToolCallDelta { .. } => {}
                 LLMStreamEvent::Completed { response } => {
                     completed = Some(*response);
                     break;

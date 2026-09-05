@@ -1,6 +1,6 @@
 use super::OpenAIProvider;
 use crate::error_display;
-use crate::provider::{LLMError, LLMRequest, LLMResponse};
+use crate::provider::{LLMError, LLMErrorMetadata, LLMRequest, LLMResponse};
 use futures::{SinkExt, StreamExt};
 use serde_json::{Map, Value, json};
 use tokio_tungstenite::MaybeTlsStream;
@@ -16,6 +16,27 @@ const OPENAI_BETA_RESPONSES_WEBSOCKET_V2: &str = "responses=v2";
 const WEBSOCKET_CONNECTION_LIMIT_REACHED_CODE: &str = "websocket_connection_limit_reached";
 const PREVIOUS_RESPONSE_NOT_FOUND_CODE: &str = "previous_response_not_found";
 const WEBSOCKET_AUTH_RETRY_STATUSES: [&str; 2] = ["401", "403"];
+const OUTPUT_STARTED_ERROR_CODE: &str = "responses_output_started";
+
+pub(super) fn websocket_error_prohibits_replay(error: &LLMError) -> bool {
+    matches!(error, LLMError::Provider { metadata: Some(metadata), .. }
+        if metadata.code.as_deref() == Some(OUTPUT_STARTED_ERROR_CODE))
+}
+
+fn prohibit_websocket_replay(error: LLMError) -> LLMError {
+    LLMError::Provider {
+        message: format!("Responses WebSocket failed after output began; automatic replay is disabled: {error}"),
+        metadata: Some(LLMErrorMetadata::new(
+            "OpenAI",
+            None,
+            Some(OUTPUT_STARTED_ERROR_CODE.to_string()),
+            None,
+            None,
+            None,
+            None,
+        )),
+    }
+}
 
 // Retained custom WebSocket transport while VTCode migrates the optional path
 // to Rig. Rig 0.40 exposes `client.responses_websocket()` behind its
@@ -139,11 +160,12 @@ impl OpenAIResponsesWebSocketContinuationCache {
 #[derive(Debug)]
 pub(crate) struct OpenAIResponsesWebSocketSession {
     socket: ResponsesSocket,
+    output_started: bool,
 }
 
 impl OpenAIResponsesWebSocketSession {
     fn new(socket: ResponsesSocket) -> Self {
-        Self { socket }
+        Self { socket, output_started: false }
     }
 }
 
@@ -152,6 +174,20 @@ struct PreparedWebSocketEvent {
     event: Value,
     full_input: Vec<Value>,
     used_previous_response_id: bool,
+}
+
+/// Continuation belongs to the completed exchange, never an abandoned future.
+struct ContinuationLease<'a> {
+    provider: &'a OpenAIProvider,
+    completed: bool,
+}
+
+impl Drop for ContinuationLease<'_> {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.provider.clear_websocket_continuation();
+        }
+    }
 }
 
 impl OpenAIProvider {
@@ -164,17 +200,26 @@ impl OpenAIProvider {
         loop {
             let needs_warmup = self.websocket_continuation_snapshot().is_none();
             let mut session_guard = self.websocket_session.lock().await;
-            let session = self.ensure_websocket_session(&mut session_guard, request).await?;
+            self.ensure_websocket_session(&mut session_guard, request).await?;
+            // A cancelled future must drop the in-flight socket, not return it
+            // to another turn with unread events still queued on the wire.
+            let mut session = session_guard
+                .take()
+                .ok_or_else(|| format_provider_error("OpenAI WebSocket session unexpectedly missing".to_string()))?;
+            let mut continuation_lease = ContinuationLease { provider: self, completed: false };
 
             if needs_warmup {
                 let warmup_prepared = prepare_websocket_event(&payload, None, true)?;
-                match send_websocket_event(session, &warmup_prepared.event).await {
+                match send_websocket_event(&mut session, &warmup_prepared.event).await {
                     Ok(response_json) => {
                         self.update_websocket_continuation(&response_json, request, &warmup_prepared, &self.model);
                     }
                     Err(err) => {
                         *session_guard = None;
                         self.clear_nonpersistent_websocket_continuation();
+                        if session.output_started {
+                            return Err(prohibit_websocket_replay(err));
+                        }
                         if !retried_reconnect && is_websocket_reconnect_error(&err) {
                             retried_reconnect = true;
                             continue;
@@ -187,15 +232,22 @@ impl OpenAIProvider {
             let continuation = self.websocket_continuation_snapshot();
             let prepared = prepare_websocket_event(&payload, continuation.as_ref(), false)?;
 
-            match send_websocket_event(session, &prepared.event).await {
+            match send_websocket_event(&mut session, &prepared.event).await {
                 Ok(response_json) => {
-                    let parsed = self.parse_openai_responses_response(response_json.clone(), request.model.clone())?;
+                    let parsed = self
+                        .parse_openai_responses_response(response_json.clone(), request.model.clone())
+                        .map_err(prohibit_websocket_replay)?;
                     self.update_websocket_continuation(&response_json, request, &prepared, &self.model);
+                    *session_guard = Some(session);
+                    continuation_lease.completed = true;
                     return Ok(parsed);
                 }
                 Err(err) => {
                     *session_guard = None;
                     self.clear_nonpersistent_websocket_continuation();
+                    if session.output_started {
+                        return Err(prohibit_websocket_replay(err));
+                    }
                     if !retried_active_response && is_websocket_active_response_error(&err) {
                         tracing::warn!(
                             model = %request.model,
@@ -381,6 +433,7 @@ fn prepare_websocket_event(
 }
 
 async fn send_websocket_event(session: &mut OpenAIResponsesWebSocketSession, event: &Value) -> Result<Value, LLMError> {
+    session.output_started = false;
     session
         .socket
         .send(Message::Text(event.to_string().into()))
@@ -400,7 +453,21 @@ async fn read_websocket_response(session: &mut OpenAIResponsesWebSocketSession) 
 
                 let event_type = event.get("type").and_then(Value::as_str).unwrap_or("");
                 match event_type {
+                    "response.output_text.delta"
+                    | "response.reasoning_text.delta"
+                    | "response.reasoning_summary_text.delta"
+                    | "response.function_call_arguments.delta"
+                    | "response.custom_tool_call_input.delta" => {
+                        session.output_started |= event
+                            .get("delta")
+                            .and_then(Value::as_str)
+                            .is_some_and(|delta| !delta.is_empty());
+                    }
+                    "response.output_item.added" | "response.output_item.done" => {
+                        session.output_started = true;
+                    }
                     "response.completed" => {
+                        session.output_started = true;
                         if let Some(response) = event.get("response").cloned() {
                             return Ok(response);
                         }
@@ -408,7 +475,7 @@ async fn read_websocket_response(session: &mut OpenAIResponsesWebSocketSession) 
                             "OpenAI WebSocket completed event missing response".to_string(),
                         ));
                     }
-                    "response.failed" | "error" => {
+                    "response.failed" | "response.incomplete" | "error" => {
                         let code = event
                             .get("error")
                             .and_then(|error| error.get("code"))
@@ -416,8 +483,10 @@ async fn read_websocket_response(session: &mut OpenAIResponsesWebSocketSession) 
                             .unwrap_or("unknown_error");
                         let message = event
                             .get("error")
+                            .or_else(|| event.pointer("/response/error"))
                             .and_then(|error| error.get("message"))
                             .and_then(Value::as_str)
+                            .or_else(|| event.pointer("/response/incomplete_details/reason").and_then(Value::as_str))
                             .unwrap_or("OpenAI WebSocket request failed");
                         let formatted = format!("{code}: {message}");
                         if code == WEBSOCKET_CONNECTION_LIMIT_REACHED_CODE {
@@ -506,6 +575,7 @@ mod tests {
     use crate::provider::{LLMProvider, LLMRequest, Message as ProviderMessage};
     use crate::providers::openai::OpenAIProvider;
     use futures::{SinkExt, StreamExt};
+    use proptest::prelude::*;
     use serde_json::{Map, Value, json};
     use std::sync::{Arc, Mutex as StdMutex};
     use tokio::net::TcpListener;
@@ -585,6 +655,34 @@ mod tests {
         let previous = vec![Value::String("a".to_string())];
         let current = vec![Value::String("b".to_string())];
         assert!(!input_is_incremental(&previous, &current));
+    }
+
+    proptest! {
+        #[test]
+        fn websocket_continuation_never_crosses_changed_context(
+            model in "[a-z]{1,16}", instructions in ".{0,32}", tool_name in "[a-z]{1,16}",
+            change in 0_u8..4,
+        ) {
+            let input = vec![json!({"role":"user","content":"fixture"})];
+            let tools = json!([{"type":"function","name":tool_name}]);
+            let cache = OpenAIResponsesWebSocketContinuationCache {
+                response_id:"fixture_response".into(), full_input:input.clone(), model:model.clone(),
+                instructions:Some(instructions.clone()), tools:Some(tools.clone()),
+            };
+            let mut payload = json!({"model":model,"instructions":instructions,"tools":tools,"input":input});
+            prop_assert!(cache.can_continue_from(&payload));
+            match change {
+                0 => payload["model"] = json!(format!("other-{model}")),
+                1 => payload["instructions"] = json!(format!("other-{instructions}")),
+                2 => payload["tools"][0]["name"] = json!(format!("other-{tool_name}")),
+                _ => payload["input"][0]["content"] = json!("different conversation"),
+            }
+            prop_assert!(!cache.can_continue_from(&payload));
+            let prepared = prepare_websocket_event(&payload, Some(&cache), false).unwrap();
+            prop_assert!(!prepared.used_previous_response_id);
+            prop_assert!(prepared.event.get("previous_response_id").is_none());
+            prop_assert_eq!(prepared.event.get("input"), payload.get("input"));
+        }
     }
 
     #[test]
@@ -689,6 +787,7 @@ mod tests {
         Close {
             reason: &'static str,
         },
+        PartialThenClose,
     }
 
     async fn spawn_scripted_websocket_server(
@@ -722,6 +821,19 @@ mod tests {
                     recorded_handle.lock().expect("recorded lock").push(payload);
 
                     match reply {
+                        ScriptedReply::PartialThenClose => {
+                            websocket
+                                .send(Message::Text(
+                                    json!({"type":"response.output_text.delta","delta":"partial"})
+                                        .to_string()
+                                        .into(),
+                                ))
+                                .await
+                                .expect("partial output");
+                            tokio::task::yield_now().await;
+                            websocket.send(Message::Close(None)).await.expect("close after partial");
+                            break;
+                        }
                         ScriptedReply::Completed { response_id, text } => {
                             let event = json!({
                                 "type": "response.completed",
@@ -811,6 +923,77 @@ mod tests {
             messages: vec![ProviderMessage::user("hello".to_string())].into(),
             ..Default::default()
         }
+    }
+
+    #[tokio::test]
+    async fn websocket_partial_output_failure_never_reconnects_or_falls_back_to_http() {
+        let (base_url, recorded, server) = spawn_scripted_websocket_server(vec![vec![
+            ScriptedReply::Completed { response_id: "warmup", text: "" },
+            ScriptedReply::PartialThenClose,
+        ]])
+        .await
+        .expect("local server");
+        let provider = websocket_test_custom_provider(base_url);
+        let error = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            LLMProvider::generate(&provider, websocket_test_request()),
+        )
+        .await
+        .expect("must not start HTTP fallback")
+        .expect_err("partial stream is incomplete");
+        assert!(super::websocket_error_prohibits_replay(&error));
+        assert_eq!(recorded.lock().unwrap().len(), 2);
+        assert!(provider.websocket_session.lock().await.is_none());
+        assert!(provider.websocket_continuation_snapshot().is_none());
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn websocket_cancelled_pending_read_discards_socket_and_continuation() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = format!("http://127.0.0.1:{}/v1", listener.local_addr().unwrap().port());
+        let (observed_tx, observed_rx) = oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = accept_async(stream).await.unwrap();
+            let _request = socket.next().await.unwrap().unwrap();
+            observed_tx.send(()).unwrap();
+            // Cancellation closes this socket; no late response can reach the next turn.
+            let closed = socket.next().await;
+            assert!(closed.is_none() || matches!(closed, Some(Err(_)) | Some(Ok(Message::Close(_)))));
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = accept_async(stream).await.unwrap();
+            for (id, text) in [("new_warmup", ""), ("new_final", "fresh response")] {
+                let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+                    panic!("text request")
+                };
+                let request: Value = serde_json::from_str(&request).unwrap();
+                assert_ne!(request.get("previous_response_id"), Some(&json!("abandoned")));
+                socket.send(Message::Text(json!({"type":"response.completed","response":{"id":id,"output":[{"type":"message","content":[{"type":"output_text","text":text}]}]}}).to_string().into())).await.unwrap();
+            }
+        });
+        let provider = websocket_test_custom_provider(base_url);
+        let request = websocket_test_request();
+        seed_continuation_cache(&provider, &request, "abandoned", false);
+        {
+            let pending = provider.generate_via_responses_websocket(&request);
+            tokio::pin!(pending);
+            tokio::select! {
+                result = &mut pending => panic!("pending read unexpectedly completed: {result:?}"),
+                result = observed_rx => result.unwrap(),
+            }
+        }
+        assert!(provider.websocket_session.lock().await.is_none());
+        assert!(provider.websocket_continuation_snapshot().is_none());
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            provider.generate_via_responses_websocket(&request),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(response.content.as_deref(), Some("fresh response"));
+        server.await.unwrap();
     }
 
     fn seed_continuation_cache(provider: &OpenAIProvider, request: &LLMRequest, response_id: &str, store: bool) {

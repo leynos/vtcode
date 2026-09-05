@@ -1316,7 +1316,9 @@ data: [DONE]\n\n",
                 LLMStreamEvent::Token { .. }
                 | LLMStreamEvent::Reasoning { .. }
                 | LLMStreamEvent::ReasoningSignature { .. }
-                | LLMStreamEvent::ReasoningStage { .. } => {}
+                | LLMStreamEvent::ReasoningStage { .. }
+                | LLMStreamEvent::ToolCallStart { .. }
+                | LLMStreamEvent::ToolCallDelta { .. } => {}
             }
         }
 
@@ -1362,7 +1364,9 @@ data: [DONE]\n\n",
                 LLMStreamEvent::Token { .. }
                 | LLMStreamEvent::Reasoning { .. }
                 | LLMStreamEvent::ReasoningSignature { .. }
-                | LLMStreamEvent::ReasoningStage { .. } => {}
+                | LLMStreamEvent::ReasoningStage { .. }
+                | LLMStreamEvent::ToolCallStart { .. }
+                | LLMStreamEvent::ToolCallDelta { .. } => {}
             }
         }
 
@@ -1387,6 +1391,7 @@ data: [DONE]\n\n",
 data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"call_1\",\"output_index\":0,\"content_index\":0,\"sequence_number\":2,\"delta\":\"{\\\"pattern\\\":\\\"ph\"}\n\n\
 data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"call_1\",\"output_index\":0,\"content_index\":0,\"sequence_number\":3,\"delta\":\"ase\\\"}\"}\n\n\
 data: {\"type\":\"response.output_text.delta\",\"output_index\":1,\"content_index\":0,\"sequence_number\":4,\"delta\":\"done\"}\n\n\
+data: {\"type\":\"response.completed\",\"sequence_number\":5,\"response\":{\"status\":\"completed\",\"output\":[]}}\n\n\
 data: [DONE]\n\n",
                     ),
             )

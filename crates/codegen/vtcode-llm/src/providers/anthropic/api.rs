@@ -225,6 +225,8 @@ async fn messages_handler(
                                 }
                             }
                             LLMStreamEvent::ReasoningStage { .. } => {}
+                            // This text/reasoning bridge does not expose tool input previews.
+                            LLMStreamEvent::ToolCallStart { .. } | LLMStreamEvent::ToolCallDelta { .. } => {}
                             LLMStreamEvent::Completed { response } => {
                                 if let Some(index) = open_reasoning_block.take()
                                     && !send_content_block_stop(&tx, index).await
