@@ -73,7 +73,7 @@ installing the toolchain, `Swatinem/rust-cache` and
 
 **Jobs:**
 
-- **Tool Evaluation**: Validates built-in tool behavior and safety gateways
+- **Tool Evaluation**: Validates built-in tool behaviour and safety gateways
 - **Integration tests**: End-to-end tool execution checks
 
 ### 3. Build Linux & Windows (`build-linux-windows.yml`)

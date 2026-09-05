@@ -50,9 +50,9 @@ Notes and semantics
   selectable.
 - Precedence (highest wins): profile > provider defaults > model metadata /
   autodetect > conservative fallback.
-- Explicit boolean `false` is honored and may override an implicit `true` from
+- Explicit boolean `false` is honoured and may override an implicit `true` from
   a lower-precedence layer.
-- Omitting `api_format` preserves legacy behavior. Setting `api_format`
+- Omitting `api_format` preserves legacy behaviour. Setting `api_format`
   explicitly instructs Diapason to treat the model with that API shape; it does
   not cause silent fallbacks.
 

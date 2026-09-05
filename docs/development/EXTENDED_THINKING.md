@@ -36,7 +36,7 @@ thinking_display = "summarized"
 - `thinking_display` defaults to the Anthropic API default when unset
 - Claude Opus 4.8/4.7 default to omitted thinking at the API level
 
-## Adaptive Thinking Behavior
+## Adaptive Thinking Behaviour
 
 For adaptive models, Diapason sends:
 
@@ -59,7 +59,7 @@ For adaptive models, Diapason sends:
 - Claude Opus 4.6 and Claude Sonnet 4.6 support `low`, `medium`, `high`, and
   `max`
 
-## Budgeted Thinking Behavior
+## Budgeted Thinking Behaviour
 
 For budgeted-thinking models, Diapason sends:
 
@@ -90,7 +90,7 @@ For budgeted-thinking models, Diapason sends:
 
 ## Feature Compatibility
 
-When thinking is active, Diapason enforces or normalizes the following behavior:
+When thinking is active, Diapason enforces or normalizes the following behaviour:
 
 - `tool_choice` is limited to `auto` or `none`
 - assistant prefills are incompatible with Claude Opus 4.6/4.7 and Claude
@@ -108,7 +108,7 @@ To disable thinking where Diapason allows it:
 extended_thinking_enabled = false
 ```
 
-Current Diapason behavior:
+Current Diapason behaviour:
 
 - Disabled thinking is allowed for Claude Opus 4.8/4.7
 - Disabled thinking is allowed for Claude Opus 4.6 and Claude Sonnet 4.6
@@ -188,7 +188,7 @@ And fix any issues you find.
 | Simple calculations     | 1024-2048          | Basic math, simple lookups               |
 | Standard analysis       | 2048-4096          | Code review, summarization               |
 | Complex reasoning       | 4096-8192          | Multi-step problems, debugging           |
-| Research synthesis      | 8192-16384         | Analyzing multiple sources               |
+| Research synthesis      | 8192-16384         | Analysing multiple sources               |
 | Complex STEM problems   | 16384-32768        | 4D visualizations, physics simulations   |
 | Constraint optimization | 16384-32768        | Multi-variable planning with constraints |
 

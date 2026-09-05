@@ -13,7 +13,7 @@ Last reviewed: 2026-11-03
 - [User Guide](users-guide.md) - Links to canonical user setup and usage docs.
 - [Developer Guide](developers-guide.md) - Links to canonical architecture and
   contributor docs.
-- [0.157.0 release notes](releases/0.157.0.md) - Migration and ACP behavior
+- [0.157.0 release notes](releases/0.157.0.md) - Migration and ACP behaviour
   notes.
 - [Harness Index](harness/INDEX.md) - Agent operating model, quality scoring,
   and debt tracking.
@@ -54,7 +54,7 @@ Last reviewed: 2026-11-03
 - [Permissions Guide](guides/permissions.md) - Granular agent permissions and
   rule grammar.
 - [Provider Guides](providers/PROVIDER_GUIDES.md) - LLM provider setup and
-  behavior.
+  behaviour.
 - [Security Model](security/SECURITY_MODEL.md) - Security architecture.
 - [Process Hardening](development/PROCESS_HARDENING.md) - Runtime hardening
   controls.
@@ -78,7 +78,7 @@ Last reviewed: 2026-11-03
   language support status.
 - [Signal Handling](signal_handling.md) - Ctrl+C / SIGINT priority guarantees
   and emergency exit.
-- [Indexer Notes](modules/diapason_indexer.md) - Indexer behavior and usage.
+- [Indexer Notes](modules/diapason_indexer.md) - Indexer behaviour and usage.
 - [Development Guide](development/README.md) - Local dev workflows.
 - [Roadmap](project/ROADMAP.md) - Planned work.
 - [Loop Engineering](loop-engineering.md) - Worktree isolation, propose/verify
