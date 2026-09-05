@@ -44,7 +44,7 @@ thread:
     alongside the
     human-readable messages surfaced to operators.F:crates/common/diapason-exec-events/src/lib.rs†L41-L44F:crates/common/diapason-exec-events/src/lib.rs†L242-L248
 
-The schema favors additive evolution: new fields default via `Option` or
+The schema favours additive evolution: new fields default via `Option` or
 `#[serde(default)]` so older consumers continue to deserialize previously known
 structures.
 

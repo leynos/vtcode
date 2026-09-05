@@ -73,7 +73,7 @@ When omitted, the provider uses the default context window. The separate
 
 Use `api_format` when the endpoint needs an explicit request shape. Accepted
 values are `auto`, `openai-chat`, `openai-responses`, and `anthropic-messages`.
-Omitting the field preserves legacy autodetection. An explicit value is honored
+Omitting the field preserves legacy autodetection. An explicit value is honoured
 and does not silently fall back to another format.
 
 Provider-level capability defaults are useful when the endpoint does not return
@@ -131,7 +131,7 @@ profile pin, and reasoning-rejecting backends (native Anthropic/MiniMax, or
 `api_format = "anthropic-messages"` profiles) drop `temperature` while
 reasoning is active.
 
-An explicit boolean `false` is honored at every level. Omitting `api_format`
+An explicit boolean `false` is honoured at every level. Omitting `api_format`
 preserves autodetection, while an explicit value selects that API shape.
 
 Name-based OpenAI sampling gates apply to custom endpoints too: models named
@@ -207,7 +207,7 @@ replace the retained evidence or expose provider chain-of-thought.
 
 - **Official docs:**
   - [API reference index](https://developers.openai.com/api/reference/llms.txt)
-  - [Models catalog](https://developers.openai.com/api/docs/models)
+  - [Models catalogue](https://developers.openai.com/api/docs/models)
   - [Deprecations](https://developers.openai.com/api/docs/deprecations)
 - Follow the
   [Getting Started guide](../user-guide/getting-started.md#api-requirements)
@@ -379,7 +379,7 @@ replace the retained evidence or expose provider chain-of-thought.
 ## NVIDIA NIM
 
 - **Guide:** [NVIDIA NIM Integration](./nvidia.md)
-- **Official docs:** [NVIDIA API catalog](https://build.nvidia.com/llms.txt) ·
+- **Official docs:** [NVIDIA API catalogue](https://build.nvidia.com/llms.txt) ·
     [NIM API reference](https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html)
 - **Provider key:** `nvidia`
 - **Authentication:** `NVIDIA_API_KEY` (Bearer token)
@@ -414,7 +414,7 @@ replace the retained evidence or expose provider chain-of-thought.
     `zai/glm-5.3-flash`, `openai/gpt-5.6-luna`, `openai/gpt-5.6-sol`, and
     `openai/gpt-5.6-terra`
 - **Features:** Native Responses, streaming, tool calling, structured
-    outputs, authenticated paginated model catalog, cache-backed picker
+    outputs, authenticated paginated model catalogue, cache-backed picker
     metadata, and arbitrary explicit Merge route IDs
 - **Limitations:** Reasoning controls remain route-specific and are not
     inferred generically; routing metadata and billed cost remain outside VT
@@ -437,7 +437,7 @@ replace the retained evidence or expose provider chain-of-thought.
 - **Official docs:**
   - [API overview](https://openrouter.ai/docs/api-reference/overview/llms)
   - [Streaming](https://openrouter.ai/docs/api-reference/streaming/llms)
-  - [Model catalog](https://openrouter.ai/docs/llms)
+  - [Model catalogue](https://openrouter.ai/docs/llms)
 - Default model: `xiaomi/mimo-v2.5-pro` (Diapason's default). Xiaomi MiMo V2.5
     and V2.5 Pro are also available.
 - For Meta Muse, prefer the official [`meta` provider](./meta.md) when direct
@@ -445,7 +445,7 @@ replace the retained evidence or expose provider chain-of-thought.
     namespaced marketplace routes.
 - **Meta Muse models via OpenRouter:** `meta/muse-glimmer-30b` and
     `meta/muse-spark-1.2`
-- **Curated picker catalog:** `openrouter/meta/muse-glimmer-30b`,
+- **Curated picker catalogue:** `openrouter/meta/muse-glimmer-30b`,
     `openrouter/meta/muse-spark-1.2`, `openrouter/deepseek/deepseek-chat`,
     `openrouter/z-ai/glm-5.1`, `openrouter/z-ai/glm-5.2`,
     `openrouter/z-ai/glm-5.3-flash`, `openrouter/moonshotai/kimi-k3`,
@@ -514,7 +514,7 @@ replace the retained evidence or expose provider chain-of-thought.
 - **Configuration:** Local usage needs no key; set `OLLAMA_API_KEY` to access
     Ollama Cloud
 - **Default model:** `gpt-oss:20b` (local); any locally available model works
-- **Curated picker catalog:** `gpt-oss:20b`, `gemma4`, plus cloud models
+- **Curated picker catalogue:** `gpt-oss:20b`, `gemma4`, plus cloud models
     `deepseek-v4-flash:cloud`, `deepseek-v4-pro:cloud`,
     `nemotron-3-ultra:cloud`, `kimi-k3:cloud`, `minimax-m3:cloud`, and
     `glm-5.2:cloud` (also `gpt-oss:120b-cloud` via the OpenAI OSS support)
@@ -535,7 +535,7 @@ replace the retained evidence or expose provider chain-of-thought.
 - **Environment:** Optional `LMSTUDIO_API_KEY` when auth is enabled; override
     host/port via `LMSTUDIO_BASE_URL`
 - **Default model:** `lmstudio-community/openai-gpt-oss-20b` (local inference)
-- **Catalog:** Also ships with
+- **Catalogue:** Also ships with
     `lmstudio-community/meta-llama-3.1-8b-instruct` and
     `lmstudio-community/gemma-3-12b-it`, plus any custom GGUF models you expose
 - **Features:** Streaming, tool calling, structured output, and reasoning
@@ -551,7 +551,7 @@ replace the retained evidence or expose provider chain-of-thought.
 - **Managed startup:** Diapason can launch
     `llama-server -m /path/to/model.gguf --port ...` when the endpoint is
     localhost and a GGUF path is configured
-- **Starter catalog:** `gpt-oss-20b`, `gemma-4-26b-a4b`, `gemma-4-e4b`, and
+- **Starter catalogue:** `gpt-oss-20b`, `gemma-4-26b-a4b`, `gemma-4-e4b`, and
     `step-3.5-flash`
 - **Features:** Streaming, dynamic `/v1/models` discovery, local no-auth
     defaults, and OpenAI-compatible request handling

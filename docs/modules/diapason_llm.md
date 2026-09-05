@@ -69,6 +69,6 @@ calling, and provider-specific adaptations. This is a partial extraction from
 ## See Also
 
 - [Provider Guides](../providers/PROVIDER_GUIDES.md) — setup and configuration
-- [Model Catalog](../models.json) — full model listing with capabilities
+- [Model Catalogue](../models.json) — full model listing with capabilities
 - `crates/codegen/diapason-core/src/config/models.rs` — model constants
   re-export

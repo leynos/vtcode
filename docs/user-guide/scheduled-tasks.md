@@ -29,7 +29,7 @@ remind me at 15:00 to push the release branch
 in 45 minutes, check whether the integration tests passed
 ```
 
-Behavior:
+Behaviour:
 
 - Tasks stay in memory only and disappear when the interactive Diapason session
   exits
@@ -75,7 +75,7 @@ Command summary:
 - `diapason schedule install-service` installs a user service for the daemon
 - `diapason schedule uninstall-service` removes the installed user service
 
-Behavior:
+Behaviour:
 
 - Task definitions are stored under the Diapason config directory in
   `scheduled_tasks/tasks/`
