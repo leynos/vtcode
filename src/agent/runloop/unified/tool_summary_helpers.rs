@@ -22,7 +22,7 @@ const SHELL_COMMAND_KEYS: &[&str] = &["command", "raw_command", "bash_command", 
 ///
 /// Returns the (un-truncated) command text and the argument key it came from so
 /// callers can record which key was used. The `command` key may be a JSON array
-/// (joined with spaces) or a string; per-key emptiness/trim behavior is preserved
+/// (joined with spaces) or a string; per-key emptiness/trim behaviour is preserved
 /// for backwards compatibility.
 fn extract_command(args: &Value) -> Option<(String, &'static str)> {
     if let Some(array) = args.get("command").and_then(Value::as_array) {
@@ -41,7 +41,7 @@ fn extract_command(args: &Value) -> Option<(String, &'static str)> {
             continue;
         };
         // The `command` key trims before the emptiness check; the others do not,
-        // matching historical per-key behavior.
+        // matching historical per-key behaviour.
         let (text, ok) = if key == "command" {
             let trimmed = value.trim();
             (trimmed.to_string(), !trimmed.is_empty())

@@ -231,7 +231,7 @@ async fn fetch_markdown(url: &str, timeout_secs: u64, max_bytes: usize) -> Resul
         .timeout(Duration::from_secs(timeout_secs))
         // Do NOT follow redirects from the upstream service. Defuddle is a
         // thin proxy; following its redirects could leak into SSRF-prone
-        // behavior, and we already validated the input URL above.
+        // behaviour, and we already validated the input URL above.
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .context("defuddle_fetch: failed to build HTTP client")?;

@@ -656,7 +656,7 @@ pub(crate) async fn validate_tool_call<'a>(
         // policy error (full message once, compact stub for later calls in
         // the batch) and let `flush_budget_synthesis_directives` push a single
         // "synthesize now" directive after the batch and arm the tool-free
-        // recovery pass. The old behavior broke the turn as `Blocked` with no
+        // recovery pass. The old behaviour broke the turn as `Blocked` with no
         // synthesis pass, so plan mode ended with research but no plan and the
         // model looped on "I'll synthesize the plan" across continue-turns.
         let error_msg = if notice.first_notice {

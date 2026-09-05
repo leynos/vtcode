@@ -1,4 +1,4 @@
-//! `vtcode bench-allocator` — measure allocator RSS behavior under a bursty,
+//! `vtcode bench-allocator` — measure allocator RSS behaviour under a bursty,
 //! sparse Tokio workload.
 //!
 //! Reproduces the pattern from the mimalloc-vs-jemalloc analysis: bursts of many

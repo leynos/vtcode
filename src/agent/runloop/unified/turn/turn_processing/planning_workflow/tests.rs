@@ -159,7 +159,7 @@ fn maybe_force_planning_workflow_interview_preserves_allowed_request_user_input_
             uni::ToolCall::function(
                 "call_interview".to_string(),
                 tools::REQUEST_USER_INPUT.to_string(),
-                r#"{"questions":[{"id":"scope","header":"Scope","question":"Which scope should the plan cover?","options":[{"label":"Focused","description":"Keep the change narrow."},{"label":"Broad","description":"Include adjacent behavior."}]}]}"#.to_string(),
+                r#"{"questions":[{"id":"scope","header":"Scope","question":"Which scope should the plan cover?","options":[{"label":"Focused","description":"Keep the change narrow."},{"label":"Broad","description":"Include adjacent behaviour."}]}]}"#.to_string(),
             ),
         ],
         String::new(),

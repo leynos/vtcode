@@ -262,7 +262,7 @@ impl PlanningWorkflowSessionState {
     /// Planning may be entered from an execution agent or by selecting the
     /// dedicated `plan` agent. Keep this decision at the planning-state
     /// boundary so inline, headless, and automatic approval paths cannot drift
-    /// into different handoff behavior.
+    /// into different handoff behaviour.
     pub(crate) fn execution_agent_after_approval(&self, active_agent_name: &str) -> Option<String> {
         if let Some(previous) = self
             .previous_primary_agent()

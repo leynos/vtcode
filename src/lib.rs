@@ -27,7 +27,7 @@
 //! - **Workspace-aware automation**: git-aware fuzzy navigation, workspace
 //!   boundary enforcement, command allowlists, and human-in-the-loop
 //!   confirmation.
-//! - **Config-driven behavior**: every agent control lives in `vtcode.toml`,
+//! - **Config-driven behaviour**: every agent control lives in `vtcode.toml`,
 //!   anchored by constants in `vtcode_core::config::constants` and curated model
 //!   metadata in `docs/models.json`.
 //!

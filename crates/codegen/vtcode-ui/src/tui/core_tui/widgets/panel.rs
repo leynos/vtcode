@@ -46,7 +46,7 @@ impl PanelStyles for SessionStyles {
 
 /// Create a new `Panel` with terminal-aware border type as default.
 ///
-/// This preserves the previous behavior where `Panel::new` automatically
+/// This preserves the previous behaviour where `Panel::new` automatically
 /// selected the border type based on terminal capabilities.
 pub(crate) fn new_panel<'a>(styles: &'a SessionStyles) -> Panel<'a, SessionStyles> {
     Panel::new(styles).border_type(terminal_capabilities::get_border_type())

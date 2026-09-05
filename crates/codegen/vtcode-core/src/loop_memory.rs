@@ -182,7 +182,7 @@ impl LoopMemoryStore for SqliteLoopMemory {
         })?;
 
         let entries: Vec<String> = rows.collect::<Result<Vec<_>, _>>()?;
-        // Match Markdown behavior: return empty string when no entries exist.
+        // Match Markdown behaviour: return empty string when no entries exist.
         if entries.is_empty() {
             return Ok(String::new());
         }
@@ -344,7 +344,7 @@ mod tests {
             let tmp = TempDir::new().expect("temp dir");
             let db_path = tmp.path().join("test.db");
             let memory = SqliteLoopMemory::with_path(db_path).expect("create");
-            // Empty state matches Markdown behavior: returns empty string.
+            // Empty state matches Markdown behaviour: returns empty string.
             assert_eq!(memory.read_notes().expect("read"), "");
             assert_eq!(memory.read_decisions().expect("read"), "");
         }

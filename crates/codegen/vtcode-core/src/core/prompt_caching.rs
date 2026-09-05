@@ -211,7 +211,7 @@ impl PromptCache {
         }
 
         // Canonical VT Code cache roots are private and symlink-safe. A
-        // project/user override retains the existing create_dir_all behavior
+        // project/user override retains the existing create_dir_all behaviour
         // so workspace-local cache paths remain compatible.
         let is_global_cache = VtCodePaths::resolve()
             .ok()

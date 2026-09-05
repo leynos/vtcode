@@ -116,7 +116,7 @@ mod tests {
     }
 
     #[test]
-    fn test_caching_behavior() {
+    fn test_caching_behaviour() {
         let parser = CachedStyleParser::new();
 
         // Parse same string twice - should use cache on second call

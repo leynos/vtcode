@@ -1024,7 +1024,7 @@ mod tests {
         // the picker or an explicit provider.
         || *model == ModelId::NvidiaZaiGlm52
         // "gpt-oss-20b" is shared with OpenAI and parses to OpenAIGptOss20b
-        // (legacy behavior preserved by table row order).
+        // (legacy behaviour preserved by table row order).
         || *model == ModelId::LlamaCppGptOss20b
         // Merge Gateway's curated upstream ids intentionally match OpenRouter
         // ids; explicit provider configuration selects the Merge route.

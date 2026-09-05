@@ -596,8 +596,8 @@ mod tests {
     fn command_range_stops_at_whitespace() {
         let input = "/cmd arg";
         let cursor = input.len();
-        // Previous behavior: returned Some(0..4) (last range)
-        // New behavior: returns None (active range interrupted by space)
+        // Previous behaviour: returned Some(0..4) (last range)
+        // New behaviour: returns None (active range interrupted by space)
         assert!(command_range(input, cursor).is_none());
     }
 

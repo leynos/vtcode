@@ -284,7 +284,7 @@ run_shell_scripts_lint() {
     fi
 }
 
-# Run Miri (detect undefined behavior)
+# Run Miri (detect undefined behaviour)
 #
 # Methodology: Shnatsel, "The unreasonable effectiveness of LLMs for auditing
 # Rust code" — use miri to verify unsafe findings and eliminate false
@@ -313,7 +313,7 @@ run_miri() {
     done
 
     if MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-disable-isolation" cargo miri test --locked "${pkg_args[@]}"; then
-        print_success "Miri found no Undefined Behavior (Tree Borrows)!"
+        print_success "Miri found no Undefined Behaviour (Tree Borrows)!"
         return 0
     else
         print_error "Miri detected issues! Check output for Tree Borrows/aliasing violations."
@@ -417,7 +417,7 @@ case "${1:-}" in
         echo "  legibility - Run agent legibility hotspot checks"
         echo "  workflow-security - Validate GitHub workflow trigger/action security policy"
         echo "  zen     - Run Zen governance checks (warn mode)"
-        echo "  miri    - Run Miri (Tree Borrows) to detect Undefined Behavior (slow; scoped to pure-Rust unsafe)"
+        echo "  miri    - Run Miri (Tree Borrows) to detect Undefined Behaviour (slow; scoped to pure-Rust unsafe)"
         echo "  help    - Show this help message"
         echo ""
         echo "If no command is specified, runs all checks."

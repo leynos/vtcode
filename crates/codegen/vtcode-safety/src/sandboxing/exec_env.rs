@@ -224,7 +224,7 @@ impl SandboxType {
             Self::MacosSeatbelt => cfg!(target_os = "macos"),
             Self::LinuxLandlock => cfg!(target_os = "linux"),
             // Not yet implemented — `transform_windows` is a pass-through.
-            // Returning `false` here causes fail-closed behavior: requesting
+            // Returning `false` here causes fail-closed behaviour: requesting
             // a ReadOnly/WorkspaceWrite policy on Windows yields an explicit
             // error rather than silently running without a sandbox.
             Self::WindowsRestrictedToken => false,

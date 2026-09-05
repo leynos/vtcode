@@ -88,7 +88,7 @@ impl OptimizedToolRegistry {
 
         let execution_time = start_time.elapsed();
 
-        // Record execution statistics inline to keep behavior deterministic.
+        // Record execution statistics inline to keep behaviour deterministic.
         self.record_execution_stats(tool_name, execution_time, result.is_ok());
 
         result

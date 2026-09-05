@@ -611,7 +611,7 @@ async fn refresh_openai_chatgpt_session_from_snapshot(
 /// The response is parsed as [`OpenAIRefreshResponse`] with independently
 /// optional fields — OpenAI's token endpoint may omit unchanged fields.
 /// Omitted fields preserve the current session's values. This matches the
-/// behavior of `openai/codex`'s `RefreshResponse` + `persist_tokens`.
+/// behaviour of `openai/codex`'s `RefreshResponse` + `persist_tokens`.
 async fn refresh_openai_chatgpt_session_without_lock(
     current: &OpenAIChatGptSession,
     storage_mode: AuthCredentialsStoreMode,
@@ -819,7 +819,7 @@ struct OpenAITokenResponse {
 
 /// Refresh-token grant response — all token fields are independently optional
 /// because OpenAI's token endpoint may omit unchanged fields (matching the
-/// behavior observed in `openai/codex`'s `RefreshResponse`). Omitted fields
+/// behaviour observed in `openai/codex`'s `RefreshResponse`). Omitted fields
 /// preserve the previous session's values during merge.
 #[derive(Deserialize)]
 struct OpenAIRefreshResponse {
@@ -1666,7 +1666,7 @@ mod tests {
     //
     // These test merge_refresh_response directly with resp.id_token = None,
     // which skips the HTTP API-key exchange (has_new_id_token = false).
-    // This lets us verify field-preservation behavior without network access.
+    // This lets us verify field-preservation behaviour without network access.
 
     #[tokio::test]
     async fn merge_preserves_omitted_access_token() {

@@ -101,7 +101,7 @@ pub(crate) async fn render_terminal_command_panel(
         }
     }
 
-    // Keep inline streaming behavior only while the PTY is still running.
+    // Keep inline streaming behaviour only while the PTY is still running.
     // Once completed, always render the final captured output.
     let inline_streaming = is_pty_session && renderer.prefers_untruncated_output() && !is_completed;
     let compact_completed_pipe = renderer.supports_inline_ui()

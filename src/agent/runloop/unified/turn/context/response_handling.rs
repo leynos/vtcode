@@ -905,7 +905,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn build_mode_pseudo_tool_call_markup_keeps_existing_behavior() {
+    async fn build_mode_pseudo_tool_call_markup_keeps_existing_behaviour() {
         let mut backing = TestTurnProcessingBacking::new(4).await;
         let mut ctx = backing.turn_processing_context();
 

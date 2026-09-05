@@ -25,11 +25,22 @@ The complete PR train is not yet delivered.
   and keeps the dependent prompt golden text with its source wording change.
   Formatting, lint, build, typecheck and the full suite passed (10,082 tests,
   17 skipped), as did all 67 harness tests and the advisory checks.
-- `harden-lint-spelling-behaviour-apis` is the active layer, based on #23.
+- [Draft PR #24](https://github.com/leynos/vtcode/pull/24) publishes
+  `harden-lint-spelling-behaviour-apis` at
+  `bb3ac5e61dcac47a6b05224f346a1c5e8f47c737`, based on #23.
   It carries model-behaviour configuration, tool-behaviour registration, and
   permission-decision types with all callers. Existing wire keys remain fixed.
-  Its original formatting, lint, build, and full tests passed (10,078 passed,
-  17 skipped), along with all 67 harness tests.
+  Its restacked formatting, lint, build, typecheck and full tests passed
+  (10,082 passed, 17 skipped), along with all 67 harness tests.
+- `harden-lint-spelling-behaviour` is the active layer, based on #24.
+  It covers the remaining native behaviour names and nearby prose, preserving
+  the existing configuration wire property. The first full run passed formatting,
+  lint, and build but exposed two dependent text mismatches. The prompt golden
+  now follows the two changed source sentences; placeholder validation accepts
+  both native and legacy spellings as unfinished template text. Full gates
+  passed on the original retry: 10,079 tests, 17 skipped and 67 harness tests.
+  Formatting, lint, build, advisory, VS Code bundling, and changed Python/shell
+  syntax checks passed. Optional ast-grep remained unavailable.
 - Remaining spelling changes are preserved separately while this layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
@@ -118,8 +129,15 @@ and behaviour APIs at
 `/home/leynos/Projects/vtcode-behaviour-review-eByK3M/behaviour-reviewed.patch`.
 They include dependent callers and fixture text omitted by the classifier;
 the artefact patch also preserves field-purpose docs before wire-name notes.
-They have passed isolated apply and byte/mode reconstruction, but have not
-run their own repository gates. Apply them only to their intended parent in
+The artefact and behaviour-API layers have now passed their own full gates.
+The next remaining-behaviour patch was regenerated against the published API
+commit to omit the caller updates that moved earlier. Its reviewed path is
+`/home/leynos/Projects/vtcode-behaviour-remaining-v2-44i079/behaviour-remaining-reviewed-v2.patch`.
+It passed isolated apply and byte/mode reconstruction. The full suite then
+exposed two text dependencies, repaired in the live layer before the green
+gate retry. Logs use
+`/tmp/ACTION-2-vtcode-df12-onboarding-harden-lint-spelling-behaviour.out`.
+Apply them only to their intended parent in
 order, preserving the latest handoff and discovery compatibility repair.
 
 ## Measurement and continuation
@@ -261,3 +279,14 @@ tests, 17 skips and 67 harness tests. Logs use `restack-1` on
 `harden-lint-spelling-behaviour-apis`; final handoff checks use
 `handoff-restack-1`. The push uses an explicit lease against the original
 published PR #24 head.
+
+## PR 25 review restack
+
+The remaining behaviour spelling layer is rebased onto PR #24 `bb3ac5e61`.
+Only this handoff conflicted. The registry test rename auto-merged while
+preserving its body and the lower layer's fallible rstest fixture. The fixed
+UI wire key, paired prompt goldens and both placeholder spellings remain
+intact. All eight sequential gates passed, including typecheck, 10,083
+workspace tests, 17 skips and 67 harness tests. Logs use `restack-1` on
+`harden-lint-spelling-behaviour`; final handoff checks use `handoff-restack-1`.
+The push uses an explicit lease against the original published PR #25 head.

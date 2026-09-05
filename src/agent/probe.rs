@@ -24,7 +24,7 @@
 //!   if the probe panics inside `spawn_blocking`.
 //! - **Fallback**: if the probe was never started (an unanticipated code
 //!   path that still reaches the agent loop), [`await_terminal_palette_probe`]
-//!   runs it synchronously, preserving the original behavior.
+//!   runs it synchronously, preserving the original behaviour.
 //!
 //! [`probe_and_cache_terminal_palette_harmony`]:
 //!     vtcode_core::utils::terminal_color_probe::probe_and_cache_terminal_palette_harmony
@@ -69,11 +69,11 @@ pub(crate) fn start_terminal_palette_probe(handle: &tokio::runtime::Handle) {
 /// Returns immediately when the probe was not started (non-interactive
 /// command) or has already completed.  If the probe was not started at all
 /// (an unanticipated path that still reaches the agent loop), runs it
-/// synchronously to preserve the original behavior.
+/// synchronously to preserve the original behaviour.
 pub(crate) async fn await_terminal_palette_probe() {
     if !PROBE_STARTED.load(Ordering::SeqCst) {
         // Fallback: probe was not started early.  Run it now to preserve
-        // the original synchronous behavior.  This should not happen in
+        // the original synchronous behaviour.  This should not happen in
         // practice because bootstrap pre-starts the probe for all
         // interactive commands.
         probe_and_cache_terminal_palette_harmony();

@@ -16,7 +16,7 @@ use vtcode_ui::tui::ui::theme;
 fn short_assistant_markdown() -> String {
     "## Summary\n\
     - Fixed markdown rendering performance hot paths\n\
-    - Preserved output behavior\n\
+    - Preserved output behaviour\n\
     \n\
     ```rust\n\
     fn main() {\n\

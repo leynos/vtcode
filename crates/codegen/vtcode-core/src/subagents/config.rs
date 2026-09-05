@@ -112,7 +112,7 @@ fn build_child_config_from_runtime(
     merge_child_hooks(&mut child, runtime.hooks.as_ref());
     // Drop parent MCP providers by default; only attach servers explicitly
     // requested by the subagent spec. This prevents multiplying MCP schema
-    // tax across every child. (H1: intentional behavioral change — specs that
+    // tax across every child. (H1: intentional behavioural change — specs that
     // need a parent MCP server must declare it via `mcp_servers`.)
     child.mcp.providers = resolve_child_mcp_providers(parent, runtime);
     child

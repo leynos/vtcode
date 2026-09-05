@@ -6,7 +6,7 @@
 # - Online: https://github.com/vinhnx/vtcode/blob/main/docs/config/config.md
 #
 # Configuration files like this can be placed in your project root directory
-# to customize VT Code behavior for specific projects.
+# to customize VT Code behaviour for specific projects.
 
 # ================
 # AGENT SETTINGS
@@ -78,7 +78,7 @@ write_file = "ask"        # Policy for writing files
 read_file = "allow"       # Policy for reading files
 web_search = "ask"        # Policy for web searching
 
-# Control automation behavior
+# Control automation behaviour
 [automation]
 # Enable full automation mode (bypasses human approval) - USE WITH CAUTION
 full_auto = false
@@ -91,7 +91,7 @@ allowed_tools = ["read_file", "web_search"]
 # ================
 # PARTICIPANT SYSTEM
 # ================
-# Controls the behavior of the participant system that provides context augmentation
+# Controls the behaviour of the participant system that provides context augmentation
 [participants]
 # Enable participant system for @mention support
 enabled = true

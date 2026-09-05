@@ -236,7 +236,7 @@ pub fn render_few_shot_section(examples: &[&FewShotExample]) -> String {
     let mut out = String::new();
     out.push_str(
         "[Few-Shot Examples]\n\
-         The following examples illustrate expected behavior for similar tasks.\n\n",
+         The following examples illustrate expected behaviour for similar tasks.\n\n",
     );
     for example in examples {
         let _ = std::fmt::Write::write_fmt(&mut out, format_args!("### {}\n", example.id));

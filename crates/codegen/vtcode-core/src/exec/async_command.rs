@@ -195,7 +195,7 @@ impl AsyncProcessRunner {
         // reaping the child and draining its stdout/stderr pipes must be bounded:
         // a surviving grandchild can hold the pipes open indefinitely, and (much
         // more rarely) a wedged wait could stall too. The Finished path keeps its
-        // original, unbounded behavior because EOF and exit status are guaranteed
+        // original, unbounded behaviour because EOF and exit status are guaranteed
         // once the process has exited normally.
         let bounded_drain = matches!(completion, Completion::TimedOut | Completion::Cancelled);
 
@@ -342,7 +342,7 @@ mod tests {
     /// A timed-out run must return promptly with `timed_out == true` instead
     /// of hanging on the post-kill stream drain. The whole call is wrapped in
     /// a generous outer `tokio::time::timeout` so a regression to the old,
-    /// unbounded-drain behavior fails the test instead of hanging the suite.
+    /// unbounded-drain behaviour fails the test instead of hanging the suite.
     #[tokio::test]
     async fn run_returns_promptly_after_timeout_kill() {
         let options = ProcessOptions {

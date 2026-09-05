@@ -1158,7 +1158,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_default_behavior_retains_auto_and_empty_profiles() {
+    fn legacy_default_behaviour_retains_auto_and_empty_profiles() {
         let parsed: CustomProviderConfig = toml::from_str(
             r#"
 name = "mycorp"

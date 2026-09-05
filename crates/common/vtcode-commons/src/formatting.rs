@@ -457,11 +457,11 @@ mod tests {
 
     #[test]
     fn truncate_within_reserves_ellipsis_budget() {
-        // Matches former runner::orchestration::truncate_chars behavior.
+        // Matches former runner::orchestration::truncate_chars behaviour.
         assert_eq!(truncate_within("hello world", 8, "..."), "hello...");
         assert_eq!(truncate_within("hi", 8, "..."), "hi");
         // Single-char ellipsis reserves exactly one char (former snapshots /
-        // session_archive behavior).
+        // session_archive behaviour).
         assert_eq!(truncate_within("abcdef", 4, "…"), "abc…");
     }
 

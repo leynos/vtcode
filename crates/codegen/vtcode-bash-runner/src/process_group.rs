@@ -349,7 +349,7 @@ pub fn graceful_kill_process_group(
     }
 
     // Still running - force kill.
-    // Use the robust termination behavior from codex-rs/utils/pty PR 12688
+    // Use the robust termination behaviour from codex-rs/utils/pty PR 12688
     // by attempting both a pgid kill and a direct pid kill.
     let _ = signal::killpg(pgid, Signal::SIGKILL);
     if let Err(err) = signal::kill(target_pid, Signal::SIGKILL) {
@@ -522,7 +522,7 @@ mod tests {
         }
         #[cfg(not(unix))]
         {
-            // On non-Unix, behavior varies
+            // On non-Unix, behaviour varies
             let _ = result;
         }
     }
