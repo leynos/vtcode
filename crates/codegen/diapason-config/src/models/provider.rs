@@ -1,4 +1,4 @@
-//! Provider extension methods that depend on diapason-config model catalogs.
+//! Provider extension methods that depend on diapason-config model catalogues.
 //!
 //! The `Provider` enum and its core methods are defined in `diapason-commons`.
 //! This module adds diapason-config-specific extension methods via the
@@ -11,7 +11,7 @@ use std::str::FromStr;
 
 /// Extension trait on `Provider` for model-specific capability queries.
 ///
-/// These methods require diapason-config model catalogs and constants,
+/// These methods require diapason-config model catalogues and constants,
 /// so they cannot live in diapason-commons with the core `Provider` type.
 pub trait ProviderModelSupport {
     /// Determine if the provider supports configurable reasoning effort for the model.

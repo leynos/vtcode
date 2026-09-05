@@ -65,7 +65,7 @@ pub struct ToolsConfig {
 
     /// Optional explicit cap for total blocked tool calls per turn. When unset,
     /// the runtime derives it from the consecutive cap (2x normal, 4x plan,
-    /// 1x recovery) so existing configs keep their behavior.
+    /// 1x recovery) so existing configs keep their behaviour.
     #[serde(default)]
     pub max_total_blocked_tool_calls_per_turn: Option<usize>,
 

@@ -52,7 +52,7 @@ pub struct FullAutoConfig {
     #[serde(default = "default_require_profile_ack")]
     pub require_profile_ack: bool,
 
-    /// Optional path to a profile describing acceptable behaviors.
+    /// Optional path to a profile describing acceptable behaviours.
     #[serde(default)]
     pub profile_path: Option<PathBuf>,
 

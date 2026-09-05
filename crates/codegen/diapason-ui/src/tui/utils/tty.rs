@@ -32,18 +32,18 @@ pub trait TtyExt {
     /// Returns `true` if this stream is connected to a terminal.
     ///
     /// This is a convenience wrapper around crossterm's `IsTty` trait
-    /// that provides consistent behavior across the codebase.
+    /// that provides consistent behaviour across the codebase.
     fn is_tty_ext(&self) -> bool;
 
     /// Returns `true` if this stream supports ANSI colour codes.
     ///
     /// This checks both TTY status and common environment variables
-    /// that might disable color output.
+    /// that might disable colour output.
     fn supports_colour(&self) -> bool;
 
     /// Returns `true` if this stream supports interactive features.
     ///
-    /// Interactive features include cursor movement, color, and other
+    /// Interactive features include cursor movement, colour, and other
     /// terminal capabilities that require a real terminal.
     fn is_interactive(&self) -> bool;
 }
@@ -122,7 +122,7 @@ impl TtyExt for io::Stdin {
 /// TTY capabilities that can be queried for feature detection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TtyCapabilities {
-    /// Whether the terminal supports ANSI color codes.
+    /// Whether the terminal supports ANSI colour codes.
     colour: bool,
     /// Whether the terminal supports cursor movement and manipulation.
     cursor: bool,

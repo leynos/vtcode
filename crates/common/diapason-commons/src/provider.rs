@@ -1,7 +1,7 @@
 //! Provider enum and core definitions shared across Diapason crates.
 //!
 //! This module provides the [`Provider`] enum and its pure methods. Methods
-//! that depend on model catalogs or diapason-config internals
+//! that depend on model catalogues or diapason-config internals
 //! (`supports_reasoning_effort`, `supports_service_tier`) remain in
 //! `diapason-config` as extension methods.
 

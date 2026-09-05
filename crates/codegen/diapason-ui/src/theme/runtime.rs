@@ -34,7 +34,7 @@ static ACTIVE: Lazy<RwLock<ActiveTheme>> = Lazy::new(|| {
 /// navigation to show a live preview without committing the selection.
 static PREVIEW: Lazy<RwLock<Option<ActiveTheme>>> = Lazy::new(|| RwLock::new(None));
 
-/// Update the runtime color accessibility configuration.
+/// Update the runtime colour accessibility configuration.
 pub fn set_colour_accessibility_config(config: ColourAccessibilityConfig) {
     *COLOR_CONFIG.write() = config;
 }
@@ -44,7 +44,7 @@ pub fn get_minimum_contrast() -> f32 {
     COLOR_CONFIG.read().minimum_contrast
 }
 
-/// Report whether bold text should avoid terminal bright-color behavior.
+/// Report whether bold text should avoid terminal bright-colour behaviour.
 pub fn is_bold_bright_mode() -> bool {
     COLOR_CONFIG.read().bold_is_bright
 }
@@ -105,7 +105,7 @@ pub fn clear_preview_theme() {
     *PREVIEW.write() = None;
 }
 
-/// Return a readable accent color for banner-like copy.
+/// Return a readable accent colour for banner-like copy.
 pub fn banner_colour() -> RgbColor {
     let guard = ACTIVE.read();
     let accent = guard.definition.palette.logo_accent;
@@ -133,7 +133,7 @@ pub fn banner_style() -> Style {
     Style::new().fg_color(Some(Color::Rgb(accent))).bold()
 }
 
-/// Return the raw logo accent color from the active theme.
+/// Return the raw logo accent colour from the active theme.
 pub fn logo_accent_colour() -> RgbColor {
     ACTIVE.read().definition.palette.logo_accent
 }

@@ -408,7 +408,7 @@ fn line_number_style(theme_styles: &ThemeStyles, base_style: Style) -> Style {
     } else {
         base_style
     };
-    // Blend the foreground with background at 35% for a visible but subdued gutter color.
+    // Blend the foreground with background at 35% for a visible but subdued gutter colour.
     // No DIMMED effect — keep line numbers readable without squinting.
     let blended_fg = source
         .get_fg_color()
@@ -419,7 +419,7 @@ fn line_number_style(theme_styles: &ThemeStyles, base_style: Style) -> Style {
     } else if let Some(fg) = source.get_fg_color() {
         style = style.fg_color(Some(fg));
     } else {
-        // Last resort: use the theme foreground color
+        // Last resort: use the theme foreground colour
         style = style.fg_color(Some(theme_styles.foreground));
     }
     style
@@ -538,7 +538,7 @@ fn code_block_style(theme_styles: &ThemeStyles, base_style: Style) -> Style {
     if let Some(colour) = fg {
         style = style.fg_color(Some(colour));
     } else {
-        // Ensure code text always has a visible foreground color
+        // Ensure code text always has a visible foreground colour
         style = style.fg_color(Some(theme_styles.foreground));
     }
     style

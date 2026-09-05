@@ -81,7 +81,7 @@ pub(super) fn finalize_terminal<B: Backend>(terminal: &mut Terminal<B>, use_alte
     terminal
         .show_cursor()
         .map_err(|e| anyhow::anyhow!("failed to show cursor after inline session: {e}"))?;
-    // Terminal::clear() snapshots the cursor via CPR (ESC[6n) to restore it afterward, which
+    // Terminal::clear() snapshots the cursor via CPR (ESC[6n) to restore it afterwards, which
     // blocks ~2s once the event stream is shut down at exit. Clear the backend viewport
     // instead; restore_tui() restores the saved cursor position right after.
     // For inline sessions clearing All wipes the viewport and leaves a
