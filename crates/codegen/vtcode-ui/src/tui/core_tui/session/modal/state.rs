@@ -84,11 +84,11 @@ pub struct ModalListState {
     filter_query: Option<String>,
     viewport_rows: Option<u16>,
     compact_rows: bool,
-    density_behavior: ModalListDensityBehavior,
+    density_behaviour: ModalListDensityBehaviour,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ModalListDensityBehavior {
+enum ModalListDensityBehaviour {
     Adjustable,
     FixedComfortable,
 }
@@ -292,7 +292,7 @@ impl ModalState {
                 }
             }
             KeyCode::Tab => {
-                // With no search active, Tab moves to first item for autocomplete behavior
+                // With no search active, Tab moves to first item for autocomplete behaviour
                 // If search is active, we already handled it above
                 if self.search.is_none() && !list.visible_indices.is_empty() {
                     list.select_first();
@@ -542,9 +542,9 @@ impl ModalListState {
         let has_two_line_items = converted
             .iter()
             .any(|item| item.subtitle.as_ref().is_some_and(|subtitle| !subtitle.trim().is_empty()));
-        let density_behavior = Self::density_behavior_for_items(&converted);
+        let density_behaviour = Self::density_behaviour_for_items(&converted);
         let is_model_picker_list = Self::is_model_picker_list(&converted);
-        let compact_rows = Self::initial_compact_rows(density_behavior, has_two_line_items, is_model_picker_list);
+        let compact_rows = Self::initial_compact_rows(density_behaviour, has_two_line_items, is_model_picker_list);
         let mut modal_state = Self {
             visible_indices: (0..converted.len()).collect(),
             items: converted,
@@ -554,34 +554,34 @@ impl ModalListState {
             filter_query: None,
             viewport_rows: None,
             compact_rows,
-            density_behavior,
+            density_behaviour,
         };
         modal_state.select_initial(selected);
         modal_state
     }
 
-    fn density_behavior_for_items(items: &[ModalListItem]) -> ModalListDensityBehavior {
+    fn density_behaviour_for_items(items: &[ModalListItem]) -> ModalListDensityBehaviour {
         if items
             .iter()
             .any(|item| matches!(item.selection, Some(InlineListSelection::ConfigAction(_))))
         {
-            ModalListDensityBehavior::FixedComfortable
+            ModalListDensityBehaviour::FixedComfortable
         } else {
-            ModalListDensityBehavior::Adjustable
+            ModalListDensityBehaviour::Adjustable
         }
     }
 
     fn initial_compact_rows(
-        density_behavior: ModalListDensityBehavior,
+        density_behaviour: ModalListDensityBehaviour,
         has_two_line_items: bool,
         is_model_picker_list: bool,
     ) -> bool {
         if is_model_picker_list {
             return false;
         }
-        match density_behavior {
-            ModalListDensityBehavior::FixedComfortable => false,
-            ModalListDensityBehavior::Adjustable => has_two_line_items,
+        match density_behaviour {
+            ModalListDensityBehaviour::FixedComfortable => false,
+            ModalListDensityBehaviour::Adjustable => has_two_line_items,
         }
     }
 
@@ -953,16 +953,16 @@ impl ModalListState {
     }
 
     pub(super) fn supports_density_toggle(&self) -> bool {
-        matches!(self.density_behavior, ModalListDensityBehavior::Adjustable)
+        matches!(self.density_behaviour, ModalListDensityBehaviour::Adjustable)
     }
 
     pub(super) fn non_filter_summary_text(&self, footer_hint: Option<&str>) -> Option<String> {
         if !self.has_non_filter_summary(footer_hint) {
             return None;
         }
-        match self.density_behavior {
-            ModalListDensityBehavior::FixedComfortable => Some(CONFIG_LIST_NAVIGATION_HINT.to_owned()),
-            ModalListDensityBehavior::Adjustable => footer_hint.filter(|hint| !hint.is_empty()).map(ToOwned::to_owned),
+        match self.density_behaviour {
+            ModalListDensityBehaviour::FixedComfortable => Some(CONFIG_LIST_NAVIGATION_HINT.to_owned()),
+            ModalListDensityBehaviour::Adjustable => footer_hint.filter(|hint| !hint.is_empty()).map(ToOwned::to_owned),
         }
     }
 
@@ -975,9 +975,9 @@ impl ModalListState {
     }
 
     fn has_non_filter_summary(&self, footer_hint: Option<&str>) -> bool {
-        match self.density_behavior {
-            ModalListDensityBehavior::FixedComfortable => true,
-            ModalListDensityBehavior::Adjustable => footer_hint.is_some_and(|hint| !hint.is_empty()),
+        match self.density_behaviour {
+            ModalListDensityBehaviour::FixedComfortable => true,
+            ModalListDensityBehaviour::Adjustable => footer_hint.is_some_and(|hint| !hint.is_empty()),
         }
     }
 

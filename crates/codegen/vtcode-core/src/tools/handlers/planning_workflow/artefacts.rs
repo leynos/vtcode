@@ -17,13 +17,15 @@ pub(super) const PLAN_TRACKER_END: &str = "<!-- vtcode:plan-tracker:end -->";
 /// the same contract from every prompt surface.
 pub const CANONICAL_STEP_FORMAT: &str = "1. Action -> files: [path/to/file.rs] -> verify: [cargo check]";
 
-const PLACEHOLDER_TOKENS: [&str; 21] = [
+const PLACEHOLDER_TOKENS: [&str; 22] = [
     "[step]",
     "[paths]",
     "[check]",
     "[explicit assumption]",
     "[default chosen when user did not specify]",
     "[out-of-scope items intentionally not changed]",
+    "[file, symbol, or behaviour confirmed from the repo]",
+    // Keep matching placeholder templates generated before the spelling update.
     "[file, symbol, or behavior confirmed from the repo]",
     "[observed command output -> the insight it establishes]",
     "[existing pattern or constraint verified before planning]",
@@ -606,9 +608,9 @@ fn is_concrete_target(value: &str) -> bool {
         return false;
     }
 
-    // A behavior target may be prose, but it still needs two recognizable
+    // A behaviour target may be prose, but it still needs two recognizable
     // domain terms. This rejects arbitrary filler such as `foo bar` or
-    // `implementation details` while allowing concrete behavior names such
+    // `implementation details` while allowing concrete behaviour names such
     // as `approval handoff`, `startup latency`, and `cache invalidation`.
     const CONCRETE_BEHAVIOR_WORDS: &[&str] = &[
         "agent",
@@ -1143,7 +1145,7 @@ fn implementation_step_shape_error(step: &ImplementationStepBlock) -> Option<Str
     }
 
     if !has_target || invalid_target {
-        return Some("must name a concrete file, symbol, or behavior target".to_string());
+        return Some("must name a concrete file, symbol, or behaviour target".to_string());
     }
     if !has_verification {
         return Some("must include a `verify:` or `verification:` marker".to_string());

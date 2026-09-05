@@ -23,7 +23,7 @@ fn does_not_suppress_diff_recap_when_user_asked_for_analysis() {
         ),
     ];
 
-    assert!(!should_suppress_redundant_diff_recap(&history, "The diff shows one behavior change."));
+    assert!(!should_suppress_redundant_diff_recap(&history, "The diff shows one behaviour change."));
 }
 
 #[test]

@@ -1182,7 +1182,7 @@ async fn explicit_openai_responses_format_keeps_responses_path() {
 }
 
 #[tokio::test]
-async fn auto_openai_format_retains_model_aware_responses_behavior() {
+async fn auto_openai_format_retains_model_aware_responses_behaviour() {
     let Some(server) = start_mock_server_or_skip().await else {
         return;
     };
@@ -1214,7 +1214,7 @@ async fn auto_openai_format_retains_model_aware_responses_behavior() {
     let response = provider
         .generate(sample_request(models::openai::GPT_5_6_SOL))
         .await
-        .expect("auto behavior should still use responses path");
+        .expect("auto behaviour should still use responses path");
 
     assert_eq!(response.content.as_deref(), Some("auto responses"));
 }
@@ -2570,9 +2570,9 @@ fn chatgpt_backend_synthesizes_missing_function_call_outputs_for_orphan_calls() 
     }));
 }
 
-// Phase behavior: native OpenAI includes assistant phase, non-native omits it
+// Phase behaviour: native OpenAI includes assistant phase, non-native omits it
 #[test]
-fn responses_payload_phase_behavior() {
+fn responses_payload_phase_behaviour() {
     // Native: includes phase for assistant, omits for user/tool
     let native = native_openai_provider(models::openai::GPT_5_6_SOL);
     let request = provider::LLMRequest {

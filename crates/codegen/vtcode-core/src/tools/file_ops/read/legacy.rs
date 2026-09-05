@@ -240,7 +240,7 @@ fn append_normalized_line(output: &mut String, has_output_line: &mut bool, line:
 /// fully materialized and oversized physical lines cannot grow the buffer
 /// without bound. Only the first `cap` lines are retained; the remainder is
 /// scanned and dropped. Invalid UTF-8 is handled lossily, identical to the
-/// previous `from_utf8_lossy` behavior.
+/// previous `from_utf8_lossy` behaviour.
 async fn read_bounded_text(file_path: &Path, cap: usize) -> Result<(String, usize, bool, bool)> {
     let file = with_file_context(tokio::fs::File::open(file_path).await, "open file", file_path)?;
     let mut reader = tokio::io::BufReader::new(file);

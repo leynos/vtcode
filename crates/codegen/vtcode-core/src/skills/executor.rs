@@ -52,7 +52,7 @@ use tempfile::tempdir;
 type SkillToolArgTransform = dyn Fn(&str, Value) -> Value + Send + Sync;
 
 const EMPTY_SKILL_INPUT_PROMPT: &str =
-    "No explicit user input was provided. Follow the skill instructions using their default behavior for empty input.";
+    "No explicit user input was provided. Follow the skill instructions using their default behaviour for empty input.";
 const SKILL_TOOL_FREE_SYNTHESIS_PROMPT: &str =
     "Do not make any more tool calls. Provide the best final answer you can using the information already gathered.";
 const MAX_SKILL_LLM_ITERATIONS: usize = 10;

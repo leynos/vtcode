@@ -117,7 +117,7 @@ struct NativeAgentDraft {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum SaveBehavior {
+enum SaveBehaviour {
     SaveOnly,
     SaveAndOpenEditor,
 }
@@ -319,11 +319,11 @@ async fn run_authoring_flow(
     creating: bool,
 ) -> Result<SlashCommandControl> {
     loop {
-        let Some(save_behavior) = edit_native_agent_draft(ctx, draft, creating).await? else {
+        let Some(save_behaviour) = edit_native_agent_draft(ctx, draft, creating).await? else {
             return Ok(SlashCommandControl::Continue);
         };
 
-        match save_native_agent(ctx, draft, creating, save_behavior).await {
+        match save_native_agent(ctx, draft, creating, save_behaviour).await {
             Ok(control) => return Ok(control),
             Err(err) => {
                 ctx.renderer
@@ -337,7 +337,7 @@ async fn edit_native_agent_draft(
     ctx: &mut SlashCommandContext<'_>,
     draft: &mut NativeAgentDraft,
     creating: bool,
-) -> Result<Option<SaveBehavior>> {
+) -> Result<Option<SaveBehaviour>> {
     loop {
         show_authoring_menu(ctx, draft, creating)?;
         let Some(selection) = wait_for_list_modal_selection(ctx).await else {
@@ -455,8 +455,8 @@ async fn edit_native_agent_draft(
                     draft.memory = memory;
                 }
             }
-            "agents:author:save" => return Ok(Some(SaveBehavior::SaveOnly)),
-            "agents:author:save-edit" => return Ok(Some(SaveBehavior::SaveAndOpenEditor)),
+            "agents:author:save" => return Ok(Some(SaveBehaviour::SaveOnly)),
+            "agents:author:save-edit" => return Ok(Some(SaveBehaviour::SaveAndOpenEditor)),
             "agents:author:cancel" => return Ok(None),
             _ => {}
         }
@@ -546,7 +546,7 @@ async fn save_native_agent(
     ctx: &mut SlashCommandContext<'_>,
     draft: &mut NativeAgentDraft,
     creating: bool,
-    save_behavior: SaveBehavior,
+    save_behaviour: SaveBehaviour,
 ) -> Result<SlashCommandControl> {
     draft.normalize_for_save();
     super::validate_agent_name(&draft.name)?;
@@ -591,9 +591,9 @@ async fn save_native_agent(
     ctx.renderer
         .line(MessageStyle::Info, &format!("{} native agent definition at {}.", action, path.display()))?;
 
-    match save_behavior {
-        SaveBehavior::SaveOnly => Ok(SlashCommandControl::Continue),
-        SaveBehavior::SaveAndOpenEditor => {
+    match save_behaviour {
+        SaveBehaviour::SaveOnly => Ok(SlashCommandControl::Continue),
+        SaveBehaviour::SaveAndOpenEditor => {
             super::super::apps::handle_launch_editor(ctx.reborrow(), Some(path.display().to_string())).await
         }
     }

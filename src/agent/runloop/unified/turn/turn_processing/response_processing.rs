@@ -978,7 +978,7 @@ Keep the default runtime prompt sparse and consistent with Planning workflow.
 ## Test Cases and Validation
 1. Build and lint: [project build and lint command(s) based on detected toolchain]
 2. Tests: [project test command(s) based on detected toolchain]
-3. Targeted behavior checks: planning workflow transcript extraction
+3. Targeted behaviour checks: planning workflow transcript extraction
 
 ## Assumptions and Defaults
 1. `Next open decision` remains the only explicit reopen marker.

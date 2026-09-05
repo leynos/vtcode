@@ -333,7 +333,7 @@ pub static DANGEROUS_CMDLETS: Lazy<HashMap<&'static str, CmdletInfo>> = Lazy::ne
             name: "Set-Service",
             severity: CmdletSeverity::Medium,
             category: CmdletCategory::SystemManagement,
-            description: "Modifies service startup/behavior",
+            description: "Modifies service startup/behaviour",
             dangerous_patterns: &["set-service", "-startuptype"],
         },
     );

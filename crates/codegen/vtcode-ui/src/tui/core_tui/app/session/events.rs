@@ -698,7 +698,7 @@ pub(super) fn process_key_with_clipboard_image_reader(
         {
             // The app-level review action handles its configured binding before
             // this fallback. Ctrl+T reaches here only when review is explicitly
-            // unbound, preserving the original Readline transpose behavior.
+            // unbound, preserving the original Readline transpose behaviour.
             if session.core.input_enabled() {
                 session.transpose_chars();
                 session.update_input_triggers();

@@ -1736,7 +1736,7 @@ impl ToolRegistry {
                 if !readonly_classification {
                     // Invalidate only the cache records whose read target could
                     // overlap the mutated file(s).  Wiping the entire history
-                    // (previous behavior) defeated cross-turn dedup: any write
+                    // (previous behaviour) defeated cross-turn dedup: any write
                     // tool call would discard unrelated read-only cache hits,
                     // forcing the model to re-read files whose contents hadn't
                     // changed at all.

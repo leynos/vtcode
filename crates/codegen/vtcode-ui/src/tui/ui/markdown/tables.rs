@@ -44,7 +44,7 @@ pub(crate) fn render_table(table: &TableBuffer, base_style: Style, max_width: Op
     // A header gives every value a stable label, so a table that cannot fit in
     // its available content width is more legible as labeled blocks than as a
     // table with squeezed columns. Headerless tables have no equivalent block
-    // representation and retain their existing scaling behavior.
+    // representation and retain their existing scaling behaviour.
     if table.headers.is_empty() {
         if let Some(available_width) = max_width {
             scale_columns_to_fit(&mut col_widths, available_width);

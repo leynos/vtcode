@@ -554,7 +554,7 @@ fn build_editor_config_steps(editor_config: &EditorToolConfig, current_preset: E
                 request_choice_item(
                     EDITOR_FOLLOW_UP_ID,
                     "Open File Opener",
-                    "Save these settings, then open `/config file_opener` for terminal hyperlink behavior.",
+                    "Save these settings, then open `/config file_opener` for terminal hyperlink behaviour.",
                     WORKFLOW_FILE_OPENER,
                 ),
             ],

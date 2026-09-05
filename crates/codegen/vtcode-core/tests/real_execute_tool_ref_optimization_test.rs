@@ -141,7 +141,7 @@ async fn test_execute_tool_ref_hot_cache_effectiveness() {
 
     let args = json!({"path": "."});
 
-    // Execute different tools to test cache behavior
+    // Execute different tools to test cache behaviour
     let _result1 = registry.execute_tool_ref(tools::LIST_FILES, &args).await;
     let (cache_size_1, _) = registry.hot_cache_stats();
 

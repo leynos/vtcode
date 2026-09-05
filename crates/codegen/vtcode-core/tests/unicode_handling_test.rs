@@ -41,7 +41,7 @@ mod tests {
                 println!("Valid up to: {}", error.valid_up_to());
                 println!("Error length: {:?}", error.error_len());
 
-                // Simulate push_utf8 behavior
+                // Simulate push_utf8 behaviour
                 let valid_up_to = error.valid_up_to();
                 if valid_up_to > 0 {
                     let valid_part = &invalid_sequence[..valid_up_to];
@@ -131,8 +131,8 @@ mod tests {
     }
 
     #[test]
-    fn simulate_push_utf8_behavior() {
-        // Simulate the behavior of push_utf8 with various inputs
+    fn simulate_push_utf8_behaviour() {
+        // Simulate the behaviour of push_utf8 with various inputs
 
         fn simulate_push_utf8(buffer: &mut Vec<u8>, eof: bool) -> String {
             let mut result = String::new();
@@ -216,7 +216,7 @@ mod tests {
         assert_eq!(result5b, "é ");
         assert!(buffer5a.is_empty());
 
-        println!("Simulated push_utf8 behavior test completed successfully!");
+        println!("Simulated push_utf8 behaviour test completed successfully!");
     }
 
     #[test]

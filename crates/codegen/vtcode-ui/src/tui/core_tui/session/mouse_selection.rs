@@ -374,7 +374,7 @@ fn spawn_clipboard_command(mut cmd: std::process::Command, text: &str) -> bool {
     // stdin could block a synchronous write_all forever once the pipe buffer
     // fills (>= 64KB). The input is therefore written on a detached writer
     // thread and the result is read via try_recv, so the UI thread never blocks
-    // longer than this budget regardless of helper behavior.
+    // longer than this budget regardless of helper behaviour.
     const WAIT_BUDGET: Duration = Duration::from_millis(300);
     const POLL_INTERVAL: Duration = Duration::from_millis(10);
     // After the helper exits, its writer report is usually already delivered;
