@@ -28,7 +28,7 @@ information:
 
 ### What to Expect
 
-- **Acknowledgment**: We will acknowledge your report within 48 hours
+- **Acknowledgement**: We will acknowledge your report within 48 hours
 - **Updates**: We will provide regular updates on the status of the
   vulnerability and fix progress
 - **Resolution**: We will work to fix the vulnerability as quickly as possible

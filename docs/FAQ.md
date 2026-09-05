@@ -162,7 +162,7 @@ alternate-screen rendering, launches the external app, and then restores the
 fullscreen session. The same pattern is used for editor launches and for the
 tool-output viewer's handoff to native scrollback.
 
-This prevents terminal artifacts and ensures external apps get clean
+This prevents terminal artefacts and ensures external apps get clean
 input/output.
 
 ### How does fullscreen Transcript Review work?
@@ -183,14 +183,14 @@ toggle (default `R`) for ANSI-free raw text. You can:
 Successful command rows are grouped only while they are contiguous. Their
 styled shortcut and `click to expand` suffix is clickable with mouse capture;
 clicking a grouped row opens the review at its first command. Failures,
-warnings, stderr, diffs, and meaningful artifacts remain inline.
+warnings, stderr, diffs, and meaningful artefacts remain inline.
 
 The Transcript Review title includes a clickable `[close]` control, and its
 footer lists the active open/close, rich/raw, search, and scrolling shortcuts.
 These hints and controls can be disabled independently in
 `ui.transcript_review`. `Alt+O` remains available as a compatibility alias. If
 the review action is explicitly unbound, `Ctrl+T` falls back to readline
-transpose behavior.
+transpose behaviour.
 
 ### What should I configure for tmux?
 
@@ -203,7 +203,7 @@ set -g mouse on
 
 Diapason's alternate-screen fullscreen mode is intended for normal tmux
 sessions. Avoid using it with iTerm2 control mode (`tmux -CC`), where mouse
-capture and alternate-screen behavior are unreliable.
+capture and alternate-screen behaviour are unreliable.
 
 ## Debugging & Troubleshooting
 

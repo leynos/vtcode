@@ -63,7 +63,7 @@ gh run list --repo leynos/vtcode --workflow build-linux-windows.yml \
 gh run watch <RUN_ID> --repo leynos/vtcode --exit-status
 ```
 
-Download artifacts and upload to the release:
+Download artefacts and upload to the release:
 
 ```bash
 mkdir -p /tmp/diapason-linux-assets
@@ -89,7 +89,7 @@ gh workflow run build-linux-windows.yml --repo leynos/vtcode --ref main \
   -f build_windows=true
 ```
 
-When finished, upload Windows zip and checksum from workflow artifacts to the
+When finished, upload Windows zip and checksum from workflow artefacts to the
 same release.
 
 ## 4) Update ACP registry entry
