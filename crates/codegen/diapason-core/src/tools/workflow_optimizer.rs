@@ -60,7 +60,7 @@ impl WorkflowOptimizer {
         optimizer
     }
 
-    /// Analyze patterns and generate optimizations.
+    /// Analyse patterns and generate optimizations.
     fn analyse(&mut self) {
         // Rule 1: High-frequency patterns can be parallelized
         self.detect_parallelization();
