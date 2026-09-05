@@ -83,7 +83,7 @@ pub struct RenderMarkdownOptions {
     pub disable_code_block_table_reparse: bool,
     /// Available content width for tables. Headered tables render with their
     /// intrinsic column widths when they fit; otherwise they fall back to
-    /// labeled, wrapped blocks. Headerless tables retain their table layout.
+    /// labelled, wrapped blocks. Headerless tables retain their table layout.
     pub table_max_width: Option<usize>,
 }
 

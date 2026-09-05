@@ -495,7 +495,7 @@ pub struct AnthropicConfig {
 
     /// Claude Advisor server-side tool configuration. The advisor pairs a faster
     /// executor model with a higher-intelligence advisor model for strategic
-    /// guidance mid-generation. Only honored for Anthropic models and providers.
+    /// guidance mid-generation. Only honoured for Anthropic models and providers.
     #[serde(default)]
     pub advisor: AdvisorConfig,
 }
@@ -564,7 +564,7 @@ impl std::fmt::Display for ToolSearchAlgorithm {
 }
 
 /// Configuration for Anthropic's tool search feature (advanced-tool-use beta)
-/// Enables dynamic tool discovery for large tool catalogs (up to 10k tools)
+/// Enables dynamic tool discovery for large tool catalogues (up to 10k tools)
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ToolSearchConfig {

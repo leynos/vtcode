@@ -514,7 +514,7 @@ impl McpProvider {
     /// Attempt to re-establish the MCP connection using the stored configuration.
     ///
     /// This replaces the inner [`RmcpClient`] with a freshly connected one, then
-    /// re-initialises the provider (tools/resources/prompts caches are invalidated).
+    /// re-initializes the provider (tools/resources/prompts caches are invalidated).
     pub(super) async fn reconnect(
         &self,
         startup_timeout: Option<Duration>,

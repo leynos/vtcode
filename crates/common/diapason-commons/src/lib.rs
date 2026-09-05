@@ -9,7 +9,7 @@
 //!
 //! This crate provides the foundational building blocks that both the core
 //! agent library (`diapason-core`) and the terminal UI (`diapason-ui`) depend on.
-//! Modules include ANSI processing, diff rendering, file traversal, color
+//! Modules include ANSI processing, diff rendering, file traversal, colour
 //! policy, error classification, and shared protocol types.
 //!
 //! Items live here (rather than `diapason-ui`) when they are consumed by
