@@ -19,7 +19,7 @@ pub struct ToolCacheKey {
     pub tool: String,
     /// Normalized parameters (serialized, hashed for speed)
     pub params_hash: u64,
-    /// File/path being analyzed
+    /// File/path being analysed
     pub target_path: String,
 }
 

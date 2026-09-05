@@ -45,7 +45,7 @@ pub struct ToolDefinition {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) allowed_callers: Option<Vec<String>>,
 
-    /// Anthropic tool use examples used to teach complex tool behavior.
+    /// Anthropic tool use examples used to teach complex tool behaviour.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) input_examples: Option<Vec<Value>>,
 
@@ -72,7 +72,7 @@ pub struct ToolDefinition {
     pub(crate) strict: Option<bool>,
 
     /// When true, the tool is deferred and only loaded when discovered via tool search (Anthropic advanced-tool-use beta)
-    /// This enables dynamic tool discovery for large tool catalogs (10k+ tools)
+    /// This enables dynamic tool discovery for large tool catalogues (10k+ tools)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub defer_loading: Option<bool>,
 

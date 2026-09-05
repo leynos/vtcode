@@ -1,6 +1,6 @@
 //! Windows Registry Access Path Filter (Phase 6.3)
 //!
-//! Analyzes PowerShell registry access patterns and filters dangerous paths.
+//! Analyses PowerShell registry access patterns and filters dangerous paths.
 //! Provides context-aware filtering for:
 //! - Registry hive access (HKLM, HKCU, HKU, HKCR, HKCC)
 //! - Dangerous registry paths (Run, Services, Drivers, etc.)
@@ -296,7 +296,7 @@ pub struct RegistryAccessPattern {
     pub is_write_operation: bool,
 }
 
-/// Registry access analyzer
+/// Registry access analyser
 pub struct RegistryAccessFilter;
 
 impl RegistryAccessFilter {

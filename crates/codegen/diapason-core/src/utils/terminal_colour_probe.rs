@@ -1,4 +1,4 @@
-//! Startup OSC probe for terminal color-scheme and 256-color harmony.
+//! Startup OSC probe for terminal colour-scheme and 256-colour harmony.
 //!
 //! This follows the same interactive detection path as the reference script:
 //! - Query OSC 10/11 for foreground/background

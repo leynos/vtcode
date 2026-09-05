@@ -1,7 +1,7 @@
 //! Contract and evaluation rendering for the plan-build-evaluate harness.
 //!
 //! Contains functions for rendering evaluation reports and execution contracts
-//! as markdown artifacts.
+//! as markdown artefacts.
 
 use super::AgentRunner;
 use super::evaluator_types::{EvaluatorResponse, GeneralizationNote};
