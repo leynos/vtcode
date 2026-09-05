@@ -387,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn code_search_cache_identity_includes_effective_limit_and_canonicalises_filters() {
+    fn code_search_cache_identity_includes_effective_limit_and_canonicalizes_filters() {
         let first = json!({
             "query": " Widget ",
             "path": "src",

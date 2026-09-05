@@ -25,7 +25,7 @@ Each workspace session is persisted under
 - **Bounded growth.** `apply_retention` evicts the oldest/stale sessions so disk
   overhead does not accumulate across a long-lived agent.
 - **Crash-safe + private.** Event compaction and metadata writes are atomic;
-  session directories and artifacts use private permissions.
+  session directories and artefacts use private permissions.
 
 ## Usage
 

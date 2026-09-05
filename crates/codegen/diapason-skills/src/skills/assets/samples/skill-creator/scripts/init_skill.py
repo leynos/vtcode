@@ -47,7 +47,7 @@ description: [TODO: Complete and informative explanation of what the skill does 
 
 **3. Reference/Guidelines** (best for standards or specifications)
 - Works well for brand guidelines, coding standards, or requirements
-- Example: Brand styling with "Brand Guidelines" -> "Colors" -> "Typography" -> "Features"
+- Example: Brand styling with "Brand Guidelines" -> "Colours" -> "Typography" -> "Features"
 - Structure: ## Overview -> ## Guidelines -> ## Specifications -> ## Usage...
 
 **4. Capabilities-Based** (best for integrated systems)

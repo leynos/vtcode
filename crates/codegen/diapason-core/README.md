@@ -119,7 +119,7 @@ async fn main() -> Result<(), anyhow::Error> {
             "properties": { "input": { "type": "string" } }
         }),
         handler: |_args| async move {
-            // Implement your tool behavior here
+            // Implement your tool behaviour here
             Ok(serde_json::json!({ "result": "success" }))
         },
     };

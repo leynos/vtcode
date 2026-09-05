@@ -158,7 +158,7 @@ referencing files or piping data into Diapason.
 ### Piped input
 
 ```bash
-cat large_file.txt | diapason ask "Analyze this content"
+cat large_file.txt | diapason ask "Analyse this content"
 ```
 
 ### Output limits
