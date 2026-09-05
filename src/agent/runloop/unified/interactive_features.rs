@@ -715,7 +715,7 @@ mod tests {
             checkpointing_max_snapshots: 0,
             checkpointing_max_age_days: None,
             max_conversation_turns: 0,
-            model_behavior: None,
+            model_behaviour: None,
             openai_chatgpt_auth: None,
         }
     }

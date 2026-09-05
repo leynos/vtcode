@@ -173,7 +173,7 @@ fn create_llm_client(config: &AgentConfig) -> Result<AnyClient> {
             timeouts: None,
             openai: None,
             anthropic: None,
-            model_behavior: config.model_behavior.clone(),
+            model_behaviour: config.model_behaviour.clone(),
             workspace_root: Some(config.workspace.clone()),
         },
     )
@@ -255,7 +255,7 @@ mod tests {
             checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
             quiet: false,
             max_conversation_turns: 1000,
-            model_behavior: None,
+            model_behaviour: None,
             openai_chatgpt_auth: None,
         };
 
@@ -291,7 +291,7 @@ mod tests {
             checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
             quiet: false,
             max_conversation_turns: 1000,
-            model_behavior: None,
+            model_behaviour: None,
             openai_chatgpt_auth: None,
         };
 
@@ -363,7 +363,7 @@ mod tests {
             checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
             quiet: false,
             max_conversation_turns: 1000,
-            model_behavior: None,
+            model_behaviour: None,
             openai_chatgpt_auth: None,
         }
     }

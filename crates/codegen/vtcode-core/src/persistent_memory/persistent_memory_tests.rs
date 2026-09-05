@@ -97,7 +97,7 @@ fn runtime_config(workspace: &Path) -> RuntimeAgentConfig {
         checkpointing_max_snapshots: 10,
         checkpointing_max_age_days: Some(7),
         max_conversation_turns: 10,
-        model_behavior: None,
+        model_behaviour: None,
     }
 }
 

@@ -8,7 +8,7 @@ use crate::tools::tool_intent::actions::{
     file_operation_action_is,
 };
 use crate::tools::tool_intent::readonly::is_readonly_command_session_command;
-use crate::tools::tool_intent::types::{ToolBehavior, ToolIntent, ToolMutationModel};
+use crate::tools::tool_intent::types::{ToolBehaviour, ToolIntent, ToolMutationModel};
 
 /// Returns the subset of actions that are allowed for a multi-action tool
 /// when planning mode is active. Returns `None` for tools that are not
@@ -23,15 +23,15 @@ pub fn planning_allowed_actions(tool_name: &str) -> Option<&'static [&'static st
     }
 }
 
-pub fn builtin_tool_behavior(tool_name: &str) -> Option<ToolBehavior> {
+pub fn builtin_tool_behaviour(tool_name: &str) -> Option<ToolBehaviour> {
     let canonical = canonical_tool_name(tool_name);
-    builtin_tool_behavior_canonical(canonical)
+    builtin_tool_behaviour_canonical(canonical)
 }
 
 pub fn is_parallel_safe_call(tool_name: &str, args: &Value) -> bool {
     let canonical = canonical_tool_name(tool_name);
-    if let Some(behavior) = builtin_tool_behavior_canonical(canonical) {
-        return behavior.supports_parallel_calls && !behavior.classify(args).mutating;
+    if let Some(behaviour) = builtin_tool_behaviour_canonical(canonical) {
+        return behaviour.supports_parallel_calls && !behaviour.classify(args).mutating;
     }
 
     !classify_tool_intent(canonical, args).mutating
@@ -39,8 +39,8 @@ pub fn is_parallel_safe_call(tool_name: &str, args: &Value) -> bool {
 
 pub fn classify_tool_intent(tool_name: &str, args: &Value) -> ToolIntent {
     let canonical = canonical_tool_name(tool_name);
-    builtin_tool_behavior_canonical(canonical)
-        .map(|behavior| behavior.classify(args))
+    builtin_tool_behaviour_canonical(canonical)
+        .map(|behaviour| behaviour.classify(args))
         .unwrap_or_else(ToolIntent::mutating)
 }
 
@@ -247,20 +247,20 @@ fn memory_tool_intent(args: &Value) -> ToolIntent {
     }
 }
 
-fn builtin_tool_behavior_canonical(tool: &str) -> Option<ToolBehavior> {
+fn builtin_tool_behaviour_canonical(tool: &str) -> Option<ToolBehaviour> {
     match tool {
-        tools::CODE_SEARCH => Some(ToolBehavior::function(ToolMutationModel::ReadOnly, true, false)),
+        tools::CODE_SEARCH => Some(ToolBehaviour::function(ToolMutationModel::ReadOnly, true, false)),
         tools::UNIFIED_EXEC => {
-            Some(ToolBehavior::function(ToolMutationModel::ByArgs(command_session_intent), false, true))
+            Some(ToolBehaviour::function(ToolMutationModel::ByArgs(command_session_intent), false, true))
         }
         tools::EXEC_COMMAND => {
-            Some(ToolBehavior::function(ToolMutationModel::ByArgs(exec_command_intent), false, true))
+            Some(ToolBehaviour::function(ToolMutationModel::ByArgs(exec_command_intent), false, true))
         }
-        tools::WRITE_STDIN => Some(ToolBehavior::function(ToolMutationModel::ByArgs(write_stdin_intent), false, true)),
+        tools::WRITE_STDIN => Some(ToolBehaviour::function(ToolMutationModel::ByArgs(write_stdin_intent), false, true)),
         tools::UNIFIED_FILE => {
-            Some(ToolBehavior::function(ToolMutationModel::ByArgs(file_operation_intent), false, false))
+            Some(ToolBehaviour::function(ToolMutationModel::ByArgs(file_operation_intent), false, false))
         }
-        tools::APPLY_PATCH => Some(ToolBehavior::apply_patch(ToolMutationModel::Mutating, false, true)),
+        tools::APPLY_PATCH => Some(ToolBehaviour::apply_patch(ToolMutationModel::Mutating, false, true)),
         tools::REQUEST_USER_INPUT
         | tools::MEMORY
         | tools::START_PLANNING
@@ -272,7 +272,7 @@ fn builtin_tool_behavior_canonical(tool: &str) -> Option<ToolBehavior> {
         | tools::MCP_SEARCH_TOOLS
         | tools::MCP_GET_TOOL_DETAILS
         | tools::MCP_LIST_SERVERS
-        | tools::THINK => Some(ToolBehavior::function(
+        | tools::THINK => Some(ToolBehaviour::function(
             if tool == tools::MEMORY {
                 ToolMutationModel::ByArgs(memory_tool_intent)
             } else {
@@ -281,18 +281,18 @@ fn builtin_tool_behavior_canonical(tool: &str) -> Option<ToolBehavior> {
             false,
             false,
         )),
-        tools::LOAD_SKILL => Some(ToolBehavior::function(ToolMutationModel::Mutating, false, true)),
+        tools::LOAD_SKILL => Some(ToolBehaviour::function(ToolMutationModel::Mutating, false, true)),
         tools::READ_FILE | tools::GREP_FILE | tools::LIST_FILES => {
-            Some(ToolBehavior::function(ToolMutationModel::ReadOnly, true, false))
+            Some(ToolBehaviour::function(ToolMutationModel::ReadOnly, true, false))
         }
         tools::WEB_FETCH | tools::FETCH_URL | tools::WEB_SEARCH | tools::DEFUDDLE_FETCH => {
-            Some(ToolBehavior::function(ToolMutationModel::ReadOnly, false, false))
+            Some(ToolBehaviour::function(ToolMutationModel::ReadOnly, false, false))
         }
         tools::WRITE_FILE | tools::EDIT_FILE | tools::DELETE_FILE | tools::CREATE_FILE => {
-            Some(ToolBehavior::function(ToolMutationModel::Mutating, false, true))
+            Some(ToolBehaviour::function(ToolMutationModel::Mutating, false, true))
         }
         tools::MCP_CONNECT_SERVER | tools::MCP_DISCONNECT_SERVER => {
-            Some(ToolBehavior::function(ToolMutationModel::Mutating, false, false))
+            Some(ToolBehaviour::function(ToolMutationModel::Mutating, false, false))
         }
         tools::RUN_PTY_CMD
         | tools::SEND_PTY_INPUT
@@ -301,7 +301,7 @@ fn builtin_tool_behavior_canonical(tool: &str) -> Option<ToolBehavior> {
         | tools::LIST_PTY_SESSIONS
         | tools::CLOSE_PTY_SESSION
         | tools::EXECUTE_CODE
-        | tools::SHELL => Some(ToolBehavior::function(ToolMutationModel::Mutating, false, true)),
+        | tools::SHELL => Some(ToolBehaviour::function(ToolMutationModel::Mutating, false, true)),
         _ => None,
     }
 }

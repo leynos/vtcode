@@ -10,27 +10,34 @@ The complete PR train is not yet delivered.
   `07e22369438205d9d712c78892168eff867c053f` matched `upstream/main` when
   fetched at setup. It is published as `origin/vtcode-df12-onboarding`.
   The fork's older `origin/main` is not the train's base.
-- [Draft PR #20](https://github.com/leynos/vtcode/pull/20) publishes
+- [Ready PR #20](https://github.com/leynos/vtcode/pull/20) publishes
   `test-quality-sweep` against that base at
-  `95e288cffa54401f24c0aa09c37b1983e0f08a26`.
+  `e939836042efa32a61ae961aebd68ab4cc9afd57`.
 - [Draft PR #22](https://github.com/leynos/vtcode/pull/22) publishes
-  `harden-lint-spelling` at `dd3ee30f3744a33505f958ff166b76086d4af221`, based
+  `harden-lint-spelling` at `b82c2d07a64f14696b68cfe9c8df7fe81938883f`, based
   on `test-quality-sweep`. It isolates native `analyse` API and command names,
   corresponding callers, module paths, and compatibility assertions. Existing
   `analyze` command invocations and fixed serialized names remain supported.
-- `harden-lint-spelling-artefact` is the next active layer, based on #22.
+- [Draft PR #23](https://github.com/leynos/vtcode/pull/23) publishes
+  `harden-lint-spelling-artefact` at
+  `ae7936fe4f28ef6096791e3d0244f2cfb089ddf0`, based on #22.
   It renames native artefact APIs and modules, pins existing serialized names,
   and keeps the dependent prompt golden text with its source wording change.
-  Formatting, lint, build, and the full suite (10,078 passed, 17 skipped)
-  passed, as did all 67 harness tests and the advisory checks.
+  Formatting, lint, build, typecheck and the full suite passed (10,082 tests,
+  17 skipped), as did all 67 harness tests and the advisory checks.
+- `harden-lint-spelling-behaviour-apis` is the active layer, based on #23.
+  It carries model-behaviour configuration, tool-behaviour registration, and
+  permission-decision types with all callers. Existing wire keys remain fixed.
+  Its original formatting, lint, build, and full tests passed (10,078 passed,
+  17 skipped), along with all 67 harness tests.
 - Remaining spelling changes are preserved separately while this layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
   formatting, the strict lint configuration, and Whitaker wiring follow.
 - The local ACP/provider capability-hardening train remains separate and
   untouched. It will eventually rebase onto the lint train.
-- The user waived all Lody-session requirements. PRs remain draft and stacked,
-  with predecessor/successor links, reviewer entrypoints, and gate evidence.
+- The user waived all Lody-session requirements. Upper PRs remain draft and
+  stacked, with predecessor/successor links, reviewer entrypoints and gate evidence.
 
 ## Validation evidence
 
@@ -69,6 +76,13 @@ The handoff's Markdownlint, both changed documents' Nixie validation, and the
 staged diff check passed. The embedded ast-grep skill retains 417 inherited
 Markdownlint diagnostics, matching the parent with none added or removed.
 No new suppression or exclusion was introduced.
+
+The behaviour-API layer's first Clippy run found four tool-registration
+accessor calls that belonged with the renamed API rather than the next
+behaviour layer. The calls and adjacent bindings were moved into this layer;
+a residual accessor scan was clean, and lint, build, and full tests passed.
+Logs use
+`/tmp/ACTION-2-vtcode-df12-onboarding-harden-lint-spelling-behaviour-apis.out`.
 
 The artefact layer's first Clippy run found one omitted guard access to
 `task.artifacts` in the A2A CLI. It was corrected to `task.artefacts`; a
@@ -236,3 +250,14 @@ tests, 17 skips and 67 harness tests. The hook-chain regression passed within
 the full suite. Logs use `restack-2` on `harden-lint-spelling-artefact`;
 final handoff checks use `handoff-restack-1`. The push uses an explicit lease
 against the original published PR #23 head.
+
+## PR 24 review restack
+
+The behaviour API layer is rebased onto final PR #23 head `ae7936fe4`.
+The replay completed without conflicts and its patch is unchanged. All four
+accessor repairs and the permission-hook JSON key `behavior` remain intact.
+All eight sequential gates passed, including typecheck, 10,082 workspace
+tests, 17 skips and 67 harness tests. Logs use `restack-1` on
+`harden-lint-spelling-behaviour-apis`; final handoff checks use
+`handoff-restack-1`. The push uses an explicit lease against the original
+published PR #24 head.

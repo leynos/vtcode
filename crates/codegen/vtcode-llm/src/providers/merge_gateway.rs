@@ -145,7 +145,7 @@ struct NativeMergeGatewayCore {
     http_client: HttpClient,
     base_url: String,
     model: String,
-    model_behavior: Option<ModelConfig>,
+    model_behaviour: Option<ModelConfig>,
 }
 
 pub struct MergeGatewayProvider {
@@ -181,7 +181,7 @@ impl MergeGatewayProvider {
         prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<TimeoutsConfig>,
         _anthropic: Option<AnthropicConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         let api_key = <MergeGatewaySpec as OpenAiCompatSpec>::resolve_api_key(api_key);
         let model = resolve_model(model, models::merge_gateway::DEFAULT_MODEL);
@@ -197,7 +197,7 @@ impl MergeGatewayProvider {
                 Some(base_url.clone()),
                 prompt_cache,
                 Some(timeouts),
-                model_behavior.clone(),
+                model_behaviour.clone(),
             ))
         } else {
             None
@@ -209,7 +209,7 @@ impl MergeGatewayProvider {
                 http_client,
                 base_url,
                 model,
-                model_behavior,
+                model_behaviour,
             },
             legacy_core,
         }
@@ -228,7 +228,7 @@ impl MergeGatewayProvider {
                 http_client,
                 base_url,
                 model,
-                model_behavior: None,
+                model_behaviour: None,
             },
             legacy_core,
         }
@@ -1469,17 +1469,17 @@ impl LLMProvider for MergeGatewayProvider {
 
     fn supports_reasoning(&self, model: &str) -> bool {
         self.native
-            .model_behavior
+            .model_behaviour
             .as_ref()
-            .and_then(|behavior| behavior.model_supports_reasoning)
+            .and_then(|behaviour| behaviour.model_supports_reasoning)
             .unwrap_or_else(|| merge_reasoning_control_for_model(model).is_some())
     }
 
     fn supports_reasoning_effort(&self, model: &str) -> bool {
         self.native
-            .model_behavior
+            .model_behaviour
             .as_ref()
-            .and_then(|behavior| behavior.model_supports_reasoning_effort)
+            .and_then(|behaviour| behaviour.model_supports_reasoning_effort)
             .unwrap_or_else(|| merge_reasoning_control_for_model(model).is_some())
     }
 
@@ -1751,13 +1751,13 @@ mod tests {
     }
 
     #[test]
-    fn model_behavior_override_wins_for_reasoning_capabilities() {
+    fn model_behaviour_override_wins_for_reasoning_capabilities() {
         let model = models::merge_gateway::ANTHROPIC_CLAUDE_OPUS_5.to_string();
-        let model_behavior = serde_json::from_value::<ModelConfig>(json!({
+        let model_behaviour = serde_json::from_value::<ModelConfig>(json!({
             "model_supports_reasoning": true,
             "model_supports_reasoning_effort": true,
         }))
-        .expect("model behavior");
+        .expect("model behaviour");
         let provider = MergeGatewayProvider::from_config(
             Some("test-key".to_string()),
             Some(model.clone()),
@@ -1765,7 +1765,7 @@ mod tests {
             None,
             None,
             None,
-            Some(model_behavior),
+            Some(model_behaviour),
         );
 
         assert!(provider.supports_reasoning(&model));

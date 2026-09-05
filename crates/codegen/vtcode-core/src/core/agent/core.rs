@@ -350,7 +350,7 @@ impl AgentBuilder {
                 checkpointing_max_snapshots: DEFAULT_MAX_SNAPSHOTS,
                 checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
                 max_conversation_turns: crate::config::constants::defaults::DEFAULT_MAX_CONVERSATION_TURNS,
-                model_behavior: None,
+                model_behaviour: None,
                 openai_chatgpt_auth: None,
             },
         }

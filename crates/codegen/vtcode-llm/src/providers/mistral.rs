@@ -87,7 +87,7 @@ impl_openai_compat_provider!(MistralProvider, MistralSpec, {
         };
 
         self.core
-            .model_behavior
+            .model_behaviour
             .as_ref()
             .and_then(|b| b.model_supports_reasoning)
             .unwrap_or(false)
@@ -96,7 +96,7 @@ impl_openai_compat_provider!(MistralProvider, MistralSpec, {
 
     fn supports_reasoning_effort(&self, _model: &str) -> bool {
         self.core
-            .model_behavior
+            .model_behaviour
             .as_ref()
             .and_then(|b| b.model_supports_reasoning_effort)
             .unwrap_or(false)

@@ -82,7 +82,7 @@ pub(crate) async fn finalize_model_selection(
                     openai
                 }),
                 anthropic: None,
-                model_behavior: config.model_behavior.clone(),
+                model_behaviour: config.model_behaviour.clone(),
                 workspace_root: Some(config.workspace.clone()),
             },
         )

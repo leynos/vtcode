@@ -12,7 +12,7 @@ pub use engine::{
     restore_workspace_hook_approval,
 };
 pub use types::{
-    HookMessage, HookMessageLevel, NotificationHookType, PermissionDecisionBehavior, PermissionDecisionScope,
+    HookMessage, HookMessageLevel, NotificationHookType, PermissionDecisionBehaviour, PermissionDecisionScope,
     PermissionRequestHookDecision, PermissionRequestHookOutcome, PermissionUpdateDestination, PermissionUpdateKind,
     PermissionUpdateRequest, PreCompactHookOutcome, PreToolHookDecision, SessionEndReason, SessionStartTrigger,
     StopHookOutcome,

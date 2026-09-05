@@ -79,7 +79,7 @@ pub struct OpenAIProvider {
     responses_api_modes: Mutex<HashMap<String, ResponsesApiState>>,
     prompt_cache_enabled: bool,
     prompt_cache_settings: OpenAIPromptCacheSettings,
-    model_behavior: Option<ModelConfig>,
+    model_behaviour: Option<ModelConfig>,
     websocket_mode: bool,
     responses_store: Option<bool>,
     responses_include: Vec<String>,
@@ -187,7 +187,7 @@ impl OpenAIProvider {
             prompt_cache_enabled: false,
             prompt_cache_settings: Default::default(),
             responses_api_modes: Mutex::new(HashMap::new()),
-            model_behavior: None,
+            model_behaviour: None,
             websocket_mode: false,
             responses_store: None,
             responses_include: Vec::new(),
@@ -208,7 +208,7 @@ impl OpenAIProvider {
         timeouts: Option<TimeoutsConfig>,
         _anthropic: Option<AnthropicConfig>,
         openai: Option<OpenAIConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         let api_key_value = api_key.unwrap_or_default();
         let model_value = resolve_model(model, models::openai::DEFAULT_MODEL);
@@ -221,7 +221,7 @@ impl OpenAIProvider {
             base_url,
             timeouts.unwrap_or_default(),
             openai,
-            model_behavior,
+            model_behaviour,
         )
     }
 
@@ -239,7 +239,7 @@ impl OpenAIProvider {
         prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<TimeoutsConfig>,
         openai: Option<OpenAIConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
         custom_provider_auth: Option<CustomProviderAuthHandle>,
         supported_models_override: Option<Vec<String>>,
     ) -> Self {
@@ -252,7 +252,7 @@ impl OpenAIProvider {
             timeouts,
             None, // no anthropic config
             openai,
-            model_behavior,
+            model_behaviour,
         );
         provider.provider_key_override = Some(Arc::from(provider_key.as_str()));
         provider.provider_display_override = Some(Arc::from(display_name.as_str()));
@@ -284,7 +284,7 @@ impl OpenAIProvider {
         base_url: Option<String>,
         timeouts: TimeoutsConfig,
         openai: Option<OpenAIConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         let (prompt_cache_enabled, prompt_cache_settings) = extract_prompt_cache_settings(
             prompt_cache,
@@ -353,7 +353,7 @@ impl OpenAIProvider {
             responses_api_modes: Mutex::new(responses_api_modes),
             prompt_cache_enabled,
             prompt_cache_settings,
-            model_behavior,
+            model_behaviour,
             websocket_mode,
             responses_store,
             responses_include,

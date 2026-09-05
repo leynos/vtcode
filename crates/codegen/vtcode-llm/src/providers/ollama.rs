@@ -166,7 +166,7 @@ pub struct OllamaProvider {
     base_url: String,
     model: String,
     api_key: Option<String>,
-    model_behavior: Option<ModelConfig>,
+    model_behaviour: Option<ModelConfig>,
 }
 
 impl OllamaProvider {
@@ -200,7 +200,7 @@ impl OllamaProvider {
             base_url,
             model,
             api_key: Some(api_key),
-            model_behavior: None,
+            model_behaviour: None,
         }
     }
 
@@ -211,10 +211,10 @@ impl OllamaProvider {
         _prompt_cache: Option<PromptCachingConfig>,
         _timeouts: Option<TimeoutsConfig>,
         _anthropic: Option<AnthropicConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         let resolved_model = resolve_model(model, models::ollama::DEFAULT_MODEL);
-        Self::with_model_internal(resolved_model, base_url, api_key, model_behavior)
+        Self::with_model_internal(resolved_model, base_url, api_key, model_behaviour)
     }
 
     fn normalize_api_key(api_key: Option<String>) -> Option<String> {
@@ -232,7 +232,7 @@ impl OllamaProvider {
         model: String,
         base_url: Option<String>,
         api_key: Option<String>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         let normalized_api_key = Self::normalize_api_key(api_key);
         let is_cloud_model = model.contains(":cloud") || model.contains("-cloud");
@@ -254,7 +254,7 @@ impl OllamaProvider {
             base_url: resolved_base,
             model,
             api_key: effective_api_key,
-            model_behavior,
+            model_behaviour,
         }
     }
 
@@ -902,7 +902,7 @@ impl LLMProvider for OllamaProvider {
         // does NOT disable it for known reasoning models.
         models::ollama::REASONING_MODELS.contains(&model)
             || self
-                .model_behavior
+                .model_behaviour
                 .as_ref()
                 .and_then(|b| b.model_supports_reasoning)
                 .unwrap_or(false)
@@ -912,7 +912,7 @@ impl LLMProvider for OllamaProvider {
         // Same robustness logic for reasoning effort
         models::ollama::REASONING_LEVEL_MODELS.contains(&model)
             || self
-                .model_behavior
+                .model_behaviour
                 .as_ref()
                 .and_then(|b| b.model_supports_reasoning_effort)
                 .unwrap_or(false)

@@ -43,7 +43,7 @@ pub struct LlamaCppProvider {
     prompt_cache: Option<PromptCachingConfig>,
     timeouts: Option<TimeoutsConfig>,
     anthropic: Option<AnthropicConfig>,
-    model_behavior: Option<ModelConfig>,
+    model_behaviour: Option<ModelConfig>,
 }
 
 impl LlamaCppProvider {
@@ -58,7 +58,7 @@ impl LlamaCppProvider {
         prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<TimeoutsConfig>,
         anthropic: Option<AnthropicConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> (Box<dyn LLMProvider>, String) {
         let resolved_model = resolve_model(model, models::llamacpp::DEFAULT_MODEL);
         let resolved_base = Self::resolve_base_url(base_url);
@@ -71,7 +71,7 @@ impl LlamaCppProvider {
             timeouts,
             anthropic,
             None,
-            model_behavior,
+            model_behaviour,
         ));
         (inner, resolved_model)
     }
@@ -109,7 +109,7 @@ impl LlamaCppProvider {
             self.prompt_cache.clone(),
             self.timeouts.clone(),
             self.anthropic.clone(),
-            self.model_behavior.clone(),
+            self.model_behaviour.clone(),
         )
         .0
     }
@@ -134,7 +134,7 @@ impl LlamaCppProvider {
         prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<TimeoutsConfig>,
         anthropic: Option<AnthropicConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         let resolved_base_url = Self::resolve_base_url(base_url.clone());
         let (inner, model_id) = Self::build_inner(
@@ -144,7 +144,7 @@ impl LlamaCppProvider {
             prompt_cache.clone(),
             timeouts.clone(),
             anthropic.clone(),
-            model_behavior.clone(),
+            model_behaviour.clone(),
         );
         Self {
             inner,
@@ -155,7 +155,7 @@ impl LlamaCppProvider {
             prompt_cache,
             timeouts,
             anthropic,
-            model_behavior,
+            model_behaviour,
         }
     }
 }
@@ -274,7 +274,7 @@ mod tests {
         assert!(looks_like_local_model_path("qwen.gguf"));
         // The check is case-sensitive: uppercase .GGUF is not recognized as a
         // model path on its own (it has no separator and likely does not exist
-        // on disk). This documents the existing behavior, not a desired design.
+        // on disk). This documents the existing behaviour, not a desired design.
         assert!(!looks_like_local_model_path("QWEN.GGUF"));
     }
 

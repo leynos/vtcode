@@ -480,15 +480,15 @@ impl DotfileGuardian {
         let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
 
         if filename.starts_with(".git") {
-            "Git configuration file - changes may affect repository behavior".to_string()
+            "Git configuration file - changes may affect repository behaviour".to_string()
         } else if filename.starts_with(".env") {
             "Environment configuration - may contain secrets or critical settings".to_string()
         } else if filename.contains("ssh") || filename.contains("gpg") {
             "Security-sensitive file - may contain credentials or keys".to_string()
         } else if filename.contains("rc") || filename.contains("profile") {
-            "Shell configuration - changes may affect system behavior".to_string()
+            "Shell configuration - changes may affect system behaviour".to_string()
         } else if filename.contains("config") {
-            "Configuration file - changes may affect tool behavior".to_string()
+            "Configuration file - changes may affect tool behaviour".to_string()
         } else {
             "Hidden configuration file - modifications require explicit approval".to_string()
         }

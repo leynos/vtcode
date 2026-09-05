@@ -112,7 +112,7 @@ trait StandardProviderConstructor: LLMProvider + Send + Sync + 'static {
         prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<TimeoutsConfig>,
         anthropic: Option<AnthropicConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self;
 }
 
@@ -134,11 +134,19 @@ where
             timeouts,
             openai: _,
             anthropic,
-            model_behavior,
+            model_behaviour,
             ..
         } = config;
 
-        Box::new(P::from_standard_config(api_key, model, base_url, prompt_cache, timeouts, anthropic, model_behavior))
+        Box::new(P::from_standard_config(
+            api_key,
+            model,
+            base_url,
+            prompt_cache,
+            timeouts,
+            anthropic,
+            model_behaviour,
+        ))
     }
 }
 
@@ -156,7 +164,7 @@ impl ProviderBuildProvider<AnthropicProviderConfig> for AnthropicProviderBuild {
             timeouts,
             openai: _,
             anthropic,
-            model_behavior,
+            model_behaviour,
             ..
         } = config;
 
@@ -167,7 +175,7 @@ impl ProviderBuildProvider<AnthropicProviderConfig> for AnthropicProviderBuild {
             prompt_cache,
             timeouts,
             anthropic,
-            model_behavior,
+            model_behaviour,
         ))
     }
 }
@@ -186,7 +194,7 @@ impl ProviderBuildProvider<OpenAIProviderConfig> for OpenAIProviderBuild {
             timeouts,
             openai,
             anthropic,
-            model_behavior,
+            model_behaviour,
             ..
         } = config;
 
@@ -199,7 +207,7 @@ impl ProviderBuildProvider<OpenAIProviderConfig> for OpenAIProviderBuild {
             timeouts,
             anthropic,
             openai,
-            model_behavior,
+            model_behaviour,
         ))
     }
 }
@@ -226,7 +234,7 @@ macro_rules! impl_standard_provider_constructor {
                     prompt_cache: Option<PromptCachingConfig>,
                     timeouts: Option<TimeoutsConfig>,
                     anthropic: Option<AnthropicConfig>,
-                    model_behavior: Option<ModelConfig>,
+                    model_behaviour: Option<ModelConfig>,
                 ) -> Self {
                     <$provider>::from_config(
                         api_key,
@@ -235,7 +243,7 @@ macro_rules! impl_standard_provider_constructor {
                         prompt_cache,
                         timeouts,
                         anthropic,
-                        model_behavior,
+                        model_behaviour,
                     )
                 }
             }
@@ -441,7 +449,7 @@ mod tests {
             timeouts: None,
             openai: None,
             anthropic: None,
-            model_behavior: None,
+            model_behaviour: None,
             workspace_root: None,
         });
 
@@ -460,7 +468,7 @@ mod tests {
             timeouts: None,
             openai: Some(OpenAIConfig { websocket_mode: true, ..OpenAIConfig::default() }),
             anthropic: Some(AnthropicConfig::default()),
-            model_behavior: None,
+            model_behaviour: None,
             workspace_root: None,
         });
 
@@ -482,7 +490,7 @@ mod tests {
                 count_tokens_enabled: true,
                 ..AnthropicConfig::default()
             }),
-            model_behavior: None,
+            model_behaviour: None,
             workspace_root: None,
         });
 
