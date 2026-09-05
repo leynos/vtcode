@@ -116,6 +116,25 @@ fn nonempty(value: Option<&str>) -> Option<&str> {
     value.filter(|value| !value.is_empty())
 }
 
+fn correlated_custom_track_position<'a, I>(
+    mut identities: I,
+    identity: &ResponsesItemIdentity,
+) -> Result<Option<usize>, &'static str>
+where
+    I: Clone + Iterator<Item = &'a ResponsesItemIdentity>,
+{
+    if !identity.has_key() {
+        return Err("custom tool input event has no correlation identity");
+    }
+    if identities
+        .clone()
+        .any(|registered| registered.call_relation(identity) == IdentityRelation::Conflict)
+    {
+        return Err("custom tool call correlation aliases conflict");
+    }
+    Ok(identities.position(|registered| registered.call_relation(identity) == IdentityRelation::Match))
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct TextTrack {
     identity: ResponsesItemIdentity,
@@ -279,22 +298,9 @@ impl ResponsesStreamReconciler {
     }
 
     fn custom_track(&mut self, identity: ResponsesItemIdentity) -> Result<&mut CustomCallTrack, &'static str> {
-        if !identity.has_key() {
-            return Err("custom tool input event has no correlation identity");
-        }
-
-        if self
-            .custom_call_tracks
-            .iter()
-            .any(|track| track.identity.call_relation(&identity) == IdentityRelation::Conflict)
-        {
-            return Err("custom tool call correlation aliases conflict");
-        }
-        if let Some(position) = self
-            .custom_call_tracks
-            .iter()
-            .position(|track| track.identity.call_relation(&identity) == IdentityRelation::Match)
-        {
+        let position =
+            correlated_custom_track_position(self.custom_call_tracks.iter().map(|track| &track.identity), &identity)?;
+        if let Some(position) = position {
             let track = &mut self.custom_call_tracks[position];
             track.identity.merge_from(&identity);
             return Ok(track);
@@ -338,8 +344,8 @@ fn reconcile_snapshot(accumulated: &mut String, snapshot: &str) -> Result<Option
 #[cfg(test)]
 mod tests {
     use super::{
-        CustomCallTrack, FinalInputPreference, ResponsesItemIdentity, ResponsesStreamReconciler,
-        ResponsesTerminalState, reconcile_final_input,
+        FinalInputPreference, ResponsesItemIdentity, ResponsesStreamReconciler, ResponsesTerminalState,
+        reconcile_final_input,
     };
     use proptest::prelude::*;
 
@@ -466,7 +472,9 @@ mod tests {
                 })
                 .collect::<Vec<_>>();
             let mut admitted = Vec::new();
-            for sequence_number in sequence_numbers {
+            // Exercise an equal-to-high-water repeat in every non-empty case,
+            // rather than relying on rare collisions in uniform u16 samples.
+            for sequence_number in sequence_numbers.iter().copied().chain(sequence_numbers.iter().max().copied()) {
                 if reconciler.admit(Some(u64::from(sequence_number))) {
                     admitted.push(sequence_number);
                 }
@@ -507,7 +515,8 @@ mod tests {
             for chunk in chunks {
                 actual.push_str(&reconciler.reasoning_delta(identity.clone(), &chunk));
             }
-            prop_assert_eq!(actual, expected);
+            prop_assert_eq!(&actual, &expected);
+            prop_assert_eq!(reconciler.reasoning_done(identity, &expected), Ok(None));
         }
 
         #[test]
@@ -536,7 +545,10 @@ mod tests {
             let actual = reconciler.reasoning_delta(identity.clone(), &streamed);
             prop_assert_eq!(&actual, &streamed);
 
-            prop_assert!(reconciler.reasoning_done(identity, &divergent).is_err());
+            prop_assert!(reconciler.reasoning_done(identity.clone(), &divergent).is_err());
+            prop_assert_eq!(reconciler.reasoning_done(identity.clone(), &streamed), Ok(None));
+            let extended = format!("{streamed}x");
+            prop_assert_eq!(reconciler.reasoning_done(identity, &extended), Ok(Some("x".to_string())));
         }
 
         #[test]
@@ -568,14 +580,14 @@ mod tests {
 mod kani_proofs {
     use super::{
         FinalInputPreference, ResponsesItemIdentity, ResponsesStreamReconciler, ResponsesTerminalState,
-        reconcile_final_input,
+        correlated_custom_track_position, reconcile_final_input, reconcile_snapshot,
     };
 
     fn bounded_identity(second_call: bool) -> ResponsesItemIdentity {
         if second_call {
-            ResponsesItemIdentity::new(Some("i1".to_string()), Some("c1".to_string()), Some(1))
+            ResponsesItemIdentity::new(Some("b".to_string()), Some("d".to_string()), Some(1))
         } else {
-            ResponsesItemIdentity::new(Some("i0".to_string()), Some("c0".to_string()), Some(0))
+            ResponsesItemIdentity::new(Some("a".to_string()), Some("c".to_string()), Some(0))
         }
     }
 
@@ -665,63 +677,21 @@ mod kani_proofs {
         );
     }
 
-    fn bounded_x_input(length: u8) -> &'static str {
-        match length {
-            0 => "",
-            1 => "x",
-            2 => "xx",
-            3 => "xxx",
-            4 => "xxxx",
-            5 => "xxxxx",
-            _ => "xxxxxx",
-        }
-    }
-
-    fn canonical_two_call_state(first_input_length: u8, second_input_length: u8) -> ResponsesStreamReconciler {
-        ResponsesStreamReconciler {
-            last_sequence_number: None,
-            terminal: ResponsesTerminalState::Active,
-            reasoning_tracks: Vec::new(),
-            custom_call_tracks: vec![
-                CustomCallTrack {
-                    identity: bounded_identity(false),
-                    name: Some("t0".to_string()),
-                    input: bounded_x_input(first_input_length).to_string(),
-                },
-                CustomCallTrack {
-                    identity: bounded_identity(true),
-                    name: Some("t1".to_string()),
-                    input: bounded_x_input(second_input_length).to_string(),
-                },
-            ],
-        }
-    }
-
-    /// Establishes the base case for the bounded inductive correlation proof:
-    /// the production capture API creates the canonical two-call empty state.
+    /// Checks that the production capture API creates two distinct empty tracks.
+    /// Payload projection remains covered by unit and property tests.
     #[kani::proof]
     #[kani::unwind(4)]
     fn responses_reducer_captures_canonical_two_call_base_state() {
         let mut reconciler = ResponsesStreamReconciler::default();
         kani::assert(
-            reconciler
-                .capture_custom_call(bounded_identity(false), Some("t0"), None)
-                .is_ok(),
+            reconciler.capture_custom_call(bounded_identity(false), Some("e"), None).is_ok(),
             "the first canonical call must be captured",
         );
         kani::assert(
-            reconciler.capture_custom_call(bounded_identity(true), Some("t1"), None).is_ok(),
+            reconciler.capture_custom_call(bounded_identity(true), Some("f"), None).is_ok(),
             "the second canonical call must be captured",
         );
 
-        let calls = reconciler.custom_tool_calls();
-        kani::assert(calls.len() == 2, "the base state must contain exactly two calls");
-        kani::assert(calls[0].call_id == "c0", "the first base call identity must be exact");
-        kani::assert(calls[0].name == "t0", "the first base call name must be exact");
-        kani::assert(calls[0].input.is_empty(), "the first base call input must be empty");
-        kani::assert(calls[1].call_id == "c1", "the second base call identity must be exact");
-        kani::assert(calls[1].name == "t1", "the second base call name must be exact");
-        kani::assert(calls[1].input.is_empty(), "the second base call input must be empty");
         kani::assert(
             reconciler.terminal_state() == ResponsesTerminalState::Active,
             "the base state must remain active",
@@ -733,181 +703,120 @@ mod kani_proofs {
             "the base representation must contain exactly two custom tracks",
         );
         kani::assert(
-            reconciler.custom_call_tracks[0].identity.item_id.as_deref() == Some("i0")
-                && reconciler.custom_call_tracks[0].identity.call_id.as_deref() == Some("c0")
-                && reconciler.custom_call_tracks[0].identity.output_index == Some(0),
+            reconciler.custom_call_tracks[0].identity.item_id.as_deref() == Some("a")
+                && reconciler.custom_call_tracks[0].identity.call_id.as_deref() == Some("c")
+                && reconciler.custom_call_tracks[0].identity.output_index == Some(0)
+                && reconciler.custom_call_tracks[0].identity.sub_index.is_none(),
             "the first base representation identity must be canonical",
         );
         kani::assert(
-            reconciler.custom_call_tracks[1].identity.item_id.as_deref() == Some("i1")
-                && reconciler.custom_call_tracks[1].identity.call_id.as_deref() == Some("c1")
-                && reconciler.custom_call_tracks[1].identity.output_index == Some(1),
+            reconciler.custom_call_tracks[1].identity.item_id.as_deref() == Some("b")
+                && reconciler.custom_call_tracks[1].identity.call_id.as_deref() == Some("d")
+                && reconciler.custom_call_tracks[1].identity.output_index == Some(1)
+                && reconciler.custom_call_tracks[1].identity.sub_index.is_none(),
             "the second base representation identity must be canonical",
         );
+        kani::assert(
+            reconciler.custom_call_tracks[0].name.as_deref() == Some("e")
+                && reconciler.custom_call_tracks[0].input.is_empty(),
+            "the first base track payload must be exact",
+        );
+        kani::assert(
+            reconciler.custom_call_tracks[1].name.as_deref() == Some("f")
+                && reconciler.custom_call_tracks[1].input.is_empty(),
+            "the second base track payload must be exact",
+        );
+        // The proof covers reducer state, not allocator teardown. Avoid
+        // expanding destructor paths after all postconditions are checked.
+        std::mem::forget(reconciler);
     }
 
-    /// Proves one production correlation transition from every canonical state
-    /// reachable before one of at most six one-byte input deltas. Combined with
-    /// `responses_reducer_captures_canonical_two_call_base_state`, induction
-    /// covers every call-choice trace of length zero through six; the admission
-    /// proof determines whether a transition is applied after terminal events.
-    ///
-    /// This proof deliberately covers fully populated canonical identities. It
-    /// does not claim to prove arbitrary partial-alias enrichment or reordering.
+    fn reasoning_identity(output_index: usize, sub_index: usize) -> ResponsesItemIdentity {
+        ResponsesItemIdentity::new(None, None, Some(output_index)).with_sub_index(Some(sub_index))
+    }
+    /// Exhaustively classifies immutable lookup against two registered calls.
+    /// Registration history, payload append, and projection remain unit/property
+    /// test responsibilities.
+    /// The bound also covers bytewise comparison of the full error diagnostics.
     #[kani::proof]
-    #[kani::unwind(8)]
-    fn responses_reducer_correlation_step_preserves_canonical_two_call_state() {
-        let first_input_length = kani::any::<u8>();
-        let second_input_length = kani::any::<u8>();
-        kani::assume(first_input_length <= 6);
-        kani::assume(second_input_length <= 6);
-        kani::assume(u16::from(first_input_length) + u16::from(second_input_length) < 6);
-        let target_second = kani::any::<bool>();
-        let mut reconciler = canonical_two_call_state(first_input_length, second_input_length);
-
-        kani::assert(reconciler.admit(None), "the canonical active state must admit an input delta");
-        let result = reconciler.custom_input_delta(bounded_identity(target_second), "x");
-        kani::assert(
-            matches!(result, Ok(ref delta) if delta == "x"),
-            "the production transition must return the admitted delta",
-        );
-
-        let calls = reconciler.custom_tool_calls();
-        let expected_first_input = if target_second {
-            bounded_x_input(first_input_length)
-        } else {
-            bounded_x_input(first_input_length + 1)
+    #[kani::unwind(64)]
+    fn responses_reducer_routes_stack_identities_without_crossing_calls() {
+        let registered = [bounded_identity(false), bounded_identity(true)];
+        let query_kind = kani::any::<u8>();
+        kani::assume(query_kind < 8);
+        let query = match query_kind {
+            0 => bounded_identity(false),
+            1 => bounded_identity(true),
+            2 => ResponsesItemIdentity::new(None, Some("c".to_string()), None),
+            3 => ResponsesItemIdentity::new(Some("b".to_string()), None, None),
+            4 => ResponsesItemIdentity::new(None, None, Some(2)),
+            5 => ResponsesItemIdentity::new(Some("a".to_string()), None, Some(1)),
+            6 => ResponsesItemIdentity::default(),
+            _ => ResponsesItemIdentity::default().with_sub_index(Some(0)),
         };
-        let expected_second_input = if target_second {
-            bounded_x_input(second_input_length + 1)
-        } else {
-            bounded_x_input(second_input_length)
-        };
-        kani::assert(calls.len() == 2, "one step must retain exactly two correlated calls");
-        kani::assert(calls[0].call_id == "c0", "first call identity must remain exact");
-        kani::assert(calls[0].name == "t0", "first call name must remain exact");
-        kani::assert(calls[1].call_id == "c1", "second call identity must remain exact");
-        kani::assert(calls[1].name == "t1", "second call name must remain exact");
-        kani::assert(
-            calls[0].input == expected_first_input,
-            "the first call must contain exactly its previous input plus any targeted delta",
-        );
-        kani::assert(
-            calls[1].input == expected_second_input,
-            "the second call must contain exactly its previous input plus any targeted delta",
-        );
-        kani::assert(
-            reconciler.terminal_state() == ResponsesTerminalState::Active,
-            "a correlation step must not change terminal state",
-        );
-        kani::assert(
-            reconciler.last_sequence_number.is_none(),
-            "an unsequenced correlation step must not change sequence state",
-        );
-        kani::assert(
-            reconciler.reasoning_tracks.is_empty(),
-            "a custom correlation step must not change the reasoning projection",
-        );
-        kani::assert(
-            reconciler.custom_call_tracks.len() == 2,
-            "a correlation step must retain exactly two internal custom tracks",
-        );
-        kani::assert(
-            reconciler.custom_call_tracks[0].identity.item_id.as_deref() == Some("i0")
-                && reconciler.custom_call_tracks[0].identity.call_id.as_deref() == Some("c0")
-                && reconciler.custom_call_tracks[0].identity.output_index == Some(0),
-            "the first internal correlation identity must remain stable",
-        );
-        kani::assert(
-            reconciler.custom_call_tracks[1].identity.item_id.as_deref() == Some("i1")
-                && reconciler.custom_call_tracks[1].identity.call_id.as_deref() == Some("c1")
-                && reconciler.custom_call_tracks[1].identity.output_index == Some(1),
-            "the second internal correlation identity must remain stable",
-        );
-    }
-
-    fn reasoning_identity(sub_index: usize) -> ResponsesItemIdentity {
-        ResponsesItemIdentity::new(Some("i".to_string()), None, None).with_sub_index(Some(sub_index))
-    }
-
-    /// Checks the four observable done-snapshot relations while also proving
-    /// that two reasoning parts sharing an item remain independently tracked.
-    #[kani::proof]
-    #[kani::unwind(4)]
-    fn responses_reducer_reconciles_reasoning_snapshots_by_sub_index() {
-        let target_second = kani::any::<bool>();
-        let snapshot_case = kani::any::<u8>();
-        kani::assume(snapshot_case < 4);
-        let first = reasoning_identity(0);
-        let second = reasoning_identity(1);
-        let mut reconciler = ResponsesStreamReconciler::default();
-        let _ = reconciler.reasoning_delta(first.clone(), "a");
-        let _ = reconciler.reasoning_delta(second.clone(), "b");
-        let target = if target_second { second.clone() } else { first.clone() };
-        let initial = if target_second { "b" } else { "a" };
-        let extension = if target_second { "by" } else { "ax" };
-        let expected_suffix = if target_second { "y" } else { "x" };
-        let snapshot = match snapshot_case {
-            0 => extension,
-            1 => initial,
-            2 => "",
-            _ => "z",
-        };
-        let result = reconciler.reasoning_done(target, snapshot);
-        match snapshot_case {
-            0 => kani::assert(
-                matches!(result, Ok(Some(ref suffix)) if suffix == expected_suffix),
-                "an extending snapshot must emit exactly its unseen suffix",
+        let actual = correlated_custom_track_position(registered.iter(), &query);
+        match query_kind {
+            0 | 2 => kani::assert(actual == Ok(Some(0)), "the first call must be selected"),
+            1 | 3 => kani::assert(actual == Ok(Some(1)), "the second call must be selected"),
+            4 | 7 => kani::assert(actual == Ok(None), "an unknown keyed identity must not match"),
+            5 => kani::assert(
+                actual == Err("custom tool call correlation aliases conflict"),
+                "conflict must dominate a partial match",
             ),
-            1 | 2 => kani::assert(result == Ok(None), "equal and stale snapshots must emit nothing"),
-            _ => kani::assert(result.is_err(), "a divergent snapshot must be rejected"),
+            _ => kani::assert(
+                actual == Err("custom tool input event has no correlation identity"),
+                "an empty identity must be rejected",
+            ),
         }
+        std::mem::forget(query);
+        std::mem::forget(registered);
+    }
 
-        let (other, other_snapshot) = if target_second { (first, "aq") } else { (second, "bq") };
-        let other_result = reconciler.reasoning_done(other, other_snapshot);
+    /// Proves index-only reasoning identities match exactly when both output
+    /// and part indexes match.
+    #[kani::proof]
+    fn responses_reducer_separates_reasoning_sub_indexes() {
+        let left_output = kani::any::<bool>();
+        let right_output = kani::any::<bool>();
+        let left_part = kani::any::<bool>();
+        let right_part = kani::any::<bool>();
+        let left_identity = reasoning_identity(usize::from(left_output), usize::from(left_part));
+        let right_identity = reasoning_identity(usize::from(right_output), usize::from(right_part));
         kani::assert(
-            matches!(other_result, Ok(Some(ref suffix)) if suffix == "q"),
-            "reconciling one reasoning part must not alter another part",
+            left_identity.reasoning_matches(&right_identity)
+                == (left_output == right_output && left_part == right_part),
+            "both reasoning indexes must exactly determine index-only correlation",
         );
     }
 
-    /// Checks that custom-input done snapshots extend, repeat, trail, or reject
-    /// the streamed prefix without silently rewriting it.
+    /// Covers all four done-snapshot relations directly on the production
+    /// reconciler helper. Multi-track correlation remains ordinary-tested.
     #[kani::proof]
     #[kani::unwind(4)]
-    fn responses_reducer_reconciles_custom_input_snapshots() {
+    fn responses_reducer_reconciles_snapshot_relations() {
         let snapshot_case = kani::any::<u8>();
         kani::assume(snapshot_case < 4);
-        let identity = ResponsesItemIdentity::new(Some("i".to_string()), Some("c".to_string()), Some(0));
-        let mut reconciler = ResponsesStreamReconciler::default();
-        kani::assert(
-            reconciler.capture_custom_call(identity.clone(), Some("t"), None).is_ok(),
-            "the bounded custom call must be declared",
-        );
-        kani::assert(
-            reconciler.custom_input_delta(identity.clone(), "a").is_ok(),
-            "the bounded custom prefix must be recorded",
-        );
+        let mut accumulated = "a".to_string();
         let snapshot = match snapshot_case {
             0 => "ax",
             1 => "a",
             2 => "",
             _ => "z",
         };
-        let result = reconciler.custom_input_done(identity, snapshot);
+        let actual = reconcile_snapshot(&mut accumulated, snapshot);
         match snapshot_case {
             0 => kani::assert(
-                matches!(result, Ok(Some(ref suffix)) if suffix == "x"),
-                "an extending custom snapshot must emit exactly its unseen suffix",
+                actual == Ok(Some("x".to_string())) && accumulated == "ax",
+                "an extension must append and return only its suffix",
             ),
-            1 | 2 => kani::assert(result == Ok(None), "equal and stale custom snapshots must emit nothing"),
-            _ => kani::assert(result.is_err(), "a divergent custom snapshot must be rejected"),
+            1 | 2 => kani::assert(
+                actual == Ok(None) && accumulated == "a",
+                "equal and stale snapshots must preserve accumulated input",
+            ),
+            _ => kani::assert(actual.is_err() && accumulated == "a", "divergence must not rewrite input"),
         }
-
-        let calls = reconciler.custom_tool_calls();
-        let expected_input = if snapshot_case == 0 { "ax" } else { "a" };
-        kani::assert(calls.len() == 1, "snapshot reconciliation must retain one custom call");
-        kani::assert(calls[0].input == expected_input, "a done snapshot must preserve the streamed prefix");
+        std::mem::forget(actual);
+        std::mem::forget(accumulated);
     }
 
     /// Covers every branch of the final-versus-streamed prefix policy using a

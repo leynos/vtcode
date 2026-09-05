@@ -454,9 +454,16 @@ fn adapt_rig_supported_envelope_fallback(payload: &Value) -> Option<ResponsesStr
     match event_type {
         "response.failed" | "response.incomplete" => Some(ResponsesStreamEvent::Error {
             message: response_error_message(payload).unwrap_or_else(|| "Unknown error from Responses API".to_string()),
+            sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
         }),
-        "response.created" => Some(ResponsesStreamEvent::Lifecycle { kind: ResponsesLifecycleEvent::Created }),
-        "response.in_progress" => Some(ResponsesStreamEvent::Lifecycle { kind: ResponsesLifecycleEvent::InProgress }),
+        "response.created" => Some(ResponsesStreamEvent::Lifecycle {
+            kind: ResponsesLifecycleEvent::Created,
+            sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
+        }),
+        "response.in_progress" => Some(ResponsesStreamEvent::Lifecycle {
+            kind: ResponsesLifecycleEvent::InProgress,
+            sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
+        }),
         "response.completed" => {
             let response = payload.get("response")?;
             // Accept any response.completed where Rig deserialization failed,
@@ -548,6 +555,23 @@ fn is_rig_modelled_output_item_type(item_type: &str) -> bool {
     matches!(item_type, "message" | "function_call" | "reasoning")
 }
 
+pub(crate) fn reasoning_part_text<'a>(provider_name: &str, payload: &'a Value) -> Result<&'a str, LLMError> {
+    let part = payload.get("part").and_then(Value::as_object).ok_or_else(|| {
+        StreamAssemblyError::InvalidPayload("Responses reasoning part event must contain an object `part`".to_string())
+            .into_llm_error(provider_name)
+    })?;
+    if part.get("type").and_then(Value::as_str) != Some("reasoning_text") {
+        return Err(StreamAssemblyError::InvalidPayload(
+            "Responses reasoning part type must be `reasoning_text`".to_string(),
+        )
+        .into_llm_error(provider_name));
+    }
+    part.get("text").and_then(Value::as_str).ok_or_else(|| {
+        StreamAssemblyError::InvalidPayload("Responses reasoning part must contain string `text`".to_string())
+            .into_llm_error(provider_name)
+    })
+}
+
 fn adapt_overlay_conversion(provider_name: &str, payload: &Value) -> Result<ResponsesStreamEvent, LLMError> {
     match payload.get("type").and_then(Value::as_str) {
         // VTCode overlay: Rig 0.40 models `reasoning_summary_text.delta` and
@@ -580,6 +604,16 @@ fn adapt_overlay_conversion(provider_name: &str, payload: &Value) -> Result<Resp
                 })
             }
         }
+        Some("response.reasoning_part.added") | Some("response.reasoning_part.done") => {
+            let text = reasoning_part_text(provider_name, payload)?;
+            Ok(ResponsesStreamEvent::ReasoningDone {
+                text: text.to_string(),
+                item_id: optional_owned_string(payload, "item_id"),
+                output_index: optional_output_index(payload),
+                sub_index: optional_sub_index(payload),
+                sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
+            })
+        }
         _ => Err(StreamAssemblyError::InvalidPayload("unsupported overlay conversion".to_string())
             .into_llm_error(provider_name)),
     }
@@ -611,9 +645,10 @@ fn response_stream_event_policy_for_type(event_type: &str) -> ResponsesStreamEve
         | "response.reasoning_summary_text.delta"
         | "response.reasoning_summary_text.done"
         | "response.reasoning_text.delta" => ResponsesStreamEventPolicy::RigSupportedTyped,
-        "response.reasoning_text.done" | "response.reasoning_content.delta" => {
-            ResponsesStreamEventPolicy::VtcodeOverlayConversion
-        }
+        "response.reasoning_text.done"
+        | "response.reasoning_content.delta"
+        | "response.reasoning_part.added"
+        | "response.reasoning_part.done" => ResponsesStreamEventPolicy::VtcodeOverlayConversion,
         "response.queued"
         | "keepalive"
         | "response.content_part.added"
@@ -1377,6 +1412,86 @@ mod tests {
     }
 
     #[test]
+    fn reasoning_part_added_and_done_preserve_text_and_reconciliation_metadata() {
+        assert_eq!(
+            event_fixture(json!({
+                "type": "response.reasoning_part.added",
+                "sequence_number": 11,
+                "item_id": "reasoning_1",
+                "output_index": 2,
+                "content_index": 3,
+                "part": {"type": "reasoning_text", "text": "bounded reasoning"}
+            }))
+            .expect("reasoning part added fixture should parse"),
+            ResponsesStreamEvent::ReasoningDone {
+                text: "bounded reasoning".to_string(),
+                item_id: Some("reasoning_1".to_string()),
+                output_index: Some(2),
+                sub_index: Some(3),
+                sequence_number: Some(11),
+            }
+        );
+
+        assert_eq!(
+            event_fixture(json!({
+                "type": "response.reasoning_part.done",
+                "sequence_number": 12,
+                "item_id": "reasoning_2",
+                "output_index": 4,
+                "content_index": 5,
+                "part": {"type": "reasoning_text", "text": ""}
+            }))
+            .expect("reasoning part done fixture should parse"),
+            ResponsesStreamEvent::ReasoningDone {
+                text: String::new(),
+                item_id: Some("reasoning_2".to_string()),
+                output_index: Some(4),
+                sub_index: Some(5),
+                sequence_number: Some(12),
+            }
+        );
+
+        for (event_type, text) in [
+            ("response.reasoning_part.added", ""),
+            ("response.reasoning_part.done", "completed reasoning"),
+        ] {
+            assert_eq!(
+                event_fixture(json!({
+                    "type": event_type,
+                    "part": {"type": "reasoning_text", "text": text}
+                }))
+                .expect("reasoning part fixture without reconciliation metadata should parse"),
+                ResponsesStreamEvent::ReasoningDone {
+                    text: text.to_string(),
+                    item_id: None,
+                    output_index: None,
+                    sub_index: None,
+                    sequence_number: None,
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_reasoning_part_events_are_rejected() {
+        for payload in [
+            json!({"type": "response.reasoning_part.added"}),
+            json!({"type": "response.reasoning_part.added", "part": null}),
+            json!({"type": "response.reasoning_part.added", "part": {"type": "reasoning_text"}}),
+            json!({
+                "type": "response.reasoning_part.done",
+                "part": {"type": "reasoning_text", "text": 42}
+            }),
+            json!({
+                "type": "response.reasoning_part.done",
+                "part": {"type": "output_text", "text": "not reasoning"}
+            }),
+        ] {
+            assert!(ResponsesStreamAdapter::parse_sse_data(&payload.to_string()).is_err());
+        }
+    }
+
+    #[test]
     fn overlay_conversion_shapes_remain_strict() {
         assert!(
             ResponsesStreamAdapter::parse_sse_data(
@@ -1606,7 +1721,8 @@ mod tests {
             }))
             .expect("minimal failed response fixture should parse"),
             ResponsesStreamEvent::Error {
-                message: "Concurrency limit exceeded for account, please retry later".to_string()
+                message: "Concurrency limit exceeded for account, please retry later".to_string(),
+                sequence_number: None,
             }
         );
     }
@@ -1629,7 +1745,10 @@ mod tests {
                 }
             }))
             .expect("minimal incomplete response fixture should parse"),
-            ResponsesStreamEvent::Error { message: "max output tokens reached".to_string() }
+            ResponsesStreamEvent::Error {
+                message: "max output tokens reached".to_string(),
+                sequence_number: None,
+            }
         );
     }
 
@@ -1647,7 +1766,10 @@ mod tests {
                 }
             }))
             .expect("minimal created response fixture should parse"),
-            ResponsesStreamEvent::Lifecycle { kind: ResponsesLifecycleEvent::Created }
+            ResponsesStreamEvent::Lifecycle {
+                kind: ResponsesLifecycleEvent::Created,
+                sequence_number: None,
+            }
         );
 
         assert_eq!(
@@ -1662,7 +1784,10 @@ mod tests {
                 }
             }))
             .expect("minimal in-progress response fixture should parse"),
-            ResponsesStreamEvent::Lifecycle { kind: ResponsesLifecycleEvent::InProgress }
+            ResponsesStreamEvent::Lifecycle {
+                kind: ResponsesLifecycleEvent::InProgress,
+                sequence_number: None,
+            }
         );
     }
 
@@ -1681,7 +1806,8 @@ mod tests {
             }))
             .expect("minimal failed response without error fixture should parse"),
             ResponsesStreamEvent::Error {
-                message: "Unknown error from Responses API".to_string()
+                message: "Unknown error from Responses API".to_string(),
+                sequence_number: None,
             }
         );
     }
