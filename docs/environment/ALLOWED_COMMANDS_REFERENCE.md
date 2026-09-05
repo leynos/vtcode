@@ -264,7 +264,7 @@ variables from the parent shell:
 - Custom environment variables set by the user
 
 **Note**: Diapason overrides `PAGER`, `GIT_PAGER`, `LESS`, `TERM`,
-color-related vars for consistency.
+colour-related vars for consistency.
 
 ## Configuration
 

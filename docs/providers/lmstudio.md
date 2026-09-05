@@ -22,7 +22,7 @@ inference on your own hardware.
 2. **Download a model**: In the app, open the "Models" tab and pull one of the
    supported open models (Qwen 3 8B, DeepSeek R1 Qwen3 8B, GPT-OSS 20B, Llama
    3.1 8B, Qwen 2.5 7B, Gemma 3 12B, or any other compatible model hosted in
-   the LM Studio catalog). Alternatively, use the CLI:
+   the LM Studio catalogue). Alternatively, use the CLI:
 
     ```bash
     lms get deepseek-r1  # Download by keyword
@@ -111,7 +111,7 @@ Diapason currently uses the OpenAI-compatible endpoints. Set
 
 ## Using Custom LM Studio Models
 
-The `/model` picker now lists LM Studio's default catalog so you can select a
+The `/model` picker now lists LM Studio's default catalogue so you can select a
 model without typing IDs manually. Choose "Custom LM Studio model" to enter any
 other model ID exposed by the LM Studio server.
 
@@ -162,7 +162,7 @@ locally.
 1. **Connection refused**: Ensure the LM Studio server is running and that
    `LMSTUDIO_BASE_URL` points to the correct host/port. Default is
    `http://localhost:1234`.
-2. **Model not found**: Confirm the model appears in the LM Studio catalog and
+2. **Model not found**: Confirm the model appears in the LM Studio catalogue and
    that the server exposes it via `GET /v1/models` or `GET /api/v0/models`.
 3. **401 Unauthorized**: Provide the configured API key through
    `LMSTUDIO_API_KEY` if authentication is enabled.

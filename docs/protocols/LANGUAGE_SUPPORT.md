@@ -6,7 +6,7 @@ of LLM-native understanding and robust shell integration.
 ## Semantic Understanding
 
 Diapason relies on the inherent ability of Large Language Models (LLMs) to
-understand and analyze code from raw text. This approach covers almost all
+understand and analyse code from raw text. This approach covers almost all
 modern programming languages including:
 
 - **Rust**, **Python**, **JavaScript**, **TypeScript**, **Go**, **Java**,
@@ -14,7 +14,7 @@ modern programming languages including:
 
 The agent uses shell inspection through `exec_command.cmd`, patch edits through
 `apply_patch`, and advanced `code_search` when focused source search is useful.
-`code_search` reports recognised declarations as definitions. It classifies an
+`code_search` reports recognized declarations as definitions. It classifies an
 exact identifier occurrence outside a known declaration name as a syntactic
 usage. A usage can belong to a different symbol with the same spelling, so it
 is not a semantically resolved reference.

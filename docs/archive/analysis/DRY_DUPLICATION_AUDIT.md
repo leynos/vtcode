@@ -2,7 +2,7 @@
 
 ## Scope
 
-This pass targeted high-value duplication with low behavioral risk:
+This pass targeted high-value duplication with low behavioural risk:
 
 - exact duplicate modules and constants
 - repeated preview/head-tail formatting logic
@@ -12,7 +12,7 @@ This pass targeted high-value duplication with low behavioral risk:
 - a narrow slice of duplicated UI text/default constants
 
 The goal was to remove duplicated logic while preserving the existing output
-policies and public behavior.
+policies and public behaviour.
 
 ## Implemented Refactors
 
@@ -100,7 +100,7 @@ Benefits:
 
 Risk level: low.
 
-### 4. Exact duplicate `FileColorizer`
+### 4. Exact duplicate `FileColourizer`
 
 Removed duplicate implementation:
 
@@ -165,7 +165,7 @@ TUI-only layout/runtime knobs were intentionally kept local.
 Benefits:
 
 - reduced drift in stable cross-surface copy/defaults
-- avoided forcing TUI layout behavior through config constants that are
+- avoided forcing TUI layout behaviour through config constants that are
   intentionally local
 
 Risk level: low.
@@ -217,9 +217,9 @@ Recommended follow-up:
 The storage-location policy split was preserved:
 
 - `crates/codegen/diapason-core/src/tools/output_spooler.rs` keeps
-  workspace-relative spool behavior
+  workspace-relative spool behaviour
 - `src/agent/runloop/tool_output/large_output.rs` keeps temp-file UI spool
-  behavior
+  behaviour
 
 Only shared condensation/excerpt logic was deduplicated.
 

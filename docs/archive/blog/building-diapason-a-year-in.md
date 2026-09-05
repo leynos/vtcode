@@ -23,7 +23,7 @@ tokens, cost, and context pressure, all inside the terminal.
 ## The model shelf, September 2026
 
 The provider abstraction's real test is whether it absorbs the frontier as it
-moves. What the catalog holds today, straight from `vtcode-config`'s model
+moves. What the catalogue holds today, straight from `vtcode-config`'s model
 constants:
 
 | Lab       | Frontier models in the picker                                               |
@@ -74,7 +74,7 @@ for how much of the code someone has actually thought about.
 
 One caveat: a HumanEval score through VT Code measures the harness plus the
 model, not the model alone. Tool formatting, prompt assembly, and retry
-behavior all move the number. That's the point of measuring end to end.
+behaviour all move the number. That's the point of measuring end to end.
 
 _Sources: [benchmark summary][blog-src-benchmark-summary],
 [performance benchmarks][blog-src-performance-benchmarks],

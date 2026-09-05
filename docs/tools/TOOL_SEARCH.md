@@ -85,7 +85,7 @@ Current Diapason scope for OpenAI:
 - Supported: deferred function schemas
 - Supported in the Responses parser: OpenAI function-call namespaces and
   `tool_search_output` tool references
-- Not yet modeled in shared tool definitions: MCP-server search surfaces
+- Not yet modelled in shared tool definitions: MCP-server search surfaces
 
 Diapason defers any MCP catalogue. For non-MCP catalogues, hosted search starts
 when at least 15 tools are deferable or their combined schema estimate exceeds
@@ -112,12 +112,12 @@ The deferral policy is active when **any** of these is true:
   and plugin tools are omitted from the initial payload; the generic
   `search_tools` tool expands ranked matches into the next request segment.
 
-Key changes from earlier behavior:
+Key changes from earlier behaviour:
 
-- **Non-core tools defer by default.** The initial catalog contains the
+- **Non-core tools defer by default.** The initial catalogue contains the
   execution/editing core plus discovery. Other built-ins, MCP tools, skill
   tools, and plugin tools are loaded only after discovery.
-- **Token-budget backstop.** A catalog is also deferred when its combined
+- **Token-budget backstop.** A catalogue is also deferred when its combined
   schema size exceeds ~4k tokens (≈16k chars), even if the tool count is below
   the numeric threshold. This catches single large servers whose schema dwarfs
   the whole builtin set.
@@ -135,7 +135,7 @@ available, Diapason:
 3. Keeps `search_tools` available. A ranked match expands the selected full
    definitions in a new request segment; expansion order is deterministic.
 
-Set `tools.client_tool_search = false` to restore the eager catalog for
+Set `tools.client_tool_search = false` to restore the eager catalogue for
 unsupported providers.
 
 ```toml
@@ -181,7 +181,7 @@ anthropic-beta: advanced-tool-use-2025-11-20
 
 ## Limits and guidance
 
-- Maximum tools: 10,000 in catalog
+- Maximum tools: 10,000 in catalogue
 - Search results: 3-5 most relevant tools per search
 - Pattern length: Maximum 200 characters for regex patterns
 - Anthropic model support: Claude Sonnet 4.5+, Claude Opus 4.5+ only
@@ -193,7 +193,7 @@ anthropic-beta: advanced-tool-use-2025-11-20
 1. Keep 3-5 most frequently used tools as non-deferred
 2. Write clear, descriptive tool names and descriptions
 3. Use semantic keywords in descriptions that match how users describe tasks
-4. For OpenAI, prefer grouping tools conceptually and keep deferred catalogs
+4. For OpenAI, prefer grouping tools conceptually and keep deferred catalogues
    focused
 5. Monitor which tools Claude discovers to refine descriptions
 
@@ -223,7 +223,7 @@ Cache read/write/miss counts are not duplicated here — they are surfaced via
 `SessionStats` prompt-cache diagnostics.
 
 The `tool_catalog_cache_metrics` trajectory records additionally expose the
-cache-stable catalog identity when it changes: `ordered_wire_tool_names`,
+cache-stable catalogue identity when it changes: `ordered_wire_tool_names`,
 `catalog_tool_count`, `wire_tool_count`, `deferred_tool_count`, and
 `active_loaded_skill_names`. These are telemetry-only fields and are omitted
 from unchanged-turn records to keep the log compact; they are not added to any
@@ -242,8 +242,8 @@ before the first request:
 - **Deferred loading disabled but beneficial (config-level)** — when
   `tools.client_tool_search = false` and MCP servers are configured. All MCP
   tool schemas will be sent eagerly on every request.
-- **Deferred loading disabled but beneficial (catalog-level)** — when
-  `tools.client_tool_search = false` and the catalog is large enough that
+- **Deferred loading disabled but beneficial (catalogue-level)** — when
+  `tools.client_tool_search = false` and the catalogue is large enough that
   deferral would engage (any MCP tool, ≥15 deferable tools, or combined schema
   > ~4k tokens). This warns that the full tool-schema tax is paid on every
   request and that re-enabling `client_tool_search` would omit the large/MCP
@@ -256,7 +256,7 @@ before the first request:
   `agent.max_system_prompt_tokens` set very low (< 4000).
 
 The count/schema-token thresholds *triggering* deferral when enabled are
-correct behavior, not warning conditions — they only warn when deferral is off
+correct behaviour, not warning conditions — they only warn when deferral is off
 and would have helped.
 
 ## Related Documentation
