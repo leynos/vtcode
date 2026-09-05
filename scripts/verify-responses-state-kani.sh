@@ -11,9 +11,9 @@ prover-tools kani check-version --expected-version "${EXPECTED_VERSION}"
 HARNESSES=(
     responses_reducer_admission_terminal_and_eof_match_independent_oracle
     responses_reducer_captures_canonical_two_call_base_state
-    responses_reducer_correlation_step_preserves_canonical_two_call_state
-    responses_reducer_reconciles_reasoning_snapshots_by_sub_index
-    responses_reducer_reconciles_custom_input_snapshots
+    responses_reducer_routes_stack_identities_without_crossing_calls
+    responses_reducer_separates_reasoning_sub_indexes
+    responses_reducer_reconciles_snapshot_relations
     responses_reducer_final_input_preference_covers_prefix_relations
 )
 

@@ -219,14 +219,17 @@ async fn run_acp_prompts(config: CustomProviderConfig, prompts: &[&str], timeout
 fn responses_success() -> ResponseTemplate {
     let events = [
         json!({"type":"response.created","sequence_number":0,"response":{"id":"resp_wire","status":"in_progress"}}),
-        json!({"type":"response.reasoning_text.delta","sequence_number":1,"delta":"hel"}),
-        json!({"type":"response.reasoning_text.delta","sequence_number":2,"delta":"lo"}),
-        json!({"type":"response.reasoning_text.done","sequence_number":3,"text":"hello"}),
-        json!({"type":"response.output_text.delta","sequence_number":4,"delta":"one "}),
-        json!({"type":"response.output_text.delta","sequence_number":5,"delta":"two"}),
+        // Compatible-provider reasoning parts are snapshots, including a
+        // nonempty initial prefix. These are synthetic, not captured traffic.
+        json!({"type":"response.reasoning_part.added","sequence_number":1,"item_id":"r","output_index":0,"content_index":0,"part":{"type":"reasoning_text","text":"hel"}}),
+        json!({"type":"response.reasoning_text.delta","sequence_number":2,"item_id":"r","output_index":0,"content_index":0,"delta":"lo"}),
+        json!({"type":"response.reasoning_text.done","sequence_number":3,"item_id":"r","output_index":0,"content_index":0,"text":"hello"}),
+        json!({"type":"response.reasoning_part.done","sequence_number":4,"item_id":"r","output_index":0,"content_index":0,"part":{"type":"reasoning_text","text":"hello"}}),
+        json!({"type":"response.output_text.delta","sequence_number":5,"delta":"one "}),
+        json!({"type":"response.output_text.delta","sequence_number":6,"delta":"two"}),
         json!({
             "type":"response.completed",
-            "sequence_number":6,
+            "sequence_number":7,
             "response":{
                 "id":"resp_wire",
                 "status":"completed",

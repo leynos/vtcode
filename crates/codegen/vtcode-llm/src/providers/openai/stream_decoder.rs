@@ -19,7 +19,8 @@ use crate::providers::shared::responses_usage;
 use crate::providers::shared::responses_validation;
 use crate::providers::shared::responses_wire::ResponsesSseDecoder;
 use crate::providers::shared::{
-    ResponsesStreamEventPolicy, StreamAssemblyError, extract_data_payload, response_stream_event_policy,
+    ResponsesStreamEventPolicy, StreamAssemblyError, extract_data_payload, reasoning_part_text,
+    response_stream_event_policy,
 };
 use async_stream::try_stream;
 use futures::StreamExt;
@@ -493,6 +494,20 @@ pub(crate) fn create_responses_stream(
                                         telemetry.on_reasoning_delta(&delta);
                                         yield provider::LLMStreamEvent::Reasoning { delta };
                                     }
+                                }
+                            }
+                            "response.reasoning_part.added" | "response.reasoning_part.done" => {
+                                let text = reasoning_part_text("OpenAI", &payload)?;
+                                let delta = reconciler
+                                    .reasoning_done(responses_item_identity(&payload), text)
+                                    .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))?;
+                                if retain_reasoning
+                                    && let Some(delta) = delta
+                                    && !delta.is_empty()
+                                {
+                                    aggregator.reasoning.push_str(&delta);
+                                    telemetry.on_reasoning_delta(&delta);
+                                    yield provider::LLMStreamEvent::Reasoning { delta };
                                 }
                             }
                             "response.output_item.added" | "response.output_item.done" => {

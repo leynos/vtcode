@@ -57,6 +57,8 @@ fn response_stream_event_policy_for_type(event_type: &str) -> ResponsesStreamEve
         | "response.reasoning_content.delta"
         | "response.reasoning_text.done"
         | "response.reasoning_summary_text.done"
+        | "response.reasoning_part.added"
+        | "response.reasoning_part.done"
         | "response.output_item.added"
         | "response.output_item.done"
         | "response.function_call_arguments.delta"
@@ -605,10 +607,21 @@ fn provider_error(provider_name: &str, message: impl Into<String>) -> LLMError {
 #[cfg(test)]
 mod tests {
     use super::{
-        ResponsesNormalizedStreamOptions, ResponsesNormalizedStreamProcessor, merge_streamed_response, provider_error,
+        ResponsesNormalizedStreamOptions, ResponsesNormalizedStreamProcessor, ResponsesStreamEventPolicy,
+        merge_streamed_response, provider_error, response_stream_event_policy,
     };
     use crate::provider::{FinishReason, LLMResponse, NormalizedStreamEvent, ToolCall};
     use serde_json::{Value, json};
+
+    #[test]
+    fn reasoning_part_events_are_meaningful_conversions() {
+        for event_type in ["response.reasoning_part.added", "response.reasoning_part.done"] {
+            assert_eq!(
+                response_stream_event_policy(&json!({"type": event_type})),
+                Ok(ResponsesStreamEventPolicy::MeaningfulConversion)
+            );
+        }
+    }
 
     fn options() -> ResponsesNormalizedStreamOptions {
         ResponsesNormalizedStreamOptions {
@@ -1313,6 +1326,30 @@ mod tests {
             finished.as_slice(),
             [NormalizedStreamEvent::Done { response }] if response.reasoning.as_deref() == Some("haha")
         ));
+    }
+
+    #[test]
+    fn reasoning_part_snapshots_preserve_prefix_without_replaying_done_text() {
+        let mut processor = ResponsesNormalizedStreamProcessor::new(options(), parse_response);
+        let frames = [
+            json!({"type":"response.reasoning_part.added","sequence_number":0,"item_id":"r","output_index":0,"content_index":0,"part":{"type":"reasoning_text","text":"hel"}}),
+            json!({"type":"response.reasoning_text.delta","sequence_number":1,"item_id":"r","output_index":0,"content_index":0,"delta":"lo"}),
+            json!({"type":"response.reasoning_text.done","sequence_number":2,"item_id":"r","output_index":0,"content_index":0,"text":"hello"}),
+            json!({"type":"response.reasoning_part.done","sequence_number":3,"item_id":"r","output_index":0,"content_index":0,"part":{"type":"reasoning_text","text":"hello"}}),
+        ];
+        let mut visible = String::new();
+        for frame in frames {
+            for event in processor.handle_payload(frame).expect("reasoning part frame") {
+                if let NormalizedStreamEvent::ReasoningDelta { delta } = event {
+                    visible.push_str(&delta);
+                }
+            }
+        }
+        assert_eq!(visible, "hello");
+        processor.handle_payload(completion_event(4, json!([]))).expect("completion");
+        let finished = processor.finish().expect("completed stream");
+        assert!(matches!(finished.as_slice(), [NormalizedStreamEvent::Done { response }]
+            if response.reasoning.as_deref() == Some("hello")));
     }
 
     #[test]

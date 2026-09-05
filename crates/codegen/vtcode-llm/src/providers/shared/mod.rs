@@ -12,6 +12,7 @@ pub(crate) mod responses_validation;
 pub(crate) mod responses_wire;
 mod tag_sanitizer;
 use crate::providers::split_reasoning_from_text;
+pub(crate) use responses_adapter::reasoning_part_text;
 pub(crate) use responses_stream::{ResponsesNormalizedStreamOptions, create_responses_normalized_stream};
 pub(crate) use responses_stream::{ResponsesStreamEventPolicy, response_stream_event_policy};
 use serde_json::{Map, Value};
