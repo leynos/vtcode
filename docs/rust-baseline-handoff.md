@@ -231,4 +231,25 @@ baseline; diagram validation covers all five changed Markdown files.
 
 Both CI runs on `24758f226` passed. The PR-triggered tool evaluation took
 16m47s, providing direct evidence that the original 15-minute limit was too
-short. The new head still requires its own hosted checks and queued review.
+short. Both hosted checks subsequently passed on `e084280e2`; its full review
+is queued through comenq as `2d40c0d5`.
+
+## Hook-chain fixture follow-up
+
+The PR #23 restack gate exposed a scheduling-sensitive hook fixture inherited
+from the initial base. A deterministic experiment reproduced its lost rewrite
+when the first child exited before the parent wrote stdin. Draining stdin
+before emitting the same JSON preserved the exact chain assertion. The test
+now follows the existing hook guide and prints hook messages on assertion
+failure. Production handling is unchanged and tracked in
+[issue #54](https://github.com/leynos/vtcode/issues/54).
+
+The experiment and its corrected process-ordering method are recorded in
+[the debugging plan](debugging/debugging-plan-20260905-hook-stdin.md).
+All seven PR #20 gates passed: 10,079 workspace tests, 17 skips and 67 harness
+tests. Logs use the `hook-repair-1` action suffix. The optional ast-grep scan
+remains unavailable. The first documentation check found one code-span spacing
+error in the new debugging plan; it was corrected before final validation.
+PR #23 remains unpublished at its restacked candidate. After this repair is
+pushed, each upper layer must rebase onto its actual previous parent and pass
+its own full gates before publication.

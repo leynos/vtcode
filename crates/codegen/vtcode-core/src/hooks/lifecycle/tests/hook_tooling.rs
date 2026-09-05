@@ -130,7 +130,7 @@ print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "updated
                 matcher: Some("exec_command".into()),
                 hooks: vec![HookCommandConfig {
                     kind: Default::default(),
-                    command: r#"printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"command":"rtk cargo build"}}}'"#.into(),
+                    command: r#"cat >/dev/null; printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"command":"rtk cargo build"}}}'"#.into(),
                     timeout_seconds: None,
                 }],
             },
@@ -157,7 +157,12 @@ print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "updated
         .await
         .expect("Failed to run pre-tool use hook");
 
-    assert_eq!(outcome.updated_input, Some(json!({"command": "rtk cargo build --audited"})));
+    assert_eq!(
+        outcome.updated_input,
+        Some(json!({"command": "rtk cargo build --audited"})),
+        "hook messages: {:#?}",
+        outcome.messages
+    );
 }
 
 #[tokio::test]
