@@ -55,6 +55,7 @@ pub use vtcode_ui::tui::ui::FileColorizer;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anstyle::Effects;
 
     #[test]
     fn test_render_markdown() {
@@ -70,7 +71,27 @@ This is a **bold** statement and this is *italic*.
 - Real-time collaboration
 "#;
 
-        // This should not panic
-        render_markdown(markdown_text);
+        let rendered = render_markdown(markdown_text);
+        let rendered_text = rendered
+            .iter()
+            .map(|line| line.segments.iter().map(|segment| segment.text.as_str()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(rendered_text.contains("Welcome to VT Code"));
+        assert!(!rendered_text.contains("# Welcome to VT Code"));
+        assert!(rendered_text.contains("• Advanced code analysis"));
+        assert!(
+            rendered.iter().flat_map(|line| &line.segments).any(|segment| {
+                segment.text.as_str() == "bold" && segment.style.get_effects().contains(Effects::BOLD)
+            }),
+            "strong markdown should produce a bold segment: {rendered_text:?}"
+        );
+        assert!(
+            rendered.iter().flat_map(|line| &line.segments).any(|segment| {
+                segment.text.as_str() == "italic" && segment.style.get_effects().contains(Effects::ITALIC)
+            }),
+            "emphasis markdown should produce an italic segment: {rendered_text:?}"
+        );
     }
 }

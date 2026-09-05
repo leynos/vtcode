@@ -1023,10 +1023,10 @@ mod tests {
         let new = "aaa\nxxx\n";
         let result = compute_diff(old, new, DiffOptions::default(), identity_formatter);
 
-        let json = serde_json::to_string(&result).unwrap();
-        assert!(json.contains("hunks"));
-        assert!(json.contains("formatted"));
-        assert!(json.contains("is_empty"));
+        let json = serde_json::to_value(&result).expect("diff bundle fixture must serialize");
+        assert_eq!(json.get("hunks").and_then(serde_json::Value::as_array).map(Vec::len), Some(1));
+        assert_eq!(json.get("formatted").and_then(serde_json::Value::as_str), Some(result.formatted.as_str()));
+        assert_eq!(json.get("is_empty").and_then(serde_json::Value::as_bool), Some(false));
     }
 
     #[test]
@@ -1043,16 +1043,29 @@ mod tests {
                 text: "hello\n".to_string(),
             }],
         };
-        let json = serde_json::to_string(&hunk).unwrap();
-        assert!(json.contains("old_start"));
-        assert!(json.contains("context"));
+        let json = serde_json::to_value(&hunk).expect("diff hunk fixture must serialize");
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "old_start": 1,
+                "old_lines": 2,
+                "new_start": 1,
+                "new_lines": 2,
+                "lines": [{"kind": "context", "old_line": 1, "new_line": 1, "text": "hello\n"}],
+            })
+        );
     }
 
     #[test]
     fn diff_line_kind_serializes() {
-        assert_eq!(serde_json::to_string(&DiffLineKind::Context).unwrap(), "\"context\"");
-        assert_eq!(serde_json::to_string(&DiffLineKind::Addition).unwrap(), "\"addition\"");
-        assert_eq!(serde_json::to_string(&DiffLineKind::Deletion).unwrap(), "\"deletion\"");
+        for (kind, wire_name) in [
+            (DiffLineKind::Context, "context"),
+            (DiffLineKind::Addition, "addition"),
+            (DiffLineKind::Deletion, "deletion"),
+        ] {
+            let encoded = serde_json::to_value(kind).expect("diff line kind fixture must serialize");
+            assert_eq!(encoded.as_str(), Some(wire_name));
+        }
     }
 
     // ── Edge cases ───────────────────────────────────────────────────

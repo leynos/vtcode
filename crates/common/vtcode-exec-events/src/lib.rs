@@ -1249,10 +1249,28 @@ pub struct ErrorItem {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::error::Error;
+    use serde::de::DeserializeOwned;
+    use std::fmt::Debug;
+
+    #[track_caller]
+    fn assert_json_round_trip<T>(value: &T)
+    where
+        T: Serialize + DeserializeOwned + PartialEq + Debug,
+    {
+        let serialized = match serde_json::to_string(value) {
+            Ok(serialized) => serialized,
+            Err(error) => panic!("value should serialize for JSON round trip: {error}"),
+        };
+        let restored: T = match serde_json::from_str(&serialized) {
+            Ok(restored) => restored,
+            Err(error) => panic!("serialized value should deserialize for JSON round trip: {error}"),
+        };
+
+        assert_eq!(&restored, value);
+    }
 
     #[test]
-    fn thread_event_round_trip() -> Result<(), Box<dyn Error>> {
+    fn thread_event_round_trip() {
         let event = ThreadEvent::TurnCompleted(TurnCompletedEvent {
             usage: Usage {
                 input_tokens: 1,
@@ -1262,15 +1280,11 @@ mod tests {
             },
         });
 
-        let json = serde_json::to_string(&event)?;
-        let restored: ThreadEvent = serde_json::from_str(&json)?;
-
-        assert_eq!(restored, event);
-        Ok(())
+        assert_json_round_trip(&event);
     }
 
     #[test]
-    fn turn_blocked_event_round_trip() -> Result<(), Box<dyn Error>> {
+    fn turn_blocked_event_round_trip() {
         let event = ThreadEvent::TurnBlocked(TurnBlockedEvent {
             message: "Blocked tool-call limit reached after 3 consecutive blocked calls.".to_string(),
             last_tool: Some("exec_command".to_string()),
@@ -1282,16 +1296,15 @@ mod tests {
             usage: None,
         });
 
-        let json = serde_json::to_string(&event)?;
+        let json = serde_json::to_string(&event).expect("turn.blocked event should serialize");
         assert!(json.contains("turn.blocked"));
-        let restored: ThreadEvent = serde_json::from_str(&json)?;
-        assert_eq!(restored, event);
+        assert_json_round_trip(&event);
 
         // Legacy payloads without new counters still parse via defaults.
         let legacy = serde_json::json!({"type": "turn.blocked", "message": "blocked"});
-        let parsed: ThreadEvent = serde_json::from_value(legacy)?;
+        let parsed: ThreadEvent =
+            serde_json::from_value(legacy).expect("legacy turn.blocked payload should deserialize");
         assert!(matches!(parsed, ThreadEvent::TurnBlocked(_)));
-        Ok(())
     }
 
     #[test]
@@ -1474,7 +1487,7 @@ mod tests {
 
     #[cfg(feature = "serde-json")]
     #[test]
-    fn versioned_json_round_trip() -> Result<(), Box<dyn Error>> {
+    fn versioned_json_round_trip() {
         let event = ThreadEvent::ItemCompleted(ItemCompletedEvent {
             item: ThreadItem {
                 id: "item-1".to_string(),
@@ -1482,12 +1495,11 @@ mod tests {
             },
         });
 
-        let payload = json::versioned_to_string(&event)?;
-        let restored = json::versioned_from_str(&payload)?;
+        let payload = json::versioned_to_string(&event).expect("versioned event should serialize");
+        let restored = json::versioned_from_str(&payload).expect("versioned event should deserialize");
 
         assert_eq!(restored.schema_version, EVENT_SCHEMA_VERSION);
         assert_eq!(restored.event, event);
-        Ok(())
     }
 
     #[test]
@@ -1507,7 +1519,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_invocation_round_trip() -> Result<(), Box<dyn Error>> {
+    fn tool_invocation_round_trip() {
         let event = ThreadEvent::ItemCompleted(ItemCompletedEvent {
             item: ThreadItem {
                 id: "tool_1".to_string(),
@@ -1521,11 +1533,7 @@ mod tests {
             },
         });
 
-        let json = serde_json::to_string(&event)?;
-        let restored: ThreadEvent = serde_json::from_str(&json)?;
-
-        assert_eq!(restored, event);
-        Ok(())
+        assert_json_round_trip(&event);
     }
 
     #[test]
@@ -1547,7 +1555,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_invocation_outcome_round_trip() -> Result<(), Box<dyn Error>> {
+    fn tool_invocation_outcome_round_trip() {
         let event = ThreadEvent::ItemCompleted(ItemCompletedEvent {
             item: ThreadItem {
                 id: "tool_1".to_string(),
@@ -1561,15 +1569,11 @@ mod tests {
             },
         });
 
-        let json = serde_json::to_string(&event)?;
-        let restored: ThreadEvent = serde_json::from_str(&json)?;
-
-        assert_eq!(restored, event);
-        Ok(())
+        assert_json_round_trip(&event);
     }
 
     #[test]
-    fn tool_output_round_trip_preserves_raw_tool_call_id() -> Result<(), Box<dyn Error>> {
+    fn tool_output_round_trip_preserves_raw_tool_call_id() {
         let event = ThreadEvent::ItemCompleted(ItemCompletedEvent {
             item: ThreadItem {
                 id: "tool_1:output".to_string(),
@@ -1584,15 +1588,11 @@ mod tests {
             },
         });
 
-        let json = serde_json::to_string(&event)?;
-        let restored: ThreadEvent = serde_json::from_str(&json)?;
-
-        assert_eq!(restored, event);
-        Ok(())
+        assert_json_round_trip(&event);
     }
 
     #[test]
-    fn harness_item_round_trip() -> Result<(), Box<dyn Error>> {
+    fn harness_item_round_trip() {
         let event = ThreadEvent::ItemCompleted(ItemCompletedEvent {
             item: ThreadItem {
                 id: "harness_1".to_string(),
@@ -1609,15 +1609,11 @@ mod tests {
             },
         });
 
-        let json = serde_json::to_string(&event)?;
-        let restored: ThreadEvent = serde_json::from_str(&json)?;
-
-        assert_eq!(restored, event);
-        Ok(())
+        assert_json_round_trip(&event);
     }
 
     #[test]
-    fn blocked_handoff_resolved_uses_stable_wire_name() -> Result<(), Box<dyn Error>> {
+    fn blocked_handoff_resolved_uses_stable_wire_name() {
         let event = ThreadEvent::ItemCompleted(ItemCompletedEvent {
             item: ThreadItem {
                 id: "harness_resolved".to_string(),
@@ -1634,16 +1630,16 @@ mod tests {
             },
         });
 
-        let value = serde_json::to_value(&event)?;
+        let value = serde_json::to_value(&event).expect("blocked handoff event should serialize to a wire value");
         assert_eq!(value["item"]["event"], "blocked_handoff_resolved");
 
-        let restored: ThreadEvent = serde_json::from_value(value)?;
+        let restored: ThreadEvent =
+            serde_json::from_value(value).expect("blocked handoff wire value should deserialize");
         assert_eq!(restored, event);
-        Ok(())
     }
 
     #[test]
-    fn thread_completed_round_trip() -> Result<(), Box<dyn Error>> {
+    fn thread_completed_round_trip() {
         let event = ThreadEvent::ThreadCompleted(ThreadCompletedEvent {
             thread_id: "thread-1".to_string(),
             session_id: "session-1".to_string(),
@@ -1661,15 +1657,11 @@ mod tests {
             num_turns: 3,
         });
 
-        let json = serde_json::to_string(&event)?;
-        let restored: ThreadEvent = serde_json::from_str(&json)?;
-
-        assert_eq!(restored, event);
-        Ok(())
+        assert_json_round_trip(&event);
     }
 
     #[test]
-    fn compact_boundary_round_trip() -> Result<(), Box<dyn Error>> {
+    fn compact_boundary_round_trip() {
         let event = ThreadEvent::ThreadCompactBoundary(ThreadCompactBoundaryEvent {
             thread_id: "thread-1".to_string(),
             trigger: CompactionTrigger::Recovery,
@@ -1685,15 +1677,11 @@ mod tests {
             new_catalog_hash: Some("catalog-after".to_string()),
         });
 
-        let json = serde_json::to_string(&event)?;
-        let restored: ThreadEvent = serde_json::from_str(&json)?;
-
-        assert_eq!(restored, event);
-        Ok(())
+        assert_json_round_trip(&event);
     }
 
     #[test]
-    fn compact_boundary_deserializes_legacy_payload_without_segment_metadata() -> Result<(), Box<dyn Error>> {
+    fn compact_boundary_deserializes_legacy_payload_without_segment_metadata() {
         let payload = r#"{
             "type":"thread.compact_boundary",
             "thread_id":"thread-1",
@@ -1703,7 +1691,8 @@ mod tests {
             "compacted_message_count":5
         }"#;
 
-        let restored: ThreadEvent = serde_json::from_str(payload)?;
+        let restored: ThreadEvent =
+            serde_json::from_str(payload).expect("legacy compact-boundary payload should deserialize");
         let ThreadEvent::ThreadCompactBoundary(event) = restored else {
             panic!("expected thread.compact_boundary event");
         };
@@ -1716,6 +1705,5 @@ mod tests {
         assert_eq!(event.new_prefix_hash, None);
         assert_eq!(event.previous_catalog_hash, None);
         assert_eq!(event.new_catalog_hash, None);
-        Ok(())
     }
 }

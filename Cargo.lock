@@ -6489,6 +6489,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "temp-env"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96374855068f47402c3121c6eed88d29cb1de8f3ab27090e273e420bdabcf050"
+dependencies = [
+ "parking_lot",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7540,6 +7549,7 @@ dependencies = [
  "shell-words",
  "smallvec",
  "tar",
+ "temp-env",
  "tempfile",
  "thiserror 2.0.20",
  "tikv-jemallocator",
@@ -7675,6 +7685,7 @@ dependencies = [
  "nix 0.31.3",
  "parking_lot",
  "path-clean",
+ "rusty-fork",
  "serde",
  "shell-escape",
  "tokio",
@@ -7730,6 +7741,7 @@ dependencies = [
  "directories",
  "dirs",
  "dotenvy",
+ "filetime",
  "hashbrown 0.17.1",
  "indexmap 2.14.1",
  "notify",
@@ -7779,6 +7791,7 @@ dependencies = [
  "dialoguer",
  "dirs",
  "dunce",
+ "filetime",
  "flate2",
  "futures",
  "glob",
@@ -7821,6 +7834,7 @@ dependencies = [
  "smallvec",
  "strsim",
  "tar",
+ "temp-env",
  "tempfile",
  "terminal_size",
  "textwrap",

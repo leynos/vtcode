@@ -69,6 +69,7 @@ async fn run_ast_grep_subcommand(workspace: &Path, ast_grep: &Path, subcommand: 
 #[cfg(test)]
 mod tests {
     use super::{AST_GREP_CONFIG_PATH, CheckSubcommand, handle_check_command};
+    use anyhow::{Context, Result, bail, ensure};
     use serial_test::serial;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -76,13 +77,14 @@ mod tests {
     use vtcode_commons::canonicalize;
     use vtcode_core::tools::ast_grep_binary::{AST_GREP_INSTALL_COMMAND, set_ast_grep_binary_override_for_tests};
 
-    fn create_workspace_with_scaffold() -> TempDir {
-        let temp_dir = TempDir::new().expect("workspace");
-        fs::write(temp_dir.path().join(AST_GREP_CONFIG_PATH), "ruleDirs: []\n").expect("config");
-        temp_dir
+    fn create_workspace_with_scaffold() -> Result<TempDir> {
+        let temp_dir = TempDir::new().context("create temporary ast-grep workspace")?;
+        fs::write(temp_dir.path().join(AST_GREP_CONFIG_PATH), "ruleDirs: []\n")
+            .context("write ast-grep scaffold config")?;
+        Ok(temp_dir)
     }
 
-    fn create_ast_grep_stub(temp_dir: &TempDir, test_exit_code: i32, scan_exit_code: i32) -> PathBuf {
+    fn create_ast_grep_stub(temp_dir: &TempDir, test_exit_code: i32, scan_exit_code: i32) -> Result<PathBuf> {
         #[cfg(windows)]
         let script_path = temp_dir.path().join("ast-grep-stub.cmd");
         #[cfg(not(windows))]
@@ -129,80 +131,109 @@ esac\n\
 exit 0\n"
         );
 
-        fs::write(&script_path, body).expect("write stub");
+        fs::write(&script_path, body).with_context(|| format!("write ast-grep stub at {}", script_path.display()))?;
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
 
-            let mut permissions = fs::metadata(&script_path).expect("metadata").permissions();
+            let mut permissions = fs::metadata(&script_path)
+                .with_context(|| format!("read ast-grep stub metadata at {}", script_path.display()))?
+                .permissions();
             permissions.set_mode(0o755);
-            fs::set_permissions(&script_path, permissions).expect("chmod");
+            fs::set_permissions(&script_path, permissions)
+                .with_context(|| format!("make ast-grep stub executable at {}", script_path.display()))?;
         }
 
-        script_path
+        Ok(script_path)
     }
 
-    fn read_lines(path: &Path) -> Vec<String> {
-        fs::read_to_string(path)
-            .expect("read log")
+    fn read_lines(path: &Path) -> Result<Vec<String>> {
+        Ok(fs::read_to_string(path)
+            .with_context(|| format!("read ast-grep log at {}", path.display()))?
             .lines()
             .map(ToString::to_string)
-            .collect()
+            .collect())
     }
 
     #[tokio::test]
     #[serial]
-    async fn ast_grep_check_runs_test_then_scan_from_workspace_root() {
-        let workspace = create_workspace_with_scaffold();
-        let stub = create_ast_grep_stub(&workspace, 0, 0);
+    async fn ast_grep_check_runs_test_then_scan_from_workspace_root() -> Result<()> {
+        let workspace = create_workspace_with_scaffold()?;
+        let stub = create_ast_grep_stub(&workspace, 0, 0)?;
         let _guard = set_ast_grep_binary_override_for_tests(Some(stub));
 
         handle_check_command(workspace.path(), CheckSubcommand::AstGrep)
             .await
-            .expect("ast-grep check should pass");
+            .context("ast-grep check should pass")?;
 
-        let test_args = read_lines(&workspace.path().join("test-args.log"));
-        assert_eq!(test_args, ["test", "--config", AST_GREP_CONFIG_PATH]);
+        let test_args = read_lines(&workspace.path().join("test-args.log"))?;
+        ensure!(
+            test_args == ["test", "--config", AST_GREP_CONFIG_PATH],
+            "unexpected ast-grep test arguments: {test_args:?}"
+        );
 
-        let scan_args = read_lines(&workspace.path().join("scan-args.log"));
-        assert_eq!(scan_args, ["scan", "--config", AST_GREP_CONFIG_PATH]);
+        let scan_args = read_lines(&workspace.path().join("scan-args.log"))?;
+        ensure!(
+            scan_args == ["scan", "--config", AST_GREP_CONFIG_PATH],
+            "unexpected ast-grep scan arguments: {scan_args:?}"
+        );
 
-        let expected_workspace = canonicalize(workspace.path()).expect("canonical workspace");
+        let expected_workspace = canonicalize(workspace.path()).context("canonicalize test workspace")?;
 
-        let test_cwd = fs::read_to_string(workspace.path().join("test-cwd.log")).expect("test cwd");
-        let test_cwd = canonicalize(test_cwd.trim()).expect("canonical test cwd");
-        assert_eq!(test_cwd, expected_workspace);
+        let test_cwd = fs::read_to_string(workspace.path().join("test-cwd.log"))
+            .context("read ast-grep test working directory")?;
+        let test_cwd = canonicalize(test_cwd.trim()).context("canonicalize ast-grep test working directory")?;
+        ensure!(
+            test_cwd == expected_workspace,
+            "ast-grep test ran from {test_cwd:?}, expected {expected_workspace:?}"
+        );
 
-        let scan_cwd = fs::read_to_string(workspace.path().join("scan-cwd.log")).expect("scan cwd");
-        let scan_cwd = canonicalize(scan_cwd.trim()).expect("canonical scan cwd");
-        assert_eq!(scan_cwd, expected_workspace);
+        let scan_cwd = fs::read_to_string(workspace.path().join("scan-cwd.log"))
+            .context("read ast-grep scan working directory")?;
+        let scan_cwd = canonicalize(scan_cwd.trim()).context("canonicalize ast-grep scan working directory")?;
+        ensure!(
+            scan_cwd == expected_workspace,
+            "ast-grep scan ran from {scan_cwd:?}, expected {expected_workspace:?}"
+        );
+
+        Ok(())
     }
 
     #[tokio::test]
     #[serial]
-    async fn ast_grep_check_reports_missing_binary() {
-        let workspace = create_workspace_with_scaffold();
+    async fn ast_grep_check_reports_missing_binary() -> Result<()> {
+        let workspace = create_workspace_with_scaffold()?;
         let _guard = set_ast_grep_binary_override_for_tests(None);
 
         let result = handle_check_command(workspace.path(), CheckSubcommand::AstGrep).await;
 
-        let error = result.expect_err("missing binary should fail").to_string();
-        assert!(error.contains(AST_GREP_INSTALL_COMMAND), "{error}");
+        let error = match result {
+            Err(error) => error.to_string(),
+            Ok(()) => bail!("missing binary check unexpectedly succeeded"),
+        };
+        ensure!(
+            error.contains(AST_GREP_INSTALL_COMMAND),
+            "missing binary error did not mention installation: {error}"
+        );
+
+        Ok(())
     }
 
     #[tokio::test]
     #[serial]
-    async fn ast_grep_check_reports_missing_scaffold() {
-        let workspace = TempDir::new().expect("workspace");
-        let stub = create_ast_grep_stub(&workspace, 0, 0);
+    async fn ast_grep_check_reports_missing_scaffold() -> Result<()> {
+        let workspace = TempDir::new().context("create temporary workspace without scaffold")?;
+        let stub = create_ast_grep_stub(&workspace, 0, 0)?;
         let _guard = set_ast_grep_binary_override_for_tests(Some(stub));
 
-        let error = handle_check_command(workspace.path(), CheckSubcommand::AstGrep)
-            .await
-            .expect_err("missing scaffold should fail")
-            .to_string();
+        let error = match handle_check_command(workspace.path(), CheckSubcommand::AstGrep).await {
+            Err(error) => error.to_string(),
+            Ok(()) => bail!("missing scaffold check unexpectedly succeeded"),
+        };
 
-        assert!(error.contains("vtcode init"), "{error}");
+        ensure!(error.contains("vtcode init"), "missing scaffold error did not mention vtcode init: {error}");
+
+        Ok(())
     }
 }

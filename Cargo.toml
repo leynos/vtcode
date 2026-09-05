@@ -41,6 +41,9 @@ unicode-width = "0.2.0"
 rio-vt = "0.5.0"
 serde_json = "1.0"
 tempfile = "3.27"
+temp-env = "0.3.6"
+filetime = "0.2.29"
+rusty-fork = "0.3.1"
 tokio = { version = "1.52", features = ["full"] }
 tokio-stream = "0.1"
 anyhow = "1.0"
@@ -508,6 +511,7 @@ name = "vtcode"
 path = "src/main.rs"
 
 [dev-dependencies]
+temp-env = { workspace = true }
 criterion = { workspace = true }
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }

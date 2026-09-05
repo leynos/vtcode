@@ -661,7 +661,10 @@ impl ToolExecutionHistory {
             // asking for a larger limit, different offset, or raw content is
             // a materially different read — the model genuinely needs fresh
             // content, not a cached stub.
-            if !Self::read_extent_matches(&record.args, query_args) {
+            // Code-search targets already include the normalized effective
+            // limit and filters. Comparing their raw arguments again would
+            // reject an omitted default against the same explicit value.
+            if tool_name != tools::CODE_SEARCH && !Self::read_extent_matches(&record.args, query_args) {
                 return None;
             }
             Some(())

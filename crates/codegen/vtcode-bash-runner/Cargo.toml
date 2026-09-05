@@ -56,6 +56,7 @@ workspace = true
 
 [dev-dependencies]
 assert_fs = { workspace = true }
+rusty-fork = { workspace = true }
 
 [package.metadata.cargo-machete]
 ignored = ["tokio-test", "winapi"]

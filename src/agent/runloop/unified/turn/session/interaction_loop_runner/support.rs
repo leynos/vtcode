@@ -1688,7 +1688,8 @@ mod tests {
 
     #[test]
     fn selected_model_image_support_uses_alias_modality_metadata() {
-        assert!(selected_model_supports_image_input("openai", "gpt-5.5-2026-04-23", false));
+        // Exercise an alias that the checked-in model registry still supports.
+        assert!(selected_model_supports_image_input("openai", "gpt-5.4", false));
     }
 
     #[test]
@@ -1698,7 +1699,7 @@ mod tests {
 
     #[test]
     fn selected_model_image_support_accepts_display_model_label() {
-        assert!(selected_model_supports_image_input("OpenAI (ChatGPT)", "GPT-5.5 (128K)", false));
+        assert!(selected_model_supports_image_input("OpenAI (ChatGPT)", "GPT-5.4 (128K)", false));
     }
 
     #[test]

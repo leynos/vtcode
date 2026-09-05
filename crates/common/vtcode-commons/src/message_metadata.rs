@@ -199,7 +199,25 @@ impl Default for CompressionStatus {
 
 #[cfg(test)]
 mod tests {
+    //! Metadata state transitions and persisted compatibility.
+
     use super::*;
+
+    #[track_caller]
+    fn assert_json_round_trip<T>(value: &T)
+    where
+        T: Serialize + serde::de::DeserializeOwned + PartialEq + std::fmt::Debug,
+    {
+        let encoded = match serde_json::to_string(value) {
+            Ok(encoded) => encoded,
+            Err(error) => panic!("serialize round-trip fixture: {error}"),
+        };
+        let decoded: T = match serde_json::from_str(&encoded) {
+            Ok(decoded) => decoded,
+            Err(error) => panic!("deserialize round-trip fixture: {error}"),
+        };
+        assert_eq!(&decoded, value, "JSON round trip must preserve every field");
+    }
 
     #[test]
     fn test_create_user_metadata() {
@@ -247,20 +265,18 @@ mod tests {
     #[test]
     fn test_compression_status_serde_roundtrip() {
         let status = CompressionStatus::Compressed { original_token_count: 200, summary_token_count: 50 };
-        let json = serde_json::to_string(&status).unwrap();
-        let deserialized: CompressionStatus = serde_json::from_str(&json).unwrap();
-        assert_eq!(status, deserialized);
+        assert_json_round_trip(&status);
     }
 
     #[test]
     fn test_intent_id_is_optional_and_serde_compatible() {
         let meta = MessageMetadata::user_input(1000, 50).with_intent_id("intent-1");
-        let json = serde_json::to_string(&meta).unwrap();
-        let restored: MessageMetadata = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored.intent_id(), Some("intent-1"));
+        assert_json_round_trip(&meta);
+        assert_eq!(meta.intent_id(), Some("intent-1"));
 
         let legacy = r#"{"timestamp":1000,"importance_score":0.5,"compression_status":"uncompressed","estimated_tokens":50,"source":"user_input"}"#;
-        let restored: MessageMetadata = serde_json::from_str(legacy).unwrap();
+        let restored: MessageMetadata =
+            serde_json::from_str(legacy).expect("legacy metadata fixture must remain readable");
         assert_eq!(restored.intent_id(), None);
     }
 }

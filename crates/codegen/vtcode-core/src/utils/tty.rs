@@ -199,31 +199,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_tty_detection() {
-        // These tests verify the TTY detection logic works
-        // Note: In actual test environments, these may vary
-        let stdout = io::stdout();
-        let stderr = io::stderr();
-        let stdin = io::stdin();
+    fn capability_predicates_require_their_declared_features() {
+        let fully_featured = TtyCapabilities {
+            color: true,
+            cursor: true,
+            bracketed_paste: true,
+            focus_events: true,
+            mouse: true,
+            keyboard_enhancement: true,
+        };
+        assert!(fully_featured.is_fully_featured());
+        assert!(fully_featured.is_basic_tui());
 
-        // Just verify the methods don't panic
-        let _ = stdout.is_terminal();
-        let _ = stderr.is_terminal();
-        let _ = stdin.is_terminal();
-    }
+        let no_color = TtyCapabilities { color: false, ..fully_featured };
+        assert!(!no_color.is_fully_featured());
+        assert!(!no_color.is_basic_tui());
 
-    #[test]
-    fn test_capabilities_detection() {
-        // Test that capability detection doesn't panic
-        let caps = TtyCapabilities::detect();
-        // In a test environment, this might be None
-        // Just verify the method works
-        let _ = caps.is_some() || caps.is_none();
-    }
-
-    #[test]
-    fn test_interactive_session() {
-        // Test interactive session detection
-        let _ = is_interactive_session();
+        let no_mouse = TtyCapabilities { mouse: false, ..fully_featured };
+        assert!(!no_mouse.is_fully_featured());
+        assert!(no_mouse.is_basic_tui());
     }
 }

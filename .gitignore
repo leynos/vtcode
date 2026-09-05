@@ -554,6 +554,7 @@ _build/
 MYMETA.json
 MYMETA.yml
 Makefile
+!/Makefile
 Makefile.old
 pm_to_blib
 blib/

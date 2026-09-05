@@ -266,11 +266,6 @@ mod tests {
     use crate::terminal_setup::detector::TerminalType;
 
     #[test]
-    fn test_wizard_module() {
-        // Placeholder test - actual wizard tests would need mocked terminal I/O
-    }
-
-    #[test]
     fn native_setup_messages_are_noop_guidance() {
         let lines = native_terminal_setup_messages(TerminalType::WezTerm);
         assert!(lines.iter().any(|line| line.contains("already supports multiline")));

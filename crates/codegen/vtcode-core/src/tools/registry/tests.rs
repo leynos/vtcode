@@ -1,4 +1,7 @@
+//! Tool registry policy, dispatch, and session behaviour against isolated fixtures.
+
 use super::*;
+use crate::config::CommandsConfig;
 use crate::config::TimeoutsConfig;
 use crate::config::ToolDocumentationMode as ConfigToolDocumentationMode;
 use crate::config::ToolsConfig;
@@ -19,12 +22,34 @@ use std::time::Duration;
 use tempfile::TempDir;
 use vtcode_commons::canonicalize;
 
+#[path = "../../../tests/support/config_defaults.rs"]
+mod config_defaults;
+
 const CUSTOM_TOOL_NAME: &str = "custom_test_tool";
 const SLOW_TIMEOUT_TOOL_NAME: &str = "slow_timeout_test_tool";
 const REENTRANT_TOOL_NAME: &str = "reentrant_guard_test_tool";
 const MUTUAL_REENTRANT_TOOL_A: &str = "mutual_reentrant_tool_a";
 const MUTUAL_REENTRANT_TOOL_B: &str = "mutual_reentrant_tool_b";
 const REPLACE_DISPATCH_TOOL_NAME: &str = "replace_dispatch_test_tool";
+
+fn command_session_fixture_commands_config() -> CommandsConfig {
+    let mut config = CommandsConfig::default();
+    config.allow_list.clear();
+    config.allow_glob.clear();
+    config.allow_regex = vec![
+        r"^sleep 0\.4 && printf second && sleep 0\.4 && printf third && sleep 0\.4 && printf done$".to_owned(),
+        r"^/bin/sh -lc printf vtcode-terminal$".to_owned(),
+    ];
+    config
+}
+
+async fn command_session_fixture_registry(temp_dir: &TempDir) -> Result<ToolRegistry> {
+    let policy_path = temp_dir.path().join(".vtcode/test-tool-policy.json");
+    let policy_manager = crate::tool_policy::ToolPolicyManager::new_with_config_path(policy_path).await?;
+    let registry = ToolRegistry::new_with_custom_policy(temp_dir.path().to_path_buf(), policy_manager).await;
+    registry.apply_commands_config(&command_session_fixture_commands_config());
+    Ok(registry)
+}
 
 struct CustomEchoTool;
 struct SlowTimeoutTool;
@@ -574,7 +599,8 @@ async fn harness_exec_reuses_public_output_normalization() -> Result<()> {
 #[tokio::test]
 async fn harness_terminal_runs_retain_completed_sessions_until_close() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    let _config_defaults = config_defaults::IsolatedConfigDefaultsGuard::install(temp_dir.path()).await;
+    let registry = command_session_fixture_registry(&temp_dir).await?;
 
     let response = registry
         .execute_harness_command_session_terminal_run(json!({
@@ -681,7 +707,8 @@ async fn prevalidated_exec_mode_settles_pipe_poll_until_exit() -> Result<()> {
 #[tokio::test]
 async fn prevalidated_exec_mode_keeps_interactive_runs_manual() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    let _config_defaults = config_defaults::IsolatedConfigDefaultsGuard::install(temp_dir.path()).await;
+    let registry = command_session_fixture_registry(&temp_dir).await?;
     registry.allow_all_tools().await?;
 
     let response = registry
@@ -712,7 +739,8 @@ async fn prevalidated_exec_mode_keeps_interactive_runs_manual() -> Result<()> {
 #[tokio::test]
 async fn command_session_run_preserves_requested_session_id_for_follow_up_calls() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    let _config_defaults = config_defaults::IsolatedConfigDefaultsGuard::install(temp_dir.path()).await;
+    let registry = command_session_fixture_registry(&temp_dir).await?;
     registry.allow_all_tools().await?;
 
     let mut run_args = long_running_exec_args(true, 10);
@@ -751,7 +779,8 @@ async fn command_session_run_preserves_requested_session_id_for_follow_up_calls(
 #[tokio::test]
 async fn active_exec_continuations_bypass_identical_call_loop_detection() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    let _config_defaults = config_defaults::IsolatedConfigDefaultsGuard::install(temp_dir.path()).await;
+    let registry = command_session_fixture_registry(&temp_dir).await?;
     registry.allow_all_tools().await?;
     registry.execution_history.set_loop_detection_limits(5, 2);
 
@@ -793,7 +822,8 @@ async fn active_exec_continuations_bypass_identical_call_loop_detection() -> Res
 #[tokio::test]
 async fn command_session_accepts_compact_session_alias_for_poll() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    let _config_defaults = config_defaults::IsolatedConfigDefaultsGuard::install(temp_dir.path()).await;
+    let registry = command_session_fixture_registry(&temp_dir).await?;
     registry.allow_all_tools().await?;
 
     let initial = registry
@@ -820,7 +850,8 @@ async fn command_session_accepts_compact_session_alias_for_poll() -> Result<()> 
 #[tokio::test]
 async fn command_session_inspect_accepts_compact_session_alias() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    let _config_defaults = config_defaults::IsolatedConfigDefaultsGuard::install(temp_dir.path()).await;
+    let registry = command_session_fixture_registry(&temp_dir).await?;
     registry.allow_all_tools().await?;
 
     let initial = registry

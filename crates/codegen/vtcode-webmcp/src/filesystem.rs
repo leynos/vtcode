@@ -209,6 +209,93 @@ impl FilesystemWorkspace {
         self
     }
 
+    async fn run_checks_with_sandbox_executable(
+        &self,
+        command: &str,
+        sandbox_executable: Option<&Path>,
+    ) -> Result<CheckResult> {
+        let args = parse_safe_command(command, &self.allowed_commands)?;
+        if !self.checks_allowed {
+            return Err(WebmcpError::ApprovalRequired);
+        }
+        let _mutation_guard = self.mutation_lock.lock().await;
+        let (program, arguments) = args
+            .split_first()
+            .ok_or_else(|| WebmcpError::InvalidRequest("check command cannot be empty".to_string()))?;
+        let executable = resolve_check_executable(program)?;
+        // Capture host toolchain locations before replacing HOME with the
+        // workspace sandbox HOME. This keeps checks reproducible without
+        // allowing the child to inherit the caller's complete environment.
+        let host_home = std::env::var_os("HOME")
+            .or_else(|| std::env::var_os("USERPROFILE"))
+            .map(PathBuf::from);
+        let mut environment = SandboxEnvironment::new();
+        let _ = environment.insert("PATH".to_string(), trusted_executable_path(&executable)?);
+        let _ = environment.insert("HOME".to_string(), self.root.display().to_string());
+        let _ = environment.insert("CARGO_NET_OFFLINE".to_string(), "true".to_string());
+        let _ = environment.insert("CARGO_TERM_COLOR".to_string(), "never".to_string());
+        let cargo_home = std::env::var_os("CARGO_HOME")
+            .map(PathBuf::from)
+            .or_else(|| host_home.as_ref().map(|home| home.join(".cargo")));
+        if let Some(cargo_home) = cargo_home {
+            let _ = environment.insert("CARGO_HOME".to_string(), cargo_home.to_string_lossy().into_owned());
+        }
+        let rustup_home = std::env::var_os("RUSTUP_HOME")
+            .map(PathBuf::from)
+            .or_else(|| host_home.as_ref().map(|home| home.join(".rustup")));
+        if let Some(rustup_home) = rustup_home {
+            let _ = environment.insert("RUSTUP_HOME".to_string(), rustup_home.to_string_lossy().into_owned());
+        }
+        let spec = CommandSpec::new(executable)
+            .with_args(arguments.iter().cloned())
+            .with_cwd(self.root.as_ref().to_path_buf())
+            .with_env(environment)
+            .with_expiration(ExecExpiration::Timeout(CHECK_TIMEOUT));
+        let check_policy = check_sandbox_policy(self.root.as_ref())
+            .map_err(|error| WebmcpError::Adapter(format!("failed to build WebMCP check sandbox: {error}")))?;
+        let exec_env = SandboxManager::new()
+            .transform(spec, &check_policy, self.root.as_ref(), sandbox_executable)
+            .map_err(|error| WebmcpError::Adapter(format!("failed to sandbox WebMCP check: {error}")))?;
+        let mut child = Command::new(exec_env.program)
+            .args(exec_env.args)
+            .current_dir(exec_env.cwd)
+            .env_clear()
+            .envs(exec_env.env)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| WebmcpError::Adapter("check process stdout was not captured".to_string()))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| WebmcpError::Adapter("check process stderr was not captured".to_string()))?;
+        let output = Box::pin(tokio::time::timeout(CHECK_TIMEOUT, async {
+            let (status, stdout, stderr) =
+                tokio::join!(child.wait(), read_process_output(stdout), read_process_output(stderr));
+            Ok::<_, WebmcpError>((status?, stdout?, stderr?))
+        }))
+        .await;
+        let (status, stdout, stderr) = match output {
+            Ok(result) => result?,
+            Err(_elapsed) => {
+                drop(child.kill().await);
+                drop(child.wait().await);
+                return Err(WebmcpError::Timeout(CHECK_TIMEOUT));
+            }
+        };
+        Ok(CheckResult {
+            command: command.to_string(),
+            exit_code: status.code(),
+            stdout: String::from_utf8_lossy(&stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        })
+    }
+
     /// Return a still-current proposal for an active runtime turn handoff.
     ///
     /// Rechecking the snapshots here prevents a browser proposal from being
@@ -527,87 +614,9 @@ impl RuntimeAdapter for FilesystemWorkspace {
     }
 
     async fn run_checks(&self, command: &str) -> Result<CheckResult> {
-        let args = parse_safe_command(command, &self.allowed_commands)?;
-        if !self.checks_allowed {
-            return Err(WebmcpError::ApprovalRequired);
-        }
-        let _mutation_guard = self.mutation_lock.lock().await;
-        let (program, arguments) = args
-            .split_first()
-            .ok_or_else(|| WebmcpError::InvalidRequest("check command cannot be empty".to_string()))?;
-        let executable = resolve_check_executable(program)?;
-        // Capture host toolchain locations before replacing HOME with the
-        // workspace sandbox HOME. This keeps checks reproducible without
-        // allowing the child to inherit the caller's complete environment.
-        let host_home = std::env::var_os("HOME")
-            .or_else(|| std::env::var_os("USERPROFILE"))
-            .map(PathBuf::from);
-        let mut environment = SandboxEnvironment::new();
-        let _ = environment.insert("PATH".to_string(), trusted_executable_path(&executable)?);
-        let _ = environment.insert("HOME".to_string(), self.root.display().to_string());
-        let _ = environment.insert("CARGO_NET_OFFLINE".to_string(), "true".to_string());
-        let _ = environment.insert("CARGO_TERM_COLOR".to_string(), "never".to_string());
-        let cargo_home = std::env::var_os("CARGO_HOME")
-            .map(PathBuf::from)
-            .or_else(|| host_home.as_ref().map(|home| home.join(".cargo")));
-        if let Some(cargo_home) = cargo_home {
-            let _ = environment.insert("CARGO_HOME".to_string(), cargo_home.to_string_lossy().into_owned());
-        }
-        let rustup_home = std::env::var_os("RUSTUP_HOME")
-            .map(PathBuf::from)
-            .or_else(|| host_home.as_ref().map(|home| home.join(".rustup")));
-        if let Some(rustup_home) = rustup_home {
-            let _ = environment.insert("RUSTUP_HOME".to_string(), rustup_home.to_string_lossy().into_owned());
-        }
-        let spec = CommandSpec::new(executable)
-            .with_args(arguments.iter().cloned())
-            .with_cwd(self.root.as_ref().to_path_buf())
-            .with_env(environment)
-            .with_expiration(ExecExpiration::Timeout(CHECK_TIMEOUT));
         let sandbox_executable = std::env::var_os("VTCODE_LINUX_SANDBOX_EXECUTABLE").map(PathBuf::from);
-        let check_policy = check_sandbox_policy(self.root.as_ref())
-            .map_err(|error| WebmcpError::Adapter(format!("failed to build WebMCP check sandbox: {error}")))?;
-        let exec_env = SandboxManager::new()
-            .transform(spec, &check_policy, self.root.as_ref(), sandbox_executable.as_deref())
-            .map_err(|error| WebmcpError::Adapter(format!("failed to sandbox WebMCP check: {error}")))?;
-        let mut child = Command::new(exec_env.program)
-            .args(exec_env.args)
-            .current_dir(exec_env.cwd)
-            .env_clear()
-            .envs(exec_env.env)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| WebmcpError::Adapter("check process stdout was not captured".to_string()))?;
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| WebmcpError::Adapter("check process stderr was not captured".to_string()))?;
-        let output = Box::pin(tokio::time::timeout(CHECK_TIMEOUT, async {
-            let (status, stdout, stderr) =
-                tokio::join!(child.wait(), read_process_output(stdout), read_process_output(stderr));
-            Ok::<_, WebmcpError>((status?, stdout?, stderr?))
-        }))
-        .await;
-        let (status, stdout, stderr) = match output {
-            Ok(result) => result?,
-            Err(_elapsed) => {
-                drop(child.kill().await);
-                drop(child.wait().await);
-                return Err(WebmcpError::Timeout(CHECK_TIMEOUT));
-            }
-        };
-        Ok(CheckResult {
-            command: command.to_string(),
-            exit_code: status.code(),
-            stdout: String::from_utf8_lossy(&stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&stderr).into_owned(),
-        })
+        self.run_checks_with_sandbox_executable(command, sandbox_executable.as_deref())
+            .await
     }
 
     async fn revert_last_change(&self, change_id: &str) -> Result<AppliedChange> {
@@ -1271,9 +1280,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn proposal_apply_check_and_revert_validate_current_digests() {
+    async fn proposal_apply_and_revert_validate_current_digests() {
         let (_temp, adapter) = workspace(true).await;
-        let adapter = adapter.with_allowed_commands(["cargo", "printf"]);
         let snapshot = adapter.read_file("main.js").await.expect("read");
         let proposal = adapter
             .propose_changes(vec![FileChange {
@@ -1284,15 +1292,26 @@ mod tests {
             .await
             .expect("propose");
         let applied = adapter.apply_proposal(&proposal.proposal_id).await.expect("apply");
-        let result = adapter.run_checks("printf ok").await.expect("check");
-        assert!(
-            result.exit_code == Some(0)
-                || (result.exit_code == Some(71) && result.stderr.contains("sandbox_apply: Operation not permitted")),
-            "unexpected check result: {result:?}"
-        );
         assert_eq!(adapter.read_file("main.js").await.expect("read").content, "console.log('new');\n");
         let _ = adapter.revert_last_change(&applied.change_id).await.expect("revert");
         assert_eq!(adapter.read_file("main.js").await.expect("read").content, "console.log('old');\n");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn linux_checks_without_sandbox_helper_fail_closed() {
+        let (_temp, adapter) = workspace(true).await;
+        let adapter = adapter.with_allowed_commands(["printf"]);
+
+        let error = adapter
+            .run_checks_with_sandbox_executable("printf ok", None)
+            .await
+            .expect_err("Linux checks require the configured sandbox helper");
+
+        assert!(matches!(
+            error,
+            WebmcpError::Adapter(message) if message.contains("missing sandbox executable path")
+        ));
     }
 
     #[test]

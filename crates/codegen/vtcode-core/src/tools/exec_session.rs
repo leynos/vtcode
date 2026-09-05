@@ -890,17 +890,21 @@ mod tests {
         let mut activity_rx = manager
             .activity_receiver("drain-clear")
             .await?
-            .expect("pipe sessions should expose activity receiver");
+            .ok_or_else(|| anyhow::anyhow!("pipe session drain-clear should expose an activity receiver"))?;
 
-        timeout(Duration::from_secs(2), activity_rx.changed()).await??;
-        let drained = manager
-            .read_session_output("drain-clear", true)
-            .await?
-            .expect("should drain hello");
-        assert!(drained.contains("hello"));
+        let drained = timeout(Duration::from_secs(2), async {
+            loop {
+                if let Some(output) = manager.read_session_output("drain-clear", true).await? {
+                    return Ok::<String, anyhow::Error>(output);
+                }
+                activity_rx.changed().await?;
+            }
+        })
+        .await??;
+        anyhow::ensure!(drained.contains("hello"), "drained pipe output should contain hello; observed {drained:?}");
 
         let stale = manager.read_session_output("drain-clear", true).await?;
-        assert!(stale.is_none(), "drained output must not reappear: {stale:?}");
+        anyhow::ensure!(stale.is_none(), "drained output must not reappear: {stale:?}");
 
         manager.close_session("drain-clear").await?;
         Ok(())

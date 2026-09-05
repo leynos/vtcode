@@ -44,6 +44,7 @@ bootstrap = []
 schema = ["dep:schemars", "vtcode-auth/schema", "vtcode-commons/schema"]
 
 [dev-dependencies]
+filetime = { workspace = true }
 assert_fs = { workspace = true }
 serial_test = { workspace = true }
 

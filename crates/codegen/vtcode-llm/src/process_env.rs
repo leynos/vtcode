@@ -51,7 +51,17 @@ where
 
 /// Replace a Tokio command's inherited environment with the filtered set.
 pub(crate) fn sanitize_tokio_command_environment(command: &mut TokioCommand, allowed_env_vars: &[&str]) {
-    let _ = command.env_clear().envs(filtered_provider_environment(allowed_env_vars));
+    sanitize_tokio_command_environment_from(command, allowed_env_vars, std::env::vars_os());
+}
+
+/// Apply the same replacement boundary to an explicit environment snapshot.
+fn sanitize_tokio_command_environment_from<I>(command: &mut TokioCommand, allowed_env_vars: &[&str], environment: I)
+where
+    I: IntoIterator<Item = (OsString, OsString)>,
+{
+    let _ = command
+        .env_clear()
+        .envs(filter_provider_environment(environment, allowed_env_vars));
 }
 
 /// Replace a synchronous command's inherited environment with the filtered set.
@@ -70,7 +80,7 @@ pub(crate) fn sanitize_pty_command_environment(command: &mut portable_pty::Comma
 
 #[cfg(test)]
 mod tests {
-    use super::{COPILOT_AUTH_ENV_VARS, filter_provider_environment, sanitize_tokio_command_environment};
+    use super::{COPILOT_AUTH_ENV_VARS, filter_provider_environment, sanitize_tokio_command_environment_from};
     use std::ffi::OsString;
     use tokio::process::Command;
 
@@ -131,7 +141,7 @@ mod tests {
         let _ = command.env("AWS_SECRET_ACCESS_KEY", "override-secret");
         let _ = command.env("GITHUB_TOKEN", "github-secret");
 
-        sanitize_tokio_command_environment(&mut command, &[]);
+        sanitize_tokio_command_environment_from(&mut command, &[], std::iter::empty());
 
         let configured_names: Vec<String> = command
             .as_std()
@@ -147,10 +157,14 @@ mod tests {
     #[test]
     fn copilot_exception_preserves_only_its_auth_token() {
         let mut command = Command::new("copilot");
-        let _ = command.env("GITHUB_TOKEN", "github-secret");
+        let _ = command.env("GITHUB_TOKEN", "discarded-command-override");
         let _ = command.env("OPENAI_API_KEY", "openai-secret");
 
-        sanitize_tokio_command_environment(&mut command, COPILOT_AUTH_ENV_VARS);
+        let inherited_environment = [
+            (OsString::from("GITHUB_TOKEN"), OsString::from("fixture-github-token")),
+            (OsString::from("OPENAI_API_KEY"), OsString::from("fixture-openai-token")),
+        ];
+        sanitize_tokio_command_environment_from(&mut command, COPILOT_AUTH_ENV_VARS, inherited_environment);
 
         let configured_names: Vec<String> = command
             .as_std()
@@ -160,5 +174,14 @@ mod tests {
 
         assert!(configured_names.iter().any(|name| name == "GITHUB_TOKEN"));
         assert!(!configured_names.iter().any(|name| name == "OPENAI_API_KEY"));
+        assert_eq!(
+            command
+                .as_std()
+                .get_envs()
+                .find(|(key, _)| *key == "GITHUB_TOKEN")
+                .and_then(|(_, value)| value),
+            Some(std::ffi::OsStr::new("fixture-github-token")),
+            "the exception preserves the inherited token, not a command override"
+        );
     }
 }

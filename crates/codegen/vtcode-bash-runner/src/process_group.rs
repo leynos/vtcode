@@ -418,19 +418,53 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_set_parent_death_signal_no_panic() {
-        // Just verify it doesn't panic
-        #[cfg(target_os = "linux")]
-        {
-            let parent_pid = unistd::getpid().as_raw();
-            // Note: This will likely fail in tests since we're not in pre_exec
-            // but it should not panic
-            let _ = set_parent_death_signal(parent_pid);
-        }
-        #[cfg(not(target_os = "linux"))]
-        {
-            assert!(set_parent_death_signal(0).is_ok());
-        }
+    #[cfg(target_os = "linux")]
+    fn test_set_parent_death_signal_accepts_current_parent() {
+        rusty_fork::fork(
+            "process_group::tests::test_set_parent_death_signal_accepts_current_parent",
+            rusty_fork::rusty_fork_id!(),
+            |_| {},
+            |child, _output| {
+                let status = child
+                    .wait_timeout(std::time::Duration::from_secs(5))
+                    .expect("wait for fixture child")
+                    .expect("fixture child should terminate promptly");
+                assert!(status.success(), "registering the current parent should succeed: {status:?}");
+            },
+            || {
+                set_parent_death_signal(unistd::getppid().as_raw()).expect("register parent death signal");
+            },
+        )
+        .expect("run isolated parent-death fixture");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_set_parent_death_signal_terminates_on_parent_mismatch() {
+        rusty_fork::fork(
+            "process_group::tests::test_set_parent_death_signal_terminates_on_parent_mismatch",
+            rusty_fork::rusty_fork_id!(),
+            |_| {},
+            |child, _output| {
+                let status = child
+                    .wait_timeout(std::time::Duration::from_secs(5))
+                    .expect("wait for fixture child")
+                    .expect("fixture child should terminate promptly");
+                assert_eq!(status.unix_signal(), Some(libc::SIGTERM), "parent mismatch must terminate the child");
+            },
+            || {
+                // A process cannot be its own parent. Only the fixture child
+                // receives the intentional termination signal.
+                let _result = set_parent_death_signal(unistd::getpid().as_raw());
+            },
+        )
+        .expect("run isolated parent-mismatch fixture");
+    }
+
+    #[test]
+    #[cfg(not(target_os = "linux"))]
+    fn test_set_parent_death_signal_is_noop_on_other_platforms() {
+        assert!(set_parent_death_signal(0).is_ok(), "unsupported platforms use the documented no-op");
     }
 
     #[test]

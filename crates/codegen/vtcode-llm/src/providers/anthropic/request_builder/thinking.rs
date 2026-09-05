@@ -99,7 +99,7 @@ pub(crate) fn build_thinking_config(
     };
 
     if thinking_enabled {
-        if profile.is_some_and(|p| matches!(p.mode, super::super::capabilities::ClaudeThinkingMode::Adaptive)) {
+        if profile.is_some() {
             if profile.is_some_and(|p| p.supports_manual_budget)
                 && let Some(explicit_budget) = request.thinking_budget
             {
@@ -133,7 +133,7 @@ pub(crate) fn build_thinking_config(
             return (Some(thinking), None);
         }
     } else if let Some(effort) = request.reasoning_effort {
-        if profile.is_some_and(|p| matches!(p.mode, super::super::capabilities::ClaudeThinkingMode::Adaptive)) {
+        if profile.is_some() {
             return (None, None);
         }
 

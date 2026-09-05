@@ -83,6 +83,7 @@ mod validation_tests {
     use std::sync::Arc;
     use vtcode_config::constants::models;
     use vtcode_config::core::AnthropicConfig;
+    use vtcode_config::types::ReasoningEffortLevel;
 
     #[test]
     fn test_validate_empty_messages() {
@@ -142,10 +143,10 @@ mod validation_tests {
     }
 
     #[test]
-    fn test_validate_effort_rejects_unsupported_models() {
+    fn test_validate_effort_rejects_unknown_model() {
         let request = LLMRequest {
             messages: vec![Message::user("hi".to_string())].into(),
-            model: models::CLAUDE_SONNET_5.to_string(),
+            model: "claude-3-7-sonnet-test".to_string(),
             effort: Some("medium".to_string()),
             ..Default::default()
         };
@@ -166,20 +167,7 @@ mod validation_tests {
     }
 
     #[test]
-    fn test_validate_effort_xhigh_rejected_for_sonnet_4_6() {
-        let config = AnthropicConfig::default();
-        let request = LLMRequest {
-            messages: vec![Message::user("hi".to_string())].into(),
-            model: models::CLAUDE_SONNET_5.to_string(),
-            effort: Some("xhigh".to_string()),
-            ..Default::default()
-        };
-
-        assert!(validate_request(&request, models::anthropic::DEFAULT_MODEL, &config, "Anthropic").is_err());
-    }
-
-    #[test]
-    fn test_validate_sonnet_4_6_omits_prefill_without_thinking() {
+    fn test_validate_sonnet_5_omits_prefill_without_thinking() {
         let config = AnthropicConfig {
             extended_thinking_enabled: false,
             ..AnthropicConfig::default()
@@ -195,7 +183,7 @@ mod validation_tests {
     }
 
     #[test]
-    fn test_validate_sonnet_4_6_omits_prefill_thought_without_thinking() {
+    fn test_validate_sonnet_5_omits_prefill_thought_without_thinking() {
         let config = AnthropicConfig {
             extended_thinking_enabled: false,
             ..AnthropicConfig::default()
@@ -464,6 +452,7 @@ mod request_builder_tests {
     use std::sync::Arc;
     use vtcode_config::constants::models;
     use vtcode_config::core::{AnthropicConfig, AnthropicPromptCacheSettings};
+    use vtcode_config::types::ReasoningEffortLevel;
 
     #[test]
     fn test_tool_result_blocks_empty() {
@@ -1085,14 +1074,17 @@ mod request_builder_tests {
     }
 
     #[test]
-    fn test_convert_to_anthropic_format_falls_back_to_high_for_sonnet_4_6_default_effort() {
+    fn test_convert_to_anthropic_format_falls_back_to_high_for_invalid_configured_effort_on_sonnet_5() {
         let request = LLMRequest {
             model: models::CLAUDE_SONNET_5.to_string(),
             messages: vec![Message::user("solve this carefully".to_string())].into(),
             ..Default::default()
         };
         let cache_settings = AnthropicPromptCacheSettings::default();
-        let anthropic_config = AnthropicConfig::default();
+        let anthropic_config = AnthropicConfig {
+            effort: ReasoningEffortLevel::Unknown,
+            ..AnthropicConfig::default()
+        };
         let ctx = RequestBuilderContext {
             prompt_cache_enabled: false,
             prompt_cache_settings: &cache_settings,

@@ -7,13 +7,14 @@
 //! These tests validate that all refactored modules work together correctly
 //! and maintain backward compatibility.
 
-use std::str::FromStr;
+use std::sync::Arc;
+use vtcode_commons::StaticWorkspacePaths;
+use vtcode_config::defaults::provider::with_config_defaults_provider_for_test;
 use vtcode_core::{
     code::code_completion::{CompletionContext, CompletionEngine},
     code::code_quality::{FormattingOrchestrator, LintingOrchestrator, QualityMetrics},
-    config::{ConfigManager, ToolPolicy, VTCodeConfig},
+    config::{ConfigManager, ToolPolicy, VTCodeConfig, WorkspacePathsDefaults},
     gemini::{Client, ClientConfig},
-    models::Provider,
 };
 
 #[test]
@@ -31,24 +32,33 @@ fn test_gemini_module_integration() {
 }
 
 #[test]
-fn test_config_module_integration() {
+#[serial_test::serial]
+fn test_config_module_integration() -> anyhow::Result<()> {
     // Test that we can create and use configurations
     let config = VTCodeConfig::default();
-    assert_eq!(config.agent.provider, vtcode_core::config::constants::defaults::DEFAULT_PROVIDER);
-    assert_eq!(config.tools.default_policy, ToolPolicy::Prompt);
-
-    // Test that we can load configuration from an isolated workspace with no
-    // config file (defaults apply). Loading from "." would pick up any local
-    // vtcode.toml (e.g. a custom provider), making this test non-deterministic.
-    let temp_workspace = tempfile::tempdir().expect("Failed to create temp workspace");
-    let manager =
-        ConfigManager::load_from_workspace(temp_workspace.path()).expect("Failed to load config from temp workspace");
-    let loaded_config = manager.config();
-    assert!(
-        Provider::from_str(loaded_config.agent.provider.as_str()).is_ok(),
-        "unexpected provider '{}' in loaded config",
-        loaded_config.agent.provider
+    anyhow::ensure!(
+        config.agent.provider == vtcode_core::config::constants::defaults::DEFAULT_PROVIDER,
+        "default configuration should use the default provider"
     );
+    anyhow::ensure!(config.tools.default_policy == ToolPolicy::Prompt, "default tool policy should prompt");
+
+    // An empty workspace still inherits user configuration unless the defaults
+    // provider excludes those paths. Keep every candidate inside this fixture.
+    let temp_workspace = tempfile::tempdir()?;
+    let paths = StaticWorkspacePaths::new(temp_workspace.path(), temp_workspace.path().join(".vtcode"));
+    let defaults = WorkspacePathsDefaults::new(Arc::new(paths))
+        .with_home_paths(Vec::new())
+        .with_system_config_paths(Vec::new());
+    let manager = with_config_defaults_provider_for_test(Arc::new(defaults), || {
+        ConfigManager::load_from_workspace(temp_workspace.path())
+    })?;
+    let loaded_config = manager.config();
+    anyhow::ensure!(
+        loaded_config.agent.provider == vtcode_core::config::constants::defaults::DEFAULT_PROVIDER,
+        "isolated configuration should use the default provider"
+    );
+    anyhow::ensure!(loaded_config.tools.default_policy == ToolPolicy::Prompt, "loaded tool policy should prompt");
+    Ok(())
 }
 
 #[test]
