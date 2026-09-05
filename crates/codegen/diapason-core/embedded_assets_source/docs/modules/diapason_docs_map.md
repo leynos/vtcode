@@ -203,7 +203,7 @@ relevant sections from the files listed below based on the topic area.
 
 - **File**: `docs/development/fuzzing.md`
   - **Content**: Fuzzing Guide
-  - **Topics**: Scope, Basic Commands, Corpus and Artifacts, Reproducing a
+  - **Topics**: Scope, Basic Commands, Corpus and Artefacts, Reproducing a
     Crash, Coverage (Optional)
   - **User Questions**: "What can you tell me about Fuzzing Guide?", "How does
     Scope work?", "How does Basic Commands work?"

@@ -1302,7 +1302,7 @@ constant-on-the-left comparisons.
   is inclusive and `end` is exclusive.
 - Relational rules describe structure around the target node. Use `inside`,
   `has`, `follows`, and `precedes` when the match depends on ancestors,
-  descendants, or neighboring nodes.
+  descendants, or neighbouring nodes.
 - Read relational rules as: target node relates to surrounding node. The
   top-level rule still matches the target; the relational subrule matches the
   surrounding node that filters it.

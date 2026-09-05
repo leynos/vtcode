@@ -89,7 +89,7 @@ pub fn check_completion_candidate(response_text: &str) -> bool {
     // finished its task even without an explicit done phrase.  Detect this by checking that
     // the response opens with a "## Summary" heading (after stripping leading whitespace) and
     // also contains a "## Facts" section.  Headers are matched line-by-line after trimming so
-    // CRLF, extra spaces, and capitalisation variations are handled uniformly.
+    // CRLF, extra spaces, and capitalization variations are handled uniformly.
     {
         let mut has_summary_header = false;
         let mut has_facts_header = false;

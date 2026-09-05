@@ -197,13 +197,13 @@ indicates Diapason status. In the `extension.ts` file, you'll find:
 To customize the icon or add additional functionality to the status bar item:
 
 1. Look for the status bar creation code in `extension.ts`
-2. Modify the icon, text, or behavior as needed
+2. Modify the icon, text, or behaviour as needed
 3. The status bar already shows different states based on CLI availability
 
-### Modifying Status Bar Click Behavior
+### Modifying Status Bar Click Behaviour
 
 By default, the status bar item opens the quick actions when clicked if the CLI
-is available. If you want to change this behavior to launch the agent terminal
+is available. If you want to change this behaviour to launch the agent terminal
 instead:
 
 1. In `extension.ts`, locate the `updateStatusBarItem` function
@@ -310,7 +310,7 @@ You can also customize the appearance of the status bar, including text and
 tooltip, in the same `updateStatusBarItem` function.
 
 The existing status bar item already has a command to open the agent terminal,
-and you can customize its appearance and behavior by modifying the code in
+and you can customize its appearance and behaviour by modifying the code in
 `extension.ts`.
 
 ## Common Issues

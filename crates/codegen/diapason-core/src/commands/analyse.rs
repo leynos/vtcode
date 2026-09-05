@@ -1,4 +1,4 @@
-//! Analyze command implementation - workspace analysis
+//! Analyse command implementation - workspace analysis
 
 use crate::config::constants::tools;
 use crate::config::types::{AgentConfig, AnalysisDepth, OutputFormat};
@@ -7,7 +7,7 @@ use crate::utils::colours::style;
 use anyhow::Result;
 use serde_json::json;
 
-/// Handle the analyze command - comprehensive workspace analysis
+/// Handle the analyse command - comprehensive workspace analysis
 pub async fn handle_analyse_command(config: AgentConfig, depth: String, format: String) -> Result<()> {
     println!("{}", style("Analysing workspace...").cyan().bold());
 

@@ -33,11 +33,11 @@ pub(crate) fn ratatui_colour_from_ansi(colour: AnsiColourEnum) -> Color {
     crate::design::colour::anstyle_to_ratatui_colour(colour)
 }
 
-/// Parse a hex color string (e.g., "#D99A4E") to a ratatui Color.
+/// Parse a hex colour string (e.g., "#D99A4E") to a ratatui Color.
 /// Returns None if the string is invalid or cannot be parsed.
 pub(crate) use crate::design::colour::hex_to_ratatui_colour;
 
-/// Get the agent color style from an optional color token.
+/// Get the agent colour style from an optional colour token.
 ///
 /// The token may be a primary-agent mode name (`"build"`), a standard ANSI hue
 /// name (`"green"`), or a `#rrggbb` hex string. It is resolved theme-aware via
@@ -101,7 +101,7 @@ mod tests {
         let fallback = Color::LightMagenta;
         let style = agent_colour_style(Some(AGENT_COLOUR_BUILD), fallback);
         // The exact variant depends on the detected terminal scheme, but it must
-        // be a concrete (non-fallback) standard color and always bold.
+        // be a concrete (non-fallback) standard colour and always bold.
         assert_ne!(style.fg, Some(fallback));
         assert!(style.add_modifier.contains(Modifier::BOLD));
 

@@ -314,7 +314,7 @@ fn strip_ascii_case_insensitive_prefix<'a>(value: &'a str, prefix: &str) -> Opti
         .and_then(|_| value.get(prefix_end..).map(str::trim_start))
 }
 
-fn labeled_body_for_aliases(content: &str, labels: &[&str]) -> Option<String> {
+fn labelled_body_for_aliases(content: &str, labels: &[&str]) -> Option<String> {
     let lines = content
         .lines()
         .map(str::trim)
@@ -612,7 +612,7 @@ fn is_concrete_target(value: &str) -> bool {
     // domain terms. This rejects arbitrary filler such as `foo bar` or
     // `implementation details` while allowing concrete behaviour names such
     // as `approval handoff`, `startup latency`, and `cache invalidation`.
-    const CONCRETE_BEHAVIOR_WORDS: &[&str] = &[
+    const CONCRETE_BEHAVIOUR_WORDS: &[&str] = &[
         "agent",
         "assertion",
         "approval",
@@ -675,7 +675,7 @@ fn is_concrete_target(value: &str) -> bool {
     let concrete_word_count = lower
         .split_whitespace()
         .map(|word| word.trim_matches(|character: char| character.is_ascii_punctuation()))
-        .filter(|word| CONCRETE_BEHAVIOR_WORDS.contains(word))
+        .filter(|word| CONCRETE_BEHAVIOUR_WORDS.contains(word))
         .count();
     lower.split_whitespace().count() >= 2 && concrete_word_count >= 2
 }
@@ -1206,24 +1206,24 @@ pub fn validate_plan_content(content: &str) -> PlanValidationReport {
     };
 
     let summary_body = section_body_for_aliases(&stripped, SUMMARY_SECTION_ALIASES)
-        .or_else(|| labeled_body_for_aliases(&stripped, SUMMARY_SECTION_ALIASES));
+        .or_else(|| labelled_body_for_aliases(&stripped, SUMMARY_SECTION_ALIASES));
     let implementation_section_body = section_body_for_aliases(&stripped, IMPLEMENTATION_SECTION_ALIASES);
-    let implementation_labeled_body = labeled_body_for_aliases(&stripped, IMPLEMENTATION_SECTION_ALIASES);
+    let implementation_labelled_body = labelled_body_for_aliases(&stripped, IMPLEMENTATION_SECTION_ALIASES);
     let implementation_blocks = if let Some(body) = implementation_section_body.as_deref() {
         collect_implementation_step_blocks(body, false)
-    } else if implementation_labeled_body.is_some() {
-        collect_implementation_step_blocks(implementation_labeled_body.as_deref().unwrap_or_default(), false)
+    } else if implementation_labelled_body.is_some() {
+        collect_implementation_step_blocks(implementation_labelled_body.as_deref().unwrap_or_default(), false)
     } else {
         // Older compact plans omit a Steps heading and put the numbered list
-        // between labeled Summary/Validation/Assumptions lines. Keep that
-        // compatibility, but stop collecting when the next labeled section
+        // between labelled Summary/Validation/Assumptions lines. Keep that
+        // compatibility, but stop collecting when the next labelled section
         // begins so validation bullets cannot masquerade as step details.
         collect_implementation_step_blocks(&stripped, true)
     };
     let validation_body = section_body_for_aliases(&stripped, VALIDATION_SECTION_ALIASES)
-        .or_else(|| labeled_body_for_aliases(&stripped, VALIDATION_SECTION_ALIASES));
+        .or_else(|| labelled_body_for_aliases(&stripped, VALIDATION_SECTION_ALIASES));
     let assumptions_body = section_body_for_aliases(&stripped, ASSUMPTIONS_SECTION_ALIASES)
-        .or_else(|| labeled_body_for_aliases(&stripped, ASSUMPTIONS_SECTION_ALIASES));
+        .or_else(|| labelled_body_for_aliases(&stripped, ASSUMPTIONS_SECTION_ALIASES));
 
     for (section, body) in [
         ("Summary", summary_body.as_ref()),

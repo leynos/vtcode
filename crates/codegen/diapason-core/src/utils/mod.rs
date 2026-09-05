@@ -15,7 +15,7 @@
 //! - **Command Sanitization**: Safe command execution
 //! - **Input Validation**: User input sanitization
 //!
-//! ### ANSI and Colors (`ansi`, `colours`)
+//! ### ANSI and Colours (`ansi`, `colours`)
 //! - **Terminal Colours**: ANSI colour codes and styling
 //! - **Colour Management**: Theme support and colour schemes
 //! - **Cross-platform**: Works on different terminal types

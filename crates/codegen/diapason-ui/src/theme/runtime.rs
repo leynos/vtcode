@@ -16,11 +16,11 @@ struct ActiveTheme {
     styles: ThemeStyles,
 }
 
-static COLOR_CONFIG: Lazy<RwLock<ColourAccessibilityConfig>> =
+static COLOUR_CONFIG: Lazy<RwLock<ColourAccessibilityConfig>> =
     Lazy::new(|| RwLock::new(ColourAccessibilityConfig::default()));
 
 fn current_colour_config() -> impl std::ops::Deref<Target = ColourAccessibilityConfig> {
-    COLOR_CONFIG.read()
+    COLOUR_CONFIG.read()
 }
 
 static ACTIVE: Lazy<RwLock<ActiveTheme>> = Lazy::new(|| {
@@ -36,22 +36,22 @@ static PREVIEW: Lazy<RwLock<Option<ActiveTheme>>> = Lazy::new(|| RwLock::new(Non
 
 /// Update the runtime colour accessibility configuration.
 pub fn set_colour_accessibility_config(config: ColourAccessibilityConfig) {
-    *COLOR_CONFIG.write() = config;
+    *COLOUR_CONFIG.write() = config;
 }
 
 /// Return the currently configured minimum contrast ratio.
 pub fn get_minimum_contrast() -> f32 {
-    COLOR_CONFIG.read().minimum_contrast
+    COLOUR_CONFIG.read().minimum_contrast
 }
 
 /// Report whether bold text should avoid terminal bright-colour behaviour.
 pub fn is_bold_bright_mode() -> bool {
-    COLOR_CONFIG.read().bold_is_bright
+    COLOUR_CONFIG.read().bold_is_bright
 }
 
 /// Report whether the UI should restrict itself to safe ANSI colours.
 pub fn is_safe_colours_only() -> bool {
-    COLOR_CONFIG.read().safe_colours_only
+    COLOUR_CONFIG.read().safe_colours_only
 }
 
 /// Activate a built-in theme by identifier.
