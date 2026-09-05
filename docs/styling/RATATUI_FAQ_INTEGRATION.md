@@ -142,7 +142,7 @@ Diapason now includes comprehensive guides based on these best practices:
 
 ### docs/FAQ.md (174 lines)
 
-Common questions about Diapason's architecture, terminal behavior, and
+Common questions about Diapason's architecture, terminal behaviour, and
 configuration. Includes Q&A on duplicate key events, async usage, terminal
 resizing, and character rendering.
 
@@ -177,7 +177,7 @@ Guide to widget rendering and UI composition:
 - Layout computation and constraint-based designs
 - Widget composition patterns
 - Text reflow and terminal resize handling
-- Color and styling in Ratatui
+- Colour and styling in Ratatui
 - Performance considerations
 - Common rendering issues and solutions
 

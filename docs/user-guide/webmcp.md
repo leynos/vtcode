@@ -441,7 +441,7 @@ agent turn. The browser diff remains a local review preview; the adapter
 revalidates the proposal ID before enqueueing the handoff. Terminal tool
 permissions remain authoritative. The active bridge keeps direct browser apply,
 check, and revert disabled; ask Diapason to perform those actions and reload
-the browser afterward.
+the browser afterwards.
 
 ### Optional: enable apply and checks for a disposable workspace
 

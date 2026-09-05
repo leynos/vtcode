@@ -13,15 +13,15 @@ Environment variables set in
 `crates/codegen/diapason-core/src/tools/pty.rs::set_command_environment()`:
 
 ```rust
-// Disable automatic color output from build tools
-builder.env("NO_COLOR", "1");                    // Universal color disable
+// Disable automatic colour output from build tools
+builder.env("NO_COLOR", "1");                    // Universal colour disable
 builder.env("CLICOLOR", "0");                    // Disable ANSI for ls, etc.
-builder.env("CLICOLOR_FORCE", "0");              // Don't force colors
-builder.env("LS_COLORS", "");                    // No color for ls
+builder.env("CLICOLOR_FORCE", "0");              // Don't force colours
+builder.env("LS_COLORS", "");                    // No colour for ls
 
 // Rust/Cargo specific
-builder.env("CARGO_TERM_COLOR", "never");        // Disable cargo colors
-builder.env("RUSTFLAGS", "-C color=never");      // Disable rustc colors
+builder.env("CARGO_TERM_COLOR", "never");        // Disable cargo colours
+builder.env("RUSTFLAGS", "-C color=never");      // Disable rustc colours
 ```
 
 **Benefits**: Prevents ANSI codes from being generated in the first place—most
@@ -81,7 +81,7 @@ Two complementary parsers handle edge cases:
 
 Handles:
 
-- **CSI sequences**: `ESC[...letter` (colors, styles, cursor movement)
+- **CSI sequences**: `ESC[...letter` (colours, styles, cursor movement)
 - **OSC sequences**: `ESC]...BEL` or `ESC]...ST` (hyperlinks, titles)
 - **DCS/PM/APC**: `ESC P/^/_...ST` (device control strings)
 - **2-char escapes**: `ESC[`, `ESC]`, etc.
@@ -89,7 +89,7 @@ Handles:
 
 Tests in `crates/codegen/diapason-core/src/utils/ansi_parser.rs` verify:
 
-- Basic colors: `\x1b[31mRed\x1b[0m` → `Red`
+- Basic colours: `\x1b[31mRed\x1b[0m` → `Red`
 - Bold: `\x1b[1;32mbold\x1b[0m` → `bold`
 - Cargo output with warnings/errors
 - OSC with ST terminator: `\x1b]8;;file://\x1b\\` (hyperlinks)
@@ -156,8 +156,8 @@ Both commands should produce **zero matches** after these changes.
 | ANSI at token boundary              | Strip before truncation, then truncate       |
 | Multiple nested styles              | All sequences stripped (not rendered anyway) |
 | Hyperlinks (`ESC]8` OSC)            | Stripped (just text remains)                 |
-| 256-color codes (`ESC[38;5;123m`)   | Stripped (part of CSI sequence)              |
-| True color (`ESC[38;2;R;G;Bm`)      | Stripped (part of CSI sequence)              |
+| 256-colour codes (`ESC[38;5;123m`)  | Stripped (part of CSI sequence)              |
+| True colour (`ESC[38;2;R;G;Bm`)     | Stripped (part of CSI sequence)              |
 | Mixed line endings                  | Preserved as-is (`\r\n`, `\n`, `\r`)         |
 
 ## Related Files
