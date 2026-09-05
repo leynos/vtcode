@@ -484,7 +484,7 @@ let result = plugin.execute(&ctx)?;
 See example plugins in the VT Code repository:
 - `examples/plugins/hello-world/` - Minimal plugin example
 - `examples/plugins/data-processor/` - Data processing plugin
-- `examples/plugins/file-analyzer/` - File analysis plugin
+- `examples/plugins/file-analyser/` - File analysis plugin
 
 ## Contributing
 

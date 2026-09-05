@@ -349,11 +349,11 @@ mod tests {
 
     #[test]
     fn test_extract_reasoning_content_think_tags() {
-        let content = "Let me think <think>I need to analyze this problem</think>The answer is 42";
+        let content = "Let me think <think>I need to analyse this problem</think>The answer is 42";
         let (reasoning, main) = extract_reasoning_content(content);
 
         assert_eq!(reasoning.len(), 1);
-        assert_eq!(reasoning[0], "I need to analyze this problem");
+        assert_eq!(reasoning[0], "I need to analyse this problem");
         assert_eq!(main.unwrap(), "Let me think The answer is 42");
     }
 

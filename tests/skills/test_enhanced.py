@@ -816,8 +816,12 @@ vtcode skill run data-processing-utils:clean --input raw_data.csv --config clean
 ```
 
 ### 3. Analyse (this skill)
+
+Provide a project-specific `scripts/analyse.py` implementation for this illustrative
+step. This demonstration generates the skill instructions only.
+
 ```bash
-python scripts/analyze.py --cleaned-data cleaned_data.csv --config analysis.json
+python scripts/analyse.py --cleaned-data cleaned_data.csv --config analysis.json
 ```
 
 ### 4. Visualize (uses data-processing-utils)

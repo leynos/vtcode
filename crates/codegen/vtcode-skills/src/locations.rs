@@ -478,14 +478,14 @@ mod tests {
         let base_path = temp_dir.path();
 
         // Create one-level skill structure
-        let skill_path = base_path.join("file-analyzer");
+        let skill_path = base_path.join("file-analyser");
         std::fs::create_dir_all(&skill_path).unwrap();
-        std::fs::write(skill_path.join("SKILL.md"), "---\nname: file-analyzer\n---\n").unwrap();
+        std::fs::write(skill_path.join("SKILL.md"), "---\nname: file-analyser\n---\n").unwrap();
 
         let location = SkillLocation::new(SkillLocationType::ClaudeProject, base_path.to_path_buf(), true);
 
         let skill_name = location.get_skill_name(&skill_path);
-        assert_eq!(skill_name, Some("file-analyzer".to_string()));
+        assert_eq!(skill_name, Some("file-analyser".to_string()));
     }
 
     #[tokio::test]

@@ -764,8 +764,8 @@ benchmark_results/
 analysis_reports/
 debug_logs/
 performance_data/
-test_artifacts/
-build_artifacts/
+test_artefacts/
+build_artefacts/
 
 # Agent snapshots for debugging and reproducibility
 snapshots/

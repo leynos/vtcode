@@ -322,8 +322,8 @@ impl MockCliArgs {
         vec!["vtcode".to_string(), "ask".to_string(), query.to_string()]
     }
 
-    pub fn analyze_command(path: &str) -> Vec<String> {
-        vec!["vtcode".to_string(), "analyze".to_string(), path.to_string()]
+    pub fn analyse_command(path: &str) -> Vec<String> {
+        vec!["vtcode".to_string(), "analyse".to_string(), path.to_string()]
     }
 
     pub fn validate_command() -> Vec<String> {

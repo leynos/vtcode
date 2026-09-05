@@ -16,7 +16,7 @@ fn suppresses_redundant_diff_recap_after_git_diff_view_request() {
 #[test]
 fn does_not_suppress_diff_recap_when_user_asked_for_analysis() {
     let history = vec![
-        uni::Message::user("analyze this diff and explain".to_string()),
+        uni::Message::user("analyse this diff and explain".to_string()),
         uni::Message::tool_response(
             "call_1".to_string(),
             r#"{"content_type":"git_diff","command":"git diff -- src/main.rs"}"#.to_string(),

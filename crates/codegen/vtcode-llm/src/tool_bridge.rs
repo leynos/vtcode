@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn test_intent_extraction_analyse() {
-        let text = "Analyze the config file please";
+        let text = "Analyse the config file please";
         let intent = ToolIntentExtractor::extract(text);
 
         assert!(matches!(intent, Some(ToolIntent::Analyse(_))));

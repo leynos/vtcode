@@ -12,11 +12,11 @@ describe('mentionParser', () => {
         });
 
         it('should parse multiple mentions', () => {
-            const result = parseMentions('@workspace analyze @code and @terminal');
+            const result = parseMentions('@workspace analyse @code and @terminal');
             expect(result.hasMentions).toBe(true);
             expect(result.mentions).toHaveLength(3);
             expect(result.mentions.map(m => m.type)).toEqual(['workspace', 'code', 'terminal']);
-            expect(result.cleanText).toBe('analyze and');
+            expect(result.cleanText).toBe('analyse and');
         });
 
         it('should handle mentions at start and end', () => {
