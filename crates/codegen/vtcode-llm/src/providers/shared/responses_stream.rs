@@ -14,7 +14,7 @@ use super::{StreamAggregator, generate_tool_call_id, parse_cached_prompt_tokens_
 // NormalizedStreamEvent contract: text/refusal/reasoning deltas, tool-call
 // start and argument deltas, tolerant empty-final-response recovery, and
 // backend error text. Protected by this module's `responses_stream` tests.
-// Remove only when Rig exposes an event adapter with the same normalised
+// Remove only when Rig exposes an event adapter with the same normalized
 // surface for all VTCode providers that use Responses-style streaming.
 pub struct ResponsesNormalizedStreamOptions {
     pub(crate) provider_name: &'static str,

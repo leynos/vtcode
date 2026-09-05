@@ -1,14 +1,14 @@
 pub(crate) struct PatchContextMatcher<'a> {
     lines: &'a [String],
     /// Normalised form of every file line, computed once at construction so
-    /// repeated `seek` calls (and thus repeated patch hunks) don't re-normalise
+    /// repeated `seek` calls (and thus repeated patch hunks) don't re-normalize
     /// the whole file on every lookup.
     norm_lines: Vec<String>,
 }
 
 impl<'a> PatchContextMatcher<'a> {
     pub(crate) fn new(lines: &'a [String]) -> Self {
-        let norm_lines = lines.iter().map(|l| normalise_text(l)).collect();
+        let norm_lines = lines.iter().map(|l| normalize_text(l)).collect();
         Self { lines, norm_lines }
     }
 
@@ -61,9 +61,9 @@ impl<'a> PatchContextMatcher<'a> {
             }
         }
 
-        // Compare against the pre-computed normalised file lines (built once in
-        // `new`), avoiding re-normalising the whole file on every `seek` call.
-        let norm_pattern: Vec<String> = pattern.iter().map(|p| normalise_text(p)).collect();
+        // Compare against the pre-computed normalized file lines (built once in
+        // `new`), avoiding re-normalizing the whole file on every `seek` call.
+        let norm_pattern: Vec<String> = pattern.iter().map(|p| normalize_text(p)).collect();
         let norm_lines = &self.norm_lines;
         for idx in search_start..=max_start {
             let mut ok = true;
@@ -102,11 +102,11 @@ pub(crate) fn seek_segment(
     found
 }
 
-pub(crate) fn normalise_text(input: &str) -> String {
+pub(crate) fn normalize_text(input: &str) -> String {
     let trimmed = input.trim();
     let mut result = String::with_capacity(trimmed.len());
     for c in trimmed.chars() {
-        let normalised = match c {
+        let normalized = match c {
             '\u{2010}' | '\u{2011}' | '\u{2012}' | '\u{2013}' | '\u{2014}' | '\u{2015}' | '\u{2212}' => '-',
             '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' => '\'',
             '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{201F}' => '"',
@@ -114,7 +114,7 @@ pub(crate) fn normalise_text(input: &str) -> String {
             | '\u{2009}' | '\u{200A}' | '\u{202F}' | '\u{205F}' | '\u{3000}' => ' ',
             other => other,
         };
-        result.push(normalised);
+        result.push(normalized);
     }
     result
 }

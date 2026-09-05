@@ -1257,7 +1257,7 @@ fn code_search_tool_serialization_preserves_simple_constraints() {
         vtcode_utility_tool_specs::code_search_parameters(),
     );
     let serialized = tool_serialization::serialize_tools(std::slice::from_ref(&tool), models::openai::DEFAULT_MODEL)
-        .expect("chat tools should serialise");
+        .expect("chat tools should serialize");
     let chat_parameters = &serialized.as_array().expect("chat tool array")[0]["parameters"];
 
     assert_eq!(chat_parameters["required"], json!(["query"]));
@@ -1275,7 +1275,7 @@ fn code_search_tool_serialization_preserves_simple_constraints() {
     assert!(chat_parameters.get("anyOf").is_none());
 
     let responses =
-        tool_serialization::serialize_tools_for_responses(&[tool], None).expect("responses tools should serialise");
+        tool_serialization::serialize_tools_for_responses(&[tool], None).expect("responses tools should serialize");
     let responses_parameters = &responses.as_array().expect("responses tool array")[0]["parameters"];
     assert_eq!(responses_parameters, chat_parameters);
 }

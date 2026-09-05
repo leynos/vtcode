@@ -861,7 +861,7 @@ impl ToolExecutionHistory {
             return None;
         }
         if tool_name == tools::CODE_SEARCH {
-            return crate::tools::normalised_code_search_identity(args);
+            return crate::tools::normalized_code_search_identity(args);
         }
         let path = Self::extract_path_from_args(obj)?;
         if tool_name == tools::GREP_FILE {
@@ -1021,8 +1021,8 @@ impl ToolExecutionHistory {
         let mut identical_count = 0;
         for record in &recent {
             let same_args = if tool_name_matches(tool_name, tools::CODE_SEARCH) {
-                crate::tools::normalised_code_search_loop_identity(&record.args)
-                    == crate::tools::normalised_code_search_loop_identity(args)
+                crate::tools::normalized_code_search_loop_identity(&record.args)
+                    == crate::tools::normalized_code_search_loop_identity(args)
             } else {
                 record.args == *args
             };
@@ -1610,7 +1610,7 @@ mod tests {
     }
 
     #[test]
-    fn code_search_loop_identity_normalises_query_filters_and_limit() {
+    fn code_search_loop_identity_normalizes_query_filters_and_limit() {
         let history = ToolExecutionHistory::new(10);
         history.set_loop_detection_limits(5, 2);
 

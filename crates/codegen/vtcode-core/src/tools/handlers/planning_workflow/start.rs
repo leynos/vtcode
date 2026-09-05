@@ -67,7 +67,7 @@ impl StartPlanningTool {
             }
             None => {
                 // Generate human-readable slug with timestamp prefix
-                // Format: {timestamp_millis}-{adjective}-{noun} (e.g., "1768330644696-gentle-harbor")
+                // Format: {timestamp_millis}-{adjective}-{noun} (e.g., "1768330644696-gentle-harbour")
                 // This follows the OpenCode pattern for memorable plan file names
                 vtcode_commons::slug::create_timestamped()
             }

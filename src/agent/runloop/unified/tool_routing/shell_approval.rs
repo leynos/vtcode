@@ -158,7 +158,7 @@ fn segmented_shell_learning_target(command_words: &[String], scope_signature: &s
 /// Extract the domain from a `web_fetch` / `fetch_url` URL argument.
 ///
 /// Returns `Some("example.com")` for `https://example.com/path`. The domain is
-/// normalised to lowercase so that `https://Example.COM/` and `https://example.com/`
+/// normalized to lowercase so that `https://Example.COM/` and `https://example.com/`
 /// share one cache entry.
 fn web_fetch_domain(tool_args: Option<&Value>) -> Option<String> {
     let url = tool_args?.as_object()?.get("url")?.as_str()?;

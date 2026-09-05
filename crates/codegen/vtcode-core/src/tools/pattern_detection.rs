@@ -141,7 +141,7 @@ impl PatternDetector {
     /// | 4     | `pattern_density`| Ratio of detected patterns to events| `[0, 1]`         |
     ///
     /// **Note:** The values returned by this function have been clamped to `[0, 1]` (except
-    /// `event_count`). True min–max normalisation is not applied — callers that need
+    /// `event_count`). True min–max normalization is not applied — callers that need
     /// dynamic range scaling should wrap this function.
     pub fn feature_vector(&self) -> Vec<f64> {
         let mut features = Vec::with_capacity(5);

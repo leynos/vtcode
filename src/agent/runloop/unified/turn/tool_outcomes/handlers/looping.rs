@@ -245,7 +245,7 @@ pub(crate) fn low_signal_family_key(canonical_tool_name: &str, args: &Value) -> 
         tool_names::UNIFIED_EXEC | tool_names::EXEC_COMMAND => {
             normalized_shell_command_arg(args, 160).map(|command| format!("{label}::run::{command}"))
         }
-        tool_names::CODE_SEARCH => vtcode_core::tools::normalised_code_search_loop_identity(args)
+        tool_names::CODE_SEARCH => vtcode_core::tools::normalized_code_search_loop_identity(args)
             .map(|identity| format!("{canonical_tool_name}::{identity}")),
         tool_names::UNIFIED_SEARCH => {
             let action = args.get("action").and_then(Value::as_str).unwrap_or("grep");
