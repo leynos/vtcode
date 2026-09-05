@@ -55,7 +55,7 @@ pub(super) async fn record_approval_blocking(
 /// Extract the domain from a `web_fetch` URL argument for cache key purposes.
 ///
 /// Returns `Some("example.com")` for `https://example.com/path`, `None` if the
-/// URL is missing or unparseable. The domain is normalised to lowercase so that
+/// URL is missing or unparseable. The domain is normalized to lowercase so that
 /// `https://Example.COM/` and `https://example.com/` share one cache entry.
 pub(super) fn web_fetch_domain(tool_args: Option<&Value>) -> Option<String> {
     let url = tool_args?.as_object()?.get("url")?.as_str()?;

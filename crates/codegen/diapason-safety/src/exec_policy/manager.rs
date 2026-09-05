@@ -52,7 +52,7 @@ pub struct ExecPolicyConfig {
     /// Default sandbox policy for commands.
     default_sandbox_policy: SandboxPolicy,
 
-    /// Default approval behavior.
+    /// Default approval behaviour.
     default_approval: AskForApproval,
 
     /// Whether to apply heuristics for unknown commands.

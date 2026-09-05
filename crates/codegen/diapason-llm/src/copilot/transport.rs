@@ -176,7 +176,7 @@ impl StdioTransport {
     ///
     /// # Errors
     ///
-    /// Returns an error if serialisation fails or the writer task has shut down.
+    /// Returns an error if serialization fails or the writer task has shut down.
     pub fn notify(&self, method: &str, params: Value) -> AcpResult<()> {
         let payload = serde_json::json!({
             "jsonrpc": "2.0",
@@ -193,7 +193,7 @@ impl StdioTransport {
     ///
     /// # Errors
     ///
-    /// Returns an error if serialisation fails or the writer task has shut down.
+    /// Returns an error if serialization fails or the writer task has shut down.
     pub fn respond(&self, id: i64, result: Value) -> AcpResult<()> {
         let payload = serde_json::json!({
             "jsonrpc": "2.0",
@@ -207,7 +207,7 @@ impl StdioTransport {
     ///
     /// # Errors
     ///
-    /// Returns an error if serialisation fails or the writer task has shut down.
+    /// Returns an error if serialization fails or the writer task has shut down.
     pub fn respond_error(&self, id: i64, code: i32, message: impl Into<String>) -> AcpResult<()> {
         let payload = serde_json::json!({
             "jsonrpc": "2.0",
@@ -386,7 +386,7 @@ fn spawn_reader(
 /// Read one physical line while retaining at most `max_bytes` bytes.
 ///
 /// The complete physical line is consumed before returning, so a truncated
-/// diagnostic cannot desynchronise the next read. A partial final line is
+/// diagnostic cannot desynchronize the next read. A partial final line is
 /// returned as a normal line when the stream reaches EOF.
 pub(super) async fn read_bounded_line<R: AsyncBufRead + Unpin>(
     reader: &mut R,

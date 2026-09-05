@@ -291,7 +291,7 @@ impl CachedStyles {
 }
 
 impl DiffRenderer {
-    /// Create a new renderer with default ANSI color palette.
+    /// Create a new renderer with default ANSI colour palette.
     pub fn new(show_line_numbers: bool, context_lines: usize, use_colours: bool) -> Self {
         let palette = GitDiffPalette::new(use_colours);
         let cached_styles = CachedStyles::new(&palette, use_colours);
@@ -498,7 +498,7 @@ pub struct DiffChatRenderer {
 }
 
 impl DiffChatRenderer {
-    /// Create a new chat renderer with default ANSI color palette.
+    /// Create a new chat renderer with default ANSI colour palette.
     pub fn new(show_line_numbers: bool, context_lines: usize, use_colours: bool) -> Self {
         Self {
             diff_renderer: DiffRenderer::new(show_line_numbers, context_lines, use_colours),

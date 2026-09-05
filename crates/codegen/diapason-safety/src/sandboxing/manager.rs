@@ -278,7 +278,7 @@ impl SandboxManager {
     /// requesting a restrictive policy on Windows get an explicit error
     /// instead of silently running unsandboxed. The `is_available()` check in
     /// `transform()` normally catches this first, but this guard ensures
-    /// fail-closed behavior even if the availability check is bypassed.
+    /// fail-closed behaviour even if the availability check is bypassed.
     fn transform_windows(
         &self,
         _spec: CommandSpec,

@@ -113,7 +113,7 @@ impl HitlGate {
         }
     }
 
-    /// Decide based on risk level (original behavior)
+    /// Decide based on risk level (original behaviour)
     pub fn decide(&self, risk: RiskLevel) -> OversightDecision {
         match risk {
             RiskLevel::High => OversightDecision::RequireApproval,

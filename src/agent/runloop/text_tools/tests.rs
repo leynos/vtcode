@@ -88,19 +88,19 @@ fn strip_regions_removes_bare_parameter_eq_block() {
     assert!(!stripped.contains("<parameter="));
 }
 
-/// Regression: when a model uses parameterised close tags (`</function=name>`,
+/// Regression: when a model uses parameterized close tags (`</function=name>`,
 /// `</parameter=name>`) the stripper must not fall back to `end = text.len()`
 /// and must not eat prose that follows the block.
 #[test]
-fn strip_regions_parameterised_close_tags_do_not_eat_trailing_prose() {
-    // Bare block with parameterised close tag, followed by trailing prose.
+fn strip_regions_parameterized_close_tags_do_not_eat_trailing_prose() {
+    // Bare block with parameterized close tag, followed by trailing prose.
     let bare = "Prose before.\n\
                 <function=apply_patch>diff content</function=apply_patch>\n\
                 Prose after.";
     let stripped = strip_textual_tool_call_regions(bare);
     assert!(!stripped.contains("<function="), "function= block should be stripped");
     assert!(stripped.contains("Prose before."), "leading prose must survive");
-    assert!(stripped.contains("Prose after."), "trailing prose must survive bare parameterised close tag");
+    assert!(stripped.contains("Prose after."), "trailing prose must survive bare parameterized close tag");
 
     // When the function= block is nested inside <tool_call> with prose after
     // </tool_call>, the fallback `end=text.len()` must NOT swallow trailing prose.
@@ -118,12 +118,12 @@ fn strip_regions_parameterised_close_tags_do_not_eat_trailing_prose() {
 }
 
 #[test]
-fn strip_regions_removes_function_eq_block_with_parameterised_close() {
+fn strip_regions_removes_function_eq_block_with_parameterized_close() {
     // `</function=name>` close tag (without a tool_call wrapper) must be consumed.
     let text = "<function=write_file>hello world</function=write_file>";
     let stripped = strip_textual_tool_call_regions(text);
     assert!(!stripped.contains("<function="), "function= block should be fully stripped");
-    assert!(!stripped.contains("</function="), "parameterised close tag must be consumed");
+    assert!(!stripped.contains("</function="), "parameterized close tag must be consumed");
 }
 
 #[test]

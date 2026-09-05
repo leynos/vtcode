@@ -1,4 +1,4 @@
-use anstyle::{Color as AnsiColorEnum, Style as AnsiStyle};
+use anstyle::{Color as AnsiColourEnum, Style as AnsiStyle};
 use ratatui::style::{Color, Modifier, Style};
 use unicode_width::UnicodeWidthStr;
 
@@ -29,7 +29,7 @@ pub(crate) fn measure_text_width(text: &str) -> u16 {
 ///
 /// Delegates to `crate::design::colour::anstyle_to_ratatui_colour` which
 /// provides the correct mapping (fixing the Magenta bug).
-pub(crate) fn ratatui_colour_from_ansi(colour: AnsiColorEnum) -> Color {
+pub(crate) fn ratatui_colour_from_ansi(colour: AnsiColourEnum) -> Color {
     crate::design::colour::anstyle_to_ratatui_colour(colour)
 }
 
@@ -54,12 +54,12 @@ pub(crate) fn agent_colour_style(colour: Option<&str>, fallback_colour: Color) -
     Style::default().fg(colour).add_modifier(Modifier::BOLD)
 }
 
-pub(crate) fn ratatui_style_from_inline(style: &InlineTextStyle, fallback: Option<AnsiColorEnum>) -> Style {
+pub(crate) fn ratatui_style_from_inline(style: &InlineTextStyle, fallback: Option<AnsiColourEnum>) -> Style {
     crate::design::style::inline_text_style_to_ratatui(style.colour, style.bg_colour, style.effects, fallback)
 }
 
 /// PTY output style helper: keep configured colours, suppress bold, and enforce dimmed output.
-pub(crate) fn ratatui_pty_style_from_inline(style: &InlineTextStyle, fallback: Option<AnsiColorEnum>) -> Style {
+pub(crate) fn ratatui_pty_style_from_inline(style: &InlineTextStyle, fallback: Option<AnsiColourEnum>) -> Style {
     ratatui_style_from_inline(style, fallback)
         .remove_modifier(Modifier::BOLD)
         .add_modifier(Modifier::DIM)
@@ -71,8 +71,8 @@ const PTY_DETAIL_COLOUR_BACKGROUND_MIX: f32 = 0.35;
 /// before applying the standard subdued PTY output treatment.
 pub(crate) fn ratatui_pty_detail_style_from_inline(
     style: &InlineTextStyle,
-    fallback: Option<AnsiColorEnum>,
-    background: Option<AnsiColorEnum>,
+    fallback: Option<AnsiColourEnum>,
+    background: Option<AnsiColourEnum>,
 ) -> Style {
     let mut detail_style = style.clone();
     if let (Some(colour), Some(background)) = (detail_style.colour, background)

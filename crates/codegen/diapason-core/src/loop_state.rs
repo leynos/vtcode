@@ -2,7 +2,7 @@
 //!
 //! A loop is a long-lived scheduler that invokes the diapason harness repeatedly.
 //! `LoopRunState` captures the durable state a loop scheduler reads on resume:
-//! current step index, last artifact path, and status.
+//! current step index, last artefact path, and status.
 //!
 //! State is persisted as JSON under `{workspace}/.diapason/state/loop-{id}.json`.
 

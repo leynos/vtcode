@@ -1,6 +1,6 @@
 # Ast-Grep Project Workflows
 
-Use `exec_command` for specialised ast-grep work, including patterns, project
+Use `exec_command` for specialized ast-grep work, including patterns, project
 workflows, rule debugging, configuration inspection, and rewrite previews.
 
 On Linux, prefer the `ast-grep` executable name because `sg` can refer to the
@@ -133,7 +133,7 @@ ast-grep test --test-dir rule-tests --snapshot-dir __snapshots__
 ast-grep test --config sgconfig.yml --skip-snapshot-tests
 ```
 
-Use `--update-all` only when the user has authorised snapshot changes. Inspect
+Use `--update-all` only when the user has authorized snapshot changes. Inspect
 the resulting diff before accepting refreshed snapshots.
 
 ## Rewrite Preview and Application
@@ -148,7 +148,7 @@ ast-grep run --lang javascript \
   --json=compact --color=never src
 ```
 
-After reviewing the preview, use `--interactive` for an authorised selective
+After reviewing the preview, use `--interactive` for an authorized selective
 application:
 
 ```sh

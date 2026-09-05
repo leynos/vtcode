@@ -56,7 +56,7 @@ policies, and sandboxing. Layer 1 crate — depends on diapason-commons.
   regression cases aligned with workspace containment or command validation
   changes.
 - Windows-only `command_safety` DB builders (`windows_cmdlet_db.rs`,
-  `windows_com_analyzer.rs`, `windows_registry_filter.rs`) use module-level
+  `windows_com_analyser.rs`, `windows_registry_filter.rs`) use module-level
   `#![expect(unused_results)]` — one-shot builders deliberately discard
   `insert` results; cross-check with
   `cargo check --target x86_64-pc-windows-msvc` since Linux CI never compiles

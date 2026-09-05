@@ -238,7 +238,7 @@ impl LoopTracker {
 /// because it is reset at the start of each turn. Scans the last
 /// `MAX_HISTORY_SCAN` messages to keep the check bounded.
 ///
-/// File-read pagination is normalised so that re-reading the same file with a
+/// File-read pagination is normalized so that re-reading the same file with a
 /// different `offset` or `limit` is recognized as the same logical read.
 /// `code_search` uses a separate replay identity that retains the effective
 /// `max_results`; its loop identity is separate.
@@ -637,7 +637,7 @@ pub(crate) fn signature_key_for(name: &str, args: &serde_json::Value) -> String 
 /// File-read tools (`file_operation` with `read` action, `read_file`,
 /// `grep_file`, `list_files`) omit pagination and read-offset fields so that
 /// re-reading the same target groups under one logical read. `code_search`
-/// uses its normalised result-replay identity, which preserves the effective
+/// uses its normalized result-replay identity, which preserves the effective
 /// `max_results`; its separate loop identity may group searches across limits.
 ///
 /// For mutating tools the original `signature_key_for` is returned unchanged.
@@ -780,7 +780,7 @@ fn is_execution_tool(name: &str) -> bool {
 /// Return whether a tool call must wait for a successful verification step.
 ///
 /// Reads, inspections, verification commands, task tracking, and dedicated
-/// plan-artifact writes remain available while the checkpoint is pending.
+/// plan-artefact writes remain available while the checkpoint is pending.
 /// A failed verifier grants a bounded fix-up window ([`FAILED_VERIFICATION_FIX_ALLOWANCE`])
 /// so a broken build can be repaired, and piped verifier attempts
 /// (e.g. `cargo check 2>&1 | head`) are admitted to run even though only a

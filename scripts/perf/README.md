@@ -35,7 +35,7 @@ them in the JSON capture.
 
 ## Outputs
 
-All artifacts are written to `.diapason/perf/`:
+All artefacts are written to `.diapason/perf/`:
 
 - `baseline.json` / `latest.json`: captured metrics
 - `*-cargo_check.log`: cargo check output

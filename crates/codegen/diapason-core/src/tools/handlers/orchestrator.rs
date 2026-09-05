@@ -1,7 +1,7 @@
 //! Legacy orchestrator compatibility shim.
 //!
 //! Keep this module importable for older handler code, but delegate all
-//! behavior to the active sandboxing and tool orchestrator modules.
+//! behaviour to the active sandboxing and tool orchestrator modules.
 
 pub use super::sandboxing::{
     Approvable, ApprovalCtx, ApprovalStore, AskForApproval, BoxFuture, CommandSpec, ExecApprovalRequirement, ExecEnv,

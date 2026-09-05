@@ -21,7 +21,7 @@ fn display_plan_path(plan_state: &PlanningWorkflowState, path: &Path) -> String 
 }
 
 /// Publish the complete approval-ready plan lifecycle after the persisted
-/// artifact and its tracker have passed validation.
+/// artefact and its tracker have passed validation.
 ///
 /// Keeping this sequence behind the planning facade prevents recovery,
 /// interactive, and headless paths from drifting apart. The session state is

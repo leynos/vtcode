@@ -105,7 +105,7 @@ impl GeminiProvider {
         model.contains("gemini-3-flash-preview")
     }
 
-    /// Determine whether a Gemini model uses the latest API behavior that
+    /// Determine whether a Gemini model uses the latest API behaviour that
     /// deprecates sampling parameters (`temperature`, `top_p`, `top_k`) and
     /// disallows prefilled model turns (last turn with role `"model"`).
     ///

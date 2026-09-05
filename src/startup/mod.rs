@@ -10,12 +10,19 @@ use diapason_core::dotfile_protection::init_global_guardian;
 use diapason_core::utils::validation::validate_path_exists;
 
 mod config_loading;
+
 mod dependency_advisories;
+
 mod first_run;
+
 mod first_run_prompts;
+
 mod resume;
+
 mod theme;
+
 mod validation;
+
 mod workspace_trust;
 
 pub(crate) use config_loading::has_explicit_default_primary_agent;
@@ -91,7 +98,7 @@ pub(crate) enum StartupCommandKind {
     AppServer,
     /// Existing command-owned paths that intentionally do not use the LLM runtime.
     CommandOwned,
-    /// Unknown commands retain the conservative historical startup behavior.
+    /// Unknown commands retain the conservative historical startup behaviour.
     Conservative,
 }
 
