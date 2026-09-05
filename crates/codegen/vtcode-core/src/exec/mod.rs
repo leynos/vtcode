@@ -10,7 +10,7 @@ pub mod skill_manager;
 pub mod tool_versioning;
 
 pub use agent_optimization::{
-    AgentBehaviorAnalyzer, AppliedRecovery, CodePattern, FailurePatterns, RecoveryPattern, SkillStatistics,
+    AgentBehaviourAnalyser, AppliedRecovery, CodePattern, FailurePatterns, RecoveryPattern, SkillStatistics,
     ToolStatistics,
 };
 pub use code_executor::{CodeExecutor, ExecutionConfig, ExecutionResult, Language};

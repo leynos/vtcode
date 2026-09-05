@@ -7,7 +7,7 @@ use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use super::builtins::execute_built_in_command_skill;
 use super::models::SlashCommandOutcome;
-use super::parsing::{parse_analyze_scope, parse_prompt_template_args, parse_review_spec, split_command_and_args};
+use super::parsing::{parse_analyse_scope, parse_prompt_template_args, parse_review_spec, split_command_and_args};
 
 pub(crate) async fn handle_slash_command(
     input: &str,
@@ -106,17 +106,17 @@ fn dispatch_traditional_command_skill(
             }
             args.trim().to_string()
         }
-        "analyze" => {
+        "analyse" => {
             if matches!(args.trim(), "--help" | "help") {
-                renderer.line(MessageStyle::Info, "Usage: /analyze [full|security|performance]")?;
+                renderer.line(MessageStyle::Info, "Usage: /analyse [full|security|performance]")?;
                 return Ok(SlashCommandOutcome::Handled);
             }
-            match parse_analyze_scope(args) {
+            match parse_analyse_scope(args) {
                 Ok(Some(scope)) => scope,
                 Ok(None) => String::new(),
                 Err(err) => {
                     renderer.line(MessageStyle::Error, &err)?;
-                    renderer.line(MessageStyle::Info, "Usage: /analyze [full|security|performance]")?;
+                    renderer.line(MessageStyle::Info, "Usage: /analyse [full|security|performance]")?;
                     return Ok(SlashCommandOutcome::Handled);
                 }
             }

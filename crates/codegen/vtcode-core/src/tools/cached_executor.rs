@@ -503,7 +503,7 @@ mod tests {
         let executor = CachedToolExecutor::new();
 
         // Record a repeating A -> B pattern with enough events
-        // to trigger pattern analysis (ANALYZE_INTERVAL = 10).
+        // to trigger pattern analysis (ANALYSE_INTERVAL = 10).
         for _ in 0..6 {
             executor.execute("tool_a", serde_json::json!({})).await?;
             executor.execute("tool_b", serde_json::json!({})).await?;

@@ -2,7 +2,7 @@
 //!
 //! Analyzes tool call sequences to detect patterns, anomalies, and trends.
 //! Events are capped at `MAX_EVENTS` to prevent unbounded memory growth.
-//! Analysis is amortized: patterns are recomputed every `ANALYZE_INTERVAL` events.
+//! Analysis is amortized: patterns are recomputed every `ANALYSE_INTERVAL` events.
 
 use hashbrown::HashMap;
 use serde_json::{Value, json};
@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 /// Maximum number of stored events before oldest are evicted.
 const MAX_EVENTS: usize = 500;
 /// Re-analyze patterns every N events to amortize cost.
-const ANALYZE_INTERVAL: usize = 10;
+const ANALYSE_INTERVAL: usize = 10;
 
 /// A single tool call event.
 #[derive(Clone, Debug)]
@@ -63,15 +63,15 @@ impl PatternDetector {
         self.events.push(event);
         self.events_since_analysis += 1;
 
-        // Only re-analyze every ANALYZE_INTERVAL events to amortize cost.
-        if self.events_since_analysis >= ANALYZE_INTERVAL {
-            self.analyze();
+        // Only re-analyse every ANALYSE_INTERVAL events to amortize cost.
+        if self.events_since_analysis >= ANALYSE_INTERVAL {
+            self.analyse();
             self.events_since_analysis = 0;
         }
     }
 
     /// Analyze events for patterns.
-    fn analyze(&mut self) {
+    fn analyse(&mut self) {
         if self.events.len() < self.sequence_length {
             return;
         }

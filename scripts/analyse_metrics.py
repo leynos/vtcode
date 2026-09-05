@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-analyze_metrics.py - Analyze VT Code performance metrics
-Usage: python3 scripts/analyze_metrics.py vtcode_performance_metrics.csv
+analyse_metrics.py - Analyse VT Code performance metrics
+Usage: python3 scripts/analyse_metrics.py vtcode_performance_metrics.csv
 """
 
 import csv
@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 
-class PerformanceAnalyzer:
+class PerformanceAnalyser:
     def __init__(self, csv_file: str):
         self.csv_file = csv_file
         self.metrics: List[Dict] = []
@@ -135,7 +135,7 @@ class PerformanceAnalyzer:
         print("="*70)
 
         print(f"\n Analysis of: {self.csv_file}")
-        print(f"   Records analyzed: {len(self.metrics)}")
+        print(f"   Records analysed: {len(self.metrics)}")
         if self.metrics:
             print(f"   Time range: {self.metrics[0]['timestamp_iso']} to {self.metrics[-1]['timestamp_iso']}")
 
@@ -325,12 +325,12 @@ class PerformanceAnalyzer:
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python3 scripts/analyze_metrics.py <csv_file>")
+        print("Usage: python3 scripts/analyse_metrics.py <csv_file>")
         sys.exit(1)
 
     csv_file = sys.argv[1]
-    analyzer = PerformanceAnalyzer(csv_file)
-    analyzer.print_summary()
+    analyser = PerformanceAnalyser(csv_file)
+    analyser.print_summary()
 
 if __name__ == "__main__":
     main()

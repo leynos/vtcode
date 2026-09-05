@@ -13,15 +13,15 @@ pub struct CoverageResult {
 }
 
 /// Coverage analyzer for test coverage metrics
-pub struct CoverageAnalyzer;
+pub struct CoverageAnalyser;
 
-impl CoverageAnalyzer {
+impl CoverageAnalyser {
     pub fn new() -> Self {
         Self
     }
 
     /// Analyze test coverage for a project
-    pub fn analyze_project(&self, project_path: &Path) -> CoverageResult {
+    pub fn analyse_project(&self, project_path: &Path) -> CoverageResult {
         let report_path = std::env::var("COVERAGE_REPORT_PATH")
             .map(|p| project_path.join(p))
             .unwrap_or_else(|_| project_path.join("coverage/lcov.info"));
@@ -131,7 +131,7 @@ impl CoverageAnalyzer {
     }
 }
 
-impl Default for CoverageAnalyzer {
+impl Default for CoverageAnalyser {
     fn default() -> Self {
         Self::new()
     }

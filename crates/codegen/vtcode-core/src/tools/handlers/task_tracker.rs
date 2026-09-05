@@ -1202,7 +1202,7 @@ mod tests {
                 "title": "Harness tracker",
                 "items": [
                     {
-                        "description": "Analyze current harness",
+                        "description": "Analyse current harness",
                         "files": ["docs/ARCHITECTURE.md"],
                         "outcome": "Document the harness map",
                         "verify": "cargo check"

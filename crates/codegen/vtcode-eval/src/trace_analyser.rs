@@ -22,20 +22,20 @@ const MAX_TRACE_LINE_BYTES: usize = 1_048_576;
 const OTHER_TOOL_LABEL: &str = "other_tool";
 
 /// Analyze JSONL text while retaining only aggregate, non-sensitive facts.
-pub fn analyze_jsonl(input: &str) -> Result<HarnessTraceSummary> {
-    analyze_jsonl_reader(Cursor::new(input.as_bytes()))
+pub fn analyse_jsonl(input: &str) -> Result<HarnessTraceSummary> {
+    analyse_jsonl_reader(Cursor::new(input.as_bytes()))
 }
 
 /// Analyze a buffered JSONL source without loading the complete trace into memory.
-pub fn analyze_jsonl_reader<R: BufRead>(reader: R) -> Result<HarnessTraceSummary> {
-    stream::analyze_jsonl_reader(reader)
+pub fn analyse_jsonl_reader<R: BufRead>(reader: R) -> Result<HarnessTraceSummary> {
+    stream::analyse_jsonl_reader(reader)
 }
 
 /// Analyze a JSONL trace file and add path context to filesystem errors.
-pub fn analyze_jsonl_file(path: impl AsRef<Path>) -> Result<HarnessTraceSummary> {
+pub fn analyse_jsonl_file(path: impl AsRef<Path>) -> Result<HarnessTraceSummary> {
     let path = path.as_ref();
     let file = File::open(path).with_context(|| format!("read trace file {}", path.display()))?;
-    analyze_jsonl_reader(BufReader::new(file)).with_context(|| format!("analyze trace file {}", path.display()))
+    analyse_jsonl_reader(BufReader::new(file)).with_context(|| format!("analyse trace file {}", path.display()))
 }
 
 fn record_value(
@@ -544,7 +544,7 @@ fn deterministic_reservoir_index(sample_number: u64) -> u64 {
 
 #[cfg(test)]
 mod latency_tests {
-    use super::{analyze_jsonl, metrics::MAX_LATENCY_SAMPLES};
+    use super::{analyse_jsonl, metrics::MAX_LATENCY_SAMPLES};
 
     #[test]
     fn bounds_latency_sample_storage_while_retaining_all_counts() {
@@ -553,7 +553,7 @@ mod latency_tests {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let summary = analyze_jsonl(&input).expect("trace should parse");
+        let summary = analyse_jsonl(&input).expect("trace should parse");
 
         assert_eq!(summary.latency.count, (MAX_LATENCY_SAMPLES * 2) as u64);
         assert_eq!(summary.latency.max_ms, Some((MAX_LATENCY_SAMPLES * 2 - 1) as u64));
@@ -580,7 +580,7 @@ mod tests {
 {"step":2,"tool":"read_file","latency_ms":20,"error":"timeout"}
 "#;
 
-        let summary = analyze_jsonl(trace).expect("trace should parse");
+        let summary = analyse_jsonl(trace).expect("trace should parse");
 
         assert_eq!(summary.steps, 2);
         assert_eq!(summary.tool_calls, 2);
@@ -646,7 +646,7 @@ mod tests {
 "#,
         );
 
-        let summary = analyze_jsonl(&trace).expect("baseline fixture should parse");
+        let summary = analyse_jsonl(&trace).expect("baseline fixture should parse");
 
         assert_eq!(summary.steps, 453);
         assert_eq!(summary.tool_calls, 468);
@@ -656,7 +656,7 @@ mod tests {
     #[test]
     fn parses_thread_events_and_skips_bad_or_unknown_lines() {
         let input = format!("{}\nnot json\n{{\"future\":true}}\n", THREAD_EVENT_TRACE);
-        let summary = analyze_jsonl(&input).expect("trace should parse");
+        let summary = analyse_jsonl(&input).expect("trace should parse");
 
         assert_eq!(summary.turns, 1);
         assert_eq!(summary.steps, 2);
@@ -672,7 +672,7 @@ mod tests {
 
     #[test]
     fn reports_latency_statistics_and_file_errors_with_context() {
-        let summary = analyze_jsonl(
+        let summary = analyse_jsonl(
             "{\"step\":1,\"latency_ms\":30}\n{\"step\":2,\"latency_ms\":10}\n{\"step\":3,\"latency_ms\":20}\n",
         )
         .expect("latency trace should parse");
@@ -681,7 +681,7 @@ mod tests {
         assert_eq!(summary.latency.p50_ms, Some(20));
         assert_eq!(summary.latency.p95_ms, Some(30));
 
-        let missing = analyze_jsonl_file("/path/that/does/not/exist.jsonl").expect_err("missing file should fail");
+        let missing = analyse_jsonl_file("/path/that/does/not/exist.jsonl").expect_err("missing file should fail");
         assert!(missing.to_string().contains("read trace file"));
     }
 
@@ -692,7 +692,7 @@ mod tests {
 {"step":1,"tool":"rm /sensitive/project","error":{"type":"secret_error"}}
 "#;
 
-        let summary = analyze_jsonl(input).expect("trace should parse");
+        let summary = analyse_jsonl(input).expect("trace should parse");
         let serialized = serde_json::to_string(&summary).expect("summary should serialize");
 
         assert_eq!(summary.error_categories.values().sum::<u64>(), 3);
@@ -707,7 +707,7 @@ mod tests {
 
     #[test]
     fn classifies_unrelated_goal_text_by_its_actual_error() {
-        let summary = analyze_jsonl(
+        let summary = analyse_jsonl(
             r#"{"error":"goal timeout"}
 {"error":"invalid goal update"}
 "#,
@@ -722,7 +722,7 @@ mod tests {
     fn saturates_latency_total_on_overflow() {
         let input = format!("{{\"latency_ms\":{0}}}\n{{\"latency_ms\":{0}}}\n", u64::MAX);
 
-        let summary = analyze_jsonl(&input).expect("trace should parse");
+        let summary = analyse_jsonl(&input).expect("trace should parse");
 
         assert_eq!(summary.latency.total_ms, u64::MAX);
         assert_eq!(summary.latency.max_ms, Some(u64::MAX));
@@ -734,7 +734,7 @@ mod tests {
 {"type":"thread.completed","num_turns":7,"usage":{"input_tokens":10,"cached_input_tokens":4,"output_tokens":8},"result":"private assistant result"}
 "#;
 
-        let summary = analyze_jsonl(input).expect("trace should parse");
+        let summary = analyse_jsonl(input).expect("trace should parse");
 
         assert_eq!(summary.turns, 7);
         assert_eq!(summary.token_usage.input_tokens, 3);
@@ -748,7 +748,7 @@ mod tests {
         let input = r#"{"type":"thread.completed","num_turns":4,"usage":{"input_tokens":10,"cached_input_tokens":4,"cache_creation_tokens":2,"output_tokens":8}}
 "#;
 
-        let summary = analyze_jsonl(input).expect("trace should parse");
+        let summary = analyse_jsonl(input).expect("trace should parse");
 
         assert_eq!(summary.turns, 4);
         assert_eq!(summary.token_usage.input_tokens, 10);
@@ -761,9 +761,9 @@ mod tests {
     fn buffered_reader_api_matches_text_analysis() {
         let input = "{\"step\":1,\"tool\":\"read_file\",\"latency_ms\":12}\n";
 
-        let from_text = analyze_jsonl(input).expect("text trace should parse");
+        let from_text = analyse_jsonl(input).expect("text trace should parse");
         let from_reader =
-            analyze_jsonl_reader(BufReader::new(Cursor::new(input.as_bytes()))).expect("buffered trace should parse");
+            analyse_jsonl_reader(BufReader::new(Cursor::new(input.as_bytes()))).expect("buffered trace should parse");
 
         assert_eq!(from_reader, from_text);
     }
@@ -779,7 +779,7 @@ mod tests {
 {"type":"turn/end","time":200,"data":{"turn":1,"reason":{}}}
 "#;
 
-        let summary = analyze_jsonl(input).expect("nested trace should parse");
+        let summary = analyse_jsonl(input).expect("nested trace should parse");
         let serialized = serde_json::to_string(&summary).expect("summary should serialize");
 
         assert_eq!(summary.turns, 1);
@@ -804,7 +804,7 @@ mod tests {
 {"schema_version":"0.11.0","event":{"type":"turn.completed","usage":{"input_tokens":8,"output_tokens":2}}}
 "#;
 
-        let summary = analyze_jsonl(input).expect("versioned trace should parse");
+        let summary = analyse_jsonl(input).expect("versioned trace should parse");
 
         assert_eq!(summary.turns, 1);
         assert_eq!(summary.steps, 1);
@@ -821,7 +821,7 @@ mod tests {
 {"type":"thread.completed","num_turns":1,"usage":{"input_tokens":10,"output_tokens":8}}
 "#;
 
-        let summary = analyze_jsonl(input).expect("usage trace should parse");
+        let summary = analyse_jsonl(input).expect("usage trace should parse");
 
         assert_eq!(summary.token_usage.input_tokens, 3);
         assert_eq!(summary.token_usage.output_tokens, 2);
@@ -832,7 +832,7 @@ mod tests {
         let input = r#"{"usage":{"prompt_tokens":100,"completion_tokens":20,"prompt_cache_hit_tokens":40,"input_tokens_details":{"cached_tokens":5},"output_tokens_details":{"reasoning_tokens":7}}}
 "#;
 
-        let summary = analyze_jsonl(input).expect("provider usage should parse");
+        let summary = analyse_jsonl(input).expect("provider usage should parse");
 
         assert_eq!(summary.token_usage.input_tokens, 100);
         assert_eq!(summary.token_usage.output_tokens, 20);
@@ -847,7 +847,7 @@ mod tests {
             "x".repeat(MAX_TRACE_LINE_BYTES)
         );
 
-        let summary = analyze_jsonl(&input).expect("oversized trace should parse");
+        let summary = analyse_jsonl(&input).expect("oversized trace should parse");
 
         assert_eq!(summary.malformed_lines, 1);
         assert_eq!(summary.steps, 1);

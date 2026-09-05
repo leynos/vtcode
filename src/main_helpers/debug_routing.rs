@@ -23,7 +23,7 @@ fn resolve_mode_hint(args: &Cli, startup: &StartupContext, print_mode: &Option<S
             Some(Commands::Review(_)) => "review",
             Some(Commands::Schema { .. }) => "schema",
             Some(Commands::Benchmark { .. }) => "benchmark",
-            Some(Commands::Analyze { .. }) => "analyze",
+            Some(Commands::Analyse { .. }) => "analyse",
             Some(Commands::Notify { .. }) => "notify",
             Some(Commands::AgentClientProtocol { .. }) => "acp",
             Some(Commands::AppServer { .. }) => "app-server",

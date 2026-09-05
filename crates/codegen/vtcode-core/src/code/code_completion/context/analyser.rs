@@ -1,15 +1,15 @@
 use super::CompletionContext;
 
 /// Context analyzer for understanding code context
-pub struct ContextAnalyzer;
+pub struct ContextAnalyser;
 
-impl ContextAnalyzer {
+impl ContextAnalyser {
     pub fn new() -> Self {
         Self
     }
 
     /// Analyze code context at the given position
-    pub fn analyze(&mut self, source: &str, line: usize, column: usize) -> CompletionContext {
+    pub fn analyse(&mut self, source: &str, line: usize, column: usize) -> CompletionContext {
         let language = self.detect_language(source);
         let prefix = self.extract_prefix(source, line, column);
 
@@ -74,7 +74,7 @@ impl ContextAnalyzer {
     }
 }
 
-impl Default for ContextAnalyzer {
+impl Default for ContextAnalyser {
     fn default() -> Self {
         Self::new()
     }

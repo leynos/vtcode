@@ -172,12 +172,12 @@ mod tests {
     #[test]
     fn test_record_execution() {
         let mut metrics = SkillMetrics::new();
-        metrics.record_created("analyze".to_owned(), "python3".to_owned());
-        metrics.record_execution("analyze".to_owned(), 1000, true);
-        metrics.record_execution("analyze".to_owned(), 950, true);
+        metrics.record_created("analyse".to_owned(), "python3".to_owned());
+        metrics.record_execution("analyse".to_owned(), 1000, true);
+        metrics.record_execution("analyse".to_owned(), 950, true);
 
         assert_eq!(metrics.total_executions, 2);
-        let stats = metrics.skill_stats.get("analyze").unwrap();
+        let stats = metrics.skill_stats.get("analyse").unwrap();
         assert_eq!(stats.execution_count, 2);
         assert_eq!(stats.success_count, 2);
         assert_eq!(stats.total_duration_ms, 1950);

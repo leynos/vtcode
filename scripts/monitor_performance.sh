@@ -76,7 +76,7 @@ cat > "$TEST_SCRIPT" << 'EOF'
 for i in $(seq 1 %NUM_TURNS%); do
   case $((i % 4)) in
     0) echo "Query $i: List files in src/" ;;
-    1) echo "Query $i: Analyze this function" ;;
+    1) echo "Query $i: Analyse this function" ;;
     2) echo "Query $i: Find memory leaks" ;;
     3) echo "Query $i: Check cache efficiency" ;;
   esac
@@ -154,6 +154,6 @@ if [[ -f "$OUTPUT_FILE" ]]; then
     echo ""
     echo "Data saved to: $OUTPUT_FILE"
     echo ""
-    echo "To analyze results:"
-    echo "  $ python3 scripts/analyze_metrics.py $OUTPUT_FILE"
+    echo "To analyse results:"
+    echo "  $ python3 scripts/analyse_metrics.py $OUTPUT_FILE"
 fi

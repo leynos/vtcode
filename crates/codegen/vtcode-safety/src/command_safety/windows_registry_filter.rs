@@ -320,8 +320,8 @@ impl RegistryAccessFilter {
         None
     }
 
-    /// Analyze registry access in PowerShell script
-    pub fn analyze_registry_access(script: &str) -> Vec<RegistryAccessPattern> {
+    /// Analyse registry access in PowerShell script
+    pub fn analyse_registry_access(script: &str) -> Vec<RegistryAccessPattern> {
         let mut patterns = Vec::new();
         let script_lower = script.to_lowercase();
 
@@ -389,7 +389,7 @@ impl RegistryAccessFilter {
 
     /// Check if registry access is dangerous
     pub fn is_dangerous_registry_access(script: &str) -> bool {
-        let patterns = Self::analyze_registry_access(script);
+        let patterns = Self::analyse_registry_access(script);
 
         patterns.iter().any(|p| {
             // Critical or High risk with write operations is dangerous
@@ -400,7 +400,7 @@ impl RegistryAccessFilter {
 
     /// Get maximum registry risk level in script
     pub fn get_max_registry_risk(script: &str) -> RegistryRiskLevel {
-        Self::analyze_registry_access(script)
+        Self::analyse_registry_access(script)
             .iter()
             .map(|p| p.risk_level)
             .max()
@@ -409,7 +409,7 @@ impl RegistryAccessFilter {
 
     /// Filter registry paths based on maximum allowed risk
     pub fn filter_by_risk_level(script: &str, max_risk: RegistryRiskLevel) -> Vec<RegistryAccessPattern> {
-        Self::analyze_registry_access(script)
+        Self::analyse_registry_access(script)
             .into_iter()
             .filter(|p| p.risk_level <= max_risk)
             .collect()
@@ -434,17 +434,17 @@ mod tests {
     }
 
     #[test]
-    fn test_analyze_get_item_access() {
+    fn test_analyse_get_item_access() {
         let script = "Get-Item -Path HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-        let patterns = RegistryAccessFilter::analyze_registry_access(script);
+        let patterns = RegistryAccessFilter::analyse_registry_access(script);
         assert!(!patterns.is_empty());
         assert!(!patterns[0].is_write_operation);
     }
 
     #[test]
-    fn test_analyze_set_item_access() {
+    fn test_analyse_set_item_access() {
         let script = "Set-Item -Path HKLM:\\Software\\Microsoft\\Windows\\Run -Value malware.exe";
-        let patterns = RegistryAccessFilter::analyze_registry_access(script);
+        let patterns = RegistryAccessFilter::analyse_registry_access(script);
         assert!(!patterns.is_empty());
         assert!(patterns[0].is_write_operation);
     }

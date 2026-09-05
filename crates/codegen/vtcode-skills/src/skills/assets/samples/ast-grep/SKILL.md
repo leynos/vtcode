@@ -23,6 +23,7 @@ metadata:
         - static-analysis
         - tree-sitter-parser
         - pattern-yaml-api
+        - search-rewrite-lint-analyse
         - search-rewrite-lint-analyze
         - textual-structural
         - ast-cst
@@ -101,7 +102,7 @@ Use this skill for ast-grep project setup, rule authoring, rule debugging, and C
 
 - ast-grep accepts several query formats: pattern queries, YAML rules, and programmatic API usage.
 - The core pipeline is parse first, match second. Tree-Sitter builds the syntax tree, then ast-grep’s Rust matcher finds the target nodes.
-- The main usage scenarios are search, rewrite, lint, and analyze.
+- The main usage scenarios are search, rewrite, lint, and analyse.
 - ast-grep processes many files in parallel and is built to use multiple CPU cores on larger codebases.
 - In VT Code, run ast-grep through `exec_command` and use this skill for YAML authoring, rule tests, rewrites, and API-level work.
 

@@ -1,6 +1,6 @@
-pub mod analyzer;
+pub mod analyser;
 
-pub use analyzer::ContextAnalyzer;
+pub use analyser::ContextAnalyser;
 
 use serde::{Deserialize, Serialize};
 

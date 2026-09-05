@@ -265,7 +265,7 @@ impl ManPageGenerator {
                 roman(", "),
                 bold("vtcode-ask(1)"),
                 roman(", "),
-                bold("vtcode-analyze(1)"),
+                bold("vtcode-analyse(1)"),
             ])
             .render();
 
@@ -564,7 +564,7 @@ impl ManPageGenerator {
             .control("SH", ["AVAILABLE COMMANDS"])
             .text([roman("• chat - Interactive AI coding assistant")])
             .text([roman("• ask - Single prompt mode")])
-            .text([roman("• analyze - Workspace analysis")])
+            .text([roman("• analyse - Workspace analysis")])
             .text([roman("• performance - Performance metrics")])
             .text([roman("• trajectory - Pretty-print trajectory logs and analytics")])
             .text([roman("• benchmark - SWE-bench evaluation framework")])

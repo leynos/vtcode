@@ -400,7 +400,7 @@ mod tests {
     #[test]
     fn test_tool_justification_creation() {
         let just = ToolJustification::new("read_file", "Need to understand code structure", &RiskLevel::Low)
-            .with_outcome("Will analyze the AST to provide better context");
+            .with_outcome("Will analyse the AST to provide better context");
 
         assert_eq!(just.tool_name, "read_file");
         assert!(just.reason.contains("understand"));
