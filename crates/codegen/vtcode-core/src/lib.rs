@@ -279,7 +279,7 @@ pub use vtcode_bash_runner::BashRunner;
 pub use core::prompt_caching::{CacheStats, PromptCache, PromptCacheConfig, PromptOptimizer};
 pub use core::timeout_detector::TimeoutDetector;
 pub use diagnostics::{
-    DiagnosticReport, HealthSample, LabeledAction, PredictiveMonitor, RecoveryAction, RecoveryPlaybook,
+    DiagnosticReport, HealthSample, LabelledAction, PredictiveMonitor, RecoveryAction, RecoveryPlaybook,
 };
 pub use dotfile_protection::{
     AccessType as DotfileAccessType, AuditEntry as DotfileAuditEntry, AuditLog as DotfileAuditLog,

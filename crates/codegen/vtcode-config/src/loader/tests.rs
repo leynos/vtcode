@@ -1611,5 +1611,8 @@ fn explicit_session_override_file_with_use_root_config_drops_lower_layers() {
 
     let manager = ConfigManager::load_from_workspace(&workspace).expect("load with override");
     assert_eq!(manager.config().agent.provider, "openai");
-    assert!(manager.config().workspace.use_root_config, "use_root_config from the override file must be honored");
+    assert!(
+        manager.config().workspace.use_root_config,
+        "use_root_config from the override file must be honoured"
+    );
 }

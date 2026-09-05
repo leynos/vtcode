@@ -114,7 +114,7 @@ pub(super) fn preview_command(command: &str, max_len: usize) -> String {
     let budget = max_len.saturating_sub(1);
     let mut head: String = first_line.chars().take(budget).collect();
     if let Some(last_space) = head.rfind(char::is_whitespace) {
-        // Only honor the word boundary when it keeps at least half the budget,
+        // Only honour the word boundary when it keeps at least half the budget,
         // so a late first space does not collapse the preview to almost nothing.
         if last_space >= budget / 2 {
             head.truncate(last_space);
@@ -641,7 +641,7 @@ mod tests {
     #[test]
     fn preview_command_long_command_head_truncates_at_word_boundary() {
         // 30-char budget: the 29-char cut lands inside "epsilon", but the last
-        // space (index 27) is past half the budget, so it is honored.
+        // space (index 27) is past half the budget, so it is honoured.
         let command = "echo alpha beta gamma delta epsilon zeta eta theta iota";
         assert_eq!(preview_command(command, 30), "echo alpha beta gamma delta…");
     }

@@ -521,8 +521,10 @@ pub struct AgentHarnessConfig {
     /// runs the evaluator prompt against every listed model in parallel and
     /// aggregates the strictest verdict/scorecard across the panel.
     /// Opt-in (default: disabled).
+    /// The wire name `skeptic_panel` is fixed by the schema.
     #[serde(default)]
-    pub skeptic_panel: SkepticPanelConfig,
+    #[serde(rename = "skeptic_panel")]
+    pub sceptic_panel: ScepticPanelConfig,
 }
 
 impl Default for AgentHarnessConfig {
@@ -548,7 +550,7 @@ impl Default for AgentHarnessConfig {
             max_revision_rounds: default_harness_max_revision_rounds(),
             confidence_escalation: ConfidenceEscalationConfig::default(),
             async_approval: AsyncApprovalConfig::default(),
-            skeptic_panel: SkepticPanelConfig::default(),
+            sceptic_panel: ScepticPanelConfig::default(),
         }
     }
 }
@@ -602,30 +604,30 @@ impl Default for AsyncApprovalConfig {
 ///
 /// When enabled, the evaluator phase runs against every listed model in
 /// parallel and aggregates the strictest verdict/scorecard across the panel.
-/// This is opt-in because each additional skeptic adds latency and cost.
+/// This is opt-in because each additional sceptic adds latency and cost.
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SkepticPanelConfig {
+pub struct ScepticPanelConfig {
     /// Master switch. Default: false (opt-in).
-    #[serde(default = "default_skeptic_panel_enabled")]
+    #[serde(default = "default_sceptic_panel_enabled")]
     pub enabled: bool,
 
-    /// Model identifiers to run as skeptic evaluators (in addition to the
+    /// Model identifiers to run as sceptic evaluators (in addition to the
     /// primary evaluator). Empty when `enabled = false`.
     #[serde(default)]
     pub models: Vec<String>,
 }
 
-impl Default for SkepticPanelConfig {
+impl Default for ScepticPanelConfig {
     fn default() -> Self {
         Self {
-            enabled: default_skeptic_panel_enabled(),
+            enabled: default_sceptic_panel_enabled(),
             models: Vec::new(),
         }
     }
 }
 
-const fn default_skeptic_panel_enabled() -> bool {
+const fn default_sceptic_panel_enabled() -> bool {
     false
 }
 

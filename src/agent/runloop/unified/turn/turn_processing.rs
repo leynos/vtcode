@@ -33,7 +33,7 @@ mod tests {
     use vtcode_core::primary_agent::ActivePrimaryAgentState;
 
     #[test]
-    fn effective_request_model_honors_agent_override_and_inherit_sentinel() {
+    fn effective_request_model_honours_agent_override_and_inherit_sentinel() {
         let mut agent = ActivePrimaryAgentState::default().active().clone();
         agent.model = Some("narrow-model".to_string());
         assert_eq!(resolve_effective_request_model("base-model", &agent), "narrow-model");

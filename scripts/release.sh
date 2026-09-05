@@ -1473,7 +1473,7 @@ main() {
 		# checksums, and install scripts. Upload order does NOT control legacy
 		# selection (GitHub re-sorts assets alphabetically by name; the `compat-`
 		# prefix is what makes the legacy updater pick them). Uploading compat
-		# first is harmless defense-in-depth kept for clarity.
+		# first is harmless defence-in-depth kept for clarity.
 		local upload_failed=0
 		if [[ ${#compat_assets[@]} -gt 0 ]]; then
 			print_info "Uploading compatibility assets (legacy bridge)..."

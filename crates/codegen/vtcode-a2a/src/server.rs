@@ -544,7 +544,7 @@ impl A2aErrorResponse {
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             },
             A2aError::TaskNotFound(_) => StatusCode::NOT_FOUND,
-            A2aError::TaskNotCancelable(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            A2aError::TaskNotCancellable(_) => StatusCode::UNPROCESSABLE_ENTITY,
             A2aError::InvalidStateTransition { .. } => StatusCode::UNPROCESSABLE_ENTITY,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -591,9 +591,9 @@ mod tests {
     }
 
     #[test]
-    fn test_error_response_task_not_cancelable() {
+    fn test_error_response_task_not_cancellable() {
         use serde_json::json;
-        let err = A2aError::TaskNotCancelable("Cannot cancel completed task".to_string());
+        let err = A2aError::TaskNotCancellable("Cannot cancel completed task".to_string());
         let err_response = A2aErrorResponse::from_error(err, json!(1));
         assert_eq!(err_response.status_code, StatusCode::UNPROCESSABLE_ENTITY);
     }

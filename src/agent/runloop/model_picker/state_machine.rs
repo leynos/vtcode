@@ -344,7 +344,7 @@ impl ModelPickerState {
         if matches!(selection.provider_enum, Some(Provider::HuggingFace)) {
             renderer.line(
                 MessageStyle::Info,
-                "Hugging Face uses HF_TOKEN (from environment variables or secure storage) and honors HUGGINGFACE_BASE_URL (default: https://router.huggingface.co/v1).",
+                "Hugging Face uses HF_TOKEN (from environment variables or secure storage) and honours HUGGINGFACE_BASE_URL (default: https://router.huggingface.co/v1).",
             )?;
             if selection.requires_api_key {
                 renderer.line(

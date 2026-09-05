@@ -1108,7 +1108,7 @@ mod tests {
     }
 
     #[test]
-    fn auth_url_honors_custom_client_id_env_override() {
+    fn auth_url_honours_custom_client_id_env_override() {
         // RAII guard locks env and restores both vars on drop (panic-safe).
         let env = OauthEnvGuard::new();
         env.set_client_id("app_custom_override");

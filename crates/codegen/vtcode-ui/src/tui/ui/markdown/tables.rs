@@ -42,7 +42,7 @@ pub(crate) fn render_table(table: &TableBuffer, base_style: Style, max_width: Op
     }
 
     // A header gives every value a stable label, so a table that cannot fit in
-    // its available content width is more legible as labeled blocks than as a
+    // its available content width is more legible as labelled blocks than as a
     // table with squeezed columns. Headerless tables have no equivalent block
     // representation and retain their existing scaling behaviour.
     if table.headers.is_empty() {
@@ -125,7 +125,7 @@ fn scale_columns_to_fit(col_widths: &mut [usize], max_width: usize) {
     }
 }
 
-/// Render a headered table as one labeled block per data row.
+/// Render a headered table as one labelled block per data row.
 fn render_table_blocks(table: &TableBuffer, base_style: Style, max_width: usize) -> Vec<MarkdownLine> {
     let mut lines = Vec::new();
     let border_style = base_style.dimmed();
@@ -531,8 +531,8 @@ mod tests {
             in_head: false,
         };
         let lines = render_table(&table, Style::default(), Some(25));
-        // Narrow headered tables use labeled blocks; the long value still wraps.
-        assert!(lines.len() >= 3, "Expected wrapped labeled rows, got {}", lines.len());
+        // Narrow headered tables use labelled blocks; the long value still wraps.
+        assert!(lines.len() >= 3, "Expected wrapped labelled rows, got {}", lines.len());
         let text: String = lines
             .iter()
             .map(|line| line.segments.iter().map(|segment| segment.text.as_str()).collect::<String>())

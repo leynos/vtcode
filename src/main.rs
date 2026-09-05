@@ -70,7 +70,7 @@ enum BootstrapOutcome {
 #[cfg_attr(feature = "profiling", hotpath::main)]
 fn main() -> std::process::ExitCode {
     // Apply process hardening before any other operations.
-    // This disables core dumps, caps RLIMIT_STACK (defense-in-depth complement
+    // This disables core dumps, caps RLIMIT_STACK (defence-in-depth complement
     // to Rust's built-in stack clash protection — see rustc exploit-mitigations
     // docs), removes dangerous env vars, and prevents ptrace attach.
     process_hardening::pre_main_hardening();
