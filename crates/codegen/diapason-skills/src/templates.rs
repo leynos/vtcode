@@ -157,7 +157,7 @@ impl TemplateEngine {
                     default_value: None,
                     required: true,
                     validation_pattern: Some(r"^[a-z][a-z0-9-]*$".to_string()),
-                    examples: vec!["file-manager".to_string(), "code-analyzer".to_string()],
+                    examples: vec!["file-manager".to_string(), "code-analyser".to_string()],
                 },
                 TemplateVariable {
                     name: "description".to_string(),

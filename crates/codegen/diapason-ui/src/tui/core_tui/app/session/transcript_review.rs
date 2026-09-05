@@ -1127,12 +1127,12 @@ mod tests {
     #[test]
     fn raw_export_strips_ansi_from_complete_captures() {
         let mut session = test_session();
-        add_block(&mut session, &["\u{1b}[31m• Ran colored\u{1b}[0m", "\u{1b}[32mcomplete\u{1b}[0m"]);
+        add_block(&mut session, &["\u{1b}[31m• Ran coloured\u{1b}[0m", "\u{1b}[32mcomplete\u{1b}[0m"]);
 
         let mut viewer = ToolOutputViewerState::open(&session, 80, 10);
         let export = viewer.export_text();
 
-        assert_eq!(export, "• Ran colored\ncomplete");
+        assert_eq!(export, "• Ran coloured\ncomplete");
         assert!(!export.contains('\u{1b}'));
     }
 
