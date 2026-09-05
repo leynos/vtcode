@@ -146,8 +146,8 @@ impl Session {
             return false;
         }
 
-        let has_bg_color = line.spans.iter().any(|span| span.style.bg.is_some());
-        if !has_bg_color {
+        let has_bg_colour = line.spans.iter().any(|span| span.style.bg.is_some());
+        if !has_bg_colour {
             return false;
         }
 

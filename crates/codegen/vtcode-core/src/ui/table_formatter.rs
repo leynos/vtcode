@@ -11,7 +11,7 @@ pub enum Alignment {
     /// Left-aligned content with right padding
     Left,
     /// Center-aligned content with equal padding on both sides
-    Center,
+    Centre,
     /// Right-aligned content with left padding
     Right,
 }
@@ -99,7 +99,7 @@ impl TableFormatter {
             Alignment::Left => {
                 format!("{}{}", content, " ".repeat(padding))
             }
-            Alignment::Center => {
+            Alignment::Centre => {
                 let left_pad = padding / 2;
                 let right_pad = padding - left_pad;
                 format!("{}{}{}", " ".repeat(left_pad), content, " ".repeat(right_pad))
@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn test_format_cell_center_align() {
         let formatter = TableFormatter::new(vec![], false);
-        let result = formatter.format_cell("Hi", Alignment::Center, 5);
+        let result = formatter.format_cell("Hi", Alignment::Centre, 5);
         assert_eq!(result, " Hi  ");
     }
 

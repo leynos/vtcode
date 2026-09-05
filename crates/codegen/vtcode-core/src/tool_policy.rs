@@ -1181,7 +1181,7 @@ impl ToolPolicyManager {
         let mut deny_count = 0;
 
         for (tool, policy) in &summary {
-            let (status, color_name) = match policy {
+            let (status, colour_name) = match policy {
                 ToolPolicy::Allow => {
                     allow_count += 1;
                     ("ALLOW", "green")
@@ -1196,7 +1196,7 @@ impl ToolPolicyManager {
                 }
             };
 
-            let status_styled = match color_name {
+            let status_styled = match colour_name {
                 "green" => style(status).green(),
                 "cyan" => style(status).cyan(),
                 "red" => style(status).red(),

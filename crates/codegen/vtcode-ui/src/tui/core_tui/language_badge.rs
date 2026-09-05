@@ -1,7 +1,7 @@
 use ratatui::style::{Color, Modifier, Style};
 
 pub(crate) fn language_badge_style(language: &str) -> Option<Style> {
-    let color = match language.trim().to_ascii_lowercase().as_str() {
+    let colour = match language.trim().to_ascii_lowercase().as_str() {
         "rust" => Color::Rgb(0xCE, 0x7E, 0x47),
         "swift" => Color::Rgb(0xF0, 0x91, 0x3E),
         "ruby" => Color::Rgb(0xC7, 0x45, 0x45),
@@ -15,7 +15,7 @@ pub(crate) fn language_badge_style(language: &str) -> Option<Style> {
         _ => return None,
     };
 
-    Some(Style::default().fg(color).add_modifier(Modifier::BOLD))
+    Some(Style::default().fg(colour).add_modifier(Modifier::BOLD))
 }
 
 #[cfg(test)]

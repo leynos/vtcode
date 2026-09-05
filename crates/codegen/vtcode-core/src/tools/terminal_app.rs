@@ -411,7 +411,7 @@ impl TerminalAppLauncher {
             // after returning from apps like lazygit.
             drain_terminal_events();
 
-            // This prevents ANSI escape codes from external apps' background color requests
+            // This prevents ANSI escape codes from external apps' background colour requests
             // from appearing in the TUI.
             if let Err(error) = io::stdout().execute(Clear(ClearType::All)) {
                 restore_errors.push(format!("failed to clear terminal: {error}"));

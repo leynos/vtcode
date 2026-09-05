@@ -18,7 +18,7 @@
 //!
 //! # Module layout
 //!
-//! - [`design`] — Color conversion, style bridging, layout, diff, panel primitives
+//! - [`design`] — Colour conversion, style bridging, layout, diff, panel primitives
 //! - [`theme`] — Theme registry, runtime state, syntax theme resolution
 //! - [`tui`]   — Full TUI framework (session, widgets, runner, markdown, etc.)
 //!
@@ -31,7 +31,7 @@ pub mod theme;
 pub mod tui;
 pub mod vim;
 
-// Backward-compat re-exports so `vtcode_ui::ThemeStyles`, `vtcode_ui::color::*`,
+// Backward-compat re-exports so `vtcode_ui::ThemeStyles`, `vtcode_ui::colour::*`,
 // etc. continue to work without path-qualified imports.
 pub use design::*;
 pub use theme::*;

@@ -53,8 +53,8 @@ pub fn generate_config(features: &[crate::terminal_setup::detector::TerminalFeat
                 instructions.push(String::new());
                 instructions.push("1. Open iTerm2 Preferences (Cmd+,)".to_string());
                 instructions.push("2. Go to Profiles → Colors".to_string());
-                instructions.push("3. Choose a color preset or customize manually".to_string());
-                instructions.push("4. VT Code theme colors can be manually configured here".to_string());
+                instructions.push("3. Choose a colour preset or customize manually".to_string());
+                instructions.push("4. VT Code theme colours can be manually configured here".to_string());
                 instructions.push(String::new());
             }
             crate::terminal_setup::detector::TerminalFeature::Notifications => {

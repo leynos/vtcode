@@ -5,7 +5,7 @@
 ## Module Groups
 
 - Traits: `paths/`, `errors/`, `telemetry/`.
-- Display: `ansi/`, `colors/`, `styling/`, `diff_preview/`, `color256_theme/`, `color_policy/`; LLM: `llm/`.
+- Display: `ansi/`, `colours/`, `styling/`, `diff_preview/`, `colour256_theme/`, `colour_policy/`; LLM: `llm/`.
 - Filesystem: `fs/`, `paths/`, `vtcode_paths/`, `diff/`, `diff_paths/`, `vtcodegitignore/`, `workspace_snapshot/`; text: `tokens/`, `unicode/`, `sanitizer/`, `slug/`, `formatting/`.
 - Async: `async_utils/`, `thread_safety/`; interjection: `interjection/`; UI protocol: `ui_protocol/` (including global activity state); other: `editor/`, `http/`, `project/`, `validation/`, `serde_helpers/`, `env_lock/`.
 ## Rules

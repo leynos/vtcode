@@ -272,14 +272,14 @@ mod ansi_stripping_tests {
     }
 
     #[test]
-    fn test_simple_color_code() {
+    fn test_simple_colour_code() {
         let input = "warning: function \u{1b}[1;33mcheck_prompt_reference_trigger\u{1b}[0m is never used";
         let result = strip_ansi_codes(input);
         assert_eq!(result, "warning: function check_prompt_reference_trigger is never used");
     }
 
     #[test]
-    fn test_multiple_color_codes() {
+    fn test_multiple_colour_codes() {
         let input = "\u{1b}[0m\u{1b}[1;32m✓\u{1b}[0m Test \u{1b}[1;31mFailed\u{1b}[0m";
         let result = strip_ansi_codes(input);
         assert_eq!(result, "✓ Test Failed");
@@ -300,16 +300,16 @@ mod ansi_stripping_tests {
     }
 
     #[test]
-    fn test_rgb_color_codes() {
-        // 256-color mode: \x1b[38;5;196m (red)
+    fn test_rgb_colour_codes() {
+        // 256-colour mode: \x1b[38;5;196m (red)
         let input = "Error: \u{1b}[38;5;196msomething failed\u{1b}[0m";
         let result = strip_ansi_codes(input);
         assert_eq!(result, "Error: something failed");
     }
 
     #[test]
-    fn test_true_color_codes() {
-        // True color (24-bit): \x1b[38;2;255;0;0m (red)
+    fn test_true_colour_codes() {
+        // True colour (24-bit): \x1b[38;2;255;0;0m (red)
         let input = "Alert: \u{1b}[38;2;255;0;0mCritical\u{1b}[0m";
         let result = strip_ansi_codes(input);
         assert_eq!(result, "Alert: Critical");
