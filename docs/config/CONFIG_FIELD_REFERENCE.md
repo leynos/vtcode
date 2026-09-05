@@ -263,6 +263,8 @@ python3 scripts/generate_config_field_reference.py
 | `custom_providers[].profiles.*.pricing.output_per_million_usd` | `number \| null` | no | `-` | Per-model output-token price in USD per million tokens. |
 | `custom_providers[].profiles.*.pricing.cache_read_per_million_usd` | `number \| null` | no | `-` | Per-model cached-input read price in USD per million tokens. |
 | `custom_providers[].profiles.*.pricing.cache_write_per_million_usd` | `number \| null` | no | `-` | Per-model cached-input write price in USD per million tokens. |
+| `custom_providers[].responses_allow_function_call_id_remap` | `boolean \| null` | no | `null` | Opt in to terminal function-call ID rewrites on custom Responses endpoints. Requires unique one-to-one names and complete, semantically equal JSON arguments; never applies to custom/freeform calls. Omitted or `false` keeps strict ID matching. |
+| `custom_providers[].profiles.*.responses_allow_function_call_id_remap` | `boolean \| null` | no | `null` | Exact-model override for Responses function-call ID remapping. Explicit `false` overrides a provider-level opt-in. |
 | `custom_providers[].context_window` | `integer \| null` | no | `-` | Optional context window size in tokens for models served by this endpoint. When omitted, the OpenAI-compatible provider uses its default context window size. |
 | `custom_providers[].display_name` | `string` | yes | `-` | Human-friendly label shown in the TUI header, footer, and model picker (e.g., "MyCorporateName"). |
 | `custom_providers[].frequency_penalty` | `null \| number` | no | `-` | Optional frequency penalty default (-2.0-2.0). |

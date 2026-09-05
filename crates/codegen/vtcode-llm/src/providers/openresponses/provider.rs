@@ -953,6 +953,7 @@ impl LLMProvider for OpenResponsesProvider {
                 model: model.clone(),
                 emit_reasoning,
                 include_cached_prompt_metrics: false,
+                allow_function_call_id_remap: false,
             },
             move |value| Self::parse_native_response_payload(value, model.clone()),
         ))
