@@ -73,13 +73,27 @@ pub(crate) fn parse_usage(response: &Value, include_cached: bool) -> Result<Opti
     } else {
         None
     };
+    let cache_creation_tokens = if include_cached {
+        counter(
+            first_present(
+                usage,
+                &[
+                    "/input_tokens_details/cache_write_tokens",
+                    "/prompt_tokens_details/cache_write_tokens",
+                ],
+            ),
+            "cache_write_tokens",
+        )?
+    } else {
+        None
+    };
     Ok(Some(Usage {
         prompt_tokens,
         completion_tokens,
         total_tokens,
         reasoning_output_tokens,
         cached_prompt_tokens,
-        cache_creation_tokens: None,
+        cache_creation_tokens,
         cache_read_tokens: None,
         iterations: None,
     }))
@@ -102,6 +116,20 @@ mod tests {
         assert_eq!(zero.total_tokens, 0);
         assert_eq!(zero.reasoning_output_tokens, None);
         assert_eq!(zero.cached_prompt_tokens, None);
+        assert_eq!(zero.cache_creation_tokens, None);
+    }
+
+    #[test]
+    fn cache_write_tokens_support_responses_and_chat_shapes_and_metrics_gate() {
+        for details_field in ["input_tokens_details", "prompt_tokens_details"] {
+            let mut response = json!({"usage":{
+                "input_tokens":1,
+                "output_tokens":2
+            }});
+            response["usage"][details_field] = json!({"cache_write_tokens":58});
+            assert_eq!(parse_usage(&response, true).unwrap().unwrap().cache_creation_tokens, Some(58));
+            assert_eq!(parse_usage(&response, false).unwrap().unwrap().cache_creation_tokens, None);
+        }
     }
 
     #[test]
@@ -117,14 +145,23 @@ mod tests {
         }
         assert!(parse_usage(&json!({"usage":{"input_tokens":u32::MAX,"output_tokens":1}}), true).is_err());
         assert!(parse_usage(&json!({"usage":{"input_tokens":0,"output_tokens":0,"output_tokens_details":{"reasoning_tokens":u64::MAX}}}), true).is_err());
+        for value in [json!(u64::from(u32::MAX) + 1), json!(-1), json!("12")] {
+            assert!(parse_usage(&json!({"usage":{"input_tokens":0,"output_tokens":0,"input_tokens_details":{"cache_write_tokens":value}}}), true).is_err());
+        }
     }
 
     proptest! {
         #[test]
-        fn representable_usage_is_exact(input in any::<u32>(), output in any::<u32>(), reasoning in any::<u32>(), cached in any::<u32>()) {
+        fn representable_usage_is_exact(
+            input in any::<u32>(),
+            output in any::<u32>(),
+            reasoning in any::<u32>(),
+            cached in any::<u32>(),
+            cache_write in any::<u32>(),
+        ) {
             let result = parse_usage(&json!({"usage":{
                 "input_tokens":input,"output_tokens":output,
-                "input_tokens_details":{"cached_tokens":cached},
+                "input_tokens_details":{"cached_tokens":cached,"cache_write_tokens":cache_write},
                 "output_tokens_details":{"reasoning_tokens":reasoning}
             }}), true);
             match input.checked_add(output) {
@@ -135,6 +172,7 @@ mod tests {
                     prop_assert_eq!(usage.total_tokens, total);
                     prop_assert_eq!(usage.reasoning_output_tokens, Some(reasoning));
                     prop_assert_eq!(usage.cached_prompt_tokens, Some(cached));
+                    prop_assert_eq!(usage.cache_creation_tokens, Some(cache_write));
                 }
                 None => prop_assert!(result.is_err()),
             }

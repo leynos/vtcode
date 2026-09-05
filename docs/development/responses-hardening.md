@@ -36,6 +36,13 @@ Conflicting call/item/index aliases are errors rather than an opportunity to
 combine two calls. Reasoning tracks distinguish summary/content parts within
 an output item.
 
+Compatible endpoints may emit `response.reasoning_part.added` and
+`response.reasoning_part.done` with a nested `reasoning_text` part. VTCode
+reconciles its text as a snapshot, preserving an initial nonempty prefix and
+avoiding duplicate done text. Missing or malformed parts remain errors; this
+does not make unknown event names silently acceptable. The fixture shape follows
+the [vLLM Responses protocol](https://docs.vllm.ai/en/v0.23.0/api/vllm/entrypoints/openai/responses/protocol/).
+
 ## Usage and request compatibility
 
 Missing or null `usage` remains absent. A present usage object must provide
@@ -89,11 +96,46 @@ pinned verifier version before running the narrow proof harness. Mutation
 witnesses must demonstrate that the new properties and proofs reject broken
 production behaviour.
 
-At the restart checkpoint, ordinary unit, property and ACP behavioural tests
-and the VidaiMock 0.3.1 Responses physics tests have passed. The revised Kani
-base/inductive-step and snapshot proofs, deliberate mutation witnesses and
-live Friendli compatibility checks remain pending. The presence of these
-harnesses is not a claim that all formal or live-provider validation is complete.
+Formal checks target the production decision functions, not the entire heap
+representation. Lifecycle admission covers six events. Identity lookup uses
+two fixed registered calls and symbolic query classes: exact or partial
+matches, unknown identities, conflicting aliases and missing keys. A separate
+base-case check exercises production capture of two calls. Snapshot checks
+exercise the actual reconciliation helper over representative prefix relations;
+reasoning identity checks cover output/part-index separation.
+
+Payload append, arbitrary alias enrichment, registration histories and the
+allocating `custom_tool_calls()` projection remain unit/property-test
+obligations, not formal claims. Proof-local values may be forgotten after all
+assertions: allocator teardown is outside this state contract. No allocator
+growth-policy assumption or modified pointer encoding is required.
+
+All six bounded harnesses passed with Kani 0.67.0 and safety/unwind checks
+enabled. Routing uses an unwind bound of 64 to include bytewise comparison
+of its full diagnostic strings; the bound is not a claim of 64-call coverage.
+
+All 13 new properties and all six proofs rejected deliberate production
+mutations with meaningful assertion failures, not compilation failures or
+solver exhaustion. The following mutation groups provide reproducible
+witnesses; restore production code before running ordinary gates:
+
+| Production fault | Property/proof obligation exercised |
+| --- | --- |
+| Ignore changed continuation model | WebSocket context isolation property |
+| Serialize a custom output as a function output | Tool-history round-trip property |
+| Cast oversized counters or wrap their sum | Both usage properties |
+| Prepend decoded SSE frames | Both byte-partition/framing properties |
+| Admit an equal sequence or post-terminal event | Sequence and terminal properties; lifecycle proof |
+| Route a matched call to slot zero | Interleaved payload property |
+| Bypass conflicting item aliases | Alias-conflict property; routing proof |
+| Append a complete snapshot again or accept divergence | Three reasoning properties; snapshot proof |
+| Ignore reasoning output index | Reasoning-index proof |
+| Replace a captured call name | Two-call capture proof |
+| Prefer stale final input over longer streamed input | Final-input preference proof |
+
+Ordinary unit, property and ACP behavioural tests and VidaiMock 0.3.1 physics
+tests passed at the restart checkpoint. Live Friendli compatibility is checked
+separately; offline verification alone does not establish provider support.
 
 ## Live compatible-provider checks
 
@@ -110,6 +152,13 @@ four requests capped at 2,048 output tokens each (8,192 total), has no automatic
 retry loop and runs no returned tools. Its synthetic cases cover buffered text,
 streamed text, a function call and a raw custom call. Do not enable it in ordinary
 CI or run it repeatedly without reassessing the live budget.
+
+The 2026-09-05 live run passed buffered and streamed text, then rejected
+`response.reasoning_part.added` during the function-call case. That event-name
+gap is covered by offline regression fixtures. The raw custom-call case was
+not reached, and no paid rerun has verified tool compatibility after the fix.
+The successful requests reported 34 input and 27 output tokens in total;
+usage of the failed third attempt was unavailable, not zero.
 
 Friendli documents [Responses with SSE](https://friendli.ai/docs/openapi/model-apis/responses)
 as beta. Its published schema does not establish WebSocket support; do not
