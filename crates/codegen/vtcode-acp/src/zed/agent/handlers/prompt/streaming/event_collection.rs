@@ -9,6 +9,15 @@ pub(super) async fn collect_stream_events(
     loop {
         match poll_next_stream_event(stream, &request).await {
             StreamPollOutcome::Cancelled => {
+                request
+                    .previews
+                    .finish(
+                        request.turn.agent.as_ref(),
+                        &request.turn.args.session_id,
+                        acp::ToolCallStatus::Failed,
+                        "Input streaming was cancelled; it was not executed.",
+                    )
+                    .await;
                 record_stream_attempt(request.span, request.started_at, "cancelled");
                 return StreamAttemptOutcome::Cancelled;
             }
@@ -57,6 +66,15 @@ async fn classify_stream_poll_failure(
     error: LLMError,
 ) -> StreamAttemptOutcome {
     record_stream_attempt(request.span, request.started_at, "failure");
+    request
+        .previews
+        .finish(
+            request.turn.agent.as_ref(),
+            &request.turn.args.session_id,
+            acp::ToolCallStatus::Failed,
+            "Provider input streaming failed; it was not executed.",
+        )
+        .await;
     classify_stream_failure(StreamFailureRequest {
         turn: request.turn,
         telemetry: &mut *request.telemetry,
@@ -101,6 +119,34 @@ async fn process_stream_event(
             None
         }
         LLMStreamEvent::ReasoningStage { .. } | LLMStreamEvent::ReasoningSignature { .. } => None,
+        LLMStreamEvent::ToolCallStart { call_id, name } => {
+            request.output.emitted_output = true;
+            request.deadlines.observe_output();
+            request.telemetry.observe_output(
+                &request.turn.provider_runtime,
+                name.as_deref().unwrap_or(&call_id),
+                request.attempt_index,
+            );
+            request
+                .previews
+                .start(request.turn.agent.as_ref(), &request.turn.args.session_id, call_id, name)
+                .await;
+            None
+        }
+        LLMStreamEvent::ToolCallDelta { call_id, delta } => {
+            if !delta.is_empty() {
+                request.output.emitted_output = true;
+                request.deadlines.observe_output();
+                request
+                    .telemetry
+                    .observe_output(&request.turn.provider_runtime, &delta, request.attempt_index);
+                request
+                    .previews
+                    .push_delta(request.turn.agent.as_ref(), &request.turn.args.session_id, call_id, &delta)
+                    .await;
+            }
+            None
+        }
         LLMStreamEvent::Completed { response } => Some(complete_stream_response(request, *response).await),
     }
 }
@@ -116,6 +162,15 @@ async fn complete_stream_response(
     request
         .telemetry
         .complete(&request.turn.provider_runtime, &response, request.attempt_index, false)
+        .await;
+    request
+        .previews
+        .finish(
+            request.turn.agent.as_ref(),
+            &request.turn.args.session_id,
+            acp::ToolCallStatus::Completed,
+            "Provider input streaming completed; execution is handled separately.",
+        )
         .await;
     request.turn.agent.publish_lody_usage(
         &request.turn.args.session_id,

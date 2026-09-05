@@ -1,14 +1,12 @@
 use crate::error_display;
 use crate::provider::{
-    AssistantPhase, ContentPart, FinishReason, LLMError, LLMRequest, LLMResponse, MessageContent, MessageRole,
-    ToolCall, Usage,
+    AssistantPhase, ContentPart, FinishReason, LLMError, LLMRequest, LLMResponse, MessageContent, MessageRole, ToolCall,
 };
-use crate::providers::common::{append_normalized_reasoning_detail_items, parse_reasoning_tokens_from_usage};
+use crate::providers::common::append_normalized_reasoning_detail_items;
 use crate::providers::openai::types::OpenAIResponsesPayload;
 use crate::providers::shared::{
     collect_tool_references_from_tool_search_output, function_output_value_from_message_content,
-    parse_cache_write_tokens_from_usage, parse_cached_prompt_tokens_from_usage,
-    tool_result_content_from_message_content,
+    responses_usage::parse_usage, tool_result_content_from_message_content,
 };
 use hashbrown::HashMap;
 use serde_json::{Value, json};
@@ -264,6 +262,7 @@ pub(crate) fn parse_responses_payload(
     model: String,
     include_cached_prompt_metrics: bool,
 ) -> Result<LLMResponse, LLMError> {
+    crate::providers::shared::responses_validation::validate_completed_response(&response_json)?;
     let output = response_json.get("output").and_then(|value| value.as_array()).ok_or_else(|| {
         let formatted_error =
             error_display::format_llm_error("OpenAI", "Invalid Responses API format: missing output array");
@@ -403,35 +402,7 @@ pub(crate) fn parse_responses_payload(
         Some(tool_calls_vec)
     };
 
-    let usage = response_json.get("usage").map(|usage_value| {
-        let cached_prompt_tokens = parse_cached_prompt_tokens_from_usage(usage_value, include_cached_prompt_metrics);
-        let cache_creation_tokens = parse_cache_write_tokens_from_usage(usage_value, include_cached_prompt_metrics);
-
-        Usage {
-            prompt_tokens: usage_value
-                .get("input_tokens")
-                .or_else(|| usage_value.get("prompt_tokens"))
-                .and_then(|pt| pt.as_u64())
-                .and_then(|v| u32::try_from(v).ok())
-                .unwrap_or(0),
-            completion_tokens: usage_value
-                .get("output_tokens")
-                .or_else(|| usage_value.get("completion_tokens"))
-                .and_then(|ct| ct.as_u64())
-                .and_then(|v| u32::try_from(v).ok())
-                .unwrap_or(0),
-            reasoning_output_tokens: parse_reasoning_tokens_from_usage(usage_value),
-            total_tokens: usage_value
-                .get("total_tokens")
-                .and_then(|tt| tt.as_u64())
-                .and_then(|v| u32::try_from(v).ok())
-                .unwrap_or(0),
-            cached_prompt_tokens,
-            cache_creation_tokens,
-            cache_read_tokens: None,
-            iterations: None,
-        }
-    });
+    let usage = parse_usage(&response_json, include_cached_prompt_metrics)?;
 
     Ok(LLMResponse {
         content,
@@ -620,7 +591,36 @@ mod tests {
     use super::{build_standard_responses_payload, parse_responses_payload};
     use crate::provider::{LLMRequest, Message, ToolCall};
     use crate::providers::shared::{parse_cache_write_tokens_from_usage, parse_cached_prompt_tokens_from_usage};
+    use proptest::prelude::*;
     use serde_json::{Value, json};
+
+    proptest! {
+        #[test]
+        fn responses_tool_history_round_trip_preserves_payload(
+            raw in any::<bool>(),
+            input in proptest::collection::vec(any::<char>(), 0..4096).prop_map(|chars| chars.into_iter().collect::<String>()),
+            output in proptest::collection::vec(any::<char>(), 0..512).prop_map(|chars| chars.into_iter().collect::<String>()),
+        ) {
+            let wire_input = if raw { input } else { json!({"payload":input}).to_string() };
+            let mut item = json!({"type":if raw {"custom_tool_call"} else {"function_call"},"call_id":"call_fixture","name":"fixture_tool"});
+            item[if raw { "input" } else { "arguments" }] = json!(wire_input);
+            let parsed = parse_responses_payload(json!({"output":[item]}), "fixture-model".into(), false).unwrap();
+            let request = LLMRequest {
+                messages: vec![
+                    Message::assistant_with_tools(String::new(), parsed.tool_calls.unwrap()),
+                    Message::tool_response("call_fixture".into(), output.clone()),
+                ].into(),
+                ..Default::default()
+            };
+            let payload = build_standard_responses_payload(&request, true).unwrap();
+            prop_assert_eq!(payload.input.len(), 2);
+            prop_assert_eq!(&payload.input[0][if raw {"input"} else {"arguments"}], &json!(wire_input));
+            prop_assert_eq!(&payload.input[0]["call_id"], &json!("call_fixture"));
+            prop_assert_eq!(&payload.input[1]["call_id"], &json!("call_fixture"));
+            prop_assert_eq!(&payload.input[1]["type"], &json!(if raw {"custom_tool_call_output"} else {"function_call_output"}));
+            prop_assert_eq!(&payload.input[1]["output"], &json!(output));
+        }
+    }
 
     fn assert_multimodal_tool_result(payload: super::OpenAIResponsesPayload) {
         let tool_msg = payload

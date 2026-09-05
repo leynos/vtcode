@@ -2,9 +2,11 @@
 use super::super::provider::*;
 
 mod event_collection;
+mod tool_input_previews;
 use super::buffered::refresh_resolved_tool_state;
 use super::*;
 use event_collection::classify_stream_failure;
+use tool_input_previews::StreamedToolInputPreviews;
 
 enum StreamAttemptOutcome {
     Completed(Box<LLMResponse>),
@@ -30,6 +32,7 @@ struct StreamCollectionRequest<'a> {
     span: &'a Span,
     started_at: Instant,
     attempt_index: u32,
+    previews: &'a mut StreamedToolInputPreviews,
     deadlines: &'a mut StreamDeadlineTracker,
     telemetry: &'a mut GenerationTelemetry,
     output: &'a mut ProviderOutput,
@@ -242,6 +245,7 @@ async fn collect_streaming_attempt(
         }
         result = turn.provider.stream(request.clone()).instrument(span.clone()) => result,
     };
+    let mut previews = StreamedToolInputPreviews::default();
     let mut stream = match stream_result {
         Ok(stream) => stream,
         Err(error) => {
@@ -266,6 +270,7 @@ async fn collect_streaming_attempt(
             span: &span,
             started_at,
             attempt_index,
+            previews: &mut previews,
             deadlines: &mut deadlines,
             telemetry: &mut telemetry,
             output,
