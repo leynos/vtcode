@@ -223,11 +223,11 @@ impl ForkSkillExecutor for ChildAgentSkillExecutor {
         task.instructions = Some(skill.instructions.clone());
 
         let results = Box::pin(runner.execute_task(&task, &[])).await?;
-        let mut artifact_paths = results.modified_files.clone();
+        let mut artefact_paths = results.modified_files.clone();
         let handoff_paths = blocked_handoff_paths(&results.thread_events);
         for path in handoff_paths {
-            if !artifact_paths.iter().any(|existing| existing == &path) {
-                artifact_paths.push(path);
+            if !artefact_paths.iter().any(|existing| existing == &path) {
+                artefact_paths.push(path);
             }
         }
 
@@ -239,7 +239,7 @@ impl ForkSkillExecutor for ChildAgentSkillExecutor {
             } else {
                 results.summary
             },
-            "artifact_paths": artifact_paths,
+            "artifact_paths": artefact_paths,
             "delegate_session_id": session_id,
         }))
     }

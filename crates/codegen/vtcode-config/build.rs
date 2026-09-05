@@ -26,14 +26,14 @@ fn main() {
     if is_docsrs {
         // When building on docs.rs, generate empty placeholder files to prevent compilation errors
         println!("cargo:warning=docs.rs build detected, generating placeholder files");
-        generate_placeholder_artifacts();
-    } else if let Err(error) = generate_artifacts() {
+        generate_placeholder_artefacts();
+    } else if let Err(error) = generate_artefacts() {
         eprintln!("error: {error:#}");
         std::process::exit(1);
     }
 }
 
-fn generate_placeholder_artifacts() {
+fn generate_placeholder_artefacts() {
     use std::path::PathBuf;
 
     let out_dir = match env::var("OUT_DIR") {
@@ -186,7 +186,7 @@ fn generate_placeholder_openrouter_constants() -> Result<String> {
     Ok(output)
 }
 
-fn generate_artifacts() -> Result<()> {
+fn generate_artefacts() -> Result<()> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     let provider = load_provider_metadata(&manifest_dir)?;
     let capability_entries = load_model_capability_entries(&manifest_dir)?;

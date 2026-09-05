@@ -1,7 +1,7 @@
 //! Plan artifact I/O: persisting drafts, syncing the embedded tracker,
 //! and detecting workspace validation commands.
 //!
-//! Depends on `artifacts` for pure content shaping and on `state` for the
+//! Depends on `artefacts` for pure content shaping and on `state` for the
 //! plan-file location. Tool wiring lives in `start.rs` / `finish.rs`.
 
 use anyhow::{Context, Result, bail};
@@ -9,7 +9,7 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::tools::handlers::planning_workflow::artifacts::{
+use crate::tools::handlers::planning_workflow::artefacts::{
     PlanValidationReport, extract_embedded_tracker, generate_tracker_markdown_from_plan, render_plan_with_tracker,
     tracker_file_for_plan_file, tracker_has_progress_or_notes, validate_plan_content,
 };
@@ -90,7 +90,7 @@ pub async fn persist_plan_draft(state: &PlanningWorkflowState, plan_markdown: &s
         None if state.is_active() => {
             // The dedicated plan agent can enter planning without invoking the
             // `start_planning` tool first. Plan synthesis must still have a
-            // durable artifact before approval, so lazily allocate the same
+            // durable artefact before approval, so lazily allocate the same
             // workspace-local plan location used by `start_planning`.
             let plan_file = state
                 .plans_dir()
@@ -167,8 +167,8 @@ pub async fn persist_plan_draft(state: &PlanningWorkflowState, plan_markdown: &s
     let mut global_tracker_published = false;
     let mut plan_published = false;
     let publish_result: Result<()> = async {
-        // Publish the tracker artifacts before replacing the plan. Each file
-        // is written atomically so readers never observe a truncated artifact.
+        // Publish the tracker artefacts before replacing the plan. Each file
+        // is written atomically so readers never observe a truncated artefact.
         if let Some(parent) = tracker_file_path.parent() {
             ensure_dir_exists(parent)
                 .await
@@ -214,7 +214,7 @@ pub async fn persist_plan_draft(state: &PlanningWorkflowState, plan_markdown: &s
             rollback_error.get_or_insert(rollback);
         }
         if let Some(rollback_error) = rollback_error {
-            return Err(error.context(format!("failed to roll back plan artifacts: {rollback_error}")));
+            return Err(error.context(format!("failed to roll back plan artefacts: {rollback_error}")));
         }
         return Err(error);
     }

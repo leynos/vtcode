@@ -586,7 +586,7 @@ impl ExecEventRecorder {
         mode: CompactionMode,
         original_message_count: usize,
         compacted_message_count: usize,
-        history_artifact_path: Option<&str>,
+        history_artefact_path: Option<&str>,
     ) {
         self.record(ThreadEvent::ThreadCompactBoundary(ThreadCompactBoundaryEvent {
             thread_id: self.thread_id.clone(),
@@ -594,7 +594,7 @@ impl ExecEventRecorder {
             mode,
             original_message_count,
             compacted_message_count,
-            history_artifact_path: history_artifact_path.map(str::to_string),
+            history_artefact_path: history_artefact_path.map(str::to_string),
             previous_segment_id: None,
             new_segment_id: None,
             previous_prefix_hash: None,

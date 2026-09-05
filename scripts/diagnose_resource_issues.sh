@@ -63,8 +63,8 @@ else
     done
 fi
 
-# Check Cargo build artifacts
-echo "📦 Build Artifacts"
+# Check Cargo build artefacts
+echo "📦 Build Artefacts"
 echo "─────────────────────────────────────────────────────────────"
 
 if [[ -d "target" ]]; then

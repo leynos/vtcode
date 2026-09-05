@@ -212,7 +212,7 @@ async fn scheduler_daemon_executes_due_prompt_task() {
     assert!(record.runtime.last_run_at.is_some());
     assert!(record.runtime.next_run_at.is_none());
     assert_eq!(record.runtime.last_status.as_ref().map(ToString::to_string), Some("success".to_string()));
-    assert!(record.runtime.last_artifact_dir.is_some());
+    assert!(record.runtime.last_artefact_dir.is_some());
 }
 
 #[cfg(unix)]

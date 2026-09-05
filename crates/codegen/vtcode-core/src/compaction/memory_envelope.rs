@@ -22,7 +22,7 @@ use vtcode_config::loader::VTCodeConfig;
 use crate::compaction::CompactionConfig;
 use crate::config::constants::tools as tool_names;
 use crate::context::history_files::{HistoryFileManager, messages_to_history_messages};
-use crate::core::agent::harness_artifacts::{current_task_path, read_evaluation_summary, read_spec_summary};
+use crate::core::agent::harness_artefacts::{current_task_path, read_evaluation_summary, read_spec_summary};
 use crate::core::agent::steering::{
     MAX_APPLIED_FOLLOW_UP_INTENT_IDS, MAX_QUEUED_FOLLOW_UP_INTENTS, QueuedFollowUpIntent,
 };
@@ -81,13 +81,15 @@ pub struct SessionMemoryEnvelope {
     /// durable instruction after restart or compaction.
     #[serde(default)]
     pub applied_intent_ids: Vec<String>,
-    pub history_artifact_path: Option<String>,
+    /// Wire key `history_artifact_path` is fixed by the memory-envelope schema.
+    #[serde(rename = "history_artifact_path")]
+    pub history_artefact_path: Option<String>,
     pub generated_at: String,
 }
 
 impl SessionMemoryEnvelope {
     /// Returns true if this envelope carries the same meaningful content as
-    /// `other`. Generated timestamps and history artifact paths are ignored
+    /// `other`. Generated timestamps and history artefact paths are ignored
     /// because they change even when the underlying session state does not.
     pub fn is_content_equivalent_to(&self, other: &SessionMemoryEnvelope) -> bool {
         self.session_id == other.session_id
@@ -266,7 +268,7 @@ pub fn build_session_memory_envelope(
     original_history: &[Message],
     touched_files: &[String],
     summary: String,
-    history_artifact_path: Option<&PathBuf>,
+    history_artefact_path: Option<&PathBuf>,
     prior_envelope: Option<&SessionMemoryEnvelope>,
     task_snapshot: &TaskTrackerSnapshot,
     envelope_update: Option<&SessionMemoryEnvelopeUpdate>,
@@ -327,9 +329,9 @@ pub fn build_session_memory_envelope(
         delegation_notes: merge(pe.map(|e| e.delegation_notes.as_slice()).unwrap_or(&[]), &update.delegation_notes),
         pending_intents,
         applied_intent_ids,
-        history_artifact_path: history_artifact_path
+        history_artefact_path: history_artefact_path
             .map(|p| p.display().to_string())
-            .or_else(|| pe.and_then(|e| e.history_artifact_path.clone())),
+            .or_else(|| pe.and_then(|e| e.history_artefact_path.clone())),
         generated_at: Utc::now().to_rfc3339(),
     }
 }
@@ -387,12 +389,12 @@ pub fn persist_memory_envelope_with_update(
     }
 
     let task_snapshot = read_task_tracker_snapshot(workspace_root);
-    let history_artifact_path = if should_persist && persistence == MemoryEnvelopePersistence::PersistToDisk {
+    let history_artefact_path = if should_persist && persistence == MemoryEnvelopePersistence::PersistToDisk {
         let mut hm = HistoryFileManager::new(workspace_root, session_id);
         let hm2 = messages_to_history_messages(original_history, 0);
         let hr = hm
             .write_history_sync(&hm2, original_history.len(), "compaction", touched_files, &[])
-            .context("write compaction history artifact")?;
+            .context("write compaction history artefact")?;
         Some(hr.file_path)
     } else {
         None
@@ -409,13 +411,13 @@ pub fn persist_memory_envelope_with_update(
         original_history,
         touched_files,
         extract_compaction_summary(compacted, original_history),
-        history_artifact_path.as_ref(),
+        history_artefact_path.as_ref(),
         prior,
         &task_snapshot,
         envelope_update,
     );
 
-    if let Some(hap) = history_artifact_path.as_ref() {
+    if let Some(hap) = history_artefact_path.as_ref() {
         write_memory_envelope_to_path(&memory_envelope_path_from_history_path(workspace_root, hap), &envelope)?;
     }
     apply_memory_envelope(compacted, &envelope, placement);
@@ -475,13 +477,13 @@ pub async fn persist_memory_envelope_async_with_update(
     }
 
     let task_snapshot = read_task_tracker_snapshot_async(workspace_root).await;
-    let history_artifact_path = if should_persist && persistence == MemoryEnvelopePersistence::PersistToDisk {
+    let history_artefact_path = if should_persist && persistence == MemoryEnvelopePersistence::PersistToDisk {
         let mut history_manager = HistoryFileManager::new(workspace_root, session_id);
         let history_messages = messages_to_history_messages(original_history, 0);
         let history_result = history_manager
             .write_history(&history_messages, original_history.len(), "compaction", touched_files, &[])
             .await
-            .context("write compaction history artifact")?;
+            .context("write compaction history artefact")?;
         Some(history_result.file_path)
     } else {
         None
@@ -499,13 +501,13 @@ pub async fn persist_memory_envelope_async_with_update(
         original_history,
         touched_files,
         extract_compaction_summary(compacted, original_history),
-        history_artifact_path.as_ref(),
+        history_artefact_path.as_ref(),
         prior,
         &task_snapshot,
         envelope_update,
     );
 
-    if let Some(history_path) = history_artifact_path.as_ref() {
+    if let Some(history_path) = history_artefact_path.as_ref() {
         write_memory_envelope_to_path_async(
             &memory_envelope_path_from_history_path(workspace_root, history_path),
             &envelope,
@@ -574,7 +576,7 @@ fn memory_envelope_message(envelope: &SessionMemoryEnvelope) -> Message {
     if let Some(s) = list_section("Delegation Notes", &envelope.delegation_notes) {
         sections.push(s);
     }
-    if let Some(s) = maybe_section("History Artifact", envelope.history_artifact_path.as_deref()) {
+    if let Some(s) = maybe_section("History Artefact", envelope.history_artefact_path.as_deref()) {
         sections.push(s);
     }
 

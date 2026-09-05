@@ -553,9 +553,10 @@ pub struct ThreadCompactBoundaryEvent {
     pub original_message_count: usize,
     /// Number of messages after compaction.
     pub compacted_message_count: usize,
-    /// Optional persisted artifact containing the archived compaction summary/history.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub history_artifact_path: Option<String>,
+    /// Optional persisted artefact containing the archived compaction summary/history.
+    /// Wire key `history_artifact_path` is fixed by the event schema.
+    #[serde(rename = "history_artifact_path", skip_serializing_if = "Option::is_none")]
+    pub history_artefact_path: Option<String>,
     /// Segment identifier that contained the request prefix before compaction.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_segment_id: Option<String>,
@@ -1668,7 +1669,7 @@ mod tests {
             mode: CompactionMode::Provider,
             original_message_count: 12,
             compacted_message_count: 5,
-            history_artifact_path: Some("/tmp/history.jsonl".to_string()),
+            history_artefact_path: Some("/tmp/history.jsonl".to_string()),
             previous_segment_id: Some("segment-0001".to_string()),
             new_segment_id: Some("segment-0002".to_string()),
             previous_prefix_hash: Some("prefix-before".to_string()),
@@ -1698,7 +1699,7 @@ mod tests {
         };
 
         assert_eq!(event.thread_id, "thread-1");
-        assert_eq!(event.history_artifact_path, None);
+        assert_eq!(event.history_artefact_path, None);
         assert_eq!(event.previous_segment_id, None);
         assert_eq!(event.new_segment_id, None);
         assert_eq!(event.previous_prefix_hash, None);

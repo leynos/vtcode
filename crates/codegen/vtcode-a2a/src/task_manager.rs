@@ -9,7 +9,7 @@ use tokio::sync::RwLock;
 
 use super::errors::{A2aError, A2aResult};
 use super::rpc::{ListTasksParams, ListTasksResult, TaskPushNotificationConfig};
-use super::types::{Artifact, Message, Task, TaskState, TaskStatus};
+use super::types::{Artefact, Message, Task, TaskState, TaskStatus};
 use super::webhook::parse_webhook_url;
 
 /// A2A Task Manager - handles task creation, updates, and queries
@@ -147,14 +147,14 @@ impl TaskManager {
     }
 
     /// Add an artifact to a task
-    async fn add_artifact(&self, task_id: &str, artifact: Artifact) -> A2aResult<Task> {
+    async fn add_artefact(&self, task_id: &str, artefact: Artefact) -> A2aResult<Task> {
         let mut state = self.state.write().await;
         let task = state
             .tasks
             .get_mut(task_id)
             .ok_or_else(|| A2aError::TaskNotFound(task_id.to_string()))?;
 
-        task.artifacts.push(artifact);
+        task.artefacts.push(artefact);
         Ok(task.clone())
     }
 
@@ -218,11 +218,11 @@ impl TaskManager {
         task
     }
 
-    fn clone_task_for_listing(task: &Task, include_artifacts: bool, history_length: Option<usize>) -> Task {
+    fn clone_task_for_listing(task: &Task, include_artefacts: bool, history_length: Option<usize>) -> Task {
         let mut task = Self::clone_task_for_history(task.clone(), history_length.unwrap_or(0));
 
-        if !include_artifacts {
-            task.artifacts.clear();
+        if !include_artefacts {
+            task.artefacts.clear();
         }
 
         task
@@ -279,7 +279,7 @@ impl TaskManager {
             None
         };
 
-        let include_artifacts = params.include_artifacts == Some(true);
+        let include_artefacts = params.include_artefacts == Some(true);
         let history_length = params.history_length.map(|len| len as usize);
         let page_task_ids: Vec<_> = matching_tasks.into_iter().skip(start_idx).take(page_size as usize).collect();
         let result = if page_task_ids.is_empty() {
@@ -292,7 +292,7 @@ impl TaskManager {
                     state
                         .tasks
                         .get(&task_id)
-                        .map(|task| Self::clone_task_for_listing(task, include_artifacts, history_length))
+                        .map(|task| Self::clone_task_for_listing(task, include_artefacts, history_length))
                 })
                 .collect()
         };
@@ -412,14 +412,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_add_artifact() {
+    async fn test_add_artefact() {
         let manager = TaskManager::new();
         let task = manager.create_task(None).await;
 
-        let artifact = Artifact::text("art-1", "Generated content");
-        let updated = manager.add_artifact(&task.id, artifact).await.expect("add artifact");
-        assert_eq!(updated.artifacts.len(), 1);
-        assert_eq!(updated.artifacts[0].id, "art-1");
+        let artefact = Artefact::text("art-1", "Generated content");
+        let updated = manager.add_artefact(&task.id, artefact).await.expect("add artefact");
+        assert_eq!(updated.artefacts.len(), 1);
+        assert_eq!(updated.artefacts[0].id, "art-1");
     }
 
     #[tokio::test]
@@ -514,9 +514,9 @@ mod tests {
 
         drop(
             manager
-                .add_artifact(&newer.id, Artifact::text("art-1", "Generated content"))
+                .add_artefact(&newer.id, Artefact::text("art-1", "Generated content"))
                 .await
-                .expect("add artifact"),
+                .expect("add artefact"),
         );
         drop(
             manager
@@ -536,7 +536,7 @@ mod tests {
                 context_id: Some("ctx-1".to_string()),
                 page_size: Some(1),
                 history_length: Some(1),
-                include_artifacts: Some(false),
+                include_artefacts: Some(false),
                 ..Default::default()
             })
             .await;
@@ -545,7 +545,7 @@ mod tests {
         assert_eq!(first_page.next_page_token.as_deref(), Some("1"));
         assert_eq!(first_page.tasks.len(), 1);
         assert_eq!(first_page.tasks[0].id, newer.id);
-        assert!(first_page.tasks[0].artifacts.is_empty());
+        assert!(first_page.tasks[0].artefacts.is_empty());
         assert_eq!(first_page.tasks[0].history.len(), 1);
         assert_eq!(first_page.tasks[0].history[0].role, MessageRole::Agent);
 

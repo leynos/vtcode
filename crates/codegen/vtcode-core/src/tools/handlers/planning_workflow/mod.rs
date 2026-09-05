@@ -5,14 +5,14 @@
 //! surface consumed by `handlers/mod.rs` and the task-tracker / exec-harness
 //! readers:
 //!
-//! - [`artifacts`]: pure, side-effect-free plan/tracker marker handling,
+//! - [`artefacts`]: pure, side-effect-free plan/tracker marker handling,
 //!   section parsing, validation, and tracker generation.
 //! - [`persistence`]: file I/O — draft persistence, plan<->tracker sync,
 //!   validation-command detection.
 //! - [`state`]: [`PlanningWorkflowState`] shared permission state.
 //! - [`start`]: `start_planning` tool (enter planning workflow).
 
-pub mod artifacts;
+pub mod artefacts;
 pub mod persistence;
 pub mod start;
 pub mod state;
@@ -20,7 +20,7 @@ pub mod state;
 // Preserved external surface. Do not remove without updating the consumers in
 // `handlers/mod.rs`, `task_tracker.rs`, `planning_task_tracker.rs`,
 // `continuation.rs`, `turn/context.rs`, and `turn/.../plan_seed.rs`.
-pub use artifacts::{
+pub use artefacts::{
     CANONICAL_STEP_FORMAT, PlanValidationReport, generate_tracker_markdown_from_plan, merge_plan_content,
     plan_file_for_tracker_file, tracker_file_for_plan_file, validate_plan_content,
 };
@@ -33,7 +33,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    use super::artifacts::{
+    use super::artefacts::{
         PLAN_TRACKER_END, PLAN_TRACKER_START, generate_tracker_markdown_from_plan, render_plan_with_tracker,
     };
     use super::persistence::detect_validation_command_hints;
@@ -354,8 +354,8 @@ Persist a concrete draft and seed tracker state.
     }
 }
 #[cfg(test)]
-mod planning_artifact_regression_tests {
-    use super::artifacts::{generate_tracker_markdown_from_plan, validate_plan_content};
+mod planning_artefact_regression_tests {
+    use super::artefacts::{generate_tracker_markdown_from_plan, validate_plan_content};
     use super::persistence::persist_plan_draft;
     use super::start::StartPlanningTool;
     use super::state::PlanningWorkflowState;
@@ -485,7 +485,7 @@ Reject vague target lists.
 Improve startup observability and benchmark the launch path.
 
 ## Implementation Steps
-1. Add startup debug logging -> files: [crates/codegen/vtcode-core/src/tools/handlers/planning_workflow/artifacts.rs] -> verify: launch with startup debug logging and confirm each phase is reported
+1. Add startup debug logging -> files: [crates/codegen/vtcode-core/src/tools/handlers/planning_workflow/artefacts.rs] -> verify: launch with startup debug logging and confirm each phase is reported
 2. Record launch comparisons -> files: [docs/development/testing.md, relevant quick-reference documentation] -> verify: run at least 10 cold and warm launches before and after changes
 3. Compare benchmark reads -> files: [src/main.rs] -> verify: instrumented benchmark confirms fewer reads and unchanged startup results
 4. Document benchmark results -> files: [docs/development/testing.md, relevant quick-reference documentation] -> verify: documentation review plus cargo fmt --check
@@ -608,7 +608,7 @@ Keep the failed planning-session verification shape concrete.
 Accept workspace-relative executables without requiring them to exist locally.
 
 ## Steps
-1. Verify the release binary -> files: [crates/codegen/vtcode-core/src/tools/handlers/planning_workflow/artifacts.rs] -> verify: target/release/vtcode --version
+1. Verify the release binary -> files: [crates/codegen/vtcode-core/src/tools/handlers/planning_workflow/artefacts.rs] -> verify: target/release/vtcode --version
 2. Compare performance -> files: [scripts/perf/compare.sh] -> verify: scripts/perf/compare.sh
 
 ## Validation

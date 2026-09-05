@@ -1311,7 +1311,7 @@ main() {
 			print_warning "Failed to build macOS aarch64"
 		fi
 
-		# Download Linux and Windows binaries from CI artifacts
+		# Download Linux and Windows binaries from CI artefacts
 		print_info "Downloading Linux and Windows binaries from CI..."
 
 		# Use the run_id from step 3.5 if CI was successful, otherwise try to find one
@@ -1332,56 +1332,56 @@ main() {
 		local require_windows="${RELEASE_REQUIRE_WINDOWS:-true}"
 
 		if [[ -n "$run_id" ]]; then
-			# Download all artifacts from the CI run
-			local ci_artifacts_dir="/tmp/vtcode-ci-artifacts-$released_version"
-			mkdir -p "$ci_artifacts_dir"
+			# Download all artefacts from the CI run
+			local ci_artefacts_dir="/tmp/vtcode-ci-artifacts-$released_version"
+			mkdir -p "$ci_artefacts_dir"
 
-			# Download Linux x86_64 artifact
-			print_info "Downloading Linux x86_64 artifact..."
-			if gh run download "$run_id" --name "vtcode-${released_version}-x86_64-unknown-linux-gnu" --dir "$ci_artifacts_dir" 2>/dev/null; then
-				mv "$ci_artifacts_dir"/*.tar.gz "$binaries_dir/" 2>/dev/null || true
-				mv "$ci_artifacts_dir"/*.sha256 "$binaries_dir/" 2>/dev/null || true
+			# Download Linux x86_64 artefact
+			print_info "Downloading Linux x86_64 artefact..."
+			if gh run download "$run_id" --name "vtcode-${released_version}-x86_64-unknown-linux-gnu" --dir "$ci_artefacts_dir" 2>/dev/null; then
+				mv "$ci_artefacts_dir"/*.tar.gz "$binaries_dir/" 2>/dev/null || true
+				mv "$ci_artefacts_dir"/*.sha256 "$binaries_dir/" 2>/dev/null || true
 				print_success "Downloaded: Linux x86_64 gnu"
 			else
 				print_warning "Could not download: Linux x86_64 gnu"
 			fi
 
-			# Download Linux x86_64 musl artifact
-			print_info "Downloading Linux x86_64 musl artifact..."
-			if gh run download "$run_id" --name "vtcode-${released_version}-x86_64-unknown-linux-musl" --dir "$ci_artifacts_dir" 2>/dev/null; then
-				mv "$ci_artifacts_dir"/*.tar.gz "$binaries_dir/" 2>/dev/null || true
-				mv "$ci_artifacts_dir"/*.sha256 "$binaries_dir/" 2>/dev/null || true
+			# Download Linux x86_64 musl artefact
+			print_info "Downloading Linux x86_64 musl artefact..."
+			if gh run download "$run_id" --name "vtcode-${released_version}-x86_64-unknown-linux-musl" --dir "$ci_artefacts_dir" 2>/dev/null; then
+				mv "$ci_artefacts_dir"/*.tar.gz "$binaries_dir/" 2>/dev/null || true
+				mv "$ci_artefacts_dir"/*.sha256 "$binaries_dir/" 2>/dev/null || true
 				print_success "Downloaded: Linux x86_64 musl"
 			else
 				print_warning "Could not download: Linux x86_64 musl"
 			fi
 
-			# Download Linux aarch64 artifact
-			print_info "Downloading Linux aarch64 artifact..."
-			if gh run download "$run_id" --name "vtcode-${released_version}-aarch64-unknown-linux-gnu" --dir "$ci_artifacts_dir" 2>/dev/null; then
-				mv "$ci_artifacts_dir"/*.tar.gz "$binaries_dir/" 2>/dev/null || true
-				mv "$ci_artifacts_dir"/*.sha256 "$binaries_dir/" 2>/dev/null || true
+			# Download Linux aarch64 artefact
+			print_info "Downloading Linux aarch64 artefact..."
+			if gh run download "$run_id" --name "vtcode-${released_version}-aarch64-unknown-linux-gnu" --dir "$ci_artefacts_dir" 2>/dev/null; then
+				mv "$ci_artefacts_dir"/*.tar.gz "$binaries_dir/" 2>/dev/null || true
+				mv "$ci_artefacts_dir"/*.sha256 "$binaries_dir/" 2>/dev/null || true
 				print_success "Downloaded: Linux aarch64"
 			else
 				print_warning "Could not download: Linux aarch64"
 			fi
 
-			# Download Windows x86_64 artifact. Required for the bridge; the
+			# Download Windows x86_64 artefact. Required for the bridge; the
 			# required-target coverage check below fails the release if missing.
 			if [[ "$require_windows" == "true" ]]; then
-				print_info "Downloading Windows x86_64 artifact..."
-				if gh run download "$run_id" --name "vtcode-${released_version}-x86_64-pc-windows-msvc" --dir "$ci_artifacts_dir" 2>/dev/null; then
-					mv "$ci_artifacts_dir"/*.zip "$binaries_dir/" 2>/dev/null || true
-					mv "$ci_artifacts_dir"/*.sha256 "$binaries_dir/" 2>/dev/null || true
+				print_info "Downloading Windows x86_64 artefact..."
+				if gh run download "$run_id" --name "vtcode-${released_version}-x86_64-pc-windows-msvc" --dir "$ci_artefacts_dir" 2>/dev/null; then
+					mv "$ci_artefacts_dir"/*.zip "$binaries_dir/" 2>/dev/null || true
+					mv "$ci_artefacts_dir"/*.sha256 "$binaries_dir/" 2>/dev/null || true
 					print_success "Downloaded: Windows x86_64"
 				else
 					print_warning "Could not download: Windows x86_64"
 				fi
 			else
-				print_info "Skipping Windows artifact download (RELEASE_REQUIRE_WINDOWS=false)"
+				print_info "Skipping Windows artefact download (RELEASE_REQUIRE_WINDOWS=false)"
 			fi
 
-			rm -rf "$ci_artifacts_dir"
+			rm -rf "$ci_artefacts_dir"
 		else
 			print_warning "No CI workflow run found - will use macOS binaries only"
 		fi

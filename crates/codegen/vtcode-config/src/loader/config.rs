@@ -1233,7 +1233,7 @@ enabled = true"#.to_string()
         r#"# Security-focused exclusions
 .env, .env.local, secrets/, .aws/, .ssh/
 
-# Development artifacts
+# Development artefacts
 target/, build/, dist/, node_modules/, vendor/
 
 # Database files

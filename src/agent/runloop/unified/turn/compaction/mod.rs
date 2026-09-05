@@ -58,7 +58,7 @@ pub(crate) struct CompactionOutcome {
     pub original_len: usize,
     pub compacted_len: usize,
     pub mode: vtcode_core::exec::events::CompactionMode,
-    pub history_artifact_path: Option<String>,
+    pub history_artefact_path: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -541,7 +541,7 @@ async fn apply_compacted_history(
         steering_update.as_ref(),
     )
     .await?;
-    let history_artifact_path = envelope.as_ref().and_then(|item| item.history_artifact_path.clone());
+    let history_artefact_path = envelope.as_ref().and_then(|item| item.history_artefact_path.clone());
     let segment_transition = begin_segment.then(|| session_stats.begin_request_segment(plan.boundary_reason));
     *history = compacted;
     session_stats.clear_previous_response_chain_for(provider.name(), model);
@@ -580,7 +580,7 @@ async fn apply_compacted_history(
             compaction_mode,
             original_len,
             compacted_len,
-            history_artifact_path.clone(),
+            history_artefact_path.clone(),
             Some(segment_transition),
         );
         if let Err(err) = harness_emitter.emit(event) {
@@ -592,7 +592,7 @@ async fn apply_compacted_history(
         original_len,
         compacted_len,
         mode: compaction_mode,
-        history_artifact_path,
+        history_artefact_path,
     })
 }
 
@@ -672,7 +672,7 @@ async fn compact_history_before_index_in_place(
     history.extend(suffix);
 
     let compacted_len = history.len();
-    let history_artifact_path = prefix_outcome.history_artifact_path.clone();
+    let history_artefact_path = prefix_outcome.history_artefact_path.clone();
     if let Some(harness_emitter) = harness_emitter {
         let event = compact_boundary_event(
             thread_id.to_string(),
@@ -680,7 +680,7 @@ async fn compact_history_before_index_in_place(
             prefix_outcome.mode,
             original_len,
             compacted_len,
-            history_artifact_path.clone(),
+            history_artefact_path.clone(),
             Some(&segment_transition),
         );
         if let Err(err) = harness_emitter.emit(event) {
@@ -692,7 +692,7 @@ async fn compact_history_before_index_in_place(
         original_len,
         compacted_len,
         mode: prefix_outcome.mode,
-        history_artifact_path,
+        history_artefact_path,
     }))
 }
 
@@ -758,7 +758,7 @@ pub(crate) async fn compact_history_from_index_in_place(
         original_len: start_index + suffix_outcome.original_len,
         compacted_len: start_index + suffix_outcome.compacted_len,
         mode: suffix_outcome.mode,
-        history_artifact_path: suffix_outcome.history_artifact_path,
+        history_artefact_path: suffix_outcome.history_artefact_path,
     }))
 }
 
@@ -795,7 +795,7 @@ pub(crate) async fn maybe_auto_compact_history(
 
     // Delegate to the shared compaction orchestrator (used by both runloops).
     // It enforces the `auto_compaction_enabled` gate, the token threshold, and
-    // the engine + memory-envelope + artifact compression in one place.
+    // the engine + memory-envelope + artefact compression in one place.
     let mut compacted_history = history.clone();
     let Some(outcome) = auto_compact_messages(
         AutoCompactionInput {
@@ -834,7 +834,7 @@ pub(crate) async fn maybe_auto_compact_history(
             outcome.mode,
             outcome.original_len,
             outcome.compacted_len,
-            outcome.history_artifact_path.clone(),
+            outcome.history_artefact_path.clone(),
             Some(&segment_transition),
         );
         let _ = harness_emitter.emit(event);
@@ -851,7 +851,7 @@ pub(crate) async fn maybe_auto_compact_history(
         original_len: outcome.original_len,
         compacted_len: outcome.compacted_len,
         mode: outcome.mode,
-        history_artifact_path: outcome.history_artifact_path,
+        history_artefact_path: outcome.history_artefact_path,
     }))
 }
 

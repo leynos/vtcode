@@ -273,14 +273,14 @@ license: Apache-2.0
 
 ## Purpose
 
-Summarize the workflow, expected inputs, and the artifact or outcome this skill should produce.
+Summarize the workflow, expected inputs, and the artefact or outcome this skill should produce.
 
 ## Workflow
 
 1. Confirm the request matches the routing guidance above.
 2. Keep core instructions here; move detailed reference material into bundled files.
 3. Prefer reusable scripts, templates, or assets over re-describing large procedures in prose.
-4. Produce the expected artifact or outcome and note any important constraints.
+4. Produce the expected artefact or outcome and note any important constraints.
 
 ## Resources
 
@@ -291,7 +291,7 @@ Summarize the workflow, expected inputs, and the artifact or outcome this skill 
 ## Example
 
 **Input:** [Describe the request or files]
-**Output/Artifact:** [Describe the result this skill should produce]
+**Output/Artefact:** [Describe the result this skill should produce]
 
 ## Notes
 

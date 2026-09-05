@@ -288,7 +288,7 @@ async fn handle_stream(State(state): State<A2aServerState>, Json(request): Json<
                     context_id.as_ref() == ctx.as_ref()
                 }
                 StreamingEvent::TaskStatus { task_id: tid, .. } => tid == &task_id_clone,
-                StreamingEvent::TaskArtifact { task_id: tid, .. } => tid == &task_id_clone,
+                StreamingEvent::TaskArtefact { task_id: tid, .. } => tid == &task_id_clone,
                 _ => false,
             };
 

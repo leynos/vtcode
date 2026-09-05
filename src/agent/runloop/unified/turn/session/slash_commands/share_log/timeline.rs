@@ -1,5 +1,5 @@
 //! Agent Legibility:
-//! - Entrypoint: `build_timeline_export` builds the exported timeline model and `render_session_timeline_html` renders the self-contained HTML artifact.
+//! - Entrypoint: `build_timeline_export` builds the exported timeline model and `render_session_timeline_html` renders the self-contained HTML artefact.
 //! - Common changes:
 //!   - Session overview aggregation stays in this root.
 //!   - Timeline row shaping, redaction, and HTML presentation live in `timeline/presentation.rs`.
