@@ -6,7 +6,7 @@
 //! Every call to [`vtcode_config::loader::manager::ConfigManager::load_from_workspace_with_repository_repair`]
 //! across the codebase produced a slightly different `.with_context(…)` string, making
 //! log searches unreliable and hiding the workspace path in some variants. This module
-//! centralises all loading paths behind a single function so the error message is
+//! centralizes all loading paths behind a single function so the error message is
 //! consistent and always includes the workspace path.
 
 use std::path::Path;

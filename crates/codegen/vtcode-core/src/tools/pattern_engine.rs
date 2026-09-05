@@ -1,6 +1,6 @@
 //! Advanced pattern detection with sequence analysis
 //!
-//! Tracks execution sequences, detects behavioral patterns,
+//! Tracks execution sequences, detects behavioural patterns,
 //! predicts user intent based on action history.
 
 use crate::tools::improvement_algorithms::jaro_winkler_similarity;

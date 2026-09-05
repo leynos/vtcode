@@ -1,9 +1,9 @@
 use crate::utils::file_utils::read_file_with_context_sync;
 use anstyle::Style;
-/// Git configuration color parsing
+/// Git configuration colour parsing
 ///
 /// Parses [color "..."] sections from .git/config and converts them to anstyle::Style objects.
-/// This allows vtcode to respect user's Git color configuration for diff and status visualization.
+/// This allows vtcode to respect user's Git colour configuration for diff and status visualization.
 ///
 /// # Example
 /// ```ignore
@@ -20,45 +20,45 @@ use std::path::Path;
 /// Parsed Git configuration colours for diff, status, and branch visualization
 #[derive(Debug, Clone)]
 pub struct GitColourConfig {
-    /// Color for added lines in diff (default: green)
+    /// Colour for added lines in diff (default: green)
     pub diff_new: Style,
-    /// Color for removed lines in diff (default: red)
+    /// Colour for removed lines in diff (default: red)
     pub diff_old: Style,
-    /// Color for context/unchanged lines in diff (default: none)
+    /// Colour for context/unchanged lines in diff (default: none)
     pub diff_context: Style,
-    /// Color for diff headers (default: none)
+    /// Colour for diff headers (default: none)
     pub diff_header: Style,
-    /// Color for file metadata lines (default: none)
+    /// Colour for file metadata lines (default: none)
     pub diff_meta: Style,
-    /// Color for stat +++ markers (default: green)
+    /// Colour for stat +++ markers (default: green)
     pub diff_frag: Style,
 
-    /// Color for added files in status (default: green)
+    /// Colour for added files in status (default: green)
     pub status_added: Style,
-    /// Color for modified files in status (default: red)
+    /// Colour for modified files in status (default: red)
     pub status_modified: Style,
-    /// Color for deleted files in status (default: red)
+    /// Colour for deleted files in status (default: red)
     pub status_deleted: Style,
-    /// Color for untracked files in status (default: none)
+    /// Colour for untracked files in status (default: none)
     pub status_untracked: Style,
 
-    /// Color for current branch (default: none)
+    /// Colour for current branch (default: none)
     pub branch_current: Style,
-    /// Color for local branches (default: none)
+    /// Colour for local branches (default: none)
     pub branch_local: Style,
-    /// Color for remote branches (default: none)
+    /// Colour for remote branches (default: none)
     pub branch_remote: Style,
 }
 
 impl Default for GitColourConfig {
-    /// Returns default Git color configuration
+    /// Returns default Git colour configuration
     fn default() -> Self {
         Self::with_defaults()
     }
 }
 
 impl GitColourConfig {
-    /// Create Git color config with default values
+    /// Create Git colour config with default values
     /// Uses dimmed colours (50% brightness) for git status and background colours
     /// to reduce eye strain during long development sessions
     pub fn with_defaults() -> Self {
@@ -88,7 +88,7 @@ impl GitColourConfig {
     /// # Errors
     ///
     /// Returns an error if the file cannot be read, but parsing errors are logged
-    /// and defaults are used for invalid color values.
+    /// and defaults are used for invalid colour values.
     pub fn from_git_config(config_path: &Path) -> Result<Self> {
         let content = read_file_with_context_sync(config_path, "Git config")?;
 
@@ -142,10 +142,10 @@ impl GitColourConfig {
         Ok(config)
     }
 
-    /// Extract a single Git color setting from config content
+    /// Extract a single Git colour setting from config content
     ///
     /// Looks for patterns like: [color "section"] key = value
-    /// Note: This parses the color name but ignores bold/dim effects to ensure
+    /// Note: This parses the colour name but ignores bold/dim effects to ensure
     /// consistent diff styling without theme-dependent formatting.
     fn extract_git_colour(content: &str, section: &str, key: &str) -> Option<Style> {
         // Pattern: [color "section"]

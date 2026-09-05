@@ -183,7 +183,7 @@ pub const MAX_DECODED_PATCH_BYTES: usize = UNIFIED_FILE_MAX_PAYLOAD_BYTES;
 /// Env var name that overrides both the preflight cap and the post-decode cap.
 pub const UNIFIED_FILE_MAX_PAYLOAD_BYTES_ENV: &str = "VTCODE_UNIFIED_FILE_MAX_PAYLOAD_BYTES";
 
-/// Resolve the effective cap, honoring the env-var override. A 1 KiB safety
+/// Resolve the effective cap, honouring the env-var override. A 1 KiB safety
 /// floor is enforced so a sub-floor override can never silently disable the
 /// post-decode cap; values below the floor fall back to the default. The same
 /// floor is applied by the preflight resolver in `execution_kernel` so both

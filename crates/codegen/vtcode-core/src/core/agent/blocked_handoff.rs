@@ -38,7 +38,7 @@ pub enum BlockedHandoffResume<'a> {
     Unavailable(&'a str),
 }
 
-/// Write a blocked-handoff artifact when the agent hits an unrecoverable blocker.
+/// Write a blocked-handoff artefact when the agent hits an unrecoverable blocker.
 ///
 /// Creates both a `current_blocked.md` file and a timestamped archive under
 /// `.vtcode/tasks/blockers/`. The handoff includes the blocker summary and
@@ -419,7 +419,7 @@ pub fn clear_current_blocked_handoff_for_session(workspace: &Path, session_id: &
 }
 
 /// Restore an unconsumed claim without overwriting a handoff concurrently
-/// written by another session. A hard link provides create-if-absent behavior;
+/// written by another session. A hard link provides create-if-absent behaviour;
 /// the private claim can then be unlinked independently.
 fn restore_claim_without_overwrite(claim_path: &Path, current_path: &Path) -> Result<()> {
     match fs::hard_link(claim_path, current_path) {

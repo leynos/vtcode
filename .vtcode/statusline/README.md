@@ -5,7 +5,7 @@ This directory contains custom status line scripts for VT Code, inspired by the 
 ## Available Scripts
 
 1. **statusline.sh** - Basic bash implementation with ASCII characters and clean formatting
-2. **statusline-advanced.sh** - Advanced bash implementation with ANSI color codes
+2. **statusline-advanced.sh** - Advanced bash implementation with ANSI colour codes
 3. **statusline.py** - Python implementation for those who prefer Python
 
 ## VT Code Integration
@@ -59,7 +59,7 @@ VT Code passes the following JSON structure to the status line command via stdin
 - Shows reasoning effort level
 - Shows context utilization and token count
 - Shows VT Code version
-- Color-coded elements based on importance/utilization
+- Colour-coded elements based on importance/utilization
 
 ## Testing
 

@@ -14,7 +14,7 @@ use crate::utils::transcript;
 #[cfg(feature = "tui")]
 use ansi_to_tui::IntoText;
 use anstream::{AutoStream, ColorChoice};
-use anstyle::{Ansi256Color, AnsiColor, Color as AnsiColorEnum, Effects, Reset, RgbColor, Style};
+use anstyle::{Ansi256Color, AnsiColor, Color as AnsiColourEnum, Effects, Reset, RgbColor, Style};
 use anyhow::{Result, anyhow};
 #[cfg(feature = "tui")]
 use ratatui::style::{Color as RatColour, Modifier as RatModifier, Style as RatatuiStyle};
@@ -413,12 +413,12 @@ impl AnsiRenderer {
         self.capabilities.should_use_unicode_boxes()
     }
 
-    /// Check if 256-color output is supported
+    /// Check if 256-colour output is supported
     pub fn supports_256_colours(&self) -> bool {
         self.capabilities.supports_256_colours()
     }
 
-    /// Check if true color (24-bit) output is supported
+    /// Check if true colour (24-bit) output is supported
     pub fn supports_true_colour(&self) -> bool {
         self.capabilities.supports_true_colour()
     }
@@ -1034,27 +1034,27 @@ impl InlineSink {
         Ok(())
     }
     #[cfg(feature = "tui")]
-    fn ansi_from_ratatui_colour(colour: RatColour) -> Option<AnsiColorEnum> {
+    fn ansi_from_ratatui_colour(colour: RatColour) -> Option<AnsiColourEnum> {
         match colour {
             RatColour::Reset => None,
-            RatColour::Black => Some(AnsiColorEnum::Ansi(AnsiColor::Black)),
-            RatColour::Red => Some(AnsiColorEnum::Ansi(AnsiColor::Red)),
-            RatColour::Green => Some(AnsiColorEnum::Ansi(AnsiColor::Green)),
-            RatColour::Yellow => Some(AnsiColorEnum::Ansi(AnsiColor::Yellow)),
-            RatColour::Blue => Some(AnsiColorEnum::Ansi(AnsiColor::Blue)),
-            RatColour::Magenta => Some(AnsiColorEnum::Ansi(AnsiColor::Magenta)),
-            RatColour::Cyan => Some(AnsiColorEnum::Ansi(AnsiColor::Cyan)),
-            RatColour::Gray => Some(AnsiColorEnum::Rgb(RgbColor(0x88, 0x88, 0x88))),
-            RatColour::DarkGray => Some(AnsiColorEnum::Rgb(RgbColor(0x66, 0x66, 0x66))),
-            RatColour::LightRed => Some(AnsiColorEnum::Ansi(AnsiColor::Red)),
-            RatColour::LightGreen => Some(AnsiColorEnum::Ansi(AnsiColor::Green)),
-            RatColour::LightYellow => Some(AnsiColorEnum::Ansi(AnsiColor::Yellow)),
-            RatColour::LightBlue => Some(AnsiColorEnum::Ansi(AnsiColor::Blue)),
-            RatColour::LightMagenta => Some(AnsiColorEnum::Ansi(AnsiColor::Magenta)),
-            RatColour::LightCyan => Some(AnsiColorEnum::Ansi(AnsiColor::Cyan)),
-            RatColour::White => Some(AnsiColorEnum::Ansi(AnsiColor::White)),
-            RatColour::Rgb(r, g, b) => Some(AnsiColorEnum::Rgb(RgbColor(r, g, b))),
-            RatColour::Indexed(value) => Some(AnsiColorEnum::Ansi256(Ansi256Color(value))),
+            RatColour::Black => Some(AnsiColourEnum::Ansi(AnsiColor::Black)),
+            RatColour::Red => Some(AnsiColourEnum::Ansi(AnsiColor::Red)),
+            RatColour::Green => Some(AnsiColourEnum::Ansi(AnsiColor::Green)),
+            RatColour::Yellow => Some(AnsiColourEnum::Ansi(AnsiColor::Yellow)),
+            RatColour::Blue => Some(AnsiColourEnum::Ansi(AnsiColor::Blue)),
+            RatColour::Magenta => Some(AnsiColourEnum::Ansi(AnsiColor::Magenta)),
+            RatColour::Cyan => Some(AnsiColourEnum::Ansi(AnsiColor::Cyan)),
+            RatColour::Gray => Some(AnsiColourEnum::Rgb(RgbColor(0x88, 0x88, 0x88))),
+            RatColour::DarkGray => Some(AnsiColourEnum::Rgb(RgbColor(0x66, 0x66, 0x66))),
+            RatColour::LightRed => Some(AnsiColourEnum::Ansi(AnsiColor::Red)),
+            RatColour::LightGreen => Some(AnsiColourEnum::Ansi(AnsiColor::Green)),
+            RatColour::LightYellow => Some(AnsiColourEnum::Ansi(AnsiColor::Yellow)),
+            RatColour::LightBlue => Some(AnsiColourEnum::Ansi(AnsiColor::Blue)),
+            RatColour::LightMagenta => Some(AnsiColourEnum::Ansi(AnsiColor::Magenta)),
+            RatColour::LightCyan => Some(AnsiColourEnum::Ansi(AnsiColor::Cyan)),
+            RatColour::White => Some(AnsiColourEnum::Ansi(AnsiColor::White)),
+            RatColour::Rgb(r, g, b) => Some(AnsiColourEnum::Rgb(RgbColor(r, g, b))),
+            RatColour::Indexed(value) => Some(AnsiColourEnum::Ansi256(Ansi256Color(value))),
         }
     }
 
@@ -1640,7 +1640,7 @@ mod tests {
         let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
         let sink = InlineSink::new(InlineHandle::new_for_tests(sender), SyntaxHighlightingConfig::default());
         let fallback = InlineTextStyle {
-            colour: Some(AnsiColorEnum::Ansi(AnsiColor::Green)),
+            colour: Some(AnsiColourEnum::Ansi(AnsiColor::Green)),
             bg_colour: None,
             effects: Effects::new(),
         };
@@ -1652,7 +1652,7 @@ mod tests {
         let segments = &converted[0];
         assert_eq!(segments.len(), 2);
         assert_eq!(segments[0].text, "red");
-        assert_eq!(segments[0].style.colour, Some(AnsiColorEnum::Ansi(AnsiColor::Red)));
+        assert_eq!(segments[0].style.colour, Some(AnsiColourEnum::Ansi(AnsiColor::Red)));
         assert_eq!(segments[1].text, " plain");
         assert_eq!(segments[1].style.colour, None);
     }

@@ -1,4 +1,4 @@
-use anstyle::{AnsiColor, Color as AnsiColorEnum, Effects, RgbColor};
+use anstyle::{AnsiColor, Color as AnsiColourEnum, Effects, RgbColor};
 use anyhow::{Context, Result};
 use std::collections::BTreeMap;
 use std::fs;
@@ -442,16 +442,16 @@ fn build_subagent_badge_style(colour_spec: Option<&str>) -> InlineTextStyle {
     }
 }
 
-fn contrasting_badge_text_colour(background: AnsiColorEnum) -> AnsiColorEnum {
+fn contrasting_badge_text_colour(background: AnsiColourEnum) -> AnsiColourEnum {
     match background {
-        AnsiColorEnum::Rgb(rgb) => {
+        AnsiColourEnum::Rgb(rgb) => {
             if relative_luminance(rgb) >= 0.55 {
                 AnsiColor::Black.into()
             } else {
                 AnsiColor::White.into()
             }
         }
-        AnsiColorEnum::Ansi(colour) => match colour {
+        AnsiColourEnum::Ansi(colour) => match colour {
             AnsiColor::White
             | AnsiColor::BrightWhite
             | AnsiColor::Yellow
@@ -462,7 +462,7 @@ fn contrasting_badge_text_colour(background: AnsiColorEnum) -> AnsiColorEnum {
             | AnsiColor::BrightGreen => AnsiColor::Black.into(),
             _ => AnsiColor::White.into(),
         },
-        AnsiColorEnum::Ansi256(value) => {
+        AnsiColourEnum::Ansi256(value) => {
             if value.index() >= 244 {
                 AnsiColor::Black.into()
             } else {
@@ -483,7 +483,7 @@ mod tests {
         build_active_subagent_badges, build_subagent_badge_style, extract_workspace_header_signals,
         format_strategy_label,
     };
-    use anstyle::{AnsiColor, Color as AnsiColorEnum, RgbColor};
+    use anstyle::{AnsiColor, Color as AnsiColourEnum, RgbColor};
     use chrono::Utc;
     use vtcode_core::subagents::{SubagentStatus, SubagentStatusEntry};
 
@@ -526,14 +526,14 @@ mod tests {
     #[test]
     fn subagent_badge_style_promotes_single_colour_to_background() {
         let style = build_subagent_badge_style(Some("#4f8fd8"));
-        assert_eq!(style.bg_colour, Some(AnsiColorEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))));
+        assert_eq!(style.bg_colour, Some(AnsiColourEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))));
         assert_eq!(style.colour, Some(AnsiColor::White.into()));
     }
 
     #[test]
     fn subagent_badge_style_preserves_explicit_foreground_and_background() {
         let style = build_subagent_badge_style(Some("white #4f8fd8"));
-        assert_eq!(style.bg_colour, Some(AnsiColorEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))));
+        assert_eq!(style.bg_colour, Some(AnsiColourEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))));
         assert_eq!(style.colour, Some(AnsiColor::White.into()));
     }
 

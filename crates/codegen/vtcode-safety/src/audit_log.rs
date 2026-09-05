@@ -20,7 +20,7 @@
 //! each sink uses an internal lock or background task to serialize I/O.
 //!
 //! See also `crates/codegen/vtcode-core/src/tools/untrusted_data.rs` for the prompt-injection
-//! defense that pairs with this log.
+//! defence that pairs with this log.
 
 use std::fs::File;
 use std::io::{BufWriter, Write};

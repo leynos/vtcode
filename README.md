@@ -82,7 +82,7 @@ the terminal.
 | Pillar                     | What it means                                                                                                                                 |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Harness, not a wrapper** | The model reasons; the harness composes tools, context, sandbox, state, and evaluations to enforce progress.                                  |
-| **Safety-first execution** | Sandboxed shell, command policies, workspace approvals, and fail-closed defenses for injection, path/symlink escape, and environment leakage. |
+| **Safety-first execution** | Sandboxed shell, command policies, workspace approvals, and fail-closed defences for injection, path/symlink escape, and environment leakage. |
 | **Long-run reliability**   | Durable session memory, task tracking, spooled output, checkpoints, automatic compaction, resumable handoffs, and verification before "done". |
 | **Observable by design**   | A canonical `ThreadEvent` runtime contract supports replay, archives, checkpoints, memory views, and trajectory export.                       |
 | **Protocol-native**        | MCP, Skills, Agent Plugins, ACP (Zed), A2A, WebMCP, Open Responses, and ATIF extend the system without core forks.                            |

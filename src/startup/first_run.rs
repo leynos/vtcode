@@ -22,7 +22,7 @@ use super::first_run_prompts::{
     resolve_initial_persistent_memory_enabled, resolve_initial_provider,
 };
 
-/// Drive the first-run interactive setup wizard when a workspace lacks VT Code artifacts.
+/// Drive the first-run interactive setup wizard when a workspace lacks VT Code artefacts.
 pub(crate) async fn maybe_run_first_run_setup(args: &Cli, workspace: &Path, config: &mut VTCodeConfig) -> Result<bool> {
     if !is_fresh_workspace(workspace) {
         return Ok(false);

@@ -410,7 +410,7 @@ pub enum Commands {
     /// Verbose interactive chat with debug output
     ChatVerbose,
 
-    /// Analyze workspace (structure, security, performance).
+    /// Analyse workspace (structure, security, performance).
     #[command(name = "analyse", visible_alias = "analyze")]
     Analyse {
         /// Type of analysis to perform
@@ -455,7 +455,7 @@ pub enum Commands {
         max_tasks: Option<usize>,
     },
 
-    /// Measure allocator RSS behavior under a bursty/sparse Tokio workload
+    /// Measure allocator RSS behaviour under a bursty/sparse Tokio workload
     ///
     /// Reproduces the mimalloc-vs-jemalloc analysis pattern: many short-lived
     /// tasks allocated across Tokio worker threads, with idle gaps between
@@ -772,7 +772,7 @@ pub enum Commands {
     /// Check for and install binary updates from GitHub Releases
     ///
     /// Manage VT Code binary updates. By default checks for a new version
-    /// and offers to install it. Use flags to customize behavior.
+    /// and offers to install it. Use flags to customize behaviour.
     ///
     /// Examples:
     ///   vtcode update

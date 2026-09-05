@@ -88,7 +88,9 @@ The complete PR train is not yet delivered.
   checks passed; optional ast-grep remained unavailable. Formatting and lint
   logs use the unnumbered fulfilment suffix; build, test, test-harness, shell,
   and advisory logs use `ACTION-2` with that suffix.
-- `harden-lint-spelling-oxford` is the active branch, based on #29.
+- [Draft PR #30](https://github.com/leynos/vtcode/pull/30) publishes
+  `harden-lint-spelling-oxford` at
+  `3a7c80a4821147d5d27fae46b8d7e392e8be70e1`, based on #29.
   It applies the reviewed Oxford source patch, including normalized code-search
   APIs and their callers. A seven-file residual patch updates authored source
   text and future plan-name vocabulary to `harbour`; existing paths remain
@@ -97,6 +99,16 @@ The complete PR train is not yet delivered.
   tests with 17 skipped, and all 67 harness tests. Advisory checks passed;
   optional ast-grep remained unavailable. Logs use
   `/tmp/ACTION-vtcode-df12-onboarding-harden-lint-spelling-oxford.out`.
+- `harden-lint-spelling-source` is the active branch, based on #30.
+  It combines authored core/provider/source prose with the complete native
+  `AnsiColourEnum` alias caller set: 149 reviewed files plus this record.
+  External colour types, fixed wire names, and discovery aliases remain intact.
+  Its original old-config gates passed: formatting, lint, build, 10,081 workspace
+  tests with 17 skipped, and all 67 harness tests. Nixie passed all 21 changed
+  Markdown files. Markdownlint retains 881 inherited findings across 20 files;
+  exact path, line, and rule identities match the parent, with none added or
+  removed. Advisory passed; optional ast-grep remained unavailable. Logs use
+  `/tmp/ACTION-vtcode-df12-onboarding-harden-lint-spelling-source.out`.
 - Remaining spelling changes are preserved separately while each layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
@@ -435,3 +447,17 @@ tests, 17 skips and 67 harness tests. Logs use `restack-1` on
 `harden-lint-spelling-oxford`; final handoff checks use `handoff-restack-1`.
 The optional ast-grep scan was skipped because the tool is unavailable. The
 push uses an explicit lease against the original published PR #30 head.
+
+## PR 31 review restack
+
+The source-prose layer is rebased onto PR #30 `3a7c80a48`. The replay
+completed without conflicts and its patch is unchanged. Lower cache tests,
+TTY capability checks and startup environment locking remain intact. The
+20 Markdown files outside this handoff and their parent versions are
+byte-identical to the original comparison, preserving the inherited
+881-diagnostic baseline. All eight sequential gates passed, including
+typecheck, 10,085 workspace tests, 17 skips and 67 harness tests. Logs use
+`restack-1` on `harden-lint-spelling-source`; final handoff checks use
+`handoff-restack-1`. The optional ast-grep scan was skipped because the tool
+is unavailable. The push uses an explicit lease against the original
+published PR #31 head.

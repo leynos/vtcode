@@ -1,6 +1,6 @@
 # VT Code Output Styles
 
-Output styles allow you to customize the behavior and response format of VT Code by modifying the system prompt. This feature enables different modes of operation, from concise responses to detailed explanations.
+Output styles allow you to customize the behaviour and response format of VT Code by modifying the system prompt. This feature enables different modes of operation, from concise responses to detailed explanations.
 
 ## Overview
 
@@ -39,7 +39,7 @@ Add your custom instructions here. These will be added to the system prompt.
 - `description`: A brief description of the style (optional)
 - `keep-coding-instructions`: Whether to preserve VT Code's base instructions (default: true)
 
-### Style Behavior
+### Style Behaviour
 
 - When `keep-coding-instructions` is `true`: Your custom content is appended to VT Code's base system prompt
 - When `keep-coding-instructions` is `false`: Your custom content replaces VT Code's base system prompt entirely
@@ -119,6 +119,6 @@ To switch between output styles, update your `vtcode.toml` configuration file an
 ## Best Practices
 
 1. **Start Simple**: Begin with existing styles and modify them to suit your needs
-2. **Test Thoroughly**: Different styles may affect VT Code's behavior significantly
+2. **Test Thoroughly**: Different styles may affect VT Code's behaviour significantly
 3. **Document Your Styles**: Add clear descriptions to help others understand your custom styles
 4. **Consider Context**: Some styles work better for specific tasks or projects

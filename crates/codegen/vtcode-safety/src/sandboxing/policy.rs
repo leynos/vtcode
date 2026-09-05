@@ -512,7 +512,7 @@ pub const FILTERED_SYSCALLS: &[&str] = &[
 
 /// Seccomp profile configuration for Linux sandboxing.
 ///
-/// Used alongside Landlock for defense-in-depth.
+/// Used alongside Landlock for defence-in-depth.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SeccompProfile {
     /// Syscalls to block entirely.

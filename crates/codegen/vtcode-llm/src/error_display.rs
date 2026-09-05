@@ -1,4 +1,4 @@
-//! LLM error display utilities with enhanced ANSI color support
+//! LLM error display utilities with enhanced ANSI colour support
 //!
 //! This module provides enhanced error display capabilities for LLM providers
 //! using standard console styling for consistent terminal output.

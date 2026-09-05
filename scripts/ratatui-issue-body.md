@@ -10,7 +10,7 @@ Upgrading ratatui from `0.30.0` to `0.30.1` causes compile-time `Send` trait bou
 2. Build with ratatui 0.30.0 — compiles successfully
 3. Change to ratatui 0.30.1 (or use `"0.30"` semver range) — compile fails with `Send` bound errors on `CellEffect`-related types
 
-## Expected behavior
+## Expected behaviour
 
 A patch version bump (0.30.0 to 0.30.1) should not break `Send` trait compatibility for downstream types.
 

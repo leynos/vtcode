@@ -13,15 +13,15 @@ use std::path::Path;
 /// Theme configuration that can be loaded from a .vtcode/theme.toml file
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeConfig {
-    /// Colors for CLI elements
+    /// Colours for CLI elements
     #[serde(default)]
     pub cli: CliColours,
 
-    /// Colors for diff rendering
+    /// Colours for diff rendering
     #[serde(default)]
     pub diff: DiffColours,
 
-    /// Colors for status output
+    /// Colours for status output
     #[serde(default)]
     pub status: StatusColours,
 
@@ -65,26 +65,26 @@ impl Default for ThemeConfig {
     }
 }
 
-/// Colors for CLI elements like prompts, messages, etc.
+/// Colours for CLI elements like prompts, messages, etc.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CliColours {
-    /// Color for success messages
+    /// Colour for success messages
     #[serde(default = "default_cli_success")]
     pub success: String,
 
-    /// Color for error messages
+    /// Colour for error messages
     #[serde(default = "default_cli_error")]
     pub error: String,
 
-    /// Color for warning messages
+    /// Colour for warning messages
     #[serde(default = "default_cli_warning")]
     pub warning: String,
 
-    /// Color for info messages
+    /// Colour for info messages
     #[serde(default = "default_cli_info")]
     pub info: String,
 
-    /// Color for prompt text
+    /// Colour for prompt text
     #[serde(default = "default_cli_prompt")]
     pub prompt: String,
 }
@@ -101,30 +101,30 @@ impl Default for CliColours {
     }
 }
 
-/// Colors for diff rendering
+/// Colours for diff rendering
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiffColours {
-    /// Color for added lines in diff
+    /// Colour for added lines in diff
     #[serde(default = "default_diff_new")]
     pub new: String,
 
-    /// Color for removed lines in diff
+    /// Colour for removed lines in diff
     #[serde(default = "default_diff_old")]
     pub old: String,
 
-    /// Color for context/unchanged lines in diff
+    /// Colour for context/unchanged lines in diff
     #[serde(default = "default_diff_context")]
     pub context: String,
 
-    /// Color for diff headers
+    /// Colour for diff headers
     #[serde(default = "default_diff_header")]
     pub header: String,
 
-    /// Color for diff metadata
+    /// Colour for diff metadata
     #[serde(default = "default_diff_meta")]
     pub meta: String,
 
-    /// Color for diff fragment indicators
+    /// Colour for diff fragment indicators
     #[serde(default = "default_diff_frag")]
     pub frag: String,
 }
@@ -142,34 +142,34 @@ impl Default for DiffColours {
     }
 }
 
-/// Colors for status output
+/// Colours for status output
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusColours {
-    /// Color for added files
+    /// Colour for added files
     #[serde(default = "default_status_added")]
     pub added: String,
 
-    /// Color for modified files
+    /// Colour for modified files
     #[serde(default = "default_status_modified")]
     pub modified: String,
 
-    /// Color for deleted files
+    /// Colour for deleted files
     #[serde(default = "default_status_deleted")]
     pub deleted: String,
 
-    /// Color for untracked files
+    /// Colour for untracked files
     #[serde(default = "default_status_untracked")]
     pub untracked: String,
 
-    /// Color for current branch
+    /// Colour for current branch
     #[serde(default = "default_status_current")]
     pub current: String,
 
-    /// Color for local branches
+    /// Colour for local branches
     #[serde(default = "default_status_local")]
     pub local: String,
 
-    /// Color for remote branches
+    /// Colour for remote branches
     #[serde(default = "default_status_remote")]
     pub remote: String,
 }
@@ -191,19 +191,19 @@ impl Default for StatusColours {
 /// File type colours using LS_COLORS-style patterns
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileColours {
-    /// Directory color
+    /// Directory colour
     #[serde(default = "default_file_directory")]
     pub directory: String,
 
-    /// Symbolic link color
+    /// Symbolic link colour
     #[serde(default = "default_file_symlink")]
     pub symlink: String,
 
-    /// Executable file color
+    /// Executable file colour
     #[serde(default = "default_file_executable")]
     pub executable: String,
 
-    /// Regular file color
+    /// Regular file colour
     #[serde(default = "default_file_regular")]
     pub regular: String,
 

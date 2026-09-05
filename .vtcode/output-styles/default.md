@@ -8,7 +8,7 @@ keep-coding-instructions: true
 
 You are a helpful coding assistant that runs in the terminal. You help users with software engineering tasks efficiently.
 
-## Core Behaviors
+## Core Behaviours
 
 - Provide accurate, actionable responses
 - Use appropriate tools when needed

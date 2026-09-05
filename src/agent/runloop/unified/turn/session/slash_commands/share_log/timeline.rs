@@ -3,7 +3,7 @@
 //! - Common changes:
 //!   - Session overview aggregation stays in this root.
 //!   - Timeline row shaping, redaction, and HTML presentation live in `timeline/presentation.rs`.
-//! - Constraints: Keep thread-event exports preferred over conversation fallback exports, and preserve redaction-on-export behavior.
+//! - Constraints: Keep thread-event exports preferred over conversation fallback exports, and preserve redaction-on-export behaviour.
 //! - Verify: `cargo check -p vtcode && cargo test -p vtcode --bin vtcode timeline`
 
 use anyhow::Result;

@@ -1,8 +1,8 @@
 //! Orient phase for agent sessions.
 //!
 //! Following the long-running harness pattern: "the agent must orient itself
-//! before it can act." The orient phase reads external artifacts (progress
-//! ledger, harness artifacts, loop memory, git log) so the agent has an
+//! before it can act." The orient phase reads external artefacts (progress
+//! ledger, harness artefacts, loop memory, git log) so the agent has an
 //! accurate picture of the current state without re-exploring from scratch.
 //!
 //! This is the just-in-time context injection: references and summaries rather
@@ -18,9 +18,9 @@ use super::harness_artefacts;
 pub struct OrientationContext {
     /// Summary of the progress ledger (completion ratio, stalled status, milestones).
     pub progress_summary: Option<String>,
-    /// Summary of the current spec artifact.
+    /// Summary of the current spec artefact.
     pub spec_summary: Option<String>,
-    /// Summary of the current contract artifact.
+    /// Summary of the current contract artefact.
     pub contract_summary: Option<String>,
     /// Summary of the sprint contract (pre-sprint negotiation).
     pub sprint_contract_summary: Option<String>,
@@ -36,12 +36,12 @@ pub struct OrientationContext {
     pub loop_decisions: Option<String>,
     /// Compaction summary from previous sessions.
     pub compaction_summary: Option<String>,
-    /// Feature list summary — the persistent artifact the planner creates and
+    /// Feature list summary — the persistent artefact the planner creates and
     /// the evaluator modifies during feedback-driven replanning.
     pub feature_list_summary: Option<String>,
     /// Context reset manifest — present when the previous session triggered a
     /// context reset (stall or compaction). Signals that this session starts
-    /// from a clean context and should reorient from artifacts only.
+    /// from a clean context and should reorient from artefacts only.
     pub context_reset_manifest: Option<String>,
     /// Handoff from a previous agent, if any.
     pub handoff: Option<HandoffRequest>,
@@ -109,7 +109,7 @@ impl OrientationContext {
 
 /// Gather orientation context from the workspace.
 ///
-/// Reads all available external artifacts and returns a structured summary
+/// Reads all available external artefacts and returns a structured summary
 /// that can be injected into the system prompt. Each read is best-effort:
 /// a missing artefact is `None`, not an error.
 pub fn gather_orientation(workspace_root: &Path, session_id: &str) -> OrientationContext {
@@ -185,7 +185,7 @@ fn gather_recent_git_log(workspace_root: &Path) -> Option<String> {
     if log.trim().is_empty() { None } else { Some(log) }
 }
 
-/// Read compaction summary from persistent artifacts.
+/// Read compaction summary from persistent artefacts.
 ///
 /// Reads `memories/compaction_summary.md` written by the compaction checkpoint.
 /// This allows later sessions to orient from previous session's compaction summary.

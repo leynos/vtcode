@@ -1,4 +1,4 @@
-//! Color utilities for the VT Code
+//! Colour utilities for VT Code
 //!
 //! Re-exports from vtcode-commons for backward compatibility.
 
