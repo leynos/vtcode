@@ -1260,6 +1260,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use std::os::unix::fs::PermissionsExt;
     use tempfile::TempDir;
     use tokio::io::{AsyncWriteExt, duplex};
     #[cfg(target_os = "linux")]
@@ -1325,6 +1327,62 @@ mod tests {
                 }
             })
         })
+    }
+
+    /// Creates a Linux helper that records its policy directory before executing the command.
+    #[cfg(target_os = "linux")]
+    fn linux_passthrough_sandbox_helper(temp: &TempDir) -> Result<PathBuf> {
+        let helper = temp.path().join("sandbox-helper");
+        std::fs::write(
+            &helper,
+            r#"#!/bin/sh
+sandbox_policy_cwd=''
+marker_path="$0.invoked"
+while [ "$1" != "--" ]; do
+    if [ "$1" = "--sandbox-policy-cwd" ]; then
+        sandbox_policy_cwd=$2
+        shift 2
+    else
+        shift
+    fi
+done
+shift
+[ "$PWD" = "$sandbox_policy_cwd" ] || exit 42
+printf '%s\n' "$sandbox_policy_cwd" > "$marker_path" || exit 43
+exec "$@"
+"#,
+        )?;
+        let mut permissions = std::fs::metadata(&helper)?.permissions();
+        permissions.set_mode(0o700);
+        std::fs::set_permissions(&helper, permissions)?;
+        Ok(helper)
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn linux_checks_with_injected_sandbox_helper_execute_allowlisted_command() -> Result<()> {
+        let temp = TempDir::new()?;
+        tokio::fs::write(temp.path().join("main.js"), "console.log('old');\n").await?;
+        let sandbox_helper = linux_passthrough_sandbox_helper(&temp)?;
+        let helper_marker = sandbox_helper.with_extension("invoked");
+        let adapter = FilesystemWorkspace::new(temp.path(), [], true)
+            .await?
+            .with_allowed_commands(["printf"]);
+
+        let result = adapter
+            .run_checks_with_sandbox_executable("printf ok", Some(sandbox_helper.as_path()))
+            .await?;
+
+        assert_eq!(result.command, "printf ok", "the allowed command should be reported unchanged");
+        assert_eq!(result.exit_code, Some(0), "the injected helper should execute the allowed command");
+        assert_eq!(result.stdout, "ok", "the allowed command output should reach the adapter result");
+        assert!(result.stderr.is_empty(), "the successful command should not write stderr");
+        assert_eq!(
+            std::fs::read_to_string(helper_marker)?,
+            format!("{}\n", temp.path().display()),
+            "the injected helper should receive and validate the sandbox policy working directory"
+        );
+        Ok(())
     }
 
     #[test]

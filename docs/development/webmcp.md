@@ -254,16 +254,18 @@ vtcode webmcp serve \
 
 The default bind is loopback with an OS-selected port. `--allowed-root` explicitly bounds the workspace roots available to a headless bridge. Patch application requires `apply_patch` in the existing explicit full-auto allowlist; checks separately require `exec_command` (or the wildcard entry). If either capability would be enabled, the selected workspace must also pass the existing full-auto workspace-trust gate. Checks resolve an allowlisted executable from trusted installation locations, clear the inherited environment, and run through the canonical `vtcode-safety` workspace sandbox with a bounded timeout and output cap. The bridge does not terminate TLS or bind a remote interface: `--allow-remote --public-url wss://...` is accepted only for a TLS-terminating reverse proxy that forwards to the loopback listener. Direct non-loopback binding is rejected.
 
-On Linux, the `checks.run` operation exposed through
-`RuntimeAdapter::run_checks` requires `VTCODE_LINUX_SANDBOX_EXECUTABLE` to point
-to the sandbox helper before the bridge starts:
+On Linux, each `checks.run` operation exposed through
+`RuntimeAdapter::run_checks` reads `VTCODE_LINUX_SANDBOX_EXECUTABLE` before the
+request runs. Export the sandbox helper path before starting the bridge, because
+a later change in the parent shell does not update the running bridge process:
 
 ```sh
 export VTCODE_LINUX_SANDBOX_EXECUTABLE=/absolute/path/to/sandbox-helper
 ```
 
 If the variable is unset, an otherwise permitted check request fails closed with
-a missing-helper adapter error; the command is not run without the sandbox.
+an adapter error containing `missing sandbox executable path`; the command is
+not run without the sandbox.
 
 The slash command `/webmcp` reports the command family and security boundary
 inside an active session. `/webmcp pair <origin>` starts an authenticated

@@ -449,11 +449,39 @@ mod request_builder_tests {
     use crate::providers::anthropic::request_builder::{
         RequestBuilderContext, convert_to_anthropic_format, tool_result_blocks,
     };
+    use rstest::{fixture, rstest};
     use serde_json::json;
     use std::sync::Arc;
     use vtcode_config::constants::models;
     use vtcode_config::core::{AnthropicConfig, AnthropicPromptCacheSettings};
     use vtcode_config::types::ReasoningEffortLevel;
+
+    /// Owns the default values shared by request-builder tests.
+    struct DefaultRequestBuilderContext {
+        cache_settings: AnthropicPromptCacheSettings,
+        anthropic_config: AnthropicConfig,
+    }
+
+    impl DefaultRequestBuilderContext {
+        /// Borrows the stored defaults as a request-builder context.
+        fn context(&self) -> RequestBuilderContext<'_> {
+            RequestBuilderContext {
+                prompt_cache_enabled: false,
+                prompt_cache_settings: &self.cache_settings,
+                anthropic_config: &self.anthropic_config,
+                model: models::anthropic::DEFAULT_MODEL,
+            }
+        }
+    }
+
+    /// Supplies the default cache and provider configuration for request-builder tests.
+    #[fixture]
+    fn default_request_builder_context() -> DefaultRequestBuilderContext {
+        DefaultRequestBuilderContext {
+            cache_settings: AnthropicPromptCacheSettings::default(),
+            anthropic_config: AnthropicConfig::default(),
+        }
+    }
 
     #[test]
     fn test_tool_result_blocks_empty() {
@@ -487,8 +515,10 @@ mod request_builder_tests {
     }
 
     /// Proves Sonnet 5 omits both assistant-prefill inputs and uses the system fallback.
-    #[test]
-    fn test_sonnet_5_omits_prefill_and_uses_system_fallback() {
+    #[rstest]
+    fn test_sonnet_5_omits_prefill_and_uses_system_fallback(
+        default_request_builder_context: DefaultRequestBuilderContext,
+    ) {
         let provider = AnthropicProvider::new(String::from("test-key"));
         let request = LLMRequest {
             model: String::from(models::CLAUDE_SONNET_5),
@@ -510,14 +540,7 @@ mod request_builder_tests {
             "unsupported assistant prefills should route leak protection to the system prompt"
         );
 
-        let cache_settings = AnthropicPromptCacheSettings::default();
-        let anthropic_config = AnthropicConfig::default();
-        let ctx = RequestBuilderContext {
-            prompt_cache_enabled: false,
-            prompt_cache_settings: &cache_settings,
-            anthropic_config: &anthropic_config,
-            model: models::anthropic::DEFAULT_MODEL,
-        };
+        let ctx = default_request_builder_context.context();
         let payload = convert_to_anthropic_format(&protected_request, &ctx).expect("payload conversion");
 
         let messages = payload
@@ -539,8 +562,8 @@ mod request_builder_tests {
     }
 
     /// Guards the legacy capability path by retaining the serialized assistant prefill.
-    #[test]
-    fn test_legacy_model_keeps_assistant_prefill() {
+    #[rstest]
+    fn test_legacy_model_keeps_assistant_prefill(default_request_builder_context: DefaultRequestBuilderContext) {
         let request = LLMRequest {
             model: String::from("claude-sonnet-4-5"),
             messages: vec![Message::user(String::from("hi"))].into(),
@@ -548,14 +571,7 @@ mod request_builder_tests {
             coding_agent_settings: Some(Box::new(CodingAgentSettings { prefill_thought: true, ..Default::default() })),
             ..Default::default()
         };
-        let cache_settings = AnthropicPromptCacheSettings::default();
-        let anthropic_config = AnthropicConfig::default();
-        let ctx = RequestBuilderContext {
-            prompt_cache_enabled: false,
-            prompt_cache_settings: &cache_settings,
-            anthropic_config: &anthropic_config,
-            model: models::anthropic::DEFAULT_MODEL,
-        };
+        let ctx = default_request_builder_context.context();
 
         let payload = convert_to_anthropic_format(&request, &ctx).expect("payload conversion");
         let messages = payload
