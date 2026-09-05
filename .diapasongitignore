@@ -37,7 +37,7 @@ tramp
 .gitmodules
 .gitkeep
 
-# Build artifacts and compilation outputs
+# Build artefacts and compilation outputs
 target/
 build/
 dist/

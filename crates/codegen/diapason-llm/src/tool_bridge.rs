@@ -46,7 +46,7 @@ pub struct ToolExecution {
     result: EnhancedToolResult,
     duration_ms: u64,
 
-    /// Did this tool help fulfill the intent?
+    /// Did this tool help fulfil the intent?
     contributed_to_intent: bool,
 }
 

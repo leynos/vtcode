@@ -107,11 +107,11 @@ the app, then set:
 VITE_WEBMCP_ORIGIN_TRIAL_TOKEN='<token for the deployment origin>' bun run build
 ```
 
-When one artifact is served from multiple origins, provide origin-trial tokens
+When one artefact is served from multiple origins, provide origin-trial tokens
 as a comma- or newline-separated `VITE_WEBMCP_ORIGIN_TRIAL_TOKENS` value. The
 browser ignores a token issued for a different origin. If no token is set, use
 the Chrome WebMCP testing flag or the normal in-memory fallback. A separately
-published ChatGPT Site artifact must receive equivalent build variables from
+published ChatGPT Site artefact must receive equivalent build variables from
 its own publisher; the Pages workflow deploys only GitHub Pages. Never reuse a
 production token for `localhost`; tokens are time-limited and origin-specific.
 
