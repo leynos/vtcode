@@ -174,7 +174,7 @@ impl CommandTool {
                 display: input.raw_command.clone().unwrap_or_else(|| format_command(command)),
             }
         } else {
-            // Honor explicit shell override provided in the input. If the caller set `login` to
+            // Honour explicit shell override provided in the input. If the caller set `login` to
             // false, use `-c` (no login). Otherwise use `-lc` to force login shell semantics.
             let shell = if let Some(ref shell_override) = input.shell {
                 if !shell_override.trim().is_empty() {

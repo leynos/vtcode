@@ -27,7 +27,7 @@ impl AgentRunner {
         preserve_recent_turns: usize,
     ) {
         let mut engine_cfg = local_compaction_config(Some(self.config()), false);
-        // Honor the existing `context.preserve_recent_turns` knob: keep at least
+        // Honour the existing `context.preserve_recent_turns` knob: keep at least
         // this many recent messages verbatim before any summarization fires.
         engine_cfg.keep_last_messages = preserve_recent_turns;
         let outcome = match auto_compact_messages(

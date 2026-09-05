@@ -178,14 +178,14 @@ impl TaskManager {
             .get_mut(task_id)
             .ok_or_else(|| A2aError::TaskNotFound(task_id.to_string()))?;
 
-        if !task.is_cancelable() {
-            return Err(A2aError::TaskNotCancelable(format!(
-                "Task {} is in state {:?} and cannot be canceled",
+        if !task.is_cancellable() {
+            return Err(A2aError::TaskNotCancellable(format!(
+                "Task {} is in state {:?} and cannot be cancelled",
                 task_id, task.status.state
             )));
         }
 
-        task.status = TaskStatus::new(TaskState::Canceled);
+        task.status = TaskStatus::new(TaskState::Cancelled);
         Ok(task.clone())
     }
 
@@ -427,8 +427,8 @@ mod tests {
         let manager = TaskManager::new();
         let task = manager.create_task(None).await;
 
-        let canceled = manager.cancel_task(&task.id).await.expect("cancel");
-        assert_eq!(canceled.state(), TaskState::Canceled);
+        let cancelled = manager.cancel_task(&task.id).await.expect("cancel");
+        assert_eq!(cancelled.state(), TaskState::Cancelled);
     }
 
     #[tokio::test]

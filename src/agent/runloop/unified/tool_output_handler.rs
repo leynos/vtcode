@@ -568,7 +568,7 @@ fn canonical_pipe_streams(output: &serde_json::Value) -> Vec<CanonicalOutputStre
         }
 
         // When both named streams contain the merged value, the merged field
-        // is a bounded preview. Keep each complete, labeled stream instead of
+        // is a bounded preview. Keep each complete, labelled stream instead of
         // guessing that the single preview occurrence represents both pipes.
         if stdout_contains_merged && stderr_contains_merged {
             append_named_streams(&mut streams, stdout, stderr);
@@ -577,7 +577,7 @@ fn canonical_pipe_streams(output: &serde_json::Value) -> Vec<CanonicalOutputStre
         }
 
         // A preview nested in either one named stream is best represented by
-        // the complete named values. The other stream remains labeled even
+        // the complete named values. The other stream remains labelled even
         // when its content is not present in the preview.
         if stdout_contains_merged || stderr_contains_merged {
             append_named_streams(&mut streams, stdout, stderr);
@@ -659,7 +659,7 @@ async fn load_complete_output(output: &serde_json::Value, workspace_root: Option
     if output_text(output, "output").is_none()
         && (output_text(output, "stdout").is_some() || output_text(output, "stderr").is_some())
     {
-        // Named pipe streams remain labeled in the viewer. Joining them here
+        // Named pipe streams remain labelled in the viewer. Joining them here
         // would make the later capture renderer mistake stderr for a copy of
         // stdout and drop it.
         return None;
@@ -775,7 +775,7 @@ fn append_merged_output_lines(lines: &mut Vec<String>, output_lines: impl IntoIt
     }
 }
 
-fn append_labeled_output_lines(lines: &mut Vec<String>, label: &str, output_lines: impl IntoIterator<Item = String>) {
+fn append_labelled_output_lines(lines: &mut Vec<String>, label: &str, output_lines: impl IntoIterator<Item = String>) {
     lines.push(format!("  {label}:"));
     for line in output_lines {
         lines.push(format!("    {line}"));
@@ -816,7 +816,7 @@ fn build_merged_command_output_lines(
                 };
                 let stream_lines = normalize_terminal_output_lines(stream.text);
                 if !normalized_lines_contain_subsequence(&capture_lines, &stream_lines) {
-                    append_labeled_output_lines(&mut lines, label, stream_lines);
+                    append_labelled_output_lines(&mut lines, label, stream_lines);
                 }
             }
         }
@@ -826,7 +826,7 @@ fn build_merged_command_output_lines(
         for stream in &named_streams {
             let output_lines = normalize_terminal_output_lines(stream.text);
             if let Some(label) = stream.label {
-                append_labeled_output_lines(&mut lines, label, output_lines);
+                append_labelled_output_lines(&mut lines, label, output_lines);
             } else {
                 append_merged_output_lines(&mut lines, output_lines);
             }
@@ -840,7 +840,7 @@ fn build_merged_command_output_lines(
             .flat_map(|stream| normalize_terminal_output_lines(stream.text))
             .collect::<Vec<_>>();
         if !capture_lines.is_empty() && capture_lines != named_lines {
-            append_labeled_output_lines(&mut lines, "output", capture_lines);
+            append_labelled_output_lines(&mut lines, "output", capture_lines);
         }
     }
     if let Some(note) = output_text(output, "critical_note") {
@@ -866,7 +866,7 @@ fn build_pipe_command_output_lines(
             continue;
         }
         if let Some(label) = stream.label {
-            append_labeled_output_lines(&mut lines, label, output_lines);
+            append_labelled_output_lines(&mut lines, label, output_lines);
         } else {
             append_merged_output_lines(&mut lines, output_lines);
         }

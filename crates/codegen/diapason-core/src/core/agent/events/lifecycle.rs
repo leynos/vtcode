@@ -345,7 +345,7 @@ fn contains_distinct_line_blocks(container: &str, first: &str, second: &str) -> 
     })
 }
 
-fn append_labeled_stream_text(lines: &mut Vec<String>, label: &str, text: &str) {
+fn append_labelled_stream_text(lines: &mut Vec<String>, label: &str, text: &str) {
     lines.push(format!("[{label}]\n{text}"));
 }
 
@@ -366,8 +366,8 @@ fn aggregate_primary_streams(output: &Value) -> Vec<String> {
             // Without an authoritative merged field, stdout and stderr are
             // separate pipes. Keep both labels even when their bytes happen
             // to be identical or one is contained by the other.
-            append_labeled_stream_text(&mut parts, "stdout", stdout);
-            append_labeled_stream_text(&mut parts, "stderr", stderr);
+            append_labelled_stream_text(&mut parts, "stdout", stdout);
+            append_labelled_stream_text(&mut parts, "stderr", stderr);
         }
         (None, Some(stdout), None) | (None, None, Some(stdout)) => parts.push(stdout.to_string()),
         (None, None, None) => {}
@@ -384,17 +384,17 @@ fn aggregate_primary_streams(output: &Value) -> Vec<String> {
 
             if stdout_is_in_merged && !stderr_is_in_merged {
                 parts.push(merged.to_string());
-                append_labeled_stream_text(&mut parts, "stderr", stderr);
+                append_labelled_stream_text(&mut parts, "stderr", stderr);
             } else if stderr_is_in_merged && !stdout_is_in_merged {
                 parts.push(merged.to_string());
-                append_labeled_stream_text(&mut parts, "stdout", stdout);
+                append_labelled_stream_text(&mut parts, "stdout", stdout);
             } else {
                 // Equal or overlapping named streams cannot be deduplicated
                 // from one occurrence in `output`; retain both labels. Keep
                 // the merged value too when neither named stream covers it
                 // completely.
-                append_labeled_stream_text(&mut parts, "stdout", stdout);
-                append_labeled_stream_text(&mut parts, "stderr", stderr);
+                append_labelled_stream_text(&mut parts, "stdout", stdout);
+                append_labelled_stream_text(&mut parts, "stderr", stderr);
                 if !stdout_contains_merged && !stderr_contains_merged {
                     append_unrepresented_stream_text(&mut parts, merged);
                 }
@@ -418,7 +418,7 @@ fn aggregate_primary_streams(output: &Value) -> Vec<String> {
     }
 
     if let Some(content) = trimmed_string_field(output, "content") {
-        // `content` is an independent payload field. Never replace a labeled
+        // `content` is an independent payload field. Never replace a labelled
         // pipe stream with it merely because one contains the other.
         append_unrepresented_stream_text(&mut parts, content);
     }
