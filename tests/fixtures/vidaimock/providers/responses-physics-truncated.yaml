@@ -1,0 +1,12 @@
+name: "responses-physics-truncated"
+matcher: "^/v1/responses-physics-truncated/responses$"
+priority: 121
+response_template: "responses/physics_response.json.j2"
+error_template: "arli/error.json.j2"
+status_code: "200"
+stream:
+  enabled: true
+  frame_format: raw
+  lifecycle:
+    on_start: { template_path: "responses/physics_stream_start.j2" }
+    on_chunk: { template_path: "responses/physics_stream_chunk.j2" }

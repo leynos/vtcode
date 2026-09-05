@@ -5,7 +5,11 @@ use crate::provider::{
 pub use crate::providers::ReasoningBuffer;
 use crate::providers::common::{extract_reasoning_text_from_serialized_details, map_finish_reason_common};
 mod responses_adapter;
+pub(crate) mod responses_reconciler;
 mod responses_stream;
+pub(crate) mod responses_usage;
+pub(crate) mod responses_validation;
+pub(crate) mod responses_wire;
 mod tag_sanitizer;
 use crate::providers::split_reasoning_from_text;
 pub(crate) use responses_stream::{ResponsesNormalizedStreamOptions, create_responses_normalized_stream};
