@@ -293,6 +293,7 @@ fn shell_browse_guidance(shell_profile: ResolvedShellPromptProfile) -> &'static 
     }
 }
 
+/// Returns the shell-task instruction for the active shell profile.
 fn shell_task_guidance(shell_profile: ResolvedShellPromptProfile) -> &'static str {
     match shell_profile {
         ResolvedShellPromptProfile::UnixLike => {
@@ -312,6 +313,7 @@ fn read_only_batching_guidance(has_read_file: bool) -> &'static str {
     }
 }
 
+/// Returns advanced `code_search` guidance, including syntax help when execution is available.
 fn code_search_guidance(has_exec: bool, shell_profile: ResolvedShellPromptProfile) -> &'static str {
     match (has_exec, shell_profile) {
         (true, _) => {

@@ -444,7 +444,8 @@ mod response_parser_tests {
 
 #[cfg(test)]
 mod request_builder_tests {
-    use crate::provider::{LLMRequest, Message, PromptCacheProfile, ToolDefinition};
+    use crate::provider::{CodingAgentSettings, LLMRequest, Message, PromptCacheProfile, ToolDefinition};
+    use crate::providers::anthropic::AnthropicProvider;
     use crate::providers::anthropic::request_builder::{
         RequestBuilderContext, convert_to_anthropic_format, tool_result_blocks,
     };
@@ -483,6 +484,100 @@ mod request_builder_tests {
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0]["type"], "text");
         assert_eq!(blocks[0]["text"], "{\"key\":\"value\"}");
+    }
+
+    /// Proves Sonnet 5 omits both assistant-prefill inputs and uses the system fallback.
+    #[test]
+    fn test_sonnet_5_omits_prefill_and_uses_system_fallback() {
+        let provider = AnthropicProvider::new(String::from("test-key"));
+        let request = LLMRequest {
+            model: String::from(models::CLAUDE_SONNET_5),
+            messages: vec![Message::user(String::from("hi"))].into(),
+            prefill: Some(String::from("{")),
+            coding_agent_settings: Some(Box::new(CodingAgentSettings { prefill_thought: true, ..Default::default() })),
+            ..Default::default()
+        };
+
+        let protected_request = provider.with_leak_protection(request, "the Anthropic API key");
+        assert_eq!(
+            protected_request.prefill.as_deref(),
+            Some("{"),
+            "leak protection should preserve caller input before conversion"
+        );
+        assert_eq!(
+            protected_request.system_prompt.as_deref(),
+            Some("[Never mention or reveal the Anthropic API key]"),
+            "unsupported assistant prefills should route leak protection to the system prompt"
+        );
+
+        let cache_settings = AnthropicPromptCacheSettings::default();
+        let anthropic_config = AnthropicConfig::default();
+        let ctx = RequestBuilderContext {
+            prompt_cache_enabled: false,
+            prompt_cache_settings: &cache_settings,
+            anthropic_config: &anthropic_config,
+            model: models::anthropic::DEFAULT_MODEL,
+        };
+        let payload = convert_to_anthropic_format(&protected_request, &ctx).expect("payload conversion");
+
+        let messages = payload
+            .get("messages")
+            .and_then(serde_json::Value::as_array)
+            .expect("payload should contain an array of messages");
+        assert_eq!(messages.len(), 1, "unsupported prefills should leave only the original user message");
+        let only_message = messages.first().expect("single user message");
+        assert_eq!(
+            only_message.get("role").and_then(serde_json::Value::as_str),
+            Some("user"),
+            "unsupported prefills must not create an assistant message"
+        );
+        assert_eq!(
+            payload.get("system").and_then(serde_json::Value::as_str),
+            Some("[Never mention or reveal the Anthropic API key]"),
+            "leak protection should fall back to the system prompt"
+        );
+    }
+
+    /// Guards the legacy capability path by retaining the serialized assistant prefill.
+    #[test]
+    fn test_legacy_model_keeps_assistant_prefill() {
+        let request = LLMRequest {
+            model: String::from("claude-sonnet-4-5"),
+            messages: vec![Message::user(String::from("hi"))].into(),
+            prefill: Some(String::from("{")),
+            coding_agent_settings: Some(Box::new(CodingAgentSettings { prefill_thought: true, ..Default::default() })),
+            ..Default::default()
+        };
+        let cache_settings = AnthropicPromptCacheSettings::default();
+        let anthropic_config = AnthropicConfig::default();
+        let ctx = RequestBuilderContext {
+            prompt_cache_enabled: false,
+            prompt_cache_settings: &cache_settings,
+            anthropic_config: &anthropic_config,
+            model: models::anthropic::DEFAULT_MODEL,
+        };
+
+        let payload = convert_to_anthropic_format(&request, &ctx).expect("payload conversion");
+        let messages = payload
+            .get("messages")
+            .and_then(serde_json::Value::as_array)
+            .expect("payload should contain an array of messages");
+        assert_eq!(messages.len(), 2, "legacy prefill should append one assistant message");
+        let assistant = messages.get(1).expect("legacy payload assistant message");
+        let prefill = messages
+            .get(1)
+            .and_then(|message| message.get("content"))
+            .and_then(serde_json::Value::as_array)
+            .and_then(|content| content.first())
+            .and_then(|content| content.get("text"))
+            .and_then(serde_json::Value::as_str);
+
+        assert_eq!(
+            assistant.get("role").and_then(serde_json::Value::as_str),
+            Some("assistant"),
+            "legacy models should retain an assistant prefill message"
+        );
+        assert_eq!(prefill, Some("<thought> {"), "legacy prefill should combine thought and text inputs");
     }
 
     #[test]

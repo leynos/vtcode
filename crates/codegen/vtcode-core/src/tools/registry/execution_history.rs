@@ -1095,6 +1095,7 @@ impl Default for ToolExecutionHistory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use serde_json::json;
     use tempfile::tempdir;
 
@@ -1104,6 +1105,29 @@ mod tests {
 
     fn make_task_snapshot(task_id: &str) -> HarnessContextSnapshot {
         HarnessContextSnapshot::new("session_test".to_string(), Some(task_id.to_string()))
+    }
+
+    /// Record a successful code search and report whether a probe replays it.
+    fn replays_code_search(cached_args: Value, query_args: &Value) -> bool {
+        let history = ToolExecutionHistory::new(10);
+        let cached_result = json!({"results": ["cached search"]});
+        history.add_record(ToolExecutionRecord::success(
+            String::from(tools::CODE_SEARCH),
+            String::from(tools::CODE_SEARCH),
+            false,
+            None,
+            cached_args,
+            cached_result.clone(),
+            make_snapshot(),
+            None,
+            None,
+            None,
+            None,
+            false,
+        ));
+
+        history.find_recent_successful_by_read_target(tools::CODE_SEARCH, query_args, Duration::from_secs(60))
+            == Some(cached_result)
     }
 
     #[test]
@@ -1687,6 +1711,155 @@ mod tests {
         );
 
         assert_eq!(replayed, Some(cached_result));
+    }
+
+    proptest! {
+        /// Equivalent omitted, null, and explicit search defaults reuse a cached result.
+        #[test]
+        fn code_search_replay_normalizes_omitted_and_explicit_defaults(
+            query in "[A-Za-z][A-Za-z0-9_]{0,20}",
+        ) {
+            let omitted_defaults = json!({"query": format!("  {query}\t")});
+            let null_path = json!({"query": format!("  {query}\t"), "path": null});
+            let explicit_defaults = json!({
+                "query": &query,
+                "path": ".",
+                "result_types": ["definition", "usage", "text", "path"],
+                "max_results": 20,
+            });
+
+            prop_assert!(
+                replays_code_search(omitted_defaults, &explicit_defaults),
+                "omitted defaults must replay against their explicit effective values"
+            );
+            prop_assert!(
+                replays_code_search(null_path, &explicit_defaults),
+                "a null path must normalise to the explicit root path"
+            );
+        }
+    }
+
+    proptest! {
+        /// Normalized filters replay only when every effective search dimension agrees.
+        #[test]
+        fn code_search_replay_uses_each_effective_normalized_filter(
+            query in "[A-Za-z][A-Za-z0-9_]{0,20}",
+            path in prop_oneof![
+                Just(None::<String>),
+                "[a-z][a-z0-9_/]{0,20}".prop_map(Some),
+            ],
+            file_types in prop::sample::subsequence(
+                vec!["rust", "python", "typescript"],
+                1..=3,
+            ),
+            result_types in prop::sample::subsequence(
+                vec!["definition", "usage", "text", "path"],
+                1..=4,
+            ),
+            max_results in 1_usize..=100,
+        ) {
+            let cached_args = json!({
+                "query": &query,
+                "path": path.as_deref(),
+                "file_types": &file_types,
+                "result_types": &result_types,
+                "max_results": max_results,
+            });
+            let whitespace_path = path.as_ref().map(|value| format!("  {value}\t"));
+            let equivalent_file_types: Vec<&str> = file_types
+                .iter()
+                .rev()
+                .map(|file_type| match *file_type {
+                    "rust" => " .rs ",
+                    "python" => " py3 ",
+                    "typescript" => " .ts ",
+                    _ => *file_type,
+                })
+                .collect();
+            let equivalent_result_types: Vec<&str> = result_types.iter().rev().copied().collect();
+            let equivalent_args = json!({
+                "query": format!("\n{query}  "),
+                "path": whitespace_path,
+                "file_types": equivalent_file_types,
+                "result_types": equivalent_result_types,
+                "max_results": max_results,
+            });
+
+            prop_assert!(
+                replays_code_search(cached_args.clone(), &equivalent_args),
+                "whitespace and equivalent filter spellings must replay"
+            );
+
+            let mut changed_file_types = file_types.clone();
+            if let Some(index) = changed_file_types
+                .iter()
+                .position(|file_type| *file_type == "rust")
+            {
+                changed_file_types.remove(index);
+                if changed_file_types.is_empty() {
+                    changed_file_types.push("python");
+                }
+            } else {
+                changed_file_types.push("rust");
+            }
+            let mut changed_result_types = result_types.clone();
+            if let Some(index) = changed_result_types
+                .iter()
+                .position(|result_type| *result_type == "definition")
+            {
+                changed_result_types.remove(index);
+                if changed_result_types.is_empty() {
+                    changed_result_types.push("usage");
+                }
+            } else {
+                changed_result_types.push("definition");
+            }
+            let different_max_results = if max_results == 100 { 1 } else { max_results + 1 };
+            let different_path = if path.as_deref() == Some("tests") { "src" } else { "tests" };
+
+            for changed_args in [
+                json!({
+                    "query": format!("{query}_changed"),
+                    "path": path.as_deref(),
+                    "file_types": &file_types,
+                    "result_types": &result_types,
+                    "max_results": max_results,
+                }),
+                json!({
+                    "query": &query,
+                    "path": different_path,
+                    "file_types": &file_types,
+                    "result_types": &result_types,
+                    "max_results": max_results,
+                }),
+                json!({
+                    "query": &query,
+                    "path": path.as_deref(),
+                    "file_types": changed_file_types,
+                    "result_types": &result_types,
+                    "max_results": max_results,
+                }),
+                json!({
+                    "query": &query,
+                    "path": path.as_deref(),
+                    "file_types": &file_types,
+                    "result_types": changed_result_types,
+                    "max_results": max_results,
+                }),
+                json!({
+                    "query": &query,
+                    "path": path.as_deref(),
+                    "file_types": &file_types,
+                    "result_types": &result_types,
+                    "max_results": different_max_results,
+                }),
+            ] {
+                prop_assert!(
+                    !replays_code_search(cached_args.clone(), &changed_args),
+                    "each changed effective code-search dimension must execute fresh: {changed_args}"
+                );
+            }
+        }
     }
 
     #[test]

@@ -107,6 +107,29 @@ prevent the checks from running. `check-dev.sh --changed` performs its own
 changed-package filtering because Nextest does not provide Cargo's
 `--changed --since` selection flags.
 
+### Hermetic workspace fixtures
+
+Tests that load workspace configuration should install the test-only
+`IsolatedConfigDefaultsGuard` fixture from
+`crates/codegen/vtcode-core/tests/support/config_defaults.rs` for their
+temporary workspace. The guard installs workspace-only configuration defaults
+while it is held, serializes access to the shared defaults provider, and
+restores the previous provider when it is dropped. Keep the guard and the
+temporary directory alive for the complete fixture scope, for example:
+
+```rust
+let temp_dir = tempfile::TempDir::new()?;
+let _config_defaults =
+    config_defaults::IsolatedConfigDefaultsGuard::install(temp_dir.path())
+        .await;
+```
+
+Tests that change process environment variables must use the shared environment
+lock together with the scoped `temp-env` helpers. Use `filetime` when a test
+needs deterministic file modification times; process-isolated cases can use
+the workspace's `rusty-fork` test dependency. These dependencies are for test
+fixtures and do not change the runtime dependency surface.
+
 ### Structural Rule Checks
 
 VT Code bundles a generic `ast-grep` project scaffold and materializes it into the current workspace when you run `vtcode init`.

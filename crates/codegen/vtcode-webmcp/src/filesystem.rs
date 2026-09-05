@@ -1262,6 +1262,8 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
     use tokio::io::{AsyncWriteExt, duplex};
+    #[cfg(target_os = "linux")]
+    use vtcode_commons::env_lock;
 
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
@@ -1298,20 +1300,31 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
-    #[tokio::test]
-    async fn linux_checks_without_sandbox_helper_fail_closed() {
-        let (_temp, adapter) = workspace(true).await;
-        let adapter = adapter.with_allowed_commands(["printf"]);
+    #[test]
+    fn linux_checks_without_sandbox_helper_fail_closed() -> Result<()> {
+        let _environment_guard = env_lock::lock();
 
-        let error = adapter
-            .run_checks_with_sandbox_executable("printf ok", None)
-            .await
-            .expect_err("Linux checks require the configured sandbox helper");
+        temp_env::with_var_unset("VTCODE_LINUX_SANDBOX_EXECUTABLE", || {
+            let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+            runtime.block_on(async {
+                let temp = TempDir::new()?;
+                tokio::fs::write(temp.path().join("main.js"), "console.log('old');\n").await?;
+                let adapter = FilesystemWorkspace::new(temp.path(), [], true)
+                    .await?
+                    .with_allowed_commands(["printf"]);
+                let runtime_adapter: &dyn RuntimeAdapter = &adapter;
 
-        assert!(matches!(
-            error,
-            WebmcpError::Adapter(message) if message.contains("missing sandbox executable path")
-        ));
+                match runtime_adapter.run_checks("printf ok").await {
+                    Err(WebmcpError::Adapter(message)) if message.contains("missing sandbox executable path") => Ok(()),
+                    Err(error) => Err(WebmcpError::Adapter(format!(
+                        "public checks boundary returned the wrong missing-helper error: {error}"
+                    ))),
+                    Ok(_) => Err(WebmcpError::Adapter(String::from(
+                        "public checks boundary ran without a configured sandbox helper",
+                    ))),
+                }
+            })
+        })
     }
 
     #[test]

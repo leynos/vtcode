@@ -39,6 +39,7 @@ vtcode-safety = { workspace = true }
 
 [dev-dependencies]
 reqwest = { workspace = true }
+temp-env = { workspace = true }
 tempfile = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]

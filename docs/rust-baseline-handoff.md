@@ -218,3 +218,17 @@ the later structural layer and tracked in
 checks after inline findings
 are settled, raise valid out-of-scope findings as issues, and preserve each
 layer's full gates when rebasing before a push with `--force-with-lease`.
+
+The first review repair is committed and pushed as `24758f226`. CodeRabbit
+confirmed the four inline fixes; all six inline threads are resolved. The next
+review wave adds payload-level Anthropic prefill regressions, a hermetic test
+through the public WebMCP check boundary, and generated code-search replay
+properties. Existing developer and provider guides document the gate, fixtures,
+and prefill migration. All seven second-wave gates passed: 10,079 workspace
+tests, 17 skips, and 67 harness tests. Logs use the `premerge-1` action suffix.
+Changed-document Markdownlint is compared with the exact `24758f226` parent
+baseline; diagram validation covers all five changed Markdown files.
+
+Both CI runs on `24758f226` passed. The PR-triggered tool evaluation took
+16m47s, providing direct evidence that the original 15-minute limit was too
+short. The new head still requires its own hosted checks and queued review.
