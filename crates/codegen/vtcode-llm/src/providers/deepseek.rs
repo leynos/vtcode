@@ -123,7 +123,7 @@ impl_openai_compat_provider!(DeepSeekProvider, DeepSeekSpec, {
         // Codex-inspired robustness: Setting model_supports_reasoning to false
         // does NOT disable it for known reasoning models.
         self.core
-            .model_behavior
+            .model_behaviour
             .as_ref()
             .and_then(|b| b.model_supports_reasoning)
             .unwrap_or(false)
@@ -134,7 +134,7 @@ impl_openai_compat_provider!(DeepSeekProvider, DeepSeekSpec, {
     fn supports_reasoning_effort(&self, _model: &str) -> bool {
         // Same robustness logic for reasoning effort
         self.core
-            .model_behavior
+            .model_behaviour
             .as_ref()
             .and_then(|b| b.model_supports_reasoning_effort)
             .unwrap_or(false)

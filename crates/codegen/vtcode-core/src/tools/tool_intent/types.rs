@@ -26,14 +26,14 @@ impl ToolMutationModel {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ToolBehavior {
+pub struct ToolBehaviour {
     pub surface_kind: ToolSurfaceKind,
     pub mutation_model: ToolMutationModel,
     pub supports_parallel_calls: bool,
     pub safe_mode_prompt: bool,
 }
 
-impl ToolBehavior {
+impl ToolBehaviour {
     pub const fn function(
         mutation_model: ToolMutationModel,
         supports_parallel_calls: bool,

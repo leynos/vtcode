@@ -350,7 +350,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             timeouts: None,
             openai: None,
             anthropic: None,
-            model_behavior: agent.config.model_behavior.clone(),
+            model_behaviour: agent.config.model_behaviour.clone(),
             workspace_root: Some(agent.config.workspace.clone()),
         },
     )

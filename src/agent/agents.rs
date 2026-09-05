@@ -293,7 +293,7 @@ mod tests {
             checkpointing_max_snapshots: DEFAULT_MAX_SNAPSHOTS,
             checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
             max_conversation_turns: 1000,
-            model_behavior: None,
+            model_behaviour: None,
             openai_chatgpt_auth: None,
         };
 
@@ -331,7 +331,7 @@ mod tests {
             checkpointing_max_snapshots: DEFAULT_MAX_SNAPSHOTS,
             checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
             max_conversation_turns: 1000,
-            model_behavior: None,
+            model_behaviour: None,
             openai_chatgpt_auth: None,
         };
 
@@ -369,7 +369,7 @@ mod tests {
             checkpointing_max_snapshots: DEFAULT_MAX_SNAPSHOTS,
             checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
             max_conversation_turns: 1000,
-            model_behavior: None,
+            model_behaviour: None,
             openai_chatgpt_auth: None,
         };
 
@@ -405,7 +405,7 @@ mod tests {
             checkpointing_max_snapshots: DEFAULT_MAX_SNAPSHOTS,
             checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
             max_conversation_turns: 1000,
-            model_behavior: None,
+            model_behaviour: None,
             openai_chatgpt_auth: None,
         };
 
@@ -437,7 +437,7 @@ mod tests {
             checkpointing_max_snapshots: DEFAULT_MAX_SNAPSHOTS,
             checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
             max_conversation_turns: 1000,
-            model_behavior: None,
+            model_behaviour: None,
             openai_chatgpt_auth: None,
         };
         let metadata = SessionArchiveMetadata::new(
@@ -478,7 +478,7 @@ mod tests {
             checkpointing_max_snapshots: DEFAULT_MAX_SNAPSHOTS,
             checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
             max_conversation_turns: 1000,
-            model_behavior: None,
+            model_behaviour: None,
             openai_chatgpt_auth: None,
         };
         let metadata = SessionArchiveMetadata::new(

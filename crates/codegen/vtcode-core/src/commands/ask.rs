@@ -49,7 +49,7 @@ pub async fn handle_ask_command(
             timeouts: None,
             openai: None,
             anthropic: None,
-            model_behavior: config.model_behavior.clone(),
+            model_behaviour: config.model_behaviour.clone(),
             workspace_root: Some(config.workspace.clone()),
         },
     )?;
@@ -85,7 +85,7 @@ pub async fn handle_ask_command(
                 writeln!(stdout, "{}", response.content_text())?;
             }
         } else {
-            // Print the response content directly (default behavior)
+            // Print the response content directly (default behaviour)
             writeln!(stdout, "{}", response.content_text())?;
         }
     }

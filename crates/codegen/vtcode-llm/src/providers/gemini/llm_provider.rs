@@ -17,7 +17,7 @@ impl LLMProvider for GeminiProvider {
         // does NOT disable it for known reasoning models.
         models::google::REASONING_MODELS.contains(&model)
             || self
-                .model_behavior
+                .model_behaviour
                 .as_ref()
                 .and_then(|b| b.model_supports_reasoning)
                 .unwrap_or(false)
@@ -27,7 +27,7 @@ impl LLMProvider for GeminiProvider {
         // Same robustness logic for reasoning effort
         models::google::REASONING_MODELS.contains(&model)
             || self
-                .model_behavior
+                .model_behaviour
                 .as_ref()
                 .and_then(|b| b.model_supports_reasoning_effort)
                 .unwrap_or(false)

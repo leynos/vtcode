@@ -20,7 +20,7 @@ use crate::tools::handlers::task_tracker::{
 use crate::tools::handlers::{PlanningWorkflowState, StartPlanningTool, TaskTrackerTool};
 use crate::tools::native_memory;
 use crate::tools::request_user_input::RequestUserInputTool;
-use crate::tools::tool_intent::builtin_tool_behavior;
+use crate::tools::tool_intent::builtin_tool_behaviour;
 use crate::tools::web_fetch::{WEB_FETCH_DESCRIPTION, WebFetchTool};
 use crate::tools::web_search::{WEB_SEARCH_DESCRIPTION, WebSearchTool};
 use serde_json::json;
@@ -48,7 +48,7 @@ pub(super) fn builtin_tool_registrations(
     let mut registrations: Vec<ToolRegistration> = BUILTIN_TOOLS
         .iter()
         .map(|factory| factory(planning_workflow_state))
-        .map(with_builtin_behavior)
+        .map(with_builtin_behaviour)
         .map(|registration| registration.with_catalog_source(ToolCatalogSource::Builtin))
         .collect();
 
@@ -554,9 +554,9 @@ fn register_apply_patch(_plan_state: Option<&PlanningWorkflowState>) -> ToolRegi
 // - load_skill_resource
 
 #[allow(dead_code, reason = "Intentional compatibility, platform, or test-only suppression.")]
-fn with_builtin_behavior(registration: ToolRegistration) -> ToolRegistration {
-    if let Some(behavior) = builtin_tool_behavior(registration.name()) {
-        registration.with_behavior(behavior)
+fn with_builtin_behaviour(registration: ToolRegistration) -> ToolRegistration {
+    if let Some(behaviour) = builtin_tool_behaviour(registration.name()) {
+        registration.with_behaviour(behaviour)
     } else {
         registration
     }

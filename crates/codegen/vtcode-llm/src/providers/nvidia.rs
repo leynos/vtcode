@@ -75,9 +75,9 @@ impl_openai_compat_provider!(NvidiaProvider, NvidiaSpec, {
 
     fn supports_reasoning(&self, model: &str) -> bool {
         self.core
-            .model_behavior
+            .model_behaviour
             .as_ref()
-            .and_then(|behavior| behavior.model_supports_reasoning)
+            .and_then(|behaviour| behaviour.model_supports_reasoning)
             .unwrap_or_else(|| models::nvidia::REASONING_MODELS.contains(&model) || !model.trim().is_empty())
     }
 
