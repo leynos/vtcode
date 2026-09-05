@@ -7,7 +7,7 @@
 //! Structured execution telemetry events shared across VT Code crates.
 //!
 //! This crate exposes the serialized schema for thread lifecycle updates,
-//! command execution results, and other timeline artifacts emitted by the
+//! command execution results, and other timeline artefacts emitted by the
 //! automation runtime. Downstream applications can deserialize these
 //! structures to drive dashboards, logging, or auditing pipelines without
 //! depending on the full `vtcode-core` crate.
@@ -569,10 +569,10 @@ pub struct ThreadCompactBoundaryEvent {
     /// Hash of the immutable request prefix after compaction.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_prefix_hash: Option<String>,
-    /// Hash of the ordered tool catalog before compaction.
+    /// Hash of the ordered tool catalogue before compaction.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_catalog_hash: Option<String>,
-    /// Hash of the ordered tool catalog after compaction.
+    /// Hash of the ordered tool catalogue after compaction.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_catalog_hash: Option<String>,
 }
@@ -1223,7 +1223,7 @@ pub struct HarnessEventItem {
     /// Optional verification command associated with the event.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
-    /// Optional artifact path associated with the event.
+    /// Optional artefact path associated with the event.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     /// Optional exit code associated with verification results.

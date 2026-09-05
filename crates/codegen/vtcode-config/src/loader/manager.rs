@@ -192,7 +192,7 @@ impl ConfigManager {
 
     /// Load only the system and user configuration layers.
     ///
-    /// This is used by global configuration commands that must honor legacy
+    /// This is used by global configuration commands that must honour legacy
     /// and XDG search precedence without accidentally importing the current
     /// workspace's `vtcode.toml`.
     pub fn load_global() -> Result<Self> {
@@ -1324,7 +1324,7 @@ impl ConfigManager {
     /// can reach provider registration or request handling.
     ///
     /// Workspace and project files are repository-controlled input. They may
-    /// configure ordinary agent behavior, but must not introduce executable
+    /// configure ordinary agent behaviour, but must not introduce executable
     /// authentication commands or redirect provider requests/credentials.
     /// `load_from_file` is an explicit user opt-in and therefore passes
     /// `explicit_config_is_trusted = true`.

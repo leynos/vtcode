@@ -134,7 +134,7 @@ impl Session {
         self.styles.prefix_style(line)
     }
 
-    /// Get the text fallback color for a message kind
+    /// Get the text fallback colour for a message kind
     pub(crate) fn text_fallback(&self, kind: InlineMessageKind) -> Option<AnsiColourEnum> {
         self.styles.text_fallback(kind)
     }

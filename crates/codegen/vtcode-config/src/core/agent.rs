@@ -309,12 +309,12 @@ impl<'de> Deserialize<'de> for ContinuationPolicy {
 }
 
 /// When to trigger a context reset — starting a clean session from external
-/// artifacts only, discarding conversation history to clear noise and bad
+/// artefacts only, discarding conversation history to clear noise and bad
 /// assumptions. This is distinct from compaction, which preserves
 /// conversational continuity within the same task/agent loop.
 ///
 /// Following the context engineering pattern: "Context reset uses external
-/// artifacts (files from note-taking, git logs, test results, task lists) as
+/// artefacts (files from note-taking, git logs, test results, task lists) as
 /// startup material to open a clean new context/session. It does not preserve
 /// the full conversation history, and can clear noise and bad assumptions so
 /// that a new agent can reorient itself."
@@ -330,7 +330,7 @@ pub enum ContextResetMode {
     /// `context_reset_stall_threshold` consecutive turns).
     OnStall,
     /// Reset after every automatic compaction, so the post-compaction session
-    /// starts from artifacts only rather than the compacted summary.
+    /// starts from artefacts only rather than the compacted summary.
     OnCompaction,
 }
 
@@ -479,7 +479,7 @@ pub struct AgentHarnessConfig {
     #[serde(default)]
     pub continuation_policy: ContinuationPolicy,
     /// When to trigger a context reset — starting a clean session from
-    /// external artifacts only, discarding conversation history. Distinct
+    /// external artefacts only, discarding conversation history. Distinct
     /// from compaction (which preserves conversational continuity).
     /// Default: `off` (carry forward history as before).
     #[serde(default)]

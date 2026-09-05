@@ -101,7 +101,7 @@ pub enum A2aCommands {
 
     /// Get details about a specific task
     ///
-    /// Retrieves the current status, artifacts, and history of a task.
+    /// Retrieves the current status, artefacts, and history of a task.
     ///
     /// Examples:
     ///   vtcode a2a get-task <https://agent.example.com> task-123

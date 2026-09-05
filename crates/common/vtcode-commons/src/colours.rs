@@ -1,7 +1,7 @@
-//! Color utilities for VT Code
+//! Colour utilities for VT Code
 //!
-//! This module provides color manipulation capabilities using anstyle,
-//! which offers low-level ANSI styling with RGB and 256-color support.
+//! This module provides colour manipulation capabilities using anstyle,
+//! which offers low-level ANSI styling with RGB and 256-colour support.
 
 #![expect(
     clippy::cast_possible_truncation,
@@ -10,7 +10,7 @@
 
 use anstyle::{AnsiColor, Color, Effects, RgbColor, Style};
 
-/// Create an RGB color from hex string
+/// Create an RGB colour from hex string
 pub fn colour_from_hex(hex: &str) -> Option<Color> {
     let hex = hex.trim_start_matches('#');
     if hex.len() != 6 {
@@ -41,7 +41,7 @@ pub fn blend_colours(colour1: &Color, colour2: &Color, ratio: f32) -> Option<Col
     Some(Color::Rgb(RgbColor(r, g, b)))
 }
 
-/// Convert an ANSI color to RGB, if possible
+/// Convert an ANSI colour to RGB, if possible
 fn colour_to_rgb(colour: &Color) -> Option<RgbColor> {
     match colour {
         Color::Rgb(rgb) => Some(*rgb),
@@ -50,7 +50,7 @@ fn colour_to_rgb(colour: &Color) -> Option<RgbColor> {
     }
 }
 
-/// Convert an ANSI color to RGB approximation
+/// Convert an ANSI colour to RGB approximation
 fn ansi_to_rgb(ansi_colour: AnsiColor) -> Option<RgbColor> {
     match ansi_colour {
         AnsiColor::Black => Some(RgbColor(0, 0, 0)),
@@ -72,7 +72,7 @@ fn ansi_to_rgb(ansi_colour: AnsiColor) -> Option<RgbColor> {
     }
 }
 
-/// Convert an ANSI256 color to RGB approximation
+/// Convert an ANSI256 colour to RGB approximation
 fn ansi256_to_rgb(ansi256_colour: anstyle::Ansi256Color) -> Option<RgbColor> {
     let code = ansi256_colour.0;
     match code {
@@ -108,7 +108,7 @@ fn ansi256_to_rgb(ansi256_colour: anstyle::Ansi256Color) -> Option<RgbColor> {
     }
 }
 
-/// Determine if a color is light (for contrast calculations)
+/// Determine if a colour is light (for contrast calculations)
 pub fn is_light_colour(colour: &Color) -> bool {
     let rgb = colour_to_rgb(colour);
     if let Some(RgbColor(r, g, b)) = rgb {
@@ -119,7 +119,7 @@ pub fn is_light_colour(colour: &Color) -> bool {
     }
 }
 
-/// Get a contrasting color (black or white) for better readability
+/// Get a contrasting colour (black or white) for better readability
 pub fn contrasting_colour(colour: &Color) -> Color {
     if is_light_colour(colour) {
         Color::Ansi(AnsiColor::Black)
@@ -128,7 +128,7 @@ pub fn contrasting_colour(colour: &Color) -> Color {
     }
 }
 
-/// Create a desaturated version of a color
+/// Create a desaturated version of a colour
 #[allow(
     clippy::cast_sign_loss,
     reason = "Intentional compatibility, platform, or test-only suppression."
@@ -216,42 +216,42 @@ impl std::fmt::Display for StyledString {
     }
 }
 
-/// Apply red color to text
+/// Apply red colour to text
 pub fn red(text: &str) -> String {
     styled(text, Style::new().fg_color(Some(Color::Ansi(AnsiColor::Red))))
 }
 
-/// Apply green color to text
+/// Apply green colour to text
 pub fn green(text: &str) -> String {
     styled(text, Style::new().fg_color(Some(Color::Ansi(AnsiColor::Green))))
 }
 
-/// Apply blue color to text
+/// Apply blue colour to text
 pub fn blue(text: &str) -> String {
     styled(text, Style::new().fg_color(Some(Color::Ansi(AnsiColor::Blue))))
 }
 
-/// Apply yellow color to text
+/// Apply yellow colour to text
 pub fn yellow(text: &str) -> String {
     styled(text, Style::new().fg_color(Some(Color::Ansi(AnsiColor::Yellow))))
 }
 
-/// Apply purple color to text
+/// Apply purple colour to text
 pub fn purple(text: &str) -> String {
     styled(text, Style::new().fg_color(Some(Color::Ansi(AnsiColor::Magenta))))
 }
 
-/// Apply cyan color to text
+/// Apply cyan colour to text
 pub fn cyan(text: &str) -> String {
     styled(text, Style::new().fg_color(Some(Color::Ansi(AnsiColor::Cyan))))
 }
 
-/// Apply white color to text
+/// Apply white colour to text
 pub fn white(text: &str) -> String {
     styled(text, Style::new().fg_color(Some(Color::Ansi(AnsiColor::White))))
 }
 
-/// Apply black color to text
+/// Apply black colour to text
 pub fn black(text: &str) -> String {
     styled(text, Style::new().fg_color(Some(Color::Ansi(AnsiColor::Black))))
 }
@@ -291,12 +291,12 @@ pub fn strikethrough(text: &str) -> String {
     styled(text, Style::new().effects(Effects::STRIKETHROUGH))
 }
 
-/// Apply custom RGB color to text
+/// Apply custom RGB colour to text
 pub fn rgb(text: &str, r: u8, g: u8, b: u8) -> String {
     styled(text, Style::new().fg_color(Some(Color::Rgb(RgbColor(r, g, b)))))
 }
 
-/// Combine multiple color and style operations
+/// Combine multiple colour and style operations
 pub fn custom_style(text: &str, styles: &[&str]) -> String {
     let mut style = Style::new();
 

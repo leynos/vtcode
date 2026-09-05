@@ -6,7 +6,7 @@
 
 - Schemas are defined using `serde` derive macros. Every schema type must derive `Serialize` and `Deserialize`.
 - This crate is a leaf dependency -- do not add dependencies on other vtcode workspace crates (except `vtcode-commons` if needed).
-- Schema types are passive data containers with no behavior or validation logic.
+- Schema types are passive data containers with no behaviour or validation logic.
 - Uses `rmcp` for MCP schema compatibility.
 - Use `with_max_output_tokens_parameter` when exposing object-shaped function schemas to models; execution validation belongs in `vtcode-core`.
 

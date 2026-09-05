@@ -1,7 +1,7 @@
 //! Unified style bridging between `anstyle` and `ratatui`.
 //!
 //! Converts `anstyle::Style` and `InlineTextStyle` to `ratatui::style::Style`,
-//! using the correct color mapping from [`crate::design::colour`].
+//! using the correct colour mapping from [`crate::design::colour`].
 
 use anstyle::{Color as AnstyleColour, Effects, Style as AnstyleStyle};
 use ratatui::style::{Modifier, Style};
@@ -10,7 +10,7 @@ use crate::design::colour::anstyle_to_ratatui_colour;
 
 /// Convert an `anstyle::Style` directly to a `ratatui::style::Style`.
 ///
-/// Uses the correct color mapping from [`crate::design::colour::anstyle_to_ratatui_colour`].
+/// Uses the correct colour mapping from [`crate::design::colour::anstyle_to_ratatui_colour`].
 pub(crate) fn anstyle_to_ratatui_style(style: AnstyleStyle) -> Style {
     let mut ratatui_style = Style::default();
 
@@ -28,7 +28,7 @@ pub(crate) fn anstyle_to_ratatui_style(style: AnstyleStyle) -> Style {
 
 /// Convert an `InlineTextStyle` to a `ratatui::style::Style`.
 ///
-/// If the style has no foreground color, the `fallback` is used.
+/// If the style has no foreground colour, the `fallback` is used.
 ///
 /// `InlineTextStyle` is from `vtcode_commons::ui_protocol::InlineTextStyle`.
 /// We accept its fields individually here to avoid a direct dependency on the
@@ -82,12 +82,12 @@ fn effects_to_modifiers(effects: Effects) -> Modifier {
     modifier
 }
 
-/// Create a `ratatui::Style` with a foreground color.
+/// Create a `ratatui::Style` with a foreground colour.
 fn fg_style(colour: AnstyleColour) -> Style {
     Style::default().fg(anstyle_to_ratatui_colour(colour))
 }
 
-/// Create a `ratatui::Style` with a background color.
+/// Create a `ratatui::Style` with a background colour.
 fn bg_style(colour: AnstyleColour) -> Style {
     Style::default().bg(anstyle_to_ratatui_colour(colour))
 }
@@ -104,7 +104,7 @@ pub fn with_effects(effects: Effects) -> Style {
     Style::default().add_modifier(effects_to_modifiers(effects))
 }
 
-/// Create a `ratatui::Style` with foreground color and effects.
+/// Create a `ratatui::Style` with foreground colour and effects.
 fn coloured_with_effects(colour: AnstyleColour, effects: Effects) -> Style {
     Style::default()
         .fg(anstyle_to_ratatui_colour(colour))

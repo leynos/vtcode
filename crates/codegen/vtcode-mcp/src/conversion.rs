@@ -18,11 +18,11 @@ use crate::types::McpToolInfo;
 use vtcode_llm::provider::ToolDefinition;
 
 /// Default prefix applied to MCP tool names so they don't collide with
-/// built-in tools in the unified catalog.
+/// built-in tools in the unified catalogue.
 ///
 /// The separator mirrors the runtime convention used in
 /// `crates/codegen/vtcode-core/src/tools/mcp.rs::build_mcp_registration` (i.e. `mcp::provider::tool`)
-/// so the tool catalog stays consistent end-to-end.
+/// so the tool catalogue stays consistent end-to-end.
 const DEFAULT_MCP_TOOL_NAME_PREFIX: &str = "mcp";
 
 /// Separator used between `prefix`, `provider`, and `tool_name` segments in the

@@ -126,7 +126,7 @@ fn retention_candidates(
 ///
 /// Returns the number of bytes freed. The legacy `checkpoints/` directory is
 /// intentionally left in place until `/revert` is rewired to the unified
-/// store; callers should confirm revert behavior before deleting it manually.
+/// store; callers should confirm revert behaviour before deleting it manually.
 pub fn gc_legacy(workspace: &Path) -> Result<u64, SessionStoreError> {
     let vt = workspace.join(".vtcode");
     let mut freed = 0u64;

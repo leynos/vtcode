@@ -9,7 +9,7 @@ pub const DEEPSEEK_V4_FLASH_0731: &str = "deepseek-ai/deepseek-v4-flash-0731";
 pub const DEFAULT_MODEL: &str = NEMOTRON_3_ULTRA_550B_A55B;
 
 /// Curated agent-oriented NVIDIA models. Explicit model IDs outside this list
-/// remain valid because NVIDIA's catalog is larger than VT Code's picker.
+/// remain valid because NVIDIA's catalogue is larger than VT Code's picker.
 pub const SUPPORTED_MODELS: &[&str] = &[
     NEMOTRON_3_ULTRA_550B_A55B,
     NEMOTRON_3_SUPER_120B_A12B,

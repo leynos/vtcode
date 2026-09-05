@@ -23,7 +23,7 @@ pub(crate) type InterjectionBuffer<Attachment> = EventQueue<PendingInterjection<
 
 /// Drain `buffer`, framing each entry as a synthetic user message (FIFO, one
 /// message per entry, never merged). `sanitize_text` runs on the raw text first
-/// (hosts strip artifacts like image placeholder paths; pass
+/// (hosts strip artefacts like image placeholder paths; pass
 /// `std::convert::identity` if none).
 pub(crate) fn drain_formatted<Attachment>(
     buffer: &InterjectionBuffer<Attachment>,

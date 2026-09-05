@@ -1,7 +1,7 @@
 //! Centralized design system for VT Code.
 //!
 //! This crate provides a single source of truth for all design system concerns:
-//! - **Color conversion**: Unified `anstyle` to `ratatui` color mapping
+//! - **Colour conversion**: Unified `anstyle` to `ratatui` colour mapping
 //! - **Style bridging**: Conversion between styling frameworks
 //! - **Design constants**: Shared UI constants (ellipses, spacing, breakpoints)
 //! - **Layout**: Responsive layout mode logic

@@ -1,11 +1,11 @@
 #![expect(
     clippy::cast_possible_truncation,
-    reason = "The 256-color conversion clamps channel values to the palette range before narrowing."
+    reason = "The 256-colour conversion clamps channel values to the palette range before narrowing."
 )]
 
-//! Theme-aware 256-color helpers.
+//! Theme-aware 256-colour helpers.
 //!
-//! The terminal 256-color palette can be "non-harmonious" on light themes when
+//! The terminal 256-colour palette can be "non-harmonious" on light themes when
 //! palette semantics are intentionally flipped for compatibility. In that mode,
 //! cube/gray indices need to be reflected to keep visual intent stable.
 
@@ -26,7 +26,7 @@ fn resolve_harmony(is_light_theme: bool, env_override: Option<bool>, runtime_hin
 /// Precedence:
 /// 1. `VTCODE_256_HARMONIOUS` environment override (`1/0`, `true/false`, `yes/no`, `on/off`)
 /// 2. Runtime hint (typically from OSC probe cached at startup)
-/// 3. Default behavior: light themes are treated as non-harmonious for compatibility.
+/// 3. Default behaviour: light themes are treated as non-harmonious for compatibility.
 fn is_harmonious_for_theme(is_light_theme: bool) -> bool {
     resolve_harmony(is_light_theme, harmonious_override(), harmonious_runtime_hint())
 }

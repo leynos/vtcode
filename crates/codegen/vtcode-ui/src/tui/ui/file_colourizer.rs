@@ -1,7 +1,7 @@
 //! LS_COLORS-based file colourisation system
 //!
 //! Parses LS_COLORS environment variable and applies system file type colours.
-//! This allows vtcode to respect user's file listing color preferences.
+//! This allows vtcode to respect user's file listing colour preferences.
 
 use anstyle::Style as AnsiStyle;
 use hashbrown::HashMap;

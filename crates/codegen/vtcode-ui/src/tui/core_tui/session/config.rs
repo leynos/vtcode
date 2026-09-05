@@ -1,6 +1,6 @@
 //! Configuration system for TUI session UI preferences
 //!
-//! Contains settings for customizable UI elements, colors, key bindings, and other preferences.
+//! Contains settings for customizable UI elements, colours, key bindings, and other preferences.
 
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
@@ -34,7 +34,7 @@ pub use vtcode_commons::ui_protocol::{LayoutModeOverride, ReasoningDisplayMode, 
 /// UI appearance configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppearanceConfig {
-    /// Color theme to use
+    /// Colour theme to use
     pub theme: String,
 
     /// UI mode variant (full, minimal, focused)

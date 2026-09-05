@@ -132,7 +132,7 @@ impl ErrorFormatter for DisplayErrorFormatter {
 ///
 /// This type implements the "error parameter" pattern: instead of short-circuiting
 /// on the first error, processing continues and errors are accumulated. The caller
-/// can inspect the collection afterward to determine whether all operations
+/// can inspect the collection afterwards to determine whether all operations
 /// succeeded.
 ///
 /// # Ergonomic Result handling

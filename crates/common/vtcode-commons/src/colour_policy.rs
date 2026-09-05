@@ -3,9 +3,9 @@
     reason = "Forcing the one-time environment initialization is intentionally used only for its side effect."
 )]
 
-//! Runtime color output policy helpers.
+//! Runtime colour output policy helpers.
 //!
-//! This module centralizes color enable/disable decisions for CLI and
+//! This module centralizes colour enable/disable decisions for CLI and
 //! transcript-style output paths. By default it follows the NO_COLOR
 //! environment variable with strict "present and non-empty" semantics.
 
@@ -13,10 +13,10 @@ use once_cell::sync::Lazy;
 use std::ffi::OsString;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
-/// Source that determined the active runtime color policy.
+/// Source that determined the active runtime colour policy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ColourOutputPolicySource {
-    /// Default runtime behavior (auto detect + env hints).
+    /// Default runtime behaviour (auto detect + env hints).
     DefaultAuto,
     /// Disabled due to NO_COLOR environment variable.
     NoColourEnv,
@@ -30,7 +30,7 @@ pub enum ColourOutputPolicySource {
     ConfigOverride,
 }
 
-/// Runtime color output policy.
+/// Runtime colour output policy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ColourOutputPolicy {
     pub enabled: bool,
@@ -98,7 +98,7 @@ pub fn no_colour_env_active() -> bool {
     no_colour_env_active_from(std::env::var_os("NO_COLOR"))
 }
 
-/// Read the current runtime color policy.
+/// Read the current runtime colour policy.
 pub fn current_colour_output_policy() -> ColourOutputPolicy {
     Lazy::force(&INIT_FROM_ENV);
     ColourOutputPolicy {
@@ -107,18 +107,18 @@ pub fn current_colour_output_policy() -> ColourOutputPolicy {
     }
 }
 
-/// Replace the current runtime color policy.
+/// Replace the current runtime colour policy.
 pub fn set_colour_output_policy(policy: ColourOutputPolicy) {
     POLICY_ENABLED.store(policy.enabled, Ordering::Relaxed);
     POLICY_SOURCE.store(encode_source(policy.source), Ordering::Relaxed);
 }
 
-/// Reset runtime color policy from environment defaults.
+/// Reset runtime colour policy from environment defaults.
 pub fn reset_colour_output_policy_from_env() {
     set_colour_output_policy(detect_policy_from_env());
 }
 
-/// Returns true when runtime color output is enabled.
+/// Returns true when runtime colour output is enabled.
 #[must_use]
 pub fn colour_output_enabled() -> bool {
     current_colour_output_policy().enabled

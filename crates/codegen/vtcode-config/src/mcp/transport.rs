@@ -20,8 +20,8 @@
 //! path trial-deserialized Stdio first and silently ignored irrelevant HTTP
 //! fields (and vice-versa), so a stray wrong-typed `endpoint` on a valid Stdio
 //! provider used to parse. Under the flat wire it now errors. This stricter
-//! behavior is an intentional interface guardrail — surfacing malformed known
-//! configuration early — and is not a behavior-preserving no-op relative to the
+//! behaviour is an intentional interface guardrail — surfacing malformed known
+//! configuration early — and is not a behaviour-preserving no-op relative to the
 //! derived path. Forward compatibility for *unknown* fields is unaffected: the
 //! wire ignores any field it does not declare.
 

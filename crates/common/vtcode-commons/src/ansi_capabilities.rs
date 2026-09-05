@@ -18,7 +18,7 @@ fn clicolour_force() -> bool {
     std::env::var("CLICOLOR_FORCE").is_ok_and(|val| !val.is_empty() && val != "0")
 }
 
-/// Check if the terminal supports ANSI color output.
+/// Check if the terminal supports ANSI colour output.
 fn term_supports_colour() -> bool {
     if !std::io::stdout().is_terminal() {
         return false;
@@ -31,21 +31,21 @@ fn term_supports_colour() -> bool {
     true
 }
 
-/// Color depth support level detected for the terminal
+/// Colour depth support level detected for the terminal
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ColourDepth {
-    /// No color support
+    /// No colour support
     None = 0,
     /// 16 colours (basic ANSI)
     Basic16 = 1,
     /// 256 colours
     Colour256 = 2,
-    /// True color (24-bit RGB)
+    /// True colour (24-bit RGB)
     TrueColour = 3,
 }
 
 impl ColourDepth {
-    /// Get a human-readable name for this color depth
+    /// Get a human-readable name for this colour depth
     pub fn name(self) -> &'static str {
         match self {
             ColourDepth::None => "none",
@@ -55,7 +55,7 @@ impl ColourDepth {
         }
     }
 
-    /// Check if this depth supports color
+    /// Check if this depth supports colour
     fn supports_colour(self) -> bool {
         self != ColourDepth::None
     }
@@ -65,7 +65,7 @@ impl ColourDepth {
         self >= ColourDepth::Colour256
     }
 
-    /// Check if this depth supports true color
+    /// Check if this depth supports true colour
     pub fn supports_true_colour(self) -> bool {
         self == ColourDepth::TrueColour
     }
@@ -74,13 +74,13 @@ impl ColourDepth {
 /// ANSI terminal feature capabilities
 #[derive(Clone, Copy, Debug)]
 pub struct AnsiCapabilities {
-    /// Detected color depth
+    /// Detected colour depth
     colour_depth: ColourDepth,
     /// Whether unicode is supported
     pub unicode_support: bool,
-    /// Whether to force color output
+    /// Whether to force colour output
     pub force_colour: bool,
-    /// Whether color is explicitly disabled
+    /// Whether colour is explicitly disabled
     pub no_colour: bool,
 }
 
@@ -95,17 +95,17 @@ impl AnsiCapabilities {
         }
     }
 
-    /// Check if color output is supported
+    /// Check if colour output is supported
     pub fn supports_colour(&self) -> bool {
         !self.no_colour && (self.force_colour || self.colour_depth.supports_colour())
     }
 
-    /// Check if 256-color output is supported
+    /// Check if 256-colour output is supported
     pub fn supports_256_colours(&self) -> bool {
         self.supports_colour() && self.colour_depth.supports_256_colours()
     }
 
-    /// Check if true color (24-bit) is supported
+    /// Check if true colour (24-bit) is supported
     pub fn supports_true_colour(&self) -> bool {
         self.supports_colour() && self.colour_depth.supports_true_colour()
     }
@@ -116,7 +116,7 @@ impl AnsiCapabilities {
     }
 }
 
-/// Detected terminal color scheme (light or dark background)
+/// Detected terminal colour scheme (light or dark background)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ColourScheme {
     /// Light background (dark text preferred)
@@ -129,12 +129,12 @@ pub enum ColourScheme {
 }
 
 impl ColourScheme {
-    /// Check if this is a light color scheme
+    /// Check if this is a light colour scheme
     pub fn is_light(self) -> bool {
         matches!(self, ColourScheme::Light)
     }
 
-    /// Check if this is a dark color scheme
+    /// Check if this is a dark colour scheme
     pub fn is_dark(self) -> bool {
         matches!(self, ColourScheme::Dark | ColourScheme::Unknown)
     }
@@ -156,7 +156,7 @@ const COLOUR_SCHEME_UNSET: u8 = 255;
 
 static COLOUR_SCHEME_RUNTIME_OVERRIDE: AtomicU8 = AtomicU8::new(COLOUR_SCHEME_UNSET);
 
-/// Detect terminal color scheme from environment.
+/// Detect terminal colour scheme from environment.
 pub fn detect_colour_scheme() -> ColourScheme {
     if let Some(override_scheme) = colour_scheme_runtime_override() {
         return override_scheme;
@@ -176,7 +176,7 @@ fn colour_scheme_runtime_override() -> Option<ColourScheme> {
     }
 }
 
-/// Store a runtime color scheme override.
+/// Store a runtime colour scheme override.
 ///
 /// This is intended to be populated once at startup by terminal OSC probing.
 /// Set `None` to clear the runtime override.
@@ -232,7 +232,7 @@ fn detect_colour_scheme_uncached() -> ColourScheme {
 // Cache detection results to avoid repeated system calls
 static COLOUR_DEPTH_CACHE: AtomicU8 = AtomicU8::new(255); // 255 = not cached yet
 
-/// Detect the terminal's color depth
+/// Detect the terminal's colour depth
 fn detect_colour_depth() -> ColourDepth {
     let cached = COLOUR_DEPTH_CACHE.load(Ordering::Relaxed);
     if cached != 255 {
