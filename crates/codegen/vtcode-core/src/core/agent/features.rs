@@ -134,7 +134,7 @@ mod tests {
     }
 
     #[test]
-    fn request_user_input_honors_chat_setting_outside_planning_workflow() {
+    fn request_user_input_honours_chat_setting_outside_planning_workflow() {
         let mut cfg = VTCodeConfig::default();
         cfg.chat.ask_questions.enabled = false;
 

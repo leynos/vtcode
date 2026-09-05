@@ -103,7 +103,7 @@ fn pre_main_hardening_linux() {
         std::process::exit(PRCTL_FAILED_EXIT_CODE);
     }
 
-    // For "defense in depth," set the core file size limit to 0.
+    // For "defence in depth," set the core file size limit to 0.
     set_core_file_size_limit_to_zero();
 
     // VT Code is primarily MUSL-linked in release builds, which means that variables such

@@ -299,7 +299,7 @@ impl ToolExecutionError {
             // `ToolExecutionError` (it would fall through to `Self::new`'s
             // default for that field, which could be subtly wrong).
             //
-            // `serde_json::from_value` honors every `#[serde(default)]` on
+            // `serde_json::from_value` honours every `#[serde(default)]` on
             // the struct, so a partial payload still reconstructs safely.
             if let Ok(structured) = serde_json::from_value::<Self>(error_payload.clone()) {
                 return Some(structured);

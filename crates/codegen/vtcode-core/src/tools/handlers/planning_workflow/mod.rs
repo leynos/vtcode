@@ -926,7 +926,7 @@ Next open decision: should we use the foo bar baz approach or the qux approach?
     }
 
     #[test]
-    fn validate_plan_content_accepts_bold_labeled_block_steps() {
+    fn validate_plan_content_accepts_bold_labelled_block_steps() {
         // Checkpoint turn_912: the model emitted well-formed block steps but
         // bolded the marker labels (`- **Files/symbols:** ...`). Every step
         // was rejected with "must name a concrete file, symbol, or behaviour

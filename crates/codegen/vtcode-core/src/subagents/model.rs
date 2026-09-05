@@ -103,9 +103,9 @@ fn finalize_subagent_model(
 /// overrides, and `[[custom_providers]]` endpoints expose arbitrary model
 /// identifiers that are not part of the built-in catalogue, so a strict
 /// `parse::<ModelId>()` would incorrectly reject valid runtime models. This
-/// helper honors those identifiers instead of failing subagent resolution.
+/// helper honours those identifiers instead of failing subagent resolution.
 ///
-/// Config-defined models are only honored when they belong to the active
+/// Config-defined models are only honoured when they belong to the active
 /// provider (`provider_hint`); this preserves the invalid-override fallback for
 /// unrelated providers and avoids mis-routing a model to the wrong endpoint.
 fn parse_model_or_custom(sources: &RuntimeModelSources<'_>, model: &str, provider_hint: &str) -> Result<ModelId> {
@@ -136,7 +136,7 @@ fn parse_model_or_custom(sources: &RuntimeModelSources<'_>, model: &str, provide
     }
 
     // Local providers expose arbitrary runtime model identifiers that cannot be
-    // validated against the built-in catalogue; honor them as custom models.
+    // validated against the built-in catalogue; honour them as custom models.
     if let Some(provider) = hinted_provider.filter(|provider| provider.is_local()) {
         return Ok(ModelId::Custom(provider.to_string(), trimmed.to_string()));
     }
@@ -560,7 +560,7 @@ mod memory_cache_tests {
 
     #[test]
     #[serial_test::serial]
-    fn primary_memory_cache_honors_ttl_refresh() {
+    fn primary_memory_cache_honours_ttl_refresh() {
         primary_memory_cache().clear();
         let workspace = TempDir::new().expect("workspace");
         let path = memory_file(&workspace);

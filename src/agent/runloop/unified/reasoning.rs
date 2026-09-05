@@ -226,7 +226,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_reasoning_visibility_honors_display_mode() {
+    fn resolve_reasoning_visibility_honours_display_mode() {
         let mut cfg = VTCodeConfig::default();
 
         cfg.ui.reasoning_display_mode = ReasoningDisplayMode::Always;

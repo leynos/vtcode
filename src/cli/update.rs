@@ -249,7 +249,7 @@ async fn handle_update_available(updater: &Updater, update: &UpdateInfo, options
     .context("Failed to read confirmation input")?;
 
     if !proceed {
-        println!("{} Update canceled.", "✗".yellow());
+        println!("{} Update cancelled.", "✗".yellow());
         println!("{} You can run this again with `vtcode update`.", "→".cyan());
         return Ok(());
     }
