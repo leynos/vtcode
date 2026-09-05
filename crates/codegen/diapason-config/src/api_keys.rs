@@ -292,7 +292,7 @@ mod tests {
     use std::sync::Mutex;
     use tempfile::tempdir;
 
-    // Serialise all env-override tests so that one test's Drop restore cannot
+    // Serialize all env-override tests so that one test's Drop restore cannot
     // overwrite another test's set.
     static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
 

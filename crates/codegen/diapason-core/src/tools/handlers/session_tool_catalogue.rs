@@ -79,6 +79,7 @@ pub enum DeferredToolSearchKind {
 /// eager exposure is cheaper and simpler. Ignored when the catalogue contains any
 /// MCP tool (see `model_tools`), since MCP schemas are the dominant token cost.
 const DIRECT_TOOL_EXPOSURE_THRESHOLD: usize = 15;
+
 /// Token budget (~4 chars/token) for the combined schema of a deferable
 /// catalogue. A catalogue is deferred when its estimated schema size exceeds this,
 /// even if the tool count is below `DIRECT_TOOL_EXPOSURE_THRESHOLD`. This catches
@@ -1342,7 +1343,7 @@ mod tests {
     }
 
     #[test]
-    fn advanced_profile_retains_eligible_specialised_and_dynamic_tools() {
+    fn advanced_profile_retains_eligible_specialized_and_dynamic_tools() {
         let registrations = vec![
             registration(tools::CODE_SEARCH)
                 .with_description("Search code")

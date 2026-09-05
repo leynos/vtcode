@@ -32,7 +32,9 @@ mod config_defaults;
 mod pipe_session;
 
 mod no_op_ladder;
+
 mod patch_failure_bound;
+
 mod patch_safety;
 
 const CUSTOM_TOOL_NAME: &str = "custom_test_tool";
@@ -1946,7 +1948,7 @@ async fn full_auto_allowlist_enforced() -> Result<()> {
 }
 
 #[tokio::test]
-async fn wildcard_initialisation_retains_registration_from_snapshot_window() -> Result<()> {
+async fn wildcard_initialization_retains_registration_from_snapshot_window() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
     let hooks = policy_catalogue_test_hooks(&registry).await;
