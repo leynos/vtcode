@@ -28,8 +28,9 @@ pub enum TaskState {
     Completed,
     /// Task failed with an error
     Failed,
-    /// Task was canceled by request
-    Canceled,
+    /// Task was cancelled by request. The A2A wire value remains `canceled`.
+    #[serde(rename = "canceled")]
+    Cancelled,
     /// Task was rejected by the agent
     Rejected,
     /// Task requires authentication
@@ -42,11 +43,11 @@ pub enum TaskState {
 impl TaskState {
     /// Check if this is a terminal state
     fn is_terminal(&self) -> bool {
-        matches!(self, TaskState::Completed | TaskState::Failed | TaskState::Canceled | TaskState::Rejected)
+        matches!(self, TaskState::Completed | TaskState::Failed | TaskState::Cancelled | TaskState::Rejected)
     }
 
-    /// Check if the task can be canceled from this state
-    fn is_cancelable(&self) -> bool {
+    /// Check if the task can be cancelled from this state
+    fn is_cancellable(&self) -> bool {
         matches!(self, TaskState::Submitted | TaskState::Working | TaskState::InputRequired)
     }
 }
@@ -404,9 +405,9 @@ impl Task {
         self.status.state.is_terminal()
     }
 
-    /// Check if the task can be canceled
-    pub(crate) fn is_cancelable(&self) -> bool {
-        self.status.state.is_cancelable()
+    /// Check if the task can be cancelled
+    pub(crate) fn is_cancellable(&self) -> bool {
+        self.status.state.is_cancellable()
     }
 
     /// Update the task status
@@ -444,16 +445,18 @@ mod tests {
         assert!(!TaskState::Working.is_terminal());
         assert!(TaskState::Completed.is_terminal());
         assert!(TaskState::Failed.is_terminal());
-        assert!(TaskState::Canceled.is_terminal());
+        assert!(TaskState::Cancelled.is_terminal());
+
+        assert_eq!(serde_json::to_string(&TaskState::Cancelled).expect("serialize task state"), "\"canceled\"");
     }
 
     #[test]
-    fn test_task_state_cancelable() {
-        assert!(TaskState::Submitted.is_cancelable());
-        assert!(TaskState::Working.is_cancelable());
-        assert!(TaskState::InputRequired.is_cancelable());
-        assert!(!TaskState::Completed.is_cancelable());
-        assert!(!TaskState::Failed.is_cancelable());
+    fn test_task_state_cancellable() {
+        assert!(TaskState::Submitted.is_cancellable());
+        assert!(TaskState::Working.is_cancellable());
+        assert!(TaskState::InputRequired.is_cancellable());
+        assert!(!TaskState::Completed.is_cancellable());
+        assert!(!TaskState::Failed.is_cancellable());
     }
 
     #[test]
@@ -469,14 +472,14 @@ mod tests {
         let mut task = Task::new();
         assert_eq!(task.state(), TaskState::Submitted);
         assert!(!task.is_terminal());
-        assert!(task.is_cancelable());
+        assert!(task.is_cancellable());
 
         task.update_status(TaskState::Working, None);
         assert_eq!(task.state(), TaskState::Working);
 
         task.update_status(TaskState::Completed, Some(Message::agent_text("Task completed")));
         assert!(task.is_terminal());
-        assert!(!task.is_cancelable());
+        assert!(!task.is_cancellable());
     }
 
     #[test]
