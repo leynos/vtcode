@@ -151,7 +151,7 @@ async fn request_diagnosis_with_provider(
 pub(super) fn diagnosis_prompt(evidence: &str) -> String {
     let escaped_evidence = escape_untrusted_evidence(evidence);
     format!(
-        "Analyze only the bounded result below.\n\n<untrusted_tool_evidence>\n{escaped_evidence}\n</untrusted_tool_evidence>"
+        "Analyse only the bounded result below.\n\n<untrusted_tool_evidence>\n{escaped_evidence}\n</untrusted_tool_evidence>"
     )
 }
 

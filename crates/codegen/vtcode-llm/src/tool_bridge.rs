@@ -55,7 +55,9 @@ pub struct ToolExecution {
 pub enum ToolIntent {
     Search(String),
     Execute(String),
-    Analyze(String),
+    /// Serializes as `Analyze` for existing persisted correlations.
+    #[serde(rename = "Analyze", alias = "Analyse")]
+    Analyse(String),
     Modify(String),
 }
 
@@ -64,7 +66,7 @@ impl fmt::Display for ToolIntent {
         match self {
             Self::Search(s) => write!(f, "search: {s}"),
             Self::Execute(s) => write!(f, "execute: {s}"),
-            Self::Analyze(s) => write!(f, "analyze: {s}"),
+            Self::Analyse(s) => write!(f, "analyse: {s}"),
             Self::Modify(s) => write!(f, "modify: {s}"),
         }
     }
@@ -182,8 +184,8 @@ impl ToolIntentExtractor {
             return Some(intent);
         }
 
-        // Analyze patterns
-        if let Some(intent) = extract_analyze_intent(&text_lower) {
+        // Analyse patterns
+        if let Some(intent) = extract_analyse_intent(&text_lower) {
             return Some(intent);
         }
 
@@ -235,17 +237,17 @@ fn extract_execute_intent(text: &str) -> Option<ToolIntent> {
     None
 }
 
-/// Extract analyze intent
-fn extract_analyze_intent(text: &str) -> Option<ToolIntent> {
-    let analyze_keywords = ["analyze", "check", "review", "examine", "inspect", "parse"];
+/// Extract analyse intent.
+fn extract_analyse_intent(text: &str) -> Option<ToolIntent> {
+    let analyse_keywords = ["analyse", "analyze", "check", "review", "examine", "inspect", "parse"];
 
-    for keyword in &analyze_keywords {
+    for keyword in &analyse_keywords {
         if text.contains(keyword) {
             if let Some(target) = extract_quoted_string(text) {
-                return Some(ToolIntent::Analyze(target));
+                return Some(ToolIntent::Analyse(target));
             }
 
-            return Some(ToolIntent::Analyze(keyword.to_string()));
+            return Some(ToolIntent::Analyse(keyword.to_string()));
         }
     }
 
@@ -400,11 +402,11 @@ mod tests {
     }
 
     #[test]
-    fn test_intent_extraction_analyze() {
+    fn test_intent_extraction_analyse() {
         let text = "Analyze the config file please";
         let intent = ToolIntentExtractor::extract(text);
 
-        assert!(matches!(intent, Some(ToolIntent::Analyze(_))));
+        assert!(matches!(intent, Some(ToolIntent::Analyse(_))));
     }
 
     #[test]

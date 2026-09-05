@@ -37,7 +37,7 @@ fn main() -> Result<()> {
     // Select prompt
     let selections = &[
         "Create new project",
-        "Analyze existing code",
+        "Analyse existing code",
         "Generate documentation",
         "Run tests",
         "Exit",

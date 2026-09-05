@@ -12,15 +12,15 @@ pub struct ComplexityResult {
 }
 
 /// Complexity analyzer for code quality metrics
-pub struct ComplexityAnalyzer;
+pub struct ComplexityAnalyser;
 
-impl ComplexityAnalyzer {
+impl ComplexityAnalyser {
     pub fn new() -> Self {
         Self
     }
 
     /// Analyze complexity of a source file
-    pub fn analyze_file(&self, _file_path: &Path, source: &str) -> ComplexityResult {
+    pub fn analyse_file(&self, _file_path: &Path, source: &str) -> ComplexityResult {
         // Calculate actual complexity metrics
         let lines_of_code = source.lines().count();
 
@@ -42,10 +42,10 @@ impl ComplexityAnalyzer {
     }
 
     /// Analyze complexity of a directory
-    pub fn analyze_directory(&self, dir_path: &Path) -> Vec<ComplexityResult> {
+    pub fn analyse_directory(&self, dir_path: &Path) -> Vec<ComplexityResult> {
         let mut results = Vec::new();
 
-        // Walk the directory to analyze all source files
+        // Walk the directory to analyse all source files
         for entry in build_walker_single_threaded(dir_path)
             .follow_links(true)
             .build()
@@ -59,7 +59,7 @@ impl ComplexityAnalyzer {
                 if source_extensions.contains(&ext.to_str().unwrap_or(""))
                     && let Ok(content) = fs::read_to_string(entry.path())
                 {
-                    let result = self.analyze_file(entry.path(), &content);
+                    let result = self.analyse_file(entry.path(), &content);
                     results.push(result);
                 }
             }
@@ -132,7 +132,7 @@ impl ComplexityAnalyzer {
     }
 }
 
-impl Default for ComplexityAnalyzer {
+impl Default for ComplexityAnalyser {
     fn default() -> Self {
         Self::new()
     }

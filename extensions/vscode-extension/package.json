@@ -240,7 +240,7 @@
       },
       {
         "command": "vtcode.runAnalyze",
-        "title": "Analyze Workspace",
+        "title": "Analyse Workspace",
         "category": "VT Code",
         "icon": "$(pulse)"
       },

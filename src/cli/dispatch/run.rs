@@ -5,7 +5,7 @@ use vtcode_core::config::loader::VTCodeConfig;
 use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
 use vtcode_core::core::interfaces::session::PlanningEntrySource;
 
-use crate::cli::{analyze, sessions};
+use crate::cli::{analyse, sessions};
 
 pub(crate) async fn handle_ask_single_command(
     core_cfg: CoreAgentConfig,
@@ -41,13 +41,13 @@ pub(crate) async fn handle_chat_command(
     .await
 }
 
-pub(super) async fn handle_analyze_command(
+pub(super) async fn handle_analyse_command(
     core_cfg: CoreAgentConfig,
     vt_cfg: Option<VTCodeConfig>,
-    analysis_type: analyze::AnalysisType,
+    analysis_type: analyse::AnalysisType,
 ) -> Result<()> {
     if core_cfg.provider.eq_ignore_ascii_case(crate::codex_app_server::CODEX_PROVIDER) {
-        let prompt = codex_analyze_prompt(&analysis_type);
+        let prompt = codex_analyse_prompt(&analysis_type);
         let completed = crate::codex_app_server::run_codex_noninteractive(
             &core_cfg,
             vt_cfg.as_ref(),
@@ -66,7 +66,7 @@ pub(super) async fn handle_analyze_command(
         return Ok(());
     }
 
-    vtcode_core::commands::analyze::handle_analyze_command(
+    vtcode_core::commands::analyse::handle_analyse_command(
         core_cfg,
         analysis_type.default_depth().to_string(),
         "text".to_string(),
@@ -74,30 +74,30 @@ pub(super) async fn handle_analyze_command(
     .await
 }
 
-fn codex_analyze_prompt(analysis_type: &analyze::AnalysisType) -> String {
+fn codex_analyse_prompt(analysis_type: &analyse::AnalysisType) -> String {
     let focus = match analysis_type {
-        analyze::AnalysisType::Full => {
+        analyse::AnalysisType::Full => {
             "architecture, main subsystems, risks, and the most important next investigation areas"
         }
-        analyze::AnalysisType::Structure => {
+        analyse::AnalysisType::Structure => {
             "project structure, entrypoints, crate/module boundaries, and code organization"
         }
-        analyze::AnalysisType::Security => {
+        analyse::AnalysisType::Security => {
             "security-relevant trust boundaries, dangerous operations, auth, and likely security gaps"
         }
-        analyze::AnalysisType::Performance => {
+        analyse::AnalysisType::Performance => {
             "performance-sensitive paths, avoidable work, I/O hotspots, and likely bottlenecks"
         }
-        analyze::AnalysisType::Dependencies => {
+        analyse::AnalysisType::Dependencies => {
             "dependency shape, integration boundaries, and notable external coupling"
         }
-        analyze::AnalysisType::Complexity => {
+        analyse::AnalysisType::Complexity => {
             "complex control flow, high-risk modules, and areas likely to be hard to change safely"
         }
     };
 
     format!(
-        "Analyze the current workspace with read-only permissions. Focus on {focus}. Ground the answer in the repository, include concise file references when useful, and do not modify files or request additional user input."
+        "Analyse the current workspace with read-only permissions. Focus on {focus}. Ground the answer in the repository, include concise file references when useful, and do not modify files or request additional user input."
     )
 }
 

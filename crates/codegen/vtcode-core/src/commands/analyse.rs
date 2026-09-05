@@ -8,8 +8,8 @@ use anyhow::Result;
 use serde_json::json;
 
 /// Handle the analyze command - comprehensive workspace analysis
-pub async fn handle_analyze_command(config: AgentConfig, depth: String, format: String) -> Result<()> {
-    println!("{}", style("Analyzing workspace...").cyan().bold());
+pub async fn handle_analyse_command(config: AgentConfig, depth: String, format: String) -> Result<()> {
+    println!("{}", style("Analysing workspace...").cyan().bold());
 
     let depth = match depth.to_lowercase().as_str() {
         "basic" => AnalysisDepth::Basic,
@@ -100,8 +100,8 @@ pub async fn handle_analyze_command(config: AgentConfig, depth: String, format: 
         }
     }
 
-    // Step 4: Analyze source code structure
-    println!("{}", style("4. Analyzing source code structure...").dim());
+    // Step 4: Analyse source code structure
+    println!("{}", style("4. Analysing source code structure...").dim());
 
     // Check for common source directories
     let src_dirs = vec!["src", "lib", "pkg", "internal", "cmd"];

@@ -238,17 +238,17 @@ pub struct ComObjectContext {
 }
 
 /// Analyzer for COM object patterns
-pub struct ComObjectAnalyzer;
+pub struct ComObjectAnalyser;
 
-impl ComObjectAnalyzer {
+impl ComObjectAnalyser {
     /// Get COM object metadata
     pub fn get_object_info(prog_id: &str) -> Option<ComObjectInfo> {
         let objects = get_com_objects();
         objects.get(&prog_id.to_lowercase().as_str()).cloned()
     }
 
-    /// Analyze COM object instantiation in script
-    pub fn analyze_instantiation(script: &str) -> Vec<ComObjectContext> {
+    /// Analyse COM object instantiation in script
+    pub fn analyse_instantiation(script: &str) -> Vec<ComObjectContext> {
         let mut contexts = Vec::new();
         let objects = get_com_objects();
         let script_lower = script.to_lowercase();
@@ -284,14 +284,14 @@ impl ComObjectAnalyzer {
 
     /// Check if any critical COM objects are instantiated
     pub fn has_critical_com_objects(script: &str) -> bool {
-        Self::analyze_instantiation(script)
+        Self::analyse_instantiation(script)
             .iter()
             .any(|ctx| ctx.risk_level == ComRiskLevel::Critical)
     }
 
     /// Get maximum risk level in script
     pub fn get_max_risk_level(script: &str) -> ComRiskLevel {
-        Self::analyze_instantiation(script)
+        Self::analyse_instantiation(script)
             .iter()
             .map(|ctx| ctx.risk_level)
             .max()
@@ -300,7 +300,7 @@ impl ComObjectAnalyzer {
 
     /// Check if COM usage is dangerous (has critical objects or ivocation patterns)
     pub fn is_dangerous_com_usage(script: &str) -> bool {
-        let contexts = Self::analyze_instantiation(script);
+        let contexts = Self::analyse_instantiation(script);
         contexts.iter().any(|ctx| {
             ctx.risk_level >= ComRiskLevel::High
                 && (ctx.has_invoke_expression || !ctx.dangerous_methods_used.is_empty())
@@ -332,24 +332,24 @@ mod tests {
 
     #[test]
     fn test_get_wscript_shell_info() {
-        let info = ComObjectAnalyzer::get_object_info("wscript.shell").unwrap();
+        let info = ComObjectAnalyser::get_object_info("wscript.shell").unwrap();
         assert_eq!(info.risk_level, ComRiskLevel::Critical);
         assert!(info.dangerous_methods.contains(&"exec"));
     }
 
     #[test]
     fn test_case_insensitive_lookup() {
-        assert!(ComObjectAnalyzer::get_object_info("WSCRIPT.SHELL").is_some());
-        assert!(ComObjectAnalyzer::get_object_info("WScript.Shell").is_some());
+        assert!(ComObjectAnalyser::get_object_info("WSCRIPT.SHELL").is_some());
+        assert!(ComObjectAnalyser::get_object_info("WScript.Shell").is_some());
     }
 
     #[test]
-    fn test_analyze_instantiation() {
+    fn test_analyse_instantiation() {
         let script = r#"
             $shell = New-Object -ComObject WScript.Shell
             $shell.Run("calc.exe")
         "#;
-        let contexts = ComObjectAnalyzer::analyze_instantiation(script);
+        let contexts = ComObjectAnalyser::analyse_instantiation(script);
         assert!(!contexts.is_empty());
         assert!(contexts[0].dangerous_methods_used.contains(&"run".to_string()));
     }
@@ -357,10 +357,10 @@ mod tests {
     #[test]
     fn test_has_critical_com_objects() {
         let script = "New-Object -ComObject WScript.Shell";
-        assert!(ComObjectAnalyzer::has_critical_com_objects(script));
+        assert!(ComObjectAnalyser::has_critical_com_objects(script));
 
         let safe_script = "Get-Item -Path C:\\";
-        assert!(!ComObjectAnalyzer::has_critical_com_objects(safe_script));
+        assert!(!ComObjectAnalyser::has_critical_com_objects(safe_script));
     }
 
     #[test]
@@ -369,17 +369,17 @@ mod tests {
             $shell = New-Object -ComObject WScript.Shell
             $xml = New-Object -ComObject Microsoft.XMLDOM
         "#;
-        let max_risk = ComObjectAnalyzer::get_max_risk_level(script);
+        let max_risk = ComObjectAnalyser::get_max_risk_level(script);
         assert!(max_risk >= ComRiskLevel::Critical);
     }
 
     #[test]
     fn test_is_dangerous_com_usage() {
         let dangerous = "New-Object -ComObject WScript.Shell | % { $_.Run('cmd.exe') }";
-        assert!(ComObjectAnalyzer::is_dangerous_com_usage(dangerous));
+        assert!(ComObjectAnalyser::is_dangerous_com_usage(dangerous));
 
         let safe = "Get-Item -Path C:\\";
-        assert!(!ComObjectAnalyzer::is_dangerous_com_usage(safe));
+        assert!(!ComObjectAnalyser::is_dangerous_com_usage(safe));
     }
 
     #[test]
@@ -402,7 +402,7 @@ mod tests {
     #[test]
     fn test_scripting_filesystemobject_detection() {
         let script = "New-Object -ComObject Scripting.FileSystemObject";
-        let contexts = ComObjectAnalyzer::analyze_instantiation(script);
+        let contexts = ComObjectAnalyser::analyse_instantiation(script);
         assert!(!contexts.is_empty());
         assert_eq!(contexts[0].risk_level, ComRiskLevel::High);
     }

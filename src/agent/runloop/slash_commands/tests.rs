@@ -780,7 +780,7 @@ async fn command_alias_typo_routes_through_cmd_command_skill() {
 
     let outcome = handle_slash_command("comman cargo check", &mut renderer, workspace.path())
         .await
-        .expect("comman alias should parse");
+        .expect("legacy command alias should parse");
 
     assert!(matches!(
         outcome,
@@ -791,13 +791,13 @@ async fn command_alias_typo_routes_through_cmd_command_skill() {
 }
 
 #[tokio::test]
-async fn analyze_slash_routes_normalized_scope_through_cmd_analyze_skill() {
+async fn analyse_slash_routes_normalized_scope_through_cmd_analyze_skill() {
     let workspace = tempfile::TempDir::new().expect("workspace");
     let mut renderer = renderer_for_tests();
 
-    let outcome = handle_slash_command("analyze SECURITY", &mut renderer, workspace.path())
+    let outcome = handle_slash_command("analyse SECURITY", &mut renderer, workspace.path())
         .await
-        .expect("analyze should parse");
+        .expect("analyse should parse");
 
     assert!(matches!(
         outcome,
@@ -808,13 +808,30 @@ async fn analyze_slash_routes_normalized_scope_through_cmd_analyze_skill() {
 }
 
 #[tokio::test]
-async fn invalid_analyze_scope_is_handled_locally() {
+async fn legacy_analyze_slash_alias_routes_to_the_canonical_analyse_command() {
     let workspace = tempfile::TempDir::new().expect("workspace");
     let mut renderer = renderer_for_tests();
 
-    let outcome = handle_slash_command("analyze nope", &mut renderer, workspace.path())
+    let outcome = handle_slash_command("analyze security", &mut renderer, workspace.path())
         .await
-        .expect("analyze should parse");
+        .expect("legacy analyze alias should parse");
+
+    assert!(matches!(
+        outcome,
+        SlashCommandOutcome::ManageSkills {
+            action: crate::agent::runloop::SkillCommandAction::Use { ref name, ref input }
+        } if name == "cmd-analyze" && input == "security"
+    ));
+}
+
+#[tokio::test]
+async fn invalid_analyse_scope_is_handled_locally() {
+    let workspace = tempfile::TempDir::new().expect("workspace");
+    let mut renderer = renderer_for_tests();
+
+    let outcome = handle_slash_command("analyse nope", &mut renderer, workspace.path())
+        .await
+        .expect("analyse should parse");
 
     assert!(matches!(outcome, SlashCommandOutcome::Handled));
 }

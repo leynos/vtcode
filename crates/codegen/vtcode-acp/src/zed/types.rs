@@ -6,7 +6,7 @@ use tokio::time::Instant;
 use vtcode_core::config::types::ReasoningEffortLevel;
 use vtcode_core::core::threads::ThreadRuntimeHandle;
 
-use super::constants::{PLAN_STEP_ANALYZE, PLAN_STEP_GATHER_CONTEXT, PLAN_STEP_RESPOND};
+use super::constants::{PLAN_STEP_ANALYSE, PLAN_STEP_GATHER_CONTEXT, PLAN_STEP_RESPOND};
 
 pub(crate) enum ToolRuntime {
     Enabled,
@@ -21,7 +21,7 @@ pub(crate) enum RunTerminalMode {
 
 pub(crate) struct PlanProgress {
     entries: Vec<acp::PlanEntry>,
-    analyze_index: usize,
+    analyse_index: usize,
     gather_index: Option<usize>,
     respond_index: usize,
 }
@@ -30,9 +30,9 @@ impl PlanProgress {
     pub(crate) fn new(include_context_step: bool) -> Self {
         let mut entries = Vec::with_capacity(3);
 
-        let analyze_index = entries.len();
+        let analyse_index = entries.len();
         entries.push(acp::PlanEntry::new(
-            PLAN_STEP_ANALYZE,
+            PLAN_STEP_ANALYSE,
             acp::PlanEntryPriority::High,
             acp::PlanEntryStatus::InProgress,
         ));
@@ -58,7 +58,7 @@ impl PlanProgress {
 
         Self {
             entries,
-            analyze_index,
+            analyse_index,
             gather_index,
             respond_index,
         }
@@ -87,8 +87,8 @@ impl PlanProgress {
     }
 
     pub(crate) fn complete_analysis(&mut self) -> bool {
-        if !self.has_status(self.analyze_index, &acp::PlanEntryStatus::Completed) {
-            return self.update_status(self.analyze_index, acp::PlanEntryStatus::Completed);
+        if !self.has_status(self.analyse_index, &acp::PlanEntryStatus::Completed) {
+            return self.update_status(self.analyse_index, acp::PlanEntryStatus::Completed);
         }
         false
     }

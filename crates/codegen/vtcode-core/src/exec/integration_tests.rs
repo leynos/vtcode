@@ -9,7 +9,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::exec::{AgentBehaviorAnalyzer, ExecutionConfig, PiiTokenizer, Skill, SkillManager, SkillMetadata};
+    use crate::exec::{AgentBehaviourAnalyser, ExecutionConfig, PiiTokenizer, Skill, SkillManager, SkillMetadata};
     use anyhow::Result;
     use chrono;
     use tempfile;
@@ -232,38 +232,38 @@ try:
 
     #[test]
     fn test_agent_behavior_tracking() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
+        let mut analyser = AgentBehaviourAnalyser::new();
 
         // Record tool usage
-        analyzer.record_tool_usage(vtcode_config::constants::tools::LIST_FILES);
-        analyzer.record_tool_usage(vtcode_config::constants::tools::LIST_FILES);
-        analyzer.record_tool_usage("read_file");
+        analyser.record_tool_usage(vtcode_config::constants::tools::LIST_FILES);
+        analyser.record_tool_usage(vtcode_config::constants::tools::LIST_FILES);
+        analyser.record_tool_usage("read_file");
 
         // Record skill reuse
-        analyzer.record_skill_reuse("filter_skill");
-        analyzer.record_skill_reuse("filter_skill");
+        analyser.record_skill_reuse("filter_skill");
+        analyser.record_skill_reuse("filter_skill");
 
         // Record failures
-        analyzer.record_tool_failure("grep_tool", "timeout");
-        analyzer.record_tool_failure("grep_tool", "pattern_error");
+        analyser.record_tool_failure("grep_tool", "timeout");
+        analyser.record_tool_failure("grep_tool", "pattern_error");
 
         // Verify statistics
         assert_eq!(
-            analyzer
+            analyser
                 .tool_stats()
                 .usage_frequency
                 .get(vtcode_config::constants::tools::LIST_FILES),
             Some(&2)
         );
-        assert_eq!(analyzer.skill_stats().reused_skills, 2);
-        assert!(!analyzer.failure_patterns().high_failure_tools.is_empty());
+        assert_eq!(analyser.skill_stats().reused_skills, 2);
+        assert!(!analyser.failure_patterns().high_failure_tools.is_empty());
 
         // Get recommendations
-        let tool_recs = analyzer.recommend_tools("list", 1);
+        let tool_recs = analyser.recommend_tools("list", 1);
         assert!(tool_recs.contains(&vtcode_config::constants::tools::LIST_FILES.to_owned()));
 
         // Identify risky tools
-        let risky = analyzer.identify_risky_tools(0.3);
+        let risky = analyser.identify_risky_tools(0.3);
         assert!(!risky.is_empty());
     }
 

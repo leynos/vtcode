@@ -66,7 +66,7 @@ pub fn ask_about_selection_with_context(
 ) -> CommandResponse {
     // Construct a query that includes the code and optional language
     let query = format!(
-        "Analyze this {} code:\n{}",
+        "Analyse this {} code:\n{}",
         language.unwrap_or(""),
         code
     );

@@ -6,14 +6,14 @@ use serde_json::Value;
 use super::{HarnessTraceSummary, LatencyAccumulator, LifecycleTiming, UsageAccounting, record_value};
 
 #[derive(Default)]
-struct AnalyzerState {
+struct AnalyserState {
     summary: HarnessTraceSummary,
     latencies: LatencyAccumulator,
     timing: LifecycleTiming,
     usage: UsageAccounting,
 }
 
-impl AnalyzerState {
+impl AnalyserState {
     fn record_bytes(&mut self, line: &[u8]) {
         if line.iter().all(|byte| byte.is_ascii_whitespace()) {
             return;
@@ -45,8 +45,8 @@ impl AnalyzerState {
     }
 }
 
-pub(super) fn analyze_jsonl_reader<R: BufRead>(mut reader: R) -> Result<HarnessTraceSummary> {
-    let mut state = AnalyzerState::default();
+pub(super) fn analyse_jsonl_reader<R: BufRead>(mut reader: R) -> Result<HarnessTraceSummary> {
+    let mut state = AnalyserState::default();
     let mut line = Vec::with_capacity(8 * 1024);
     loop {
         line.clear();
