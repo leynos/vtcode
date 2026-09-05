@@ -67,6 +67,25 @@ back to HTTP. Pre-output recovery remains available for supported errors.
 Continuation is provider-instance-local and requires compatible model,
 instructions, tools and history.
 
+## Compatible-provider function-call IDs
+
+Responses providers should keep a function call's streamed `call_id` in the
+terminal `response.completed` item. VT Code rejects a mismatched ID by default.
+This prevents a terminal call from being correlated with the wrong streamed
+arguments and ensures that no call becomes executable before final
+reconciliation succeeds.
+
+For a custom provider known to rewrite function-call IDs, set
+`responses_allow_function_call_id_remap = true` on the provider or its exact
+model profile. The compatibility mode accepts only a one-to-one match between
+unmatched ordinary function calls with the same non-empty name and equal,
+complete strict JSON arguments. It rejects duplicate IDs, duplicate semantic
+payloads, partial JSON, missing calls, contradictory calls and custom/freeform
+calls. Exact IDs are matched first, and accepted calls retain the terminal ID.
+
+Keep the capability absent or `false` for providers that preserve IDs. An
+explicit model-profile `false` overrides a provider-level `true`.
+
 ## Verification boundaries
 
 The tests distinguish the legacy `provider.stream` path used by ACP from the
