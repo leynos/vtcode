@@ -12,7 +12,7 @@ use crate::core::decision_tracker::DecisionTracker;
 use crate::core::error_recovery::{ErrorRecoveryManager, ErrorType};
 use crate::llm::AnyClient;
 use crate::tools::ToolRegistry;
-use crate::utils::colors::style;
+use crate::utils::colours::style;
 use anyhow::Result;
 use std::collections::BTreeMap;
 use std::sync::Arc;

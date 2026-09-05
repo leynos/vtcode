@@ -1,4 +1,4 @@
-use super::{PLACEHOLDER_COLOR, Session, measure_text_width, ratatui_color_from_ansi, ratatui_style_from_inline};
+use super::{PLACEHOLDER_COLOUR, Session, measure_text_width, ratatui_colour_from_ansi, ratatui_style_from_inline};
 use crate::tui::config::constants::ui;
 use crate::tui::ui::tui::types::InlineTextStyle;
 use anstyle::{Color as AnsiColorEnum, Effects};
@@ -434,11 +434,11 @@ impl Session {
         let max_visible_lines = height.max(1).min(ui::INLINE_INPUT_MAX_LINES as u16) as usize;
 
         let mut prompt_style = self.prompt_style.clone();
-        if prompt_style.color.is_none() {
-            prompt_style.color = self.theme.primary.or(self.theme.foreground);
+        if prompt_style.colour.is_none() {
+            prompt_style.colour = self.theme.primary.or(self.theme.foreground);
         }
         if self.suggested_prompt_state.active {
-            prompt_style.color = self
+            prompt_style.colour = self
                 .theme
                 .tool_accent
                 .or(self.theme.secondary)
@@ -463,11 +463,11 @@ impl Session {
             })
         {
             let placeholder_style = InlineTextStyle {
-                color: Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOR)),
-                bg_color: None,
+                colour: Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)),
+                bg_colour: None,
                 effects: Effects::DIMMED,
             };
-            let style = ratatui_style_from_inline(&placeholder_style, Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOR)));
+            let style = ratatui_style_from_inline(&placeholder_style, Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)));
             let mut spans = Vec::new();
             spans.push(Span::styled(self.prompt_prefix.clone(), prompt_style));
             if !preview.before.is_empty() {
@@ -517,20 +517,20 @@ impl Session {
             if let Some(suffix) = self.visible_inline_prompt_suggestion_suffix() {
                 let ghost_style = ratatui_style_from_inline(
                     &InlineTextStyle {
-                        color: Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOR)),
-                        bg_color: None,
+                        colour: Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)),
+                        bg_colour: None,
                         effects: Effects::DIMMED | Effects::ITALIC,
                     },
-                    Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOR)),
+                    Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)),
                 );
                 spans.push(Span::styled(suffix, ghost_style));
             } else if let Some(placeholder) = &self.placeholder {
                 let placeholder_style = self.placeholder_style.clone().unwrap_or(InlineTextStyle {
-                    color: Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOR)),
-                    bg_color: None,
+                    colour: Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)),
+                    bg_colour: None,
                     effects: Effects::ITALIC,
                 });
-                let style = ratatui_style_from_inline(&placeholder_style, Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOR)));
+                let style = ratatui_style_from_inline(&placeholder_style, Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)));
                 spans.push(Span::styled(placeholder.clone(), style));
             }
 
@@ -592,11 +592,11 @@ impl Session {
         if let Some(suffix) = self.visible_inline_prompt_suggestion_suffix() {
             let ghost_style = ratatui_style_from_inline(
                 &InlineTextStyle {
-                    color: Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOR)),
-                    bg_color: None,
+                    colour: Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)),
+                    bg_colour: None,
                     effects: Effects::DIMMED | Effects::ITALIC,
                 },
-                Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOR)),
+                Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)),
             );
             if let Some(line) = lines.get_mut(cursor_y as usize) {
                 line.spans.push(Span::styled(suffix, ghost_style));
@@ -813,7 +813,7 @@ impl Session {
         let dim_style = {
             let mut style = self.styles.default_style().add_modifier(Modifier::DIM);
             if let Some(secondary) = self.theme.secondary.or(self.theme.foreground) {
-                style = style.fg(ratatui_color_from_ansi(secondary));
+                style = style.fg(ratatui_colour_from_ansi(secondary));
             }
             style
         };
@@ -910,12 +910,12 @@ impl Session {
     }
 
     fn active_subagent_input_border_style(&self) -> Option<Style> {
-        // Use the primary agent color if available, otherwise fall back to badge color.
-        if let Some(color_style) =
-            super::super::style::agent_color_style(self.header_context.primary_agent_color.as_deref(), Color::Magenta)
+        // Use the primary agent colour if available, otherwise fall back to badge colour.
+        if let Some(colour_style) =
+            super::super::style::agent_colour_style(self.header_context.primary_agent_colour.as_deref(), Color::Magenta)
                 .fg
         {
-            return Some(self.styles.accent_style().fg(color_style).add_modifier(Modifier::BOLD));
+            return Some(self.styles.accent_style().fg(colour_style).add_modifier(Modifier::BOLD));
         }
 
         let badge = self.header_context.subagent_badges.first()?;
@@ -924,13 +924,13 @@ impl Session {
             title_style = title_style.add_modifier(Modifier::BOLD);
         }
 
-        let color = if badge.full_background {
+        let colour = if badge.full_background {
             title_style.bg.or(title_style.fg)
         } else {
             title_style.fg.or(title_style.bg)
         }?;
 
-        Some(self.styles.accent_style().fg(color).add_modifier(Modifier::BOLD))
+        Some(self.styles.accent_style().fg(colour).add_modifier(Modifier::BOLD))
     }
 
     fn shell_mode_status_hint(&self) -> Option<&'static str> {

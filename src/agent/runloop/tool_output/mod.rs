@@ -30,7 +30,7 @@ use vtcode_core::tools::continuation::{
 };
 use vtcode_core::tools::handlers::task_tracking::compact_task_tree_view_from_items;
 use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_core::utils::style_helpers::{ColorPalette, render_styled};
+use vtcode_core::utils::style_helpers::{ColourPalette, render_styled};
 use vtcode_ui::tui::app::TaskPanelMetadata;
 
 pub(crate) fn spooled_output_hint(path: &str) -> String {
@@ -42,7 +42,7 @@ pub(crate) fn spooled_output_hint(path: &str) -> String {
 /// Render a detail line with tree prefix styling (└ prefix).
 /// Used to unify output details with the tree structure used by other tools.
 pub(crate) fn render_tree_detail(renderer: &mut AnsiRenderer, detail: &str) -> Result<()> {
-    let palette = ColorPalette::default();
+    let palette = ColourPalette::default();
     let mut styled = String::new();
     push_tree_prefix(&mut styled, &palette);
     styled.push_str(&render_styled(detail, palette.muted, None));
@@ -53,7 +53,7 @@ pub(crate) fn render_tree_detail(renderer: &mut AnsiRenderer, detail: &str) -> R
 /// Push the shared `  └ ` tree-detail prefix (two-space indent, dim `└`, trailing
 /// space) into `styled`. Centralized so the prefix style can change in one place
 /// across both detail lines and command-line renderings.
-pub(crate) fn push_tree_prefix(styled: &mut String, palette: &ColorPalette) {
+pub(crate) fn push_tree_prefix(styled: &mut String, palette: &ColourPalette) {
     styled.push_str("  ");
     styled.push_str(&render_styled("└", palette.muted, Some("dim".to_string())));
     styled.push(' ');

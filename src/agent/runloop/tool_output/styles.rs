@@ -4,13 +4,13 @@ use anstyle::{AnsiColor, Color, Style as AnsiStyle};
 use vtcode_commons::diff_paths::{is_diff_addition_line, is_diff_deletion_line, is_diff_header_line};
 use vtcode_core::config::constants::tools;
 use vtcode_core::tools::tool_intent;
-use vtcode_core::utils::diff_styles::{DiffColorLevel, DiffTheme, diff_add_bg, diff_del_bg};
-use vtcode_core::utils::style_helpers::bold_color;
+use vtcode_core::utils::diff_styles::{DiffColourLevel, DiffTheme, diff_add_bg, diff_del_bg};
+use vtcode_core::utils::style_helpers::bold_colour;
 
 /// Get background color for diff lines based on detected theme and color level.
-fn diff_line_bg_color(is_addition: bool) -> Option<Color> {
+fn diff_line_bg_colour(is_addition: bool) -> Option<Color> {
     let theme = DiffTheme::detect();
-    let level = DiffColorLevel::detect();
+    let level = DiffColourLevel::detect();
     let bg = if is_addition {
         diff_add_bg(theme, level)
     } else {
@@ -35,12 +35,12 @@ impl GitStyles {
             add: Some(
                 AnsiStyle::new()
                     .fg_color(Some(Color::Ansi(AnsiColor::BrightGreen)))
-                    .bg_color(diff_line_bg_color(true)),
+                    .bg_color(diff_line_bg_colour(true)),
             ),
             remove: Some(
                 AnsiStyle::new()
                     .fg_color(Some(Color::Ansi(AnsiColor::BrightRed)))
-                    .bg_color(diff_line_bg_color(false)),
+                    .bg_color(diff_line_bg_colour(false)),
             ),
             header: Some(AnsiStyle::new().fg_color(Some(Color::Ansi(AnsiColor::Cyan))).bg_color(None)),
         }
@@ -57,13 +57,13 @@ impl LsStyles {
         let mut classes: HashMap<String, AnsiStyle> = HashMap::new();
         let suffixes: Vec<(String, AnsiStyle)> = Vec::new();
 
-        classes.insert("di".to_string(), bold_color(AnsiColor::Blue));
-        classes.insert("ln".to_string(), bold_color(AnsiColor::Cyan));
-        classes.insert("ex".to_string(), bold_color(AnsiColor::Green));
-        classes.insert("pi".to_string(), bold_color(AnsiColor::Yellow));
-        classes.insert("so".to_string(), bold_color(AnsiColor::Magenta));
-        classes.insert("bd".to_string(), bold_color(AnsiColor::Yellow));
-        classes.insert("cd".to_string(), bold_color(AnsiColor::Yellow));
+        classes.insert("di".to_string(), bold_colour(AnsiColor::Blue));
+        classes.insert("ln".to_string(), bold_colour(AnsiColor::Cyan));
+        classes.insert("ex".to_string(), bold_colour(AnsiColor::Green));
+        classes.insert("pi".to_string(), bold_colour(AnsiColor::Yellow));
+        classes.insert("so".to_string(), bold_colour(AnsiColor::Magenta));
+        classes.insert("bd".to_string(), bold_colour(AnsiColor::Yellow));
+        classes.insert("cd".to_string(), bold_colour(AnsiColor::Yellow));
 
         LsStyles { classes, suffixes }
     }
@@ -201,9 +201,9 @@ mod tests {
     #[test]
     fn detects_ls_styles_for_directories_and_executables() {
         let git = GitStyles::new();
-        use vtcode_core::utils::style_helpers::bold_color;
-        let dir_style = bold_color(AnsiColor::Blue);
-        let exec_style = bold_color(AnsiColor::Green);
+        use vtcode_core::utils::style_helpers::bold_colour;
+        let dir_style = bold_colour(AnsiColor::Blue);
+        let exec_style = bold_colour(AnsiColor::Green);
         let mut classes = HashMap::new();
         classes.insert("di".to_string(), dir_style);
         classes.insert("ex".to_string(), exec_style);
@@ -235,8 +235,8 @@ mod tests {
     #[test]
     fn applies_extension_based_styles() {
         let git = GitStyles::new();
-        use vtcode_core::utils::style_helpers::bold_color;
-        let suffixes = vec![(".rs".to_string(), bold_color(AnsiColor::Red))];
+        use vtcode_core::utils::style_helpers::bold_colour;
+        let suffixes = vec![(".rs".to_string(), bold_colour(AnsiColor::Red))];
         let ls = LsStyles::from_components(HashMap::new(), suffixes);
         let styled = select_line_style(Some("run_pty_cmd"), "main.rs", &git, &ls);
         assert!(styled.is_some());
@@ -245,8 +245,8 @@ mod tests {
     #[test]
     fn extension_matching_requires_dot_boundary() {
         let git = GitStyles::new();
-        use vtcode_core::utils::style_helpers::bold_color;
-        let suffixes = vec![(".rs".to_string(), bold_color(AnsiColor::Green))];
+        use vtcode_core::utils::style_helpers::bold_colour;
+        let suffixes = vec![(".rs".to_string(), bold_colour(AnsiColor::Green))];
         let ls = LsStyles::from_components(HashMap::new(), suffixes);
 
         let without_extension = select_line_style(Some("run_pty_cmd"), "helpers", &git, &ls);

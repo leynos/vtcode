@@ -25,11 +25,11 @@ use std::io::IsTerminal;
 #[cfg(unix)]
 use std::os::fd::AsFd;
 #[cfg(unix)]
-use vtcode_commons::ansi_capabilities::{ColorScheme, set_color_scheme_override};
+use vtcode_commons::ansi_capabilities::{ColourScheme, set_colour_scheme_override};
 #[cfg(unix)]
 use vtcode_commons::ansi_codes::{DEVICE_ATTRIBUTES_REQUEST, ESC_BYTE, ESC_CHAR, OSC, ST};
 #[cfg(unix)]
-use vtcode_commons::color256_theme::set_harmonious_runtime_hint;
+use vtcode_commons::colour256_theme::set_harmonious_runtime_hint;
 
 #[cfg(unix)]
 const DA1_RESPONSE_PREFIX: [u8; 3] = [ESC_BYTE, b'[', b'?'];
@@ -45,14 +45,14 @@ pub fn probe_and_cache_terminal_palette_harmony() {
         }
 
         let timeout = Duration::from_millis(200);
-        match probe_terminal_colors(timeout) {
+        match probe_terminal_colours(timeout) {
             Ok(result) => {
                 let scheme = if result.is_term_light_theme {
-                    ColorScheme::Light
+                    ColourScheme::Light
                 } else {
-                    ColorScheme::Dark
+                    ColourScheme::Dark
                 };
-                set_color_scheme_override(Some(scheme));
+                set_colour_scheme_override(Some(scheme));
                 set_harmonious_runtime_hint(Some(result.is_harmonious));
                 tracing::trace!(
                     term_light = result.is_term_light_theme,
@@ -79,7 +79,7 @@ struct ProbeResult {
 }
 
 #[cfg(unix)]
-fn probe_terminal_colors(timeout: Duration) -> Result<ProbeResult> {
+fn probe_terminal_colours(timeout: Duration) -> Result<ProbeResult> {
     let mut tty = OpenOptions::new()
         .read(true)
         .write(true)
@@ -102,7 +102,7 @@ fn probe_terminal_colors(timeout: Duration) -> Result<ProbeResult> {
         drain_tty_input(&mut tty);
     }
     let response = result?;
-    let parsed = match parse_four_colors(&response) {
+    let parsed = match parse_four_colours(&response) {
         Ok(parsed) => parsed,
         Err(error) => {
             drain_tty_input(&mut tty);
@@ -209,11 +209,11 @@ fn has_complete_da1_response(buffer: &[u8]) -> bool {
 
 #[cfg(unix)]
 fn has_complete_probe_response(buffer: &[u8]) -> bool {
-    has_complete_da1_response(buffer) && parse_four_colors(buffer).is_ok()
+    has_complete_da1_response(buffer) && parse_four_colours(buffer).is_ok()
 }
 
 #[cfg(unix)]
-fn parse_four_colors(response: &[u8]) -> Result<[(u8, u8, u8); 4]> {
+fn parse_four_colours(response: &[u8]) -> Result<[(u8, u8, u8); 4]> {
     let mut parsed = Vec::with_capacity(4);
     let decoded = String::from_utf8_lossy(response);
 
@@ -305,7 +305,7 @@ mod tests {
         let response = format!(
             "{OSC}10;rgb:dddd/dddd/dddd{ST}{OSC}11;rgb:1111/1111/1111{ST}{OSC}4;16;rgb:1111/1111/1111{ST}{OSC}4;231;rgb:dddd/dddd/dddd{ST}{CSI}?62;4c"
         );
-        let [fg, bg, c16, c231] = parse_four_colors(response.as_bytes()).expect("valid colors");
+        let [fg, bg, c16, c231] = parse_four_colours(response.as_bytes()).expect("valid colors");
         assert_eq!(fg, (0xdd, 0xdd, 0xdd));
         assert_eq!(bg, (0x11, 0x11, 0x11));
         assert_eq!(c16, (0x11, 0x11, 0x11));
@@ -317,7 +317,7 @@ mod tests {
         let response = format!(
             "{OSC}10;rgb:a/b/c{ST}{OSC}11;rgb:0/0/0{ST}{OSC}4;16;rgb:0/0/0{ST}{OSC}4;231;rgb:f/f/f{ST}{CSI}?1;2c"
         );
-        let [fg, _, _, c231] = parse_four_colors(response.as_bytes()).expect("valid colors");
+        let [fg, _, _, c231] = parse_four_colours(response.as_bytes()).expect("valid colors");
         assert_eq!(fg, (0xaa, 0xbb, 0xcc));
         assert_eq!(c231, (0xff, 0xff, 0xff));
     }
@@ -331,7 +331,7 @@ mod tests {
     }
 
     #[test]
-    fn waits_for_all_color_responses_before_settling() {
+    fn waits_for_all_colour_responses_before_settling() {
         let da1_only = b"\x1b[?62;22;52c";
         assert!(has_complete_da1_response(da1_only));
         assert!(!has_complete_probe_response(da1_only));

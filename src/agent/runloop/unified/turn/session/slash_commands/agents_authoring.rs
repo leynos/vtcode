@@ -105,7 +105,7 @@ struct NativeAgentDraft {
     description: String,
     tools: Vec<String>,
     model: String,
-    color: Option<String>,
+    colour: Option<String>,
     reasoning_effort: Option<String>,
     permissions: AgentPermissionsConfig,
     background: bool,
@@ -137,7 +137,7 @@ impl NativeAgentDraft {
             description: super::DEFAULT_AGENT_DESCRIPTION_TEXT.to_string(),
             tools: default_agent_tools(),
             model: "inherit".to_string(),
-            color: Some("blue".to_string()),
+            colour: Some("blue".to_string()),
             reasoning_effort: Some("medium".to_string()),
             permissions: AgentPermissionsConfig::new(PermissionDefault::Deny),
             background: false,
@@ -165,7 +165,7 @@ impl NativeAgentDraft {
             description: spec.description.clone(),
             tools: ordered_tools(spec.tools.clone().unwrap_or_default()),
             model: spec.model.clone().unwrap_or_else(|| "inherit".to_string()),
-            color: spec.color.clone(),
+            colour: spec.colour.clone(),
             reasoning_effort: spec.reasoning_effort.map(|e| e.as_str().to_string()),
             permissions: spec.permissions.clone(),
             background: spec.background,
@@ -193,7 +193,7 @@ impl NativeAgentDraft {
         self.name = self.name.trim().to_string();
         self.description = self.description.trim().to_string();
         self.model = normalized_optional_string(Some(self.model.as_str())).unwrap_or_else(|| "inherit".to_string());
-        self.color = normalized_optional_string(self.color.as_deref());
+        self.colour = normalized_optional_string(self.colour.as_deref());
         self.reasoning_effort = normalized_optional_string(self.reasoning_effort.as_deref());
         self.tools = ordered_tools(std::mem::take(&mut self.tools));
     }
@@ -204,8 +204,8 @@ impl NativeAgentDraft {
         insert_yaml_string(&mut frontmatter, "description", self.description.as_str());
         insert_yaml_string_list(&mut frontmatter, "tools", &self.tools);
         insert_yaml_string(&mut frontmatter, "model", self.model.as_str());
-        if let Some(color) = self.color.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
-            insert_yaml_string(&mut frontmatter, "color", color);
+        if let Some(colour) = self.colour.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+            insert_yaml_string(&mut frontmatter, "color", colour);
         }
         if let Some(reasoning_effort) = self
             .reasoning_effort
@@ -420,12 +420,12 @@ async fn edit_native_agent_draft(
                     draft.reasoning_effort = reasoning_effort;
                 }
             }
-            "agents:author:color" => {
-                let current = draft.color.as_deref().unwrap_or_default();
+            "agents:author:colour" => {
+                let current = draft.colour.as_deref().unwrap_or_default();
                 if let Some(result) = prompt_text_value(
                     ctx,
-                    "Color",
-                    "Set the TUI badge color for this agent.",
+                    "Colour",
+                    "Set the TUI badge colour for this agent.",
                     current,
                     "blue or #4f8fd8",
                     false,
@@ -435,8 +435,8 @@ async fn edit_native_agent_draft(
                 {
                     match result {
                         PromptTextResult::KeepCurrent => {}
-                        PromptTextResult::Clear => draft.color = None,
-                        PromptTextResult::Value(value) => draft.color = Some(value),
+                        PromptTextResult::Clear => draft.colour = None,
+                        PromptTextResult::Value(value) => draft.colour = Some(value),
                     }
                 }
             }
@@ -500,7 +500,7 @@ fn show_authoring_menu(ctx: &mut SlashCommandContext<'_>, draft: &NativeAgentDra
     items.push(author_action_item("Description", draft.description.as_str(), Some("Required"), "description"));
     items.push(author_action_item("Tools", tools_summary(&draft.tools).as_str(), Some("Checklist"), "tools"));
     items.push(author_action_item("Model + Reasoning", model_summary(draft).as_str(), Some("Picker"), "model"));
-    items.push(author_action_item("Color", draft.color.as_deref().unwrap_or("unset"), None, "color"));
+    items.push(author_action_item("Colour", draft.colour.as_deref().unwrap_or("unset"), None, "colour"));
     items.push(author_action_item(
         "Background",
         if draft.background { "Enabled" } else { "Disabled" },
@@ -1343,7 +1343,7 @@ Review the target changes."#,
         );
 
         assert_eq!(draft.model, "inherit");
-        assert_eq!(draft.color.as_deref(), Some("blue"));
+        assert_eq!(draft.colour.as_deref(), Some("blue"));
         assert_eq!(draft.reasoning_effort.as_deref(), Some("medium"));
         assert_eq!(draft.permissions.default, PermissionDefault::Deny);
         assert!(!draft.background);
@@ -1376,7 +1376,7 @@ Review the target changes."#,
         );
         draft.description = "  Review auth changes  ".to_string();
         draft.model = "   ".to_string();
-        draft.color = Some(" teal ".to_string());
+        draft.colour = Some(" teal ".to_string());
         draft.reasoning_effort = Some(" medium ".to_string());
         draft.tools = vec![
             "zzz".to_string(),
@@ -1389,7 +1389,7 @@ Review the target changes."#,
         assert_eq!(draft.name, "reviewer");
         assert_eq!(draft.description, "Review auth changes");
         assert_eq!(draft.model, "inherit");
-        assert_eq!(draft.color.as_deref(), Some("teal"));
+        assert_eq!(draft.colour.as_deref(), Some("teal"));
         assert_eq!(draft.reasoning_effort.as_deref(), Some("medium"));
         assert_eq!(draft.tools.len(), 2);
     }
@@ -1403,7 +1403,7 @@ Review the target changes."#,
         );
         draft.description = "Review auth changes".to_string();
         draft.tools = vec![tools::EXEC_COMMAND.to_string(), tools::CODE_SEARCH.to_string()];
-        draft.color = Some("teal".to_string());
+        draft.colour = Some("teal".to_string());
         draft.reasoning_effort = Some("high".to_string());
         draft.permissions = AgentPermissionsConfig::new(PermissionDefault::Deny);
         draft.background = true;
@@ -1416,7 +1416,7 @@ Review the target changes."#,
 
         let rendered = draft.render_markdown().expect("render");
         let model_index = rendered.find("model: inherit").expect("model key");
-        let color_index = rendered.find("color: teal").expect("color key");
+        let colour_index = rendered.find("color: teal").expect("color key");
         let reasoning_index = rendered.find("reasoning_effort: high").expect("reasoning key");
         let permissions_index = rendered.find("permissions:").expect("permission key");
         let permissions_default_index = rendered.find("default: deny").expect("permission default");
@@ -1425,8 +1425,8 @@ Review the target changes."#,
         let memory_index = rendered.find("memory: project").expect("memory key");
         let skills_index = rendered.find("skills:").expect("skills key");
 
-        assert!(model_index < color_index);
-        assert!(color_index < reasoning_index);
+        assert!(model_index < colour_index);
+        assert!(colour_index < reasoning_index);
         assert!(reasoning_index < permissions_index);
         assert!(permissions_index < permissions_default_index);
         assert!(permissions_default_index < background_index);
@@ -1470,7 +1470,7 @@ Review the target changes."#,
             tools: Some(default_agent_tools()),
             disallowed_tools: Vec::new(),
             model: Some("inherit".to_string()),
-            color: Some("blue".to_string()),
+            colour: Some("blue".to_string()),
             reasoning_effort: Some(vtcode_config::ReasoningEffortLevel::Medium),
             permissions: AgentPermissionsConfig::new(PermissionDefault::Ask),
             skills: Vec::new(),

@@ -4,7 +4,7 @@ use crate::config::types::CapabilityLevel;
 use crate::config::types::{AgentConfig, OutputFormat, PerformanceMetrics};
 use crate::core::agent::core::Agent;
 use crate::tools::handlers::SessionSurface;
-use crate::utils::colors::style;
+use crate::utils::colours::style;
 use anyhow::Result;
 
 /// Handle the stats command - display session statistics and performance metrics

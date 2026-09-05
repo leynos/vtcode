@@ -14,7 +14,7 @@ use vtcode_commons::lr_map::LrMap;
 /// Thread-safe cached parser for Git and LS_COLORS style strings
 pub struct CachedStyleParser {
     git_cache: LrMap<String, AnsiStyle>,
-    ls_colors_cache: LrMap<String, AnsiStyle>,
+    ls_colours_cache: LrMap<String, AnsiStyle>,
 }
 
 impl CachedStyleParser {
@@ -22,7 +22,7 @@ impl CachedStyleParser {
     pub(crate) fn new() -> Self {
         Self {
             git_cache: LrMap::new(),
-            ls_colors_cache: LrMap::new(),
+            ls_colours_cache: LrMap::new(),
         }
     }
 
@@ -40,14 +40,14 @@ impl CachedStyleParser {
     }
 
     /// Parse and cache an LS_COLORS-style string (e.g., "01;34")
-    pub(crate) fn parse_ls_colors(&self, input: &str) -> Result<AnsiStyle> {
-        if let Some(cached) = self.ls_colors_cache.get(input) {
+    pub(crate) fn parse_ls_colours(&self, input: &str) -> Result<AnsiStyle> {
+        if let Some(cached) = self.ls_colours_cache.get(input) {
             return Ok(cached);
         }
 
         let result = anstyle_ls::parse(input).ok_or_else(|| anyhow::anyhow!("Failed to parse LS_COLORS '{input}'"))?;
 
-        self.ls_colors_cache.insert(input.to_string(), result);
+        self.ls_colours_cache.insert(input.to_string(), result);
         Ok(result)
     }
 
@@ -56,7 +56,7 @@ impl CachedStyleParser {
         match self.parse_git_style(input) {
             Ok(style) => Ok(style),
             Err(_) => self
-                .parse_ls_colors(input)
+                .parse_ls_colours(input)
                 .with_context(|| format!("Could not parse style string: '{input}'")),
         }
     }
@@ -64,12 +64,12 @@ impl CachedStyleParser {
     /// Clear all cached styles
     fn clear_cache(&self) {
         self.git_cache.clear();
-        self.ls_colors_cache.clear();
+        self.ls_colours_cache.clear();
     }
 
     /// Get cache statistics
     fn cache_stats(&self) -> (usize, usize) {
-        (self.git_cache.len(), self.ls_colors_cache.len())
+        (self.git_cache.len(), self.ls_colours_cache.len())
     }
 }
 
@@ -92,9 +92,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_ls_colors() {
+    fn test_parse_ls_colours() {
         let parser = CachedStyleParser::new();
-        let result = parser.parse_ls_colors("34").unwrap(); // Blue
+        let result = parser.parse_ls_colours("34").unwrap(); // Blue
 
         assert!(result.get_fg_color().is_some());
     }
@@ -144,7 +144,7 @@ mod tests {
         let parser = CachedStyleParser::new();
         let _result1 = parser.parse_git_style("bold red").unwrap();
         let _result2 = parser.parse_git_style("italic green").unwrap();
-        let _result3 = parser.parse_ls_colors("34").unwrap();
+        let _result3 = parser.parse_ls_colours("34").unwrap();
 
         let (git_count, ls_count) = parser.cache_stats();
         assert_eq!(git_count, 2); // Two Git style entries

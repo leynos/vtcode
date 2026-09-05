@@ -7,19 +7,19 @@ use anstyle::Style;
 ///
 /// # Example
 /// ```ignore
-/// use vtcode_core::ui::git_config::GitColorConfig;
+/// use vtcode_core::ui::git_config::GitColourConfig;
 /// use std::path::Path;
 ///
-/// let config = GitColorConfig::from_git_config(Path::new(".git/config"))?;
+/// let config = GitColourConfig::from_git_config(Path::new(".git/config"))?;
 /// let diff_style = config.diff_new;
 /// ```
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use std::path::Path;
 
-/// Parsed Git configuration colors for diff, status, and branch visualization
+/// Parsed Git configuration colours for diff, status, and branch visualization
 #[derive(Debug, Clone)]
-pub struct GitColorConfig {
+pub struct GitColourConfig {
     /// Color for added lines in diff (default: green)
     pub diff_new: Style,
     /// Color for removed lines in diff (default: red)
@@ -50,29 +50,29 @@ pub struct GitColorConfig {
     pub branch_remote: Style,
 }
 
-impl Default for GitColorConfig {
+impl Default for GitColourConfig {
     /// Returns default Git color configuration
     fn default() -> Self {
         Self::with_defaults()
     }
 }
 
-impl GitColorConfig {
+impl GitColourConfig {
     /// Create Git color config with default values
-    /// Uses dimmed colors (50% brightness) for git status and background colors
+    /// Uses dimmed colours (50% brightness) for git status and background colours
     /// to reduce eye strain during long development sessions
     pub fn with_defaults() -> Self {
         Self {
-            diff_new: crate::utils::style_helpers::style_from_color_name("green"),
-            diff_old: crate::utils::style_helpers::style_from_color_name("red"),
+            diff_new: crate::utils::style_helpers::style_from_colour_name("green"),
+            diff_old: crate::utils::style_helpers::style_from_colour_name("red"),
             diff_context: Style::new(),
             diff_header: Style::new(),
             diff_meta: Style::new(),
-            diff_frag: crate::utils::style_helpers::style_from_color_name("cyan"),
+            diff_frag: crate::utils::style_helpers::style_from_colour_name("cyan"),
             // Use dimmed green and red for git status to reduce brightness (50% ANSI)
-            status_added: crate::utils::style_helpers::style_from_color_name("green:dimmed"),
-            status_modified: crate::utils::style_helpers::style_from_color_name("red:dimmed"),
-            status_deleted: crate::utils::style_helpers::style_from_color_name("red:dimmed"),
+            status_added: crate::utils::style_helpers::style_from_colour_name("green:dimmed"),
+            status_modified: crate::utils::style_helpers::style_from_colour_name("red:dimmed"),
+            status_deleted: crate::utils::style_helpers::style_from_colour_name("red:dimmed"),
             status_untracked: Style::new(),
             branch_current: Style::new(),
             branch_local: Style::new(),
@@ -80,10 +80,10 @@ impl GitColorConfig {
         }
     }
 
-    /// Load Git colors from .git/config file
+    /// Load Git colours from .git/config file
     ///
     /// Parses [color "diff"], [color "status"], and [color "branch"] sections.
-    /// Falls back to defaults for any missing colors.
+    /// Falls back to defaults for any missing colours.
     ///
     /// # Errors
     ///
@@ -95,47 +95,47 @@ impl GitColorConfig {
         let mut config = Self::with_defaults();
 
         // Parse [color "diff"] section
-        if let Some(diff_new) = Self::extract_git_color(&content, "diff", "new") {
+        if let Some(diff_new) = Self::extract_git_colour(&content, "diff", "new") {
             config.diff_new = diff_new;
         }
-        if let Some(diff_old) = Self::extract_git_color(&content, "diff", "old") {
+        if let Some(diff_old) = Self::extract_git_colour(&content, "diff", "old") {
             config.diff_old = diff_old;
         }
-        if let Some(diff_context) = Self::extract_git_color(&content, "diff", "context") {
+        if let Some(diff_context) = Self::extract_git_colour(&content, "diff", "context") {
             config.diff_context = diff_context;
         }
-        if let Some(diff_header) = Self::extract_git_color(&content, "diff", "header") {
+        if let Some(diff_header) = Self::extract_git_colour(&content, "diff", "header") {
             config.diff_header = diff_header;
         }
-        if let Some(diff_meta) = Self::extract_git_color(&content, "diff", "meta") {
+        if let Some(diff_meta) = Self::extract_git_colour(&content, "diff", "meta") {
             config.diff_meta = diff_meta;
         }
-        if let Some(diff_frag) = Self::extract_git_color(&content, "diff", "frag") {
+        if let Some(diff_frag) = Self::extract_git_colour(&content, "diff", "frag") {
             config.diff_frag = diff_frag;
         }
 
         // Parse [color "status"] section
-        if let Some(status_added) = Self::extract_git_color(&content, "status", "added") {
+        if let Some(status_added) = Self::extract_git_colour(&content, "status", "added") {
             config.status_added = status_added;
         }
-        if let Some(status_modified) = Self::extract_git_color(&content, "status", "modified") {
+        if let Some(status_modified) = Self::extract_git_colour(&content, "status", "modified") {
             config.status_modified = status_modified;
         }
-        if let Some(status_deleted) = Self::extract_git_color(&content, "status", "deleted") {
+        if let Some(status_deleted) = Self::extract_git_colour(&content, "status", "deleted") {
             config.status_deleted = status_deleted;
         }
-        if let Some(status_untracked) = Self::extract_git_color(&content, "status", "untracked") {
+        if let Some(status_untracked) = Self::extract_git_colour(&content, "status", "untracked") {
             config.status_untracked = status_untracked;
         }
 
         // Parse [color "branch"] section
-        if let Some(branch_current) = Self::extract_git_color(&content, "branch", "current") {
+        if let Some(branch_current) = Self::extract_git_colour(&content, "branch", "current") {
             config.branch_current = branch_current;
         }
-        if let Some(branch_local) = Self::extract_git_color(&content, "branch", "local") {
+        if let Some(branch_local) = Self::extract_git_colour(&content, "branch", "local") {
             config.branch_local = branch_local;
         }
-        if let Some(branch_remote) = Self::extract_git_color(&content, "branch", "remote") {
+        if let Some(branch_remote) = Self::extract_git_colour(&content, "branch", "remote") {
             config.branch_remote = branch_remote;
         }
 
@@ -147,7 +147,7 @@ impl GitColorConfig {
     /// Looks for patterns like: [color "section"] key = value
     /// Note: This parses the color name but ignores bold/dim effects to ensure
     /// consistent diff styling without theme-dependent formatting.
-    fn extract_git_color(content: &str, section: &str, key: &str) -> Option<Style> {
+    fn extract_git_colour(content: &str, section: &str, key: &str) -> Option<Style> {
         // Pattern: [color "section"]
         let section_pattern = format!(r#"\[color "{}"\]"#, regex::escape(section));
 
@@ -176,14 +176,14 @@ impl GitColorConfig {
 
         // Parse color name but ignore effects (bold, dim, etc.) for consistent styling
         // Extract just the color name, ignoring any effects like "bold", "dim", etc.
-        let color_name = value.split_whitespace().find(|word| {
+        let colour_name = value.split_whitespace().find(|word| {
             matches!(
                 word.to_lowercase().as_str(),
                 "normal" | "black" | "red" | "green" | "yellow" | "blue" | "magenta" | "purple" | "cyan" | "white"
             )
         })?;
 
-        Some(crate::utils::style_helpers::style_from_color_name(color_name))
+        Some(crate::utils::style_helpers::style_from_colour_name(colour_name))
     }
 }
 
@@ -193,17 +193,17 @@ mod tests {
     use std::io::Write;
 
     #[test]
-    fn test_git_color_config_defaults() {
-        let config = GitColorConfig::default();
+    fn test_git_colour_config_defaults() {
+        let config = GitColourConfig::default();
         assert_ne!(config.diff_new, Style::new());
         assert_ne!(config.diff_old, Style::new());
     }
 
-    fn create_test_git_config(content: &str) -> Result<GitColorConfig> {
+    fn create_test_git_config(content: &str) -> Result<GitColourConfig> {
         let mut temp = tempfile::NamedTempFile::new()?;
         temp.write_all(content.as_bytes())?;
         temp.flush()?;
-        GitColorConfig::from_git_config(temp.path())
+        GitColourConfig::from_git_config(temp.path())
     }
 
     #[test]
@@ -219,7 +219,7 @@ mod tests {
 "#;
         let config = create_test_git_config(config_text).expect("Failed to parse test config");
 
-        // Should have parsed colors
+        // Should have parsed colours
         assert_ne!(config.diff_new, Style::new());
         assert_ne!(config.diff_old, Style::new());
     }
@@ -235,13 +235,13 @@ mod tests {
 "#;
         let config = create_test_git_config(config_text).expect("Failed to parse test config");
 
-        // Should have parsed status colors
+        // Should have parsed status colours
         assert_ne!(config.status_added, Style::new());
         assert_ne!(config.status_modified, Style::new());
     }
 
     #[test]
-    fn test_parse_git_config_hex_colors() {
+    fn test_parse_git_config_hex_colours() {
         let config_text = r#"
 [color "diff"]
     new = #00ff00
@@ -249,14 +249,14 @@ mod tests {
 "#;
         let config = create_test_git_config(config_text).expect("Failed to parse test config");
 
-        // Should have parsed hex colors
+        // Should have parsed hex colours
         assert_ne!(config.diff_new, Style::new());
         assert_ne!(config.diff_old, Style::new());
     }
 
     #[test]
     fn test_parse_git_config_missing_file() {
-        let result = GitColorConfig::from_git_config(Path::new("/nonexistent/.git/config"));
+        let result = GitColourConfig::from_git_config(Path::new("/nonexistent/.git/config"));
         result.unwrap_err();
     }
 
@@ -280,7 +280,7 @@ mod tests {
 "#;
         let config = create_test_git_config(config_text).expect("Failed to parse test config");
 
-        // Should have parsed branch colors
+        // Should have parsed branch colours
         assert_ne!(config.branch_current, Style::new());
     }
 
@@ -300,7 +300,7 @@ mod tests {
 "#;
         let config = create_test_git_config(config_text).expect("Failed to parse test config");
 
-        // Should have parsed colors from all sections
+        // Should have parsed colours from all sections
         assert_ne!(config.diff_new, Style::new());
         assert_ne!(config.status_added, Style::new());
         assert_ne!(config.branch_current, Style::new());

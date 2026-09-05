@@ -570,7 +570,7 @@ mod tests {
             tools: Some(vec!["code_search".to_string()]),
             disallowed_tools: vec!["file_operation".to_string()],
             model: Some("inherit".to_string()),
-            color: Some("green".to_string()),
+            colour: Some("green".to_string()),
             reasoning_effort: Some(vtcode_config::ReasoningEffortLevel::Medium),
             permissions: AgentPermissionsConfig::new(PermissionDefault::Deny),
             skills: vec!["repo-skill".to_string()],

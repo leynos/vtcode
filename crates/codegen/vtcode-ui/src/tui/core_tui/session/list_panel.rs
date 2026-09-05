@@ -6,7 +6,7 @@ use ratatui_cheese::input::{Input, InputState, InputStyles};
 use ratatui_cheese::theme::Palette;
 
 use super::inline_list::{InlineListRenderOptions, InlineListRow, render_inline_list_with_options};
-use crate::tui::core_tui::style::ratatui_color_from_ansi;
+use crate::tui::core_tui::style::ratatui_colour_from_ansi;
 use crate::tui::ui::tui::types::InlineTheme;
 
 pub(crate) trait SharedListWidgetModel {
@@ -159,14 +159,14 @@ pub(crate) struct SharedListPanelStyles {
 /// Build `InputStyles` from the app's `InlineTheme`.
 pub(crate) fn input_styles_from_theme(theme: &InlineTheme) -> InputStyles {
     let palette = Palette {
-        foreground: theme.foreground.map(ratatui_color_from_ansi).unwrap_or(Color::White),
-        muted: theme.secondary.map(ratatui_color_from_ansi).unwrap_or(Color::Gray),
+        foreground: theme.foreground.map(ratatui_colour_from_ansi).unwrap_or(Color::White),
+        muted: theme.secondary.map(ratatui_colour_from_ansi).unwrap_or(Color::Gray),
         faint: Color::DarkGray,
-        primary: theme.primary.map(ratatui_color_from_ansi).unwrap_or(Color::Cyan),
-        secondary: theme.secondary.map(ratatui_color_from_ansi).unwrap_or(Color::Gray),
+        primary: theme.primary.map(ratatui_colour_from_ansi).unwrap_or(Color::Cyan),
+        secondary: theme.secondary.map(ratatui_colour_from_ansi).unwrap_or(Color::Gray),
         surface: Color::Black,
         border: Color::DarkGray,
-        highlight: theme.primary.map(ratatui_color_from_ansi).unwrap_or(Color::Cyan),
+        highlight: theme.primary.map(ratatui_colour_from_ansi).unwrap_or(Color::Cyan),
         on_highlight: Color::Black,
         error: Color::Red,
         success: Color::Green,

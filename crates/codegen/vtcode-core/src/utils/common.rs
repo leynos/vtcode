@@ -3,7 +3,7 @@
 //! This module contains common utility functions that are used across different parts
 //! of the VT Code agent, helping to reduce code duplication and improve maintainability.
 
-use crate::utils::colors::style;
+use crate::utils::colours::style;
 use anyhow::Result;
 use std::collections::BTreeMap;
 use std::path::Path;

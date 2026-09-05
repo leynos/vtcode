@@ -416,7 +416,7 @@ mod tests {
             tools: Some(vec!["code_search".to_string()]),
             disallowed_tools: vec!["shell".to_string()],
             model: None,
-            color: None,
+            colour: None,
             reasoning_effort: None,
             permissions: AgentPermissionsConfig::new(PermissionDefault::Deny),
             skills: Vec::new(),

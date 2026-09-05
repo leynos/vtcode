@@ -12,7 +12,7 @@ use crate::tui::config::constants::ui;
 use super::super::types::{InlineHeaderContext, InlineHeaderHighlight};
 use super::terminal_capabilities;
 use super::utils::line_truncation::truncate_line_with_ellipsis_if_overflow;
-use super::{Session, ratatui_color_from_ansi, ratatui_style_from_inline};
+use super::{Session, ratatui_colour_from_ansi, ratatui_style_from_inline};
 
 fn clean_reasoning_text(text: &str) -> String {
     vtcode_commons::formatting::clean_reasoning_text(text)
@@ -97,7 +97,7 @@ impl Session {
 
         let mut border_style = Style::default();
         if let Some(accent) = self.theme.tool_accent.or(self.theme.primary).or(self.theme.foreground) {
-            border_style = border_style.fg(ratatui_color_from_ansi(accent));
+            border_style = border_style.fg(ratatui_colour_from_ansi(accent));
         }
         let text_style = self.header_primary_style().add_modifier(Modifier::DIM);
         let block = Block::bordered()
@@ -174,9 +174,9 @@ impl Session {
         let agent_label = primary_agent_header_label(self.header_context.primary_agent.as_deref());
         let model_summary_spans = self.header_compact_model_summary_spans();
         if !agent_label.trim().is_empty() {
-            let fallback = self.theme.primary.map(ratatui_color_from_ansi).unwrap_or(Color::LightMagenta);
+            let fallback = self.theme.primary.map(ratatui_colour_from_ansi).unwrap_or(Color::LightMagenta);
             let agent_style =
-                super::super::style::agent_color_style(self.header_context.primary_agent_color.as_deref(), fallback);
+                super::super::style::agent_colour_style(self.header_context.primary_agent_colour.as_deref(), fallback);
             spans.push(Span::styled(agent_label, agent_style));
         }
 
@@ -416,13 +416,13 @@ impl Session {
             *first = false;
         };
 
-        let agent_badge_color = self
+        let agent_badge_colour = self
             .theme
             .primary
             .or(self.theme.foreground)
-            .map(ratatui_color_from_ansi)
+            .map(ratatui_colour_from_ansi)
             .unwrap_or(Color::LightMagenta);
-        let agent_style = Style::default().fg(agent_badge_color).add_modifier(Modifier::BOLD);
+        let agent_style = Style::default().fg(agent_badge_colour).add_modifier(Modifier::BOLD);
         push_badge(
             &mut spans,
             primary_agent_header_label(self.header_context.primary_agent.as_deref()),
@@ -433,23 +433,23 @@ impl Session {
         // Show trust level badge
         let trust_value = self.header_context.workspace_trust.to_lowercase();
         if trust_value.contains("full auto") || trust_value.contains("full_auto") {
-            let auto_badge_color = self
+            let auto_badge_colour = self
                 .theme
                 .tool_accent
                 .or(self.theme.primary)
                 .or(self.theme.foreground)
-                .map(ratatui_color_from_ansi)
+                .map(ratatui_colour_from_ansi)
                 .unwrap_or(Color::LightCyan);
-            let badge_style = Style::default().fg(auto_badge_color).add_modifier(Modifier::BOLD);
+            let badge_style = Style::default().fg(auto_badge_colour).add_modifier(Modifier::BOLD);
             push_badge(&mut spans, "Full-auto".to_string(), badge_style, &mut first_section);
         } else if trust_value.contains("tools policy") || trust_value.contains("tools_policy") {
-            let safe_badge_color = self
+            let safe_badge_colour = self
                 .theme
                 .primary
                 .or(self.theme.foreground)
-                .map(ratatui_color_from_ansi)
+                .map(ratatui_colour_from_ansi)
                 .unwrap_or(Color::LightGreen);
-            let badge_style = Style::default().fg(safe_badge_color).add_modifier(Modifier::BOLD);
+            let badge_style = Style::default().fg(safe_badge_colour).add_modifier(Modifier::BOLD);
             push_badge(&mut spans, "Safe".to_string(), badge_style, &mut first_section);
         }
 
@@ -639,7 +639,7 @@ impl Session {
     pub(crate) fn section_title_style(&self) -> Style {
         let mut style = self.styles.default_style().add_modifier(Modifier::BOLD | Modifier::DIM);
         if let Some(primary) = self.theme.primary.or(self.theme.foreground) {
-            style = style.fg(ratatui_color_from_ansi(primary));
+            style = style.fg(ratatui_colour_from_ansi(primary));
         }
         style
     }
@@ -647,7 +647,7 @@ impl Session {
     fn header_primary_style(&self) -> Style {
         let mut style = self.styles.default_style().add_modifier(Modifier::DIM);
         if let Some(primary) = self.theme.primary.or(self.theme.foreground) {
-            style = style.fg(ratatui_color_from_ansi(primary));
+            style = style.fg(ratatui_colour_from_ansi(primary));
         }
         style
     }
@@ -655,7 +655,7 @@ impl Session {
     pub(crate) fn header_secondary_style(&self) -> Style {
         let mut style = self.styles.default_style().add_modifier(Modifier::DIM);
         if let Some(secondary) = self.theme.secondary.or(self.theme.foreground) {
-            style = style.fg(ratatui_color_from_ansi(secondary));
+            style = style.fg(ratatui_colour_from_ansi(secondary));
         }
         style
     }

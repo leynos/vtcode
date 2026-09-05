@@ -60,7 +60,7 @@ use vtcode_core::tools::tool_intent;
 use vtcode_core::ui::markdown;
 use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
-use super::files::colorize_diff_summary_line;
+use super::files::colourise_diff_summary_line;
 use super::styles::{GitStyles, LsStyles, select_line_style};
 #[path = "streams_helpers.rs"]
 mod streams_helpers;
@@ -160,7 +160,7 @@ fn render_preview_line(
 }
 
 fn highlight_diff_content(content: &str, language_hint: Option<&str>, bg: Option<anstyle::Color>) -> Option<String> {
-    // Prose (markdown/text) diffs stay solid diff colors: syntax tokens on a
+    // Prose (markdown/text) diffs stay solid diff colours: syntax tokens on a
     // tinted add/del background fail contrast and fight diff semantics
     // (e.g. `**bold**` / `` `code` `` fragments glowing on green/red).
     if is_prose_language_hint(language_hint) {
@@ -182,8 +182,8 @@ fn highlight_diff_content(content: &str, language_hint: Option<&str>, bg: Option
     if !leading_ws.is_empty() {
         // Keep indentation covered by the diff tint so wrapped/tinted rows
         // have no unpainted holes.
-        if let Some(bg_color) = bg {
-            out.push_str(&AnsiStyle::new().bg_color(Some(bg_color)).render().to_string());
+        if let Some(bg_colour) = bg {
+            out.push_str(&AnsiStyle::new().bg_color(Some(bg_colour)).render().to_string());
         }
         out.push_str(leading_ws);
         if bg.is_some() {
@@ -197,8 +197,8 @@ fn highlight_diff_content(content: &str, language_hint: Option<&str>, bg: Option
         // Force the diff tint: syntect theme backgrounds must never punch
         // holes in the full-width add/del background.
         let mut token_style = style;
-        if let Some(bg_color) = bg {
-            token_style = token_style.bg_color(Some(bg_color));
+        if let Some(bg_colour) = bg {
+            token_style = token_style.bg_color(Some(bg_colour));
         }
         out.push_str(&token_style.render().to_string());
         out.push_str(&text);
@@ -393,7 +393,7 @@ pub(crate) fn render_diff_content_block(
     }
 
     let line_number_width = diff_display_line_number_width(lines_slice);
-    let color_enabled = renderer.capabilities().supports_color();
+    let colour_enabled = renderer.capabilities().supports_colour();
     let mut current_language_hint: Option<String> = None;
     let mut formatted_buffer = String::with_capacity(256);
     let mut display_buffer = String::with_capacity(256);
@@ -413,7 +413,7 @@ pub(crate) fn render_diff_content_block(
         }
 
         if let Some(summary_line) =
-            colorize_diff_summary_line(&display_buffer, renderer.capabilities().supports_color())
+            colourise_diff_summary_line(&display_buffer, renderer.capabilities().supports_colour())
         {
             render_preview_line(
                 renderer,
@@ -432,7 +432,7 @@ pub(crate) fn render_diff_content_block(
             .as_deref()
             .map(|hint| is_prose_language_hint(Some(hint)))
             .unwrap_or_default();
-        let rendered_owned = if color_enabled && !was_truncated && !prose {
+        let rendered_owned = if colour_enabled && !was_truncated && !prose {
             Some(format_diff_line_with_gutter_and_syntax(
                 line,
                 line_style,

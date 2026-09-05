@@ -8,7 +8,7 @@ use vtcode_core::core::agent::runner::{AgentRunner, RunnerSettings};
 use vtcode_core::core::agent::task::{ContextItem, Task};
 use vtcode_core::core::agent::types::AgentType;
 use vtcode_core::core::threads::ThreadBootstrap;
-use vtcode_core::utils::colors::style;
+use vtcode_core::utils::colours::style;
 
 use crate::startup::require_full_auto_workspace_trust;
 

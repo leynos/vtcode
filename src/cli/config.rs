@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::path::Path;
 use vtcode_core::cli::args::{ConfigCommand, ConfigResetArgs};
 use vtcode_core::config::{ConfigReadRequest, ConfigResetRequest, ConfigService, ConfigWriteTarget, VTCodeConfig};
-use vtcode_core::utils::colors::style;
+use vtcode_core::utils::colours::style;
 
 /// Handle the config command
 pub async fn handle_config_command(

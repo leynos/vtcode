@@ -1,6 +1,6 @@
 use anstyle::{Color, RgbColor, Style};
 
-use crate::theme::color_math::{
+use crate::theme::colour_math::{
     MAX_DARK_BG_TEXT_LUMINANCE, MAX_LIGHT_BG_TEXT_LUMINANCE, MIN_DARK_BG_TEXT_LUMINANCE, contrast_ratio,
     relative_luminance,
 };
@@ -56,21 +56,21 @@ fn test_theme_suite_resolution() {
 
 #[test]
 fn test_all_themes_have_readable_foreground_and_accents() {
-    let accessibility = ColorAccessibilityConfig::default();
+    let accessibility = ColourAccessibilityConfig::default();
     let min_contrast = accessibility.minimum_contrast;
     for definition in all_theme_definitions().values() {
         let styles = definition.palette.build_styles_with_accessibility(&accessibility);
         let bg = definition.palette.background;
 
-        for (name, color) in [
+        for (name, colour) in [
             ("foreground", style_rgb(styles.output)),
             ("primary", style_rgb(styles.primary)),
             ("secondary", style_rgb(styles.secondary)),
             ("user", style_rgb(styles.user)),
             ("response", style_rgb(styles.response)),
         ] {
-            let color = color.unwrap_or_else(|| panic!("{} missing fg color for {}", name, definition.id));
-            let ratio = contrast_ratio(color, bg);
+            let colour = colour.unwrap_or_else(|| panic!("{} missing fg colour for {}", name, definition.id));
+            let ratio = contrast_ratio(colour, bg);
             assert!(
                 ratio >= min_contrast,
                 "theme={} style={} contrast {:.2} < {:.1}",
@@ -80,7 +80,7 @@ fn test_all_themes_have_readable_foreground_and_accents() {
                 min_contrast
             );
 
-            let luminance = relative_luminance(color);
+            let luminance = relative_luminance(colour);
             if relative_luminance(bg) < 0.5 {
                 assert!(
                     (MIN_DARK_BG_TEXT_LUMINANCE..=MAX_DARK_BG_TEXT_LUMINANCE).contains(&luminance),

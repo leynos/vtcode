@@ -310,7 +310,7 @@ pub struct UiConfig {
     #[serde(default)]
     pub tool_output_spool_dir: Option<String>,
 
-    /// Allow ANSI escape sequences in tool output (enables colors but may cause layout issues)
+    /// Allow ANSI escape sequences in tool output (enables colours but may cause layout issues)
     #[serde(default = "default_allow_tool_ansi")]
     pub allow_tool_ansi: bool,
 
@@ -392,26 +392,37 @@ pub struct UiConfig {
     #[serde(default = "default_minimum_contrast")]
     pub minimum_contrast: f32,
 
-    /// Compatibility mode for legacy terminals that map bold to bright colors.
-    /// When enabled, avoids using bold styling on text that would become bright colors,
+    /// Compatibility mode for legacy terminals that map bold to bright colours.
+    /// When enabled, avoids using bold styling on text that would become bright colours,
     /// preventing visibility issues in terminals with "bold is bright" behavior.
     #[serde(default = "default_bold_is_bright")]
     pub bold_is_bright: bool,
 
-    /// Restrict color palette to the 11 "safe" ANSI colors portable across common themes.
-    /// Safe colors: red, green, yellow, blue, magenta, cyan + brred, brgreen, brmagenta, brcyan
-    /// Problematic colors avoided: brblack (invisible in Solarized Dark), bryellow (light themes),
+    /// Restrict colour palette to the 11 "safe" ANSI colours portable across common themes.
+    /// Safe colours: red, green, yellow, blue, magenta, cyan + brred, brgreen, brmagenta, brcyan
+    /// Problematic colours avoided: brblack (invisible in Solarized Dark), bryellow (light themes),
     /// white/brwhite (light themes), brblue (Basic Dark).
     /// See: <https://blog.xoria.org/terminal-colors/>
-    #[serde(default = "default_safe_colors_only")]
-    pub safe_colors_only: bool,
+    /// The wire name `safe_colors_only` is fixed by the schema.
+    #[serde(
+        rename = "safe_colors_only",
+        alias = "safe_colours_only",
+        default = "default_safe_colours_only"
+    )]
+    pub safe_colours_only: bool,
 
     /// Color scheme mode for automatic light/dark theme switching.
     /// - "auto": Detect from terminal (via OSC 11 or COLORFGBG env var)
     /// - "light": Force light mode theme selection
     /// - "dark": Force dark mode theme selection
-    #[serde(default = "default_color_scheme_mode")]
-    pub color_scheme_mode: ColorSchemeMode,
+    ///
+    /// The wire name `color_scheme_mode` is fixed by the schema.
+    #[serde(
+        rename = "color_scheme_mode",
+        alias = "colour_scheme_mode",
+        default = "default_colour_scheme_mode"
+    )]
+    pub colour_scheme_mode: ColourSchemeMode,
 
     /// Notification preferences for attention events.
     #[serde(default)]
@@ -449,7 +460,7 @@ pub struct UiConfig {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
-pub enum ColorSchemeMode {
+pub enum ColourSchemeMode {
     /// Detect from terminal environment (OSC 11 query or COLORFGBG)
     #[default]
     Auto,
@@ -470,12 +481,12 @@ fn default_bold_is_bright() -> bool {
     false
 }
 
-fn default_safe_colors_only() -> bool {
+fn default_safe_colours_only() -> bool {
     false
 }
 
-fn default_color_scheme_mode() -> ColorSchemeMode {
-    ColorSchemeMode::Auto
+fn default_colour_scheme_mode() -> ColourSchemeMode {
+    ColourSchemeMode::Auto
 }
 
 fn default_show_sidebar() -> bool {
@@ -648,8 +659,8 @@ impl Default for UiConfig {
             // Color accessibility defaults
             minimum_contrast: default_minimum_contrast(),
             bold_is_bright: default_bold_is_bright(),
-            safe_colors_only: default_safe_colors_only(),
-            color_scheme_mode: default_color_scheme_mode(),
+            safe_colours_only: default_safe_colours_only(),
+            colour_scheme_mode: default_colour_scheme_mode(),
             notifications: UiNotificationsConfig::default(),
             fullscreen: UiFullscreenConfig::default(),
             screen_reader_mode: default_screen_reader_mode(),
