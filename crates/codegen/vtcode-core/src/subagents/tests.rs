@@ -123,6 +123,27 @@ fn test_child_record(
 mod invocation_context_tests;
 mod progress_observer_tests;
 mod spawn_custom_tests;
+#[test]
+fn failed_child_error_is_terminal_useful_and_bounded() {
+    let spec = vtcode_config::builtin_subagents()
+        .into_iter()
+        .find(|spec| spec.name == "worker")
+        .expect("worker");
+    let mut record =
+        test_child_record("bounded-error", "bounded-error-session", "parent", &spec, SubagentStatus::Running, 0, None);
+    let error = anyhow!("provider failed: api_key=secret-value {}\u{0000}", "x".repeat(4_096));
+
+    assert!(!record.apply_result(Err(error)));
+
+    assert_eq!(record.status, SubagentStatus::Failed);
+    assert!(record.completed_at.is_some());
+    let stored = record.error.as_deref().expect("terminal error");
+    assert!(stored.starts_with("provider failed:"));
+    assert!(stored.chars().count() <= 2_048);
+    assert!(!stored.contains('\u{0000}'));
+    assert!(!stored.contains("secret-value"));
+    assert!(stored.contains("[REDACTED_SECRET]"));
+}
 
 fn write_test_background_subagent(workspace_root: &std::path::Path) {
     let agent_dir = workspace_root.join(".vtcode/agents");
