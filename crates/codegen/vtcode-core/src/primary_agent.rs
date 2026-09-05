@@ -255,7 +255,7 @@ fn fallback_notice(requested_default: &str) -> Option<&str> {
 
 #[must_use]
 pub fn primary_agent_allows_tool(agent: &ActivePrimaryAgent, tool_name: &str) -> bool {
-    let tool_name = normalise_tool_name(tool_name);
+    let tool_name = normalize_tool_name(tool_name);
 
     // Cleanup tools stay available so restricted agents can still join or
     // close already-running child work.
@@ -266,7 +266,7 @@ pub fn primary_agent_allows_tool(agent: &ActivePrimaryAgent, tool_name: &str) ->
     let allow_list_allows = agent
         .tools
         .as_ref()
-        .is_none_or(|tools| tools.iter().any(|allowed| normalise_tool_name(allowed) == tool_name));
+        .is_none_or(|tools| tools.iter().any(|allowed| normalize_tool_name(allowed) == tool_name));
     if !allow_list_allows {
         return false;
     }
@@ -274,14 +274,14 @@ pub fn primary_agent_allows_tool(agent: &ActivePrimaryAgent, tool_name: &str) ->
     !agent
         .disallowed_tools
         .iter()
-        .any(|denied| normalise_tool_name(denied) == tool_name)
+        .any(|denied| normalize_tool_name(denied) == tool_name)
 }
 
 /// Filters the emitted tool list down to those `primary_agent_allows_tool`
 /// permits for `agent`.
 ///
 /// KNOWN LIMITATION: filtering is by each tool's canonical
-/// `function_name()`, and `normalise_tool_name` only lowercases/trims — it
+/// `function_name()`, and `normalize_tool_name` only lowercases/trims — it
 /// does not alias-resolve. For multi-action tools that fold several legacy
 /// actions into one emitted name (e.g. `agent` folding
 /// spawn/wait/close/send_input/resume, or `mcp` folding connect/disconnect),
@@ -364,7 +364,7 @@ pub fn evaluate_active_primary_agent_permissions(
     )
 }
 
-fn normalise_tool_name(tool_name: &str) -> String {
+fn normalize_tool_name(tool_name: &str) -> String {
     tool_name.trim().to_ascii_lowercase()
 }
 

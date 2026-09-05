@@ -78,7 +78,7 @@ pub(super) fn cache_key(tool_name: &str, tool_args: Option<&Value>) -> String {
 
     if tool_name == CODE_SEARCH
         && let Some(args) = tool_args
-        && let Some(identity) = vtcode_core::tools::normalised_code_search_identity(args)
+        && let Some(identity) = vtcode_core::tools::normalized_code_search_identity(args)
     {
         return format!("{tool_name}:{identity}");
     }

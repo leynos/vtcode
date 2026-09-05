@@ -95,13 +95,13 @@ pub struct CodeSearchResponse {
 }
 
 #[derive(Debug)]
-struct NormalisedCodeSearchRequest {
+struct NormalizedCodeSearchRequest {
     query: CompactStr,
     filters: CodeSearchFilters,
 }
 
 impl CodeSearchRequest {
-    fn normalise(self) -> Result<NormalisedCodeSearchRequest> {
+    fn normalize(self) -> Result<NormalizedCodeSearchRequest> {
         let query = self.query.trim();
         if query.is_empty() {
             bail!("code_search query must contain at least one non-whitespace character");
@@ -118,21 +118,21 @@ impl CodeSearchRequest {
             None => CompactStr::from("."),
         };
 
-        let file_types = normalise_file_types(self.file_types)?;
-        let result_types = normalise_result_types(self.result_types)?;
+        let file_types = normalize_file_types(self.file_types)?;
+        let result_types = normalize_result_types(self.result_types)?;
         let max_results = self.max_results.unwrap_or(DEFAULT_MAX_RESULTS);
         if !(1..=100).contains(&max_results) {
             bail!("code_search max_results must be between 1 and 100 inclusive");
         }
 
-        Ok(NormalisedCodeSearchRequest {
+        Ok(NormalizedCodeSearchRequest {
             query: CompactStr::from(query),
             filters: CodeSearchFilters { path, file_types, result_types, max_results },
         })
     }
 }
 
-fn normalise_file_types(file_types: Option<Vec<CompactStr>>) -> Result<Vec<CompactStr>> {
+fn normalize_file_types(file_types: Option<Vec<CompactStr>>) -> Result<Vec<CompactStr>> {
     let Some(file_types) = file_types else {
         return Ok(Vec::new());
     };
@@ -140,7 +140,7 @@ fn normalise_file_types(file_types: Option<Vec<CompactStr>>) -> Result<Vec<Compa
         bail!("code_search file_types must not be empty when supplied");
     }
 
-    let mut normalised = Vec::with_capacity(file_types.len());
+    let mut normalized = Vec::with_capacity(file_types.len());
     for value in file_types {
         let trimmed = value.trim();
         let without_dot = trimmed.strip_prefix('.').unwrap_or(trimmed);
@@ -151,14 +151,14 @@ fn normalise_file_types(file_types: Option<Vec<CompactStr>>) -> Result<Vec<Compa
             .or_else(|| AstGrepLanguage::from_extension(without_dot))
             .ok_or_else(|| anyhow!("unknown code_search file type '{trimmed}'"))?;
         let canonical = CompactStr::from(language.as_str());
-        if !normalised.contains(&canonical) {
-            normalised.push(canonical);
+        if !normalized.contains(&canonical) {
+            normalized.push(canonical);
         }
     }
-    Ok(normalised)
+    Ok(normalized)
 }
 
-fn normalise_result_types(result_types: Option<Vec<CodeSearchResultType>>) -> Result<Vec<CodeSearchResultType>> {
+fn normalize_result_types(result_types: Option<Vec<CodeSearchResultType>>) -> Result<Vec<CodeSearchResultType>> {
     let Some(result_types) = result_types else {
         return Ok(CodeSearchResultType::ALL.to_vec());
     };
@@ -173,7 +173,7 @@ fn normalise_result_types(result_types: Option<Vec<CodeSearchResultType>>) -> Re
 }
 
 pub async fn execute(workspace_root: &Path, request: CodeSearchRequest) -> Result<CodeSearchResponse> {
-    let mut request = request.normalise()?;
+    let mut request = request.normalize()?;
     let scope = spawn_blocking({
         let workspace_root = workspace_root.to_path_buf();
         let path = request.filters.path.clone();
@@ -462,7 +462,7 @@ fn aggregate_search_results(inputs: SearchAggregationInputs) -> Result<Aggregate
     Ok(AggregatedCodeSearch { results, unavailable, truncated })
 }
 
-fn normalised_snippet(text: &str) -> CompactStr {
+fn normalized_snippet(text: &str) -> CompactStr {
     let compact = collapse_whitespace(text);
     CompactStr::from(truncate_byte_budget(&compact, SNIPPET_BYTE_CAP, ""))
 }
@@ -481,11 +481,11 @@ fn source_line(source: &str, line: usize) -> &str {
 
 pub fn validate_args(args: &serde_json::Value) -> Result<()> {
     let request: CodeSearchRequest = serde_json::from_value(args.clone())?;
-    request.normalise().map(|_| ())
+    request.normalize().map(|_| ())
 }
 
-pub use identity::normalised_identity;
-pub use identity::normalised_loop_identity;
+pub use identity::normalized_identity;
+pub use identity::normalized_loop_identity;
 pub use identity::scope_contains_mutated_path;
 pub use ranking::DeclarationInventory;
 pub use scope::ResolvedSearchScope;
@@ -505,11 +505,11 @@ mod tests {
 
     #[test]
     fn result_identity_includes_effective_max_results() {
-        let one = normalised_identity(&serde_json::json!({
+        let one = normalized_identity(&serde_json::json!({
             "query": "Widget",
             "max_results": 1
         }));
-        let hundred = normalised_identity(&serde_json::json!({
+        let hundred = normalized_identity(&serde_json::json!({
             "query": "Widget",
             "max_results": 100
         }));
@@ -517,9 +517,9 @@ mod tests {
     }
 
     #[test]
-    fn result_identity_normalises_omitted_max_results_to_default() {
-        let omitted = normalised_identity(&serde_json::json!({"query": " Widget "}));
-        let explicit = normalised_identity(&serde_json::json!({
+    fn result_identity_normalizes_omitted_max_results_to_default() {
+        let omitted = normalized_identity(&serde_json::json!({"query": " Widget "}));
+        let explicit = normalized_identity(&serde_json::json!({
             "query": "Widget",
             "max_results": DEFAULT_MAX_RESULTS
         }));
@@ -528,11 +528,11 @@ mod tests {
 
     #[test]
     fn loop_identity_deliberately_ignores_max_results() {
-        let one = normalised_loop_identity(&serde_json::json!({
+        let one = normalized_loop_identity(&serde_json::json!({
             "query": "Widget",
             "max_results": 1
         }));
-        let hundred = normalised_loop_identity(&serde_json::json!({
+        let hundred = normalized_loop_identity(&serde_json::json!({
             "query": "Widget",
             "max_results": 100
         }));
@@ -633,10 +633,10 @@ mod tests {
     }
 
     #[test]
-    fn code_search_defaults_normalise_to_locked_contract() {
+    fn code_search_defaults_normalize_to_locked_contract() {
         let request = request(json!({"query": "  Widget  "}))
-            .normalise()
-            .expect("request should normalise");
+            .normalize()
+            .expect("request should normalize");
 
         assert_eq!(request.query, "Widget");
         assert_eq!(request.filters.path, ".");
@@ -649,7 +649,7 @@ mod tests {
     }
 
     #[test]
-    fn code_search_filters_normalise_and_deduplicate() {
+    fn code_search_filters_normalize_and_deduplicate() {
         let request = request(json!({
             "query": "Widget",
             "path": " src ",
@@ -657,8 +657,8 @@ mod tests {
             "result_types": ["path", "definition", "path"],
             "max_results": 7
         }))
-        .normalise()
-        .expect("request should normalise");
+        .normalize()
+        .expect("request should normalize");
 
         assert_eq!(request.filters.path, "src");
         assert_eq!(request.filters.file_types, ["rust", "c"]);
@@ -738,7 +738,7 @@ mod tests {
             json!({"query": "Widget", "max_results": 0}),
             json!({"query": "Widget", "max_results": 101}),
         ] {
-            let error = request(invalid).normalise().expect_err("invalid value must fail");
+            let error = request(invalid).normalize().expect_err("invalid value must fail");
             assert!(error.to_string().contains("code_search"));
         }
     }
@@ -780,7 +780,7 @@ mod tests {
                 .expect("request object")
                 .insert(field.to_string(), json!(true));
             let error = serde_json::from_value::<CodeSearchRequest>(payload)
-                .expect_err("former field must fail deserialisation");
+                .expect_err("former field must fail deserialization");
             assert!(error.to_string().contains("unknown field"), "{field}: {error}");
         }
     }
@@ -807,7 +807,7 @@ mod tests {
             truncated: false,
             hints: Vec::new(),
         })
-        .expect("response should serialise");
+        .expect("response should serialize");
 
         let result = value["results"][0].as_object().expect("result object");
         assert_eq!(result.len(), 2);
@@ -817,10 +817,10 @@ mod tests {
 
     #[test]
     fn code_search_snippets_use_exact_utf8_safe_byte_cap() {
-        let ascii = normalised_snippet(&format!("Widget {}", "x".repeat(300)));
+        let ascii = normalized_snippet(&format!("Widget {}", "x".repeat(300)));
         assert_eq!(ascii.len(), SNIPPET_BYTE_CAP);
 
-        let unicode = normalised_snippet(&format!("Widget {}", "こ".repeat(200)));
+        let unicode = normalized_snippet(&format!("Widget {}", "こ".repeat(200)));
         assert!(unicode.len() <= SNIPPET_BYTE_CAP);
         assert!(unicode.len() > SNIPPET_BYTE_CAP - 4);
         assert!(std::str::from_utf8(unicode.as_bytes()).is_ok());
@@ -1135,8 +1135,8 @@ mod tests {
             "query": "Widget",
             "file_types": [".h", "c", ".jsx", "javascript", ".mdx", "md", ".proto", "protobuf", "Dockerfile", "docker"]
         }))
-        .normalise()
-        .expect("aliases normalise");
+        .normalize()
+        .expect("aliases normalize");
         assert_eq!(request.filters.file_types, ["c", "javascript", "md", "proto", "dockerfile"]);
         for (path, language) in [
             ("include/widget.h", AstGrepLanguage::C),

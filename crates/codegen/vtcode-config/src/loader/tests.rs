@@ -31,7 +31,7 @@ fn compiled_default_config_contains_release_loop_budgets() {
 }
 
 #[test]
-fn tool_profile_parses_and_serialises_in_tools_table() {
+fn tool_profile_parses_and_serializes_in_tools_table() {
     let config: VTCodeConfig = toml::from_str(
         r#"
 [tools]
@@ -41,9 +41,9 @@ profile = "advanced_vtcode"
     .expect("tool profile should parse from the tools table");
     assert_eq!(config.tools.profile, crate::core::ToolProfile::AdvancedVtCode);
 
-    let serialised = toml::to_string(&config).expect("configuration should serialise");
-    assert!(serialised.contains("[tools]"));
-    assert!(serialised.contains("profile = \"advanced_vtcode\""));
+    let serialized = toml::to_string(&config).expect("configuration should serialize");
+    assert!(serialized.contains("[tools]"));
+    assert!(serialized.contains("profile = \"advanced_vtcode\""));
 }
 
 #[test]
