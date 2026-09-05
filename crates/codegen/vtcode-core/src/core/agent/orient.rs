@@ -11,7 +11,7 @@
 use std::path::Path;
 
 use super::handoff::HandoffRequest;
-use super::harness_artifacts;
+use super::harness_artefacts;
 
 /// Structured orientation context gathered at session start.
 #[derive(Debug, Clone)]
@@ -92,7 +92,7 @@ impl OrientationContext {
                 "### Context Reset\n\
                  This session starts from a clean context. Previous conversation \
                  history was deliberately discarded to clear noise and bad \
-                 assumptions. Reorient from the artifacts below.\n\n{reset}"
+                 assumptions. Reorient from the artefacts below.\n\n{reset}"
             ));
         }
         if let Some(handoff) = &self.handoff {
@@ -111,7 +111,7 @@ impl OrientationContext {
 ///
 /// Reads all available external artifacts and returns a structured summary
 /// that can be injected into the system prompt. Each read is best-effort:
-/// a missing artifact is `None`, not an error.
+/// a missing artefact is `None`, not an error.
 pub fn gather_orientation(workspace_root: &Path, session_id: &str) -> OrientationContext {
     use crate::loop_memory::{LoopMemoryStore, MarkdownLoopMemory};
 
@@ -128,12 +128,12 @@ pub fn gather_orientation(workspace_root: &Path, session_id: &str) -> Orientatio
             )
         });
 
-    let spec_summary = harness_artifacts::read_spec_summary(workspace_root);
-    let contract_summary = harness_artifacts::read_contract_summary(workspace_root);
-    let sprint_contract_summary = harness_artifacts::read_sprint_contract_summary(workspace_root);
-    let evaluation_summary = harness_artifacts::read_evaluation_summary(workspace_root);
-    let outcome_verification_summary = harness_artifacts::read_outcome_verification_summary(workspace_root);
-    let feature_list_summary = harness_artifacts::read_feature_list_summary(workspace_root);
+    let spec_summary = harness_artefacts::read_spec_summary(workspace_root);
+    let contract_summary = harness_artefacts::read_contract_summary(workspace_root);
+    let sprint_contract_summary = harness_artefacts::read_sprint_contract_summary(workspace_root);
+    let evaluation_summary = harness_artefacts::read_evaluation_summary(workspace_root);
+    let outcome_verification_summary = harness_artefacts::read_outcome_verification_summary(workspace_root);
+    let feature_list_summary = harness_artefacts::read_feature_list_summary(workspace_root);
 
     let recent_git_log = gather_recent_git_log(workspace_root);
 
@@ -141,15 +141,15 @@ pub fn gather_orientation(workspace_root: &Path, session_id: &str) -> Orientatio
     let loop_notes = memory.read_notes().ok().filter(|s| !s.is_empty());
     let loop_decisions = memory.read_decisions().ok().filter(|s| !s.is_empty());
 
-    // Read compaction summary from persistent artifacts.
+    // Read compaction summary from persistent artefacts.
     // This follows the context engineering principle: "the summary should be
-    // written into a persistent artifact, such as progress.md, so that later
+    // written into a persistent artefact, such as progress.md, so that later
     // sessions can read it."
     let compaction_summary = read_compaction_summary(workspace_root);
 
     // Read context reset manifest if a reset was triggered by the previous
     // session. This signals that the current session starts from a clean
-    // context and should reorient from artifacts only.
+    // context and should reorient from artefacts only.
     let context_reset_manifest = read_context_reset_manifest(workspace_root);
 
     OrientationContext {
@@ -199,7 +199,7 @@ fn read_compaction_summary(workspace_root: &Path) -> Option<String> {
 /// session. Returns the markdown content of the manifest, or `None` if no
 /// reset occurred.
 fn read_context_reset_manifest(workspace_root: &Path) -> Option<String> {
-    let path = harness_artifacts::current_context_reset_path(workspace_root);
+    let path = harness_artefacts::current_context_reset_path(workspace_root);
     let content = std::fs::read_to_string(&path).ok()?;
     if content.trim().is_empty() { None } else { Some(content) }
 }

@@ -837,6 +837,6 @@ mod tests {
         assert!(!skill_md.contains("when-to-use:"));
         assert!(!skill_md.contains("when-not-to-use:"));
         assert!(skill_md.contains("`assets/`:"));
-        assert!(skill_md.contains("Output/Artifact:"));
+        assert!(skill_md.contains("Output/Artefact:"));
     }
 }

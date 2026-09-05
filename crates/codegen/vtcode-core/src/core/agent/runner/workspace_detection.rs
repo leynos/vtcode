@@ -47,7 +47,7 @@ pub fn infer_default_verify_commands(workspace_root: &Path) -> Vec<String> {
 /// Check if the workspace contains .NET project indicators.
 ///
 /// Looks for a `.sln` file at the workspace root (the standard top-level
-/// artifact for .NET solutions) or a `.csproj` file in immediate
+/// artefact for .NET solutions) or a `.csproj` file in immediate
 /// subdirectories (common for single-project repos).
 fn has_dotnet_manifest(dir: &Path) -> bool {
     // .sln files are always at the solution root.

@@ -68,9 +68,9 @@ impl AgentRunner {
         session_state.normalize();
         session_state.last_processed_message_idx = session_state.conversation.len();
 
-        // Write compaction summary to persistent artifacts for later sessions.
+        // Write compaction summary to persistent artefacts for later sessions.
         // This follows the context engineering principle: "the summary should be
-        // written into a persistent artifact, such as progress.md, so that later
+        // written into a persistent artefact, such as progress.md, so that later
         // sessions can read it."
         if let Some(ref envelope) = outcome.envelope {
             write_compaction_checkpoint_async(self._workspace.as_path(), envelope).await;
@@ -94,7 +94,7 @@ impl AgentRunner {
             outcome.mode,
             outcome.original_len,
             outcome.compacted_len,
-            outcome.history_artifact_path.as_deref(),
+            outcome.history_artefact_path.as_deref(),
         );
 
         info!(

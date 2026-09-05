@@ -66,7 +66,7 @@ static SECTION_HEADINGS: &[(&str, &str, &str)] = &[
         "Display name, base URL, and API key settings for one endpoint.",
     ),
     ("context", "Context Budget", "How much history and workspace context is retained."),
-    ("context.dynamic", "Dynamic Context", "Spooled outputs and generated workspace context artifacts."),
+    ("context.dynamic", "Dynamic Context", "Spooled outputs and generated workspace context artefacts."),
     ("context.ledger", "Decision Ledger", "Important decisions kept across the session."),
     ("debug", "Debug Logging", "Tracing and local diagnostics output."),
     ("dotfile_protection", "Dotfile Protection", "Extra safeguards for shell and editor dotfiles."),

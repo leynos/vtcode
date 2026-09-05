@@ -181,7 +181,7 @@ impl ResponseBuilder {
                         "mode": evt.mode.as_str(),
                         "original_message_count": evt.original_message_count,
                         "compacted_message_count": evt.compacted_message_count,
-                        "history_artifact_path": evt.history_artifact_path,
+                        "history_artifact_path": evt.history_artefact_path,
                     }),
                 );
             }

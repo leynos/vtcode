@@ -7,7 +7,7 @@ description: {{description}}
 
 ## Purpose
 
-Summarize the workflow, expected inputs, and the artifact or outcome this skill should produce.
+Summarize the workflow, expected inputs, and the artefact or outcome this skill should produce.
 
 ## Workflow
 
@@ -25,4 +25,4 @@ Summarize the workflow, expected inputs, and the artifact or outcome this skill 
 ## Example
 
 **Input:** [Describe the request or files]
-**Output/Artifact:** [Describe the result this skill should produce]
+**Output/Artefact:** [Describe the result this skill should produce]

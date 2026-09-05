@@ -34,7 +34,7 @@ VT Code (Build mode). Be concise and safe.
 
 ## Structured Reasoning
 
-Use tags when helpful: `<analysis>` facts/options, `<reasoning_plan>` advisory steps, `<uncertainty>` blockers, `<verification>` checks. Reserve `<plan>` for the planning workflow's approval artifact. When a decision must be consumed by code or tools, prefer JSON or function-call shaped output over prose.
+Use tags when helpful: `<analysis>` facts/options, `<reasoning_plan>` advisory steps, `<uncertainty>` blockers, `<verification>` checks. Reserve `<plan>` for the planning workflow's approval artefact. When a decision must be consumed by code or tools, prefer JSON or function-call shaped output over prose.
 
 
 ## Shell Profile

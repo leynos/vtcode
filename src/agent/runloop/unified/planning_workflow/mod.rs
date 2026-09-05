@@ -110,42 +110,42 @@ pub(crate) fn build_plan_repair_directive(feedback: &str) -> String {
          {feedback}\n\n\
          Re-emit only one compact `<proposed_plan>` block with Summary, numbered Implementation Steps in the canonical \
          form, Test Cases and Validation, and Assumptions and Defaults. Resolve every open decision. Do not emit tool \
-         calls or ask for approval until the artifact is complete."
+         calls or ask for approval until the artefact is complete."
     )
 }
 
-/// Resolve a [`PlanArtifactError`] into the bounded repair directive the model
+/// Resolve a [`PlanArtefactError`] into the bounded repair directive the model
 /// should receive on each bounded repair pass. This is the single owner
 /// of the error→feedback mapping so the initial-plan rejection path
 /// (`response_handling.rs`) and the later-turn approval rejection path
 /// (`exit_trigger.rs`) cannot diverge: invalid plans get their report-specific
 /// feedback, every other error variant gets the safe generic feedback, and the
 /// bounded policy prose is always applied by [`build_plan_repair_directive`].
-pub(crate) fn plan_repair_directive_for_error(error: &PlanArtifactError) -> String {
+pub(crate) fn plan_repair_directive_for_error(error: &PlanArtefactError) -> String {
     let feedback = match error {
-        PlanArtifactError::Invalid { report, .. } => report.repair_feedback(),
+        PlanArtefactError::Invalid { report, .. } => report.repair_feedback(),
         _ => PlanValidationReport::default().repair_feedback(),
     };
     build_plan_repair_directive(&feedback)
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ValidatedPlanArtifact {
+pub(crate) struct ValidatedPlanArtefact {
     pub(crate) plan_file: PathBuf,
     pub(crate) text: String,
     pub(crate) validation: PlanValidationReport,
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum PlanArtifactError {
+pub(crate) enum PlanArtefactError {
     #[error("the planning workflow has no persisted plan draft")]
     Missing,
     #[error("failed to read persisted plan {path}: {source}")]
     Read { path: PathBuf, source: std::io::Error },
-    #[error("invalid plan artifact: {reasons}")]
+    #[error("invalid plan artefact: {reasons}")]
     Invalid {
         reasons: String,
-        // Boxed to keep `PlanArtifactError` under the `result_large_err`
+        // Boxed to keep `PlanArtefactError` under the `result_large_err`
         // threshold — the report carries four Vecs and is only needed on the
         // error path, not the hot path.
         report: Box<PlanValidationReport>,
@@ -154,11 +154,11 @@ pub(crate) enum PlanArtifactError {
     Persistence { reason: String },
 }
 
-impl ValidatedPlanArtifact {
-    pub(crate) fn from_text(plan_file: PathBuf, text: String) -> Result<Self, PlanArtifactError> {
+impl ValidatedPlanArtefact {
+    pub(crate) fn from_text(plan_file: PathBuf, text: String) -> Result<Self, PlanArtefactError> {
         let validation = validate_plan_content(&text);
         if !validation.is_ready() {
-            return Err(PlanArtifactError::Invalid {
+            return Err(PlanArtefactError::Invalid {
                 reasons: validation.reasons().join("; "),
                 report: Box::new(validation),
             });
@@ -166,7 +166,7 @@ impl ValidatedPlanArtifact {
         Ok(Self { plan_file, text, validation })
     }
 
-    /// Construct a `ValidatedPlanArtifact` from an already-validated report,
+    /// Construct a `ValidatedPlanArtefact` from an already-validated report,
     /// skipping a redundant revalidation of the same immutable text. The caller
     /// must guarantee `validation.is_ready()` (enforced by debug_assert in
     /// non-release builds and by the persistence layer in all builds).
@@ -178,7 +178,7 @@ impl ValidatedPlanArtifact {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ApprovedPlanHandoff {
-    pub(crate) plan: ValidatedPlanArtifact,
+    pub(crate) plan: ValidatedPlanArtefact,
     pub(crate) tracker: TaskTrackerHandoff,
     pub(crate) execution_agent: Option<String>,
     pub(crate) skip_confirmations: bool,
@@ -189,7 +189,7 @@ pub(crate) async fn complete_approved_plan_handoff(
     tool_registry: &ToolRegistry,
     plan_session: &mut PlanningWorkflowSessionState,
     handle: &InlineHandle,
-    plan: ValidatedPlanArtifact,
+    plan: ValidatedPlanArtefact,
     active_agent_name: &str,
     skip_confirmations: bool,
     execution_context: PlanExecutionContext,
@@ -296,7 +296,7 @@ Improve launch time.
         // feedback, not the generic fallback.
         let report = validate_plan_content(INVALID_PROSE_PLAN);
         assert!(!report.is_ready());
-        let error = PlanArtifactError::Invalid {
+        let error = PlanArtefactError::Invalid {
             reasons: report.reasons().join("; "),
             report: Box::new(report),
         };
@@ -324,7 +324,7 @@ Improve launch time.
         // Missing / Read / Persistence errors have no report. The directive
         // must fall back to the generic default feedback, which still includes
         // the canonical format and policy prose — never empty or unbounded.
-        let error = PlanArtifactError::Missing;
+        let error = PlanArtefactError::Missing;
         let directive = plan_repair_directive_for_error(&error);
         assert!(
             directive.contains("Action -> files: [path/to/file.rs] -> verify: [cargo check]"),
@@ -352,7 +352,7 @@ Improve launch time.
         // directive must only carry validator-owned summaries (counts and
         // canonical format), never the raw step prose.
         let report = validate_plan_content(INVALID_PROSE_PLAN);
-        let error = PlanArtifactError::Invalid {
+        let error = PlanArtefactError::Invalid {
             reasons: report.reasons().join("; "),
             report: Box::new(report),
         };
@@ -364,28 +364,28 @@ Improve launch time.
         assert!(!directive.contains("Make startup lazy"), "directive must NOT echo raw plan step prose: {directive}");
     }
 
-    // --- ValidatedPlanArtifact::from_validated tests ---
+    // --- ValidatedPlanArtefact::from_validated tests ---
 
     #[test]
     fn from_validated_preserves_supplied_fields_without_revalidation() {
         // from_validated trusts the caller's report and must NOT re-parse the
         // text. We verify this by supplying a ready report alongside text that
         // would NOT validate on its own — if from_validated revalidated, the
-        // resulting artifact's validation would not be ready.
+        // resulting artefact's validation would not be ready.
         let ready_report = validate_plan_content(VALID_PLAN);
         assert!(ready_report.is_ready());
 
-        let artifact = ValidatedPlanArtifact::from_validated(
+        let artefact = ValidatedPlanArtefact::from_validated(
             PathBuf::from("/tmp/plan.md"),
             "this text would not pass validation on its own".to_string(),
             ready_report.clone(),
         );
 
-        assert_eq!(artifact.plan_file, PathBuf::from("/tmp/plan.md"));
-        assert_eq!(artifact.text, "this text would not pass validation on its own");
-        assert_eq!(artifact.validation, ready_report);
+        assert_eq!(artefact.plan_file, PathBuf::from("/tmp/plan.md"));
+        assert_eq!(artefact.text, "this text would not pass validation on its own");
+        assert_eq!(artefact.validation, ready_report);
         assert!(
-            artifact.validation.is_ready(),
+            artefact.validation.is_ready(),
             "from_validated must preserve the supplied ready report without revalidation"
         );
     }
@@ -398,6 +398,6 @@ Improve launch time.
         // keeps the skip-revalidation path safe.
         let non_ready = validate_plan_content(INVALID_PROSE_PLAN);
         assert!(!non_ready.is_ready());
-        let _ = ValidatedPlanArtifact::from_validated(PathBuf::from("/tmp/plan.md"), "unused".to_string(), non_ready);
+        let _ = ValidatedPlanArtefact::from_validated(PathBuf::from("/tmp/plan.md"), "unused".to_string(), non_ready);
     }
 }

@@ -255,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn effective_exec_events_path_does_not_create_default_harness_artifact() {
+    fn effective_exec_events_path_does_not_create_default_harness_artefact() {
         let resolved = effective_exec_events_path(None, Some(""), "session-123");
         assert!(resolved.is_none(), "empty config must not select a global harness path");
         assert!(

@@ -151,7 +151,7 @@ impl AlternateScreenSession {
 
         let mut stdout = io::stdout();
 
-        // Clear current line to remove artifacts like ^C from rapid presses
+        // Clear current line to remove artefacts like ^C from rapid presses
         let _ = execute!(stdout, MoveToColumn(0), Clear(ClearType::CurrentLine));
 
         let mut errors: MultiErrors<String> = MultiErrors::new();

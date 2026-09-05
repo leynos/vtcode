@@ -16,7 +16,7 @@ use crate::config::types::{ReasoningEffortLevel, SystemPromptMode, VerbosityLeve
 use crate::core::agent::blocked_handoff::{BlockedHandoffResume, write_blocked_handoff_with_resume};
 use crate::core::agent::completion::{check_completion_candidate, check_for_response_loop};
 use crate::core::agent::events::ExecEventRecorder;
-use crate::core::agent::harness_artifacts::existing_harness_artifact_paths;
+use crate::core::agent::harness_artefacts::existing_harness_artefact_paths;
 use crate::core::agent::harness_kernel::{
     HarnessRequestPlanInput, SessionToolCatalogSnapshot, build_harness_request_plan,
 };
@@ -1249,7 +1249,7 @@ impl AgentRunner {
             }
 
             if runtime.state.outcome.is_hard_block() || should_write_blocked_handoff {
-                let relevant_paths = existing_harness_artifact_paths(&self._workspace);
+                let relevant_paths = existing_harness_artefact_paths(&self._workspace);
                 match write_blocked_handoff_with_resume(
                     &self._workspace,
                     &self.session_id,
@@ -1260,10 +1260,10 @@ impl AgentRunner {
                         "Resume unavailable because the legacy agent runner does not create a session archive.",
                     ),
                 ) {
-                    Ok(artifacts) => emit_blocked_handoff_events(
+                    Ok(artefacts) => emit_blocked_handoff_events(
                         &mut event_recorder,
-                        &artifacts.current_path,
-                        &artifacts.archive_path,
+                        &artefacts.current_path,
+                        &artefacts.archive_path,
                     ),
                     Err(err) => warn!(
                         error = %err,

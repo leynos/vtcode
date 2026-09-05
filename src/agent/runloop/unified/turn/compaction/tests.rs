@@ -1104,7 +1104,7 @@ fn refresh_session_memory_envelope_merges_existing_continuity_fields() {
         delegation_notes: vec!["explorer: looked at compaction flow".to_string()],
         pending_intents: Vec::new(),
         applied_intent_ids: Vec::new(),
-        history_artifact_path: Some(".vtcode/history/session-alpha_0001.jsonl".to_string()),
+        history_artefact_path: Some(".vtcode/history/session-alpha_0001.jsonl".to_string()),
         generated_at: "2026-03-14T00:00:00Z".to_string(),
     };
     fs::write(
@@ -1271,7 +1271,7 @@ fn refresh_session_memory_envelope_is_throttled_when_nothing_changes() {
         delegation_notes: vec![],
         pending_intents: Vec::new(),
         applied_intent_ids: Vec::new(),
-        history_artifact_path: None,
+        history_artefact_path: None,
         generated_at: "2026-03-14T00:00:00Z".to_string(),
     };
     fs::write(
@@ -1673,7 +1673,7 @@ fn inject_latest_memory_envelope_rehydrates_resume_history() {
         delegation_notes: Vec::new(),
         pending_intents: Vec::new(),
         applied_intent_ids: Vec::new(),
-        history_artifact_path: Some(".vtcode/history/resume-session_001.jsonl".to_string()),
+        history_artefact_path: Some(".vtcode/history/resume-session_001.jsonl".to_string()),
         generated_at: "2026-03-14T00:00:00Z".to_string(),
     };
     fs::write(&envelope_path, serde_json::to_string_pretty(&envelope).expect("serialize envelope"))
@@ -1711,7 +1711,7 @@ fn inject_latest_memory_envelope_is_session_scoped() {
             delegation_notes: Vec::new(),
             pending_intents: Vec::new(),
             applied_intent_ids: Vec::new(),
-            history_artifact_path: None,
+            history_artefact_path: None,
             generated_at: "2026-03-14T00:00:00Z".to_string(),
         };
         fs::write(envelope_path, serde_json::to_string_pretty(&envelope).expect("serialize envelope"))
@@ -1751,7 +1751,7 @@ fn inject_latest_memory_envelope_requires_exact_session_prefix_match() {
             delegation_notes: Vec::new(),
             pending_intents: Vec::new(),
             applied_intent_ids: Vec::new(),
-            history_artifact_path: None,
+            history_artefact_path: None,
             generated_at: "2026-03-14T00:00:00Z".to_string(),
         };
         fs::write(history_dir.join(file_name), serde_json::to_string_pretty(&envelope).expect("serialize envelope"))
@@ -1853,7 +1853,7 @@ fn inject_latest_memory_envelope_uses_exact_session_id_when_prefixes_collide() {
             delegation_notes: Vec::new(),
             pending_intents: Vec::new(),
             applied_intent_ids: Vec::new(),
-            history_artifact_path: None,
+            history_artefact_path: None,
             generated_at: "2026-03-14T00:00:00Z".to_string(),
         };
         let file_name = format!("{}_{suffix}.memory.json", &session_id[..32]);
@@ -1927,7 +1927,7 @@ async fn summarized_fork_history_reuses_compaction_pipeline_and_prior_envelope()
         delegation_notes: Vec::new(),
         pending_intents: Vec::new(),
         applied_intent_ids: Vec::new(),
-        history_artifact_path: Some(".vtcode/history/session-source_0001.jsonl".to_string()),
+        history_artefact_path: Some(".vtcode/history/session-source_0001.jsonl".to_string()),
         generated_at: "2026-03-14T00:00:00Z".to_string(),
     };
     fs::write(
@@ -1982,7 +1982,7 @@ async fn budget_resume_summary_reuses_saved_envelope_without_provider_compaction
         delegation_notes: Vec::new(),
         pending_intents: Vec::new(),
         applied_intent_ids: Vec::new(),
-        history_artifact_path: None,
+        history_artefact_path: None,
         generated_at: "2026-03-14T00:00:00Z".to_string(),
     };
     fs::write(

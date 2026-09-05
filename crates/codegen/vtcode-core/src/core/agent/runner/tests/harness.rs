@@ -280,7 +280,7 @@ async fn exec_only_policy_skips_when_full_auto_is_disabled() {
 }
 
 #[tokio::test]
-async fn tool_loop_limit_writes_blocked_handoff_artifacts() {
+async fn tool_loop_limit_writes_blocked_handoff_artefacts() {
     let temp = TempDir::new().expect("tempdir");
     let workspace = workspace_root(&temp);
     seed_tracker(&workspace, json!(["Investigate loop"])).await;
@@ -317,7 +317,7 @@ async fn tool_loop_limit_writes_blocked_handoff_artifacts() {
 }
 
 #[tokio::test]
-async fn plan_build_evaluate_exec_creates_spec_and_evaluation_artifacts() {
+async fn plan_build_evaluate_exec_creates_spec_and_evaluation_artefacts() {
     let temp = TempDir::new().expect("tempdir");
     let workspace = workspace_root(&temp);
 
@@ -723,7 +723,7 @@ async fn evaluator_out_of_range_scorecard_forces_revision() {
 }
 
 #[tokio::test]
-async fn evaluator_exhaustion_writes_blocked_handoff_with_artifact_paths() {
+async fn evaluator_exhaustion_writes_blocked_handoff_with_artefact_paths() {
     let temp = TempDir::new().expect("tempdir");
     let workspace = workspace_root(&temp);
 
