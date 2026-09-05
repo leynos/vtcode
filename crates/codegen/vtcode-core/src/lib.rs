@@ -348,8 +348,8 @@ pub use sandboxing::{
 pub use tools::OptimizedToolRegistry;
 pub use tools::grep_file::GrepSearchManager;
 pub use tools::registry::{
-    McpBridge, PtySessionControl, SharedRegistry, ToolCatalog, ToolGroup, ToolMetrics, ToolRegistryApi, ToolResilience,
-    ToolSecurity, tool_groups,
+    McpBridge, PtySessionControl, SharedRegistry, ToolCatalogue, ToolGroup, ToolMetrics, ToolRegistryApi,
+    ToolResilience, ToolSecurity, tool_groups,
 };
 pub use tools::{ToolRegistration, ToolRegistry};
 pub use ui::diff_renderer::DiffRenderer;

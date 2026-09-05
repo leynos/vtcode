@@ -82,7 +82,7 @@ const TOOL_OPTIONS: &[ToolOption] = &[
     },
     ToolOption {
         id: tools::SEARCH_TOOLS,
-        description: "Search the tool catalog for available capabilities.",
+        description: "Search the tool catalogue for available capabilities.",
         badge: "Meta",
     },
     ToolOption {
@@ -862,8 +862,8 @@ async fn edit_tools_checklist(
     });
 
     loop {
-        let catalog = tool_catalog(current_tools, &selected);
-        let mut items = catalog
+        let catalogue = tool_catalogue(current_tools, &selected);
+        let mut items = catalogue
             .iter()
             .map(|(tool_id, subtitle, badge)| InlineListItem {
                 title: format!("[{}] {}", if selected.contains(tool_id) { "x" } else { " " }, tool_id),
@@ -952,7 +952,7 @@ async fn edit_tools_checklist(
     }
 }
 
-fn tool_catalog(initial_tools: &[String], selected: &BTreeSet<String>) -> Vec<(String, String, String)> {
+fn tool_catalogue(initial_tools: &[String], selected: &BTreeSet<String>) -> Vec<(String, String, String)> {
     let extra_tools = initial_tools
         .iter()
         .chain(selected.iter())
@@ -960,16 +960,16 @@ fn tool_catalog(initial_tools: &[String], selected: &BTreeSet<String>) -> Vec<(S
         .cloned()
         .collect::<BTreeSet<_>>();
 
-    let mut catalog = TOOL_OPTIONS
+    let mut catalogue = TOOL_OPTIONS
         .iter()
         .map(|entry| (entry.id.to_string(), entry.description.to_string(), entry.badge.to_string()))
         .collect::<Vec<_>>();
-    catalog.extend(
+    catalogue.extend(
         extra_tools
             .into_iter()
             .map(|tool_id| (tool_id, "Existing custom tool id.".to_string(), "Custom".to_string())),
     );
-    catalog
+    catalogue
 }
 
 async fn select_native_agent_name(ctx: &mut SlashCommandContext<'_>) -> Result<Option<String>> {

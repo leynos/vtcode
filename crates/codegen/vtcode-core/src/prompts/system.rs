@@ -188,7 +188,7 @@ pub enum SectionKind {
     /// temporal context, working directory).
     EnvironmentAddenda,
     /// "## Active Tools" dynamic tool guidance derived from the active tool
-    /// catalog.
+    /// catalogue.
     ToolGuidelines,
     /// "## Shell Profile" guidance for the current command environment.
     ShellProfile,
@@ -569,14 +569,14 @@ pub async fn apply_output_style(
 
 /// Build a cache key for the system prompt.
 ///
-/// `catalog_epoch` is the tool-catalog version at the time of the request. When
+/// `catalogue_epoch` is the tool-catalogue version at the time of the request. When
 /// the tool set changes (e.g. planning workflow is toggled, MCP tools are refreshed), the
 /// epoch advances and the old cached prompt is superseded rather than served stale.
 /// Pass `None` to get the same behaviour as before epoch tracking was introduced.
 fn cache_key(
     project_root: &Path,
     vtcode_config: Option<&crate::config::VTCodeConfig>,
-    catalog_epoch: Option<u64>,
+    catalogue_epoch: Option<u64>,
 ) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -600,7 +600,7 @@ fn cache_key(
         "default".hash(&mut hasher);
     }
 
-    catalog_epoch.unwrap_or(0).hash(&mut hasher);
+    catalogue_epoch.unwrap_or(0).hash(&mut hasher);
 
     format!("sys_prompt:{:016x}", hasher.finish())
 }

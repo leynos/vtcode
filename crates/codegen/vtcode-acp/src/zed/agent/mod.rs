@@ -17,7 +17,7 @@ use vtcode_core::tools::grep_file::GrepSearchManager;
 use vtcode_core::tools::handlers::{SessionSurface, SessionToolsConfig, ToolModelCapabilities};
 use vtcode_core::tools::registry::ToolRegistry as CoreToolRegistry;
 
-use super::helpers::PrimaryAgentCatalog;
+use super::helpers::PrimaryAgentCatalogue;
 use super::types::SessionHandle;
 
 pub(crate) mod handlers;
@@ -46,7 +46,7 @@ pub(crate) struct ZedAgent {
     client_capabilities: Arc<Mutex<Option<acp::ClientCapabilities>>>,
     client: Arc<Mutex<Option<Arc<ConnectionHandle>>>>,
     title: Option<String>,
-    primary_agents: PrimaryAgentCatalog,
+    primary_agents: PrimaryAgentCatalogue,
     tool_loop_limit: usize,
     tool_call_delay: Option<Duration>,
 }
@@ -60,7 +60,7 @@ impl ZedAgent {
         commands_config: CommandsConfig,
         system_prompt: String,
         title: Option<String>,
-        primary_agents: PrimaryAgentCatalog,
+        primary_agents: PrimaryAgentCatalogue,
     ) -> Self {
         let read_file_enabled = zed_config.tools.read_file;
         let workspace_root = config.workspace.clone();

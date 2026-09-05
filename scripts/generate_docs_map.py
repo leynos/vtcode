@@ -171,7 +171,7 @@ def main():
     content = [
         "# VT Code Documentation Map",
         "",
-        "This document serves as an index of all VT Code documentation. When users ask questions about VT Code itself (capabilities, features, configuration, etc.), this file provides the complete catalog of available documentation sources.",
+        "This document serves as an index of all VT Code documentation. When users ask questions about VT Code itself (capabilities, features, configuration, etc.), this file provides the complete catalogue of available documentation sources.",
         "",
         "## Quick Reference",
         "",

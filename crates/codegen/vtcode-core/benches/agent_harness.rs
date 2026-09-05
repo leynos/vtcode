@@ -22,9 +22,9 @@ use vtcode_core::core::agent::harness_kernel::{
 use vtcode_core::llm::provider::{Message, ToolChoice, ToolDefinition};
 use vtcode_core::prompts::{FewShotExample, FewShotStore, resolve_system_prompt_layers, sort_tool_definitions};
 use vtcode_core::tools::handlers::{
-    DeferredToolPolicy, SessionSurface, SessionToolCatalog, SessionToolsConfig, ToolModelCapabilities,
+    DeferredToolPolicy, SessionSurface, SessionToolCatalogue, SessionToolsConfig, ToolModelCapabilities,
 };
-use vtcode_core::tools::registry::SessionToolCatalogState;
+use vtcode_core::tools::registry::SessionToolCatalogueState;
 use vtcode_core::tools::registry::ToolRegistration;
 use vtcode_indexer::file_search::{FileIndexCache, FileSearchConfig, run, run_with_index};
 
@@ -49,7 +49,7 @@ fn sample_messages(count: usize) -> Vec<Message> {
     (0..count).map(|index| Message::user(format!("message {index}"))).collect()
 }
 
-fn benchmark_tool_catalog_registrations() -> Vec<ToolRegistration> {
+fn benchmark_tool_catalogue_registrations() -> Vec<ToolRegistration> {
     (0..128)
         .map(|index| {
             ToolRegistration::new(
@@ -59,7 +59,7 @@ fn benchmark_tool_catalog_registrations() -> Vec<ToolRegistration> {
                 |_, _| Box::pin(async { Ok(serde_json::Value::Null) }),
             )
             .with_description(format!(
-                "Project a repeated catalog tool with a realistic description for benchmark iteration {index}."
+                "Project a repeated catalogue tool with a realistic description for benchmark iteration {index}."
             ))
             .with_parameter_schema(serde_json::json!({
                 "type": "object",
@@ -72,12 +72,12 @@ fn benchmark_tool_catalog_registrations() -> Vec<ToolRegistration> {
         .collect()
 }
 
-fn benchmark_tool_catalog() -> SessionToolCatalog {
-    let registrations = benchmark_tool_catalog_registrations();
-    SessionToolCatalog::rebuild_from_registrations(registrations)
+fn benchmark_tool_catalogue() -> SessionToolCatalogue {
+    let registrations = benchmark_tool_catalogue_registrations();
+    SessionToolCatalogue::rebuild_from_registrations(registrations)
 }
 
-fn benchmark_tool_catalog_config() -> SessionToolsConfig {
+fn benchmark_tool_catalogue_config() -> SessionToolsConfig {
     SessionToolsConfig::full_public(
         SessionSurface::AgentRunner,
         CapabilityLevel::CodeSearch,
@@ -114,7 +114,7 @@ fn request_plan_benchmark(c: &mut Criterion) {
                 previous_response_id: Some("resp_123".to_string()),
                 prompt_cache_key: Some("session:test".to_string()),
                 prompt_cache_profile: None,
-                tool_catalog_hash: None,
+                tool_catalogue_hash: None,
                 system_prompt_prefix_hash: None,
             }))
         })
@@ -139,9 +139,9 @@ fn prepared_batch_planning_benchmark(c: &mut Criterion) {
     });
 }
 
-fn tool_catalog_projection_benchmark(c: &mut Criterion) {
+fn tool_catalogue_projection_benchmark(c: &mut Criterion) {
     let runtime = Runtime::new().expect("criterion tokio runtime");
-    let state = Arc::new(SessionToolCatalogState::new());
+    let state = Arc::new(SessionToolCatalogueState::new());
     let tools = Arc::new(RwLock::new((*sample_tools(32)).clone()));
 
     runtime.block_on(async {
@@ -167,21 +167,21 @@ fn tool_catalog_projection_benchmark(c: &mut Criterion) {
         })
     });
 
-    let catalog = benchmark_tool_catalog();
-    let catalog_config = benchmark_tool_catalog_config();
-    let _ = catalog.schema_entries(catalog_config.clone());
-    let _ = catalog.model_tools(catalog_config.clone());
+    let catalogue = benchmark_tool_catalogue();
+    let catalogue_config = benchmark_tool_catalogue_config();
+    let _ = catalogue.schema_entries(catalogue_config.clone());
+    let _ = catalogue.model_tools(catalogue_config.clone());
     let _benchmark = c.bench_function("agent_harness_tool_catalog_projection_repeat", |b| {
         b.iter(|| {
-            let schemas = catalog.schema_entries(catalog_config.clone());
-            let definitions = catalog.model_tools(catalog_config.clone());
+            let schemas = catalogue.schema_entries(catalogue_config.clone());
+            let definitions = catalogue.model_tools(catalogue_config.clone());
             black_box((schemas.len(), definitions.len()))
         })
     });
 }
 
-fn tool_catalog_deferred_policy_benchmark(c: &mut Criterion) {
-    let registrations = benchmark_tool_catalog_registrations();
+fn tool_catalogue_deferred_policy_benchmark(c: &mut Criterion) {
+    let registrations = benchmark_tool_catalogue_registrations();
     let policies = [
         ("hosted", DeferredToolPolicy::openai_hosted(Vec::new())),
         ("client_local", DeferredToolPolicy::client_local(Vec::new())),
@@ -190,18 +190,19 @@ fn tool_catalog_deferred_policy_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("agent_harness_tool_catalog_deferred_policy");
 
     for (policy_name, deferred_tool_policy) in policies {
-        let config = benchmark_tool_catalog_config().with_deferred_tool_policy(deferred_tool_policy);
+        let config = benchmark_tool_catalogue_config().with_deferred_tool_policy(deferred_tool_policy);
         let expected =
-            SessionToolCatalog::rebuild_from_registrations(registrations.clone()).model_tools(config.clone());
-        assert!(!expected.is_empty(), "{policy_name} catalog benchmark must emit tool definitions");
-        let actual = SessionToolCatalog::rebuild_from_registrations(registrations.clone()).model_tools(config.clone());
-        assert_eq!(actual, expected, "{policy_name} catalog output must remain stable");
+            SessionToolCatalogue::rebuild_from_registrations(registrations.clone()).model_tools(config.clone());
+        assert!(!expected.is_empty(), "{policy_name} catalogue benchmark must emit tool definitions");
+        let actual =
+            SessionToolCatalogue::rebuild_from_registrations(registrations.clone()).model_tools(config.clone());
+        assert_eq!(actual, expected, "{policy_name} catalogue output must remain stable");
 
         let _benchmark = group.bench_function(BenchmarkId::from_parameter(policy_name), |b| {
             b.iter_batched(
-                || SessionToolCatalog::rebuild_from_registrations(registrations.clone()),
-                |catalog| {
-                    let definitions = catalog.model_tools(config.clone());
+                || SessionToolCatalogue::rebuild_from_registrations(registrations.clone()),
+                |catalogue| {
+                    let definitions = catalogue.model_tools(config.clone());
                     black_box(definitions)
                 },
                 BatchSize::SmallInput,
@@ -327,8 +328,8 @@ criterion_group!(
     benches,
     request_plan_benchmark,
     prepared_batch_planning_benchmark,
-    tool_catalog_projection_benchmark,
-    tool_catalog_deferred_policy_benchmark,
+    tool_catalogue_projection_benchmark,
+    tool_catalogue_deferred_policy_benchmark,
     prompt_resource_cache_hit_benchmark,
     few_shot_selection_benchmark,
     tool_definition_sorting_benchmark,

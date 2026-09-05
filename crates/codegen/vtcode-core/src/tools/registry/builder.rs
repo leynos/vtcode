@@ -208,7 +208,7 @@ impl ToolRegistry {
             safety_gateway: Arc::new(SafetyGateway::default()),
             cgp_runtime_mode: Arc::new(RwLock::new(None)),
             tool_assembly: Arc::new(RwLock::new(ToolAssembly::empty())),
-            tool_catalog_state: Arc::new(super::tool_catalog_facade::SessionToolCatalogState::new()),
+            tool_catalogue_state: Arc::new(super::tool_catalogue_facade::SessionToolCatalogueState::new()),
             subagent_controller: Arc::new(RwLock::new(None)),
             session_scheduler: Arc::new(tokio::sync::Mutex::new(crate::scheduler::SessionScheduler::new())),
             session_model_tools: Arc::new(RwLock::new(None)),
@@ -216,7 +216,7 @@ impl ToolRegistry {
         };
 
         registry.rebuild_tool_assembly().await;
-        registry.sync_policy_catalog().await;
+        registry.sync_policy_catalogue().await;
         registry.initialize_resiliency_trackers();
         registry
     }

@@ -5,13 +5,13 @@ use wiremock::{
     matchers::{header, method, path, query_param, query_param_is_missing},
 };
 
-fn client_for(server: &MockServer) -> MergeGatewayCatalogClient {
+fn client_for(server: &MockServer) -> MergeGatewayCatalogueClient {
     let http_client = Client::builder().no_proxy().build().expect("test client should build");
-    MergeGatewayCatalogClient::try_with_client("secret-key", format!("{}/v1/openai", server.uri()), http_client)
+    MergeGatewayCatalogueClient::try_with_client("secret-key", format!("{}/v1/openai", server.uri()), http_client)
         .expect("client should build")
 }
 
-fn catalog_record(
+fn catalogue_record(
     model: &str,
     provider: &str,
     display_name: Option<&str>,
@@ -86,7 +86,7 @@ fn vendor_info_with_reasoning(
 async fn fetch_snapshot_paginates_and_preserves_filters() {
     let server = MockServer::start().await;
     let client = client_for(&server);
-    let filters = MergeCatalogFilters {
+    let filters = MergeCatalogueFilters {
         model: Some("anthropic/claude-opus-5".to_string()),
         provider: Some("anthropic".to_string()),
         vendor: Some("anthropic".to_string()),
@@ -95,7 +95,7 @@ async fn fetch_snapshot_paginates_and_preserves_filters() {
     let first_response = json!({
         "object": "list",
         "data": [
-            catalog_record(
+            catalogue_record(
                 "anthropic/claude-opus-5",
                 "anthropic",
                 Some("Claude Opus 5"),
@@ -119,7 +119,7 @@ async fn fetch_snapshot_paginates_and_preserves_filters() {
     let second_response = json!({
         "object": "list",
         "data": [
-            catalog_record(
+            catalogue_record(
                 "anthropic/claude-sonnet-4.6",
                 "anthropic",
                 Some("Claude Sonnet 4.6"),
@@ -174,14 +174,14 @@ async fn fetch_snapshot_paginates_and_preserves_filters() {
         .fetch_snapshot(&filters, None)
         .await
         .expect("snapshot fetch should succeed")
-        .expect("catalog should be modified");
+        .expect("catalogue should be modified");
 
     assert_eq!(snapshot.etag.as_deref(), Some("page-1"));
     assert_eq!(snapshot.models.len(), 2);
     assert_eq!(snapshot.models[0].model, "anthropic/claude-opus-5");
     assert_eq!(
         snapshot.models[0].service_tiers,
-        vec![MergeCatalogServiceTier::Standard, MergeCatalogServiceTier::Flex]
+        vec![MergeCatalogueServiceTier::Standard, MergeCatalogueServiceTier::Flex]
     );
 }
 
@@ -200,7 +200,7 @@ async fn fetch_snapshot_rejects_malformed_envelopes() {
         .await;
 
     let error = client
-        .fetch_snapshot(&MergeCatalogFilters::default(), None)
+        .fetch_snapshot(&MergeCatalogueFilters::default(), None)
         .await
         .expect_err("fetch should fail");
     assert!(error.to_string().contains("object=\"list\""));
@@ -226,7 +226,7 @@ async fn fetch_snapshot_rejects_blank_next_cursors() {
         .await;
 
     let error = client
-        .fetch_snapshot(&MergeCatalogFilters::default(), None)
+        .fetch_snapshot(&MergeCatalogueFilters::default(), None)
         .await
         .expect_err("fetch should fail");
     assert!(error.to_string().contains("next_cursor"));
@@ -266,7 +266,7 @@ async fn fetch_snapshot_rejects_repeated_cursors() {
         .await;
 
     let error = client
-        .fetch_snapshot(&MergeCatalogFilters::default(), None)
+        .fetch_snapshot(&MergeCatalogueFilters::default(), None)
         .await
         .expect_err("fetch should fail");
     assert!(error.to_string().contains("repeated pagination cursor"));
@@ -283,7 +283,7 @@ async fn fetch_snapshot_aggregates_capabilities_conservatively() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "object": "list",
             "data": [
-                catalog_record(
+                catalogue_record(
                     "anthropic/claude-opus-5",
                     "anthropic",
                     Some("Claude Opus 5"),
@@ -316,13 +316,13 @@ async fn fetch_snapshot_aggregates_capabilities_conservatively() {
         .await;
 
     let snapshot = client
-        .fetch_snapshot(&MergeCatalogFilters::default(), None)
+        .fetch_snapshot(&MergeCatalogueFilters::default(), None)
         .await
         .expect("snapshot fetch should succeed")
-        .expect("catalog should be modified");
+        .expect("catalogue should be modified");
 
     let model = &snapshot.models[0];
-    assert_eq!(model.availability, MergeCatalogAvailability::Available);
+    assert_eq!(model.availability, MergeCatalogueAvailability::Available);
     assert_eq!(model.context_window, Some(128_000));
     assert_eq!(model.max_output_tokens, Some(8_192));
     assert!(!model.supports_tool_use);
@@ -332,7 +332,7 @@ async fn fetch_snapshot_aggregates_capabilities_conservatively() {
     assert!(!model.supports_reasoning);
     assert!(!model.reasoning_disable_supported);
     assert!(model.reasoning_controls.is_empty());
-    assert_eq!(model.service_tiers, vec![MergeCatalogServiceTier::Standard]);
+    assert_eq!(model.service_tiers, vec![MergeCatalogueServiceTier::Standard]);
 }
 
 #[tokio::test]
@@ -346,7 +346,7 @@ async fn fetch_snapshot_aggregates_reasoning_capability() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "object": "list",
             "data": [
-                catalog_record(
+                catalogue_record(
                     "openai/gpt-5.5",
                     "openai",
                     Some("GPT 5.5"),
@@ -368,7 +368,7 @@ async fn fetch_snapshot_aggregates_reasoning_capability() {
                         )
                     })
                 ),
-                catalog_record(
+                catalogue_record(
                     "vendor/limited",
                     "vendor",
                     None,
@@ -399,10 +399,10 @@ async fn fetch_snapshot_aggregates_reasoning_capability() {
         .await;
 
     let snapshot = client
-        .fetch_snapshot(&MergeCatalogFilters::default(), None)
+        .fetch_snapshot(&MergeCatalogueFilters::default(), None)
         .await
         .expect("snapshot fetch should succeed")
-        .expect("catalog should be modified");
+        .expect("catalogue should be modified");
 
     let reasoning = &snapshot.models[0];
     assert!(reasoning.supports_reasoning);
@@ -431,7 +431,7 @@ async fn fetch_snapshot_treats_304_as_not_modified_when_etag_is_supplied() {
         .await;
 
     let snapshot = client
-        .fetch_snapshot(&MergeCatalogFilters::default(), Some("etag-1"))
+        .fetch_snapshot(&MergeCatalogueFilters::default(), Some("etag-1"))
         .await
         .expect("304 should not be an error");
 

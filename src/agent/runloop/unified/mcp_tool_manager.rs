@@ -5,7 +5,7 @@ use vtcode_core::llm::provider as uni;
 use vtcode_core::mcp::McpToolInfo;
 
 use crate::agent::runloop::unified::session_setup::refresh_tool_snapshot;
-use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
+use crate::agent::runloop::unified::tool_catalogue::ToolCatalogueState;
 use vtcode_core::tools::handlers::DeferredToolPolicy;
 
 pub(crate) struct McpToolManager;
@@ -19,7 +19,7 @@ impl McpToolManager {
     pub(crate) async fn enumerate_mcp_tools_after_refresh(
         tool_registry: &mut vtcode_core::tools::ToolRegistry,
         tools: &std::sync::Arc<tokio::sync::RwLock<Vec<uni::ToolDefinition>>>,
-        tool_catalog: &ToolCatalogState,
+        tool_catalogue: &ToolCatalogueState,
         config: &CoreAgentConfig,
         vt_cfg: Option<&vtcode_core::config::loader::VTCodeConfig>,
         tool_documentation_mode: ToolDocumentationMode,
@@ -31,14 +31,14 @@ impl McpToolManager {
                 refresh_tool_snapshot(
                     tool_registry,
                     tools,
-                    tool_catalog,
+                    tool_catalogue,
                     config,
                     vt_cfg,
                     tool_documentation_mode,
                     deferred_tool_policy,
                 )
                 .await;
-                tool_catalog.mark_pending_refresh("mcp_background_refresh");
+                tool_catalogue.mark_pending_refresh("mcp_background_refresh");
 
                 // Calculate which tools are newly added by comparing with last known tools
                 let current_tool_keys: Vec<String> =
@@ -64,7 +64,7 @@ impl McpToolManager {
     pub(crate) async fn enumerate_mcp_tools_after_initial_setup(
         tool_registry: &mut vtcode_core::tools::ToolRegistry,
         tools: &std::sync::Arc<tokio::sync::RwLock<Vec<uni::ToolDefinition>>>,
-        tool_catalog: &ToolCatalogState,
+        tool_catalogue: &ToolCatalogueState,
         config: &CoreAgentConfig,
         vt_cfg: Option<&vtcode_core::config::loader::VTCodeConfig>,
         tool_documentation_mode: ToolDocumentationMode,
@@ -75,14 +75,14 @@ impl McpToolManager {
         refresh_tool_snapshot(
             tool_registry,
             tools,
-            tool_catalog,
+            tool_catalogue,
             config,
             vt_cfg,
             tool_documentation_mode,
             deferred_tool_policy,
         )
         .await;
-        tool_catalog.mark_pending_refresh("mcp_background_refresh");
+        tool_catalogue.mark_pending_refresh("mcp_background_refresh");
 
         // Calculate which tools are newly added by comparing with last known tools
         let initial_tool_keys: Vec<String> = mcp_tools.iter().map(|t| format!("{}-{}", t.provider, t.name)).collect();

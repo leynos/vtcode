@@ -1,14 +1,14 @@
 //! Active-agent runtime-state rendering.
 //!
 //! This module is deliberately kept separate from prompt assembly: runtime
-//! state is appended by the request builder after the catalog has been
+//! state is appended by the request builder after the catalogue has been
 //! validated, while the assembly module owns section ordering and recovery.
 
 use std::fmt::Write as _;
 
 use vtcode_core::ActivePrimaryAgent;
 use vtcode_core::config::types::ReasoningEffortLevel;
-use vtcode_core::core::agent::harness_kernel::SessionToolCatalogSnapshot;
+use vtcode_core::core::agent::harness_kernel::SessionToolCatalogueSnapshot;
 use vtcode_core::prompts::PromptContext;
 use vtcode_core::subagents::load_primary_memory_appendix_async;
 
@@ -18,7 +18,7 @@ use crate::agent::runloop::unified::turn::context::TurnProcessingContext;
 pub(super) async fn render_primary_agent_runtime_context(
     ctx: &TurnProcessingContext<'_>,
     turn_snapshot: &TurnRequestSnapshot,
-    tool_snapshot: &SessionToolCatalogSnapshot,
+    tool_snapshot: &SessionToolCatalogueSnapshot,
     agent: &ActivePrimaryAgent,
     reasoning_effort: Option<ReasoningEffortLevel>,
     agent_prompt_context: Option<&PromptContext>,
@@ -99,7 +99,7 @@ async fn active_primary_agent_memory_appendix(
     }
 }
 
-fn render_tool_names(tool_snapshot: &SessionToolCatalogSnapshot) -> String {
+fn render_tool_names(tool_snapshot: &SessionToolCatalogueSnapshot) -> String {
     let Some(tools) = tool_snapshot.snapshot.as_deref() else {
         return "none".to_string();
     };

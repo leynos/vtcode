@@ -1,7 +1,7 @@
 //! Turn-request build orchestrator.
 //!
 //! Ties together the sibling `llm_request` submodules -- `snapshot`
-//! (per-turn state), `prompt_assembly` (system prompt + tool catalog),
+//! (per-turn state), `prompt_assembly` (system prompt + tool catalogue),
 //! `tool_shaping` (wire-facing tool filtering), `context_management`
 //! (provider compaction/edits payload), and `response_chain`
 //! (Responses-API history handling) -- into the single wire-ready
@@ -26,7 +26,7 @@ use vtcode_core::llm::provider::{self as uni, ParallelToolConfig};
 
 use super::context_management::resolve_context_management;
 use super::metrics::{
-    TokenBudgetBreakdown, ToolCatalogCacheMetrics, emit_token_budget_breakdown, emit_tool_catalog_cache_metrics,
+    TokenBudgetBreakdown, ToolCatalogueCacheMetrics, emit_token_budget_breakdown, emit_tool_catalogue_cache_metrics,
     estimate_message_history_tokens, estimate_tool_schema_tokens,
 };
 use super::prompt_assembly::{PromptAssemblyInput, assemble_prompt, render_primary_agent_runtime_context};
@@ -230,7 +230,7 @@ pub(super) async fn build_turn_request(
     let ordered_wire_tools = request_envelope.ordered_tools();
     let ordered_wire_tool_names: Vec<String> =
         ordered_wire_tools.iter().map(|tool| tool.function_name().to_string()).collect();
-    let catalog_tool_count = prompt_output.tool_snapshot.catalog_tools();
+    let catalogue_tool_count = prompt_output.tool_snapshot.catalogue_tools();
     let wire_tool_count = ordered_wire_tools.len();
     let deferred_tool_count = prompt_output
         .tool_snapshot
@@ -238,21 +238,21 @@ pub(super) async fn build_turn_request(
         .as_deref()
         .map_or(0, |tools| tools.iter().filter(|tool| tool.defer_loading == Some(true)).count());
     let active_loaded_skill_names = ctx.context_manager.active_loaded_skill_names().await;
-    let catalog_details_changed = ctx.session_stats.note_tool_catalog_observability_change(
+    let catalogue_details_changed = ctx.session_stats.note_tool_catalogue_observability_change(
         &ordered_wire_tool_names,
-        catalog_tool_count,
+        catalogue_tool_count,
         wire_tool_count,
         deferred_tool_count,
         &active_loaded_skill_names,
     );
     let stable_prefix_hash = request_envelope.prefix_hash();
-    let tool_catalog_hash = request_envelope.catalog_hash();
+    let tool_catalogue_hash = request_envelope.catalogue_hash();
     let prefix_change_reason =
         ctx.session_stats
-            .record_prompt_cache_fingerprint(request_model, stable_prefix_hash, tool_catalog_hash);
-    emit_tool_catalog_cache_metrics(
+            .record_prompt_cache_fingerprint(request_model, stable_prefix_hash, tool_catalogue_hash);
+    emit_tool_catalogue_cache_metrics(
         ctx,
-        ToolCatalogCacheMetrics {
+        ToolCatalogueCacheMetrics {
             step_count,
             model: request_model,
             cache_hit: prompt_output.tool_snapshot.cache_hit,
@@ -260,13 +260,13 @@ pub(super) async fn build_turn_request(
             request_user_input_enabled: turn_snapshot.request_user_input_enabled,
             available_tools: prompt_output.tool_snapshot.available_tools(),
             stable_prefix_hash,
-            tool_catalog_hash,
+            tool_catalogue_hash,
             prefix_change_reason,
-            ordered_wire_tool_names: catalog_details_changed.then_some(ordered_wire_tool_names.as_slice()),
-            catalog_tool_count: catalog_details_changed.then_some(catalog_tool_count),
-            wire_tool_count: catalog_details_changed.then_some(wire_tool_count),
-            deferred_tool_count: catalog_details_changed.then_some(deferred_tool_count),
-            active_loaded_skill_names: catalog_details_changed.then_some(active_loaded_skill_names.as_slice()),
+            ordered_wire_tool_names: catalogue_details_changed.then_some(ordered_wire_tool_names.as_slice()),
+            catalogue_tool_count: catalogue_details_changed.then_some(catalogue_tool_count),
+            wire_tool_count: catalogue_details_changed.then_some(wire_tool_count),
+            deferred_tool_count: catalogue_details_changed.then_some(deferred_tool_count),
+            active_loaded_skill_names: catalogue_details_changed.then_some(active_loaded_skill_names.as_slice()),
         },
     );
     let context_management = resolve_context_management(ctx, turn_snapshot, request_model);
@@ -341,7 +341,7 @@ pub(super) async fn build_turn_request(
         previous_response_id,
         prompt_cache_key,
         prompt_cache_profile: ctx.session_stats.prompt_cache_profile(),
-        tool_catalog_hash,
+        tool_catalogue_hash,
         system_prompt_prefix_hash: Some(stable_prefix_hash),
     });
 
@@ -585,7 +585,7 @@ mod tests {
         assert!(built.request.tool_choice.is_none());
 
         let system_prompt = built.request.system_prompt.as_ref().expect("system prompt").as_ref();
-        assert!(!system_prompt.contains("[Runtime Tool Catalog]"));
+        assert!(!system_prompt.contains("[Runtime Tool Catalogue]"));
     }
 
     #[tokio::test]
@@ -679,7 +679,7 @@ mod tests {
         assert!(!tool_names.contains(&"context7_lookup".to_string()));
 
         // `runtime_tools` must stay unfiltered: Copilot's out-of-band tool
-        // exposure and stats consumers need the full catalog even when the
+        // exposure and stats consumers need the full catalogue even when the
         // wire payload omits deferred definitions.
         assert_eq!(built.runtime_tools.as_ref().map(|tools| tools.len()), Some(2));
     }

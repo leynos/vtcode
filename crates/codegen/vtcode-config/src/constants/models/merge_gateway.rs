@@ -51,7 +51,7 @@ pub const SUPPORTED_MODELS: &[&str] = &[
 ];
 
 /// Routes that advertise provider-native `reasoning_effort` controls through
-/// Merge's `/v1/models` catalog.
+/// Merge's `/v1/models` catalogue.
 pub const REASONING_EFFORT_ROUTES: &[&str] = &[
     OPENAI_GPT_5_5,
     XAI_GROK_4_6,

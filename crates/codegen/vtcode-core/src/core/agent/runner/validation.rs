@@ -1,6 +1,6 @@
 use super::AgentRunner;
 use crate::config::types::CapabilityLevel;
-use crate::core::agent::harness_kernel::SessionToolCatalogSnapshot;
+use crate::core::agent::harness_kernel::SessionToolCatalogueSnapshot;
 use crate::llm::provider::{LLMRequest, ToolDefinition};
 use crate::tools::handlers::{SessionSurface, SessionToolsConfig, ToolModelCapabilities};
 use anyhow::{Result, anyhow};
@@ -33,7 +33,7 @@ impl AgentRunner {
         }
     }
 
-    async fn build_exposed_tool_snapshot(&self) -> Result<SessionToolCatalogSnapshot> {
+    async fn build_exposed_tool_snapshot(&self) -> Result<SessionToolCatalogueSnapshot> {
         let planning_active = self.tool_registry.is_planning_active();
         let request_user_input_enabled = false;
         // Keep definitions stable across runtime mode transitions by retaining
@@ -90,7 +90,7 @@ impl AgentRunner {
 
         Ok(self
             .tool_registry
-            .tool_catalog_state()
+            .tool_catalogue_state()
             .snapshot_for_stable_defs_with_active_names(
                 exposed_definitions,
                 active_tool_names,
@@ -122,9 +122,9 @@ impl AgentRunner {
         self.build_exposed_tool_definitions().await
     }
 
-    pub(crate) async fn build_universal_tool_snapshot(&self) -> Result<SessionToolCatalogSnapshot> {
+    pub(crate) async fn build_universal_tool_snapshot(&self) -> Result<SessionToolCatalogueSnapshot> {
         if let Some(definitions) = self.tool_definitions_override.read().clone() {
-            return Ok(self.tool_registry.tool_catalog_state().snapshot_for_defs(
+            return Ok(self.tool_registry.tool_catalogue_state().snapshot_for_defs(
                 definitions,
                 self.tool_registry.is_planning_active(),
                 false,

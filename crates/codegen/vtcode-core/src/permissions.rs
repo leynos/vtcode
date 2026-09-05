@@ -1221,13 +1221,13 @@ mod tests {
     }
 
     /// Turn_912/913 regression: the built-in plan agent's permission rules
-    /// must keep every tool in the planning wire catalog visible — the wire
+    /// must keep every tool in the planning wire catalogue visible — the wire
     /// shaper hides a tool only when ALL advertised permission requests are
     /// denied, and the old read-only allow list denied `exec_command` (Bash)
-    /// and `request_user_input` (Other), collapsing the planning catalog to
+    /// and `request_user_input` (Other), collapsing the planning catalogue to
     /// bare `code_search`. Mutation tools must stay fully denied.
     #[test]
-    fn builtin_plan_agent_keeps_planning_catalog_wire_visible() {
+    fn builtin_plan_agent_keeps_planning_catalogue_wire_visible() {
         let (_temp, workspace, cwd) = workspace_roots();
         let global = PermissionsConfig::default();
         let plan = vtcode_config::builtin_plan_agent();

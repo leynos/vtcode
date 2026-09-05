@@ -1,6 +1,6 @@
-//! Prompt/catalog alignment guard for agent turns.
+//! Prompt/catalogue alignment guard for agent turns.
 //!
-//! Before each turn the system prompt, the tool catalog snapshot, and the live
+//! Before each turn the system prompt, the tool catalogue snapshot, and the live
 //! planning workflow flag must all be mutually consistent.  This module provides a
 //! lightweight pure-function check so the runner can detect and self-heal any
 //! divergence before dispatching to the LLM provider.
@@ -8,19 +8,19 @@
 use futures::future::BoxFuture;
 use tracing::warn;
 
-use crate::core::agent::harness_kernel::SessionToolCatalogSnapshot;
+use crate::core::agent::harness_kernel::SessionToolCatalogueSnapshot;
 use crate::prompts::system::PLANNING_WORKFLOW_INTERVIEW_POLICY_LINE;
 
-/// A misalignment between the system prompt and the tool catalog snapshot.
+/// A misalignment between the system prompt and the tool catalogue snapshot.
 #[derive(Debug, PartialEq, Eq)]
 pub enum AlignmentError {
-    /// The catalog was built with a different planning workflow flag than the live registry.
-    /// The caller should re-snapshot the tool catalog to self-heal.
+    /// The catalogue was built with a different planning workflow flag than the live registry.
+    /// The caller should re-snapshot the tool catalogue to self-heal.
     PlanningWorkflowMismatch {
         snapshot_planning_active: bool,
         registry_planning_active: bool,
     },
-    /// The catalog was built with a different `request_user_input` flag than the
+    /// The catalogue was built with a different `request_user_input` flag than the
     /// live runtime.
     RequestUserInputMismatch {
         snapshot_request_user_input_enabled: bool,
@@ -32,11 +32,11 @@ pub enum AlignmentError {
     /// Mutating tool invocation guidance appears in a planning workflow system prompt.
     ///
     /// This should never occur after Phase 2-F/G (cache invalidation on planning workflow
-    /// transition + catalog epoch in the prompt cache key).  If it fires, treat it
+    /// transition + catalogue epoch in the prompt cache key).  If it fires, treat it
     /// as a canary metric indicating stale prompt generation.
     MutatingToolInPlanningWorkflowPrompt { tool_name: &'static str },
     /// The prompt's runtime tool metadata does not match the live snapshot.
-    PromptCatalogMetadataMismatch {
+    PromptCatalogueMetadataMismatch {
         field: &'static str,
         prompt_value: String,
         snapshot_value: String,
@@ -86,14 +86,14 @@ where
 }
 
 #[derive(Debug, Default)]
-struct RuntimeToolCatalogMetadata {
+struct RuntimeToolCatalogueMetadata {
     version: Option<u64>,
     epoch: Option<u64>,
     available_tools: Option<usize>,
     request_user_input_enabled: Option<bool>,
 }
 
-/// Validate consistency between the system prompt, tool catalog, and planning workflow flag.
+/// Validate consistency between the system prompt, tool catalogue, and planning workflow flag.
 ///
 /// Call this once per turn after both `system_instruction` and `tool_snapshot` are
 /// ready, but before the request is dispatched to the LLM provider.
@@ -102,9 +102,9 @@ struct RuntimeToolCatalogMetadata {
 ///
 /// Returns the first misalignment found.  Returns `Ok(())` when all three pieces of
 /// state are consistent.
-pub fn validate_prompt_catalog_alignment(
+pub fn validate_prompt_catalogue_alignment(
     system_instruction: &str,
-    tool_snapshot: &SessionToolCatalogSnapshot,
+    tool_snapshot: &SessionToolCatalogueSnapshot,
     planning_active: bool,
     request_user_input_enabled: bool,
 ) -> Result<(), AlignmentError> {
@@ -122,8 +122,8 @@ pub fn validate_prompt_catalog_alignment(
         });
     }
 
-    if let Some(metadata) = parse_runtime_tool_catalog_metadata(system_instruction) {
-        validate_runtime_tool_catalog_metadata(&metadata, tool_snapshot)?;
+    if let Some(metadata) = parse_runtime_tool_catalogue_metadata(system_instruction) {
+        validate_runtime_tool_catalogue_metadata(&metadata, tool_snapshot)?;
     }
 
     // Canary: mutating tool signatures that must never appear in a planning workflow prompt.
@@ -151,9 +151,9 @@ pub fn validate_prompt_catalog_alignment(
     Ok(())
 }
 
-fn parse_runtime_tool_catalog_metadata(system_instruction: &str) -> Option<RuntimeToolCatalogMetadata> {
-    let start = system_instruction.rfind("[Runtime Tool Catalog]")?;
-    let mut metadata = RuntimeToolCatalogMetadata::default();
+fn parse_runtime_tool_catalogue_metadata(system_instruction: &str) -> Option<RuntimeToolCatalogueMetadata> {
+    let start = system_instruction.rfind("[Runtime Tool Catalogue]")?;
+    let mut metadata = RuntimeToolCatalogueMetadata::default();
 
     for line in system_instruction[start..].lines().skip(1) {
         let trimmed = line.trim();
@@ -186,9 +186,9 @@ fn parse_runtime_tool_catalog_metadata(system_instruction: &str) -> Option<Runti
     Some(metadata)
 }
 
-fn validate_runtime_tool_catalog_metadata(
-    metadata: &RuntimeToolCatalogMetadata,
-    tool_snapshot: &SessionToolCatalogSnapshot,
+fn validate_runtime_tool_catalogue_metadata(
+    metadata: &RuntimeToolCatalogueMetadata,
+    tool_snapshot: &SessionToolCatalogueSnapshot,
 ) -> Result<(), AlignmentError> {
     validate_metadata_value("version", metadata.version, tool_snapshot.version)?;
     validate_metadata_value("epoch", metadata.epoch, tool_snapshot.epoch)?;
@@ -213,7 +213,7 @@ where
     if let Some(prompt_value) = prompt_value
         && prompt_value != snapshot_value
     {
-        return Err(AlignmentError::PromptCatalogMetadataMismatch {
+        return Err(AlignmentError::PromptCatalogueMetadataMismatch {
             field,
             prompt_value: prompt_value.to_string(),
             snapshot_value: snapshot_value.to_string(),
@@ -230,8 +230,8 @@ mod tests {
     use std::cell::Cell;
     use std::sync::Arc;
 
-    fn snapshot(planning_active: bool) -> SessionToolCatalogSnapshot {
-        SessionToolCatalogSnapshot::new(1, 1, planning_active, false, Some(Arc::new(Vec::new())), false)
+    fn snapshot(planning_active: bool) -> SessionToolCatalogueSnapshot {
+        SessionToolCatalogueSnapshot::new(1, 1, planning_active, false, Some(Arc::new(Vec::new())), false)
     }
 
     #[tokio::test]
@@ -256,7 +256,7 @@ mod tests {
             |_, value| {
                 validated_value.set(*value);
                 if *value == 0 {
-                    Err(AlignmentError::PromptCatalogMetadataMismatch {
+                    Err(AlignmentError::PromptCatalogueMetadataMismatch {
                         field: "version",
                         prompt_value: "0".to_string(),
                         snapshot_value: "1".to_string(),
@@ -278,14 +278,14 @@ mod tests {
 
     #[test]
     fn alignment_ok_when_planning_states_match() {
-        validate_prompt_catalog_alignment("normal prompt", &snapshot(false), false, false).unwrap();
-        validate_prompt_catalog_alignment(PLANNING_WORKFLOW_INTERVIEW_POLICY_LINE, &snapshot(true), true, false)
+        validate_prompt_catalogue_alignment("normal prompt", &snapshot(false), false, false).unwrap();
+        validate_prompt_catalogue_alignment(PLANNING_WORKFLOW_INTERVIEW_POLICY_LINE, &snapshot(true), true, false)
             .unwrap();
     }
 
     #[test]
     fn planning_workflow_mismatch_detected() {
-        let err = validate_prompt_catalog_alignment("any prompt", &snapshot(false), true, false)
+        let err = validate_prompt_catalogue_alignment("any prompt", &snapshot(false), true, false)
             .expect_err("mismatch should be detected");
         assert_eq!(
             err,
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn mutating_tool_in_planning_workflow_prompt_detected() {
-        let err = validate_prompt_catalog_alignment(
+        let err = validate_prompt_catalogue_alignment(
             &format!("{PLANNING_WORKFLOW_INTERVIEW_POLICY_LINE}\nyou may call apply_patch to mutate files"),
             &snapshot(true),
             true,
@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn mutating_file_actions_in_planning_workflow_prompt_are_detected() {
-        let err = validate_prompt_catalog_alignment(
+        let err = validate_prompt_catalogue_alignment(
             &format!("{PLANNING_WORKFLOW_INTERVIEW_POLICY_LINE}\nfile_operation write is unavailable"),
             &snapshot(true),
             true,
@@ -324,21 +324,21 @@ mod tests {
     fn planning_notice_can_mention_blocked_apply_patch() {
         let prompt = format!("{PLANNING_WORKFLOW_INTERVIEW_POLICY_LINE}\n{PLANNING_WORKFLOW_READ_ONLY_NOTICE_LINE}");
 
-        validate_prompt_catalog_alignment(&prompt, &snapshot(true), true, false)
+        validate_prompt_catalogue_alignment(&prompt, &snapshot(true), true, false)
             .expect("blocked tool mention should not be treated as call guidance");
     }
 
     #[test]
     fn no_false_positive_in_normal_mode_with_apply_patch() {
         // Mentioning apply_patch in a normal-mode prompt is fine.
-        validate_prompt_catalog_alignment("you may call apply_patch", &snapshot(false), false, false).unwrap();
+        validate_prompt_catalogue_alignment("you may call apply_patch", &snapshot(false), false, false).unwrap();
     }
 
     #[test]
     fn request_user_input_mismatch_detected() {
-        let err = validate_prompt_catalog_alignment(
+        let err = validate_prompt_catalogue_alignment(
             PLANNING_WORKFLOW_INTERVIEW_POLICY_LINE,
-            &SessionToolCatalogSnapshot::new(1, 1, true, false, Some(Arc::new(Vec::new())), false),
+            &SessionToolCatalogueSnapshot::new(1, 1, true, false, Some(Arc::new(Vec::new())), false),
             true,
             true,
         )
@@ -354,9 +354,9 @@ mod tests {
 
     #[test]
     fn prompt_policy_mismatch_detected() {
-        let err = validate_prompt_catalog_alignment(
+        let err = validate_prompt_catalogue_alignment(
             "missing planning policy header line",
-            &SessionToolCatalogSnapshot::new(1, 1, true, false, Some(Arc::new(Vec::new())), false),
+            &SessionToolCatalogueSnapshot::new(1, 1, true, false, Some(Arc::new(Vec::new())), false),
             true,
             false,
         )
@@ -370,14 +370,14 @@ mod tests {
     }
 
     #[test]
-    fn runtime_tool_catalog_metadata_mismatch_detected() {
-        let prompt = "normal prompt\n[Runtime Tool Catalog]\n- version: 1\n- epoch: 1\n- available_tools: 1\n- request_user_input_enabled: false";
+    fn runtime_tool_catalogue_metadata_mismatch_detected() {
+        let prompt = "normal prompt\n[Runtime Tool Catalogue]\n- version: 1\n- epoch: 1\n- available_tools: 1\n- request_user_input_enabled: false";
 
-        let err = validate_prompt_catalog_alignment(prompt, &snapshot(false), false, false)
+        let err = validate_prompt_catalogue_alignment(prompt, &snapshot(false), false, false)
             .expect_err("runtime tool metadata mismatch should be detected");
         assert_eq!(
             err,
-            AlignmentError::PromptCatalogMetadataMismatch {
+            AlignmentError::PromptCatalogueMetadataMismatch {
                 field: "available_tools",
                 prompt_value: "1".to_string(),
                 snapshot_value: "0".to_string(),
@@ -386,9 +386,9 @@ mod tests {
     }
 
     #[test]
-    fn runtime_tool_catalog_metadata_matches_snapshot() {
-        let prompt = "normal prompt\n[Runtime Tool Catalog]\n- version: 1\n- epoch: 1\n- available_tools: 0\n- request_user_input_enabled: false";
+    fn runtime_tool_catalogue_metadata_matches_snapshot() {
+        let prompt = "normal prompt\n[Runtime Tool Catalogue]\n- version: 1\n- epoch: 1\n- available_tools: 0\n- request_user_input_enabled: false";
 
-        validate_prompt_catalog_alignment(prompt, &snapshot(false), false, false).unwrap();
+        validate_prompt_catalogue_alignment(prompt, &snapshot(false), false, false).unwrap();
     }
 }

@@ -493,7 +493,7 @@ impl ToolRegistry {
         matches!(self.exec_session_completed(session_id).await, Ok(None))
     }
 
-    async fn public_tool_catalog_for_error(&self, requested_name: &str) -> (Vec<String>, Vec<String>) {
+    async fn public_tool_catalogue_for_error(&self, requested_name: &str) -> (Vec<String>, Vec<String>) {
         let mut tool_names = self.available_tools().await;
         tool_names.sort_unstable();
         tool_names.dedup();
@@ -1331,7 +1331,7 @@ impl ToolRegistry {
                 return Ok(error.to_json_value());
             }
 
-            let (all_tool_names, similar_tools) = self.public_tool_catalog_for_error(name).await;
+            let (all_tool_names, similar_tools) = self.public_tool_catalogue_for_error(name).await;
             let suggestion = if !similar_tools.is_empty() {
                 format!(" Did you mean: {}?", similar_tools.join(", "))
             } else {
@@ -1562,7 +1562,7 @@ impl ToolRegistry {
             } else {
                 // This should theoretically never happen since we checked tool_exists above
                 // Generate helpful error message with available tools
-                let (tool_names, similar_tools) = self.public_tool_catalog_for_error(&requested_name).await;
+                let (tool_names, similar_tools) = self.public_tool_catalogue_for_error(&requested_name).await;
                 let available_tool_list = tool_names.join(", ");
 
                 let suggestion = if !similar_tools.is_empty() {

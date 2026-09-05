@@ -28,7 +28,7 @@ fn default_acp_tool_names() -> Vec<String> {
     ]
 }
 
-/// The public catalog order derives from rig's `ToolSet` (HashMap-backed), so
+/// The public catalogue order derives from rig's `ToolSet` (HashMap-backed), so
 /// it is not a stable contract. Compare the tool set order-insensitively.
 fn assert_same_tool_set(actual: &[String], expected: &[String]) {
     let mut actual_sorted = actual.to_vec();
@@ -43,7 +43,7 @@ fn dynamic_tool_executor<'a>(_registry: &'a ToolRegistry, _args: Value) -> BoxFu
 }
 
 #[tokio::test]
-async fn public_catalog_uses_canonical_names_only() {
+async fn public_catalogue_uses_canonical_names_only() {
     let temp = TempDir::new().expect("tempdir");
     let registry = ToolRegistry::new(temp.path().to_path_buf()).await;
 
@@ -74,7 +74,7 @@ async fn acp_surface_matches_canonical_local_subset() {
 }
 
 #[tokio::test]
-async fn schema_entries_follow_public_catalog() {
+async fn schema_entries_follow_public_catalogue() {
     let temp = TempDir::new().expect("tempdir");
     let registry = ToolRegistry::new(temp.path().to_path_buf()).await;
 
@@ -99,7 +99,7 @@ async fn schema_entries_follow_public_catalog() {
 }
 
 #[tokio::test]
-async fn advanced_profile_exposes_code_search_outside_default_catalog() {
+async fn advanced_profile_exposes_code_search_outside_default_catalogue() {
     let temp = TempDir::new().expect("tempdir");
     let registry = ToolRegistry::new(temp.path().to_path_buf()).await;
 

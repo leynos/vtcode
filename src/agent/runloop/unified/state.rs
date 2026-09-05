@@ -91,20 +91,20 @@ pub(crate) struct SessionStats {
     prompt_cache_lineage_id: Option<String>,
     last_prompt_cache_model: Option<String>,
     last_stable_prefix_hash: Option<u64>,
-    last_tool_catalog_hash: Option<u64>,
+    last_tool_catalogue_hash: Option<u64>,
     last_prompt_cache_change_reason: Option<String>,
     prompt_cache_observations: usize,
     prompt_cache_model_changes: usize,
     prompt_cache_unchanged: usize,
     prompt_cache_stable_prefix_changes: usize,
-    prompt_cache_tool_catalog_changes: usize,
+    prompt_cache_tool_catalogue_changes: usize,
     prompt_cache_combined_changes: usize,
     request_envelope: Option<SessionRequestEnvelope>,
     request_envelope_identity: Option<RequestEnvelopeIdentity>,
     request_envelope_source_tools: Option<Arc<Vec<ToolDefinition>>>,
     request_segment_sequence: u64,
     pending_request_segment_id: Option<String>,
-    last_tool_catalog_observability: Option<ToolCatalogObservabilityIdentity>,
+    last_tool_catalogue_observability: Option<ToolCatalogueObservabilityIdentity>,
     recent_touched_files: VecDeque<String>,
     total_usage: HarnessUsage,
     total_cost_usd: Option<f64>,
@@ -132,15 +132,15 @@ struct RequestEnvelopeIdentity {
     provider: String,
     mode: String,
     prefix_hash: u64,
-    catalog_hash: Option<u64>,
+    catalogue_hash: Option<u64>,
     instruction_digest: u64,
     stable_prompt_hash: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ToolCatalogObservabilityIdentity {
+struct ToolCatalogueObservabilityIdentity {
     ordered_wire_tool_names: Vec<String>,
-    catalog_tool_count: usize,
+    catalogue_tool_count: usize,
     wire_tool_count: usize,
     deferred_tool_count: usize,
     active_loaded_skill_names: Vec<String>,
@@ -152,7 +152,7 @@ pub(crate) struct RequestSegmentTransition {
     pub previous_segment_id: Option<String>,
     pub new_segment_id: String,
     pub previous_prefix_hash: Option<String>,
-    pub previous_catalog_hash: Option<String>,
+    pub previous_catalogue_hash: Option<String>,
 }
 
 impl SessionStats {
@@ -162,10 +162,10 @@ impl SessionStats {
             .request_envelope
             .as_ref()
             .map(|envelope| format!("{:016x}", envelope.prefix_hash()));
-        let previous_catalog_hash = self
+        let previous_catalogue_hash = self
             .request_envelope
             .as_ref()
-            .and_then(SessionRequestEnvelope::catalog_hash)
+            .and_then(SessionRequestEnvelope::catalogue_hash)
             .map(|hash| format!("{hash:016x}"));
         self.request_segment_sequence = self.request_segment_sequence.saturating_add(1);
         let new_segment_id = format!("segment-{:08}", self.request_segment_sequence);
@@ -178,7 +178,7 @@ impl SessionStats {
             previous_segment_id,
             new_segment_id,
             previous_prefix_hash,
-            previous_catalog_hash,
+            previous_catalogue_hash,
         }
     }
 
@@ -219,7 +219,7 @@ impl SessionStats {
             (Some(previous), Some(current)) => Arc::ptr_eq(previous, current),
             _ => false,
         };
-        let identity_matches_without_catalog = self.request_envelope_identity.as_ref().is_some_and(|identity| {
+        let identity_matches_without_catalogue = self.request_envelope_identity.as_ref().is_some_and(|identity| {
             identity.model == model
                 && identity.provider == provider
                 && identity.mode == mode
@@ -228,7 +228,7 @@ impl SessionStats {
                 && identity.stable_prompt_hash == stable_prompt_hash
         });
         if source_matches
-            && identity_matches_without_catalog
+            && identity_matches_without_catalogue
             && let Some(envelope) = self.request_envelope.as_ref()
         {
             return envelope.clone();
@@ -245,7 +245,7 @@ impl SessionStats {
             provider: provider.to_string(),
             mode: mode.to_string(),
             prefix_hash: candidate.prefix_hash(),
-            catalog_hash: candidate.catalog_hash(),
+            catalogue_hash: candidate.catalogue_hash(),
             instruction_digest,
             stable_prompt_hash,
         };
@@ -279,25 +279,25 @@ impl SessionStats {
         envelope
     }
 
-    pub(crate) fn note_tool_catalog_observability_change(
+    pub(crate) fn note_tool_catalogue_observability_change(
         &mut self,
         ordered_wire_tool_names: &[String],
-        catalog_tool_count: usize,
+        catalogue_tool_count: usize,
         wire_tool_count: usize,
         deferred_tool_count: usize,
         active_loaded_skill_names: &[String],
     ) -> bool {
-        let identity = ToolCatalogObservabilityIdentity {
+        let identity = ToolCatalogueObservabilityIdentity {
             ordered_wire_tool_names: ordered_wire_tool_names.to_vec(),
-            catalog_tool_count,
+            catalogue_tool_count,
             wire_tool_count,
             deferred_tool_count,
             active_loaded_skill_names: active_loaded_skill_names.to_vec(),
         };
-        if self.last_tool_catalog_observability.as_ref() == Some(&identity) {
+        if self.last_tool_catalogue_observability.as_ref() == Some(&identity) {
             return false;
         }
-        self.last_tool_catalog_observability = Some(identity);
+        self.last_tool_catalogue_observability = Some(identity);
         true
     }
 
@@ -424,19 +424,19 @@ impl SessionStats {
         self.prompt_cache_lineage_id = None;
         self.last_prompt_cache_model = None;
         self.last_stable_prefix_hash = None;
-        self.last_tool_catalog_hash = None;
+        self.last_tool_catalogue_hash = None;
         self.last_prompt_cache_change_reason = None;
         self.prompt_cache_observations = 0;
         self.prompt_cache_model_changes = 0;
         self.prompt_cache_unchanged = 0;
         self.prompt_cache_stable_prefix_changes = 0;
-        self.prompt_cache_tool_catalog_changes = 0;
+        self.prompt_cache_tool_catalogue_changes = 0;
         self.prompt_cache_combined_changes = 0;
         self.request_envelope = None;
         self.request_envelope_identity = None;
         self.request_envelope_source_tools = None;
         self.pending_request_segment_id = None;
-        self.last_tool_catalog_observability = None;
+        self.last_tool_catalogue_observability = None;
         self.recent_touched_files.clear();
         self.stop_reason = None;
         self.request_gap = RequestGapTracker::default();
@@ -543,11 +543,11 @@ impl SessionStats {
             model_changes: self.prompt_cache_model_changes,
             unchanged: self.prompt_cache_unchanged,
             stable_prefix_changes: self.prompt_cache_stable_prefix_changes,
-            tool_catalog_changes: self.prompt_cache_tool_catalog_changes,
+            tool_catalogue_changes: self.prompt_cache_tool_catalogue_changes,
             combined_changes: self.prompt_cache_combined_changes,
             last_change_reason: self.last_prompt_cache_change_reason.clone(),
             last_stable_prefix_hash: self.last_stable_prefix_hash,
-            last_tool_catalog_hash: self.last_tool_catalog_hash,
+            last_tool_catalogue_hash: self.last_tool_catalogue_hash,
         }
     }
 
@@ -555,14 +555,14 @@ impl SessionStats {
         &mut self,
         model: &str,
         stable_prefix_hash: u64,
-        tool_catalog_hash: Option<u64>,
+        tool_catalogue_hash: Option<u64>,
     ) -> &'static str {
         let reason = if self.last_prompt_cache_model.as_deref() != Some(model) {
             "model"
         } else {
             match (
                 self.last_stable_prefix_hash == Some(stable_prefix_hash),
-                self.last_tool_catalog_hash == tool_catalog_hash,
+                self.last_tool_catalogue_hash == tool_catalogue_hash,
             ) {
                 (true, true) => "unchanged",
                 (false, true) => "stable_prefix",
@@ -576,7 +576,7 @@ impl SessionStats {
 
         self.last_prompt_cache_model = Some(model.to_string());
         self.last_stable_prefix_hash = Some(stable_prefix_hash);
-        self.last_tool_catalog_hash = tool_catalog_hash;
+        self.last_tool_catalogue_hash = tool_catalogue_hash;
         self.last_prompt_cache_change_reason = Some(reason.to_string());
 
         reason
@@ -587,7 +587,7 @@ impl SessionStats {
             "model" => &mut self.prompt_cache_model_changes,
             "unchanged" => &mut self.prompt_cache_unchanged,
             "stable_prefix" => &mut self.prompt_cache_stable_prefix_changes,
-            "tool_catalog" => &mut self.prompt_cache_tool_catalog_changes,
+            "tool_catalog" => &mut self.prompt_cache_tool_catalogue_changes,
             "stable_prefix+tool_catalog" => &mut self.prompt_cache_combined_changes,
             _ => &mut self.prompt_cache_unchanged,
         }
@@ -714,8 +714,8 @@ fn request_identity_boundary_reason(
         || previous.prefix_hash != current.prefix_hash
     {
         SegmentBoundaryReason::Instructions
-    } else if previous.catalog_hash != current.catalog_hash {
-        SegmentBoundaryReason::ToolCatalogEpoch
+    } else if previous.catalogue_hash != current.catalogue_hash {
+        SegmentBoundaryReason::ToolCatalogueEpoch
     } else {
         SegmentBoundaryReason::PrimaryAgent
     }
@@ -744,11 +744,11 @@ pub(crate) struct PromptCacheDiagnostics {
     pub model_changes: usize,
     pub unchanged: usize,
     pub stable_prefix_changes: usize,
-    pub tool_catalog_changes: usize,
+    pub tool_catalogue_changes: usize,
     pub combined_changes: usize,
     pub last_change_reason: Option<String>,
     pub last_stable_prefix_hash: Option<u64>,
-    pub last_tool_catalog_hash: Option<u64>,
+    pub last_tool_catalogue_hash: Option<u64>,
 }
 
 pub(crate) fn is_follow_up_prompt_like(input: &str) -> bool {
@@ -996,11 +996,11 @@ mod tests {
 
         assert_eq!(first.segment_id(), second.segment_id());
         assert_eq!(first.system_prompt().as_bytes(), second.system_prompt().as_bytes());
-        assert_eq!(first.catalog_hash(), second.catalog_hash());
+        assert_eq!(first.catalogue_hash(), second.catalogue_hash());
     }
 
     #[test]
-    fn shared_request_envelope_reuses_catalog_until_segment_boundary() {
+    fn shared_request_envelope_reuses_catalogue_until_segment_boundary() {
         let mut stats = SessionStats::default();
         let tools = Arc::new(vec![function_tool("exec_command"), function_tool("zeta")]);
 
@@ -1024,7 +1024,7 @@ mod tests {
         );
 
         assert_eq!(first.segment_id(), second.segment_id());
-        assert!(Arc::ptr_eq(stats.request_envelope_source_tools.as_ref().expect("source catalog"), &tools));
+        assert!(Arc::ptr_eq(stats.request_envelope_source_tools.as_ref().expect("source catalogue"), &tools));
 
         let transition = stats.begin_request_segment(SegmentBoundaryReason::Compaction);
         assert_eq!(transition.previous_segment_id.as_deref(), Some(first.segment_id()));
@@ -1043,7 +1043,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_request_envelope_preserves_equivalent_distinct_catalogs() {
+    fn shared_request_envelope_preserves_equivalent_distinct_catalogues() {
         let mut stats = SessionStats::default();
         let first_tools = Arc::new(vec![function_tool("zeta"), function_tool("exec_command")]);
         let second_tools = Arc::new(vec![function_tool("exec_command"), function_tool("zeta")]);
@@ -1054,7 +1054,7 @@ mod tests {
             stats.request_envelope_shared("model", "provider", "build", "fixed".to_string(), Some(second_tools), 7, 11);
 
         assert_eq!(first.segment_id(), second.segment_id());
-        assert_eq!(first.catalog_hash(), second.catalog_hash());
+        assert_eq!(first.catalogue_hash(), second.catalogue_hash());
         assert_eq!(first.ordered_tools(), second.ordered_tools());
     }
 
@@ -1085,14 +1085,14 @@ mod tests {
     }
 
     #[test]
-    fn tool_catalog_observability_is_change_only() {
+    fn tool_catalogue_observability_is_change_only() {
         let mut stats = SessionStats::default();
         let tools = vec!["exec_command".to_string(), "search_tools".to_string()];
         let skills = vec!["rust".to_string()];
 
-        assert!(stats.note_tool_catalog_observability_change(&tools, 5, 2, 3, &skills));
-        assert!(!stats.note_tool_catalog_observability_change(&tools, 5, 2, 3, &skills));
-        assert!(stats.note_tool_catalog_observability_change(&tools, 6, 2, 4, &skills));
+        assert!(stats.note_tool_catalogue_observability_change(&tools, 5, 2, 3, &skills));
+        assert!(!stats.note_tool_catalogue_observability_change(&tools, 5, 2, 3, &skills));
+        assert!(stats.note_tool_catalogue_observability_change(&tools, 6, 2, 4, &skills));
     }
 
     #[test]
@@ -1275,11 +1275,11 @@ mod tests {
                 model_changes: 2,
                 unchanged: 1,
                 stable_prefix_changes: 1,
-                tool_catalog_changes: 1,
+                tool_catalogue_changes: 1,
                 combined_changes: 1,
                 last_change_reason: Some("model".to_string()),
                 last_stable_prefix_hash: Some(55),
-                last_tool_catalog_hash: Some(66),
+                last_tool_catalogue_hash: Some(66),
             }
         );
     }

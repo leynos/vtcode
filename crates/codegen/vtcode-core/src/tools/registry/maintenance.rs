@@ -8,16 +8,16 @@ use anyhow::Result;
 use super::{ToolLatencyStats, ToolRegistry, ToolTimeoutCategory};
 
 impl ToolRegistry {
-    pub(super) async fn sync_policy_catalog(&self) {
+    pub(super) async fn sync_policy_catalogue(&self) {
         let lifecycle = {
             let policy_gateway = self.policy_gateway.clone();
             policy_gateway.full_auto_catalogue_lifecycle()
         };
         let _lifecycle_guard = lifecycle.lock().await;
-        self.sync_policy_catalog_serialized().await;
+        self.sync_policy_catalogue_serialized().await;
     }
 
-    async fn sync_policy_catalog_serialized(&self) {
+    async fn sync_policy_catalogue_serialized(&self) {
         // Include aliases so policy prompts stay in sync with exposed names
         let mut available = self.available_tools().await;
         available.extend(
@@ -25,7 +25,7 @@ impl ToolRegistry {
                 .registrations_snapshot()
                 .into_iter()
                 .filter(|registration| {
-                    matches!(registration.catalog_source(), super::registration::ToolCatalogSource::Dynamic)
+                    matches!(registration.catalogue_source(), super::registration::ToolCatalogueSource::Dynamic)
                 })
                 .map(|registration| registration.name().to_string()),
         );
@@ -138,7 +138,7 @@ impl ToolRegistry {
         }
 
         self.prewarm_search_runtime();
-        self.sync_policy_catalog().await;
+        self.sync_policy_catalogue().await;
         self.initialized.store(true, std::sync::atomic::Ordering::Relaxed);
 
         Ok(())

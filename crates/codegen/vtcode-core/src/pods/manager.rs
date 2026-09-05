@@ -1,4 +1,4 @@
-use super::catalog::{PodCatalog, PodProfile};
+use super::catalogue::{PodCatalogue, PodProfile};
 use super::state::{PodGpu, PodHealth, PodState, PodsState, RunningModel};
 use super::store::PodsStore;
 use super::transport::{PodTransport, SshTransport};
@@ -95,13 +95,13 @@ pub struct PodStatusReport {
     pub entries: Vec<PodListEntry>,
 }
 
-/// Pod manager coordinating persisted state, catalog lookup, and SSH execution.
+/// Pod manager coordinating persisted state, catalogue lookup, and SSH execution.
 #[derive(Clone)]
 pub struct PodManager {
     store: PodsStore,
     transport: Arc<dyn PodTransport>,
     cached_state: Arc<RwLock<Option<PodsState>>>,
-    cached_catalog: Arc<RwLock<Option<PodCatalog>>>,
+    cached_catalogue: Arc<RwLock<Option<PodCatalogue>>>,
 }
 
 impl PodManager {
@@ -116,7 +116,7 @@ impl PodManager {
             store,
             transport,
             cached_state: Arc::new(RwLock::new(None)),
-            cached_catalog: Arc::new(RwLock::new(None)),
+            cached_catalogue: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -131,23 +131,23 @@ impl PodManager {
         Ok(state)
     }
 
-    /// Load the deployment catalog, returning a cached copy when available.
-    pub async fn load_catalog(&self) -> Result<PodCatalog> {
-        if let Some(catalog) = self.cached_catalog.read().clone() {
-            return Ok(catalog);
+    /// Load the deployment catalogue, returning a cached copy when available.
+    pub async fn load_catalogue(&self) -> Result<PodCatalogue> {
+        if let Some(catalogue) = self.cached_catalogue.read().clone() {
+            return Ok(catalogue);
         }
 
-        let catalog = self.store.load_catalog().await?;
-        *self.cached_catalog.write() = Some(catalog.clone());
-        Ok(catalog)
+        let catalogue = self.store.load_catalogue().await?;
+        *self.cached_catalogue.write() = Some(catalogue.clone());
+        Ok(catalogue)
     }
 
     /// Start a model on the active pod, uploading launch scripts via SSH.
     pub async fn start_model(&self, request: PodStartRequest) -> Result<PodStartResult> {
         let mut state = self.load_state().await?;
-        let catalog = self.load_catalog().await?;
+        let catalogue = self.load_catalogue().await?;
         let pod = self.resolve_active_pod(&mut state, &request).await?;
-        let profile = self.resolve_profile(&catalog, &pod, &request)?;
+        let profile = self.resolve_profile(&catalogue, &pod, &request)?;
         let gpu_count = request.requested_gpu_count.unwrap_or(profile.gpu_count).max(1);
 
         if gpu_count > pod.gpu_count() {
@@ -294,14 +294,14 @@ impl PodManager {
         self.transport.exec_stream(&pod.ssh, &command).await
     }
 
-    /// Return the catalog profiles split into compatible and incompatible with the active pod.
+    /// Return the catalogue profiles split into compatible and incompatible with the active pod.
     pub async fn known_models(&self) -> Result<KnownModelsReport> {
         let state = self.load_state().await?;
         let Some(pod) = state.active_pod.as_ref() else {
             return Err(anyhow!("no active pod configured"));
         };
-        let catalog = self.load_catalog().await?;
-        let (compatible, incompatible) = catalog.compatible_profiles(pod);
+        let catalogue = self.load_catalogue().await?;
+        let (compatible, incompatible) = catalogue.compatible_profiles(pod);
 
         Ok(KnownModelsReport {
             compatible: compatible
@@ -363,9 +363,14 @@ impl PodManager {
         Ok(pod)
     }
 
-    fn resolve_profile(&self, catalog: &PodCatalog, pod: &PodState, request: &PodStartRequest) -> Result<PodProfile> {
+    fn resolve_profile(
+        &self,
+        catalogue: &PodCatalogue,
+        pod: &PodState,
+        request: &PodStartRequest,
+    ) -> Result<PodProfile> {
         if let Some(profile_name) = request.profile.as_deref() {
-            let profile = catalog
+            let profile = catalogue
                 .profiles
                 .iter()
                 .find(|profile| profile.name == profile_name)
@@ -374,7 +379,7 @@ impl PodManager {
             return Ok(profile);
         }
 
-        let mut candidates = catalog.profiles_for_model(&request.model);
+        let mut candidates = catalogue.profiles_for_model(&request.model);
         candidates.retain(|profile| profile.matches_pod(pod));
 
         if let Some(requested_gpu_count) = request.requested_gpu_count {
@@ -647,7 +652,7 @@ fn default_command_template() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pods::catalog::PodProfile;
+    use crate::pods::catalogue::PodProfile;
     use crate::pods::state::PodGpu;
     use crate::pods::transport::CommandOutput;
     use anyhow::Result;
@@ -740,7 +745,7 @@ mod tests {
         manager.store.save_state(&state).await.expect("save");
         manager
             .store
-            .save_catalog(&PodCatalog {
+            .save_catalogue(&PodCatalogue {
                 version: "1".to_string(),
                 profiles: vec![PodProfile {
                     name: "test".to_string(),
@@ -753,7 +758,7 @@ mod tests {
                 }],
             })
             .await
-            .expect("save catalog");
+            .expect("save catalogue");
 
         let result = manager
             .start_model(PodStartRequest {

@@ -61,7 +61,7 @@ fn resolve_inherit_model(
 }
 
 /// Narrow, read-only view of the config-defined runtime model sources that are
-/// not part of the built-in [`ModelId`] catalog.
+/// not part of the built-in [`ModelId`] catalogue.
 ///
 /// Isolating these two fields (instead of passing the whole [`VTCodeConfig`])
 /// keeps the custom-model fallback policy independently testable and prevents
@@ -101,7 +101,7 @@ fn finalize_subagent_model(
 ///
 /// Local providers (Ollama, LM Studio, llama.cpp), `[providers.<name>]`
 /// overrides, and `[[custom_providers]]` endpoints expose arbitrary model
-/// identifiers that are not part of the built-in catalog, so a strict
+/// identifiers that are not part of the built-in catalogue, so a strict
 /// `parse::<ModelId>()` would incorrectly reject valid runtime models. This
 /// helper honors those identifiers instead of failing subagent resolution.
 ///
@@ -136,7 +136,7 @@ fn parse_model_or_custom(sources: &RuntimeModelSources<'_>, model: &str, provide
     }
 
     // Local providers expose arbitrary runtime model identifiers that cannot be
-    // validated against the built-in catalog; honor them as custom models.
+    // validated against the built-in catalogue; honor them as custom models.
     if let Some(provider) = hinted_provider.filter(|provider| provider.is_local()) {
         return Ok(ModelId::Custom(provider.to_string(), trimmed.to_string()));
     }

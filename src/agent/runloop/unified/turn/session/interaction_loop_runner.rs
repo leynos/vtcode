@@ -135,7 +135,7 @@ pub(super) async fn run_interaction_loop_impl(
                     mcp_manager,
                     ctx.tool_registry,
                     ctx.tools,
-                    ctx.tool_catalog,
+                    ctx.tool_catalogue,
                     ctx.config,
                     ctx.vt_cfg.as_ref(),
                     &**ctx.provider_client,
@@ -144,7 +144,7 @@ pub(super) async fn run_interaction_loop_impl(
                         .map(|cfg| cfg.agent.tool_documentation_mode)
                         .unwrap_or_default(),
                     ctx.renderer,
-                    state.mcp_catalog_initialized,
+                    state.mcp_catalogue_initialized,
                     state.last_mcp_refresh,
                     state.last_known_mcp_tools,
                     state.pending_mcp_refresh,
