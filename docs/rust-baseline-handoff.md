@@ -189,3 +189,32 @@ The local `/home/leynos/.local/bin/ast-grep` failed to execute with
 `Permission denied`; it was not retried. Resolve that tool-access issue before
 using it for later structural passes. A bounded literal replacement was used
 for the 14 identical PTY helper call sites after inspecting them individually.
+
+## PR 20 review follow-up
+
+The user marked [PR #20](https://github.com/leynos/vtcode/pull/20) ready for
+review and requested the comenq-coderabbit workflow through merge, followed by
+worker-led review of each subsequent PR in order. The published train now
+contains 16 layers through [PR #51](https://github.com/leynos/vtcode/pull/51),
+in native GitHub stack #37. Original branch heads are preserved locally in
+`refs/backup/rust-baseline-pre-review-20260905/` before any rebases.
+
+The cancelled `tool-eval` job exceeded its 15-minute ceiling after a 10m43s
+cold workspace build. The workflow now permits 30 minutes for the build and
+PTY test compilation. Shared environment guards cover the complete temporary
+environment scopes in steering and startup tests. The six command-session
+tests use a fallible async rstest fixture that owns the registry, configuration
+guard, and workspace. TTY tests independently cover all required capabilities.
+Only rstest 0.26.1 and its two new transitive packages were added to the lock.
+All seven review-fix gates passed. The workspace suite passed 10,075 tests
+with 17 skipped; the three harness suites passed 67 tests. Evidence is in
+`/tmp/*-review-1-vtcode-df12-onboarding-test-quality-sweep.out`. Handoff
+Markdownlint and Nixie also passed; optional ast-grep remained unavailable.
+
+Every CodeRabbit reply includes `@coderabbitai`. The two requested spelling
+corrections are already in PR #34; the validation-module split is assigned to
+the later structural layer and tracked in
+[issue #52](https://github.com/leynos/vtcode/issues/52). Reconcile pre-merge
+checks after inline findings
+are settled, raise valid out-of-scope findings as issues, and preserve each
+layer's full gates when rebasing before a push with `--force-with-lease`.

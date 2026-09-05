@@ -200,6 +200,12 @@ mod tests {
 
     #[test]
     fn capability_predicates_require_their_declared_features() {
+        struct CapabilityCase {
+            name: &'static str,
+            capabilities: TtyCapabilities,
+            expected_basic_tui: bool,
+        }
+
         let fully_featured = TtyCapabilities {
             color: true,
             cursor: true,
@@ -208,15 +214,55 @@ mod tests {
             mouse: true,
             keyboard_enhancement: true,
         };
-        assert!(fully_featured.is_fully_featured());
-        assert!(fully_featured.is_basic_tui());
+        assert!(
+            fully_featured.is_fully_featured(),
+            "all declared terminal capabilities should enable fully featured mode",
+        );
+        assert!(fully_featured.is_basic_tui(), "colour and cursor support should enable basic TUI mode",);
 
         let no_color = TtyCapabilities { color: false, ..fully_featured };
-        assert!(!no_color.is_fully_featured());
-        assert!(!no_color.is_basic_tui());
+        assert!(!no_color.is_fully_featured(), "missing colour support should disable fully featured mode",);
+        assert!(!no_color.is_basic_tui(), "missing colour support should disable basic TUI mode",);
 
         let no_mouse = TtyCapabilities { mouse: false, ..fully_featured };
-        assert!(!no_mouse.is_fully_featured());
-        assert!(no_mouse.is_basic_tui());
+        assert!(!no_mouse.is_fully_featured(), "missing mouse support should disable fully featured mode",);
+        assert!(no_mouse.is_basic_tui(), "mouse support is not required for basic TUI mode",);
+
+        let partial_capability_cases = [
+            CapabilityCase {
+                name: "no_cursor",
+                capabilities: TtyCapabilities { cursor: false, ..fully_featured },
+                expected_basic_tui: false,
+            },
+            CapabilityCase {
+                name: "no_bracketed_paste",
+                capabilities: TtyCapabilities { bracketed_paste: false, ..fully_featured },
+                expected_basic_tui: true,
+            },
+            CapabilityCase {
+                name: "no_focus_events",
+                capabilities: TtyCapabilities { focus_events: false, ..fully_featured },
+                expected_basic_tui: true,
+            },
+            CapabilityCase {
+                name: "no_keyboard_enhancement",
+                capabilities: TtyCapabilities { keyboard_enhancement: false, ..fully_featured },
+                expected_basic_tui: true,
+            },
+        ];
+
+        for capability_case in partial_capability_cases {
+            assert!(
+                !capability_case.capabilities.is_fully_featured(),
+                "{} should disable fully featured mode",
+                capability_case.name,
+            );
+            assert_eq!(
+                capability_case.capabilities.is_basic_tui(),
+                capability_case.expected_basic_tui,
+                "{} should have the documented basic TUI result",
+                capability_case.name,
+            );
+        }
     }
 }

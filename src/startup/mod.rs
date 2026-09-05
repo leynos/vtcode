@@ -1365,6 +1365,7 @@ mod validation_tests {
             .to_str()
             .ok_or_else(|| anyhow!("fallback workspace path is not valid UTF-8: {}", workspace.display()))?;
         let root = workspace.as_os_str();
+        let _environment_guard = env_lock::lock();
         temp_env::with_vars(
             [
                 ("CODEX_HOME", Some(root)),

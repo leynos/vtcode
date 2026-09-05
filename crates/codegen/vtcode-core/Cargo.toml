@@ -209,6 +209,7 @@ assert_fs = { workspace = true }
 proptest = "1.11"
 criterion = { workspace = true }
 serial_test = { workspace = true }
+rstest = { workspace = true }
 
 [[bench]]
 name = "tool_pipeline"

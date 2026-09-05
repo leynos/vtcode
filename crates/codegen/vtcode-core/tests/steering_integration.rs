@@ -4,6 +4,7 @@ mod config_defaults;
 
 use anyhow::{Context, Result};
 use tokio::sync::mpsc;
+use vtcode_commons::env_lock;
 use vtcode_core::config::{ModelId, VTCodeConfig};
 use vtcode_core::core::agent::runner::{AgentRunner, RunnerSettings};
 use vtcode_core::core::agent::steering::SteeringMessage;
@@ -17,6 +18,7 @@ fn prequeued_stop_cancels_before_the_runner_starts_a_model_turn() -> Result<()> 
     let codex_home = workspace.path().join("codex-home");
     std::fs::create_dir(&codex_home).context("create isolated CODEX_HOME")?;
 
+    let _environment_guard = env_lock::lock();
     temp_env::with_vars([("CODEX_HOME", Some(codex_home.as_os_str()))], || {
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
