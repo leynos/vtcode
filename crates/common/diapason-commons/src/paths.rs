@@ -182,7 +182,7 @@ pub fn resolve_workspace_path(workspace_root: &Path, user_path: &Path) -> Result
     Ok(canonical)
 }
 
-/// Return a canonicalised absolute path that is guaranteed to reside inside the
+/// Return a canonicalized absolute path that is guaranteed to reside inside the
 /// provided `workspace_root`.  If the path is outside the workspace an error is
 /// returned.
 pub fn secure_path(workspace_root: &Path, user_path: &Path) -> Result<PathBuf> {
@@ -474,7 +474,7 @@ pub trait WorkspacePaths: Send + Sync {
         None
     }
 
-    /// Returns an optional directory for telemetry or log artifacts.
+    /// Returns an optional directory for telemetry or log artefacts.
     fn telemetry_dir(&self) -> Option<PathBuf> {
         None
     }

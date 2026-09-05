@@ -91,7 +91,7 @@ impl SessionStyles {
 
     /// Get the default style with both foreground and background from the theme.
     /// Painting the theme background ensures readability regardless of terminal
-    /// color scheme (e.g. a light theme on a dark terminal no longer appears blank).
+    /// colour scheme (e.g. a light theme on a dark terminal no longer appears blank).
     pub(crate) fn default_style(&self) -> Style {
         let mut style = Style::default();
         if let Some(background) = self.theme.background.map(ratatui_colour_from_ansi) {
