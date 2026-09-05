@@ -36,6 +36,7 @@ use parking_lot::{Mutex, RwLock};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tracing::{info, warn};
 use vtcode_config::auth::OpenAIChatGptAuthHandle;
 
@@ -122,6 +123,9 @@ pub struct AgentRunner {
     max_turns: usize,
     /// Loop detector to prevent infinite exploration
     loop_detector: Mutex<LoopDetector>,
+    /// Explicit role marker for delegated children. This is independent of
+    /// runtime permission overrides, which primary agents may also use.
+    is_subagent: AtomicBool,
     /// Cached shell policy patterns to avoid recompilation
 
     /// Receiver for steering messages (e.g., stop, pause)
@@ -376,6 +380,7 @@ impl AgentRunner {
             thread_handle,
             max_turns,
             loop_detector: Mutex::new(loop_detector),
+            is_subagent: AtomicBool::new(false),
             steering_receiver: Mutex::new(steering_receiver),
             tool_definitions_override: RwLock::new(None),
             tool_arg_transform: None,
@@ -392,6 +397,11 @@ impl AgentRunner {
     /// budgets and earlier navigation streak intervention.
     pub fn set_subagent_mode(&self, is_subagent: bool) {
         self.loop_detector.lock().set_subagent_mode(is_subagent);
+        self.is_subagent.store(is_subagent, Ordering::Release);
+    }
+
+    fn is_subagent(&self) -> bool {
+        self.is_subagent.load(Ordering::Acquire)
     }
 
     /// Attach a subagent controller to this runner's tool registry so the
