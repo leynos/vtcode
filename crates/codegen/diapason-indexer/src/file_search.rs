@@ -1135,7 +1135,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn indexed_search_honors_cancellation_before_scoring() {
+    async fn indexed_search_honours_cancellation_before_scoring() {
         let workspace = TempDir::new().expect("workspace");
         std::fs::write(workspace.path().join("widget.rs"), "fn widget() {}\n").expect("fixture source");
         let cache = FileIndexCache::new(workspace.path().to_path_buf(), Vec::new(), false, 1);
@@ -1222,7 +1222,7 @@ mod tests {
     }
 
     #[test]
-    fn uncached_parallel_search_honors_cancellation() {
+    fn uncached_parallel_search_honours_cancellation() {
         let workspace = TempDir::new().expect("workspace");
         for index in 0..32 {
             std::fs::write(workspace.path().join(format!("widget_{index:03}.rs")), "fn widget() {}\n")

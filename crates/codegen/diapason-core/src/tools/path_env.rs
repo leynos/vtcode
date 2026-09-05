@@ -109,7 +109,7 @@ pub(crate) fn resolve_program_path_from_paths(program: &str, paths: impl Iterato
     None
 }
 
-// NOTE: Static resolution of program paths is intentionally deprecated in favor of
+// NOTE: Static resolution of program paths is intentionally deprecated in favour of
 // always executing commands through the user's login shell (via `resolve_fallback_shell`).
 // The `resolve_program_path_from_paths` helper remains for explicit path iteration tests.
 

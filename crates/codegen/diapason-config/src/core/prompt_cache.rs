@@ -702,7 +702,7 @@ prompt_cache_key_mode = "off"
     }
 
     #[test]
-    fn build_openai_prompt_cache_key_honors_disabled_or_off_mode() {
+    fn build_openai_prompt_cache_key_honours_disabled_or_off_mode() {
         assert_eq!(build_openai_prompt_cache_key(false, &OpenAIPromptCacheKeyMode::Session, Some("id")), None);
         assert_eq!(build_openai_prompt_cache_key(true, &OpenAIPromptCacheKeyMode::Off, Some("id")), None);
         assert_eq!(build_openai_prompt_cache_key(true, &OpenAIPromptCacheKeyMode::Session, Some("  ")), None);
@@ -764,7 +764,7 @@ prompt_cache_key_mode = "off"
     }
 
     #[test]
-    fn gap_threshold_honors_explicit_override() {
+    fn gap_threshold_honours_explicit_override() {
         let cfg = PromptCachingConfig {
             gap_warning_threshold_secs: Some(42),
             ..Default::default()

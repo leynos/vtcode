@@ -220,7 +220,7 @@ async fn fetch_markdown(url: &str, timeout_secs: u64, max_bytes: usize) -> Resul
     // input URL as a single path segment and append it to the base URL.
     //
     // SECURITY: this is the only place the request URL is constructed. A
-    // future refactor that "cleans up" the string concatenation in favor
+    // future refactor that "cleans up" the string concatenation in favour
     // of `Url::join` or any other URL builder will silently turn the
     // tool into an SSRF relay. The regression test
     // `request_url_targets_defuddle_host_not_target_host` guards this.
