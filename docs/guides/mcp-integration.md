@@ -9,7 +9,7 @@ with the loader that powers the CLI and the reusable `diapason-config` crate.
 For the canonical protocol behaviour and the latest server/client expectations,
 consult the upstream MCP reference index at
 `https://modelcontextprotocol.io/llms.txt`. That index links to the full
-architecture, transport, authorisation, logging, and resource specification
+architecture, transport, authorization, logging, and resource specification
 documents maintained by the MCP community.
 
 > **Developer Note:** If you're implementing MCP module features or integrating
@@ -43,7 +43,7 @@ mirrors the naming and behavioural guarantees defined there.
 Open `config.toml` and ensure the global MCP section is enabled. The top-level
 table mirrors the `McpClientConfig` defaults, letting you tune concurrency,
 timeout, and transport behaviour in one place. All values fall back to the
-defaults compiled into `diapason-config`, summarised in the following table:
+defaults compiled into `diapason-config`, summarized in the following table:
 
 | Key                            | Default                                                             | Purpose                                                                                                                                         |
 | ------------------------------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |

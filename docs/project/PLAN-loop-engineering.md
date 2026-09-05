@@ -22,7 +22,7 @@ at scale.
    verifier shares no context with the proposer.
 3. **Loop state persistence.** `crates/codegen/diapason-core/src/loop_state.rs`
    captures the durable state a loop scheduler reads on resume: current step
-   index, last artifact path, and status. State lives under
+   index, last artefact path, and status. State lives under
    `.diapason/state/loop-{id}.json`.
 4. **Cost guardrails.** Long loops accrue spend; `SessionBudget`
    (`crates/codegen/diapason-core/src/llm/usage_cost.rs`) pauses or escalates
@@ -61,7 +61,7 @@ or should escalate.
 The evaluator may emit at most eight notes. Each note is normalized and
 validated before it is rendered into `current_evaluation.md`. A replan receives
 the validated notes, repeats every scope verbatim, and creates tracker
-verification steps from the falsifiers. The evaluation artifact and execution
+verification steps from the falsifiers. The evaluation artefact and execution
 contract are the task-local record; the loop does not write these observations
 to global beliefs or cross-session memory as a side effect.
 

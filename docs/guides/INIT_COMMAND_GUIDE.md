@@ -45,7 +45,7 @@ AGENTS setup when key guidance is ambiguous.
    /init
    ```
 
-The assistant will analyze the repository, synthesize the relevant guidance,
+The assistant will analyse the repository, synthesize the relevant guidance,
 ask targeted questions when needed, and scaffold the workspace instruction
 layout. By default that includes `AGENTS.md` at the workspace root,
 `.diapason/README.md`, and the repository memory directory layout.
@@ -106,7 +106,7 @@ After initialization:
 - add focused rule files under `.diapason/rules/` when only some paths need
   extra instructions
 - use `/memory` or `/config memory` to inspect and tune persistent-memory
-  behavior
+  behaviour
 
 ## Example Output
 
@@ -154,5 +154,5 @@ For a Rust service with Docker support and conventional commits:
 
 Regenerate the root guidance whenever the build, testing, or review process
 changes so future contributors and agents stay aligned. For more on runtime
-guidance loading and persistent-memory behavior, see
+guidance loading and persistent-memory behaviour, see
 [Guidance and Persistent Memory for Diapason](./memory-management.md).

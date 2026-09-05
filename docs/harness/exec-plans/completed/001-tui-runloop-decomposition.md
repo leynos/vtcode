@@ -5,7 +5,7 @@
 ## Goal
 
 Reduce the largest TUI runloop and slash-command modules to smaller, navigable
-units without changing slash-command behavior, modal behavior, or session-loop
+units without changing slash-command behaviour, modal behaviour, or session-loop
 outcomes.
 
 ## Context
@@ -36,7 +36,7 @@ The relevant architectural seam already exists:
   `compact`, `diagnostics`, `mcp`, `oauth`, `schedule`, `share_log`, `skills`,
   `ui`, `update`, and `workspace`.
 
-The work should preserve existing public behavior while making the next round
+The work should preserve existing public behaviour while making the next round
 of TUI work easier to review, test, and continue across sessions.
 
 ## Steps
@@ -56,7 +56,7 @@ of TUI work easier to review, test, and continue across sessions.
       `src/agent/runloop/unified/turn/session/slash_commands/handlers.rs`.
 - [x] Step 2: Split `src/agent/runloop/slash_commands.rs` into smaller
       command-model, parsing, and built-in-dispatch modules while keeping
-      `handle_slash_command` and `execute_command_skill_by_name` behavior
+      `handle_slash_command` and `execute_command_skill_by_name` behaviour
       stable. Outcome: the root file is now a 27-line orchestration layer, with
       command models moved into `slash_commands/models.rs`, routing into
       `slash_commands/dispatch.rs`, built-in command execution into
@@ -86,7 +86,7 @@ of TUI work easier to review, test, and continue across sessions.
       `src/agent/runloop/unified/turn/session/slash_commands/agents.rs`,
       `src/agent/runloop/unified/turn/session/slash_commands/share_log.rs`, and
       `src/agent/runloop/unified/turn/session/slash_commands/diagnostics.rs`.
-      Outcome: `agents.rs` is now reduced to the catalog and
+      Outcome: `agents.rs` is now reduced to the catalogue and
       definition-management surface, with delegated-thread and
       background-subprocess runtime flows extracted into `agents/runtime.rs`;
       `share_log.rs` is now a 283-line export orchestrator with the timeline
@@ -129,12 +129,12 @@ of TUI work easier to review, test, and continue across sessions.
   integration coverage.
 - 2026-05-15: Chose to phase the work around existing seams
   (`slash_commands.rs`, `slash_command_handler.rs`, `slash_commands/mod.rs`,
-  and handler submodules) so behavior-preserving extraction can happen
+  and handler submodules) so behaviour-preserving extraction can happen
   incrementally rather than via a single large rewrite.
 - 2026-05-15: Completed the first slash-command split by extracting `models.rs`,
   `dispatch.rs`, `builtins.rs`, and `tests.rs`, while intentionally leaving
   `flow.rs`, `management.rs`, `parsing.rs`, and `rendering.rs` untouched to
-  minimize behavior risk and keep the existing crate-level API stable.
+  minimize behaviour risk and keep the existing crate-level API stable.
 - 2026-05-15: Completed the unified outcome-routing split by moving
   control-state handlers into `control.rs`, rewind/checkpoint flows into
   `rewind.rs`, and central outcome matching into `outcome_router.rs`, while

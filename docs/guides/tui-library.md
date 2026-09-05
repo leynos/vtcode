@@ -7,7 +7,7 @@ functionality from other crates.
 
 - Stable import surface for Diapason inline terminal UI primitives
 - Explicit module split: `diapason_ui::tui::core` for reusable TUI foundation,
-  `diapason_ui::tui::app` for Diapason-specific overlays and behaviors
+  `diapason_ui::tui::app` for Diapason-specific overlays and behaviours
 - Standalone session options API (`diapason_ui::tui::app::SessionOptions`,
   `SessionSurface`, `KeyboardProtocolSettings`)
 - Session lifecycle APIs (`diapason_ui::tui::app::spawn_session_with_options`,

@@ -14,12 +14,12 @@ they are not a security boundary and cannot grant permissions, bypass the
 sandbox, or replace executable validation. Review instruction files from
 untrusted repositories the same way you review other repository content.
 
-Universal user-facing behavior comes from the compiled runtime-guidance layer,
+Universal user-facing behaviour comes from the compiled runtime-guidance layer,
 which is independent of workspace file contents.
 
 ## Security Architecture
 
-Diapason implements a **defense-in-depth security model** with multiple layers
+Diapason implements a **defence-in-depth security model** with multiple layers
 of protection:
 
 ### Layer 1: Command Allowlist
@@ -119,7 +119,7 @@ intended login flow without exposing credentials for other providers.
 ### Workspace provider configuration trust boundary
 
 Repository-controlled configuration is not trusted to introduce provider
-execution or routing behavior. During layered config loading, Diapason rejects
+execution or routing behaviour. During layered config loading, Diapason rejects
 any non-empty `custom_providers` value whose winning origin is a workspace or
 project layer. This includes custom provider `auth.command`, which can launch a
 child process with the user's process privileges. The loader rejects
@@ -131,7 +131,7 @@ The check runs before provider validation and registration, and
 `workspace.use_root_config` cannot bypass it. Keep command-backed providers and
 endpoint/credential overrides in system or user configuration, or pass a file
 explicitly with `--config`. Provider subprocess environment filtering remains
-defense in depth; it is not approval for repository-supplied commands.
+defence in depth; it is not approval for repository-supplied commands.
 
 ### Native plugin loading
 
@@ -148,7 +148,7 @@ as consent to load native code. Review the plugin's provenance and approve an
 explicit native-plugin action only when you trust the binary and its full
 process-level privileges.
 
-Platform behavior is explicit:
+Platform behaviour is explicit:
 
 - Linux uses the configured sandbox helper when one is available; a restrictive
   policy fails closed if the helper cannot be applied.
@@ -298,7 +298,7 @@ root = "/path/to/project"
 3. **Monitor Command Execution**
     - Review logs in `$XDG_STATE_HOME/diapason/logs/`
     - Watch for suspicious patterns
-    - Report unusual behavior
+    - Report unusual behaviour
 
 ### For Organizations
 
@@ -374,7 +374,7 @@ Stay informed about security updates:
 - [CWE-88: Argument Injection](https://cwe.mitre.org/data/definitions/88.html)
 - [OWASP Command Injection](https://owasp.org/www-community/attacks/Command_Injection)
 
-## Acknowledgments
+## Acknowledgements
 
 Diapason's security model is informed by:
 

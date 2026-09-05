@@ -331,7 +331,7 @@ sha256 = "replace-with-real-sha256"
 ### Building and publishing the archives
 
 1. Produce release builds for every platform you intend to support (see
-   `scripts/` for cross-compiling helpers). Bundle the artifacts as `.tar.gz` or
+   `scripts/` for cross-compiling helpers). Bundle the artefacts as `.tar.gz` or
    `.zip` archives that include the `diapason` binary at the root, plus any
    support files (for example `config.toml.example`).
 2. Create a GitHub release and upload each archive. Copy the asset URLs into
@@ -398,9 +398,9 @@ Common cases:
 
 ACP continuity uses three independent stores:
 
-1. **Compaction history/artifacts** – Stored under
+1. **Compaction history/artefacts** – Stored under
    `<workspace>/.diapason/history/` and controlled by
-   `[context.dynamic] enabled` and `persist_history`. These artifacts support
+   `[context.dynamic] enabled` and `persist_history`. These artefacts support
    summarization and working-memory recovery, including the session memory
    envelope. They are not a complete resumable session and are not read by ACP
    `session/load`.
