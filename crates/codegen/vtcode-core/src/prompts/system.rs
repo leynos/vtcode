@@ -42,7 +42,7 @@ pub const PLANNING_WORKFLOW_PLAN_PERSISTENCE_POLICY_LINE: &str = "Emit exactly o
 /// surfaces, and a bare `path/to/file.rs:42` reference is portable while a
 /// broken pseudo-link pointing at the editor binary itself is not.
 /// The canonical one-line step format, mirrored from
-/// `tools::handlers::planning_workflow::artifacts::CANONICAL_STEP_FORMAT`
+/// `tools::handlers::planning_workflow::artefacts::CANONICAL_STEP_FORMAT`
 /// (const contexts cannot concat!, so the sync is enforced by the
 /// `plan_quality_line_shows_canonical_step_format` test below). Showing the
 /// exact shape up front matters: the repair directive prints it only after a
@@ -146,7 +146,7 @@ pub const SPECIALIZED_OPERATING_PROFILE_DELTA: &str = r#"## Operating Profile
 const STRUCTURED_REASONING_INSTRUCTIONS: &str = r#"
 ## Structured Reasoning
 
-Use tags when helpful: `<analysis>` facts/options, `<reasoning_plan>` advisory steps, `<uncertainty>` blockers, `<verification>` checks. Reserve `<plan>` for the planning workflow's approval artifact. When a decision must be consumed by code or tools, prefer JSON or function-call shaped output over prose.
+Use tags when helpful: `<analysis>` facts/options, `<reasoning_plan>` advisory steps, `<uncertainty>` blockers, `<verification>` checks. Reserve `<plan>` for the planning workflow's approval artefact. When a decision must be consumed by code or tools, prefer JSON or function-call shaped output over prose.
 "#;
 
 /// System instruction configuration
@@ -752,7 +752,7 @@ mod tests {
             "Lightweight mode should include structured reasoning when explicitly enabled"
         );
         assert!(result.contains("<reasoning_plan>"));
-        assert!(!result.contains("`<plan>` steps"), "<plan> is reserved for approval artifacts");
+        assert!(!result.contains("`<plan>` steps"), "<plan> is reserved for approval artefacts");
     }
 
     #[tokio::test]
@@ -825,8 +825,8 @@ mod tests {
     fn plan_quality_line_shows_canonical_step_format() {
         assert!(
             PLANNING_WORKFLOW_PLAN_QUALITY_LINE
-                .contains(crate::tools::handlers::planning_workflow::artifacts::CANONICAL_STEP_FORMAT),
-            "quality line must embed artifacts::CANONICAL_STEP_FORMAT verbatim"
+                .contains(crate::tools::handlers::planning_workflow::artefacts::CANONICAL_STEP_FORMAT),
+            "quality line must embed artefacts::CANONICAL_STEP_FORMAT verbatim"
         );
     }
 

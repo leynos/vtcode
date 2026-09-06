@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use vtcode_core::core::agent::blocked_handoff::{BlockedHandoffResume, write_blocked_handoff_with_resume};
-use vtcode_core::core::agent::harness_artifacts::existing_harness_artifact_paths;
+use vtcode_core::core::agent::harness_artefacts::existing_harness_artefact_paths;
 use vtcode_core::exec::events::HarnessEventKind;
 use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
 use vtcode_core::utils::session_archive::{
@@ -145,10 +145,10 @@ pub(super) fn write_blocked_handoff_after_checkpoint(
         session_id,
         "blocked",
         blocker_summary,
-        &existing_harness_artifact_paths(workspace),
+        &existing_harness_artefact_paths(workspace),
         resume,
     ) {
-        Ok(artifacts) => {
+        Ok(artefacts) => {
             let _ = renderer.line(MessageStyle::Warning, &format!("Turn blocked: {blocker_summary}"));
             let _ = renderer.line(MessageStyle::Info, "What you can do:");
             let _ = renderer.line(
@@ -163,7 +163,7 @@ pub(super) fn write_blocked_handoff_after_checkpoint(
                 BlockedHandoffResume::Unavailable(_) => {}
             }
             let _ = renderer
-                .line(MessageStyle::Info, &format!("  • Blocker details: {}", artifacts.current_path.display()));
+                .line(MessageStyle::Info, &format!("  • Blocker details: {}", artefacts.current_path.display()));
 
             if let Some(handle) = handle {
                 use std::sync::Arc;
@@ -186,7 +186,7 @@ pub(super) fn write_blocked_handoff_after_checkpoint(
                     None,
                     None,
                 ));
-                for path in [&artifacts.current_path, &artifacts.archive_path] {
+                for path in [&artefacts.current_path, &artefacts.archive_path] {
                     let path_text = path.display().to_string();
                     let _ = emitter.emit(harness_event(
                         HarnessEventKind::BlockedHandoffWritten,

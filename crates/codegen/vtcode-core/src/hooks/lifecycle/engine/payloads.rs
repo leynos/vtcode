@@ -171,7 +171,7 @@ impl LifecycleHookEngine {
         mode: CompactionMode,
         original_message_count: usize,
         compacted_message_count: usize,
-        history_artifact_path: Option<&str>,
+        history_artefact_path: Option<&str>,
     ) -> Result<Value> {
         let mut payload = self.base_payload("PreCompact").await?;
         payload.insert("trigger".to_string(), serde_json::to_value(trigger)?);
@@ -180,7 +180,7 @@ impl LifecycleHookEngine {
         payload.insert("compacted_message_count".to_string(), json!(compacted_message_count));
         payload.insert(
             "history_artifact_path".to_string(),
-            history_artifact_path.map(|path| json!(path)).unwrap_or(Value::Null),
+            history_artefact_path.map(|path| json!(path)).unwrap_or(Value::Null),
         );
         Ok(Value::Object(payload))
     }

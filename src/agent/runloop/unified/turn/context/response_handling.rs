@@ -1,7 +1,7 @@
 use super::*;
 use crate::agent::runloop::unified::plan_blocks::strip_plan_persistence_policy_line;
 use crate::agent::runloop::unified::planning_workflow::{
-    PlanArtifactError, ValidatedPlanArtifact, emit_plan_ready_events, persist_plan_draft, persisted_plan_is_ready,
+    PlanArtefactError, ValidatedPlanArtefact, emit_plan_ready_events, persist_plan_draft, persisted_plan_is_ready,
     plan_repair_directive_for_error, validate_plan_content,
 };
 use crate::agent::runloop::unified::turn::turn_processing::resolve_effective_request_model;
@@ -72,9 +72,9 @@ impl<'a> TurnProcessingContext<'a> {
         }))
     }
 
-    fn reject_plan_artifact(
+    fn reject_plan_artefact(
         &mut self,
-        error: PlanArtifactError,
+        error: PlanArtefactError,
         plan_text: &str,
         allow_repair: bool,
     ) -> anyhow::Result<TurnHandlerOutcome> {
@@ -96,7 +96,7 @@ impl<'a> TurnProcessingContext<'a> {
                 target: "vtcode.planning_workflow",
                 error = %error,
                 repair_scheduled = true,
-                "plan artifact rejected before approval; scheduling bounded repair"
+                "plan artefact rejected before approval; scheduling bounded repair"
             );
             // Keep the rejected draft in assistant history so the repair
             // request can inspect it without elevating model- or
@@ -108,7 +108,7 @@ impl<'a> TurnProcessingContext<'a> {
         }
         let message = format!("Plan is not ready for approval: {error}");
         self.renderer.line(MessageStyle::Warning, &message)?;
-        tracing::warn!(target: "vtcode.planning_workflow", error = %error, "plan artifact rejected before approval");
+        tracing::warn!(target: "vtcode.planning_workflow", error = %error, "plan artefact rejected before approval");
         append_rejected_plan_draft_to_last_assistant(self.working_history, plan_text);
         // Terminal rejection: the draft is never persisted or shown by the
         // approval flow, so render it here — otherwise the user cannot see
@@ -574,18 +574,18 @@ impl<'a> TurnProcessingContext<'a> {
             // follow the event's plan_file can read the completed draft.
             let validation = validate_plan_content(&plan_text);
             if !validation.is_ready() {
-                let error = PlanArtifactError::Invalid {
+                let error = PlanArtefactError::Invalid {
                     reasons: validation.reasons().join("; "),
                     report: Box::new(validation),
                 };
-                return self.reject_plan_artifact(error, &plan_text, !tool_free_recovery_pass);
+                return self.reject_plan_artefact(error, &plan_text, !tool_free_recovery_pass);
             }
 
             let persisted = match persist_plan_draft(&self.tool_registry.planning_workflow_state(), &plan_text).await {
                 Ok(persisted) => persisted,
                 Err(error) => {
-                    let error = PlanArtifactError::Persistence { reason: error.to_string() };
-                    return self.reject_plan_artifact(error, &plan_text, false);
+                    let error = PlanArtefactError::Persistence { reason: error.to_string() };
+                    return self.reject_plan_artefact(error, &plan_text, false);
                 }
             };
             // `persist_plan_draft` already validated the same immutable text
@@ -594,14 +594,14 @@ impl<'a> TurnProcessingContext<'a> {
             // file from disk and verifies sidecar trackers exist — that check
             // is NOT redundant and stays.
             if !persisted_plan_is_ready(&self.tool_registry.planning_workflow_state()).await {
-                let error = PlanArtifactError::Persistence {
+                let error = PlanArtefactError::Persistence {
                     reason: "plan, sidecar tracker, and workspace tracker were not published completely".to_string(),
                 };
-                return self.reject_plan_artifact(error, &plan_text, false);
+                return self.reject_plan_artefact(error, &plan_text, false);
             }
             // Construct from the already-validated report instead of
             // re-parsing the same immutable text a fourth time.
-            let plan = ValidatedPlanArtifact::from_validated(
+            let plan = ValidatedPlanArtefact::from_validated(
                 persisted.plan_file.clone(),
                 plan_text.clone(),
                 persisted.validation.clone(),

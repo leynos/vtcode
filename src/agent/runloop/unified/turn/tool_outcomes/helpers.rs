@@ -714,7 +714,7 @@ pub(crate) fn resolve_max_tool_retries(
         .unwrap_or(vtcode_config::constants::defaults::DEFAULT_MAX_TOOL_RETRIES as usize)
 }
 
-fn path_targets_plan_artifact(path: &str) -> bool {
+fn path_targets_plan_artefact(path: &str) -> bool {
     let normalized = path.trim().replace('\\', "/");
     normalized == ".vtcode/plans"
         || normalized.starts_with(".vtcode/plans/")
@@ -724,7 +724,7 @@ fn path_targets_plan_artifact(path: &str) -> bool {
         || normalized.contains("/tmp/vtcode-plans/")
 }
 
-pub(crate) fn is_plan_artifact_write(name: &str, args: &serde_json::Value) -> bool {
+pub(crate) fn is_plan_artefact_write(name: &str, args: &serde_json::Value) -> bool {
     use vtcode_core::config::constants::tools as tool_names;
     use vtcode_core::tools::names::canonical_tool_name;
     use vtcode_core::tools::tool_intent::file_operation_action;
@@ -748,7 +748,7 @@ pub(crate) fn is_plan_artifact_write(name: &str, args: &serde_json::Value) -> bo
                 ]
                 .iter()
                 .filter_map(|key| args.get(*key).and_then(|value| value.as_str()))
-                .any(path_targets_plan_artifact)
+                .any(path_targets_plan_artefact)
             } else {
                 false
             }
@@ -757,7 +757,7 @@ pub(crate) fn is_plan_artifact_write(name: &str, args: &serde_json::Value) -> bo
             ["path", "file_path", "filepath", "filePath"]
                 .iter()
                 .filter_map(|key| args.get(*key).and_then(|value| value.as_str()))
-                .any(path_targets_plan_artifact)
+                .any(path_targets_plan_artefact)
         }
         _ => false,
     }
@@ -790,7 +790,7 @@ pub(crate) fn mutation_blocked_until_verification(
     name: &str,
     args: &serde_json::Value,
 ) -> bool {
-    if !loop_tracker.verification_is_pending() || is_plan_artifact_write(name, args) {
+    if !loop_tracker.verification_is_pending() || is_plan_artefact_write(name, args) {
         return false;
     }
 
@@ -893,8 +893,8 @@ pub(crate) fn update_repetition_tracker(
                 }
             }
         }
-    } else if is_plan_artifact_write(canonical_name, args) {
-        // Plan artifact writes in dedicated plan storage are allowed in Planning workflow and
+    } else if is_plan_artefact_write(canonical_name, args) {
+        // Plan artefact writes in dedicated plan storage are allowed in Planning workflow and
         // should not trigger anti-blind-editing verification pressure.
         // Low-signal repetition history is preserved: plan writes are not
         // navigation, so they neither advance nor clear that window.
@@ -1193,7 +1193,7 @@ mod tests {
     }
 
     #[test]
-    fn verification_gate_blocks_mutations_but_allows_reads_checks_and_plan_artifacts() {
+    fn verification_gate_blocks_mutations_but_allows_reads_checks_and_plan_artefacts() {
         let mut tracker = LoopTracker::new();
         tracker.verification_pending = true;
 

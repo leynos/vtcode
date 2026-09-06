@@ -455,7 +455,7 @@ fn cap_rewrite_keeps_event_log_appendable_and_reopenable() {
 
 #[cfg(unix)]
 #[test]
-fn session_artifacts_use_private_permissions() {
+fn session_artefacts_use_private_permissions() {
     use std::os::unix::fs::PermissionsExt;
 
     let dir = TempDir::new().expect("tempdir");

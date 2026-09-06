@@ -173,8 +173,8 @@ async fn send_task_to_agent(
                                 println!("  Message: {text}");
                             }
                         }
-                        crate::a2a::rpc::StreamingEvent::TaskArtifact { artifact, .. } => {
-                            println!("Artifact: {}", artifact.id);
+                        crate::a2a::rpc::StreamingEvent::TaskArtefact { artefact, .. } => {
+                            println!("Artefact: {}", artefact.id);
                         }
                         crate::a2a::rpc::StreamingEvent::Unknown => {}
                     }
@@ -197,10 +197,10 @@ async fn send_task_to_agent(
             println!("Response: {text}");
         }
 
-        if !task.artifacts.is_empty() {
-            println!("\nArtifacts:");
-            for artifact in &task.artifacts {
-                println!("  - {} ({} parts)", artifact.id, artifact.parts.len());
+        if !task.artefacts.is_empty() {
+            println!("\nArtefacts:");
+            for artefact in &task.artefacts {
+                println!("  - {} ({} parts)", artefact.id, artefact.parts.len());
             }
         }
     }
@@ -251,8 +251,8 @@ async fn list_agent_tasks(agent_url: String, context_id: Option<String>, limit: 
         if let Some(ctx_id) = task_value.get("contextId").and_then(|v| v.as_str()) {
             println!("  Context: {ctx_id}");
         }
-        if let Some(artifacts) = task_value.get("artifacts").and_then(|v| v.as_array()) {
-            println!("  Artifacts: {}", artifacts.len());
+        if let Some(artefacts) = task_value.get("artifacts").and_then(|v| v.as_array()) {
+            println!("  Artefacts: {}", artefacts.len());
         }
         println!();
     }
@@ -289,11 +289,11 @@ async fn get_agent_task(agent_url: String, task_id: String) -> anyhow::Result<()
         }
     }
 
-    if !task.artifacts.is_empty() {
-        println!("\nArtifacts:");
-        for artifact in &task.artifacts {
-            println!("  - {}:", artifact.id);
-            for part in &artifact.parts {
+    if !task.artefacts.is_empty() {
+        println!("\nArtefacts:");
+        for artefact in &task.artefacts {
+            println!("  - {}:", artefact.id);
+            for part in &artefact.parts {
                 match part {
                     crate::a2a::types::Part::Text { text } => {
                         let preview = vtcode_commons::formatting::truncate_byte_budget(text, 60, "...");

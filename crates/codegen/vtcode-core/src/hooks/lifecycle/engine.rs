@@ -440,7 +440,7 @@ impl LifecycleHookEngine {
         mode: CompactionMode,
         original_message_count: usize,
         compacted_message_count: usize,
-        history_artifact_path: Option<&str>,
+        history_artefact_path: Option<&str>,
     ) -> Result<PreCompactHookOutcome> {
         let mut outcome = PreCompactHookOutcome::default();
 
@@ -454,7 +454,7 @@ impl LifecycleHookEngine {
                 mode,
                 original_message_count,
                 compacted_message_count,
-                history_artifact_path,
+                history_artefact_path,
             )
             .await?;
         let trigger_value = trigger.as_str().to_owned();
