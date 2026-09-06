@@ -138,8 +138,8 @@ done
 Edit `scripts/generate_benchmark_chart.py`:
 
 ```python
-# Change colors
-colors = ['#4CAF50', '#F44336']  # Green, Red
+# Change colours
+colours = ['#4CAF50', '#F44336']  # Green, Red
 
 # Adjust figure size
 fig, axes = plt.subplots(2, 2, figsize=(14, 10))

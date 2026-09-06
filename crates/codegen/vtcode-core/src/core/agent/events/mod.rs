@@ -599,8 +599,8 @@ impl ExecEventRecorder {
             new_segment_id: None,
             previous_prefix_hash: None,
             new_prefix_hash: None,
-            previous_catalog_hash: None,
-            new_catalog_hash: None,
+            previous_catalogue_hash: None,
+            new_catalogue_hash: None,
         }));
     }
 

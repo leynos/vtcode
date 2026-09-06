@@ -30,7 +30,7 @@ const DEFAULT_CAPTURE_LIMIT: usize = 256 * 1024; // 256 KiB
 /// unbounded drain would block `run` forever, silently defeating the tool's
 /// own timeout/cancellation guarantee. Bounding the wait ensures `run` always
 /// returns; whatever bytes were already captured before the bound elapses are
-/// returned as-is, and any data written afterward is accepted as lost since
+/// returned as-is, and any data written afterwards is accepted as lost since
 /// the process has already been killed.
 const POST_KILL_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -314,7 +314,7 @@ where
 
 async fn wait_for_status(child: Arc<Mutex<Child>>) -> Result<ExitStatus> {
     // `Child::status` only needs `&mut Child` momentarily to build its returned
-    // future; the future itself does not borrow the child afterward (it holds
+    // future; the future itself does not borrow the child afterwards (it holds
     // its own clone of async-process's internal handle). The mutex guard is
     // therefore taken only long enough to obtain that future and is dropped
     // before awaiting it. Holding the guard across the await instead would

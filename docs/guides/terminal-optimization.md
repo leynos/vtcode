@@ -128,7 +128,7 @@ Large pasted inputs are harder to manage than file-based workflows. Prefer refer
 ### Piped input
 
 ```bash
-cat large_file.txt | vtcode ask "Analyze this content"
+cat large_file.txt | vtcode ask "Analyse this content"
 ```
 
 ### Output limits

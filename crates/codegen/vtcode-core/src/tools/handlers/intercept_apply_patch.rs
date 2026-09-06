@@ -125,7 +125,7 @@ pub async fn intercept_apply_patch(
 
     // Execute the patch through the same `Patch::parse` + `apply` pipeline that the
     // registry's `apply_patch` tool uses, but with the safety checks above applied.
-    // The result is funneled through the turn diff tracker so the diff is recorded
+    // The result is funnelled through the turn diff tracker so the diff is recorded
     // the same way as a model-originated `apply_patch` call.
     let result = execute_patch(&req).await;
 

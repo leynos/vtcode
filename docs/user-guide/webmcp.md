@@ -124,7 +124,7 @@ substitute for this external-client evidence.
 Chrome offers WebMCP through a [time-limited origin trial](https://developer.chrome.com/blog/ai-webmcp-origin-trial).
 To test the deployed WebMCP app without the testing flag, request a token for
 each exact origin you will use: `https://vtcode.vinhnx.chatgpt.site` and/or
-`https://vinhnx.github.io`. For one artifact served at both sites, set the
+`https://vinhnx.github.io`. For one artefact served at both sites, set the
 repository Actions variable `WEBMCP_ORIGIN_TRIAL_TOKENS` with the tokens
 separated by commas or whitespace. The Pages workflow passes it to the Vite
 build as `VITE_WEBMCP_ORIGIN_TRIAL_TOKENS`, which injects the tokens into the
@@ -134,7 +134,7 @@ The legacy singular `WEBMCP_ORIGIN_TRIAL_TOKEN` and
 `VITE_WEBMCP_ORIGIN_TRIAL_TOKEN` variables remain supported for a single-origin
 build. Tokens are origin-specific; a production token does not enable the
 local Vite origin. The Pages workflow deploys only GitHub Pages; a separately
-published ChatGPT Site artifact needs the equivalent build variables from its
+published ChatGPT Site artefact needs the equivalent build variables from its
 own publisher.
 
 No token is committed to the repository. If the variable is unset, use

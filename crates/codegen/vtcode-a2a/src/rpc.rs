@@ -364,7 +364,7 @@ pub struct TaskPushNotificationConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SendStreamingMessageResponse {
-    /// Event data (one of MessageEvent, TaskStatusUpdateEvent, TaskArtifactUpdateEvent)
+    /// Event data (one of MessageEvent, TaskStatusUpdateEvent, TaskArtefactUpdateEvent)
     #[serde(flatten)]
     pub(crate) event: StreamingEvent,
 }

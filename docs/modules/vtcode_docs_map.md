@@ -120,7 +120,7 @@ This document serves as an index of all VT Code documentation. When users ask qu
 
 - **File**: `docs/development/fuzzing.md`
   - **Content**: Fuzzing Guide
-  - **Topics**: Scope, Basic Commands, Corpus and Artifacts, Reproducing a Crash, Coverage (Optional)
+  - **Topics**: Scope, Basic Commands, Corpus and Artefacts, Reproducing a Crash, Coverage (Optional)
   - **User Questions**: "What can you tell me about Fuzzing Guide?", "How does Scope work?", "How does Basic Commands work?"
 
 - **File**: `docs/development/MODEL_ADDITION_CHECKLIST.md`

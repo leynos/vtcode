@@ -92,7 +92,7 @@ memory: project
 ---
 
 Review recent code changes. Focus on correctness, risky assumptions, missing tests,
-and behavior regressions. Return findings in priority order with file references.
+and behaviour regressions. Return findings in priority order with file references.
 ```
 
 5. Invoke it with natural language or an explicit mention:
@@ -131,7 +131,7 @@ Use Markdown with YAML frontmatter in `.vtcode/agents/` or `.claude/agents/`:
 ```markdown
 ---
 name: debugger
-description: Debugging specialist for failing tests, crashes, and broken behavior. Use proactively when something fails.
+description: Debugging specialist for failing tests, crashes, and broken behaviour. Use proactively when something fails.
 model: inherit
 color: "#4f8fd8"
 maxTurns: 8

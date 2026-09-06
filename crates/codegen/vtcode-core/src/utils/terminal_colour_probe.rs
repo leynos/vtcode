@@ -59,11 +59,11 @@ pub fn probe_and_cache_terminal_palette_harmony() {
                     palette_light = result.is_palette_light_theme,
                     harmonious = result.is_harmonious,
                     generated = result.is_generated,
-                    "terminal OSC color probe completed"
+                    "terminal OSC colour probe completed"
                 );
             }
             Err(err) => {
-                tracing::trace!(error = %err, "terminal OSC color probe skipped");
+                tracing::trace!(error = %err, "terminal OSC colour probe skipped");
             }
         }
     }
@@ -227,7 +227,7 @@ fn parse_four_colours(response: &[u8]) -> Result<[(u8, u8, u8); 4]> {
     }
 
     if parsed.len() != 4 {
-        return Err(anyhow!("expected 4 colors from OSC probe, got {}", parsed.len()));
+        return Err(anyhow!("expected 4 colours from OSC probe, got {}", parsed.len()));
     }
 
     Ok([parsed[0], parsed[1], parsed[2], parsed[3]])
@@ -305,7 +305,7 @@ mod tests {
         let response = format!(
             "{OSC}10;rgb:dddd/dddd/dddd{ST}{OSC}11;rgb:1111/1111/1111{ST}{OSC}4;16;rgb:1111/1111/1111{ST}{OSC}4;231;rgb:dddd/dddd/dddd{ST}{CSI}?62;4c"
         );
-        let [fg, bg, c16, c231] = parse_four_colours(response.as_bytes()).expect("valid colors");
+        let [fg, bg, c16, c231] = parse_four_colours(response.as_bytes()).expect("valid colours");
         assert_eq!(fg, (0xdd, 0xdd, 0xdd));
         assert_eq!(bg, (0x11, 0x11, 0x11));
         assert_eq!(c16, (0x11, 0x11, 0x11));
@@ -317,7 +317,7 @@ mod tests {
         let response = format!(
             "{OSC}10;rgb:a/b/c{ST}{OSC}11;rgb:0/0/0{ST}{OSC}4;16;rgb:0/0/0{ST}{OSC}4;231;rgb:f/f/f{ST}{CSI}?1;2c"
         );
-        let [fg, _, _, c231] = parse_four_colours(response.as_bytes()).expect("valid colors");
+        let [fg, _, _, c231] = parse_four_colours(response.as_bytes()).expect("valid colours");
         assert_eq!(fg, (0xaa, 0xbb, 0xcc));
         assert_eq!(c231, (0xff, 0xff, 0xff));
     }

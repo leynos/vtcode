@@ -316,7 +316,7 @@ pub enum ModelId {
     OpenRouterOpenAIGptOss20b,
     /// OpenAI GPT-5 - OpenAI GPT-5 model accessed through OpenRouter
     OpenRouterOpenAIGpt5,
-    /// OpenAI GPT-5 Chat - Chat optimised GPT-5 endpoint without tool use
+    /// OpenAI GPT-5 Chat - Chat optimized GPT-5 endpoint without tool use
     OpenRouterOpenAIGpt5Chat,
 
     /// Meta Muse Glimmer 30B via OpenRouter

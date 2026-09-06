@@ -90,11 +90,9 @@ VT Code works with any model available through Hugging Face Inference Providers:
 
 ### Real-time Code Analysis
 
-```rust
-// VT Code analyzes code using Tree-Sitter + LLM
-// Provides semantic understanding beyond simple text matching
-let result = analyze_code_with_hf(code_snippet).await?;
-```
+VT Code routes requests through the configured Hugging Face provider; it does
+not expose a public `analyse_code_with_hf` function. Tree-sitter support is
+implemented by `crates/codegen/vtcode-core/src/tools/tree_sitter_runtime.rs`.
 
 ### Streaming Responses
 

@@ -22,7 +22,7 @@ pub use cache::{
 };
 pub use command_builder::CommandBuilder;
 pub use commands::{
-    CommandResponse, analyze_workspace, analyze_workspace_with_context, ask_about_selection,
+    CommandResponse, analyse_workspace, analyse_workspace_with_context, ask_about_selection,
     ask_about_selection_with_context, ask_agent, ask_agent_with_context, check_status, find_files,
     find_files_with_context, launch_chat, launch_chat_with_context, list_files,
     list_files_with_context, search_files, search_files_with_context,
@@ -120,10 +120,10 @@ impl VTCodeExtension {
         ask_about_selection_with_context(code, language, context.as_ref())
     }
 
-    /// Execute "Analyze Workspace" command
-    pub fn analyze_workspace_command(&self) -> CommandResponse {
+    /// Execute "Analyse Workspace" command.
+    pub fn analyse_workspace_command(&self) -> CommandResponse {
         let context = self.editor_state.get_context().ok();
-        analyze_workspace_with_context(context.as_ref())
+        analyse_workspace_with_context(context.as_ref())
     }
 
     /// Execute "Launch Chat" command

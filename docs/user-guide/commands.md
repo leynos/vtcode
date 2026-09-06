@@ -278,7 +278,7 @@ Check for and install binary updates of VT Code from GitHub Releases. Updates ar
 # Check for available updates without installing
 vtcode update --check
 
-# Check for updates (same as above, default behavior)
+# Check for updates (same as above, default behaviour)
 vtcode update
 ```
 

@@ -8,7 +8,7 @@
 //!
 //! VTCode previously relied on an LLM-based auto-permission probe
 //! (`src/agent/runloop/unified/auto_permission/mod.rs`) for prompt-injection
-//! defenses, gated behind full-auto mode and not visible in the model context.
+//! defences, gated behind full-auto mode and not visible in the model context.
 //! This module introduces a deterministic fence that wraps tool output going
 //! *back into* the conversation: the model sees the fence markers and the
 //! system prompt tells it to treat fenced content as data.

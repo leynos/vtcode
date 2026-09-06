@@ -247,7 +247,7 @@ extensions/zed-extension/
  Source Code
     src/lib.rs (extension code)
 
- Build Artifacts
+ Build Artefacts
     target/
         debug/
         release/libvtcode.dylib

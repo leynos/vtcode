@@ -226,14 +226,14 @@ All tests pass:
 
 **Before**:
 ```rust
-if check.total_additions > 0 || check.total_deletions > 0 && self.diff_renderer.use_colors {
+if check.total_additions > 0 || check.total_deletions > 0 && self.diff_renderer.use_colours {
 ```
 
 **After**:
 ```rust
 if check.total_additions > 0 || check.total_deletions > 0 {
-    // Always show numbers, but only add color codes when use_colors is true
-    if self.diff_renderer.use_colors {
+    // Always show numbers, but only add colour codes when use_colours is true
+    if self.diff_renderer.use_colours {
         output.push_str(&self.diff_renderer.cached_styles.stat_added);
     }
     // ...

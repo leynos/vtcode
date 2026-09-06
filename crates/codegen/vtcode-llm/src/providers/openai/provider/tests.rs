@@ -554,7 +554,7 @@ fn api_key_and_chatgpt_subscription_share_responses_item_history_builder() {
     let mut request = provider::LLMRequest {
         messages: vec![
             provider::Message::system("Follow the local policy.".to_owned()),
-            provider::Message::user("Summarise the repository state.".to_owned()),
+            provider::Message::user("Summarize the repository state.".to_owned()),
             provider::Message::assistant("There is one modified file.".to_owned()),
             provider::Message::user("Continue.".to_owned()),
         ]
@@ -631,7 +631,7 @@ fn openai_and_chatgpt_share_responses_payload_builder_except_backend() {
     let mut request = provider::LLMRequest {
         messages: vec![
             provider::Message::system("Follow the local policy.".to_owned()),
-            provider::Message::user("Summarise the repository state.".to_owned()),
+            provider::Message::user("Summarize the repository state.".to_owned()),
             provider::Message::assistant("There is one modified file.".to_owned()),
             provider::Message::user("Continue.".to_owned()),
         ]

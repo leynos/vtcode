@@ -9,7 +9,7 @@ manipulation.
 
 <!-- cargo-rdme start -->
 
-Cross-platform command runner modeled after VT Code's original bash
+Cross-platform command runner modelled after VT Code's original bash
 wrapper. The crate exposes a trait-based executor so downstream
 applications can swap the underlying process strategy (system shell,
 pure-Rust emulation, or dry-run logging) while reusing the higher-level

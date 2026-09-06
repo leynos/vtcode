@@ -75,12 +75,12 @@ pub fn ask_about_selection_with_context(
 }
 
 /// Analyse the entire workspace.
-pub fn analyze_workspace() -> CommandResponse {
-    analyze_workspace_with_context(None)
+pub fn analyse_workspace() -> CommandResponse {
+    analyse_workspace_with_context(None)
 }
 
-pub fn analyze_workspace_with_context(context: Option<&EditorContext>) -> CommandResponse {
-    let builder = match attach_ide_context(CommandBuilder::analyze(), context) {
+pub fn analyse_workspace_with_context(context: Option<&EditorContext>) -> CommandResponse {
+    let builder = match attach_ide_context(CommandBuilder::analyse(), context) {
         Ok(builder) => builder,
         Err(error) => return CommandResponse::err(error),
     };

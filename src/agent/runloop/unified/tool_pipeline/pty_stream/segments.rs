@@ -33,7 +33,7 @@ impl PtyLineStyles {
                 .fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Magenta)))
                 .effects(Effects::BOLD),
         ));
-        // The "Ran" verb uses the theme's accent (primary) color so it stays
+        // The "Ran" verb uses the theme's accent (primary) colour so it stays
         // consistent with the summary-path rendering and the active theme.
         let accent_bold = Arc::new(convert_style(theme_styles.primary | Effects::BOLD));
         let yellow = Arc::new(convert_style(AnsiStyle::new().fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Yellow)))));

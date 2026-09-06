@@ -640,7 +640,7 @@ mod tests {
     use tracing_subscriber::{fmt::format::FmtSpan, prelude::*};
     use vtcode_config::mcp::{McpHttpServerConfig, McpStdioServerConfig, McpTransportConfig};
 
-    /// Minimal clonable buffered writer for tests. Implements `Write` so it can
+    /// Minimal cloneable buffered writer for tests. Implements `Write` so it can
     /// be passed to `tracing_subscriber::fmt::layer().with_writer(..)`.
     #[derive(Clone)]
     struct TestWriter(Arc<Mutex<BufWriter<File>>>);

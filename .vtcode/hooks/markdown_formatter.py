@@ -66,7 +66,7 @@ def detect_language(code):
 
 def format_markdown(content):
     """Format markdown content with language detection."""
-    # Fix unlabeled code fences
+    # Fix unlabelled code fences
     def add_lang_to_fence(match):
         indent, info, body, closing = match.groups()
         if not info.strip():

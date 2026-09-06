@@ -33,4 +33,4 @@ Before switching a map/set:
 2. Apply selective hasher change.
 3. Capture latest with `./scripts/perf/baseline.sh latest`.
 4. Compare with `./scripts/perf/compare.sh`.
-5. Keep change only if there is a clear measured win and no behavioral regressions.
+5. Keep change only if there is a clear measured win and no behavioural regressions.

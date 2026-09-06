@@ -22,7 +22,7 @@ In `vtcode.toml`:
 allow_tool_ansi = false  # Default - strips all ANSI escape sequences
 
 # Enable ANSI codes in tool output (may cause display issues)
-# allow_tool_ansi = true   # Not recommended - preserves colors but can break layout
+# allow_tool_ansi = true   # Not recommended - preserves colours but can break layout
 ```
 
 ## What Gets Stripped

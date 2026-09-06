@@ -37,11 +37,11 @@ pub struct ThemePalette {
     pub(crate) logo_accent: RgbColor,
 }
 
-/// Shared computation context for theme color derivation.
+/// Shared computation context for theme colour derivation.
 ///
-/// Holds invariant parameters (background, min_contrast) that every color
+/// Holds invariant parameters (background, min_contrast) that every colour
 /// computation needs, eliminating repetitive argument passing across the
-/// 14+ color derivations in the theme pipeline.
+/// 14+ colour derivations in the theme pipeline.
 #[derive(Clone, Debug)]
 pub(crate) struct ColourContext {
     pub background: RgbColor,
@@ -75,7 +75,7 @@ impl ColourContext {
         ensure_contrast(candidate, self.background, self.min_contrast, fallbacks)
     }
 
-    /// 1. Main foreground text color.
+    /// 1. Main foreground text colour.
     fn compute_text_colour(&self, foreground: RgbColor, secondary: RgbColor) -> RgbColor {
         self.guaranteed_text_colour(
             foreground,
@@ -87,7 +87,7 @@ impl ColourContext {
         )
     }
 
-    /// 2. Info/muted text color (secondary accent adapted for readability).
+    /// 2. Info/muted text colour (secondary accent adapted for readability).
     fn compute_info_colour(&self, secondary: RgbColor, text_colour: RgbColor) -> RgbColor {
         self.guaranteed_text_colour(
             secondary,
@@ -99,7 +99,7 @@ impl ColourContext {
         )
     }
 
-    /// 3. Tool accent color (text_colour lightened and contrast-ensured).
+    /// 3. Tool accent colour (text_colour lightened and contrast-ensured).
     fn compute_tool_colour(&self, text_colour: RgbColor) -> RgbColor {
         self.guaranteed_accent_colour(
             lighten(text_colour, ui::THEME_MIX_RATIO),
@@ -111,7 +111,7 @@ impl ColourContext {
         )
     }
 
-    /// 4. Tool body text color (subdued variant of tool accent).
+    /// 4. Tool body text colour (subdued variant of tool accent).
     fn compute_tool_body_colour(&self, text_colour: RgbColor) -> RgbColor {
         let candidate = mix(lighten(text_colour, ui::THEME_MIX_RATIO), text_colour, ui::THEME_TOOL_BODY_MIX_RATIO);
         self.guaranteed_accent_colour(
@@ -124,14 +124,14 @@ impl ColourContext {
         )
     }
 
-    /// 5. PTY/shell output color — dimmed by blending tool_body toward the
+    /// 5. PTY/shell output colour — dimmed by blending tool_body toward the
     ///    background, then balanced for readability.
     fn compute_pty_output_colour(&self, tool_body_colour: RgbColor, text_colour: RgbColor) -> RgbColor {
         let candidate = mix(tool_body_colour, self.background, ui::THEME_PTY_OUTPUT_MIX_RATIO);
         self.guaranteed_text_colour(candidate, &[tool_body_colour, text_colour])
     }
 
-    /// 6. Response/assistant text color.
+    /// 6. Response/assistant text colour.
     fn compute_response_colour(&self, text_colour: RgbColor) -> RgbColor {
         self.guaranteed_text_colour(
             text_colour,
@@ -142,7 +142,7 @@ impl ColourContext {
         )
     }
 
-    /// 7. Reasoning text color (lightened text, DIMMED+ITALIC applied separately).
+    /// 7. Reasoning text colour (lightened text, DIMMED+ITALIC applied separately).
     fn compute_reasoning_colour(&self, text_colour: RgbColor) -> RgbColor {
         self.guaranteed_text_colour(
             lighten(text_colour, 0.25),
@@ -150,7 +150,7 @@ impl ColourContext {
         )
     }
 
-    /// 8. User input text color.
+    /// 8. User input text colour.
     fn compute_user_colour(&self, secondary: RgbColor, info_colour: RgbColor, text_colour: RgbColor) -> RgbColor {
         self.guaranteed_text_colour(
             lighten(secondary, ui::THEME_USER_COLOUR_LIGHTEN_RATIO),
@@ -162,7 +162,7 @@ impl ColourContext {
         )
     }
 
-    /// 9. Alert/error color.
+    /// 9. Alert/error colour.
     fn compute_alert_colour(&self, alert: RgbColor, text_colour: RgbColor) -> RgbColor {
         self.guaranteed_text_colour(
             alert,
@@ -190,7 +190,7 @@ impl ColourContext {
         )
     }
 
-    /// 12. Logo accent color.
+    /// 12. Logo accent colour.
     fn compute_logo_colour(
         &self,
         logo_accent: RgbColor,
@@ -203,7 +203,7 @@ impl ColourContext {
         )
     }
 
-    /// 13. Status banner color (lightened primary).
+    /// 13. Status banner colour (lightened primary).
     fn compute_status_colour(
         &self,
         primary_colour: RgbColor,
@@ -220,7 +220,7 @@ impl ColourContext {
         )
     }
 
-    /// 14. MCP badge color (lightened logo accent).
+    /// 14. MCP badge colour (lightened logo accent).
     fn compute_mcp_colour(&self, logo_colour: RgbColor, info_colour: RgbColor) -> RgbColor {
         self.guaranteed_accent_colour(
             lighten(logo_colour, ui::THEME_SECONDARY_LIGHTEN_RATIO),

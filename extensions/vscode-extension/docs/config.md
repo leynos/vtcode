@@ -440,7 +440,7 @@ The VT Code extension uses a command system that can be configured through the s
 ask_agent_enabled = true
 
 # Whether to enable the analyse workspace command
-analyze_enabled = true
+analyse_enabled = true
 
 # Timeout for command execution (in seconds)
 command_timeout = 300
@@ -569,7 +569,7 @@ If VT Code is not behaving as expected with your configuration:
 | `auth.secure_storage`                   | boolean                                           | Store credentials securely (default: true).                        |
 | `auth.validate_keys`                    | boolean                                           | Validate API keys on startup.                                      |
 | `commands.ask_agent_enabled`            | boolean                                           | Enable the ask agent command.                                      |
-| `commands.analyze_enabled`              | boolean                                           | Enable the analyse command.                                        |
+| `commands.analyse_enabled`              | boolean                                           | Enable the analyse command.                                        |
 | `commands.command_timeout`              | number                                            | Command execution timeout (seconds).                               |
 | `profiles.*.agent.provider`             | string                                            | Provider override for a profile.                                   |
 | `profiles.*.security.human_in_the_loop` | boolean                                           | Security setting override for a profile.                           |

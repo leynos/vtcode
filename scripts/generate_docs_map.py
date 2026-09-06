@@ -70,7 +70,7 @@ MODE_TITLE_REPLACEMENTS = [
 
 
 def remove_stale_mode_terms(text):
-    """Normalise legacy mode titles in generated documentation-map text."""
+    """Normalize legacy mode titles in generated documentation-map text."""
     for label, replacement in MODE_TITLE_REPLACEMENTS:
         text = text.replace(f"{label} Mode", replacement)
     return text

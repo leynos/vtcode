@@ -14,7 +14,7 @@ function contrast(foreground: string, background: string): number {
   return (Math.max(light, dark) + 0.05) / (Math.min(light, dark) + 0.05);
 }
 
-test("Ciapre text, controls, syntax, and status colors meet AA on their actual dark surfaces", () => {
+test("Ciapre text, controls, syntax, and status colours meet AA on their actual dark surfaces", () => {
   const normalText: readonly string[] = [CIAPRE_COLOURS.foreground, CIAPRE_COLOURS.primary, CIAPRE_COLOURS.secondary, CIAPRE_COLOURS.muted, CIAPRE_COLOURS.added, CIAPRE_COLOURS.alertForeground];
   for (const foreground of normalText) {
     assert.ok(contrast(foreground, CIAPRE_COLOURS.background) >= 4.5, `${foreground} on background`);

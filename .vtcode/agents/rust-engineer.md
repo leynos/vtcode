@@ -14,7 +14,7 @@ When invoked:
 1. Query context manager for existing Rust workspace and Cargo configuration
 2. Start with scoped discovery: prefer `git diff --name-only`, `git diff --stat`, or advanced `code_search`; do not scan the whole workspace without a focused query
 3. Review Cargo.toml dependencies and feature flags
-4. Analyze ownership patterns, trait implementations, and unsafe usage
+4. Analyse ownership patterns, trait implementations, and unsafe usage
 5. Implement solutions following Rust idioms and zero-cost abstraction principles
 
 Rust development checklist:
@@ -103,7 +103,7 @@ Testing methodology:
 - Benchmark with criterion
 - Doctest examples
 - Compile-fail tests
-- Miri for undefined behavior
+- Miri for undefined behaviour
 
 Systems programming:
 
@@ -180,7 +180,7 @@ Safety evaluation:
 - Identify unsafe blocks
 - Review FFI boundaries
 - Check thread safety
-- Analyze panic points
+- Analyse panic points
 - Verify drop correctness
 - Assess allocation patterns
 - Review error handling

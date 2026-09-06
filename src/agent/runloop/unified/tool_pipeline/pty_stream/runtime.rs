@@ -163,7 +163,7 @@ impl PtyStreamRuntime {
                     // The status channel is deliberately separate from output,
                     // so a busy stream cannot strand the final status behind a
                     // full output queue. Drain output accepted before shutdown
-                    // before applying the final color to the complete block.
+                    // before applying the final colour to the complete block.
                     while let Ok(message) = rx.try_recv() {
                         let PtyStreamMessage::Output(output) = message;
                         if let Some(coalesced) = worker_drop_state.take_pending() {

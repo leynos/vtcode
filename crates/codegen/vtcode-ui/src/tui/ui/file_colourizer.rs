@@ -1,4 +1,4 @@
-//! LS_COLORS-based file colourisation system
+//! LS_COLORS-based file colourization system
 //!
 //! Parses LS_COLORS environment variable and applies system file type colours.
 //! This allows vtcode to respect user's file listing colour preferences.

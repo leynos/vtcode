@@ -11,15 +11,15 @@ VT Code implements comprehensive ANSI code stripping for PTY command output to e
 Environment variables set in `crates/codegen/vtcode-core/src/tools/pty.rs::set_command_environment()`:
 
 ```rust
-// Disable automatic color output from build tools
-builder.env("NO_COLOR", "1");                    // Universal color disable
+// Disable automatic colour output from build tools
+builder.env("NO_COLOR", "1");                    // Universal colour disable
 builder.env("CLICOLOR", "0");                    // Disable ANSI for ls, etc.
-builder.env("CLICOLOR_FORCE", "0");              // Don't force colors
-builder.env("LS_COLORS", "");                    // No color for ls
+builder.env("CLICOLOR_FORCE", "0");              // Don't force colours
+builder.env("LS_COLORS", "");                    // No colour for ls
 
 // Rust/Cargo specific
-builder.env("CARGO_TERM_COLOR", "never");        // Disable cargo colors
-builder.env("RUSTFLAGS", "-C color=never");      // Disable rustc colors
+builder.env("CARGO_TERM_COLOR", "never");        // Disable cargo colours
+builder.env("RUSTFLAGS", "-C color=never");      // Disable rustc colours
 ```
 
 **Benefits**: Prevents ANSI codes from being generated in the first place—most reliable approach.

@@ -39,7 +39,7 @@ Match the level of specificity to the task's fragility and variability:
 
 **High freedom (text-based instructions)**: Use when multiple approaches are valid, decisions depend on context, or heuristics guide the approach.
 
-**Medium freedom (pseudocode or scripts with parameters)**: Use when a preferred pattern exists, some variation is acceptable, or configuration affects behavior.
+**Medium freedom (pseudocode or scripts with parameters)**: Use when a preferred pattern exists, some variation is acceptable, or configuration affects behaviour.
 
 **Low freedom (specific scripts, few parameters)**: Use when operations are fragile and error-prone, consistency is critical, or a specific sequence must be followed.
 
@@ -240,7 +240,7 @@ Conclude this step when there is a clear sense of the functionality the skill sh
 
 ### Step 2: Planning the Reusable Skill Contents
 
-To turn concrete examples into an effective skill, analyze each example by:
+To turn concrete examples into an effective skill, analyse each example by:
 
 1. Considering how to execute on the example from scratch
 2. Identifying what scripts, references, and assets would be helpful when executing these workflows repeatedly
@@ -260,7 +260,7 @@ Example: When building a `big-query` skill to handle queries like "How many user
 1. Querying BigQuery requires re-discovering the table schemas and relationships each time
 2. A `references/schema.md` file documenting the table schemas would be helpful to store in the skill
 
-To establish the skill's contents, analyze each concrete example to create a list of the reusable resources to include: scripts, references, and assets.
+To establish the skill's contents, analyse each concrete example to create a list of the reusable resources to include: scripts, references, and assets.
 
 ### Step 3: Initializing the Skill
 

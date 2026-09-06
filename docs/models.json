@@ -2130,11 +2130,11 @@
           "constant": "OPENAI_GPT_5_CHAT",
           "vendor": "openai",
           "display": "OpenAI GPT-5 Chat",
-          "description": "Chat optimised GPT-5 endpoint without tool use",
+          "description": "Chat optimized GPT-5 endpoint without tool use",
           "efficient": false,
           "top_tier": false,
           "generation": "2025-09-20",
-          "doc_comment": "OpenAI GPT-5 Chat - Chat optimised GPT-5 endpoint without tool use"
+          "doc_comment": "OpenAI GPT-5 Chat - Chat optimized GPT-5 endpoint without tool use"
         }
       },
       "openai/gpt-oss-120b": {

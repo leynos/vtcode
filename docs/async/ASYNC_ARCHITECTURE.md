@@ -177,7 +177,7 @@ tokio::fs::create_dir_all(path).await?;
 **Files Using Async I/O**:
 
 -   `tree_sitter/refactoring.rs`
--   `tree_sitter/analyzer.rs`
+-   `tools/tree_sitter_runtime.rs`
 -   `srgn.rs`
 -   `file_search.rs`
 -   `curl_tool.rs`

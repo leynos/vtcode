@@ -20,7 +20,7 @@ an in-memory fake executor.
 | `executor` | `EvalExecutor` trait + `run_suite` pure orchestration |
 | `environment` | `EnvironmentProbe` checks: `CommandProbe`, `FileExistsProbe`, `GitCleanProbe` |
 | `report` | `EvalReport` / `SuiteReport` / `TaskReport` + `to_markdown` renderer |
-| `trace_analyzer` | Privacy-preserving JSONL summaries for DeepSeek and VT Code harness traces |
+| `trace_analyser` | Privacy-preserving JSONL summaries for DeepSeek and VT Code harness traces |
 
 ## Concepts
 
@@ -36,7 +36,7 @@ an in-memory fake executor.
 `HarnessTraceSummary` provides aggregate-only trace facts: turns, bounded
 tool/error counts, latency, output byte totals, repetition, and token/cache
 usage. Raw prompts, arguments, file contents, and output text are not retained.
-Use `analyze_jsonl_file` for buffered file analysis or `analyze_jsonl_reader`
+Use `analyse_jsonl_file` for buffered file analysis or `analyse_jsonl_reader`
 when the caller already owns a stream.
 
 ## Usage
@@ -53,13 +53,13 @@ Trace analysis can be kept out of the agent hot path and run against a persisted
 JSONL session:
 
 ```rust
-use vtcode_eval::analyze_jsonl_file;
+use vtcode_eval::analyse_jsonl_file;
 
-let summary = analyze_jsonl_file("session.jsonl")?;
+let summary = analyse_jsonl_file("session.jsonl")?;
 println!("{} tool calls, {} input tokens", summary.tool_calls, summary.token_usage.input_tokens);
 ```
 
-The analyzer recognizes both DeepSeek-style records and serialized
+The analyser recognizes both DeepSeek-style records and serialized
 `vtcode-exec-events::ThreadEvent` shapes. Thread-level aggregate usage is used
 only when per-turn usage is absent, preventing double counting.
 

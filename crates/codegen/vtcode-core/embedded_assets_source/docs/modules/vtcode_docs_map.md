@@ -1,6 +1,6 @@
 # VT Code Documentation Map
 
-This document serves as an index of all VT Code documentation. When users ask questions about VT Code itself (capabilities, features, configuration, etc.), this file provides the complete catalog of available documentation sources.
+This document serves as an index of all VT Code documentation. When users ask questions about VT Code itself (capabilities, features, configuration, etc.), this file provides the complete catalogue of available documentation sources.
 
 ## Quick Reference
 
@@ -58,13 +58,13 @@ This document serves as an index of all VT Code documentation. When users ask qu
   - **User Questions**: "What can you tell me about Adding New Models to VT Code?", "How does Overview work?", "How does Quick Checklist work?"
 
 - **File**: `docs/development/ALLOCATOR_MEMORY.md`
-  - **Content**: Allocator & Memory Behavior
+  - **Content**: Allocator & Memory Behaviour
   - **Topics**: The problem, Allocator selection, Allocation throughput trade-off (measured), Measuring it, Implementation
-  - **User Questions**: "What can you tell me about Allocator & Memory Behavior?", "How does The problem work?", "How does Allocator selection work?"
+  - **User Questions**: "What can you tell me about Allocator & Memory Behaviour?", "How does The problem work?", "How does Allocator selection work?"
 
 - **File**: `docs/development/EXTENDED_THINKING.md`
   - **Content**: Anthropic Thinking in VT Code
-  - **Topics**: Compact Runtime Matrix, Configuration, Adaptive Thinking Behavior, Budgeted Thinking Behavior, Feature Compatibility
+  - **Topics**: Compact Runtime Matrix, Configuration, Adaptive Thinking Behaviour, Budgeted Thinking Behaviour, Feature Compatibility
   - **User Questions**: "What can you tell me about Anthropic Thinking in VT Code?", "How does Compact Runtime Matrix work?", "How does Configuration work?"
 
 - **File**: `docs/development/CPP_CORE_GUIDELINES_ADOPTION.md`
@@ -114,7 +114,7 @@ This document serves as an index of all VT Code documentation. When users ask qu
 
 - **File**: `docs/development/fuzzing.md`
   - **Content**: Fuzzing Guide
-  - **Topics**: Scope, Basic Commands, Corpus and Artifacts, Reproducing a Crash, Coverage (Optional)
+  - **Topics**: Scope, Basic Commands, Corpus and Artefacts, Reproducing a Crash, Coverage (Optional)
   - **User Questions**: "What can you tell me about Fuzzing Guide?", "How does Scope work?", "How does Basic Commands work?"
 
 - **File**: `docs/development/MODEL_ADDITION_CHECKLIST.md`
@@ -295,7 +295,7 @@ This document serves as an index of all VT Code documentation. When users ask qu
 
 - **File**: `docs/guides/full-automation.md`
   - **Content**: Full Automation
-  - **Topics**: Activation Checklist, Runtime Behaviour, Customising The Allow-List, Propose/Verify Sub-agent, Orchestrated Harness
+  - **Topics**: Activation Checklist, Runtime Behaviour, Customizing The Allow-List, Propose/Verify Sub-agent, Orchestrated Harness
   - **User Questions**: "What can you tell me about Full Automation?", "How does Activation Checklist work?", "How does Runtime Behaviour work?"
 
 - **File**: `docs/guides/permissions.md`
@@ -601,7 +601,7 @@ This document serves as an index of all VT Code documentation. When users ask qu
 
 - **File**: `docs/reference/ansi-escape-sequences.md`
   - **Content**: ANSI Escape Sequences Reference
-  - **Topics**: Sequences, General ASCII Codes, Cursor Controls, Erase Functions, Colors / Graphics Mode
+  - **Topics**: Sequences, General ASCII Codes, Cursor Controls, Erase Functions, Colours / Graphics Mode
   - **User Questions**: "What can you tell me about ANSI Escape Sequences Reference?", "How does Sequences work?", "How does General ASCII Codes work?"
 
 - **File**: `docs/reference/ansi-in-vtcode.md`
@@ -616,7 +616,7 @@ This document serves as an index of all VT Code documentation. When users ask qu
 
 - **File**: `docs/audits/agent-harness-duplication-report.md`
   - **Content**: Agent / Harness Duplication & Optimization Report
-  - **Topics**: Architectural root cause, Findings, Revised status after line-by-line verification, Open questions for maintainers (behavior-changing — not auto-applied), Changelog
+  - **Topics**: Architectural root cause, Findings, Revised status after line-by-line verification, Open questions for maintainers (behaviour-changing — not auto-applied), Changelog
   - **User Questions**: "What can you tell me about Agent / Harness Duplication & Optimization Report?", "How does Architectural root cause work?", "How does Findings work?"
 
 - **File**: `docs/harness/AGENT_LEGIBILITY_GUIDE.md`
@@ -626,13 +626,13 @@ This document serves as an index of all VT Code documentation. When users ask qu
 
 - **File**: `docs/skills/SKILLS_GUIDE.md`
   - **Content**: Agent Skills Guide
-  - **Topics**: Discovery, Skill Structure, SKILL.md, Prompting Behavior, Commands
+  - **Topics**: Discovery, Skill Structure, SKILL.md, Prompting Behaviour, Commands
   - **User Questions**: "What can you tell me about Agent Skills Guide?", "How does Discovery work?", "How does Skill Structure work?"
 
 - **File**: `docs/skills/AGENT_SKILLS_SPEC_IMPLEMENTATION.md`
   - **Content**: Agent Skills Spec Implementation
-  - **Topics**: Implemented Behavior, Supported `SKILL.md` Fields, Validation Rules, Discovery Precedence, Deliberate Non-Support
-  - **User Questions**: "What can you tell me about Agent Skills Spec Implementation?", "How does Implemented Behavior work?", "How does Supported `SKILL.md` Fields work?"
+  - **Topics**: Implemented Behaviour, Supported `SKILL.md` Fields, Validation Rules, Discovery Precedence, Deliberate Non-Support
+  - **User Questions**: "What can you tell me about Agent Skills Spec Implementation?", "How does Implemented Behaviour work?", "How does Supported `SKILL.md` Fields work?"
 
 - **File**: `docs/protocols/ATIF_TRAJECTORY_FORMAT.md`
   - **Content**: Agent Trajectory Interchange Format (ATIF)
@@ -701,7 +701,7 @@ This document serves as an index of all VT Code documentation. When users ask qu
 
 - **File**: `docs/features/GPU_POD_MANAGER.md`
   - **Content**: GPU Pod Manager
-  - **Topics**: Overview, Commands, Behavior Notes, Testing
+  - **Topics**: Overview, Commands, Behaviour Notes, Testing
   - **User Questions**: "What can you tell me about GPU Pod Manager?", "How does Overview work?", "How does Commands work?"
 
 - **File**: `docs/harness/INDEX.md`
@@ -886,7 +886,7 @@ This document serves as an index of all VT Code documentation. When users ask qu
 
 - **File**: `docs/ansi/ANSTYLE_CROSSTERM_IMPROVEMENTS.md`
   - **Content**: anstyle-crossterm Integration Improvements
-  - **Topics**: Overview, Key Improvements, Color Mapping Behavior, Architecture Flow, Usage Patterns
+  - **Topics**: Overview, Key Improvements, Color Mapping Behaviour, Architecture Flow, Usage Patterns
   - **User Questions**: "What can you tell me about anstyle-crossterm Integration Improvements?", "How does Overview work?", "How does Key Improvements work?"
 
 - **File**: `docs/ansi/ANSTYLE_PARSE_INTEGRATION.md`
@@ -1044,7 +1044,7 @@ This document serves as an index of all VT Code documentation. When users ask qu
 - "What are the different system prompt modes (minimal, lightweight, etc.)?"
 - "How can I reduce token usage with tool documentation modes?"
 
-### Workflows & Agent Behavior
+### Workflows & Agent Behaviour
 - "How do I use the planning workflow?"
 - "How do I use the @ symbol to reference files in my messages?"
 - "How do I use the /files slash command to browse my workspace?"
@@ -1088,7 +1088,7 @@ This document serves as an index of all VT Code documentation. When users ask qu
 - "How do I build VT Code from source?"
 - "How do I run the test suite?"
 - "How do I add a new tool to VT Code?"
-- "How do I debug agent behavior or tool execution?"
+- "How do I debug agent behaviour or tool execution?"
 - "How do I run the performance benchmarks?"
 - "How do I update the self-documentation map?"
 - "How do I contribute to the VT Code project?"

@@ -31,7 +31,7 @@ diagnose and improve vtcode harness based on the session run log.
 /Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/.vtcode/checkpoints/turn_1032.json /Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/.vtcode/checkpoints/turn_1031.json
 
 Diagnosis (from checkpoint evidence)
-Turns analyzed: turn_1030.json (108,346 in-tok, 12 tools, 56s), turn_1031.json (32,280 in-tok, 4 tools, 33.7s), turn_1032.json (16,149 in-tok, 0 tools, 14.3s).
+Turns analysed: turn_1030.json (108,346 in-tok, 12 tools, 56s), turn_1031.json (32,280 in-tok, 4 tools, 33.7s), turn_1032.json (16,149 in-tok, 0 tools, 14.3s).
 #: 1
 Finding: Prompt cache never warm
 Evidence: cached_input_tokens: 0, cache_creation_tokens: 0 on all turns — turn

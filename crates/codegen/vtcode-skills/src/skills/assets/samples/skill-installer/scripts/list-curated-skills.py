@@ -17,11 +17,11 @@ import sys
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
-# Default curated skills catalog URL
-DEFAULT_CATALOG_URL = "https://raw.githubusercontent.com/vtcode-ai/skills-catalog/main/catalog.json"
+# Default curated skills catalogue URL
+DEFAULT_CATALOGUE_URL = "https://raw.githubusercontent.com/vtcode-ai/skills-catalog/main/catalog.json"
 
-# Fallback embedded catalog for offline use
-EMBEDDED_CATALOG = {
+# Fallback embedded catalogue for offline use
+EMBEDDED_CATALOGUE = {
     "version": "1.0",
     "skills": [
         {
@@ -42,19 +42,19 @@ EMBEDDED_CATALOG = {
 }
 
 
-def fetch_catalog(catalog_url):
+def fetch_catalogue(catalogue_url):
     """
-    Fetch skills catalog from URL.
+    Fetch skills catalogue from URL.
 
     Returns:
-        dict: Catalog data or None if fetch failed
+        dict: Catalogue data or None if fetch failed
     """
     try:
-        req = Request(catalog_url, headers={"User-Agent": "vtcode-skill-installer/1.0"})
+        req = Request(catalogue_url, headers={"User-Agent": "vtcode-skill-installer/1.0"})
         with urlopen(req, timeout=10) as response:
             return json.loads(response.read().decode("utf-8"))
     except (URLError, HTTPError, json.JSONDecodeError) as e:
-        print(f"[WARN] Could not fetch catalog: {e}", file=sys.stderr)
+        print(f"[WARN] Could not fetch catalogue: {e}", file=sys.stderr)
         return None
 
 
@@ -128,8 +128,8 @@ def main():
     )
     parser.add_argument(
         "--source",
-        help=f"Catalog URL (default: {DEFAULT_CATALOG_URL})",
-        default=DEFAULT_CATALOG_URL,
+        help=f"Catalogue URL (default: {DEFAULT_CATALOGUE_URL})",
+        default=DEFAULT_CATALOGUE_URL,
     )
     parser.add_argument(
         "--category",
@@ -154,21 +154,21 @@ def main():
     parser.add_argument(
         "--offline",
         action="store_true",
-        help="Use embedded catalog (offline mode)",
+        help="Use embedded catalogue (offline mode)",
     )
     args = parser.parse_args()
 
-    # Fetch catalog
+    # Fetch catalogue
     if args.offline:
-        catalog = EMBEDDED_CATALOG
-        print("[INFO] Using embedded catalog (offline mode)", file=sys.stderr)
+        catalogue = EMBEDDED_CATALOGUE
+        print("[INFO] Using embedded catalogue (offline mode)", file=sys.stderr)
     else:
-        catalog = fetch_catalog(args.source)
-        if catalog is None:
-            print("[INFO] Falling back to embedded catalog", file=sys.stderr)
-            catalog = EMBEDDED_CATALOG
+        catalogue = fetch_catalogue(args.source)
+        if catalogue is None:
+            print("[INFO] Falling back to embedded catalogue", file=sys.stderr)
+            catalogue = EMBEDDED_CATALOGUE
 
-    skills = catalog.get("skills", [])
+    skills = catalogue.get("skills", [])
 
     # List categories mode
     if args.categories:

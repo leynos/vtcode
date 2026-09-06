@@ -31,7 +31,7 @@ pub(super) fn canonicalize_tool_name(raw: &str) -> Option<String> {
 /// Canonicalize a tool call and optionally validate against known tools.
 ///
 /// When `validate` is true, the result is checked against the known-tool allowlist.
-/// When `validate` is false, only canonicalisation and exec_command defaults are applied.
+/// When `validate` is false, only canonicalization and exec_command defaults are applied.
 pub(super) fn canonicalize_tool_result(name: String, mut args: Value, validate: bool) -> Option<(String, Value)> {
     let normalized = canonicalize_normalized_name(&name)?;
     let canonical = canonicalize_tool_name(&name)?;

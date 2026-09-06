@@ -1,5 +1,5 @@
-// Diff color palette for consistent git diff styling
-// Centralizes RGB color values for additions/deletions
+// Diff colour palette for consistent git diff styling
+// Centralizes RGB colour values for additions/deletions
 //!
 //! Re-exports from vtcode-commons for backward compatibility.
 

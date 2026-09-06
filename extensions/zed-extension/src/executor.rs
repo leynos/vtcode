@@ -37,7 +37,7 @@ impl CommandResult {
 /// Execute a VT Code command
 ///
 /// # Arguments
-/// * `command` - The vtcode subcommand (e.g., "ask", "analyze")
+/// * `command` - The vtcode subcommand (e.g., "ask", "analyse")
 /// * `args` - Additional arguments to pass
 ///
 /// # Returns
@@ -45,9 +45,9 @@ impl CommandResult {
 pub fn execute_command(command: &str, args: &[&str]) -> Result<CommandResult, String> {
     // Default timeout: 30 seconds for most commands
     let timeout = match command {
-        "analyze" => Duration::from_secs(60), // Workspace analysis can take longer
-        "chat" => Duration::from_secs(120),   // Chat/interactive can be longer
-        _ => Duration::from_secs(30),         // Default timeout
+        "analyse" | "analyze" => Duration::from_secs(60), // Workspace analysis can take longer
+        "chat" => Duration::from_secs(120),               // Chat/interactive can be longer
+        _ => Duration::from_secs(30),                     // Default timeout
     };
     execute_command_with_timeout_and_env(command, args, timeout, None)
 }
@@ -173,18 +173,18 @@ mod tests {
     #[test]
     fn test_timeout_defaults() {
         // These tests verify timeout logic exists
-        // Actual timeout behavior requires process mocking
+        // Actual timeout behaviour requires process mocking
         let timeout = Duration::from_secs(30);
         assert!(timeout > Duration::from_secs(0));
     }
 
     #[test]
     fn test_command_specific_timeouts() {
-        let analyze_timeout = Duration::from_secs(60);
+        let analyse_timeout = Duration::from_secs(60);
         let chat_timeout = Duration::from_secs(120);
         let default_timeout = Duration::from_secs(30);
 
-        assert!(analyze_timeout > default_timeout);
-        assert!(chat_timeout > analyze_timeout);
+        assert!(analyse_timeout > default_timeout);
+        assert!(chat_timeout > analyse_timeout);
     }
 }
