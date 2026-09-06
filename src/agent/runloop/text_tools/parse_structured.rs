@@ -57,7 +57,7 @@ fn parse_structured_block(block: &str) -> Option<(String, Value, Vec<Value>)> {
     }
 
     // Struct-style blocks (e.g. `run_pty_cmd { command: "ls" }`) are parsed
-    // without schema validation to preserve the original behavior where only
+    // without schema validation to preserve the original behaviour where only
     // function-call-shaped blocks had required-parameter checks.
     parse_struct_style_block(trimmed)
 }

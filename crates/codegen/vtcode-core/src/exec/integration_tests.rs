@@ -227,11 +227,11 @@ try:
     }
 
     // ============================================================================
-    // Test 6: Agent Behavior Analysis
+    // Test 6: Agent Behaviour Analysis
     // ============================================================================
 
     #[test]
-    fn test_agent_behavior_tracking() {
+    fn test_agent_behaviour_tracking() {
         let mut analyser = AgentBehaviourAnalyser::new();
 
         // Record tool usage

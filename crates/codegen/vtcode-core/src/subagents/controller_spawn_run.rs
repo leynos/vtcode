@@ -161,7 +161,7 @@ impl SubagentController {
 
         if !spec.is_read_only() {
             bail!(
-                "custom subagent spawn only supports read-only specs; '{}' exposes write-capable behavior",
+                "custom subagent spawn only supports read-only specs; '{}' exposes write-capable behaviour",
                 spec.name
             );
         }

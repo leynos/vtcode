@@ -1515,7 +1515,7 @@ async fn public_alias_resolution_stays_consistent_across_execution_preflight_and
 }
 
 #[tokio::test]
-async fn safe_mode_prompt_uses_behavior_metadata() -> Result<()> {
+async fn safe_mode_prompt_uses_behaviour_metadata() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
     registry.allow_all_tools().await?;

@@ -121,12 +121,12 @@ pub fn get_notification_instructions(terminal_type: TerminalType) -> Vec<String>
         ],
         TerminalType::WezTerm => vec![
             "1. OPEN: WezTerm settings (~/.wezterm.lua)".to_string(),
-            "2. ENABLE: Bell/alert behavior as preferred".to_string(),
+            "2. ENABLE: Bell/alert behaviour as preferred".to_string(),
             "3. TEST: Run 'echo -e \"\\a\"'".to_string(),
         ],
         TerminalType::TerminalApp => vec![
             "1. OPEN: Terminal → Settings → Profiles → Advanced".to_string(),
-            "2. CONFIGURE: Alert/Bell behavior".to_string(),
+            "2. CONFIGURE: Alert/Bell behaviour".to_string(),
             "3. TEST: Run 'echo -e \"\\a\"'".to_string(),
         ],
         TerminalType::Xterm => vec![

@@ -135,7 +135,7 @@ pub(super) fn stream_command_parts(tool_name: &str, args: &Value) -> Option<Vec<
 
 fn command_parts_for_cache(tool_name: &str, args: &Value) -> Option<Vec<String>> {
     match tool_name {
-        // Keep cache behavior strict for run_pty/shell: only "command" is accepted
+        // Keep cache behaviour strict for run_pty/shell: only "command" is accepted
         // (no raw_command fallback) to avoid broadening cacheability semantics.
         tools::RUN_PTY_CMD | tools::SHELL | "bash" => collect_command_parts(args.get("command")?, args),
         _ => stream_command_parts(tool_name, args),

@@ -33,7 +33,7 @@ pub fn patch_source_from_args(args: &Value) -> Option<&str> {
     let input = args.get("input").and_then(|value| value.as_str());
     let patch = args.get("patch").and_then(|value| value.as_str());
 
-    // When only one alias field is present, use it (historical behavior).
+    // When only one alias field is present, use it (historical behaviour).
     // When both are present, prefer the field whose content actually looks
     // like a VT Code patch. This prevents a non-patch `input` (e.g. raw file
     // contents emitted by some providers — see checkpoint turn_615) from

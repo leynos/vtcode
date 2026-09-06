@@ -47,7 +47,7 @@ pub struct AgentConfig {
     pub system_prompt_budget_warning: bool,
 
     /// Trim low-priority system prompt sections when over budget. Opt-in:
-    /// silently dropping instructions changes agent behavior, so the default
+    /// silently dropping instructions changes agent behaviour, so the default
     /// only warns.
     #[serde(default)]
     pub trim_system_prompt: bool,
@@ -56,7 +56,7 @@ pub struct AgentConfig {
     /// Options: minimal (~800 tokens), progressive (~1.2k), full (~3k current)
     /// Progressive: signatures upfront, detailed docs on-demand (recommended)
     /// Minimal: signatures only, pi-coding-agent style (power users)
-    /// Full: all documentation upfront (current behavior, default)
+    /// Full: all documentation upfront (current behaviour, default)
     #[serde(default)]
     pub tool_documentation_mode: ToolDocumentationMode,
 
@@ -233,7 +233,7 @@ pub struct AgentConfig {
 
     /// Controls inclusion of the structured reasoning tag instructions block.
     ///
-    /// Behavior:
+    /// Behaviour:
     /// - `Some(true)`: always include structured reasoning instructions.
     /// - `Some(false)`: never include structured reasoning instructions.
     /// - `None` (default): include only for `default` and `specialized` prompt modes.
@@ -243,7 +243,7 @@ pub struct AgentConfig {
     #[serde(default)]
     pub include_structured_reasoning_tags: Option<bool>,
 
-    /// Custom instructions provided by the user via configuration to guide agent behavior
+    /// Custom instructions provided by the user via configuration to guide agent behaviour
     #[serde(default)]
     pub user_instructions: Option<String>,
 
@@ -323,7 +323,7 @@ impl<'de> Deserialize<'de> for ContinuationPolicy {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContextResetMode {
-    /// Never reset — always carry forward conversation history (current behavior).
+    /// Never reset — always carry forward conversation history (current behaviour).
     #[default]
     Off,
     /// Reset when the progress monitor detects a stall (no forward progress for

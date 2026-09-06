@@ -66,7 +66,7 @@ suite("VT Code configuration language features", () => {
             )
             .join("\n");
         assert.ok(
-            hoverText.includes("Core VT Code agent behavior"),
+            hoverText.includes("Core VT Code agent behaviour"),
             "Hover text should describe agent section"
         );
     });

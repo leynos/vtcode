@@ -180,7 +180,7 @@ async fn spawn_process_internal(opts: PipeSpawnOptions) -> Result<SpawnedProcess
     #[cfg(unix)]
     #[expect(
         unsafe_code,
-        reason = "detach_from_tty only calls setsid/setpgid via safe nix wrappers to detach the child from the controlling terminal; it is a pure process-group operation with no undefined behavior"
+        reason = "detach_from_tty only calls setsid/setpgid via safe nix wrappers to detach the child from the controlling terminal; it is a pure process-group operation with no undefined behaviour"
     )]
     // SAFETY: `pre_exec` runs the closure in the forked child before `exec`,
     // so only async-signal-safe operations are permitted. `detach_from_tty`

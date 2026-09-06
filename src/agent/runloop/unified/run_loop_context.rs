@@ -594,7 +594,7 @@ impl HarnessTurnState {
     }
 
     /// Pause ordinary turn wall-clock accounting around an explicit external
-    /// wait. This does not alter tool ceilings or cancellation behavior.
+    /// wait. This does not alter tool ceilings or cancellation behaviour.
     pub(crate) fn begin_budget_excluded_wait(&mut self) {
         if self.wait_started_at.is_none() {
             self.wait_started_at = Some(Instant::now());

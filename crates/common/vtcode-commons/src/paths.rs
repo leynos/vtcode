@@ -111,7 +111,7 @@ pub fn workspace_relative_display(workspace_root: &Path, path: &Path) -> String 
     }
 
     // If the candidate cannot be resolved yet (for example, a new file with a
-    // missing tail), retain the cheap lexical behavior for paths that are
+    // missing tail), retain the cheap lexical behaviour for paths that are
     // clearly under the workspace.
     let normalized_candidate = normalize_path(&candidate);
     let normalized_workspace = normalize_path(workspace_root);

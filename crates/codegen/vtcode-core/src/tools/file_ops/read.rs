@@ -231,7 +231,7 @@ fn apply_spool_chunk_defaults(handler_args_json: &mut Value, raw_args: &Value) -
 
         obj.insert("offset".to_string(), json!(offset));
         obj.insert("limit".to_string(), json!(limit));
-        // Preserve narrow chunking behavior by bypassing MIN_BATCH_LIMIT expansion
+        // Preserve narrow chunking behaviour by bypassing MIN_BATCH_LIMIT expansion
         // in ReadFileHandler::handle (which only applies when max_tokens is absent).
         obj.entry("max_tokens".to_string())
             .or_insert_with(|| json!(SPOOL_CHUNK_SENTINEL_MAX_TOKENS));
@@ -945,7 +945,7 @@ mod read_tests {
     }
 
     #[tokio::test]
-    async fn test_read_file_paging_lines_preserves_lossy_utf8_behavior() {
+    async fn test_read_file_paging_lines_preserves_lossy_utf8_behaviour() {
         let temp_dir = TempDir::new().unwrap();
         let workspace_root = temp_dir.path().to_path_buf();
         let test_file = workspace_root.join("invalid_utf8.txt");

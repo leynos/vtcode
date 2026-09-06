@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SWE-bench Lite (DRY) – agent latency/behavior; free-tier friendly
+# SWE-bench Lite (DRY) – agent latency/behaviour; free-tier friendly
 import os, json, random, re, time, subprocess, pathlib
 from datetime import datetime
 from datasets import load_dataset

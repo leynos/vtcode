@@ -1295,7 +1295,7 @@ fn build_performance_section() -> String {
         vec![
             "Do not guess at bottlenecks; measure before optimizing.".to_owned(),
             "Prefer simple algorithms and data structures until workload data proves otherwise.".to_owned(),
-            "Keep performance changes surgical and behavior-preserving.".to_owned(),
+            "Keep performance changes surgical and behaviour-preserving.".to_owned(),
         ],
     )
     .unwrap_or_else(|| "## Performance & simplicity\n\n- Measure before optimizing.\n\n".to_owned())
