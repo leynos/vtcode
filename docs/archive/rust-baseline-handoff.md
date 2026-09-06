@@ -974,3 +974,33 @@ names the unmerged parent for the Actions-validation stack; the replay moved
 the layer's own two commits onto `929daec2a` without changing their content.
 The gate evidence recorded above describes earlier replays onto unmerged
 parents and is not evidence for this head.
+
+## Tracked-file spelling gate
+
+This layer enables the reviewed Oxford spelling policy through `make spelling`
+and `make lint`. Discovery uses Git's tracked-file index, preserves NUL-delimited
+paths, skips deleted files, and fails closed on discovery errors. CI installs
+pinned typos-cli 1.50.1 and invokes the same Make target.
+
+Historical exceptions enumerate the audited commit hashes and names instead of
+excluding changelogs. Custom file types match basenames, so both changelogs
+remain covered. Focused process and CI contracts accompany developer setup
+instructions. The primary Rust toolchain remains unchanged.
+
+All eight spelling contracts, the 3,104-file spelling scan, and 13 workflow
+contracts passed. Format, lint, build, type-check, workspace tests, and harness
+checks passed: 10,094 tests passed with 17 skipped, plus all 67 harness tests.
+Advisory checks passed in warning mode; optional ast-grep was unavailable.
+Four inherited rustdoc warnings remain. Nixie passed both changed documents;
+Markdownlint retains seven exact-parent line-length findings in the setup guide,
+with no additions. CI installs typos in both spelling-dependent jobs.
+
+## PR 70 after PR 69 merged
+
+PR #69 squash-merged into `main` as `f2c7e5b4d`. This layer was replayed onto
+it with `git rebase --onto f2c7e5b4d e4b5b2b73`. The only conflict was this
+handoff file, which now keeps every earlier record. The earlier record above
+names the unmerged parent for the spelling-history stack; the replay moved the
+layer's own six commits onto `f2c7e5b4d` without changing their content. The
+gate evidence recorded above describes earlier replays onto unmerged parents and
+is not evidence for this head.

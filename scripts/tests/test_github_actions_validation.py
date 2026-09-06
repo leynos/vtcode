@@ -100,7 +100,7 @@ class WorkflowPolicyTests(unittest.TestCase):
         """Check lint depends on the target that runs yamllint first."""
         makefile = MAKEFILE_PATH.read_text(encoding="utf-8")
         self.assertIn(
-            "lint: lint-shell lint-policies github-actions-lint lint-clippy lint-docs",
+            "lint: lint-shell lint-policies spelling github-actions-lint lint-clippy lint-docs",
             makefile,
         )
         target = "github-actions-lint:\n"
