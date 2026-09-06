@@ -142,7 +142,7 @@ ignore_patterns = ["node_modules", ".git", "dist"]
 
 [security]
 human_in_the_loop = true
-allowed_tools = ["read_file", "edit_file", "analyze"]
+allowed_tools = ["read_file", "edit_file", "analyse"]
 
 [llm]
 temperature = 0.7

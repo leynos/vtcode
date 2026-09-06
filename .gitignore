@@ -146,7 +146,7 @@ debug/
 .cargo/registry/
 .cargo/git/
 
-# Rust Analyzer
+# rust-analyzer
 rust-project.json
 
 # Flamegraphs (performance profiling)

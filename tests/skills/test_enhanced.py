@@ -320,7 +320,7 @@ Modify the specification to include:
 {
   "title": "Report",
   "style": {
-    "primary_color": "#003366",
+    "primary_colour": "#003366",
     "font_family": "Arial",
     "header_size": 16
   }
@@ -340,7 +340,7 @@ import matplotlib.pyplot as plt
 "chart_config": {
   "type": "bar",
   "data": [10, 20, 30],
-  "colors": ["#003366", "#0066CC", "#0099FF"]
+  "colours": ["#003366", "#0066CC", "#0099FF"]
 }
 ```
 """)
@@ -370,7 +370,7 @@ complexity: moderate
 
 ```bash
 # Create analysis
-python -m vtcode.skills.excel.analyze --file data.xlsx --config analysis.json
+python -m vtcode.skills.excel.analyse --file data.xlsx --config analysis.json
 
 # Generate chart
 python -m vtcode.skills.excel.chart --file data.xlsx --type bar --output chart.png
