@@ -788,3 +788,19 @@ and all 67 harness tests passed. Advisory checks passed in warning mode;
 optional ast-grep was unavailable. The same four rustdoc warnings remain.
 Final contracts, workflow linters, and document checks include the CI job-limit
 correction and this evidence update.
+
+## Historical CHANGELOG spelling layer
+
+This layer applies 196 reviewed prose-only spelling corrections to `CHANGELOG.md`.
+It preserves 137 commit-hash fragments and 22 historical identifiers or paths;
+18 newly introduced single trailing spaces on changed release bullets were removed.
+No generated spelling configuration is included. Format, lint, build, type-check,
+workspace, and harness gates passed: 10,094 tests passed with 17 skipped, plus
+all 67 harness tests. The 13 workflow contracts passed. Advisory checks passed
+in warning mode; optional ast-grep was unavailable. Four inherited rustdoc
+warnings remain.
+
+The replacement history policy checked all 3,099 tracked files with no textual
+findings. Markdownlint findings fell from 11,252 on the exact parent to 11,229,
+with no additions; the remaining findings await the Markdown cleanup layers.
+Nixie passed for both changed documents.
