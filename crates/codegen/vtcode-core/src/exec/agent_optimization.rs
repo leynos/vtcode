@@ -1,4 +1,4 @@
-//! Agent behavior optimization and learning system
+//! Agent behaviour optimization and learning system
 //!
 //! Analyzes metrics from Steps 1-8 to provide guidance on:
 //! - Tool discovery optimization
@@ -118,7 +118,7 @@ pub struct FailurePatterns {
     pub recovery_patterns: Vec<RecoveryPattern>,
 }
 
-/// Analyzes agent behavior from metrics history
+/// Analyzes agent behaviour from metrics history
 #[derive(Default)]
 pub struct AgentBehaviourAnalyser {
     skill_stats: SkillStatistics,
@@ -127,7 +127,7 @@ pub struct AgentBehaviourAnalyser {
 }
 
 impl AgentBehaviourAnalyser {
-    /// Create a new behavior analyzer
+    /// Create a new behaviour analyzer
     pub fn new() -> Self {
         Self::default()
     }
@@ -370,7 +370,7 @@ impl AgentBehaviourAnalyser {
     /// Get analysis summary as string
     pub fn summary(&self) -> String {
         let mut output = String::new();
-        output.push_str("=== Agent Behavior Analysis ===\n\n");
+        output.push_str("=== Agent Behaviour Analysis ===\n\n");
 
         output.push_str("## Skill Statistics\n");
         let _ = writeln!(output, "Total skills: {}", self.skill_stats.total_skills);

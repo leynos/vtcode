@@ -2,7 +2,7 @@
 //!
 //! This module provides the single source of truth for bounding file reads.
 //! These functions are used by both the new `ReadFileHandler` and the legacy
-//! `read_file_legacy` path to ensure consistent behavior.
+//! `read_file_legacy` path to ensure consistent behaviour.
 
 use super::cache::file_read_cache_config;
 

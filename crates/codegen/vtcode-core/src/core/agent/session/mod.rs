@@ -119,7 +119,7 @@ pub struct SessionStats {
     /// Provider name for the active session, used to normalize per-turn usage
     /// (see [`crate::llm::usage_cost::provider_reports_exclusive_input`]). An
     /// empty string is treated as a non-exclusive-input provider, which
-    /// preserves existing behavior for callers that never set it.
+    /// preserves existing behaviour for callers that never set it.
     pub provider_name: String,
 }
 
@@ -626,7 +626,7 @@ mod tests {
     use std::time::Duration;
 
     /// `cache_gap_exceeds`/`note_request_sent` delegate to the shared
-    /// `RequestGapTracker`, which owns the full behavioral test coverage
+    /// `RequestGapTracker`, which owns the full behavioural test coverage
     /// (see `crate::llm::request_gap`); this just pins the delegation.
     #[test]
     fn cache_gap_exceeds_delegates_to_request_gap_tracker() {

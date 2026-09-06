@@ -1646,7 +1646,7 @@ mod tests {
             }
         });
 
-        // With include_cache_metrics = false (Evolink/Moonshot/StepFun/ZAI behavior)
+        // With include_cache_metrics = false (Evolink/Moonshot/StepFun/ZAI behaviour)
         handle_openai_compatible_chunk(&chunk, &mut aggregator, &tx, &[], OpenAiDeltaOrder::ContentFirst, false);
 
         let response = aggregator.finalize();
@@ -1655,7 +1655,7 @@ mod tests {
         assert_eq!(usage.cached_prompt_tokens, None);
         assert_eq!(usage.cache_creation_tokens, None);
 
-        // With include_cache_metrics = true (DeepSeek behavior)
+        // With include_cache_metrics = true (DeepSeek behaviour)
         let mut aggregator2 = StreamAggregator::new("test-model".to_string());
         handle_openai_compatible_chunk(&chunk, &mut aggregator2, &tx, &[], OpenAiDeltaOrder::ContentFirst, true);
 

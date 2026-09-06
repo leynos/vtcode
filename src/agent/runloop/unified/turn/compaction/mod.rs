@@ -319,7 +319,7 @@ async fn run_manual_compaction(
         steering_update,
     } = state;
 
-    // `--native-only` preserves the legacy strict behavior: refuse unless the
+    // `--native-only` preserves the legacy strict behaviour: refuse unless the
     // provider exposes a real standalone compaction endpoint (OpenAI
     // `/responses/compact`). Without the flag, every provider proceeds via the
     // strategy dispatch (native standalone, native inline, or local summary).

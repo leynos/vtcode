@@ -692,7 +692,7 @@ mod tests {
     #[test]
     fn does_not_start_planning_for_generic_research_requests() {
         assert!(!detect_enter_planning_intent("explore and tell me about the core agent loop"));
-        assert!(!detect_enter_planning_intent("review the runloop and summarize the behavior"));
+        assert!(!detect_enter_planning_intent("review the runloop and summarize the behaviour"));
     }
 
     #[test]
@@ -717,7 +717,7 @@ mod tests {
     fn confirmation_words_do_not_trigger_when_stay_in_planning_workflow_is_prompted() {
         // When the assistant asks about staying in planning, "yes" should
         // not trigger exit - but "yes" is still a direct command, so it
-        // will trigger ExitAndImplement. This is expected behavior.
+        // will trigger ExitAndImplement. This is expected behaviour.
         assert_eq!(detect_planning_intent("yes", false), PlanningIntent::ExitAndImplement);
     }
 

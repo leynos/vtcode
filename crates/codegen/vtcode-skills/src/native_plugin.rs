@@ -181,7 +181,7 @@ fn decode_plugin_c_string(
     // 2. We assume the plugin-returned pointer is a valid nul-terminated C string per the plugin ABI.
     // 3. The reference created by `CStr::from_ptr` is only used to copy the data into a Rust `String`.
     //    Since we own the only reference during this brief window and copy-then-release,
-    //    we avoid Undefined Behavior related to mutable aliasing that "Unsafe Rust is not C" warns about.
+    //    we avoid Undefined Behaviour related to mutable aliasing that "Unsafe Rust is not C" warns about.
     let decoded = unsafe { CStr::from_ptr(raw_ptr) }
         .to_str()
         .context(utf8_error_context)

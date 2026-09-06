@@ -528,7 +528,7 @@ mod tests {
 
         // Max size is 50, create more entries than that
         // Note: This test is limited because we need actual SKILL.md files
-        // For now, just verify the cache respects max size in behavior
+        // For now, just verify the cache respects max size in behaviour
         assert_eq!(manager.instruction_cache_size(), 0);
 
         // Even after multiple operations, should be bounded

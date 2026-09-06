@@ -177,7 +177,7 @@ pub(super) fn handle_rewind_command(args: &str, renderer: &mut AnsiRenderer) -> 
         vtcode_core::core::agent::snapshots::RevertScope::Both
     };
 
-    // Use turn number if provided, otherwise use a default behavior
+    // Use turn number if provided, otherwise use a default behaviour
     if let Some(turn) = turn_number {
         // Return a command to handle the revert with specific turn and scope
         Ok(SlashCommandOutcome::RewindToTurn { turn, scope })

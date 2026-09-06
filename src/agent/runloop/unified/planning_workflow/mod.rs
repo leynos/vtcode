@@ -268,7 +268,7 @@ A valid plan.
 1. Run cargo check.
 
 ## Assumptions and Defaults
-1. Keep existing behavior.
+1. Keep existing behaviour.
 "#;
 
     const INVALID_PROSE_PLAN: &str = r#"# Plan
@@ -284,7 +284,7 @@ Improve launch time.
 1. Track the same startup marker.
 
 ## Assumptions and Defaults
-1. Keep existing behavior.
+1. Keep existing behaviour.
 "#;
 
     // --- plan_repair_directive_for_error tests ---

@@ -892,7 +892,7 @@ impl ToolPolicyManager {
         if let Some(ref mut handler) = self.permission_handler {
             handler.prompt_tool_permission(tool_name)
         } else {
-            // Default behavior if no handler is configured: allow through
+            // Default behaviour if no handler is configured: allow through
             Ok(ToolExecutionDecision::Allowed)
         }
     }

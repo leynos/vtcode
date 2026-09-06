@@ -864,7 +864,7 @@ mod tests {
         assert!(err.to_string().contains("has not been refreshed"), "should mention Codex hasn't refreshed: {err}");
     }
 
-    // ── Unknown-expiry behavior ──
+    // ── Unknown-expiry behaviour ──
 
     #[test]
     #[serial]
