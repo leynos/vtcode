@@ -6,7 +6,7 @@ pub(crate) use runtime::PtyStreamRuntime;
 
 #[cfg(test)]
 mod tests {
-    use anstyle::{AnsiColor, Color as AnsiColorEnum};
+    use anstyle::{AnsiColor, Color as AnsiColourEnum};
     use std::sync::Arc;
     use std::sync::atomic::Ordering;
     use std::time::Duration;
@@ -218,7 +218,7 @@ mod tests {
             .iter()
             .find(|segment| segment.text.contains("ERR"))
             .expect("coloured text segment should be present");
-        assert_eq!(err_segment.style.colour, Some(AnsiColorEnum::Ansi(AnsiColor::Red)));
+        assert_eq!(err_segment.style.colour, Some(AnsiColourEnum::Ansi(AnsiColor::Red)));
     }
 
     #[test]

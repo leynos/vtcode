@@ -802,7 +802,7 @@ impl AgentRunner {
     /// reduce the result, push it into the conversation, finalize the
     /// invocation record, and emit the corresponding event recorder
     /// notifications. Shared between the parallel and sequential execution
-    /// paths to keep fallback handling behaviorally identical.
+    /// paths to keep fallback handling behaviourally identical.
     #[allow(
         clippy::too_many_arguments,
         reason = "Intentional compatibility, platform, or test-only suppression."

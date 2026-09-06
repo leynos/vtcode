@@ -308,7 +308,7 @@ fn analyse_request_history(messages: &[Message]) -> RequestHistoryAnalysis {
 
 /// Return whether the provider-facing message view needs tool-history repair.
 ///
-/// This deliberately analyzes only the request view. Durable session history
+/// This deliberately analyses only the request view. Durable session history
 /// is repaired by its own crash-recovery path and is never changed here.
 pub fn request_history_needs_normalization(messages: &[Message]) -> bool {
     analyse_request_history(messages).needs_repair()

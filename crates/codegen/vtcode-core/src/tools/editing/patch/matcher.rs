@@ -1,6 +1,6 @@
 pub(crate) struct PatchContextMatcher<'a> {
     lines: &'a [String],
-    /// Normalised form of every file line, computed once at construction so
+    /// Normalized form of every file line, computed once at construction so
     /// repeated `seek` calls (and thus repeated patch hunks) don't re-normalize
     /// the whole file on every lookup.
     norm_lines: Vec<String>,

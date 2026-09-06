@@ -1,4 +1,4 @@
-use anstyle::Color as AnsiColorEnum;
+use anstyle::Color as AnsiColourEnum;
 /// Message operations for Session
 ///
 /// This module handles message-related operations including:
@@ -135,7 +135,7 @@ impl Session {
     }
 
     /// Get the text fallback color for a message kind
-    pub(crate) fn text_fallback(&self, kind: InlineMessageKind) -> Option<AnsiColorEnum> {
+    pub(crate) fn text_fallback(&self, kind: InlineMessageKind) -> Option<AnsiColourEnum> {
         self.styles.text_fallback(kind)
     }
 

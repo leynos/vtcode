@@ -2,7 +2,7 @@
 
 VT Code configuration gives you fine-grained control over the model, execution environment, and integrations available to the CLI. Use this guide alongside the workflows in the extension, the participant system, and the tool approval mechanisms available in the application.
 
-VT Code uses a configuration file named `vtcode.toml` that can be placed at the root of your project workspace to customize behavior. The extension watches for changes to this file and will automatically update settings when it's modified.
+VT Code uses a configuration file named `vtcode.toml` that can be placed at the root of your project workspace to customize behaviour. The extension watches for changes to this file and will automatically update settings when it's modified.
 
 ## Getting Started with Configuration
 
@@ -36,7 +36,7 @@ Both the workspace `vtcode.toml` and the main `config.toml` file support the fol
 
 ## Feature flags
 
-Optional and experimental capabilities are toggled via the `[features]` table in `vtcode.toml`. These allow you to customize the behavior of various VT Code features.
+Optional and experimental capabilities are toggled via the `[features]` table in `vtcode.toml`. These allow you to customize the behaviour of various VT Code features.
 
 ```toml
 [features]
@@ -127,7 +127,7 @@ env_http_headers = { "X-Example-Features" = "EXAMPLE_FEATURES" }
 
 ### Model-specific settings
 
-You can also configure model-specific behavior:
+You can also configure model-specific behaviour:
 
 ```toml
 [agent.model_settings]
@@ -259,7 +259,7 @@ custom_tool_example = "deny"
 
 ### automation
 
-Control automation behavior in VT Code:
+Control automation behaviour in VT Code:
 
 ```toml
 [automation]
@@ -277,7 +277,7 @@ allowed_tools = ["read_file", "web_search", "shell_exec"]
 
 ### participants
 
-Controls the behavior of the participant system that provides context augmentation:
+Controls the behaviour of the participant system that provides context augmentation:
 
 ```toml
 [participants]
@@ -439,7 +439,7 @@ The VT Code extension uses a command system that can be configured through the s
 # Whether to enable the ask agent command
 ask_agent_enabled = true
 
-# Whether to enable the analyze workspace command
+# Whether to enable the analyse workspace command
 analyze_enabled = true
 
 # Timeout for command execution (in seconds)
@@ -569,7 +569,7 @@ If VT Code is not behaving as expected with your configuration:
 | `auth.secure_storage`                   | boolean                                           | Store credentials securely (default: true).                        |
 | `auth.validate_keys`                    | boolean                                           | Validate API keys on startup.                                      |
 | `commands.ask_agent_enabled`            | boolean                                           | Enable the ask agent command.                                      |
-| `commands.analyze_enabled`              | boolean                                           | Enable the analyze command.                                        |
+| `commands.analyze_enabled`              | boolean                                           | Enable the analyse command.                                        |
 | `commands.command_timeout`              | number                                            | Command execution timeout (seconds).                               |
 | `profiles.*.agent.provider`             | string                                            | Provider override for a profile.                                   |
 | `profiles.*.security.human_in_the_loop` | boolean                                           | Security setting override for a profile.                           |

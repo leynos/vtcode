@@ -5,7 +5,7 @@
 
 use crate::ui::tui::{InlineMessageKind, InlineSegment};
 
-/// Configuration for streaming behavior
+/// Configuration for streaming behaviour
 #[derive(Clone, Debug)]
 pub struct StreamConfig {
     /// Number of lines to buffer before automatic flush
@@ -28,7 +28,7 @@ impl Default for StreamConfig {
 pub struct StreamBuffer {
     /// Buffered line segments
     lines: Vec<Vec<InlineSegment>>,
-    /// Configuration for batching behavior
+    /// Configuration for batching behaviour
     config: StreamConfig,
     /// Approximate size in bytes (for max_buffer_bytes check)
     approximate_size: usize,

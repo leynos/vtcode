@@ -307,7 +307,7 @@ impl ManPageGenerator {
         Ok(page)
     }
 
-    /// Generate man page for the analyze command
+    /// Generate the man page for the analyse command.
     /// Generate man page for the performance command
     fn generate_performance_man_page() -> Result<String> {
         let current_date = Self::current_date();

@@ -30,7 +30,7 @@ use vtcode_commons::serde_helpers::json_to_string_pretty;
 
 /// Default threshold for spooling tool output to files (8KB).
 /// Keep this aligned with `DynamicContextConfig::default().tool_output_threshold`
-/// so invalid workspace config falls back to the same runtime behavior.
+/// so invalid workspace config falls back to the same runtime behaviour.
 pub const DEFAULT_SPOOL_THRESHOLD_BYTES: usize = 8_192;
 
 const CONDENSE_HEAD_BYTES: usize = 8_000;
@@ -487,7 +487,7 @@ impl ToolOutputSpooler {
         self.process_output_with_options(tool_name, value, is_mcp, false, None).await
     }
 
-    /// Process a tool output, optionally forcing spool behavior.
+    /// Process a tool output, optionally forcing spool behaviour.
     ///
     /// `force_spool=true` bypasses the size threshold but still respects explicit
     /// `no_spool=true` in the payload.

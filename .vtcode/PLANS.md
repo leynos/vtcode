@@ -19,7 +19,7 @@ NON-NEGOTIABLE REQUIREMENTS:
 - Every ExecPlan must be fully self-contained. Self-contained means that in its current form it contains all knowledge and instructions needed for a novice to succeed.
 - Every ExecPlan is a living document. Contributors are required to revise it as progress is made, as discoveries occur, and as design decisions are finalized. Each revision must remain fully self-contained.
 - Every ExecPlan must enable a complete novice to implement the feature end-to-end without prior knowledge of this repo.
-- Every ExecPlan must produce a demonstrably working behavior, not merely code changes to "meet a definition".
+- Every ExecPlan must produce a demonstrably working behaviour, not merely code changes to "meet a definition".
 - Every ExecPlan must define every term of art in plain language or do not use it.
 
 Purpose and intent come first. Begin by explaining, in a few sentences, why the work matters from a user's perspective: what someone can do after this change that they could not do before, and how to see it working. Then guide the reader through the exact steps to achieve that outcome, including what to edit, what to run, and what they should observe.
@@ -28,7 +28,7 @@ The agent executing your plan can list files, read files, search, run the projec
 
 ## Formatting
 
-Format and envelope are simple and strict. Each ExecPlan must be one single fenced code block labeled as `md` that begins and ends with triple backticks. Do not nest additional triple-backtick code fences inside; when you need to show commands, transcripts, diffs, or code, present them as indented blocks within that single fence. Use indentation for clarity rather than code fences inside an ExecPlan to avoid prematurely closing the ExecPlan's code fence. Use two newlines after every heading, use # and ## and so on, and correct syntax for ordered and unordered lists.
+Format and envelope are simple and strict. Each ExecPlan must be one single fenced code block labelled as `md` that begins and ends with triple backticks. Do not nest additional triple-backtick code fences inside; when you need to show commands, transcripts, diffs, or code, present them as indented blocks within that single fence. Use indentation for clarity rather than code fences inside an ExecPlan to avoid prematurely closing the ExecPlan's code fence. Use two newlines after every heading, use # and ## and so on, and correct syntax for ordered and unordered lists.
 
 When writing an ExecPlan to a Markdown (.md) file where the content of the file _is only_ the single ExecPlan, you should omit the triple backticks.
 
@@ -40,7 +40,7 @@ Self-containment and plain language are paramount. If you introduce a phrase tha
 
 Avoid common failure modes. Do not rely on undefined jargon. Do not describe "the letter of a feature" so narrowly that the resulting code compiles but does nothing meaningful. Do not outsource key decisions to the reader. When ambiguity exists, resolve it in the plan itself and explain why you chose that path. Err on the side of over-explaining user-visible effects and under-specifying incidental implementation details.
 
-Anchor the plan with observable outcomes. State what the user can do after implementation, the commands to run, and the outputs they should see. Acceptance should be phrased as behavior a human can verify ("after starting the server, navigating to http://localhost:8080/health returns HTTP 200 with body OK") rather than internal attributes ("added a HealthCheck struct"). If a change is internal, explain how its impact can still be demonstrated (for example, by running tests that fail before and pass after, and by showing a scenario that uses the new behavior).
+Anchor the plan with observable outcomes. State what the user can do after implementation, the commands to run, and the outputs they should see. Acceptance should be phrased as behaviour a human can verify ("after starting the server, navigating to http://localhost:8080/health returns HTTP 200 with body OK") rather than internal attributes ("added a HealthCheck struct"). If a change is internal, explain how its impact can still be demonstrated (for example, by running tests that fail before and pass after, and by showing a scenario that uses the new behaviour).
 
 Specify repository context explicitly. Name files with full repository-relative paths, name functions and modules precisely, and describe where new files should be created. If touching multiple areas, include a short orientation paragraph that explains how those parts fit together so a novice can navigate confidently. When running commands, show the working directory and exact command line. When outcomes depend on environment, state the assumptions and provide alternatives when reasonable.
 
@@ -60,7 +60,7 @@ Each milestone must be independently verifiable and incrementally implement the 
 
 - ExecPlans are living documents. As you make key design decisions, update the plan to record both the decision and the thinking behind it. Record all decisions in the `Decision Log` section.
 - ExecPlans must contain and maintain a `Progress` section, a `Surprises & Discoveries` section, a `Decision Log`, and an `Outcomes & Retrospective` section. These are not optional.
-- When you discover optimizer behavior, performance tradeoffs, unexpected bugs, or inverse/unapply semantics that shaped your approach, capture those observations in the `Surprises & Discoveries` section with short evidence snippets (test output is ideal).
+- When you discover optimizer behaviour, performance tradeoffs, unexpected bugs, or inverse/unapply semantics that shaped your approach, capture those observations in the `Surprises & Discoveries` section with short evidence snippets (test output is ideal).
 - If you change course mid-implementation, document why in the `Decision Log` and reflect the implications in `Progress`. Plans are guides for the next contributor as much as checklists for you.
 - At completion of a major task or the full plan, write an `Outcomes & Retrospective` entry summarizing what was achieved, what remains, and lessons learned.
 
@@ -80,7 +80,7 @@ Prefer additive code changes followed by subtractions that keep tests passing. P
 
     ## Purpose / Big Picture
 
-    Explain in a few sentences what someone gains after this change and how they can see it working. State the user-visible behavior you will enable.
+    Explain in a few sentences what someone gains after this change and how they can see it working. State the user-visible behaviour you will enable.
 
     ## Progress
 
@@ -94,7 +94,7 @@ Prefer additive code changes followed by subtractions that keep tests passing. P
 
     ## Surprises & Discoveries
 
-    Document unexpected behaviors, bugs, optimizations, or insights discovered during implementation. Provide concise evidence.
+    Document unexpected behaviours, bugs, optimizations, or insights discovered during implementation. Provide concise evidence.
 
     - Observation: …
       Evidence: …
@@ -125,13 +125,13 @@ Prefer additive code changes followed by subtractions that keep tests passing. P
 
     ## Validation and Acceptance
 
-    Describe how to start or exercise the system and what to observe. Phrase acceptance as behavior, with specific inputs and outputs. If tests are involved, say "run <project's test command> and expect <N> passed; the new test <name> fails before the change and passes after>".
+    Describe how to start or exercise the system and what to observe. Phrase acceptance as behaviour, with specific inputs and outputs. If tests are involved, say "run <project's test command> and expect <N> passed; the new test <name> fails before the change and passes after>".
 
     ## Idempotence and Recovery
 
     If steps can be repeated safely, say so. If a step is risky, provide a safe retry or rollback path. Keep the environment clean after completion.
 
-    ## Artifacts and Notes
+    ## Artefacts and Notes
 
     Include the most important transcripts, diffs, or snippets as indented examples. Keep them concise and focused on what proves success.
 

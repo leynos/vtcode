@@ -1,6 +1,6 @@
-//! COM Object Context Analyzer (Phase 6.2)
+//! COM Object Context Analyser (Phase 6.2)
 //!
-//! Analyzes PowerShell scripts for dangerous COM object instantiation patterns.
+//! Analyses PowerShell scripts for dangerous COM object instantiation patterns.
 //! Provides context-aware detection of:
 //! - COM object creation methods
 //! - Dangerous object types (WScript.Shell, Shell.Application, etc.)
@@ -237,7 +237,7 @@ pub struct ComObjectContext {
     pub has_invoke_expression: bool,
 }
 
-/// Analyzer for COM object patterns
+/// Analyser for COM object patterns
 pub struct ComObjectAnalyser;
 
 impl ComObjectAnalyser {

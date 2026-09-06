@@ -4,7 +4,7 @@
 //! runloop and the `vtcode-core` `AgentRunner`) for *automatic* context
 //! compaction: when token pressure crosses the configured threshold, the
 //! conversation trace is compressed (provider-native or local LLM summary),
-//! a recoverable history artifact is written, and a session memory envelope is
+//! a recoverable history artefact is written, and a session memory envelope is
 //! built and injected so the model keeps its conversational continuity.
 
 use std::path::Path;

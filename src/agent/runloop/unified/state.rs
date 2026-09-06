@@ -882,13 +882,13 @@ impl CtrlCState {
     /// 3. Return `CtrlCSignal::Exit` on double Ctrl+C, which triggers
     ///    `emergency_terminal_cleanup()` → `std::process::exit(130)`
     ///
-    /// # Debounce Behavior
+    /// # Debounce Behaviour
     ///
     /// Rapid repeated signals (within 200ms) are debounced to prevent
     /// accidental state escalation. However, if already in `ExitArmed` or
     /// `ExitRequested` phase, rapid signals immediately escalate to exit.
     ///
-    /// # Window Behavior
+    /// # Window Behaviour
     ///
     /// The second Ctrl+C must arrive within 1 second of the first to trigger
     /// exit. After this window, the state machine resets to `CancelRequested`

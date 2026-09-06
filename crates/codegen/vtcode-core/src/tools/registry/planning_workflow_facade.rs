@@ -26,7 +26,7 @@ impl ToolRegistry {
     ///
     /// When enabled, mutating tools (`file_operation` writes/edits, `apply_patch`,
     /// `command_session` runs, etc.)
-    /// are blocked and the agent can only read/analyze the codebase.
+    /// are blocked and the agent can only read/analyse the codebase.
     ///
     /// `PlanningWorkflowState` is the single source of truth; this method delegates to it
     /// so that `is_planning_active()` and `planning_workflow_state().is_active()` are always in

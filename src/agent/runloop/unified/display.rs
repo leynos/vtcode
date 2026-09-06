@@ -1,5 +1,5 @@
 use crate::agent::runloop::unified::shell::{detect_explicit_run_command, strip_run_command_prefixes};
-use anstyle::{AnsiColor, Color as AnsiColorEnum, Effects, Reset, Style as AnsiStyle};
+use anstyle::{AnsiColor, Color as AnsiColourEnum, Effects, Reset, Style as AnsiStyle};
 use anyhow::{Context, Result};
 use std::path::Path;
 use vtcode_core::command_safety::shell_parser::parse_shell_commands_tree_sitter;
@@ -137,21 +137,21 @@ fn style_for_token(token: &str, expect_command: &mut bool) -> Option<AnsiStyle> 
     }
     if token.starts_with('"') || token.starts_with('\'') || token.ends_with('"') || token.ends_with('\'') {
         *expect_command = false;
-        return Some(AnsiStyle::new().fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::Yellow))));
+        return Some(AnsiStyle::new().fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Yellow))));
     }
     if token.starts_with('$') || token.contains("=$") || token.starts_with("${") {
         *expect_command = false;
-        return Some(AnsiStyle::new().fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::Yellow))));
+        return Some(AnsiStyle::new().fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Yellow))));
     }
     if token.starts_with('-') && token.len() > 1 {
         *expect_command = false;
-        return Some(AnsiStyle::new().fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::Red))));
+        return Some(AnsiStyle::new().fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Red))));
     }
     if is_bash_keyword(token) {
         *expect_command = true;
         return Some(
             AnsiStyle::new()
-                .fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::Blue)))
+                .fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Blue)))
                 .effects(Effects::BOLD),
         );
     }
@@ -159,13 +159,13 @@ fn style_for_token(token: &str, expect_command: &mut bool) -> Option<AnsiStyle> 
         *expect_command = false;
         return Some(
             AnsiStyle::new()
-                .fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::Green)))
+                .fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Green)))
                 .effects(Effects::BOLD),
         );
     }
     Some(
         AnsiStyle::new()
-            .fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::White)))
+            .fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::White)))
             .effects(Effects::DIMMED),
     )
 }
@@ -220,7 +220,7 @@ fn highlight_shell_user_input(message: &str) -> Option<String> {
         }
         let prefix_len = rest.len() - rest.trim_start().len();
         let prefix_style = AnsiStyle::new()
-            .fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::White)))
+            .fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::White)))
             .effects(Effects::DIMMED);
         let prefix = format!("{}{}!{}{}", prefix_style, &message[..leading_ws_bytes], &rest[..prefix_len], Reset);
         return Some(format!("{}{}", prefix, highlight_shell_command(command)));
@@ -233,7 +233,7 @@ fn highlight_shell_user_input(message: &str) -> Option<String> {
         }
         let prefix = &trimmed[..prefix_end];
         let prefix_style = AnsiStyle::new()
-            .fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::White)))
+            .fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::White)))
             .effects(Effects::DIMMED);
         let prefix_rendered = format!("{}{}{}{}", prefix_style, &message[..leading_ws_bytes], prefix, Reset);
         return Some(format!("{}{}", prefix_rendered, highlight_shell_command_preserve_text(command)));

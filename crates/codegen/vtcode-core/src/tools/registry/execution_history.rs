@@ -672,7 +672,7 @@ impl ToolExecutionHistory {
     }
 
     /// Single source of truth for "find a recent successful record for this
-    /// tool call, honoring the spool path lifetime semantics". Replaces the
+    /// tool call, honouring the spool path lifetime semantics". Replaces the
     /// three near-identical loops that previously diverged on whether spool
     /// was required and how its existence was checked.
     fn find_recent_matching(
@@ -781,7 +781,7 @@ impl ToolExecutionHistory {
     /// Used when a mutating shell command produces no identifiable target path
     /// (e.g. `sed -i`), so we cannot know which files may now be stale. A
     /// pathless mutation could have touched anything, so no read record can be
-    /// trusted afterward.
+    /// trusted afterwards.
     pub fn invalidate_all_reads(&self) {
         let Ok(mut records) = self.records.write() else {
             return;
@@ -846,7 +846,7 @@ impl ToolExecutionHistory {
     /// Extract the read target from tool args for path-based matching.
     /// Returns `None` for non-read-only tools or when no path is found.
     ///
-    /// For search tools, the key includes the normalised query identity so
+    /// For search tools, the key includes the normalized query identity so
     /// different searches on the same directory are not treated as duplicates.
     fn extract_read_target(tool_name: &str, args: &Value) -> Option<String> {
         let obj = args.as_object()?;

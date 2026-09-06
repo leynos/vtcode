@@ -1,6 +1,6 @@
 //! Pattern detection with sequence analysis and ML feature engineering.
 //!
-//! Analyzes tool call sequences to detect patterns, anomalies, and trends.
+//! Analyses tool call sequences to detect patterns, anomalies, and trends.
 //! Events are capped at `MAX_EVENTS` to prevent unbounded memory growth.
 //! Analysis is amortized: patterns are recomputed every `ANALYSE_INTERVAL` events.
 
@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 /// Maximum number of stored events before oldest are evicted.
 const MAX_EVENTS: usize = 500;
-/// Re-analyze patterns every N events to amortize cost.
+/// Re-analyse patterns every N events to amortize cost.
 const ANALYSE_INTERVAL: usize = 10;
 
 /// A single tool call event.
@@ -70,7 +70,7 @@ impl PatternDetector {
         }
     }
 
-    /// Analyze events for patterns.
+    /// Analyse events for patterns.
     fn analyse(&mut self) {
         if self.events.len() < self.sequence_length {
             return;
@@ -205,7 +205,7 @@ impl PatternDetector {
 
 /// Clamp features to `[0, 1]` (feature 0 / event_count stays raw).
 ///
-/// This is *not* true normalisation — values above 1 are silently capped.
+/// This is *not* true normalization — values above 1 are silently capped.
 /// Callers that need min–max scaling should apply it after this function.
 fn clamp_features(features: &[f64]) -> Vec<f64> {
     features

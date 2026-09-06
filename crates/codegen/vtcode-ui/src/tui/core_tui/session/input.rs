@@ -1,7 +1,7 @@
 use super::{PLACEHOLDER_COLOUR, Session, measure_text_width, ratatui_colour_from_ansi, ratatui_style_from_inline};
 use crate::tui::config::constants::ui;
 use crate::tui::ui::tui::types::InlineTextStyle;
-use anstyle::{Color as AnsiColorEnum, Effects};
+use anstyle::{Color as AnsiColourEnum, Effects};
 use ratatui::{
     buffer::Buffer,
     prelude::*,
@@ -463,11 +463,11 @@ impl Session {
             })
         {
             let placeholder_style = InlineTextStyle {
-                colour: Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)),
+                colour: Some(AnsiColourEnum::Rgb(PLACEHOLDER_COLOUR)),
                 bg_colour: None,
                 effects: Effects::DIMMED,
             };
-            let style = ratatui_style_from_inline(&placeholder_style, Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)));
+            let style = ratatui_style_from_inline(&placeholder_style, Some(AnsiColourEnum::Rgb(PLACEHOLDER_COLOUR)));
             let mut spans = Vec::new();
             spans.push(Span::styled(self.prompt_prefix.clone(), prompt_style));
             if !preview.before.is_empty() {
@@ -517,20 +517,21 @@ impl Session {
             if let Some(suffix) = self.visible_inline_prompt_suggestion_suffix() {
                 let ghost_style = ratatui_style_from_inline(
                     &InlineTextStyle {
-                        colour: Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)),
+                        colour: Some(AnsiColourEnum::Rgb(PLACEHOLDER_COLOUR)),
                         bg_colour: None,
                         effects: Effects::DIMMED | Effects::ITALIC,
                     },
-                    Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)),
+                    Some(AnsiColourEnum::Rgb(PLACEHOLDER_COLOUR)),
                 );
                 spans.push(Span::styled(suffix, ghost_style));
             } else if let Some(placeholder) = &self.placeholder {
                 let placeholder_style = self.placeholder_style.clone().unwrap_or(InlineTextStyle {
-                    colour: Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)),
+                    colour: Some(AnsiColourEnum::Rgb(PLACEHOLDER_COLOUR)),
                     bg_colour: None,
                     effects: Effects::ITALIC,
                 });
-                let style = ratatui_style_from_inline(&placeholder_style, Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)));
+                let style =
+                    ratatui_style_from_inline(&placeholder_style, Some(AnsiColourEnum::Rgb(PLACEHOLDER_COLOUR)));
                 spans.push(Span::styled(placeholder.clone(), style));
             }
 
@@ -592,11 +593,11 @@ impl Session {
         if let Some(suffix) = self.visible_inline_prompt_suggestion_suffix() {
             let ghost_style = ratatui_style_from_inline(
                 &InlineTextStyle {
-                    colour: Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)),
+                    colour: Some(AnsiColourEnum::Rgb(PLACEHOLDER_COLOUR)),
                     bg_colour: None,
                     effects: Effects::DIMMED | Effects::ITALIC,
                 },
-                Some(AnsiColorEnum::Rgb(PLACEHOLDER_COLOUR)),
+                Some(AnsiColourEnum::Rgb(PLACEHOLDER_COLOUR)),
             );
             if let Some(line) = lines.get_mut(cursor_y as usize) {
                 line.spans.push(Span::styled(suffix, ghost_style));

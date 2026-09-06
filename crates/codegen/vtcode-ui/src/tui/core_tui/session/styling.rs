@@ -1,4 +1,4 @@
-use anstyle::{AnsiColor, Color as AnsiColorEnum, RgbColor};
+use anstyle::{AnsiColor, Color as AnsiColourEnum, RgbColor};
 use ratatui::prelude::*;
 use vtcode_config::constants::tools;
 
@@ -164,8 +164,8 @@ impl SessionStyles {
         };
 
         let resolved = match (background, self.theme.foreground) {
-            (AnsiColorEnum::Rgb(bg), Some(AnsiColorEnum::Rgb(fg))) => {
-                AnsiColorEnum::Rgb(mix(bg, fg, ui::THEME_INPUT_BACKGROUND_MIX_RATIO))
+            (AnsiColourEnum::Rgb(bg), Some(AnsiColourEnum::Rgb(fg))) => {
+                AnsiColourEnum::Rgb(mix(bg, fg, ui::THEME_INPUT_BACKGROUND_MIX_RATIO))
             }
             (colour, _) => colour,
         };
@@ -184,7 +184,7 @@ impl SessionStyles {
     }
 
     /// Get the fallback text color for a message kind
-    pub(crate) fn text_fallback(&self, kind: InlineMessageKind) -> Option<AnsiColorEnum> {
+    pub(crate) fn text_fallback(&self, kind: InlineMessageKind) -> Option<AnsiColourEnum> {
         match kind {
             // Assistant content should be legible and clearly distinct from subdued PTY output.
             InlineMessageKind::Agent => self.theme.foreground.or(self.theme.primary),

@@ -1,4 +1,4 @@
-//! WebFetch tool for fetching and analyzing web content using AI
+//! WebFetch tool for fetching and analysing web content using AI
 //!
 //! Supports both restricted (blocklist) and whitelist (allowlist) modes
 //! with dynamic configuration loading from vtcode.toml
@@ -31,7 +31,7 @@ const MAX_CONTENT_SIZE: usize = 500_000; // 500KB max content size
 const MAX_ALLOWED_BYTES: usize = 2_000_000; // 2MB hard cap
 const MAX_ALLOWED_TIMEOUT_SECS: u64 = 120; // 2 minutes hard cap
 
-/// Subdirectory under the user cache directory for ephemeral web-fetch artifacts.
+/// Subdirectory under the user cache directory for ephemeral web-fetch artefacts.
 const TEMP_SUBDIR: &str = "web_fetch";
 
 /// Max age in seconds before temp files are cleaned up (1 hour).
@@ -1511,7 +1511,7 @@ mod tests {
     /// Regression test for the "who is vinhnx?" case. The default
     /// `WebFetchConfig` seeds `allowed_domains` with common developer sites
     /// (github.com, npmjs.com, crates.io, etc.). The default `Restricted`
-    /// mode honors those exemptions, so URLs on those hosts must pass
+    /// mode honours those exemptions, so URLs on those hosts must pass
     /// `validate_url` without touching the network.
     #[test]
     fn default_restricted_mode_allows_common_dev_sites() {

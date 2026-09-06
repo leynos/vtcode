@@ -1,6 +1,6 @@
 //! Agent behaviour optimization and learning system
 //!
-//! Analyzes metrics from Steps 1-8 to provide guidance on:
+//! Analyses metrics from Steps 1-8 to provide guidance on:
 //! - Tool discovery optimization
 //! - Code pattern effectiveness
 //! - Skill recommendations

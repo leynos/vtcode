@@ -73,7 +73,7 @@ Use this skill for ast-grep project setup, rule authoring, rule debugging, and C
 - Use `ast-grep run --pattern=... --rewrite=... --json=compact --color=never` for dry-run rewrite previews. Review every replacement before applying changes.
 - Use `ast-grep run --debug-query` when a query matches an unexpected syntax node.
 - Use `--kind` to match node kinds. Ast-grep supports ESQuery-style compound selectors and pseudo-selectors in supported releases.
-- Keep this skill read-only unless the user explicitly authorises applying a rewrite.
+- Keep this skill read-only unless the user explicitly authorizes applying a rewrite.
 
 ## Quick Start
 
@@ -117,7 +117,7 @@ Use this skill for ast-grep project setup, rule authoring, rule debugging, and C
 
 ## sgconfig.yml
 
-- `sgconfig.yml` is the project-level ast-grep config file, not a rule file. Treat it like the repository root for rule discovery, tests, parser overrides, and embedded-language behavior.
+- `sgconfig.yml` is the project-level ast-grep config file, not a rule file. Treat it like the repository root for rule discovery, tests, parser overrides, and embedded-language behaviour.
 - `ruleDirs` is required and is resolved relative to the directory containing `sgconfig.yml`.
 - `testConfigs` is optional and configures ast-grep test discovery. Each entry needs `testDir`; `snapshotDir` is optional and otherwise defaults to `__snapshots__` under that `testDir`.
 - `utilDirs` declares directories for global utility rules shared across multiple rule files.
@@ -128,45 +128,45 @@ Use this skill for ast-grep project setup, rule authoring, rule debugging, and C
 - Raw ast-grep project discovery walks upward from the current working directory until it finds `sgconfig.yml`, and `--config <file>` overrides that discovery with an explicit root config path.
 - `ast-grep scan` requires project config and will error if no `sgconfig.yml` is found. `ast-grep run` can still search without project config, though it also benefits from discovered config for things like `customLanguages` and `languageGlobs`.
 - `ast-grep scan --inspect summary` is the quickest way to confirm which project directory and config file ast-grep actually selected during discovery.
-- ast-grep also recognizes a home-directory `sgconfig.yml` as a global fallback config. XDG config directories are not part of this behavior.
+- ast-grep also recognizes a home-directory `sgconfig.yml` as a global fallback config. XDG config directories are not part of this behaviour.
 - Keep `sgconfig.yml` authoring on the skill path and pass the project config to ast-grep commands where needed.
 
-## Rule Catalog
+## Rule Catalogue
 
-- Use the ast-grep catalog as inspiration when the user wants existing example rules, not as something to copy blindly.
+- Use the ast-grep catalogue as inspiration when the user wants existing example rules, not as something to copy blindly.
 - Start from examples in the same language family when possible.
-- Read catalog markers as hints about rule complexity:
+- Read catalogue markers as hints about rule complexity:
   - simple pattern examples are good starting points
   - `Fix` means the example includes a rewrite path
   - `constraints`, `labels`, `utils`, `transform`, and `rewriters` mean the example depends on more advanced rule features
-- When adapting a catalog example, translate it to the current repository’s language, style, and safety constraints instead of preserving the example verbatim.
-- Prefer the bundled skill workflow when the user asks to explain, adapt, or combine catalog examples.
+- When adapting a catalogue example, translate it to the current repository’s language, style, and safety constraints instead of preserving the example verbatim.
+- Prefer the bundled skill workflow when the user asks to explain, adapt, or combine catalogue examples.
 
 ## VT Code Bundled Rules
 
-VT Code ships a set of curated ast-grep rules under `rules/` with matching tests under `rule-tests/`. Run them with `vtcode check ast-grep`. The bundled rules are organised by language:
+VT Code ships a set of curated ast-grep rules under `rules/` with matching tests under `rule-tests/`. Run them with `vtcode check ast-grep`. The bundled rules are organized by language:
 
 ### Python (`rules/python/`)
 - `no-print`: flags `print()` calls in production code
 - `no-walrus-source`: flags walrus operators that harm readability
 - `no-unnecessary-list`: flags `list(...)` wrapping an already-list expression
-- `no-identity-check-with-type`: flags `type(x) is T` in favor of `isinstance(x, T)`
-- `optional-to-union`: flags `Optional[X]` in favor of `X | None`
-- `prefer-dict-get`: flags `if k in d: d[k]` in favor of `d.get(k)`
+- `no-identity-check-with-type`: flags `type(x) is T` in favour of `isinstance(x, T)`
+- `optional-to-union`: flags `Optional[X]` in favour of `X | None`
+- `prefer-dict-get`: flags `if k in d: d[k]` in favour of `d.get(k)`
 - `prefer-generator-expression`: flags list comprehensions passed to `sum`/`any`/`all`/`min`/`max`
-- `prefer-isinstance-tuple`: flags `isinstance(x, A) or isinstance(x, B)` in favor of `isinstance(x, (A, B))`
+- `prefer-isinstance-tuple`: flags `isinstance(x, A) or isinstance(x, B)` in favour of `isinstance(x, (A, B))`
 
 ### Rust (`rules/rust/`)
 - `no-unsafe-fn-without-unsafe`: flags `unsafe fn` bodies that contain no `unsafe` block
 - `avoid-duplicate-export`: flags `pub use` when `pub mod` already exposes the module
-- `no-iterator-for-each`: flags `.iter().for_each()` in favor of `for` loops
-- `no-redundant-closure`: flags `|x| foo(x)` in favor of `foo` directly
+- `no-iterator-for-each`: flags `.iter().for_each()` in favour of `for` loops
+- `no-redundant-closure`: flags `|x| foo(x)` in favour of `foo` directly
 - `let-chain-candidate`: flags nested `if` that could be collapsed with `let`-chains
 - `no-chars-enumerate`: flags `.chars().enumerate()` when `.char_indices()` is more idiomatic
 - `no-alloc-digit-count`: flags digit-count loops that allocate instead of using repeated division
-- `prefer-iterator-sum`: flags manual accumulator loops in favor of `.sum()`
-- `prefer-retain-over-filter-collect`: flags `.filter().collect()` on a `Vec` in favor of `.retain()`
-- `prefer-unwrap-or-default`: flags `.unwrap_or(Default::default())` in favor of `.unwrap_or_default()`
+- `prefer-iterator-sum`: flags manual accumulator loops in favour of `.sum()`
+- `prefer-retain-over-filter-collect`: flags `.filter().collect()` on a `Vec` in favour of `.retain()`
+- `prefer-unwrap-or-default`: flags `.unwrap_or(Default::default())` in favour of `.unwrap_or_default()`
 
 ### Kotlin (`rules/kotlin/`)
 - `no-var`: flags mutable `var` declarations
@@ -174,13 +174,13 @@ VT Code ships a set of curated ast-grep rules under `rules/` with matching tests
 - `no-lateinit`: flags `lateinit var` usage
 - `no-unsafe-cast`: flags `as` casts without null-safe `as?`
 - `no-unnecessary-let`: flags `let` blocks that add no value
-- `prefer-is-empty`: flags `.count() == 0` in favor of `.isEmpty()`
+- `prefer-is-empty`: flags `.count() == 0` in favour of `.isEmpty()`
 - `prefer-data-class`: flags classes that should be `data class`
 - `clean-architecture-imports`: flags imports that violate clean architecture layer boundaries
 
 ### Ruby (`rules/ruby/`)
 - `no-path-traversal`: flags string concatenation in `File.join` / `Pathname` that may cause traversal
-- `prefer-action-over-filter`: flags `before_filter` / `after_filter` in favor of `before_action` / `after_action`
+- `prefer-action-over-filter`: flags `before_filter` / `after_filter` in favour of `before_action` / `after_action`
 - `prefer-symbol-over-proc`: flags `Proc.new` with a symbol when `(&:method)` is cleaner
 
 ### TypeScript (`rules/typescript/`)
@@ -189,23 +189,23 @@ VT Code ships a set of curated ast-grep rules under `rules/` with matching tests
 - `no-debugger`: flags `debugger` statements
 - `no-unnecessary-boolean-literal-compare`: flags `x === true` or `x === false`
 - `no-useless-promise-resolve`: flags `return Promise.resolve(...)` in async functions
-- `prefer-array-flat-map`: flags `.map(fn).flat()` in favor of `.flatMap(fn)`
+- `prefer-array-flat-map`: flags `.map(fn).flat()` in favour of `.flatMap(fn)`
 - `prefer-nullish-coalescing`: flags `||` in assignments/returns where `??` is more precise
-- `use-logical-assignment`: flags `$A = $A || $B` in favor of `$A ||= $B`
-- `prefer-optional-chaining`: flags `a && a.b` in favor of `a?.b`
+- `use-logical-assignment`: flags `$A = $A || $B` in favour of `$A ||= $B`
+- `prefer-optional-chaining`: flags `a && a.b` in favour of `a?.b`
 - `no-return-in-forEach`: flags `return` inside `.forEach()` callbacks (does not return from caller)
-- `no-array-delete`: flags `delete arr[i]` in favor of `.splice()`
+- `no-array-delete`: flags `delete arr[i]` in favour of `.splice()`
 
 ### TSX (`rules/tsx/`)
-- `avoid-jsx-short-circuit`: flags `{cond && <Elem />}` in favor of `{cond ? <Elem /> : null}` (prevents rendering `0`)
+- `avoid-jsx-short-circuit`: flags `{cond && <Elem />}` in favour of `{cond ? <Elem /> : null}` (prevents rendering `0`)
 - `no-nested-links`: flags `<a>` elements nested inside other `<a>` elements (invalid HTML)
 - `no-unnecessary-usestate-type`: flags `useState<string>('hello')` when TypeScript can infer the type
-- `rename-svg-attribute`: flags hyphenated SVG attributes like `stroke-linecap` in favor of camelCase `strokeLinecap`
+- `rename-svg-attribute`: flags hyphenated SVG attributes like `stroke-linecap` in favour of camelCase `strokeLinecap`
 
 ### Examples (`rules/examples/`)
 - `no-console-log`: starter rule scoped to `__ast_grep_examples__/` for scaffold validation
 
-## Rust Catalog Highlights
+## Rust Catalogue Highlights
 
 - Avoid duplicated exports: a Rust lint-style rule can detect `pub use foo::Bar;` in the same source file that already exposes `pub mod foo;`. Treat this as API-surface cleanup, not a mechanical rewrite. The rule uses `all` to combine a `pub use $A::$B;` pattern with `inside: { kind: source_file }` and a `has` check for `pub mod $A;` with `stopBy: end`:
 
@@ -224,7 +224,7 @@ rule:
         stopBy: end
 ```
 
-- Beware `chars().enumerate()`: the Rust catalog rewrite from `$A.chars().enumerate()` to `$A.char_indices()` is valid when the code needs byte offsets instead of character indexes. Do not apply blindly if the caller intentionally wants character positions:
+- Beware `chars().enumerate()`: the Rust catalogue rewrite from `$A.chars().enumerate()` to `$A.char_indices()` is valid when the code needs byte offsets instead of character indexes. Do not apply blindly if the caller intentionally wants character positions:
 
 ```yaml
 id: no-chars-enumerate
@@ -236,7 +236,7 @@ rule:
 fix: "$A.char_indices()"
 ```
 
-- Count `usize` digits without allocation: the catalog rewrite from `$NUM.to_string().chars().count()` to `$NUM.checked_ilog10().unwrap_or(0) + 1` is a good Rust-specific performance cleanup when the target is known to be an integer digit count. Do not over-apply if the expression is part of a more general formatting pipeline:
+- Count `usize` digits without allocation: the catalogue rewrite from `$NUM.to_string().chars().count()` to `$NUM.checked_ilog10().unwrap_or(0) + 1` is a good Rust-specific performance cleanup when the target is known to be an integer digit count. Do not over-apply if the expression is part of a more general formatting pipeline:
 
 ```yaml
 id: no-alloc-digit-count
@@ -248,7 +248,7 @@ rule:
 fix: "$NUM.checked_ilog10().unwrap_or(0) + 1"
 ```
 
-- Unsafe function without unsafe block: the Rust catalog’s `function_item` rule that requires `unsafe` modifiers but rejects bodies containing `unsafe_block` is a good review rule for redundant `unsafe` markers. It is diagnostic-oriented and should usually stay a scan rule, not an automatic rewrite. The rule uses `kind: function_item` with `has` checking `function_modifiers` via `regex: "^unsafe"` and `not` rejecting bodies containing `unsafe_block`:
+- Unsafe function without unsafe block: the Rust catalogue’s `function_item` rule that requires `unsafe` modifiers but rejects bodies containing `unsafe_block` is a good review rule for redundant `unsafe` markers. It is diagnostic-oriented and should usually stay a scan rule, not an automatic rewrite. The rule uses `kind: function_item` with `has` checking `function_modifiers` via `regex: "^unsafe"` and `not` rejecting bodies containing `unsafe_block`:
 
 ```yaml
 id: no-unsafe-fn-without-unsafe
@@ -267,7 +267,7 @@ rule:
           stopBy: end
 ```
 
-- Rust 2024 let-chain candidate: the catalog’s nested `if`/`if let` detection rule uses `utils` to define reusable matchers for sole-child statements, no-else `if` expressions, and no-else `if let` expressions. The root rule matches an `if` whose block contains only another `if` statement, suggesting the two can be collapsed into a single let-chain. Keep this as a `hint`-severity suggestion because let-chains require Rust 2024 edition:
+- Rust 2024 let-chain candidate: the catalogue’s nested `if`/`if let` detection rule uses `utils` to define reusable matchers for sole-child statements, no-else `if` expressions, and no-else `if let` expressions. The root rule matches an `if` whose block contains only another `if` statement, suggesting the two can be collapsed into a single let-chain. Keep this as a `hint`-severity suggestion because let-chains require Rust 2024 edition:
 
 ```yaml
 id: let-chain-candidate
@@ -307,10 +307,10 @@ rule:
         has: { matches: sole-inner-if-let-stmt }
 ```
 
-- Rewrite `indoc!` macro: the catalog example that removes `indoc! { r#"..."# }` wrappers is a rewrite-oriented example. Keep it on the CLI skill path because the replacement is formatting-sensitive and should be reviewed interactively before broad apply. The CLI pattern is `ast-grep --pattern ‘indoc! { r#"$$$A"# }’ --rewrite ‘`$$$A`’`.
+- Rewrite `indoc!` macro: the catalogue example that removes `indoc! { r#"..."# }` wrappers is a rewrite-oriented example. Keep it on the CLI skill path because the replacement is formatting-sensitive and should be reviewed interactively before broad apply. The CLI pattern is `ast-grep --pattern ‘indoc! { r#"$$$A"# }’ --rewrite ‘`$$$A`’`.
 - Adapt these rules to the repository’s Rust style before using them directly. In VT Code, preserve existing lint policy, public API conventions, and the project’s bias against unnecessary rewrites.
 
-## TypeScript Catalog Highlights
+## TypeScript Catalogue Highlights
 
 - TypeScript vs TSX matters: keep `.ts` and `.tsx` rules separate unless the repository intentionally parses `.ts` as TSX through `languageGlobs`. Do not assume one pattern works unchanged across both parsers.
 - Find import file without extension: good scan rule for ESM codebases that require explicit local file extensions on static or dynamic imports. It is policy-dependent, so only use it where the runtime or bundler actually requires explicit extensions.
@@ -322,35 +322,35 @@ rule:
 - Speed up barrel imports: strong `rewriters` / `transform.rewrite` example for splitting one import into many direct imports. Keep it on the CLI skill path because path conventions, default-vs-named exports, and formatting policy vary by repository.
 - Missing Angular `@Component()` decorator: good example of labels plus pattern-object `context` and `selector`. Keep framework-specific rules tied to actual framework usage in the repository.
 - Logical assignment operators: a compact rewrite example for `$A = $A || $B` to `$A ||= $B`, but only apply it where the project’s JS target and lint policy allow ES2021 operators.
-- Adapt TypeScript catalog rules to the repository’s module system, framework stack, transpilation target, and lint policy before using them directly.
+- Adapt TypeScript catalogue rules to the repository’s module system, framework stack, transpilation target, and lint policy before using them directly.
 
-## TSX Catalog Highlights
+## TSX Catalogue Highlights
 
 - TSX vs TypeScript matters for parsing: JSX-bearing patterns should stay on the TSX parser unless the repository intentionally routes `.ts` through TSX with `languageGlobs`.
 - Unnecessary `useState<T>` primitives: good cleanup rewrite for `useState<string|number|boolean>($A)` when the initializer already gives TypeScript enough information to infer the state type. **Bundled** as `rules/tsx/no-unnecessary-usestate-type.yml`.
 - Avoid `&&` short-circuit in JSX: good React-facing rewrite from `{cond && <View />}` to `{cond ? <View /> : null}` when the left side can evaluate to renderable falsy values like `0`. **Bundled** as `rules/tsx/avoid-jsx-short-circuit.yml`.
 - Rewrite MobX component style: useful migration example when `observer(() => ...)` hides React hook linting from tooling. Keep it on the CLI skill path because naming, export shape, and component conventions vary by repository.
 - Avoid unnecessary React hooks: good diagnostic rule for `use*` functions that do not actually call hooks. Treat it as a review rule first, because renaming or de-hooking can be API-affecting.
-- Reverse React Compiler: clearly rewrite-oriented and intentionally opinionated. Keep it on the CLI skill path and only use it when the user explicitly wants that de-memoization behavior.
+- Reverse React Compiler: clearly rewrite-oriented and intentionally opinionated. Keep it on the CLI skill path and only use it when the user explicitly wants that de-memoization behaviour.
 - Avoid nested links: good accessibility and correctness scan rule for JSX trees. **Bundled** as `rules/tsx/no-nested-links.yml`.
 - Rename SVG attributes: strong TSX rewrite example for hyphenated SVG attribute names such as `stroke-linecap` to `strokeLinecap`. Keep it reviewable because generated markup can be formatting-sensitive. **Bundled** as `rules/tsx/rename-svg-attribute.yml`.
-- Adapt TSX catalog rules to the repository’s React version, JSX runtime, lint rules, framework conventions, and browser-support target before using them directly.
+- Adapt TSX catalogue rules to the repository’s React version, JSX runtime, lint rules, framework conventions, and browser-support target before using them directly.
 
-## YAML Catalog Highlights
+## YAML Catalogue Highlights
 
 - YAML scan rules are useful for configuration-policy checks where the repository needs to flag specific keys or values rather than rewrite source code.
-- The catalog host/port example is a simple message-oriented rule that matches either `host: $HOST` or `port: $PORT` and attaches a diagnostic. Treat it as a starting point for config validation, not a complete policy by itself.
+- The catalogue host/port example is a simple message-oriented rule that matches either `host: $HOST` or `port: $PORT` and attaches a diagnostic. Treat it as a starting point for config validation, not a complete policy by itself.
 - For YAML rules, be explicit about whether the repository cares about the key name, the value, or both. If both matter together, move from separate `any` patterns to a more structured rule before relying on the result.
 - Keep YAML config checks repository-specific. Hard-coded values like `8000` are only useful when they reflect an actual project policy.
 
-## Ruby Catalog Highlights
+## Ruby Catalogue Highlights
 
 - Key Ruby tree-sitter node kinds for pattern authoring: `call` for method calls (e.g. `$OBJ.method`), `method_call` for keyword-style calls (e.g. `puts "hello"`), `block` for `{{ }}` blocks, `do_block` for `do...end` blocks, `symbol` for `:name` literals, `assignment` for variable assignments, `method` for method definitions, `class` for class definitions, `if` for conditionals, `unless` for negative conditionals, `case` for case/when, `while` and `until` for loops, `return` for return statements, `yield` for yield calls, `super` for super calls, `self` for self references.
 - Ast-grep parses Ruby patterns with its bundled Ruby parser. Use
   `ast-grep run --lang ruby --debug-query` through `exec_command` to inspect
   surprising matches.
 - Ruby’s `$VAR` meta-variable syntax works directly because `$` is a valid Ruby global variable prefix. No `expandoChar` override is needed.
-- Rails `*_filter` to `*_action`: useful migration rewrite for older Rails controllers. The catalog rule uses a `transform` with `replace` to swap `_filter` for `_action` on the captured `$FILTER` meta-variable. The pattern uses `$$$ACTION` to capture all arguments after the filter name. Keep it on the CLI skill path because framework version, controller style, and review expectations vary by repository:
+- Rails `*_filter` to `*_action`: useful migration rewrite for older Rails controllers. The catalogue rule uses a `transform` with `replace` to swap `_filter` for `_action` on the captured `$FILTER` meta-variable. The pattern uses `$$$ACTION` to capture all arguments after the filter name. Keep it on the CLI skill path because framework version, controller style, and review expectations vary by repository:
 
 ```yaml
 id: migration-action-filter
@@ -373,12 +373,12 @@ fix:
         by: _action
 ```
 
-- Prefer symbol over proc: good Ruby cleanup rewrite for cases like `.select { |v| v.even? }` to `.select(&:even?)`. The catalog rule constrains `ITER` to `map|select|each` via `regex`, and matches the block pattern `$LIST.$ITER { |$V| $V.$METHOD }`. The fix uses `$LIST.$ITER(&:$METHOD)` syntax. Only apply where the shorthand remains readable and matches local Ruby style. Extend the `ITER` regex to cover `reject`, `find_all`, `detect`, `any?`, `all?`, `none?`, `count` when appropriate.
+- Prefer symbol over proc: good Ruby cleanup rewrite for cases like `.select { |v| v.even? }` to `.select(&:even?)`. The catalogue rule constrains `ITER` to `map|select|each` via `regex`, and matches the block pattern `$LIST.$ITER { |$V| $V.$METHOD }`. The fix uses `$LIST.$ITER(&:$METHOD)` syntax. Only apply where the shorthand remains readable and matches local Ruby style. Extend the `ITER` regex to cover `reject`, `find_all`, `detect`, `any?`, `all?`, `none?`, `count` when appropriate.
 - Path traversal detection in Rails: good security-oriented scan rule for `Rails.root.join`, `File.join`, or `send_file` fed by variables. Uses `any` with three patterns and `severity: hint` because this is a detection rule, not proof of exploitability. The surrounding validation path still matters. Advise `File.basename()` or allowlist validation as remediation.
 - For bare block fragments like `{ |$V| $V.$METHOD }` or `do |$V| $V.$METHOD end`, wrap in the enclosing method call and use `selector: call` to match the outer call. For symbol-to-proc, match the enclosing method call directly with `$LIST.$ITER(&:$METHOD)`.
-- Adapt Ruby catalog rules to the repository’s Rails version, Ruby style guide, and security posture before using them directly.
+- Adapt Ruby catalogue rules to the repository’s Rails version, Ruby style guide, and security posture before using them directly.
 
-## Python Catalog Highlights
+## Python Catalogue Highlights
 
 - Key Python tree-sitter node kinds for pattern authoring: `function_definition` for functions, `call` for function calls, `import_statement` and `import_from_statement` for imports, `assignment` for assignments, `decorated_definition` for decorated functions/classes, `with_statement` for context managers, `try_statement` for try/except, `if_statement` for conditionals, `for_statement` for loops, `return_statement` for returns, `async_function_definition` for async functions, `await` for await expressions, `type` for type annotations, `subscript` for generic types like `Optional[T]`, `list_comprehension` for list comprehensions, `argument_list` for function arguments, `keyword_argument` for keyword arguments, `conditional_expression` for ternary expressions, `assert_statement` for assertions.
 - Ast-grep parses Python patterns before matching them. Use
@@ -477,12 +477,12 @@ The recursive variant handles nested `Union` and `Optional` types using multiple
 - `dict.get` with default: pattern `$D[$KEY]` inside a `try_statement` with `except KeyError` can often be rewritten to `$D.get($KEY)` or `$D.get($KEY, $DEFAULT)`. Use `kind: subscript` with `inside` to scope within the try body. Treat as review material because some dict access patterns intentionally propagate `KeyError`.
 - Assert vs unittest assertions: pattern `assert $EXPR == $VAL` can be rewritten to `self.assertEqual($EXPR, $VAL)` in unittest contexts, or left as-is in pytest contexts. Use `files` to scope by test framework convention.
 - `isinstance` tuple consolidation: pattern `isinstance($X, $A) or isinstance($X, $B)` can be rewritten to `isinstance($X, ($A, $B))`. This is a safe autofix when both `isinstance` calls check the same variable.
-- Adapt Python catalog rules to the repository’s Python version floor, framework stack, typing policy, async model, and migration scope before using them directly.
+- Adapt Python catalogue rules to the repository’s Python version floor, framework stack, typing policy, async model, and migration scope before using them directly.
 
-## Kotlin Catalog Highlights
+## Kotlin Catalogue Highlights
 
 - Clean-architecture import checks: good scan-rule example for enforcing architectural boundaries with `files` plus import-path constraints. Treat it as repository-policy enforcement rather than a universal Kotlin rule.
-- The Kotlin catalog example is diagnostic-oriented, not rewrite-oriented. Keep it on the scan path because import-boundary violations usually need design review instead of blind mutation.
+- The Kotlin catalogue example is diagnostic-oriented, not rewrite-oriented. Keep it on the scan path because import-boundary violations usually need design review instead of blind mutation.
 - File-scoped package constraints are the point of the example: adapt the `files` glob and package regexes to the repository’s actual module layout before relying on the result.
 - Ast-grep parses Kotlin patterns with its bundled Kotlin parser. Use
   `ast-grep run --lang kotlin --debug-query` through `exec_command` to inspect
@@ -493,13 +493,13 @@ The recursive variant handles nested `Union` and `Optional` types using multiple
 - `isEmpty()` preference: straightforward rewrite rule from `$X.size == 0` or `$X.length == 0` to `$X.isEmpty()`. Also cover `$X.count() == 0` and `$X.size <= 0`. This is a safe autofix because Kotlin’s `isEmpty()` is semantically equivalent for standard collections and strings.
 - `lateinit` detection: pattern `lateinit var $NAME: $TYPE` is a direct structural match. Use `severity: info` because `lateinit` is sometimes justified in dependency injection and test setup contexts. Teams should adjust severity to match their policy.
 - Unnecessary `let` blocks: pattern `$RECEIVER.let { $PARAM -> $BODY }` catches explicit named-parameter `let` calls. This does not match the implicit `it` form (`$RECEIVER.let { $BODY }`) because the parser structures those differently. Focus on the named-parameter variant as the more egregious anti-pattern.
-- Data class candidates: use `kind: class_declaration` with `has: { kind: primary_constructor, has: { kind: class_parameter } }` to find classes with constructor parameters. This is a suggestion rule, not an enforcement rule, because classes with inheritance or behavior should remain regular classes.
+- Data class candidates: use `kind: class_declaration` with `has: { kind: primary_constructor, has: { kind: class_parameter } }` to find classes with constructor parameters. This is a suggestion rule, not an enforcement rule, because classes with inheritance or behaviour should remain regular classes.
 - Key Kotlin tree-sitter node kinds for pattern authoring: `class_declaration` for classes, `property_declaration` for val/var properties, `function_declaration` for functions, `primary_constructor` for primary constructors, `class_parameter` for constructor parameters, `import_declaration` for imports, `call_expression` for function calls, `as_expression` for cast expressions, `lambda_expression` for lambdas, `when_expression` for when blocks.
 - Kotlin tree-sitter parses `$EXPR as $TYPE` as `as_expression` and `$EXPR as? $TYPE` as a variant with the `?` token attached, so a pattern targeting `as` will not match `as?`. This makes cast-direction rules safe from false positives on safe casts.
 - Kotlin’s `?.let { }` safe-call form is parsed differently from `.let { }` dot-call form. Rules targeting one will not match the other. Use `any` with both patterns when both forms should be flagged.
-- Adapt Kotlin catalog rules and the rules above to the repository’s package naming, architecture boundaries, Android-vs-server structure, coroutine usage, and lint ownership before using them directly.
+- Adapt Kotlin catalogue rules and the rules above to the repository’s package naming, architecture boundaries, Android-vs-server structure, coroutine usage, and lint ownership before using them directly.
 
-## Java Catalog Highlights
+## Java Catalogue Highlights
 
 - Unused local variable detection: useful educational example for `has` plus ordered `all` plus `precedes`, but prefer the project’s established linter or IDE for real unused-variable enforcement because Java variable scopes are broader than the sample rule covers. The rule uses `all` to guarantee that the meta-variable `$IDENT` is captured by the first `has` clause before the `not`/`precedes` check runs. Without that ordering, the meta-variable would not be available for the later comparison:
 
@@ -540,25 +540,25 @@ rule:
 
 Use this `kind` plus `has` plus `field` plus `regex` pattern whenever a naive code pattern fails because Java modifiers, annotations, or access qualifiers change the surface syntax. The `field: type` constraint targets the semantic type child of the declaration, not the raw text, so it is robust against `private static final String`, `@Nullable String`, or other decorated forms.
 
-- The Java catalog examples are primarily search/diagnostic material, not high-confidence autofix rules. Keep them review-oriented unless the repository explicitly wants ast-grep-based cleanup instead of compiler or linter diagnostics.
-- Adapt Java catalog rules to the repository’s package conventions, annotation usage, style tooling, and existing static-analysis stack before using them directly.
+- The Java catalogue examples are primarily search/diagnostic material, not high-confidence autofix rules. Keep them review-oriented unless the repository explicitly wants ast-grep-based cleanup instead of compiler or linter diagnostics.
+- Adapt Java catalogue rules to the repository’s package conventions, annotation usage, style tooling, and existing static-analysis stack before using them directly.
 
-## HTML Catalog Highlights
+## HTML Catalogue Highlights
 
 - HTML parser reuse for framework templates: useful when Vue, Svelte, Astro, or similar files are mostly HTML, but keep parser caveats in mind because framework-specific control flow or frontmatter may require a custom language instead. Use `languageGlobs` in `sgconfig.yml` to parse `.vue`, `.svelte`, or `.astro` files as HTML when the framework syntax is minimal enough for the HTML parser.
 - Key HTML node kinds for pattern authoring: `element` for full HTML elements, `tag_name` for tag names, `attribute_name` for attribute names, `attribute_value` for attribute values, `text` for text content, and `comment` for HTML comments. Use these with `kind` to match specific HTML structures without writing full pattern syntax.
 - Matching elements by tag name: use `kind: element` with `has: { field: tag_name, pattern: $TAG }` to match elements by their tag name. For regex-based tag matching (e.g. all heading tags), use `kind: tag_name` with `regex: "^h[1-6]$"` and `inside: { kind: element }`.
 - Matching elements by attribute: use `kind: element` with `has: { kind: attribute_name, regex: "^class$" }` to find elements with a specific attribute. To also match the attribute value, add a nested `has` on the attribute node to capture `attribute_value`.
-- Scoping with `inside` and `stopBy`: HTML `inside` with `stopBy: { kind: element }` scopes matches to the nearest enclosing element. This is essential for avoiding cross-element matches in deeply nested HTML. The `inside-tag` utility pattern from the catalog demonstrates wrapping `inside` with `kind: element` and `has` to capture the enclosing tag name, then using `constraints` to restrict which tags match.
+- Scoping with `inside` and `stopBy`: HTML `inside` with `stopBy: { kind: element }` scopes matches to the nearest enclosing element. This is essential for avoiding cross-element matches in deeply nested HTML. The `inside-tag` utility pattern from the catalogue demonstrates wrapping `inside` with `kind: element` and `has` to capture the enclosing tag name, then using `constraints` to restrict which tags match.
 - Ant Design Vue `visible` to `open`: good framework-specific attribute rewrite using enclosing-tag checks plus constraints. The pattern uses `kind: attribute_name` with `regex: :visible` to match the attribute, `inside` to find the enclosing `element`, `has` to capture the `tag_name`, and `constraints` to restrict to specific components (`a-modal|a-tooltip`). Keep it on the CLI skill path because framework version and component set must be confirmed first.
 - i18n key extraction: useful template rewrite example for wrapping static text while skipping mustache expressions. Uses `kind: text` with `pattern: $T` to capture text content, `not: { regex: ‘{{.*}}’ }` to skip mustache interpolation, and `fix: "{{ $(‘$T’) }}"` to wrap the text. Keep it reviewable because real projects usually need key naming, dictionary updates, and whitespace policy beyond the raw rewrite.
 - Attribute rewrite patterns: HTML attribute rewrites commonly use `kind: attribute_name` to match the target attribute, `inside` to find the parent element, and `constraints` to narrow by attribute name regex. For renaming attributes (e.g. `visible` to `open`), match the attribute name node and use `fix` to replace it.
 - Text content patterns: use `kind: text` to match raw text nodes inside elements. Combine with `inside: { kind: element, has: { field: tag_name, pattern: $TAG } }` to scope text matching to specific elements. Use `not` to exclude text containing interpolation syntax.
 - HTML comment patterns: use `kind: comment` to match HTML comments. Combine with `regex` to find comments containing specific text patterns like TODO, FIXME, or deprecated notices.
 - HTML `<script>` and `<style>` content is parsed as embedded JavaScript and CSS respectively. Search inside these regions with `lang: javascript` or `lang: css` rules. For custom embedded languages (e.g. TypeScript in `<script lang="ts">`), configure `languageInjections` in `sgconfig.yml`.
-- Adapt HTML catalog rules to the repository’s template framework, parser limitations, i18n workflow, and component-library version before using them directly.
+- Adapt HTML catalogue rules to the repository’s template framework, parser limitations, i18n workflow, and component-library version before using them directly.
 
-## Go Catalog Highlights
+## Go Catalogue Highlights
 
 - Problematic `defer` with nested function calls: strong Go-specific scan example for catching cases where deferred arguments are evaluated immediately instead of at function exit. In Go, `defer` evaluates arguments when the defer statement is encountered, not when the deferred function runs. This is particularly problematic with assertion libraries in tests:
 
@@ -629,9 +629,9 @@ constraints:
 
 Treat matches as actionable security review items. The fix is using just `-` without a comma: `json:"-"`.
 
-- Adapt Go catalog rules to the repository’s Go version, test conventions, package layout, security posture, and existing static-analysis tooling before using them directly.
+- Adapt Go catalogue rules to the repository’s Go version, test conventions, package layout, security posture, and existing static-analysis tooling before using them directly.
 
-## Cpp Catalog Highlights
+## Cpp Catalogue Highlights
 
 - Reuse Cpp rules for C only when the repository intentionally parses C sources as Cpp via `languageGlobs`; do not assume mixed C/C++ projects want that parser tradeoff by default.
 - Ast-grep bundles C++ parser support. Use `--lang cpp` for ad-hoc CLI patterns
@@ -666,9 +666,9 @@ rule:
 
 This matches structs that use inheritance via base class clauses. The full `struct ... : ... { ... }` shape is required for the parser to produce a valid `struct_specifier` node instead of an `ERROR` node.
 
-- Adapt Cpp catalog rules to the repository’s C-vs-C++ parser choice, security posture, libc usage, and coding-standard expectations before using them directly.
+- Adapt Cpp catalogue rules to the repository’s C-vs-C++ parser choice, security posture, libc usage, and coding-standard expectations before using them directly.
 
-## C Catalog Highlights
+## C Catalogue Highlights
 
 - Parsing C as Cpp can reduce duplicated rule authoring, but only use that route when the repository intentionally opts into the parser tradeoff with `languageGlobs`; do not blur C and C++ semantics by default.
 - Match function calls in C with contextual patterns: tree-sitter-c parses code fragments differently depending on surrounding syntax. A bare `test($A)` becomes `macro_type_specifier`, while `test($A);` becomes `expression_statement -> call_expression`. Use `context` plus `selector: call_expression` through the CLI skill path via `exec_command`:
@@ -718,17 +718,17 @@ fix: $B == $A
 
 Treat it as optional rewrite material only where the project explicitly prefers constant-on-the-left comparisons.
 
-- Adapt C catalog rules to the repository’s parser choice, macro usage, pointer conventions, coding style, and safety policy before using them directly.
+- Adapt C catalogue rules to the repository’s parser choice, macro usage, pointer conventions, coding style, and safety policy before using them directly.
 
-## Markdown Catalog Highlights
+## Markdown Catalogue Highlights
 
 - Markdown became a first-class language in ast-grep 0.43. Query with `--lang md` or `lang: markdown` in YAML rules.
 - Queryable node kinds include `atx_heading` for ATX-style headings, `fenced_code_block` for fenced code blocks, and `list_item` for list items.
 - Combine node kinds with compound selectors for broader sweeps, for example `atx_heading, fenced_code_block` matches both headings and code blocks.
 - Markdown parsing is powered by `tree-sitter-md` and still has known parsing bugs and edge cases. Use it for inspection, indexing, outline extraction, and lightweight automation rather than critical rewrites.
-- Ast-grep infers a language from recognised file extensions during path scans.
+- Ast-grep infers a language from recognized file extensions during path scans.
   Pass `--lang md` for stdin or whenever extension inference is unavailable.
-- Adapt Markdown catalog rules to the repository’s documentation conventions, heading hierarchy, and content structure before using them directly.
+- Adapt Markdown catalogue rules to the repository’s documentation conventions, heading hierarchy, and content structure before using them directly.
 
 ## JavaScript API Highlights
 
@@ -923,7 +923,7 @@ kind: decorated_definition > function_definition
 - `labels` keys must come from meta variables already defined by the rule or `constraints`.
 - `files` supports either plain globs or object entries. Use object syntax when you need options like `caseInsensitive` glob matching.
 - `ignores` runs before `files`. Both are relative to the `sgconfig.yml` directory, and the glob should not start with `./`.
-- Rule-level `ignores` is different from CLI `--no-ignore`: the CLI flag changes global ignore-file behavior, while YAML `ignores` only filters files for that rule.
+- Rule-level `ignores` is different from CLI `--no-ignore`: the CLI flag changes global ignore-file behaviour, while YAML `ignores` only filters files for that rule.
 - JSON output only includes rule `metadata` when the ast-grep run enabled metadata output, for example via `--include-metadata`.
 - Parameterized utility rules (experimental, ast-grep 0.42+) let global utility files declare `arguments` so callers pass rule objects into a reusable template via `matches`. Arguments are mandatory, are full rule objects (not strings), and meta-variables captured inside the utility stay private unless explicitly exported by the argument rules. This feature is experimental and its API may change.
 - Keep config authoring on the ast-grep skill path. Run query, scan, and test commands through `exec_command`.
@@ -1096,7 +1096,7 @@ fix: "bar($MAYBE_COMMA$newArg)"
 - A rewriter can call other rewriters from the same `rewriters` list inside its own `transform` section, enabling multi-pass rewrite pipelines.
 - Meta variables captured inside one rewriter do not leak to sibling rewriters or the outer rule. Rewriter-local `transform` variables and `utils` are also scoped to that one rewriter.
 - String-form shorthand `rewrite(rewriters, source, joinBy?)` is valid in newer ast-grep versions, but prefer object form when compatibility or debugging clarity matters.
-- For simple pattern-to-pattern rewrites, use `ast-grep run --pattern=... --rewrite=... --json=compact --color=never` through `exec_command` to preview replacements. Do not apply them without explicit authorisation.
+- For simple pattern-to-pattern rewrites, use `ast-grep run --pattern=... --rewrite=... --json=compact --color=never` through `exec_command` to preview replacements. Do not apply them without explicit authorization.
 - For advanced rewrite operations using `rewriters`, `transform.rewrite`, `joinBy`, or `FixConfig` with `expandStart` or `expandEnd`, use a YAML rule through the CLI skill path.
 
 ## Pattern Syntax
@@ -1114,7 +1114,7 @@ fix: "bar($MAYBE_COMMA$newArg)"
 
 - Pattern creation has four stages: preprocess meta-variable text when the language needs a custom `expandoChar`, parse the snippet, choose the effective node, then detect meta variables inside that effective node.
 - Invalid pattern code usually fails because a meta variable is standing in for syntax that the parser treats as an operator or keyword. Patterns like `$LEFT $OP $RIGHT` or `{ $KIND foo() {} }` should become rule objects using parseable code plus `kind`, `regex`, `has`, or other rule fields.
-- Incomplete or ambiguous snippets can appear to work only because tree-sitter recovered from an error. Treat that as best-effort behavior, not a stable contract across ast-grep upgrades, and prefer valid `context` plus `selector`.
+- Incomplete or ambiguous snippets can appear to work only because tree-sitter recovered from an error. Treat that as best-effort behaviour, not a stable contract across ast-grep upgrades, and prefer valid `context` plus `selector`.
 - The default effective node is the leaf node or the innermost node with more than one child. Override it with `selector` when the real match should be a statement instead of the inner expression, especially for `follows` and `precedes`.
 - Meta variables are detected only when the whole AST node text matches meta-variable syntax. Mixed text like `obj.on$EVENT`, lowercase names like `$jq`, or string-content fragments do not become meta variables.
 - `$$VAR` captures unnamed nodes such as operators when the grammar exposes them only as anonymous tokens. `$$$ARGS` is lazy: it stops before the next node that satisfies the rest of the pattern.
@@ -1220,7 +1220,7 @@ languageInjections:
 - `transform.rewrite` lets you run sub-rules over a matched meta-variable, generate one fix per sub-node, and join the results with `joinBy`.
 - `transform.rewrite` is still experimental. It rewrites descendants of the captured source, prevents overlapping rewriter matches, prefers higher-level AST matches first, and for one node only applies the first matching rewriter in the declared order.
 - This is the right model for list-style rewrites such as exploding a barrel import into multiple single imports, converting `dict(a=1, b=2)` to `{‘a’: 1, ‘b’: 2}`, or transforming heterogeneous lists where each element type needs a different rewrite rule.
-- `transform.rewrite` has three important behavioral properties: (1) it rewrites descendants of the captured source metavariable, not the source itself; (2) overlapping rewriter matches are prevented so each sub-node is rewritten at most once; (3) higher-level AST matches are preferred before nested ones, and for one node only the first matching rewriter in declaration order is applied.
+- `transform.rewrite` has three important behavioural properties: (1) it rewrites descendants of the captured source metavariable, not the source itself; (2) overlapping rewriter matches are prevented so each sub-node is rewritten at most once; (3) higher-level AST matches are preferred before nested ones, and for one node only the first matching rewriter in declaration order is applied.
 - Use `joinBy` when the rewritten sub-nodes must be stitched with a different separator than the original source text. For example, `joinBy: "\n"` converts comma-separated imports into newline-separated direct imports.
 - For simple pattern-to-pattern rewrites, run `ast-grep run --pattern ... --rewrite ... --json=compact` through `exec_command` to preview replacements without applying them.
 - For FixConfig rewrites with range expansion, write a YAML rule and run `ast-grep scan` through `exec_command`.
@@ -1231,7 +1231,7 @@ languageInjections:
 - Use `ast-grep run --pattern ... --rewrite ...` for one-off rewrites.
 - Use YAML `fix` in rule files for reusable rewrites that should live with the rule.
 - Use `--interactive` to review rewrite hunks before applying them.
-- Use `--update-all` or `-U` only when the user clearly wants non-interactive apply behavior.
+- Use `--update-all` or `-U` only when the user clearly wants non-interactive apply behaviour.
 - Meta variables captured in `pattern` can be reused in `fix`.
 - String `fix` is raw replacement text, not a parsed Tree-Sitter pattern. Meta variables can appear anywhere in the replacement string.
 - `fix` indentation is preserved relative to the matched source location, so multiline rewrites must be authored with deliberate indentation.
@@ -1294,7 +1294,7 @@ Preview this rule with `ast-grep scan --rule <rule-file> --json=compact`.
 
 - `ast-grep -p 'foo()'` and `ast-grep run -p 'foo()'` are equivalent. `run` is the default subcommand.
 - `ast-grep run` defaults to searching `.` when no path is provided and can search multiple paths in one invocation.
-- `--globs` includes or excludes paths and overrides ignore-file behavior. Prefix a glob with `!` to exclude, and let later globs win when multiple patterns match.
+- `--globs` includes or excludes paths and overrides ignore-file behaviour. Prefix a glob with `!` to exclude, and let later globs win when multiple patterns match.
 - `--no-ignore` changes which ignore sources ast-grep respects. The supported categories are `hidden`, `dot`, `exclude`, `global`, `parent`, and `vcs`.
 - `--follow` makes ast-grep traverse symlinks. Expect loop or broken-link errors to surface directly from the CLI when the filesystem is invalid.
 
@@ -1403,7 +1403,7 @@ Preview this rule with `ast-grep scan --rule <rule-file> --json=compact`.
 - `sg new`
 - Rewrite or apply flows
 - Interactive ast-grep flags
-- Raw ast-grep color control such as `--color never`
+- Raw ast-grep colour control such as `--color never`
 - `transform`, `rewrite`, `joinBy`, or `rewriters`
 - Non-trivial `sgconfig.yml` authoring or debugging
 - Rule authoring tasks that need direct ast-grep CLI iteration
