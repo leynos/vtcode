@@ -78,7 +78,9 @@ The complete PR train is not yet delivered.
   with query regressions. The original full retry passed: 10,081 tests, 17 skipped,
   and 67 harness tests. Formatting, lint, build, advisory, and changed Python
   compilation passed. Optional ast-grep remained unavailable.
-- `harden-lint-spelling-fulfilment` is the active branch, based on #28.
+- [Draft PR #29](https://github.com/leynos/vtcode/pull/29) publishes
+  `harden-lint-spelling-fulfilment` at
+  `efb89ce02714fec24942146416d7becb0c56494a`, based on #28.
   It adopts native fulfilment, sceptic, and cancelled names with callers,
   preserving established wire values and adding an A2A serialization check.
   Its original full gates passed: formatting, lint, build, 10,081 workspace tests
@@ -86,6 +88,15 @@ The complete PR train is not yet delivered.
   checks passed; optional ast-grep remained unavailable. Formatting and lint
   logs use the unnumbered fulfilment suffix; build, test, test-harness, shell,
   and advisory logs use `ACTION-2` with that suffix.
+- `harden-lint-spelling-oxford` is the active branch, based on #29.
+  It applies the reviewed Oxford source patch, including normalized code-search
+  APIs and their callers. A seven-file residual patch updates authored source
+  text and future plan-name vocabulary to `harbour`; existing paths remain
+  readable. Parser compatibility still accepts both finalizing/finalising.
+  Its original old-config gates passed: formatting, lint, build, 10,081 workspace
+  tests with 17 skipped, and all 67 harness tests. Advisory checks passed;
+  optional ast-grep remained unavailable. Logs use
+  `/tmp/ACTION-vtcode-df12-onboarding-harden-lint-spelling-oxford.out`.
 - Remaining spelling changes are preserved separately while each layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
@@ -411,3 +422,16 @@ and 67 harness tests. Logs use `restack-1` on `harden-lint-spelling-fulfilment`;
 final handoff checks use `handoff-restack-1`. The optional ast-grep scan was
 skipped because the tool is unavailable. The push uses an explicit lease
 against the original published PR #29 head.
+
+## PR 30 review restack
+
+The Oxford source layer is rebased onto PR #29 `efb89ce02`. The replay
+completed without conflicts. The cache replay helper and both property tests
+remain intact alongside the normalized identity names; the hermetic registry
+fixture and its six consumers are preserved. Generated `harbour` names,
+existing supplied plan names and both parser spellings remain supported.
+All eight sequential gates passed, including typecheck, 10,085 workspace
+tests, 17 skips and 67 harness tests. Logs use `restack-1` on
+`harden-lint-spelling-oxford`; final handoff checks use `handoff-restack-1`.
+The optional ast-grep scan was skipped because the tool is unavailable. The
+push uses an explicit lease against the original published PR #30 head.

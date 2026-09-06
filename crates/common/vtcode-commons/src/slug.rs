@@ -6,7 +6,7 @@
 //! Human-readable slug generator for plan file names
 //!
 //! Generates memorable identifiers by combining random adjectives and nouns,
-//! producing slugs like "gentle-harbor" or "cosmic-wizard".
+//! producing slugs like "gentle-harbour" or "cosmic-wizard".
 //!
 //! Based on OpenCode's slug utility pattern for planning workflow file naming.
 
@@ -21,7 +21,7 @@ const ADJECTIVES: &[&str] = &[
 
 /// Nouns for slug generation (32 options)
 const NOUNS: &[&str] = &[
-    "cabin", "cactus", "canyon", "circuit", "comet", "eagle", "engine", "falcon", "forest", "garden", "harbor",
+    "cabin", "cactus", "canyon", "circuit", "comet", "eagle", "engine", "falcon", "forest", "garden", "harbour",
     "island", "knight", "lagoon", "meadow", "moon", "mountain", "nebula", "orchid", "otter", "panda", "pixel",
     "planet", "river", "rocket", "sailor", "squid", "star", "tiger", "wizard", "wolf", "stream",
 ];
@@ -34,7 +34,7 @@ const NOUNS: &[&str] = &[
 /// use vtcode_commons::slug;
 ///
 /// let slug = slug::create();
-/// // Returns something like "gentle-harbor", "cosmic-wizard", etc.
+/// // Returns something like "gentle-harbour", "cosmic-wizard", etc.
 /// assert!(slug.contains('-'));
 /// ```
 pub fn create() -> String {
@@ -55,7 +55,7 @@ pub fn create() -> String {
 /// use vtcode_commons::slug;
 ///
 /// let slug = slug::create_timestamped();
-/// // Returns something like "1768330644696-gentle-harbor"
+/// // Returns something like "1768330644696-gentle-harbour"
 /// ```
 pub fn create_timestamped() -> String {
     let timestamp = std::time::SystemTime::now()
@@ -74,7 +74,7 @@ pub fn create_timestamped() -> String {
 /// use vtcode_commons::slug;
 ///
 /// let slug = slug::create_with_prefix("plan");
-/// // Returns something like "plan-gentle-harbor"
+/// // Returns something like "plan-gentle-harbour"
 /// ```
 pub fn create_with_prefix(prefix: &str) -> String {
     format!("{}-{}", prefix, create())

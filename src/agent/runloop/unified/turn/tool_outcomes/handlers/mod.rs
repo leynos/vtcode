@@ -968,7 +968,7 @@ pub(crate) async fn validate_tool_call<'a>(
             // A permanent `request_user_input` denial (non-interactive runtime,
             // inline UI unavailable, etc.) must be recorded so the planning
             // workflow stops re-forcing the interview AND the tool is suppressed
-            // from subsequent catalogs. Without this, the model sees a generic
+            // from subsequent catalogues. Without this, the model sees a generic
             // "execution denied by policy" and retries across turns —
             // checkpoint turn_724 shows 7 retries. `handle_failure` is NOT
             // reached on this path (permission denial returns Blocked, not

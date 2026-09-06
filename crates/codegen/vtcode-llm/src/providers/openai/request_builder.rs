@@ -505,7 +505,7 @@ fn build_responses_item_history(
 /// enum values. The final JSON remains custom because Rig lacks typed coverage
 /// for VTCode's `output_types`, nested `sampling_parameters`,
 /// `context_management`, text verbosity, and provider-specific tool payloads.
-/// Protective tests: `openai_request_builder_serialises_rig_typed_state_fields`,
+/// Protective tests: `openai_request_builder_serializes_rig_typed_state_fields`,
 /// `chatgpt_backend_forces_store_false_and_omits_output_sampling_cache`, and
 /// `responses_payload_includes_prompt_cache_retention_for_native_openai`.
 /// Remove this boundary when Rig exposes those fields with identical streaming
@@ -858,7 +858,7 @@ mod tests {
     }
 
     #[test]
-    fn openai_request_builder_serialises_rig_typed_state_fields() {
+    fn openai_request_builder_serializes_rig_typed_state_fields() {
         let mut request = request();
         request.previous_response_id = Some("resp_previous".to_owned());
         request.response_store = Some(true);

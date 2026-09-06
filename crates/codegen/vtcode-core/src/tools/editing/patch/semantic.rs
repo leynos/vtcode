@@ -7,7 +7,7 @@ use regex::Regex;
 use serde::Deserialize;
 use tokio::process::Command;
 
-use super::matcher::{PatchContextMatcher, normalise_text, seek_segment};
+use super::matcher::{PatchContextMatcher, normalize_text, seek_segment};
 use super::{PatchChunk, PatchError};
 use crate::tools::ast_grep_binary::{
     AST_GREP_INSTALL_COMMAND, AST_GREP_OVERRIDE, AstGrepBinaryOverride, missing_ast_grep_message,
@@ -54,7 +54,7 @@ impl StructuralCandidate {
             return None;
         }
 
-        let normalized_text = normalise_text(&entry.text).to_lowercase();
+        let normalized_text = normalize_text(&entry.text).to_lowercase();
         if !normalized_text.contains(primary_term) {
             return None;
         }

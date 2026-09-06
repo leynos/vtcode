@@ -438,7 +438,7 @@ impl ToolRegistry {
     async fn execute_code_search(&self, args: Value) -> Result<Value> {
         let request = serde_json::from_value(args).context("invalid code_search request")?;
         let response = crate::tools::code_search::execute(self.workspace_root(), request).await?;
-        serde_json::to_value(response).context("failed to serialise code_search response")
+        serde_json::to_value(response).context("failed to serialize code_search response")
     }
 
     async fn execute_code(&self, args: Value) -> Result<Value> {

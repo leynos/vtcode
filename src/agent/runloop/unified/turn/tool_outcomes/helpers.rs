@@ -239,7 +239,7 @@ impl LoopTracker {
 /// `MAX_HISTORY_SCAN` messages to keep the check bounded.
 ///
 /// File-read pagination is normalised so that re-reading the same file with a
-/// different `offset` or `limit` is recognised as the same logical read.
+/// different `offset` or `limit` is recognized as the same logical read.
 /// `code_search` uses a separate replay identity that retains the effective
 /// `max_results`; its loop identity is separate.
 ///
@@ -643,7 +643,7 @@ pub(crate) fn signature_key_for(name: &str, args: &serde_json::Value) -> String 
 /// For mutating tools the original `signature_key_for` is returned unchanged.
 pub(crate) fn read_normalized_signature_key(name: &str, args: &serde_json::Value) -> String {
     if name == vtcode_core::config::constants::tools::CODE_SEARCH
-        && let Some(identity) = vtcode_core::tools::normalised_code_search_identity(args)
+        && let Some(identity) = vtcode_core::tools::normalized_code_search_identity(args)
     {
         return format!("{name}:ro:{identity}");
     }
@@ -2085,7 +2085,7 @@ mod tests {
     }
 
     #[test]
-    fn read_normalized_signature_key_includes_code_search_limit_and_normalises_filter_order() {
+    fn read_normalized_signature_key_includes_code_search_limit_and_normalizes_filter_order() {
         let args_a = json!({
             "query": "Widget",
             "path": "src",
@@ -2159,7 +2159,7 @@ mod tests {
         );
         assert_ne!(key_a, key_c, "different files must produce different normalized keys");
 
-        // Verify: code-search result limits remain distinct while filter ordering normalises away.
+        // Verify: code-search result limits remain distinct while filter ordering normalizes away.
         let s_key_a = read_normalized_signature_key(
             tools::CODE_SEARCH,
             &json!({"query":"Widget","path":"src","file_types":["rust","typescript"],"result_types":["text","definition"],"max_results":10}),
@@ -2223,7 +2223,7 @@ mod tests {
     }
 
     #[test]
-    fn find_duplicate_in_history_respects_normalised_code_search_limit() {
+    fn find_duplicate_in_history_respects_normalized_code_search_limit() {
         let original_args = json!({
             "query": "Widget",
             "path": "src",

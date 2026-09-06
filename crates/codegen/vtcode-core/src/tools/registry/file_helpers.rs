@@ -134,7 +134,7 @@ fn apply_edit_replacement(content: &str, effective_old_str: &str, effective_new_
         }
 
         if !replacement_occurred {
-            // Pre-compute normalised old lines once (avoid re-allocation per window).
+            // Pre-compute normalized old lines once (avoid re-allocation per window).
             let old_normalized: Vec<String> = old_lines.iter().map(|l| ws_normalize(l)).collect();
 
             for (i, window) in content_lines.windows(old_lines.len()).enumerate() {
