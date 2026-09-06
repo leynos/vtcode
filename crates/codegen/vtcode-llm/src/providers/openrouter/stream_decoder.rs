@@ -27,6 +27,7 @@ pub(crate) fn parse_usage_value(value: &Value) -> Usage {
     Usage {
         prompt_tokens,
         completion_tokens,
+        reasoning_output_tokens: crate::providers::common::parse_reasoning_tokens_from_usage(value),
         total_tokens,
         cached_prompt_tokens,
         cache_creation_tokens,

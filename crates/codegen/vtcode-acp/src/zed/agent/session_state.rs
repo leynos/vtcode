@@ -384,6 +384,7 @@ impl ZedAgent {
                 token_usage: None,
                 max_context_tokens: None,
                 loaded_skills: Some(snapshot.loaded_skills),
+                turn_diagnostics: None,
             })
             .await?;
         debug!(path = %status.path().display(), ?status, "Processed ACP session checkpoint");
@@ -998,7 +999,10 @@ mod tests {
     use std::sync::LazyLock;
     use tokio::sync::Mutex as AsyncMutex;
     use vtcode_config::codex::HistoryPersistence;
-    use vtcode_config::{SubagentDiscoveryInput, discover_subagents};
+    use vtcode_config::{
+        HookCommandConfig, HookGroupConfig, SubagentDiscoveryInput, WorkspaceHookCommand, WorkspaceLifecycleHooks,
+        discover_subagents,
+    };
     use vtcode_core::config::core::PromptCachingConfig;
     use vtcode_core::config::types::{AgentConfig as CoreAgentConfig, ModelSelectionSource, UiSurfacePreference};
     use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig, VTCodeConfig};
@@ -1085,6 +1089,52 @@ mod tests {
             None,
         ))
         .await
+    }
+
+    #[tokio::test]
+    async fn new_session_preserves_workspace_hook_provenance_gate() {
+        for (workspace_controlled, expected_gated) in [(true, true), (false, false)] {
+            let workspace = TempDir::new().expect("temporary ACP hook workspace");
+            let command = ":".to_string();
+            let mut config = VTCodeConfig::default();
+            config.hooks.lifecycle.session_start = vec![HookGroupConfig {
+                matcher: None,
+                hooks: vec![HookCommandConfig {
+                    command: command.clone(),
+                    ..HookCommandConfig::default()
+                }],
+            }];
+            config.workspace_lifecycle_hooks = Some(if workspace_controlled {
+                WorkspaceLifecycleHooks {
+                    commands: vec![WorkspaceHookCommand {
+                        event: "session_start".to_string(),
+                        matcher: None,
+                        command,
+                        timeout_seconds: None,
+                    }],
+                }
+            } else {
+                WorkspaceLifecycleHooks::default()
+            });
+
+            let agent = build_agent_with_vt_config(workspace.path(), "duck", Some(config)).await;
+            let session_id = agent
+                .new_session(acp::NewSessionRequest::new(workspace.path()))
+                .await
+                .expect("construct ACP session with lifecycle hooks")
+                .session_id;
+            let hooks = agent
+                .session_handle(&session_id)
+                .expect("registered ACP session")
+                .lifecycle_hooks()
+                .expect("configured lifecycle hook engine");
+
+            assert_eq!(
+                hooks.workspace_gated(),
+                expected_gated,
+                "ACP session must preserve whether the loader attributed hooks to the workspace"
+            );
+        }
     }
 
     fn primary_agent(session: &SessionHandle) -> String {

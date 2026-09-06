@@ -79,18 +79,27 @@ impl ZedAgent {
             return Ok(false);
         }
 
-        let (thread, session_id, mut history, mut auto_compact_suppressed) = {
+        let (thread, acp_session_id, mut history, mut auto_compact_suppressed) = {
             let data = session
                 .data
                 .lock()
                 .map_err(|error| anyhow::anyhow!("ACP session lock poisoned: {error}"))?;
-            (
-                data.thread.clone(),
-                data.session_id.to_string(),
-                data.thread.messages(),
-                data.auto_compact_suppressed,
-            )
+            (data.thread.clone(), data.session_id.clone(), data.thread.messages(), data.auto_compact_suppressed)
         };
+        let activity = super::lody_activity::CompactionActivity::begin(&acp_session_id, prompt_tokens);
+        match activity.started_update() {
+            Ok(update) => {
+                if let Err(error) = self.send_update(&acp_session_id, update).await {
+                    warn!(%error, session_id = %acp_session_id, "Failed to publish ACP compaction start update");
+                }
+            }
+            Err(error) => {
+                warn!(%error, session_id = %acp_session_id, "Failed to serialize ACP compaction start update")
+            }
+        }
+
+        let compaction_result: Result<bool> = async {
+        let session_id = acp_session_id.to_string();
         let original_len = history.len();
         let force_compaction = admission_budget.is_some_and(|budget| prompt_tokens >= budget)
             && configured_threshold.is_none_or(|threshold| prompt_tokens < threshold);
@@ -204,6 +213,25 @@ impl ZedAgent {
             "Applied automatic ACP conversation compaction"
         );
         Ok(true)
+        }
+        .await;
+
+        let used_tokens_after = compaction_result
+            .as_ref()
+            .ok()
+            .map(|_| estimated_prompt_tokens(&self.resolved_messages(session), tools));
+        let failure_reason = compaction_result.as_ref().err().map(ToString::to_string);
+        match activity.finished_update(used_tokens_after, failure_reason.as_deref()) {
+            Ok(update) => {
+                if let Err(error) = self.send_update(&acp_session_id, update).await {
+                    warn!(%error, session_id = %acp_session_id, "Failed to publish ACP compaction terminal update");
+                }
+            }
+            Err(error) => {
+                warn!(%error, session_id = %acp_session_id, "Failed to serialize ACP compaction terminal update");
+            }
+        }
+        compaction_result
     }
 }
 

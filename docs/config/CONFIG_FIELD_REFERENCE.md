@@ -253,6 +253,16 @@ python3 scripts/generate_config_field_reference.py
 | `custom_providers[].auth.refresh_interval_ms` | `integer` | no | `300000` | Maximum age for the cached token before rerunning the command. |
 | `custom_providers[].auth.timeout_ms` | `integer` | no | `5000` | Maximum time to wait for the command to complete successfully. |
 | `custom_providers[].base_url` | `string` | yes | `-` | Base URL of the OpenAI-compatible API endpoint (e.g., `<https://llm.corp.example/v1>`). Non-empty custom providers from repository-controlled workspace/project layers are rejected. |
+| `custom_providers[].pricing` | `CustomProviderPricingConfig` | no | `-` | Optional explicit pricing for ACP usage cost reporting. Rates are USD per million tokens; `costUSD` is emitted only when both input and output rates resolve. |
+| `custom_providers[].pricing.input_per_million_usd` | `number \| null` | no | `-` | Input-token price in USD per million tokens. Must be finite and non-negative. |
+| `custom_providers[].pricing.output_per_million_usd` | `number \| null` | no | `-` | Output-token price in USD per million tokens. Must be finite and non-negative. Required with input pricing for ACP `costUSD`. |
+| `custom_providers[].pricing.cache_read_per_million_usd` | `number \| null` | no | `-` | Cached-input read price in USD per million tokens. Optional; used when the provider reports cached input tokens. |
+| `custom_providers[].pricing.cache_write_per_million_usd` | `number \| null` | no | `-` | Cached-input write price in USD per million tokens. Optional; used when the provider reports cache-creation tokens. |
+| `custom_providers[].profiles.*.pricing` | `CustomProviderPricingConfig` | no | `-` | Optional per-model pricing override in USD per million tokens. It is merged field-by-field over provider pricing; ACP `costUSD` requires resolved input and output rates. |
+| `custom_providers[].profiles.*.pricing.input_per_million_usd` | `number \| null` | no | `-` | Per-model input-token price in USD per million tokens. |
+| `custom_providers[].profiles.*.pricing.output_per_million_usd` | `number \| null` | no | `-` | Per-model output-token price in USD per million tokens. |
+| `custom_providers[].profiles.*.pricing.cache_read_per_million_usd` | `number \| null` | no | `-` | Per-model cached-input read price in USD per million tokens. |
+| `custom_providers[].profiles.*.pricing.cache_write_per_million_usd` | `number \| null` | no | `-` | Per-model cached-input write price in USD per million tokens. |
 | `custom_providers[].context_window` | `integer \| null` | no | `-` | Optional context window size in tokens for models served by this endpoint. When omitted, the OpenAI-compatible provider uses its default context window size. |
 | `custom_providers[].display_name` | `string` | yes | `-` | Human-friendly label shown in the TUI header, footer, and model picker (e.g., "MyCorporateName"). |
 | `custom_providers[].frequency_penalty` | `null \| number` | no | `-` | Optional frequency penalty default (-2.0-2.0). |

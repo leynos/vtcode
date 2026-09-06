@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::models::ModelPricing;
 use crate::types::ReasoningEffortLevel;
 
 fn default_auth_timeout_ms() -> u64 {
@@ -30,6 +31,72 @@ pub enum CustomProviderApiFormat {
     OpenAIResponses,
     #[serde(rename = "anthropic-messages")]
     AnthropicMessages,
+}
+
+/// Optional per-token pricing for a custom provider model.
+///
+/// Values are configured in USD per million tokens and converted to the
+/// per-token representation used by the runtime cost estimator.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq)]
+pub struct CustomProviderPricingConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_per_million_usd: Option<f64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_per_million_usd: Option<f64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_read_per_million_usd: Option<f64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write_per_million_usd: Option<f64>,
+}
+
+impl CustomProviderPricingConfig {
+    const TOKENS_PER_MILLION: f64 = 1_000_000.0;
+
+    fn from_layers(defaults: Self, profile: Self) -> Self {
+        Self {
+            input_per_million_usd: profile.input_per_million_usd.or(defaults.input_per_million_usd),
+            output_per_million_usd: profile.output_per_million_usd.or(defaults.output_per_million_usd),
+            cache_read_per_million_usd: profile.cache_read_per_million_usd.or(defaults.cache_read_per_million_usd),
+            cache_write_per_million_usd: profile.cache_write_per_million_usd.or(defaults.cache_write_per_million_usd),
+        }
+    }
+
+    pub fn model_pricing(self) -> Option<ModelPricing> {
+        let input = self.input_per_million_usd? / Self::TOKENS_PER_MILLION;
+        let output = self.output_per_million_usd? / Self::TOKENS_PER_MILLION;
+        Some(ModelPricing {
+            input: Some(input),
+            output: Some(output),
+            cache_read: self.cache_read_per_million_usd.map(|rate| rate / Self::TOKENS_PER_MILLION),
+            cache_write: self.cache_write_per_million_usd.map(|rate| rate / Self::TOKENS_PER_MILLION),
+        })
+    }
+
+    fn validate(self, subject: &str) -> Result<(), String> {
+        let rates = [
+            ("input_per_million_usd", self.input_per_million_usd),
+            ("output_per_million_usd", self.output_per_million_usd),
+            ("cache_read_per_million_usd", self.cache_read_per_million_usd),
+            ("cache_write_per_million_usd", self.cache_write_per_million_usd),
+        ];
+        for (name, rate) in rates {
+            if rate.is_some_and(|rate| !rate.is_finite() || rate < 0.0) {
+                return Err(format!("{subject}.pricing: `{name}` must be a finite non-negative number"));
+            }
+        }
+        Ok(())
+    }
+
+    fn is_empty(&self) -> bool {
+        self.input_per_million_usd.is_none()
+            && self.output_per_million_usd.is_none()
+            && self.cache_read_per_million_usd.is_none()
+            && self.cache_write_per_million_usd.is_none()
+    }
 }
 
 impl CustomProviderApiFormat {
@@ -65,6 +132,10 @@ pub struct CustomProviderProfileConfig {
     /// Optional context window size in tokens.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window: Option<usize>,
+
+    /// Optional pricing override for this exact model profile.
+    #[serde(default, skip_serializing_if = "CustomProviderPricingConfig::is_empty")]
+    pub pricing: CustomProviderPricingConfig,
 
     /// Optional sampling temperature override (0.0-2.0) sent with requests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -134,6 +205,9 @@ impl CustomProviderProfileConfig {
             ));
         }
 
+        self.pricing
+            .validate(&format!("custom_providers[{provider_name}].profiles[{profile_key}]"))?;
+
         if let Some(temperature) = self.temperature
             && !(0.0..=2.0).contains(&temperature)
         {
@@ -192,6 +266,7 @@ impl CustomProviderProfileConfig {
 pub struct ResolvedCustomProviderProfile {
     pub api_format: Option<CustomProviderApiFormat>,
     pub context_window: Option<usize>,
+    pub pricing: CustomProviderPricingConfig,
     pub temperature: Option<f32>,
     pub top_p: Option<f32>,
     pub top_k: Option<i32>,
@@ -225,6 +300,7 @@ impl ResolvedCustomProviderProfile {
         Self {
             api_format: profile.api_format.resolved().or(defaults.api_format.resolved()),
             context_window: profile.context_window.or(defaults.context_window),
+            pricing: CustomProviderPricingConfig::from_layers(defaults.pricing, profile.pricing),
             temperature: profile.temperature.or(defaults.temperature),
             top_p: profile.top_p.or(defaults.top_p),
             top_k: profile.top_k.or(defaults.top_k),
@@ -466,6 +542,10 @@ pub struct CustomProviderConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window: Option<usize>,
 
+    /// Optional default pricing in USD per million tokens.
+    #[serde(default, skip_serializing_if = "CustomProviderPricingConfig::is_empty")]
+    pub pricing: CustomProviderPricingConfig,
+
     /// Optional support for tool calling.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_tools: Option<bool>,
@@ -625,6 +705,7 @@ impl CustomProviderConfig {
         CustomProviderProfileConfig {
             api_format: self.api_format,
             context_window: self.context_window,
+            pricing: self.pricing,
             temperature: self.temperature,
             top_p: self.top_p,
             top_k: self.top_k,
@@ -670,6 +751,8 @@ impl CustomProviderConfig {
         if self.context_window == Some(0) {
             return Err(format!("custom_providers[{}]: `context_window` must be greater than 0", self.name));
         }
+
+        self.pricing.validate(&format!("custom_providers[{}]", self.name))?;
 
         if let Some(temperature) = self.temperature
             && !(0.0..=2.0).contains(&temperature)
@@ -789,10 +872,38 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{
-        CustomProviderApiFormat, CustomProviderCommandAuthConfig, CustomProviderConfig, CustomProviderProfileConfig,
-        CustomProviderRequestPolicyConfig, ResolvedCustomProviderProfile, default_auth_refresh_interval_ms,
-        default_auth_timeout_ms,
+        CustomProviderApiFormat, CustomProviderCommandAuthConfig, CustomProviderConfig, CustomProviderPricingConfig,
+        CustomProviderProfileConfig, CustomProviderRequestPolicyConfig, ResolvedCustomProviderProfile,
+        default_auth_refresh_interval_ms, default_auth_timeout_ms,
     };
+
+    #[test]
+    fn custom_provider_pricing_converts_per_million_rates_to_per_token_rates() {
+        let pricing = CustomProviderPricingConfig {
+            input_per_million_usd: Some(0.13),
+            output_per_million_usd: Some(0.26),
+            cache_read_per_million_usd: Some(0.028),
+            cache_write_per_million_usd: None,
+        }
+        .model_pricing()
+        .expect("complete custom pricing");
+
+        assert_eq!(pricing.input, Some(0.13 / 1_000_000.0));
+        assert_eq!(pricing.output, Some(0.26 / 1_000_000.0));
+        assert_eq!(pricing.cache_read, Some(0.028 / 1_000_000.0));
+        assert_eq!(pricing.cache_write, None);
+    }
+
+    #[test]
+    fn custom_provider_pricing_rejects_negative_or_non_finite_rates() {
+        for invalid_rate in [-0.01, f64::INFINITY, f64::NAN] {
+            let pricing = CustomProviderPricingConfig {
+                input_per_million_usd: Some(invalid_rate),
+                ..Default::default()
+            };
+            assert!(pricing.validate("custom_providers[test]").is_err());
+        }
+    }
 
     #[test]
     fn validate_accepts_lowercase_provider_name() {
@@ -809,6 +920,7 @@ mod tests {
             base_url: "https://llm.example/v1".to_string(),
             api_format: CustomProviderApiFormat::Auto,
             context_window: None,
+            pricing: Default::default(),
             supports_tools: None,
             supports_reasoning: None,
             supports_reasoning_effort: None,
@@ -846,6 +958,7 @@ mod tests {
             base_url: "https://llm.example/v1".to_string(),
             api_format: CustomProviderApiFormat::Auto,
             context_window: None,
+            pricing: Default::default(),
             supports_tools: None,
             supports_reasoning: None,
             supports_reasoning_effort: None,
@@ -883,6 +996,7 @@ mod tests {
             base_url: "https://llm.example/v1".to_string(),
             api_format: CustomProviderApiFormat::Auto,
             context_window: None,
+            pricing: Default::default(),
             supports_tools: None,
             supports_reasoning: None,
             supports_reasoning_effort: None,
@@ -926,6 +1040,7 @@ mod tests {
             base_url: "https://llm.example/v1".to_string(),
             api_format: CustomProviderApiFormat::Auto,
             context_window: None,
+            pricing: Default::default(),
             supports_tools: None,
             supports_reasoning: None,
             supports_reasoning_effort: None,
@@ -969,6 +1084,7 @@ mod tests {
             base_url: "https://llm.example/v1".to_string(),
             api_format: CustomProviderApiFormat::Auto,
             context_window: None,
+            pricing: Default::default(),
             supports_tools: None,
             supports_reasoning: None,
             supports_reasoning_effort: None,
@@ -1006,6 +1122,7 @@ mod tests {
             base_url: "https://llm.example/v1".to_string(),
             api_format: CustomProviderApiFormat::Auto,
             context_window: Some(0),
+            pricing: Default::default(),
             supports_tools: None,
             supports_reasoning: None,
             supports_reasoning_effort: None,
@@ -1043,6 +1160,7 @@ mod tests {
                 reasoning_effort: None,
                 api_format: CustomProviderApiFormat::Auto,
                 context_window: Some(128_000),
+                pricing: Default::default(),
                 supports_tools: None,
                 supports_reasoning: None,
                 supports_reasoning_effort: None,
@@ -1069,6 +1187,7 @@ mod tests {
             base_url: "https://llm.example/v1".to_string(),
             api_format: CustomProviderApiFormat::Auto,
             context_window: None,
+            pricing: Default::default(),
             supports_tools: None,
             supports_reasoning: None,
             supports_reasoning_effort: None,
@@ -1106,6 +1225,7 @@ mod tests {
             base_url: "https://api.atlascloud.ai/v1".to_string(),
             api_format: CustomProviderApiFormat::Auto,
             context_window: None,
+            pricing: Default::default(),
             supports_tools: None,
             supports_reasoning: None,
             supports_reasoning_effort: None,
@@ -1180,6 +1300,7 @@ mod tests {
                 reasoning_effort: None,
                 api_format: CustomProviderApiFormat::OpenAIResponses,
                 context_window: Some(128_000),
+                pricing: Default::default(),
                 supports_tools: Some(true),
                 supports_reasoning: None,
                 supports_reasoning_effort: None,
@@ -1206,6 +1327,7 @@ mod tests {
             base_url: "https://llm.example/v1".to_string(),
             api_format: CustomProviderApiFormat::OpenAIChat,
             context_window: Some(256_000),
+            pricing: Default::default(),
             supports_tools: Some(true),
             supports_reasoning: Some(true),
             supports_reasoning_effort: None,
@@ -1230,6 +1352,7 @@ mod tests {
             ResolvedCustomProviderProfile {
                 api_format: Some(CustomProviderApiFormat::OpenAIResponses),
                 context_window: Some(128_000),
+                pricing: Default::default(),
                 temperature: None,
                 top_p: None,
                 top_k: None,
@@ -1267,6 +1390,7 @@ mod tests {
                 reasoning_effort: None,
                 api_format: CustomProviderApiFormat::Auto,
                 context_window: None,
+                pricing: Default::default(),
                 supports_tools: Some(false),
                 supports_reasoning: None,
                 supports_reasoning_effort: Some(true),
@@ -1293,6 +1417,7 @@ mod tests {
             base_url: "https://llm.example/v1".to_string(),
             api_format: CustomProviderApiFormat::OpenAIChat,
             context_window: Some(256_000),
+            pricing: Default::default(),
             supports_tools: Some(true),
             supports_reasoning: Some(false),
             supports_reasoning_effort: None,

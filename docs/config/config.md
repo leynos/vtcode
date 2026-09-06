@@ -249,6 +249,15 @@ model = "gpt-5.6-sol"
 # api_format = "auto"      # Optional provider-level API format hint: auto|openai-chat|openai-responses|anthropic-messages
 # supports_stream_usage = true # Opt in only when this OpenAI-chat endpoint emits a terminal usage chunk
 
+# Optional explicit pricing for ACP usage cost reporting. Values are USD per
+# million tokens; costUSD is emitted only when both input and output rates are
+# configured (cache rates are optional).
+[custom_providers.pricing]
+# input_per_million_usd = 0.15
+# output_per_million_usd = 0.50
+# cache_read_per_million_usd = 0.03
+# cache_write_per_million_usd = 0.00
+
 [custom_providers.request_policy]
 max_in_flight_requests = 4
 queue_timeout_seconds = 120
@@ -293,7 +302,7 @@ Custom providers may expose a small, conservative set of capability defaults to 
 
 Providers and profiles can also pin sampling values. Available fields: `temperature` (0.0-2.0), `top_p` (0.0-1.0), `top_k` (>= 0), `presence_penalty` / `frequency_penalty` (-2.0-2.0), `max_tokens` (> 0; overrides the agent loop's built-in per-task limits), and `reasoning_effort`. Pinning `reasoning_effort` on a profile implies effort support for that model.
 
-For fine-grained overrides you can declare sparse per-model profiles. Profiles live in `custom_providers.profiles."<model-id>"` and only modify runtime defaults for that specific model identifier. IMPORTANT: profiles do not add or enable models in the picker — `model` / `models` remain the allowlist/default. A profile only changes how VT Code treats an already-selected model at runtime (capabilities, context window, api_format, sampling values, etc.).
+For fine-grained overrides you can declare sparse per-model profiles. Profiles live in `custom_providers.profiles."<model-id>"` and only modify runtime defaults for that specific model identifier. IMPORTANT: profiles do not add or enable models in the picker — `model` / `models` remain the allowlist/default. A profile only changes how VT Code treats an already-selected model at runtime (capabilities, context window, api_format, sampling values, pricing, etc.).
 
 Example per-model profile:
 
@@ -316,6 +325,14 @@ supports_context_caching = false
 supports_responses_compaction = true
 supports_context_edits = false
 # supports_stream_usage = true # only for endpoints with a terminal usage chunk
+
+[custom_providers.profiles."gpt-5.4".pricing]
+# Rates are USD per million tokens. Both input and output are required before
+# ACP usage updates include costUSD.
+input_per_million_usd = 0.15
+output_per_million_usd = 0.50
+cache_read_per_million_usd = 0.03
+cache_write_per_million_usd = 0.00
 ```
 
 Precedence and semantics
@@ -333,6 +350,7 @@ Additional rules:
 - An explicit boolean `false` in any overriding layer is honored and prevents a higher-level implicit `true` from taking effect.
 - Omitting `api_format` preserves legacy autodetection behavior; explicitly setting `api_format` to a value instructs VT Code to use this API shape and not silently fall back.
 - `supports_stream_usage` follows the same precedence: a profile value overrides the provider default. When `true`, only custom OpenAI-chat streams request `stream_options.include_usage = true`; the endpoint should return usage in the terminal empty-choices chunk. When omitted or `false`, VT Code does not request streamed usage. Native OpenAI requests are unaffected.
+- `pricing` follows the same precedence and is opt-in. Rates are configured as USD per million tokens with separate input, output, cache-read, and cache-write fields. ACP `costUSD` is omitted unless both input and output rates resolve; cache rates are used when the provider reports cache token counts.
 - Profiles do not make a model available in the picker — use `model` or `models` to control availability.
 - Wire delivery depends on the backend's API format. The OpenAI Chat shape sends `temperature`, `top_p`, and both penalties; the OpenAI Responses shape sends them inside a nested `sampling_parameters` object that some compatible endpoints ignore, and currently does not emit `max_output_tokens` for non-native endpoints; `top_k` is accepted in configuration but not serialized for these shapes today (it applies only to backends whose own request builders expose it).
 - Name-based OpenAI sampling gates apply to custom endpoints too, by bare model-name match: models named `gpt`, `gpt-5.2`, `gpt-5.4`, `gpt-5.5*` accept sampling only while reasoning effort resolves to `none` (values are silently omitted otherwise), and `gpt-5`/`gpt-5-mini`/`gpt-5-nano` never receive sampling parameters. Prefer neutral model IDs on custom gateways if you need pinned values on such names.

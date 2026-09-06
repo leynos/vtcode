@@ -645,6 +645,7 @@ mod tests {
         let usage = Usage {
             prompt_tokens: 100,
             completion_tokens: 50,
+            reasoning_output_tokens: None,
             total_tokens: 150,
             cached_prompt_tokens: Some(20),
             cache_creation_tokens: Some(10),

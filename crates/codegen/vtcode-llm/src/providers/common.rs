@@ -1155,6 +1155,7 @@ pub(crate) fn parse_usage_openai_format(
     response_json.get("usage").map(|usage_value| crate::provider::Usage {
         prompt_tokens: usage_value.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
         completion_tokens: usage_value.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+        reasoning_output_tokens: parse_reasoning_tokens_from_usage(usage_value),
         total_tokens: usage_value.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
         cached_prompt_tokens: if include_cache_metrics {
             usage_value
@@ -1175,6 +1176,25 @@ pub(crate) fn parse_usage_openai_format(
         cache_read_tokens: None,
         iterations: None,
     })
+}
+
+/// Extracts provider-side reasoning token usage from OpenAI-compatible usage details.
+///
+/// Chat Completions providers such as Baseten report this as
+/// `completion_tokens_details.reasoning_tokens`, while Responses-compatible
+/// providers use the corresponding `output_tokens_details` shape.
+#[inline]
+pub(crate) fn parse_reasoning_tokens_from_usage(usage_value: &Value) -> Option<u32> {
+    usage_value
+        .get("completion_tokens_details")
+        .and_then(|details| details.get("reasoning_tokens"))
+        .or_else(|| {
+            usage_value
+                .get("output_tokens_details")
+                .and_then(|details| details.get("reasoning_tokens"))
+        })
+        .and_then(Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok())
 }
 
 #[inline]
@@ -1618,8 +1638,43 @@ mod tests {
         assert_eq!(usage.prompt_tokens, 100);
         assert_eq!(usage.completion_tokens, 50);
         assert_eq!(usage.total_tokens, 150);
+        assert_eq!(usage.reasoning_output_tokens, None);
         assert_eq!(usage.cached_prompt_tokens, None);
         assert_eq!(usage.cache_creation_tokens, None);
+    }
+
+    #[test]
+    fn parse_usage_openai_format_extracts_nested_reasoning_tokens() {
+        let response = json!({
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150,
+                "completion_tokens_details": {
+                    "reasoning_tokens": 35
+                }
+            }
+        });
+
+        let usage = parse_usage_openai_format(&response, false).expect("usage expected");
+        assert_eq!(usage.reasoning_output_tokens, Some(35));
+    }
+
+    #[test]
+    fn parse_usage_openai_format_accepts_responses_reasoning_details() {
+        let response = json!({
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "total_tokens": 150,
+                "output_tokens_details": {
+                    "reasoning_tokens": 35
+                }
+            }
+        });
+
+        let usage = parse_usage_openai_format(&response, false).expect("usage expected");
+        assert_eq!(usage.reasoning_output_tokens, Some(35));
     }
 
     #[test]
