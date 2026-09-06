@@ -147,14 +147,24 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all -- --check
 
-  # Check for typos in the codebase.
-  # See <https://github.com/crate-ci/typos/>
-  # lint-typos:
-  #   name: Check Typos
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v6
-  #     - uses: crate-ci/typos@master
+  # Check every tracked existing file against the explicit spelling policy.
+  lint-typos:
+    name: Check Typos
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install typos-cli
+        uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190  # v2
+        with:
+          tool: typos-cli@1.50.1
+      - name: Check spelling
+        run: /usr/bin/make spelling
 
   # Check for any disallowed dependencies in the codebase due to license / security issues.
   # See <https://github.com/EmbarkStudios/cargo-deny>
@@ -269,6 +279,10 @@ jobs:
             "${ACTIONLINT_RELEASE_URL}"
           printf '%s  %s\n' "${ACTIONLINT_SHA256}" "${ACTIONLINT_ARCHIVE_PATH}" | sha256sum --check --
           bash "${ACTIONLINT_INSTALLER_PATH}" "${ACTIONLINT_VERSION}"
+      - name: Install typos-cli
+        uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190  # v2
+        with:
+          tool: typos-cli@1.50.1
       - name: Lint
         run: /usr/bin/make BUILD_JOBS="--jobs 4" ACTIONLINT="$GITHUB_WORKSPACE/actionlint" lint
       - name: Validate GitHub Actions lint contract

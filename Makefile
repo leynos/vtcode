@@ -2,6 +2,8 @@ CARGO ?= cargo
 PYTHON ?= python3
 YAMLLINT ?= yamllint
 ACTIONLINT ?= actionlint
+GIT ?= git
+TYPOS ?= typos
 UV ?= uv
 BUILD_JOBS ?= --jobs 6
 NEXTEST_PROFILE ?= default
@@ -9,7 +11,7 @@ NEXTEST_PROFILE ?= default
 .DEFAULT_GOAL := check
 .NOTPARALLEL:
 
-.PHONY: check check-fmt test-github-actions-validation lint lint-clippy lint-docs \
+.PHONY: check check-fmt spelling test-spelling test-github-actions-validation lint lint-clippy lint-docs \
 	lint-policies lint-shell github-actions-lint advisory build typecheck test \
 	test-harness check-ast-grep
 
@@ -20,11 +22,17 @@ check: check-fmt lint build test test-harness check-ast-grep advisory
 check-fmt:
 	$(CARGO) fmt --all -- --check
 
+spelling:
+	GIT="$(GIT)" TYPOS="$(TYPOS)" ./scripts/check-spelling.sh
+
+test-spelling:
+	PYTHONPATH=scripts $(PYTHON) -m unittest discover -s scripts/tests -p 'test_spelling*.py'
+
 test-github-actions-validation:
 	PYTHONPATH=scripts $(UV) run --no-project --with 'PyYAML==6.0.3' $(PYTHON) -m unittest \
 		discover -s scripts/tests -p 'test_github_actions_validation*.py'
 
-lint: lint-shell lint-policies github-actions-lint lint-clippy lint-docs
+lint: lint-shell lint-policies spelling github-actions-lint lint-clippy lint-docs
 
 github-actions-lint:
 	$(YAMLLINT) --config-file .yamllint.yml .github/workflows
