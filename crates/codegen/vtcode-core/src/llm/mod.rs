@@ -229,7 +229,7 @@ pub use providers::{
 };
 pub use single_response::collect_single_response;
 pub use tool_bridge::{
-    CorrelationStats, IntentFulfillment, MessageCorrelationTracker, MessageToolCorrelation, ToolExecution, ToolIntent,
+    CorrelationStats, IntentFulfilment, MessageCorrelationTracker, MessageToolCorrelation, ToolExecution, ToolIntent,
     ToolIntentExtractor,
 };
 

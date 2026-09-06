@@ -469,7 +469,7 @@ fn openai_prompt_cache_key_uses_stable_session_identifier() {
 }
 
 #[test]
-fn openai_prompt_cache_key_honors_off_mode_or_disabled_cache() {
+fn openai_prompt_cache_key_honours_off_mode_or_disabled_cache() {
     assert_eq!(build_openai_prompt_cache_key(true, &OpenAIPromptCacheKeyMode::Off, Some("lineage-1"),), None);
     assert_eq!(build_openai_prompt_cache_key(false, &OpenAIPromptCacheKeyMode::Session, Some("lineage-1"),), None);
     assert_eq!(build_openai_prompt_cache_key(true, &OpenAIPromptCacheKeyMode::Session, None,), None);

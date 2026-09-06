@@ -37,18 +37,18 @@ impl RecoveryPlaybook {
 }
 
 /// Simple recovery action that records a label (for testing/demo).
-pub struct LabeledAction {
+pub struct LabelledAction {
     label: &'static str,
 }
 
-impl LabeledAction {
+impl LabelledAction {
     pub fn new(label: &'static str) -> Self {
         Self { label }
     }
 }
 
 #[async_trait]
-impl RecoveryAction for LabeledAction {
+impl RecoveryAction for LabelledAction {
     async fn execute(&self) -> Result<()> {
         Ok(())
     }
@@ -64,7 +64,7 @@ mod tests {
 
     #[tokio::test]
     async fn executes_all_actions() {
-        let playbook = RecoveryPlaybook::default().with_action(Arc::new(LabeledAction::new("reset")));
+        let playbook = RecoveryPlaybook::default().with_action(Arc::new(LabelledAction::new("reset")));
         let executed = playbook.execute_all().await.expect("playbook should run");
         assert_eq!(executed, vec!["reset".to_string()]);
     }

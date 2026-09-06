@@ -1,7 +1,7 @@
 //! Process-wide explicit config-file override for a session.
 //!
 //! When the user launches vtcode with `--config PATH` or
-//! `VTCODE_CONFIG_PATH`, every later configuration reload must honor that
+//! `VTCODE_CONFIG_PATH`, every later configuration reload must honour that
 //! explicit file instead of silently drifting back to the default layer
 //! hierarchy. The resolved path is captured once during startup and stored
 //! here as a session snapshot, so runtime reloads via

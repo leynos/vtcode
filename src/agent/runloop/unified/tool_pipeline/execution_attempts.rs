@@ -562,7 +562,7 @@ mod tests {
     }
 
     #[test]
-    fn retry_delay_honors_retry_safety_gate() {
+    fn retry_delay_honours_retry_safety_gate() {
         let timeout_status =
             create_timeout_error("read_file", ToolTimeoutCategory::Default, Some(Duration::from_secs(1)));
         let policy = RetryPolicy::from_retries(2, RETRY_BACKOFF_BASE, MAX_RETRY_BACKOFF, 2.0);
