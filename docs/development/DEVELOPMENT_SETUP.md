@@ -80,21 +80,24 @@ available separately and is not part of the default `check` dependency list.
 
 These are the public targets:
 
-| Target           | Runs                                                     |
-| ---------------- | -------------------------------------------------------- |
-| `check`          | The complete sequential gate                             |
-| `check-fmt`      | `cargo fmt --all -- --check`                             |
-| `lint`           | Shell, policy, Clippy and documentation checks           |
-| `lint-shell`     | Shell syntax and truncated-command checks                |
-| `lint-policies`  | Workflow-security and structured-logging checks          |
-| `lint-clippy`    | Workspace Clippy with warnings denied                    |
-| `lint-docs`      | Workspace documentation generation without dependencies  |
-| `build`          | Locked workspace build                                   |
-| `typecheck`      | Locked workspace check with all targets and features     |
-| `test`           | Locked workspace Nextest run                             |
-| `test-harness`   | PTY, pipe and inline-event harness suites                |
-| `check-ast-grep` | The Diapason ast-grep check when `ast-grep` is installed |
-| `advisory`       | Warn-mode source hygiene and legibility reports          |
+| Target                | Runs                                                               |
+| --------------------- | ------------------------------------------------------------------ |
+| `check`               | The complete sequential gate                                       |
+| `check-fmt`           | `cargo fmt --all -- --check`                                       |
+| `lint`                | Shell, policy, spelling, workflow, Clippy and documentation checks |
+| `lint-shell`          | Shell syntax and truncated-command checks                          |
+| `lint-policies`       | Workflow-security and structured-logging checks                    |
+| `spelling`            | Check existing Git-tracked files against `typos.toml`              |
+| `test-spelling`       | Focused tracked-file and CI spelling contracts                     |
+| `github-actions-lint` | Yamllint and actionlint workflow validation                        |
+| `lint-clippy`         | Workspace Clippy with warnings denied                              |
+| `lint-docs`           | Workspace documentation generation without dependencies            |
+| `build`               | Locked workspace build                                             |
+| `typecheck`           | Locked workspace check with all targets and features               |
+| `test`                | Locked workspace Nextest run                                       |
+| `test-harness`        | PTY, pipe and inline-event harness suites                          |
+| `check-ast-grep`      | The Diapason ast-grep check when `ast-grep` is installed           |
+| `advisory`            | Warn-mode source hygiene and legibility reports                    |
 
 The gate accepts these variables for local toolchain and test-runner overrides:
 
@@ -103,11 +106,29 @@ The gate accepts these variables for local toolchain and test-runner overrides:
 - `NEXTEST_PROFILE` selects the Nextest profile (default: `default`).
 
 The gate requires `make`, Rust tooling (`cargo fmt`, Clippy and Cargo
-documentation), Python 3 for advisory checks, Bash for shell checks, and
-`cargo-nextest` for tests. The ast-grep scan is optional: `check-ast-grep`
-reports a skip when the `ast-grep` executable is unavailable. See
+documentation), Python 3 for advisory checks, Bash for shell checks, typos-cli
+for spelling, yamllint and actionlint for workflows, and `cargo-nextest` for
+tests. The ast-grep scan is optional: `check-ast-grep` reports a skip when the
+`ast-grep` executable is unavailable. See
 [Structural Rule Checks](testing.md#structural-rule-checks) for installation
 and workspace setup instructions.
+
+## Spelling Gate
+
+Install the CI-aligned spelling tool locally, then run the focused gate:
+
+```bash
+cargo install typos-cli@1.50.1 --locked
+make spelling
+```
+
+`make spelling` discovers files with `git ls-files -z`, checks only paths that
+still exist, and skips deleted or empty sets. It passes the explicit
+`typos.toml` policy with `--force-exclude`, so untracked and ignored files are
+not added to the check. The policy keeps only documented exact external/API or
+wire terms and fixed historical identifiers and hashes; correct ordinary prose
+rather than adding an exception. `make lint` invokes this target. The spelling
+tool is separate from the unchanged Rust toolchain configuration.
 
 ## Common Commands
 

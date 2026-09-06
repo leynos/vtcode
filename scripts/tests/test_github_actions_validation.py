@@ -75,7 +75,7 @@ class WorkflowPolicyTests(unittest.TestCase):
     def test_makefile_wires_policy_before_actionlint(self) -> None:
         makefile = MAKEFILE_PATH.read_text(encoding="utf-8")
         self.assertIn(
-            "lint: lint-shell lint-policies github-actions-lint lint-clippy lint-docs",
+            "lint: lint-shell lint-policies spelling github-actions-lint lint-clippy lint-docs",
             makefile,
         )
         target = "github-actions-lint:\n"
