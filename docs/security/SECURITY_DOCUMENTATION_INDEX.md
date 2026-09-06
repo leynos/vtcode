@@ -98,7 +98,7 @@ Complete guide to Diapason's security documentation.
 
 - **Location**: `crates/codegen/diapason-config/src/loader/manager.rs`
   (workspace-hook collection),
-  `crates/codegen/diapason-core/src/hooks/lifecycle/engine.rs` (fail-closed gate
+  `crates/codegen/diapason-core/src/hooks/lifecycle/engine/mod.rs` (fail-closed gate
   - SHA-256 digest), `src/agent/runloop/unified/session_setup/hook_approval.rs`
   (approval overlay)
 - **Documentation**:

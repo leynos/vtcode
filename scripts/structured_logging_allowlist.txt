@@ -4,7 +4,7 @@ crates/codegen/diapason-core/src/cli/** | Diapason core CLI adapters intentional
 crates/codegen/diapason-core/src/commands/** | Command implementations print human-readable summaries and reports.
 crates/codegen/diapason-core/src/config/validation.rs | Configuration validation warnings now use tracing::warn.
 crates/codegen/diapason-core/src/core/agent/core.rs | Interactive agent session headers and summaries are part of the terminal UX.
-crates/codegen/diapason-core/src/core/agent/runner.rs | Interactive agent runner status output is user-facing.
+crates/codegen/diapason-core/src/core/agent/runner/mod.rs | Interactive agent runner status output is user-facing.
 crates/codegen/diapason-core/src/core/agent/runner/output.rs | Assistant response rendering intentionally writes to stdout.
 crates/codegen/diapason-core/src/core/agent/runner/telemetry.rs | Interactive warnings and errors are surfaced directly to users.
 crates/codegen/diapason-core/src/core/agent/runner/tool_args.rs | Tool argument validation warnings are user-facing terminal output.

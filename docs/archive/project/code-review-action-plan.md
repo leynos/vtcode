@@ -55,7 +55,7 @@ contention is not a practical concern
 
 **Files:**
 
-- `crates/codegen/diapason-core/src/tools/pty/manager.rs:37`
+- `crates/codegen/diapason-core/src/tools/pty/manager/mod.rs:37`
   (`WORKSPACE_COMMAND_LOCKS`)
 - `crates/codegen/diapason-core/src/tools/search_runtime.rs:80`
   (`SEARCH_RUNTIME_CACHE`)
@@ -67,7 +67,7 @@ contention is not a practical concern
 **Impact:** Long-running sessions accumulate entries without eviction, leaking
 memory. **Fix applied:** Both genuine leak sites are now bounded:
 
-- `WORKSPACE_COMMAND_LOCKS` (`pty/manager.rs:39`): values are now
+- `WORKSPACE_COMMAND_LOCKS` (`pty/manager/mod.rs:39`): values are now
   `Weak<tokio::sync::Mutex<()>>`; stale entries are replaced on the next
   `get_command_lock` lookup once the last `Arc` is dropped, so the map stays
   bounded by concurrently-held locks.

@@ -10,7 +10,7 @@ ensure clean, machine-readable output for agent processing.
 ### 1. Prevention at Source (Preferred)
 
 Environment variables set in
-`crates/codegen/diapason-core/src/tools/pty.rs::set_command_environment()`:
+`crates/codegen/diapason-core/src/tools/pty/mod.rs::set_command_environment()`:
 
 ```rust
 // Disable automatic colour output from build tools
@@ -30,7 +30,7 @@ reliable approach.
 ### 2. Capture-Time Stripping
 
 `PtyScrollback::push_text()` in
-`crates/codegen/diapason-core/src/tools/pty.rs:206-209`:
+`crates/codegen/diapason-core/src/tools/pty/mod.rs:206-209`:
 
 ```rust
 fn push_text(&mut self, text: &str) {
@@ -129,7 +129,7 @@ Clean, machine-readable output to agent
 
 - `crates/codegen/diapason-core/src/utils/ansi_parser.rs`: 10+ tests covering
     CSI, OSC, edge cases
-- `crates/codegen/diapason-core/src/tools/pty.rs`: Scrollback size, overflow,
+- `crates/codegen/diapason-core/src/tools/pty/mod.rs`: Scrollback size, overflow,
     metrics tests
 - Implicit: Every `strip_ansi()` call prevents malformed output
 
@@ -162,7 +162,7 @@ Both commands should produce **zero matches** after these changes.
 
 ## Related Files
 
-- `crates/codegen/diapason-core/src/tools/pty.rs` - PTY management and ANSI
+- `crates/codegen/diapason-core/src/tools/pty/mod.rs` - PTY management and ANSI
     prevention
 - `crates/codegen/diapason-core/src/utils/ansi_parser.rs` - Core stripping logic
 - `crates/codegen/diapason-core/src/tools/registry/executors/` - Return-path
