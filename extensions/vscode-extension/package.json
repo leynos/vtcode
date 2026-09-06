@@ -466,7 +466,7 @@
     "colors": [
       {
         "id": "vtcode.statusBarBackground",
-        "description": "Background color for the VT Code status bar entry when the CLI is available.",
+        "description": "Background colour for the VT Code status bar entry when the CLI is available.",
         "defaults": {
           "dark": "#1D4ED8",
           "light": "#2563EB",
@@ -475,7 +475,7 @@
       },
       {
         "id": "vtcode.statusBarForeground",
-        "description": "Foreground color for the VT Code status bar entry when the CLI is available.",
+        "description": "Foreground colour for the VT Code status bar entry when the CLI is available.",
         "defaults": {
           "dark": "#FFFFFF",
           "light": "#FFFFFF",
