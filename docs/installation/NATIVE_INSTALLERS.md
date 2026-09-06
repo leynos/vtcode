@@ -31,7 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.
 - Linux x86_64
 - WSL (use install.ps1 for native Windows)
 
-Linux `aarch64` hosts are detected by the installer, but native `aarch64` release artifacts are not published by default in current release workflow.
+Linux `aarch64` hosts are detected by the installer, but native `aarch64` release artefacts are not published by default in current release workflow.
 
 ---
 

@@ -63,7 +63,7 @@ This guide walks through updating existing VT Code integrations to rely on the s
     )?;
     ```
 
--   The helper now ensures parent directories exist, reports created artifacts, and respects provider-driven path overrides.
+-   The helper now ensures parent directories exist, reports created artefacts, and respects provider-driven path overrides.
 
 ### 5. Refresh Tests & Automation
 
@@ -78,7 +78,7 @@ This guide walks through updating existing VT Code integrations to rely on the s
 
 ## Rolling Adoption Strategy
 
--   **Pilot phase:** migrate internal services first to validate defaults provider behavior and identify additional adapters needed.
+-   **Pilot phase:** migrate internal services first to validate defaults provider behaviour and identify additional adapters needed.
 -   **General availability:** once documentation and examples stabilize, publish `vtcode-config` to crates.io and update top-level README references.
 -   **Deprecation window:** keep the legacy `vtcode-core` re-exports available for at least one minor release, emitting deprecation warnings that point to this guide.
 

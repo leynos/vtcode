@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.
 irm https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.ps1 | iex
 ```
 
-Windows release builds are currently best-effort and may lag behind macOS/Linux. The release pipeline still depends on `cross`, Docker, and GitHub Actions capacity for Windows packaging, and those build minutes can be costly, so Windows artifacts may not appear in every release.
+Windows release builds are currently best-effort and may lag behind macOS/Linux. The release pipeline still depends on `cross`, Docker, and GitHub Actions capacity for Windows packaging, and those build minutes can be costly, so Windows artefacts may not appear in every release.
 
 ### Homebrew (macOS & Linux)
 
@@ -58,7 +58,7 @@ npm install -g @vinhnx/vtcode --registry=https://npm.pkg.github.com
 | **npm**              | All               | `npm install -g @vinhnx/vtcode --registry=https://npm.pkg.github.com` | JavaScript package manager            |
 | **npx**              | All               | `npx @vinhnx/vtcode`                                                  | No installation, run directly         |
 
-Windows release artifacts may lag behind macOS/Linux while the build pipeline is being finalized.
+Windows release artefacts may lag behind macOS/Linux while the build pipeline is being finalized.
 
 ## After Installation
 

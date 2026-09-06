@@ -62,7 +62,7 @@ below shows the original sites and their current status:
 | `src/.../tool_summary_helpers.rs` | `truncate_middle` | middle | Left as-is (specialized whitespace sanitization) |
 | `vtcode-core/.../session_archive.rs:1765` | `truncate_preview` | char prefix | **Migrated** → `truncate_within` |
 | `vtcode-core/.../snapshots.rs:246` | `truncate_description` | char prefix | **Migrated** → `truncate_within` |
-| `vtcode-core/.../harness_artifacts.rs:99` | `truncate_summary` | char prefix | **Migrated** → `truncate_within` |
+| `vtcode-core/.../harness_artefacts.rs:99` | `truncate_summary` | char prefix | **Migrated** → `truncate_within` |
 | `src/.../pty_stream/state.rs:357` | `wrap_text_words` | word-wrap | **Migrated** → shared `wrap_text_words` |
 | `src/.../tool_summary.rs:379` | `wrap_text_words` | word-wrap | **Migrated** → shared `wrap_text_words` |
 
@@ -167,10 +167,10 @@ The original "three fragmented builders" claim does not hold:
 
 These shape payloads differently and share no logic. `rg` confirms the runner
 never calls `compact_model_tool_payload` and the unified loop never calls
-`reduce_tool_result`. Merging them would *invent* new combined behavior neither
-currently has (over-engineering + behavior change), so no refactor is warranted.
+`reduce_tool_result`. Merging them would *invent* new combined behaviour neither
+currently has (over-engineering + behaviour change), so no refactor is warranted.
 
-> This **is** a behavioral *consistency* observation (each loop economizes
+> This **is** a behavioural *consistency* observation (each loop economizes
 > context differently) of the same family as F2 — tracked below, not a DRY fix.
 
 ---
@@ -197,12 +197,12 @@ suggests — assembly is already centralized in `ToolRegistry`/`SafetyGateway` a
 
 ---
 
-## Open questions for maintainers (behavior-changing — not auto-applied)
+## Open questions for maintainers (behaviour-changing — not auto-applied)
 
 1. **F2 (loop detection only)** — the runner uses a client-side `LoopDetector`
    checked *before* execution; the unified loop reacts to a `loop_detected`
    marker emitted *during* execution. Are the thresholds/semantics meant to
-   match? Reconciling them changes turn-termination behavior. (Rate-limiting and
+   match? Reconciling them changes turn-termination behaviour. (Rate-limiting and
    policy admission are already shared via a single `SafetyGateway` — no change
    needed there.)
 2. **F5/F2 family** — each loop economizes model context differently
@@ -211,7 +211,7 @@ suggests — assembly is already centralized in `ToolRegistry`/`SafetyGateway` a
    token usage? This changes model-facing payloads and needs eval/snapshot review.
 
 These were deliberately **not** refactored: they alter shared runtime safety or
-model-facing behavior, which warrants explicit confirmation rather than an
+model-facing behaviour, which warrants explicit confirmation rather than an
 autonomous edit.
 
 ---

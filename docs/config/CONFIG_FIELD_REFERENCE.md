@@ -61,7 +61,7 @@ python3 scripts/generate_config_field_reference.py
 | `agent.harness.confidence_escalation.plan_mode_only` | `boolean` | no | `false` | When true, only escalate during PlanBuildEvaluate orchestration mode. During single-mode or other orchestration modes, escalation is skipped. |
 | `agent.harness.confidence_escalation.prompt_user_on_exhaust` | `boolean` | no | `true` | Whether to prompt the user when the escalation chain is exhausted. When false, the chain falls through directly to abort-with-partial-results. |
 | `agent.harness.confidence_escalation.use_llm_confidence` | `boolean` | no | `false` | Whether to solicit LLM-based confidence estimation alongside heuristics. When false (default), only heuristic signals (error history, tool class) are used to estimate p_success. |
-| `agent.harness.context_reset_mode` | `string` | no | `"off"` | When to trigger a context reset — starting a clean session from external artifacts only, discarding conversation history. Distinct from compaction (which preserves conversational continuity). Default: `off` (carry forward history as before). |
+| `agent.harness.context_reset_mode` | `string` | no | `"off"` | When to trigger a context reset — starting a clean session from external artefacts only, discarding conversation history. Distinct from compaction (which preserves conversational continuity). Default: `off` (carry forward history as before). |
 | `agent.harness.context_reset_stall_threshold` | `integer` | no | `2` | Number of consecutive stall turns before `on_stall` context reset triggers. Ignored unless `context_reset_mode = "on_stall"`. Default: 2. |
 | `agent.harness.continuation_policy` | `string` | no | `"all"` | Controls whether harness-managed continuation loops are enabled. |
 | `agent.harness.event_log_path` | `null \| string` | no | `null` | Optional compatibility/export JSONL path for harness events. Canonical events are always stored under the workspace session store; unset configuration creates no global harness file. |
@@ -73,7 +73,7 @@ python3 scripts/generate_config_field_reference.py
 | `agent.harness.max_tool_wall_clock_secs` | `integer` | no | `600` | Maximum wall clock time (seconds) for tool execution in a turn |
 | `agent.harness.orchestration_mode` | `string` | no | `"plan_build_evaluate"` | Select the exec/full-auto harness orchestration path. |
 | `agent.harness.skeptic_panel.enabled` | `boolean` | no | `false` | Master switch. Default: false (opt-in). |
-| `agent.harness.skeptic_panel.models` | `array` | no | `[]` | Model identifiers to run as skeptic evaluators (in addition to the primary evaluator). Empty when `enabled = false`. |
+| `agent.harness.skeptic_panel.models` | `array` | no | `[]` | Model identifiers to run as sceptic evaluators (in addition to the primary evaluator). Empty when `enabled = false`. |
 | `agent.harness.skeptic_panel.models[]` | `string` | no | `-` | - |
 | `agent.harness.tool_result_clearing.clear_at_least_tokens` | `integer` | no | `30000` | - |
 | `agent.harness.tool_result_clearing.clear_tool_inputs` | `boolean` | no | `false` | - |
@@ -81,7 +81,7 @@ python3 scripts/generate_config_field_reference.py
 | `agent.harness.tool_result_clearing.keep_tool_uses` | `integer` | no | `3` | - |
 | `agent.harness.tool_result_clearing.trigger_tokens` | `integer` | no | `100000` | - |
 | `agent.idle_turn_limit` | `integer` | no | `3` | Maximum consecutive idle turns (no tool calls, no meaningful response) before the agent runner treats the session as stalled and aborts the loop. |
-| `agent.include_structured_reasoning_tags` | `boolean \| null` | no | `null` | Controls inclusion of the structured reasoning tag instructions block. Behavior: - `Some(true)`: always include structured reasoning instructions. - `Some(false)`: never include structured reasoning instructions. - `None` (default): include only for `default` and `specialized` prompt modes. This keeps lightweight/minimal prompts smaller by default while allowing explicit opt-in when users want tag-based reasoning guidance. |
+| `agent.include_structured_reasoning_tags` | `boolean \| null` | no | `null` | Controls inclusion of the structured reasoning tag instructions block. Behaviour: - `Some(true)`: always include structured reasoning instructions. - `Some(false)`: never include structured reasoning instructions. - `None` (default): include only for `default` and `specialized` prompt modes. This keeps lightweight/minimal prompts smaller by default while allowing explicit opt-in when users want tag-based reasoning guidance. |
 | `agent.include_temporal_context` | `boolean` | no | `true` | Include current date/time in system prompt for temporal awareness Helps LLM understand context for time-sensitive tasks (default: true) |
 | `agent.include_working_directory` | `boolean` | no | `true` | Include current working directory in system prompt (default: true) |
 | `agent.instruction_excludes` | `array` | no | `[]` | Instruction files or globs to exclude from AGENTS.md and rules discovery |
@@ -149,10 +149,10 @@ python3 scripts/generate_config_field_reference.py
 | `agent.temporal_context_use_utc` | `boolean` | no | `false` | Use UTC instead of local time for temporal context in system prompts |
 | `agent.theme` | `string` | no | `"ciapre"` | UI theme identifier controlling ANSI styling |
 | `agent.todo_planning_mode` | `boolean` | no | `true` | Enable TODO planning helper mode for structured task management |
-| `agent.tool_documentation_mode` | `string` | no | `"progressive"` | Tool documentation mode controlling token overhead for tool definitions Options: minimal (~800 tokens), progressive (~1.2k), full (~3k current) Progressive: signatures upfront, detailed docs on-demand (recommended) Minimal: signatures only, pi-coding-agent style (power users) Full: all documentation upfront (current behavior, default) |
-| `agent.trim_system_prompt` | `boolean` | no | `false` | Trim low-priority system prompt sections when over budget. Opt-in: silently dropping instructions changes agent behavior, so the default only warns. |
+| `agent.tool_documentation_mode` | `string` | no | `"progressive"` | Tool documentation mode controlling token overhead for tool definitions Options: minimal (~800 tokens), progressive (~1.2k), full (~3k current) Progressive: signatures upfront, detailed docs on-demand (recommended) Minimal: signatures only, pi-coding-agent style (power users) Full: all documentation upfront (current behaviour, default) |
+| `agent.trim_system_prompt` | `boolean` | no | `false` | Trim low-priority system prompt sections when over budget. Opt-in: silently dropping instructions changes agent behaviour, so the default only warns. |
 | `agent.ui_surface` | `string` | no | `"inline"` | Preferred rendering surface for the interactive chat UI (inline by default; auto, alternate, inline) |
-| `agent.user_instructions` | `null \| string` | no | `null` | Custom instructions provided by the user via configuration to guide agent behavior |
+| `agent.user_instructions` | `null \| string` | no | `null` | Custom instructions provided by the user via configuration to guide agent behaviour |
 | `agent.verbosity` | `string` | no | `"medium"` | Verbosity level for output text (low, medium, high) Applies to: GPT-5.4-family Responses workflows and other models that support verbosity control |
 | `agent.vibe_coding.enable_conversation_memory` | `boolean` | no | `true` | Enable conversation memory for pronoun resolution |
 | `agent.vibe_coding.enable_entity_resolution` | `boolean` | no | `true` | Enable fuzzy entity resolution |
@@ -193,7 +193,7 @@ python3 scripts/generate_config_field_reference.py
 | `automation.full_auto.allowed_tools[]` | `string` | no | `-` | - |
 | `automation.full_auto.enabled` | `boolean` | no | `false` | Enable the runtime flag once the workspace is configured for autonomous runs. |
 | `automation.full_auto.max_turns` | `integer` | no | `100` | Maximum number of autonomous agent turns before the exec runner pauses. |
-| `automation.full_auto.profile_path` | `null \| string` | no | `null` | Optional path to a profile describing acceptable behaviors. |
+| `automation.full_auto.profile_path` | `null \| string` | no | `null` | Optional path to a profile describing acceptable behaviours. |
 | `automation.full_auto.require_profile_ack` | `boolean` | no | `true` | Require presence of a profile/acknowledgement file before activation. |
 | `automation.full_auto.verify_mutations` | `boolean` | no | `false` | Run a read-only verifier sub-agent after each mutating tool call. When enabled, the harness spawns a verifier that re-reads the diff and either approves or rejects the change before it is committed. This doubles cost on mutating calls but catches propose-side errors. |
 | `automation.loop_engine.enabled` | `boolean` | no | `false` | Enable loop engineering mode. When false, loop-specific features (reconciler, per-iteration skills) are inactive. |
@@ -496,7 +496,7 @@ python3 scripts/generate_config_field_reference.py
 | `model.loop_detection_threshold` | `integer` | no | `2` | Maximum number of identical tool calls (same tool + same arguments) before triggering loop detection |
 | `model.model_supports_reasoning` | `boolean \| null` | no | `null` | Manually enable reasoning support for models that are not natively recognized. Note: Setting this to false will NOT disable reasoning for known reasoning models (e.g. GPT-5). |
 | `model.model_supports_reasoning_effort` | `boolean \| null` | no | `null` | Manually enable reasoning effort support for models that are not natively recognized. Note: Setting this to false will NOT disable reasoning effort for known models. |
-| `model.skip_loop_detection` | `boolean` | no | `false` | Enable loop hang detection to identify when model is stuck in repetitive behavior |
+| `model.skip_loop_detection` | `boolean` | no | `false` | Enable loop hang detection to identify when model is stuck in repetitive behaviour |
 | `notify` | `array` | no | `[]` | External notification command invoked for supported events. |
 | `notify[]` | `string` | no | `-` | - |
 | `optimization.agent_execution.enable_performance_prediction` | `boolean` | no | `false` | Enable performance prediction |
@@ -825,9 +825,9 @@ python3 scripts/generate_config_field_reference.py
 | `tui.notification_method` | `TerminalNotificationMethod \| null` | no | `null` | - |
 | `tui.notifications` | `TuiNotificationsConfig \| null` | no | `null` | - |
 | `tui.show_tooltips` | `boolean \| null` | no | `null` | - |
-| `ui.allow_tool_ansi` | `boolean` | no | `false` | Allow ANSI escape sequences in tool output (enables colors but may cause layout issues) |
-| `ui.bold_is_bright` | `boolean` | no | `false` | Compatibility mode for legacy terminals that map bold to bright colors. When enabled, avoids using bold styling on text that would become bright colors, preventing visibility issues in terminals with "bold is bright" behavior. |
-| `ui.color_scheme_mode` | `string` | no | `"auto"` | Color scheme mode for automatic light/dark theme switching. - "auto": Detect from terminal (via OSC 11 or COLORFGBG env var) - "light": Force light mode theme selection - "dark": Force dark mode theme selection |
+| `ui.allow_tool_ansi` | `boolean` | no | `false` | Allow ANSI escape sequences in tool output (enables colours but may cause layout issues) |
+| `ui.bold_is_bright` | `boolean` | no | `false` | Compatibility mode for legacy terminals that map bold to bright colours. When enabled, avoids using bold styling on text that would become bright colours, preventing visibility issues in terminals with "bold is bright" behaviour. |
+| `ui.color_scheme_mode` | `string` | no | `"auto"` | Colour scheme mode for automatic light/dark theme switching. - "auto": Detect from terminal (via OSC 11 or COLORFGBG env var) - "light": Force light mode theme selection - "dark": Force dark mode theme selection |
 | `ui.dim_completed_todos` | `boolean` | no | `true` | Dim completed todo items (- \[x\]) in agent output |
 | `ui.display_mode` | `string` | no | `"minimal"` | UI display mode preset (full, minimal, focused) |
 | `ui.fullscreen.copy_on_select` | `boolean` | no | `true` | Copy selected transcript text immediately when the mouse selection ends. Can also be controlled via VTCODE_FULLSCREEN_COPY_ON_SELECT=0/1. |
@@ -866,7 +866,7 @@ python3 scripts/generate_config_field_reference.py
 | `ui.reasoning_visible_default` | `boolean` | no | `true` | Default visibility for reasoning when display mode is "toggle" |
 | `ui.reduce_motion_keep_progress_animation` | `boolean` | no | `false` | Keep animated progress indicators while reduce_motion_mode is enabled. |
 | `ui.reduce_motion_mode` | `boolean` | no | `false` | Reduce motion mode: minimizes shimmer/flashing animations. Can also be enabled via VTCODE_REDUCE_MOTION=1 environment variable. |
-| `ui.safe_colors_only` | `boolean` | no | `false` | Restrict color palette to the 11 "safe" ANSI colors portable across common themes. Safe colors: red, green, yellow, blue, magenta, cyan + brred, brgreen, brmagenta, brcyan Problematic colors avoided: brblack (invisible in Solarized Dark), bryellow (light themes), white/brwhite (light themes), brblue (Basic Dark). See: <https://blog.xoria.org/terminal-colors/> |
+| `ui.safe_colors_only` | `boolean` | no | `false` | Restrict colour palette to the 11 "safe" ANSI colours portable across common themes. Safe colours: red, green, yellow, blue, magenta, cyan + brred, brgreen, brmagenta, brcyan Problematic colours avoided: brblack (invisible in Solarized Dark), bryellow (light themes), white/brwhite (light themes), brblue (Basic Dark). See: <https://blog.xoria.org/terminal-colors/> |
 | `ui.screen_reader_mode` | `boolean` | no | `false` | Screen reader mode: disables animations, uses plain text indicators, and optimizes output for assistive technology compatibility. Can also be enabled via VTCODE_SCREEN_READER=1 environment variable. |
 | `ui.show_diagnostics_in_transcript` | `boolean` | no | `false` | Show warning/error/fatal diagnostic lines in the TUI transcript and log panel. Also controls whether ERROR-level tracing logs appear in the TUI session log. Errors are always captured in the session archive JSON regardless of this setting. |
 | `ui.show_sidebar` | `boolean` | no | `true` | Show the right sidebar (queue, context, tools) |

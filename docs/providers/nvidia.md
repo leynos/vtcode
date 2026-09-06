@@ -34,7 +34,7 @@ These models appear in the NVIDIA section of the `/model` picker:
 | `z-ai/glm-5.2` | 1,000,000 | GLM-5.2 served by NVIDIA NIM |
 | `deepseek-ai/deepseek-v4-flash-0731` | 1,000,000 | DeepSeek V4 Flash served by NVIDIA NIM |
 
-NVIDIA's catalog is larger than this curated list. An explicitly configured
+NVIDIA's catalogue is larger than this curated list. An explicitly configured
 model ID is forwarded without local allowlist rejection:
 
 ```bash
@@ -52,6 +52,6 @@ are preserved in both streaming and non-streaming responses.
 
 ## References
 
-- [NVIDIA API catalog](https://build.nvidia.com/llms.txt)
+- [NVIDIA API catalogue](https://build.nvidia.com/llms.txt)
 - [Nemotron 3 Ultra model card](https://build.nvidia.com/nvidia/nemotron-3-ultra-550b-a55b/modelcard)
 - [NVIDIA NIM API reference](https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html)

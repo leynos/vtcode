@@ -4,7 +4,7 @@ This document describes how VT Code integrates `anstyle-crossterm` for unified s
 
 ## Overview
 
-VT Code uses `anstyle` as the core styling library for ANSI terminal output, providing a generic, crate-agnostic way to define colors and text effects. The `anstyle-crossterm` adapter bridge integrates this with `crossterm` (used by our TUI), and our custom `ratatui_styles` module further bridges to `ratatui` components.
+VT Code uses `anstyle` as the core styling library for ANSI terminal output, providing a generic, crate-agnostic way to define colours and text effects. The `anstyle-crossterm` adapter bridge integrates this with `crossterm` (used by our TUI), and our custom `ratatui_styles` module further bridges to `ratatui` components.
 
 ## Architecture
 
@@ -52,7 +52,7 @@ let style = Style::new()
 **Advantages:**
 
 -   Crate-agnostic (can be used with any terminal library)
--   Low-level ANSI styling with RGB and 256-color support
+-   Low-level ANSI styling with RGB and 256-colour support
 -   Zero dependencies
 -   Perfect for library APIs
 
@@ -92,16 +92,16 @@ let ratatui_style = anstyle_to_ratatui(anstyle);
 
 **Conversions Supported:**
 
--   **Colors:** All standard colors (Red, Green, Blue, etc.), dark variants, RGB, indexed/ANSI values
+-   **Colours:** All standard colours (Red, Green, Blue, etc.), dark variants, RGB, indexed/ANSI values
 -   **Effects:** Bold, Italic, Underlined, Dimmed, Reversed, Blink, Crossed-out
--   **Default mapping:** Dark variants map intelligently to standard colors when not available in ratatui
+-   **Default mapping:** Dark variants map intelligently to standard colours when not available in ratatui
 
 ## Usage Examples
 
 ### CLI Output (Direct anstyle)
 
 ```rust
-use vtcode_core::utils::colors::style;
+use vtcode_core::utils::colours::style;
 
 // Simple usage
 println!("{}", style("Success").green().bold());
@@ -232,7 +232,7 @@ cargo test --lib ratatui_styles
 
 Tests cover:
 
--   ANSI color conversion
+-   ANSI colour conversion
 -   Effects/attributes conversion
 -   Combined style conversion
 -   Edge cases
@@ -241,8 +241,8 @@ Tests cover:
 
 1. **Trait impl for automatic conversion**: `impl Into<ratatui::style::Style> for anstyle::Style`
 2. **Theme system**: Central theme definition with automatic CLI/TUI sync
-3. **Color palette system**: Predefined palettes (Solarized, Dracula, etc.)
-4. **Terminal capability detection**: Automatically use appropriate color depth
+3. **Colour palette system**: Predefined palettes (Solarized, Dracula, etc.)
+4. **Terminal capability detection**: Automatically use appropriate colour depth
 
 ## References
 

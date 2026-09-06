@@ -1,6 +1,6 @@
 # VT Code Sandbox Field Guide
 
-This document describes VT Code's sandboxing architecture, following the principles from the AI sandbox field guide. The system implements defense-in-depth through multiple layers of isolation.
+This document describes VT Code's sandboxing architecture, following the principles from the AI sandbox field guide. The system implements defence-in-depth through multiple layers of isolation.
 
 ## The Three-Question Model
 

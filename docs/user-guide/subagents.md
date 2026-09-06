@@ -211,7 +211,7 @@ Only `name` and `description` are required.
 | `tools` | allowlist of tool names | use VT Code tool ids from `vtcode schema tools`, such as `exec_command`, `write_stdin`, `apply_patch`, or advanced `code_search` |
 | `disallowedTools` / `disallowed_tools` | denylist removed from inherited or allowed tools | use the same VT Code tool ids as `tools`; applied before runtime filtering |
 | `model` | model override | defaults to `inherit`; also accepts `small`, `haiku`, `sonnet`, `opus`, or a full model id |
-| `color` | TUI color metadata | optional; accepts simple color names such as `blue`, hex like `#4f8fd8`, or Git-style fg/bg strings such as `white #4f8fd8` |
+| `color` | TUI colour metadata | optional; accepts simple colour names such as `blue`, hex like `#4f8fd8`, or Git-style fg/bg strings such as `white #4f8fd8` |
 | `aliases` | alternate names for lookup | exact `name` matches still win over aliases |
 | `reasoning_effort` | per-agent reasoning override | `effort` and `model_reasoning_effort` are also accepted |
 | `permissions` | granular permission policy | required; set `default` plus optional `allow`, `ask`, `auto`, and `deny` tool lists |
@@ -266,17 +266,17 @@ Special model values:
 - `inherit` keeps the parent model even when the agent file sets a different model
 - `small` uses the configured small-model tier or a lightweight sibling of the parent model
 - `haiku`, `sonnet`, and `opus` map to provider-appropriate siblings of the active provider
-- VT Code only honors `spawn_agent.model` when the current user turn explicitly asks for that model; opportunistic overrides from the model are ignored
+- VT Code only honours `spawn_agent.model` when the current user turn explicitly asks for that model; opportunistic overrides from the model are ignored
 - if `spawn_agent.model` cannot be resolved, VT Code warns, ignores that override, and falls back to the agent file's `model` or the parent session model
 
 ## Active Subagent Badges
 
 When one or more child threads are active, VT Code shows each active agent name in the TUI header as a full-background badge.
 
-- Set `color` in the agent definition to control that badge color.
-- If the color string includes only one color, VT Code uses it as the badge background and chooses a readable foreground automatically.
-- If the color string includes both foreground and background, VT Code uses both directly.
-- If `color` is omitted, VT Code falls back to a default badge color.
+- Set `color` in the agent definition to control that badge colour.
+- If the colour string includes only one colour, VT Code uses it as the badge background and chooses a readable foreground automatically.
+- If the colour string includes both foreground and background, VT Code uses both directly.
+- If `color` is omitted, VT Code falls back to a default badge colour.
 
 ## Control Capabilities
 
@@ -368,7 +368,7 @@ subagent_stop = [
 
 ## Runtime Controls
 
-Subagent runtime behavior lives under `[subagents]` in `vtcode.toml`:
+Subagent runtime behaviour lives under `[subagents]` in `vtcode.toml`:
 
 ```toml
 [subagents]
@@ -379,7 +379,7 @@ default_timeout_seconds = 300
 auto_delegate_read_only = true
 ```
 
-Key behaviors:
+Key behaviours:
 
 - `max_depth = 1` keeps nested delegation off by default; set `max_depth = 2` or higher to allow delegated child agents to spawn their own children
 - `max_concurrent` limits simultaneous child threads at each nesting level
@@ -558,7 +558,7 @@ VT Code can also run a background subagent as a managed child `vtcode` subproces
 - `Alt+S` focuses the same Local Agents drawer quickly from the main session
 - when local agents exist, the footer shows a compact badge such as `1 local agent | ↓ explore`
 - in wide layouts, the sidebar shows a single `Local Agents` section instead of separate live-agent and subprocess sections
-- with an empty composer, `Down` opens the Local Agents drawer; otherwise `Down` keeps its normal history behavior
+- with an empty composer, `Down` opens the Local Agents drawer; otherwise `Down` keeps its normal history behaviour
 - inside the drawer, `Enter` inspects the selected item, `Alt+O` opens its transcript or archive, `Ctrl+K` requests a stop, and `Ctrl+X` force-cancels a background subprocess
 
 Background subprocess state is persisted under `.vtcode/state/background_subagents.json`. On restart, VT Code only respawns enabled background agents when both `subagents.background.enabled = true` and `subagents.background.auto_restore = true`.

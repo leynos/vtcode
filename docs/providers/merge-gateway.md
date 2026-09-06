@@ -92,7 +92,7 @@ The environment variables are:
 | `MERGE_GATEWAY_API_KEY` | Bearer token used for Merge Gateway requests |
 | `MERGE_GATEWAY_BASE_URL` | Optional native `/v1` override; ending in `/v1/openai` selects legacy Chat Completions |
 
-## Responses and catalog behavior
+## Responses and catalogue behaviour
 
 Native requests preserve text, images/documents, tool calls, tool results,
 structured-output schemas, streaming, and the model selected by Merge. Tool
@@ -115,20 +115,20 @@ response snapshot.
 The parser also accepts the frame kind from the JSON `object` field, which is
 the native Merge form, and resets the buffered snapshot when Merge emits a
 `fallback_restart` frame. See the [Merge streaming contract](https://docs.merge.dev/merge-gateway/streaming)
-for the upstream response and error behavior.
+for the upstream response and error behaviour.
 
 When the Merge provider is selected and `MERGE_GATEWAY_API_KEY` is available,
-VT Code fetches the authenticated `GET /v1/models` catalog with cursor
-pagination. Catalog data is cached per provider and reused when refresh fails;
+VT Code fetches the authenticated `GET /v1/models` catalogue with cursor
+pagination. Catalogue data is cached per provider and reused when refresh fails;
 unknown explicit `provider/model` route IDs remain valid and use conservative
-capabilities. Deprecated catalog routes are not added to the picker.
+capabilities. Deprecated catalogue routes are not added to the picker.
 
 The supplied [`models/catalog/llms.txt`](https://docs.merge.dev/merge-gateway/models/catalog/llms.txt)
 file is a documentation index, not a runtime model dataset. Runtime discovery
 uses the authenticated `/v1/models` endpoint.
 
-Merge's reasoning behavior is vendor- and route-specific. VT Code discovers each
-route's reasoning capability from the authenticated `/v1/models` catalog and
+Merge's reasoning behaviour is vendor- and route-specific. VT Code discovers each
+route's reasoning capability from the authenticated `/v1/models` catalogue and
 applies the configured reasoning effort using the route's advertised control:
 routes advertising a provider-native `reasoning_effort` (OpenAI, xAI, Moonshot,
 Meta, Z.AI prefixes) receive a `reasoning_effort` string, while routes advertising a
@@ -149,13 +149,13 @@ through its existing response contract.
   `/responses` or `/chat/completions` in the configured base URL.
 - No dynamic models appear: confirm the API key is available in
   `MERGE_GATEWAY_API_KEY`; VT Code keeps curated/static models available when
-  catalog discovery is unavailable.
+  catalogue discovery is unavailable.
 - A model is rejected by Merge: confirm the exact vendor-prefixed route ID in
-  Merge's catalog. VT Code deliberately does not reject unknown Merge IDs
+  Merge's catalogue. VT Code deliberately does not reject unknown Merge IDs
   locally.
 - Reasoning output is absent: Merge reasoning controls are route-specific and
   are not projected into the generic VT Code reasoning fields; the reasoning
-  effort is still honored on reasoning-capable routes.
+  effort is still honoured on reasoning-capable routes.
 
 See the [Merge Gateway quick reference](./merge-gateway-quick-reference.md) for
 the shortest setup checklist.

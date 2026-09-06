@@ -16,7 +16,7 @@ The application name is `vtcode`.
 | Category | Environment variable | Default | Typical contents |
 | --- | --- | --- | --- |
 | Config | `XDG_CONFIG_HOME` | `~/.config/vtcode` | `vtcode.toml`, update settings, agents, rules, MCP/tool policy, plugin manifests, auth files |
-| Data | `XDG_DATA_HOME` | `~/.local/share/vtcode` | installed plugins and skills, durable downloads, catalogs and assets |
+| Data | `XDG_DATA_HOME` | `~/.local/share/vtcode` | installed plugins and skills, durable downloads, catalogues and assets |
 | State | `XDG_STATE_HOME` | `~/.local/state/vtcode` | sessions, persistent memory, scheduler/pod state, audit/debug logs, migration reports and backups |
 | Cache | `XDG_CACHE_HOME` | `~/.cache/vtcode` | model/prompt/approval caches, web-fetch files, ast-grep data, large-output spools and update snapshots |
 | Runtime | `XDG_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/vtcode` | transient sockets, locks and process coordination; falls back to `state/runtime` |

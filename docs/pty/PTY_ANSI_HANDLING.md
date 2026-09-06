@@ -75,7 +75,7 @@ Two complementary parsers handle edge cases:
 
 Handles:
 
--   **CSI sequences**: `ESC[...letter` (colors, styles, cursor movement)
+-   **CSI sequences**: `ESC[...letter` (colours, styles, cursor movement)
 -   **OSC sequences**: `ESC]...BEL` or `ESC]...ST` (hyperlinks, titles)
 -   **DCS/PM/APC**: `ESC P/^/_...ST` (device control strings)
 -   **2-char escapes**: `ESC[`, `ESC]`, etc.
@@ -83,7 +83,7 @@ Handles:
 
 Tests in `crates/codegen/vtcode-core/src/utils/ansi_parser.rs` verify:
 
--   Basic colors: `\x1b[31mRed\x1b[0m` → `Red`
+-   Basic colours: `\x1b[31mRed\x1b[0m` → `Red`
 -   Bold: `\x1b[1;32mbold\x1b[0m` → `bold`
 -   Cargo output with warnings/errors
 -   OSC with ST terminator: `\x1b]8;;file://\x1b\\` (hyperlinks)
@@ -148,8 +148,8 @@ Both commands should produce **zero matches** after these changes.
 | ANSI at token boundary              | Strip before truncation, then truncate       |
 | Multiple nested styles              | All sequences stripped (not rendered anyway) |
 | Hyperlinks (`ESC]8` OSC)            | Stripped (just text remains)                 |
-| 256-color codes (`ESC[38;5;123m`)   | Stripped (part of CSI sequence)              |
-| True color (`ESC[38;2;R;G;Bm`)      | Stripped (part of CSI sequence)              |
+| 256-colour codes (`ESC[38;5;123m`)  | Stripped (part of CSI sequence)              |
+| True colour (`ESC[38;2;R;G;Bm`)     | Stripped (part of CSI sequence)              |
 | Mixed line endings                  | Preserved as-is (`\r\n`, `\n`, `\r`)         |
 
 ## Related Files

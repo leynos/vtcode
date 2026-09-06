@@ -111,7 +111,7 @@ High-level convenience function that:
 4. Downloads the model if missing (using `lms get`)
 5. Loads the model into VRAM asynchronously
 
-**Non-fatal behavior**: Transient failures (e.g., server unreachable, model list fetch fails) are logged as warnings but don't cause the function to fail, allowing higher layers to handle errors.
+**Non-fatal behaviour**: Transient failures (e.g., server unreachable, model list fetch fails) are logged as warnings but don't cause the function to fail, allowing higher layers to handle errors.
 
 **Example:**
 

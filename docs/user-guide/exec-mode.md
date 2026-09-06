@@ -6,7 +6,7 @@ exec` prints progress, summaries, and outcomes to **stderr**. `stdout` remains s
 
 For the complete runtime lifecycle mapping, see [Agent Loop Contract](../guides/agent-loop-contract.md).
 
-`vtcode schedule` uses this same exec runtime for durable prompt tasks. When a durable scheduled prompt fires, VT Code launches a fresh `vtcode exec` run in the configured workspace and records the resulting status and artifacts. For reminders, see [Scheduled Tasks](./scheduled-tasks.md).
+`vtcode schedule` uses this same exec runtime for durable prompt tasks. When a durable scheduled prompt fires, VT Code launches a fresh `vtcode exec` run in the configured workspace and records the resulting status and artefacts. For reminders, see [Scheduled Tasks](./scheduled-tasks.md).
 
 ## Launching exec mode
 
@@ -45,7 +45,7 @@ autonomous entry point.
 
 ## Dry-run mode
 
-Use `--dry-run` to force read-only execution while still allowing the agent to analyze and plan:
+Use `--dry-run` to force read-only execution while still allowing the agent to analyse and plan:
 
 ```bash
 vtcode exec --dry-run "identify required code changes for adding OAuth refresh token support"
@@ -63,7 +63,7 @@ Exec mode now uses a harness-managed continuation loop instead of accepting the 
 - Set `agent.harness.continuation_policy = "exec_only"` if you want interactive TUI sessions to keep manual turn control.
 
 When a run starts, VT Code uses `task_tracker` state as the completion contract. If the model has not created a tracker yet, exec mode
-creates an internal three-step scaffold (`analyze`, `change`, `verify`) and persists it through the existing task-tracker files under
+creates an internal three-step scaffold (`analyse`, `change`, `verify`) and persists it through the existing task-tracker files under
 `.vtcode/`.
 
 Completion is accepted only when:

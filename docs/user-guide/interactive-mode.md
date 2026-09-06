@@ -1,6 +1,6 @@
 # Interactive Mode Reference
 
-The VT Code terminal UI includes an interactive mode that combines keyboard-first navigation with quick commands for agent control. This page consolidates the shortcuts, input modes, and background execution behaviors available while you are connected to a session.
+The VT Code terminal UI includes an interactive mode that combines keyboard-first navigation with quick commands for agent control. This page consolidates the shortcuts, input modes, and background execution behaviours available while you are connected to a session.
 
 ## Keyboard Shortcuts
 
@@ -17,7 +17,7 @@ The VT Code terminal UI includes an interactive mode that combines keyboard-firs
 | `Alt+O`                                     | Open Transcript Review (compatibility alias).                                    | Useful when the terminal does not deliver `Ctrl+T`; mouse capture is required for clickable hints.                                        |
 | `Alt+T`                                     | Toggle compact or expanded tool summaries.                                      | Rebindable; the default compact presentation keeps live command output bounded.                                                         |
 | `Alt+G`                                     | Toggle the TODO task panel.                                                     | Rebindable via `toggle_task_panel`; works even when `ui.show_task_panel` is off.                                                          |
-| `Ctrl+O`                                    | Copy the latest assistant response, or the complete Transcript Review.          | In review, always copies the complete ANSI-free conversation; otherwise it uses the latest-response behavior.                             |
+| `Ctrl+O`                                    | Copy the latest assistant response, or the complete Transcript Review.          | In review, always copies the complete ANSI-free conversation; otherwise it uses the latest-response behaviour.                            |
 | `Ctrl+A`                                    | Move cursor to start of input line.                                             | UNIX/readline-style editing.                                                                                                              |
 | `Ctrl+E`                                    | Move cursor to end of input line (or open external editor when input is empty). | Uses `tools.editor` config, then `VISUAL`/`EDITOR`. Configure it with `/config tools.editor`.                                             |
 | `Ctrl+Home`                                 | Jump to the oldest visible transcript content.                                  | Fullscreen rendering only.                                                                                                                |
@@ -95,7 +95,7 @@ and links. Successful file writes and edits end the command group and show a
 separate glance row with the affected path, `(+N -M)` counts, and numbered diff
 lines; the complete result remains available in the review and agent history.
 
-Rich rendering is the default and reuses the transcript's colors, links, and
+Rich rendering is the default and reuses the transcript's colours, links, and
 width-aware wrapping. Press the configured render-mode binding (default `R`)
 to switch to ANSI-free raw rendering for
 copying or export. Copying with `Ctrl+O`, opening the editor with `v`, or
@@ -162,7 +162,7 @@ are enabled and compact display is the default.
 
 - VT Code also recognizes narrow reminder phrases in chat such as `remind me at 3pm to ...`, `in 45 minutes, ...`, `what scheduled tasks do I have?`, and `cancel <job id|name>`.
 - Session-scoped scheduled prompts fire only at idle boundaries so they do not interrupt an in-flight turn.
-- For full behavior, limits, and CLI examples, see [Scheduled Tasks](./scheduled-tasks.md).
+- For full behaviour, limits, and CLI examples, see [Scheduled Tasks](./scheduled-tasks.md).
 
 ## Vim Mode
 
@@ -178,14 +178,14 @@ VT Code supports an optional Vim-style prompt editor.
 ## Prompt Suggestions, Tasks, and Jobs
 
 - `/suggest` opens a prompt-suggestion picker built from recent session context such as task state, active jobs, recent errors, and recent file activity.
-- `Alt+P` requests one inline ghost-text suggestion for the current draft. If a ghost suggestion is visible, `Tab` accepts it; otherwise `Tab` keeps its normal queue behavior.
+- `Alt+P` requests one inline ghost-text suggestion for the current draft. If a ghost suggestion is visible, `Tab` accepts it; otherwise `Tab` keeps its normal queue behaviour.
 - VT Code routes prompt suggestion generation through `agent.prompt_suggestions` and falls back to deterministic local suggestions when the provider, model, or endpoint cannot service the request.
 - LLM-backed prompt suggestions can consume tokens. When `agent.prompt_suggestions.show_cost_notice = true`, VT Code shows a one-time reminder in the session before the first LLM-backed inline suggestion.
 - Picking a suggestion inserts it into the composer. Empty drafts are replaced; non-empty drafts keep their content and append the suggestion after a blank line.
 - `/tasks` toggles the dedicated TODO panel. It is fed directly from `task_tracker` output and remains independent from the tool-summary display mode. Successful updates use the same compact tree in the transcript and panel; the panel header carries the checklist title and `completed/total` progress while step metadata remains available in structured tracker data. `Alt+G` toggles the panel from anywhere, and `ui.show_task_panel` controls whether it auto-shows when a plan is approved.
 - `/jobs` opens the active/background jobs picker for PTY-backed command sessions.
 - In `/jobs`, `Enter` or `Ctrl+R` focuses the selected job output, `Ctrl+P` previews a snapshot modal, and `Ctrl+X` sends an interrupt to the selected job.
-- Pressing `Enter` on an empty draft opens `/jobs` when active jobs exist; otherwise VT Code keeps the normal empty-enter behavior.
+- Pressing `Enter` on an empty draft opens `/jobs` when active jobs exist; otherwise VT Code keeps the normal empty-enter behaviour.
 
 ## Active Run Steering
 

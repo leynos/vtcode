@@ -120,7 +120,7 @@ cat ~/.ollama/logs/server.log
 
 [llmman](https://github.com/llmmanorg/llmman) is a local model runner that
 serves the Ollama API (alongside OpenAI- and Anthropic-compatible ones) on port
-`17434`. Models are pulled as OCI artifacts or straight from Hugging Face
+`17434`. Models are pulled as OCI artefacts or straight from Hugging Face
 (`hf.co/org/model`) and served by upstream `llama.cpp`, `vllm`, or `mlx-lm`.
 Because the API is the same, VT Code's `ollama` provider works unchanged; only
 the base URL differs.

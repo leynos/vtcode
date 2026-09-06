@@ -68,7 +68,7 @@ vtcode --provider ollama --model gpt-oss:20b ask "Help with this implementation"
 vtcode --provider ollama --model gpt-oss:120b-cloud ask "Plan this large migration"
 ```
 
-The `/model` picker now lists the core Ollama catalog so you can choose them without typing IDs:
+The `/model` picker now lists the core Ollama catalogue so you can choose them without typing IDs:
 
 - `gpt-oss:20b` (local)
 - `gemma4` (local)

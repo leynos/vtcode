@@ -14,7 +14,7 @@ Key design principles:
 1. **Platform-specific implementations unified behind a common policy abstraction**
 2. **Configurable sandbox execution with selective escalation when needed**
 3. **Session-based trust lists that reduce approval fatigue**
-4. **Debug tooling to understand sandbox behavior**
+4. **Debug tooling to understand sandbox behaviour**
 
 ## Sandbox Policies
 

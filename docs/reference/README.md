@@ -21,7 +21,7 @@ Comprehensive reference covering:
 -   All ANSI escape sequence types (CSI, OSC, DCS)
 -   Cursor control sequences
 -   Erase functions
--   Color codes (8/16/256/RGB)
+-   Colour codes (8/16/256/RGB)
 -   Screen modes and private modes
 -   Keyboard strings
 -   Full specification with examples
@@ -37,7 +37,7 @@ Detailed guide on how VT Code uses ANSI sequences:
 -   Module overview (ansi_parser, anstyle_utils, ansi renderer)
 -   PTY output processing flow
 -   TUI rendering with Ratatui
--   Color and style mapping
+-   Colour and style mapping
 -   Best practices and patterns
 -   Testing strategies
 
@@ -86,7 +86,7 @@ Quick lookup for common sequences:
 
 **TUI rendering**:
 
--   Color mapping: [ansi-in-vtcode.md#tui-rendering](./ansi-in-vtcode.md#tui-rendering)
+-   Colour mapping: [ansi-in-vtcode.md#tui-rendering](./ansi-in-vtcode.md#tui-rendering)
 -   Effects mapping: [ansi-in-vtcode.md#effects-mapping](./ansi-in-vtcode.md#effects-mapping)
 
 ### By Use Case
@@ -97,7 +97,7 @@ Quick lookup for common sequences:
     → [ansi-quick-reference.md#stripping-ansi](./ansi-quick-reference.md#stripping-ansi)
 
 -   **Understand what `\x1b[31m` means**
-    → [ansi-escape-sequences.md#8-16-colors](./ansi-escape-sequences.md#8-16-colors)
+    → [ansi-escape-sequences.md#8-16-colours](./ansi-escape-sequences.md#8-16-colours)
 
 -   **Convert ANSI styles for TUI**
     → [ansi-in-vtcode.md#ansi-style-utilities](./ansi-in-vtcode.md#2-ansi-style-utilities-vtcode-coresrcutilsanstyle_utilsrs)
@@ -108,8 +108,8 @@ Quick lookup for common sequences:
 -   **Process PTY output correctly**
     → [ansi-in-vtcode.md#pty-output-processing](./ansi-in-vtcode.md#pty-output-processing)
 
--   **Add color to terminal output**
-    → [ansi-escape-sequences.md#colors-graphics-mode](./ansi-escape-sequences.md#colors--graphics-mode)
+-   **Add colour to terminal output**
+    → [ansi-escape-sequences.md#colours-graphics-mode](./ansi-escape-sequences.md#colours--graphics-mode)
 
 -   **Control cursor position**
     → [ansi-escape-sequences.md#cursor-controls](./ansi-escape-sequences.md#cursor-controls)
@@ -143,7 +143,7 @@ let ansi_style = anstyle::Style::new()
 let ratatui_style = ansi_style_to_ratatui_style(ansi_style);
 ```
 
-### Render colored text
+### Render coloured text
 
 ```rust
 use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};

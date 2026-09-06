@@ -1,8 +1,8 @@
 # Agent Skills Spec Implementation
 
-This document describes VT Code's current Agent Skills behavior.
+This document describes VT Code's current Agent Skills behaviour.
 
-## Implemented Behavior
+## Implemented Behaviour
 
 - Strict `SKILL.md` frontmatter parsing
 - Repository discovery through ancestor `.agents/skills` directories
@@ -72,4 +72,4 @@ VT Code does not support:
 - `skills list` and `skills info` render strict-spec metadata plus VT Code's explicit command-skill metadata
 - skill prompts include only name, description, file path, and scope
 - routing logic uses `description`; legacy trigger fields are not considered
-- skills with `disable-model-invocation: true` are hidden from the model-facing startup catalog but remain available for explicit slash or `/skills use` activation
+- skills with `disable-model-invocation: true` are hidden from the model-facing startup catalogue but remain available for explicit slash or `/skills use` activation

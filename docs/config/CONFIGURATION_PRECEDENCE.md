@@ -124,7 +124,7 @@ not bypass it.
 
 Custom providers and endpoint overrides remain available in user-level
 configuration. Environment filtering on provider subprocesses is an
-additional defense and does not make a repository-supplied authentication
+additional defence and does not make a repository-supplied authentication
 command safe.
 
 Normal startup and live reload detect this specific legacy-file violation,
@@ -135,11 +135,11 @@ config files are never repaired.
 
 ## Environment Variables
 
-Environment variables such as `GEMINI_API_KEY` still participate in runtime behavior (API key selection), but they do not bypass validation. `VTCODE_CONFIG` and `VTCODE_DATA` select the canonical user config/data roots; `VTCODE_CONFIG_PATH` selects the explicit file layer described above. Once the configuration is constructed, the same validation rules are applied.
+Environment variables such as `GEMINI_API_KEY` still participate in runtime behaviour (API key selection), but they do not bypass validation. `VTCODE_CONFIG` and `VTCODE_DATA` select the canonical user config/data roots; `VTCODE_CONFIG_PATH` selects the explicit file layer described above. Once the configuration is constructed, the same validation rules are applied.
 
 The canonical user directory policy, including XDG defaults, native macOS and
 Windows locations, data/state/cache/runtime/executable roots, migration, and
-rollback behavior, is documented in the [user data directories guide](../guides/user-data-directories.md)
+rollback behaviour, is documented in the [user data directories guide](../guides/user-data-directories.md)
 and the [XDG directory specification](../protocols/XDG_DIRECTORY_SPECIFICATION.md).
 
 ## Lifecycle Hooks Configuration

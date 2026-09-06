@@ -28,7 +28,7 @@ Connection pooling manages multiple MCP server connections efficiently, reducing
 
 ### Tool Discovery
 
-Tool discovery automatically finds and catalogs available tools from MCP servers:
+Tool discovery automatically finds and catalogues available tools from MCP servers:
 
 - `tool_discovery.rs` — discovers tools from connected servers
 - `tool_discovery_cache.rs` — caches discovered tools for performance

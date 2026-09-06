@@ -71,7 +71,7 @@ OpenRouter account.
 | Symptom | Resolution |
 | --- | --- |
 | `HTTP 403` or `401` errors | Confirm `OPENROUTER_API_KEY` is set and active for the chosen model. |
-| Model not found | Double-check the model slug in the [OpenRouter catalog](https://openrouter.ai/docs/llms) and your workspace config. |
+| Model not found | Double-check the model slug in the [OpenRouter catalogue](https://openrouter.ai/docs/llms) and your workspace config. |
 | Tool calls ignored | Ensure the model you selected advertises tool support. Many third-party providers expose read-only models. |
 
 For additional details, consult the [OpenRouter API reference](https://openrouter.ai/docs/api-reference/overview/llms) and the

@@ -76,7 +76,7 @@ pub fn allow_request(&self) -> bool {
 
 **File**: `crates/common/vtcode-commons/src/thread_safety.rs`
 
-**Problem**: Documentation was contradictory about atomic ordering behavior.
+**Problem**: Documentation was contradictory about atomic ordering behaviour.
 
 **Solution**: Rewrote documentation to accurately describe that `fetch_add` with `Relaxed` ordering does emit `LOCK`-prefixed instructions on x86_64.
 
@@ -222,7 +222,7 @@ All tests pass:
 
 **File**: `crates/codegen/vtcode-core/src/ui/diff_renderer.rs`
 
-**Problem**: Operator precedence bug caused ANSI color codes to be inserted even when colors were disabled, producing garbage characters in non-color terminal output.
+**Problem**: Operator precedence bug caused ANSI colour codes to be inserted even when colours were disabled, producing garbage characters in non-colour terminal output.
 
 **Before**:
 ```rust

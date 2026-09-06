@@ -92,18 +92,18 @@ The following variables are inherited from the parent environment:
 
 ### Environment Overrides (for Consistency)
 
-The following variables are **always overridden** for consistent behavior:
+The following variables are **always overridden** for consistent behaviour:
 
 | Variable         | Value            | Reason                                           |
 | ---------------- | ---------------- | ------------------------------------------------ |
 | `PAGER`          | `cat`            | Prevent interactive pagers blocking agent output |
 | `GIT_PAGER`      | `cat`            | Prevent git from waiting for user input          |
-| `LESS`           | `R`              | ANSI color escape handling                       |
+| `LESS`           | `R`              | ANSI colour escape handling                      |
 | `TERM`           | `xterm-256color` | Standard terminal capabilities                   |
-| `CLICOLOR`       | `0`              | Disable automatic color output                   |
-| `CLICOLOR_FORCE` | `0`              | Prevent color forcing                            |
+| `CLICOLOR`       | `0`              | Disable automatic colour output                  |
+| `CLICOLOR_FORCE` | `0`              | Prevent colour forcing                           |
 | `LS_COLORS`      | `` (empty)       | Consistent output formatting                     |
-| `NO_COLOR`       | `1`              | Standard color disable protocol                  |
+| `NO_COLOR`       | `1`              | Standard colour disable protocol                 |
 
 ## Command Execution Paths
 
@@ -181,7 +181,7 @@ stat --format="%A %n" ~/.cargo/bin/cargo  # Linux
 
 ## Configuring Allowed Commands
 
-### Default Behavior
+### Default Behaviour
 
 By default, VT Code allows a comprehensive set of safe commands. See `ALLOWED_COMMANDS_REFERENCE.md` for the full list.
 
@@ -286,9 +286,9 @@ code_search = "allow"      # Allow advanced bounded literal search without confi
     - Some tools require env vars (e.g., `GOPATH` for Go)
     - Check if the variable is inherited: `echo $VAR_NAME`
 
-### Issue: Colors are disabled in output
+### Issue: Colours are disabled in output
 
-**This is expected** - VT Code disables colors for consistent parsing:
+**This is expected** - VT Code disables colours for consistent parsing:
 
 ```toml
 [tools.policies]

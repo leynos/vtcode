@@ -84,7 +84,7 @@ If your code constructs `LLMRequest` directly or matches on `FinishReason`, revi
 
 Claude Fable 5 is generally available. Claude Mythos 5 is the same model without safety classifiers, available through [Project Glasswing](https://anthropic.com/glasswing).
 
-### Baseline behavior in VT Code
+### Baseline behaviour in VT Code
 
 Both models map to adaptive-only thinking in VT Code's `AnthropicProvider`:
 
@@ -221,7 +221,7 @@ thinking_display = "summarized"
 
 **Breaking:**
 
-1. **Adaptive thinking is always on.** On Opus 4.8, VT Code sends `thinking: {type: "adaptive"}` only when `extended_thinking_enabled = true`. On Fable/Mythos 5, the request builder omits `thinking` entirely and the API runs adaptive thinking by default. Requests without a `thinking` field that previously ran without thinking now run with adaptive thinking. Revisit `max_tokens` for workloads that relied on no-thinking behavior.
+1. **Adaptive thinking is always on.** On Opus 4.8, VT Code sends `thinking: {type: "adaptive"}` only when `extended_thinking_enabled = true`. On Fable/Mythos 5, the request builder omits `thinking` entirely and the API runs adaptive thinking by default. Requests without a `thinking` field that previously ran without thinking now run with adaptive thinking. Revisit `max_tokens` for workloads that relied on no-thinking behaviour.
 
 **Recommended:**
 
@@ -276,7 +276,7 @@ No other config changes are required for this hop. VT Code's request builder aut
 
 **Breaking:**
 
-1. **Thinking on by default.** On Opus 4.8, VT Code sent no `thinking` field when `extended_thinking_enabled = false`, and the API ran without thinking. On Opus 5, the same config runs with adaptive thinking. If you had workloads that relied on no-thinking behavior, either:
+1. **Thinking on by default.** On Opus 4.8, VT Code sent no `thinking` field when `extended_thinking_enabled = false`, and the API ran without thinking. On Opus 5, the same config runs with adaptive thinking. If you had workloads that relied on no-thinking behaviour, either:
    - Revisit `max_tokens` (it remains a hard limit on thinking + response text), or
    - Set `effort = "high"` (or `medium`/`low`) and VT Code will send `thinking: {type: "disabled"}` for you.
 
@@ -677,7 +677,7 @@ Use this when migrating across any model generation.
 | `LLMResponse` | `vtcode-commons/src/llm.rs` | Universal response struct |
 | `FinishReason` | `vtcode-commons/src/llm.rs` | Stop reason enum |
 | `AnthropicProvider` | `vtcode-llm/src/providers/anthropic/provider.rs` | Request building, HTTP, response parsing |
-| `ModelResolver` | `vtcode-llm/src/model_resolver.rs` | Resolves model string → provider + catalog |
+| `ModelResolver` | `vtcode-llm/src/model_resolver.rs` | Resolves model string → provider + catalogue |
 | `ThinkingDisplayMode` | `vtcode-config/src/core/provider.rs` | `Summarized` / `Omitted` / `Unknown` |
 
 ### How VT Code translates config to API

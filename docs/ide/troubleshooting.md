@@ -53,7 +53,7 @@ This guide covers common issues and solutions when using VT Code with your IDE.
 
 ## Slow Performance
 
-**Issue**: VT Code is taking a long time to respond or analyze code.
+**Issue**: VT Code is taking a long time to respond or analyse code.
 
 **Solution**:
 
@@ -82,7 +82,7 @@ VT Code works with any VS Code-compatible editor through the Open VSX registry:
 
 1. Ensure the VT Code CLI is installed separately on your system
 2. Install the extension from the Open VSX registry or via VSIX file
-3. The extension behavior should be identical to VS Code
+3. The extension behaviour should be identical to VS Code
 4. Configuration settings may be located in different places depending on the editor
 
 ## Need More Help?

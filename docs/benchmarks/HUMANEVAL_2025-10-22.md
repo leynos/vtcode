@@ -234,7 +234,7 @@ export GEMINI_API_KEY="your_api_key_here"
 -   [ ] Compare against other Gemini models (2.5-flash, 2.5-pro)
 -   [ ] Test with different temperature settings
 -   [ ] Benchmark other providers (OpenAI, Anthropic, DeepSeek)
--   [ ] Analyze failure patterns in detail
+-   [ ] Analyse failure patterns in detail
 -   [ ] Implement token usage tracking
 
 ## References

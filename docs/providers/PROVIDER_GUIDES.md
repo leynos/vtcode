@@ -67,7 +67,7 @@ When omitted, the provider uses the default context window. The separate
 Use `api_format` when the endpoint needs an explicit request shape. Accepted
 values are `auto`, `openai-chat`, `openai-responses`, and
 `anthropic-messages`. Omitting the field preserves legacy autodetection. An
-explicit value is honored and does not silently fall back to another format.
+explicit value is honoured and does not silently fall back to another format.
 
 Provider-level capability defaults are useful when the endpoint does not
 return model metadata. Supported defaults include:
@@ -125,7 +125,7 @@ profile pin, and reasoning-rejecting backends (native Anthropic/MiniMax, or
 `api_format = "anthropic-messages"` profiles) drop `temperature` while
 reasoning is active.
 
-An explicit boolean `false` is honored at every level. Omitting `api_format`
+An explicit boolean `false` is honoured at every level. Omitting `api_format`
 preserves autodetection, while an explicit value selects that API shape.
 
 Name-based OpenAI sampling gates apply to custom endpoints too: models named
@@ -191,7 +191,7 @@ replace the retained evidence or expose provider chain-of-thought.
 
 -   **Official docs:**
     -   [API reference index](https://developers.openai.com/api/reference/llms.txt)
-    -   [Models catalog](https://developers.openai.com/api/docs/models)
+    -   [Models catalogue](https://developers.openai.com/api/docs/models)
     -   [Deprecations](https://developers.openai.com/api/docs/deprecations)
 - Follow the [Getting Started guide](../user-guide/getting-started.md#api-requirements) for API key setup.
 -   See [`crates/codegen/vtcode-config/src/constants/models/openai.rs`](../../crates/codegen/vtcode-config/src/constants/models/openai.rs) for the latest supported models.
@@ -284,7 +284,7 @@ replace the retained evidence or expose provider chain-of-thought.
 ## NVIDIA NIM
 
 -   **Guide:** [NVIDIA NIM Integration](./nvidia.md)
--   **Official docs:** [NVIDIA API catalog](https://build.nvidia.com/llms.txt) · [NIM API reference](https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html)
+-   **Official docs:** [NVIDIA API catalogue](https://build.nvidia.com/llms.txt) · [NIM API reference](https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html)
 -   **Provider key:** `nvidia`
 -   **Authentication:** `NVIDIA_API_KEY` (Bearer token)
 -   **Base URL:** `https://integrate.api.nvidia.com/v1`, override with `NVIDIA_BASE_URL`
@@ -301,7 +301,7 @@ replace the retained evidence or expose provider chain-of-thought.
 -   **Base URL:** `https://api-gateway.merge.dev/v1` (native Responses), override with `MERGE_GATEWAY_BASE_URL`; explicit `/v1/openai` selects legacy Chat Completions
 -   **Default model:** `default_routing`
 -   **Curated picker models:** `openai/gpt-5.5`, `anthropic/claude-opus-5`, `google/gemini-3.6-flash`, `google/gemini-3.7-flash`, `deepseek/deepseek-v4-pro-0813`, `deepseek/deepseek-v4-flash-0731`, `xai/grok-4.6`, `qwen/qwen3.8-max`, `minimax/minimax-h3`, `moonshot/kimi-k3`, `thinkingmachines/inkling`, `meta/muse-spark-1.1`, `zai/glm-5.3-flash`, `openai/gpt-5.6-luna`, `openai/gpt-5.6-sol`, and `openai/gpt-5.6-terra`
--   **Features:** Native Responses, streaming, tool calling, structured outputs, authenticated paginated model catalog, cache-backed picker metadata, and arbitrary explicit Merge route IDs
+-   **Features:** Native Responses, streaming, tool calling, structured outputs, authenticated paginated model catalogue, cache-backed picker metadata, and arbitrary explicit Merge route IDs
 -   **Limitations:** Reasoning controls remain route-specific and are not inferred generically; routing metadata and billed cost remain outside VT Code's normalized response fields. Explicit `/v1/openai` endpoints retain the legacy compatibility path.
 
 ## GitHub Copilot
@@ -317,11 +317,11 @@ replace the retained evidence or expose provider chain-of-thought.
 -   **Official docs:**
     -   [API overview](https://openrouter.ai/docs/api-reference/overview/llms)
     -   [Streaming](https://openrouter.ai/docs/api-reference/streaming/llms)
-    -   [Model catalog](https://openrouter.ai/docs/llms)
+    -   [Model catalogue](https://openrouter.ai/docs/llms)
 -   Default model: `xiaomi/mimo-v2.5-pro` (VT Code's default). Xiaomi MiMo V2.5 and V2.5 Pro are also available.
 -   For Meta Muse, prefer the official [`meta` provider](./meta.md) when direct Meta access is desired. OpenRouter's `meta/...` entries are separately namespaced marketplace routes.
 -   **Meta Muse models via OpenRouter:** `meta/muse-glimmer-30b` and `meta/muse-spark-1.2`
--   **Curated picker catalog:** `openrouter/meta/muse-glimmer-30b`, `openrouter/meta/muse-spark-1.2`, `openrouter/deepseek/deepseek-chat`, `openrouter/z-ai/glm-5.1`, `openrouter/z-ai/glm-5.2`, `openrouter/z-ai/glm-5.3-flash`, `openrouter/moonshotai/kimi-k3`, `openrouter/moonshotai/kimi-k2.6`, `openrouter/moonshotai/kimi-k2.7-code`, `openrouter/qwen/qwen3.7-max`, `openrouter/tencent/hy3-preview`, `openrouter/x-ai/grok-build-0.1`, `openrouter/x-ai/grok-4.6`, `openrouter/xiaomi/mimo-v2.5`, `openrouter/xiaomi/mimo-v2.5-pro`, `openrouter/poolside/laguna-m.1:free`, `openrouter/poolside/laguna-s-2.1:free`, `openrouter/google/gemini-3.5-flash-lite`, `openrouter/google/gemini-3.6-flash`, `openrouter/google/gemini-3.7-flash`, and `openrouter/qwen/qwen3.8-27b`
+-   **Curated picker catalogue:** `openrouter/meta/muse-glimmer-30b`, `openrouter/meta/muse-spark-1.2`, `openrouter/deepseek/deepseek-chat`, `openrouter/z-ai/glm-5.1`, `openrouter/z-ai/glm-5.2`, `openrouter/z-ai/glm-5.3-flash`, `openrouter/moonshotai/kimi-k3`, `openrouter/moonshotai/kimi-k2.6`, `openrouter/moonshotai/kimi-k2.7-code`, `openrouter/qwen/qwen3.7-max`, `openrouter/tencent/hy3-preview`, `openrouter/x-ai/grok-build-0.1`, `openrouter/x-ai/grok-4.6`, `openrouter/xiaomi/mimo-v2.5`, `openrouter/xiaomi/mimo-v2.5-pro`, `openrouter/poolside/laguna-m.1:free`, `openrouter/poolside/laguna-s-2.1:free`, `openrouter/google/gemini-3.5-flash-lite`, `openrouter/google/gemini-3.6-flash`, `openrouter/google/gemini-3.7-flash`, and `openrouter/qwen/qwen3.8-27b`
 -   **Xiaomi MiMo models:**
     -   `xiaomi/mimo-v2.5-pro` — flagship agentic model, 1M context, reasoning + tool calls
     -   `xiaomi/mimo-v2.5` — omnimodal model, 1M context, reasoning + tool calls
@@ -360,7 +360,7 @@ replace the retained evidence or expose provider chain-of-thought.
 -   **Setup:** Install and run Ollama locally ([official install](https://ollama.com/download))
 -   **Configuration:** Local usage needs no key; set `OLLAMA_API_KEY` to access Ollama Cloud
 -   **Default model:** `gpt-oss:20b` (local); any locally available model works
--   **Curated picker catalog:** `gpt-oss:20b`, `gemma4`, plus cloud models `deepseek-v4-flash:cloud`, `deepseek-v4-pro:cloud`, `nemotron-3-ultra:cloud`, `kimi-k3:cloud`, `minimax-m3:cloud`, and `glm-5.2:cloud` (also `gpt-oss:120b-cloud` via the OpenAI OSS support)
+-   **Curated picker catalogue:** `gpt-oss:20b`, `gemma4`, plus cloud models `deepseek-v4-flash:cloud`, `deepseek-v4-pro:cloud`, `nemotron-3-ultra:cloud`, `kimi-k3:cloud`, `minimax-m3:cloud`, and `glm-5.2:cloud` (also `gpt-oss:120b-cloud` via the OpenAI OSS support)
 -   **Cloud models:** Use IDs like `gpt-oss:120b-cloud` with `OLLAMA_BASE_URL=https://ollama.com`
 -   **Custom Models:** Use the `custom-ollama` option in the model picker to enter any locally or cloud-available model ID
 -   **Base URL:** Configurable via `OLLAMA_BASE_URL` environment variable (defaults to `http://localhost:11434`)
@@ -372,7 +372,7 @@ replace the retained evidence or expose provider chain-of-thought.
 -   **Server:** Enable the OpenAI-compatible Developer server in LM Studio (defaults to `http://localhost:1234/v1`)
 -   **Environment:** Optional `LMSTUDIO_API_KEY` when auth is enabled; override host/port via `LMSTUDIO_BASE_URL`
 -   **Default model:** `lmstudio-community/openai-gpt-oss-20b` (local inference)
--   **Catalog:** Also ships with `lmstudio-community/meta-llama-3.1-8b-instruct` and `lmstudio-community/gemma-3-12b-it`, plus any custom GGUF models you expose
+-   **Catalogue:** Also ships with `lmstudio-community/meta-llama-3.1-8b-instruct` and `lmstudio-community/gemma-3-12b-it`, plus any custom GGUF models you expose
 -   **Features:** Streaming, tool calling, structured output, and reasoning effort passthrough via the shared OpenAI surface
 
 ## llama.cpp Local Server
@@ -381,7 +381,8 @@ replace the retained evidence or expose provider chain-of-thought.
 -   **Server:** VT Code targets `llama-server` and defaults to `http://localhost:8080/v1`
 -   **Environment:** `LLAMACPP_BASE_URL` overrides the endpoint; `LLAMACPP_MODEL_PATH` enables VT Code-managed startup
 -   **Managed startup:** VT Code can launch `llama-server -m /path/to/model.gguf --port ...` when the endpoint is localhost and a GGUF path is configured
--   **Starter catalog:** `gpt-oss-20b`, `gemma-4-26b-a4b`, `gemma-4-e4b`, and `step-3.5-flash`
+-   **Starter catalogue:** `gpt-oss-20b`, `gemma-4-26b-a4b`, `gemma-4-e4b`,
+    and `step-3.5-flash`
 -   **Features:** Streaming, dynamic `/v1/models` discovery, local no-auth defaults, and OpenAI-compatible request handling
 
 ## Evolink Multi-Model Gateway

@@ -165,7 +165,7 @@ Potential improvements:
 - Malicious content served from legitimate domains
 - Zero-day exploits in the HTTP client library
 - Social engineering to craft URLs manually
-- Attacks targeting the AI model's behavior
+- Attacks targeting the AI model's behaviour
 
 ## Maintenance
 

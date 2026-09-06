@@ -13,7 +13,7 @@ VT Code discovers skills in this order:
 
 If multiple skills share the same name, the nearest repository skill wins, then user, then admin, then system.
 
-VT Code also honors disabled entries from `~/.codex/config.toml`:
+VT Code also honours disabled entries from `~/.codex/config.toml`:
 
 ```toml
 [[skills.config]]
@@ -38,7 +38,7 @@ my-skill/
 ## SKILL.md
 
 VT Code accepts the core Agent Skills frontmatter fields plus the client-side
-`disable-model-invocation` flag used to hide a skill from the model-facing startup catalog while
+`disable-model-invocation` flag used to hide a skill from the model-facing startup catalogue while
 keeping it available for explicit harness activation:
 
 ```yaml
@@ -70,7 +70,7 @@ Legacy VT Code frontmatter such as `version`, `author`, `when-to-use`, `when-not
 
 VT Code does not support `agents/openai.yaml`. That file is Codex-specific and ignored by design.
 
-## Prompting Behavior
+## Prompting Behaviour
 
 - Explicit mention wins: `Use the my-skill skill`
 - Implicit matching uses `description`

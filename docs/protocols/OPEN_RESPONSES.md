@@ -63,7 +63,7 @@ assert!(completed.is_success());
 
 ### Semantic Streaming Events
 
-Streaming is modeled as semantic events, not raw text deltas:
+Streaming is modelled as semantic events, not raw text deltas:
 
 | Event Type                   | Description                    |
 | ---------------------------- | ------------------------------ |
@@ -331,7 +331,7 @@ stream. When file output is enabled, the JSONL stream is written to
 the authoritative source remains
 `<workspace>/.vtcode/sessions/<session_id>/events.jsonl`.
 
-There is no default global Open Responses artifact. Existing files under
+There is no default global Open Responses artefact. Existing files under
 legacy `VTCODE_HOME/sessions/` files remain untouched.
 
 ### Programmatic Integration

@@ -204,7 +204,7 @@ if response.success {
 }
 ```
 
-### Example 2: List Files Excluding Build Artifacts
+### Example 2: List Files Excluding Build Artefacts
 
 ```rust
 let patterns = "target/**,build/**,dist/**,.git/**";
@@ -343,7 +343,7 @@ v **100% Backward Compatible**
 
 1. **Incremental Search**: Real-time results as user types
 2. **Search History**: Remember recent searches
-3. **Favorites**: Pin frequently-used search patterns
+3. **Favourites**: Pin frequently-used search patterns
 4. **Regex Support**: Advanced pattern matching
 5. **Custom Filters**: Language-specific filtering
 6. **Search Analytics**: Track search patterns and performance

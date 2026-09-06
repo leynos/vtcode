@@ -5,14 +5,14 @@
 Use the simple chainable API:
 
 ```rust
-use vtcode_core::utils::colors::style;
+use vtcode_core::utils::colours::style;
 
-// Basic colors
+// Basic colours
 println!("{}", style("text").green());
 println!("{}", style("text").red().bold());
 println!("{}", style("text").yellow().dim());
 
-// RGB colors
+// RGB colours
 println!("{}", style("text").rgb(r, g, b));
 ```
 
@@ -74,9 +74,9 @@ use vtcode_core::utils::ratatui_styles::anstyle_to_ratatui;
 let span = Span::styled("Done", anstyle_to_ratatui(theme.success));
 ```
 
-## Color Reference
+## Colour Reference
 
-### Standard Colors
+### Standard Colours
 - `AnsiColor::Black`
 - `AnsiColor::Red`
 - `AnsiColor::Green`
@@ -95,13 +95,13 @@ let span = Span::styled("Done", anstyle_to_ratatui(theme.success));
 - `Effects::BLINK`
 - `Effects::STRIKETHROUGH`
 
-### Color Types
+### Colour Types
 ```rust
 use anstyle::Color;
 
-Color::Ansi(AnsiColor::Red)           // Standard ANSI color
-Color::Ansi(AnsiColor::BrightRed)     // Bright ANSI color
-Color::Rgb(255, 0, 0)                 // RGB color
+Color::Ansi(AnsiColor::Red)           // Standard ANSI colour
+Color::Ansi(AnsiColor::BrightRed)     // Bright ANSI colour
+Color::Rgb(255, 0, 0)                 // RGB colour
 Color::Ansi256(196)                   // 256-color indexed
 ```
 
@@ -109,7 +109,7 @@ Color::Ansi256(196)                   // 256-color indexed
 
 ### Error Messages
 ```rust
-use vtcode_core::utils::colors::style;
+use vtcode_core::utils::colours::style;
 eprintln!("{}", style("Error: ").red().bold());
 eprintln!("{}", style(message).red());
 ```
@@ -145,7 +145,7 @@ let line = Line::from(vec![
 1. **Define styles once** - Create a central `Theme` struct
 2. **Reuse styles** - Pass around the same `Style` objects
 3. **Convert once** - Call `anstyle_to_ratatui()` once per render
-4. **Layer styles** - Combine color, effects, and backgrounds
+4. **Layer styles** - Combine colour, effects, and backgrounds
 5. **Test with real terminal** - Terminal capabilities vary
 
 ## See Also
@@ -163,7 +163,7 @@ cargo run --example anstyle_ratatui_example
 ```
 
 Demonstrates:
-- CLI colored output
+- CLI coloured output
 - TUI widget styling
 - Unified theme management
 - Interactive terminal UI

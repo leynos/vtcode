@@ -8,7 +8,7 @@ VT Code includes a built-in `llamacpp` provider for local inference through [`ll
 - Optional managed `llama-server` startup when a local GGUF path is configured
 - Readiness polling through `/health`
 - Dynamic model discovery through `/v1/models`
-- A starter catalog for:
+- A starter catalogue for:
   - `gpt-oss-20b`
   - `gemma-4-26b-a4b`
   - `gemma-4-e4b`

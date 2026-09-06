@@ -64,5 +64,5 @@ Provides a unified interface for multiple LLM providers with streaming, tool cal
 ## See Also
 
 - [Provider Guides](../providers/PROVIDER_GUIDES.md) — setup and configuration
-- [Model Catalog](../models.json) — full model listing with capabilities
+- [Model Catalogue](../models.json) — full model listing with capabilities
 - `crates/codegen/vtcode-core/src/config/models.rs` — model constants re-export

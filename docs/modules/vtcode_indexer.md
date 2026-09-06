@@ -95,7 +95,7 @@ indexer.init()?;
 indexer.index_directory(workspace_root.as_path())?;
 ```
 
-Filters can coordinate with configuration to honor allowlists while still
+Filters can coordinate with configuration to honour allowlists while still
 blocking noisy directories or file types.
 
 ## End-to-end example

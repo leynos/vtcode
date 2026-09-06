@@ -16,7 +16,7 @@ The primary use of tree-sitter in VT Code is within the `command_safety` module.
 
 ## Architecture
 
-The integration is centered around the following components:
+The integration is centred around the following components:
 
 - **`tree-sitter` core**: The underlying incremental parsing library.
 - **`tree-sitter-bash`**: The grammar used for parsing shell commands.
@@ -34,4 +34,4 @@ Shell safety parsing is a core security feature and is enabled by default. It do
 
 ---
 
-*Note: Previous versions of VT Code included broader language support (Rust, Python, JavaScript, etc.) via tree-sitter. This was removed in favor of simpler, more efficient text-based analysis which proved equally effective for LLM-assisted coding while significantly reducing the binary size.*
+*Note: Previous versions of VT Code included broader language support (Rust, Python, JavaScript, etc.) via tree-sitter. This was removed in favour of simpler, more efficient text-based analysis which proved equally effective for LLM-assisted coding while significantly reducing the binary size.*

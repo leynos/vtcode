@@ -2,7 +2,7 @@
 
 This document outlines how VT Code implements Model Context Protocol (MCP) based on Claude's official MCP specifications and best practices.
 
-> **Note:** This file is a high-level architecture reference. For accurate, current configuration and behavior, use [`docs/guides/mcp-integration.md`](../guides/mcp-integration.md).
+> **Note:** This file is a high-level architecture reference. For accurate, current configuration and behaviour, use [`docs/guides/mcp-integration.md`](../guides/mcp-integration.md).
 
 ## Overview
 
@@ -509,7 +509,7 @@ Implement additional transport types by extending `rmcp_transport.rs`:
    - Provide detailed error messages to users
 
 3. **Performance**
-   - Set appropriate timeout values based on tool behavior
+   - Set appropriate timeout values based on tool behaviour
    - Use resource pagination for large datasets
    - Monitor token usage with `MAX_MCP_OUTPUT_TOKENS`
 

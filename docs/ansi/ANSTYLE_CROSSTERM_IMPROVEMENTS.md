@@ -14,7 +14,7 @@ Added three new convenience functions to support common styling patterns:
 
 #### `fg_bg_colors(fg, bg)`
 
-Combines foreground and background colors in a single style.
+Combines foreground and background colours in a single style.
 
 ```rust
 use anstyle::{Color, AnsiColor};
@@ -28,7 +28,7 @@ let style = fg_bg_colors(
 
 #### `bg_colored_with_effects(bg, effects)`
 
-Applies effects to a background color (complements `colored_with_effects` for foreground).
+Applies effects to a background colour (complements `colored_with_effects` for foreground).
 
 ```rust
 use anstyle::{Color, AnsiColor, Effects};
@@ -59,7 +59,7 @@ let style = full_style(
 
 -   Added comprehensive module-level documentation explaining the anstyle-crossterm adapter pattern
 -   Clarified the conversion flow: `anstyle` → `anstyle-crossterm` → `crossterm` → `ratatui`
--   Added examples showing how anstyle-crossterm maps standard colors to indexed variants
+-   Added examples showing how anstyle-crossterm maps standard colours to indexed variants
 -   Documented attribute mapping limitations (some crossterm attributes have no ratatui equivalent)
 
 ### 3. Enhanced Attribute Handling
@@ -93,15 +93,15 @@ fn test_helper_full_style_no_effects() { /* ... */ }
 
 All tests validate:
 
--   Correct color mapping through anstyle-crossterm
+-   Correct colour mapping through anstyle-crossterm
 -   Proper effect application
 -   Edge cases (partial styles, no effects, etc.)
 
-## Color Mapping Behavior
+## Colour Mapping Behaviour
 
-Due to anstyle-crossterm's design, standard ANSI colors are mapped to indexed variants for terminal compatibility:
+Due to anstyle-crossterm's design, standard ANSI colours are mapped to indexed variants for terminal compatibility:
 
-| Input Color | Output (via anstyle-crossterm) |
+| Input Colour| Output (via anstyle-crossterm) |
 | ----------- | ------------------------------ |
 | Red         | Indexed(52) - DarkRed          |
 | Green       | Indexed(22) - DarkGreen        |
@@ -112,7 +112,7 @@ Due to anstyle-crossterm's design, standard ANSI colors are mapped to indexed va
 | White       | Gray                           |
 | BrightBlack | DarkGray                       |
 
-This ensures consistent rendering across different terminal color schemes.
+This ensures consistent rendering across different terminal colour schemes.
 
 ## Architecture Flow
 
@@ -195,7 +195,7 @@ cargo test -p vtcode-core --lib utils::ratatui_styles
 
 **Result**: 20 tests passed
 
--   14 original tests (color conversions, effects, combinations)
+-   14 original tests (colour conversions, effects, combinations)
 -   6 new tests (new helper functions, edge cases)
 
 ## Performance Considerations
@@ -203,13 +203,13 @@ cargo test -p vtcode-core --lib utils::ratatui_styles
 -   No runtime overhead: All conversions are synchronous
 -   anstyle-crossterm is stateless: No caching or allocation needed
 -   Lazy evaluation: Styles are only converted when needed
--   Zero-copy for most operations (except RGB color components)
+-   Zero-copy for most operations (except RGB colour components)
 
 ## Future Improvements
 
-1. **RGB Color Support**: Enhance RGB color handling with optional palette optimization
-2. **Theme Integration**: Add theme-aware color mapping (light/dark mode detection)
-3. **Custom Color Palettes**: Support terminal-specific color profiles
+1. **RGB Colour Support**: Enhance RGB colour handling with optional palette optimization
+2. **Theme Integration**: Add theme-aware colour mapping (light/dark mode detection)
+3. **Custom Colour Palettes**: Support terminal-specific colour profiles
 4. **Attribute Caching**: Cache frequently-used style combinations
 
 ## Related Files

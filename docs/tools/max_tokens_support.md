@@ -8,7 +8,7 @@ model receives only the bounded preview.
 
 Public command tools can cap large responses per call. Prefer
 `max_output_tokens` in model-facing calls; internal compatibility paths may still
-normalise older output-limit field names.
+normalize older output-limit field names.
 
 Output caps reduce prompt pressure while preserving command status, exit codes,
 and spool metadata when the full output is too large for the response.

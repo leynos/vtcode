@@ -4,7 +4,7 @@
 
 Plan mode must reliably turn read-only repository discovery into a validated,
 persisted plan and then hand approved work to a write-capable primary agent.
-The visible workflow identity remains `plan`, but its behavior becomes
+The visible workflow identity remains `plan`, but its behaviour becomes
 discussion-first like `duck`: clarify material ambiguity early, inspect only
 the evidence needed for a decision, and synthesize a compact plan instead of
 continuing open-ended research.
@@ -54,7 +54,7 @@ read-only workflow contract.
 
 The plan prompt must explicitly say that the model never writes the plan file
 with shell or file-editing tools. It emits exactly one `<proposed_plan>` block;
-the runtime validates it, writes the plan and tracker artifacts, and opens the
+the runtime validates it, writes the plan and tracker artefacts, and opens the
 approval gate. This removes the ambiguity that caused the model to attempt
 `cat > .vtcode/plans/...` in turn 985.
 
@@ -75,7 +75,7 @@ used only to separate inspection output, including chains where every command
 is independently read-only. Redirection, command substitution, dynamic shell
 syntax, environment mutation, and mixed read/write chains remain denied.
 Adversarial tests will cover `printf` combined with redirection, substitution,
-and a destructive neighbor command.
+and a destructive neighbour command.
 
 ### Plan validation and repair
 
@@ -107,7 +107,7 @@ The data flow remains:
 3. Response processing extracts and validates the plan.
 4. Canonical persistence writes the plan, its sidecar tracker, and the
    workspace task tracker.
-5. Only after all artifacts are readable does the runtime emit plan-ready and
+5. Only after all artefacts are readable does the runtime emit plan-ready and
    approval-requested events.
 6. Approval finishes planning, restores permissions, selects a write-capable
    primary agent, and begins the implementation turn.
@@ -137,7 +137,7 @@ extra capacity from becoming unbounded research.
 - Invalid plans are never persisted over an existing valid draft.
 - A failed repair ends the turn with the rejected draft and validator-owned
   reasons visible; it never advertises that implementation can start.
-- Missing plan or tracker artifacts keep planning active and prevent a mode
+- Missing plan or tracker artefacts keep planning active and prevent a mode
   transition.
 - A denied or unavailable interview falls back to the existing bounded plain
   text/synthesis path.
@@ -171,7 +171,7 @@ include:
 ## Documentation and Module Guidance
 
 Update the planning workflow guide and configuration quick references with the
-discussion-first behavior, canonical persistence boundary, relative command
+discussion-first behaviour, canonical persistence boundary, relative command
 validation, and 60-loop planning floor. Update compiled runtime guidance where
 the model-facing contract is defined. After implementation, use the
 `audit-module-agents` skill to determine whether `src/AGENTS.md`,
@@ -184,7 +184,7 @@ update.
 - `crates/codegen/vtcode-config/src/constants/tool_limits.rs`
 - `crates/codegen/vtcode-core/src/prompts/system.rs`
 - `crates/codegen/vtcode-core/src/prompts/runtime_contract.rs`
-- `crates/codegen/vtcode-core/src/tools/handlers/planning_workflow/artifacts.rs`
+- `crates/codegen/vtcode-core/src/tools/handlers/planning_workflow/artefacts.rs`
 - `crates/codegen/vtcode-core/src/tools/handlers/planning_workflow/mod.rs`
 - Read-only command-classification tests in the existing tool-intent module
 - Planning response/handoff tests under `src/agent/runloop/unified/`
