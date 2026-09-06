@@ -3,8 +3,8 @@
 //! Implements `/skills` command palette for loading, listing, and executing skills
 //! within interactive chat sessions.
 //!
-//! Supports both explicit commands (`/skills load pdf-analyzer`) and Codex-style
-//! mention detection (`$pdf-analyzer` or description keyword matching).
+//! Supports both explicit commands (`/skills load pdf-analyser`) and Codex-style
+//! mention detection (`$pdf-analyser` or description keyword matching).
 
 use anyhow::Result;
 use std::fmt::Write;
@@ -397,16 +397,16 @@ Shortcuts:
 /// Detect skill mentions in user input using Codex-style patterns
 ///
 /// Returns list of skill names that should be auto-triggered based on:
-/// 1. Explicit `$skill-name` mention (e.g., "Use $pdf-analyzer")
+/// 1. Explicit `$skill-name` mention (e.g., "Use $pdf-analyser")
 /// 2. Description keyword matches (fuzzy, requires 2+ matches)
 ///
 /// # Examples
 /// ```
 /// // Explicit mention
-/// "Use $pdf-analyzer to process the document" -> ["pdf-analyzer"]
+/// "Use $pdf-analyser to process the document" -> ["pdf-analyser"]
 ///
 /// // Description matching
-/// "Extract tables from PDF document" -> ["pdf-analyzer"] (if description contains "extract" + "tables" or "PDF")
+/// "Extract tables from PDF document" -> ["pdf-analyser"] (if description contains "extract" + "tables" or "PDF")
 /// ```
 #[cfg(test)]
 async fn detect_mentioned_skills(user_input: &str, workspace: PathBuf) -> Result<Vec<(String, Skill)>> {
@@ -452,7 +452,7 @@ mod tests {
     async fn test_detect_explicit_skill_mention() {
         // This test would need actual skills in a temp directory
         // Just verify the function signature compiles
-        let input = "Use $pdf-analyzer to process the document";
+        let input = "Use $pdf-analyser to process the document";
         let workspace = PathBuf::from("/tmp");
         let _result = detect_mentioned_skills(input, workspace).await;
         // In real test, would assert skills are detected

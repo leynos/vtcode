@@ -350,9 +350,9 @@ mod ansi_stripping_tests {
 
     #[test]
     fn test_csi_colon_parameters() {
-        let input = "color \u{1b}[38:2:255:0:0mred\u{1b}[0m ready";
+        let input = "colour \u{1b}[38:2:255:0:0mred\u{1b}[0m ready";
         let result = strip_ansi_codes(input);
-        assert_eq!(result, "color red ready");
+        assert_eq!(result, "colour red ready");
     }
 
     #[test]

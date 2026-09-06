@@ -86,8 +86,8 @@ mod tests {
     fn backend_handles_ansi_colours() {
         let size = test_size();
         let mut state = PtyScreenState::new(size, 100);
-        state.process(b"\x1B[1;31mcolored\x1B[0m");
+        state.process(b"\x1B[1;31mcoloured\x1B[0m");
         let snapshot = state.prepare_snapshot();
-        assert!(snapshot.screen_contents.contains("colored"), "screen_contents = {:?}", snapshot.screen_contents);
+        assert!(snapshot.screen_contents.contains("coloured"), "screen_contents = {:?}", snapshot.screen_contents);
     }
 }

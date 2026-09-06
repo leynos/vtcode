@@ -1,6 +1,6 @@
 use crate::skills::cli_bridge::{CliToolBridge, CliToolConfig, discover_cli_tools};
 use crate::skills::command_skills::{
-    BuiltInCommandSkill, built_in_command_skill, merge_built_in_command_skill_contexts,
+    BuiltInCommandSkill, built_in_command_skill, command_skill_id_alias, merge_built_in_command_skill_contexts,
 };
 use crate::skills::container_validation::{
     ContainerSkillsValidator, ContainerValidationReport, ContainerValidationResult,
@@ -810,6 +810,26 @@ fn discovery_config_for_codex_home(workspace_root: &Path, codex_home: &Path) -> 
     }
 }
 
+fn traditional_skill_context_by_name<'a>(
+    skills: &'a [SkillContext],
+    name: &str,
+    system_skills_root: &Path,
+) -> Option<&'a SkillContext> {
+    if let Some(alias) = command_skill_id_alias(name) {
+        let is_requested_or_alias =
+            |skill: &SkillContext| skill.manifest().name == name || skill.manifest().name == alias;
+
+        // Discovery order encodes repository, user, administrator, and system
+        // precedence. Keep that order while considering only the two known IDs.
+        return skills
+            .iter()
+            .find(|skill| !skill.path().starts_with(system_skills_root) && is_requested_or_alias(skill))
+            .or_else(|| skills.iter().find(|skill| is_requested_or_alias(skill)));
+    }
+
+    skills.iter().find(|skill| skill.manifest().name == name)
+}
+
 impl EnhancedSkillLoader {
     /// Create a new enhanced loader for workspace
     pub fn new(workspace_root: PathBuf) -> Self {
@@ -843,19 +863,18 @@ impl EnhancedSkillLoader {
         self.ensure_system_skills_installed();
         let result = self.discovery.discover_all(&self.workspace_root).await?;
 
-        // Try traditional skills first
-        for skill_ctx in &result.skills {
-            if skill_ctx.manifest().name == name {
-                let path = skill_ctx.path();
-                let (manifest, instructions) = crate::skills::manifest::parse_skill_file(path)?;
-                let skill = Skill::with_scope(
-                    manifest,
-                    path.clone(),
-                    infer_scope_from_skill_path(path, &self.workspace_root),
-                    instructions,
-                )?;
-                return Ok(EnhancedSkill::Traditional(Box::new(skill)));
-            }
+        if let Some(skill_ctx) =
+            traditional_skill_context_by_name(&result.skills, name, &system_cache_root_dir(&self.codex_home))
+        {
+            let path = skill_ctx.path();
+            let (manifest, instructions) = crate::skills::manifest::parse_skill_file(path)?;
+            let skill = Skill::with_scope(
+                manifest,
+                path.clone(),
+                infer_scope_from_skill_path(path, &self.workspace_root),
+                instructions,
+            )?;
+            return Ok(EnhancedSkill::Traditional(Box::new(skill)));
         }
 
         // Try CLI tools
@@ -1095,11 +1114,75 @@ mod tests {
         }
     }
 
+    fn skill_context(name: &str, path: &Path) -> SkillContext {
+        SkillContext::MetadataOnly(manifest(name, "command skill test fixture"), path.to_path_buf())
+    }
+
+    #[test]
+    fn command_skill_id_alias_preserves_legacy_user_override_for_both_ids() {
+        let system_root = Path::new("/hermetic/codex/skills/.system");
+        let legacy_override = Path::new("/hermetic/workspace/.agents/skills/cmd-analyze");
+        let bundled_canonical = system_root.join("cmd-analyse");
+        let skills = vec![
+            skill_context("cmd-analyze", legacy_override),
+            skill_context("cmd-analyse", &bundled_canonical),
+        ];
+
+        for requested_name in ["cmd-analyse", "cmd-analyze"] {
+            let selected = traditional_skill_context_by_name(&skills, requested_name, system_root)
+                .expect("known command skill ID should resolve");
+            assert_eq!(selected.manifest().name, "cmd-analyze");
+            assert_eq!(selected.path(), legacy_override);
+        }
+    }
+
+    #[test]
+    fn command_skill_id_alias_uses_first_discovered_user_override() {
+        let system_root = Path::new("/hermetic/codex/skills/.system");
+        let legacy_override = Path::new("/hermetic/workspace/.agents/skills/cmd-analyze");
+        let canonical_override = Path::new("/hermetic/workspace/.agents/skills/cmd-analyse");
+        let skills = vec![
+            skill_context("cmd-analyse", canonical_override),
+            skill_context("cmd-analyze", legacy_override),
+        ];
+
+        let selected = traditional_skill_context_by_name(&skills, "cmd-analyse", system_root)
+            .expect("canonical command skill ID should resolve");
+        assert_eq!(selected.manifest().name, "cmd-analyse");
+        assert_eq!(selected.path(), canonical_override);
+    }
+
+    #[test]
+    fn command_skill_id_alias_preserves_discovery_precedence_across_spellings() {
+        let system_root = Path::new("/hermetic/codex/skills/.system");
+        let higher_priority_legacy = Path::new("/hermetic/workspace/.agents/skills/cmd-analyze");
+        let lower_priority_canonical = Path::new("/hermetic/user/.agents/skills/cmd-analyse");
+        let skills = vec![
+            skill_context("cmd-analyze", higher_priority_legacy),
+            skill_context("cmd-analyse", lower_priority_canonical),
+        ];
+
+        let selected = traditional_skill_context_by_name(&skills, "cmd-analyse", system_root)
+            .expect("canonical command skill ID should resolve");
+        assert_eq!(selected.path(), higher_priority_legacy);
+    }
+
+    #[test]
+    fn traditional_skill_lookup_keeps_exact_matching_for_unaliased_skills() {
+        let system_root = Path::new("/hermetic/codex/skills/.system");
+        let skill_path = Path::new("/hermetic/workspace/.agents/skills/release-helper");
+        let skills = vec![skill_context("release-helper", skill_path)];
+
+        let selected = traditional_skill_context_by_name(&skills, "release-helper", system_root)
+            .expect("ordinary traditional skill should resolve");
+        assert_eq!(selected.path(), skill_path);
+    }
+
     #[test]
     fn detects_explicit_skill_mentions() {
-        let skills = vec![manifest("pdf-analyzer", "Analyse PDF files and extract tables")];
-        let mentions = detect_skill_mentions("Use $pdf-analyzer for this file", &skills);
-        assert_eq!(mentions, vec!["pdf-analyzer".to_string()]);
+        let skills = vec![manifest("pdf-analyser", "Analyse PDF files and extract tables")];
+        let mentions = detect_skill_mentions("Use $pdf-analyser for this file", &skills);
+        assert_eq!(mentions, vec!["pdf-analyser".to_string()]);
     }
 
     #[test]

@@ -791,7 +791,7 @@ async fn command_alias_typo_routes_through_cmd_command_skill() {
 }
 
 #[tokio::test]
-async fn analyse_slash_routes_normalized_scope_through_cmd_analyze_skill() {
+async fn analyse_slash_routes_normalized_scope_through_cmd_analyse_skill() {
     let workspace = tempfile::TempDir::new().expect("workspace");
     let mut renderer = renderer_for_tests();
 
@@ -803,7 +803,7 @@ async fn analyse_slash_routes_normalized_scope_through_cmd_analyze_skill() {
         outcome,
         SlashCommandOutcome::ManageSkills {
             action: crate::agent::runloop::SkillCommandAction::Use { ref name, ref input }
-        } if name == "cmd-analyze" && input == "security"
+        } if name == "cmd-analyse" && input == "security"
     ));
 }
 
@@ -820,7 +820,7 @@ async fn legacy_analyze_slash_alias_routes_to_the_canonical_analyse_command() {
         outcome,
         SlashCommandOutcome::ManageSkills {
             action: crate::agent::runloop::SkillCommandAction::Use { ref name, ref input }
-        } if name == "cmd-analyze" && input == "security"
+        } if name == "cmd-analyse" && input == "security"
     ));
 }
 

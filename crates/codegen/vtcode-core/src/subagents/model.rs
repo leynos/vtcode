@@ -107,7 +107,7 @@ fn finalize_subagent_model(
 ///
 /// Config-defined models are only honoured when they belong to the active
 /// provider (`provider_hint`); this preserves the invalid-override fallback for
-/// unrelated providers and avoids mis-routing a model to the wrong endpoint.
+/// unrelated providers and avoids incorrect routing of a model to the wrong endpoint.
 fn parse_model_or_custom(sources: &RuntimeModelSources<'_>, model: &str, provider_hint: &str) -> Result<ModelId> {
     let trimmed = model.trim();
     if let Ok(parsed) = trimmed.parse::<ModelId>() {
