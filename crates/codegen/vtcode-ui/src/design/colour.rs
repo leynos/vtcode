@@ -1,4 +1,4 @@
-//! Unified color conversion between `anstyle` and `ratatui`.
+//! Unified colour conversion between `anstyle` and `ratatui`.
 //!
 //! This module provides the single correct mapping from `anstyle::Color` to
 //! `ratatui::style::Color`. Previous implementations in `vtcode-commons` and
@@ -12,8 +12,8 @@ use ratatui::style::Color;
 ///
 /// This is the canonical, correct mapping. It properly handles:
 /// - All 16 standard ANSI colours (including bright variants as `Light*`)
-/// - 256-color palette via `Indexed`
-/// - True color via `Rgb`
+/// - 256-colour palette via `Indexed`
+/// - True colour via `Rgb`
 ///
 /// # Bug fixes over prior implementations
 ///
@@ -31,7 +31,7 @@ pub(crate) fn anstyle_to_ratatui_colour(colour: AnstyleColour) -> Color {
     }
 }
 
-/// Map a standard ANSI color (0-15) to its ratatui equivalent.
+/// Map a standard ANSI colour (0-15) to its ratatui equivalent.
 fn ansi_to_ratatui(colour: AnsiColor) -> Color {
     match colour {
         AnsiColor::Black => Color::Black,
@@ -54,7 +54,7 @@ fn ansi_to_ratatui(colour: AnsiColor) -> Color {
 }
 
 /// Map a standard ANSI hue name to its `(dark_background, light_background)`
-/// `ratatui` color variants.
+/// `ratatui` colour variants.
 ///
 /// This is the design-system's portable way to keep agent/mode badges readable
 /// in BOTH terminal appearances: the brighter `Light*` variant is used on dark
@@ -73,7 +73,7 @@ fn ansi_hue_variant(hue: &str, light: bool) -> Option<Color> {
     Some(if light { lit } else { dark })
 }
 
-/// Parse a hex color string (e.g. `"#D99A4E"`) to a `ratatui` `Color`.
+/// Parse a hex colour string (e.g. `"#D99A4E"`) to a `ratatui` `Color`.
 /// Returns `None` if the string is not a valid `#rrggbb` value.
 pub(crate) fn hex_to_ratatui_colour(hex: &str) -> Option<Color> {
     let hex = hex.trim().trim_start_matches('#');
@@ -87,7 +87,7 @@ pub(crate) fn hex_to_ratatui_colour(hex: &str) -> Option<Color> {
     Some(Color::Rgb(r, g, b))
 }
 
-/// Resolve a mode/agent color token to a `ratatui` color.
+/// Resolve a mode/agent colour token to a `ratatui` colour.
 ///
 /// Tries, in order:
 /// 1. A known primary-agent mode name (e.g. `"build"`) — mapped via the
@@ -98,7 +98,7 @@ pub(crate) fn hex_to_ratatui_colour(hex: &str) -> Option<Color> {
 ///
 /// Hue/mode tokens are resolved to the variant matching `light`, so a single
 /// token reads well on both dark and light terminals. Falls back to
-/// `fallback` when the token is unknown or unparseable.
+/// `fallback` when the token is unknown or unparsable.
 pub(crate) fn resolve_agent_colour(token: &str, fallback: Color, light: bool) -> Color {
     use vtcode_config::constants::ui::agent_mode_hue;
 
@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn all_16_ansi_colours_covered() {
-        // Ensure every ANSI color maps to something other than Reset/Black
+        // Ensure every ANSI colour maps to something other than Reset/Black
         // for non-Black colours.
         let colours = [
             (AnsiColor::Black, Color::Black),

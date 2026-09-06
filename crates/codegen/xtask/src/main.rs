@@ -41,7 +41,7 @@ struct PackageReleaseArgs {
     #[arg(long)]
     binary: PathBuf,
 
-    /// Output directory for generated artifacts and final archives.
+    /// Output directory for generated artefacts and final archives.
     #[arg(long, default_value = "dist")]
     out_dir: PathBuf,
 }

@@ -5,7 +5,7 @@
 
 /// Directories skipped by default during workspace traversal.
 ///
-/// This covers build artifacts, dependency stores, VCS metadata, and IDE
+/// This covers build artefacts, dependency stores, VCS metadata, and IDE
 /// configuration directories that are almost never relevant to code search
 /// or analysis.
 pub const DEFAULT_EXCLUDED_DIRS: &[&str] = &[

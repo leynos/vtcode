@@ -382,8 +382,8 @@ pub struct UiConfig {
     #[serde(default = "default_show_diagnostics_in_transcript")]
     pub show_diagnostics_in_transcript: bool,
 
-    // === Color Accessibility Configuration ===
-    // Based on NO_COLOR standard, Ghostty minimum-contrast, and terminal color portability research.
+    // === Colour Accessibility Configuration ===
+    // Based on NO_COLOR standard, Ghostty minimum-contrast, and terminal colour portability research.
     /// Minimum contrast ratio for text against background (WCAG 2.1 standard)
     /// - 4.5: WCAG AA (default, suitable for most users)
     /// - 7.0: WCAG AAA (enhanced, for low-vision users)
@@ -394,7 +394,7 @@ pub struct UiConfig {
 
     /// Compatibility mode for legacy terminals that map bold to bright colours.
     /// When enabled, avoids using bold styling on text that would become bright colours,
-    /// preventing visibility issues in terminals with "bold is bright" behavior.
+    /// preventing visibility issues in terminals with "bold is bright" behaviour.
     #[serde(default = "default_bold_is_bright")]
     pub bold_is_bright: bool,
 
@@ -411,7 +411,7 @@ pub struct UiConfig {
     )]
     pub safe_colours_only: bool,
 
-    /// Color scheme mode for automatic light/dark theme switching.
+    /// Colour scheme mode for automatic light/dark theme switching.
     /// - "auto": Detect from terminal (via OSC 11 or COLORFGBG env var)
     /// - "light": Force light mode theme selection
     /// - "dark": Force dark mode theme selection
@@ -456,7 +456,7 @@ pub struct UiConfig {
     pub transcript_review: UiTranscriptReviewConfig,
 }
 
-/// Color scheme mode for theme selection
+/// Colour scheme mode for theme selection
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -464,9 +464,9 @@ pub enum ColourSchemeMode {
     /// Detect from terminal environment (OSC 11 query or COLORFGBG)
     #[default]
     Auto,
-    /// Force light color scheme
+    /// Force light colour scheme
     Light,
-    /// Force dark color scheme
+    /// Force dark colour scheme
     Dark,
     /// Catch-all for unknown modes added by future versions.
     #[serde(other)]
@@ -656,7 +656,7 @@ impl Default for UiConfig {
             message_block_spacing: default_message_block_spacing(),
             show_turn_timer: default_show_turn_timer(),
             show_diagnostics_in_transcript: default_show_diagnostics_in_transcript(),
-            // Color accessibility defaults
+            // Colour accessibility defaults
             minimum_contrast: default_minimum_contrast(),
             bold_is_bright: default_bold_is_bright(),
             safe_colours_only: default_safe_colours_only(),

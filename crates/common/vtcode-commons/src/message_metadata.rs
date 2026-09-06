@@ -23,7 +23,7 @@ pub struct MessageMetadata {
     /// Importance score in [0.0, 1.0]: 0.0 = low (safe to drop first),
     /// 1.0 = high (preserve as long as possible).
     ///
-    /// Initialised to 0.5 (neutral) and adjusted by the compression/pruning
+    /// Initialized to 0.5 (neutral) and adjusted by the compression/pruning
     /// system or by explicit agent reflection.
     importance_score: f64,
 

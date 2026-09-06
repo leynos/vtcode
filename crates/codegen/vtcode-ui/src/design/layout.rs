@@ -10,7 +10,7 @@ use crate::design::constants::{COMPACT_MAX_COLS, COMPACT_MAX_ROWS, WIDE_MIN_COLS
 /// Responsive layout mode based on terminal dimensions.
 ///
 /// This enum provides a single source of truth for layout decisions
-/// across the UI, enabling consistent responsive behavior.
+/// across the UI, enabling consistent responsive behaviour.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LayoutMode {
     /// Minimal chrome for tiny terminals (< 80 cols or < 20 rows)

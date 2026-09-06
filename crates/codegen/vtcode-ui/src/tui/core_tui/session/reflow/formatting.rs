@@ -27,7 +27,7 @@ impl Session {
     /// This method also applies visual styling for:
     /// - Todo/checkbox items (completed items are dimmed)
     /// - List items with consistent formatting
-    /// - Diff lines with background colors
+    /// - Diff lines with background colours
     pub(super) fn justify_wrapped_lines(
         &self,
         lines: Vec<Line<'static>>,
@@ -140,7 +140,7 @@ impl Session {
         }
     }
 
-    /// Check if a line is a diff line (has diff markers and background color)
+    /// Check if a line is a diff line (has diff markers and background colour)
     fn is_diff_line(&self, line: &Line<'static>) -> bool {
         if line.spans.is_empty() {
             return false;

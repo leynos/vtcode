@@ -4,10 +4,10 @@ use crate::tui::utils::CachedStyleParser;
 use anstyle::Style as AnsiStyle;
 use anyhow::Result;
 
-/// Parses color configuration strings in different syntaxes.
+/// Parses colour configuration strings in different syntaxes.
 ///
 /// Supports:
-/// - Git color syntax (e.g., "bold red", "red blue")
+/// - Git colour syntax (e.g., "bold red", "red blue")
 /// - LS_COLORS syntax (e.g., "01;34" for bold blue)
 /// - Flexible parsing that tries multiple formats
 pub struct ThemeConfigParser {
@@ -29,7 +29,7 @@ impl Default for ThemeConfigParser {
 }
 
 impl ThemeConfigParser {
-    /// Parse a string in Git's color configuration syntax.
+    /// Parse a string in Git's colour configuration syntax.
     ///
     /// # Examples
     ///
@@ -43,7 +43,7 @@ impl ThemeConfigParser {
     ///
     /// # Errors
     ///
-    /// Returns error if the input doesn't match Git color syntax.
+    /// Returns error if the input doesn't match Git colour syntax.
     fn parse_git_style(&self, input: &str) -> Result<AnsiStyle> {
         self.cached_parser.parse_git_style(input)
     }

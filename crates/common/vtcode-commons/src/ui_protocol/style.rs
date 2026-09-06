@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anstyle::{Color as AnsiColourEnum, Effects, Style as AnsiStyle};
 
-/// Inline text styling with foreground/background color and text effects.
+/// Inline text styling with foreground/background colour and text effects.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct InlineTextStyle {
     pub colour: Option<AnsiColourEnum>,

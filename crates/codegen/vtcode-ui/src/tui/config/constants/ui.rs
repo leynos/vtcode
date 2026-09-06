@@ -190,7 +190,7 @@ pub const TUI_MAX_VIEWPORT_WIDTH: u16 = 500;
 /// Maximum effective viewport height (rows) for rendering
 pub const TUI_MAX_VIEWPORT_HEIGHT: u16 = 200;
 
-// Theme and color constants
+// Theme and colour constants
 pub const THEME_MIN_CONTRAST_RATIO: f32 = 4.5;
 pub const THEME_FOREGROUND_LIGHTEN_RATIO: f32 = 0.25;
 pub const THEME_SECONDARY_LIGHTEN_RATIO: f32 = 0.2;
@@ -207,7 +207,7 @@ pub const THEME_PRIMARY_STATUS_SECONDARY_LIGHTEN_RATIO: f32 = 0.5;
 pub const THEME_LOGO_ACCENT_BANNER_LIGHTEN_RATIO: f32 = 0.35;
 pub const THEME_LOGO_ACCENT_BANNER_SECONDARY_LIGHTEN_RATIO: f32 = 0.25;
 
-// UI Color constants
+// UI Colour constants
 pub const THEME_COLOUR_WHITE_RED: u8 = 0xFF;
 pub const THEME_COLOUR_WHITE_GREEN: u8 = 0xFF;
 pub const THEME_COLOUR_WHITE_BLUE: u8 = 0xFF;
@@ -235,10 +235,10 @@ pub const PLACEHOLDER_R: u8 = 0x88;
 pub const PLACEHOLDER_G: u8 = 0x88;
 pub const PLACEHOLDER_B: u8 = 0x88;
 
-// === Safe ANSI Color Palette ===
-// Based on terminal color portability research: <https://blog.xoria.org/terminal-colors/>
+// === Safe ANSI Colour Palette ===
+// Based on terminal colour portability research: <https://blog.xoria.org/terminal-colors/>
 // These 11 colours are safe across Basic (light/dark), Tango, and Solarized themes.
-// Colors NOT in this list have visibility issues in common terminal configurations.
+// Colours NOT in this list have visibility issues in common terminal configurations.
 
 /// WCAG AA standard minimum contrast ratio (4.5:1)
 pub const WCAG_AA_CONTRAST_RATIO: f32 = 4.5;
@@ -249,7 +249,7 @@ pub const WCAG_AAA_CONTRAST_RATIO: f32 = 7.0;
 /// Large text minimum contrast ratio (3.0:1)
 pub const WCAG_LARGE_TEXT_CONTRAST_RATIO: f32 = 3.0;
 
-// Safe ANSI color indices (standard 0-15 palette)
+// Safe ANSI colour indices (standard 0-15 palette)
 // These colours are portable across common terminal themes.
 
 /// Safe regular colours (ANSI 0-7 subset that works everywhere)
@@ -269,7 +269,7 @@ pub const SAFE_ANSI_BRIGHT_GREEN: u8 = 10;
 pub const SAFE_ANSI_BRIGHT_MAGENTA: u8 = 13;
 pub const SAFE_ANSI_BRIGHT_CYAN: u8 = 14;
 
-/// All safe ANSI color indices as an array
+/// All safe ANSI colour indices as an array
 /// These 10 colours are safe to use across all common terminal themes
 pub const SAFE_ANSI_COLOURS: [u8; 10] = [
     SAFE_ANSI_RED,

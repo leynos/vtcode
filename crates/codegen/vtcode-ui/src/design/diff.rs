@@ -12,7 +12,7 @@ pub use vtcode_commons::diff::{
     Chunk, DiffBundle, DiffHunk, DiffLine, DiffLineKind, DiffOptions, compute_diff, compute_diff_chunks,
 };
 
-/// Format a unified diff without ANSI color codes.
+/// Format a unified diff without ANSI colour codes.
 pub fn format_unified_diff(old: &str, new: &str, options: DiffOptions<'_>) -> String {
     let mut options = options;
     options.missing_newline_hint = false;
@@ -70,7 +70,7 @@ pub fn format_coloured_diff(hunks: &[DiffHunk], options: &DiffOptions<'_>) -> St
             display.push(prefix);
             display.push_str(&line.text);
 
-            // CRITICAL: Apply Reset before newline to prevent color bleeding
+            // CRITICAL: Apply Reset before newline to prevent colour bleeding
             let has_newline = display.ends_with('\n');
             let display_content = if has_newline {
                 &display[..display.len() - 1]

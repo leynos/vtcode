@@ -4,7 +4,7 @@ use crate::ansi_codes::RESET;
 use crate::colour_policy;
 use anstyle::{AnsiColor, Color, Effects, Style};
 
-/// Standard color palette with semantic names
+/// Standard colour palette with semantic names
 #[derive(Debug, Clone, Copy)]
 pub struct ColourPalette {
     pub success: Color, // Green
@@ -30,7 +30,7 @@ impl Default for ColourPalette {
     }
 }
 
-/// Render text with a single color and optional effects
+/// Render text with a single colour and optional effects
 pub fn render_styled(text: &str, colour: Color, effects: Option<String>) -> String {
     let mut style = Style::new();
     if colour_policy::colour_output_enabled() {
@@ -66,7 +66,7 @@ pub fn render_styled(text: &str, colour: Color, effects: Option<String>) -> Stri
     }
 }
 
-/// Build style from CSS/terminal color name
+/// Build style from CSS/terminal colour name
 pub fn style_from_colour_name(name: &str) -> Style {
     let (colour_name, dimmed) = if let Some(idx) = name.find(':') {
         let (colour, modifier) = name.split_at(idx);
@@ -104,7 +104,7 @@ pub fn dimmed_colour(colour: AnsiColor) -> Style {
     Style::new().dimmed().fg_color(Some(Color::Ansi(colour)))
 }
 
-/// Diff color palette for consistent git diff styling
+/// Diff colour palette for consistent git diff styling
 /// Uses standard ANSI colours without bold for accessibility and consistency.
 #[derive(Debug, Clone, Copy)]
 pub struct DiffColourPalette {

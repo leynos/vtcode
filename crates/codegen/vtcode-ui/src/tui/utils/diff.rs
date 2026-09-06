@@ -4,7 +4,7 @@
 
 pub use vtcode_commons::diff::*;
 
-/// Format a unified diff without ANSI color codes.
+/// Format a unified diff without ANSI colour codes.
 pub fn format_unified_diff(old: &str, new: &str, options: DiffOptions<'_>) -> String {
     crate::design::diff::format_unified_diff(old, new, options)
 }

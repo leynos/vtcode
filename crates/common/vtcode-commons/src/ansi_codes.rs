@@ -75,7 +75,7 @@ pub fn play_bell(enabled: bool) {
     emit_bell();
 }
 
-/// Determine whether the bell should play, honoring an env override.
+/// Determine whether the bell should play, honouring an env override.
 #[inline]
 fn is_bell_enabled(default_enabled: bool) -> bool {
     if let Ok(val) = std::env::var("VTCODE_HITL_BELL") {

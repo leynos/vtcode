@@ -5,7 +5,7 @@ use std::path::PathBuf;
 /// Errors produced by the session store.
 #[derive(Debug, thiserror::Error)]
 pub enum SessionStoreError {
-    /// IO error while reading or writing a session artifact.
+    /// IO error while reading or writing a session artefact.
     #[error("session store IO error at {path}: {source}")]
     Io {
         /// Path that triggered the error.
