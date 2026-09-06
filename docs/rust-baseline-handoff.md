@@ -762,3 +762,29 @@ This layer passed format, lint, build, type-check, workspace, and harness gates:
 Advisory checks passed in warning mode. Optional ast-grep was unavailable, and
 the same four rustdoc warnings remain under the existing configuration. Final
 document and proposed workflow-linter checks include this evidence update.
+
+## GitHub Actions validation gate
+
+The validation layer follows workflow repairs PR #67 and imports Netsuke
+revision `d0bb051fac02416cb38a8e76865b1b569d5ec163`. `make lint` now runs
+yamllint before actionlint, alongside the existing security checks. Either
+linter's non-zero status stops the gate. The policy requires YAML document
+markers and 120-column lines while preserving GitHub's `on` trigger key.
+
+CI pins yamllint 1.38.0 and actionlint 1.7.12. It verifies the actionlint
+archive checksum before invoking the installer at its reviewed commit. The
+exported downloader function and its archive variables cross the child-process
+boundary together, so installation consumes the verified bytes. Controlled
+tests cover every linter exit status and fail-closed download/checksum paths.
+CI uses the absolute Make binary, preserves its four-job build limit, and
+triggers on Makefile changes as well.
+
+The primary Rust toolchain, existing workflow security policy, and job selection
+are preserved. Markdown formatter installation remains a separate layer.
+
+This layer passed all 13 contract tests, format, lint, build, type-check,
+workspace, and harness gates: 10,094 workspace tests passed with 17 skipped,
+and all 67 harness tests passed. Advisory checks passed in warning mode;
+optional ast-grep was unavailable. The same four rustdoc warnings remain.
+Final contracts, workflow linters, and document checks include the CI job-limit
+correction and this evidence update.
