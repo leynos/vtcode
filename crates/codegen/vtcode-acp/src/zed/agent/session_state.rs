@@ -11,7 +11,7 @@ use vtcode_commons::fs::canonicalize_with_context_async;
 use vtcode_config::auth::AuthCredentialsStoreMode;
 use vtcode_core::config::models::{ModelId, Provider};
 use vtcode_core::config::types::ReasoningEffortLevel;
-use vtcode_core::core::threads::{ThreadBootstrap, build_thread_archive_metadata};
+use vtcode_core::core::threads::{ThreadBootstrap, build_thread_archive_metadata, messages_from_session_listing};
 use vtcode_core::hooks::{LifecycleHookEngine, SessionEndReason, SessionStartTrigger};
 use vtcode_core::llm::ModelResolver;
 use vtcode_core::llm::factory::get_factory;
@@ -24,6 +24,17 @@ use vtcode_core::utils::session_archive::{
 use super::super::constants::SESSION_PREFIX;
 use super::super::helpers::session_config_options;
 use super::super::types::{SessionData, SessionHandle};
+use super::tool_recovery::{RecoveryReport, repair_unresolved_tool_calls};
+
+fn repair_archived_tool_calls(listing: &mut SessionListing) -> RecoveryReport {
+    let mut messages = messages_from_session_listing(listing);
+    let report = repair_unresolved_tool_calls(&mut messages);
+    if report.repaired_calls > 0 {
+        listing.snapshot.total_messages = messages.len();
+        listing.snapshot.messages = messages.iter().map(SessionMessage::from).collect();
+    }
+    report
+}
 
 async fn canonical_session_workspace(requested_workspace: &std::path::Path) -> Result<std::path::PathBuf, acp::Error> {
     if !requested_workspace.is_absolute() {
@@ -592,10 +603,22 @@ impl ZedAgent {
         let listing = find_session_by_identifier(identifier)
             .await?
             .ok_or_else(|| anyhow::anyhow!("unknown archived session '{identifier}'"))?;
+        self.attach_thread_from_listing(session_id, identifier, workspace, listing)
+            .await
+    }
+
+    async fn attach_thread_from_listing(
+        &self,
+        session_id: &acp::SessionId,
+        identifier: &str,
+        workspace: &std::path::Path,
+        mut listing: SessionListing,
+    ) -> anyhow::Result<SessionHandle> {
         anyhow::ensure!(
             session_listing_matches_workspace(&listing, workspace),
             "archived session '{identifier}' belongs to a different workspace"
         );
+        let recovery = repair_archived_tool_calls(&mut listing);
         let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
         let thread = self
             .thread_manager
@@ -619,6 +642,16 @@ impl ZedAgent {
         );
         if let Ok(mut guard) = self.sessions.lock() {
             drop(guard.insert(session_id.clone(), handle.clone()));
+        }
+        if recovery.repaired_calls > 0 {
+            self.checkpoint_session(&handle)
+                .await
+                .context("Failed to persist repaired ACP tool-call history")?;
+            warn!(
+                session_id = %session_id,
+                repaired_calls = recovery.repaired_calls,
+                "Repaired unresolved tool calls while loading durable ACP session"
+            );
         }
         Ok(handle)
     }
@@ -969,6 +1002,7 @@ mod tests {
     use vtcode_core::core::agent::snapshots::{
         DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
     };
+    use vtcode_core::llm::provider::ToolCall;
     use vtcode_core::utils::session_archive::{SessionArchiveMetadata, SessionListing, SessionSnapshot};
 
     static HISTORY_TEST_LOCK: LazyLock<AsyncMutex<()>> = LazyLock::new(|| AsyncMutex::new(()));
@@ -1103,6 +1137,35 @@ mod tests {
         assert_eq!(model(&handle), "gpt-5.6-sol");
     }
 
+    #[test]
+    fn legacy_archive_repair_closes_tool_call_before_later_user_message() {
+        let temp = TempDir::new().unwrap();
+        let mut listing = archived_listing("legacy-unresolved", temp.path(), "continue");
+        let unresolved = Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                "legacy-call".to_string(),
+                "apply_patch".to_string(),
+                "{}".to_string(),
+            )],
+        );
+        listing.snapshot.messages = vec![
+            SessionMessage::from(&unresolved),
+            SessionMessage::from(&Message::user("continue".to_string())),
+        ];
+
+        let report = repair_archived_tool_calls(&mut listing);
+        let repaired = messages_from_session_listing(&listing);
+
+        assert_eq!(report.repaired_calls, 1);
+        assert_eq!(repaired.len(), 3);
+        assert_eq!(repaired[0].role, MessageRole::Assistant);
+        assert_eq!(repaired[1].role, MessageRole::Tool);
+        assert_eq!(repaired[1].tool_call_id.as_deref(), Some("legacy-call"));
+        assert!(repaired[1].content.as_text().contains("\"replayed\":false"));
+        assert_eq!(repaired[2].role, MessageRole::User);
+    }
+
     #[tokio::test]
     async fn checkpoint_session_persists_messages_for_a_fresh_runtime() {
         let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
@@ -1152,6 +1215,56 @@ mod tests {
         assert_eq!(fresh_thread.messages().len(), 2);
         assert_eq!(fresh_thread.messages()[0].content.as_text(), "continue");
         assert_eq!(fresh_thread.messages()[1].content.as_text(), "resumed response");
+    }
+
+    #[tokio::test]
+    async fn attaching_legacy_archive_repairs_without_replaying_mutating_call() {
+        let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+        let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+        let temp = TempDir::new().unwrap();
+        let target = temp.path().join("must-not-change.txt");
+        fs::write(&target, "original\n").unwrap();
+        let patch = format!(
+            "*** Begin Patch\n*** Update File: {}\n@@\n-original\n+replayed\n*** End Patch\n",
+            target.display()
+        );
+        let unresolved = Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                "legacy-apply-patch".to_string(),
+                "apply_patch".to_string(),
+                serde_json::json!({"patch": patch}).to_string(),
+            )],
+        );
+        let mut listing = archived_listing("legacy-mutating", temp.path(), "edit the file");
+        listing.snapshot.messages = vec![SessionMessage::from(&unresolved)];
+        listing.snapshot.total_messages = 1;
+        let archive_path = listing.path.clone();
+        let agent = build_agent(temp.path()).await;
+
+        let handle = agent
+            .attach_thread_from_listing(
+                &acp::SessionId::new("loaded-legacy-mutating"),
+                "legacy-mutating",
+                temp.path(),
+                listing,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(fs::read_to_string(&target).unwrap(), "original\n");
+        let messages = handle.data.lock().unwrap().thread.messages();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].role, MessageRole::Assistant);
+        assert_eq!(messages[1].role, MessageRole::Tool);
+        let recovery = messages[1].content.as_text();
+        assert!(recovery.contains("\"replayed\":false"));
+        assert!(recovery.contains("Verify the current workspace state"));
+        assert!(recovery.contains("resubmit the tool call only if"));
+
+        let persisted: SessionSnapshot = serde_json::from_str(&fs::read_to_string(archive_path).unwrap()).unwrap();
+        assert_eq!(persisted.messages.len(), 2);
+        assert_eq!(persisted.messages[1].role, MessageRole::Tool);
     }
 
     fn archived_listing(identifier: &str, workspace: &Path, prompt: &str) -> SessionListing {
