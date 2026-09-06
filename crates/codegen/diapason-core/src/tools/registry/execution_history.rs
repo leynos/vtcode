@@ -1734,7 +1734,7 @@ mod tests {
             );
             prop_assert!(
                 replays_code_search(null_path, &explicit_defaults),
-                "a null path must normalise to the explicit root path"
+                "a null path must normalize to the explicit root path"
             );
         }
     }
