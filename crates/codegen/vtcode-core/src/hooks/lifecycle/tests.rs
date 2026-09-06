@@ -54,7 +54,7 @@ async fn test_lifecycle_hook_engine_creation() {
             matcher: None,
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "echo 'test'".into(),
+                command: "cat >/dev/null; echo 'test'".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -81,7 +81,7 @@ async fn test_session_start_hook_execution() {
             matcher: None, // Match all
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "printf '{\"additional_context\": \"Session started successfully\"}'".into(),
+                command: "cat >/dev/null; printf '{\"additional_context\": \"Session started successfully\"}'".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -113,7 +113,7 @@ async fn test_session_start_hook_with_plain_text_output() {
             matcher: None, // Match all
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "printf 'Plain text context'".into(),
+                command: "cat >/dev/null; printf 'Plain text context'".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -143,7 +143,7 @@ async fn test_session_start_new_session_source_is_distinct_from_startup() {
             matcher: Some("new_session".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "echo 'Fresh session hook fired'".into(),
+                command: "cat >/dev/null; echo 'Fresh session hook fired'".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -190,7 +190,7 @@ async fn test_session_end_hook_execution() {
             matcher: None, // Match all
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "echo 'Cleanup complete'".into(),
+                command: "cat >/dev/null; echo 'Cleanup complete'".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -223,7 +223,7 @@ async fn test_notification_hook_execution_uses_notification_type_matcher() {
             matcher: Some("permission_prompt".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "echo 'Notification hook fired'".into(),
+                command: "cat >/dev/null; echo 'Notification hook fired'".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -259,7 +259,7 @@ async fn test_pre_compact_hook_execution_uses_trigger_matcher() {
             matcher: Some("auto".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "echo 'Compaction hook fired'".into(),
+                command: "cat >/dev/null; echo 'Compaction hook fired'".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -298,7 +298,7 @@ async fn test_subagent_start_payload_includes_thread_context() {
                 matcher: None,
                 hooks: vec![HookCommandConfig {
                     kind: Default::default(),
-                    command: "echo payload".into(),
+                    command: "cat >/dev/null; echo payload".into(),
                     timeout_seconds: None,
                 }],
             }],
@@ -343,7 +343,7 @@ async fn test_subagent_start_hook_execution_uses_agent_name_matcher() {
             matcher: Some("worker".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "echo 'Subagent start matched'".into(),
+                command: "cat >/dev/null; echo 'Subagent start matched'".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -375,7 +375,7 @@ async fn test_subagent_stop_hook_execution_uses_agent_name_matcher() {
             matcher: Some("worker".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "echo 'Subagent stop matched'".into(),
+                command: "cat >/dev/null; echo 'Subagent stop matched'".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -408,7 +408,7 @@ async fn test_user_prompt_submit_payload_includes_turn_id() {
                 matcher: None,
                 hooks: vec![HookCommandConfig {
                     kind: Default::default(),
-                    command: "echo payload".into(),
+                    command: "cat >/dev/null; echo payload".into(),
                     timeout_seconds: None,
                 }],
             }],
@@ -505,7 +505,7 @@ async fn test_session_end_payload_includes_turn_id() {
                 matcher: None,
                 hooks: vec![HookCommandConfig {
                     kind: Default::default(),
-                    command: "echo payload".into(),
+                    command: "cat >/dev/null; echo payload".into(),
                     timeout_seconds: None,
                 }],
             }],
@@ -538,7 +538,7 @@ async fn test_user_prompt_submit_hook_allows_prompt_by_default() {
             matcher: None, // Match all prompts
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "printf 'Processing prompt...'".into(),
+                command: "cat >/dev/null; printf 'Processing prompt...'".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -574,7 +574,7 @@ async fn test_user_prompt_submit_hook_blocks_prompt_with_exit_code_2() {
             matcher: None, // Match all prompts
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "echo 'Prompt blocked' >&2; exit 2".into(),
+                command: "cat >/dev/null; echo 'Prompt blocked' >&2; exit 2".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -608,7 +608,8 @@ async fn test_user_prompt_submit_hook_blocks_prompt_preserves_stdout_context() {
             matcher: None,
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "printf 'Retry with a narrower scope.'; echo 'Prompt blocked' >&2; exit 2".into(),
+                command: "cat >/dev/null; printf 'Retry with a narrower scope.'; echo 'Prompt blocked' >&2; exit 2"
+                    .into(),
                 timeout_seconds: None,
             }],
         }],
@@ -641,7 +642,7 @@ async fn test_session_start_json_like_stdout_failure_does_not_become_context() {
             matcher: None,
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: r#"printf '{"additional_context":"missing brace"'"#.into(),
+                command: r#"cat >/dev/null; printf '{"additional_context":"missing brace"'"#.into(),
                 timeout_seconds: None,
             }],
         }],
@@ -675,7 +676,7 @@ async fn test_session_start_structured_message_and_context_are_both_applied() {
             matcher: None,
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: r#"printf '{"systemMessage":"Session banner","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":["Context one","Context two"]}}'"#.into(),
+                command: r#"cat >/dev/null; printf '{"systemMessage":"Session banner","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":["Context one","Context two"]}}'"#.into(),
                 timeout_seconds: None,
             }],
         }],
@@ -704,7 +705,7 @@ async fn test_user_prompt_submit_block_requires_stderr_feedback() {
             matcher: None,
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "exit 2".into(),
+                command: "cat >/dev/null; exit 2".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -742,7 +743,7 @@ async fn test_user_prompt_submit_json_block_requires_reason() {
             matcher: None,
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: r#"printf '{"decision":"block"}'"#.into(),
+                command: r#"cat >/dev/null; printf '{"decision":"block"}'"#.into(),
                 timeout_seconds: None,
             }],
         }],
@@ -780,7 +781,7 @@ async fn primary_agent_hooks_dispatch_after_global_hooks() {
         matcher: None,
         hooks: vec![HookCommandConfig {
             kind: Default::default(),
-            command: "printf 'global\\n' >> hook-order.txt".into(),
+            command: "cat >/dev/null; printf 'global\\n' >> hook-order.txt".into(),
             timeout_seconds: None,
         }],
     }];
@@ -790,7 +791,7 @@ async fn primary_agent_hooks_dispatch_after_global_hooks() {
         matcher: None,
         hooks: vec![HookCommandConfig {
             kind: Default::default(),
-            command: "printf 'primary\\n' >> hook-order.txt".into(),
+            command: "cat >/dev/null; printf 'primary\\n' >> hook-order.txt".into(),
             timeout_seconds: None,
         }],
     }];
