@@ -51,6 +51,7 @@ impl SubagentController {
             record.status = SubagentStatus::Queued;
             record.updated_at = Utc::now();
         }
+        self.publish_child_status(child_id).await;
 
         // Spawn the task after releasing the lock.
         let controller = self.clone();
@@ -111,7 +112,7 @@ impl SubagentController {
             ))
             .await;
 
-            let (has_more_work, hook_payload) = {
+            let (has_more_work, hook_payload, progress_entry) = {
                 let mut state = self.state.write().await;
                 let Some(record) = state.children.get_mut(child_id) else {
                     return;
@@ -119,8 +120,10 @@ impl SubagentController {
                 record.updated_at = Utc::now();
                 let has_more_work = record.apply_result(execute);
                 let hook_payload = (!has_more_work).then(|| record.build_hook_payload());
-                (has_more_work, hook_payload)
+                let progress_entry = record.build_status_entry();
+                (has_more_work, hook_payload, progress_entry)
             };
+            self.publish_subagent_progress(progress_entry).await;
 
             if let Some((
                 parent_session_id,
@@ -213,6 +216,7 @@ impl SubagentController {
                 record.child_controller.clone(),
             )
         };
+        self.publish_child_status(child_id).await;
 
         // Use the worktree path as the effective workspace root if the
         // subagent was spawned with isolation=worktree.

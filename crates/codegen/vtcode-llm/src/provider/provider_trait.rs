@@ -235,7 +235,7 @@ pub trait LLMProvider: Send + Sync {
     /// Whether the selected provider/model can carry Anthropic's native
     /// turn-scoped system-message lifecycle field on the wire.
     ///
-    /// This is intentionally narrower than [`supports_context_edits`]: a
+    /// This is intentionally narrower than `supports_context_edits`: a
     /// provider can expose Anthropic-shaped requests without supporting the
     /// `clear_at` field, and a provider name does not necessarily identify the
     /// wire protocol for every model. The runtime keeps the typed marker in

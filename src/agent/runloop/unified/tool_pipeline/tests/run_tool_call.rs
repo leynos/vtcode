@@ -904,7 +904,7 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
         )
     };
 
-    let first = run_tool_call(
+    let first = Box::pin(run_tool_call(
         &mut ctx,
         &search_call("search_before_patch"),
         &ctrl_c_state,
@@ -915,7 +915,7 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
         None,
         0,
         false,
-    )
+    ))
     .await
     .expect("initial code_search should run");
     match first.status {
@@ -931,14 +931,24 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
         tools::APPLY_PATCH.to_string(),
         json!({"input": "*** Begin Patch\n*** Not An Operation\n*** End Patch\n"}).to_string(),
     );
-    let failed =
-        run_tool_call(&mut ctx, &failed_patch, &ctrl_c_state, &ctrl_c_notify, None, None, true, None, 0, false)
-            .await
-            .expect("failed apply_patch should produce a pipeline outcome");
+    let failed = Box::pin(run_tool_call(
+        &mut ctx,
+        &failed_patch,
+        &ctrl_c_state,
+        &ctrl_c_notify,
+        None,
+        None,
+        true,
+        None,
+        0,
+        false,
+    ))
+    .await
+    .expect("failed apply_patch should produce a pipeline outcome");
     assert!(matches!(failed.status, ToolExecutionStatus::Failure { .. }));
     assert_eq!(result_cache.read().await.stats().current_size, 1, "a failed patch must preserve cached reads");
 
-    let cached = run_tool_call(
+    let cached = Box::pin(run_tool_call(
         &mut ctx,
         &search_call("search_after_failed_patch"),
         &ctrl_c_state,
@@ -949,7 +959,7 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
         None,
         0,
         false,
-    )
+    ))
     .await
     .expect("search after failed patch should run");
     assert!(matches!(
@@ -964,10 +974,20 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
         tools::APPLY_PATCH.to_string(),
         json!({"input": patch}).to_string(),
     );
-    let patched =
-        run_tool_call(&mut ctx, &successful_patch, &ctrl_c_state, &ctrl_c_notify, None, None, true, None, 0, false)
-            .await
-            .expect("successful apply_patch should run");
+    let patched = Box::pin(run_tool_call(
+        &mut ctx,
+        &successful_patch,
+        &ctrl_c_state,
+        &ctrl_c_notify,
+        None,
+        None,
+        true,
+        None,
+        0,
+        false,
+    ))
+    .await
+    .expect("successful apply_patch should run");
     match patched.status {
         ToolExecutionStatus::Success { modified_files, .. } => {
             assert_eq!(
@@ -987,7 +1007,7 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
         "successful patch metadata must invalidate the scoped search cache"
     );
 
-    let fresh = run_tool_call(
+    let fresh = Box::pin(run_tool_call(
         &mut ctx,
         &search_call("search_after_successful_patch"),
         &ctrl_c_state,
@@ -998,7 +1018,7 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
         None,
         0,
         false,
-    )
+    ))
     .await
     .expect("search after successful patch should run");
     match fresh.status {
@@ -1022,9 +1042,20 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
         })
         .to_string(),
     );
-    let shell = run_tool_call(&mut ctx, &shell_call, &ctrl_c_state, &ctrl_c_notify, None, None, true, None, 0, false)
-        .await
-        .expect("shell mutation should run");
+    let shell = Box::pin(run_tool_call(
+        &mut ctx,
+        &shell_call,
+        &ctrl_c_state,
+        &ctrl_c_notify,
+        None,
+        None,
+        true,
+        None,
+        0,
+        false,
+    ))
+    .await
+    .expect("shell mutation should run");
     assert!(matches!(shell.status, ToolExecutionStatus::Success { .. }));
     assert_eq!(
         result_cache.read().await.stats().current_size,

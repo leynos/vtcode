@@ -17,7 +17,7 @@ use vtcode_core::config::tool_call_delay_for_rate;
 use vtcode_core::config::types::{
     AgentConfig as CoreAgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference,
 };
-use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolProfile, ToolsConfig};
+use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolProfile, ToolsConfig, VTCodeConfig};
 use vtcode_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS};
 use vtcode_core::llm::provider::{MessageRole, ToolDefinition};
 
@@ -26,6 +26,14 @@ async fn build_agent(workspace: &Path) -> ZedAgent {
 }
 
 async fn build_agent_with_tools_config(workspace: &Path, tools_config: ToolsConfig) -> ZedAgent {
+    build_agent_with_config(workspace, tools_config, None).await
+}
+
+async fn build_agent_with_config(
+    workspace: &Path,
+    tools_config: ToolsConfig,
+    vt_cfg: Option<&VTCodeConfig>,
+) -> ZedAgent {
     let core_config = CoreAgentConfig {
         model: "test-model".to_string(),
         api_key: String::new(),
@@ -58,16 +66,21 @@ async fn build_agent_with_tools_config(workspace: &Path, tools_config: ToolsConf
     let discovered = discover_subagents(&discovery_input).expect("discover primary agents");
     let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, "duck");
 
-    ZedAgent::new(
+    Box::pin(ZedAgent::new(
         core_config,
         AuthCredentialsStoreMode::default(),
         zed_config,
         tools_config,
         CommandsConfig::default(),
+        &[],
+        vtcode_config::TimeoutsConfig::default(),
         String::new(),
         Some("Zed".to_string()),
         primary_agents,
-    )
+        false,
+        vt_cfg,
+        None,
+    ))
     .await
 }
 
@@ -97,6 +110,29 @@ async fn tool_loop_limit_uses_tools_config() {
     assert!(!agent.tool_loop_limit_reached(1));
     assert!(agent.tool_loop_limit_reached(2));
     assert!(agent.tool_loop_limit_message().contains("maximum tool loops (2)"));
+}
+
+#[tokio::test]
+async fn enabled_subagents_are_exposed_to_acp_build_agents() {
+    let temp = TempDir::new().unwrap();
+    let mut vt_cfg = VTCodeConfig::default();
+    vt_cfg.subagents.enabled = true;
+    vt_cfg.subagents.background.auto_restore = false;
+    let agent = build_agent_with_config(temp.path(), ToolsConfig::default(), Some(&vt_cfg)).await;
+
+    assert!(agent.local_tool_registry.has_subagent_controller());
+    let names = definition_names(agent.tool_definitions(true, &[], "build").expect("build agent tools"));
+    assert!(names.iter().any(|name| name == tools::AGENT));
+}
+
+#[tokio::test]
+async fn unavailable_subagent_controller_keeps_agent_tool_hidden() {
+    let temp = TempDir::new().unwrap();
+    let agent = build_agent(temp.path()).await;
+
+    assert!(!agent.local_tool_registry.has_subagent_controller());
+    let names = definition_names(agent.tool_definitions(true, &[], "build").expect("build agent tools"));
+    assert!(!names.iter().any(|name| name == tools::AGENT));
 }
 
 fn definition_names(definitions: Vec<ToolDefinition>) -> Vec<String> {
@@ -253,10 +289,17 @@ async fn primary_agent_catalogues_respect_inspection_and_mutation_permissions() 
             .expect("resolve build catalogue"),
     );
 
-    assert_eq!(duck_names, vec![tools::LIST_FILES.to_string()]);
+    assert_eq!(duck_names, vec![tools::LIST_FILES.to_string(), tools::TASK_TRACKER.to_string()]);
     // Planning permits shell inspection; its execution policy separately
     // rejects mutations. Duck deliberately has no shell capability.
-    assert_eq!(plan_names, vec![tools::LIST_FILES.to_string(), tools::EXEC_COMMAND.to_string()]);
+    assert_eq!(
+        plan_names,
+        vec![
+            tools::LIST_FILES.to_string(),
+            tools::EXEC_COMMAND.to_string(),
+            tools::TASK_TRACKER.to_string(),
+        ]
+    );
     let removed_tool = format!("switch_{}", "mode");
     assert!(!build_names.contains(&removed_tool));
     assert!(build_names.contains(&tools::LIST_FILES.to_string()));
@@ -399,6 +442,25 @@ async fn local_tool_execution_uses_registry_request_path() {
         .await;
 
     assert_eq!(report.status, crate::acp::ToolCallStatus::Completed);
+    assert_eq!(report.content.len(), 3);
+    let rendered_blocks = report
+        .content
+        .iter()
+        .map(|block| {
+            let crate::acp::ToolCallContent::Content(content) = block else {
+                panic!("exec_command output should use ACP text content blocks");
+            };
+            let crate::acp::ContentBlock::Text(text) = &content.content else {
+                panic!("exec_command output should be represented as ACP text");
+            };
+            text.text.as_str()
+        })
+        .collect::<Vec<_>>();
+    assert!(rendered_blocks[0].contains("Command: printf sample.txt"));
+    assert!(rendered_blocks[0].contains("Working directory:"));
+    assert!(rendered_blocks[0].contains("Exit code: 0"));
+    assert_eq!(rendered_blocks[1], "Command output\nsample.txt");
+    assert!(rendered_blocks[2].contains("Execution details"));
     let payload = report.raw_output.expect("successful tool output");
     assert_eq!(payload["status"], "success");
     assert_eq!(payload["tool"], tools::EXEC_COMMAND);

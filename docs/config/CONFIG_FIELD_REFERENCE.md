@@ -1,5 +1,7 @@
 # Config Field Reference
 
+<!-- markdownlint-disable MD013 MD060 -->
+
 Generated from `vtcode-config` schema (`VTCodeConfig`) for complete field coverage.
 
 Regenerate:
@@ -11,6 +13,10 @@ python3 scripts/generate_config_field_reference.py
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `acp.enabled` | `boolean` | no | `false` | Globally enable the ACP bridge |
+| `acp.audit.enabled` | `boolean` | no | `false` | Persist ACP tool invocation metadata as hash-only JSONL audit entries |
+| `acp.audit.max_files` | `integer` | no | `4` | Maximum number of ACP audit files to retain |
+| `acp.audit.max_size_bytes` | `integer` | no | `33554432` | Maximum active ACP audit file size before rotation |
+| `acp.audit.path` | `string` | no | `"~/.vtcode/audit/tools.jsonl"` | JSONL path for the opt-in ACP tool audit |
 | `acp.zed.auth.auth_url` | `null \| string` | no | `null` | URL where users can get their API key (optional, for UI display) |
 | `acp.zed.auth.default_method` | `string` | no | `"agent"` | Default authentication method for ACP agents Options: "agent" (default - agent handles auth), "env_var", "terminal" |
 | `acp.zed.auth.env_var_name` | `null \| string` | no | `null` | Environment variable name for auth (used when default_method is "env_var") Examples: "OPENAI_API_KEY", "ANTHROPIC_API_KEY" |
@@ -68,6 +74,7 @@ python3 scripts/generate_config_field_reference.py
 | `agent.harness.max_budget_usd` | `null \| number` | no | `null` | Optional maximum estimated API cost in USD before VT Code stops the session. |
 | `agent.harness.max_parallel_tool_calls` | `integer` | no | `4` | Maximum number of tool calls that may execute concurrently within a single parallel batch. Set to `0` to disable the cap (unlimited concurrency). Default: 4. |
 | `agent.harness.max_revision_rounds` | `integer` | no | `2` | Maximum generator revision rounds after evaluator rejection. |
+| `agent.harness.max_tool_calls_per_session` | `integer \| null` | no | `null` | Optional maximum number of tool calls allowed per session. Set to `0` to disable the cap. When omitted, each runtime keeps its existing session-budget policy. |
 | `agent.harness.max_tool_calls_per_turn` | `integer` | no | `120` | Maximum number of tool calls allowed per turn. Defaults to `120`. Set to `0` to disable the cap. |
 | `agent.harness.max_tool_retries` | `integer` | no | `2` | Maximum retries for retryable tool errors |
 | `agent.harness.max_tool_wall_clock_secs` | `integer` | no | `600` | Maximum wall clock time (seconds) for tool execution in a turn |
@@ -287,6 +294,16 @@ python3 scripts/generate_config_field_reference.py
 | `custom_providers[].temperature` | `null \| number` | no | `-` | Optional sampling temperature default (0.0-2.0) for models served by this endpoint unless a profile overrides it. |
 | `custom_providers[].top_k` | `integer \| null` | no | `-` | Optional top-k default (>= 0). |
 | `custom_providers[].top_p` | `null \| number` | no | `-` | Optional nucleus-sampling default (0.0-1.0). |
+| `custom_providers[].request_policy.connect_timeout_seconds` | `integer` | no | `30` | Maximum time to establish the provider connection. Zero disables the limit. |
+| `custom_providers[].request_policy.first_token_timeout_seconds` | `integer` | no | `180` | Maximum time to wait for the first streamed event. Zero disables the limit. |
+| `custom_providers[].request_policy.max_in_flight_requests` | `integer \| null` | no | `-` | Maximum number of concurrent requests for this provider within one VT Code process. Omit to leave concurrency unrestricted. |
+| `custom_providers[].request_policy.max_retries` | `integer` | no | `2` | Number of retries after the initial request for transient failures. Streams are retried only before text or reasoning is published. |
+| `custom_providers[].request_policy.queue_timeout_seconds` | `integer` | no | `600` | Maximum time, in seconds, to wait for an in-process provider permit before the request fails. |
+| `custom_providers[].request_policy.retry_initial_backoff_ms` | `integer` | no | `10000` | Initial delay between retries, in milliseconds. |
+| `custom_providers[].request_policy.retry_jitter` | `boolean` | no | `true` | Add deterministic jitter to retry delays to avoid synchronized reconnects. |
+| `custom_providers[].request_policy.retry_max_backoff_ms` | `integer` | no | `160000` | Maximum delay between retries, in milliseconds. |
+| `custom_providers[].request_policy.stream_idle_timeout_seconds` | `integer` | no | `120` | Maximum time between streamed events. Zero disables the limit. |
+| `custom_providers[].request_policy.total_generation_timeout_seconds` | `integer` | no | `600` | Maximum duration of one provider generation attempt. Zero disables the limit. |
 | `debug.debug_log_dir` | `null \| string` | no | `null` | Directory for debug logs |
 | `debug.enable_tracing` | `boolean` | no | `false` | Enable structured logging for development and troubleshooting |
 | `debug.max_debug_log_age_days` | `integer` | no | `7` | Maximum age of debug logs to keep (in days) |
@@ -772,11 +789,14 @@ python3 scripts/generate_config_field_reference.py
 | `timeouts.adaptive_decay_ratio` | `number` | no | `0.875` | Adaptive timeout decay ratio (0.1-1.0). Lower relaxes faster back to ceiling. |
 | `timeouts.adaptive_min_floor_ms` | `integer` | no | `1000` | Minimum timeout floor in milliseconds when applying adaptive clamps. |
 | `timeouts.adaptive_success_streak` | `integer` | no | `5` | Number of consecutive successes before relaxing adaptive ceiling. |
+| `timeouts.connect_timeout_seconds` | `integer` | no | `30` | Maximum duration (in seconds) for establishing provider HTTP connections. |
 | `timeouts.default_ceiling_seconds` | `integer` | no | `180` | Maximum duration (in seconds) for standard, non-PTY tools. |
+| `timeouts.first_token_timeout_seconds` | `integer` | no | `180` | Maximum duration (in seconds) to wait for the first streamed token. |
 | `timeouts.long_running_command_ceiling_seconds` | `integer` | no | `3600` | Maximum duration (in seconds) for an explicit long-running command wait. |
 | `timeouts.mcp_ceiling_seconds` | `integer` | no | `120` | Maximum duration (in seconds) for MCP calls. |
 | `timeouts.pty_ceiling_seconds` | `integer` | no | `300` | Maximum duration (in seconds) for PTY-backed commands. |
 | `timeouts.streaming_ceiling_seconds` | `integer` | no | `600` | Maximum duration (in seconds) for streaming API responses. |
+| `timeouts.stream_idle_timeout_seconds` | `integer` | no | `120` | Maximum duration (in seconds) between streamed tokens. |
 | `timeouts.warning_threshold_percent` | `integer` | no | `80` | Percentage (0-100) of the ceiling after which the UI should warn. |
 | `tools.client_tool_search` | `boolean` | no | `true` | Enables client-local deferred tool loading for providers without a hosted tool search (e.g. Gemini). When enabled, tools flagged `defer_loading: true` are omitted from the request payload instead of being sent eagerly, and a compact summary of what is discoverable is appended to the system prompt; the model loads them via the local MCP discovery tools. Enabled by default because eager MCP schemas are the dominant source of token inflation. |
 | `tools.default_policy` | `string` | no | `"prompt"` | Default policy for tools not explicitly listed |

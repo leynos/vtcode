@@ -247,11 +247,44 @@ api_key_env = "MYCORP_API_KEY"
 model = "gpt-5.6-sol"
 # context_window = 256000   # Optional context window size in tokens (provider capability)
 # api_format = "auto"      # Optional provider-level API format hint: auto|openai-chat|openai-responses|anthropic-messages
+
+[custom_providers.request_policy]
+max_in_flight_requests = 4
+queue_timeout_seconds = 120
+max_retries = 3
+retry_initial_backoff_ms = 10000
+retry_max_backoff_ms = 160000
+retry_jitter = true
+connect_timeout_seconds = 30
+first_token_timeout_seconds = 180
+stream_idle_timeout_seconds = 120
+total_generation_timeout_seconds = 600
 ```
 
 Notes:
 - `context_window` declares the provider's capability in tokens and drives the context size shown in the UI, compaction thresholds, and preflight token checks.
 - `api_format` is a hint to VT Code about how this provider / endpoint expects model traffic. Accepted values are: `auto`, `openai-chat`, `openai-responses`, and `anthropic-messages`. When omitted VT Code preserves legacy behavior and will try to autodetect; an explicit value is honored and VT Code will not silently fallback to a different format.
+- `request_policy` controls admission and transient retries for this provider.
+  The defaults are `queue_timeout_seconds = 600`, `max_retries = 2`,
+  `retry_initial_backoff_ms = 10000`, `retry_max_backoff_ms = 160000`, and
+  `retry_jitter = true`. Provider deadlines default to 30 seconds to connect,
+  180 seconds to the first streamed token, 120 seconds between streamed
+  tokens, and 600 seconds for the whole generation. Set an individual timeout
+  to `0` to disable it; omit `max_in_flight_requests` for unrestricted
+  concurrency.
+- Admission is per provider and per VT Code process. Requests for every model
+  routed through one configured provider share its limit, while another
+  provider has its own limit. Separate VT Code processes do not share permits
+  or counters, so use the provider gateway for an installation-wide limit.
+- In ACP sessions, a request waits for an in-process permit for at most
+  `queue_timeout_seconds`. Transient failures are retried with bounded backoff;
+  a stream is retried only before text or reasoning has been published.
+  Connection setup, time to first token, inter-token idle time, and total
+  generation time are measured independently, so a healthy long-running
+  stream is not mistaken for a stalled one.
+  Cancellation stops the wait, backoff, or request and prevents a cancelled
+  turn from publishing late output. Exhausted failures retain the user request
+  and completed tool context for a subsequent `continue` prompt.
 
 Capability defaults and per-model profiles
 
@@ -702,11 +735,31 @@ Notes:
 - `agent.harness.auto_compaction_threshold_tokens` applies to both provider-native compaction and VT Code's local fallback compaction. It remains authoritative when set, but never exceeds the provider's hard context capacity.
 - When the harness threshold is unset, VT Code derives the effective hard threshold from `min(provider_context_size, context.max_context_tokens)` and applies the 90% trigger ratio. The default 160,000-token session budget therefore triggers at approximately 144,000 tokens for providers with larger context windows.
 - `context.max_context_tokens = 0` preserves provider-only threshold resolution for compatibility; a known provider capacity is still a hard upper bound.
-- `context.dynamic.persist_history = true` lets VT Code persist compaction artifacts and the session memory envelope so later resumes and summarized forks can reuse that context.
+- `context.dynamic.enabled = true` and `context.dynamic.persist_history = true`
+  let VT Code persist compaction artifacts and the session memory envelope for
+  summarisation and working-memory recovery. These artifacts are distinct from
+  the durable session archive used for ACP resume; see [ACP storage
+  boundaries](../guides/zed-acp.md#storage-boundaries).
 - `context.dynamic.retained_user_messages` controls how many recent real user messages VT Code preserves verbatim on the local fallback compaction path and in summarized forks. The default is `4`.
 - The session memory envelope is VT Code's durable working-memory artifact. It is refreshed at turn boundaries and after completed child-agent results, then persisted beside history artifacts as `.memory.json`.
 - A soft compaction threshold at 90% of the effective hard threshold defers compaction to the next outer turn boundary; the hard threshold compacts before the next model request. Compaction does not issue a hidden summary request from inside an active tool loop.
 - Steering follow-ups are stored in schema-version 3 envelopes as UUID-tagged intents: at most 16 pending intents and the most recent 64 applied IDs are retained for restart recovery.
+
+### Durable session archives
+
+Durable ACP session archives are controlled separately by `[history]`:
+
+```toml
+[history]
+persistence = "file"  # default; use "none" to disable durable archives
+# max_bytes = 1048576   # Optional per-archive snapshot bound
+```
+
+With `persistence = "file"`, ACP `session/list` discovers the saved archives
+for a requested workspace, and `session/load` and `session/resume` restore an
+archive by its exact session ID. `persistence = "none"` disables archive
+discovery and cross-process resume. These settings do not control
+`context.dynamic` compaction artifacts or the opt-in `[acp.audit]` JSONL audit.
 
 ## MCP integration
 

@@ -32,9 +32,12 @@ percent-encoding = "2.3"
 vtcode-core = { workspace = true }
 vtcode-config = { workspace = true }
 vtcode-commons = { workspace = true }
+vtcode-safety = { workspace = true }
 
 [dev-dependencies]
 assert_fs = { workspace = true }
+proptest = "1.11"
+toml = { workspace = true }
 
 [lib]
 doctest = false

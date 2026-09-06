@@ -253,6 +253,13 @@ and directs the operator to resume after reducing context or switching models.
 Other blocked reasons use a generic retry handoff. Existing recovery text is
 reused when it was already published, so the assistant item is never duplicated.
 
+ACP sessions use the same compaction orchestrator before provider admission.
+The ACP prompt budget includes resolved system and session messages plus tool
+definitions, and reserves output capacity and a safety margin from the
+provider's effective context window. When compaction changes the history, ACP
+replaces the live thread and persists a durable checkpoint before rebuilding
+the provider request.
+
 The fork/branch history builder (`build_summarized_fork_history`) deliberately
 omits the continuity tail and produces a minimal resume artifact (envelope +
 summary + retained users only).

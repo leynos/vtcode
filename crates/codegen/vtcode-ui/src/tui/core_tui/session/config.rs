@@ -54,8 +54,8 @@ pub struct AppearanceConfig {
     ///
     /// Deprecated: retained for serialized-config compatibility only (including
     /// the `vtcode-core` mirror field, which carries the same note). The live
-    /// transcript uses [`crate::tui::config::constants::ui::INLINE_TRANSCRIPT_BOTTOM_PADDING`]
-    /// via [`crate::tui::config::constants::ui::effective_transcript_bottom_padding`];
+    /// transcript uses the `INLINE_TRANSCRIPT_BOTTOM_PADDING` constant via
+    /// `effective_transcript_bottom_padding`;
     /// this field is never read at render time.
     pub transcript_bottom_padding: u16,
 

@@ -48,6 +48,11 @@ Open your `vtcode.toml` (project-local copy or the default in the repo root) and
 [acp]
 enabled = true
 
+    [acp.audit]
+    # Optional; disabled by default. Entries contain metadata and hashes only.
+    enabled = false
+    path = "~/.vtcode/audit/acp-tools.jsonl"
+
     [acp.zed]
     enabled = true
     transport = "stdio"
@@ -71,6 +76,56 @@ Environment overrides provide the same control surface:
 When targeting models that cannot call tools (for example `openai/gpt-oss-20b:free` on OpenRouter),
 disable the `read_file` bridge. VT Code emits reasoning notices and structured logs when it detects
 models without function calling and automatically downgrades to plain completions.
+
+### Session working directories
+
+The ACP client selects the workspace for each new session through the absolute
+`cwd` in `session/new`. VT Code canonicalizes that directory before creating
+the session and rejects missing, relative, or non-directory paths. It does not
+silently fall back to the directory from which the ACP server was launched.
+
+The canonical session workspace scopes archive metadata, system instructions,
+prompt templates, lifecycle hooks, compaction artefacts, local and ACP tools,
+MCP sandboxing, and subagents. Multiple sessions on one ACP connection may use
+different workspaces; their tool registries and mutable harness state are kept
+separate.
+
+### MCP providers in ACP sessions
+
+ACP sessions initialise the enabled providers from the effective session MCP configuration before
+the first prompt. This makes the providers' direct MCP proxy tools available in the initial model
+tool catalogue rather than waiting for a later discovery step. Configure the providers and the
+global MCP switch in the [`[mcp]` configuration](mcp-integration.md).
+
+Direct MCP proxy tools remain subject to the same MCP provider allowlists and security checks as
+interactive sessions. The selected ACP primary agent's tool permissions also apply, so a provider
+or tool blocked by either policy is not exposed to, or executable by, the ACP session.
+
+### Lifecycle hooks in ACP
+
+The canonical `[hooks.lifecycle]` configuration is also used by ACP sessions;
+no ACP-specific hook schema is required. Hooks are scoped to each ACP session
+and follow this ordering: `SessionStart` once for `session/new` or resumed
+sessions, `UserPromptSubmit` before provider work, `PreToolUse` and
+`PermissionRequest` before a tool runs, `PostToolUse` after its result,
+`PreCompact` before automatic compaction, and `Stop` before ACP reports a final
+turn. A blocking prompt is refused; a blocking stop hook feeds its reason back
+into the same turn and continues until the hook allows the draft or the turn
+is cancelled.
+
+For `PermissionRequest`, hook `updatedInput` is applied to the tool call. ACP
+does not persist hook permission scopes or apply `permission_updates`; it logs
+an explicit warning when those fields are returned. An `interrupt` decision
+fails the tool safely.
+
+`SessionEnd` is emitted when the ACP connection actually closes (with a bounded
+shutdown wait), not after every prompt. Notification hooks are not invented for
+ACP protocol messages; they run only for real VT Code notification events. The
+current ACP subagent controller does not expose child lifecycle callbacks, so
+ACP does not currently emit `SubagentStart` or `SubagentStop`.
+
+MCP connections are scoped to the session that declares them. A subagent does not implicitly inherit
+its parent's MCP connections; declare the required MCP servers in the subagent's own configuration.
 
 ## Manual smoke test
 
@@ -280,23 +335,88 @@ Common cases:
 
 ## Runtime behaviour
 
-- **Session management** – Each prompt owns a dedicated ACP session with history maintained in VT
-  Code, mirroring the Claude and Codex bridges.
+### Storage boundaries
+
+ACP continuity uses three independent stores:
+
+1. **Compaction history/artifacts** – Stored under
+   `<workspace>/.vtcode/history/` and controlled by `[context.dynamic] enabled`
+   and `persist_history`. These artifacts support summarisation and
+   working-memory recovery, including the session memory envelope. They are not
+   a complete resumable session and are not read by ACP `session/load`.
+2. **Durable session archive** – Stored under `$VT_SESSION_DIR`, or the
+   resolved VT Code configuration directory's `sessions/`, and controlled by
+   `[history].persistence` and `max_bytes`. These JSON snapshots are used by
+   ACP `session/load` and checkpoint user messages, assistant tool requests,
+   tool results, completed responses, and incomplete turns.
+   The archive metadata also preserves opaque ACP `_meta` values received on
+   `session/new` and `session/prompt` as `acp_meta`; prompt values merge into
+   the session map and replace earlier values with the same key.
+3. **ACP security tool audit** – Written to `[acp.audit].path` only when
+   `[acp.audit].enabled = true`. This append-only JSONL contains invocation
+   metadata, status, timing, and hashes. It does not contain conversation,
+   request, or result bodies and cannot be used for resume or compaction.
+
+These stores are independent: disabling one does not disable the others. In
+particular, `context.dynamic` settings do not control durable session archives,
+and `[history]` settings do not control ACP audit output.
+
+- **Session management** – ACP advertises and implements `session/list` and
+  `session/resume` while retaining the legacy `session/load` method. With
+  durable history enabled, `session/list` discovers durable archives and, when
+  the client supplies `cwd`, returns only archives belonging to that workspace.
+  An ACP client can pass a returned session ID to either `session/load` or
+  `session/resume`; both restore that archive by exact session ID, including
+  after a VT Code process or editor restart. Set `history.persistence = "none"`
+  to disable durable archives and discovery; sessions then remain process-local.
+- **Sub-agent delegation** – When ACP sub-agents are enabled, the session exposes the canonical
+  `agent` tool. Its actions are `spawn`, `spawn_subprocess`, `send_input`, `wait`, `resume`, and
+  `close`. Before delegation, VT Code synchronises the current parent ACP session identity and
+  parent context with the sub-agent controller. The active primary agent's tool permissions still
+  apply; delegation does not bypass its allowed or disallowed tools.
+- **Provider request capacity** – For a custom provider with `max_in_flight_requests` configured,
+  one request slot is reserved for the parent ACP request and child concurrency is capped at the
+  remaining slots. A limit of `1` therefore disables ACP sub-agents so the parent retains its slot.
+- **Provider diagnostics** – Debug logs record queue depth, active and maximum provider permits,
+  retry count and disposition, time to first output, generation duration, output tokens, and
+  tokens per second. Providers that support streaming report first-output latency from before
+  stream establishment, so response-header delay counts toward the first-output timeout. Buffered
+  responses label their time-to-first-token observation as the full buffered response latency.
+  VT Code does not currently gate provider requests with a circuit
+  breaker, so provider events report `circuit_breaker_state = "not_configured"`; the tool and MCP
+  circuit breakers are separate. HTTP 408, 429, 500, 502, 503, and 504 failures are eligible for
+  the configured bounded retry policy before output becomes visible.
+- **Tool-call budgets** – ACP applies `agent.harness.max_tool_calls_per_turn` and the optional
+  `agent.harness.max_tool_calls_per_session` to local tool execution. Set either value to `0` to
+  disable that cap. The separate `tools.max_tool_loops` provider-loop guard also accepts `0` for
+  unlimited turns.
 - **Context ingestion** – URIs such as `file://`, `zed://`, or `zed-fs://` resolve through Zed's
   `fs.readTextFile` capability, following Goose's recommended structure.
 - **Embedded resources** – Inline text is wrapped in `<context>` blocks so the model can separate
   supporting material from primary instructions. Binary data is acknowledged but omitted from the
   prompt payload.
 - **Streaming updates** – Token deltas and reasoning updates arrive via `session/update`
-  notifications, keeping Zed's UI responsive during generation.
+  notifications, keeping Zed's UI responsive during generation. Tool-enabled turns remain
+  streamed: VT Code waits for the provider's completed tool-call arguments, executes the tool,
+  appends its result, and opens the next provider stream. A configured `Stop` lifecycle hook is the
+  deliberate exception; VT Code buffers that draft so the hook can accept or block it before any
+  text becomes visible. A stream failure after visible output is never replayed and checkpoints an
+  incomplete assistant response instead.
+- **Provider reasoning** – When a provider response exposes reasoning alongside tool calls, VT Code
+  sends it to ACP as an `AgentThoughtChunk` before executing those tools. Exposed reasoning on the
+  final provider response is sent as an `AgentThoughtChunk` as well. Debug logs distinguish
+  `Sending provider reasoning to ACP client` from `Provider response did not include exposed reasoning
+  for ACP`; they record metadata only and never the reasoning content.
 - **Plan tracking** – Every prompt emits an ACP plan describing analysis, optional context gathering,
   and final response drafting. VT Code updates each entry as it progresses so Zed can visualise the
   bridge's workflow in real time.
 - **Tool execution** – The `read_file` tool forwards to Zed when enabled. The `list_files` tool
   uses VT Code's local workspace access, mirroring the CLI experience. When the model lacks
   function calling or the tool toggle is disabled, VT Code surfaces a reasoning notice and skips the
-  invocation. Paths supplied by tools are normalised against the trusted workspace so relative
-  segments stay inside the project before the request reaches the client.
+  invocation. Pending `apply_patch` calls include the decoded patch text as ACP tool-call content so
+  the client can show the proposed edit before execution. Paths supplied by tools are normalised
+  against the trusted workspace so relative segments stay inside the project before the request
+  reaches the client.
 - **Tool policy compatibility** – VT Code advertises the current core tool suite
   through ACP when the model supports function calling, including `exec_command`,
   `write_stdin`, `apply_patch`, and advanced `code_search` where enabled. The
@@ -348,6 +468,7 @@ Common cases:
 | Empty responses in Zed | Confirm ACP env vars are present in the `env` map and that ACP is enabled in `vtcode.toml`. |
 | `read_file` returns placeholders | Validate the referenced URI is accessible from Zed's workspace. |
 | Tool calls report "Unsupported tool" | Disable the tool bridge or switch to a model that supports function calling. VT Code emits a reasoning notice when the downgrade occurs. |
+| Missing thought traces in Zed | Enable debug logging and inspect whether VT Code reports `Sending provider reasoning to ACP client` or `Provider response did not include exposed reasoning for ACP`. The latter means the provider response exposed no reasoning; verify that the selected provider/model and API format return reasoning. Neither message logs reasoning content. |
 | Sessions cancel unexpectedly | Inspect VT Code logs (and Zed's ACP logs) for cancellations triggered by the client. |
 
 ## Next steps

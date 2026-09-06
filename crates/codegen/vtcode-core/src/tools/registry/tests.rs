@@ -632,8 +632,24 @@ async fn harness_terminal_runs_retain_completed_sessions_until_close(
         .as_str()
         .expect("terminal run should expose session_id")
         .to_string();
-    assert_eq!(response["exit_code"], 0);
-    assert_eq!(response["output"].as_str(), Some("vtcode-terminal"));
+    let exit_code = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Some(exit_code) = registry.harness_exec_session_completed(&session_id).await? {
+                return Ok::<_, anyhow::Error>(exit_code);
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("terminal session should complete before deadline")?;
+    assert_eq!(exit_code, 0);
+    let retained_output = registry
+        .read_harness_exec_session_output(&session_id, false)
+        .await?
+        .unwrap_or_default();
+    let initial_output = response["output"].as_str().unwrap_or_default();
+    let complete_output = format!("{initial_output}{retained_output}");
+    assert!(complete_output.contains("vtcode-terminal"), "terminal output must remain observable until close");
     assert_eq!(registry.harness_exec_session_completed(&session_id).await?, Some(0));
 
     registry.close_harness_exec_session(&session_id).await?;

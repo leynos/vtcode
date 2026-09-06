@@ -779,11 +779,15 @@ impl ToolCatalogEntry {
             return false;
         }
 
-        if !profile_allows_tool(config.tool_profile, self.public_name.as_str(), config.planning_active) {
+        let acp_core_tool = config.surface == SessionSurface::Acp
+            && matches!(self.public_name.as_str(), tools::AGENT | tools::TASK_TRACKER);
+        if !acp_core_tool
+            && !profile_allows_tool(config.tool_profile, self.public_name.as_str(), config.planning_active)
+        {
             return false;
         }
 
-        if !surface_allows_tool(config.surface, self.public_name.as_str()) {
+        if !surface_allows_tool(config.surface, self) {
             return false;
         }
 
@@ -885,12 +889,28 @@ fn is_core_tool_entry(entry: &ToolCatalogEntry, config: &SessionToolsConfig) -> 
     }
 }
 
-fn surface_allows_tool(surface: SessionSurface, tool_name: &str) -> bool {
+fn surface_allows_tool(surface: SessionSurface, entry: &ToolCatalogEntry) -> bool {
+    let tool_name = entry.public_name.as_str();
     match surface {
         SessionSurface::Interactive => !matches!(tool_name, tools::READ_FILE | tools::LIST_FILES),
         SessionSurface::AgentRunner => true,
         SessionSurface::Acp => {
-            matches!(tool_name, tools::EXEC_COMMAND | tools::WRITE_STDIN | tools::APPLY_PATCH | tools::CODE_SEARCH)
+            // ACP keeps its narrow built-in surface, but direct MCP access is
+            // a deliberate exception. Admit only MCP-tagged registrations,
+            // canonical `mcp::` dynamic registrations, and the consolidated
+            // MCP lifecycle/discovery tool; unrelated dynamic tools remain
+            // hidden.
+            matches!(
+                tool_name,
+                tools::EXEC_COMMAND
+                    | tools::WRITE_STDIN
+                    | tools::APPLY_PATCH
+                    | tools::CODE_SEARCH
+                    | tools::AGENT
+                    | tools::TASK_TRACKER
+            ) || tool_name == tools::MCP
+                || matches!(entry.source, ToolCatalogSource::Mcp)
+                || (matches!(entry.source, ToolCatalogSource::Dynamic) && entry.registration_name.starts_with("mcp::"))
         }
     }
 }
@@ -951,6 +971,9 @@ mod tests {
                 .with_behavior(ToolBehavior::apply_patch(ToolMutationModel::Mutating, false, true)),
             registration(tools::CODE_SEARCH)
                 .with_description("Search code")
+                .with_parameter_schema(empty_object_schema()),
+            registration(tools::AGENT)
+                .with_description("Delegate work")
                 .with_parameter_schema(empty_object_schema()),
             registration(tools::SEARCH_TOOLS)
                 .with_description("Discover deferred tools")
@@ -1346,6 +1369,12 @@ mod tests {
             registration(tools::CODE_SEARCH)
                 .with_description("Search code")
                 .with_parameter_schema(empty_object_schema()),
+            registration(tools::AGENT)
+                .with_description("Delegate work")
+                .with_parameter_schema(empty_object_schema()),
+            registration(tools::TASK_TRACKER)
+                .with_description("Track task progress")
+                .with_parameter_schema(empty_object_schema()),
             registration(tools::LOAD_SKILL)
                 .with_description("Load a skill")
                 .with_parameter_schema(empty_object_schema()),
@@ -1369,6 +1398,75 @@ mod tests {
                 tools::WRITE_STDIN.to_string(),
                 tools::APPLY_PATCH.to_string(),
                 tools::CODE_SEARCH.to_string(),
+                tools::AGENT.to_string(),
+                tools::TASK_TRACKER.to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn acp_surface_exposes_task_tracker_with_default_profile() {
+        let registration = registration(tools::TASK_TRACKER)
+            .with_description("Track task progress")
+            .with_parameter_schema(empty_object_schema());
+        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
+
+        let names = catalog.public_tool_names(SessionToolsConfig::full_public(
+            SessionSurface::Acp,
+            CapabilityLevel::CodeSearch,
+            ToolDocumentationMode::Full,
+            ToolModelCapabilities::default(),
+        ));
+
+        assert_eq!(names, vec![tools::TASK_TRACKER.to_string()]);
+    }
+
+    #[test]
+    fn acp_surface_admits_mcp_sources_without_admitting_unrelated_dynamic_tools() {
+        let registrations = vec![
+            registration(tools::EXEC_COMMAND)
+                .with_description("Run command")
+                .with_parameter_schema(empty_object_schema()),
+            registration("mcp::context7::search")
+                .with_catalog_source(ToolCatalogSource::Mcp)
+                .with_llm_visibility(false)
+                .with_description("Search documentation")
+                .with_parameter_schema(empty_object_schema())
+                .with_aliases(["mcp__context7__search"]),
+            registration("mcp::plugin::resolve")
+                .with_catalog_source(ToolCatalogSource::Dynamic)
+                .with_llm_visibility(false)
+                .with_description("Resolve plugin documentation")
+                .with_parameter_schema(empty_object_schema())
+                .with_aliases(["mcp__plugin__resolve"]),
+            registration(tools::MCP)
+                .with_catalog_source(ToolCatalogSource::Builtin)
+                .with_description("Discover MCP tools")
+                .with_parameter_schema(empty_object_schema()),
+            registration("dynamic_plugin_tool")
+                .with_catalog_source(ToolCatalogSource::Dynamic)
+                .with_description("Unrelated dynamic tool")
+                .with_parameter_schema(empty_object_schema()),
+        ];
+
+        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
+        let names = catalog.public_tool_names(
+            SessionToolsConfig::full_public(
+                SessionSurface::Acp,
+                CapabilityLevel::CodeSearch,
+                ToolDocumentationMode::Full,
+                ToolModelCapabilities::default(),
+            )
+            .with_tool_profile(ToolProfile::AdvancedVtCode),
+        );
+
+        assert_eq!(
+            names,
+            vec![
+                tools::EXEC_COMMAND.to_string(),
+                "mcp__context7__search".to_string(),
+                "mcp__plugin__resolve".to_string(),
+                tools::MCP.to_string(),
             ]
         );
     }

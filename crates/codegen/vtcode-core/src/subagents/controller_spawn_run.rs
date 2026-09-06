@@ -235,12 +235,16 @@ impl SubagentController {
             self.restart_child(&request.target).await?;
         }
 
-        self.status_for(&request.target).await
+        let status = self.status_for(&request.target).await?;
+        if !maybe_restart {
+            self.publish_subagent_progress(status.clone()).await;
+        }
+        Ok(status)
     }
 
     /// Resumes a closed or errored subagent and its descendants by re-queuing
     /// their prompts. Cascades recursively through child-scoped controllers so
-    /// grandchildren closed by [`Self::close_tree`] are resumed too, not merely
+    /// grandchildren closed by `Self::close_tree` are resumed too, not merely
     /// un-gated.
     pub async fn resume(&self, target: &str) -> Result<SubagentStatusEntry> {
         self.resume_tree(target).await
@@ -522,7 +526,10 @@ impl SubagentController {
         record.updated_at = Utc::now();
         record.completed_at = Some(Utc::now());
         record.notify.notify_waiters();
-        Ok(record.build_status_entry())
+        let entry = record.build_status_entry();
+        drop(state);
+        self.publish_subagent_progress(entry.clone()).await;
+        Ok(entry)
     }
 
     pub(super) async fn background_status_for(&self, target: &str) -> Result<BackgroundSubprocessEntry> {
@@ -634,6 +641,7 @@ impl SubagentController {
                 },
             );
         }
+        self.publish_background_status(&record_id).await;
 
         let launch = build_background_launch_spec(
             &self.config.workspace_root,
@@ -698,6 +706,7 @@ impl SubagentController {
             record.error = None;
             record.summary = Some("Background subagent is running".to_string());
         }
+        self.publish_background_status(&record_id).await;
 
         self.save_background_state().await?;
         self.background_status_for(&record_id).await
@@ -746,7 +755,7 @@ impl SubagentController {
     /// are aborted so subagent tasks do not outlive the parent session.
     pub async fn signal_shutdown(&self) {
         self.shutdown_requested.store(true, Ordering::Relaxed);
-        let nested = {
+        let (nested, entries) = {
             let mut state = self.state.write().await;
             let mut nested = Vec::new();
             for record in state.children.values_mut() {
@@ -760,8 +769,12 @@ impl SubagentController {
                     nested.push((controller, record.session_id.clone()));
                 }
             }
-            nested
+            let entries = state.children.values().map(ChildRecord::build_status_entry).collect::<Vec<_>>();
+            (nested, entries)
         };
+        for entry in entries {
+            self.publish_subagent_progress(entry).await;
+        }
         // Mark every child-scoped controller as permanently shut down (so its
         // background state is not saved) and as closing (so a race cannot let
         // a fresh grandchild outlive shutdown), then cascade.
