@@ -1271,7 +1271,7 @@ mod tests {
     }
 
     #[test]
-    fn advanced_profile_retains_eligible_specialised_and_dynamic_tools() {
+    fn advanced_profile_retains_eligible_specialized_and_dynamic_tools() {
         let registrations = vec![
             registration(tools::CODE_SEARCH)
                 .with_description("Search code")

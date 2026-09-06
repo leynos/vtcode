@@ -118,7 +118,7 @@ pub const DEPRECATED_MODEL_REPLACEMENTS: &[(&str, &str, &str)] = &[
     (O4_MINI, "gpt-5.6-terra", "o4-mini is deprecated; use GPT-5.6 Terra for fast reasoning"),
     // Codex variants — shut down July 23, 2026 (Apr 1, 2026 for 5.x/5.1.x).
     // Per OpenAI/GitHub Copilot deprecation notices, the direct successor is
-    // gpt-5.3-codex (the current Codex-optimised model).
+    // gpt-5.3-codex (the current Codex-optimized model).
     (GPT_5_CODEX, GPT_5_6_SOL, "GPT-5 Codex is deprecated; use GPT-5.3 Codex for agentic coding"),
     (GPT_5_1_CODEX, GPT_5_6_SOL, "GPT-5.1 Codex is deprecated; use GPT-5.3 Codex for agentic coding"),
     (

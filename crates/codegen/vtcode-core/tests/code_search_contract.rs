@@ -10,7 +10,7 @@ use vtcode_core::config::constants::tools;
 use vtcode_core::tools::ToolRegistry;
 
 #[tokio::test]
-async fn preflight_normalises_functions_code_search_namespace() -> Result<()> {
+async fn preflight_normalizes_functions_code_search_namespace() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
 
@@ -139,7 +139,7 @@ async fn preflight_coerces_stringified_max_results() -> Result<()> {
 }
 
 #[tokio::test]
-async fn code_search_registry_executor_returns_normalised_typed_response() -> Result<()> {
+async fn code_search_registry_executor_returns_normalized_typed_response() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
 

@@ -468,10 +468,10 @@ mod tests {
         let config: ToolsConfig = toml::from_str("profile = \"vt_code\"").expect("vt_code tool profile should parse");
         assert_eq!(config.profile, ToolProfile::VtCode);
 
-        let serialised = toml::to_string(&config).expect("tools config should serialise");
-        assert!(serialised.contains("profile = \"vt_code\""));
+        let serialized = toml::to_string(&config).expect("tools config should serialize");
+        assert!(serialized.contains("profile = \"vt_code\""));
 
-        let round_tripped: ToolsConfig = toml::from_str(&serialised).expect("serialised tools config should parse");
+        let round_tripped: ToolsConfig = toml::from_str(&serialized).expect("serialized tools config should parse");
         assert_eq!(round_tripped.profile, ToolProfile::VtCode);
     }
 
@@ -481,10 +481,10 @@ mod tests {
             toml::from_str("profile = \"advanced_vtcode\"").expect("advanced tool profile should parse");
         assert_eq!(config.profile, ToolProfile::AdvancedVtCode);
 
-        let serialised = toml::to_string(&config).expect("tools config should serialise");
-        assert!(serialised.contains("profile = \"advanced_vtcode\""));
+        let serialized = toml::to_string(&config).expect("tools config should serialize");
+        assert!(serialized.contains("profile = \"advanced_vtcode\""));
 
-        let round_tripped: ToolsConfig = toml::from_str(&serialised).expect("serialised tools config should parse");
+        let round_tripped: ToolsConfig = toml::from_str(&serialized).expect("serialized tools config should parse");
         assert_eq!(round_tripped.profile, ToolProfile::AdvancedVtCode);
     }
 
@@ -513,7 +513,7 @@ mod tests {
     #[test]
     fn tools_config_schema_includes_profile_values() {
         let schema = schemars::schema_for!(ToolsConfig);
-        let schema_json = serde_json::to_value(schema).expect("schema should serialise");
+        let schema_json = serde_json::to_value(schema).expect("schema should serialize");
         let schema_text = serde_json::to_string(&schema_json).expect("schema should stringify");
 
         assert!(schema_json["properties"].get("profile").is_some());

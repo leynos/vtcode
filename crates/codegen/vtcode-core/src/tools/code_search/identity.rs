@@ -3,18 +3,18 @@ use std::path::{Path, PathBuf};
 use crate::tools::code_search::CodeSearchRequest;
 use vtcode_commons::canonicalize;
 
-fn normalised_identity_value(args: &serde_json::Value, include_max_results: bool) -> Option<serde_json::Value> {
+fn normalized_identity_value(args: &serde_json::Value, include_max_results: bool) -> Option<serde_json::Value> {
     let request = serde_json::from_value::<CodeSearchRequest>(args.clone()).ok()?;
-    let mut normalised = request.normalise().ok()?;
-    normalised.filters.file_types.sort_unstable();
+    let mut normalized = request.normalize().ok()?;
+    normalized.filters.file_types.sort_unstable();
     let mut identity = serde_json::json!({
-        "query": normalised.query,
-        "path": normalised.filters.path,
-        "file_types": normalised.filters.file_types,
-        "result_types": normalised.filters.result_types,
+        "query": normalized.query,
+        "path": normalized.filters.path,
+        "file_types": normalized.filters.file_types,
+        "result_types": normalized.filters.result_types,
     });
     if include_max_results {
-        identity["max_results"] = normalised.filters.max_results.into();
+        identity["max_results"] = normalized.filters.max_results.into();
     }
     Some(identity)
 }
@@ -23,16 +23,16 @@ fn normalised_identity_value(args: &serde_json::Value, include_max_results: bool
 ///
 /// The effective result limit affects both the returned results and echoed
 /// filters, so it is part of this identity.
-pub fn normalised_identity(args: &serde_json::Value) -> Option<String> {
-    serde_json::to_string(&normalised_identity_value(args, true)?).ok()
+pub fn normalized_identity(args: &serde_json::Value) -> Option<String> {
+    serde_json::to_string(&normalized_identity_value(args, true)?).ok()
 }
 
 /// Normalised identity for detecting repeated search behaviour.
 ///
 /// Loop detection deliberately ignores the result limit: changing only the
 /// requested extent does not make an otherwise repeated search distinct.
-pub fn normalised_loop_identity(args: &serde_json::Value) -> Option<String> {
-    serde_json::to_string(&normalised_identity_value(args, false)?).ok()
+pub fn normalized_loop_identity(args: &serde_json::Value) -> Option<String> {
+    serde_json::to_string(&normalized_identity_value(args, false)?).ok()
 }
 
 /// Return whether a mutated path lies within the file or directory scope of a
@@ -46,7 +46,7 @@ pub fn scope_contains_mutated_path(args: &serde_json::Value, mutated_path: &Path
     let Ok(request) = serde_json::from_value::<CodeSearchRequest>(args.clone()) else {
         return false;
     };
-    let Ok(request) = request.normalise() else {
+    let Ok(request) = request.normalize() else {
         return false;
     };
     let workspace_root = canonicalize_existing_prefix(workspace_root);
@@ -67,8 +67,8 @@ pub fn scope_contains_mutated_path(args: &serde_json::Value, mutated_path: &Path
 /// This resolves symlinked workspace roots and existing directory aliases while
 /// retaining deleted or newly-created mutation targets for replay checks.
 pub(super) fn canonicalize_existing_prefix(path: &Path) -> PathBuf {
-    let normalised = crate::utils::path::normalize_path(path);
-    let mut existing_prefix = normalised.as_path();
+    let normalized = crate::utils::path::normalize_path(path);
+    let mut existing_prefix = normalized.as_path();
     let mut missing_components = Vec::new();
 
     loop {
@@ -79,11 +79,11 @@ pub(super) fn canonicalize_existing_prefix(path: &Path) -> PathBuf {
             });
         }
         let Some(component) = existing_prefix.file_name() else {
-            return normalised;
+            return normalized;
         };
         missing_components.push(component.to_os_string());
         let Some(parent) = existing_prefix.parent() else {
-            return normalised;
+            return normalized;
         };
         existing_prefix = parent;
     }

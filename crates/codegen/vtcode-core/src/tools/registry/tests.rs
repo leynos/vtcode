@@ -1897,7 +1897,7 @@ async fn full_auto_allowlist_enforced() -> Result<()> {
 }
 
 #[tokio::test]
-async fn wildcard_initialisation_retains_registration_from_snapshot_window() -> Result<()> {
+async fn wildcard_initialization_retains_registration_from_snapshot_window() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
     let hooks = policy_catalogue_test_hooks(&registry).await;
