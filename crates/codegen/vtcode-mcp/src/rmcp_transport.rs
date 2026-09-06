@@ -135,12 +135,3 @@ pub fn create_http_transport(
          Use RmcpClient::new_streamable_http_client() for full implementation."
     )
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_transport_creation() {
-        // Test transport creation with configuration
-        // Detailed tests in integration tests
-    }
-}

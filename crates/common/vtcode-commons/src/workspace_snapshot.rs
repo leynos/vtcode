@@ -186,50 +186,47 @@ pub fn snapshot_path(session_dir: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    //! Workspace drift and persisted snapshots in owned temporary directories.
+
     use super::*;
+    use anyhow::{Context, Result, ensure};
 
     #[test]
-    fn capture_and_diff_detects_changes() {
-        let tmp = std::env::temp_dir().join(format!("vtcode-snap-{}", std::process::id()));
-        let ws = tmp.join("ws");
-        std::fs::create_dir_all(&ws).unwrap();
-        std::fs::write(ws.join("a.txt"), b"hello").unwrap();
-        std::fs::write(ws.join("b.txt"), b"world").unwrap();
+    fn capture_and_diff_detects_changes() -> Result<()> {
+        let workspace = tempfile::tempdir().context("create snapshot workspace")?;
+        let root = workspace.path();
+        std::fs::write(root.join("a.txt"), b"hello").context("seed first file")?;
+        std::fs::write(root.join("b.txt"), b"world").context("seed second file")?;
 
-        let snap1 = capture(&ws, 1_000_000).unwrap();
-        assert_eq!(snap1.files.len(), 2);
-        assert!(snap1.files.contains_key("a.txt"));
-        assert!(snap1.files.contains_key("b.txt"));
+        let before = capture(root, 1_000_000).context("capture initial workspace")?;
+        ensure!(before.files.len() == 2, "initial snapshot must contain both seeded files");
+        ensure!(before.files.contains_key("a.txt"), "initial snapshot must contain a.txt");
+        ensure!(before.files.contains_key("b.txt"), "initial snapshot must contain b.txt");
 
-        // Mutate + add + remove.
-        std::fs::write(ws.join("a.txt"), b"changed").unwrap();
-        std::fs::write(ws.join("c.txt"), b"new").unwrap();
-        std::fs::remove_file(ws.join("b.txt")).unwrap();
+        std::fs::write(root.join("a.txt"), b"changed").context("change first file")?;
+        std::fs::write(root.join("c.txt"), b"new").context("add third file")?;
+        std::fs::remove_file(root.join("b.txt")).context("remove second file")?;
 
-        let snap2 = capture(&ws, 1_000_000).unwrap();
-        let delta = diff(&snap1, &snap2);
-        assert_eq!(delta.added, vec!["c.txt".to_string()]);
-        assert_eq!(delta.changed, vec!["a.txt".to_string()]);
-        assert_eq!(delta.removed, vec!["b.txt".to_string()]);
-        assert!(is_drift(&delta));
-        drop(std::fs::remove_dir_all(&tmp));
+        let after = capture(root, 1_000_000).context("capture changed workspace")?;
+        let delta = diff(&before, &after);
+        ensure!(delta.added == ["c.txt"], "unexpected added paths: {:?}", delta.added);
+        ensure!(delta.changed == ["a.txt"], "unexpected changed paths: {:?}", delta.changed);
+        ensure!(delta.removed == ["b.txt"], "unexpected removed paths: {:?}", delta.removed);
+        ensure!(is_drift(&delta), "the detected changes must constitute drift");
+        Ok(())
     }
 
     #[test]
-    fn json_round_trips() {
-        let tmp = std::env::temp_dir().join(format!("vtcode-snap-json-{}", std::process::id()));
-        let path = tmp.join("snap.json");
-        let snap = WorkspaceSnapshot {
-            files: {
-                let mut m = BTreeMap::new();
-                m.insert("x.rs".to_string(), FileStat { size: 3, mtime_ns: 42, head_hash: 7 });
-                m
-            },
-            captured_at: "2026-01-01T00:00:00Z".to_string(),
+    fn json_round_trips() -> Result<()> {
+        let workspace = tempfile::tempdir().context("create persisted snapshot workspace")?;
+        let path = workspace.path().join("snap.json");
+        let snapshot = WorkspaceSnapshot {
+            files: BTreeMap::from([("x.rs".to_owned(), FileStat { size: 3, mtime_ns: 42, head_hash: 7 })]),
+            captured_at: "2026-01-01T00:00:00Z".to_owned(),
         };
-        save_json(&snap, &path).unwrap();
-        let loaded = load_json(&path).unwrap();
-        assert_eq!(loaded, snap);
-        drop(std::fs::remove_dir_all(&tmp));
+        save_json(&snapshot, &path).context("save snapshot fixture")?;
+        let loaded = load_json(&path).context("load saved snapshot fixture")?;
+        ensure!(loaded == snapshot, "persisted snapshot must preserve every field: {loaded:?}");
+        Ok(())
     }
 }

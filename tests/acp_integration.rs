@@ -163,7 +163,7 @@ fn permission_options_have_four_entries() {
 
 #[test]
 fn permission_options_render_read_file_action_label() {
-    let fixture = read_file_permission();
+    let fixture = read_file_permission().expect("read-file ACP permission fixture should parse");
     let options = collect_options(Some(&fixture.arguments), SupportedTool::ReadFile);
     assert!(
         options
@@ -174,7 +174,7 @@ fn permission_options_render_read_file_action_label() {
 
 #[test]
 fn permission_options_render_list_files_action_label() {
-    let fixture = list_files_permission();
+    let fixture = list_files_permission().expect("list-files ACP permission fixture should parse");
     let options = collect_options(Some(&fixture.arguments), SupportedTool::ListFiles);
     assert!(
         options
@@ -197,7 +197,7 @@ fn permission_options_have_correct_option_ids() {
 
 #[test]
 fn action_label_uses_path_arg_for_read_file() {
-    let fixture = read_file_permission();
+    let fixture = read_file_permission().expect("read-file ACP permission fixture should parse");
     let args = &fixture.arguments;
     assert!(
         prompter()

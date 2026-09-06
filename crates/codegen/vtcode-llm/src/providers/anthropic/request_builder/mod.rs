@@ -464,6 +464,6 @@ mod tests {
     fn resolve_advisor_tool_supports_dated_executor_suffix() {
         let cfg = advisor_config(true, "", None);
         // `-20251001` version pin must not break the supported-model check.
-        assert!(resolve_advisor_tool("claude-sonnet-4-6-20251001", &cfg).is_some());
+        assert!(resolve_advisor_tool("claude-sonnet-5-20251001", &cfg).is_some());
     }
 }

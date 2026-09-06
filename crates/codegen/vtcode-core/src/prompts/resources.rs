@@ -700,11 +700,15 @@ mod tests {
         std::fs::create_dir_all(&workspace_templates).expect("workspace templates");
         std::fs::write(workspace_templates.join("cache-test.md"), "# Cache test\n\nBody")
             .expect("write workspace template");
+        filetime::set_file_mtime(&workspace_templates, filetime::FileTime::from_unix_time(1, 0))
+            .expect("set directory baseline modification time");
 
         let first = discover_with_roots(workspace.path(), Some(home.path())).await;
         assert!(first.iter().any(|template| template.name == "cache-test"));
 
         std::fs::remove_file(workspace_templates.join("cache-test.md")).expect("remove workspace template");
+        filetime::set_file_mtime(&workspace_templates, filetime::FileTime::from_unix_time(2, 0))
+            .expect("advance directory modification time after deletion");
 
         let second = discover_with_roots(workspace.path(), Some(home.path())).await;
         assert!(!second.iter().any(|template| template.name == "cache-test"));

@@ -452,12 +452,17 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let extra_config = dir.path().join("user-vtcode.toml");
         std::fs::write(&extra_config, "mode = \"auto\"\n").expect("write config");
+        filetime::set_file_mtime(&extra_config, filetime::FileTime::from_unix_time(1, 0))
+            .expect("set baseline modification time");
 
         let mut watcher = SimpleConfigWatcher::new(dir.path().to_path_buf());
         watcher.add_watch_path(extra_config.clone());
         watcher.seed_current_mtimes();
         watcher.set_debounce_duration(0);
         std::fs::write(&extra_config, "mode = \"command\"\n").expect("modify config");
+        // Model a distinct filesystem event without relying on clock resolution.
+        filetime::set_file_mtime(&extra_config, filetime::FileTime::from_unix_time(2, 0))
+            .expect("advance modification time");
         open_check_window(&mut watcher);
 
         assert!(watcher.should_reload(), "a change after baseline seeding must trigger reload");

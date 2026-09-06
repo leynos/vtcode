@@ -3,34 +3,75 @@
     clippy::expect_used,
     reason = "Intentional compatibility, platform, or test-only suppression."
 )]
+#[path = "support/config_defaults.rs"]
+mod config_defaults;
+
+use anyhow::{Context, Result};
 use serde_json::json;
 use std::fs;
 use tempfile::TempDir;
+use vtcode_core::config::CommandsConfig;
+use vtcode_core::tool_policy::ToolPolicyManager;
 use vtcode_core::tools::ToolRegistry;
 
-async fn temp_registry() -> (TempDir, ToolRegistry) {
+async fn temp_registry() -> Result<(TempDir, ToolRegistry)> {
     temp_registry_with_config(None).await
 }
 
-async fn temp_registry_with_config(vtcode_toml: Option<&str>) -> (TempDir, ToolRegistry) {
-    let temp = TempDir::new().expect("temp workspace");
-    fs::write(temp.path().join("Cargo.toml"), "[package]\nname = \"pty-test\"\n").expect("write fixture Cargo.toml");
+async fn temp_registry_with_config(vtcode_toml: Option<&str>) -> Result<(TempDir, ToolRegistry)> {
+    let temp = TempDir::new().context("create PTY test workspace")?;
+    fs::write(temp.path().join("Cargo.toml"), "[package]\nname = \"pty-test\"\n")
+        .context("write PTY fixture Cargo.toml")?;
     if let Some(config) = vtcode_toml {
-        fs::write(temp.path().join("vtcode.toml"), config).expect("write fixture vtcode.toml");
+        fs::write(temp.path().join("vtcode.toml"), config).context("write PTY fixture vtcode.toml")?;
     }
-    let registry = ToolRegistry::new(temp.path().to_path_buf()).await;
-    let _allow_result = registry.allow_all_tools().await.ok();
-    (temp, registry)
+    let _config_defaults = config_defaults::IsolatedConfigDefaultsGuard::install(temp.path()).await;
+    let policy_path = temp.path().join(".vtcode/test-tool-policy.json");
+    let policy_manager = ToolPolicyManager::new_with_config_path(policy_path)
+        .await
+        .context("create isolated PTY tool policy")?;
+    let registry = ToolRegistry::new_with_custom_policy(temp.path().to_path_buf(), policy_manager).await;
+    registry.apply_commands_config(&pty_fixture_commands_config());
+    registry.allow_all_tools().await.context("allow PTY fixture tools")?;
+
+    Ok((temp, registry))
+}
+
+fn pty_fixture_commands_config() -> CommandsConfig {
+    let mut config = CommandsConfig::default();
+    config.allow_list.clear();
+    config.allow_glob.clear();
+    config.allow_regex = vec![
+        r"^ls(?: Cargo\.toml| -a| this_file_does_not_exist)?$".to_owned(),
+        r"^echo (?:shell-check|\$0)$".to_owned(),
+        r"^printf small output\\n$".to_owned(),
+        r"^this_command_definitely_does_not_exist_12345$".to_owned(),
+        r"^sleep 1$".to_owned(),
+        r"^cat$".to_owned(),
+        r"^cat \.vtcode/context/tool_outputs/[A-Za-z0-9_.-]+\.txt$".to_owned(),
+        r"^bash -lc sleep 0\.75; echo done$".to_owned(),
+        r"^bash -lc sleep 0\.4; echo done$".to_owned(),
+        r#"^bash -lc sleep 0\.4; printf "<alpha>\\n"; sleep 1$"#.to_owned(),
+        r#"^bash -lc IFS= read -r line; printf '<%s>' "\$line"$"#.to_owned(),
+        r"^IFS= read -r line; printf <%s>(?:\\n)? \$line$".to_owned(),
+        r"^sleep 0\.5; printf abcdefghijklmnopqrstuvwxyz\\n; sleep 2$".to_owned(),
+        r"^sleep 0\.5; printf delayed-output\\n; sleep 1\.2$".to_owned(),
+        r"^sleep 0\.2; printf wait-output; i=0; while \[ \$i -lt 9000 \]; do printf x; i=\$\(\(i\+1\)\); done; printf \\n; sleep 2$"
+            .to_owned(),
+        r"^i=0; while \[ \$i -lt 20000 \]; do printf line-%05d\\n \$i; i=\$\(\(i\+1\)\); done; sleep 1$"
+            .to_owned(),
+    ];
+    config
 }
 
 #[cfg(unix)]
-fn exec_session_id(response: &serde_json::Value) -> String {
+fn exec_session_id(response: &serde_json::Value) -> Result<String> {
     response
         .get("process_id")
         .and_then(|value| value.as_str())
         .or_else(|| response.get("session_id").and_then(|value| value.as_str()))
-        .expect("session id should be present")
-        .to_string()
+        .map(str::to_owned)
+        .ok_or_else(|| anyhow::anyhow!("expected an execution session ID; response: {response}"))
 }
 
 #[cfg(unix)]
@@ -67,7 +108,7 @@ async fn read_session_until_exit(
 
 #[tokio::test]
 async fn test_pty_functionality() {
-    let (_temp, registry) = temp_registry().await;
+    let (_temp, registry) = temp_registry().await.expect("create test registry");
 
     // Run an allow-listed command and verify output is captured
     let result = registry
@@ -96,7 +137,7 @@ async fn test_pty_functionality() {
 
 #[tokio::test]
 async fn test_pty_functionality_with_exit_code() {
-    let (_temp, registry) = temp_registry().await;
+    let (_temp, registry) = temp_registry().await.expect("create test registry");
 
     // Run an allow-listed command that exits with a non-zero code
     let result = registry
@@ -128,7 +169,7 @@ async fn test_pty_functionality_with_exit_code() {
 #[cfg(unix)]
 #[tokio::test]
 async fn test_pty_run_returns_live_session_after_yield_window() {
-    let (_temp, registry) = temp_registry().await;
+    let (_temp, registry) = temp_registry().await.expect("create test registry");
 
     let start = registry
         .execute_tool(
@@ -141,7 +182,7 @@ async fn test_pty_run_returns_live_session_after_yield_window() {
         )
         .await
         .expect("start sleep result");
-    let sid = exec_session_id(&start);
+    let sid = exec_session_id(&start).expect("execution session ID");
 
     assert_eq!(start["success"], true);
     assert_eq!(start["is_exited"].as_bool(), Some(false));
@@ -160,7 +201,7 @@ async fn test_pty_run_returns_live_session_after_yield_window() {
 #[cfg(unix)]
 #[tokio::test]
 async fn test_pty_shell_option_runs_through_requested_shell() {
-    let (_temp, registry) = temp_registry().await;
+    let (_temp, registry) = temp_registry().await.expect("create test registry");
 
     let result = registry
         .execute_tool(
@@ -188,7 +229,8 @@ enabled = true
 tool_output_threshold = 64
 "#,
     ))
-    .await;
+    .await
+    .expect("create test registry");
 
     let result = registry
         .execute_tool(
@@ -212,7 +254,7 @@ tool_output_threshold = 64
 #[cfg(unix)]
 #[tokio::test]
 async fn test_create_pty_session_uses_requested_shell() {
-    let (_temp, registry) = temp_registry().await;
+    let (_temp, registry) = temp_registry().await.expect("create test registry");
 
     let create_result = registry
         .execute_tool(
@@ -232,7 +274,7 @@ async fn test_create_pty_session_uses_requested_shell() {
 
 #[tokio::test]
 async fn test_pty_output_has_no_ansi_codes() {
-    let (_temp, registry) = temp_registry().await;
+    let (_temp, registry) = temp_registry().await.expect("create test registry");
 
     let result = registry
         .execute_tool(
@@ -262,7 +304,7 @@ async fn test_pty_output_has_no_ansi_codes() {
 
 #[tokio::test]
 async fn test_pty_command_not_found_handling() {
-    let (_temp, registry) = temp_registry().await;
+    let (_temp, registry) = temp_registry().await.expect("create test registry");
 
     // Run a command that definitely doesn't exist
     let result = registry
@@ -304,7 +346,7 @@ async fn test_pty_command_not_found_handling() {
 #[cfg(unix)]
 #[tokio::test]
 async fn test_read_pty_session_includes_command_context_fields() {
-    let (_temp, registry) = temp_registry().await;
+    let (_temp, registry) = temp_registry().await.expect("create test registry");
 
     let start = registry
         .execute_tool(
@@ -318,7 +360,7 @@ async fn test_read_pty_session_includes_command_context_fields() {
         .await
         .expect("start sleep command");
 
-    let sid = exec_session_id(&start);
+    let sid = exec_session_id(&start).expect("execution session ID");
 
     let read = registry
         .execute_tool(
@@ -353,7 +395,7 @@ async fn test_read_pty_session_includes_command_context_fields() {
 #[cfg(unix)]
 #[tokio::test]
 async fn test_inspect_does_not_drain_session_output() {
-    let (_temp, registry) = temp_registry().await;
+    let (_temp, registry) = temp_registry().await.expect("create test registry");
 
     let start = registry
         .execute_tool(
@@ -366,7 +408,7 @@ async fn test_inspect_does_not_drain_session_output() {
         .await
         .expect("start delayed output command");
 
-    let sid = exec_session_id(&start);
+    let sid = exec_session_id(&start).expect("execution session ID");
 
     let mut read = json!({});
     for attempt in 0..8 {
@@ -402,7 +444,7 @@ async fn test_inspect_does_not_drain_session_output() {
 #[cfg(unix)]
 #[tokio::test]
 async fn test_exited_sessions_are_pruned_after_final_poll() {
-    let (_temp, registry) = temp_registry().await;
+    let (_temp, registry) = temp_registry().await.expect("create test registry");
 
     let start = registry
         .execute_tool(
@@ -416,7 +458,7 @@ async fn test_exited_sessions_are_pruned_after_final_poll() {
         .await
         .expect("start delayed exit command");
 
-    let sid = exec_session_id(&start);
+    let sid = exec_session_id(&start).expect("execution session ID");
 
     let (_, read) = read_session_until_exit(&registry, sid.as_str(), 20, 200).await;
 
@@ -462,7 +504,7 @@ async fn test_exited_sessions_are_pruned_after_final_poll() {
 #[cfg(unix)]
 #[tokio::test]
 async fn test_exec_command_write_preserves_whitespace() {
-    let (_temp, registry) = temp_registry().await;
+    let (_temp, registry) = temp_registry().await.expect("create test registry");
 
     let start = registry
         .execute_tool(
@@ -475,7 +517,7 @@ async fn test_exec_command_write_preserves_whitespace() {
         )
         .await
         .expect("start read session");
-    let sid = exec_session_id(&start);
+    let sid = exec_session_id(&start).expect("execution session ID");
 
     let write = registry
         .execute_tool(
@@ -503,7 +545,7 @@ async fn test_exec_command_write_preserves_whitespace() {
 #[cfg(unix)]
 #[tokio::test]
 async fn test_exec_command_write_stdin_continues_session() {
-    let (_temp, registry) = temp_registry().await;
+    let (_temp, registry) = temp_registry().await.expect("create test registry");
 
     let start = registry
         .execute_tool(
@@ -515,7 +557,7 @@ async fn test_exec_command_write_stdin_continues_session() {
         )
         .await
         .expect("start public exec command session");
-    let sid = exec_session_id(&start);
+    let sid = exec_session_id(&start).expect("execution session ID");
 
     let write = registry
         .execute_tool(
@@ -550,7 +592,7 @@ async fn test_exec_command_write_stdin_continues_session() {
 #[cfg(unix)]
 #[tokio::test]
 async fn test_write_stdin_empty_chars_polls_without_sending_input() {
-    let (_temp, registry) = temp_registry().await;
+    let (_temp, registry) = temp_registry().await.expect("create test registry");
 
     let start = registry
         .execute_tool(
@@ -562,7 +604,7 @@ async fn test_write_stdin_empty_chars_polls_without_sending_input() {
         )
         .await
         .expect("start command waiting for stdin");
-    let sid = exec_session_id(&start);
+    let sid = exec_session_id(&start).expect("execution session ID");
 
     let poll = registry
         .execute_tool(
@@ -613,7 +655,8 @@ max_spooled_files = 7
 spool_max_age_secs = 12
 "#,
     ))
-    .await;
+    .await
+    .expect("create test registry");
 
     let start = registry
         .execute_tool(
@@ -625,7 +668,7 @@ spool_max_age_secs = 12
         )
         .await
         .expect("start delayed output command");
-    let sid = exec_session_id(&start);
+    let sid = exec_session_id(&start).expect("execution session ID");
 
     let poll = registry
         .execute_tool(
@@ -665,7 +708,7 @@ spool_max_age_secs = 12
 #[cfg(unix)]
 #[tokio::test]
 async fn test_repeated_write_stdin_empty_polls_observe_fresh_output_and_exit() {
-    let (_temp, registry) = temp_registry().await;
+    let (_temp, registry) = temp_registry().await.expect("create test registry");
 
     let start = registry
         .execute_tool(
@@ -677,7 +720,7 @@ async fn test_repeated_write_stdin_empty_polls_observe_fresh_output_and_exit() {
         )
         .await
         .expect("start delayed command");
-    let sid = exec_session_id(&start);
+    let sid = exec_session_id(&start).expect("execution session ID");
     let poll_args = json!({
         "session_id": sid.as_str(),
         "chars": "",
@@ -714,7 +757,7 @@ async fn test_repeated_write_stdin_empty_polls_observe_fresh_output_and_exit() {
 #[cfg(unix)]
 #[tokio::test]
 async fn test_write_stdin_wait_deadline_preserves_reusable_session() {
-    let (temp, registry) = temp_registry().await;
+    let (temp, registry) = temp_registry().await.expect("create test registry");
 
     let start = registry
         .execute_tool(
@@ -726,7 +769,7 @@ async fn test_write_stdin_wait_deadline_preserves_reusable_session() {
         )
         .await
         .expect("start long-running command");
-    let sid = exec_session_id(&start);
+    let sid = exec_session_id(&start).expect("execution session ID");
 
     let in_progress = registry
         .execute_tool(
@@ -772,7 +815,7 @@ async fn test_write_stdin_wait_deadline_preserves_reusable_session() {
 #[cfg(unix)]
 #[tokio::test]
 async fn test_write_stdin_wait_spools_high_volume_pipe_output() {
-    let (temp, registry) = temp_registry().await;
+    let (temp, registry) = temp_registry().await.expect("create test registry");
     let start = registry
         .execute_tool(
             "exec_command",
@@ -784,7 +827,7 @@ async fn test_write_stdin_wait_spools_high_volume_pipe_output() {
         )
         .await
         .expect("start high-volume pipe command");
-    let sid = exec_session_id(&start);
+    let sid = exec_session_id(&start).expect("execution session ID");
 
     let completed = registry
         .execute_tool(
@@ -815,7 +858,7 @@ async fn test_write_stdin_wait_spools_high_volume_pipe_output() {
 #[cfg(unix)]
 #[tokio::test]
 async fn test_reading_pipe_spool_file_does_not_create_a_second_spool_reference() {
-    let (temp, registry) = temp_registry().await;
+    let (temp, registry) = temp_registry().await.expect("create test registry");
     let start = registry
         .execute_tool(
             "exec_command",
@@ -827,7 +870,7 @@ async fn test_reading_pipe_spool_file_does_not_create_a_second_spool_reference()
         )
         .await
         .expect("start high-volume pipe command");
-    let sid = exec_session_id(&start);
+    let sid = exec_session_id(&start).expect("execution session ID");
 
     let completed = registry
         .execute_tool(
@@ -865,7 +908,7 @@ async fn test_reading_pipe_spool_file_does_not_create_a_second_spool_reference()
 #[cfg(unix)]
 #[tokio::test]
 async fn test_write_stdin_reports_missing_and_closed_session_ids() {
-    let (_temp, registry) = temp_registry().await;
+    let (_temp, registry) = temp_registry().await.expect("create test registry");
 
     let missing = registry
         .execute_tool(
@@ -887,7 +930,7 @@ async fn test_write_stdin_reports_missing_and_closed_session_ids() {
         )
         .await
         .expect("start public exec command session");
-    let sid = exec_session_id(&start);
+    let sid = exec_session_id(&start).expect("execution session ID");
 
     let close = registry
         .execute_tool(
@@ -925,7 +968,8 @@ max_spooled_files = 7
 spool_max_age_secs = 12
 "#,
     ))
-    .await;
+    .await
+    .expect("create test registry");
 
     let start = registry
         .execute_tool(
@@ -937,7 +981,7 @@ spool_max_age_secs = 12
         )
         .await
         .expect("start public exec command session");
-    let sid = exec_session_id(&start);
+    let sid = exec_session_id(&start).expect("execution session ID");
     let payload = "abcdefghijklmnopqrstuvwxyz\n";
 
     let write = registry

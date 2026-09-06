@@ -199,31 +199,70 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_tty_detection() {
-        // These tests verify the TTY detection logic works
-        // Note: In actual test environments, these may vary
-        let stdout = io::stdout();
-        let stderr = io::stderr();
-        let stdin = io::stdin();
+    fn capability_predicates_require_their_declared_features() {
+        struct CapabilityCase {
+            name: &'static str,
+            capabilities: TtyCapabilities,
+            expected_basic_tui: bool,
+        }
 
-        // Just verify the methods don't panic
-        let _ = stdout.is_terminal();
-        let _ = stderr.is_terminal();
-        let _ = stdin.is_terminal();
-    }
+        let fully_featured = TtyCapabilities {
+            color: true,
+            cursor: true,
+            bracketed_paste: true,
+            focus_events: true,
+            mouse: true,
+            keyboard_enhancement: true,
+        };
+        assert!(
+            fully_featured.is_fully_featured(),
+            "all declared terminal capabilities should enable fully featured mode",
+        );
+        assert!(fully_featured.is_basic_tui(), "colour and cursor support should enable basic TUI mode",);
 
-    #[test]
-    fn test_capabilities_detection() {
-        // Test that capability detection doesn't panic
-        let caps = TtyCapabilities::detect();
-        // In a test environment, this might be None
-        // Just verify the method works
-        let _ = caps.is_some() || caps.is_none();
-    }
+        let no_color = TtyCapabilities { color: false, ..fully_featured };
+        assert!(!no_color.is_fully_featured(), "missing colour support should disable fully featured mode",);
+        assert!(!no_color.is_basic_tui(), "missing colour support should disable basic TUI mode",);
 
-    #[test]
-    fn test_interactive_session() {
-        // Test interactive session detection
-        let _ = is_interactive_session();
+        let no_mouse = TtyCapabilities { mouse: false, ..fully_featured };
+        assert!(!no_mouse.is_fully_featured(), "missing mouse support should disable fully featured mode",);
+        assert!(no_mouse.is_basic_tui(), "mouse support is not required for basic TUI mode",);
+
+        let partial_capability_cases = [
+            CapabilityCase {
+                name: "no_cursor",
+                capabilities: TtyCapabilities { cursor: false, ..fully_featured },
+                expected_basic_tui: false,
+            },
+            CapabilityCase {
+                name: "no_bracketed_paste",
+                capabilities: TtyCapabilities { bracketed_paste: false, ..fully_featured },
+                expected_basic_tui: true,
+            },
+            CapabilityCase {
+                name: "no_focus_events",
+                capabilities: TtyCapabilities { focus_events: false, ..fully_featured },
+                expected_basic_tui: true,
+            },
+            CapabilityCase {
+                name: "no_keyboard_enhancement",
+                capabilities: TtyCapabilities { keyboard_enhancement: false, ..fully_featured },
+                expected_basic_tui: true,
+            },
+        ];
+
+        for capability_case in partial_capability_cases {
+            assert!(
+                !capability_case.capabilities.is_fully_featured(),
+                "{} should disable fully featured mode",
+                capability_case.name,
+            );
+            assert_eq!(
+                capability_case.capabilities.is_basic_tui(),
+                capability_case.expected_basic_tui,
+                "{} should have the documented basic TUI result",
+                capability_case.name,
+            );
+        }
     }
 }

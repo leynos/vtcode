@@ -540,6 +540,8 @@ mod memory_cache_tests {
         let path = memory_file(&workspace);
         std::fs::create_dir_all(path.parent().expect("memory parent")).expect("memory directory");
         std::fs::write(&path, "# Reviewer Memory\n\n- old guidance\n").expect("old memory");
+        filetime::set_file_mtime(&path, filetime::FileTime::from_unix_time(1, 0))
+            .expect("set baseline modification time");
         primary_memory_cache().force_metadata_poll();
         let first = load_primary_memory_appendix(workspace.path(), "reviewer", Some(SubagentMemoryScope::Project))
             .expect("first memory")
@@ -547,6 +549,8 @@ mod memory_cache_tests {
         assert!(first.contains("old guidance"));
 
         std::fs::write(&path, "# Reviewer Memory\n\n- new guidance\n").expect("new memory");
+        // Equal-length edits need distinct metadata to exercise the poll path.
+        filetime::set_file_mtime(&path, filetime::FileTime::from_unix_time(2, 0)).expect("advance modification time");
         primary_memory_cache().force_metadata_poll();
         let second = load_primary_memory_appendix(workspace.path(), "reviewer", Some(SubagentMemoryScope::Project))
             .expect("updated memory")

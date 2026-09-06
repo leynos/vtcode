@@ -34,7 +34,8 @@ defaults:
 jobs:
   eval:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Cold workspace builds and PTY test compilation need this finite budget.
+    timeout-minutes: 30
     permissions:
       contents: read
     env:

@@ -1,6 +1,5 @@
 #![allow(
     missing_docs,
-    clippy::expect_used,
     reason = "Intentional compatibility, platform, test, or API-shape suppression."
 )]
 use serde::Deserialize;
@@ -19,14 +18,14 @@ pub struct PermissionFixture {
     pub arguments: Value,
 }
 
-pub fn read_file_permission() -> PermissionFixture {
+pub fn read_file_permission() -> Result<PermissionFixture, serde_json::Error> {
     load_fixture(include_str!("fixtures/acp/permission_read_file.json"))
 }
 
-pub fn list_files_permission() -> PermissionFixture {
+pub fn list_files_permission() -> Result<PermissionFixture, serde_json::Error> {
     load_fixture(include_str!("fixtures/acp/permission_list_files.json"))
 }
 
-fn load_fixture(contents: &str) -> PermissionFixture {
-    serde_json::from_str(contents).expect("invalid ACP permission fixture")
+fn load_fixture(contents: &str) -> Result<PermissionFixture, serde_json::Error> {
+    serde_json::from_str(contents)
 }

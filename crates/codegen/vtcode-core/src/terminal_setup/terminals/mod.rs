@@ -12,11 +12,3 @@ pub mod vscode;
 pub mod warp;
 pub mod windows_terminal;
 pub mod zed;
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_module_structure() {
-        // Placeholder test
-    }
-}

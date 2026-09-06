@@ -101,10 +101,6 @@ fn runtime_config(workspace: &Path) -> RuntimeAgentConfig {
     }
 }
 
-fn enabled_memory_config() -> PersistentMemoryConfig {
-    PersistentMemoryConfig { enabled: true, ..PersistentMemoryConfig::default() }
-}
-
 fn enabled_memory_config_for(workspace: &Path) -> PersistentMemoryConfig {
     PersistentMemoryConfig {
         enabled: true,
@@ -1058,11 +1054,11 @@ fn resolve_memory_route_api_key_uses_runtime_key_for_active_provider() {
 fn resolves_project_scoped_memory_directory() {
     let workspace = tempdir().expect("workspace");
     std::fs::write(workspace.path().join(".vtcode-project"), "renamed-project").expect("project name");
-    let config = enabled_memory_config();
+    let config = enabled_memory_config_for(workspace.path());
     let directory = resolve_persistent_memory_dir(&config, workspace.path())
         .expect("memory dir")
         .expect("memory dir should resolve");
-    assert!(directory.to_string_lossy().contains("state/projects/renamed-project/memory"));
+    assert_eq!(directory, workspace.path().join(".memory/projects/renamed-project/memory"));
 }
 
 #[test]
