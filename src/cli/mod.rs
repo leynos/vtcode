@@ -29,7 +29,7 @@ mod snapshots;
 mod trajectory;
 mod webmcp;
 
-pub mod analyze;
+pub mod analyse;
 pub mod bench_allocator;
 pub mod benchmark;
 pub mod dependencies;

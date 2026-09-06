@@ -368,7 +368,7 @@ impl ContinuationController {
                 "title": task.title,
                 "items": [
                     {
-                        "description": "analyze",
+                        "description": "analyse",
                         "status": "in_progress",
                         "outcome": "Capture the current state and constraints."
                     },
@@ -488,7 +488,7 @@ fn is_internal_scaffold(checklist: &TrackerChecklist) -> bool {
         .as_deref()
         .is_some_and(|notes| notes.contains(INTERNAL_SCAFFOLD_MARKER))
         && checklist.items.len() == 3
-        && checklist.items[0].description == "analyze"
+        && checklist.items[0].description == "analyse"
         && checklist.items[1].description == "change"
         && checklist.items[2].description == "verify"
 }

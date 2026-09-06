@@ -1,8 +1,8 @@
 pub mod complexity;
 pub mod coverage;
 
-pub use complexity::ComplexityAnalyzer;
-pub use coverage::CoverageAnalyzer;
+pub use complexity::ComplexityAnalyser;
+pub use coverage::CoverageAnalyser;
 
 /// Code quality metrics
 #[derive(Debug, Clone, Default)]

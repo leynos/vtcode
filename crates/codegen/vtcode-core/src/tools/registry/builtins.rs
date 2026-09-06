@@ -246,7 +246,7 @@ fn register_web_fetch(_plan_state: Option<&PlanningWorkflowState>) -> ToolRegist
             },
             "prompt": {
                 "type": "string",
-                "description": "Question or instruction for analyzing the fetched content. Omit for a default summary."
+                "description": "Question or instruction for analysing the fetched content. Omit for a default summary."
             },
             "max_bytes": {
                 "type": "integer",

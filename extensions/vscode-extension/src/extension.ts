@@ -2,7 +2,7 @@ import { spawn, type SpawnOptionsWithoutStdio } from "node:child_process";
 import * as vscode from "vscode";
 import { CommandRegistry } from "./commandRegistry";
 import {
-    AnalyzeCommand,
+    AnalyseCommand,
     AskCommand,
     AskSelectionCommand,
     FindFilesCommand,
@@ -216,7 +216,7 @@ export function activate(context: vscode.ExtensionContext) {
     commandRegistry.registerAll([
         new AskCommand(),
         new AskSelectionCommand(),
-        new AnalyzeCommand(),
+        new AnalyseCommand(),
         new TaskTrackerCommand(),
         new OpenConfigCommand(),
         new TrustWorkspaceCommand(),
@@ -783,7 +783,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
 
-    // Note: runAnalyze is registered via CommandRegistry (AnalyzeCommand)
+    // Note: runAnalyze is registered via CommandRegistry (AnalyseCommand)
     // Note: runTaskTrackerTask is registered via CommandRegistry (TaskTrackerCommand)
     // Note: refreshQuickActions is registered via CommandRegistry (RefreshCommand)
 
@@ -1004,9 +1004,9 @@ function createQuickActions(
                 icon: "terminal",
             },
             {
-                label: "Analyze workspace with VT Code",
+                label: "Analyse workspace with VT Code",
                 description:
-                    "Run vtcode analyze and stream the report to the VT Code output channel.",
+                    "Run vtcode analyse and stream the report to the VT Code output channel.",
                 command: "vtcode.runAnalyze",
                 icon: "pulse",
             }

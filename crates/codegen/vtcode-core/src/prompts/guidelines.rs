@@ -335,10 +335,10 @@ fn capability_mode_line(
             Some("- Capabilities: limited. Ask the user to enable more capabilities if file work is required.")
         }
         Some(CapabilityLevel::FileReading | CapabilityLevel::FileListing) => {
-            Some("- Capabilities: read-only. Analyze and search, but do not modify files or run shell commands.")
+            Some("- Capabilities: read-only. Analyse and search, but do not modify files or run shell commands.")
         }
         _ if !has_exec && !has_file => {
-            Some("- Capabilities: read-only. Analyze and search, but do not modify files or run shell commands.")
+            Some("- Capabilities: read-only. Analyse and search, but do not modify files or run shell commands.")
         }
         _ => None,
     }

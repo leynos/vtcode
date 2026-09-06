@@ -76,7 +76,7 @@ impl ContainerSkillsValidator {
     }
 
     /// Analyze a skill for container skills requirements
-    pub fn analyze_skill(&self, skill: &Skill) -> ContainerValidationResult {
+    pub fn analyse_skill(&self, skill: &Skill) -> ContainerValidationResult {
         // Honor explicit manifest flags first; avoids keyword false-positives
         if let Some(true) = skill.manifest.requires_container {
             return ContainerValidationResult {
@@ -243,8 +243,8 @@ impl ContainerSkillsValidator {
     }
 
     /// Batch analyze multiple skills
-    pub fn analyze_skills(&self, skills: &[Skill]) -> Vec<ContainerValidationResult> {
-        skills.iter().map(|skill| self.analyze_skill(skill)).collect()
+    pub fn analyse_skills(&self, skills: &[Skill]) -> Vec<ContainerValidationResult> {
+        skills.iter().map(|skill| self.analyse_skill(skill)).collect()
     }
 
     /// Filter skills that require container skills without fallback
@@ -253,7 +253,7 @@ impl ContainerSkillsValidator {
         let mut incompatible_skills = Vec::new();
 
         for skill in skills {
-            let analysis = self.analyze_skill(&skill);
+            let analysis = self.analyse_skill(&skill);
 
             if analysis.should_filter {
                 incompatible_skills.push(IncompatibleSkillInfo {
@@ -283,7 +283,9 @@ pub struct IncompatibleSkillInfo {
 /// Comprehensive validation report for all skills
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContainerValidationReport {
-    total_skills_analyzed: usize,
+    /// Serialized as `total_skills_analyzed` for existing report consumers.
+    #[serde(rename = "total_skills_analyzed", alias = "total_skills_analysed")]
+    total_skills_analysed: usize,
     compatible_skills: Vec<String>,
     pub incompatible_skills: Vec<IncompatibleSkillInfo>,
     skills_with_fallbacks: Vec<SkillWithFallback>,
@@ -308,7 +310,7 @@ pub struct ValidationSummary {
 impl ContainerValidationReport {
     pub fn new() -> Self {
         Self {
-            total_skills_analyzed: 0,
+            total_skills_analysed: 0,
             compatible_skills: Vec::new(),
             incompatible_skills: Vec::new(),
             skills_with_fallbacks: Vec::new(),
@@ -322,7 +324,7 @@ impl ContainerValidationReport {
     }
 
     pub fn add_skill_analysis(&mut self, skill_name: String, analysis: ContainerValidationResult) {
-        self.total_skills_analyzed += 1;
+        self.total_skills_analysed += 1;
 
         match analysis.requirement {
             ContainerSkillsRequirement::NotRequired => {
@@ -365,7 +367,7 @@ impl ContainerValidationReport {
             ],
         });
         self.summary.total_incompatible += 1;
-        self.total_skills_analyzed += 1;
+        self.total_skills_analysed += 1;
     }
 
     pub fn finalize(&mut self) {
@@ -390,7 +392,7 @@ impl ContainerValidationReport {
         let mut output = String::new();
         output.push_str(" Container Skills Validation Report\n");
         output.push_str("=====================================\n\n");
-        output.push_str(&format!("Total Skills Analyzed: {}\n", self.total_skills_analyzed));
+        output.push_str(&format!("Total Skills Analysed: {}\n", self.total_skills_analysed));
         output.push_str(&format!("Compatible: {}\n", self.summary.total_compatible));
         output.push_str(&format!("With Fallbacks: {}\n", self.summary.total_with_fallbacks));
         output.push_str(&format!("Incompatible: {}\n\n", self.summary.total_incompatible));
@@ -458,7 +460,7 @@ mod tests {
         "#;
 
         let skill = Skill::new(manifest, PathBuf::from("/tmp"), instructions.to_string()).unwrap();
-        let result = validator.analyze_skill(&skill);
+        let result = validator.analyse_skill(&skill);
 
         assert_eq!(result.requirement, ContainerSkillsRequirement::Required);
         assert!(result.should_filter);
@@ -493,7 +495,7 @@ mod tests {
         "#;
 
         let skill = Skill::new(manifest, PathBuf::from("/tmp"), instructions.to_string()).unwrap();
-        let result = validator.analyze_skill(&skill);
+        let result = validator.analyse_skill(&skill);
 
         // vtcode_native=true means native execution, not container skills
         assert_eq!(result.requirement, ContainerSkillsRequirement::NotRequired);
@@ -531,7 +533,7 @@ mod tests {
         "#;
 
         let skill = Skill::new(manifest, PathBuf::from("/tmp"), instructions.to_string()).unwrap();
-        let result = validator.analyze_skill(&skill);
+        let result = validator.analyse_skill(&skill);
 
         assert_eq!(result.requirement, ContainerSkillsRequirement::Required);
         assert!(result.should_filter);
@@ -574,6 +576,6 @@ mod tests {
         assert!(formatted.contains("spreadsheet-generator"));
         assert!(formatted.contains("Incompatible Skills"));
         assert!(formatted.contains("Skills with Fallbacks"));
-        assert!(formatted.contains("Total Skills Analyzed"));
+        assert!(formatted.contains("Total Skills Analysed"));
     }
 }

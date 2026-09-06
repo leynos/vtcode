@@ -124,7 +124,7 @@ impl StartupPolicy {
                     | Commands::AgentClientProtocol { .. }
                     | Commands::Exec { .. }
                     | Commands::Review(_)
-                    | Commands::Analyze { .. }
+                    | Commands::Analyse { .. }
                     | Commands::Benchmark { .. }
                     | Commands::BackgroundSubagent(_)
                     | Commands::AnthropicApi { .. },
@@ -816,7 +816,7 @@ fn command_launches_tui(command: Option<&Commands>) -> bool {
                 | Commands::Exec { .. }
                 | Commands::Review(_)
                 | Commands::Benchmark { .. }
-                | Commands::Analyze { .. }
+                | Commands::Analyse { .. }
                 | Commands::Schema { .. }
                 | Commands::Continue
                 | Commands::BackgroundSubagent(_)

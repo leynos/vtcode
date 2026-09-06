@@ -334,7 +334,7 @@ impl RecoveryStrategy {
         Self::new(
             "Limit workspace scope".to_string(),
             "Workspace is too large for full analysis".to_string(),
-            "Workspace analyzed with reduced scope".to_string(),
+            "Workspace analysed with reduced scope".to_string(),
         )
         .add_step("Create .vtcodeignore file".to_string())
         .add_step("Add large directories: node_modules, build, .git".to_string())

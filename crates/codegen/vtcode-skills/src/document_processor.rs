@@ -303,7 +303,7 @@ impl DocumentProcessor {
             prompt.push_str("\n\n");
         }
 
-        prompt.push_str("Analyze the document images and provide: ");
+        prompt.push_str("Analyse the document images and provide: ");
         prompt.push_str("\n1. A summary of the content");
         prompt.push_str("\n2. Key insights or findings");
         prompt.push_str("\n3. Answers to specific questions");

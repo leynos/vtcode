@@ -3,12 +3,12 @@ import { BaseCommand, type CommandContext } from "../types/command";
 import { runVtcodeCommand } from "../utils/vtcodeRunner";
 
 /**
- * Command to analyze the workspace with VT Code
+ * Command to analyse the workspace with VT Code
  */
-export class AnalyzeCommand extends BaseCommand {
+export class AnalyseCommand extends BaseCommand {
     public readonly id = "vtcode.runAnalyze";
-    public readonly title = "Analyze Workspace";
-    public readonly description = "Analyze the workspace with VT Code";
+    public readonly title = "Analyse Workspace";
+    public readonly description = "Analyse the current workspace with VT Code";
     public readonly icon = "pulse";
 
     async execute(context: CommandContext): Promise<void> {
@@ -17,15 +17,15 @@ export class AnalyzeCommand extends BaseCommand {
         }
 
         try {
-            await runVtcodeCommand(["analyze"], {
-                title: "Analyzing workspace with VT Code…",
+            await runVtcodeCommand(["analyse"], {
+                title: "Analysing workspace with VT Code…",
                 output: context.output,
             });
             void vscode.window.showInformationMessage(
-                "VT Code finished analyzing the workspace. Review the VT Code output channel for results."
+                "VT Code finished analysing the workspace. Review the VT Code output channel for results."
             );
         } catch (error) {
-            this.handleCommandError("analyze the workspace", error);
+            this.handleCommandError("analyse the workspace", error);
         }
     }
 

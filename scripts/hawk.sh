@@ -1,5 +1,5 @@
 #!/bin/bash
-# Hawk — dead public code and visibility analyzer for Rust workspaces
+# Hawk — dead public code and visibility analyser for Rust workspaces
 # Usage: ./scripts/hawk.sh [--fix] [--deny] [--json] [--config <path>]
 # Docs: https://github.com/astral-sh/hawk
 
@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
 		shift 2
 		;;
 	--help | -h)
-		echo "Hawk — dead public code and visibility analyzer"
+		echo "Hawk — dead public code and visibility analyser"
 		echo ""
 		echo "Usage: $0 [OPTIONS]"
 		echo ""

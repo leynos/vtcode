@@ -9,7 +9,7 @@ export class AskSelectionCommand extends BaseCommand {
     public readonly id = "vtcode.askSelection";
     public readonly title = "Ask About Selection";
     public readonly description =
-        "Ask VT Code to explain or analyze the selected code";
+        "Ask VT Code to explain or analyse the selected code";
     public readonly icon = "comment";
 
     async execute(context: CommandContext): Promise<void> {

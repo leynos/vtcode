@@ -110,7 +110,7 @@ describe("WorkspaceParticipant", () => {
 
         it("should include active file information if available", async () => {
             // Arrange
-            const message = "@workspace Analyze this file";
+            const message = "@workspace Analyse this file";
             mockContext.activeFile = {
                 path: "/workspace/test-project/src/main.ts",
                 language: "typescript",

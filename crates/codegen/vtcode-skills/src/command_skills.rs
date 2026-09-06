@@ -208,13 +208,20 @@ const COMMAND_SKILL_SPECS: &[CommandSkillSpec] = &[
         "/edit [file]",
         "tools"
     ),
-    traditional_command_spec!(
-        "analyze",
-        "Perform comprehensive codebase analysis and generate reports (usage: /analyze [full|security|performance])",
-        "/analyze [full|security|performance]",
-        "tools",
-        ".system/cmd-analyze"
-    ),
+    CommandSkillSpec {
+        slash_name: "analyse",
+        // Retain the bundled traditional skill identifier until its authored
+        // asset can migrate with a compatible legacy alias.
+        skill_name: "cmd-analyze",
+        description: "Perform comprehensive codebase analysis and generate reports (usage: /analyse [full|security|performance])",
+        usage: "/analyse [full|security|performance]",
+        category: "tools",
+        aliases: &["analyze"],
+        backend: CommandSkillBackend::TraditionalSkill {
+            skill_name: "cmd-analyze",
+            skill_path: ".system/cmd-analyze",
+        },
+    },
     traditional_command_spec!(
         "review",
         "Review the current diff or selected files (usage: /review [--last-diff|--target <expr>|--file <path>|files...] [--style <style>])",

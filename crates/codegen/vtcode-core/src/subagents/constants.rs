@@ -9,7 +9,7 @@ pub(crate) const SUBAGENT_MIN_BACKGROUND_MAX_TURNS: usize = 4;
 pub(crate) const SUBAGENT_PREVIEW_LINES: usize = 24;
 
 pub(crate) const VAGUE_SUBAGENT_PROMPTS: &[&str] = &[
-    "analyze",
+    "analyse",
     "analyse",
     "check",
     "current state",
