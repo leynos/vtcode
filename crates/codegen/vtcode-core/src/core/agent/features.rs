@@ -1,6 +1,6 @@
 use crate::config::VTCodeConfig;
 use crate::config::constants::tools;
-use crate::tools::tool_intent::{ToolMutationModel, builtin_tool_behavior};
+use crate::tools::tool_intent::{ToolMutationModel, builtin_tool_behaviour};
 
 /// Lifecycle stage for a feature gate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,8 +95,8 @@ impl FeatureSet {
             tools::WRITE_STDIN | tools::APPLY_PATCH if planning_active => false,
             _ if !planning_active => true,
             _ => {
-                builtin_tool_behavior(tool_name)
-                    .map(|behavior| !matches!(behavior.mutation_model, ToolMutationModel::Mutating))
+                builtin_tool_behaviour(tool_name)
+                    .map(|behaviour| !matches!(behaviour.mutation_model, ToolMutationModel::Mutating))
                     .unwrap_or(false) // fail-closed: deny unknown tools in planning mode
             }
         }

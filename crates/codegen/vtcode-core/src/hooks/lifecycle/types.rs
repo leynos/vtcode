@@ -83,7 +83,7 @@ pub struct PermissionRequestHookOutcome {
 
 #[derive(Debug, Clone)]
 pub struct PermissionRequestHookDecision {
-    pub behavior: PermissionDecisionBehavior,
+    pub behaviour: PermissionDecisionBehaviour,
     pub scope: PermissionDecisionScope,
     pub updated_input: Option<Value>,
     pub permission_updates: Vec<PermissionUpdateRequest>,
@@ -91,7 +91,7 @@ pub struct PermissionRequestHookDecision {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PermissionDecisionBehavior {
+pub enum PermissionDecisionBehaviour {
     Allow,
     Deny,
 }

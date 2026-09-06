@@ -610,7 +610,7 @@ async fn test_permission_request_hook_parses_decision_and_updates() {
         .expect("permission request hook");
 
     let decision = outcome.decision.expect("hook decision");
-    assert!(matches!(decision.behavior, PermissionDecisionBehavior::Allow));
+    assert!(matches!(decision.behaviour, PermissionDecisionBehaviour::Allow));
     assert!(matches!(decision.scope, PermissionDecisionScope::Session));
     assert_eq!(decision.updated_input, Some(json!({"command": "echo approved"})));
     assert_eq!(decision.permission_updates.len(), 1);

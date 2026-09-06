@@ -1417,7 +1417,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                     write_blocked_handoff_after_checkpoint(
                         &config.workspace,
                         &harness_snapshot.session_id,
-                        reason.as_deref().unwrap_or("Turn blocked due to repeated failing behavior."),
+                        reason.as_deref().unwrap_or("Turn blocked due to repeated failing behaviour."),
                         checkpoint_outcome.blocked_handoff_resume(),
                         &mut renderer,
                         harness_emitter.as_ref(),
@@ -1461,7 +1461,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                             true,
                             reason
                                 .clone()
-                                .or_else(|| Some("Turn blocked due to repeated failing tool behavior.".to_string())),
+                                .or_else(|| Some("Turn blocked due to repeated failing tool behaviour.".to_string())),
                         );
                         if !renderer.supports_inline_ui()
                             && session_stats.auto_permission_prompt_fallback_active()

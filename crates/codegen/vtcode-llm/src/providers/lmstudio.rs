@@ -130,7 +130,7 @@ impl LmStudioProvider {
         prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<TimeoutsConfig>,
         anthropic: Option<AnthropicConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> (Box<dyn LLMProvider>, String) {
         let resolved_model = resolve_model(model, models::lmstudio::DEFAULT_MODEL);
         let resolved_base = Self::resolve_base_url(base_url);
@@ -143,7 +143,7 @@ impl LmStudioProvider {
             timeouts,
             anthropic,
             None,
-            model_behavior,
+            model_behaviour,
         ));
         (inner, resolved_model)
     }
@@ -180,10 +180,10 @@ impl LmStudioProvider {
         prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<TimeoutsConfig>,
         anthropic: Option<AnthropicConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         let (inner, model_id) =
-            Self::build_inner(api_key, model, base_url, prompt_cache, timeouts, anthropic, model_behavior);
+            Self::build_inner(api_key, model, base_url, prompt_cache, timeouts, anthropic, model_behaviour);
         Self { inner, model_id }
     }
 
@@ -192,9 +192,9 @@ impl LmStudioProvider {
         model: Option<String>,
         base_url: Option<String>,
         prompt_cache: Option<PromptCachingConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
-        let (inner, model_id) = Self::build_inner(api_key, model, base_url, prompt_cache, None, None, model_behavior);
+        let (inner, model_id) = Self::build_inner(api_key, model, base_url, prompt_cache, None, None, model_behaviour);
         Self { inner, model_id }
     }
 

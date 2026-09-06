@@ -29,7 +29,7 @@ pub struct OpenResponsesProvider {
     base_url: String,
     model: String,
     api_key: String,
-    model_behavior: Option<ModelConfig>,
+    model_behaviour: Option<ModelConfig>,
 }
 
 /// Borrowed fields used by the native Responses SSE hot path.
@@ -179,7 +179,7 @@ impl OpenResponsesProvider {
             base_url,
             model,
             api_key,
-            model_behavior: None,
+            model_behaviour: None,
         }
     }
 
@@ -190,11 +190,17 @@ impl OpenResponsesProvider {
         _prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<TimeoutsConfig>,
         _anthropic: Option<AnthropicConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         let api_key_value = api_key.unwrap_or_default();
         let resolved_model = resolve_model(model, models::openresponses::DEFAULT_MODEL);
-        Self::with_model_internal(resolved_model, base_url, api_key_value, timeouts.unwrap_or_default(), model_behavior)
+        Self::with_model_internal(
+            resolved_model,
+            base_url,
+            api_key_value,
+            timeouts.unwrap_or_default(),
+            model_behaviour,
+        )
     }
 
     fn with_model_internal(
@@ -202,7 +208,7 @@ impl OpenResponsesProvider {
         base_url: Option<String>,
         api_key: String,
         timeouts: TimeoutsConfig,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         use crate::http_client::HttpClientFactory;
 
@@ -211,7 +217,7 @@ impl OpenResponsesProvider {
             base_url: override_base_url(urls::OPENRESPONSES_API_BASE, base_url, Some(env_vars::OPENRESPONSES_BASE_URL)),
             model,
             api_key,
-            model_behavior,
+            model_behaviour,
         }
     }
 
@@ -682,14 +688,14 @@ impl LLMProvider for OpenResponsesProvider {
     }
 
     fn supports_reasoning(&self, _model: &str) -> bool {
-        self.model_behavior
+        self.model_behaviour
             .as_ref()
             .and_then(|b| b.model_supports_reasoning)
             .unwrap_or(true) // Open Responses usually implies reasoning support
     }
 
     fn supports_reasoning_effort(&self, _model: &str) -> bool {
-        self.model_behavior
+        self.model_behaviour
             .as_ref()
             .and_then(|b| b.model_supports_reasoning_effort)
             .unwrap_or(true)

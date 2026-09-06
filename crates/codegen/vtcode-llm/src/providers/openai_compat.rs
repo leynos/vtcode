@@ -182,14 +182,14 @@ pub(crate) trait OpenAiCompatSpec: Sized + Send + Sync + 'static {
     }
 }
 
-/// Shared state and behavior for an OpenAI-compatible provider instance.
+/// Shared state and behaviour for an OpenAI-compatible provider instance.
 pub(crate) struct OpenAiCompatCore<S: OpenAiCompatSpec> {
     pub(crate) api_key: String,
     pub(crate) http_client: HttpClient,
     pub(crate) base_url: String,
     pub(crate) model: String,
     pub(crate) prompt_cache_enabled: bool,
-    pub(crate) model_behavior: Option<ModelConfig>,
+    pub(crate) model_behaviour: Option<ModelConfig>,
     spec: PhantomData<S>,
     /// Memoizes the serialized `tools` wire payload per stable tool catalog.
     ///
@@ -220,11 +220,11 @@ impl<S: OpenAiCompatSpec> OpenAiCompatCore<S> {
         base_url: Option<String>,
         prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<vtcode_config::TimeoutsConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         let api_key = S::resolve_api_key(api_key);
         let model = resolve_model(model, S::DEFAULT_MODEL);
-        let mut core = Self::assemble(api_key, model, base_url, timeouts, model_behavior);
+        let mut core = Self::assemble(api_key, model, base_url, timeouts, model_behaviour);
         core.prompt_cache_enabled = S::prompt_cache_enabled(prompt_cache.as_ref());
         core
     }
@@ -234,7 +234,7 @@ impl<S: OpenAiCompatSpec> OpenAiCompatCore<S> {
         model: String,
         base_url: Option<String>,
         timeouts: Option<vtcode_config::TimeoutsConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         use crate::http_client::HttpClientFactory;
 
@@ -246,7 +246,7 @@ impl<S: OpenAiCompatSpec> OpenAiCompatCore<S> {
             base_url,
             model: S::normalize_model(model),
             prompt_cache_enabled: false,
-            model_behavior,
+            model_behaviour,
             spec: PhantomData,
             tools_cache: Mutex::new(HashMap::new()),
         }
@@ -260,7 +260,7 @@ impl<S: OpenAiCompatSpec> OpenAiCompatCore<S> {
             base_url,
             model: S::normalize_model(model),
             prompt_cache_enabled: false,
-            model_behavior: None,
+            model_behaviour: None,
             spec: PhantomData,
             tools_cache: Mutex::new(HashMap::new()),
         }
@@ -457,7 +457,7 @@ macro_rules! impl_openai_compat_provider {
                 prompt_cache: Option<vtcode_config::core::PromptCachingConfig>,
                 timeouts: Option<vtcode_config::TimeoutsConfig>,
                 _anthropic: Option<vtcode_config::core::AnthropicConfig>,
-                model_behavior: Option<vtcode_config::core::ModelConfig>,
+                model_behaviour: Option<vtcode_config::core::ModelConfig>,
             ) -> Self {
                 Self {
                     core: crate::providers::openai_compat::OpenAiCompatCore::from_config(
@@ -466,7 +466,7 @@ macro_rules! impl_openai_compat_provider {
                         base_url,
                         prompt_cache,
                         timeouts,
-                        model_behavior,
+                        model_behaviour,
                     ),
                 }
             }

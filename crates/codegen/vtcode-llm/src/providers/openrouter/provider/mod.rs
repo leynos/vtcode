@@ -36,7 +36,7 @@ pub struct OpenRouterProvider {
     model: String,
     prompt_cache_enabled: bool,
     prompt_cache_settings: OpenRouterPromptCacheSettings,
-    model_behavior: Option<ModelConfig>,
+    model_behaviour: Option<ModelConfig>,
 }
 
 impl OpenRouterProvider {
@@ -69,7 +69,7 @@ impl OpenRouterProvider {
             model,
             prompt_cache_enabled: false,
             prompt_cache_settings: OpenRouterPromptCacheSettings::default(),
-            model_behavior: None,
+            model_behaviour: None,
         }
     }
 
@@ -80,7 +80,7 @@ impl OpenRouterProvider {
         prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<TimeoutsConfig>,
         _anthropic: Option<AnthropicConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         let api_key_value = api_key.unwrap_or_default();
         let model_value = resolve_model(model, models::openrouter::DEFAULT_MODEL);
@@ -91,7 +91,7 @@ impl OpenRouterProvider {
             prompt_cache,
             base_url,
             timeouts.unwrap_or_default(),
-            model_behavior,
+            model_behaviour,
         )
     }
 
@@ -101,7 +101,7 @@ impl OpenRouterProvider {
         prompt_cache: Option<PromptCachingConfig>,
         base_url: Option<String>,
         timeouts: TimeoutsConfig,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         use crate::http_client::HttpClientFactory;
         let (prompt_cache_enabled, prompt_cache_settings) = extract_prompt_cache_settings(
@@ -117,7 +117,7 @@ impl OpenRouterProvider {
             model,
             prompt_cache_enabled,
             prompt_cache_settings,
-            model_behavior,
+            model_behaviour,
         }
     }
 

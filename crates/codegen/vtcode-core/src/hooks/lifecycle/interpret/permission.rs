@@ -2,7 +2,7 @@ use serde_json::Value;
 
 use crate::config::HookCommandConfig;
 use crate::hooks::lifecycle::types::{
-    HookMessage, PermissionDecisionBehavior, PermissionDecisionScope, PermissionRequestHookDecision,
+    HookMessage, PermissionDecisionBehaviour, PermissionDecisionScope, PermissionRequestHookDecision,
     PermissionRequestHookOutcome, PermissionUpdateDestination, PermissionUpdateKind, PermissionUpdateRequest,
 };
 
@@ -57,13 +57,13 @@ pub(crate) fn interpret_permission_request(
     }
 
     let decision_value = spec.get("decision");
-    let behavior = match decision_value
+    let behaviour = match decision_value
         .and_then(Value::as_object)
         .and_then(|decision| decision.get("behavior"))
         .and_then(Value::as_str)
     {
-        Some(value) if value.eq_ignore_ascii_case("allow") => Some(PermissionDecisionBehavior::Allow),
-        Some(value) if value.eq_ignore_ascii_case("deny") => Some(PermissionDecisionBehavior::Deny),
+        Some(value) if value.eq_ignore_ascii_case("allow") => Some(PermissionDecisionBehaviour::Allow),
+        Some(value) if value.eq_ignore_ascii_case("deny") => Some(PermissionDecisionBehaviour::Deny),
         _ => None,
     };
 
@@ -71,7 +71,7 @@ pub(crate) fn interpret_permission_request(
         outcome.messages.push(HookMessage::info(message));
     }
 
-    let Some(behavior) = behavior else {
+    let Some(behaviour) = behaviour else {
         return;
     };
 
@@ -104,7 +104,7 @@ pub(crate) fn interpret_permission_request(
         .unwrap_or(false);
 
     outcome.decision = Some(PermissionRequestHookDecision {
-        behavior,
+        behaviour,
         scope,
         updated_input,
         permission_updates,

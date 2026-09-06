@@ -57,8 +57,8 @@ pub trait ProviderConfig {
         None
     }
 
-    /// Optional model behavior configuration (loop detection, capability overrides).
-    fn model_behavior(&self) -> Option<Cow<'_, ModelConfig>> {
+    /// Optional model behaviour configuration (loop detection, capability overrides).
+    fn model_behaviour(&self) -> Option<Cow<'_, ModelConfig>> {
         None
     }
 }
@@ -250,7 +250,7 @@ fn project_provider_config(source: &dyn ProviderConfig) -> crate::factory_types:
         timeouts: source.timeouts().map(Cow::into_owned),
         openai: source.openai().map(Cow::into_owned),
         anthropic: source.anthropic().map(Cow::into_owned),
-        model_behavior: source.model_behavior().map(Cow::into_owned),
+        model_behaviour: source.model_behaviour().map(Cow::into_owned),
         workspace_root: None,
     }
 }
@@ -496,7 +496,7 @@ mod tests {
             timeouts: Some(TimeoutsConfig::default()),
             openai: Some(OpenAIConfig::default()),
             anthropic: Some(AnthropicConfig::default()),
-            model_behavior: Some(ModelConfig::default()),
+            model_behaviour: Some(ModelConfig::default()),
             workspace_root: None,
         };
 
@@ -517,7 +517,7 @@ mod tests {
             Some(Cow::Borrowed(_))
         ));
         assert!(matches!(
-            <crate::factory_types::ProviderConfig as ProviderConfig>::model_behavior(&config),
+            <crate::factory_types::ProviderConfig as ProviderConfig>::model_behaviour(&config),
             Some(Cow::Borrowed(_))
         ));
     }
@@ -529,13 +529,13 @@ mod tests {
             .with_timeouts(TimeoutsConfig::default())
             .with_openai(OpenAIConfig::default())
             .with_anthropic(AnthropicConfig::default())
-            .with_model_behavior(ModelConfig::default());
+            .with_model_behaviour(ModelConfig::default());
 
         assert!(matches!(<OwnedProviderConfig as ProviderConfig>::prompt_cache(&config), Some(Cow::Borrowed(_))));
         assert!(matches!(<OwnedProviderConfig as ProviderConfig>::timeouts(&config), Some(Cow::Borrowed(_))));
         assert!(matches!(<OwnedProviderConfig as ProviderConfig>::openai(&config), Some(Cow::Borrowed(_))));
         assert!(matches!(<OwnedProviderConfig as ProviderConfig>::anthropic(&config), Some(Cow::Borrowed(_))));
-        assert!(matches!(<OwnedProviderConfig as ProviderConfig>::model_behavior(&config), Some(Cow::Borrowed(_))));
+        assert!(matches!(<OwnedProviderConfig as ProviderConfig>::model_behaviour(&config), Some(Cow::Borrowed(_))));
     }
 
     #[test]
@@ -553,7 +553,7 @@ mod tests {
                 count_tokens_enabled: true,
                 ..AnthropicConfig::default()
             }),
-            model_behavior: Some(ModelConfig::default()),
+            model_behaviour: Some(ModelConfig::default()),
             workspace_root: None,
         };
 
@@ -566,7 +566,7 @@ mod tests {
         assert_eq!(adapted.timeouts.as_ref().unwrap().pty_ceiling_seconds, 300);
         assert!(adapted.openai.as_ref().unwrap().websocket_mode);
         assert!(adapted.anthropic.as_ref().unwrap().count_tokens_enabled);
-        assert!(adapted.model_behavior.is_some());
+        assert!(adapted.model_behaviour.is_some());
     }
 
     #[test]
@@ -617,8 +617,8 @@ impl ProviderConfig for crate::factory_types::ProviderConfig {
         borrowed_optional(&self.anthropic)
     }
 
-    fn model_behavior(&self) -> Option<Cow<'_, ModelConfig>> {
-        borrowed_optional(&self.model_behavior)
+    fn model_behaviour(&self) -> Option<Cow<'_, ModelConfig>> {
+        borrowed_optional(&self.model_behaviour)
     }
 }
 
@@ -633,7 +633,7 @@ pub struct OwnedProviderConfig {
     timeouts: Option<TimeoutsConfig>,
     openai: Option<OpenAIConfig>,
     anthropic: Option<AnthropicConfig>,
-    model_behavior: Option<ModelConfig>,
+    model_behaviour: Option<ModelConfig>,
 }
 
 impl OwnedProviderConfig {
@@ -676,8 +676,8 @@ impl OwnedProviderConfig {
         self
     }
 
-    fn with_model_behavior(mut self, value: ModelConfig) -> Self {
-        self.model_behavior = Some(value);
+    fn with_model_behaviour(mut self, value: ModelConfig) -> Self {
+        self.model_behaviour = Some(value);
         self
     }
 }
@@ -711,7 +711,7 @@ impl ProviderConfig for OwnedProviderConfig {
         borrowed_optional(&self.anthropic)
     }
 
-    fn model_behavior(&self) -> Option<Cow<'_, ModelConfig>> {
-        borrowed_optional(&self.model_behavior)
+    fn model_behaviour(&self) -> Option<Cow<'_, ModelConfig>> {
+        borrowed_optional(&self.model_behaviour)
     }
 }
