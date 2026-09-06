@@ -532,7 +532,7 @@ notes    = "Go module checksum verification"
 name     = "Maven Central"
 domain   = "repo1.maven.org"
 protocol = "https"
-notes    = "JVM artifact repository"
+notes    = "JVM artefact repository"
 
 [[package_registries]]
 name     = "RubyGems"
