@@ -17,7 +17,7 @@ pub fn strip_ansi_bytes(input: &[u8]) -> Vec<u8>
 
 **Used in**:
 
--   PTY output cleaning (`crates/codegen/vtcode-core/src/tools/pty.rs:208`)
+-   PTY output cleaning (`crates/codegen/vtcode-core/src/tools/pty/mod.rs:208`)
 -   Tool output formatting (`crates/codegen/vtcode-core/src/tools/registry/executors/exec_output.rs`)
 -   TUI session rendering (`crates/codegen/vtcode-ui/src/tui/core_tui/session/text_utils.rs`)
 
@@ -146,14 +146,14 @@ VT Code strips ANSI control sequences but preserves line-control characters like
 
 ### Implementation
 
-**Location**: `crates/codegen/vtcode-core/src/tools/pty.rs`
+**Location**: `crates/codegen/vtcode-core/src/tools/pty/mod.rs`
 
 ```rust
 // Line 208: Clean PTY output for token counting
 let cleaned_text = crate::utils::ansi_parser::strip_ansi(text);
 ```
 
-**Location**: `src/agent/runloop/unified/tool_pipeline.rs`
+**Location**: `src/agent/runloop/unified/tool_pipeline/mod.rs`
 
 ```rust
 // Streaming callback extracts last line

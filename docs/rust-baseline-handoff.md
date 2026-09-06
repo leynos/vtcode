@@ -824,3 +824,30 @@ Advisory checks passed in warning mode; optional ast-grep was unavailable.
 Four inherited rustdoc warnings remain. Nixie passed both changed documents;
 Markdownlint retains seven exact-parent line-length findings in the setup guide,
 with no additions. CI installs typos in both spelling-dependent jobs.
+
+## Module structure layer
+
+This layer moves self-named Rust modules into `mod.rs` form and extracts API-key
+and Anthropic validation sections without changing their behaviour. Forty-five
+moves preserve their complete source bytes. The API-key production section and
+all extracted test bodies retain their contents; Anthropic tool validation gains
+only the visibility needed by its new private child module.
+
+Ten relative module paths are adjusted for their new directories. Current
+source-path guidance receives 35 literal substitutions across 23 documents;
+dated historical records retain their original references. A full CodeGraph
+refresh removed stale deleted-file entries, and Leta resolves the new API-key
+module location. Existing logging and advisory rules follow their moved source
+files with unchanged scope and rationale; model-script instructions use the new
+path. One extracted test line is joined as required by the existing formatter.
+The first full test run found 15 transcript-link failures caused by a fixture
+path that still named the moved `session.rs`; the helper now follows
+`session/mod.rs`. The corrected layer passes formatting, spelling, Actions
+contracts, lint, build, type-checking, all 10,094 workspace tests (17 skipped)
+and all 67 harness tests. Advisory checks pass; AST-grep is unavailable and the
+existing optional target skips it. Four inherited rustdoc warnings remain for
+the later source-fix layer.
+
+All 24 changed documents pass Nixie. Exact-parent Markdown comparison identified
+one new long line from a longer module path, now wrapped; the other 1,134
+diagnostics are inherited. Final document validation follows that correction.

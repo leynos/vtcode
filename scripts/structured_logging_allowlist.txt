@@ -4,7 +4,7 @@ crates/codegen/vtcode-core/src/cli/** | VT Code core CLI adapters intentionally 
 crates/codegen/vtcode-core/src/commands/** | Command implementations print human-readable summaries and reports.
 crates/codegen/vtcode-core/src/config/validation.rs | Configuration validation warnings now use tracing::warn.
 crates/codegen/vtcode-core/src/core/agent/core.rs | Interactive agent session headers and summaries are part of the terminal UX.
-crates/codegen/vtcode-core/src/core/agent/runner.rs | Interactive agent runner status output is user-facing.
+crates/codegen/vtcode-core/src/core/agent/runner/mod.rs | Interactive agent runner status output is user-facing.
 crates/codegen/vtcode-core/src/core/agent/runner/output.rs | Assistant response rendering intentionally writes to stdout.
 crates/codegen/vtcode-core/src/core/agent/runner/telemetry.rs | Interactive warnings and errors are surfaced directly to users.
 crates/codegen/vtcode-core/src/core/agent/runner/tool_args.rs | Tool argument validation warnings are user-facing terminal output.

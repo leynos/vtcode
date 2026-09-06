@@ -8,7 +8,7 @@ VT Code implements comprehensive ANSI code stripping for PTY command output to e
 
 ### 1. Prevention at Source (Preferred)
 
-Environment variables set in `crates/codegen/vtcode-core/src/tools/pty.rs::set_command_environment()`:
+Environment variables set in `crates/codegen/vtcode-core/src/tools/pty/mod.rs::set_command_environment()`:
 
 ```rust
 // Disable automatic colour output from build tools
@@ -26,7 +26,7 @@ builder.env("RUSTFLAGS", "-C color=never");      // Disable rustc colours
 
 ### 2. Capture-Time Stripping
 
-`PtyScrollback::push_text()` in `crates/codegen/vtcode-core/src/tools/pty.rs:206-209`:
+`PtyScrollback::push_text()` in `crates/codegen/vtcode-core/src/tools/pty/mod.rs:206-209`:
 
 ```rust
 fn push_text(&mut self, text: &str) {
@@ -122,7 +122,7 @@ Clean, machine-readable output to agent
 ### Existing Tests
 
 -   `crates/codegen/vtcode-core/src/utils/ansi_parser.rs`: 10+ tests covering CSI, OSC, edge cases
--   `crates/codegen/vtcode-core/src/tools/pty.rs`: Scrollback size, overflow, metrics tests
+-   `crates/codegen/vtcode-core/src/tools/pty/mod.rs`: Scrollback size, overflow, metrics tests
 -   Implicit: Every `strip_ansi()` call prevents malformed output
 
 ### Manual Verification
@@ -154,7 +154,8 @@ Both commands should produce **zero matches** after these changes.
 
 ## Related Files
 
--   `crates/codegen/vtcode-core/src/tools/pty.rs` - PTY management and ANSI prevention
+-   `crates/codegen/vtcode-core/src/tools/pty/mod.rs` - PTY management
+    and ANSI prevention
 -   `crates/codegen/vtcode-core/src/utils/ansi_parser.rs` - Core stripping logic
 -   `crates/codegen/vtcode-core/src/tools/registry/executors/` - Return-path stripping
 -   `src/agent/runloop/tool_output/streams.rs` - Render-time stripping

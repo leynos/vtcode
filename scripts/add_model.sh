@@ -78,7 +78,7 @@ EOF
 echo "$JSON_TEMPLATE"
 
 # 3. Model ID enum
-echo -e "\n${BLUE}3. Add to crates/codegen/vtcode-config/src/models/model_id.rs${NC}"
+echo -e "\n${BLUE}3. Add to crates/codegen/vtcode-config/src/models/model_id/mod.rs${NC}"
 echo "   /// $DESCRIPTION"
 echo "   $ENUM_NAME,"
 

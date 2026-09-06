@@ -39,13 +39,13 @@ use crate::agent::runloop::unified::turn::turn_loop_helpers::{
     resolve_safety_tool_call_limits,
 };
 
-#[path = "turn_loop/notifications.rs"]
+#[path = "notifications.rs"]
 mod notifications;
-#[path = "turn_loop/post_tool_recovery.rs"]
+#[path = "post_tool_recovery.rs"]
 mod post_tool_recovery;
-#[path = "turn_loop/recovery_compaction.rs"]
+#[path = "recovery_compaction.rs"]
 mod recovery_compaction;
-#[path = "turn_loop/usage_accounting.rs"]
+#[path = "usage_accounting.rs"]
 mod usage_accounting;
 
 // Using `tool_output_handler::handle_pipeline_output_from_turn_ctx` adapter where needed

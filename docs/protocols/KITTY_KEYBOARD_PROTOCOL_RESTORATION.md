@@ -91,7 +91,7 @@ PushKeyboardEnhancementFlags / PopKeyboardEnhancementFlags
 
 ### Integration Point - Session Setup
 
-#### src/agent/runloop/unified/session_setup.rs
+#### src/agent/runloop/unified/session_setup/mod.rs
 - **Status**: ✓ Updated
 - **Changes**:
   - Updated call to `spawn_session_with_prompts()` to pass actual keyboard protocol config

@@ -150,7 +150,7 @@ let event_fut = tokio::task::spawn_blocking(|| {
 
 ### Pattern 3: Multiple Concurrent Operations
 
-**File:** `src/agent/runloop/unified/tool_pipeline.rs:6-9`
+**File:** `src/agent/runloop/unified/tool_pipeline/mod.rs:6-9`
 
 ```rust
 use tokio::sync::Notify;
@@ -540,7 +540,7 @@ Event::Key(key) if key.code == KeyCode::Enter => {
 
 VT Code uses `#[tokio::test]` for async tests:
 
-**File:** `crates/codegen/vtcode-core/src/hooks/lifecycle/tests.rs`
+**File:** `crates/codegen/vtcode-core/src/hooks/lifecycle/tests/mod.rs`
 
 ```rust
 #[tokio::test]
@@ -625,4 +625,4 @@ Tokio's work-stealing scheduler minimizes context switches. Most of VT Code's as
 - [Tokio Select Documentation](https://tokio.rs/tokio/tutorial/select)
 - [Rust Async Book](https://rust-lang.github.io/async-book/)
 - `crates/codegen/vtcode-ui/src/tui/` - Event loop implementation
-- `src/agent/runloop/unified/tool_pipeline.rs` - Concurrent tool execution
+- `src/agent/runloop/unified/tool_pipeline/mod.rs` - Concurrent tool execution

@@ -72,7 +72,7 @@ task_budget_tokens = 128000                # Opus 4.7+ only
 
 ### Developer: `ModelId` enum
 
-If you are developing against `vtcode-config`, update the `ModelId` enum in `crates/codegen/vtcode-config/src/models/model_id.rs` and its match arms (`as_str.rs`, `display.rs`, `description.rs`, `parse.rs`, `provider.rs`, `capabilities.rs`, `collection.rs`). Use the [adding-llm-providers](/docs/development/ADDING_MODELS.md) workflow.
+If you are developing against `vtcode-config`, update the `ModelId` enum in `crates/codegen/vtcode-config/src/models/model_id/mod.rs` and its match arms (`as_str.rs`, `display.rs`, `description.rs`, `parse.rs`, `provider.rs`, `capabilities.rs`, `collection.rs`). Use the [adding-llm-providers](/docs/development/ADDING_MODELS.md) workflow.
 
 ### Developer: Request/response handling
 

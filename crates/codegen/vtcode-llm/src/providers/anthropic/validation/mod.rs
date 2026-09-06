@@ -13,6 +13,12 @@ use crate::provider::{
 use vtcode_config::core::AnthropicConfig;
 use vtcode_config::types::ReasoningEffortLevel;
 
+mod schema;
+mod tool;
+
+pub use schema::validate_anthropic_schema;
+use tool::validate_tool_definitions;
+
 use super::capabilities::{
     adaptive_thinking_always_on, allowed_efforts_for_model, claude_thinking_profile, default_effort_for_model,
     effort_allowed_for_model, effort_is_at_most_high, matches_model, rejects_sampling, resolve_model_name,
@@ -272,84 +278,6 @@ fn effective_task_budget_tokens(request: &LLMRequest, anthropic_config: &Anthrop
     anthropic_config.task_budget_tokens
 }
 
-fn validate_tool_definitions(request: &LLMRequest) -> Result<(), LLMError> {
-    let Some(tools) = request.tools.as_ref() else {
-        return Ok(());
-    };
-
-    let mut has_programmatic_tool_calling = false;
-
-    for tool in tools.iter() {
-        let has_allowed_callers = tool.allowed_callers.as_ref().is_some_and(|callers| !callers.is_empty());
-        let has_input_examples = tool.input_examples.as_ref().is_some_and(|examples| !examples.is_empty());
-
-        if let Some(function) = tool.function.as_ref() {
-            validate_anthropic_tool_name(&function.name)?;
-
-            if has_allowed_callers && tool.strict == Some(true) {
-                let formatted_error = error_display::format_llm_error(
-                    "Anthropic",
-                    &format!(
-                        "tool '{}' cannot combine strict=true with allowed_callers; strict tool use is incompatible with programmatic tool calling",
-                        function.name
-                    ),
-                );
-                return Err(LLMError::InvalidRequest { message: formatted_error, metadata: None });
-            }
-        } else if has_allowed_callers || has_input_examples {
-            let formatted_error = error_display::format_llm_error(
-                "Anthropic",
-                &format!(
-                    "tool type '{}' cannot use allowed_callers or input_examples without a function definition",
-                    tool.tool_type
-                ),
-            );
-            return Err(LLMError::InvalidRequest { message: formatted_error, metadata: None });
-        }
-
-        has_programmatic_tool_calling |= has_allowed_callers;
-    }
-
-    if has_programmatic_tool_calling
-        && request
-            .parallel_tool_config
-            .as_ref()
-            .is_some_and(|config| config.disable_parallel_tool_use)
-    {
-        let formatted_error = error_display::format_llm_error(
-            "Anthropic",
-            "programmatic tool calling is incompatible with disable_parallel_tool_use=true",
-        );
-        return Err(LLMError::InvalidRequest { message: formatted_error, metadata: None });
-    }
-
-    if has_programmatic_tool_calling && matches!(request.tool_choice, Some(ToolChoice::Any | ToolChoice::Specific(_))) {
-        let formatted_error = error_display::format_llm_error(
-            "Anthropic",
-            "programmatic tool calling is incompatible with forced tool_choice values; use 'auto' or omit tool_choice",
-        );
-        return Err(LLMError::InvalidRequest { message: formatted_error, metadata: None });
-    }
-
-    Ok(())
-}
-
-fn validate_anthropic_tool_name(name: &str) -> Result<(), LLMError> {
-    let is_valid = !name.is_empty()
-        && name.len() <= 64
-        && name.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'));
-
-    if is_valid {
-        return Ok(());
-    }
-
-    let formatted_error = error_display::format_llm_error(
-        "Anthropic",
-        &format!("tool name '{name}' must match ^[a-zA-Z0-9_-]{{1,64}}$ for Anthropic tool use"),
-    );
-    Err(LLMError::InvalidRequest { message: formatted_error, metadata: None })
-}
-
 fn validate_effort_setting(effort: &str, model: &str, default_model: &str) -> Result<(), LLMError> {
     let normalized = effort.trim().to_ascii_lowercase();
     let is_supported = supports_effort(model, default_model);
@@ -436,122 +364,5 @@ fn validate_reasoning_constraints(
         return Err(LLMError::InvalidRequest { message: formatted_error, metadata: None });
     }
 
-    Ok(())
-}
-
-pub fn validate_anthropic_schema(schema: &serde_json::Value, _provider_name: &str) -> Result<(), LLMError> {
-    use serde_json::Value;
-
-    match schema {
-        Value::Object(obj) => {
-            validate_schema_object(obj, "root")?;
-        }
-        Value::String(_) | Value::Number(_) | Value::Bool(_) | Value::Array(_) | Value::Null => {
-            let formatted_error =
-                error_display::format_llm_error("Anthropic", "Structured output schema must be a JSON object");
-            return Err(LLMError::InvalidRequest { message: formatted_error, metadata: None });
-        }
-    }
-    Ok(())
-}
-
-fn validate_schema_object(obj: &serde_json::Map<String, serde_json::Value>, path: &str) -> Result<(), LLMError> {
-    use serde_json::Value;
-
-    for (key, value) in obj {
-        match key.as_str() {
-            "type" => {
-                if let Some(type_str) = value.as_str() {
-                    match type_str {
-                        "object" | "array" | "string" | "number" | "integer" | "boolean" | "null" => {}
-                        _ => {
-                            let formatted_error = error_display::format_llm_error(
-                                "Anthropic",
-                                &format!("Unsupported schema type '{type_str}', path: {path}"),
-                            );
-                            return Err(LLMError::InvalidRequest { message: formatted_error, metadata: None });
-                        }
-                    }
-                }
-            }
-            "minimum" | "maximum" | "multipleOf" => {
-                let formatted_error = error_display::format_llm_error(
-                    "Anthropic",
-                    &format!(
-                        "Numeric constraints like '{key}' are not supported by Anthropic structured output. Path: {path}"
-                    ),
-                );
-                return Err(LLMError::InvalidRequest { message: formatted_error, metadata: None });
-            }
-            "minLength" | "maxLength" => {
-                let formatted_error = error_display::format_llm_error(
-                    "Anthropic",
-                    &format!(
-                        "String constraints like '{key}' are not supported by Anthropic structured output. Path: {path}"
-                    ),
-                );
-                return Err(LLMError::InvalidRequest { message: formatted_error, metadata: None });
-            }
-            "minItems" | "maxItems" | "uniqueItems" => {
-                if key == "minItems" {
-                    if let Some(min_items) = value.as_u64()
-                        && min_items > 1
-                    {
-                        let formatted_error = error_display::format_llm_error(
-                            "Anthropic",
-                            &format!("Array minItems only supports values 0 or 1, got {min_items}, path: {path}"),
-                        );
-                        return Err(LLMError::InvalidRequest { message: formatted_error, metadata: None });
-                    }
-                } else {
-                    let formatted_error = error_display::format_llm_error(
-                        "Anthropic",
-                        &format!(
-                            "Array constraints like '{key}' are not supported by Anthropic structured output. Path: {path}"
-                        ),
-                    );
-                    return Err(LLMError::InvalidRequest { message: formatted_error, metadata: None });
-                }
-            }
-            "additionalProperties" => {
-                if let Some(additional_props) = value.as_bool()
-                    && additional_props
-                {
-                    let formatted_error = error_display::format_llm_error(
-                        "Anthropic",
-                        &format!("additionalProperties must be set to false, got {additional_props}, path: {path}"),
-                    );
-                    return Err(LLMError::InvalidRequest { message: formatted_error, metadata: None });
-                }
-            }
-            "properties" => {
-                if let Value::Object(props) = value {
-                    for (prop_name, prop_value) in props {
-                        let prop_path = format!("{path}.properties.{prop_name}");
-                        if let Value::Object(prop_obj) = prop_value {
-                            validate_schema_object(prop_obj, &prop_path)?;
-                        }
-                    }
-                }
-            }
-            "items" => {
-                if let Value::Object(items_obj) = value {
-                    let items_path = format!("{path}.items");
-                    validate_schema_object(items_obj, &items_path)?;
-                }
-            }
-            "anyOf" | "allOf" | "oneOf" => {
-                if let Value::Array(options) = value {
-                    for (i, option) in options.iter().enumerate() {
-                        if let Value::Object(option_obj) = option {
-                            let option_path = format!("{path}.{key}[{i}]");
-                            validate_schema_object(option_obj, &option_path)?;
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
     Ok(())
 }

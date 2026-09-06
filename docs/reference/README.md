@@ -82,7 +82,7 @@ Quick lookup for common sequences:
 **PTY output processing**:
 
 -   Flow diagram: [ansi-in-vtcode.md#pty-output-processing](./ansi-in-vtcode.md#pty-output-processing)
--   Implementation: `crates/codegen/vtcode-core/src/tools/pty.rs`
+-   Implementation: `crates/codegen/vtcode-core/src/tools/pty/mod.rs`
 
 **TUI rendering**:
 

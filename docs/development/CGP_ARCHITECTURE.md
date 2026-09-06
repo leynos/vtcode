@@ -431,7 +431,7 @@ tool_registry.register_cgp_tool(
 
 ## File Locations
 
-- `crates/codegen/vtcode-core/src/components.rs` — CGP substrate, provider traits, facades, runtime contexts
+- `crates/codegen/vtcode-core/src/components/mod.rs` — CGP substrate, provider traits, facades, runtime contexts
 - `crates/codegen/vtcode-core/src/tools/registry/cgp_facade.rs` — Registry integration (enable/register)
 - `src/agent/runloop/unified/session_setup/init.rs` — Bootstrap wiring
 
