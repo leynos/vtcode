@@ -1,17 +1,14 @@
 use super::super::types::SessionHandle;
 use super::ZedAgent;
+use super::lody::{lody_task_id, lody_task_session_update};
 use crate::acp;
 use crate::zed::connection::ConnectionHandle;
-use serde_json::{Value, json};
+use hashbrown::HashSet;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use tracing::warn;
-use vtcode_core::subagents::{
-    BackgroundSubprocessEntry, BackgroundSubprocessStatus, SubagentProgressEvent, SubagentStatus, SubagentStatusEntry,
-};
-
-pub(super) const TASK_LIFECYCLE_METHOD: &str = "_vtcode/taskLifecycle";
+use vtcode_core::subagents::SubagentProgressEvent;
 
 impl ZedAgent {
     pub(super) fn ensure_task_lifecycle_forwarder(&self, session: &SessionHandle) {
@@ -56,14 +53,19 @@ fn spawn_task_lifecycle_forwarder(
     client: Arc<ConnectionHandle>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
+        let mut emitted_task_ids = HashSet::new();
         loop {
             match receiver.recv().await {
                 Ok(event) => {
                     if event.parent_session_id() != session_id.0.as_ref() {
                         continue;
                     }
-                    if let Err(error) = send_task_lifecycle(&client, &session_id, event) {
+                    let task_id = lody_task_id(&event).to_string();
+                    let previously_emitted = emitted_task_ids.contains(&task_id);
+                    if let Err(error) = send_task_lifecycle(&client, &session_id, event, previously_emitted) {
                         warn!(%error, %session_id, "Failed to forward ACP task lifecycle notification");
+                    } else {
+                        let _ = emitted_task_ids.insert(task_id);
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
@@ -79,105 +81,20 @@ fn send_task_lifecycle(
     client: &ConnectionHandle,
     session_id: &acp::SessionId,
     event: SubagentProgressEvent,
+    previously_emitted: bool,
 ) -> anyhow::Result<()> {
-    let message = lifecycle_message(event)?;
-    let payload = json!({
-        "sessionId": session_id.to_string(),
-        "acpSessionId": session_id.to_string(),
-        "message": message,
-    });
-    let params: Arc<serde_json::value::RawValue> = serde_json::value::to_raw_value(&payload)?.into();
+    let update = lody_task_session_update(event, previously_emitted)?;
     client
-        .send_ext_notification(acp::ExtNotification::new(TASK_LIFECYCLE_METHOD, params))
+        .send_session_notification(acp::SessionNotification::new(session_id.clone(), update))
         .map_err(|error| anyhow::anyhow!(error.to_string()))
-}
-
-fn lifecycle_message(event: SubagentProgressEvent) -> anyhow::Result<Value> {
-    match event {
-        SubagentProgressEvent::Subagent { task, .. } => subagent_lifecycle_message(task),
-        SubagentProgressEvent::BackgroundProcess { task, .. } => background_lifecycle_message(task),
-    }
-}
-
-fn subagent_lifecycle_message(entry: SubagentStatusEntry) -> anyhow::Result<Value> {
-    let message_type = lifecycle_message_type(entry.status.is_terminal(), entry.status == SubagentStatus::Queued);
-    let status = terminal_subagent_status(entry.status);
-    lifecycle_message_value(message_type, "subagent", entry.id.clone(), status, entry.agent_name.clone(), entry)
-}
-
-fn background_lifecycle_message(entry: BackgroundSubprocessEntry) -> anyhow::Result<Value> {
-    let terminal = matches!(entry.status, BackgroundSubprocessStatus::Stopped | BackgroundSubprocessStatus::Error);
-    let message_type = lifecycle_message_type(terminal, entry.status == BackgroundSubprocessStatus::Starting);
-    let status = match entry.status {
-        BackgroundSubprocessStatus::Starting => "pending",
-        BackgroundSubprocessStatus::Running => "in_progress",
-        BackgroundSubprocessStatus::Stopped => "completed",
-        BackgroundSubprocessStatus::Error => "failed",
-    };
-    lifecycle_message_value(
-        message_type,
-        "background_process",
-        entry.id.clone(),
-        status,
-        entry.agent_name.clone(),
-        entry,
-    )
-}
-
-fn lifecycle_message_type(terminal: bool, starting: bool) -> &'static str {
-    if terminal {
-        "task_updated"
-    } else if starting {
-        "task_started"
-    } else {
-        "task_progress"
-    }
-}
-
-fn terminal_subagent_status(status: SubagentStatus) -> &'static str {
-    match status {
-        SubagentStatus::Queued => "pending",
-        SubagentStatus::Running | SubagentStatus::Waiting => "in_progress",
-        SubagentStatus::Completed => "completed",
-        SubagentStatus::Failed => "failed",
-        SubagentStatus::Closed => "killed",
-    }
-}
-
-fn lifecycle_message_value(
-    message_type: &str,
-    task_type: &str,
-    task_id: String,
-    status: &str,
-    agent_name: String,
-    details: impl serde::Serialize,
-) -> anyhow::Result<Value> {
-    let details = serde_json::to_value(details)?;
-    if message_type == "task_updated" {
-        Ok(json!({
-            "type": message_type,
-            "task_id": task_id,
-            "task_type": task_type,
-            "subagent_type": agent_name,
-            "patch": { "status": status, "details": details },
-        }))
-    } else {
-        Ok(json!({
-            "type": message_type,
-            "task_id": task_id,
-            "task_type": task_type,
-            "subagent_type": agent_name,
-            "status": status,
-            "details": details,
-        }))
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use agent_client_protocol::{Agent, Builder, Client, ConnectionTo, RunWithConnectionTo, on_receive_notification};
-    use serde_json::json;
+    use proptest::prelude::*;
+    use serde_json::{Value, json};
     use tokio::sync::mpsc;
 
     fn subagent_event(status: &str) -> SubagentProgressEvent {
@@ -228,18 +145,96 @@ mod tests {
         }
     }
 
-    #[test]
-    fn maps_worker_and_background_states_to_claude_style_lifecycle_messages() {
-        assert_eq!(lifecycle_message(subagent_event("queued")).expect("queued message")["type"], "task_started");
-        assert_eq!(lifecycle_message(subagent_event("running")).expect("running message")["type"], "task_progress");
-        let failed = lifecycle_message(subagent_event("failed")).expect("failed message");
-        assert_eq!(failed["type"], "task_updated");
-        assert_eq!(failed["patch"]["status"], "failed");
+    fn task_meta(update: &acp::SessionUpdate) -> &Value {
+        let meta = match update {
+            acp::SessionUpdate::ToolCall(call) => call.meta.as_ref(),
+            acp::SessionUpdate::ToolCallUpdate(update) => update.meta.as_ref(),
+            other => panic!("expected task-carrying tool update, got {other:?}"),
+        }
+        .expect("task update metadata");
+        &meta["lody"]["task"]
+    }
 
-        let background = lifecycle_message(background_event("running")).expect("background message");
-        assert_eq!(background["type"], "task_progress");
-        assert_eq!(background["task_type"], "background_process");
-        assert_eq!(background["details"]["exec_session_id"], "exec-background-1");
+    fn with_task_id(mut event: SubagentProgressEvent, task_id: String) -> SubagentProgressEvent {
+        match &mut event {
+            SubagentProgressEvent::Subagent { task, .. } => task.id = task_id,
+            SubagentProgressEvent::BackgroundProcess { task, .. } => task.id = task_id,
+        }
+        event
+    }
+
+    #[test]
+    fn maps_worker_and_background_states_to_lody_task_metadata() {
+        let cases = [
+            (subagent_event("queued"), "subagent", "pending"),
+            (subagent_event("running"), "subagent", "in_progress"),
+            (subagent_event("waiting"), "subagent", "in_progress"),
+            (subagent_event("completed"), "subagent", "completed"),
+            (subagent_event("failed"), "subagent", "failed"),
+            (subagent_event("closed"), "subagent", "failed"),
+            (background_event("starting"), "background", "pending"),
+            (background_event("running"), "background", "in_progress"),
+            (background_event("stopped"), "background", "completed"),
+            (background_event("error"), "background", "failed"),
+        ];
+
+        for (event, kind, status) in cases {
+            let update = lody_task_session_update(event, false).expect("valid Lody task update");
+            let acp::SessionUpdate::ToolCall(call) = &update else {
+                panic!("first task snapshot must be a tool call");
+            };
+            let task_id = task_meta(&update)["taskId"].as_str().expect("task ID string");
+            assert_eq!(call.tool_call_id.0.as_ref(), format!("task:{task_id}"));
+            assert_eq!(call.kind, acp::ToolKind::Think);
+            assert_eq!(task_meta(&update)["version"], 1);
+            assert_eq!(task_meta(&update)["kind"], kind);
+            assert_eq!(task_meta(&update)["status"], status);
+            assert!(task_meta(&update).get("sessionId").is_none());
+            assert!(task_meta(&update).get("pid").is_none());
+            assert!(task_meta(&update).get("transcriptPath").is_none());
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn task_updates_keep_stable_ids_across_statuses(
+            task_id in "[A-Za-z0-9_-]{1,64}",
+            status_index in 0_usize..10,
+        ) {
+            let statuses = [
+                "queued", "running", "waiting", "completed", "failed", "closed",
+                "starting", "running", "stopped", "error",
+            ];
+            let event = if status_index < 6 {
+                subagent_event(statuses[status_index])
+            } else {
+                background_event(statuses[status_index])
+            };
+            let event = with_task_id(event, task_id.clone());
+
+            let initial = lody_task_session_update(event.clone(), false).expect("valid initial task update");
+            let subsequent = lody_task_session_update(event, true).expect("valid subsequent task update");
+
+            let acp::SessionUpdate::ToolCall(initial) = initial else {
+                prop_assert!(false, "initial snapshot must create a tool call");
+                return Ok(());
+            };
+            let acp::SessionUpdate::ToolCallUpdate(subsequent) = subsequent else {
+                prop_assert!(false, "subsequent snapshot must update the tool call");
+                return Ok(());
+            };
+            let expected_id = format!("task:{task_id}");
+            prop_assert_eq!(initial.tool_call_id.0.as_ref(), expected_id.as_str());
+            prop_assert_eq!(subsequent.tool_call_id.0.as_ref(), expected_id.as_str());
+            let initial_task_id = initial.meta.as_ref().expect("initial meta")["lody"]["task"]["taskId"]
+                .as_str()
+                .expect("initial task ID");
+            let subsequent_task_id = subsequent.meta.as_ref().expect("subsequent meta")["lody"]["task"]["taskId"]
+                .as_str()
+                .expect("subsequent task ID");
+            prop_assert_eq!(initial_task_id, task_id.as_str());
+            prop_assert_eq!(subsequent_task_id, task_id.as_str());
+        }
     }
 
     #[tokio::test]
@@ -259,6 +254,7 @@ mod tests {
                 );
                 drop(progress_tx.send(subagent_event_for("other-session", "running")));
                 drop(progress_tx.send(subagent_event("running")));
+                drop(progress_tx.send(subagent_event("completed")));
                 drop(progress_tx);
                 forwarder.await.expect("lifecycle forwarder");
                 Ok(())
@@ -270,27 +266,39 @@ mod tests {
             .builder()
             .on_receive_notification(
                 async move |notification: acp::AgentNotification, _cx| {
-                    if let acp::AgentNotification::ExtNotification(notification) = notification {
-                        drop(received_tx.send(notification));
-                    }
+                    drop(received_tx.send(notification));
                     Ok(())
                 },
                 on_receive_notification!(),
             )
             .connect_with(client_channel, async move |_cx: ConnectionTo<Agent>| {
-                let notification = tokio::time::timeout(std::time::Duration::from_secs(2), received_rx.recv())
+                let first = tokio::time::timeout(std::time::Duration::from_secs(2), received_rx.recv())
                     .await
-                    .expect("extension notification deadline")
-                    .expect("extension notification");
-                // The official SDK strips the required leading underscore
-                // while decoding extension methods; the wire method remains
-                // `_vtcode/taskLifecycle`.
-                assert_eq!(notification.method.as_ref(), TASK_LIFECYCLE_METHOD.trim_start_matches('_'));
-                let payload: Value = serde_json::from_str(notification.params.get()).expect("extension payload");
-                assert_eq!(payload["sessionId"], "parent-session");
-                assert_eq!(payload["acpSessionId"], "parent-session");
-                assert_eq!(payload["message"]["type"], "task_progress");
-                assert_eq!(payload["message"]["task_id"], "child-1");
+                    .expect("initial task update deadline")
+                    .expect("initial task update");
+                let acp::AgentNotification::SessionNotification(first) = first else {
+                    panic!("task lifecycle must use standard session notifications");
+                };
+                assert_eq!(first.session_id.0.as_ref(), "parent-session");
+                let acp::SessionUpdate::ToolCall(call) = first.update else {
+                    panic!("first task snapshot must create a tool call");
+                };
+                assert_eq!(call.tool_call_id.0.as_ref(), "task:child-1");
+                assert_eq!(call.meta.expect("initial task metadata")["lody"]["task"]["status"], "in_progress");
+
+                let second = tokio::time::timeout(std::time::Duration::from_secs(2), received_rx.recv())
+                    .await
+                    .expect("task progress update deadline")
+                    .expect("task progress update");
+                let acp::AgentNotification::SessionNotification(second) = second else {
+                    panic!("task progress must remain a standard session notification");
+                };
+                let acp::SessionUpdate::ToolCallUpdate(update) = second.update else {
+                    panic!("later task snapshots must update the existing tool call");
+                };
+                assert_eq!(update.tool_call_id.0.as_ref(), "task:child-1");
+                assert_eq!(update.meta.expect("progress task metadata")["lody"]["task"]["status"], "completed");
+                assert!(received_rx.try_recv().is_err(), "foreign-session events must remain filtered");
                 Ok(())
             });
 

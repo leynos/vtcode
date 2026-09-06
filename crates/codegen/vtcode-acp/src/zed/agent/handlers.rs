@@ -40,8 +40,8 @@ use agent_client_protocol::schema::v1::{
     SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
 };
 use agent_client_protocol::{
-    Agent, Builder, Client, ConnectionTo, HandleDispatchFrom, Responder, RunWithConnectionTo, on_receive_notification,
-    on_receive_request,
+    Agent, Builder, Client, ConnectionTo, Dispatch, HandleDispatchFrom, Handled, Responder, RunWithConnectionTo,
+    on_receive_notification, on_receive_request,
 };
 use futures::StreamExt;
 use serde_json::json;
@@ -635,6 +635,43 @@ where
             },
             on_receive_notification!(),
         )
+        .with_handler(LodySubagentManagementHandler { agent })
+}
+
+struct LodySubagentManagementHandler {
+    agent: Arc<ZedAgent>,
+}
+
+impl HandleDispatchFrom<Client> for LodySubagentManagementHandler {
+    async fn handle_dispatch_from(
+        &mut self,
+        message: Dispatch,
+        connection: ConnectionTo<Client>,
+    ) -> Result<Handled<Dispatch>, SdkError> {
+        let Dispatch::Request(request, responder) = message else {
+            return Ok(Handled::No { message, retry: false });
+        };
+        if !super::lody::is_lody_subagent_management_method(request.method()) {
+            return Ok(Handled::No {
+                message: Dispatch::Request(request, responder),
+                retry: false,
+            });
+        }
+
+        let (method, params) = request.into_parts();
+        let agent = Arc::clone(&self.agent);
+        connection
+            .spawn(async move {
+                let result = super::lody::handle_lody_subagent_management(&agent, &method, params).await;
+                responder.respond_with_result(result)
+            })
+            .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
+        Ok(Handled::Yes)
+    }
+
+    fn describe_chain(&self) -> impl std::fmt::Debug {
+        "LodySubagentManagementHandler"
+    }
 }
 
 async fn handle_initialize(
@@ -653,7 +690,13 @@ async fn handle_initialize(
             INITIALIZE_VERSION_MISMATCH_LOG
         );
     }
-    let mut capabilities = advertised_agent_capabilities();
+    let controller = agent.local_tool_registry.subagent_controller();
+    let mut capabilities = advertised_agent_capabilities(
+        controller.is_some(),
+        controller
+            .as_deref()
+            .is_some_and(vtcode_core::subagents::SubagentController::background_subagents_enabled),
+    );
     capabilities.prompt_capabilities.embedded_context = true;
     capabilities.prompt_capabilities.image = true;
     capabilities.prompt_capabilities.audio = true;
@@ -668,12 +711,16 @@ async fn handle_initialize(
     request_cx.respond(response)
 }
 
-fn advertised_agent_capabilities() -> acp::AgentCapabilities {
+fn advertised_agent_capabilities(has_subagent_controller: bool, background_enabled: bool) -> acp::AgentCapabilities {
     let mut capabilities = acp::AgentCapabilities::default();
     capabilities.load_session = true;
     capabilities.session_capabilities = acp::SessionCapabilities::new()
         .list(acp::SessionListCapabilities::new())
         .resume(acp::SessionResumeCapabilities::new());
+    super::lody_usage::add_lody_usage_capability(&mut capabilities);
+    if has_subagent_controller {
+        super::lody::add_lody_subagent_management_capability(&mut capabilities, background_enabled);
+    }
     capabilities
 }
 
@@ -1262,6 +1309,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             }
                         }
                         telemetry.complete(&provider_runtime, &response, attempt_index, false);
+                        agent.publish_lody_usage(&args.session_id, &session_model, &response);
                         if assistant_message.is_empty()
                             && let Some(content) = response.content
                         {
@@ -1434,6 +1482,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     }
                 };
 
+            agent.publish_lody_usage(&args.session_id, &session_model, &response);
             if session.cancellation.is_cancelled() {
                 stop_reason = acp::StopReason::Cancelled;
                 break;
@@ -1612,6 +1661,8 @@ mod tests {
         DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
     };
     use vtcode_core::core::threads::{ThreadBootstrap, ThreadManager};
+    use vtcode_core::llm::Usage;
+    use vtcode_core::subagents::SpawnBackgroundSubprocessRequest;
 
     static PROMPT_PROVIDER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
 
@@ -1633,11 +1684,233 @@ mod tests {
 
     #[test]
     fn advertised_capabilities_include_session_discovery_and_resume() {
-        let capabilities = advertised_agent_capabilities();
+        let capabilities = advertised_agent_capabilities(false, false);
 
         assert!(capabilities.load_session);
         assert!(capabilities.session_capabilities.list.is_some());
         assert!(capabilities.session_capabilities.resume.is_some());
+        let lody = &capabilities.meta.expect("Lody capability metadata")["lody"];
+        assert_eq!(lody["usage"]["version"], 1);
+        assert!(lody.get("subagents").is_none());
+    }
+
+    #[test]
+    fn advertised_capabilities_include_lody_subagent_management_with_subagents() {
+        let capabilities = advertised_agent_capabilities(true, false);
+        let lody = &capabilities.meta.expect("Lody capability metadata")["lody"];
+
+        assert_eq!(lody["subagents"]["version"], 1);
+        assert_eq!(lody["subagents"]["lifecycle"], true);
+        assert_eq!(lody["subagents"]["list"], true);
+        assert_eq!(lody["subagents"]["cancel"], true);
+        assert_eq!(lody["subagents"]["output"], true);
+        assert_eq!(lody["usage"]["version"], 1);
+        assert!(lody.get("tasks").is_none());
+    }
+
+    #[test]
+    fn advertised_capabilities_include_background_tasks_only_when_enabled() {
+        let capabilities = advertised_agent_capabilities(true, true);
+        let lody = &capabilities.meta.expect("Lody capability metadata")["lody"];
+
+        assert_eq!(lody["tasks"]["version"], 1);
+        assert_eq!(lody["tasks"]["background"], true);
+    }
+
+    #[tokio::test]
+    async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex() {
+        let workspace = TempDir::new().expect("Lody management workspace");
+        write_lody_background_fixture(workspace.path());
+        let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+        let mut vt_config = vtcode_core::config::VTCodeConfig::default();
+        vt_config.subagents.enabled = true;
+        vt_config.subagents.background.enabled = true;
+        Box::pin(super::super::attach_acp_subagent_controller(
+            &agent.local_tool_registry,
+            &agent.config,
+            &[],
+            Some(&vt_config),
+            None,
+            false,
+        ))
+        .await;
+        assert!(agent.local_tool_registry.has_subagent_controller());
+        let controller = agent
+            .local_tool_registry
+            .subagent_controller()
+            .expect("Lody management controller");
+
+        let (agent_channel, client_channel) = Channel::duplex();
+        let agent_connection = install_handlers(
+            Agent.builder().name("vtcode-lody-management-test"),
+            Arc::clone(&agent),
+        )
+        .connect_with(agent_channel, {
+            let agent = Arc::clone(&agent);
+            async move |cx: ConnectionTo<Client>| {
+                agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                std::future::pending::<agent_client_protocol::Result<()>>().await
+            }
+        });
+        let agent_task = tokio::spawn(agent_connection);
+
+        let workspace_path = workspace.path().to_path_buf();
+        let client_connection = Client
+            .builder()
+            .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+                let initialized = cx
+                    .send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                    .block_task()
+                    .await?;
+                let lody = &initialized.agent_capabilities.meta.expect("Lody capabilities")["lody"];
+                assert_eq!(lody["subagents"]["list"], true);
+                assert_eq!(lody["tasks"]["background"], true);
+
+                let session = cx
+                    .send_request(NewSessionRequest::new(workspace_path.clone()))
+                    .block_task()
+                    .await?;
+                controller.set_parent_session_id(session.session_id.to_string()).await;
+                let background = controller
+                    .spawn_background_subprocess(SpawnBackgroundSubprocessRequest {
+                        agent_type: Some("background-demo".to_string()),
+                        ..SpawnBackgroundSubprocessRequest::default()
+                    })
+                    .await
+                    .expect("spawn owned background task");
+                let params = serde_json::value::to_raw_value(&serde_json::json!({
+                    "sessionId": session.session_id,
+                    "activeOnly": false,
+                }))?;
+                let response = cx
+                    .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                        super::super::lody::LODY_SUBAGENTS_LIST_METHOD,
+                        params.into(),
+                    )))
+                    .block_task()
+                    .await?;
+                assert_eq!(response["tasks"][0]["taskId"], background.id);
+
+                let mut output = serde_json::Value::Null;
+                for _ in 0..20 {
+                    let params = serde_json::value::to_raw_value(&serde_json::json!({
+                        "sessionId": session.session_id,
+                        "taskId": background.id,
+                        "tail": 1,
+                    }))?;
+                    output = cx
+                        .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                            super::super::lody::LODY_SUBAGENTS_OUTPUT_METHOD,
+                            params.into(),
+                        )))
+                        .block_task()
+                        .await?;
+                    if output["output"] == "lody-output-two" {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
+                assert_eq!(output["output"], "lody-output-two");
+
+                let foreign_session = cx
+                    .send_request(NewSessionRequest::new(workspace_path.clone()))
+                    .block_task()
+                    .await?;
+                let params = serde_json::value::to_raw_value(&serde_json::json!({
+                    "sessionId": foreign_session.session_id,
+                    "activeOnly": false,
+                }))?;
+                let foreign_list = cx
+                    .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                        super::super::lody::LODY_SUBAGENTS_LIST_METHOD,
+                        params.into(),
+                    )))
+                    .block_task()
+                    .await?;
+                assert_eq!(foreign_list, serde_json::json!({ "tasks": [] }));
+
+                let foreign_error = lody_output_error(&cx, &foreign_session.session_id, &background.id).await;
+                let unknown_error = lody_output_error(&cx, &session.session_id, "unknown-task").await;
+                assert_eq!(foreign_error, unknown_error);
+                assert_eq!(foreign_error.data, Some(serde_json::json!({ "reason": "unknown_task" })));
+
+                let params = serde_json::value::to_raw_value(&serde_json::json!({
+                    "sessionId": session.session_id,
+                    "taskId": background.id,
+                    "reason": "test complete",
+                }))?;
+                let cancelled = cx
+                    .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                        super::super::lody::LODY_SUBAGENTS_CANCEL_METHOD,
+                        params.into(),
+                    )))
+                    .block_task()
+                    .await?;
+                assert_eq!(cancelled, serde_json::json!({}));
+                Ok(())
+            });
+
+        tokio::time::timeout(Duration::from_secs(5), client_connection)
+            .await
+            .expect("Lody management client should finish")
+            .expect("Lody management protocol flow should succeed");
+        agent_task.abort();
+        drop(agent_task.await);
+    }
+
+    async fn lody_output_error(
+        connection: &ConnectionTo<Agent>,
+        session_id: &acp::SessionId,
+        task_id: &str,
+    ) -> acp::Error {
+        let params = serde_json::value::to_raw_value(&serde_json::json!({
+            "sessionId": session_id,
+            "taskId": task_id,
+        }))
+        .expect("serialize Lody output request");
+        connection
+            .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                super::super::lody::LODY_SUBAGENTS_OUTPUT_METHOD,
+                params.into(),
+            )))
+            .block_task()
+            .await
+            .expect_err("Lody output request should fail")
+    }
+
+    fn write_lody_background_fixture(workspace: &std::path::Path) {
+        let agent_dir = workspace.join(".vtcode/agents");
+        std::fs::create_dir_all(&agent_dir).expect("create Lody test agent directory");
+        std::fs::write(
+            agent_dir.join("background-demo.md"),
+            r#"---
+name: background-demo
+description: Lody management protocol fixture.
+tools:
+  - command_session
+background: true
+maxTurns: 2
+initialPrompt: Report readiness once.
+---
+
+Run the managed background fixture.
+"#,
+        )
+        .expect("write Lody test agent");
+        let scripts_dir = workspace.join("scripts");
+        std::fs::create_dir_all(&scripts_dir).expect("create Lody test scripts directory");
+        let script = scripts_dir.join("demo-background-subagent.sh");
+        std::fs::write(&script, "#!/bin/sh\nprintf 'lody-output-one\\nlody-output-two\\n'\nsleep 30\n")
+            .expect("write Lody background script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = std::fs::metadata(&script)
+                .expect("Lody background script metadata")
+                .permissions();
+            permissions.set_mode(0o755);
+            std::fs::set_permissions(script, permissions).expect("make Lody background script executable");
+        }
     }
     use vtcode_core::llm::provider::{LLMError, LLMErrorMetadata};
 
@@ -1995,6 +2268,7 @@ mod tests {
         requests: Arc<Mutex<Vec<LLMRequest>>>,
         tool_calls: Vec<(String, String)>,
         mutation_before_call: Option<(usize, PathBuf, String)>,
+        emit_usage: bool,
     }
 
     struct PartialThenFailProvider;
@@ -2076,6 +2350,11 @@ mod tests {
                     )]),
                     finish_reason: vtcode_core::llm::provider::FinishReason::ToolCalls,
                     model: "wire-model".to_string(),
+                    usage: self.emit_usage.then(|| Usage {
+                        prompt_tokens: u32::try_from(100 + response_index).expect("fixture usage fits u32"),
+                        completion_tokens: 11,
+                        ..Usage::default()
+                    }),
                     ..LLMResponse::default()
                 };
                 vec![
@@ -2088,6 +2367,11 @@ mod tests {
                     content: Some("Tool complete.".to_string()),
                     finish_reason: vtcode_core::llm::provider::FinishReason::Stop,
                     model: "wire-model".to_string(),
+                    usage: self.emit_usage.then(|| Usage {
+                        prompt_tokens: u32::try_from(100 + response_index).expect("fixture usage fits u32"),
+                        completion_tokens: 12,
+                        ..Usage::default()
+                    }),
                     ..LLMResponse::default()
                 };
                 vec![
@@ -2357,6 +2641,7 @@ mod tests {
                     requests: Arc::clone(&factory_requests),
                     tool_calls: vec![("list_files".to_string(), r#"{"path":""}"#.to_string())],
                     mutation_before_call: None,
+                    emit_usage: true,
                 })
             }),
         );
@@ -2367,7 +2652,7 @@ mod tests {
             .expect("write launch workspace fixture");
         let agent = Arc::new(build_wire_test_agent(launch_workspace.path()).await);
         let (agent_channel, client_channel) = Channel::duplex();
-        let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
+        let (notifications_tx, mut notifications_rx) = mpsc::unbounded_channel();
 
         let agent_connection = install_handlers(Agent.builder().name("vtcode-stream-tool-test"), Arc::clone(&agent))
             .connect_with(agent_channel, {
@@ -2382,8 +2667,8 @@ mod tests {
         let client_connection = Client
             .builder()
             .on_receive_notification(
-                async move |notification: acp::SessionNotification, _cx| {
-                    drop(updates_tx.send(notification));
+                async move |notification: acp::AgentNotification, _cx| {
+                    drop(notifications_tx.send(notification));
                     Ok(())
                 },
                 on_receive_notification!(),
@@ -2416,7 +2701,31 @@ mod tests {
         agent_task.abort();
         drop(agent_task.await);
 
-        let updates = std::iter::from_fn(|| updates_rx.try_recv().ok()).collect::<Vec<_>>();
+        let notifications = std::iter::from_fn(|| notifications_rx.try_recv().ok()).collect::<Vec<_>>();
+        let updates = notifications
+            .iter()
+            .filter_map(|notification| match notification {
+                acp::AgentNotification::SessionNotification(notification) => Some(notification),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let usage_updates = notifications
+            .iter()
+            .filter_map(|notification| match notification {
+                acp::AgentNotification::ExtNotification(notification)
+                    if notification.method.as_ref().trim_start_matches('_')
+                        == super::super::lody_usage::LODY_SESSION_USAGE_UPDATE_METHOD.trim_start_matches('_') =>
+                {
+                    serde_json::from_str::<serde_json::Value>(notification.params.get()).ok()
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(usage_updates.len(), 2, "each tool-loop response must publish one usage delta");
+        assert_eq!(usage_updates[0]["usage"]["inputTokens"], 100);
+        assert_eq!(usage_updates[0]["usage"]["outputTokens"], 11);
+        assert_eq!(usage_updates[1]["usage"]["inputTokens"], 101);
+        assert_eq!(usage_updates[1]["usage"]["outputTokens"], 12);
         assert!(
             updates
                 .iter()
@@ -2501,6 +2810,7 @@ mod tests {
                     requests: Arc::clone(&factory_requests),
                     tool_calls: vec![("task_tracker".to_string(), task_arguments.clone())],
                     mutation_before_call: None,
+                    emit_usage: false,
                 })
             }),
         );
@@ -2615,6 +2925,7 @@ mod tests {
                     requests: Arc::clone(&factory_requests),
                     tool_calls: vec![("apply_patch".to_string(), patch_arguments.clone())],
                     mutation_before_call: None,
+                    emit_usage: false,
                 })
             }),
         );
@@ -2757,6 +3068,7 @@ mod tests {
                     requests: Arc::clone(&factory_requests),
                     tool_calls: tool_calls.clone(),
                     mutation_before_call: Some((1, mutation_path.clone(), "current\n".to_string())),
+                    emit_usage: false,
                 })
             }),
         );

@@ -247,6 +247,7 @@ api_key_env = "MYCORP_API_KEY"
 model = "gpt-5.6-sol"
 # context_window = 256000   # Optional context window size in tokens (provider capability)
 # api_format = "auto"      # Optional provider-level API format hint: auto|openai-chat|openai-responses|anthropic-messages
+# supports_stream_usage = true # Opt in only when this OpenAI-chat endpoint emits a terminal usage chunk
 
 [custom_providers.request_policy]
 max_in_flight_requests = 4
@@ -288,7 +289,7 @@ Notes:
 
 Capability defaults and per-model profiles
 
-Custom providers may expose a small, conservative set of capability defaults to use when model metadata is absent. These are useful for gateways and aggregators that do not provide per-model descriptors. Set fields such as `supports_tools`, `supports_vision`, `supports_structured_output`, or `supports_parallel_tool_calls` directly on the provider entry.
+Custom providers may expose a small, conservative set of capability defaults to use when model metadata is absent. These are useful for gateways and aggregators that do not provide per-model descriptors. Set fields such as `supports_tools`, `supports_vision`, `supports_structured_output`, `supports_parallel_tool_calls`, or `supports_stream_usage` directly on the provider entry. `supports_stream_usage` is optional and defaults to `false`; set it to `true` only when an OpenAI-chat endpoint supports a terminal usage chunk in streamed responses. It enables `stream_options.include_usage = true` for that custom provider's OpenAI-chat requests. Native OpenAI provider behaviour is unchanged.
 
 Providers and profiles can also pin sampling values. Available fields: `temperature` (0.0-2.0), `top_p` (0.0-1.0), `top_k` (>= 0), `presence_penalty` / `frequency_penalty` (-2.0-2.0), `max_tokens` (> 0; overrides the agent loop's built-in per-task limits), and `reasoning_effort`. Pinning `reasoning_effort` on a profile implies effort support for that model.
 
@@ -314,6 +315,7 @@ supports_parallel_tool_calls = true
 supports_context_caching = false
 supports_responses_compaction = true
 supports_context_edits = false
+# supports_stream_usage = true # only for endpoints with a terminal usage chunk
 ```
 
 Precedence and semantics
@@ -330,6 +332,7 @@ Sampling values resolve on the same chain, with one extra global layer beneath t
 Additional rules:
 - An explicit boolean `false` in any overriding layer is honored and prevents a higher-level implicit `true` from taking effect.
 - Omitting `api_format` preserves legacy autodetection behavior; explicitly setting `api_format` to a value instructs VT Code to use this API shape and not silently fall back.
+- `supports_stream_usage` follows the same precedence: a profile value overrides the provider default. When `true`, only custom OpenAI-chat streams request `stream_options.include_usage = true`; the endpoint should return usage in the terminal empty-choices chunk. When omitted or `false`, VT Code does not request streamed usage. Native OpenAI requests are unaffected.
 - Profiles do not make a model available in the picker — use `model` or `models` to control availability.
 - Wire delivery depends on the backend's API format. The OpenAI Chat shape sends `temperature`, `top_p`, and both penalties; the OpenAI Responses shape sends them inside a nested `sampling_parameters` object that some compatible endpoints ignore, and currently does not emit `max_output_tokens` for non-native endpoints; `top_k` is accepted in configuration but not serialized for these shapes today (it applies only to backends whose own request builders expose it).
 - Name-based OpenAI sampling gates apply to custom endpoints too, by bare model-name match: models named `gpt`, `gpt-5.2`, `gpt-5.4`, `gpt-5.5*` accept sampling only while reasoning effort resolves to `none` (values are silently omitted otherwise), and `gpt-5`/`gpt-5-mini`/`gpt-5-nano` never receive sampling parameters. Prefer neutral model IDs on custom gateways if you need pinned values on such names.

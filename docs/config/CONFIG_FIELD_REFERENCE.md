@@ -275,6 +275,7 @@ python3 scripts/generate_config_field_reference.py
 | `custom_providers[].profiles.*.supports_reasoning` | `boolean \| null` | no | `-` | - |
 | `custom_providers[].profiles.*.supports_reasoning_effort` | `boolean \| null` | no | `-` | - |
 | `custom_providers[].profiles.*.supports_responses_compaction` | `boolean \| null` | no | `-` | - |
+| `custom_providers[].profiles.*.supports_stream_usage` | `boolean \| null` | no | `-` | Override the provider default for requesting terminal stream usage. Explicit `false` is honoured. |
 | `custom_providers[].profiles.*.supports_structured_output` | `boolean \| null` | no | `-` | - |
 | `custom_providers[].profiles.*.supports_tools` | `boolean \| null` | no | `-` | - |
 | `custom_providers[].profiles.*.supports_vision` | `boolean \| null` | no | `-` | - |
@@ -288,6 +289,7 @@ python3 scripts/generate_config_field_reference.py
 | `custom_providers[].supports_reasoning` | `boolean \| null` | no | `-` | Optional support for reasoning. |
 | `custom_providers[].supports_reasoning_effort` | `boolean \| null` | no | `-` | Optional support for reasoning effort. |
 | `custom_providers[].supports_responses_compaction` | `boolean \| null` | no | `-` | Optional support for responses compaction. |
+| `custom_providers[].supports_stream_usage` | `boolean \| null` | no | `-` | Request terminal usage data from compatible OpenAI-chat streams. Omitted or `false` preserves the existing request shape. |
 | `custom_providers[].supports_structured_output` | `boolean \| null` | no | `-` | Optional support for structured output. |
 | `custom_providers[].supports_tools` | `boolean \| null` | no | `-` | Optional support for tool calling. |
 | `custom_providers[].supports_vision` | `boolean \| null` | no | `-` | Optional support for vision inputs. |

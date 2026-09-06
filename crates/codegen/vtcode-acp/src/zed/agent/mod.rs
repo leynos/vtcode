@@ -31,6 +31,10 @@ use super::types::SessionHandle;
 
 mod compaction;
 pub(crate) mod handlers;
+mod lody;
+#[cfg(test)]
+mod lody_tests;
+mod lody_usage;
 mod prompt;
 mod session_state;
 mod task_lifecycle;
@@ -103,6 +107,7 @@ async fn attach_acp_subagent_controller(
     config: &CoreAgentConfig,
     custom_providers: &[CustomProviderConfig],
     vt_cfg: Option<&VTCodeConfig>,
+    owner_session_id: Option<&str>,
     workspace_gated: bool,
 ) {
     let Some(mut controller_vt_cfg) = vt_cfg.filter(|config| config.subagents.enabled).cloned() else {
@@ -139,7 +144,7 @@ async fn attach_acp_subagent_controller(
 
     let controller_config = SubagentControllerConfig {
         workspace_root: config.workspace.clone(),
-        parent_session_id: "vtcode-acp".to_string(),
+        parent_session_id: owner_session_id.unwrap_or("vtcode-acp").to_string(),
         parent_model: config.model.clone(),
         parent_provider: config.provider.clone(),
         parent_reasoning_effort: config.reasoning_effort,
@@ -152,17 +157,22 @@ async fn attach_acp_subagent_controller(
         pty_manager: registry.pty_manager().clone(),
         managed_background_runtime: false,
     };
-    match SubagentController::new(controller_config).await {
-        Ok(controller) => {
-            let controller = Arc::new(controller);
-            if controller_vt_cfg.subagents.background.auto_restore
-                && let Err(error) = controller.restore_background_subagents().await
-            {
-                warn!(%error, "Failed to restore ACP background subagents");
-            }
-            registry.set_subagent_controller(controller);
+    let controller = match SubagentController::new_with_background_owner(controller_config, owner_session_id).await {
+        Ok(controller) => controller,
+        Err(error) => {
+            warn!(%error, "Failed to initialize ACP subagent controller");
+            return;
         }
-        Err(error) => warn!(%error, "Failed to initialize ACP subagent controller"),
+    };
+    {
+        let controller = Arc::new(controller);
+        if owner_session_id.is_some()
+            && controller_vt_cfg.subagents.background.auto_restore
+            && let Err(error) = controller.restore_background_subagents().await
+        {
+            warn!(%error, "Failed to restore ACP background subagents");
+        }
+        registry.set_subagent_controller(controller);
     }
 }
 
@@ -254,6 +264,7 @@ impl SessionWorkspaceRuntime {
         workspace_root: std::path::PathBuf,
         runtime_config: &WorkspaceRuntimeConfig,
         vt_cfg: Option<&VTCodeConfig>,
+        session_id: &str,
     ) -> anyhow::Result<Self> {
         let mut session_config = base_config.clone();
         session_config.workspace = workspace_root.clone();
@@ -292,6 +303,7 @@ impl SessionWorkspaceRuntime {
             &session_config,
             &runtime_config.custom_providers,
             vt_cfg,
+            Some(session_id),
             workspace_hooks_gated,
         ))
         .await;
@@ -379,6 +391,7 @@ impl ZedAgent {
             &config,
             custom_providers,
             vt_cfg,
+            None,
             workspace_hooks_gated,
         ))
         .await;

@@ -118,6 +118,10 @@ pub struct CustomProviderProfileConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_responses_compaction: Option<bool>,
 
+    /// Whether streaming requests should ask the provider to return usage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supports_stream_usage: Option<bool>,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_context_edits: Option<bool>,
 }
@@ -203,6 +207,7 @@ pub struct ResolvedCustomProviderProfile {
     pub supports_parallel_tool_calls: Option<bool>,
     pub supports_context_caching: Option<bool>,
     pub supports_responses_compaction: Option<bool>,
+    pub supports_stream_usage: Option<bool>,
     pub supports_context_edits: Option<bool>,
 }
 
@@ -239,6 +244,7 @@ impl ResolvedCustomProviderProfile {
             supports_responses_compaction: profile
                 .supports_responses_compaction
                 .or(defaults.supports_responses_compaction),
+            supports_stream_usage: profile.supports_stream_usage.or(defaults.supports_stream_usage),
             supports_context_edits: profile.supports_context_edits.or(defaults.supports_context_edits),
         }
     }
@@ -492,6 +498,10 @@ pub struct CustomProviderConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_responses_compaction: Option<bool>,
 
+    /// Optional support for streamed usage chunks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supports_stream_usage: Option<bool>,
+
     /// Optional support for context edits.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_context_edits: Option<bool>,
@@ -630,6 +640,7 @@ impl CustomProviderConfig {
             supports_parallel_tool_calls: self.supports_parallel_tool_calls,
             supports_context_caching: self.supports_context_caching,
             supports_responses_compaction: self.supports_responses_compaction,
+            supports_stream_usage: self.supports_stream_usage,
             supports_context_edits: self.supports_context_edits,
         }
     }
@@ -806,6 +817,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: String::new(),
             auth: None,
@@ -842,6 +854,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: String::new(),
             auth: None,
@@ -878,6 +891,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: "MYCORP_API_KEY".to_string(),
             auth: Some(CustomProviderCommandAuthConfig {
@@ -920,6 +934,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: String::new(),
             auth: Some(CustomProviderCommandAuthConfig {
@@ -962,6 +977,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: "MYCORP_API_KEY".to_string(),
             auth: None,
@@ -998,6 +1014,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: String::new(),
             auth: None,
@@ -1034,6 +1051,7 @@ mod tests {
                 supports_parallel_tool_calls: None,
                 supports_context_caching: None,
                 supports_responses_compaction: None,
+                supports_stream_usage: None,
                 supports_context_edits: None,
             },
         );
@@ -1059,6 +1077,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: String::new(),
             auth: None,
@@ -1095,6 +1114,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: "ATLASCLOUD_API_KEY".to_string(),
             auth: None,
@@ -1168,6 +1188,7 @@ mod tests {
                 supports_parallel_tool_calls: None,
                 supports_context_caching: None,
                 supports_responses_compaction: None,
+                supports_stream_usage: None,
                 supports_context_edits: None,
             },
         );
@@ -1193,6 +1214,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: String::new(),
             auth: None,
@@ -1223,6 +1245,7 @@ mod tests {
                 supports_parallel_tool_calls: None,
                 supports_context_caching: None,
                 supports_responses_compaction: None,
+                supports_stream_usage: None,
                 supports_context_edits: None,
             }
         );
@@ -1252,6 +1275,7 @@ mod tests {
                 supports_parallel_tool_calls: None,
                 supports_context_caching: None,
                 supports_responses_compaction: None,
+                supports_stream_usage: Some(false),
                 supports_context_edits: None,
             },
         );
@@ -1277,6 +1301,7 @@ mod tests {
             supports_parallel_tool_calls: Some(true),
             supports_context_caching: Some(false),
             supports_responses_compaction: None,
+            supports_stream_usage: Some(true),
             supports_context_edits: None,
             api_key_env: String::new(),
             auth: None,
@@ -1296,6 +1321,7 @@ mod tests {
         assert_eq!(resolved.supports_parallel_tool_calls, Some(true));
         assert_eq!(resolved.supports_context_caching, Some(false));
         assert_eq!(resolved.supports_responses_compaction, None);
+        assert_eq!(resolved.supports_stream_usage, Some(false));
         assert_eq!(resolved.supports_context_edits, None);
     }
 

@@ -7,6 +7,10 @@ pub(crate) const SUBAGENT_MEMORY_HIGHLIGHT_LIMIT: usize = 4;
 pub(crate) const SUBAGENT_MIN_MAX_TURNS: usize = 2;
 pub(crate) const SUBAGENT_MIN_BACKGROUND_MAX_TURNS: usize = 4;
 pub(crate) const SUBAGENT_PREVIEW_LINES: usize = 24;
+/// Default number of lines returned by caller-selected background output tails.
+pub const DEFAULT_SUBAGENT_OUTPUT_TAIL_LINES: usize = 200;
+/// Maximum number of lines returned by caller-selected background output tails.
+pub const MAX_SUBAGENT_OUTPUT_TAIL_LINES: usize = 10_000;
 
 pub(crate) const VAGUE_SUBAGENT_PROMPTS: &[&str] = &[
     "analyze",

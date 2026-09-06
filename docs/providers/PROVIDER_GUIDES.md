@@ -80,6 +80,7 @@ return model metadata. Supported defaults include:
 - `supports_parallel_tool_calls`
 - `supports_context_caching`
 - `supports_responses_compaction`
+- `supports_stream_usage`
 - `supports_context_edits`
 
 Sampling values can also be pinned at the provider level or per model profile:
@@ -87,6 +88,12 @@ Sampling values can also be pinned at the provider level or per model profile:
 `presence_penalty` / `frequency_penalty` (-2.0-2.0), `max_tokens` (> 0), and
 `reasoning_effort`. Pinning `reasoning_effort` in a profile implies effort
 support for that model.
+
+`supports_stream_usage = true` opts custom OpenAI-chat streams into
+`stream_options.include_usage = true`. Enable it only when the endpoint returns
+terminal stream usage. Omitted or `false` preserves the existing request shape;
+per-model profiles override the provider default, including explicit `false`.
+Native OpenAI requests are unaffected.
 
 ### Model profiles
 
