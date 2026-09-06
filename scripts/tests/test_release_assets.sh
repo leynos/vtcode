@@ -195,7 +195,7 @@ echo "Testing two-phase upload ordering (belt-and-suspenders)..."
 # ALPHABETICAL NAME SORT (asserted above): GitHub returns assets sorted by
 # name, and `compat-` sorts before `vtcode-`. Upload order does NOT control
 # selection. The release script still uploads compat assets first as
-# defense-in-depth; this test asserts that ordering is preserved.
+# defence-in-depth; this test asserts that ordering is preserved.
 gh_calls="$tmp/gh-calls"
 : >"$gh_calls"
 gh() {

@@ -238,7 +238,7 @@ fn resolve_subagent_model_inherits_local_custom_model() {
 }
 
 #[test]
-fn resolve_subagent_model_honors_explicit_local_model() {
+fn resolve_subagent_model_honours_explicit_local_model() {
     let cfg = VTCodeConfig::default();
     let resolved =
         resolve_subagent_model(&cfg, "qwen3.5-9b-sushi-coder-rl", "lmstudio", Some("ornith-1.0-9b"), "wiki-assistant")
@@ -248,7 +248,7 @@ fn resolve_subagent_model_honors_explicit_local_model() {
 }
 
 #[test]
-fn resolve_subagent_model_honors_provider_override_model() {
+fn resolve_subagent_model_honours_provider_override_model() {
     use vtcode_config::core::ProviderOverrideConfig;
 
     let mut cfg = VTCodeConfig::default();
@@ -292,7 +292,7 @@ fn resolve_effective_subagent_model_ignores_cross_provider_override_model() {
 }
 
 #[test]
-fn resolve_subagent_model_honors_custom_provider_model() {
+fn resolve_subagent_model_honours_custom_provider_model() {
     use vtcode_config::core::CustomProviderConfig;
 
     let mut cfg = VTCodeConfig::default();
@@ -1315,7 +1315,7 @@ fn load_primary_memory_appendix_missing_memory_is_noop_without_directory_creatio
 }
 
 #[tokio::test]
-async fn spawn_honors_model_override_when_user_explicitly_requests_it() {
+async fn spawn_honours_model_override_when_user_explicitly_requests_it() {
     let temp = TempDir::new().expect("tempdir");
     let controller =
         SubagentController::new(test_controller_config(temp.path().to_path_buf(), VTCodeConfig::default()))

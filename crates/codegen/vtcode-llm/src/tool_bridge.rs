@@ -1,6 +1,6 @@
 //! Bridge between messages and tool executions
 //!
-//! Links LLM messages to their tool executions and tracks intent fulfillment.
+//! Links LLM messages to their tool executions and tracks intent fulfilment.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -10,9 +10,9 @@ use vtcode_commons::tool_types::EnhancedToolResult;
 #[cfg(test)]
 use vtcode_config::constants::tools;
 
-/// Tracks intent fulfillment
+/// Tracks intent fulfilment
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-pub enum IntentFulfillment {
+pub enum IntentFulfilment {
     /// Message goal completely achieved
     Fulfilled,
 
@@ -26,7 +26,7 @@ pub enum IntentFulfillment {
     Failed,
 }
 
-impl fmt::Display for IntentFulfillment {
+impl fmt::Display for IntentFulfilment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             Self::Fulfilled => "fulfilled",
@@ -88,9 +88,11 @@ pub struct MessageToolCorrelation {
     tool_executions: Vec<ToolExecution>,
 
     /// Overall success of fulfilling stated intent
-    intent_fulfillment: IntentFulfillment,
+    /// The wire name `intent_fulfillment` is fixed by the schema.
+    #[serde(rename = "intent_fulfillment")]
+    intent_fulfilment: IntentFulfilment,
 
-    /// Confidence in fulfillment assessment (0.0-1.0)
+    /// Confidence in fulfilment assessment (0.0-1.0)
     confidence: f32,
 
     /// Any issues encountered
@@ -104,7 +106,7 @@ impl MessageToolCorrelation {
             stated_intent: intent,
             message_text,
             tool_executions: vec![],
-            intent_fulfillment: IntentFulfillment::Attempted,
+            intent_fulfilment: IntentFulfilment::Attempted,
             confidence: 0.0,
             issues: vec![],
         }
@@ -113,19 +115,19 @@ impl MessageToolCorrelation {
     /// Add a tool execution
     fn add_execution(&mut self, execution: ToolExecution) {
         self.tool_executions.push(execution);
-        self.reassess_fulfillment();
+        self.reassess_fulfilment();
     }
 
     /// Add an issue
     pub fn add_issue(&mut self, issue: String) {
         self.issues.push(issue);
-        self.reassess_fulfillment();
+        self.reassess_fulfilment();
     }
 
     /// Reassess whether intent was fulfilled
-    fn reassess_fulfillment(&mut self) {
+    fn reassess_fulfilment(&mut self) {
         if self.tool_executions.is_empty() {
-            self.intent_fulfillment = IntentFulfillment::Failed;
+            self.intent_fulfilment = IntentFulfilment::Failed;
             self.confidence = 0.0;
             return;
         }
@@ -140,11 +142,11 @@ impl MessageToolCorrelation {
             .sum::<f32>()
             / self.tool_executions.len() as f32;
 
-        self.intent_fulfillment = match (contributing, avg_quality) {
-            (n, q) if n == self.tool_executions.len() && q > 0.75 => IntentFulfillment::Fulfilled,
-            (n, q) if n > self.tool_executions.len() / 2 && q > 0.6 => IntentFulfillment::PartiallyFulfilled,
-            (0, _) => IntentFulfillment::Failed,
-            _ => IntentFulfillment::Attempted,
+        self.intent_fulfilment = match (contributing, avg_quality) {
+            (n, q) if n == self.tool_executions.len() && q > 0.75 => IntentFulfilment::Fulfilled,
+            (n, q) if n > self.tool_executions.len() / 2 && q > 0.6 => IntentFulfilment::PartiallyFulfilled,
+            (0, _) => IntentFulfilment::Failed,
+            _ => IntentFulfilment::Attempted,
         };
 
         self.confidence = (contributing as f32 / self.tool_executions.len() as f32) * avg_quality;
@@ -153,14 +155,14 @@ impl MessageToolCorrelation {
     /// Get summary of tool execution
     pub fn summary(&self) -> String {
         format!(
-            "Intent: {} | Tools: {} | Fulfillment: {} (confidence: {:.0}%)",
+            "Intent: {} | Tools: {} | Fulfilment: {} (confidence: {:.0}%)",
             self.stated_intent,
             self.tool_executions
                 .iter()
                 .map(|e| e.tool_name.clone())
                 .collect::<Vec<_>>()
                 .join(", "),
-            self.intent_fulfillment,
+            self.intent_fulfilment,
             self.confidence * 100.0
         )
     }
@@ -324,27 +326,27 @@ impl MessageCorrelationTracker {
     pub fn unfulfilled(&self) -> Vec<&MessageToolCorrelation> {
         self.correlations
             .iter()
-            .filter(|c| c.intent_fulfillment == IntentFulfillment::Failed)
+            .filter(|c| c.intent_fulfilment == IntentFulfilment::Failed)
             .collect()
     }
 
-    /// Get fulfillment statistics
+    /// Get fulfilment statistics
     fn stats(&self) -> CorrelationStats {
         let total = self.correlations.len();
         let fulfilled = self
             .correlations
             .iter()
-            .filter(|c| c.intent_fulfillment == IntentFulfillment::Fulfilled)
+            .filter(|c| c.intent_fulfilment == IntentFulfilment::Fulfilled)
             .count();
         let partially_fulfilled = self
             .correlations
             .iter()
-            .filter(|c| c.intent_fulfillment == IntentFulfillment::PartiallyFulfilled)
+            .filter(|c| c.intent_fulfilment == IntentFulfilment::PartiallyFulfilled)
             .count();
         let failed = self
             .correlations
             .iter()
-            .filter(|c| c.intent_fulfillment == IntentFulfillment::Failed)
+            .filter(|c| c.intent_fulfilment == IntentFulfilment::Failed)
             .count();
 
         let avg_confidence = if total > 0 {
@@ -431,7 +433,7 @@ mod tests {
 
         corr.add_execution(exec);
 
-        assert!(matches!(corr.intent_fulfillment, IntentFulfillment::PartiallyFulfilled));
+        assert!(matches!(corr.intent_fulfilment, IntentFulfilment::PartiallyFulfilled));
     }
 
     #[test]

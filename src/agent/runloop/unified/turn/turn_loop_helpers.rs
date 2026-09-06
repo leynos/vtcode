@@ -850,7 +850,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_turn_config_honors_request_user_input_setting_in_planning_workflow() {
+    fn extract_turn_config_honours_request_user_input_setting_in_planning_workflow() {
         let mut cfg = VTCodeConfig::default();
         cfg.chat.ask_questions.enabled = false;
 

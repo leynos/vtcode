@@ -1887,7 +1887,7 @@ mod tests {
         }
 
         let output = rendered.join("\n");
-        assert!(output.contains("Name:"), "agent frame should trigger labeled blocks: {output}");
+        assert!(output.contains("Name:"), "agent frame should trigger labelled blocks: {output}");
         assert!(output.contains("Description:"), "all labels should be retained: {output}");
         assert!(!output.contains("│"), "table separators should not survive the narrow layout: {output}");
         assert!(rendered.iter().all(|line| UnicodeWidthStr::width(line.as_str()) <= 18));
@@ -1907,7 +1907,7 @@ mod tests {
         let markdown = "| Name | Description |\n|------|-------------|\n| item | value |\n";
         renderer
             .render_markdown_output(MessageStyle::Response, markdown)
-            .context("render agent-labeled Markdown table")?;
+            .context("render agent-labelled Markdown table")?;
 
         let mut rendered = Vec::new();
         while let Ok(command) = receiver.try_recv() {
@@ -1923,7 +1923,7 @@ mod tests {
     }
 
     #[test]
-    fn streaming_markdown_table_uses_same_labeled_block_layout() -> Result<()> {
+    fn streaming_markdown_table_uses_same_labelled_block_layout() -> Result<()> {
         use crate::ui::InlineCommand;
 
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
@@ -1933,7 +1933,7 @@ mod tests {
         let markdown = "| Name | Description |\n|------|-------------|\n| item | a long value |\n";
         let line_count = renderer
             .stream_markdown_response(markdown, 2)
-            .context("stream labeled Markdown table")?;
+            .context("stream labelled Markdown table")?;
 
         let mut replacement = None;
         while let Ok(command) = receiver.try_recv() {

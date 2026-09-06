@@ -51,7 +51,7 @@ pub use model_resolver::{DynamicModelMeta, DynamicModelRef, ModelAvailability, M
 pub use provider::{FinishReason, LLMStream, LLMStreamEvent, Usage};
 pub use provider_config_types::ProviderConfig as ProviderConfigData;
 pub use tool_bridge::{
-    CorrelationStats, IntentFulfillment, MessageCorrelationTracker, MessageToolCorrelation, ToolExecution, ToolIntent,
+    CorrelationStats, IntentFulfilment, MessageCorrelationTracker, MessageToolCorrelation, ToolExecution, ToolIntent,
     ToolIntentExtractor,
 };
 pub use types::{BackendKind, LLMError, LLMResponse};

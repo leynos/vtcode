@@ -863,7 +863,7 @@ impl ToolRegistry {
             trace!(tool = %tool_name, "Validation classified tool as read-only");
         }
 
-        // Defense-in-depth: prevalidated fast path skips full preflight, but planning workflow
+        // Defence-in-depth: prevalidated fast path skips full preflight, but planning workflow
         // mutating-tool enforcement remains a hard safety invariant. Reuse the already-computed
         // `intent` so we don't reclassify on the hot path.
         if self.is_planning_active() && !self.is_planning_active_allowed_with_intent(&tool_name, args, &intent) {

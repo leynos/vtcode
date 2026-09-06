@@ -4,4 +4,4 @@ mod health;
 mod recovery;
 
 pub use health::{DiagnosticReport, HealthSample, PredictiveMonitor};
-pub use recovery::{LabeledAction, RecoveryAction, RecoveryPlaybook};
+pub use recovery::{LabelledAction, RecoveryAction, RecoveryPlaybook};

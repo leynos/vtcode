@@ -972,7 +972,7 @@ mod tests {
     }
 
     #[test]
-    fn resolver_honors_explicit_overrides() {
+    fn resolver_honours_explicit_overrides() {
         let paths = VtCodePaths::from_environment(&[
             ("VTCODE_HOME", "/ignored"),
             ("VTCODE_CONFIG", "/config"),

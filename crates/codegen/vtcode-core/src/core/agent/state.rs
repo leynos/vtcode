@@ -16,7 +16,7 @@ pub struct ToolCallId(String);
 pub enum OutputStatus {
     Success,
     Failed,
-    Canceled,
+    Cancelled,
     Timeout,
 }
 
@@ -26,7 +26,7 @@ impl OutputStatus {
         match self {
             Self::Success => "success",
             Self::Failed => "failed",
-            Self::Canceled => "canceled",
+            Self::Cancelled => "canceled",
             Self::Timeout => "timeout",
         }
     }
@@ -794,7 +794,7 @@ mod tests {
     fn test_output_status_as_str() {
         assert_eq!(OutputStatus::Success.as_str(), "success");
         assert_eq!(OutputStatus::Failed.as_str(), "failed");
-        assert_eq!(OutputStatus::Canceled.as_str(), "canceled");
+        assert_eq!(OutputStatus::Cancelled.as_str(), "canceled");
         assert_eq!(OutputStatus::Timeout.as_str(), "timeout");
     }
 
