@@ -1135,7 +1135,7 @@ mod tests {
     #[tokio::test]
     async fn read_file_handler_still_condenses_default_overview_read() -> Result<()> {
         // The default overview path (offset == 1) must still condense large
-        // outputs so the catalog stays bounded. This guards against the fix
+        // outputs so the catalogue stays bounded. This guards against the fix
         // over-correcting and never condensing.
         let mut temp = NamedTempFile::new()?;
         for idx in 1..=300 {

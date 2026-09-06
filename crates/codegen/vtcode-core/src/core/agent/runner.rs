@@ -486,12 +486,12 @@ impl AgentRunner {
 
     /// Enable full-auto execution with the provided allow-list.
     pub async fn enable_full_auto(&mut self, allowed_tools: &[String]) {
-        let mut permission_catalog_config = self.session_tools_config.clone();
-        permission_catalog_config.planning_active = allowed_tools
+        let mut permission_catalogue_config = self.session_tools_config.clone();
+        permission_catalogue_config.planning_active = allowed_tools
             .iter()
             .any(|tool_name| crate::tools::names::canonical_tool_name(tool_name) == tools::CODE_SEARCH);
         self.tool_registry
-            .enable_full_auto_permission_for_session(allowed_tools, permission_catalog_config)
+            .enable_full_auto_permission_for_session(allowed_tools, permission_catalogue_config)
             .await;
     }
 

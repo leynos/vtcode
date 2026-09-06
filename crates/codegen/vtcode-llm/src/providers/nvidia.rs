@@ -25,7 +25,7 @@ impl OpenAiCompatSpec for NvidiaSpec {
     const DEFAULT_BASE_URL: &'static str = urls::NVIDIA_API_BASE;
     const BASE_URL_ENV: Option<&'static str> = Some(env_vars::NVIDIA_BASE_URL);
     const LISTED_MODELS: &'static [&'static str] = models::nvidia::SUPPORTED_MODELS;
-    // NVIDIA exposes a larger catalog than the curated VT Code picker. An
+    // NVIDIA exposes a larger catalogue than the curated VT Code picker. An
     // explicit model selection must pass through without local rejection.
     const VALIDATION_ALLOWLIST: Option<&'static [&'static str]> = None;
     const STREAM_OPTIONS_INCLUDE_USAGE: bool = true;
@@ -203,7 +203,7 @@ mod tests {
 
         provider
             .validate_request(&request)
-            .expect("NVIDIA should accept explicit catalog models");
+            .expect("NVIDIA should accept explicit catalogue models");
     }
 
     #[test]

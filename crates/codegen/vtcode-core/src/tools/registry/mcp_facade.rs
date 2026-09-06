@@ -225,8 +225,8 @@ impl ToolRegistry {
 
             *self.cached_available_tools.write() = None;
             self.rebuild_tool_assembly().await;
-            self.tool_catalog_state.note_explicit_refresh("mcp_tool_refresh");
-            self.sync_policy_catalog().await;
+            self.tool_catalogue_state.note_explicit_refresh("mcp_tool_refresh");
+            self.sync_policy_catalogue().await;
             // MP-3: Record success in circuit breaker
             self.mcp_circuit_breaker.record_success();
             Ok(())

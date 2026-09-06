@@ -1,6 +1,6 @@
 //! Wire-facing tool-list filtering.
 //!
-//! Narrows the tool catalog snapshot down to what a given turn is actually
+//! Narrows the tool catalogue snapshot down to what a given turn is actually
 //! allowed to send: primary-agent tool policy, effective permissions, and
 //! (for client-local deferred-tool policies) deferred-tool omission from the
 //! wire payload.
@@ -13,7 +13,7 @@
 
 use std::sync::Arc;
 
-use vtcode_core::core::agent::harness_kernel::SessionToolCatalogSnapshot;
+use vtcode_core::core::agent::harness_kernel::SessionToolCatalogueSnapshot;
 use vtcode_core::llm::provider::{self as uni};
 use vtcode_core::permissions::{build_advertised_permission_requests, evaluate_effective_permissions};
 use vtcode_core::{ActivePrimaryAgent, apply_primary_agent_tool_policy};
@@ -23,14 +23,14 @@ pub(super) fn uses_out_of_band_copilot_tools(provider_name: &str) -> bool {
 }
 
 pub(super) fn apply_primary_agent_policy_to_tool_snapshot(
-    snapshot: SessionToolCatalogSnapshot,
+    snapshot: SessionToolCatalogueSnapshot,
     active_primary_agent: &ActivePrimaryAgent,
     workspace: &std::path::Path,
     vt_cfg: Option<&vtcode_core::config::loader::VTCodeConfig>,
-) -> SessionToolCatalogSnapshot {
+) -> SessionToolCatalogueSnapshot {
     let filtered = apply_primary_agent_tool_policy(snapshot.snapshot, active_primary_agent);
     let filtered = apply_permission_policy_to_tools(filtered, active_primary_agent, workspace, vt_cfg);
-    SessionToolCatalogSnapshot::new(
+    SessionToolCatalogueSnapshot::new(
         snapshot.version,
         snapshot.epoch,
         snapshot.planning_active,
@@ -81,9 +81,9 @@ fn apply_permission_policy_to_tools(
     };
 
     // Config-drift guard: allowlist entries are matched by exact tool name.
-    // Flag entries that match nothing in the emitted catalog so a stale
+    // Flag entries that match nothing in the emitted catalogue so a stale
     // `[automation.full_auto] allowed_tools` can never silently gut the
-    // model's toolset (the failure this guard addresses produced a catalog
+    // model's toolset (the failure this guard addresses produced a catalogue
     // that had collapsed to `["web_fetch"]` with no diagnostic anywhere).
     let allowlist_matches_emitted = if let Some(allowlist) = full_auto_allowlist {
         let emitted: HashSet<&str> = tools.iter().map(|tool| tool.function_name()).collect();
@@ -98,7 +98,7 @@ fn apply_permission_policy_to_tools(
                 stale_allowlist = ?stale,
                 allowed_tools = ?allowlist,
                 emitted_tools = ?tools.iter().map(|tool| tool.function_name()).collect::<Vec<_>>(),
-                "automation.full_auto.allowed_tools references tool names not present in the emitted catalog"
+                "automation.full_auto.allowed_tools references tool names not present in the emitted catalogue"
             );
         }
         allowlist.iter().any(|allowed| emitted.contains(allowed.as_str()))
@@ -132,9 +132,9 @@ fn apply_permission_policy_to_tools(
         .cloned()
         .collect();
 
-    // Fail loud instead of handing the model a zero-tool catalog. A non-empty
+    // Fail loud instead of handing the model a zero-tool catalogue. A non-empty
     // full-auto allowlist whose entries match no emitted tool is pure config
-    // drift (every entry is stale), so degrade to the unrestricted catalog
+    // drift (every entry is stale), so degrade to the unrestricted catalogue
     // rather than an unusable empty one. An intentionally empty allowlist
     // ("no tools allowed") and permission-denial collapses are left untouched.
     if filtered.is_empty()
@@ -145,7 +145,7 @@ fn apply_permission_policy_to_tools(
         tracing::warn!(
             target: "vtcode.tool_shaping",
             allowed_tools = ?allowlist,
-            "automation.full_auto.allowed_tools matched no emitted tool; falling back to the full catalog"
+            "automation.full_auto.allowed_tools matched no emitted tool; falling back to the full catalogue"
         );
         return Some(tools);
     }
@@ -161,7 +161,7 @@ fn apply_permission_policy_to_tools(
 /// requirement that their payloads stay byte-identical to today.
 ///
 /// This operates on the already-cloned `Arc` returned by the tool-snapshot
-/// pipeline, not on `ctx.tools` or `SessionToolCatalogState`'s caches, so it
+/// pipeline, not on `ctx.tools` or `SessionToolCatalogueState`'s caches, so it
 /// cannot disturb the local search index or the `note_tool_references`
 /// un-defer round trip -- those consumers see the unfiltered list via
 /// `TurnRequestBuildResult::runtime_tools`, which stays unfiltered.
@@ -193,7 +193,7 @@ mod tests {
         ToolDefinition::function(name.to_string(), name.to_string(), serde_json::json!({}))
     }
 
-    fn catalog(names: &[&str]) -> Option<Arc<Vec<ToolDefinition>>> {
+    fn catalogue(names: &[&str]) -> Option<Arc<Vec<ToolDefinition>>> {
         Some(Arc::new(names.iter().map(|n| tool(n)).collect()))
     }
 
@@ -217,13 +217,13 @@ mod tests {
     }
 
     #[test]
-    fn stale_only_allowlist_collapses_and_falls_back_to_full_catalog() {
+    fn stale_only_allowlist_collapses_and_falls_back_to_full_catalogue() {
         // Every allowlist entry is a legacy tool name that no emitted tool
-        // matches: the filter would collapse the catalog to zero. The guard
-        // must warn and degrade to the full catalog instead.
+        // matches: the filter would collapse the catalogue to zero. The guard
+        // must warn and degrade to the full catalogue instead.
         let cfg = cfg_with_full_auto(vec!["read_file".into(), "list_files".into(), "grep_file".into()]);
         let result = apply_permission_policy_to_tools(
-            catalog(&["exec_command", "code_search", "web_fetch"]),
+            catalogue(&["exec_command", "code_search", "web_fetch"]),
             &auto_agent(),
             PathBuf::from(WORKSPACE).as_path(),
             Some(&cfg),
@@ -244,7 +244,7 @@ mod tests {
             "request_user_input".into(),
         ]);
         let result = apply_permission_policy_to_tools(
-            catalog(&[
+            catalogue(&[
                 "exec_command",
                 "write_stdin",
                 "apply_patch",
@@ -273,7 +273,7 @@ mod tests {
     fn empty_allowlist_means_no_tools() {
         let cfg = cfg_with_full_auto(vec![]);
         let result = apply_permission_policy_to_tools(
-            catalog(&["exec_command", "code_search"]),
+            catalogue(&["exec_command", "code_search"]),
             &auto_agent(),
             PathBuf::from(WORKSPACE).as_path(),
             Some(&cfg),
@@ -285,7 +285,7 @@ mod tests {
     fn wildcard_allowlist_is_unrestricted() {
         let cfg = cfg_with_full_auto(vec!["*".into()]);
         let result = apply_permission_policy_to_tools(
-            catalog(&["exec_command", "code_search", "web_fetch"]),
+            catalogue(&["exec_command", "code_search", "web_fetch"]),
             &auto_agent(),
             PathBuf::from(WORKSPACE).as_path(),
             Some(&cfg),
@@ -300,7 +300,7 @@ mod tests {
         let cfg = cfg_with_full_auto(vec!["read_file".into(), "list_files".into()]);
         let build = ActivePrimaryAgent::from_spec(&vtcode_config::builtin_primary_build_agent());
         let result = apply_permission_policy_to_tools(
-            catalog(&["exec_command", "code_search", "web_fetch"]),
+            catalogue(&["exec_command", "code_search", "web_fetch"]),
             &build,
             PathBuf::from(WORKSPACE).as_path(),
             Some(&cfg),
@@ -313,7 +313,7 @@ mod tests {
         let mut cfg = cfg_with_full_auto(vec!["read_file".into(), "list_files".into()]);
         cfg.automation.full_auto.enabled = false;
         let result = apply_permission_policy_to_tools(
-            catalog(&["exec_command", "code_search", "web_fetch"]),
+            catalogue(&["exec_command", "code_search", "web_fetch"]),
             &auto_agent(),
             PathBuf::from(WORKSPACE).as_path(),
             Some(&cfg),

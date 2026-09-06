@@ -159,7 +159,7 @@ impl ToolResultCache {
     /// entries, but discard every filesystem or command-derived result so a
     /// later read cannot observe pre-command content.
     pub fn invalidate_after_external_command(&mut self) {
-        self.inner.remove_where(|key| !is_stable_tool_catalog_lookup(&key.tool));
+        self.inner.remove_where(|key| !is_stable_tool_catalogue_lookup(&key.tool));
     }
 
     /// Clear entire cache
@@ -201,7 +201,7 @@ fn is_directory_scoped_tool(tool_name: &str) -> bool {
     )
 }
 
-fn is_stable_tool_catalog_lookup(tool_name: &str) -> bool {
+fn is_stable_tool_catalogue_lookup(tool_name: &str) -> bool {
     matches!(tool_name, "search_tools" | "get_errors" | "agent_info")
 }
 
@@ -366,21 +366,21 @@ mod tests {
     }
 
     #[test]
-    fn external_command_invalidates_filesystem_results_but_keeps_catalog_entries() {
+    fn external_command_invalidates_filesystem_results_but_keeps_catalogue_entries() {
         let mut cache = ToolResultCache::new(10);
         let read_key = ToolCacheKey::new(tools::READ_FILE, "path=src/main.rs", "/workspace/src/main.rs");
         let search_key = ToolCacheKey::new(tools::CODE_SEARCH, "query=Widget", "/workspace");
-        let catalog_key = ToolCacheKey::new("search_tools", "query=read", "/workspace");
+        let catalogue_key = ToolCacheKey::new("search_tools", "query=read", "/workspace");
 
         cache.insert(read_key.clone(), "old file".to_string());
         cache.insert(search_key.clone(), "old search".to_string());
-        cache.insert(catalog_key.clone(), "catalog".to_string());
+        cache.insert(catalogue_key.clone(), "catalogue".to_string());
 
         cache.invalidate_after_external_command();
 
         assert!(cache.get(&read_key).is_none());
         assert!(cache.get(&search_key).is_none());
-        assert_eq!(cache.get(&catalog_key).as_deref().map(String::as_str), Some("catalog"));
+        assert_eq!(cache.get(&catalogue_key).as_deref().map(String::as_str), Some("catalogue"));
     }
 
     #[test]

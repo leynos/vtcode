@@ -1,5 +1,5 @@
 use vtcode_config::constants::{env_vars, models, urls};
-use vtcode_config::models::model_catalog_entry;
+use vtcode_config::models::model_catalogue_entry;
 
 use crate::provider::{LLMError, LLMProvider, LLMRequest, LLMResponse, LLMStream, LLMStreamEvent};
 
@@ -76,37 +76,37 @@ impl<S: OpenAiCompatSpec> LLMProvider for OpenCodeCompatibleProvider<S> {
     }
 
     fn supports_reasoning(&self, model: &str) -> bool {
-        model_catalog_entry(S::KEY, self.requested_model(model))
+        model_catalogue_entry(S::KEY, self.requested_model(model))
             .map(|entry| entry.reasoning)
             .unwrap_or(false)
     }
 
     fn supports_tools(&self, model: &str) -> bool {
-        model_catalog_entry(S::KEY, self.requested_model(model))
+        model_catalogue_entry(S::KEY, self.requested_model(model))
             .map(|entry| entry.tool_call)
             .unwrap_or(true)
     }
 
     fn supports_structured_output(&self, model: &str) -> bool {
-        model_catalog_entry(S::KEY, self.requested_model(model))
+        model_catalogue_entry(S::KEY, self.requested_model(model))
             .map(|entry| entry.structured_output)
             .unwrap_or(false)
     }
 
     fn supports_context_caching(&self, model: &str) -> bool {
-        model_catalog_entry(S::KEY, self.requested_model(model))
+        model_catalogue_entry(S::KEY, self.requested_model(model))
             .map(|entry| entry.caching)
             .unwrap_or(false)
     }
 
     fn supports_vision(&self, model: &str) -> bool {
-        model_catalog_entry(S::KEY, self.requested_model(model))
+        model_catalogue_entry(S::KEY, self.requested_model(model))
             .map(|entry| entry.vision)
             .unwrap_or(false)
     }
 
     fn effective_context_size(&self, model: &str) -> usize {
-        model_catalog_entry(S::KEY, self.requested_model(model))
+        model_catalogue_entry(S::KEY, self.requested_model(model))
             .map(|entry| entry.context_window)
             .filter(|value| *value > 0)
             .unwrap_or(128_000)
@@ -260,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_catalog_serialization_is_stable_across_cached_calls() {
+    fn tool_catalogue_serialization_is_stable_across_cached_calls() {
         use crate::provider::ToolDefinition;
 
         let provider = OpenCodeCompatibleProvider::<OpenCodeGoInnerSpec>::new(
@@ -270,7 +270,7 @@ mod tests {
             "some-model".to_string(),
         );
 
-        // Stable catalog shared across requests (mirrors the session-stable
+        // Stable catalogue shared across requests (mirrors the session-stable
         // `prompt_bundle.request_tools` Arc).
         let tools = Arc::new(vec![ToolDefinition::function(
             "read_file".to_string(),

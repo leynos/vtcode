@@ -5,7 +5,7 @@ use crate::agent::runloop::unified::context_manager::ContextManager;
 use crate::agent::runloop::unified::session_setup::IdeContextBridge;
 use crate::agent::runloop::unified::state::CtrlCState;
 use crate::agent::runloop::unified::tool_call_safety::ToolCallSafetyValidator;
-use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
+use crate::agent::runloop::unified::tool_catalogue::ToolCatalogueState;
 use crate::agent::runloop::welcome::SessionBootstrap;
 use hashbrown::HashMap;
 use std::sync::Arc;
@@ -70,7 +70,7 @@ pub(crate) struct SessionState {
     pub provider_client: Box<dyn uni::LLMProvider>,
     pub tool_registry: ToolRegistry,
     pub tools: Arc<RwLock<Vec<uni::ToolDefinition>>>,
-    pub tool_catalog: Arc<ToolCatalogState>,
+    pub tool_catalogue: Arc<ToolCatalogueState>,
     pub conversation_history: Vec<uni::Message>,
     pub execution: ToolExecutionContext,
     pub metadata: SessionMetadataContext,

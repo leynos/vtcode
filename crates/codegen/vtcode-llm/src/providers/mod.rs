@@ -16,7 +16,7 @@ pub mod lmstudio;
 pub mod local_readiness;
 pub mod local_server;
 pub mod merge_gateway;
-pub mod merge_gateway_catalog;
+pub mod merge_gateway_catalogue;
 mod merge_gateway_contract;
 pub mod meta;
 pub mod mimo;
@@ -67,9 +67,9 @@ pub use huggingface::HuggingFaceProvider;
 pub use llamacpp::LlamaCppProvider;
 pub use lmstudio::LmStudioProvider;
 pub use merge_gateway::MergeGatewayProvider;
-pub use merge_gateway_catalog::{
-    MergeCatalogAvailability, MergeCatalogFilters, MergeCatalogModel, MergeCatalogServiceTier, MergeCatalogSnapshot,
-    MergeGatewayCatalogClient,
+pub use merge_gateway_catalogue::{
+    MergeCatalogueAvailability, MergeCatalogueFilters, MergeCatalogueModel, MergeCatalogueServiceTier,
+    MergeCatalogueSnapshot, MergeGatewayCatalogueClient,
 };
 pub use meta::MetaProvider;
 pub use mimo::MiMoProvider;

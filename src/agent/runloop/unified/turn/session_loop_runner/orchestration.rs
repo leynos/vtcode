@@ -346,7 +346,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
             mut provider_client,
             mut tool_registry,
             tools,
-            tool_catalog,
+            tool_catalogue,
             conversation_history,
             execution,
             metadata,
@@ -493,7 +493,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
         let mut agent_touched_paths = std::collections::BTreeSet::new();
         let mut ctrl_c_notice_displayed = false;
         let mut inline_prompt_cost_notice_shown = false;
-        let mut mcp_catalog_initialized = tool_registry.mcp_client().is_some();
+        let mut mcp_catalogue_initialized = tool_registry.mcp_client().is_some();
         let mut last_known_mcp_tools: Vec<String> = Vec::with_capacity(16);
         let mut pending_mcp_refresh = false;
         let mut last_mcp_refresh = Instant::now();
@@ -544,7 +544,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
 
                 // The approval turn may have ended before the handoff state
                 // was fully applied (for example after recovery or a stale
-                // primary-agent catalog). Re-establish the execution boundary
+                // primary-agent catalogue). Re-establish the execution boundary
                 // before the queued implementation turn can build its request.
                 // This prevents a read-only `plan` agent from surviving the
                 // approval and denying the first shell/edit call.
@@ -630,8 +630,8 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                         async_mcp_manager: async_mcp_manager.as_ref(),
                         tool_registry: &mut tool_registry,
                         tools: &tools,
-                        tool_catalog: &tool_catalog,
-                        mcp_catalog_initialized: &mut mcp_catalog_initialized,
+                        tool_catalogue: &tool_catalogue,
+                        mcp_catalogue_initialized: &mut mcp_catalogue_initialized,
                         pending_mcp_refresh: &mut pending_mcp_refresh,
                         provider_client: &*provider_client,
                     };
@@ -684,7 +684,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                             async_mcp_manager: &async_mcp_manager,
                             tool_registry: &mut tool_registry,
                             tools: &tools,
-                            tool_catalog: &tool_catalog,
+                            tool_catalogue: &tool_catalogue,
                             conversation_history: std::sync::Arc::make_mut(&mut session_state.messages),
                             agent_touched_paths: &mut agent_touched_paths,
                             decision_ledger: &decision_ledger,
@@ -735,7 +735,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                             palette_state: &mut palette_state,
                             last_known_mcp_tools: &mut last_known_mcp_tools,
                             pending_mcp_refresh: &mut pending_mcp_refresh,
-                            mcp_catalog_initialized: &mut mcp_catalog_initialized,
+                            mcp_catalogue_initialized: &mut mcp_catalogue_initialized,
                             last_mcp_refresh: &mut last_mcp_refresh,
                             ctrl_c_notice_displayed: &mut ctrl_c_notice_displayed,
                             inline_prompt_cost_notice_shown: &mut inline_prompt_cost_notice_shown,
@@ -923,8 +923,8 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                             async_mcp_manager: async_mcp_manager.as_ref(),
                             tool_registry: &mut tool_registry,
                             tools: &tools,
-                            tool_catalog: &tool_catalog,
-                            mcp_catalog_initialized: &mut mcp_catalog_initialized,
+                            tool_catalogue: &tool_catalogue,
+                            mcp_catalogue_initialized: &mut mcp_catalogue_initialized,
                             pending_mcp_refresh: &mut pending_mcp_refresh,
                             provider_client: &*provider_client,
                         };
@@ -1049,7 +1049,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                         &decision_ledger,
                         &mut tool_registry,
                         &tools,
-                        &tool_catalog,
+                        &tool_catalogue,
                         &ctrl_c_state,
                         &ctrl_c_notify,
                         &mut context_manager,
@@ -1242,8 +1242,8 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                         async_mcp_manager: async_mcp_manager.as_ref(),
                         tool_registry: &mut tool_registry,
                         tools: &tools,
-                        tool_catalog: &tool_catalog,
-                        mcp_catalog_initialized: &mut mcp_catalog_initialized,
+                        tool_catalogue: &tool_catalogue,
+                        mcp_catalogue_initialized: &mut mcp_catalogue_initialized,
                         pending_mcp_refresh: &mut pending_mcp_refresh,
                         provider_client: &*provider_client,
                     };

@@ -10,7 +10,7 @@ use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
 use crate::agent::runloop::unified::async_mcp_manager::{AsyncMcpManager, McpInitStatus};
 use crate::agent::runloop::unified::mcp_tool_manager::McpToolManager;
 use crate::agent::runloop::unified::session_setup::active_deferred_tool_policy;
-use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
+use crate::agent::runloop::unified::tool_catalogue::ToolCatalogueState;
 use vtcode_core::config::loader::VTCodeConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,13 +38,13 @@ pub(crate) async fn handle_mcp_updates(
     mcp_manager: &AsyncMcpManager,
     tool_registry: &mut vtcode_core::tools::registry::ToolRegistry,
     tools: &Arc<tokio::sync::RwLock<Vec<uni::ToolDefinition>>>,
-    tool_catalog: &ToolCatalogState,
+    tool_catalogue: &ToolCatalogueState,
     config: &CoreAgentConfig,
     vt_cfg: Option<&VTCodeConfig>,
     provider_client: &dyn uni::LLMProvider,
     tool_documentation_mode: ToolDocumentationMode,
     renderer: &mut AnsiRenderer,
-    mcp_catalog_initialized: &mut bool,
+    mcp_catalogue_initialized: &mut bool,
     last_mcp_refresh: &mut Instant,
     last_known_mcp_tools: &mut Vec<String>,
     pending_mcp_refresh: &mut bool,
@@ -52,7 +52,7 @@ pub(crate) async fn handle_mcp_updates(
 ) -> Result<()> {
     let deferred_tool_policy = active_deferred_tool_policy(config, vt_cfg, provider_client);
 
-    if !*mcp_catalog_initialized {
+    if !*mcp_catalogue_initialized {
         match mcp_manager.get_status().await {
             McpInitStatus::Ready { client } => {
                 tool_registry.set_mcp_client(Arc::clone(&client)).await;
@@ -65,7 +65,7 @@ pub(crate) async fn handle_mcp_updates(
                                 McpToolManager::enumerate_mcp_tools_after_initial_setup(
                                     tool_registry,
                                     tools,
-                                    tool_catalog,
+                                    tool_catalogue,
                                     config,
                                     vt_cfg,
                                     tool_documentation_mode,
@@ -84,7 +84,7 @@ pub(crate) async fn handle_mcp_updates(
                         renderer.line(
                             MessageStyle::Info,
                             &format!(
-                                "MCP tools ready ({registered_tools} registered). Use /mcp tools to inspect the catalog."
+                                "MCP tools ready ({registered_tools} registered). Use /mcp tools to inspect the catalogue."
                             ),
                         )?;
                         renderer.line_if_not_empty(MessageStyle::Output)?;
@@ -95,18 +95,18 @@ pub(crate) async fn handle_mcp_updates(
                         renderer.line_if_not_empty(MessageStyle::Output)?;
                     }
                 }
-                *mcp_catalog_initialized = true;
+                *mcp_catalogue_initialized = true;
             }
             McpInitStatus::Error { message } => {
                 renderer.line(MessageStyle::Error, &format!("MCP Error: {message}"))?;
                 renderer.line_if_not_empty(MessageStyle::Output)?;
-                *mcp_catalog_initialized = true;
+                *mcp_catalogue_initialized = true;
             }
             McpInitStatus::Initializing { .. } | McpInitStatus::Disabled => {}
         }
     }
 
-    if *mcp_catalog_initialized && last_mcp_refresh.elapsed() >= refresh_interval {
+    if *mcp_catalogue_initialized && last_mcp_refresh.elapsed() >= refresh_interval {
         *last_mcp_refresh = Instant::now();
 
         if matches!(decide_refresh_action(*pending_mcp_refresh, false), RefreshDecision::ApplyPending) {
@@ -116,7 +116,7 @@ pub(crate) async fn handle_mcp_updates(
                         McpToolManager::enumerate_mcp_tools_after_refresh(
                             tool_registry,
                             tools,
-                            tool_catalog,
+                            tool_catalogue,
                             config,
                             vt_cfg,
                             tool_documentation_mode,

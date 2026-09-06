@@ -5,8 +5,8 @@ use crate::provider::Usage;
 use vtcode_config::api_keys::api_key_env_var;
 use vtcode_config::auth::AuthCredentialsStoreMode;
 use vtcode_config::models::{
-    ModelCatalogEntry, ModelId, ModelPricing, Provider, ProviderModelSupport, catalog_provider_keys,
-    model_catalog_entry,
+    ModelCatalogueEntry, ModelId, ModelPricing, Provider, ProviderModelSupport, catalogue_provider_keys,
+    model_catalogue_entry,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,18 +46,18 @@ pub struct ResolvedModel {
     pub provider: Provider,
     pub model_id: String,
     pub api_key_env: String,
-    pub catalog: Option<ModelCatalogEntry>,
+    pub catalogue: Option<ModelCatalogueEntry>,
     pub dynamic: Option<DynamicModelMeta>,
     pub availability: ModelAvailability,
 }
 
 impl ResolvedModel {
     pub fn known_model(&self) -> bool {
-        self.catalog.is_some()
+        self.catalogue.is_some()
     }
 
     pub fn reasoning_supported(&self) -> bool {
-        self.catalog
+        self.catalogue
             .map(|entry| entry.reasoning)
             .unwrap_or_else(|| self.provider.supports_reasoning_effort(&self.model_id))
     }
@@ -67,23 +67,23 @@ impl ResolvedModel {
     }
 
     pub fn supports_tool_calls(&self) -> bool {
-        self.catalog.map(|entry| entry.tool_call).unwrap_or(true)
+        self.catalogue.map(|entry| entry.tool_call).unwrap_or(true)
     }
 
     pub fn context_window(&self) -> Option<usize> {
-        self.catalog
+        self.catalogue
             .map(|entry| entry.context_window)
             .filter(|value| *value > 0)
             .or_else(|| self.dynamic.as_ref().and_then(|dynamic| dynamic.context_window))
     }
 
     pub fn input_modalities(&self) -> &'static [&'static str] {
-        self.catalog.map(|entry| entry.input_modalities).unwrap_or(&[])
+        self.catalogue.map(|entry| entry.input_modalities).unwrap_or(&[])
     }
 
     pub fn display_name(&self) -> Cow<'_, str> {
-        if let Some(catalog) = self.catalog {
-            return Cow::Borrowed(catalog.display_name);
+        if let Some(catalogue) = self.catalogue {
+            return Cow::Borrowed(catalogue.display_name);
         }
         if let Some(dynamic) = &self.dynamic {
             return Cow::Borrowed(dynamic.display_name.as_str());
@@ -92,8 +92,8 @@ impl ResolvedModel {
     }
 
     pub fn description(&self) -> Option<Cow<'_, str>> {
-        if let Some(catalog) = self.catalog {
-            return (!catalog.description.is_empty()).then_some(Cow::Borrowed(catalog.description));
+        if let Some(catalogue) = self.catalogue {
+            return (!catalogue.description.is_empty()).then_some(Cow::Borrowed(catalogue.description));
         }
         self.dynamic.as_ref().and_then(|dynamic| {
             dynamic
@@ -105,7 +105,7 @@ impl ResolvedModel {
     }
 
     pub fn pricing(&self) -> Option<ModelPricing> {
-        self.catalog.map(|entry| entry.pricing).filter(|pricing| {
+        self.catalogue.map(|entry| entry.pricing).filter(|pricing| {
             pricing.input.is_some()
                 || pricing.output.is_some()
                 || pricing.cache_read.is_some()
@@ -195,12 +195,12 @@ impl ModelResolver {
             ));
         }
 
-        if let Some((provider, entry)) = find_catalog_provider(model) {
+        if let Some((provider, entry)) = find_catalogue_provider(model) {
             return Some(ResolvedModel {
                 provider,
                 model_id: model.to_string(),
                 api_key_env: resolved_api_key_env(provider, api_key_env),
-                catalog: Some(entry),
+                catalogue: Some(entry),
                 dynamic: dynamic_meta,
                 availability: Self::availability_with_key(provider, model, api_key_env, storage_mode),
             });
@@ -308,8 +308,8 @@ impl ModelResolver {
         api_key_env: Option<&str>,
         storage_mode: AuthCredentialsStoreMode,
     ) -> ResolvedModel {
-        let catalog = model_catalog_entry(provider.as_ref(), model);
-        let dynamic = if catalog.is_some() || !has_dynamic_model(provider, model, dynamic_models) {
+        let catalogue = model_catalogue_entry(provider.as_ref(), model);
+        let dynamic = if catalogue.is_some() || !has_dynamic_model(provider, model, dynamic_models) {
             None
         } else {
             dynamic_meta.or_else(|| {
@@ -325,7 +325,7 @@ impl ModelResolver {
             provider,
             model_id: model.to_string(),
             api_key_env: resolved_api_key_env(provider, api_key_env),
-            catalog,
+            catalogue,
             dynamic,
             availability: Self::availability_with_key(provider, model, api_key_env, storage_mode),
         }
@@ -340,8 +340,8 @@ impl ModelResolver {
         storage_mode: AuthCredentialsStoreMode,
     ) -> ResolvedModel {
         let provider = model_id.provider();
-        let catalog = model_catalog_entry(provider.as_ref(), &model_id.as_str());
-        let dynamic = if catalog.is_some() || !has_dynamic_model(provider, requested_model, dynamic_models) {
+        let catalogue = model_catalogue_entry(provider.as_ref(), &model_id.as_str());
+        let dynamic = if catalogue.is_some() || !has_dynamic_model(provider, requested_model, dynamic_models) {
             None
         } else {
             dynamic_meta.or_else(|| {
@@ -357,7 +357,7 @@ impl ModelResolver {
             provider,
             model_id: requested_model.to_string(),
             api_key_env: resolved_api_key_env(provider, api_key_env),
-            catalog,
+            catalogue,
             dynamic,
             availability: Self::availability_with_key(provider, requested_model, api_key_env, storage_mode),
         }
@@ -373,12 +373,12 @@ fn parse_provider_override(value: &str) -> Option<Provider> {
     }
 }
 
-fn find_catalog_provider(model: &str) -> Option<(Provider, ModelCatalogEntry)> {
-    let mut matches: Vec<(Provider, ModelCatalogEntry)> = catalog_provider_keys()
+fn find_catalogue_provider(model: &str) -> Option<(Provider, ModelCatalogueEntry)> {
+    let mut matches: Vec<(Provider, ModelCatalogueEntry)> = catalogue_provider_keys()
         .iter()
         .filter_map(|provider_key| {
             let provider = Provider::from_str(provider_key).ok()?;
-            model_catalog_entry(provider_key, model).map(|entry| (provider, entry))
+            model_catalogue_entry(provider_key, model).map(|entry| (provider, entry))
         })
         .collect();
     matches.sort_by_key(|(provider, _)| provider_precedence(*provider));
@@ -525,7 +525,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolver_prefers_catalog_match_over_heuristic() {
+    fn resolver_prefers_catalogue_match_over_heuristic() {
         let resolved = ModelResolver::resolve(None, "gpt-5.6-sol", &[], None).expect("model");
 
         assert_eq!(resolved.provider, Provider::OpenAI);

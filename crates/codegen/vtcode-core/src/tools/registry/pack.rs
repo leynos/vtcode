@@ -17,12 +17,12 @@
 //! Builtin packs are collected via `linkme::distributed_slice` into
 //! `BUILTIN_PACKS`, then iterated at startup by `register_builtin_packs()`.
 //! Each pack's `register()` method groups its tool registrations so behaviour
-//! and catalog-source decoration stays in one place.
+//! and catalogue-source decoration stays in one place.
 
 use crate::tools::handlers::PlanningWorkflowState;
 use crate::tools::registry::distributed::ToolConfigSnapshot;
 use crate::tools::registry::inventory::ToolInventory;
-use crate::tools::registry::registration::{ToolCatalogSource, ToolRegistration};
+use crate::tools::registry::registration::{ToolCatalogueSource, ToolRegistration};
 use crate::tools::tool_intent::builtin_tool_behaviour;
 
 /// A logical grouping of related tools with shared lifecycle hooks.
@@ -52,7 +52,7 @@ pub trait ToolPack: Send + Sync {
 /// Batch-register a list of tools into the inventory, logging any failures.
 ///
 /// This is the preferred registration path for packs: it centralizes the
-/// built-in behaviour and catalog-source decoration while preserving
+/// built-in behaviour and catalogue-source decoration while preserving
 /// per-registration validation and failure isolation.
 pub fn batch_register(inventory: &ToolInventory, registrations: Vec<ToolRegistration>) {
     for mut registration in registrations {
@@ -60,7 +60,7 @@ pub fn batch_register(inventory: &ToolInventory, registrations: Vec<ToolRegistra
         if let Some(behaviour) = builtin_tool_behaviour(&tool_name) {
             registration = registration.with_behaviour(behaviour);
         }
-        registration = registration.with_catalog_source(ToolCatalogSource::Builtin);
+        registration = registration.with_catalogue_source(ToolCatalogueSource::Builtin);
         if let Err(err) = inventory.register_tool(registration) {
             tracing::warn!(tool = %tool_name, %err, "Failed to register tool from pack");
         }
@@ -89,7 +89,7 @@ pub static BUILTIN_PACKS: [BuiltinPackFactory] = [..];
 /// This is the new entry point for builtin tool registration, replacing
 /// the old `builtin_tool_registrations()` loop over individual factories.
 /// Packs use a deterministic model-facing priority for the core execution
-/// surface, then fall back to `pack_id` so catalog projections share one
+/// surface, then fall back to `pack_id` so catalogue projections share one
 /// stable order.
 pub async fn register_builtin_packs(
     inventory: &ToolInventory,

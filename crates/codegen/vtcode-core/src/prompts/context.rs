@@ -1,7 +1,7 @@
 use crate::config::ConfigManager;
 use crate::config::types::CapabilityLevel;
 use crate::ide_context::EditorContextSnapshot;
-use crate::skills::command_skills::is_model_catalog_eligible;
+use crate::skills::command_skills::is_model_catalogue_eligible;
 use crate::skills::manager::SkillsManager;
 use crate::skills::model::SkillMetadata;
 use crate::tools::search_runtime::snapshot_for_workspace;
@@ -191,7 +191,7 @@ impl PromptContext {
             outcome
                 .skills
                 .into_iter()
-                .filter(is_model_catalog_eligible)
+                .filter(is_model_catalogue_eligible)
                 .filter(|skill| requested.contains(&skill.name.to_ascii_lowercase()))
                 .collect(),
         );
@@ -240,7 +240,7 @@ fn collect_available_skill_metadata(workspace: &Path, home_dir: &Path) -> Vec<Sk
         .skills_metadata_lightweight(workspace)
         .skills
         .into_iter()
-        .filter(is_model_catalog_eligible)
+        .filter(is_model_catalogue_eligible)
         .collect()
 }
 

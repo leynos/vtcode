@@ -299,7 +299,7 @@ async fn handle_show_memory_intent(
             plan_session: ctx.plan_session,
             input_status_state: state.input_status_state,
             tools: ctx.tools,
-            tool_catalog: ctx.tool_catalog,
+            tool_catalogue: ctx.tool_catalogue,
             async_mcp_manager: ctx.async_mcp_manager.as_ref(),
             mcp_panel_state: ctx.mcp_panel_state,
             linked_directories: ctx.linked_directories,

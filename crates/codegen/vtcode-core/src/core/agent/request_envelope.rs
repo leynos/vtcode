@@ -12,7 +12,7 @@ use super::hash_utils::{hash_tool_definitions, hash_value};
 pub enum SegmentBoundaryReason {
     Compaction,
     Recovery,
-    ToolCatalogEpoch,
+    ToolCatalogueEpoch,
     PrimaryAgent,
     Model,
     Provider,
@@ -26,7 +26,7 @@ impl SegmentBoundaryReason {
         match self {
             Self::Compaction => "compaction",
             Self::Recovery => "recovery",
-            Self::ToolCatalogEpoch => "tool_catalog_epoch",
+            Self::ToolCatalogueEpoch => "tool_catalog_epoch",
             Self::PrimaryAgent => "primary_agent",
             Self::Model => "model",
             Self::Provider => "provider",
@@ -44,7 +44,7 @@ pub struct SessionRequestEnvelope {
     ordered_tools: Arc<Vec<ToolDefinition>>,
     instruction_digest: u64,
     prefix_hash: u64,
-    catalog_hash: Option<u64>,
+    catalogue_hash: Option<u64>,
 }
 
 impl SessionRequestEnvelope {
@@ -60,7 +60,7 @@ impl SessionRequestEnvelope {
         tools.sort_by(compare_tools);
         let system_prompt = system_prompt.into();
         let prefix_hash = hash_value(&system_prompt);
-        let catalog_hash = if tools.is_empty() {
+        let catalogue_hash = if tools.is_empty() {
             None
         } else {
             hash_tool_definitions(Some(&tools))
@@ -71,7 +71,7 @@ impl SessionRequestEnvelope {
             ordered_tools: Arc::new(tools),
             instruction_digest,
             prefix_hash,
-            catalog_hash,
+            catalogue_hash,
         }
     }
 
@@ -101,8 +101,8 @@ impl SessionRequestEnvelope {
     }
 
     #[must_use]
-    pub fn catalog_hash(&self) -> Option<u64> {
-        self.catalog_hash
+    pub fn catalogue_hash(&self) -> Option<u64> {
+        self.catalogue_hash
     }
 }
 
@@ -152,10 +152,10 @@ mod tests {
 
         assert_eq!(left.system_prompt.as_bytes(), right.system_prompt.as_bytes());
         assert_eq!(
-            serde_json::to_vec(left.ordered_tools.as_ref()).expect("serialize left catalog"),
-            serde_json::to_vec(right.ordered_tools.as_ref()).expect("serialize right catalog")
+            serde_json::to_vec(left.ordered_tools.as_ref()).expect("serialize left catalogue"),
+            serde_json::to_vec(right.ordered_tools.as_ref()).expect("serialize right catalogue")
         );
-        assert_eq!(left.catalog_hash, right.catalog_hash);
+        assert_eq!(left.catalogue_hash, right.catalogue_hash);
     }
 
     #[test]

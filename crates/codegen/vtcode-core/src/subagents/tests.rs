@@ -228,7 +228,7 @@ fn resolve_effective_subagent_model_falls_back_to_parent_on_invalid_override() {
 
 #[test]
 fn resolve_subagent_model_inherits_local_custom_model() {
-    // Local providers expose arbitrary model IDs not in the built-in catalog;
+    // Local providers expose arbitrary model IDs not in the built-in catalogue;
     // inheriting such a model must succeed as a custom identifier.
     let cfg = VTCodeConfig::default();
     let resolved = resolve_subagent_model(&cfg, "qwen3.5-9b-sushi-coder-rl", "lmstudio", None, "wiki-assistant")

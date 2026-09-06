@@ -30,7 +30,7 @@ use vtcode_utility_tool_specs::{
 };
 
 use super::distributed::{BUILTIN_TOOLS, tool_config};
-use super::registration::{ToolCatalogSource, ToolRegistration};
+use super::registration::{ToolCatalogueSource, ToolRegistration};
 use super::{ToolRegistry, native_cgp_tool_factory};
 
 /// Build builtin tool registrations from the distributed slice.
@@ -49,7 +49,7 @@ pub(super) fn builtin_tool_registrations(
         .iter()
         .map(|factory| factory(planning_workflow_state))
         .map(with_builtin_behaviour)
-        .map(|registration| registration.with_catalog_source(ToolCatalogSource::Builtin))
+        .map(|registration| registration.with_catalogue_source(ToolCatalogueSource::Builtin))
         .collect();
 
     // Sort so that tools with aliases register before tools without aliases.
@@ -363,7 +363,7 @@ fn register_search_tools(_plan_state: Option<&PlanningWorkflowState>) -> ToolReg
         ToolRegistry::search_tools_executor,
     )
     .with_description(
-        "Search the deferred local tool catalog by capability. Matching definitions are expanded deterministically for the next request segment.",
+        "Search the deferred local tool catalogue by capability. Matching definitions are expanded deterministically for the next request segment.",
     )
     .with_parameter_schema(search_tools_parameters())
     .with_permission(ToolPolicy::Allow)
@@ -904,21 +904,21 @@ mod tests {
     }
 
     /// End-to-end regression for the tool-consolidation work: builds the real
-    /// `SessionToolCatalog` from the actual builtin registrations (not a
+    /// `SessionToolCatalogue` from the actual builtin registrations (not a
     /// synthetic subset) and asserts the number of tool definitions/function
     /// declarations the model actually sees, for a default non-native-memory
     /// config, stays within the post-fold cap. This complements
     /// `default_config_exposed_tool_count_within_cap` (which only counts
-    /// `expose_in_llm()` registrations) by exercising the full catalog
+    /// `expose_in_llm()` registrations) by exercising the full catalogue
     /// pipeline, including dedup-by-public-name and deferred-loading
     /// collapsing.
     #[test]
     fn emitted_model_tool_count_stays_within_cap_for_default_config() {
         use crate::config::ToolDocumentationMode;
-        use crate::tools::handlers::{SessionSurface, SessionToolCatalog, SessionToolsConfig, ToolModelCapabilities};
+        use crate::tools::handlers::{SessionSurface, SessionToolCatalogue, SessionToolsConfig, ToolModelCapabilities};
 
         let registrations = builtin_tool_registrations(None);
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
         let config = SessionToolsConfig::full_public(
             SessionSurface::Interactive,
             CapabilityLevel::CodeSearch,
@@ -926,7 +926,7 @@ mod tests {
             ToolModelCapabilities::default(),
         );
 
-        let model_tools = catalog.model_tools(config.clone());
+        let model_tools = catalogue.model_tools(config.clone());
         assert!(
             model_tools.len() <= 14,
             "emitted model_tools count is {}; expected <= 14. \
@@ -934,7 +934,7 @@ mod tests {
             model_tools.len()
         );
 
-        let function_declarations = catalog.function_declarations(config);
+        let function_declarations = catalogue.function_declarations(config);
         assert!(
             function_declarations.len() <= 14,
             "emitted function_declarations count is {}; expected <= 14. \
@@ -949,7 +949,7 @@ mod tests {
     #[test]
     fn emitted_model_tool_schema_fits_within_first_request_budget() {
         use crate::config::ToolDocumentationMode;
-        use crate::tools::handlers::{SessionSurface, SessionToolCatalog, SessionToolsConfig, ToolModelCapabilities};
+        use crate::tools::handlers::{SessionSurface, SessionToolCatalogue, SessionToolsConfig, ToolModelCapabilities};
         use serde::Serialize;
 
         #[derive(Serialize)]
@@ -960,7 +960,7 @@ mod tests {
         }
 
         let registrations = builtin_tool_registrations(None);
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
         let config = SessionToolsConfig::full_public(
             SessionSurface::Interactive,
             CapabilityLevel::CodeSearch,
@@ -968,7 +968,7 @@ mod tests {
             ToolModelCapabilities::default(),
         );
 
-        let schema_entries = catalog.schema_entries(config);
+        let schema_entries = catalogue.schema_entries(config);
         let total_tokens: usize = schema_entries
             .iter()
             .map(|entry| {
@@ -995,7 +995,7 @@ mod tests {
     fn first_request_total_token_budget_within_limit() {
         use crate::config::ToolDocumentationMode;
         use crate::prompts::system::default_system_prompt;
-        use crate::tools::handlers::{SessionSurface, SessionToolCatalog, SessionToolsConfig, ToolModelCapabilities};
+        use crate::tools::handlers::{SessionSurface, SessionToolCatalogue, SessionToolsConfig, ToolModelCapabilities};
         use serde::Serialize;
 
         #[derive(Serialize)]
@@ -1006,7 +1006,7 @@ mod tests {
         }
 
         let registrations = builtin_tool_registrations(None);
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
         let config = SessionToolsConfig::full_public(
             SessionSurface::Interactive,
             CapabilityLevel::CodeSearch,
@@ -1014,7 +1014,7 @@ mod tests {
             ToolModelCapabilities::default(),
         );
 
-        let schema_entries = catalog.schema_entries(config);
+        let schema_entries = catalogue.schema_entries(config);
         let tool_schema_tokens: usize = schema_entries
             .iter()
             .map(|entry| {
@@ -1062,7 +1062,7 @@ mod tests {
 
         use crate::config::ToolDocumentationMode;
         use crate::prompts::system::default_system_prompt;
-        use crate::tools::handlers::{SessionSurface, SessionToolCatalog, SessionToolsConfig, ToolModelCapabilities};
+        use crate::tools::handlers::{SessionSurface, SessionToolCatalogue, SessionToolsConfig, ToolModelCapabilities};
         use serde::Serialize;
 
         #[derive(Serialize)]
@@ -1079,7 +1079,7 @@ mod tests {
             system_prompt.hash(&mut hasher);
 
             let registrations = builtin_tool_registrations(None);
-            let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
+            let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
             let config = SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -1087,7 +1087,7 @@ mod tests {
                 ToolModelCapabilities::default(),
             );
 
-            let schema_entries = catalog.schema_entries(config);
+            let schema_entries = catalogue.schema_entries(config);
             for entry in &schema_entries {
                 let estimate = ToolSchemaEstimate {
                     name: &entry.name,

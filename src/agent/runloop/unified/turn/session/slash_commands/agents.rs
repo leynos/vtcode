@@ -232,7 +232,7 @@ async fn show_agents_manager(mut ctx: SlashCommandContext<'_>) -> Result<SlashCo
     };
 
     match action.as_str() {
-        value if value == format!("{AGENT_ACTION_PREFIX}browse") => show_agent_catalog(ctx).await,
+        value if value == format!("{AGENT_ACTION_PREFIX}browse") => show_agent_catalogue(ctx).await,
         value if value == format!("{AGENT_ACTION_PREFIX}threads") => show_threads_modal(ctx).await,
         value if value == format!("{AGENT_ACTION_PREFIX}create-project") => {
             authoring::handle_create_agent(ctx, Some(AgentDefinitionScope::Project), None).await
@@ -255,7 +255,7 @@ async fn show_agents_manager(mut ctx: SlashCommandContext<'_>) -> Result<SlashCo
     }
 }
 
-async fn show_agent_catalog(mut ctx: SlashCommandContext<'_>) -> Result<SlashCommandControl> {
+async fn show_agent_catalogue(mut ctx: SlashCommandContext<'_>) -> Result<SlashCommandControl> {
     let Some(controller) = ctx.tool_registry.subagent_controller() else {
         return render_missing_subagent_controller(&mut ctx);
     };

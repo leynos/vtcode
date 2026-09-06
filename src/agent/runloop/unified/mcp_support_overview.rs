@@ -292,7 +292,7 @@ pub(crate) async fn refresh_mcp_tools(renderer: &mut AnsiRenderer, tool_registry
                     renderer.line(MessageStyle::Error, &format!("Refreshed but failed to list tools: {err}"))?;
                 }
             }
-            renderer.line(MessageStyle::Info, "Use /mcp tools to inspect the refreshed catalog.")?;
+            renderer.line(MessageStyle::Info, "Use /mcp tools to inspect the refreshed catalogue.")?;
             Ok(true)
         }
         Err(err) => {
