@@ -1354,3 +1354,41 @@ pub fn effective_compaction_threshold(
     resolve_effective_compaction_threshold(configured_threshold, provider_context_size, session_context_budget)
         .and_then(|threshold| usize::try_from(threshold).ok())
 }
+
+#[cfg(test)]
+mod tests {
+    //! Contract tests for persisted session-memory envelope wire names.
+
+    use super::SessionMemoryEnvelope;
+    use serde_json::json;
+
+    #[test]
+    fn session_memory_envelope_preserves_history_artefact_path_wire_key() {
+        let legacy_envelope = json!({
+            "summary": "summary",
+            "grounded_facts": [],
+            "touched_files": [],
+            "history_artifact_path": "/tmp/legacy-history.json",
+            "generated_at": "now"
+        });
+
+        let envelope: SessionMemoryEnvelope =
+            serde_json::from_value(legacy_envelope).expect("legacy history_artifact_path fixture should deserialize");
+        assert_eq!(
+            envelope.history_artefact_path.as_deref(),
+            Some("/tmp/legacy-history.json"),
+            "legacy wire key should populate the native field"
+        );
+
+        let serialized = serde_json::to_value(&envelope).expect("serialize session memory envelope");
+        assert_eq!(
+            serialized.get("history_artifact_path"),
+            Some(&json!("/tmp/legacy-history.json")),
+            "serialization should retain the fixed legacy wire key"
+        );
+        assert!(
+            serialized.get("history_artefact_path").is_none(),
+            "serialization should not expose the native field name"
+        );
+    }
+}

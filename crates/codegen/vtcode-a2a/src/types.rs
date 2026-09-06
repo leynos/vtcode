@@ -3,7 +3,7 @@
 //! Implements the core data structures as defined in the A2A specification:
 //! - Task and TaskStatus for task lifecycle management
 //! - Message and Part types for communication
-//! - Artifact for task outputs
+//! - Artefact for task outputs
 
 use chrono::{DateTime, Utc};
 use hashbrown::HashMap;
@@ -270,17 +270,17 @@ pub enum FileContent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Artefact {
-    /// Unique artifact identifier
+    /// Unique artefact identifier
     pub id: String,
     /// Human-readable name
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
-    /// Description of the artifact
+    /// Description of the artefact
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
     /// Content parts
     pub parts: Vec<Part>,
-    /// Index for ordering multiple artifacts
+    /// Index for ordering multiple artefacts
     #[serde(skip_serializing_if = "Option::is_none")]
     index: Option<u32>,
     /// Custom metadata
@@ -289,7 +289,7 @@ pub struct Artefact {
 }
 
 impl Artefact {
-    /// Create a new artifact with text content
+    /// Create a new artefact with text content
     pub(crate) fn text(id: impl Into<String>, text: impl Into<String>) -> Self {
         Self {
             id: id.into(),
@@ -301,7 +301,7 @@ impl Artefact {
         }
     }
 
-    /// Create a new artifact with file content
+    /// Create a new artefact with file content
     pub fn file(id: impl Into<String>, file: FileContent) -> Self {
         Self {
             id: id.into(),
@@ -313,13 +313,13 @@ impl Artefact {
         }
     }
 
-    /// Add a name to the artifact
+    /// Add a name to the artefact
     fn with_name(mut self, name: impl Into<String>) -> Self {
         self.name = Some(name.into());
         self
     }
 
-    /// Add a description to the artifact
+    /// Add a description to the artefact
     fn with_description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
         self
@@ -417,7 +417,7 @@ impl Task {
         };
     }
 
-    /// Add an artifact to the task
+    /// Add an artefact to the task
     pub fn add_artefact(&mut self, artefact: Artefact) {
         self.artefacts.push(artefact);
     }

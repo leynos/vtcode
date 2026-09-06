@@ -1,3 +1,5 @@
+//! Helpers for locating, reading, and writing harness artefacts.
+
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -24,24 +26,24 @@ pub fn current_context_reset_path(workspace_root: &Path) -> PathBuf {
         .join(crate::core::agent::context_reset::CONTEXT_RESET_FILE)
 }
 
-/// Return the path to the current spec artifact file.
+/// Return the path to the current spec artefact file.
 pub fn current_spec_path(workspace_root: &Path) -> PathBuf {
     workspace_root.join(TASKS_DIR).join(CURRENT_SPEC_FILE)
 }
 
-/// Return the path to the current contract artifact file.
+/// Return the path to the current contract artefact file.
 pub fn current_contract_path(workspace_root: &Path) -> PathBuf {
     workspace_root.join(TASKS_DIR).join(CURRENT_CONTRACT_FILE)
 }
 
-/// Return the path to the current evaluation artifact file.
+/// Return the path to the current evaluation artefact file.
 pub fn current_evaluation_path(workspace_root: &Path) -> PathBuf {
     workspace_root.join(TASKS_DIR).join(CURRENT_EVALUATION_FILE)
 }
 
-/// Return the path to the current sprint contract artifact file.
+/// Return the path to the current sprint contract artefact file.
 ///
-/// The sprint contract is the pre-sprint negotiation artifact: the generator
+/// The sprint contract is the pre-sprint negotiation artefact: the generator
 /// and evaluator agree on scope, acceptance criteria, and out-of-scope items
 /// before implementation begins. This follows the long-running harness pattern
 /// where "vague user stories become testable contracts."
@@ -49,7 +51,7 @@ pub fn current_sprint_contract_path(workspace_root: &Path) -> PathBuf {
     workspace_root.join(TASKS_DIR).join(CURRENT_SPRINT_CONTRACT_FILE)
 }
 
-/// Return the path to the current outcome verification artifact file.
+/// Return the path to the current outcome verification artefact file.
 ///
 /// The outcome verification records what commands were run to verify, what the
 /// actual output was, and whether tests/build passed. This enforces "evaluate
@@ -59,7 +61,7 @@ pub fn current_outcome_verification_path(workspace_root: &Path) -> PathBuf {
     workspace_root.join(TASKS_DIR).join(CURRENT_OUTCOME_VERIFICATION_FILE)
 }
 
-/// Return the paths of all harness artifacts that currently exist on disk.
+/// Return the paths of all harness artefacts that currently exist on disk.
 pub fn existing_harness_artefact_paths(workspace_root: &Path) -> Vec<PathBuf> {
     [
         current_spec_path(workspace_root),
@@ -89,21 +91,21 @@ pub fn read_evaluation_summary(workspace_root: &Path) -> Option<String> {
     read_markdown_summary(&current_evaluation_path(workspace_root), "Evaluation")
 }
 
-/// Write the spec artifact content to disk and return the path.
+/// Write the spec artefact content to disk and return the path.
 pub async fn write_spec(workspace_root: &Path, content: &str) -> Result<PathBuf> {
     let path = current_spec_path(workspace_root);
     write_artefact(path.as_path(), content, "current spec").await?;
     Ok(path)
 }
 
-/// Write the evaluation artifact content to disk and return the path.
+/// Write the evaluation artefact content to disk and return the path.
 pub async fn write_evaluation(workspace_root: &Path, content: &str) -> Result<PathBuf> {
     let path = current_evaluation_path(workspace_root);
     write_artefact(path.as_path(), content, "current evaluation").await?;
     Ok(path)
 }
 
-/// Write the contract artifact content to disk and return the path.
+/// Write the contract artefact content to disk and return the path.
 pub async fn write_contract(workspace_root: &Path, content: &str) -> Result<PathBuf> {
     let path = current_contract_path(workspace_root);
     write_artefact(path.as_path(), content, "current contract").await?;
@@ -115,9 +117,9 @@ pub fn read_sprint_contract_summary(workspace_root: &Path) -> Option<String> {
     read_markdown_summary(&current_sprint_contract_path(workspace_root), "SprintContract")
 }
 
-/// Write the sprint contract artifact content to disk and return the path.
+/// Write the sprint contract artefact content to disk and return the path.
 ///
-/// The sprint contract is the pre-sprint negotiation artifact where generator
+/// The sprint contract is the pre-sprint negotiation artefact where generator
 /// and evaluator agree on scope and acceptance criteria before code is written.
 pub async fn write_sprint_contract(workspace_root: &Path, content: &str) -> Result<PathBuf> {
     let path = current_sprint_contract_path(workspace_root);
@@ -130,9 +132,9 @@ pub fn read_outcome_verification_summary(workspace_root: &Path) -> Option<String
     read_markdown_summary(&current_outcome_verification_path(workspace_root), "OutcomeVerification")
 }
 
-/// Return the path to the current feature list artifact file.
+/// Return the path to the current feature list artefact file.
 ///
-/// The feature list is a persistent artifact the planner creates and the
+/// The feature list is a persistent artefact the planner creates and the
 /// evaluator modifies during feedback-driven replanning. It lists the
 /// project's features with their acceptance criteria, so each agent session
 /// can pick up an incremental unit of work. Following the long-running
@@ -147,14 +149,14 @@ pub fn read_feature_list_summary(workspace_root: &Path) -> Option<String> {
     read_markdown_summary(&current_feature_list_path(workspace_root), "FeatureList")
 }
 
-/// Write the feature list artifact content to disk and return the path.
+/// Write the feature list artefact content to disk and return the path.
 pub async fn write_feature_list(workspace_root: &Path, content: &str) -> Result<PathBuf> {
     let path = current_feature_list_path(workspace_root);
     write_artefact(path.as_path(), content, "feature list").await?;
     Ok(path)
 }
 
-/// Write the outcome verification artifact content to disk and return the path.
+/// Write the outcome verification artefact content to disk and return the path.
 ///
 /// This records actual verification commands and their output, enforcing
 /// "evaluate outcomes, not claims" -- the agent must show proof of verification.
