@@ -74,7 +74,7 @@ Complete guide to VT Code's security documentation.
 - **Dynamic `find` syntax**: Rejected at preflight and excluded from learned read-only families
 
 ### Layer 7: Workspace Lifecycle Hook Approval
-- **Location**: `crates/codegen/vtcode-config/src/loader/manager.rs` (workspace-hook collection), `crates/codegen/vtcode-core/src/hooks/lifecycle/engine.rs` (fail-closed gate + SHA-256 digest), `src/agent/runloop/unified/session_setup/hook_approval.rs` (approval overlay)
+- **Location**: `crates/codegen/vtcode-config/src/loader/manager.rs` (workspace-hook collection), `crates/codegen/vtcode-core/src/hooks/lifecycle/engine/mod.rs` (fail-closed gate + SHA-256 digest), `src/agent/runloop/unified/session_setup/hook_approval.rs` (approval overlay)
 - **Documentation**: [Security Model - Workspace Lifecycle Hook Approval](./SECURITY_MODEL.md#layer-7-workspace-lifecycle-hook-approval), [Security Guide - Workspace Lifecycle Hook Approval](../guides/security.md#workspace-lifecycle-hook-approval)
 - **Workspace-controlled hooks** (`vtcode.toml`, `.vtcode/`, project profiles, agent-spec files): gate the whole engine — no lifecycle hook runs until the exact command set is approved for the workspace; digest-bound approval revalidated before every spawn, after config reload, and across primary-agent switches
 

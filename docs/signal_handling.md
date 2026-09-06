@@ -120,7 +120,7 @@ The exit path is checked before any other operation in the interaction loop.
 
 ## Interaction Loop Exit Check
 
-**Location:** `src/agent/runloop/unified/turn/session/interaction_loop_runner.rs`
+**Location:** `src/agent/runloop/unified/turn/session/interaction_loop_runner/mod.rs`
 
 The interaction loop checks for exit requests at the top of every iteration:
 

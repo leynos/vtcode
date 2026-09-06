@@ -68,7 +68,7 @@ VT Code uses a **fully async architecture** for all I/O operations, providing no
 
 ### 1. PTY Manager (Async)
 
-**File**: `crates/codegen/vtcode-core/src/tools/pty.rs`
+**File**: `crates/codegen/vtcode-core/src/tools/pty/mod.rs`
 
 ```rust
 impl PtyManager {
@@ -119,7 +119,7 @@ impl ToolRegistry {
 
 ### 3. Tool Execution Pipeline (Async)
 
-**File**: `src/agent/runloop/unified/tool_pipeline.rs`
+**File**: `src/agent/runloop/unified/tool_pipeline/mod.rs`
 
 ```rust
 pub async fn execute_tool_with_timeout(

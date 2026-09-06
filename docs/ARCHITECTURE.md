@@ -16,7 +16,7 @@ trait resolution when a boundary starts depending on many overlapping impls,
 associated types, or context-specific behaviour. In practice, VT Code treats
 `HasComponent<Name>::Provider` as an elaborated dictionary: the context chooses
 the provider once, and blanket consumer traits delegate through that explicit
-selection. See `crates/codegen/vtcode-core/src/components.rs` and `crates/codegen/vtcode-core/src/llm/cgp.rs`.
+selection. See `crates/codegen/vtcode-core/src/components/mod.rs` and `crates/codegen/vtcode-core/src/llm/cgp.rs`.
 
 ## Model + Harness
 

@@ -311,7 +311,7 @@ pub mod ansi_parser;
 
 ## Step 4: Replace Manual Parser in PTY
 
-**File: `crates/codegen/vtcode-core/src/tools/pty.rs`**
+**File: `crates/codegen/vtcode-core/src/tools/pty/mod.rs`**
 
 Replace the `parse_ansi_sequence` function with:
 

@@ -71,9 +71,9 @@ infrastructure they need:
 
 `vtcode-core` re-exports the schema and emits events from the `ExecEventRecorder` inside the
 agent runner. You can attach an event sink by supplying a closure when constructing the
-runner, enabling streaming telemetry or custom logging pipelines.F:crates/codegen/vtcode-core/src/core/agent/runner.rs†L42-L87 The recorder
+runner, enabling streaming telemetry or custom logging pipelines.F:crates/codegen/vtcode-core/src/core/agent/runner/mod.rs†L42-L87 The recorder
 invokes the sink for every serialized `ThreadEvent`, including streaming message deltas and
-command status transitions.F:crates/codegen/vtcode-core/src/core/agent/runner.rs†L89-L154
+command status transitions.F:crates/codegen/vtcode-core/src/core/agent/runner/mod.rs†L89-L154
 
 A minimal consumer might look like the following:
 

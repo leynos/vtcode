@@ -177,7 +177,7 @@ Updated `src/agent/runloop/unified/turn/utils.rs`:
 Updated:
 
 - `src/agent/runloop/unified/session_setup/types.rs`
-- `src/agent/runloop/unified/session_setup/ui.rs`
+- `src/agent/runloop/unified/session_setup/ui/mod.rs`
 - `src/agent/runloop/unified/turn/session_loop_runner.rs`
 
 Changes:
@@ -260,7 +260,7 @@ A scoped scan (`async fn` whose body contains no `.await`, excluding `#[test]`/`
 - [crates/codegen/vtcode-core/src/llm/providers/openai/provider/provider_impl.rs](file:///Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/crates/codegen/vtcode-core/src/llm/providers/openai/provider/provider_impl.rs#L101-L115) — `stream`, `stream_normalized`, `generate` delegations.
 - [crates/codegen/vtcode-core/src/project_doc.rs](file:///Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/crates/codegen/vtcode-core/src/project_doc.rs#L112-L125) — `get_user_instructions`, `build_instruction_appendix`.
 - [crates/codegen/vtcode-core/src/tools/file_ops/path_policy.rs](file:///Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/crates/codegen/vtcode-core/src/tools/file_ops/path_policy.rs#L267) — `normalize_user_path`.
-- [crates/codegen/vtcode-core/src/tools/file_ops/write.rs](file:///Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/crates/codegen/vtcode-core/src/tools/file_ops/write.rs#L48) — `write_file` wrapper around `write_file_internal`.
+- [crates/codegen/vtcode-core/src/tools/file_ops/write/mod.rs](file:///Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/crates/codegen/vtcode-core/src/tools/file_ops/write/mod.rs#L48) — `write_file` wrapper around `write_file_internal`.
 
 Pattern 4 ("Collapsing states") yielded one match in `crates/codegen/vtcode-core/src/mcp/cli.rs:164`, but each arm calls a *different* function (`run_list`, `run_get`, `run_add`, …) so the saved suspend types differ and there is nothing to collapse. No source change is warranted.
 
@@ -332,7 +332,7 @@ Executed:
 - `rustfmt --check crates/codegen/vtcode-core/src/tools/registry/pty.rs crates/codegen/vtcode-core/src/tools/registry/pty_facade.rs src/agent/runloop/unified/turn/session_loop_runner.rs src/agent/runloop/unified/turn/tool_outcomes/handlers.rs`
 - `rustfmt --check src/agent/runloop/unified/turn/utils.rs`
 - `rustfmt --check src/agent/runloop/unified/session_setup/signal.rs src/agent/runloop/unified/progress.rs`
-- `rustfmt --check src/agent/runloop/unified/session_setup/types.rs src/agent/runloop/unified/session_setup/ui.rs src/agent/runloop/unified/async_mcp_manager.rs`
+- `rustfmt --check src/agent/runloop/unified/session_setup/types.rs src/agent/runloop/unified/session_setup/ui/mod.rs src/agent/runloop/unified/async_mcp_manager.rs`
 - `rustfmt --check src/agent/runloop/unified/tool_routing.rs`
 - `rustfmt --check src/agent/runloop/unified/tool_pipeline/pty_stream.rs`
 - `rustfmt --check src/agent/runloop/unified/tool_pipeline/execution_runtime.rs`

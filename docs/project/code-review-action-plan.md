@@ -38,7 +38,7 @@ Status legend: [x] DONE, [ ] PENDING
 ### [x] 4. Unbounded global HashMaps (4 sites) - memory leak
 
 **Files:**
-- `crates/codegen/vtcode-core/src/tools/pty/manager.rs:37` (`WORKSPACE_COMMAND_LOCKS`)
+- `crates/codegen/vtcode-core/src/tools/pty/manager/mod.rs:37` (`WORKSPACE_COMMAND_LOCKS`)
 - `crates/codegen/vtcode-core/src/tools/search_runtime.rs:80` (`SEARCH_RUNTIME_CACHE`)
 - `crates/codegen/vtcode-core/src/llm/providers/llamacpp.rs:130` (`MANAGED_LLAMACPP_SERVERS`)
 - `crates/codegen/vtcode-core/src/llm/providers/local_server.rs:140` (`MANAGED_PROCESSES`)

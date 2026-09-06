@@ -1396,7 +1396,7 @@ mod unified_action_error_tests {
 }
 
 #[cfg(test)]
-#[path = "executors/sandbox_runtime_tests.rs"]
+#[path = "sandbox_runtime_tests.rs"]
 mod sandbox_runtime_tests;
 
 #[cfg(test)]

@@ -166,6 +166,6 @@ vtcode-ui/src/tui/core_tui/session/list_panel.rs:267 | show_divider implies divi
 vtcode-llm/src/providers/openai/responses_api.rs:252 | tool_call_id present when heading_str is None
 
 # Binary invariants.
-src/agent/runloop/model_picker/rendering.rs:54 | rendering rows are laid out before draw
+src/agent/runloop/model_picker/rendering/mod.rs:54 | rendering rows are laid out before draw
 src/agent/runloop/unified/session_setup/init.rs:518 | MCP config requires a loaded VTCodeConfig
 

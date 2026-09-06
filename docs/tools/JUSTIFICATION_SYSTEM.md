@@ -164,7 +164,7 @@ Stored in the user cache directory's approval-pattern file:
 -   `ensure_tool_permission()` - Routes justification to approval dialog
 -   Dialog displays justification via `format_for_dialog()`
 
-### 2. Session Management (`src/agent/runloop/unified/turn/session.rs`)
+### 2. Session Management (`src/agent/runloop/unified/turn/session/mod.rs`)
 
 -   Calls `ensure_tool_permission()` before tool execution
 -   Passes decision_ledger reference for context extraction
