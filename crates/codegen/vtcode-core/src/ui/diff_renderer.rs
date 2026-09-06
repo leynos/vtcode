@@ -4,12 +4,12 @@
 )]
 
 use crate::config::constants::diff as diff_constants;
-use crate::ui::git_config::GitColorConfig;
-use crate::utils::style_helpers::style_from_color_name;
+use crate::ui::git_config::GitColourConfig;
+use crate::utils::style_helpers::style_from_colour_name;
 use anstyle::{Reset, Style};
 use std::fmt::Write as _;
 use std::path::Path;
-use vtcode_commons::styling::DiffColorPalette;
+use vtcode_commons::styling::DiffColourPalette;
 
 struct GitDiffPalette {
     bullet: Style,
@@ -29,16 +29,16 @@ fn strip_diff_background(style: Style) -> Style {
 }
 
 impl GitDiffPalette {
-    fn new(use_colors: bool) -> Self {
-        // Use consolidated DiffColorPalette with standard ANSI colors (no bold)
-        let palette = DiffColorPalette::default();
+    fn new(use_colours: bool) -> Self {
+        // Use consolidated DiffColourPalette with standard ANSI colours (no bold)
+        let palette = DiffColourPalette::default();
         let added = palette.added_style();
         let removed = palette.removed_style();
         let header = palette.header_style();
 
         Self {
-            bullet: if use_colors {
-                style_from_color_name("cyan")
+            bullet: if use_colours {
+                style_from_colour_name("cyan")
             } else {
                 Style::new()
             }, // For summary bullets
@@ -48,34 +48,34 @@ impl GitDiffPalette {
             stat_removed: strip_diff_background(removed),
             line_added: strip_diff_background(added),
             line_removed: strip_diff_background(removed),
-            line_context: if use_colors {
+            line_context: if use_colours {
                 Style::new().dimmed()
             } else {
                 Style::new()
             },
             line_header: strip_diff_background(header),
-            line_number: if use_colors {
-                style_from_color_name("cyan")
+            line_number: if use_colours {
+                style_from_colour_name("cyan")
             } else {
                 Style::new()
             }, // For line numbers
         }
     }
 
-    /// Create palette from Git config colors
-    fn from_git_config(config: &GitColorConfig, use_colors: bool) -> Self {
-        if !use_colors {
+    /// Create palette from Git config colours
+    fn from_git_config(config: &GitColourConfig, use_colours: bool) -> Self {
+        if !use_colours {
             return Self::new(false);
         }
 
-        // Use consolidated DiffColorPalette - ignore git config theme for consistency
-        let palette = DiffColorPalette::default();
+        // Use consolidated DiffColourPalette - ignore git config theme for consistency
+        let palette = DiffColourPalette::default();
         let added = palette.added_style();
         let removed = palette.removed_style();
         let header = palette.header_style();
 
         Self {
-            bullet: style_from_color_name("cyan"),
+            bullet: style_from_colour_name("cyan"),
             label: Style::new(),
             path: Style::new(),
             stat_added: strip_diff_background(added),
@@ -84,7 +84,7 @@ impl GitDiffPalette {
             line_removed: strip_diff_background(removed),
             line_context: strip_diff_background(config.diff_context),
             line_header: strip_diff_background(header),
-            line_number: style_from_color_name("cyan"),
+            line_number: style_from_colour_name("cyan"),
         }
     }
 }
@@ -232,11 +232,11 @@ impl DiffSuppressionCheck {
     }
 }
 
-/// Renders unified diffs with ANSI-colored output and optional line numbers.
+/// Renders unified diffs with ANSI-coloured output and optional line numbers.
 pub struct DiffRenderer {
     show_line_numbers: bool,
     context_lines: usize,
-    use_colors: bool,
+    use_colours: bool,
     cached_styles: CachedStyles,
 }
 
@@ -256,8 +256,8 @@ struct CachedStyles {
 }
 
 impl CachedStyles {
-    fn new(palette: &GitDiffPalette, use_colors: bool) -> Self {
-        if !use_colors {
+    fn new(palette: &GitDiffPalette, use_colours: bool) -> Self {
+        if !use_colours {
             return Self {
                 bullet: String::new(),
                 label: String::new(),
@@ -292,30 +292,30 @@ impl CachedStyles {
 
 impl DiffRenderer {
     /// Create a new renderer with default ANSI color palette.
-    pub fn new(show_line_numbers: bool, context_lines: usize, use_colors: bool) -> Self {
-        let palette = GitDiffPalette::new(use_colors);
-        let cached_styles = CachedStyles::new(&palette, use_colors);
+    pub fn new(show_line_numbers: bool, context_lines: usize, use_colours: bool) -> Self {
+        let palette = GitDiffPalette::new(use_colours);
+        let cached_styles = CachedStyles::new(&palette, use_colours);
         Self {
             show_line_numbers,
             context_lines,
-            use_colors,
+            use_colours,
             cached_styles,
         }
     }
 
-    /// Create renderer with colors from Git config
+    /// Create renderer with colours from Git config
     pub fn with_git_config(
         show_line_numbers: bool,
         context_lines: usize,
-        use_colors: bool,
-        config: &GitColorConfig,
+        use_colours: bool,
+        config: &GitColourConfig,
     ) -> Self {
-        let palette = GitDiffPalette::from_git_config(config, use_colors);
-        let cached_styles = CachedStyles::new(&palette, use_colors);
+        let palette = GitDiffPalette::from_git_config(config, use_colours);
+        let cached_styles = CachedStyles::new(&palette, use_colours);
         Self {
             show_line_numbers,
             context_lines,
-            use_colors,
+            use_colours,
             cached_styles,
         }
     }
@@ -340,7 +340,7 @@ impl DiffRenderer {
     }
 
     fn render_summary(&self, diff: &FileDiff) -> String {
-        if !self.use_colors {
+        if !self.use_colours {
             return format!("▸ Edit {} (+{} -{})", diff.file_path, diff.stats.additions, diff.stats.deletions);
         }
 
@@ -499,21 +499,21 @@ pub struct DiffChatRenderer {
 
 impl DiffChatRenderer {
     /// Create a new chat renderer with default ANSI color palette.
-    pub fn new(show_line_numbers: bool, context_lines: usize, use_colors: bool) -> Self {
+    pub fn new(show_line_numbers: bool, context_lines: usize, use_colours: bool) -> Self {
         Self {
-            diff_renderer: DiffRenderer::new(show_line_numbers, context_lines, use_colors),
+            diff_renderer: DiffRenderer::new(show_line_numbers, context_lines, use_colours),
         }
     }
 
-    /// Create renderer with colors from Git config
+    /// Create renderer with colours from Git config
     pub fn with_git_config(
         show_line_numbers: bool,
         context_lines: usize,
-        use_colors: bool,
-        config: &GitColorConfig,
+        use_colours: bool,
+        config: &GitColourConfig,
     ) -> Self {
         Self {
-            diff_renderer: DiffRenderer::with_git_config(show_line_numbers, context_lines, use_colors, config),
+            diff_renderer: DiffRenderer::with_git_config(show_line_numbers, context_lines, use_colours, config),
         }
     }
 
@@ -666,7 +666,7 @@ impl DiffChatRenderer {
 
     /// Render a summary when diffs are suppressed
     pub fn render_suppressed_summary(&self, check: &DiffSuppressionCheck) -> String {
-        // Pre-estimate size: header + summary + file list with colors
+        // Pre-estimate size: header + summary + file list with colours
         let estimated_size = 256 + (check.file_stats.len() * 100);
         let mut output = String::with_capacity(estimated_size);
 
@@ -675,7 +675,7 @@ impl DiffChatRenderer {
         output.push_str(diff_constants::SUPPRESSION_MESSAGE);
         output.push_str("\n\n");
 
-        // Overall summary with colored stats
+        // Overall summary with coloured stats
         output.push_str("Summary: ");
         use std::fmt::Write as FmtWrite;
         let _ = write!(output, "{} file(s) changed", check.file_count);
@@ -685,12 +685,12 @@ impl DiffChatRenderer {
 
             // Additions stat
             if check.total_additions > 0 {
-                if self.diff_renderer.use_colors {
+                if self.diff_renderer.use_colours {
                     output.push_str(&self.diff_renderer.cached_styles.stat_added);
                 }
                 output.push('+');
                 let _ = write!(output, "{}", check.total_additions);
-                if self.diff_renderer.use_colors {
+                if self.diff_renderer.use_colours {
                     output.push_str(&self.diff_renderer.cached_styles.reset);
                 }
             }
@@ -701,12 +701,12 @@ impl DiffChatRenderer {
 
             // Deletions stat
             if check.total_deletions > 0 {
-                if self.diff_renderer.use_colors {
+                if self.diff_renderer.use_colours {
                     output.push_str(&self.diff_renderer.cached_styles.stat_removed);
                 }
                 output.push('-');
                 let _ = write!(output, "{}", check.total_deletions);
-                if self.diff_renderer.use_colors {
+                if self.diff_renderer.use_colours {
                     output.push_str(&self.diff_renderer.cached_styles.reset);
                 }
             }
@@ -730,7 +730,7 @@ impl DiffChatRenderer {
                 output.push_str(&stat.path);
                 output.push_str(" (");
 
-                if self.diff_renderer.use_colors {
+                if self.diff_renderer.use_colours {
                     // Additions
                     if stat.additions > 0 {
                         output.push_str(&self.diff_renderer.cached_styles.stat_added);

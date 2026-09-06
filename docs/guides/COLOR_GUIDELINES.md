@@ -9,7 +9,8 @@ VT Code implements terminal color standards for accessibility, portability, and 
 VT Code respects the [NO_COLOR standard](https://no-color.org/):
 
 - When `NO_COLOR` environment variable is set (and not empty), ANSI color output is suppressed
-- The `--no-color` CLI flag also disables colors
+- The `--no-colour` CLI flag (with `--no-color` retained as an alias) also
+  disables colour output
 - User configuration can override `NO_COLOR` per the standard
 
 ```bash
@@ -17,7 +18,7 @@ VT Code respects the [NO_COLOR standard](https://no-color.org/):
 NO_COLOR=1 vtcode
 
 # Disable colors via CLI flag
-vtcode --no-color
+vtcode --no-colour
 ```
 
 ### Minimum Contrast (Ghostty-inspired)

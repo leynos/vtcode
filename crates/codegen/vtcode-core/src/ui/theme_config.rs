@@ -1,7 +1,7 @@
 //! Theme Configuration File Support
 //!
-//! Parses custom .vtcode/theme.toml files with Git/LS-style syntax for colors.
-//! This allows users to customize colors beyond system defaults.
+//! Parses custom .vtcode/theme.toml files with Git/LS-style syntax for colours.
+//! This allows users to customize colours beyond system defaults.
 
 use crate::utils::CachedStyleParser;
 use crate::utils::file_utils::read_file_with_context_sync;
@@ -15,19 +15,19 @@ use std::path::Path;
 pub struct ThemeConfig {
     /// Colors for CLI elements
     #[serde(default)]
-    pub cli: CliColors,
+    pub cli: CliColours,
 
     /// Colors for diff rendering
     #[serde(default)]
-    pub diff: DiffColors,
+    pub diff: DiffColours,
 
     /// Colors for status output
     #[serde(default)]
-    pub status: StatusColors,
+    pub status: StatusColours,
 
     /// Colors for file types (LS_COLORS-style)
     #[serde(default)]
-    pub files: FileColors,
+    pub files: FileColours,
 }
 
 impl ThemeConfig {
@@ -51,10 +51,10 @@ impl ThemeConfig {
     /// Returns a default configuration
     fn default_config() -> Self {
         Self {
-            cli: CliColors::default(),
-            diff: DiffColors::default(),
-            status: StatusColors::default(),
-            files: FileColors::default(),
+            cli: CliColours::default(),
+            diff: DiffColours::default(),
+            status: StatusColours::default(),
+            files: FileColours::default(),
         }
     }
 }
@@ -67,7 +67,7 @@ impl Default for ThemeConfig {
 
 /// Colors for CLI elements like prompts, messages, etc.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CliColors {
+pub struct CliColours {
     /// Color for success messages
     #[serde(default = "default_cli_success")]
     pub success: String,
@@ -89,7 +89,7 @@ pub struct CliColors {
     pub prompt: String,
 }
 
-impl Default for CliColors {
+impl Default for CliColours {
     fn default() -> Self {
         Self {
             success: "green".into(),
@@ -103,7 +103,7 @@ impl Default for CliColors {
 
 /// Colors for diff rendering
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DiffColors {
+pub struct DiffColours {
     /// Color for added lines in diff
     #[serde(default = "default_diff_new")]
     pub new: String,
@@ -129,7 +129,7 @@ pub struct DiffColors {
     pub frag: String,
 }
 
-impl Default for DiffColors {
+impl Default for DiffColours {
     fn default() -> Self {
         Self {
             new: "green".into(),
@@ -144,7 +144,7 @@ impl Default for DiffColors {
 
 /// Colors for status output
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StatusColors {
+pub struct StatusColours {
     /// Color for added files
     #[serde(default = "default_status_added")]
     pub added: String,
@@ -174,7 +174,7 @@ pub struct StatusColors {
     pub remote: String,
 }
 
-impl Default for StatusColors {
+impl Default for StatusColours {
     fn default() -> Self {
         Self {
             added: "green".into(),
@@ -188,9 +188,9 @@ impl Default for StatusColors {
     }
 }
 
-/// File type colors using LS_COLORS-style patterns
+/// File type colours using LS_COLORS-style patterns
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileColors {
+pub struct FileColours {
     /// Directory color
     #[serde(default = "default_file_directory")]
     pub directory: String,
@@ -207,12 +207,12 @@ pub struct FileColors {
     #[serde(default = "default_file_regular")]
     pub regular: String,
 
-    /// Custom colors for file extensions
+    /// Custom colours for file extensions
     #[serde(default)]
     pub extensions: hashbrown::HashMap<String, String>,
 }
 
-impl Default for FileColors {
+impl Default for FileColours {
     fn default() -> Self {
         let mut extensions = hashbrown::HashMap::new();
         extensions.insert("rs".into(), "cyan".into());
@@ -268,10 +268,10 @@ serde_default_string!(default_file_executable, "bold green");
 serde_default_string!(default_file_regular, "");
 
 impl ThemeConfig {
-    /// Convert CLI colors to anstyle::Style
-    pub fn parse_cli_styles(&self) -> Result<ParsedCliColors> {
+    /// Convert CLI colours to anstyle::Style
+    pub fn parse_cli_styles(&self) -> Result<ParsedCliColours> {
         let parser = CachedStyleParser::default();
-        Ok(ParsedCliColors {
+        Ok(ParsedCliColours {
             success: parser.parse_flexible(&self.cli.success)?,
             error: parser.parse_flexible(&self.cli.error)?,
             warning: parser.parse_flexible(&self.cli.warning)?,
@@ -280,10 +280,10 @@ impl ThemeConfig {
         })
     }
 
-    /// Convert diff colors to anstyle::Style
-    pub fn parse_diff_styles(&self) -> Result<ParsedDiffColors> {
+    /// Convert diff colours to anstyle::Style
+    pub fn parse_diff_styles(&self) -> Result<ParsedDiffColours> {
         let parser = CachedStyleParser::default();
-        Ok(ParsedDiffColors {
+        Ok(ParsedDiffColours {
             new: parser.parse_flexible(&self.diff.new)?,
             old: parser.parse_flexible(&self.diff.old)?,
             context: parser.parse_flexible(&self.diff.context)?,
@@ -293,10 +293,10 @@ impl ThemeConfig {
         })
     }
 
-    /// Convert status colors to anstyle::Style
-    pub fn parse_status_styles(&self) -> Result<ParsedStatusColors> {
+    /// Convert status colours to anstyle::Style
+    pub fn parse_status_styles(&self) -> Result<ParsedStatusColours> {
         let parser = CachedStyleParser::default();
-        Ok(ParsedStatusColors {
+        Ok(ParsedStatusColours {
             added: parser.parse_flexible(&self.status.added)?,
             modified: parser.parse_flexible(&self.status.modified)?,
             deleted: parser.parse_flexible(&self.status.deleted)?,
@@ -307,18 +307,18 @@ impl ThemeConfig {
         })
     }
 
-    /// Convert file colors to anstyle::Style
-    pub fn parse_file_styles(&self) -> Result<ParsedFileColors> {
+    /// Convert file colours to anstyle::Style
+    pub fn parse_file_styles(&self) -> Result<ParsedFileColours> {
         let parser = CachedStyleParser::default();
         let mut extension_styles = hashbrown::HashMap::new();
-        for (ext, color_str) in &self.files.extensions {
+        for (ext, colour_str) in &self.files.extensions {
             let style = parser
-                .parse_flexible(color_str)
-                .with_context(|| format!("Failed to parse style for extension '{ext}': {color_str}"))?;
+                .parse_flexible(colour_str)
+                .with_context(|| format!("Failed to parse style for extension '{ext}': {colour_str}"))?;
             extension_styles.insert(ext.clone(), style);
         }
 
-        Ok(ParsedFileColors {
+        Ok(ParsedFileColours {
             directory: parser.parse_flexible(&self.files.directory)?,
             symlink: parser.parse_flexible(&self.files.symlink)?,
             executable: parser.parse_flexible(&self.files.executable)?,
@@ -328,9 +328,9 @@ impl ThemeConfig {
     }
 }
 
-/// Parsed CLI colors with [`AnsiStyle`] values ready for rendering.
+/// Parsed CLI colours with [`AnsiStyle`] values ready for rendering.
 #[derive(Debug, Clone)]
-pub struct ParsedCliColors {
+pub struct ParsedCliColours {
     /// Style for success messages.
     pub success: AnsiStyle,
     /// Style for error messages.
@@ -343,9 +343,9 @@ pub struct ParsedCliColors {
     pub prompt: AnsiStyle,
 }
 
-/// Parsed diff colors with [`AnsiStyle`] values ready for rendering.
+/// Parsed diff colours with [`AnsiStyle`] values ready for rendering.
 #[derive(Debug, Clone)]
-pub struct ParsedDiffColors {
+pub struct ParsedDiffColours {
     /// Style for added lines.
     pub new: AnsiStyle,
     /// Style for removed lines.
@@ -360,9 +360,9 @@ pub struct ParsedDiffColors {
     pub frag: AnsiStyle,
 }
 
-/// Parsed status colors with [`AnsiStyle`] values ready for rendering.
+/// Parsed status colours with [`AnsiStyle`] values ready for rendering.
 #[derive(Debug, Clone)]
-pub struct ParsedStatusColors {
+pub struct ParsedStatusColours {
     /// Style for added files.
     pub added: AnsiStyle,
     /// Style for modified files.
@@ -379,9 +379,9 @@ pub struct ParsedStatusColors {
     pub remote: AnsiStyle,
 }
 
-/// Parsed file-type colors with [`AnsiStyle`] values ready for rendering.
+/// Parsed file-type colours with [`AnsiStyle`] values ready for rendering.
 #[derive(Debug, Clone)]
-pub struct ParsedFileColors {
+pub struct ParsedFileColours {
     /// Style for directories.
     pub directory: AnsiStyle,
     /// Style for symbolic links.

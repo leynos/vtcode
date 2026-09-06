@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::time::Duration;
 use vtcode_commons::ansi_codes::{BOLD, DIM, RESET, fg_256};
-use vtcode_commons::color256_theme::rgb_to_ansi256_for_theme;
+use vtcode_commons::colour256_theme::rgb_to_ansi256_for_theme;
 use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
 use vtcode_ui::tui::ui::theme;
 
@@ -62,12 +62,12 @@ fn print_exit_metrics(data: &ExitData<'_>) {
     const MODEL_RGB: (u8, u8, u8) = (0xCC, 0x8A, 0x3E);
     const RESUME_RGB: (u8, u8, u8) = (0x98, 0xBB, 0x74);
 
-    let title_color = rgb_to_ansi256_for_theme(TITLE_RGB.0, TITLE_RGB.1, TITLE_RGB.2, is_light);
-    let model_color = rgb_to_ansi256_for_theme(MODEL_RGB.0, MODEL_RGB.1, MODEL_RGB.2, is_light);
-    let resume_color = rgb_to_ansi256_for_theme(RESUME_RGB.0, RESUME_RGB.1, RESUME_RGB.2, is_light);
-    let title_style = fg_256(title_color);
-    let model_style = fg_256(model_color);
-    let resume_style = fg_256(resume_color);
+    let title_colour = rgb_to_ansi256_for_theme(TITLE_RGB.0, TITLE_RGB.1, TITLE_RGB.2, is_light);
+    let model_colour = rgb_to_ansi256_for_theme(MODEL_RGB.0, MODEL_RGB.1, MODEL_RGB.2, is_light);
+    let resume_colour = rgb_to_ansi256_for_theme(RESUME_RGB.0, RESUME_RGB.1, RESUME_RGB.2, is_light);
+    let title_style = fg_256(title_colour);
+    let model_style = fg_256(model_colour);
+    let resume_style = fg_256(resume_colour);
 
     println!();
     println!("{BOLD}{title_style}> {} ({}){RESET}", data.app_name, data.version);

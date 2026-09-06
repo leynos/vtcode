@@ -6,7 +6,7 @@ use crate::core::agent::session::AgentSessionState;
 use crate::exec::events::ToolCallStatus;
 use crate::llm::providers::gemini::wire::{Content, Part};
 use crate::tools::registry::ToolExecutionError;
-use crate::utils::colors::style;
+use crate::utils::colours::style;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

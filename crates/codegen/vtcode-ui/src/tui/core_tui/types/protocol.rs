@@ -165,7 +165,7 @@ pub enum InlineCommand {
     },
     SetPrimaryAgent {
         name: Option<String>,
-        color: Option<String>,
+        colour: Option<String>,
     },
     SetCursorVisible(bool),
     SetInputEnabled(bool),
@@ -364,8 +364,8 @@ impl InlineHandle {
         self.send_command(InlineCommand::SetSubagentPreview { text });
     }
 
-    pub fn set_primary_agent(&self, name: Option<String>, color: Option<String>) {
-        self.send_command(InlineCommand::SetPrimaryAgent { name, color });
+    pub fn set_primary_agent(&self, name: Option<String>, colour: Option<String>) {
+        self.send_command(InlineCommand::SetPrimaryAgent { name, colour });
     }
 
     pub fn set_cursor_visible(&self, visible: bool) {

@@ -2,7 +2,7 @@
 //!
 //! Extracted from `src/agent/runloop/unified/tool_pipeline/pty_stream/segments.rs`
 //! so both live PTY rendering and the compact-activity row share one
-//! tokenizer + palette. Keeps command/args/option/keyword coloring DRY.
+//! tokenizer + palette. Keeps command/args/option/keyword colouring DRY.
 
 use std::sync::Arc;
 
@@ -242,7 +242,7 @@ pub fn shell_syntax_segments(text: &str, styles: &ShellLineStyles, expect_comman
         .into_iter()
         .map(|(style, text)| InlineSegment {
             text,
-            style: Arc::new(convert_style(style).merge_color(styles.args.color)),
+            style: Arc::new(convert_style(style).merge_colour(styles.args.colour)),
         })
         .collect::<Vec<_>>();
 
@@ -253,21 +253,21 @@ pub fn shell_syntax_segments(text: &str, styles: &ShellLineStyles, expect_comman
 
     let non_ws_count = semantic.iter().filter(|segment| !segment.text.trim().is_empty()).count();
     if non_ws_count > 1 {
-        let mut first_colors: Option<(Option<AnsiColorEnum>, Option<AnsiColorEnum>)> = None;
+        let mut first_colours: Option<(Option<AnsiColorEnum>, Option<AnsiColorEnum>)> = None;
         let mut has_distinct = false;
         for style in converted
             .iter()
             .filter(|segment| !segment.text.trim().is_empty())
             .map(|segment| segment.style.as_ref())
         {
-            let colors = (style.color, style.bg_color);
-            if let Some(seed) = first_colors {
-                if colors != seed {
+            let colours = (style.colour, style.bg_colour);
+            if let Some(seed) = first_colours {
+                if colours != seed {
                     has_distinct = true;
                     break;
                 }
             } else {
-                first_colors = Some(colors);
+                first_colours = Some(colours);
             }
         }
         if !has_distinct {
@@ -307,8 +307,8 @@ pub fn line_to_compact_segments(
         segments.extend(shell_syntax_segments(cmd, styles, true));
         if metadata.hidden_line_count > 0 {
             let dim_style = Arc::new(InlineTextStyle {
-                color: None,
-                bg_color: None,
+                colour: None,
+                bg_colour: None,
                 effects: Effects::DIMMED,
             });
             segments.push(InlineSegment {
@@ -325,8 +325,8 @@ pub fn line_to_compact_segments(
 
     if let Some(suffix) = metadata.suffix.as_deref().filter(|s| !s.is_empty()) {
         let dim_style = Arc::new(InlineTextStyle {
-            color: None,
-            bg_color: None,
+            colour: None,
+            bg_colour: None,
             effects: Effects::DIMMED,
         });
         segments.push(InlineSegment {
@@ -344,7 +344,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn command_header_preserves_distinct_semantic_token_colors() {
+    fn command_header_preserves_distinct_semantic_token_colours() {
         let styles = ShellLineStyles::new();
         let segments =
             shell_syntax_segments("find src/agent/runloop -maxdepth 3 -type f -name *.rs | sort", &styles, true);
@@ -356,7 +356,7 @@ mod tests {
             .iter()
             .find(|segment| segment.text.contains("find"))
             .expect("command token");
-        assert_ne!(option.style.color, command.style.color);
+        assert_ne!(option.style.colour, command.style.colour);
     }
 
     #[test]

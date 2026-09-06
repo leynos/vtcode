@@ -21,7 +21,7 @@ use dirs::home_dir;
 use tokio::task;
 
 const MAX_VISIBLE_SUBAGENT_BADGES: usize = 3;
-const SUBAGENT_BADGE_FALLBACK_COLOR: &str = "blue";
+const SUBAGENT_BADGE_FALLBACK_COLOUR: &str = "blue";
 
 #[derive(Clone, Debug)]
 enum McpStatusSummary {
@@ -358,7 +358,7 @@ pub(crate) async fn build_inline_header_context(
         tools: chain_entries.first().cloned().unwrap_or_default(),
         mcp: mcp_value,
         primary_agent: None,
-        primary_agent_color: None,
+        primary_agent_colour: None,
         highlights, // Use the modified highlights that may include the home directory warning
         subagent_badges: Vec::new(),
         reasoning_stage: None,
@@ -381,19 +381,19 @@ pub(crate) fn sync_active_subagent_badges(
 fn build_active_subagent_badges(entries: &[SubagentStatusEntry]) -> Vec<InlineHeaderBadge> {
     let mut grouped: BTreeMap<(String, Option<String>), usize> = BTreeMap::new();
     for entry in entries.iter().filter(|entry| !entry.status.is_terminal()) {
-        let key = (entry.agent_name.clone(), entry.color.clone());
+        let key = (entry.agent_name.clone(), entry.colour.clone());
         *grouped.entry(key).or_default() += 1;
     }
 
     let mut badges = grouped
         .into_iter()
-        .map(|((agent_name, color), count)| InlineHeaderBadge {
+        .map(|((agent_name, colour), count)| InlineHeaderBadge {
             text: if count > 1 {
                 format!("{agent_name} ×{count}")
             } else {
                 agent_name
             },
-            style: build_subagent_badge_style(color.as_deref()),
+            style: build_subagent_badge_style(colour.as_deref()),
             full_background: true,
         })
         .collect::<Vec<_>>();
@@ -411,12 +411,12 @@ fn build_active_subagent_badges(entries: &[SubagentStatusEntry]) -> Vec<InlineHe
     badges
 }
 
-fn build_subagent_badge_style(color_spec: Option<&str>) -> InlineTextStyle {
+fn build_subagent_badge_style(colour_spec: Option<&str>) -> InlineTextStyle {
     let parser = ThemeConfigParser::default();
-    let parsed = color_spec
+    let parsed = colour_spec
         .filter(|value| !value.trim().is_empty())
         .and_then(|value| parser.parse_flexible(value).ok())
-        .or_else(|| parser.parse_flexible(SUBAGENT_BADGE_FALLBACK_COLOR).ok());
+        .or_else(|| parser.parse_flexible(SUBAGENT_BADGE_FALLBACK_COLOUR).ok());
 
     let effects = parsed
         .as_ref()
@@ -430,19 +430,19 @@ fn build_subagent_badge_style(color_spec: Option<&str>) -> InlineTextStyle {
             let background = parsed_bg.or(parsed_fg);
             let foreground = parsed_fg
                 .filter(|_| parsed_bg.is_some())
-                .or_else(|| background.map(contrasting_badge_text_color))
+                .or_else(|| background.map(contrasting_badge_text_colour))
                 .or(Some(AnsiColor::White.into()));
-            InlineTextStyle { color: foreground, bg_color: background, effects }
+            InlineTextStyle { colour: foreground, bg_colour: background, effects }
         }
         None => InlineTextStyle {
-            color: Some(AnsiColor::White.into()),
-            bg_color: Some(AnsiColor::Blue.into()),
+            colour: Some(AnsiColor::White.into()),
+            bg_colour: Some(AnsiColor::Blue.into()),
             effects,
         },
     }
 }
 
-fn contrasting_badge_text_color(background: AnsiColorEnum) -> AnsiColorEnum {
+fn contrasting_badge_text_colour(background: AnsiColorEnum) -> AnsiColorEnum {
     match background {
         AnsiColorEnum::Rgb(rgb) => {
             if relative_luminance(rgb) >= 0.55 {
@@ -451,7 +451,7 @@ fn contrasting_badge_text_color(background: AnsiColorEnum) -> AnsiColorEnum {
                 AnsiColor::White.into()
             }
         }
-        AnsiColorEnum::Ansi(color) => match color {
+        AnsiColorEnum::Ansi(colour) => match colour {
             AnsiColor::White
             | AnsiColor::BrightWhite
             | AnsiColor::Yellow
@@ -487,7 +487,7 @@ mod tests {
     use chrono::Utc;
     use vtcode_core::subagents::{SubagentStatus, SubagentStatusEntry};
 
-    fn status_entry(agent_name: &str, color: Option<&str>, status: SubagentStatus) -> SubagentStatusEntry {
+    fn status_entry(agent_name: &str, colour: Option<&str>, status: SubagentStatus) -> SubagentStatusEntry {
         SubagentStatusEntry {
             id: format!("id-{agent_name}"),
             session_id: "session".to_string(),
@@ -496,7 +496,7 @@ mod tests {
             display_label: agent_name.to_string(),
             description: "test".to_string(),
             source: "builtin".to_string(),
-            color: color.map(ToString::to_string),
+            colour: colour.map(ToString::to_string),
             status,
             background: false,
             depth: 1,
@@ -524,17 +524,17 @@ mod tests {
     }
 
     #[test]
-    fn subagent_badge_style_promotes_single_color_to_background() {
+    fn subagent_badge_style_promotes_single_colour_to_background() {
         let style = build_subagent_badge_style(Some("#4f8fd8"));
-        assert_eq!(style.bg_color, Some(AnsiColorEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))));
-        assert_eq!(style.color, Some(AnsiColor::White.into()));
+        assert_eq!(style.bg_colour, Some(AnsiColorEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))));
+        assert_eq!(style.colour, Some(AnsiColor::White.into()));
     }
 
     #[test]
     fn subagent_badge_style_preserves_explicit_foreground_and_background() {
         let style = build_subagent_badge_style(Some("white #4f8fd8"));
-        assert_eq!(style.bg_color, Some(AnsiColorEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))));
-        assert_eq!(style.color, Some(AnsiColor::White.into()));
+        assert_eq!(style.bg_colour, Some(AnsiColorEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))));
+        assert_eq!(style.colour, Some(AnsiColor::White.into()));
     }
 
     #[test]

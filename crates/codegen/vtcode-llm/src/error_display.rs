@@ -4,38 +4,38 @@
 //! using standard console styling for consistent terminal output.
 
 use anstyle::Style;
-use vtcode_commons::color_policy;
+use vtcode_commons::colour_policy;
 use vtcode_commons::sanitizer::sanitize_provider_diagnostic;
 use vtcode_commons::styling::Styles;
 
 /// Internal helper to wrap text with style codes - reduces duplication
 #[inline]
 fn style_text(style: Style, text: &str) -> String {
-    if !color_policy::color_output_enabled() {
+    if !colour_policy::colour_output_enabled() {
         return text.to_string();
     }
     format!("{}{}{}", Styles::render(&style), text, Styles::render_reset())
 }
 
-/// Get a styled error message with enhanced coloring
+/// Get a styled error message with enhanced colouring
 #[cold]
 fn style_llm_error(message: &str) -> String {
     style_text(Styles::error(), message)
 }
 
-/// Get a styled warning message with enhanced coloring
+/// Get a styled warning message with enhanced colouring
 #[cold]
 fn style_llm_warning(message: &str) -> String {
     style_text(Styles::warning(), message)
 }
 
-/// Get a styled success message with enhanced coloring
+/// Get a styled success message with enhanced colouring
 #[inline]
 fn style_llm_success(message: &str) -> String {
     style_text(Styles::success(), message)
 }
 
-/// Get a styled provider name with enhanced coloring based on provider type
+/// Get a styled provider name with enhanced colouring based on provider type
 fn style_provider_name(provider: &str) -> String {
     let style = match provider.to_lowercase().as_str() {
         "gemini" => Styles::info(),    // Deep blue for Gemini
@@ -46,7 +46,7 @@ fn style_provider_name(provider: &str) -> String {
     style_text(style, provider)
 }
 
-/// Format an LLM error for display with enhanced coloring
+/// Format an LLM error for display with enhanced colouring
 #[cold]
 pub fn format_llm_error(provider: &str, error: &str) -> String {
     let provider_styled = style_provider_name(provider);
@@ -55,7 +55,7 @@ pub fn format_llm_error(provider: &str, error: &str) -> String {
     format!("{provider_styled} {error_styled}")
 }
 
-/// Format an LLM warning for display with enhanced coloring
+/// Format an LLM warning for display with enhanced colouring
 #[cold]
 fn format_llm_warning(provider: &str, warning: &str) -> String {
     let provider_styled = style_provider_name(provider);
@@ -63,21 +63,21 @@ fn format_llm_warning(provider: &str, warning: &str) -> String {
     format!("{provider_styled} {warning_styled}")
 }
 
-/// Format an LLM success message for display with enhanced coloring
+/// Format an LLM success message for display with enhanced colouring
 fn format_llm_success(provider: &str, message: &str) -> String {
     let provider_styled = style_provider_name(provider);
     let success_styled = style_llm_success(message);
     format!("{provider_styled} {success_styled}")
 }
 
-/// Format a network error for display with enhanced coloring.
+/// Format a network error for display with enhanced colouring.
 /// This is a convenience wrapper for the common "Network error: {}" pattern.
 #[cold]
 pub fn format_network_error(provider: &str, error: &impl std::fmt::Display) -> String {
     format_llm_error(provider, &format!("Network error: {error}"))
 }
 
-/// Format a parse error for display with enhanced coloring.
+/// Format a parse error for display with enhanced colouring.
 /// This is a convenience wrapper for the common "Parse error: {}" pattern.
 #[cold]
 pub fn format_parse_error(provider: &str, error: &impl std::fmt::Display) -> String {

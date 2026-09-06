@@ -13,7 +13,7 @@ use vtcode_core::tools::command_args;
 use vtcode_core::tools::tool_intent;
 use vtcode_core::utils::ansi::AnsiRenderer;
 use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_core::utils::style_helpers::ColorPalette;
+use vtcode_core::utils::style_helpers::ColourPalette;
 use vtcode_core::utils::transcript;
 use vtcode_ui::tui::app::{InlineHandle, InlineMessageKind, InlineSegment, InlineTextStyle, ToolOutputId};
 
@@ -277,7 +277,7 @@ fn render_command_summary(
     let stream_label = crate::agent::runloop::unified::tool_summary::stream_label_from_output(output, command_success);
     let summary_ctx = crate::agent::runloop::unified::tool_summary::ToolSummaryRenderContext { workspace_root };
     let status = ToolDisplayStatus::from_command_output(output, command_success);
-    let bullet_color = status.color(ColorPalette::default());
+    let bullet_colour = status.colour(ColourPalette::default());
     if force_expanded {
         crate::agent::runloop::unified::tool_summary::render_expanded_tool_call_summary(
             renderer,
@@ -285,7 +285,7 @@ fn render_command_summary(
             args_val,
             stream_label,
             &summary_ctx,
-            bullet_color,
+            bullet_colour,
         )
     } else {
         crate::agent::runloop::unified::tool_summary::render_tool_call_summary(
@@ -294,7 +294,7 @@ fn render_command_summary(
             args_val,
             stream_label,
             &summary_ctx,
-            bullet_color,
+            bullet_colour,
         )
     }
 }
@@ -999,7 +999,7 @@ async fn render_tool_output_common(
         }
 
         // Send completion as a status line only when the command needs
-        // attention; on success the colored header bullet is sufficient.
+        // attention; on success the coloured header bullet is sufficient.
         if !matches!(status, ToolDisplayStatus::Success) {
             if let Some(completion) = compact_run_completion_line(output, status) {
                 let indented = format!("    {}", completion);
@@ -1297,7 +1297,7 @@ fn render_non_success_summary(
         args_val,
         stream_label,
         &summary_ctx,
-        status.color(ColorPalette::default()),
+        status.colour(ColourPalette::default()),
     )
 }
 
@@ -1512,11 +1512,11 @@ mod tests {
     }
 
     #[test]
-    fn tool_call_visual_status_colors_success_failure_and_warning() {
-        let palette = ColorPalette::default();
-        assert_eq!(ToolDisplayStatus::Success.color(palette), palette.success);
-        assert_eq!(ToolDisplayStatus::Failure.color(palette), palette.error);
-        assert_eq!(ToolDisplayStatus::Warning.color(palette), palette.warning);
+    fn tool_call_visual_status_colours_success_failure_and_warning() {
+        let palette = ColourPalette::default();
+        assert_eq!(ToolDisplayStatus::Success.colour(palette), palette.success);
+        assert_eq!(ToolDisplayStatus::Failure.colour(palette), palette.error);
+        assert_eq!(ToolDisplayStatus::Warning.colour(palette), palette.warning);
 
         assert!(matches!(
             ToolDisplayStatus::from_command_output(&serde_json::json!({}), true),

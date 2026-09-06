@@ -1,25 +1,25 @@
 //! Unified style bridging between `anstyle` and `ratatui`.
 //!
 //! Converts `anstyle::Style` and `InlineTextStyle` to `ratatui::style::Style`,
-//! using the correct color mapping from [`crate::design::color`].
+//! using the correct color mapping from [`crate::design::colour`].
 
-use anstyle::{Color as AnstyleColor, Effects, Style as AnstyleStyle};
+use anstyle::{Color as AnstyleColour, Effects, Style as AnstyleStyle};
 use ratatui::style::{Modifier, Style};
 
-use crate::design::color::anstyle_to_ratatui_color;
+use crate::design::colour::anstyle_to_ratatui_colour;
 
 /// Convert an `anstyle::Style` directly to a `ratatui::style::Style`.
 ///
-/// Uses the correct color mapping from [`crate::design::color::anstyle_to_ratatui_color`].
+/// Uses the correct color mapping from [`crate::design::colour::anstyle_to_ratatui_colour`].
 pub(crate) fn anstyle_to_ratatui_style(style: AnstyleStyle) -> Style {
     let mut ratatui_style = Style::default();
 
     if let Some(fg) = style.get_fg_color() {
-        ratatui_style = ratatui_style.fg(anstyle_to_ratatui_color(fg));
+        ratatui_style = ratatui_style.fg(anstyle_to_ratatui_colour(fg));
     }
 
     if let Some(bg) = style.get_bg_color() {
-        ratatui_style = ratatui_style.bg(anstyle_to_ratatui_color(bg));
+        ratatui_style = ratatui_style.bg(anstyle_to_ratatui_colour(bg));
     }
 
     ratatui_style = ratatui_style.add_modifier(effects_to_modifiers(style.get_effects()));
@@ -34,19 +34,19 @@ pub(crate) fn anstyle_to_ratatui_style(style: AnstyleStyle) -> Style {
 /// We accept its fields individually here to avoid a direct dependency on the
 /// type, keeping the coupling loose.
 pub(crate) fn inline_text_style_to_ratatui(
-    color: Option<AnstyleColor>,
-    bg_color: Option<AnstyleColor>,
+    colour: Option<AnstyleColour>,
+    bg_colour: Option<AnstyleColour>,
     effects: Effects,
-    fallback: Option<AnstyleColor>,
+    fallback: Option<AnstyleColour>,
 ) -> Style {
     let mut resolved = Style::default();
 
-    if let Some(c) = color.or(fallback) {
-        resolved = resolved.fg(anstyle_to_ratatui_color(c));
+    if let Some(c) = colour.or(fallback) {
+        resolved = resolved.fg(anstyle_to_ratatui_colour(c));
     }
 
-    if let Some(c) = bg_color {
-        resolved = resolved.bg(anstyle_to_ratatui_color(c));
+    if let Some(c) = bg_colour {
+        resolved = resolved.bg(anstyle_to_ratatui_colour(c));
     }
 
     resolved = resolved.add_modifier(effects_to_modifiers(effects));
@@ -83,20 +83,20 @@ fn effects_to_modifiers(effects: Effects) -> Modifier {
 }
 
 /// Create a `ratatui::Style` with a foreground color.
-fn fg_style(color: AnstyleColor) -> Style {
-    Style::default().fg(anstyle_to_ratatui_color(color))
+fn fg_style(colour: AnstyleColour) -> Style {
+    Style::default().fg(anstyle_to_ratatui_colour(colour))
 }
 
 /// Create a `ratatui::Style` with a background color.
-fn bg_style(color: AnstyleColor) -> Style {
-    Style::default().bg(anstyle_to_ratatui_color(color))
+fn bg_style(colour: AnstyleColour) -> Style {
+    Style::default().bg(anstyle_to_ratatui_colour(colour))
 }
 
-/// Create a `ratatui::Style` with foreground and background colors.
-fn fg_bg_style(fg: AnstyleColor, bg: AnstyleColor) -> Style {
+/// Create a `ratatui::Style` with foreground and background colours.
+fn fg_bg_style(fg: AnstyleColour, bg: AnstyleColour) -> Style {
     Style::default()
-        .fg(anstyle_to_ratatui_color(fg))
-        .bg(anstyle_to_ratatui_color(bg))
+        .fg(anstyle_to_ratatui_colour(fg))
+        .bg(anstyle_to_ratatui_colour(bg))
 }
 
 /// Create a `ratatui::Style` with effects/modifiers.
@@ -105,9 +105,9 @@ pub fn with_effects(effects: Effects) -> Style {
 }
 
 /// Create a `ratatui::Style` with foreground color and effects.
-fn colored_with_effects(color: AnstyleColor, effects: Effects) -> Style {
+fn coloured_with_effects(colour: AnstyleColour, effects: Effects) -> Style {
     Style::default()
-        .fg(anstyle_to_ratatui_color(color))
+        .fg(anstyle_to_ratatui_colour(colour))
         .add_modifier(effects_to_modifiers(effects))
 }
 
@@ -117,7 +117,7 @@ mod tests {
 
     #[test]
     fn anstyle_style_with_fg() {
-        let input = AnstyleStyle::new().fg_color(Some(AnstyleColor::Ansi(anstyle::AnsiColor::Green)));
+        let input = AnstyleStyle::new().fg_color(Some(AnstyleColour::Ansi(anstyle::AnsiColor::Green)));
         let result = anstyle_to_ratatui_style(input);
         assert_eq!(result.fg, Some(ratatui::style::Color::Green));
     }
@@ -125,14 +125,14 @@ mod tests {
     #[test]
     fn anstyle_style_with_magenta_fg() {
         // Regression test: Magenta should map to Magenta, not DarkGray.
-        let input = AnstyleStyle::new().fg_color(Some(AnstyleColor::Ansi(anstyle::AnsiColor::Magenta)));
+        let input = AnstyleStyle::new().fg_color(Some(AnstyleColour::Ansi(anstyle::AnsiColor::Magenta)));
         let result = anstyle_to_ratatui_style(input);
         assert_eq!(result.fg, Some(ratatui::style::Color::Magenta));
     }
 
     #[test]
     fn anstyle_style_with_bg() {
-        let input = AnstyleStyle::new().bg_color(Some(AnstyleColor::Ansi(anstyle::AnsiColor::Red)));
+        let input = AnstyleStyle::new().bg_color(Some(AnstyleColour::Ansi(anstyle::AnsiColor::Red)));
         let result = anstyle_to_ratatui_style(input);
         assert_eq!(result.bg, Some(ratatui::style::Color::Red));
     }
@@ -147,19 +147,23 @@ mod tests {
 
     #[test]
     fn inline_text_style_with_fallback() {
-        let result =
-            inline_text_style_to_ratatui(None, None, Effects::BOLD, Some(AnstyleColor::Ansi(anstyle::AnsiColor::Cyan)));
+        let result = inline_text_style_to_ratatui(
+            None,
+            None,
+            Effects::BOLD,
+            Some(AnstyleColour::Ansi(anstyle::AnsiColor::Cyan)),
+        );
         assert_eq!(result.fg, Some(ratatui::style::Color::Cyan));
         assert!(result.add_modifier.contains(Modifier::BOLD));
     }
 
     #[test]
-    fn inline_text_style_color_overrides_fallback() {
+    fn inline_text_style_colour_overrides_fallback() {
         let result = inline_text_style_to_ratatui(
-            Some(AnstyleColor::Ansi(anstyle::AnsiColor::Red)),
+            Some(AnstyleColour::Ansi(anstyle::AnsiColor::Red)),
             None,
             Effects::new(),
-            Some(AnstyleColor::Ansi(anstyle::AnsiColor::Cyan)),
+            Some(AnstyleColour::Ansi(anstyle::AnsiColor::Cyan)),
         );
         assert_eq!(result.fg, Some(ratatui::style::Color::Red));
     }
@@ -185,27 +189,27 @@ mod tests {
 
     #[test]
     fn convenience_fg_style() {
-        let s = fg_style(AnstyleColor::Ansi(anstyle::AnsiColor::Blue));
+        let s = fg_style(AnstyleColour::Ansi(anstyle::AnsiColor::Blue));
         assert_eq!(s.fg, Some(ratatui::style::Color::Blue));
     }
 
     #[test]
     fn convenience_bg_style() {
-        let s = bg_style(AnstyleColor::Ansi(anstyle::AnsiColor::Red));
+        let s = bg_style(AnstyleColour::Ansi(anstyle::AnsiColor::Red));
         assert_eq!(s.bg, Some(ratatui::style::Color::Red));
     }
 
     #[test]
     fn convenience_fg_bg_style() {
         let s =
-            fg_bg_style(AnstyleColor::Ansi(anstyle::AnsiColor::Green), AnstyleColor::Ansi(anstyle::AnsiColor::Black));
+            fg_bg_style(AnstyleColour::Ansi(anstyle::AnsiColor::Green), AnstyleColour::Ansi(anstyle::AnsiColor::Black));
         assert_eq!(s.fg, Some(ratatui::style::Color::Green));
         assert_eq!(s.bg, Some(ratatui::style::Color::Black));
     }
 
     #[test]
-    fn convenience_colored_with_effects() {
-        let s = colored_with_effects(AnstyleColor::Ansi(anstyle::AnsiColor::Yellow), Effects::BOLD | Effects::ITALIC);
+    fn convenience_coloured_with_effects() {
+        let s = coloured_with_effects(AnstyleColour::Ansi(anstyle::AnsiColor::Yellow), Effects::BOLD | Effects::ITALIC);
         assert_eq!(s.fg, Some(ratatui::style::Color::Yellow));
         assert!(s.add_modifier.contains(Modifier::BOLD));
         assert!(s.add_modifier.contains(Modifier::ITALIC));

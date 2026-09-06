@@ -27,7 +27,7 @@ use vtcode_core::llm::provider::{LLMResponse, ToolDefinition};
 use vtcode_core::tools::registry::{ToolProgressCallback, ToolRegistry};
 use vtcode_core::types::CompactStr;
 use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_core::utils::style_helpers::ColorPalette;
+use vtcode_core::utils::style_helpers::ColourPalette;
 use vtcode_ui::tui::app::{InlineHandle, InlineSession};
 
 use super::request_builder::COLLAPSED_TOOL_OUTPUT_NOTICE;
@@ -1143,7 +1143,7 @@ impl ObservedToolPtyStream {
 
         tokio::spawn(async move {
             progress_reporter.complete().await;
-            runtime.shutdown(copilot_observed_status_color(status)).await;
+            runtime.shutdown(copilot_observed_status_colour(status)).await;
         });
     }
 }
@@ -1527,7 +1527,7 @@ impl TerminalStream {
             // header yellow when cancellation or a monitor error prevents an
             // exit code from being observed.
             let status = status.unwrap_or(ToolCallStatus::InProgress);
-            runtime.shutdown(tool_call_status_color(&status)).await;
+            runtime.shutdown(tool_call_status_colour(&status)).await;
         });
     }
 }
@@ -1633,8 +1633,8 @@ fn tool_status_from_exit(exit_status: &CopilotTerminalExitStatus) -> ToolCallSta
     }
 }
 
-fn copilot_observed_status_color(status: CopilotObservedToolCallStatus) -> Color {
-    let palette = ColorPalette::default();
+fn copilot_observed_status_colour(status: CopilotObservedToolCallStatus) -> Color {
+    let palette = ColourPalette::default();
     match status {
         CopilotObservedToolCallStatus::Completed => palette.success,
         CopilotObservedToolCallStatus::Failed => palette.error,
@@ -1642,8 +1642,8 @@ fn copilot_observed_status_color(status: CopilotObservedToolCallStatus) -> Color
     }
 }
 
-fn tool_call_status_color(status: &ToolCallStatus) -> Color {
-    let palette = ColorPalette::default();
+fn tool_call_status_colour(status: &ToolCallStatus) -> Color {
+    let palette = ColourPalette::default();
     match status {
         ToolCallStatus::Completed => palette.success,
         ToolCallStatus::Failed => palette.error,

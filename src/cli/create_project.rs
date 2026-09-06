@@ -2,7 +2,7 @@ use anyhow::Result;
 use itertools::Itertools;
 use std::path::Path;
 use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::utils::colors::style;
+use vtcode_core::utils::colours::style;
 use vtcode_core::utils::file_utils::{ensure_dir_exists, ensure_dir_exists_sync, write_file_with_context_sync};
 
 /// Handle the create-project command

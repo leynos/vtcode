@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 use vtcode_commons::walk::build_walker_single_threaded;
-use vtcode_core::utils::colors::style;
+use vtcode_core::utils::colours::style;
 use vtcode_core::utils::file_utils::ensure_dir_exists;
 use vtcode_core::{ProjectData, SimpleProjectManager};
 

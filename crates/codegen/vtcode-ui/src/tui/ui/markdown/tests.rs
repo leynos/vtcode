@@ -4,7 +4,7 @@ use super::links::{
     normalize_hash_location,
 };
 use super::*;
-use crate::tui::utils::diff_styles::DiffColorPalette;
+use crate::tui::utils::diff_styles::DiffColourPalette;
 
 fn lines_to_text(lines: &[MarkdownLine]) -> Vec<String> {
     lines
@@ -464,7 +464,7 @@ fn test_markdown_diff_code_block_strips_backgrounds() {
 fn test_markdown_unlabeled_diff_code_block_detects_diff() {
     let markdown = "```\n@@ -1 +1 @@\n- old\n+ new\n```\n";
     let lines = render_markdown_to_lines(markdown, Style::default(), &theme::active_styles(), None);
-    let expected_added_fg = DiffColorPalette::default().added_style().get_fg_color();
+    let expected_added_fg = DiffColourPalette::default().added_style().get_fg_color();
     let added_line = lines
         .iter()
         .find(|line| {
@@ -496,7 +496,7 @@ fn test_diff_blank_line_renders_placeholder_space() {
 fn test_markdown_diff_code_block_styles_additions_deletions_and_hunk_headers() {
     let markdown = "```diff\n--- a/main.rs\n+++ b/main.rs\n@@ -1 +1 @@\n-const value = 1;\n+const value = 2;\n```\n";
     let lines = render_markdown(markdown);
-    let palette = DiffColorPalette::default();
+    let palette = DiffColourPalette::default();
 
     let added_line = lines
         .iter()
@@ -565,7 +565,7 @@ fn test_diff_prose_content_skips_syntax_highlighting() {
 fn test_markdown_unlabeled_minimal_hunk_detects_diff() {
     let markdown = "```\n@@\n pub fn demo() {\n  -    old();\n  +    new();\n }\n```\n";
     let lines = render_markdown_to_lines(markdown, Style::default(), &theme::active_styles(), None);
-    let palette = DiffColorPalette::default();
+    let palette = DiffColourPalette::default();
 
     let header_segment = lines
         .iter()
@@ -610,7 +610,7 @@ fn test_markdown_unlabeled_minimal_hunk_detects_diff() {
 }
 
 #[test]
-fn test_highlight_line_for_diff_strips_background_colors() {
+fn test_highlight_line_for_diff_strips_background_colours() {
     let segments =
         highlight_line_for_diff("let changed = true;", Some("rust")).expect("highlighting should return segments");
     assert!(segments.iter().all(|(style, _)| style.get_bg_color().is_none()));

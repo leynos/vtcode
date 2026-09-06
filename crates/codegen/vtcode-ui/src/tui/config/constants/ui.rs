@@ -197,20 +197,20 @@ pub const THEME_SECONDARY_LIGHTEN_RATIO: f32 = 0.2;
 pub const THEME_MIX_RATIO: f32 = 0.35;
 pub const THEME_TOOL_BODY_MIX_RATIO: f32 = 0.35;
 pub const THEME_TOOL_BODY_LIGHTEN_RATIO: f32 = 0.2;
-pub const THEME_RESPONSE_COLOR_LIGHTEN_RATIO: f32 = 0.15;
-pub const THEME_REASONING_COLOR_LIGHTEN_RATIO: f32 = 0.3;
+pub const THEME_RESPONSE_COLOUR_LIGHTEN_RATIO: f32 = 0.15;
+pub const THEME_REASONING_COLOUR_LIGHTEN_RATIO: f32 = 0.3;
 pub const THEME_INPUT_BACKGROUND_MIX_RATIO: f32 = 0.08;
-pub const THEME_USER_COLOR_LIGHTEN_RATIO: f32 = 0.2;
-pub const THEME_SECONDARY_USER_COLOR_LIGHTEN_RATIO: f32 = 0.4;
+pub const THEME_USER_COLOUR_LIGHTEN_RATIO: f32 = 0.2;
+pub const THEME_SECONDARY_USER_COLOUR_LIGHTEN_RATIO: f32 = 0.4;
 pub const THEME_PRIMARY_STATUS_LIGHTEN_RATIO: f32 = 0.35;
 pub const THEME_PRIMARY_STATUS_SECONDARY_LIGHTEN_RATIO: f32 = 0.5;
 pub const THEME_LOGO_ACCENT_BANNER_LIGHTEN_RATIO: f32 = 0.35;
 pub const THEME_LOGO_ACCENT_BANNER_SECONDARY_LIGHTEN_RATIO: f32 = 0.25;
 
 // UI Color constants
-pub const THEME_COLOR_WHITE_RED: u8 = 0xFF;
-pub const THEME_COLOR_WHITE_GREEN: u8 = 0xFF;
-pub const THEME_COLOR_WHITE_BLUE: u8 = 0xFF;
+pub const THEME_COLOUR_WHITE_RED: u8 = 0xFF;
+pub const THEME_COLOUR_WHITE_GREEN: u8 = 0xFF;
+pub const THEME_COLOUR_WHITE_BLUE: u8 = 0xFF;
 pub const THEME_MIX_RATIO_MIN: f32 = 0.0;
 pub const THEME_MIX_RATIO_MAX: f32 = 1.0;
 pub const THEME_BLEND_CLAMP_MIN: f32 = 0.0;
@@ -237,7 +237,7 @@ pub const PLACEHOLDER_B: u8 = 0x88;
 
 // === Safe ANSI Color Palette ===
 // Based on terminal color portability research: <https://blog.xoria.org/terminal-colors/>
-// These 11 colors are safe across Basic (light/dark), Tango, and Solarized themes.
+// These 11 colours are safe across Basic (light/dark), Tango, and Solarized themes.
 // Colors NOT in this list have visibility issues in common terminal configurations.
 
 /// WCAG AA standard minimum contrast ratio (4.5:1)
@@ -250,9 +250,9 @@ pub const WCAG_AAA_CONTRAST_RATIO: f32 = 7.0;
 pub const WCAG_LARGE_TEXT_CONTRAST_RATIO: f32 = 3.0;
 
 // Safe ANSI color indices (standard 0-15 palette)
-// These colors are portable across common terminal themes.
+// These colours are portable across common terminal themes.
 
-/// Safe regular colors (ANSI 0-7 subset that works everywhere)
+/// Safe regular colours (ANSI 0-7 subset that works everywhere)
 /// Note: black (0) and white (7) are excluded due to theme conflicts
 pub const SAFE_ANSI_RED: u8 = 1;
 pub const SAFE_ANSI_GREEN: u8 = 2;
@@ -261,7 +261,7 @@ pub const SAFE_ANSI_BLUE: u8 = 4;
 pub const SAFE_ANSI_MAGENTA: u8 = 5;
 pub const SAFE_ANSI_CYAN: u8 = 6;
 
-/// Safe bright colors (ANSI 8-15 subset that works everywhere)
+/// Safe bright colours (ANSI 8-15 subset that works everywhere)
 /// Note: brblack (8) is invisible in Solarized Dark
 /// Note: bryellow (11), brblue (12), brwhite (15) have visibility issues
 pub const SAFE_ANSI_BRIGHT_RED: u8 = 9;
@@ -270,8 +270,8 @@ pub const SAFE_ANSI_BRIGHT_MAGENTA: u8 = 13;
 pub const SAFE_ANSI_BRIGHT_CYAN: u8 = 14;
 
 /// All safe ANSI color indices as an array
-/// These 10 colors are safe to use across all common terminal themes
-pub const SAFE_ANSI_COLORS: [u8; 10] = [
+/// These 10 colours are safe to use across all common terminal themes
+pub const SAFE_ANSI_COLOURS: [u8; 10] = [
     SAFE_ANSI_RED,
     SAFE_ANSI_GREEN,
     SAFE_ANSI_YELLOW,
@@ -284,14 +284,14 @@ pub const SAFE_ANSI_COLORS: [u8; 10] = [
     SAFE_ANSI_BRIGHT_CYAN,
 ];
 
-/// Problematic ANSI colors to avoid when safe_colors_only is enabled
+/// Problematic ANSI colours to avoid when safe_colours_only is enabled
 /// - 0 (black): Low contrast on dark backgrounds
 /// - 7 (white): Low contrast on light backgrounds
 /// - 8 (brblack): Invisible in Solarized Dark (hijacked for base03)
 /// - 11 (bryellow): Low contrast on light backgrounds
 /// - 12 (brblue): Low contrast in Basic Dark
 /// - 15 (brwhite): Low contrast on light backgrounds
-pub const PROBLEMATIC_ANSI_COLORS: [u8; 6] = [0, 7, 8, 11, 12, 15];
+pub const PROBLEMATIC_ANSI_COLOURS: [u8; 6] = [0, 7, 8, 11, 12, 15];
 
 #[cfg(test)]
 mod tests {

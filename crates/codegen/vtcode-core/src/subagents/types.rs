@@ -84,8 +84,9 @@ pub struct SubagentStatusEntry {
     pub display_label: String,
     pub description: String,
     pub source: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub color: Option<String>,
+    /// The serialized key `color` is fixed by the schema; `colour` is accepted as a British spelling alias.
+    #[serde(rename = "color", alias = "colour", default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
     pub status: SubagentStatus,
     pub background: bool,
     pub depth: usize,
@@ -112,8 +113,9 @@ pub struct BackgroundSubprocessEntry {
     pub display_label: String,
     pub description: String,
     pub source: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub color: Option<String>,
+    /// The serialized key `color` is fixed by the schema; `colour` is accepted as a British spelling alias.
+    #[serde(rename = "color", alias = "colour", default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
     pub status: BackgroundSubprocessStatus,
     pub desired_enabled: bool,
     pub created_at: DateTime<Utc>,
@@ -274,7 +276,9 @@ pub struct PersistedBackgroundRecord {
     display_label: String,
     description: String,
     source: String,
-    color: Option<String>,
+    /// The serialized key `color` is fixed by the schema; `colour` is accepted as a British spelling alias.
+    #[serde(rename = "color", alias = "colour")]
+    colour: Option<String>,
     session_id: String,
     exec_session_id: String,
     desired_enabled: bool,
@@ -308,7 +312,9 @@ pub struct BackgroundRecord {
     pub(crate) display_label: String,
     pub(crate) description: String,
     pub(crate) source: String,
-    pub(crate) color: Option<String>,
+    /// The serialized key `color` is fixed by the schema; `colour` is accepted as a British spelling alias.
+    #[serde(rename = "color", alias = "colour")]
+    pub(crate) colour: Option<String>,
     pub(crate) session_id: String,
     pub(crate) exec_session_id: String,
     pub(crate) desired_enabled: bool,
@@ -348,7 +354,7 @@ impl StatusEntryBuilder for BackgroundRecord {
             display_label: self.display_label.clone(),
             description: self.description.clone(),
             source: self.source.clone(),
-            color: self.color.clone(),
+            colour: self.colour.clone(),
             status: self.status,
             desired_enabled: self.desired_enabled,
             created_at: self.created_at,
@@ -376,7 +382,7 @@ impl StatusEntryBuilder for ChildRecord {
             display_label: self.display_label.clone(),
             description: self.spec.description.clone(),
             source: self.spec.source.label(),
-            color: self.spec.color.clone(),
+            colour: self.spec.colour.clone(),
             status: self.status,
             background: self.background,
             depth: self.depth,
@@ -465,7 +471,7 @@ impl BackgroundRecord {
             display_label: self.display_label,
             description: self.description,
             source: self.source,
-            color: self.color,
+            colour: self.colour,
             session_id: self.session_id,
             exec_session_id: self.exec_session_id,
             desired_enabled: self.desired_enabled,
@@ -494,7 +500,7 @@ impl BackgroundRecord {
             display_label: record.display_label,
             description: record.description,
             source: record.source,
-            color: record.color,
+            colour: record.colour,
             session_id: record.session_id,
             exec_session_id: record.exec_session_id,
             desired_enabled: record.desired_enabled,

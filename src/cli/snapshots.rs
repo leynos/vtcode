@@ -1,7 +1,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Local, Utc};
 use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::utils::colors::style;
+use vtcode_core::utils::colours::style;
 
 use super::checkpoints::{snapshot_config, snapshot_manager};
 

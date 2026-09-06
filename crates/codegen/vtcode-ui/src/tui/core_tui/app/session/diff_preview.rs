@@ -14,11 +14,11 @@ use vtcode_commons::diff_preview::{DiffDisplayKind, count_diff_changes, display_
 
 use super::Session;
 use crate::tui::core_tui::app::types::{DiffPreviewMode, DiffPreviewState, TrustMode};
-use crate::tui::core_tui::style::{ratatui_color_from_ansi, ratatui_style_from_ansi};
+use crate::tui::core_tui::style::{ratatui_colour_from_ansi, ratatui_style_from_ansi};
 use crate::tui::ui::markdown::render_diff_content_segments;
 use crate::tui::utils::diff::{DiffBundle, DiffOptions, compute_diff_with_theme};
 use crate::tui::utils::diff_styles::{
-    DiffColorPalette, DiffLineType, current_diff_render_style_context, style_content, style_gutter, style_line_bg,
+    DiffColourPalette, DiffLineType, current_diff_render_style_context, style_content, style_gutter, style_line_bg,
     style_sign,
 };
 
@@ -27,7 +27,7 @@ pub(crate) fn render_diff_preview(session: &Session, frame: &mut Frame<'_>, area
         return;
     };
 
-    let palette = DiffColorPalette::default();
+    let palette = DiffColourPalette::default();
     let diff_bundle = compute_diff_with_theme(
         &preview.before,
         &preview.after,
@@ -53,18 +53,18 @@ fn render_file_header(
     frame: &mut Frame<'_>,
     area: Rect,
     preview: &DiffPreviewState,
-    palette: &DiffColorPalette,
+    palette: &DiffColourPalette,
     additions: usize,
     deletions: usize,
 ) {
-    let header_style = Style::default().fg(ratatui_color_from_ansi(palette.header_fg));
+    let header_style = Style::default().fg(ratatui_colour_from_ansi(palette.header_fg));
     let header = Line::from(vec![
         Span::styled(header_action_label(preview.mode), header_style),
         Span::styled(&preview.file_path, header_style),
         Span::styled(" (", header_style),
-        Span::styled(format!("+{additions}"), Style::default().fg(ratatui_color_from_ansi(palette.added_fg))),
+        Span::styled(format!("+{additions}"), Style::default().fg(ratatui_colour_from_ansi(palette.added_fg))),
         Span::styled(" ", header_style),
-        Span::styled(format!("-{deletions}"), Style::default().fg(ratatui_color_from_ansi(palette.removed_fg))),
+        Span::styled(format!("-{deletions}"), Style::default().fg(ratatui_colour_from_ansi(palette.removed_fg))),
         Span::styled(")", header_style),
     ]);
     frame.render_widget(Paragraph::new(header), area);
@@ -172,7 +172,7 @@ fn render_controls(frame: &mut Frame<'_>, area: Rect, preview: &DiffPreviewState
 }
 
 fn control_lines(preview: &DiffPreviewState) -> Vec<Line<'static>> {
-    let action_key_style = |color: Color| -> Style { Style::default().fg(color).add_modifier(Modifier::BOLD) };
+    let action_key_style = |colour: Color| -> Style { Style::default().fg(colour).add_modifier(Modifier::BOLD) };
 
     let key_green = Color::LightGreen;
     let key_red = Color::LightRed;

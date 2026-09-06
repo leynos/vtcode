@@ -200,9 +200,9 @@ impl PtyStreamState {
         (replace_count, segments, link_ranges, last_line)
     }
 
-    pub(super) fn set_header_color(&mut self, color: anstyle::Color) {
+    pub(super) fn set_header_colour(&mut self, colour: anstyle::Color) {
         self.line_styles.bullet =
-            std::sync::Arc::new(vtcode_ui::tui::core::convert_style(anstyle::Style::new().fg_color(Some(color))));
+            std::sync::Arc::new(vtcode_ui::tui::core::convert_style(anstyle::Style::new().fg_color(Some(colour))));
     }
 
     fn reset_output_state(&mut self) {

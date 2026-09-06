@@ -590,7 +590,7 @@ fn modifier_click_emits_open_file_event_for_standard_modal_file_link_with_locati
 
 #[test]
 fn modifier_click_emits_open_file_event_for_explicit_transcript_file_link() {
-    let mut session = Session::new(themed_inline_colors(), None, VIEW_ROWS);
+    let mut session = Session::new(themed_inline_colours(), None, VIEW_ROWS);
     let absolute_path = transcript_file_fixture_absolute_path();
     let _ = session.decorate_visible_transcript_links(
         vec![TranscriptLine {
@@ -621,8 +621,8 @@ fn modifier_click_emits_open_file_event_for_explicit_transcript_file_link() {
 }
 
 #[test]
-fn explicit_transcript_file_link_uses_theme_accent_color() {
-    let mut session = Session::new(themed_inline_colors(), None, VIEW_ROWS);
+fn explicit_transcript_file_link_uses_theme_accent_colour() {
+    let mut session = Session::new(themed_inline_colours(), None, VIEW_ROWS);
     let absolute_path = transcript_file_fixture_absolute_path();
     let decorated = session.decorate_visible_transcript_links(
         vec![TranscriptLine {
@@ -644,7 +644,7 @@ fn explicit_transcript_file_link_uses_theme_accent_color() {
         .find(|span| span.content == "file")
         .expect("expected explicit linked span");
 
-    assert_eq!(linked_span.style.fg, themed_inline_colors().tool_accent.map(ratatui_color_from_ansi));
+    assert_eq!(linked_span.style.fg, themed_inline_colours().tool_accent.map(ratatui_colour_from_ansi));
     assert!(linked_span.style.add_modifier.contains(Modifier::UNDERLINED));
 }
 
