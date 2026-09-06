@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { CommandRegistry } from "../../commandRegistry";
-import { AskCommand, AnalyzeCommand, OpenConfigCommand } from "../../commands";
+import { AnalyseCommand, AskCommand, OpenConfigCommand } from "../../commands";
 import * as vtcodeRunner from "../../utils/vtcodeRunner";
 
 // Mock the vtcodeRunner module
@@ -34,12 +34,12 @@ describe("Command Integration Tests", () => {
         it("should register and execute multiple commands", async () => {
             // Arrange
             const askCommand = new AskCommand();
-            const analyzeCommand = new AnalyzeCommand();
+            const analyseCommand = new AnalyseCommand();
             const openConfigCommand = new OpenConfigCommand();
 
             registry.registerAll([
                 askCommand,
-                analyzeCommand,
+                analyseCommand,
                 openConfigCommand,
             ]);
 
@@ -70,14 +70,14 @@ describe("Command Integration Tests", () => {
                 expect.any(Object)
             );
 
-            // Execute analyze command
+            // Execute analyse command
             const analyzeResult = await registry.executeCommand(
                 "vtcode.runAnalyze",
                 mockContext
             );
             expect(analyzeResult).toBeUndefined();
             expect(vtcodeRunner.runVtcodeCommand).toHaveBeenCalledWith(
-                ["analyze"],
+                ["analyse"],
                 expect.any(Object)
             );
 
@@ -138,8 +138,8 @@ describe("Command Integration Tests", () => {
 
         it("should check command availability before execution", async () => {
             // Arrange
-            const analyzeCommand = new AnalyzeCommand();
-            registry.register(analyzeCommand);
+            const analyseCommand = new AnalyseCommand();
+            registry.register(analyseCommand);
 
             (
                 vtcodeRunner.ensureCliAvailableForCommand as jest.Mock
@@ -161,16 +161,16 @@ describe("Command Integration Tests", () => {
         it("should register and unregister commands", () => {
             // Arrange
             const askCommand = new AskCommand();
-            const analyzeCommand = new AnalyzeCommand();
+            const analyseCommand = new AnalyseCommand();
 
             // Act
             registry.register(askCommand);
-            registry.register(analyzeCommand);
+            registry.register(analyseCommand);
 
             // Assert
             expect(registry.getAll()).toHaveLength(2);
             expect(registry.get("vtcode.askAgent")).toBe(askCommand);
-            expect(registry.get("vtcode.runAnalyze")).toBe(analyzeCommand);
+            expect(registry.get("vtcode.runAnalyze")).toBe(analyseCommand);
 
             // Unregister
             registry.unregister("vtcode.askAgent");
@@ -181,8 +181,8 @@ describe("Command Integration Tests", () => {
         it("should clear all registered commands", () => {
             // Arrange
             const askCommand = new AskCommand();
-            const analyzeCommand = new AnalyzeCommand();
-            registry.registerAll([askCommand, analyzeCommand]);
+            const analyseCommand = new AnalyseCommand();
+            registry.registerAll([askCommand, analyseCommand]);
 
             // Act
             registry.clear();

@@ -56,12 +56,12 @@ impl WorkflowOptimizer {
     pub fn from_detector(patterns: Vec<DetectedPattern>, features: Vec<f64>) -> Self {
         let mut optimizer = Self { patterns, features, optimizations: Vec::new() };
 
-        optimizer.analyze();
+        optimizer.analyse();
         optimizer
     }
 
     /// Analyze patterns and generate optimizations.
-    fn analyze(&mut self) {
+    fn analyse(&mut self) {
         // Rule 1: High-frequency patterns can be parallelized
         self.detect_parallelization();
 

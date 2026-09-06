@@ -12,4 +12,4 @@ pub mod metrics;
 pub use config::{FormatConfig, LintConfig, LintSeverity};
 pub use formatting::{FormatResult, FormattingOrchestrator};
 pub use linting::{LintResult, LintingOrchestrator};
-pub use metrics::{ComplexityAnalyzer, QualityMetrics};
+pub use metrics::{ComplexityAnalyser, QualityMetrics};

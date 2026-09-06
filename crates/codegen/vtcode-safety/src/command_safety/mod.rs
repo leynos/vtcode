@@ -24,7 +24,7 @@ pub mod windows;
 #[cfg(windows)]
 pub mod windows_cmdlet_db;
 #[cfg(windows)]
-pub mod windows_com_analyzer;
+pub mod windows_com_analyser;
 #[cfg(windows)]
 pub mod windows_enhanced;
 #[cfg(windows)]
@@ -43,7 +43,7 @@ pub use unified::{EvaluationReason, EvaluationResult, PolicyAwareEvaluator, Unif
 #[cfg(windows)]
 pub use windows_cmdlet_db::{CmdletCategory, CmdletDatabase, CmdletInfo, CmdletSeverity};
 #[cfg(windows)]
-pub use windows_com_analyzer::{ComObjectAnalyzer, ComObjectContext, ComObjectInfo, ComRiskLevel};
+pub use windows_com_analyser::{ComObjectAnalyser, ComObjectContext, ComObjectInfo, ComRiskLevel};
 #[cfg(windows)]
 pub use windows_enhanced::is_dangerous_windows_enhanced;
 #[cfg(windows)]

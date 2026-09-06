@@ -99,7 +99,7 @@ impl AgentRunner {
         let mut event_recorder =
             ExecEventRecorder::new(self.session_id.clone(), event_sink, Some(self.thread_handle.clone()));
         event_recorder.turn_started();
-        self.runner_println(format_args!("{agent_prefix} Analyzing request and planning approach..."));
+        self.runner_println(format_args!("{agent_prefix} Analysing request and planning approach..."));
 
         self.runner_println(format_args!(
             "{} Executing {} task: {}",

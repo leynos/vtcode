@@ -245,7 +245,7 @@ pub(super) fn parse_review_spec(args: &str) -> Result<ReviewSpec, String> {
     build_review_spec(last_diff, target, files, style).map_err(|err| err.to_string())
 }
 
-pub(super) fn parse_analyze_scope(args: &str) -> Result<Option<String>, String> {
+pub(super) fn parse_analyse_scope(args: &str) -> Result<Option<String>, String> {
     let trimmed = args.trim();
     if trimmed.is_empty() {
         return Ok(None);
@@ -254,7 +254,7 @@ pub(super) fn parse_analyze_scope(args: &str) -> Result<Option<String>, String> 
     let tokens = shell_words::split(trimmed).map_err(|err| format!("Failed to parse arguments: {err}"))?;
 
     if tokens.len() != 1 {
-        return Err("Usage: /analyze [full|security|performance]".to_string());
+        return Err("Usage: /analyse [full|security|performance]".to_string());
     }
 
     let scope = tokens[0].to_ascii_lowercase();
@@ -267,7 +267,7 @@ pub(super) fn parse_analyze_scope(args: &str) -> Result<Option<String>, String> 
 #[cfg(test)]
 mod tests {
     use super::{
-        CompactConversationCommand, SessionLogExportFormat, parse_analyze_scope, parse_compact_command,
+        CompactConversationCommand, SessionLogExportFormat, parse_analyse_scope, parse_compact_command,
         parse_review_spec, parse_session_log_export_format,
     };
     use vtcode_core::compaction::ManualCompactionOptions;
@@ -434,22 +434,22 @@ mod tests {
     }
 
     #[test]
-    fn analyze_defaults_to_full_when_empty() {
-        assert_eq!(parse_analyze_scope("").expect("analyze scope"), None);
+    fn analyse_defaults_to_full_when_empty() {
+        assert_eq!(parse_analyse_scope("").expect("analyse scope"), None);
     }
 
     #[test]
-    fn analyze_accepts_known_scopes() {
-        assert_eq!(parse_analyze_scope("security").expect("analyze scope"), Some("security".to_string()));
-        assert_eq!(parse_analyze_scope("PERFORMANCE").expect("analyze scope"), Some("performance".to_string()));
+    fn analyse_accepts_known_scopes() {
+        assert_eq!(parse_analyse_scope("security").expect("analyse scope"), Some("security".to_string()));
+        assert_eq!(parse_analyse_scope("PERFORMANCE").expect("analyse scope"), Some("performance".to_string()));
     }
 
     #[test]
-    fn analyze_rejects_unknown_or_extra_arguments() {
-        let err = parse_analyze_scope("foo").expect_err("unknown scope should fail");
+    fn analyse_rejects_unknown_or_extra_arguments() {
+        let err = parse_analyse_scope("foo").expect_err("unknown scope should fail");
         assert!(err.contains("Unknown analysis scope"));
 
-        let err = parse_analyze_scope("security extra").expect_err("extra args should fail");
-        assert!(err.contains("Usage: /analyze"));
+        let err = parse_analyse_scope("security extra").expect_err("extra args should fail");
+        assert!(err.contains("Usage: /analyse"));
     }
 }

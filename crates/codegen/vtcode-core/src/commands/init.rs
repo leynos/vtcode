@@ -296,7 +296,7 @@ impl GuidedInitPlan {
 }
 
 pub fn prepare_guided_init(workspace: &Path, force: bool) -> Result<GuidedInitPlan> {
-    let analysis = analyze_project(workspace)?;
+    let analysis = analyse_project(workspace)?;
     let path = workspace.join(AGENTS_FILENAME);
     let overwrite_state = if force {
         GuidedInitOverwriteState::Force
@@ -362,7 +362,7 @@ pub fn write_agents_file(workspace: &Path, content: &str, overwrite: bool) -> Re
     Ok(GenerateAgentsFileReport { path, status })
 }
 
-fn analyze_project(workspace: &Path) -> Result<ProjectAnalysis> {
+fn analyse_project(workspace: &Path) -> Result<ProjectAnalysis> {
     let root_files = collect_workspace_files(workspace)?;
     let package_manager = detect_package_manager(workspace);
     let project_name = workspace
@@ -400,12 +400,12 @@ fn analyze_project(workspace: &Path) -> Result<ProjectAnalysis> {
     };
 
     for path in &root_files {
-        analyze_file(&mut analysis, path);
+        analyse_file(&mut analysis, path);
     }
 
     load_dependency_signals(workspace, &mut analysis)?;
-    analyze_git_history(workspace, &mut analysis);
-    analyze_project_characteristics(&mut analysis);
+    analyse_git_history(workspace, &mut analysis);
+    analyse_project_characteristics(&mut analysis);
 
     let text_samples = load_text_samples(workspace, &root_files)?;
     analysis.verification_candidates = build_verification_candidates(workspace, &analysis, &text_samples);
@@ -441,7 +441,7 @@ fn collect_workspace_files(workspace: &Path) -> Result<Vec<String>> {
     Ok(files.into_iter().collect())
 }
 
-fn analyze_file(analysis: &mut ProjectAnalysis, path: &str) {
+fn analyse_file(analysis: &mut ProjectAnalysis, path: &str) {
     match path {
         "Cargo.toml" => {
             analysis.languages.push("Rust".to_owned());
@@ -607,7 +607,7 @@ fn detect_package_manager(workspace: &Path) -> Option<PackageManager> {
     }
 }
 
-fn analyze_git_history(workspace: &Path, analysis: &mut ProjectAnalysis) {
+fn analyse_git_history(workspace: &Path, analysis: &mut ProjectAnalysis) {
     if !workspace.join(".git").exists() {
         analysis.commit_patterns.push("No version control detected".to_owned());
         return;
@@ -646,7 +646,7 @@ fn analyze_git_history(workspace: &Path, analysis: &mut ProjectAnalysis) {
     }
 }
 
-fn analyze_project_characteristics(analysis: &mut ProjectAnalysis) {
+fn analyse_project_characteristics(analysis: &mut ProjectAnalysis) {
     analysis.languages = unique_preserving_order(&analysis.languages);
     analysis.build_systems = unique_preserving_order(&analysis.build_systems);
     analysis.scripts = unique_preserving_order(&analysis.scripts);

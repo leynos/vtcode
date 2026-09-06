@@ -92,7 +92,7 @@ pub(crate) async fn handle_initialize_workspace(
         }
         Err(err) => {
             ctx.renderer
-                .line(MessageStyle::Error, &format!("Failed to analyze workspace for AGENTS.md: {err}"))?;
+                .line(MessageStyle::Error, &format!("Failed to analyse workspace for AGENTS.md: {err}"))?;
         }
     }
 

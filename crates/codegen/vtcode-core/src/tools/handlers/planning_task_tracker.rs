@@ -1015,7 +1015,7 @@ mod tests {
                 "title": "Harness plan",
                 "items": [
                     {
-                        "description": "Analyze",
+                        "description": "Analyse",
                         "files": ["docs/ARCHITECTURE.md"],
                         "outcome": "Map the harness",
                         "verify": "cargo check"

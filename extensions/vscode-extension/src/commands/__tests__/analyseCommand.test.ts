@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 import * as vtcodeRunner from "../../utils/vtcodeRunner";
-import { AnalyzeCommand } from "../analyzeCommand";
+import { AnalyseCommand } from "../analyseCommand";
 
 // Mock the vtcodeRunner module
 jest.mock("../../utils/vtcodeRunner");
 
-describe("AnalyzeCommand", () => {
-    let command: AnalyzeCommand;
+describe("AnalyseCommand", () => {
+    let command: AnalyseCommand;
     let mockContext: any;
     let mockShowInformationMessage: jest.SpiedFunction<
         typeof vscode.window.showInformationMessage
@@ -16,7 +16,7 @@ describe("AnalyzeCommand", () => {
     >;
 
     beforeEach(() => {
-        command = new AnalyzeCommand();
+        command = new AnalyseCommand();
         mockContext = {
             workspace: undefined,
             activeTextEditor: undefined,
@@ -43,7 +43,7 @@ describe("AnalyzeCommand", () => {
     });
 
     describe("execute", () => {
-        it("should execute analyze command successfully", async () => {
+        it("should execute analyse command successfully", async () => {
             // Arrange
             (vtcodeRunner.runVtcodeCommand as jest.Mock).mockResolvedValue(
                 undefined
@@ -55,14 +55,14 @@ describe("AnalyzeCommand", () => {
 
             // Assert
             expect(vtcodeRunner.runVtcodeCommand).toHaveBeenCalledWith(
-                ["analyze"],
+                ["analyse"],
                 {
-                    title: "Analyzing workspace with VT Code…",
+                    title: "Analysing workspace with VT Code…",
                     output: mockContext.output,
                 }
             );
             expect(mockShowInformationMessage).toHaveBeenCalledWith(
-                "VT Code finished analyzing the workspace. Review the VT Code output channel for results."
+                "VT Code finished analysing the workspace. Review the VT Code output channel for results."
             );
         });
 
@@ -80,7 +80,7 @@ describe("AnalyzeCommand", () => {
             // Assert
             expect(vtcodeRunner.runVtcodeCommand).toHaveBeenCalled();
             expect(mockShowErrorMessage).toHaveBeenCalledWith(
-                "Failed to analyze the workspace with VT Code: Analysis failed"
+                "Failed to analyse the workspace with VT Code: Analysis failed"
             );
             expect(mockShowInformationMessage).not.toHaveBeenCalled();
         });
@@ -103,9 +103,9 @@ describe("AnalyzeCommand", () => {
     describe("command metadata", () => {
         it("should have correct command metadata", () => {
             expect(command.id).toBe("vtcode.runAnalyze");
-            expect(command.title).toBe("Analyze Workspace");
+            expect(command.title).toBe("Analyse Workspace");
             expect(command.description).toBe(
-                "Analyze the current workspace with VT Code"
+                "Analyse the current workspace with VT Code"
             );
             expect(command.icon).toBe("search");
         });

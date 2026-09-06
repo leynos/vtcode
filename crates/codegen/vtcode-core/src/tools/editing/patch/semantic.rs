@@ -227,9 +227,9 @@ async fn collect_candidates(
             path: display_path.to_string(),
             anchor: anchor.to_string(),
             reason: if detail.is_empty() {
-                "ast-grep failed to analyze the file".to_string()
+                "ast-grep failed to analyse the file".to_string()
             } else {
-                format!("ast-grep failed to analyze the file: {detail}")
+                format!("ast-grep failed to analyse the file: {detail}")
             },
         });
     }

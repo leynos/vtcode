@@ -1,6 +1,6 @@
 export { AskCommand } from "./askCommand";
 export { AskSelectionCommand } from "./askSelectionCommand";
-export { AnalyzeCommand } from "./analyzeCommand";
+export { AnalyseCommand } from "./analyseCommand";
 export { TaskTrackerCommand } from "./taskTrackerCommand";
 export { OpenConfigCommand } from "./openConfigCommand";
 export { TrustWorkspaceCommand } from "./trustWorkspaceCommand";

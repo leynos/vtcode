@@ -14,7 +14,7 @@ pub(crate) const TOOL_READ_FILE_INTEGER_RANGE_TEMPLATE: &str = "{argument} value
 pub(crate) const TOOL_READ_FILE_ABSOLUTE_PATH_TEMPLATE: &str = "Invalid {argument} value: expected an absolute path";
 pub(crate) const TOOL_READ_FILE_WORKSPACE_ESCAPE_TEMPLATE: &str =
     "Invalid {argument} value: path escapes the trusted workspace";
-pub(crate) const PLAN_STEP_ANALYZE: &str = "Review the latest user request and conversation context";
+pub(crate) const PLAN_STEP_ANALYSE: &str = "Review the latest user request and conversation context";
 pub(crate) const PLAN_STEP_GATHER_CONTEXT: &str = "Gather referenced workspace files when required";
 pub(crate) const PLAN_STEP_RESPOND: &str = "Compose and send the assistant response";
 pub(crate) const WORKSPACE_TRUST_UPGRADE_LOG: &str = "ACP workspace trust level updated";

@@ -410,8 +410,9 @@ pub enum Commands {
     /// Verbose interactive chat with debug output
     ChatVerbose,
 
-    /// Analyze workspace (structure, security, performance)
-    Analyze {
+    /// Analyze workspace (structure, security, performance).
+    #[command(name = "analyse", visible_alias = "analyze")]
+    Analyse {
         /// Type of analysis to perform
         #[arg(value_name = "TYPE", default_value = "full")]
         analysis_type: String,
@@ -1037,6 +1038,21 @@ mod tests {
         let cli = Cli::parse_from(["vtcode", "init", "--force"]);
 
         assert!(matches!(cli.command, Some(Commands::Init { force: true })));
+    }
+
+    #[test]
+    fn analyse_is_canonical_and_analyze_remains_a_visible_cli_alias() {
+        let canonical = Cli::parse_from(["vtcode", "analyse", "security"]);
+        let legacy = Cli::parse_from(["vtcode", "analyze", "security"]);
+
+        assert!(matches!(
+            canonical.command,
+            Some(Commands::Analyse { ref analysis_type }) if analysis_type == "security"
+        ));
+        assert!(matches!(
+            legacy.command,
+            Some(Commands::Analyse { ref analysis_type }) if analysis_type == "security"
+        ));
     }
 
     #[test]

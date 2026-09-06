@@ -4,7 +4,7 @@ use vtcode_core::cli::args::{Cli, Commands};
 use vtcode_core::mcp::cli::handle_mcp_command;
 
 use super::run::{
-    handle_analyze_command, handle_ask_single_command, handle_chat_command, handle_resume_session_command,
+    handle_analyse_command, handle_ask_single_command, handle_chat_command, handle_resume_session_command,
 };
 use super::skills::dispatch_skills_command;
 use crate::cli::acp::handle_acp_command;
@@ -16,7 +16,7 @@ use crate::cli::plugins::dispatch_plugins_command;
 use crate::cli::session_store::handle_session_store_command;
 use crate::cli::webmcp;
 use crate::cli::{
-    analyze, benchmark, check, config, create_project, dependencies, exec, init, init_project, man, notify, revert,
+    analyse, benchmark, check, config, create_project, dependencies, exec, init, init_project, man, notify, revert,
     review, schedule, schema, secret, skills, snapshots, trajectory, update,
 };
 
@@ -139,11 +139,11 @@ pub(crate) async fn dispatch_command(args: &Cli, startup: &StartupContext, comma
         Commands::Schema { command } => {
             print!("{}", dispatch_schema_command(command, cfg).await?);
         }
-        Commands::Analyze { analysis_type } => {
-            handle_analyze_command(
+        Commands::Analyse { analysis_type } => {
+            handle_analyse_command(
                 core_cfg.clone(),
                 Some(cfg.clone()),
-                analyze::AnalysisType::from_cli_arg(&analysis_type),
+                analyse::AnalysisType::from_cli_arg(&analysis_type),
             )
             .await?;
         }

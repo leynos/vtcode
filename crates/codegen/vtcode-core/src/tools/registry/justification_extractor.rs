@@ -124,7 +124,7 @@ mod tests {
             timestamp: now,
             context: DecisionContext {
                 conversation_turn: 1,
-                user_input: Some("analyze code".to_string()),
+                user_input: Some("analyse code".to_string()),
                 previous_actions: vec![],
                 available_tools: vec!["read_file".to_string()],
                 current_state: HashMap::new(),

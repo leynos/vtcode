@@ -37,7 +37,7 @@ const TEMP_SUBDIR: &str = "web_fetch";
 /// Max age in seconds before temp files are cleaned up (1 hour).
 const TEMP_MAX_AGE_SECS: u64 = 3600;
 
-pub(crate) const WEB_FETCH_DESCRIPTION: &str = "Fetches content from a URL and returns an analyzed summary. Accepts: { url: string, prompt?: string, format?: 'summary'|'markdown', max_bytes?: number, timeout_secs?: number }. Set format='markdown' to get the page as cleaned markdown via the defuddle.md extraction service instead of a summary — that service is rate-limited to ONE call per session, so use it sparingly and only for remote http(s) URLs (never local files). Omit prompt for a default summary. For docs domains, try /llms.txt first: for 'abc.com', fetch https://abc.com/llms.txt before the homepage, then traverse linked URLs for relevant Markdown sources. Default max_bytes is 500KB (fits most pages). Do NOT set max_bytes without reason — the default is generous. Truncated responses include truncation metadata so you can retry with a higher budget. Prefer llms.txt over llms-full.txt (can be multi-megabyte). Returns a `temp_file` path to ephemeral fetched content. Read it to analyze. Temp files are auto-cleaned; do not persist elsewhere.";
+pub(crate) const WEB_FETCH_DESCRIPTION: &str = "Fetches content from a URL and returns an analysed summary. Accepts: { url: string, prompt?: string, format?: 'summary'|'markdown', max_bytes?: number, timeout_secs?: number }. Set format='markdown' to get the page as cleaned markdown via the defuddle.md extraction service instead of a summary — that service is rate-limited to ONE call per session, so use it sparingly and only for remote http(s) URLs (never local files). Omit prompt for a default summary. For docs domains, try /llms.txt first: for 'abc.com', fetch https://abc.com/llms.txt before the homepage, then traverse linked URLs for relevant Markdown sources. Default max_bytes is 500KB (fits most pages). Do NOT set max_bytes without reason — the default is generous. Truncated responses include truncation metadata so you can retry with a higher budget. Prefer llms.txt over llms-full.txt (can be multi-megabyte). Returns a `temp_file` path to ephemeral fetched content. Read it to analyse. Temp files are auto-cleaned; do not persist elsewhere.";
 
 #[derive(Debug, Deserialize)]
 struct WebFetchArgs {
@@ -590,7 +590,7 @@ impl WebFetchTool {
             "content_length": content_length,
             "truncated": truncated,
             "no_spool": true,
-            "next_action_hint": "Analyze the inline `preview` (the start of the page) using `prompt` and answer the user directly. Only read `temp_file` if you need content beyond the preview; it is ephemeral and may already be cleaned up."
+            "next_action_hint": "Analyse the inline `preview` (the start of the page) using `prompt` and answer the user directly. Only read `temp_file` if you need content beyond the preview; it is ephemeral and may already be cleaned up."
         });
 
         // Add overflow indicator if preview was truncated
@@ -603,7 +603,7 @@ impl WebFetchTool {
             response["max_bytes"] = json!(max_bytes);
             response["source_size_bytes"] = json!(fetched.source_size_bytes);
             response["next_action_hint"] = json!(
-                "Read `temp_file` to get the fetched content. Analyze it using `prompt`. If it does not contain enough detail, retry web_fetch with a larger max_bytes or a more specific URL."
+                "Read `temp_file` to get the fetched content. Analyse it using `prompt`. If it does not contain enough detail, retry web_fetch with a larger max_bytes or a more specific URL."
             );
         }
 
