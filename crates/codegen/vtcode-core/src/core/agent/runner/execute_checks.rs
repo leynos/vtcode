@@ -1,5 +1,5 @@
 use super::AgentRunner;
-use crate::utils::colors::style;
+use crate::utils::colours::style;
 
 impl AgentRunner {
     #[cold]

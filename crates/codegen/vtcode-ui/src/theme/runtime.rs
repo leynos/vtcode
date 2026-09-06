@@ -4,10 +4,10 @@ use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use vtcode_config::constants::ui;
 
-use crate::theme::color_math::{contrast_ratio, ensure_contrast, lighten};
+use crate::theme::colour_math::{contrast_ratio, ensure_contrast, lighten};
 use crate::theme::registry::theme_definition;
 use crate::theme::types::{
-    ColorAccessibilityConfig, DEFAULT_THEME_ID, ThemeDefinition, ThemeStyles, ThemeValidationResult,
+    ColourAccessibilityConfig, DEFAULT_THEME_ID, ThemeDefinition, ThemeStyles, ThemeValidationResult,
 };
 
 #[derive(Clone, Debug)]
@@ -16,16 +16,16 @@ struct ActiveTheme {
     styles: ThemeStyles,
 }
 
-static COLOR_CONFIG: Lazy<RwLock<ColorAccessibilityConfig>> =
-    Lazy::new(|| RwLock::new(ColorAccessibilityConfig::default()));
+static COLOR_CONFIG: Lazy<RwLock<ColourAccessibilityConfig>> =
+    Lazy::new(|| RwLock::new(ColourAccessibilityConfig::default()));
 
-fn current_color_config() -> impl std::ops::Deref<Target = ColorAccessibilityConfig> {
+fn current_colour_config() -> impl std::ops::Deref<Target = ColourAccessibilityConfig> {
     COLOR_CONFIG.read()
 }
 
 static ACTIVE: Lazy<RwLock<ActiveTheme>> = Lazy::new(|| {
     let default = theme_definition(DEFAULT_THEME_ID).expect("default theme must exist");
-    let styles = default.palette.build_styles_with_accessibility(&current_color_config());
+    let styles = default.palette.build_styles_with_accessibility(&current_colour_config());
     RwLock::new(ActiveTheme { definition: default, styles })
 });
 
@@ -35,7 +35,7 @@ static ACTIVE: Lazy<RwLock<ActiveTheme>> = Lazy::new(|| {
 static PREVIEW: Lazy<RwLock<Option<ActiveTheme>>> = Lazy::new(|| RwLock::new(None));
 
 /// Update the runtime color accessibility configuration.
-pub fn set_color_accessibility_config(config: ColorAccessibilityConfig) {
+pub fn set_colour_accessibility_config(config: ColourAccessibilityConfig) {
     *COLOR_CONFIG.write() = config;
 }
 
@@ -49,9 +49,9 @@ pub fn is_bold_bright_mode() -> bool {
     COLOR_CONFIG.read().bold_is_bright
 }
 
-/// Report whether the UI should restrict itself to safe ANSI colors.
-pub fn is_safe_colors_only() -> bool {
-    COLOR_CONFIG.read().safe_colors_only
+/// Report whether the UI should restrict itself to safe ANSI colours.
+pub fn is_safe_colours_only() -> bool {
+    COLOR_CONFIG.read().safe_colours_only
 }
 
 /// Activate a built-in theme by identifier.
@@ -59,7 +59,7 @@ pub fn set_active_theme(theme_id: &str) -> Result<()> {
     let id_lc = theme_id.trim().to_lowercase();
     let theme = theme_definition(id_lc.as_str()).ok_or_else(|| anyhow!("Unknown theme '{theme_id}'"))?;
 
-    let styles = theme.palette.build_styles_with_accessibility(&current_color_config());
+    let styles = theme.palette.build_styles_with_accessibility(&current_colour_config());
     let mut guard = ACTIVE.write();
     guard.definition = theme;
     guard.styles = styles;
@@ -90,7 +90,7 @@ pub fn active_styles() -> ThemeStyles {
 pub fn set_preview_theme(theme_id: &str) -> Result<()> {
     let id_lc = theme_id.trim().to_lowercase();
     let theme = theme_definition(id_lc.as_str()).ok_or_else(|| anyhow!("Unknown theme '{theme_id}'"))?;
-    let styles = theme.palette.build_styles_with_accessibility(&current_color_config());
+    let styles = theme.palette.build_styles_with_accessibility(&current_colour_config());
     *PREVIEW.write() = Some(ActiveTheme { definition: theme, styles });
     Ok(())
 }
@@ -106,7 +106,7 @@ pub fn clear_preview_theme() {
 }
 
 /// Return a readable accent color for banner-like copy.
-pub fn banner_color() -> RgbColor {
+pub fn banner_colour() -> RgbColor {
     let guard = ACTIVE.read();
     let accent = guard.definition.palette.logo_accent;
     let secondary = guard.definition.palette.secondary_accent;
@@ -129,12 +129,12 @@ pub fn banner_color() -> RgbColor {
 
 /// Return a bold banner style derived from the active theme.
 pub fn banner_style() -> Style {
-    let accent = banner_color();
+    let accent = banner_colour();
     Style::new().fg_color(Some(Color::Rgb(accent))).bold()
 }
 
 /// Return the raw logo accent color from the active theme.
-pub fn logo_accent_color() -> RgbColor {
+pub fn logo_accent_colour() -> RgbColor {
     ACTIVE.read().definition.palette.logo_accent
 }
 
@@ -167,7 +167,7 @@ pub fn rebuild_active_styles() {
     guard.styles = guard
         .definition
         .palette
-        .build_styles_with_accessibility(&current_color_config());
+        .build_styles_with_accessibility(&current_colour_config());
 }
 
 /// Validate a theme's base palette contrast ratios.
@@ -191,18 +191,18 @@ pub fn validate_theme_contrast(theme_id: &str) -> ThemeValidationResult {
     let bg = palette.background;
     let min_contrast = get_minimum_contrast();
 
-    for (name, color) in [
+    for (name, colour) in [
         ("foreground", palette.foreground),
         ("primary_accent", palette.primary_accent),
         ("secondary_accent", palette.secondary_accent),
         ("alert", palette.alert),
         ("logo_accent", palette.logo_accent),
     ] {
-        let ratio = contrast_ratio(color, bg);
+        let ratio = contrast_ratio(colour, bg);
         if ratio < min_contrast {
             result.warnings.push(format!(
                 "{} ({:02X}{:02X}{:02X}) has contrast ratio {:.2} < {:.1} against background",
-                name, color.0, color.1, color.2, ratio, min_contrast
+                name, colour.0, colour.1, colour.2, ratio, min_contrast
             ));
         }
     }

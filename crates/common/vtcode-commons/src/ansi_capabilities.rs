@@ -1,12 +1,12 @@
 //! ANSI terminal capabilities detection and feature support
 
-use crate::color_policy::no_color_env_active;
+use crate::colour_policy::no_colour_env_active;
 use once_cell::sync::Lazy;
 use std::io::IsTerminal;
 use std::sync::atomic::{AtomicU8, Ordering};
 
 /// Check if `CLICOLOR` environment variable is set to a non-zero value.
-fn clicolor() -> Option<bool> {
+fn clicolour() -> Option<bool> {
     match std::env::var("CLICOLOR") {
         Ok(val) => Some(!val.is_empty() && val != "0"),
         Err(_) => None,
@@ -14,12 +14,12 @@ fn clicolor() -> Option<bool> {
 }
 
 /// Check if `CLICOLOR_FORCE` environment variable is set to a non-zero value.
-fn clicolor_force() -> bool {
+fn clicolour_force() -> bool {
     std::env::var("CLICOLOR_FORCE").is_ok_and(|val| !val.is_empty() && val != "0")
 }
 
 /// Check if the terminal supports ANSI color output.
-fn term_supports_color() -> bool {
+fn term_supports_colour() -> bool {
     if !std::io::stdout().is_terminal() {
         return false;
     }
@@ -33,41 +33,41 @@ fn term_supports_color() -> bool {
 
 /// Color depth support level detected for the terminal
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ColorDepth {
+pub enum ColourDepth {
     /// No color support
     None = 0,
-    /// 16 colors (basic ANSI)
+    /// 16 colours (basic ANSI)
     Basic16 = 1,
-    /// 256 colors
-    Color256 = 2,
+    /// 256 colours
+    Colour256 = 2,
     /// True color (24-bit RGB)
-    TrueColor = 3,
+    TrueColour = 3,
 }
 
-impl ColorDepth {
+impl ColourDepth {
     /// Get a human-readable name for this color depth
     pub fn name(self) -> &'static str {
         match self {
-            ColorDepth::None => "none",
-            ColorDepth::Basic16 => "16-color",
-            ColorDepth::Color256 => "256-color",
-            ColorDepth::TrueColor => "true-color",
+            ColourDepth::None => "none",
+            ColourDepth::Basic16 => "16-colour",
+            ColourDepth::Colour256 => "256-colour",
+            ColourDepth::TrueColour => "true-colour",
         }
     }
 
     /// Check if this depth supports color
-    fn supports_color(self) -> bool {
-        self != ColorDepth::None
+    fn supports_colour(self) -> bool {
+        self != ColourDepth::None
     }
 
-    /// Check if this depth is at least 256 colors
-    pub fn supports_256(self) -> bool {
-        self >= ColorDepth::Color256
+    /// Check if this depth is at least 256 colours
+    pub fn supports_256_colours(self) -> bool {
+        self >= ColourDepth::Colour256
     }
 
     /// Check if this depth supports true color
-    pub fn supports_true_color(self) -> bool {
-        self == ColorDepth::TrueColor
+    pub fn supports_true_colour(self) -> bool {
+        self == ColourDepth::TrueColour
     }
 }
 
@@ -75,50 +75,50 @@ impl ColorDepth {
 #[derive(Clone, Copy, Debug)]
 pub struct AnsiCapabilities {
     /// Detected color depth
-    color_depth: ColorDepth,
+    colour_depth: ColourDepth,
     /// Whether unicode is supported
     pub unicode_support: bool,
     /// Whether to force color output
-    pub force_color: bool,
+    pub force_colour: bool,
     /// Whether color is explicitly disabled
-    pub no_color: bool,
+    pub no_colour: bool,
 }
 
 impl AnsiCapabilities {
     /// Detect terminal capabilities
     pub fn detect() -> Self {
         Self {
-            color_depth: detect_color_depth(),
+            colour_depth: detect_colour_depth(),
             unicode_support: detect_unicode_support(),
-            force_color: clicolor_force(),
-            no_color: no_color_env_active(),
+            force_colour: clicolour_force(),
+            no_colour: no_colour_env_active(),
         }
     }
 
     /// Check if color output is supported
-    pub fn supports_color(&self) -> bool {
-        !self.no_color && (self.force_color || self.color_depth.supports_color())
+    pub fn supports_colour(&self) -> bool {
+        !self.no_colour && (self.force_colour || self.colour_depth.supports_colour())
     }
 
     /// Check if 256-color output is supported
-    pub fn supports_256_colors(&self) -> bool {
-        self.supports_color() && self.color_depth.supports_256()
+    pub fn supports_256_colours(&self) -> bool {
+        self.supports_colour() && self.colour_depth.supports_256_colours()
     }
 
     /// Check if true color (24-bit) is supported
-    pub fn supports_true_color(&self) -> bool {
-        self.supports_color() && self.color_depth.supports_true_color()
+    pub fn supports_true_colour(&self) -> bool {
+        self.supports_colour() && self.colour_depth.supports_true_colour()
     }
 
     /// Check if advanced formatting (tables, boxes) should use unicode
     pub fn should_use_unicode_boxes(&self) -> bool {
-        self.unicode_support && self.supports_color()
+        self.unicode_support && self.supports_colour()
     }
 }
 
 /// Detected terminal color scheme (light or dark background)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum ColorScheme {
+pub enum ColourScheme {
     /// Light background (dark text preferred)
     Light,
     /// Dark background (light text preferred)
@@ -128,50 +128,50 @@ pub enum ColorScheme {
     Unknown,
 }
 
-impl ColorScheme {
+impl ColourScheme {
     /// Check if this is a light color scheme
     pub fn is_light(self) -> bool {
-        matches!(self, ColorScheme::Light)
+        matches!(self, ColourScheme::Light)
     }
 
     /// Check if this is a dark color scheme
     pub fn is_dark(self) -> bool {
-        matches!(self, ColorScheme::Dark | ColorScheme::Unknown)
+        matches!(self, ColourScheme::Dark | ColourScheme::Unknown)
     }
 
     /// Get a human-readable name
     pub fn name(self) -> &'static str {
         match self {
-            ColorScheme::Light => "light",
-            ColorScheme::Dark => "dark",
-            ColorScheme::Unknown => "unknown",
+            ColourScheme::Light => "light",
+            ColourScheme::Dark => "dark",
+            ColourScheme::Unknown => "unknown",
         }
     }
 }
 
-const COLOR_SCHEME_LIGHT: u8 = 0;
-const COLOR_SCHEME_DARK: u8 = 1;
-const COLOR_SCHEME_UNKNOWN: u8 = 2;
-const COLOR_SCHEME_UNSET: u8 = 255;
+const COLOUR_SCHEME_LIGHT: u8 = 0;
+const COLOUR_SCHEME_DARK: u8 = 1;
+const COLOUR_SCHEME_UNKNOWN: u8 = 2;
+const COLOUR_SCHEME_UNSET: u8 = 255;
 
-static COLOR_SCHEME_RUNTIME_OVERRIDE: AtomicU8 = AtomicU8::new(COLOR_SCHEME_UNSET);
+static COLOUR_SCHEME_RUNTIME_OVERRIDE: AtomicU8 = AtomicU8::new(COLOUR_SCHEME_UNSET);
 
 /// Detect terminal color scheme from environment.
-pub fn detect_color_scheme() -> ColorScheme {
-    if let Some(override_scheme) = color_scheme_runtime_override() {
+pub fn detect_colour_scheme() -> ColourScheme {
+    if let Some(override_scheme) = colour_scheme_runtime_override() {
         return override_scheme;
     }
 
     // Check cached value first
-    static CACHED: Lazy<ColorScheme> = Lazy::new(detect_color_scheme_uncached);
+    static CACHED: Lazy<ColourScheme> = Lazy::new(detect_colour_scheme_uncached);
     *CACHED
 }
 
-fn color_scheme_runtime_override() -> Option<ColorScheme> {
-    match COLOR_SCHEME_RUNTIME_OVERRIDE.load(Ordering::Relaxed) {
-        COLOR_SCHEME_LIGHT => Some(ColorScheme::Light),
-        COLOR_SCHEME_DARK => Some(ColorScheme::Dark),
-        COLOR_SCHEME_UNKNOWN => Some(ColorScheme::Unknown),
+fn colour_scheme_runtime_override() -> Option<ColourScheme> {
+    match COLOUR_SCHEME_RUNTIME_OVERRIDE.load(Ordering::Relaxed) {
+        COLOUR_SCHEME_LIGHT => Some(ColourScheme::Light),
+        COLOUR_SCHEME_DARK => Some(ColourScheme::Dark),
+        COLOUR_SCHEME_UNKNOWN => Some(ColourScheme::Unknown),
         _ => None,
     }
 }
@@ -180,30 +180,30 @@ fn color_scheme_runtime_override() -> Option<ColorScheme> {
 ///
 /// This is intended to be populated once at startup by terminal OSC probing.
 /// Set `None` to clear the runtime override.
-pub fn set_color_scheme_override(value: Option<ColorScheme>) {
+pub fn set_colour_scheme_override(value: Option<ColourScheme>) {
     let encoded = match value {
-        Some(ColorScheme::Light) => COLOR_SCHEME_LIGHT,
-        Some(ColorScheme::Dark) => COLOR_SCHEME_DARK,
-        Some(ColorScheme::Unknown) => COLOR_SCHEME_UNKNOWN,
-        None => COLOR_SCHEME_UNSET,
+        Some(ColourScheme::Light) => COLOUR_SCHEME_LIGHT,
+        Some(ColourScheme::Dark) => COLOUR_SCHEME_DARK,
+        Some(ColourScheme::Unknown) => COLOUR_SCHEME_UNKNOWN,
+        None => COLOUR_SCHEME_UNSET,
     };
-    COLOR_SCHEME_RUNTIME_OVERRIDE.store(encoded, Ordering::Relaxed);
+    COLOUR_SCHEME_RUNTIME_OVERRIDE.store(encoded, Ordering::Relaxed);
 }
 
-fn detect_color_scheme_uncached() -> ColorScheme {
-    if let Ok(colorfgbg) = std::env::var("COLORFGBG") {
-        let parts: Vec<&str> = colorfgbg.split(';').collect();
+fn detect_colour_scheme_uncached() -> ColourScheme {
+    if let Ok(colourfgbg) = std::env::var("COLORFGBG") {
+        let parts: Vec<&str> = colourfgbg.split(';').collect();
         if let Some(bg_str) = parts.last()
             && let Ok(bg) = bg_str.parse::<u8>()
         {
             return if bg == 7 || bg == 15 {
-                ColorScheme::Light
+                ColourScheme::Light
             } else if bg == 0 || bg == 8 {
-                ColorScheme::Dark
+                ColourScheme::Dark
             } else if bg > 230 {
-                ColorScheme::Light
+                ColourScheme::Light
             } else {
-                ColorScheme::Dark
+                ColourScheme::Dark
             };
         }
     }
@@ -215,7 +215,7 @@ fn detect_color_scheme_uncached() -> ColorScheme {
             || term_lower.contains("warp")
             || term_lower.contains("alacritty")
         {
-            return ColorScheme::Dark;
+            return ColourScheme::Dark;
         }
     }
 
@@ -223,54 +223,54 @@ fn detect_color_scheme_uncached() -> ColorScheme {
         && let Ok(term_program) = std::env::var("TERM_PROGRAM")
         && term_program == "Apple_Terminal"
     {
-        return ColorScheme::Light;
+        return ColourScheme::Light;
     }
 
-    ColorScheme::Unknown
+    ColourScheme::Unknown
 }
 
 // Cache detection results to avoid repeated system calls
-static COLOR_DEPTH_CACHE: AtomicU8 = AtomicU8::new(255); // 255 = not cached yet
+static COLOUR_DEPTH_CACHE: AtomicU8 = AtomicU8::new(255); // 255 = not cached yet
 
 /// Detect the terminal's color depth
-fn detect_color_depth() -> ColorDepth {
-    let cached = COLOR_DEPTH_CACHE.load(Ordering::Relaxed);
+fn detect_colour_depth() -> ColourDepth {
+    let cached = COLOUR_DEPTH_CACHE.load(Ordering::Relaxed);
     if cached != 255 {
         return match cached {
-            0 => ColorDepth::None,
-            1 => ColorDepth::Basic16,
-            2 => ColorDepth::Color256,
-            3 => ColorDepth::TrueColor,
-            _ => ColorDepth::None,
+            0 => ColourDepth::None,
+            1 => ColourDepth::Basic16,
+            2 => ColourDepth::Colour256,
+            3 => ColourDepth::TrueColour,
+            _ => ColourDepth::None,
         };
     }
 
-    let depth = if no_color_env_active() {
-        ColorDepth::None
-    } else if clicolor_force() {
-        ColorDepth::TrueColor
-    } else if !clicolor().unwrap_or_else(term_supports_color) {
-        ColorDepth::None
+    let depth = if no_colour_env_active() {
+        ColourDepth::None
+    } else if clicolour_force() {
+        ColourDepth::TrueColour
+    } else if !clicolour().unwrap_or_else(term_supports_colour) {
+        ColourDepth::None
     } else {
         std::env::var("COLORTERM")
             .ok()
             .and_then(|val| {
                 let lower = val.to_lowercase();
                 if lower.contains("truecolor") || lower.contains("24bit") {
-                    Some(ColorDepth::TrueColor)
+                    Some(ColourDepth::TrueColour)
                 } else {
                     None
                 }
             })
-            .unwrap_or(ColorDepth::Color256)
+            .unwrap_or(ColourDepth::Colour256)
     };
 
-    COLOR_DEPTH_CACHE.store(
+    COLOUR_DEPTH_CACHE.store(
         match depth {
-            ColorDepth::None => 0,
-            ColorDepth::Basic16 => 1,
-            ColorDepth::Color256 => 2,
-            ColorDepth::TrueColor => 3,
+            ColourDepth::None => 0,
+            ColourDepth::Basic16 => 1,
+            ColourDepth::Colour256 => 2,
+            ColourDepth::TrueColour => 3,
         },
         Ordering::Relaxed,
     );
@@ -291,11 +291,11 @@ fn detect_unicode_support() -> bool {
 pub static CAPABILITIES: Lazy<AnsiCapabilities> = Lazy::new(AnsiCapabilities::detect);
 
 /// Check if NO_COLOR environment variable is set
-pub fn is_no_color() -> bool {
-    no_color_env_active()
+pub fn is_no_colour() -> bool {
+    no_colour_env_active()
 }
 
 /// Check if CLICOLOR_FORCE is set
-pub fn is_clicolor_force() -> bool {
-    clicolor_force()
+pub fn is_clicolour_force() -> bool {
+    clicolour_force()
 }

@@ -159,7 +159,7 @@ impl PtyStreamRuntime {
                     break;
                 }
 
-                if let Some(final_color) = finish_requested.take() {
+                if let Some(final_colour) = finish_requested.take() {
                     // The status channel is deliberately separate from output,
                     // so a busy stream cannot strand the final status behind a
                     // full output queue. Drain output accepted before shutdown
@@ -200,7 +200,7 @@ impl PtyStreamRuntime {
                     }
 
                     if show_live_preview {
-                        state.set_header_color(final_color);
+                        state.set_header_colour(final_colour);
                         let (replace_count, segments, link_ranges, _) =
                             state.render_current_segments(effective_tail_limit);
                         if !segments.is_empty() {
@@ -218,10 +218,10 @@ impl PtyStreamRuntime {
                 tokio::select! {
                     biased;
                     result = &mut finish_rx => {
-                        let Ok(color) = result else {
+                        let Ok(colour) = result else {
                             break;
                         };
-                        finish_requested = Some(color);
+                        finish_requested = Some(colour);
                     }
                     message = rx.recv() => {
                         match message {
@@ -283,10 +283,10 @@ impl PtyStreamRuntime {
         )
     }
 
-    pub(crate) async fn shutdown(mut self, header_color: Color) {
+    pub(crate) async fn shutdown(mut self, header_colour: Color) {
         let _ = self.sender.take();
         if let Some(finish_sender) = self.finish_sender.take() {
-            let _ = finish_sender.send(header_color);
+            let _ = finish_sender.send(header_colour);
         }
         if let Some(task) = self.task.take() {
             let _ = task.await;

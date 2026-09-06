@@ -32,7 +32,9 @@ The complete PR train is not yet delivered.
   permission-decision types with all callers. Existing wire keys remain fixed.
   Its restacked formatting, lint, build, typecheck and full tests passed
   (10,082 passed, 17 skipped), along with all 67 harness tests.
-- `harden-lint-spelling-behaviour` is the active layer, based on #24.
+- [Draft PR #25](https://github.com/leynos/vtcode/pull/25) publishes
+  `harden-lint-spelling-behaviour` at
+  `2874c2d106825d7b081c6c565dff7a44af58f06f`, based on #24.
   It covers the remaining native behaviour names and nearby prose, preserving
   the existing configuration wire property. The first full run passed formatting,
   lint, and build but exposed two dependent text mismatches. The prompt golden
@@ -41,7 +43,18 @@ The complete PR train is not yet delivered.
   passed on the original retry: 10,079 tests, 17 skipped and 67 harness tests.
   Formatting, lint, build, advisory, VS Code bundling, and changed Python/shell
   syntax checks passed. Optional ast-grep remained unavailable.
-- Remaining spelling changes are preserved separately while this layer is
+- `harden-lint-spelling-colour-apis` is the active branch, based on #25.
+  It carries the reviewed native colour APIs with declarations and all
+  consumers together, including CLI aliases, schema pins, and snapshot text.
+  The layer slightly exceeds the soft 150-file target; a directory-based split
+  was rejected because it separated APIs from their application callers.
+  The first lint run exposed a missed native `flavour()` caller in the theme
+  registry. It is repaired and the original full retry passed: 10,080 tests,
+  17 skipped, and 67 harness tests. Formatting, lint, build, advisory, WebMCP
+  typecheck, all 41 WebMCP tests, and production build passed. A dedicated CLI
+  regression covers canonical and legacy flag parsing. Optional ast-grep was
+  unavailable; the four inherited rustdoc warnings remain.
+- Remaining spelling changes are preserved separately while each layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
   formatting, the strict lint configuration, and Whitaker wiring follow.
@@ -139,6 +152,18 @@ gate retry. Logs use
 `/tmp/ACTION-2-vtcode-df12-onboarding-harden-lint-spelling-behaviour.out`.
 Apply them only to their intended parent in
 order, preserving the latest handoff and discovery compatibility repair.
+
+The corrected full colour patch is
+`/home/leynos/Projects/vtcode-colour-api-review-api-parent-h2R1q4/colour-api-reviewed.patch`
+(SHA-256 `882e3b6d2a50484435d6d5feacc861c978b95c5fed5a5bf9ccfb7a73fcf90c1a`).
+It passed static apply and byte/mode checks against the published behaviour
+layer. Superseded crate/application split patches must not be used. The native
+CLI option is `--no-colour`, with `--no-color` retained as an alias; fixed wire
+keys and foreign types retain their established spelling. Rust retry logs use
+`/tmp/ACTION-2-vtcode-df12-onboarding-harden-lint-spelling-colour-apis.out`;
+WebMCP logs use `webmcp-ACTION` with the same branch suffix. The two changed
+legacy colour documents have 27 inherited Markdownlint findings; an added
+line-length finding was wrapped. The handoff, Nixie, and diff checks passed.
 
 ## Measurement and continuation
 
@@ -290,3 +315,14 @@ intact. All eight sequential gates passed, including typecheck, 10,083
 workspace tests, 17 skips and 67 harness tests. Logs use `restack-1` on
 `harden-lint-spelling-behaviour`; final handoff checks use `handoff-restack-1`.
 The push uses an explicit lease against the original published PR #25 head.
+
+## PR 26 review restack
+
+The colour API layer is rebased onto PR #25 `2874c2d10`. The TTY module and
+this handoff conflicted. Resolution preserves every lower-layer capability
+case and assertion while applying the native colour names. Canonical and
+legacy CLI flags, serde wire keys and aliases, and native flavour naming
+remain intact. All eight sequential gates passed, including typecheck, 10,084
+workspace tests, 17 skips and 67 harness tests. Logs use `restack-1` on
+`harden-lint-spelling-colour-apis`; final handoff checks use `handoff-restack-1`.
+The push uses an explicit lease against the original published PR #26 head.

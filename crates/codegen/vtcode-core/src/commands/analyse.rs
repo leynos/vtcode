@@ -3,7 +3,7 @@
 use crate::config::constants::tools;
 use crate::config::types::{AgentConfig, AnalysisDepth, OutputFormat};
 use crate::tools::ToolRegistry;
-use crate::utils::colors::style;
+use crate::utils::colours::style;
 use anyhow::Result;
 use serde_json::json;
 

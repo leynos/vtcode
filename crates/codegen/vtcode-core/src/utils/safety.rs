@@ -5,7 +5,7 @@
 
 use crate::config::models::ModelId;
 use crate::ui::user_confirmation::{AgentMode, ProModelConfirmationResult, UserConfirmation};
-use crate::utils::colors::style;
+use crate::utils::colours::style;
 use anyhow::Result;
 use std::sync::atomic::{AtomicBool, Ordering};
 

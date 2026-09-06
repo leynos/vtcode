@@ -8,7 +8,7 @@ use vtcode_core::config::loader::VTCodeConfig;
 use vtcode_core::tools::registry::{ExecSettlementMode, ToolProgressCallback, ToolRegistry};
 use vtcode_core::tools::result_cache::{ToolCacheKey, ToolResultCache};
 use vtcode_core::tools::tool_intent;
-use vtcode_core::utils::style_helpers::ColorPalette;
+use vtcode_core::utils::style_helpers::ColourPalette;
 
 use crate::agent::runloop::tool_output::resolve_stdout_tail_limit;
 use crate::agent::runloop::unified::inline_events::harness::{
@@ -298,7 +298,7 @@ async fn execute_with_cache_and_streaming_inner(
     .await;
 
     if let Some(runtime) = pty_stream_runtime {
-        runtime.shutdown(pty_header_color(&outcome)).await;
+        runtime.shutdown(pty_header_colour(&outcome)).await;
     }
     if let Some(coalescer) = output_coalescer.as_ref() {
         coalescer.flush();
@@ -409,8 +409,8 @@ async fn cache_successful_output(
     }
 }
 
-fn pty_header_color(status: &ToolExecutionStatus) -> Color {
-    status.display_status().color(ColorPalette::default())
+fn pty_header_colour(status: &ToolExecutionStatus) -> Color {
+    status.display_status().colour(ColourPalette::default())
 }
 
 fn should_cache_success_output(name: &str, output: &Value, command_success: bool) -> bool {

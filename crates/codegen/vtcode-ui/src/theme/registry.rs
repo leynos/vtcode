@@ -6,14 +6,14 @@ use once_cell::sync::Lazy;
 use crate::theme::types::{ThemeDefinition, ThemePalette, ThemeSuite};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-enum CatppuccinFlavorKind {
+enum CatppuccinFlavourKind {
     Latte,
     Frappe,
     Macchiato,
     Mocha,
 }
 
-impl CatppuccinFlavorKind {
+impl CatppuccinFlavourKind {
     const fn id(self) -> &'static str {
         match self {
             Self::Latte => "catppuccin-latte",
@@ -32,7 +32,7 @@ impl CatppuccinFlavorKind {
         }
     }
 
-    fn flavor(self) -> catppuccin::Flavor {
+    fn flavour(self) -> catppuccin::Flavor {
         match self {
             Self::Latte => PALETTE.latte,
             Self::Frappe => PALETTE.frappe,
@@ -42,11 +42,11 @@ impl CatppuccinFlavorKind {
     }
 }
 
-static CATPPUCCIN_FLAVORS: &[CatppuccinFlavorKind] = &[
-    CatppuccinFlavorKind::Latte,
-    CatppuccinFlavorKind::Frappe,
-    CatppuccinFlavorKind::Macchiato,
-    CatppuccinFlavorKind::Mocha,
+static CATPPUCCIN_FLAVOURS: &[CatppuccinFlavourKind] = &[
+    CatppuccinFlavourKind::Latte,
+    CatppuccinFlavourKind::Frappe,
+    CatppuccinFlavourKind::Macchiato,
+    CatppuccinFlavourKind::Mocha,
 ];
 
 static REGISTRY: Lazy<HashMap<&'static str, ThemeDefinition>> = Lazy::new(|| {
@@ -882,48 +882,48 @@ static REGISTRY: Lazy<HashMap<&'static str, ThemeDefinition>> = Lazy::new(|| {
 });
 
 fn register_catppuccin_themes(map: &mut HashMap<&'static str, ThemeDefinition>) {
-    for &flavor_kind in CATPPUCCIN_FLAVORS {
-        let flavor = flavor_kind.flavor();
+    for &flavour_kind in CATPPUCCIN_FLAVOURS {
+        let flavour = flavour_kind.flavour();
         map.insert(
-            flavor_kind.id(),
+            flavour_kind.id(),
             ThemeDefinition {
-                id: flavor_kind.id(),
-                label: flavor_kind.label(),
-                palette: catppuccin_palette(flavor_kind, flavor),
+                id: flavour_kind.id(),
+                label: flavour_kind.label(),
+                palette: catppuccin_palette(flavour_kind, flavour),
             },
         );
     }
 }
 
-fn catppuccin_palette(kind: CatppuccinFlavorKind, flavor: catppuccin::Flavor) -> ThemePalette {
-    let colors = flavor.colors;
-    if matches!(kind, CatppuccinFlavorKind::Latte) {
+fn catppuccin_palette(kind: CatppuccinFlavourKind, flavour: catppuccin::Flavor) -> ThemePalette {
+    let colours = flavour.colors;
+    if matches!(kind, CatppuccinFlavourKind::Latte) {
         let darken = |c: catppuccin::Color| -> RgbColor {
             RgbColor(c.rgb.r.saturating_sub(32), c.rgb.g.saturating_sub(32), c.rgb.b.saturating_sub(32))
         };
         // Latte (light): use darker accents for WCAG AA contrast on light background
         ThemePalette {
-            primary_accent: catppuccin_rgb(colors.mauve),
-            background: catppuccin_rgb(colors.base),
-            foreground: catppuccin_rgb(colors.text),
-            secondary_accent: darken(colors.blue),
-            alert: catppuccin_rgb(colors.red),
-            logo_accent: darken(colors.maroon),
+            primary_accent: catppuccin_rgb(colours.mauve),
+            background: catppuccin_rgb(colours.base),
+            foreground: catppuccin_rgb(colours.text),
+            secondary_accent: darken(colours.blue),
+            alert: catppuccin_rgb(colours.red),
+            logo_accent: darken(colours.maroon),
         }
     } else {
         ThemePalette {
-            primary_accent: catppuccin_rgb(colors.lavender),
-            background: catppuccin_rgb(colors.base),
-            foreground: catppuccin_rgb(colors.text),
-            secondary_accent: catppuccin_rgb(colors.sapphire),
-            alert: catppuccin_rgb(colors.red),
-            logo_accent: catppuccin_rgb(colors.peach),
+            primary_accent: catppuccin_rgb(colours.lavender),
+            background: catppuccin_rgb(colours.base),
+            foreground: catppuccin_rgb(colours.text),
+            secondary_accent: catppuccin_rgb(colours.sapphire),
+            alert: catppuccin_rgb(colours.red),
+            logo_accent: catppuccin_rgb(colours.peach),
         }
     }
 }
 
-fn catppuccin_rgb(color: catppuccin::Color) -> RgbColor {
-    RgbColor(color.rgb.r, color.rgb.g, color.rgb.b)
+fn catppuccin_rgb(colour: catppuccin::Color) -> RgbColor {
+    RgbColor(colour.rgb.r, colour.rgb.g, colour.rgb.b)
 }
 
 pub(crate) fn theme_definition(theme_id: &str) -> Option<&'static ThemeDefinition> {

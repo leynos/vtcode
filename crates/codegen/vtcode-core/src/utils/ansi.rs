@@ -17,12 +17,12 @@ use anstream::{AutoStream, ColorChoice};
 use anstyle::{Ansi256Color, AnsiColor, Color as AnsiColorEnum, Effects, Reset, RgbColor, Style};
 use anyhow::{Result, anyhow};
 #[cfg(feature = "tui")]
-use ratatui::style::{Color as RatColor, Modifier as RatModifier, Style as RatatuiStyle};
+use ratatui::style::{Color as RatColour, Modifier as RatModifier, Style as RatatuiStyle};
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex, OnceLock};
 use unicode_width::UnicodeWidthStr;
 use url::Url;
-use vtcode_commons::color_policy::{self, ColorOutputPolicySource};
+use vtcode_commons::colour_policy::{self, ColourOutputPolicySource};
 use vtcode_commons::diff_paths::looks_like_diff_content;
 use vtcode_commons::tool_types::CompactStr;
 use vtcode_commons::ui_protocol::{CompactActivityMetadata, ToolOutputId};
@@ -106,7 +106,7 @@ fn transcript_table_frame_width(kind: InlineMessageKind, agent_label_frame_width
 pub struct AnsiRenderer {
     writer: AutoStream<io::Stdout>,
     buffer: String,
-    color: bool,
+    colour: bool,
     sink: Option<InlineSink>,
     last_line_was_empty: bool,
     highlight_config: SyntaxHighlightingConfig,
@@ -124,25 +124,25 @@ impl AnsiRenderer {
     /// Create a new renderer for stdout
     pub fn stdout() -> Self {
         let mut capabilities = AnsiCapabilities::detect();
-        let policy = color_policy::current_color_output_policy();
+        let policy = colour_policy::current_colour_output_policy();
 
         if !policy.enabled {
-            capabilities.no_color = true;
-            capabilities.force_color = false;
+            capabilities.no_colour = true;
+            capabilities.force_colour = false;
         } else if matches!(
             policy.source,
-            ColorOutputPolicySource::CliColorAlways | ColorOutputPolicySource::ConfigOverride
+            ColourOutputPolicySource::CliColourAlways | ColourOutputPolicySource::ConfigOverride
         ) {
-            capabilities.no_color = false;
-            capabilities.force_color = true;
+            capabilities.no_colour = false;
+            capabilities.force_colour = true;
         }
 
-        let color = capabilities.supports_color();
-        let choice = if !color {
+        let colour = capabilities.supports_colour();
+        let choice = if !colour {
             ColorChoice::Never
         } else if matches!(
             policy.source,
-            ColorOutputPolicySource::CliColorAlways | ColorOutputPolicySource::ConfigOverride
+            ColourOutputPolicySource::CliColourAlways | ColourOutputPolicySource::ConfigOverride
         ) {
             ColorChoice::Always
         } else {
@@ -151,7 +151,7 @@ impl AnsiRenderer {
         Self {
             writer: AutoStream::new(io::stdout(), choice),
             buffer: String::with_capacity(1024),
-            color,
+            colour,
             sink: None,
             last_line_was_empty: false,
             highlight_config: SyntaxHighlightingConfig::default(),
@@ -414,13 +414,13 @@ impl AnsiRenderer {
     }
 
     /// Check if 256-color output is supported
-    pub fn supports_256_colors(&self) -> bool {
-        self.capabilities.supports_256_colors()
+    pub fn supports_256_colours(&self) -> bool {
+        self.capabilities.supports_256_colours()
     }
 
     /// Check if true color (24-bit) output is supported
-    pub fn supports_true_color(&self) -> bool {
-        self.capabilities.supports_true_color()
+    pub fn supports_true_colour(&self) -> bool {
+        self.capabilities.supports_true_colour()
     }
 
     /// Check if should use unicode characters based on terminal capabilities
@@ -481,7 +481,7 @@ impl AnsiRenderer {
             return Ok(());
         }
         let style = style.style();
-        if self.color {
+        if self.colour {
             writeln!(self.writer, "{style}{}{Reset}", self.buffer)?;
         } else {
             writeln!(self.writer, "{}", self.buffer)?;
@@ -629,7 +629,7 @@ impl AnsiRenderer {
         self.buffer.push_str(url);
         self.buffer.push_str(&vtcode_commons::ansi_codes::hyperlink_close());
         let ansi_style = style.style();
-        if self.color {
+        if self.colour {
             writeln!(self.writer, "{ansi_style}{}{Reset}", self.buffer)?;
         } else {
             writeln!(self.writer, "{}", self.buffer)?;
@@ -665,7 +665,7 @@ impl AnsiRenderer {
             return Ok(());
         }
         let ansi_style = style.style();
-        if self.color {
+        if self.colour {
             write!(self.writer, "{ansi_style}{text}{Reset}")?;
         } else {
             write!(self.writer, "{text}")?;
@@ -707,7 +707,7 @@ impl AnsiRenderer {
         } else {
             text
         };
-        if self.color {
+        if self.colour {
             writeln!(self.writer, "{style}{display}{Reset}")?;
         } else {
             writeln!(self.writer, "{display}")?;
@@ -880,7 +880,7 @@ impl AnsiRenderer {
         }
 
         let mut plain = String::new();
-        if self.color {
+        if self.colour {
             for segment in &line.segments {
                 let clickable_target = segment.link_target.as_deref().and_then(make_clickable_target);
                 if let Some(target) = clickable_target.as_deref() {
@@ -1034,27 +1034,27 @@ impl InlineSink {
         Ok(())
     }
     #[cfg(feature = "tui")]
-    fn ansi_from_ratatui_color(color: RatColor) -> Option<AnsiColorEnum> {
-        match color {
-            RatColor::Reset => None,
-            RatColor::Black => Some(AnsiColorEnum::Ansi(AnsiColor::Black)),
-            RatColor::Red => Some(AnsiColorEnum::Ansi(AnsiColor::Red)),
-            RatColor::Green => Some(AnsiColorEnum::Ansi(AnsiColor::Green)),
-            RatColor::Yellow => Some(AnsiColorEnum::Ansi(AnsiColor::Yellow)),
-            RatColor::Blue => Some(AnsiColorEnum::Ansi(AnsiColor::Blue)),
-            RatColor::Magenta => Some(AnsiColorEnum::Ansi(AnsiColor::Magenta)),
-            RatColor::Cyan => Some(AnsiColorEnum::Ansi(AnsiColor::Cyan)),
-            RatColor::Gray => Some(AnsiColorEnum::Rgb(RgbColor(0x88, 0x88, 0x88))),
-            RatColor::DarkGray => Some(AnsiColorEnum::Rgb(RgbColor(0x66, 0x66, 0x66))),
-            RatColor::LightRed => Some(AnsiColorEnum::Ansi(AnsiColor::Red)),
-            RatColor::LightGreen => Some(AnsiColorEnum::Ansi(AnsiColor::Green)),
-            RatColor::LightYellow => Some(AnsiColorEnum::Ansi(AnsiColor::Yellow)),
-            RatColor::LightBlue => Some(AnsiColorEnum::Ansi(AnsiColor::Blue)),
-            RatColor::LightMagenta => Some(AnsiColorEnum::Ansi(AnsiColor::Magenta)),
-            RatColor::LightCyan => Some(AnsiColorEnum::Ansi(AnsiColor::Cyan)),
-            RatColor::White => Some(AnsiColorEnum::Ansi(AnsiColor::White)),
-            RatColor::Rgb(r, g, b) => Some(AnsiColorEnum::Rgb(RgbColor(r, g, b))),
-            RatColor::Indexed(value) => Some(AnsiColorEnum::Ansi256(Ansi256Color(value))),
+    fn ansi_from_ratatui_colour(colour: RatColour) -> Option<AnsiColorEnum> {
+        match colour {
+            RatColour::Reset => None,
+            RatColour::Black => Some(AnsiColorEnum::Ansi(AnsiColor::Black)),
+            RatColour::Red => Some(AnsiColorEnum::Ansi(AnsiColor::Red)),
+            RatColour::Green => Some(AnsiColorEnum::Ansi(AnsiColor::Green)),
+            RatColour::Yellow => Some(AnsiColorEnum::Ansi(AnsiColor::Yellow)),
+            RatColour::Blue => Some(AnsiColorEnum::Ansi(AnsiColor::Blue)),
+            RatColour::Magenta => Some(AnsiColorEnum::Ansi(AnsiColor::Magenta)),
+            RatColour::Cyan => Some(AnsiColorEnum::Ansi(AnsiColor::Cyan)),
+            RatColour::Gray => Some(AnsiColorEnum::Rgb(RgbColor(0x88, 0x88, 0x88))),
+            RatColour::DarkGray => Some(AnsiColorEnum::Rgb(RgbColor(0x66, 0x66, 0x66))),
+            RatColour::LightRed => Some(AnsiColorEnum::Ansi(AnsiColor::Red)),
+            RatColour::LightGreen => Some(AnsiColorEnum::Ansi(AnsiColor::Green)),
+            RatColour::LightYellow => Some(AnsiColorEnum::Ansi(AnsiColor::Yellow)),
+            RatColour::LightBlue => Some(AnsiColorEnum::Ansi(AnsiColor::Blue)),
+            RatColour::LightMagenta => Some(AnsiColorEnum::Ansi(AnsiColor::Magenta)),
+            RatColour::LightCyan => Some(AnsiColorEnum::Ansi(AnsiColor::Cyan)),
+            RatColour::White => Some(AnsiColorEnum::Ansi(AnsiColor::White)),
+            RatColour::Rgb(r, g, b) => Some(AnsiColorEnum::Rgb(RgbColor(r, g, b))),
+            RatColour::Indexed(value) => Some(AnsiColorEnum::Ansi256(Ansi256Color(value))),
         }
     }
 
@@ -1064,11 +1064,11 @@ impl InlineSink {
         // Keep transcript segments theme-dynamic by default. Only persist a
         // foreground color when ANSI parsing produced a color different from the
         // logical fallback for this message kind.
-        resolved.color = None;
-        if let Some(color) = style.fg.and_then(Self::ansi_from_ratatui_color)
-            && Some(color) != fallback.color
+        resolved.colour = None;
+        if let Some(colour) = style.fg.and_then(Self::ansi_from_ratatui_colour)
+            && Some(colour) != fallback.colour
         {
-            resolved.color = Some(color);
+            resolved.colour = Some(colour);
         }
 
         let added = style.add_modifier;
@@ -1185,14 +1185,14 @@ impl InlineSink {
                     converted.effects = converted.effects.remove(Effects::UNDERLINE);
                 }
                 let mut inline_style = fallback.clone();
-                inline_style.color = None;
-                if let Some(color) = converted.color
-                    && Some(color) != fallback.color
+                inline_style.colour = None;
+                if let Some(colour) = converted.colour
+                    && Some(colour) != fallback.colour
                 {
-                    inline_style.color = Some(color);
+                    inline_style.colour = Some(colour);
                 }
-                if let Some(bg) = converted.bg_color {
-                    inline_style.bg_color = Some(bg);
+                if let Some(bg) = converted.bg_colour {
+                    inline_style.bg_colour = Some(bg);
                 }
                 inline_style.effects = converted.effects | fallback.effects;
                 plain_line.push_str(&segment.text);
@@ -1311,9 +1311,9 @@ impl InlineSink {
 
     fn resolve_fallback_style(&self, style: Style) -> InlineTextStyle {
         let mut text_style = convert_to_inline_style(style);
-        if text_style.color.is_none() {
+        if text_style.colour.is_none() {
             let active = theme::active_styles();
-            text_style = text_style.merge_color(Some(active.foreground));
+            text_style = text_style.merge_colour(Some(active.foreground));
         }
         text_style
     }
@@ -1640,8 +1640,8 @@ mod tests {
         let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
         let sink = InlineSink::new(InlineHandle::new_for_tests(sender), SyntaxHighlightingConfig::default());
         let fallback = InlineTextStyle {
-            color: Some(AnsiColorEnum::Ansi(AnsiColor::Green)),
-            bg_color: None,
+            colour: Some(AnsiColorEnum::Ansi(AnsiColor::Green)),
+            bg_colour: None,
             effects: Effects::new(),
         };
 
@@ -1652,9 +1652,9 @@ mod tests {
         let segments = &converted[0];
         assert_eq!(segments.len(), 2);
         assert_eq!(segments[0].text, "red");
-        assert_eq!(segments[0].style.color, Some(AnsiColorEnum::Ansi(AnsiColor::Red)));
+        assert_eq!(segments[0].style.colour, Some(AnsiColorEnum::Ansi(AnsiColor::Red)));
         assert_eq!(segments[1].text, " plain");
-        assert_eq!(segments[1].style.color, None);
+        assert_eq!(segments[1].style.colour, None);
     }
 
     #[test]
@@ -1967,7 +1967,7 @@ mod tests {
         let mut renderer = AnsiRenderer {
             writer: AutoStream::new(io::stdout(), choice),
             buffer: String::new(),
-            color: false,
+            colour: false,
             sink: None,
             last_line_was_empty: false,
             highlight_config: SyntaxHighlightingConfig::default(),

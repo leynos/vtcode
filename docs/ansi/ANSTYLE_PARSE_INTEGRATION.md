@@ -432,7 +432,7 @@ Update `docs/ANSTYLE_PARSE_REVIEW.md` with:
 ### Color-Preserving Output
 
 ```rust
-use ratatui::style::{Style, Color as RatColor};
+use ratatui::style::{Style, Color as RatColour};
 use anstyle::Color;
 
 pub fn ansi_to_ratatui(parsed: &ParsedAnsi) -> Vec<(String, Style)> {
@@ -448,14 +448,14 @@ pub fn ansi_to_ratatui(parsed: &ParsedAnsi) -> Vec<(String, Style)> {
         .collect()
 }
 
-fn anstyle_to_ratatui(color: Color) -> Option<RatColor> {
-    match color {
+fn anstyle_to_ratatui(colour: Color) -> Option<RatColour> {
+    match colour {
         Color::Ansi(ac) => {
             // Convert anstyle::AnsiColor to ratatui::style::Color
-            Some(RatColor::Indexed(ac as u8))
+            Some(RatColour::Indexed(ac as u8))
         }
-        Color::Ansi256(ac256) => Some(RatColor::Indexed(ac256.0)),
-        Color::Rgb(r, g, b) => Some(RatColor::Rgb(r, g, b)),
+        Color::Ansi256(ac256) => Some(RatColour::Indexed(ac256.0)),
+        Color::Rgb(r, g, b) => Some(RatColour::Rgb(r, g, b)),
     }
 }
 ```

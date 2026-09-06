@@ -12,7 +12,7 @@ use crate::tui::config::constants::ui;
 use crate::tui::core_tui::session::action::Action;
 use crate::tui::core_tui::session::list_panel::input_styles_from_theme;
 use crate::tui::core_tui::session::text_utils::strip_ansi_codes;
-use crate::tui::core_tui::style::{ratatui_color_from_ansi, ratatui_style_from_inline};
+use crate::tui::core_tui::style::{ratatui_colour_from_ansi, ratatui_style_from_inline};
 use crate::tui::core_tui::types::InlineMessageKind;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -816,8 +816,8 @@ fn tool_output_line_style(session: &Session, line: &str) -> Style {
         InlineMessageKind::Pty
     };
     let mut style = session.core.styles.default_style();
-    if let Some(color) = session.core.text_fallback(kind) {
-        style = style.fg(ratatui_color_from_ansi(color));
+    if let Some(colour) = session.core.text_fallback(kind) {
+        style = style.fg(ratatui_colour_from_ansi(colour));
     }
     if kind == InlineMessageKind::Pty {
         style = style.add_modifier(Modifier::DIM);

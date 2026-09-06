@@ -1,6 +1,6 @@
 use super::AgentRunner;
 use crate::core::agent::types::AgentType;
-use crate::utils::colors::style;
+use crate::utils::colours::style;
 use std::io::IsTerminal;
 
 impl AgentRunner {

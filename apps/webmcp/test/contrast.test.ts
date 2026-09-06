@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CIAPRE_COLORS } from "../src/ciapre-theme.ts";
+import { CIAPRE_COLOURS } from "../src/ciapre-theme.ts";
 
 function relativeLuminance(hex: string): number {
   const channels = hex.slice(1).match(/../g)?.map((channel) => Number.parseInt(channel, 16) / 255) || [];
@@ -15,21 +15,21 @@ function contrast(foreground: string, background: string): number {
 }
 
 test("Ciapre text, controls, syntax, and status colors meet AA on their actual dark surfaces", () => {
-  const normalText: readonly string[] = [CIAPRE_COLORS.foreground, CIAPRE_COLORS.primary, CIAPRE_COLORS.secondary, CIAPRE_COLORS.muted, CIAPRE_COLORS.added, CIAPRE_COLORS.alertForeground];
+  const normalText: readonly string[] = [CIAPRE_COLOURS.foreground, CIAPRE_COLOURS.primary, CIAPRE_COLOURS.secondary, CIAPRE_COLOURS.muted, CIAPRE_COLOURS.added, CIAPRE_COLOURS.alertForeground];
   for (const foreground of normalText) {
-    assert.ok(contrast(foreground, CIAPRE_COLORS.background) >= 4.5, `${foreground} on background`);
-    assert.ok(contrast(foreground, CIAPRE_COLORS.surface) >= 4.5, `${foreground} on surface`);
+    assert.ok(contrast(foreground, CIAPRE_COLOURS.background) >= 4.5, `${foreground} on background`);
+    assert.ok(contrast(foreground, CIAPRE_COLOURS.surface) >= 4.5, `${foreground} on surface`);
   }
-  for (const syntax of [CIAPRE_COLORS.keyword, CIAPRE_COLORS.string, CIAPRE_COLORS.number, CIAPRE_COLORS.comment, CIAPRE_COLORS.function, CIAPRE_COLORS.type, CIAPRE_COLORS.variable]) {
-    assert.ok(contrast(syntax, CIAPRE_COLORS.background) >= 4.5, `${syntax} syntax token`);
+  for (const syntax of [CIAPRE_COLOURS.keyword, CIAPRE_COLOURS.string, CIAPRE_COLOURS.number, CIAPRE_COLOURS.comment, CIAPRE_COLOURS.function, CIAPRE_COLOURS.type, CIAPRE_COLOURS.variable]) {
+    assert.ok(contrast(syntax, CIAPRE_COLOURS.background) >= 4.5, `${syntax} syntax token`);
   }
-  assert.ok(contrast(CIAPRE_COLORS.alert, CIAPRE_COLORS.background) >= 4.5, "source alert on application background");
+  assert.ok(contrast(CIAPRE_COLOURS.alert, CIAPRE_COLOURS.background) >= 4.5, "source alert on application background");
 
   const controlPairs: readonly (readonly [string, string, string])[] = [
-    ["primary", CIAPRE_COLORS.background, CIAPRE_COLORS.primary],
-    ["approve", CIAPRE_COLORS.background, CIAPRE_COLORS.secondary],
-    ["danger", CIAPRE_COLORS.alertForeground, CIAPRE_COLORS.surfaceRaised],
-    ["subtle", CIAPRE_COLORS.foreground, CIAPRE_COLORS.surfaceRaised],
+    ["primary", CIAPRE_COLOURS.background, CIAPRE_COLOURS.primary],
+    ["approve", CIAPRE_COLOURS.background, CIAPRE_COLOURS.secondary],
+    ["danger", CIAPRE_COLOURS.alertForeground, CIAPRE_COLOURS.surfaceRaised],
+    ["subtle", CIAPRE_COLOURS.foreground, CIAPRE_COLOURS.surfaceRaised],
   ];
   for (const [control, foreground, background] of controlPairs) {
     assert.ok(contrast(foreground, background) >= 4.5, `${control} control`);

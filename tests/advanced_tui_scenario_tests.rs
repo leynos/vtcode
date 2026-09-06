@@ -217,13 +217,13 @@ fn test_tui_with_different_header_contexts() {
     for (name, context) in contexts {
         let expected = match name {
             "basic_context" => {
-                r#"InlineHeaderContext { app_name: "App", provider: "openai", model: "gpt-oss-20b", context_window_size: None, version: "test-version", search_tools: None, persistent_memory: None, pr_review: None, editor_context: None, git: "git: unavailable", reasoning: "unavailable", reasoning_stage: None, workspace_trust: "Trust: unavailable", tools: "Tools: unavailable", mcp: "MCP: unavailable", primary_agent: None, primary_agent_color: None, highlights: [], subagent_badges: [] }"#
+                r#"InlineHeaderContext { app_name: "App", provider: "openai", model: "gpt-oss-20b", context_window_size: None, version: "test-version", search_tools: None, persistent_memory: None, pr_review: None, editor_context: None, git: "git: unavailable", reasoning: "unavailable", reasoning_stage: None, workspace_trust: "Trust: unavailable", tools: "Tools: unavailable", mcp: "MCP: unavailable", primary_agent: None, primary_agent_colour: None, highlights: [], subagent_badges: [] }"#
             }
             "advanced_context" => {
-                r#"InlineHeaderContext { app_name: "App", provider: "anthropic", model: "claude-3", context_window_size: None, version: "test-version", search_tools: None, persistent_memory: None, pr_review: None, editor_context: None, git: "git: unavailable", reasoning: "analytical", reasoning_stage: None, workspace_trust: "Trust: unavailable", tools: "Tools: unavailable", mcp: "MCP: unavailable", primary_agent: None, primary_agent_color: None, highlights: [], subagent_badges: [] }"#
+                r#"InlineHeaderContext { app_name: "App", provider: "anthropic", model: "claude-3", context_window_size: None, version: "test-version", search_tools: None, persistent_memory: None, pr_review: None, editor_context: None, git: "git: unavailable", reasoning: "analytical", reasoning_stage: None, workspace_trust: "Trust: unavailable", tools: "Tools: unavailable", mcp: "MCP: unavailable", primary_agent: None, primary_agent_colour: None, highlights: [], subagent_badges: [] }"#
             }
             "minimal_context" => {
-                r#"InlineHeaderContext { app_name: "App", provider: "local", model: "llama3", context_window_size: None, version: "test-version", search_tools: None, persistent_memory: None, pr_review: None, editor_context: None, git: "git: unavailable", reasoning: "unavailable", reasoning_stage: None, workspace_trust: "Trust: unavailable", tools: "Tools: unavailable", mcp: "MCP: unavailable", primary_agent: None, primary_agent_color: None, highlights: [], subagent_badges: [] }"#
+                r#"InlineHeaderContext { app_name: "App", provider: "local", model: "llama3", context_window_size: None, version: "test-version", search_tools: None, persistent_memory: None, pr_review: None, editor_context: None, git: "git: unavailable", reasoning: "unavailable", reasoning_stage: None, workspace_trust: "Trust: unavailable", tools: "Tools: unavailable", mcp: "MCP: unavailable", primary_agent: None, primary_agent_colour: None, highlights: [], subagent_badges: [] }"#
             }
             _ => panic!("unexpected context fixture"),
         };
@@ -286,8 +286,8 @@ fn test_ui_styling_variations() {
             InlineSegment {
                 text: "This is plain text".to_string(),
                 style: InlineTextStyle {
-                    color: None,
-                    bg_color: None,
+                    colour: None,
+                    bg_colour: None,
                     effects: Effects::new(),
                 }
                 .into(),
@@ -298,8 +298,8 @@ fn test_ui_styling_variations() {
             InlineSegment {
                 text: "This is bold text".to_string(),
                 style: InlineTextStyle {
-                    color: None,
-                    bg_color: None,
+                    colour: None,
+                    bg_colour: None,
                     effects: Effects::BOLD,
                 }
                 .into(),
@@ -310,8 +310,8 @@ fn test_ui_styling_variations() {
             InlineSegment {
                 text: "This is italic text".to_string(),
                 style: InlineTextStyle {
-                    color: None,
-                    bg_color: None,
+                    colour: None,
+                    bg_colour: None,
                     effects: Effects::ITALIC,
                 }
                 .into(),
@@ -322,8 +322,8 @@ fn test_ui_styling_variations() {
             InlineSegment {
                 text: "This is bold and italic text".to_string(),
                 style: InlineTextStyle {
-                    color: None,
-                    bg_color: None,
+                    colour: None,
+                    bg_colour: None,
                     effects: Effects::BOLD | Effects::ITALIC,
                 }
                 .into(),
@@ -334,16 +334,16 @@ fn test_ui_styling_variations() {
     for (name, segment) in styled_segments {
         let expected = match name {
             "plain_text" => {
-                r#"InlineSegment { text: "This is plain text", style: InlineTextStyle { color: None, bg_color: None, effects: Effects() } }"#
+                r#"InlineSegment { text: "This is plain text", style: InlineTextStyle { colour: None, bg_colour: None, effects: Effects() } }"#
             }
             "bold_text" => {
-                r#"InlineSegment { text: "This is bold text", style: InlineTextStyle { color: None, bg_color: None, effects: Effects(BOLD) } }"#
+                r#"InlineSegment { text: "This is bold text", style: InlineTextStyle { colour: None, bg_colour: None, effects: Effects(BOLD) } }"#
             }
             "italic_text" => {
-                r#"InlineSegment { text: "This is italic text", style: InlineTextStyle { color: None, bg_color: None, effects: Effects(ITALIC) } }"#
+                r#"InlineSegment { text: "This is italic text", style: InlineTextStyle { colour: None, bg_colour: None, effects: Effects(ITALIC) } }"#
             }
             "bold_italic_text" => {
-                r#"InlineSegment { text: "This is bold and italic text", style: InlineTextStyle { color: None, bg_color: None, effects: Effects(BOLD | ITALIC) } }"#
+                r#"InlineSegment { text: "This is bold and italic text", style: InlineTextStyle { colour: None, bg_colour: None, effects: Effects(BOLD | ITALIC) } }"#
             }
             _ => panic!("unexpected style fixture"),
         };

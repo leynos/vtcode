@@ -19,12 +19,12 @@ pub(super) async fn determine_theme(
     config: &VTCodeConfig,
     read_user_preference: bool,
 ) -> Result<ThemeResolution> {
-    let color_config = ui_theme::ColorAccessibilityConfig {
+    let colour_config = ui_theme::ColourAccessibilityConfig {
         minimum_contrast: config.ui.minimum_contrast,
         bold_is_bright: config.ui.bold_is_bright,
-        safe_colors_only: config.ui.safe_colors_only,
+        safe_colours_only: config.ui.safe_colours_only,
     };
-    ui_theme::set_color_accessibility_config(color_config);
+    ui_theme::set_colour_accessibility_config(colour_config);
 
     let loaded_dot = read_user_preference.then(load_user_config);
     let loaded_dot = match loaded_dot {
@@ -41,12 +41,12 @@ pub(super) async fn determine_theme(
     });
 
     let config_theme = config.agent.theme.trim();
-    let auto_theme = match config.ui.color_scheme_mode {
-        vtcode_config::root::ColorSchemeMode::Auto | vtcode_config::root::ColorSchemeMode::Unknown => {
+    let auto_theme = match config.ui.colour_scheme_mode {
+        vtcode_config::root::ColourSchemeMode::Auto | vtcode_config::root::ColourSchemeMode::Unknown => {
             Some(ui_theme::suggest_theme_for_terminal().to_owned())
         }
-        vtcode_config::root::ColorSchemeMode::Light => Some("vitesse-light".to_owned()),
-        vtcode_config::root::ColorSchemeMode::Dark => None,
+        vtcode_config::root::ColourSchemeMode::Light => Some("vitesse-light".to_owned()),
+        vtcode_config::root::ColourSchemeMode::Dark => None,
     };
 
     let mut theme_selection = args

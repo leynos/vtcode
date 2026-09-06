@@ -637,8 +637,8 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                     };
                     harness_try!(sync_primary_agent_runtime(&mut runtime_sync).await);
                     let display = active_primary_agent.active().display_name.clone();
-                    let color = active_primary_agent.active().color.clone().filter(|c| !c.trim().is_empty());
-                    handle.set_primary_agent(Some(display), color);
+                    let colour = active_primary_agent.active().colour.clone().filter(|c| !c.trim().is_empty());
+                    handle.set_primary_agent(Some(display), colour);
                 }
 
                 if let Some(controller) = tool_registry.subagent_controller() {
@@ -954,9 +954,9 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                             break;
                         }
                         let execution_display = active_primary_agent.active().display_name.clone();
-                        let execution_color =
-                            active_primary_agent.active().color.clone().filter(|c| !c.trim().is_empty());
-                        handle.set_primary_agent(Some(execution_display), execution_color);
+                        let execution_colour =
+                            active_primary_agent.active().colour.clone().filter(|c| !c.trim().is_empty());
+                        handle.set_primary_agent(Some(execution_display), execution_colour);
                         session_skip_confirmations = skip_confirmations;
                         handle.set_skip_confirmations(skip_confirmations);
                         if fresh_context {
@@ -1249,8 +1249,8 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                     };
                     harness_try!(sync_primary_agent_runtime(&mut runtime_sync).await);
                     let display = active_primary_agent.active().display_name.clone();
-                    let color = active_primary_agent.active().color.clone().filter(|c| !c.trim().is_empty());
-                    handle.set_primary_agent(Some(display), color);
+                    let colour = active_primary_agent.active().colour.clone().filter(|c| !c.trim().is_empty());
+                    handle.set_primary_agent(Some(display), colour);
                     tracing::info!(
                         target: "vtcode.planning_workflow",
                         agent = %execution_agent,

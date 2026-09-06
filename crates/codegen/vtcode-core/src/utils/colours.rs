@@ -2,4 +2,4 @@
 //!
 //! Re-exports from vtcode-commons for backward compatibility.
 
-pub use vtcode_commons::colors::*;
+pub use vtcode_commons::colours::*;

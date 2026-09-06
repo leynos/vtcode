@@ -15,7 +15,7 @@
 //! - **Command Sanitization**: Safe command execution
 //! - **Input Validation**: User input sanitization
 //!
-//! ### ANSI and Colors (`ansi`, `colors`)
+//! ### ANSI and Colors (`ansi`, `colours`)
 //! - **Terminal Colors**: ANSI color codes and styling
 //! - **Color Management**: Theme support and color schemes
 //! - **Cross-platform**: Works on different terminal types
@@ -71,8 +71,8 @@
 //! use vtcode_core::utils::ansi::{colorize, Color};
 //!
 //! let message = "Hello, World!";
-//! let colored = colorize(message, Color::Green);
-//! println!("{}", colored); // Prints green text
+//! let coloured = colorize(message, Color::Green);
+//! println!("{}", coloured); // Prints green text
 //!
 //! // Or use styling functions
 //! let bold_text = vtcode_core::utils::ansi::bold("Important message");
@@ -103,7 +103,7 @@ pub mod async_line_writer;
 pub mod async_utils;
 pub mod at_pattern;
 pub mod cached_style_parser;
-pub mod colors;
+pub mod colours;
 pub mod common;
 pub mod diff;
 pub mod diff_styles;
@@ -126,7 +126,7 @@ pub mod session_archive;
 pub mod session_debug;
 pub mod session_transcript_norm;
 pub mod style_helpers;
-pub mod terminal_color_probe;
+pub mod terminal_colour_probe;
 pub mod tokens;
 pub mod tool_name_parsing;
 pub mod trace_writer;

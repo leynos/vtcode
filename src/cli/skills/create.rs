@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail};
 use std::path::Path;
 use vtcode_core::skills::manifest::generate_skill_template;
-use vtcode_core::utils::colors::style;
+use vtcode_core::utils::colours::style;
 use vtcode_core::utils::file_utils::{ensure_dir_exists_sync, write_file_with_context_sync};
 
 use crate::cli::messages;
