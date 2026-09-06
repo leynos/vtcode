@@ -1042,3 +1042,35 @@ allowlist takes the moved `rendering/mod.rs` path and `main`'s current
 `init.rs:526` line. The earlier record above names the unmerged parent for the
 spelling-gate stack; the replay moved the layer's own three commits onto
 `726bbcdc5` without changing their content.
+
+## Test-module extraction follow-up
+
+This layer (`harden-lint-test-modules`) follows module structure PR #71 at
+`630f2c7589d5860a1c8eca3772968903ba571566`. It extracts two source groups,
+totalling 147 tests plus helpers: 105 OpenAI provider tests across 13 child
+modules and 42 session tool catalogue tests across seven child modules. Each
+extracted test module remains below 400 lines.
+
+Test bodies are preserved. Private helper visibility and import wiring change
+only as required by the new boundaries. Leading attributes and documentation
+comments follow their corresponding items; the formatting preflight caught and
+prompted correction of stranded item prefixes. Two function-local backend
+imports also account for the added module depth.
+
+The corrected layer passes formatting, lint, build and type-checking. All
+10,094 workspace tests pass (17 skipped), preserving the original discovery
+count; all 67 harness tests pass. The eight spelling and 13 Actions contracts
+pass. Advisory checks pass; the existing AST-grep target skips because the
+binary is unavailable. Four inherited rustdoc warnings remain for later source
+fixes. The handoff passes Nixie; final Markdown and spelling checks validate
+these notes. The tool-output test extraction remains a subsequent layer.
+
+## PR 72 after PR 71 merged
+
+PR #71 squash-merged into `main` as `f3f7c2f71`. This layer was replayed onto
+it with `git rebase --onto f3f7c2f71 b1b99cd0c`. The only conflict was this
+handoff file, which now keeps every earlier record. The earlier record above
+names the unmerged parent `630f2c758`; the replay moved the layer's own commit
+onto `f3f7c2f71` without changing its content. The gate evidence recorded above
+describes an earlier replay onto an unmerged parent and is not evidence for
+this head.
