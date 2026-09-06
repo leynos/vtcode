@@ -815,7 +815,7 @@ async fn resolve_sessions_dir_for_archive_writes() -> Result<PathBuf> {
 /// Reserve a unique session archive identifier for the current process.
 ///
 /// The returned identifier is the JSON file stem (without `.json`) and can be reused
-/// to create an archive and pair external artifacts (for example debug logs).
+/// to create an archive and pair external artefacts (for example debug logs).
 pub async fn reserve_session_archive_identifier(
     workspace_label: &str,
     custom_suffix: Option<String>,
@@ -1120,7 +1120,7 @@ impl SessionArchive {
     /// Persist progress immediately, bypassing the normal progress throttle.
     ///
     /// This is intended for terminal handoff checkpoints where the latest
-    /// conversation must be durable before an external artifact is written.
+    /// conversation must be durable before an external artefact is written.
     pub async fn persist_progress_async_with_status_forced(
         &self,
         args: SessionProgressArgs,

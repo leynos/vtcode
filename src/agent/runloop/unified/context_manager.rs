@@ -48,7 +48,7 @@ pub(crate) struct ContextManager {
     workspace_root: Option<PathBuf>,
     /// Normalized editor snapshot used for request-time prompt injection.
     editor_context_snapshot: Option<EditorContextSnapshot>,
-    /// Prompt/TUI behavior for IDE context injection.
+    /// Prompt/TUI behaviour for IDE context injection.
     ide_context_config: IdeContextConfig,
     /// Session-local override for IDE context enablement.
     session_ide_context_enabled_override: Option<bool>,
@@ -302,7 +302,7 @@ impl ContextManager {
 
     /// Build a normalized, request-scoped message view without mutating session history.
     ///
-    /// This keeps request assembly deterministic and trims no-op artifacts while preserving
+    /// This keeps request assembly deterministic and trims no-op artefacts while preserving
     /// tool-calling semantics.
     pub(crate) fn normalize_history_for_request<'a>(&self, history: &'a [uni::Message]) -> Cow<'a, [uni::Message]> {
         let request_history_needs_repair =

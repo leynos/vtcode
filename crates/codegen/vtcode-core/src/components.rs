@@ -261,7 +261,7 @@ pub trait CacheProvider<Ctx>: Send + Sync {
     fn put_dual(_ctx: &Ctx, _tool_name: &str, _args: &Value, _result: &SplitToolResult) {}
 }
 
-/// Provider trait for retry behavior around tool execution.
+/// Provider trait for retry behaviour around tool execution.
 pub trait RetryProvider<Ctx>: Send + Sync {
     fn max_attempts(_ctx: &Ctx, _tool_name: &str, _args: &Value) -> u32 {
         1
@@ -388,7 +388,7 @@ pub trait HasRetryPolicy: Send + Sync {
 
 /// Exponential-backoff retry provider.
 ///
-/// This preserves the legacy async middleware behavior of retrying failed
+/// This preserves the legacy async middleware behaviour of retrying failed
 /// executions according to the context's retry policy.
 pub struct ExponentialBackoffRetry;
 
@@ -1054,7 +1054,7 @@ pub struct ComposableRuntime;
 
 impl ComposableRuntime {
     /// Execute a tool operation through the full approval → sandbox → execute
-    /// pipeline, with all behavior determined by the context's component
+    /// pipeline, with all behaviour determined by the context's component
     /// wiring.
     pub async fn run<Ctx>(ctx: &Ctx, tool_name: &str, description: &str) -> Result<()>
     where

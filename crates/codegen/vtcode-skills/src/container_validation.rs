@@ -75,7 +75,7 @@ impl ContainerSkillsValidator {
         }
     }
 
-    /// Analyze a skill for container skills requirements
+    /// Analyse a skill for container skills requirements.
     pub fn analyse_skill(&self, skill: &Skill) -> ContainerValidationResult {
         // Honour explicit manifest flags first; avoids keyword false-positives
         if let Some(true) = skill.manifest.requires_container {
@@ -242,7 +242,7 @@ impl ContainerSkillsValidator {
         }
     }
 
-    /// Batch analyze multiple skills
+    /// Batch analyse multiple skills.
     pub fn analyse_skills(&self, skills: &[Skill]) -> Vec<ContainerValidationResult> {
         skills.iter().map(|skill| self.analyse_skill(skill)).collect()
     }

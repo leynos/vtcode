@@ -1,4 +1,4 @@
-//! Pure planning-artifact logic: plan/tracker marker handling, section
+//! Pure planning-artefact logic: plan/tracker marker handling, section
 //! parsing, validation, and tracker generation.
 //!
 //! Everything here is side-effect-free and depends only on `std`/`serde`, so it

@@ -734,7 +734,7 @@ mod tests {
     /// selection accuracy (Section 18.3.4 of the agentic-AI guide). This test
     /// enforces a structural contract so that regressions in description
     /// quality are caught at `cargo test` time rather than via observed
-    /// agent misbehavior.
+    /// agent misbehaviour.
     ///
     /// Every LLM-visible tool with a description must satisfy:
     /// 1. Length is between 40 and 1200 characters.

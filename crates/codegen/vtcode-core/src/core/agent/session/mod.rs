@@ -476,12 +476,12 @@ impl AgentSessionState {
     /// Clear all conversation history for a context reset.
     ///
     /// Following the context engineering pattern: "Context reset uses external
-    /// artifacts as startup material to open a clean new context/session. It
+    /// artefacts as startup material to open a clean new context/session. It
     /// does not preserve the full conversation history."
     ///
     /// This clears `messages`, `conversation`, resets the token count, and
     /// resets the processed-message cursor. The orient context (injected via
-    /// the system prompt) provides the agent with durable artifact references
+    /// the system prompt) provides the agent with durable artefact references
     /// to reorient from. Response continuation chains are also cleared since
     /// they reference the discarded history.
     pub fn clear_conversation_history(&mut self) {

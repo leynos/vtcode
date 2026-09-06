@@ -17,11 +17,11 @@ A clear and concise description of what the bug is.
 3. Scroll down to '...'
 4. See error
 
-## Expected Behavior
+## Expected Behaviour
 
 A clear and concise description of what you expected to happen.
 
-## Actual Behavior
+## Actual Behaviour
 
 A clear and concise description of what actually happened.
 

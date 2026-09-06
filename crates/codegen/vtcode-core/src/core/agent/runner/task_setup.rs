@@ -237,7 +237,7 @@ impl AgentRunner {
     /// written by `maybe_write_reset_after_compaction` or
     /// `maybe_write_reset_on_stall` during a previous session, and this method
     /// acts on it by clearing the conversation history so the agent starts
-    /// fresh from external artifacts only. The manifest is consumed (deleted)
+    /// fresh from external artefacts only. The manifest is consumed (deleted)
     /// so it only triggers once.
     async fn apply_context_reset_if_pending(&self, session_state: &mut AgentSessionState) {
         let manifest_path = harness_artefacts::current_context_reset_path(&self._workspace);

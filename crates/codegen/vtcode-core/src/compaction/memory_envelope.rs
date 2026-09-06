@@ -3,7 +3,7 @@
 //!
 //! This module was extracted from the binary unified runloop so that both the
 //! binary runloop and the `vtcode-core` `AgentRunner` loop use a single
-//! compaction path with identical continuity behavior.
+//! compaction path with identical continuity behaviour.
 
 use std::collections::HashMap;
 use std::fs;
@@ -336,9 +336,9 @@ pub fn build_session_memory_envelope(
     }
 }
 
-/// Persist the recoverable full-history artifact and build + inject a session
+/// Persist the recoverable full-history artefact and build + inject a session
 /// memory envelope into the compacted history. Returns the envelope (with the
-/// artifact path) when one was produced.
+/// artefact path) when one was produced.
 pub fn persist_memory_envelope(
     workspace_root: &Path,
     session_id: &str,
@@ -426,7 +426,7 @@ pub fn persist_memory_envelope_with_update(
 
 /// Async counterpart to [`persist_memory_envelope`]. Compaction runs on the
 /// async agent loop, so filesystem work must not block the runtime while the
-/// recoverable history artifact or envelope is being written.
+/// recoverable history artefact or envelope is being written.
 pub async fn persist_memory_envelope_async(
     workspace_root: &Path,
     session_id: &str,
@@ -1301,7 +1301,7 @@ pub fn resolve_compaction_threshold(configured_threshold: Option<u64>, context_s
 /// context capacity. When no explicit threshold is set, the session budget
 /// limits the provider capacity before the normal 90% trigger ratio is
 /// applied. A zero session budget preserves the legacy provider-only
-/// behavior because zero means that the setting is not configured.
+/// behaviour because zero means that the setting is not configured.
 pub fn resolve_effective_compaction_threshold(
     configured_threshold: Option<u64>,
     provider_context_size: usize,

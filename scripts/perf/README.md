@@ -35,7 +35,7 @@ them in the JSON capture.
 
 ## Outputs
 
-All artifacts are written to `.vtcode/perf/`:
+All artefacts are written to `.vtcode/perf/`:
 
 - `baseline.json` / `latest.json`: captured metrics
 - `*-cargo_check.log`: cargo check output

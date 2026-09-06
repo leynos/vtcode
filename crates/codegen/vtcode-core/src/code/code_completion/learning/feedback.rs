@@ -1,4 +1,4 @@
-/// Feedback processor for analyzing user interactions
+/// Feedback processor for analysing user interactions
 pub struct FeedbackProcessor {
     feedback_history: Vec<FeedbackEntry>,
 }

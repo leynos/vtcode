@@ -74,7 +74,7 @@ pub fn ask_about_selection_with_context(
     ask_agent_with_context(&query, context)
 }
 
-/// Analyze the entire workspace
+/// Analyse the entire workspace.
 pub fn analyze_workspace() -> CommandResponse {
     analyze_workspace_with_context(None)
 }

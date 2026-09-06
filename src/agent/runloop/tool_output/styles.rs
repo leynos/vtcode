@@ -7,7 +7,7 @@ use vtcode_core::tools::tool_intent;
 use vtcode_core::utils::diff_styles::{DiffColourLevel, DiffTheme, diff_add_bg, diff_del_bg};
 use vtcode_core::utils::style_helpers::bold_colour;
 
-/// Get background color for diff lines based on detected theme and color level.
+/// Get background colour for diff lines based on detected theme and colour level.
 fn diff_line_bg_colour(is_addition: bool) -> Option<Color> {
     let theme = DiffTheme::detect();
     let level = DiffColourLevel::detect();

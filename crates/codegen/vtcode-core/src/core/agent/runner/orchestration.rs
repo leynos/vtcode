@@ -369,7 +369,7 @@ impl AgentRunner {
     ///
     /// This addresses the long-running harness pattern: "the evaluator takes on
     /// part of the local planner role for feedback-driven replanning." The
-    /// replanner receives the current artifacts and evaluator feedback, then
+    /// replanner receives the current artefacts and evaluator feedback, then
     /// produces a revised feature list, contract addendum, and new tracker
     /// items. Falls back to `None` on any error (caller uses annotation-only).
     pub(super) async fn request_replan_response(

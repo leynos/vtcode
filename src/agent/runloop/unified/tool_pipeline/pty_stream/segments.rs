@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anstyle::{Ansi256Color, AnsiColor, Color as AnsiColorEnum, Effects, RgbColor, Style as AnsiStyle};
+use anstyle::{Ansi256Color, AnsiColor, Color as AnsiColourEnum, Effects, RgbColor, Style as AnsiStyle};
 use vtcode_core::ui::theme;
 use vtcode_core::utils::style_helpers::ColourPalette;
 use vtcode_ui::tui::app::{InlineLinkRange, InlineLinkTarget, InlineSegment, InlineTextStyle};
@@ -30,13 +30,13 @@ impl PtyLineStyles {
         let output = Arc::new(convert_style(theme_styles.pty_output));
         let magenta_bold = Arc::new(convert_style(
             AnsiStyle::new()
-                .fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::Magenta)))
+                .fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Magenta)))
                 .effects(Effects::BOLD),
         ));
         // The "Ran" verb uses the theme's accent (primary) color so it stays
         // consistent with the summary-path rendering and the active theme.
         let accent_bold = Arc::new(convert_style(theme_styles.primary | Effects::BOLD));
-        let yellow = Arc::new(convert_style(AnsiStyle::new().fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::Yellow)))));
+        let yellow = Arc::new(convert_style(AnsiStyle::new().fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Yellow)))));
 
         Self {
             output: Arc::clone(&output),
@@ -46,13 +46,13 @@ impl PtyLineStyles {
             command: Arc::new(convert_style(AnsiStyle::new().fg_color(Some(palette.success)).effects(Effects::BOLD))),
             args: Arc::new(convert_style(
                 AnsiStyle::new()
-                    .fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::White)))
+                    .fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::White)))
                     .effects(Effects::DIMMED),
             )),
             keyword: magenta_bold,
             variable: Arc::clone(&yellow),
             string: yellow,
-            option: Arc::new(convert_style(AnsiStyle::new().fg_color(Some(AnsiColorEnum::Ansi(AnsiColor::Red))))),
+            option: Arc::new(convert_style(AnsiStyle::new().fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Red))))),
             truncation: Arc::new(convert_style(theme_styles.pty_output)),
         }
     }
@@ -226,7 +226,7 @@ fn shell_syntax_segments(text: &str, styles: &PtyLineStyles, expect_command: boo
 
     let non_ws_count = semantic.iter().filter(|segment| !segment.text.trim().is_empty()).count();
     if non_ws_count > 1 {
-        let mut first_colours: Option<(Option<AnsiColorEnum>, Option<AnsiColorEnum>)> = None;
+        let mut first_colours: Option<(Option<AnsiColourEnum>, Option<AnsiColourEnum>)> = None;
         let mut has_distinct = false;
         for style in converted
             .iter()
@@ -251,7 +251,7 @@ fn shell_syntax_segments(text: &str, styles: &PtyLineStyles, expect_command: boo
     converted
 }
 
-fn ansi_colour_from_ansi_code(code: u16) -> Option<AnsiColorEnum> {
+fn ansi_colour_from_ansi_code(code: u16) -> Option<AnsiColourEnum> {
     let colour = match code {
         30 | 90 => AnsiColor::Black,
         31 | 91 => AnsiColor::Red,
@@ -263,7 +263,7 @@ fn ansi_colour_from_ansi_code(code: u16) -> Option<AnsiColorEnum> {
         37 | 97 => AnsiColor::White,
         _ => return None,
     };
-    Some(AnsiColorEnum::Ansi(colour))
+    Some(AnsiColourEnum::Ansi(colour))
 }
 
 fn clear_sgr_effects(effects: &mut Effects, code: u16) {
@@ -312,7 +312,7 @@ fn apply_sgr_codes(sequence: &str, current: &mut InlineTextStyle, fallback: &Inl
                     match mode {
                         5 => {
                             if let Some(value) = params.get(index + 2).copied() {
-                                let colour = AnsiColorEnum::Ansi256(Ansi256Color(value as u8));
+                                let colour = AnsiColourEnum::Ansi256(Ansi256Color(value as u8));
                                 if is_fg {
                                     current.colour = Some(colour);
                                 } else {
@@ -326,7 +326,7 @@ fn apply_sgr_codes(sequence: &str, current: &mut InlineTextStyle, fallback: &Inl
                                 let r = params[index + 2] as u8;
                                 let g = params[index + 3] as u8;
                                 let b = params[index + 4] as u8;
-                                let colour = AnsiColorEnum::Rgb(RgbColor(r, g, b));
+                                let colour = AnsiColourEnum::Rgb(RgbColor(r, g, b));
                                 if is_fg {
                                     current.colour = Some(colour);
                                 } else {

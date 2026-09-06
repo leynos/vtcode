@@ -11,7 +11,7 @@ pub struct ComplexityResult {
     pub maintainability_index: f64,
 }
 
-/// Complexity analyzer for code quality metrics
+/// Complexity analyser for code quality metrics
 pub struct ComplexityAnalyser;
 
 impl ComplexityAnalyser {
@@ -19,7 +19,7 @@ impl ComplexityAnalyser {
         Self
     }
 
-    /// Analyze complexity of a source file
+    /// Analyse complexity of a source file
     pub fn analyse_file(&self, _file_path: &Path, source: &str) -> ComplexityResult {
         // Calculate actual complexity metrics
         let lines_of_code = source.lines().count();
@@ -41,7 +41,7 @@ impl ComplexityAnalyser {
         }
     }
 
-    /// Analyze complexity of a directory
+    /// Analyse complexity of a directory
     pub fn analyse_directory(&self, dir_path: &Path) -> Vec<ComplexityResult> {
         let mut results = Vec::new();
 

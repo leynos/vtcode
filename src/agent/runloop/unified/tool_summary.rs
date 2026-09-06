@@ -119,11 +119,11 @@ pub(crate) fn render_file_operation_indicator(
     line.push_str(indicator_icon);
     line.push(' ');
 
-    // Action verb in info color
+    // Action verb in info colour
     line.push_str(&render_styled(action_verb, palette.info, None));
     line.push(' ');
 
-    // File path in primary color (dim for subtlety)
+    // File path in primary colour (dim for subtlety)
     line.push_str(&render_styled(&file_path, palette.muted, None));
     line.push_str(&render_styled("...", palette.muted, None));
 
@@ -438,8 +438,8 @@ fn render_summary_with_highlights(
 /// Tries the syntect bash grammar first (the same engine used by the live PTY
 /// stream). When the grammar produces distinct foreground colours the result is
 /// converted to ANSI escape sequences with `args_colour` merged in for tokens
-/// that have no explicit color. Falls back to a simple command-name / args
-/// two-color scheme when the grammar is unavailable or yields a single color.
+/// that have no explicit colour. Falls back to a simple command-name / args
+/// two-colour scheme when the grammar is unavailable or yields a single colour.
 fn render_command_segment(segment: &str, command_colour: Color, args_colour: Color, expect_command: bool) -> String {
     if segment.is_empty() {
         return String::new();
@@ -453,7 +453,7 @@ fn render_command_segment(segment: &str, command_colour: Color, args_colour: Col
         return highlighted;
     }
 
-    // Fallback: simple two-color scheme.
+    // Fallback: simple two-colour scheme.
     if expect_command {
         render_run_command_segment(segment, command_colour, args_colour)
     } else {
@@ -479,8 +479,8 @@ fn try_bash_grammar_ansi(command: &str, fallback_colour: Color) -> Option<String
     }
 
     // Only use the grammar result when it produces at least two distinct
-    // foreground colours among non-whitespace tokens — a single color means
-    // the grammar added no semantic value, so the two-color fallback is
+    // foreground colours among non-whitespace tokens — a single colour means
+    // the grammar added no semantic value, so the two-colour fallback is
     // more informative.
     let non_ws: Vec<&(AnsiStyle, String)> = segments.iter().filter(|(_, t)| !t.trim().is_empty()).collect();
     if non_ws.len() > 1 {
@@ -968,7 +968,7 @@ mod tests {
 
     #[test]
     fn render_command_segment_produces_highlighted_output() {
-        // Force color output on. The color policy uses a Lazy initializer that
+        // Force colour output on. The colour policy uses a Lazy initializer that
         // reads NO_COLOR from the env; we must trigger it first, then override.
         // (nextest runs each test in its own process, so this is safe.)
         let _ = vtcode_commons::colour_policy::current_colour_output_policy();

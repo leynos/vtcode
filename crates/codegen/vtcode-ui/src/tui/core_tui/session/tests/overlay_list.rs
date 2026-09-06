@@ -187,9 +187,9 @@ fn titled_floating_modal_renders_matching_title_and_divider_chrome() {
 #[test]
 fn floating_modal_clears_stale_buffer_content_before_painting() {
     let theme = InlineTheme {
-        foreground: Some(AnsiColorEnum::Rgb(RgbColor(0x22, 0x22, 0x22))),
-        background: Some(AnsiColorEnum::Rgb(RgbColor(0xF5, 0xF5, 0xF0))),
-        primary: Some(AnsiColorEnum::Rgb(RgbColor(0x7A, 0x8F, 0xFF))),
+        foreground: Some(AnsiColourEnum::Rgb(RgbColor(0x22, 0x22, 0x22))),
+        background: Some(AnsiColourEnum::Rgb(RgbColor(0xF5, 0xF5, 0xF0))),
+        primary: Some(AnsiColourEnum::Rgb(RgbColor(0x7A, 0x8F, 0xFF))),
         ..InlineTheme::default()
     };
     let mut session = AppSession::new(theme, None, 30);
@@ -232,8 +232,8 @@ fn floating_modal_clears_stale_buffer_content_before_painting() {
 #[test]
 fn selected_modal_row_uses_primary_foreground() {
     let theme = InlineTheme {
-        foreground: Some(AnsiColorEnum::Rgb(RgbColor(0xEE, 0xEE, 0xEE))),
-        primary: Some(AnsiColorEnum::Rgb(RgbColor(0x12, 0x34, 0x56))),
+        foreground: Some(AnsiColourEnum::Rgb(RgbColor(0xEE, 0xEE, 0xEE))),
+        primary: Some(AnsiColourEnum::Rgb(RgbColor(0x12, 0x34, 0x56))),
         ..InlineTheme::default()
     };
     let mut session = AppSession::new(theme, None, 30);
@@ -272,9 +272,9 @@ fn selected_modal_row_uses_primary_foreground() {
 #[test]
 fn modal_section_header_uses_foreground_contrast_on_light_theme() {
     let theme = InlineTheme {
-        foreground: Some(AnsiColorEnum::Rgb(RgbColor(0x22, 0x22, 0x22))),
-        background: Some(AnsiColorEnum::Rgb(RgbColor(0xF5, 0xF5, 0xF0))),
-        primary: Some(AnsiColorEnum::Rgb(RgbColor(0x7A, 0x8F, 0xFF))),
+        foreground: Some(AnsiColourEnum::Rgb(RgbColor(0x22, 0x22, 0x22))),
+        background: Some(AnsiColourEnum::Rgb(RgbColor(0xF5, 0xF5, 0xF0))),
+        primary: Some(AnsiColourEnum::Rgb(RgbColor(0x7A, 0x8F, 0xFF))),
         ..InlineTheme::default()
     };
     let mut session = AppSession::new(theme, None, 30);

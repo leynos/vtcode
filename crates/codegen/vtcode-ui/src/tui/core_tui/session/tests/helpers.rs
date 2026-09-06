@@ -17,7 +17,7 @@ pub use crate::tui::core_tui::types::{
 };
 pub use crate::tui::core_tui::widgets::TranscriptWidget;
 pub use crate::tui::ui::tui::session::message::RenderedTranscriptLink;
-pub use anstyle::Color as AnsiColorEnum;
+pub use anstyle::Color as AnsiColourEnum;
 pub use anstyle::RgbColor;
 pub use ratatui::crossterm::event::{
     Event as CrosstermEvent, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
@@ -86,11 +86,11 @@ pub(crate) fn make_segment(text: &str) -> InlineSegment {
 
 pub(crate) fn themed_inline_colours() -> InlineTheme {
     InlineTheme {
-        foreground: Some(AnsiColorEnum::Rgb(RgbColor(0xEE, 0xEE, 0xEE))),
-        tool_accent: Some(AnsiColorEnum::Rgb(RgbColor(0xBF, 0x45, 0x45))),
-        tool_body: Some(AnsiColorEnum::Rgb(RgbColor(0xAA, 0x88, 0x88))),
-        primary: Some(AnsiColorEnum::Rgb(RgbColor(0x88, 0x88, 0x88))),
-        secondary: Some(AnsiColorEnum::Rgb(RgbColor(0x77, 0x99, 0xAA))),
+        foreground: Some(AnsiColourEnum::Rgb(RgbColor(0xEE, 0xEE, 0xEE))),
+        tool_accent: Some(AnsiColourEnum::Rgb(RgbColor(0xBF, 0x45, 0x45))),
+        tool_body: Some(AnsiColourEnum::Rgb(RgbColor(0xAA, 0x88, 0x88))),
+        primary: Some(AnsiColourEnum::Rgb(RgbColor(0x88, 0x88, 0x88))),
+        secondary: Some(AnsiColourEnum::Rgb(RgbColor(0x77, 0x99, 0xAA))),
         ..Default::default()
     }
 }
