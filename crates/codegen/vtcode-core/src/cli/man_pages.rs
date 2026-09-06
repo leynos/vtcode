@@ -229,7 +229,7 @@ impl ManPageGenerator {
             "create-project" => Self::generate_create_project_man_page(),
             "init" => Self::generate_init_man_page(),
             "man" => Self::generate_man_man_page(),
-            "analyse" => Self::generate_analyse_man_page(),
+            "analyse" | "analyze" => Self::generate_analyse_man_page(),
             _ => bail!("Unknown command: {command}"),
         }
     }
@@ -640,13 +640,19 @@ mod tests {
     use super::ManPageGenerator;
 
     #[test]
-    fn dispatches_analyse_man_page() {
-        let page =
+    fn dispatches_canonical_and_legacy_analyse_man_pages() {
+        let canonical_page =
             ManPageGenerator::generate_command_man_page("analyse").expect("analyse man page should be generated");
+        let legacy_page = ManPageGenerator::generate_command_man_page("analyze")
+            .expect("legacy analyze man page should dispatch to the canonical page");
 
-        assert!(page.contains("VTCODE-ANALYSE"), "analyse dispatch should generate the canonical man-page title");
+        assert_eq!(legacy_page, canonical_page, "legacy analyze dispatch should return the canonical analyse man page");
         assert!(
-            page.contains(r"\fBanalyse\fR"),
+            canonical_page.contains("VTCODE-ANALYSE"),
+            "analyse dispatch should generate the canonical man-page title"
+        );
+        assert!(
+            canonical_page.contains(r"\fBanalyse\fR"),
             "analyse man page should include the canonical command in its synopsis"
         );
     }
