@@ -764,6 +764,7 @@ impl OpenAIProvider {
 }
 
 #[cfg(test)]
+#[path = "provider_tests/mod.rs"]
 mod tests;
 
 mod harmony_client;

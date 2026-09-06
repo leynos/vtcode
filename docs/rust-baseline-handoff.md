@@ -851,3 +851,26 @@ the later source-fix layer.
 All 24 changed documents pass Nixie. Exact-parent Markdown comparison identified
 one new long line from a longer module path, now wrapped; the other 1,134
 diagnostics are inherited. Final document validation follows that correction.
+
+## Test-module extraction follow-up
+
+This layer (`harden-lint-test-modules`) follows module structure PR #71 at
+`630f2c7589d5860a1c8eca3772968903ba571566`. It extracts two source groups,
+totalling 147 tests plus helpers: 105 OpenAI provider tests across 13 child
+modules and 42 session tool catalogue tests across seven child modules.
+Each extracted test module remains below 400 lines.
+
+Test bodies are preserved. Private helper visibility and import wiring change
+only as required by the new boundaries. Leading attributes and documentation
+comments follow their corresponding items; the formatting preflight caught and
+prompted correction of stranded item prefixes. Two function-local backend
+imports also account for the added module depth.
+
+The corrected layer passes formatting, lint, build and type-checking. All
+10,094 workspace tests pass (17 skipped), preserving the original discovery
+count; all 67 harness tests pass. The eight spelling and 13 Actions contracts
+pass. Advisory checks pass; the existing AST-grep target skips because the
+binary is unavailable. Four inherited rustdoc warnings remain for later
+source fixes. The handoff passes Nixie; final Markdown and spelling checks
+validate these notes.
+The tool-output test extraction remains a subsequent layer.
