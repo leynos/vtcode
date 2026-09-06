@@ -80,6 +80,9 @@ mod rate_limit_timing_tests;
 mod responses_tests;
 
 #[cfg(test)]
+#[path = "responses_probe_tests.rs"]
+mod responses_probe_tests;
+#[cfg(test)]
 struct PromptProviderOverride {
     provider_name: String,
     factory: Arc<PromptProviderFactory>,

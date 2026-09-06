@@ -32,17 +32,17 @@ const MODEL: &str = "responses-wire-model";
 const PROVIDER: &str = "wire-test";
 
 #[derive(Clone, Debug)]
-struct CapturedRequest {
-    path: String,
-    body: Value,
+pub(super) struct CapturedRequest {
+    pub(super) path: String,
+    pub(super) body: Value,
 }
 
 #[derive(Clone)]
-struct ScriptedResponder {
-    responses: Arc<[ResponseTemplate]>,
-    request_times: Arc<Mutex<Vec<StdInstant>>>,
-    requests: Arc<Mutex<Vec<CapturedRequest>>>,
-    next_response: Arc<AtomicUsize>,
+pub(super) struct ScriptedResponder {
+    pub(super) responses: Arc<[ResponseTemplate]>,
+    pub(super) request_times: Arc<Mutex<Vec<StdInstant>>>,
+    pub(super) requests: Arc<Mutex<Vec<CapturedRequest>>>,
+    pub(super) next_response: Arc<AtomicUsize>,
 }
 
 impl Respond for ScriptedResponder {
@@ -64,16 +64,16 @@ impl Respond for ScriptedResponder {
     }
 }
 
-struct AcpRun {
-    notifications: Vec<acp::AgentNotification>,
-    output_times: Vec<StdInstant>,
-    stop_reasons: Vec<acp::StopReason>,
-    messages: Vec<ProviderMessage>,
-    checkpoint_json: Option<String>,
-    active_permits: usize,
+pub(super) struct AcpRun {
+    pub(super) notifications: Vec<acp::AgentNotification>,
+    pub(super) output_times: Vec<StdInstant>,
+    pub(super) stop_reasons: Vec<acp::StopReason>,
+    pub(super) messages: Vec<ProviderMessage>,
+    pub(super) checkpoint_json: Option<String>,
+    pub(super) active_permits: usize,
 }
 
-fn provider_config(base_url: String) -> CustomProviderConfig {
+pub(super) fn provider_config(base_url: String) -> CustomProviderConfig {
     CustomProviderConfig {
         name: PROVIDER.to_string(),
         display_name: "Responses wire provider".to_string(),
@@ -111,7 +111,7 @@ fn custom_provider(config: CustomProviderConfig) -> CustomProviderBackendRouter 
     )
 }
 
-async fn run_acp_prompts(config: CustomProviderConfig, prompts: &[&str], timeout: Duration) -> AcpRun {
+pub(super) async fn run_acp_prompts(config: CustomProviderConfig, prompts: &[&str], timeout: Duration) -> AcpRun {
     let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
     let factory_config = config.clone();
     let _factory_guard = PromptProviderFactoryGuard::install(
@@ -251,7 +251,7 @@ fn responses_success() -> ResponseTemplate {
     ResponseTemplate::new(200).set_body_raw(body, "text/event-stream")
 }
 
-fn responses_text_success(text: &str) -> ResponseTemplate {
+pub(super) fn responses_text_success(text: &str) -> ResponseTemplate {
     let delta = json!({"type":"response.output_text.delta","sequence_number":0,"delta":text});
     let completed = json!({
         "type":"response.completed",
@@ -421,7 +421,7 @@ fn rate_limited_response(headers: &[(&str, &str)]) -> ResponseTemplate {
     response
 }
 
-fn visible_text(notifications: &[acp::AgentNotification]) -> String {
+pub(super) fn visible_text(notifications: &[acp::AgentNotification]) -> String {
     notifications
         .iter()
         .filter_map(|notification| match notification {
@@ -1525,13 +1525,13 @@ async fn custom_responses_total_deadline_is_not_extended_by_paced_output() {
     }));
 }
 
-struct RunningVidaiMock {
+pub(super) struct RunningVidaiMock {
     child: Child,
-    responses_url: String,
+    pub(super) responses_url: String,
 }
 
 impl RunningVidaiMock {
-    fn start(scenario: &str, provider_path: &str) -> anyhow::Result<Self> {
+    pub(super) fn start(scenario: &str, provider_path: &str) -> anyhow::Result<Self> {
         let version = Command::new("vidaimock").arg("--version").output()?;
         anyhow::ensure!(version.status.success(), "vidaimock --version failed");
         anyhow::ensure!(
@@ -1586,16 +1586,16 @@ fn vidaimock_fixture_root() -> PathBuf {
 }
 
 #[derive(Clone)]
-struct ResponsesGatewayState {
-    upstream_responses_url: String,
-    paths: Arc<Mutex<Vec<String>>>,
-    attempts: Arc<AtomicUsize>,
-    quota_failures: usize,
-    request_times: Arc<Mutex<Vec<StdInstant>>>,
-    client: reqwest::Client,
+pub(super) struct ResponsesGatewayState {
+    pub(super) upstream_responses_url: String,
+    pub(super) paths: Arc<Mutex<Vec<String>>>,
+    pub(super) attempts: Arc<AtomicUsize>,
+    pub(super) quota_failures: usize,
+    pub(super) request_times: Arc<Mutex<Vec<StdInstant>>>,
+    pub(super) client: reqwest::Client,
 }
 
-async fn responses_gateway(State(state): State<ResponsesGatewayState>, body: Bytes) -> Response<Body> {
+pub(super) async fn responses_gateway(State(state): State<ResponsesGatewayState>, body: Bytes) -> Response<Body> {
     state
         .paths
         .lock()
