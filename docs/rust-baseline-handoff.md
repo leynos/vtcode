@@ -902,3 +902,26 @@ Advisory checks and Nixie pass; optional AST-grep is unavailable. Four inherited
 rustdoc warnings remain for later source fixes. Final handoff and spelling
 checks validate these notes; mechanical Markdown formatting follows in later
 layers.
+
+## Agent test-module extraction
+
+This layer (`harden-lint-agent-test-modules`) follows parent PR #73 at
+`bfe2c66d`. It extracts four groups: 47 tool-output-handler tests,
+60 tool-outcome helper tests, 69 system-prompt tests and 27 execution-history
+tests, including two property-test blocks. Named, test-gated module roots
+connect the child files. Shared helpers remain private to the test subtree.
+
+Independent audits verify complete items, attached attributes and comments,
+required import scope and authored diagnostic fixtures. In particular, the
+synthetic `runner/tests.rs` strings remain unchanged. Child modules contain
+at most 315 lines after formatting. Compilation exposed two move-sensitive
+references: the system-prompt fixture include needs a parent-directory prefix,
+and the extent-coverage child needs a distinct name to avoid shadowing the
+production read-extent module. Both are corrected without changing fixture
+bytes or assertions.
+
+Formatting, lint, build, type-checking, all 10,094 workspace tests (17 skipped)
+and all 67 harness tests pass. Eight spelling contracts and 13 Actions
+contracts retain their passing results; their implementation is unchanged.
+Advisory checks, handoff Markdownlint and Nixie pass. Optional AST-grep is
+unavailable, and four inherited rustdoc warnings remain for later source fixes.
