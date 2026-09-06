@@ -863,6 +863,7 @@ fn load_cli_agents(value: &JsonValue) -> Result<Vec<SubagentSpec>> {
         let model = config.get("model").and_then(JsonValue::as_str).map(ToString::to_string);
         let colour = config
             .get("color")
+            .or_else(|| config.get("colour"))
             .or_else(|| config.get("badgeColor"))
             .or_else(|| config.get("badge_color"))
             .and_then(JsonValue::as_str)
@@ -1017,6 +1018,7 @@ fn subagent_spec_from_json_map(
     let model = object.get("model").and_then(JsonValue::as_str).map(ToString::to_string);
     let colour = object
         .get("color")
+        .or_else(|| object.get("colour"))
         .or_else(|| object.get("badgeColor"))
         .or_else(|| object.get("badge_color"))
         .and_then(JsonValue::as_str)
@@ -1986,6 +1988,65 @@ permissions = { default = "ask" }
         assert_eq!(spec.reasoning_effort, Some(ReasoningEffortLevel::High));
         assert_eq!(spec.nickname_candidates, vec!["builder".to_string()]);
         Ok(())
+    }
+
+    #[test]
+    fn parses_british_colour_from_markdown_frontmatter() -> Result<()> {
+        let temp = TempDir::new()?;
+        let path = temp.path().join("colour-agent.md");
+        fs::write(
+            &path,
+            r#"---
+name: colour-agent
+description: Markdown agent with British spelling
+colour: orchid
+permissions:
+  default: ask
+---
+Prompt."#,
+        )?;
+
+        let spec = load_subagent_from_file(&path, SubagentSource::ProjectVtcode)?;
+
+        assert_eq!(spec.colour.as_deref(), Some("orchid"), "Markdown frontmatter preserves the British `colour` alias");
+        Ok(())
+    }
+
+    #[test]
+    fn parses_british_colour_from_codex_toml() -> Result<()> {
+        let temp = TempDir::new()?;
+        let path = temp.path().join("colour-agent.toml");
+        fs::write(
+            &path,
+            r#"name = "colour-agent"
+description = "Codex agent with British spelling"
+prompt = "Prompt."
+colour = "orchid"
+permissions = { default = "ask" }
+"#,
+        )?;
+
+        let spec = load_subagent_from_file(&path, SubagentSource::ProjectCodex)?;
+
+        assert_eq!(spec.colour.as_deref(), Some("orchid"), "Codex TOML preserves the British `colour` alias");
+        Ok(())
+    }
+
+    #[test]
+    fn parses_british_colour_from_cli_agents() {
+        let cli_agents = json!({
+            "colour-agent": {
+                "description": "CLI agent with British spelling",
+                "colour": "orchid",
+                "permissions": { "default": "ask" }
+            }
+        });
+
+        let specs = load_cli_agents(&cli_agents).expect("CLI subagent payload with British `colour` should parse");
+
+        assert_eq!(specs.len(), 1, "one CLI agent should produce one subagent specification");
+        let spec = specs.first().expect("one parsed CLI agent should have a specification");
+        assert_eq!(spec.colour.as_deref(), Some("orchid"), "CLI JSON preserves the British `colour` alias");
     }
 
     #[test]
