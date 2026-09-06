@@ -47,7 +47,7 @@ pub struct AnthropicProvider {
     prompt_cache_settings: AnthropicPromptCacheSettings,
     anthropic_config: AnthropicConfig,
     custom_provider_auth: Option<CustomProviderAuthHandle>,
-    model_behavior: Option<ModelConfig>,
+    model_behaviour: Option<ModelConfig>,
 }
 
 impl AnthropicProvider {
@@ -91,7 +91,7 @@ impl AnthropicProvider {
             prompt_cache_settings: AnthropicPromptCacheSettings::default(),
             anthropic_config: AnthropicConfig::default(),
             custom_provider_auth: None,
-            model_behavior: None,
+            model_behaviour: None,
         }
     }
 
@@ -102,7 +102,7 @@ impl AnthropicProvider {
         prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<TimeoutsConfig>,
         anthropic_config: Option<AnthropicConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         let api_key_value = api_key.unwrap_or_default();
         let model_value = resolve_model(model, models::anthropic::DEFAULT_MODEL);
@@ -115,7 +115,7 @@ impl AnthropicProvider {
             base_url,
             anthropic_cfg,
             timeouts.unwrap_or_default(),
-            model_behavior,
+            model_behaviour,
         )
     }
 
@@ -126,7 +126,7 @@ impl AnthropicProvider {
         base_url: Option<String>,
         anthropic_config: AnthropicConfig,
         timeouts: TimeoutsConfig,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         use crate::http_client::HttpClientFactory;
 
@@ -151,7 +151,7 @@ impl AnthropicProvider {
             prompt_cache_settings,
             anthropic_config,
             custom_provider_auth: None,
-            model_behavior,
+            model_behaviour,
         }
     }
 
@@ -588,7 +588,7 @@ impl LLMProvider for AnthropicProvider {
         // does NOT disable it for known reasoning models.
         capabilities::supports_reasoning(model, &self.model)
             || self
-                .model_behavior
+                .model_behaviour
                 .as_ref()
                 .and_then(|b| b.model_supports_reasoning)
                 .unwrap_or(false)
@@ -598,7 +598,7 @@ impl LLMProvider for AnthropicProvider {
         // Same robustness logic for reasoning effort
         capabilities::supports_reasoning_effort(model, &self.model)
             || self
-                .model_behavior
+                .model_behaviour
                 .as_ref()
                 .and_then(|b| b.model_supports_reasoning_effort)
                 .unwrap_or(false)

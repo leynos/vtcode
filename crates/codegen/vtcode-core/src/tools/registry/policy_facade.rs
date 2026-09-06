@@ -288,8 +288,8 @@ impl ToolRegistry {
                     registration.metadata().default_permission().unwrap_or(ToolPolicy::Prompt),
                     registration
                         .metadata()
-                        .behavior()
-                        .map(|behavior| behavior.safe_mode_prompt)
+                        .behaviour()
+                        .map(|behaviour| behaviour.safe_mode_prompt)
                         .unwrap_or(false),
                 )
             })

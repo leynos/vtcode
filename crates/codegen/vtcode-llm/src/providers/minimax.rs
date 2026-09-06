@@ -51,7 +51,7 @@ impl MinimaxProvider {
         prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<TimeoutsConfig>,
         anthropic: Option<AnthropicConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         let resolved_model = resolve_model(model, models::minimax::DEFAULT_MODEL);
         let resolved_base = resolve_minimax_base_url(base_url);
@@ -64,7 +64,7 @@ impl MinimaxProvider {
                 prompt_cache,
                 timeouts,
                 anthropic,
-                model_behavior,
+                model_behaviour,
             ),
             model: resolved_model,
         }

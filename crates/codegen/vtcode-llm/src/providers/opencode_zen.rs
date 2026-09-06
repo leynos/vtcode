@@ -66,12 +66,12 @@ impl OpenCodeZenProvider {
         _prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<TimeoutsConfig>,
         _anthropic: Option<AnthropicConfig>,
-        _model_behavior: Option<ModelConfig>,
+        _model_behaviour: Option<ModelConfig>,
     ) -> Self {
         let api_key_value = api_key.unwrap_or_default();
         let model_value = resolve_model(model, models::opencode_zen::DEFAULT_MODEL);
 
-        Self::with_model_internal(api_key_value, model_value, base_url, timeouts, _model_behavior)
+        Self::with_model_internal(api_key_value, model_value, base_url, timeouts, _model_behaviour)
     }
 
     fn with_model_internal(
@@ -79,7 +79,7 @@ impl OpenCodeZenProvider {
         model: String,
         base_url: Option<String>,
         timeouts: Option<TimeoutsConfig>,
-        _model_behavior: Option<ModelConfig>,
+        _model_behaviour: Option<ModelConfig>,
     ) -> Self {
         use crate::http_client::HttpClientFactory;
 

@@ -101,7 +101,7 @@ fn runtime_config() -> CoreAgentConfig {
         checkpointing_max_snapshots: DEFAULT_MAX_SNAPSHOTS,
         checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
         max_conversation_turns: 1000,
-        model_behavior: None,
+        model_behaviour: None,
         openai_chatgpt_auth: None,
     }
 }
@@ -2160,7 +2160,7 @@ async fn once_approval_for_one_command_does_not_approve_other_commands() {
     // `unified_exec {action:"run", command:"ls src"}` writes:
     //   - the command-scoped cache key (`tool:command`),
     //   - the learned shell-family key (`shell-pattern:ls|scope`),
-    // and, under the pre-fix behavior, additionally the bare tool name.
+    // and, under the pre-fix behaviour, additionally the bare tool name.
     let scope_suffix = "sandbox_permissions=\"use_default\"|additional_permissions=null";
     let approved_command = "ls src";
     let mut cache = permission_cache.write().await;

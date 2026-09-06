@@ -120,10 +120,10 @@ impl EvolinkProvider {
         _prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<vtcode_config::TimeoutsConfig>,
         _anthropic: Option<vtcode_config::core::AnthropicConfig>,
-        model_behavior: Option<vtcode_config::core::ModelConfig>,
+        model_behaviour: Option<vtcode_config::core::ModelConfig>,
     ) -> Self {
         Self {
-            core: OpenAiCompatCore::from_config(api_key, model, base_url, _prompt_cache, timeouts, model_behavior),
+            core: OpenAiCompatCore::from_config(api_key, model, base_url, _prompt_cache, timeouts, model_behaviour),
         }
     }
 
@@ -295,9 +295,9 @@ impl LLMProvider for EvolinkProvider {
         };
 
         self.core
-            .model_behavior
+            .model_behaviour
             .as_ref()
-            .and_then(|behavior| behavior.model_supports_reasoning)
+            .and_then(|behaviour| behaviour.model_supports_reasoning)
             .unwrap_or(false)
             || models::evolink::REASONING_MODELS.contains(&requested)
     }
@@ -310,9 +310,9 @@ impl LLMProvider for EvolinkProvider {
         };
 
         self.core
-            .model_behavior
+            .model_behaviour
             .as_ref()
-            .and_then(|behavior| behavior.model_supports_reasoning_effort)
+            .and_then(|behaviour| behaviour.model_supports_reasoning_effort)
             .unwrap_or(false)
             || models::evolink::REASONING_MODELS.contains(&requested)
     }

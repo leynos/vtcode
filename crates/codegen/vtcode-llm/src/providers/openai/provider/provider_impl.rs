@@ -40,7 +40,7 @@ impl provider::LLMProvider for OpenAIProvider {
         // does NOT disable it for known reasoning models.
         models::openai::REASONING_MODELS.contains(&requested)
             || self
-                .model_behavior
+                .model_behaviour
                 .as_ref()
                 .and_then(|b| b.model_supports_reasoning)
                 .unwrap_or(false)
@@ -56,7 +56,7 @@ impl provider::LLMProvider for OpenAIProvider {
         // Same robustness logic for reasoning effort
         models::openai::REASONING_MODELS.iter().any(|candidate| *candidate == requested)
             || self
-                .model_behavior
+                .model_behaviour
                 .as_ref()
                 .and_then(|b| b.model_supports_reasoning_effort)
                 .unwrap_or(false)

@@ -81,9 +81,9 @@ impl_openai_compat_provider!(StepFunProvider, StepFunSpec, {
         };
 
         self.core
-            .model_behavior
+            .model_behaviour
             .as_ref()
-            .and_then(|behavior| behavior.model_supports_reasoning)
+            .and_then(|behaviour| behaviour.model_supports_reasoning)
             .unwrap_or(false)
             || models::stepfun::REASONING_MODELS.contains(&requested)
     }
@@ -96,9 +96,9 @@ impl_openai_compat_provider!(StepFunProvider, StepFunSpec, {
         };
 
         self.core
-            .model_behavior
+            .model_behaviour
             .as_ref()
-            .and_then(|behavior| behavior.model_supports_reasoning_effort)
+            .and_then(|behaviour| behaviour.model_supports_reasoning_effort)
             .unwrap_or(false)
             || models::stepfun::REASONING_MODELS.contains(&requested)
     }

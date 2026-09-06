@@ -23,7 +23,7 @@ use crate::startup::require_full_auto_workspace_trust;
 
 use super::super::exec::ExecCommandOptions;
 
-enum StdinPromptBehavior {
+enum StdinPromptBehaviour {
     RequiredIfPiped,
     Forced,
     OptionalAppend,
@@ -247,19 +247,19 @@ pub(super) fn validate_resume_prompt_requirement(command: &ExecCommandKind, stdi
 fn resolve_prompt(prompt_arg: Option<String>, quiet: bool) -> Result<String> {
     let prompt = match prompt_arg {
         Some(prompt) if prompt != "-" => {
-            if let Some(stdin_text) = read_prompt_from_stdin(StdinPromptBehavior::OptionalAppend, quiet)? {
+            if let Some(stdin_text) = read_prompt_from_stdin(StdinPromptBehaviour::OptionalAppend, quiet)? {
                 prompt_with_stdin_context(&prompt, &stdin_text)
             } else {
                 prompt
             }
         }
         maybe_dash => {
-            let behavior = if matches!(maybe_dash.as_deref(), Some("-")) {
-                StdinPromptBehavior::Forced
+            let behaviour = if matches!(maybe_dash.as_deref(), Some("-")) {
+                StdinPromptBehaviour::Forced
             } else {
-                StdinPromptBehavior::RequiredIfPiped
+                StdinPromptBehaviour::RequiredIfPiped
             };
-            read_prompt_from_stdin(behavior, quiet)?.expect("required stdin prompt should produce content")
+            read_prompt_from_stdin(behaviour, quiet)?.expect("required stdin prompt should produce content")
         }
     };
 
@@ -267,21 +267,21 @@ fn resolve_prompt(prompt_arg: Option<String>, quiet: bool) -> Result<String> {
     Ok(prompt)
 }
 
-fn read_prompt_from_stdin(behavior: StdinPromptBehavior, quiet: bool) -> Result<Option<String>> {
+fn read_prompt_from_stdin(behaviour: StdinPromptBehaviour, quiet: bool) -> Result<Option<String>> {
     let stdin_is_tty = io::stdin().is_tty_ext();
 
-    match behavior {
-        StdinPromptBehavior::RequiredIfPiped if stdin_is_tty => {
+    match behaviour {
+        StdinPromptBehaviour::RequiredIfPiped if stdin_is_tty => {
             bail!("No prompt provided. Pass a prompt argument, pipe input, or use '-' to read from stdin.");
         }
-        StdinPromptBehavior::RequiredIfPiped => {
+        StdinPromptBehaviour::RequiredIfPiped => {
             if !quiet {
                 eprintln!("Reading prompt from stdin...");
             }
         }
-        StdinPromptBehavior::Forced => {}
-        StdinPromptBehavior::OptionalAppend if stdin_is_tty => return Ok(None),
-        StdinPromptBehavior::OptionalAppend => {
+        StdinPromptBehaviour::Forced => {}
+        StdinPromptBehaviour::OptionalAppend if stdin_is_tty => return Ok(None),
+        StdinPromptBehaviour::OptionalAppend => {
             if !quiet {
                 eprintln!("Reading additional input from stdin...");
             }
@@ -294,9 +294,9 @@ fn read_prompt_from_stdin(behavior: StdinPromptBehavior, quiet: bool) -> Result<
         .context("Failed to read prompt from stdin")?;
 
     if buffer.trim().is_empty() {
-        return match behavior {
-            StdinPromptBehavior::OptionalAppend => Ok(None),
-            StdinPromptBehavior::RequiredIfPiped | StdinPromptBehavior::Forced => {
+        return match behaviour {
+            StdinPromptBehaviour::OptionalAppend => Ok(None),
+            StdinPromptBehaviour::RequiredIfPiped | StdinPromptBehaviour::Forced => {
                 validate_non_empty(&buffer, "Prompt via stdin")?;
                 Ok(None)
             }
@@ -587,7 +587,7 @@ use_root_config = true
             checkpointing_max_snapshots: 50,
             checkpointing_max_age_days: Some(30),
             max_conversation_turns: 1000,
-            model_behavior: None,
+            model_behaviour: None,
             openai_chatgpt_auth: None,
         };
 

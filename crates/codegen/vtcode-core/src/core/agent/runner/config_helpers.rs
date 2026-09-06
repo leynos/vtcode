@@ -56,7 +56,7 @@ impl AgentRunner {
             checkpointing_max_snapshots: cfg.agent.checkpointing.max_snapshots,
             checkpointing_max_age_days: cfg.agent.checkpointing.max_age_days,
             max_conversation_turns: cfg.agent.max_conversation_turns,
-            model_behavior: Some(cfg.model.clone()),
+            model_behaviour: Some(cfg.model.clone()),
             openai_chatgpt_auth: None,
         }
     }

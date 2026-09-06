@@ -32,7 +32,7 @@ use vtcode_core::core::interfaces::ui::UiSession;
 use vtcode_core::exec::events::PermissionDecision;
 use vtcode_core::exec_policy::AskForApproval;
 use vtcode_core::hooks::{
-    LifecycleHookEngine, PermissionDecisionBehavior, PermissionDecisionScope, PreToolHookDecision,
+    LifecycleHookEngine, PermissionDecisionBehaviour, PermissionDecisionScope, PreToolHookDecision,
 };
 use vtcode_core::permissions::{
     PermissionRequest, PermissionRequestKind, ResolvedPermissionDecision, build_permission_request,
@@ -292,7 +292,7 @@ fn build_permission_suggestions(
 async fn apply_permission_hook_updates(
     tool_registry: &ToolRegistry,
     permissions_state: &Arc<RwLock<PermissionsConfig>>,
-    behavior: PermissionDecisionBehavior,
+    behaviour: PermissionDecisionBehaviour,
     updates: &[vtcode_core::hooks::PermissionUpdateRequest],
 ) -> Vec<vtcode_core::hooks::HookMessage> {
     use std::collections::BTreeSet;
@@ -323,9 +323,9 @@ async fn apply_permission_hook_updates(
             }
             (destination, PermissionUpdateKind::AddRules(rules)) => {
                 let rules = bounded_permission_rules("add_rules", rules, &mut messages);
-                let target = match behavior {
-                    PermissionDecisionBehavior::Allow => &mut state.allow,
-                    PermissionDecisionBehavior::Deny => &mut state.deny,
+                let target = match behaviour {
+                    PermissionDecisionBehaviour::Allow => &mut state.allow,
+                    PermissionDecisionBehaviour::Deny => &mut state.deny,
                 };
                 let mut seen = target.iter().cloned().collect::<BTreeSet<_>>();
                 for rule in rules {
@@ -338,9 +338,9 @@ async fn apply_permission_hook_updates(
             }
             (destination, PermissionUpdateKind::ReplaceRules(rules)) => {
                 let rules = bounded_permission_rules("replace_rules", rules, &mut messages);
-                let target = match behavior {
-                    PermissionDecisionBehavior::Allow => &mut state.allow,
-                    PermissionDecisionBehavior::Deny => &mut state.deny,
+                let target = match behaviour {
+                    PermissionDecisionBehaviour::Allow => &mut state.allow,
+                    PermissionDecisionBehaviour::Deny => &mut state.deny,
                 };
                 if target.as_slice() != rules {
                     *target = rules.to_vec();
@@ -350,9 +350,9 @@ async fn apply_permission_hook_updates(
             }
             (destination, PermissionUpdateKind::RemoveRules(rules)) => {
                 let rules = bounded_permission_rules("remove_rules", rules, &mut messages);
-                let target = match behavior {
-                    PermissionDecisionBehavior::Allow => &mut state.allow,
-                    PermissionDecisionBehavior::Deny => &mut state.deny,
+                let target = match behaviour {
+                    PermissionDecisionBehaviour::Allow => &mut state.allow,
+                    PermissionDecisionBehaviour::Deny => &mut state.deny,
                 };
                 let initial_len = target.len();
                 target.retain(|rule| !rules.iter().any(|candidate| candidate == rule));
@@ -424,17 +424,17 @@ async fn approve_tool_permission_no_cache(
 }
 
 fn map_permission_decision(
-    behavior: PermissionDecisionBehavior,
+    behaviour: PermissionDecisionBehaviour,
     scope: PermissionDecisionScope,
     interrupt: bool,
 ) -> HitlDecision {
-    match (behavior, scope, interrupt) {
-        (PermissionDecisionBehavior::Allow, PermissionDecisionScope::Once, _) => HitlDecision::Approved,
-        (PermissionDecisionBehavior::Allow, PermissionDecisionScope::Session, _) => HitlDecision::ApprovedSession,
-        (PermissionDecisionBehavior::Allow, PermissionDecisionScope::Permanent, _) => HitlDecision::ApprovedPermanent,
-        (PermissionDecisionBehavior::Deny, _, true) => HitlDecision::Interrupt,
-        (PermissionDecisionBehavior::Deny, PermissionDecisionScope::Permanent, _) => HitlDecision::Denied,
-        (PermissionDecisionBehavior::Deny, _, false) => HitlDecision::DeniedOnce,
+    match (behaviour, scope, interrupt) {
+        (PermissionDecisionBehaviour::Allow, PermissionDecisionScope::Once, _) => HitlDecision::Approved,
+        (PermissionDecisionBehaviour::Allow, PermissionDecisionScope::Session, _) => HitlDecision::ApprovedSession,
+        (PermissionDecisionBehaviour::Allow, PermissionDecisionScope::Permanent, _) => HitlDecision::ApprovedPermanent,
+        (PermissionDecisionBehaviour::Deny, _, true) => HitlDecision::Interrupt,
+        (PermissionDecisionBehaviour::Deny, PermissionDecisionScope::Permanent, _) => HitlDecision::Denied,
+        (PermissionDecisionBehaviour::Deny, _, false) => HitlDecision::DeniedOnce,
     }
 }
 
@@ -1354,7 +1354,7 @@ pub(crate) async fn ensure_tool_permission_with_call_id<S: UiSession + ?Sized>(
                         apply_permission_hook_updates(
                             tool_registry,
                             permissions_state,
-                            decision.behavior,
+                            decision.behaviour,
                             &decision.permission_updates,
                         )
                         .await
@@ -1378,7 +1378,7 @@ pub(crate) async fn ensure_tool_permission_with_call_id<S: UiSession + ?Sized>(
                         &approval_learning_target,
                         exact_shell_approval_target.as_ref(),
                         &persistent_approval_target,
-                        map_permission_decision(decision.behavior, decision.scope, decision.interrupt),
+                        map_permission_decision(decision.behaviour, decision.scope, decision.interrupt),
                         decision.updated_input.or_else(|| hook_rewritten_args.clone()),
                     )
                     .await;

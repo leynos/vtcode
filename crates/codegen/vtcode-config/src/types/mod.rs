@@ -99,7 +99,7 @@ pub enum ToolDocumentationMode {
     /// Best for: General usage, balances overhead vs guidance (recommended)
     #[default]
     Progressive,
-    /// Full documentation upfront (~3,000 tokens total) - Current behavior
+    /// Full documentation upfront (~3,000 tokens total) - Current behaviour
     /// Best for: Maximum hand-holding, comprehensive parameter documentation
     Full,
 }
@@ -465,7 +465,7 @@ pub struct AgentConfig {
     pub checkpointing_max_snapshots: usize,
     pub checkpointing_max_age_days: Option<u64>,
     pub max_conversation_turns: usize,
-    pub model_behavior: Option<crate::core::ModelConfig>,
+    pub model_behaviour: Option<crate::core::ModelConfig>,
 }
 
 /// Workshop agent capability levels

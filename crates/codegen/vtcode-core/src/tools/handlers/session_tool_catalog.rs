@@ -898,8 +898,8 @@ fn surface_allows_tool(surface: SessionSurface, tool_name: &str) -> bool {
 fn registration_catalog_kind(registration: &ToolRegistration) -> CatalogToolKind {
     registration
         .metadata()
-        .behavior()
-        .map(|behavior| match behavior.surface_kind {
+        .behaviour()
+        .map(|behaviour| match behaviour.surface_kind {
             ToolSurfaceKind::Function => CatalogToolKind::Function,
             ToolSurfaceKind::ApplyPatch => CatalogToolKind::ApplyPatch,
         })
@@ -907,8 +907,8 @@ fn registration_catalog_kind(registration: &ToolRegistration) -> CatalogToolKind
 }
 
 fn registration_supports_parallel_tool_calls(registration: &ToolRegistration) -> bool {
-    if let Some(behavior) = registration.metadata().behavior() {
-        return behavior.supports_parallel_calls;
+    if let Some(behaviour) = registration.metadata().behaviour() {
+        return behaviour.supports_parallel_calls;
     }
 
     match registration.handler() {
@@ -927,7 +927,7 @@ mod tests {
     use crate::tools::constants::empty_object_schema;
     use crate::tools::registry::ToolRegistration;
     use crate::tools::request_user_input::RequestUserInputTool;
-    use crate::tools::tool_intent::{ToolBehavior, ToolMutationModel};
+    use crate::tools::tool_intent::{ToolBehaviour, ToolMutationModel};
     use crate::tools::traits::Tool;
     use serde_json::json;
 
@@ -948,7 +948,7 @@ mod tests {
                 .with_llm_visibility(false)
                 .with_description("Apply patch")
                 .with_parameter_schema(apply_patch_parameters())
-                .with_behavior(ToolBehavior::apply_patch(ToolMutationModel::Mutating, false, true)),
+                .with_behaviour(ToolBehaviour::apply_patch(ToolMutationModel::Mutating, false, true)),
             registration(tools::CODE_SEARCH)
                 .with_description("Search code")
                 .with_parameter_schema(empty_object_schema()),
@@ -1042,7 +1042,7 @@ mod tests {
                 .with_llm_visibility(false)
                 .with_description("Apply patch")
                 .with_parameter_schema(apply_patch_parameters())
-                .with_behavior(ToolBehavior::apply_patch(ToolMutationModel::Mutating, false, true)),
+                .with_behaviour(ToolBehaviour::apply_patch(ToolMutationModel::Mutating, false, true)),
             registration(tools::SEARCH_TOOLS)
                 .with_description("Discover deferred tools")
                 .with_parameter_schema(empty_object_schema()),
@@ -1342,7 +1342,7 @@ mod tests {
                 .with_llm_visibility(false)
                 .with_description("Apply patch")
                 .with_parameter_schema(apply_patch_parameters())
-                .with_behavior(ToolBehavior::apply_patch(ToolMutationModel::Mutating, false, true)),
+                .with_behaviour(ToolBehaviour::apply_patch(ToolMutationModel::Mutating, false, true)),
             registration(tools::CODE_SEARCH)
                 .with_description("Search code")
                 .with_parameter_schema(empty_object_schema()),
@@ -1497,7 +1497,7 @@ mod tests {
             .with_llm_visibility(false)
             .with_description("Apply patch")
             .with_parameter_schema(apply_patch_parameters())
-            .with_behavior(ToolBehavior::apply_patch(ToolMutationModel::Mutating, false, true));
+            .with_behaviour(ToolBehaviour::apply_patch(ToolMutationModel::Mutating, false, true));
 
         let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
         let tools = catalog.model_tools(SessionToolsConfig::full_public(
@@ -1517,7 +1517,7 @@ mod tests {
             .with_llm_visibility(false)
             .with_description("Apply patch")
             .with_parameter_schema(apply_patch_parameters())
-            .with_behavior(ToolBehavior::apply_patch(ToolMutationModel::Mutating, false, true));
+            .with_behaviour(ToolBehaviour::apply_patch(ToolMutationModel::Mutating, false, true));
 
         let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
         let tools = catalog.model_tools(SessionToolsConfig::full_public(
@@ -1567,7 +1567,7 @@ mod tests {
         let registration = registration("parallel_catalog_tool")
             .with_description("parallel-safe test tool")
             .with_parameter_schema(empty_object_schema())
-            .with_behavior(ToolBehavior::function(ToolMutationModel::ReadOnly, true, false));
+            .with_behaviour(ToolBehaviour::function(ToolMutationModel::ReadOnly, true, false));
 
         let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
         assert_eq!(catalog.entries().len(), 1);
@@ -1868,7 +1868,7 @@ mod tests {
             .with_llm_visibility(false)
             .with_description("Apply patch")
             .with_parameter_schema(apply_patch_parameters())
-            .with_behavior(ToolBehavior::apply_patch(ToolMutationModel::Mutating, false, true));
+            .with_behaviour(ToolBehaviour::apply_patch(ToolMutationModel::Mutating, false, true));
         let mcp_tool = registration("mcp::context7::search")
             .with_catalog_source(ToolCatalogSource::Mcp)
             .with_llm_visibility(false)
@@ -2323,7 +2323,7 @@ mod tests {
                     .with_llm_visibility(false)
                     .with_description("Apply a structured patch to files.")
                     .with_parameter_schema(apply_patch_parameters())
-                    .with_behavior(ToolBehavior::apply_patch(ToolMutationModel::Mutating, false, true)),
+                    .with_behaviour(ToolBehaviour::apply_patch(ToolMutationModel::Mutating, false, true)),
                 registration(tools::MCP_SEARCH_TOOLS)
                     .with_description("Search across deferred MCP tools by keyword.")
                     .with_parameter_schema(empty_object_schema()),

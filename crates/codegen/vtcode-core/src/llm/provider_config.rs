@@ -345,7 +345,7 @@ pub fn create_provider_unified(
             timeouts,
             openai: None,
             anthropic: None,
-            model_behavior: None,
+            model_behaviour: None,
             workspace_root: None,
         },
     )
@@ -397,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    fn unified_provider_creation_matches_factory_behavior() {
+    fn unified_provider_creation_matches_factory_behaviour() {
         let shim = create_provider_unified(
             "ollama",
             None,
@@ -420,7 +420,7 @@ mod tests {
                 timeouts: Some(TimeoutsConfig::default()),
                 openai: None,
                 anthropic: None,
-                model_behavior: None,
+                model_behaviour: None,
                 workspace_root: None,
             },
         )

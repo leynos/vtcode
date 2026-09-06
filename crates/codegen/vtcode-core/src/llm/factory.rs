@@ -185,7 +185,7 @@ pub fn create_provider_for_model(
     model: &str,
     api_key: String,
     prompt_cache: Option<PromptCachingConfig>,
-    model_behavior: Option<ModelConfig>,
+    model_behaviour: Option<ModelConfig>,
 ) -> Result<Box<dyn LLMProvider>, LLMError> {
     // Validate model exists in ModelsManager (non-blocking check using local presets)
     if !get_models_manager().model_exists_sync(model) {
@@ -215,7 +215,7 @@ pub fn create_provider_for_model(
             timeouts: None,
             openai: None,
             anthropic: None,
-            model_behavior,
+            model_behaviour,
             workspace_root: None,
         },
         &[],
@@ -277,7 +277,7 @@ pub fn register_custom_providers(custom_providers: &[vtcode_config::core::Custom
                 timeouts,
                 openai,
                 anthropic,
-                model_behavior,
+                model_behaviour,
                 workspace_root,
                 ..
             } = config;
@@ -303,7 +303,7 @@ pub fn register_custom_providers(custom_providers: &[vtcode_config::core::Custom
                 timeouts,
                 openai,
                 anthropic,
-                model_behavior,
+                model_behaviour,
                 custom_provider_auth,
             ))
         });
@@ -386,7 +386,7 @@ mod tests {
                     timeouts: None,
                     openai: None,
                     anthropic: None,
-                    model_behavior: None,
+                    model_behaviour: None,
                     workspace_root: None,
                 },
                 &[],
@@ -412,7 +412,7 @@ mod tests {
                     timeouts: None,
                     openai: Some(OpenAIConfig { websocket_mode: true, ..OpenAIConfig::default() }),
                     anthropic: Some(AnthropicConfig::default()),
-                    model_behavior: None,
+                    model_behaviour: None,
                     workspace_root: None,
                 },
                 &[],
@@ -441,7 +441,7 @@ mod tests {
                         count_tokens_enabled: true,
                         ..AnthropicConfig::default()
                     }),
-                    model_behavior: None,
+                    model_behaviour: None,
                     workspace_root: None,
                 },
                 &[],
@@ -479,7 +479,7 @@ mod tests {
                     timeouts: None,
                     openai: None,
                     anthropic: None,
-                    model_behavior: None,
+                    model_behaviour: None,
                     workspace_root: None,
                 },
                 &[],
@@ -498,7 +498,7 @@ mod tests {
                     timeouts: None,
                     openai: None,
                     anthropic: None,
-                    model_behavior: None,
+                    model_behaviour: None,
                     workspace_root: None,
                 },
                 &[],
@@ -553,7 +553,7 @@ mod tests {
                 timeouts: None,
                 openai: Some(OpenAIConfig::default()),
                 anthropic: None,
-                model_behavior: None,
+                model_behaviour: None,
                 workspace_root: None,
             },
         )
@@ -609,7 +609,7 @@ mod tests {
                 timeouts: None,
                 openai: Some(OpenAIConfig::default()),
                 anthropic: None,
-                model_behavior: None,
+                model_behaviour: None,
                 workspace_root: None,
             },
         )
@@ -705,7 +705,7 @@ mod tests {
                 timeouts: None,
                 openai: Some(OpenAIConfig::default()),
                 anthropic: Some(AnthropicConfig::default()),
-                model_behavior: None,
+                model_behaviour: None,
                 workspace_root: None,
             },
         )
@@ -734,7 +734,7 @@ mod tests {
                 timeouts: None,
                 openai: Some(OpenAIConfig::default()),
                 anthropic: Some(AnthropicConfig::default()),
-                model_behavior: None,
+                model_behaviour: None,
                 workspace_root: None,
             },
         )
@@ -765,7 +765,7 @@ mod tests {
                 timeouts: None,
                 openai: Some(OpenAIConfig::default()),
                 anthropic: Some(AnthropicConfig::default()),
-                model_behavior: None,
+                model_behaviour: None,
                 workspace_root: None,
             },
         )
@@ -876,7 +876,7 @@ mod tests {
                 timeouts: None,
                 openai: Some(OpenAIConfig::default()),
                 anthropic: None,
-                model_behavior: None,
+                model_behaviour: None,
                 workspace_root: None,
             },
         )
@@ -999,7 +999,7 @@ mod tests {
                 timeouts: None,
                 openai: None,
                 anthropic: None,
-                model_behavior: None,
+                model_behaviour: None,
                 workspace_root: None,
             },
         )
@@ -1041,7 +1041,7 @@ mod tests {
                 timeouts: None,
                 openai: None,
                 anthropic: None,
-                model_behavior: None,
+                model_behaviour: None,
                 workspace_root: None,
             },
             &[],
@@ -1072,7 +1072,7 @@ mod tests {
                     timeouts: None,
                     openai: None,
                     anthropic: None,
-                    model_behavior: None,
+                    model_behaviour: None,
                     workspace_root: None,
                 },
                 &[],

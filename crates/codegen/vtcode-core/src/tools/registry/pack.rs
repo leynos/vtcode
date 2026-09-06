@@ -16,14 +16,14 @@
 //!
 //! Builtin packs are collected via `linkme::distributed_slice` into
 //! `BUILTIN_PACKS`, then iterated at startup by `register_builtin_packs()`.
-//! Each pack's `register()` method groups its tool registrations so behavior
+//! Each pack's `register()` method groups its tool registrations so behaviour
 //! and catalog-source decoration stays in one place.
 
 use crate::tools::handlers::PlanningWorkflowState;
 use crate::tools::registry::distributed::ToolConfigSnapshot;
 use crate::tools::registry::inventory::ToolInventory;
 use crate::tools::registry::registration::{ToolCatalogSource, ToolRegistration};
-use crate::tools::tool_intent::builtin_tool_behavior;
+use crate::tools::tool_intent::builtin_tool_behaviour;
 
 /// A logical grouping of related tools with shared lifecycle hooks.
 ///
@@ -52,13 +52,13 @@ pub trait ToolPack: Send + Sync {
 /// Batch-register a list of tools into the inventory, logging any failures.
 ///
 /// This is the preferred registration path for packs: it centralizes the
-/// built-in behavior and catalog-source decoration while preserving
+/// built-in behaviour and catalog-source decoration while preserving
 /// per-registration validation and failure isolation.
 pub fn batch_register(inventory: &ToolInventory, registrations: Vec<ToolRegistration>) {
     for mut registration in registrations {
         let tool_name = registration.name().to_string();
-        if let Some(behavior) = builtin_tool_behavior(&tool_name) {
-            registration = registration.with_behavior(behavior);
+        if let Some(behaviour) = builtin_tool_behaviour(&tool_name) {
+            registration = registration.with_behaviour(behaviour);
         }
         registration = registration.with_catalog_source(ToolCatalogSource::Builtin);
         if let Err(err) = inventory.register_tool(registration) {
