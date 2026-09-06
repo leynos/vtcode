@@ -13,9 +13,10 @@ Provider-level fields (in `[[custom_providers]]`)
   - Provider capability in tokens. Drives UI context sizing, compaction thresholds, and preflight token checks.
   - When omitted VT Code uses the provider/model default (commonly 128000 for custom OpenAI-compatible endpoints unless otherwise discovered).
 
-- `supports_tools`, `supports_reasoning`, `supports_reasoning_effort`, `supports_vision`, `supports_structured_output`, `supports_parallel_tool_calls`, `supports_context_caching`, `supports_responses_compaction`, `supports_context_edits`, and `supports_stream_usage` (optional booleans)
+- `supports_tools`, `supports_reasoning`, `supports_reasoning_effort`, `supports_vision`, `supports_structured_output`, `supports_parallel_tool_calls`, `supports_context_caching`, `supports_responses_compaction`, `supports_context_edits`, `supports_stream_usage`, and `responses_allow_function_call_id_remap` (optional booleans)
   - Provider-level conservative defaults applied when per-model metadata is unavailable.
   - `supports_stream_usage` defaults to `false`. Set it to `true` only when a custom OpenAI-chat endpoint accepts `stream_options.include_usage = true` and sends usage in the terminal streamed chunk; native OpenAI requests are unchanged.
+  - `responses_allow_function_call_id_remap` defaults to `false`. Enable it only for a custom Responses endpoint that rewrites streamed function-call IDs in its terminal response.
 
 Per-model profiles (sparse overrides)
 
@@ -31,6 +32,7 @@ supports_vision = false
 supports_structured_output = true
 supports_parallel_tool_calls = true
 # supports_stream_usage = true # only when this endpoint emits terminal stream usage
+# responses_allow_function_call_id_remap = true # only for verified ID-rewriting endpoints
 
 Notes and semantics
 
@@ -38,6 +40,7 @@ Notes and semantics
 - Precedence (highest wins): profile > provider defaults > model metadata / autodetect > conservative fallback.
 - Explicit boolean `false` is honored and may override an implicit `true` from a lower-precedence layer.
 - `supports_stream_usage` uses the same profile-over-provider precedence. When enabled, VT Code requests usage for custom OpenAI-chat streams; when omitted or `false`, it leaves `stream_options.include_usage` disabled.
+- `responses_allow_function_call_id_remap` uses the same precedence. It never applies to native OpenAI or OpenResponses providers, custom/freeform calls, partial JSON or ambiguous semantic matches.
 - Omitting `api_format` preserves legacy behavior. Setting `api_format` explicitly instructs VT Code to treat the model with that API shape; it does not cause silent fallbacks.
 
 Keep examples small and conservative: prefer to declare only the fields you need to correct autodetection or to provide conservative capability signals for gateways that omit detailed model descriptors.

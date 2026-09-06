@@ -50,6 +50,15 @@ terminal usage. This lets ACP tests distinguish the Responses wire path from
 Chat Completions without a Chat-shaped tokenizer shim.
 
 The
+[`providers/responses-function-remap.yaml`](providers/responses-function-remap.yaml)
+route is the issue 35 physics mutation. It preserves the sanitised Friendli
+capture's differing streamed and terminal function-call IDs, but deliberately
+changes the captured `fixture_echo({"text":"OK"})` call to the built-in,
+read-only `list_files({"path":""})` tool so ACP can safely prove one terminal
+execution. It is not an exact replay; exact-capture coverage uses
+`tests/fixtures/friendli/issue35/function-response.sse` through WireMock.
+
+The
 [`providers/responses-physics-truncated.yaml`](providers/responses-physics-truncated.yaml)
 route deliberately omits the stop lifecycle at
 `/v1/responses-physics-truncated/responses`. It produces real paced Responses

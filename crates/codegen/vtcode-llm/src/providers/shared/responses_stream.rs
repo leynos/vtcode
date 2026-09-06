@@ -13,6 +13,7 @@ use futures::StreamExt;
 use hashbrown::{HashMap, HashSet};
 use serde_json::{Value, json};
 
+use super::correlate_streamed_function_calls;
 use super::{StreamAggregator, generate_tool_call_id};
 
 // Retained shared Responses stream processor.
@@ -27,6 +28,7 @@ pub struct ResponsesNormalizedStreamOptions {
     pub(crate) model: String,
     pub(crate) emit_reasoning: bool,
     pub(crate) include_cached_prompt_metrics: bool,
+    pub(crate) allow_function_call_id_remap: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -353,8 +355,16 @@ where
             Err(err) => return Err(err),
         };
         merge_final_response_metadata(&mut response, &final_response, self.options.include_cached_prompt_metrics)?;
+        if final_response_output_is_empty(&final_response) && response.tool_calls.is_none() {
+            response.tool_calls = streamed.tool_calls.clone();
+        }
 
-        merge_streamed_response(&mut response, streamed, self.options.provider_name)?;
+        merge_streamed_response(
+            &mut response,
+            streamed,
+            self.options.provider_name,
+            self.options.allow_function_call_id_remap,
+        )?;
 
         let mut events = Vec::new();
         if let Some(usage) = response.usage.clone() {
@@ -478,6 +488,7 @@ fn merge_streamed_response(
     response: &mut LLMResponse,
     streamed: LLMResponse,
     provider_name: &str,
+    allow_function_call_id_remap: bool,
 ) -> Result<(), LLMError> {
     if response.content.as_deref().unwrap_or_default().is_empty() {
         response.content = streamed.content;
@@ -488,7 +499,12 @@ fn merge_streamed_response(
         content.push_str(&streamed_content);
     }
 
-    reconcile_streamed_tool_calls(response, streamed.tool_calls.as_deref(), provider_name)?;
+    reconcile_streamed_tool_calls(
+        response,
+        streamed.tool_calls.as_deref(),
+        provider_name,
+        allow_function_call_id_remap,
+    )?;
 
     if response.usage.is_none() {
         response.usage = streamed.usage;
@@ -542,21 +558,26 @@ fn reconcile_streamed_tool_calls(
     response: &mut LLMResponse,
     streamed_calls: Option<&[ToolCall]>,
     provider_name: &str,
+    allow_function_call_id_remap: bool,
 ) -> Result<(), LLMError> {
     let Some(streamed_calls) = streamed_calls.filter(|calls| !calls.is_empty()) else {
         return Ok(());
     };
     let Some(response_calls) = response.tool_calls.as_mut() else {
-        response.tool_calls = Some(streamed_calls.to_vec());
-        return Ok(());
+        return Err(provider_error(
+            provider_name,
+            "completed response tool calls do not map one-to-one to streamed calls",
+        ));
     };
 
-    for streamed_call in streamed_calls {
-        let existing = response_calls
-            .iter_mut()
-            .find(|call| call.id == streamed_call.id)
-            .ok_or_else(|| provider_error(provider_name, "completed response omitted a streamed tool call"))?;
-        reconcile_tool_call(existing, streamed_call, provider_name)?;
+    let correlations = correlate_streamed_function_calls(response_calls, streamed_calls, allow_function_call_id_remap)
+        .map_err(|message| provider_error(provider_name, message))?;
+    for correlation in correlations {
+        let final_call = &mut response_calls[correlation.final_index];
+        let streamed_call = &streamed_calls[correlation.streamed_index];
+        if final_call.id == streamed_call.id {
+            reconcile_tool_call(final_call, streamed_call, provider_name)?;
+        }
     }
     Ok(())
 }
@@ -575,7 +596,11 @@ fn reconcile_tool_call(
         .map_err(|message| provider_error(provider_name, message))?
     {
         FinalInputPreference::Final => {}
-        FinalInputPreference::Streamed => *final_call = streamed_call.clone(),
+        FinalInputPreference::Streamed => {
+            let final_id = std::mem::take(&mut final_call.id);
+            *final_call = streamed_call.clone();
+            final_call.id = final_id;
+        }
     }
     Ok(())
 }
@@ -608,7 +633,7 @@ fn provider_error(provider_name: &str, message: impl Into<String>) -> LLMError {
 mod tests {
     use super::{
         ResponsesNormalizedStreamOptions, ResponsesNormalizedStreamProcessor, ResponsesStreamEventPolicy,
-        merge_streamed_response, provider_error, response_stream_event_policy,
+        merge_streamed_response, provider_error, reconcile_streamed_tool_calls, response_stream_event_policy,
     };
     use crate::provider::{FinishReason, LLMResponse, NormalizedStreamEvent, ToolCall};
     use serde_json::{Value, json};
@@ -629,6 +654,7 @@ mod tests {
             model: "gpt-5".to_string(),
             emit_reasoning: true,
             include_cached_prompt_metrics: false,
+            allow_function_call_id_remap: false,
         }
     }
 
@@ -1522,10 +1548,81 @@ mod tests {
                 tool_calls: Some(vec![streamed_call]),
                 ..Default::default()
             };
-            let error = merge_streamed_response(&mut response, streamed, "TestProvider")
+            let error = merge_streamed_response(&mut response, streamed, "TestProvider", false)
                 .expect_err("divergent completed input must fail");
             assert!(error.to_string().contains("diverges from streamed prefix"));
             assert_eq!(response.tool_calls.as_mut().and_then(|calls| calls.pop()), Some(final_call));
         }
+    }
+
+    #[test]
+    fn normalized_function_call_id_remap_is_opt_in_and_retains_terminal_id() {
+        let final_input = r#"{"limit":10,"query":"vtcode"}"#;
+        let final_call = ToolCall::function("final-id".into(), "search".into(), final_input.into());
+        let streamed_call =
+            ToolCall::function("stream-id".into(), "search".into(), r#"{ "query": "vtcode", "limit": 10 }"#.into());
+        let mut strict = LLMResponse {
+            tool_calls: Some(vec![final_call.clone()]),
+            ..Default::default()
+        };
+        assert!(
+            reconcile_streamed_tool_calls(
+                &mut strict,
+                Some(std::slice::from_ref(&streamed_call)),
+                "TestProvider",
+                false
+            )
+            .is_err()
+        );
+        assert_eq!(strict.tool_calls, Some(vec![final_call.clone()]));
+
+        let mut compatible = LLMResponse {
+            tool_calls: Some(vec![final_call]),
+            ..Default::default()
+        };
+        reconcile_streamed_tool_calls(
+            &mut compatible,
+            Some(std::slice::from_ref(&streamed_call)),
+            "TestProvider",
+            true,
+        )
+        .expect("unique semantic function call should reconcile");
+        let call = compatible
+            .tool_calls
+            .as_ref()
+            .and_then(|calls| calls.first())
+            .expect("terminal call");
+        assert_eq!(call.id, "final-id");
+        assert_eq!(call.raw_input(), Some(final_input));
+
+        let mut missing = LLMResponse::default();
+        let error = reconcile_streamed_tool_calls(
+            &mut missing,
+            Some(std::slice::from_ref(&streamed_call)),
+            "TestProvider",
+            true,
+        )
+        .expect_err("terminal response must retain every streamed call");
+        assert!(error.to_string().contains("do not map one-to-one"));
+        assert!(missing.tool_calls.is_none());
+    }
+
+    #[test]
+    fn normalized_ambiguous_remap_rejects_before_mutation() {
+        let mut response = LLMResponse {
+            tool_calls: Some(vec![
+                ToolCall::function("final-a".into(), "same".into(), "{}".into()),
+                ToolCall::function("final-b".into(), "same".into(), "{}".into()),
+            ]),
+            ..Default::default()
+        };
+        let original = response.clone();
+        let streamed = [
+            ToolCall::function("stream-a".into(), "same".into(), "{}".into()),
+            ToolCall::function("stream-b".into(), "same".into(), "{}".into()),
+        ];
+
+        assert!(reconcile_streamed_tool_calls(&mut response, Some(&streamed), "TestProvider", true).is_err());
+        assert_eq!(response, original);
     }
 }

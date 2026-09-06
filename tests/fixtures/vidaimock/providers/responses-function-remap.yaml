@@ -1,0 +1,12 @@
+name: "responses-function-remap"
+matcher: "^/v1/responses-function-remap/responses$"
+priority: 126
+response_template: "responses/function_remap_response.json.j2"
+error_template: "arli/error.json.j2"
+status_code: "200"
+stream:
+  enabled: true
+  frame_format: raw
+  lifecycle:
+    on_start: { template_path: "responses/function_remap_stream_start.j2" }
+    on_stop: { template_path: "responses/function_remap_stream_stop.j2" }

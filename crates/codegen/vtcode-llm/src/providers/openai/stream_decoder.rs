@@ -325,6 +325,7 @@ pub(crate) fn create_responses_stream(
     _debug_model: Option<String>,
     _request_timer: Option<Instant>,
     retain_reasoning: bool,
+    allow_function_call_id_remap: bool,
 ) -> provider::LLMStream {
     let stream = try_stream! {
         let mut body_stream = response.bytes_stream();
@@ -649,8 +650,15 @@ pub(crate) fn create_responses_stream(
         if response.reasoning.is_none() {
             response.reasoning = final_aggregator_response.reasoning;
         }
+        if final_response_output_is_empty(&response_value) && response.tool_calls.is_none() {
+            response.tool_calls = final_aggregator_response.tool_calls.clone();
+        }
 
-        reconcile_streamed_tool_calls(&mut response, final_aggregator_response.tool_calls.as_deref())?;
+        reconcile_streamed_tool_calls(
+            &mut response,
+            final_aggregator_response.tool_calls.as_deref(),
+            allow_function_call_id_remap,
+        )?;
 
         let response = strip_reasoning(retain_reasoning, response);
         yield provider::LLMStreamEvent::Completed { response: Box::new(response) };
@@ -701,24 +709,30 @@ fn merge_reconciled_custom_calls(
 fn reconcile_streamed_tool_calls(
     response: &mut provider::LLMResponse,
     streamed_calls: Option<&[provider::ToolCall]>,
+    allow_function_call_id_remap: bool,
 ) -> Result<(), provider::LLMError> {
     let Some(streamed_calls) = streamed_calls.filter(|calls| !calls.is_empty()) else {
         return Ok(());
     };
     let Some(response_calls) = response.tool_calls.as_mut() else {
-        response.tool_calls = Some(streamed_calls.to_vec());
-        return Ok(());
+        return Err(StreamAssemblyError::InvalidPayload(
+            "completed response tool calls do not map one-to-one to streamed calls".to_string(),
+        )
+        .into_llm_error("OpenAI"));
     };
 
-    for streamed_call in streamed_calls {
-        let existing = response_calls
-            .iter_mut()
-            .find(|call| call.id == streamed_call.id)
-            .ok_or_else(|| {
-                StreamAssemblyError::InvalidPayload("completed response omitted a streamed tool call".to_string())
-                    .into_llm_error("OpenAI")
-            })?;
-        reconcile_tool_call(existing, streamed_call)?;
+    let correlations = crate::providers::shared::correlate_streamed_function_calls(
+        response_calls,
+        streamed_calls,
+        allow_function_call_id_remap,
+    )
+    .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))?;
+    for correlation in correlations {
+        let final_call = &mut response_calls[correlation.final_index];
+        let streamed_call = &streamed_calls[correlation.streamed_index];
+        if final_call.id == streamed_call.id {
+            reconcile_tool_call(final_call, streamed_call)?;
+        }
     }
     Ok(())
 }
@@ -740,7 +754,11 @@ fn reconcile_tool_call(
     .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))?
     {
         FinalInputPreference::Final => {}
-        FinalInputPreference::Streamed => *final_call = streamed_call.clone(),
+        FinalInputPreference::Streamed => {
+            let final_id = std::mem::take(&mut final_call.id);
+            *final_call = streamed_call.clone();
+            final_call.id = final_id;
+        }
     }
     Ok(())
 }
@@ -785,7 +803,7 @@ fn optional_string_field(payload: &Value, field: &'static str) -> Result<Option<
 mod tests {
     use super::{
         ResponsesToolCallState, final_response_output_is_empty, merge_final_response_metadata,
-        streamed_response_is_usable,
+        reconcile_streamed_tool_calls, streamed_response_is_usable,
     };
     use crate::provider::{LLMResponse, ToolCall};
     use crate::providers::shared::StreamAggregator;
@@ -949,5 +967,39 @@ mod tests {
             ids.push(calls[0].id.clone());
         }
         assert_ne!(ids[0], ids[1], "fabricated ids must differ across responses");
+    }
+
+    #[test]
+    fn legacy_function_call_id_remap_is_opt_in_and_retains_terminal_id() {
+        let final_input = r#"{"limit":10,"query":"vtcode"}"#;
+        let final_call = ToolCall::function("final-id".into(), "search".into(), final_input.into());
+        let streamed_call =
+            ToolCall::function("stream-id".into(), "search".into(), r#"{ "query": "vtcode", "limit": 10 }"#.into());
+        let mut strict = LLMResponse {
+            tool_calls: Some(vec![final_call.clone()]),
+            ..Default::default()
+        };
+        assert!(reconcile_streamed_tool_calls(&mut strict, Some(std::slice::from_ref(&streamed_call)), false).is_err());
+        assert_eq!(strict.tool_calls, Some(vec![final_call.clone()]));
+
+        let mut compatible = LLMResponse {
+            tool_calls: Some(vec![final_call]),
+            ..Default::default()
+        };
+        reconcile_streamed_tool_calls(&mut compatible, Some(std::slice::from_ref(&streamed_call)), true)
+            .expect("unique semantic function call should reconcile");
+        let call = compatible
+            .tool_calls
+            .as_ref()
+            .and_then(|calls| calls.first())
+            .expect("terminal call");
+        assert_eq!(call.id, "final-id");
+        assert_eq!(call.raw_input(), Some(final_input));
+
+        let mut missing = LLMResponse::default();
+        let error = reconcile_streamed_tool_calls(&mut missing, Some(std::slice::from_ref(&streamed_call)), true)
+            .expect_err("terminal response must retain every streamed call");
+        assert!(error.to_string().contains("do not map one-to-one"));
+        assert!(missing.tool_calls.is_none());
     }
 }

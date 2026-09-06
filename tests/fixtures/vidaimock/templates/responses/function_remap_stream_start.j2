@@ -1,0 +1,17 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp-function-remap","object":"response","status":"in_progress","model":"responses-wire-model","output":[],"usage":null}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"id":"a70ca8d6ea25b6e0","type":"function_call","call_id":"call_8b72964ed25d90d0","name":"list_files","arguments":"","status":"in_progress"}}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","sequence_number":2,"item_id":"a70ca8d6ea25b6e0","output_index":0,"delta":"{\"path\":"}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","sequence_number":3,"item_id":"a70ca8d6ea25b6e0","output_index":0,"delta":"\"\"}"}
+
+event: response.function_call_arguments.done
+data: {"type":"response.function_call_arguments.done","sequence_number":4,"item_id":"a70ca8d6ea25b6e0","output_index":0,"name":"list_files","arguments":"{\"path\":\"\"}"}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":5,"output_index":0,"item":{"id":"a70ca8d6ea25b6e0","type":"function_call","call_id":"call_8b72964ed25d90d0","name":"list_files","arguments":"{\"path\":\"\"}","status":"completed"}}

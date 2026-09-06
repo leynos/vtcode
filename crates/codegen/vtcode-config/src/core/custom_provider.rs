@@ -379,6 +379,11 @@ pub struct CustomProviderProfileConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_stream_usage: Option<bool>,
 
+    /// Allow terminal Responses function-call IDs to replace mismatched
+    /// streamed IDs after strict semantic one-to-one validation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub responses_allow_function_call_id_remap: Option<bool>,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_context_edits: Option<bool>,
 }
@@ -469,6 +474,7 @@ pub struct ResolvedCustomProviderProfile {
     pub supports_context_caching: Option<bool>,
     pub supports_responses_compaction: Option<bool>,
     pub supports_stream_usage: Option<bool>,
+    pub responses_allow_function_call_id_remap: Option<bool>,
     pub supports_context_edits: Option<bool>,
 }
 
@@ -507,6 +513,9 @@ impl ResolvedCustomProviderProfile {
                 .supports_responses_compaction
                 .or(defaults.supports_responses_compaction),
             supports_stream_usage: profile.supports_stream_usage.or(defaults.supports_stream_usage),
+            responses_allow_function_call_id_remap: profile
+                .responses_allow_function_call_id_remap
+                .or(defaults.responses_allow_function_call_id_remap),
             supports_context_edits: profile.supports_context_edits.or(defaults.supports_context_edits),
         }
     }
@@ -768,6 +777,11 @@ pub struct CustomProviderConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_stream_usage: Option<bool>,
 
+    /// Allow terminal Responses function-call IDs to replace mismatched
+    /// streamed IDs after strict semantic one-to-one validation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub responses_allow_function_call_id_remap: Option<bool>,
+
     /// Optional support for context edits.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_context_edits: Option<bool>,
@@ -920,6 +934,7 @@ impl CustomProviderConfig {
             supports_context_caching: self.supports_context_caching,
             supports_responses_compaction: self.supports_responses_compaction,
             supports_stream_usage: self.supports_stream_usage,
+            responses_allow_function_call_id_remap: self.responses_allow_function_call_id_remap,
             supports_context_edits: self.supports_context_edits,
         }
     }
@@ -1129,6 +1144,7 @@ mod tests {
             supports_context_caching: None,
             supports_responses_compaction: None,
             supports_stream_usage: None,
+            responses_allow_function_call_id_remap: None,
             supports_context_edits: None,
             api_key_env: String::new(),
             auth: None,
@@ -1168,6 +1184,7 @@ mod tests {
             supports_context_caching: None,
             supports_responses_compaction: None,
             supports_stream_usage: None,
+            responses_allow_function_call_id_remap: None,
             supports_context_edits: None,
             api_key_env: String::new(),
             auth: None,
@@ -1207,6 +1224,7 @@ mod tests {
             supports_context_caching: None,
             supports_responses_compaction: None,
             supports_stream_usage: None,
+            responses_allow_function_call_id_remap: None,
             supports_context_edits: None,
             api_key_env: "MYCORP_API_KEY".to_string(),
             auth: Some(CustomProviderCommandAuthConfig {
@@ -1252,6 +1270,7 @@ mod tests {
             supports_context_caching: None,
             supports_responses_compaction: None,
             supports_stream_usage: None,
+            responses_allow_function_call_id_remap: None,
             supports_context_edits: None,
             api_key_env: String::new(),
             auth: Some(CustomProviderCommandAuthConfig {
@@ -1297,6 +1316,7 @@ mod tests {
             supports_context_caching: None,
             supports_responses_compaction: None,
             supports_stream_usage: None,
+            responses_allow_function_call_id_remap: None,
             supports_context_edits: None,
             api_key_env: "MYCORP_API_KEY".to_string(),
             auth: None,
@@ -1336,6 +1356,7 @@ mod tests {
             supports_context_caching: None,
             supports_responses_compaction: None,
             supports_stream_usage: None,
+            responses_allow_function_call_id_remap: None,
             supports_context_edits: None,
             api_key_env: String::new(),
             auth: None,
@@ -1375,6 +1396,7 @@ mod tests {
                 supports_context_caching: None,
                 supports_responses_compaction: None,
                 supports_stream_usage: None,
+                responses_allow_function_call_id_remap: None,
                 supports_context_edits: None,
             },
         );
@@ -1402,6 +1424,7 @@ mod tests {
             supports_context_caching: None,
             supports_responses_compaction: None,
             supports_stream_usage: None,
+            responses_allow_function_call_id_remap: None,
             supports_context_edits: None,
             api_key_env: String::new(),
             auth: None,
@@ -1441,6 +1464,7 @@ mod tests {
             supports_context_caching: None,
             supports_responses_compaction: None,
             supports_stream_usage: None,
+            responses_allow_function_call_id_remap: None,
             supports_context_edits: None,
             api_key_env: "ATLASCLOUD_API_KEY".to_string(),
             auth: None,
@@ -1517,6 +1541,7 @@ mod tests {
                 supports_context_caching: None,
                 supports_responses_compaction: None,
                 supports_stream_usage: None,
+                responses_allow_function_call_id_remap: None,
                 supports_context_edits: None,
             },
         );
@@ -1544,6 +1569,7 @@ mod tests {
             supports_context_caching: None,
             supports_responses_compaction: None,
             supports_stream_usage: None,
+            responses_allow_function_call_id_remap: None,
             supports_context_edits: None,
             api_key_env: String::new(),
             auth: None,
@@ -1577,6 +1603,7 @@ mod tests {
                 supports_context_caching: None,
                 supports_responses_compaction: None,
                 supports_stream_usage: None,
+                responses_allow_function_call_id_remap: None,
                 supports_context_edits: None,
             }
         );
@@ -1608,6 +1635,7 @@ mod tests {
                 supports_context_caching: None,
                 supports_responses_compaction: None,
                 supports_stream_usage: Some(false),
+                responses_allow_function_call_id_remap: None,
                 supports_context_edits: None,
             },
         );
@@ -1635,6 +1663,7 @@ mod tests {
             supports_context_caching: Some(false),
             supports_responses_compaction: None,
             supports_stream_usage: Some(true),
+            responses_allow_function_call_id_remap: None,
             supports_context_edits: None,
             api_key_env: String::new(),
             auth: None,
@@ -1676,6 +1705,65 @@ model = "gpt-5-mini"
         assert_eq!(parsed.resolved_profile("gpt-5-mini"), ResolvedCustomProviderProfile::default());
         assert_eq!(parsed.rate_limit_headers, RateLimitHeaderConfig::default());
         assert_eq!(parsed.request_policy, CustomProviderRequestPolicyConfig::default());
+    }
+
+    #[test]
+    fn responses_function_call_id_remap_is_explicit_and_profile_false_overrides_provider_true() {
+        let parsed: CustomProviderConfig = toml::from_str(
+            r#"
+name = "friendli"
+display_name = "Friendli"
+base_url = "https://api.friendli.ai/serverless/v1"
+model = "friendli-model"
+responses_allow_function_call_id_remap = true
+
+[profiles.friendli-model]
+responses_allow_function_call_id_remap = false
+"#,
+        )
+        .expect("function-call ID remap capability should parse");
+
+        let encoded = serde_json::to_value(&parsed).expect("custom provider config should serialize");
+        assert_eq!(
+            encoded.get("responses_allow_function_call_id_remap"),
+            Some(&serde_json::Value::Bool(true)),
+            "the provider opt-in must not be dropped"
+        );
+        assert_eq!(
+            encoded
+                .get("profiles")
+                .and_then(|profiles| profiles.get("friendli-model"))
+                .and_then(|profile| profile.get("responses_allow_function_call_id_remap")),
+            Some(&serde_json::Value::Bool(false)),
+            "an explicit model-profile false must survive and override the provider opt-in"
+        );
+        assert_eq!(parsed.resolved_profile("friendli-model").responses_allow_function_call_id_remap, Some(false));
+        assert_eq!(
+            parsed
+                .resolved_profile("unprofiled-model")
+                .responses_allow_function_call_id_remap,
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn responses_function_call_id_remap_defaults_to_absent_and_disabled() {
+        let parsed: CustomProviderConfig = toml::from_str(
+            r#"
+name = "strict"
+display_name = "Strict"
+base_url = "https://llm.example/v1"
+model = "strict-model"
+"#,
+        )
+        .expect("legacy custom provider config should parse");
+
+        let encoded = serde_json::to_value(&parsed).expect("custom provider config should serialize");
+        assert!(
+            encoded.get("responses_allow_function_call_id_remap").is_none(),
+            "the compatibility capability must remain an explicit opt-in"
+        );
+        assert_eq!(parsed.resolved_profile("strict-model").responses_allow_function_call_id_remap, None);
     }
 
     #[test]

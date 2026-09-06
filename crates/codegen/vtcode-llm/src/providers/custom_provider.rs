@@ -811,6 +811,7 @@ mod tests {
             supports_context_caching: None,
             supports_responses_compaction: None,
             supports_stream_usage: None,
+            responses_allow_function_call_id_remap: None,
             supports_context_edits: Some(true),
             api_key_env: "ANTHROPIC_CUSTOM_API_KEY".to_string(),
             auth: None,
@@ -976,12 +977,14 @@ mod tests {
             base_url: server.uri(),
             api_format: CustomProviderApiFormat::OpenAIChat,
             supports_stream_usage: Some(true),
+            responses_allow_function_call_id_remap: None,
             model: OPTED_IN_MODEL.to_string(),
             models: vec![OPTED_IN_MODEL.to_string(), OPTED_OUT_MODEL.to_string()],
             profiles: std::collections::BTreeMap::from([(
                 OPTED_OUT_MODEL.to_string(),
                 CustomProviderProfileConfig {
                     supports_stream_usage: Some(false),
+                    responses_allow_function_call_id_remap: None,
                     ..Default::default()
                 },
             )]),

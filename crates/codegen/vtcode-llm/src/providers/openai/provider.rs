@@ -404,6 +404,13 @@ impl OpenAIProvider {
                 .unwrap_or(false)
     }
 
+    fn allows_responses_function_call_id_remap(&self, model: &str) -> bool {
+        self.custom_provider_config
+            .as_ref()
+            .and_then(|config| config.resolved_profile(model).responses_allow_function_call_id_remap)
+            .unwrap_or(false)
+    }
+
     fn supports_manual_openai_compaction_for_model(&self, model: &str) -> bool {
         self.is_native_openai_api()
             && !self.uses_chatgpt_auth()
