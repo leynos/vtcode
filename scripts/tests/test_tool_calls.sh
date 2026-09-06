@@ -7,7 +7,7 @@ set -e
 echo "🧪 VT Code End-to-End Tool Call Testing"
 echo "======================================="
 
-# Colors for output
+# Colours for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'

@@ -43,7 +43,9 @@ The complete PR train is not yet delivered.
   passed on the original retry: 10,079 tests, 17 skipped and 67 harness tests.
   Formatting, lint, build, advisory, VS Code bundling, and changed Python/shell
   syntax checks passed. Optional ast-grep remained unavailable.
-- `harden-lint-spelling-colour-apis` is the active branch, based on #25.
+- [Draft PR #26](https://github.com/leynos/vtcode/pull/26) publishes
+  `harden-lint-spelling-colour-apis` at
+  `33423a011ae5ae4768da06717b71b27ed829463a`, based on #25.
   It carries the reviewed native colour APIs with declarations and all
   consumers together, including CLI aliases, schema pins, and snapshot text.
   The layer slightly exceeds the soft 150-file target; a directory-based split
@@ -54,6 +56,16 @@ The complete PR train is not yet delivered.
   typecheck, all 41 WebMCP tests, and production build passed. A dedicated CLI
   regression covers canonical and legacy flag parsing. Optional ast-grep was
   unavailable; the four inherited rustdoc warnings remain.
+- `harden-lint-spelling-colour` is the active branch, based on #26.
+  It covers remaining native colour methods, table alignment, local bindings,
+  terminal prose, and module guidance. External schemas and flags remain fixed.
+  Its original Rust gates passed: 10,080 tests, 17 skips and 67 harness tests.
+  Formatting, lint, build, advisory, Python compilation, and shell syntax
+  passed. Supplementary WebMCP typecheck, 41 tests, and build also passed.
+  The actual VS Code extension bundle passed. Optional ast-grep remained
+  unavailable. Logs use the remaining-colour branch suffix. The two module
+  guidance files retain 46 inherited Markdownlint findings, with no added or
+  removed diagnostics; the handoff, Nixie, and cached diff checks passed.
 - Remaining spelling changes are preserved separately while each layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
@@ -164,6 +176,14 @@ keys and foreign types retain their established spelling. Rust retry logs use
 WebMCP logs use `webmcp-ACTION` with the same branch suffix. The two changed
 legacy colour documents have 27 inherited Markdownlint findings; an added
 line-length finding was wrapped. The handoff, Nixie, and diff checks passed.
+
+An offline documentation worker accidentally wrote 94 unstaged documentation
+paths during the remaining-colour final checks. Those edits were preserved
+with verified bytes and modes at
+`/home/leynos/Projects/vtcode-prose-live-recovery-wq7ass3l`, then only those
+paths were restored to the index. The staged source layer was unchanged.
+The recovered edits remain available for the later user-documentation batch;
+do not discard that recovery archive or restore it wholesale over later work.
 
 ## Measurement and continuation
 
@@ -326,3 +346,14 @@ remain intact. All eight sequential gates passed, including typecheck, 10,084
 workspace tests, 17 skips and 67 harness tests. Logs use `restack-1` on
 `harden-lint-spelling-colour-apis`; final handoff checks use `handoff-restack-1`.
 The push uses an explicit lease against the original published PR #26 head.
+
+## PR 27 review restack
+
+The residual colour layer is rebased onto PR #26 `33423a011`. The replay
+completed without conflicts and its non-handoff patch is byte-identical.
+The residual APIs and the 29-line UI module guide remain intact. All eight
+sequential gates passed, including typecheck, 10,084 workspace tests, 17 skips
+and 67 harness tests. Logs use `restack-1` on `harden-lint-spelling-colour`;
+final handoff checks use `handoff-restack-1`. The optional ast-grep scan was
+skipped because the tool is unavailable. The push uses an explicit lease
+against the original published PR #27 head.

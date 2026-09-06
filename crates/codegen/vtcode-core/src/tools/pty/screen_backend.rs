@@ -83,7 +83,7 @@ mod tests {
     }
 
     #[test]
-    fn backend_handles_ansi_colors() {
+    fn backend_handles_ansi_colours() {
         let size = test_size();
         let mut state = PtyScreenState::new(size, 100);
         state.process(b"\x1B[1;31mcolored\x1B[0m");

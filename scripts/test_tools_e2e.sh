@@ -11,11 +11,11 @@ cargo_cmd() {
 echo "🧪 VT Code Tools End-to-End Test Suite"
 echo "===================================="
 
-# Colors for output
+# Colours for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m' # No Colour
 
 # Test counter
 TESTS_RUN=0

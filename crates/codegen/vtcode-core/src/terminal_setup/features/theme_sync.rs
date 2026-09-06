@@ -8,7 +8,7 @@ use anyhow::{Result, anyhow};
 
 /// Default VT Code dark theme colors.
 pub struct VTCodeDarkTheme {
-    /// Terminal background color in hex (`#RRGGBB`).
+    /// Terminal background colour in hex (`#RRGGBB`).
     pub background: &'static str,
     /// Terminal foreground (text) color in hex.
     pub foreground: &'static str,
@@ -57,7 +57,7 @@ impl Default for VTCodeDarkTheme {
             foreground: "#d4d4d4",
             cursor: "#ffffff",
             selection_bg: "#264f78",
-            // ANSI colors
+            // ANSI colours
             black: "#000000",
             red: "#cd3131",
             green: "#0dbc79",
@@ -80,7 +80,7 @@ impl Default for VTCodeDarkTheme {
 }
 
 impl VTCodeDarkTheme {
-    fn base16_colors(&self) -> [&'static str; 16] {
+    fn base16_colours(&self) -> [&'static str; 16] {
         [
             self.black,
             self.red,
@@ -120,10 +120,10 @@ impl Rgb {
     fn from_hex(hex: &str) -> Result<Self> {
         let trimmed = hex.trim_start_matches('#');
         if trimmed.len() != 6 {
-            return Err(anyhow!("Invalid hex color '{hex}': expected #RRGGBB"));
+            return Err(anyhow!("Invalid hex colour '{hex}': expected #RRGGBB"));
         }
         if !trimmed.is_ascii() {
-            return Err(anyhow!("Invalid hex color '{hex}': expected #RRGGBB"));
+            return Err(anyhow!("Invalid hex colour '{hex}': expected #RRGGBB"));
         }
 
         let r = u8::from_str_radix(&trimmed[0..2], 16).map_err(|e| anyhow!("Invalid red component in '{hex}': {e}"))?;
@@ -233,9 +233,9 @@ fn lerp_lab(t: f64, start: Lab, end: Lab) -> Lab {
 
 fn generate_256_palette(theme: &VTCodeDarkTheme, harmonious: bool) -> Result<Vec<Rgb>> {
     let base16 = theme
-        .base16_colors()
+        .base16_colours()
         .iter()
-        .map(|color| Rgb::from_hex(color))
+        .map(|colour| Rgb::from_hex(colour))
         .collect::<Result<Vec<_>>>()?;
 
     let background = Rgb::from_hex(theme.background)?;
@@ -273,16 +273,16 @@ fn generate_256_palette(theme: &VTCodeDarkTheme, harmonious: bool) -> Result<Vec
 
             for b in 0..6 {
                 let t_b = b as f64 / 5.0;
-                let color = lerp_lab(t_b, c4, c5);
-                palette.push(Rgb::from_lab(color));
+                let colour = lerp_lab(t_b, c4, c5);
+                palette.push(Rgb::from_lab(colour));
             }
         }
     }
 
     for shade in 0..24 {
         let t = (shade as f64 + 1.0) / 25.0;
-        let color = lerp_lab(t, base8_lab[0], base8_lab[7]);
-        palette.push(Rgb::from_lab(color));
+        let colour = lerp_lab(t, base8_lab[0], base8_lab[7]);
+        palette.push(Rgb::from_lab(colour));
     }
 
     Ok(palette)
@@ -292,7 +292,7 @@ fn ghostty_palette_lines(palette: &[Rgb]) -> String {
     palette
         .iter()
         .enumerate()
-        .map(|(index, color)| format!("palette = {index}={}", color.to_hex()))
+        .map(|(index, colour)| format!("palette = {index}={}", colour.to_hex()))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -301,7 +301,7 @@ fn kitty_palette_lines(palette: &[Rgb]) -> String {
     palette
         .iter()
         .enumerate()
-        .map(|(index, color)| format!("color{index} {}", color.to_hex()))
+        .map(|(index, colour)| format!("color{index} {}", colour.to_hex()))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -325,7 +325,7 @@ selection-background = {selection_bg}
                 cursor = theme.cursor,
                 selection_bg = theme.selection_bg,
             );
-            config.push_str("\n# ANSI + 256-color palette generated from base colors\n");
+            config.push_str("\n# ANSI + 256-colour palette generated from base colours\n");
             config.push_str(&ghostty_palette_lines(&generated_palette));
             config.push('\n');
             config
@@ -344,7 +344,7 @@ selection_background {selection_bg}
                 cursor = theme.cursor,
                 selection_bg = theme.selection_bg,
             );
-            config.push_str("\n# ANSI + 256-color palette generated from base colors\n");
+            config.push_str("\n# ANSI + 256-colour palette generated from base colours\n");
             config.push_str(&kitty_palette_lines(&generated_palette));
             config.push('\n');
             config
@@ -405,11 +405,11 @@ white = '{bright_white}'
                 bright_white = theme.bright_white,
             );
 
-            config.push_str("\n# Extended indexed colors (16-255)\n");
-            for (index, color) in generated_palette.iter().enumerate().skip(16) {
+            config.push_str("\n# Extended indexed colours (16-255)\n");
+            for (index, colour) in generated_palette.iter().enumerate().skip(16) {
                 config.push_str("[[colors.indexed_colors]]\n");
                 config.push_str(&format!("index = {index}\n"));
-                config.push_str(&format!("color = '{}'\n\n", color.to_hex()));
+                config.push_str(&format!("color = '{}'\n\n", colour.to_hex()));
             }
 
             config
@@ -434,8 +434,8 @@ return {{
             )
         }
 
-        TerminalType::TerminalApp => r#"Terminal.app theme sync requires profile color configuration.
-Configure profile colors in Terminal → Settings → Profiles.
+        TerminalType::TerminalApp => r#"Terminal.app theme sync requires profile colour configuration.
+Configure profile colours in Terminal → Settings → Profiles.
 "#
         .to_string(),
 
@@ -503,9 +503,9 @@ Configure profile colors in Terminal → Settings → Profiles.
 # 1. Open Warp Settings
 # 2. Go to Appearance → Themes
 # 3. Click "New Theme" or "Import Theme"
-# 4. Use the VT Code color values provided in the wizard
+# 4. Use the VT Code colour values provided in the wizard
 
-# VT Code colors are displayed in the terminal setup output
+# VT Code colours are displayed in the terminal setup output
 # You can manually configure them in Warp's theme editor
 "#
         .to_string(),
@@ -677,18 +677,18 @@ appearance:
 1. Open iTerm2 Preferences (Cmd+,)
 2. Go to Profiles → Colors
 3. Click "Color Presets..." → "Import..."
-4. Or manually configure colors:
+4. Or manually configure colours:
 
 Background: #1e1e1e
 Foreground: #d4d4d4
 Cursor: #ffffff
 Selection: #264f78
 
-ANSI Colors:
+ANSI Colours:
 Black: #000000, Red: #cd3131, Green: #0dbc79, Yellow: #e5e510
 Blue: #2472c8, Magenta: #bc3fbc, Cyan: #11a8cd, White: #e5e5e5
 
-Bright Colors:
+Bright Colours:
 Black: #666666, Red: #f14c4c, Green: #23d18b, Yellow: #f5f543
 Blue: #3b8eea, Magenta: #d670d6, Cyan: #29b8db, White: #ffffff
 
@@ -700,9 +700,9 @@ Alternative: Download VT Code.itermcolors file and import
             format!(
                 r#"VS Code Terminal Theme Configuration:
 
-The terminal automatically inherits your VS Code theme colors.
+The terminal automatically inherits your VS Code theme colours.
 
-To customize terminal colors independently, add to settings.json:
+To customize terminal colours independently, add to settings.json:
 {{
   "workbench.colorCustomizations": {{
     "terminal.background": "{background}",
@@ -828,11 +828,11 @@ mod tests {
         assert_eq!(palette.len(), 256);
 
         let expected_base16: Vec<String> = theme
-            .base16_colors()
+            .base16_colours()
             .iter()
             .map(|c| Rgb::from_hex(c))
             .collect::<Result<Vec<_>, _>>()
-            .expect("base16 colors should be valid hex")
+            .expect("base16 colours should be valid hex")
             .into_iter()
             .map(|rgb| rgb.to_hex())
             .collect();
