@@ -130,7 +130,7 @@ controls for the extraction and injection pipeline:
 | `extract_model` | `string?` | agent model | Overrides the model used for per-thread memory extraction. |
 | `consolidation_model` | `string?` | agent model | Overrides the model used for global memory consolidation. |
 
-### Startup behavior
+### Startup behaviour
 
 Persistent memory is disabled by default. Enable it with `/config memory` or by setting `agent.persistent_memory.enabled = true`.
 

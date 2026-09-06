@@ -78,7 +78,7 @@ Every long-lived spawned task must have explicit lifecycle ownership:
 - Expose a shutdown path (`CancellationToken` or channel)
 - Abort or await task completion on shutdown/drop
 
-This avoids task leaks and makes shutdown behavior deterministic.
+This avoids task leaks and makes shutdown behaviour deterministic.
 
 ## Channel Boundaries
 

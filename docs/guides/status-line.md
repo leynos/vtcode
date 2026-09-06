@@ -51,7 +51,7 @@ The JSON payload written to stdin contains the following fields:
 | `workspace.current_dir` | Same as `cwd`. |
 | `workspace.project_dir` | Same as `cwd`. |
 | `model.id` | Raw model identifier from configuration. |
-| `model.display_name` | Human-readable name when recognised. |
+| `model.display_name` | Human-readable name when recognized. |
 | `runtime.reasoning_effort` | Current reasoning effort level. |
 | `git.branch` | Current branch name when inside a git repository. |
 | `git.dirty` | Boolean indicating whether uncommitted changes exist. |

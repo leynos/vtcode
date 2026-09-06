@@ -37,7 +37,7 @@ Primary-agent selection still works normally. If you explicitly select or config
 - Non allow-listed tools are rejected before execution, and their attempts are logged.
 - If the acknowledgement profile is missing while required, the CLI aborts before launching.
 
-## Customising The Allow-List
+## Customizing The Allow-List
 
 ```toml
 [automation.full_auto]
@@ -105,9 +105,9 @@ Each revision round follows a fixed LLM-call lifecycle:
 2. **Build** executes the tracker (may issue multiple turns, including tool calls, until it signals completion).
 3. **Evaluator** judges the candidate and returns a verdict.
 4. On rejection, a **Replanner** rewrites the spec/contract/tracker from evaluator feedback.
-5. The **Build** phase runs again (its own completion-signaling turn) before the **Evaluator** re-runs.
+5. The **Build** phase runs again (its own completion-signalling turn) before the **Evaluator** re-runs.
 
-A round is exhausted once `max_revision_rounds` replans have been attempted; the run then writes a blocked-handoff artifact instead of silently accepting the candidate. Because the build phase must complete (produce a completion-signaling response) before re-evaluation, every revision round consumes at least one additional build turn. The eval test harness uses a role-aware mock (`RoleQueuedProvider`) that matches responses to the calling sub-agent by system prompt and returns a completion default for any build turn it did not explicitly queue, so tests declare *what each role says* rather than the exact wire-order of calls.
+A round is exhausted once `max_revision_rounds` replans have been attempted; the run then writes a blocked-handoff artefact instead of silently accepting the candidate. Because the build phase must complete (produce a completion-signalling response) before re-evaluation, every revision round consumes at least one additional build turn. The eval test harness uses a role-aware mock (`RoleQueuedProvider`) that matches responses to the calling sub-agent by system prompt and returns a completion default for any build turn it did not explicitly queue, so tests declare *what each role says* rather than the exact wire-order of calls.
 
 ## Regression Testing
 

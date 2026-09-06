@@ -33,7 +33,7 @@ The `/init` command prepares a repository for VT Code guidance and memory. It ge
    /init
    ```
 
-The assistant will analyze the repository, synthesize the relevant guidance, ask targeted questions when needed, and scaffold the workspace instruction layout. By default that includes `AGENTS.md` at the workspace root, `.vtcode/README.md`, and the repository memory directory layout.
+The assistant will analyse the repository, synthesize the relevant guidance, ask targeted questions when needed, and scaffold the workspace instruction layout. By default that includes `AGENTS.md` at the workspace root, `.vtcode/README.md`, and the repository memory directory layout.
 
 You can run the same flow from the CLI with:
 
@@ -81,7 +81,7 @@ After initialization:
 
 - use `AGENTS.md` for project-wide guidance
 - add focused rule files under `.vtcode/rules/` when only some paths need extra instructions
-- use `/memory` or `/config memory` to inspect and tune persistent-memory behavior
+- use `/memory` or `/config memory` to inspect and tune persistent-memory behaviour
 
 ## Example Output
 
@@ -126,4 +126,4 @@ For a Rust service with Docker support and conventional commits:
 - Repository docs spotted: README.md, docs/ARCHITECTURE.md.
 ```
 
-Regenerate the root guidance whenever the build, testing, or review process changes so future contributors and agents stay aligned. For more on runtime guidance loading and persistent-memory behavior, see [Guidance and Persistent Memory for VT Code](./memory-management.md).
+Regenerate the root guidance whenever the build, testing, or review process changes so future contributors and agents stay aligned. For more on runtime guidance loading and persistent-memory behaviour, see [Guidance and Persistent Memory for VT Code](./memory-management.md).

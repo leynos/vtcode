@@ -7,7 +7,7 @@ Entry point for VT Code contributor workflows.
 - [Development Setup](./DEVELOPMENT_SETUP.md) - Canonical local setup and quality loop.
 - [Testing Guide](./testing.md) - Test commands, structure, and benchmark coverage, including the startup launch benchmark.
 - [C++ Core Guidelines Adoption](./CPP_CORE_GUIDELINES_ADOPTION.md) - Policy for any C/C++ code introduced in this repository.
-- [CI/CD](./ci-cd.md) - Pipeline behavior and verification stages.
+- [CI/CD](./ci-cd.md) - Pipeline behaviour and verification stages.
 - [Cross Compilation](./cross-compilation.md) - Multi-target build workflows.
 - [Fuzzing](./fuzzing.md) - `cargo-fuzz` usage and parser hardening.
 
@@ -18,7 +18,7 @@ Entry point for VT Code contributor workflows.
 - [Command Security Model](./COMMAND_SECURITY_MODEL.md) - Command validation and threat model.
 - [WebMCP bridge](./webmcp.md) - Authenticated browser editing, pairing, runtime adapters, and security boundaries.
 - [Security Guide](../guides/security.md) - Process sandbox boundaries, MCP inheritance, and provider diagnostic redaction.
-- [Runtime Guidance](./runtime-guidance.md) - Boundary between compiled universal behavior and dynamic project instructions.
+- [Runtime Guidance](./runtime-guidance.md) - Boundary between compiled universal behaviour and dynamic project instructions.
 - [vtcode Binary Gotchas](./vtcode-binary-gotchas.md) - Binary startup, runloop recovery, allocator, and request-assembly invariants.
 - [AI Tool Surface Migration](./ai-tool-surface-migration.md) - Breaking-change notes for the Codex-style default tools.
 

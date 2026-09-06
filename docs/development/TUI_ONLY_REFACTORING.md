@@ -144,7 +144,8 @@ policy_manager.set_permission_handler(Box::new(HeadlessPermissionHandler::new(
 The refactoring maintains backward compatibility:
 
 1. If no permission handler is set, `should_execute_tool()` returns `Allowed` for Prompt policies
-2. This maintains the existing behavior where TUI mode permissions are handled externally
+2. This maintains the existing behaviour where TUI mode permissions are
+   handled externally
 3. Existing code that doesn't set a handler continues to work
 
 ## Benefits

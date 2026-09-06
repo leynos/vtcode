@@ -199,7 +199,7 @@ In C++, developers introduce:
 - **Shallow abstractions**: to avoid the risk of unsafe pointer manipulation.
 - **Coarse-grained ownership**: because fine-grained ownership is too error-prone.
 
-Each of these "defense in depth" decisions has a performance cost. Rust eliminates the need for them:
+Each of these "defence in depth" decisions has a performance cost. Rust eliminates the need for them:
 
 - `&T` is guaranteed safe — no defensive `clone()` needed.
 - `&mut T` is guaranteed unique — no locks needed for exclusive access in single-threaded code.
@@ -247,7 +247,7 @@ A common intuition is that checked arithmetic (panicking on overflow) imposes si
 
 ### Checked arithmetic enables *better* optimization
 
-A subtle but important point: checked arithmetic makes the optimizer's job **easier**, not harder. When an operation would overflow, all subsequent code is dead (execution jumps to the panic handler). The compiler does not need to consider those states. Compare with C/C++ where signed overflow is undefined behavior — the compiler assumes it never happens, but the programmer cannot assume the same thing. In Rust, overflow is defined behavior (panic in debug, wrap in release), which means the compiler has *more* constraints it can exploit, not fewer.
+A subtle but important point: checked arithmetic makes the optimizer's job **easier**, not harder. When an operation would overflow, all subsequent code is dead (execution jumps to the panic handler). The compiler does not need to consider those states. Compare with C/C++ where signed overflow is undefined behaviour — the compiler assumes it never happens, but the programmer cannot assume the same thing. In Rust, overflow is defined behaviour (panic in debug, wrap in release), which means the compiler has *more* constraints it can exploit, not fewer.
 
 ### What this means for vtcode
 

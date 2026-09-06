@@ -4,7 +4,7 @@ Agent capability is not a property of the model alone. As tasks become
 long-horizon, capability is an emergent property of a *system* composed of
 **model · harness · context · tools · evals · sandbox · state management**,
 operating within **finite context**, reaching through **external tools**, into
-a **changing environment** — and the only acceptable behavior over time is that
+a **changing environment** — and the only acceptable behaviour over time is that
 the agent **keeps getting closer to completion**.
 
 This document maps that framing onto concrete VT Code crates and modules, and
@@ -37,7 +37,7 @@ progress invariant. It complements [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md)
    - **Tool-result offloading** — keep re-fetchable payloads out of the live
      window (split results, `output_spooler`, `context.dynamic`).
    Additionally, the durable **`ProgressLedger`**
-    (`crates/codegen/vtcode-memory/src/progress.rs`) is a tiny derived artifact that
+    (`crates/codegen/vtcode-memory/src/progress.rs`) is a tiny derived artefact that
    summarizes goal progress without reloading the event log.
 
 2. **External tools.** The agent reaches beyond its weights through the tool

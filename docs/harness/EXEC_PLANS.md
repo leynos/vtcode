@@ -6,7 +6,7 @@ Execution plans are self-contained, living design documents for complex multi-st
 
 - **Agent continuity**: an agent picking up mid-task can read the exec plan and resume without the original conversation context.
 - **Decision logging**: captures why choices were made, not just what was done.
-- **Retrospectives**: completed plans become learning artifacts for future work.
+- **Retrospectives**: completed plans become learning artefacts for future work.
 
 ## Exec Plans vs Planning Workflow
 

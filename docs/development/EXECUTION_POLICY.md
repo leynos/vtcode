@@ -130,13 +130,13 @@ are designed to keep the first-request overhead low and per-turn growth bounded.
 
 ### Defaults that keep the prefix small
 
-- **MCP tools defer by default.** Any MCP tool in the catalog is flagged
+- **MCP tools defer by default.** Any MCP tool in the catalogue is flagged
   `defer_loading` rather than sent eagerly, regardless of tool count. MCP schemas
   are the dominant source of token inflation; the model discovers them on demand.
 - **Client-local deferral is the default.** Providers without a hosted tool search
   (e.g. Gemini) omit deferred schemas from the wire payload and append a compact,
   cache-stable discoverability summary to the system prompt. Set
-  `tools.client_tool_search = false` to opt back into the eager catalog.
+  `tools.client_tool_search = false` to opt back into the eager catalogue.
 - **Subagents use a lightweight profile.** A delegated child agent defaults to
   `system_prompt_mode = minimal` and `tool_documentation_mode = minimal`, and does
   not inherit the parent's MCP servers unless explicitly requested. This prevents
@@ -161,7 +161,7 @@ are designed to keep the first-request overhead low and per-turn growth bounded.
 ### Authoring guidance
 
 - Keep instruction files (AGENTS.md / CLAUDE.md) focused; they ride on every request.
-- Put universal user-facing behavior in the compiled runtime-guidance section; keep authored instruction files for project-specific maps and maintainer workflows. Authored files are context, not a security boundary.
+- Put universal user-facing behaviour in the compiled runtime-guidance section; keep authored instruction files for project-specific maps and maintainer workflows. Authored files are context, not a security boundary.
 - Prefer delegating large searches to subagents with a narrow, explicit tool set
   rather than fanning out broad orchestration.
 - When adding a tool, keep its description between 40 and 1200 characters and include
@@ -177,9 +177,9 @@ A first-request budget guard rail is enforced by tests:
 
 - `crates/codegen/vtcode-core/src/tools/registry/builtins.rs::emitted_model_tool_schema_fits_within_first_request_budget`
   asserts builtin tool schemas stay within the budget in `progressive` mode.
-- `crates/codegen/vtcode-core/src/tools/handlers/session_tool_catalog.rs` tests assert MCP tools
-  defer (small or large catalog) and that the client-local policy defers small MCP
-  catalogs.
+- `crates/codegen/vtcode-core/src/tools/handlers/session_tool_catalogue.rs` tests assert MCP tools
+  defer (small or large catalogue) and that the client-local policy defers small
+  MCP catalogues.
 
 Run them with:
 

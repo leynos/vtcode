@@ -170,15 +170,15 @@ It also covers pattern core concepts such as textual vs structural matching, CST
 It also covers pattern parsing details such as invalid / incomplete / ambiguous snippets, effective-node selection via `selector`, meta-variable detection rules, unnamed-node capture, lazy `$$$ARGS`, and when `expandoChar` matters.
 It also covers the match algorithm and strictness levels used by ast-grep commands.
 It also covers Find & Patch style rewrites such as `rewriters`, `transform.rewrite`, `joinBy`, and one-to-many rewrites like splitting barrel imports.
-It also covers transformation-object details such as `replace`, `substring`, `convert`, `toCase`, `separatedBy`, `CaseChange`, string-form transforms, and the experimental matching-order behavior of `transform.rewrite`.
+It also covers transformation-object details such as `replace`, `substring`, `convert`, `toCase`, `separatedBy`, `CaseChange`, string-form transforms, and the experimental matching-order behaviour of `transform.rewrite`.
 It also covers rewriter-specific rules such as required `id` / `rule` / `fix`, rewriter-local capture scope, rewriter-local `utils` / `transform`, and using sibling rewriters from the same list.
 It also covers `sgconfig.yml` itself in more detail: `ruleDirs`, `testConfigs`, `testDir`, `snapshotDir`, `utilDirs`, `languageGlobs` precedence, target-triple `libraryPath`, `languageSymbol`, and dynamic `injected` language selection through `$LANG`.
 It also covers custom language setup, including `customLanguages`, parser compilation with `tree-sitter build`, the `TREE_SITTER_LIBDIR` fallback, `expandoChar`, and parser inspection with `tree-sitter parse`.
 It also covers multi-language documents and language injection, including built-in HTML `<script>` / `<style>` extraction, `languageInjections`, `hostLanguage`, `injected`, `$CONTENT` captures, styled-components CSS, and GraphQL template literals.
-It also covers ast-grep’s built-in language catalog, alias selection for `--lang` / YAML `language`, built-in extension mapping, and when VT Code’s local inference subset differs from ast-grep’s full built-in list.
+It also covers ast-grep’s built-in language catalogue, alias selection for `--lang` / YAML `language`, built-in extension mapping, and when VT Code’s local inference subset differs from ast-grep’s full built-in list.
 It also covers the programmatic API surface in more concrete terms: Node NAPI `parse` / `kind` / `pattern`, `Lang`, `SgRoot`, `SgNode`, `NapiConfig`, Python `SgRoot` / `SgNode`, edit objects, and the deprecation of language-specific JS objects like `js.parse(...)`.
 Quick-start guidance there also covers shell quoting for metavariables, Linux `ast-grep` vs `sg`, and the optional-chaining rewrite example.
-Catalog-style example discovery and adaptation are also routed there, especially when examples depend on `constraints`, `utils`, `transform`, `rewriters`, or built-in fixes.
+Catalogue-style example discovery and adaptation are also routed there, especially when examples depend on `constraints`, `utils`, `transform`, `rewriters`, or built-in fixes.
 
 ### Integration Tests
 

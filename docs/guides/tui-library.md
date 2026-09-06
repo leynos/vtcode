@@ -6,7 +6,7 @@ from other crates.
 ## What It Provides
 
 - Stable import surface for VT Code inline terminal UI primitives
-- Explicit module split: `vtcode_ui::tui::core` for reusable TUI foundation, `vtcode_ui::tui::app` for VT Code-specific overlays and behaviors
+- Explicit module split: `vtcode_ui::tui::core` for reusable TUI foundation, `vtcode_ui::tui::app` for VT Code-specific overlays and behaviours
 - Standalone session options API (`vtcode_ui::tui::app::SessionOptions`, `SessionSurface`, `KeyboardProtocolSettings`)
 - Session lifecycle APIs (`vtcode_ui::tui::app::spawn_session_with_options`, `spawn_session_with_host`)
 - Typed command/event protocol (`vtcode_ui::tui::app::InlineHandle`, `InlineCommand`, `InlineEvent`)

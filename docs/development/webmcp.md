@@ -97,7 +97,7 @@ place after a refresh or a failed step. Browser errors include the next safe
 action, such as rereading a stale file or selecting an allowed panel.
 `test/webmcp-evals.test.ts` validates tool names, metadata budgets, input errors,
 and the browser-only authority boundary. These are deterministic contract
-checks. Probabilistic selection and end-to-end model behavior must additionally
+checks. Probabilistic selection and end-to-end model behaviour must additionally
 be tested in Chrome's Model Context Tool Inspector or another WebMCP-compatible
 agent using the prompts in the WebMCP app guide.
 

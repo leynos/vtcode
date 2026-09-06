@@ -74,7 +74,7 @@ rg -n -C 2 "@property|@staticmethod" .
 
 ## Performance Tips
 
-| Optimisation | Benefit | Example |
+| Optimization | Benefit | Example |
 | --- | --- | --- |
 | Use `--glob` | 10-100x faster | `--glob "**/*.rs"` |
 | Use `-t` | 5-10x faster | `-t rust` |
@@ -100,7 +100,7 @@ src/lib.rs
 
 The advanced profile exposes `code_search` with required `query` and optional
 `path`, `file_types`, `result_types`, and `max_results`. The four result types
-are `definition`, `usage`, `text`, and `path`. Definitions are recognised
+are `definition`, `usage`, `text`, and `path`. Definitions are recognized
 declarations. Usages are exact syntactic identifiers, not resolved references.
 Text covers prose, configuration, comments, strings, and unclassified literal
 matches. Path results match filenames or paths.
@@ -118,7 +118,7 @@ is implied.
 {"query":"Widget","path":"src","file_types":["rust"],"result_types":["definition","usage"],"max_results":20}
 ```
 
-Use `exec_command` or the specialised ast-grep skill for arbitrary structural
+Use `exec_command` or the specialized ast-grep skill for arbitrary structural
 patterns.
 
 ## Real-World Examples

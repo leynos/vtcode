@@ -39,7 +39,7 @@ This document outlines planned enhancements and features for the vtcode coding a
 
 -   Extend beyond Rust to support other languages (Python, JavaScript, Go)
 -   Add language detection and appropriate parser selection
--   Implement language-specific tool behaviors
+-   Implement language-specific tool behaviours
 -   Support polyglot project analysis
 -   Create language-specific workflow patterns
 
@@ -164,7 +164,7 @@ Inspired by Anthropic's engineering excellence:
 
 -   **Comprehensive Documentation** - Extensive tool descriptions with examples
 -   **Error Anticipation** - Design for common model misunderstandings
--   **Clear Interfaces** - Well-defined parameters and behaviors
+-   **Clear Interfaces** - Well-defined parameters and behaviours
 -   **Extensive Testing** - Validate tools across diverse scenarios
 -   **Debugging Support** - Clear error messages and recovery guidance
 

@@ -32,7 +32,7 @@ The project uses several GitHub Actions workflows to ensure code quality and aut
 
 **Jobs:**
 
-- **Tool Evaluation**: Validates built-in tool behavior and safety gateways
+- **Tool Evaluation**: Validates built-in tool behaviour and safety gateways
 - **Integration tests**: End-to-end tool execution checks
 
 ### 3. Build Linux & Windows (`build-linux-windows.yml`)

@@ -8,7 +8,7 @@ VT Code includes a built-in update system that can check for and install updates
 
 - **Multiple release channels** (stable, beta, nightly)
 - **Version pinning** for staying on specific versions
-- **Configurable update behavior** via `update.toml` in the canonical user config directory
+- **Configurable update behaviour** via `update.toml` in the canonical user config directory
 - **Download mirrors** for better availability
 
 Standalone updates use VT Code's native replacement pipeline: the updater selects the
@@ -290,7 +290,7 @@ vtcode update --pin 0.85.3
 vtcode update --channel beta
 ```
 
-## Update Behavior
+## Update Behaviour
 
 ### Managed Installs
 

@@ -59,7 +59,7 @@ gh api repos/vinhnx/VTCode/actions/workflows/236250414/runs?per_page=1 \
 gh run watch <RUN_ID> --repo vinhnx/VTCode --exit-status
 ```
 
-Download artifacts and upload to the release:
+Download artefacts and upload to the release:
 
 ```bash
 mkdir -p /tmp/vtcode-linux-assets
@@ -86,7 +86,7 @@ gh api -X POST repos/vinhnx/VTCode/actions/workflows/236250414/dispatches \
   -f 'inputs[build_windows]=true'
 ```
 
-When finished, upload Windows zip and checksum from workflow artifacts to the same release.
+When finished, upload Windows zip and checksum from workflow artefacts to the same release.
 
 ## 4) Update ACP registry entry
 

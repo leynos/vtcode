@@ -4,13 +4,13 @@ VT Code has two distinct prompt sources:
 
 | Source | Loaded from | Purpose | Trust boundary |
 | --- | --- | --- | --- |
-| Compiled runtime guidance | `crates/codegen/vtcode-core/src/prompts/runtime_guidance.rs` | Small, universal user-facing behavior included in Default, Minimal, Lightweight, and Specialized profiles | Part of the application runtime |
+| Compiled runtime guidance | `crates/codegen/vtcode-core/src/prompts/runtime_guidance.rs` | Small, universal user-facing behaviour included in Default, Minimal, Lightweight, and Specialized profiles | Part of the application runtime |
 | Project instruction map | User/workspace `AGENTS.md`, `CLAUDE.md`, and `.vtcode/rules/` | Project conventions, local architecture, and maintainer workflows | User-controlled context, never a security boundary |
 
 The compiled section is deterministic, cached with the static profile, and
 kept below its approximate 256-token cap. It must not read, embed, or generate
 content from repository instruction files. Profile-specific operating details
-remain in the prompt builder; correctness-critical behavior belongs in runtime
+remain in the prompt builder; correctness-critical behaviour belongs in runtime
 policy, schemas, tests, or lints.
 
 ## User-facing progress contract
@@ -94,7 +94,7 @@ and workspace sources in precedence order, loads nested files for the active
 directory, applies path-scoped rules and exclusions, and appends the resulting
 project appendix separately from the compiled base prompt. `AGENTS.md` files
 therefore remain useful maintainer maps without becoming an implicit source of
-universal VT Code behavior.
+universal VT Code behaviour.
 
 When changing this boundary, run:
 

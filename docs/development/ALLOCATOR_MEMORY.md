@@ -1,4 +1,4 @@
-# Allocator & Memory Behavior
+# Allocator & Memory Behaviour
 
 VT Code runs a bursty, sparse workload: `Semaphore`-capped concurrency with
 `JoinSet` fans-out of many short-lived Tokio tasks, then workers go idle between
@@ -43,7 +43,7 @@ cargo run --release --bin vtcode --features allocator-jemalloc -- bench-allocato
 
 ## Allocation throughput trade-off (measured)
 
-`jemalloc` trades allocation speed for better memory behavior. Measured on macOS
+`jemalloc` trades allocation speed for better memory behaviour. Measured on macOS
 (`cargo bench --bench allocator_throughput`, `release-fast`):
 
 | Benchmark | mimalloc | jemalloc | Delta |

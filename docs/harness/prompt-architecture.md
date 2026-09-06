@@ -3,8 +3,8 @@
 ## Cache-stable segments
 
 Each harness segment freezes one `SessionRequestEnvelope`: a segment ID, the
-system prompt, a canonically ordered tool catalog, and the instruction digest.
-Ordinary turns only append messages. Compaction or a change to the catalog
+system prompt, a canonically ordered tool catalogue, and the instruction digest.
+Ordinary turns only append messages. Compaction or a change to the catalogue
 epoch, primary agent, model, provider, mode, or instruction digest starts a new
 segment and therefore one intentional cache miss.
 
@@ -19,7 +19,7 @@ Architecture)* of the agentic-AI guide:
    universal runtime guidance, and output format assembled once per segment.
 2. **Dynamic assembly** (18.3.2) — modular, cache-friendly composition at
    segment creation from the base prompt, instruction appendix, runtime
-   contract, recovery mode, harness limits, tool catalog, and primary-agent
+   contract, recovery mode, harness limits, tool catalogue, and primary-agent
    state. Later runtime changes are appended as context messages.
 3. **Few-shot management** (18.3.3) — keyword-tagged examples loaded from
    disk, token-budgeted via `vtcode_commons::tokens::estimate_tokens`,
@@ -50,9 +50,9 @@ immutable `system_prompt` in this order:
 5. **Active Primary Agent Skills** — when a primary agent is active.
 6. **Harness Limits** — `harness_limits::upsert_harness_limits_section`.
 7. **Recovery Mode** — when `tool_free_recovery` is active; tools are
-   stripped from the catalog snapshot.
-8. **Runtime Tool Catalog** — `append_runtime_tool_prompt_sections` with
-   the planning/capability filtered `SessionToolCatalogSnapshot`.
+   stripped from the catalogue snapshot.
+8. **Runtime Tool Catalogue** — `append_runtime_tool_prompt_sections` with
+   the planning/capability filtered `SessionToolCatalogueSnapshot`.
 9. **GitHub Copilot Client Tools** — only for the Copilot provider.
 10. **Active Primary Agent Runtime State** — model, reasoning effort,
     instructions, and `### Memory Appendix` if the agent has memory.
@@ -104,7 +104,7 @@ For each turn, the harness:
    [`DEFAULT_FEW_SHOT_BUDGET_TOKENS`] (default 800 tokens, ~10% of an 8K
    context window).
 6. Renders the chosen examples as a `[Few-Shot Examples]` block appended
-   to the system prompt before the tool catalog.
+   to the system prompt before the tool catalogue.
 
 The selection is keyword-based and runs in-process without an embedding
 provider. Embedding-based selection is the documented next step (see

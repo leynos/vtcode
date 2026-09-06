@@ -2,7 +2,7 @@
 
 ## Overview
 
-On macOS, the Alt key (also labeled as Option) may not send proper key events to VT Code or other terminal applications due to terminal emulator configuration. This guide provides solutions for common issues where Alt shortcuts don't work as expected.
+On macOS, the Alt key (also labelled as Option) may not send proper key events to VT Code or other terminal applications due to terminal emulator configuration. This guide provides solutions for common issues where Alt shortcuts don't work as expected.
 
 ## Common Symptoms
 
@@ -68,7 +68,7 @@ If you're using iTerm2, ensure Alt key is configured correctly:
    - Profiles → [Your Profile] → Keys
 
 3. **Configure Alt Key:**
-   - Find the option labeled "Left option key acts as" or "Right option key acts as"
+   - Find the option labelled "Left option key acts as" or "Right option key acts as"
    - Select: **+Esc** (this allows Alt key to be recognized as a modifier)
    - Alternative: Set to **Meta** if available
 

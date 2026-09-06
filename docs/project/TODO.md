@@ -10,7 +10,7 @@ The most intricate parts are likely:
      1. core_tui/session.rs
         Main state transitions, layout, rendering, and interaction coordination.
      2. Transcript rendering and caching
-        Reflow, scroll behavior, tool blocks, PTY output, overlays, and cache
+        Reflow, scroll behaviour, tool blocks, PTY output, overlays, and cache
         invalidation interact heavily.
      3. Input ownership
         Normal input, popups, approval prompts, search, and fullscreen review each have
@@ -18,8 +18,8 @@ The most intricate parts are likely:
      4. Async integration
         Terminal events, agent events, PTY events, and redraw requests must be
         coordinated without blocking the runtime.
-     5. Theme and contrast behavior
-        Theme changes affect normal text, accents, syntax highlighting, status colors,
+     5. Theme and contrast behaviour
+        Theme changes affect normal text, accents, syntax highlighting, status colours,
         overlays, and accessibility requirements.
 
 ==> improve
@@ -68,7 +68,7 @@ Evidence: Session replay can't show touched files
 
 ===
 
-improve coloring of grouped tool call commands and wording higlight
+improve colouring of grouped tool call commands and wording highlight
 
 '/Users/vinhnguyenxuan/Documents/vtcode-resources/bugs/Screenshot 2026-09-02 at 21.09.57.png' '/Users/vinhnguyenxuan/Documents/vtcode-resources/bugs/Screenshot 2026-09-02 at 21.09.55.png'
 
@@ -105,7 +105,7 @@ fix broken tool call rendering
 
 ===
 
-check /config listing some time can not scroll to last items, it get stuck even though the list is longer than the screen. The harness should ensure that the scrolling behavior in the /config listing is smooth and allows users to reach the last items without getting stuck. Additionally, provide visual indicators or feedback to inform users when they have reached the end of the list or if there are more items to scroll through.
+check /config listing some time can not scroll to last items, it get stuck even though the list is longer than the screen. The harness should ensure that the scrolling behaviour in the /config listing is smooth and allows users to reach the last items without getting stuck. Additionally, provide visual indicators or feedback to inform users when they have reached the end of the list or if there are more items to scroll through.
 
 '/Users/vinhnguyenxuan/Documents/vtcode-resources/bugs/Screenshot 2026-09-03 at 16.58.38.png'
 
@@ -147,7 +147,7 @@ log: /Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/.vtcode/sessions/sess
 
 ---
 
-small details: on "/" splash command pallate suggestion, pressing "enter" should just accept the suggestion and populate into the chat input box, instead of executing the command immediately. This allows users to review and edit the suggestion before sending it, improving usability and reducing accidental command execution. Check how "tab" key is used for suggestion selection and ensure that the behavior is consistent with user expectations. Additionally, provide visual feedback to indicate that the suggestion has been accepted into the input box, and allow users to easily modify or cancel the input before sending it.
+small details: on "/" splash command pallate suggestion, pressing "enter" should just accept the suggestion and populate into the chat input box, instead of executing the command immediately. This allows users to review and edit the suggestion before sending it, improving usability and reducing accidental command execution. Check how "tab" key is used for suggestion selection and ensure that the behaviour is consistent with user expectations. Additionally, provide visual feedback to indicate that the suggestion has been accepted into the input box, and allow users to easily modify or cancel the input before sending it.
 
 ---
 

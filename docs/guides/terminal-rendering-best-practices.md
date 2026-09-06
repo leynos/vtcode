@@ -43,7 +43,7 @@ File: `crates/codegen/vtcode-core/src/ui/tui/session.rs`
 The `Session::render()` method orchestrates all UI components:
 - Header (top bar with model/status)
 - Navigation pane (left sidebar)
-- Transcript (message history, center)
+- Transcript (message history, centre)
 - Input area (bottom with user input)
 - Modals/overlays (palettes, search, etc.)
 
@@ -228,11 +228,11 @@ On `Event::Resize(w, h)`:
 
 VT Code automatically clears caches and re-renders on resize.
 
-## Color and Styling
+## Colour and Styling
 
-### Ratatui Color Model
+### Ratatui Colour Model
 
-VT Code uses Ratatui's style system for portable colors:
+VT Code uses Ratatui's style system for portable colours:
 
 ```rust
 use ratatui::style::{Color, Modifier, Style};
@@ -248,10 +248,10 @@ f.render_widget(
 );
 ```
 
-**Portable color options:**
+**Portable colour options:**
 - Named: `Color::Red`, `Color::Blue`, etc.
-- Indexed: `Color::Indexed(200)` (256-color palette)
-- RGB: `Color::Rgb(255, 0, 0)` (24-bit color, terminal permitting)
+- Indexed: `Color::Indexed(200)` (256-colour palette)
+- RGB: `Color::Rgb(255, 0, 0)` (24-bit colour, terminal permitting)
 
 ### ANSI SGR Code Parsing
 
