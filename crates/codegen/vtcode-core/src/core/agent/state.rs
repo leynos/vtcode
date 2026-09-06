@@ -237,7 +237,7 @@ impl RequestHistoryAnalysis {
     }
 }
 
-fn analyze_request_history(messages: &[Message]) -> RequestHistoryAnalysis {
+fn analyse_request_history(messages: &[Message]) -> RequestHistoryAnalysis {
     let mut analysis = RequestHistoryAnalysis::default();
     let mut calls_by_id: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
 
@@ -311,7 +311,7 @@ fn analyze_request_history(messages: &[Message]) -> RequestHistoryAnalysis {
 /// This deliberately analyzes only the request view. Durable session history
 /// is repaired by its own crash-recovery path and is never changed here.
 pub fn request_history_needs_normalization(messages: &[Message]) -> bool {
-    analyze_request_history(messages).needs_repair()
+    analyse_request_history(messages).needs_repair()
 }
 
 /// Rebuild a provider-facing message view with each assistant tool-call batch
@@ -322,7 +322,7 @@ pub fn request_history_needs_normalization(messages: &[Message]) -> bool {
 /// result; and messages interleaved between a call batch and its results move
 /// after the complete batch. The input slice is never mutated.
 pub fn normalize_history_for_request(messages: &[Message]) -> Vec<Message> {
-    let analysis = analyze_request_history(messages);
+    let analysis = analyse_request_history(messages);
     if !analysis.needs_repair() {
         return messages.to_vec();
     }

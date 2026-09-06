@@ -176,8 +176,8 @@ impl StreamingReasoningState {
                 render_compact_reasoning_block(renderer, reasoning_text)?;
                 self.rendered_any = true;
 
-                use super::reasoning::analyze_reasoning;
-                let analysis = analyze_reasoning(&compact);
+                use super::reasoning::analyse_reasoning;
+                let analysis = analyse_reasoning(&compact);
                 if analysis.has_concerns() {
                     tracing::debug!(
                         concern = ?analysis.priority_concern(),

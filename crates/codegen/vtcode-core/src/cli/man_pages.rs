@@ -229,6 +229,7 @@ impl ManPageGenerator {
             "create-project" => Self::generate_create_project_man_page(),
             "init" => Self::generate_init_man_page(),
             "man" => Self::generate_man_man_page(),
+            "analyse" | "analyze" => Self::generate_analyse_man_page(),
             _ => bail!("Unknown command: {command}"),
         }
     }
@@ -265,7 +266,7 @@ impl ManPageGenerator {
                 roman(", "),
                 bold("vtcode-ask(1)"),
                 roman(", "),
-                bold("vtcode-analyze(1)"),
+                bold("vtcode-analyse(1)"),
             ])
             .render();
 
@@ -307,7 +308,43 @@ impl ManPageGenerator {
         Ok(page)
     }
 
-    /// Generate man page for the analyze command
+    /// Generate man page for the analyse command
+    fn generate_analyse_man_page() -> Result<String> {
+        let current_date = Self::current_date();
+        let page = Roff::new()
+            .control("TH", ["VTCODE-ANALYSE", "1", &current_date, "VT Code", "User Commands"])
+            .control("SH", ["NAME"])
+            .text([roman("vtcode-analyse - Analyse workspace")])
+            .control("SH", ["SYNOPSIS"])
+            .text([
+                bold("vtcode"),
+                roman(" ["),
+                bold("OPTIONS"),
+                roman("] "),
+                bold("analyse"),
+                roman(" ["),
+                italic("TYPE"),
+                roman("]"),
+            ])
+            .control("SH", ["DESCRIPTION"])
+            .text([
+                roman("Analyse the current workspace and report its structure, configuration, and source layout."),
+                roman(" The optional analysis mode selects the read-only inspection to perform."),
+            ])
+            .control("SH", ["ARGUMENTS"])
+            .control("TP", [])
+            .text([bold("TYPE")])
+            .text([roman("Optional analysis mode for the workspace inspection.")])
+            .control("SH", ["EXAMPLES"])
+            .text([roman("Analyse the whole workspace:")])
+            .text([bold("  vtcode analyse")])
+            .control("SH", ["SEE ALSO"])
+            .text([bold("vtcode(1)"), roman(", "), bold("vtcode-man(1)")])
+            .render();
+
+        Ok(page)
+    }
+
     /// Generate man page for the performance command
     fn generate_performance_man_page() -> Result<String> {
         let current_date = Self::current_date();
@@ -564,7 +601,7 @@ impl ManPageGenerator {
             .control("SH", ["AVAILABLE COMMANDS"])
             .text([roman("• chat - Interactive AI coding assistant")])
             .text([roman("• ask - Single prompt mode")])
-            .text([roman("• analyze - Workspace analysis")])
+            .text([roman("• analyse - Workspace analysis")])
             .text([roman("• performance - Performance metrics")])
             .text([roman("• trajectory - Pretty-print trajectory logs and analytics")])
             .text([roman("• benchmark - SWE-bench evaluation framework")])
@@ -593,5 +630,30 @@ impl ManPageGenerator {
             .render();
 
         Ok(page)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Regression coverage for command-specific man-page dispatch.
+
+    use super::ManPageGenerator;
+
+    #[test]
+    fn dispatches_canonical_and_legacy_analyse_man_pages() {
+        let canonical_page =
+            ManPageGenerator::generate_command_man_page("analyse").expect("analyse man page should be generated");
+        let legacy_page = ManPageGenerator::generate_command_man_page("analyze")
+            .expect("legacy analyze man page should dispatch to the canonical page");
+
+        assert_eq!(legacy_page, canonical_page, "legacy analyze dispatch should return the canonical analyse man page");
+        assert!(
+            canonical_page.contains("VTCODE-ANALYSE"),
+            "analyse dispatch should generate the canonical man-page title"
+        );
+        assert!(
+            canonical_page.contains(r"\fBanalyse\fR"),
+            "analyse man page should include the canonical command in its synopsis"
+        );
     }
 }

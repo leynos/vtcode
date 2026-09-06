@@ -120,13 +120,13 @@ pub struct FailurePatterns {
 
 /// Analyzes agent behavior from metrics history
 #[derive(Default)]
-pub struct AgentBehaviorAnalyzer {
+pub struct AgentBehaviourAnalyser {
     skill_stats: SkillStatistics,
     tool_stats: ToolStatistics,
     failure_patterns: FailurePatterns,
 }
 
-impl AgentBehaviorAnalyzer {
+impl AgentBehaviourAnalyser {
     /// Create a new behavior analyzer
     pub fn new() -> Self {
         Self::default()
@@ -399,53 +399,53 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_analyzer_creation() {
-        let analyzer = AgentBehaviorAnalyzer::new();
-        assert_eq!(analyzer.skill_stats.total_skills, 0);
-        assert_eq!(analyzer.tool_stats.total_discoveries, 0);
+    fn test_analyser_creation() {
+        let analyser = AgentBehaviourAnalyser::new();
+        assert_eq!(analyser.skill_stats.total_skills, 0);
+        assert_eq!(analyser.tool_stats.total_discoveries, 0);
     }
 
     #[test]
     fn test_recommend_tools() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
-        analyzer.record_tool_usage("read_file");
-        analyzer.record_tool_usage("read_file");
-        analyzer.record_tool_usage("write_file");
-        analyzer.record_tool_usage(tools::LIST_FILES);
+        let mut analyser = AgentBehaviourAnalyser::new();
+        analyser.record_tool_usage("read_file");
+        analyser.record_tool_usage("read_file");
+        analyser.record_tool_usage("write_file");
+        analyser.record_tool_usage(tools::LIST_FILES);
 
-        let recommendations = analyzer.recommend_tools("read", 1);
+        let recommendations = analyser.recommend_tools("read", 1);
         assert!(recommendations.contains(&"read_file".to_owned()));
     }
 
     #[test]
     fn test_record_skill_reuse() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
-        analyzer.record_skill_reuse("filter_skill");
-        analyzer.record_skill_reuse("filter_skill");
-        analyzer.record_skill_reuse("transform_skill");
+        let mut analyser = AgentBehaviourAnalyser::new();
+        analyser.record_skill_reuse("filter_skill");
+        analyser.record_skill_reuse("filter_skill");
+        analyser.record_skill_reuse("transform_skill");
 
-        assert_eq!(analyzer.skill_stats.reused_skills, 3);
-        assert!(analyzer.skill_stats.most_effective_skills.contains(&"filter_skill".to_owned()));
+        assert_eq!(analyser.skill_stats.reused_skills, 3);
+        assert!(analyser.skill_stats.most_effective_skills.contains(&"filter_skill".to_owned()));
     }
 
     #[test]
     fn test_tool_failure_tracking() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
-        analyzer.record_tool_failure(tools::GREP_FILE, "timeout");
-        analyzer.record_tool_failure(tools::GREP_FILE, "timeout");
-        analyzer.record_tool_failure(tools::GREP_FILE, "pattern_error");
+        let mut analyser = AgentBehaviourAnalyser::new();
+        analyser.record_tool_failure(tools::GREP_FILE, "timeout");
+        analyser.record_tool_failure(tools::GREP_FILE, "timeout");
+        analyser.record_tool_failure(tools::GREP_FILE, "pattern_error");
 
-        assert!(!analyzer.failure_patterns.high_failure_tools.is_empty());
-        assert!(analyzer.failure_patterns.high_failure_tools[0].0 == tools::GREP_FILE);
+        assert!(!analyser.failure_patterns.high_failure_tools.is_empty());
+        assert!(analyser.failure_patterns.high_failure_tools[0].0 == tools::GREP_FILE);
     }
 
     #[test]
     fn test_summary_generation() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
-        analyzer.skill_stats.total_skills = 5;
-        analyzer.record_skill_reuse("test_skill");
+        let mut analyser = AgentBehaviourAnalyser::new();
+        analyser.skill_stats.total_skills = 5;
+        analyser.record_skill_reuse("test_skill");
 
-        let summary = analyzer.summary();
+        let summary = analyser.summary();
         assert!(summary.contains("Skill Statistics"));
         assert!(summary.contains("Total skills: 5"));
         assert!(summary.contains("Reused skills: 1"));
@@ -453,60 +453,60 @@ mod tests {
 
     #[test]
     fn test_identify_risky_tools() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
-        analyzer
+        let mut analyser = AgentBehaviourAnalyser::new();
+        analyser
             .failure_patterns
             .high_failure_tools
             .push(("risky_tool".to_owned(), 0.8));
-        analyzer.failure_patterns.high_failure_tools.push(("safe_tool".to_owned(), 0.1));
+        analyser.failure_patterns.high_failure_tools.push(("safe_tool".to_owned(), 0.1));
 
-        let risky = analyzer.identify_risky_tools(0.5);
+        let risky = analyser.identify_risky_tools(0.5);
         assert_eq!(risky.len(), 1);
         assert_eq!(risky[0].0, "risky_tool");
     }
 
     #[test]
     fn test_recovery_pattern_lookup() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
-        analyzer.failure_patterns.recovery_patterns.push(RecoveryPattern {
+        let mut analyser = AgentBehaviourAnalyser::new();
+        analyser.failure_patterns.recovery_patterns.push(RecoveryPattern {
             error_type: "timeout".to_owned(),
             recovery_action: "retry with increased timeout".to_owned(),
             success_rate: 0.85,
             attempts: 20,
         });
 
-        let recovery = analyzer.get_recovery_strategy("timeout");
+        let recovery = analyser.get_recovery_strategy("timeout");
         assert!(recovery.is_some());
         assert!((recovery.unwrap().success_rate - 0.85).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_should_warn() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
-        analyzer
+        let mut analyser = AgentBehaviourAnalyser::new();
+        analyser
             .failure_patterns
             .high_failure_tools
             .push(("risky_tool".to_owned(), 0.7));
 
-        let warning = analyzer.should_warn("risky_tool");
+        let warning = analyser.should_warn("risky_tool");
         assert!(warning.is_some());
         assert!(warning.unwrap().contains("high failure rate"));
 
-        let no_warning = analyzer.should_warn("safe_tool");
+        let no_warning = analyser.should_warn("safe_tool");
         assert!(no_warning.is_none());
     }
 
     #[test]
     fn test_get_recovery_action() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
-        analyzer.failure_patterns.recovery_patterns.push(RecoveryPattern {
+        let mut analyser = AgentBehaviourAnalyser::new();
+        analyser.failure_patterns.recovery_patterns.push(RecoveryPattern {
             error_type: "network_error".to_owned(),
             recovery_action: "retry with exponential backoff".to_owned(),
             success_rate: 0.9,
             attempts: 15,
         });
 
-        let action = analyzer.get_recovery_action("network_error");
+        let action = analyser.get_recovery_action("network_error");
         assert!(action.is_some());
         let action_str = action.unwrap();
         assert!(action_str.contains("retry with exponential backoff"));
@@ -515,12 +515,12 @@ mod tests {
 
     #[test]
     fn test_export_metrics() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
-        analyzer.skill_stats.total_skills = 10;
-        analyzer.skill_stats.reused_skills = 5;
-        analyzer.record_tool_usage("test_tool");
+        let mut analyser = AgentBehaviourAnalyser::new();
+        analyser.skill_stats.total_skills = 10;
+        analyser.skill_stats.reused_skills = 5;
+        analyser.record_tool_usage("test_tool");
 
-        let metrics = analyzer.export_metrics();
+        let metrics = analyser.export_metrics();
         assert_eq!(metrics.get("total_skills").unwrap(), &serde_json::json!(10));
         assert_eq!(metrics.get("reused_skills").unwrap(), &serde_json::json!(5));
         assert_eq!(metrics.get("total_tools_used").unwrap(), &serde_json::json!(1));
@@ -528,15 +528,15 @@ mod tests {
 
     #[test]
     fn test_apply_recovery_pattern() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
-        analyzer.failure_patterns.recovery_patterns.push(RecoveryPattern {
+        let mut analyser = AgentBehaviourAnalyser::new();
+        analyser.failure_patterns.recovery_patterns.push(RecoveryPattern {
             error_type: "timeout".to_owned(),
             recovery_action: "retry with increased timeout".to_owned(),
             success_rate: 0.85,
             attempts: 20,
         });
 
-        let applied = analyzer.apply_recovery_pattern("timeout");
+        let applied = analyser.apply_recovery_pattern("timeout");
         assert!(applied.is_some());
         let applied = applied.unwrap();
         assert_eq!(applied.error_type, "timeout");
@@ -545,23 +545,23 @@ mod tests {
         assert_eq!(applied.attempts, 20);
 
         // Non-existent error type
-        let no_pattern = analyzer.apply_recovery_pattern("unknown_error");
+        let no_pattern = analyser.apply_recovery_pattern("unknown_error");
         assert!(no_pattern.is_none());
     }
 
     #[test]
     fn test_record_recovery_outcome_success() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
-        analyzer.failure_patterns.recovery_patterns.push(RecoveryPattern {
+        let mut analyser = AgentBehaviourAnalyser::new();
+        analyser.failure_patterns.recovery_patterns.push(RecoveryPattern {
             error_type: "network_error".to_owned(),
             recovery_action: "retry".to_owned(),
             success_rate: 0.5,
             attempts: 10,
         });
 
-        analyzer.record_recovery_outcome("network_error", true);
+        analyser.record_recovery_outcome("network_error", true);
 
-        let pattern = &analyzer.failure_patterns.recovery_patterns[0];
+        let pattern = &analyser.failure_patterns.recovery_patterns[0];
         assert_eq!(pattern.attempts, 11);
         // Success rate should increase (exponential moving average)
         assert!(pattern.success_rate > 0.5);
@@ -569,17 +569,17 @@ mod tests {
 
     #[test]
     fn test_record_recovery_outcome_failure() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
-        analyzer.failure_patterns.recovery_patterns.push(RecoveryPattern {
+        let mut analyser = AgentBehaviourAnalyser::new();
+        analyser.failure_patterns.recovery_patterns.push(RecoveryPattern {
             error_type: "parse_error".to_owned(),
             recovery_action: "simplify input".to_owned(),
             success_rate: 0.8,
             attempts: 5,
         });
 
-        analyzer.record_recovery_outcome("parse_error", false);
+        analyser.record_recovery_outcome("parse_error", false);
 
-        let pattern = &analyzer.failure_patterns.recovery_patterns[0];
+        let pattern = &analyser.failure_patterns.recovery_patterns[0];
         assert_eq!(pattern.attempts, 6);
         // Success rate should decrease
         assert!(pattern.success_rate < 0.8);
@@ -587,12 +587,12 @@ mod tests {
 
     #[test]
     fn test_add_recovery_pattern_new() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
+        let mut analyser = AgentBehaviourAnalyser::new();
 
-        analyzer.add_recovery_pattern("new_error".to_owned(), "new recovery action".to_owned(), 0.75);
+        analyser.add_recovery_pattern("new_error".to_owned(), "new recovery action".to_owned(), 0.75);
 
-        assert_eq!(analyzer.failure_patterns.recovery_patterns.len(), 1);
-        let pattern = &analyzer.failure_patterns.recovery_patterns[0];
+        assert_eq!(analyser.failure_patterns.recovery_patterns.len(), 1);
+        let pattern = &analyser.failure_patterns.recovery_patterns[0];
         assert_eq!(pattern.error_type, "new_error");
         assert_eq!(pattern.recovery_action, "new recovery action");
         assert!((pattern.success_rate - 0.75).abs() < f64::EPSILON);
@@ -601,18 +601,18 @@ mod tests {
 
     #[test]
     fn test_add_recovery_pattern_update_existing() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
-        analyzer.failure_patterns.recovery_patterns.push(RecoveryPattern {
+        let mut analyser = AgentBehaviourAnalyser::new();
+        analyser.failure_patterns.recovery_patterns.push(RecoveryPattern {
             error_type: "existing_error".to_owned(),
             recovery_action: "old action".to_owned(),
             success_rate: 0.5,
             attempts: 10,
         });
 
-        analyzer.add_recovery_pattern("existing_error".to_owned(), "updated action".to_owned(), 0.9);
+        analyser.add_recovery_pattern("existing_error".to_owned(), "updated action".to_owned(), 0.9);
 
-        assert_eq!(analyzer.failure_patterns.recovery_patterns.len(), 1);
-        let pattern = &analyzer.failure_patterns.recovery_patterns[0];
+        assert_eq!(analyser.failure_patterns.recovery_patterns.len(), 1);
+        let pattern = &analyser.failure_patterns.recovery_patterns[0];
         assert_eq!(pattern.error_type, "existing_error");
         assert_eq!(pattern.recovery_action, "updated action");
         assert!((pattern.success_rate - 0.9).abs() < f64::EPSILON);
@@ -622,25 +622,25 @@ mod tests {
 
     #[test]
     fn test_export_metrics_with_recovery_patterns() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
-        analyzer.add_recovery_pattern("error1".to_owned(), "action1".to_owned(), 0.8);
-        analyzer.add_recovery_pattern("error2".to_owned(), "action2".to_owned(), 0.9);
+        let mut analyser = AgentBehaviourAnalyser::new();
+        analyser.add_recovery_pattern("error1".to_owned(), "action1".to_owned(), 0.8);
+        analyser.add_recovery_pattern("error2".to_owned(), "action2".to_owned(), 0.9);
 
-        let metrics = analyzer.export_metrics();
+        let metrics = analyser.export_metrics();
         assert_eq!(metrics.get("recovery_patterns_count").unwrap(), &serde_json::json!(2));
     }
 
     #[test]
     fn test_export_metrics_with_top_tools() {
-        let mut analyzer = AgentBehaviorAnalyzer::new();
-        analyzer.record_tool_usage("tool_a");
-        analyzer.record_tool_usage("tool_a");
-        analyzer.record_tool_usage("tool_a");
-        analyzer.record_tool_usage("tool_b");
-        analyzer.record_tool_usage("tool_b");
-        analyzer.record_tool_usage("tool_c");
+        let mut analyser = AgentBehaviourAnalyser::new();
+        analyser.record_tool_usage("tool_a");
+        analyser.record_tool_usage("tool_a");
+        analyser.record_tool_usage("tool_a");
+        analyser.record_tool_usage("tool_b");
+        analyser.record_tool_usage("tool_b");
+        analyser.record_tool_usage("tool_c");
 
-        let metrics = analyzer.export_metrics();
+        let metrics = analyser.export_metrics();
         let top_tools = metrics.get("top_tools").unwrap();
 
         // Verify it's a JSON object

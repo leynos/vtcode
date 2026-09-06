@@ -1528,7 +1528,7 @@ async fn skill_executor_forces_final_synthesis_after_max_iterations() {
 
     let result = execute_skill_with_sub_llm(
         &skill,
-        "analyze".to_string(),
+        "analyse".to_string(),
         &provider,
         &mut registry,
         available_tools,

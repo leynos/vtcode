@@ -368,7 +368,7 @@ impl ContinuationController {
                 "title": task.title,
                 "items": [
                     {
-                        "description": "analyze",
+                        "description": "analyse",
                         "status": "in_progress",
                         "outcome": "Capture the current state and constraints."
                     },
@@ -488,7 +488,7 @@ fn is_internal_scaffold(checklist: &TrackerChecklist) -> bool {
         .as_deref()
         .is_some_and(|notes| notes.contains(INTERNAL_SCAFFOLD_MARKER))
         && checklist.items.len() == 3
-        && checklist.items[0].description == "analyze"
+        && matches!(checklist.items[0].description.as_str(), "analyse" | "analyze")
         && checklist.items[1].description == "change"
         && checklist.items[2].description == "verify"
 }
@@ -550,6 +550,8 @@ pub(super) fn is_review_like_task(task: &Task) -> bool {
 
 #[cfg(test)]
 mod tests {
+    //! Regression coverage for persisted continuation scaffold recognition.
+
     use super::*;
     use tempfile::TempDir;
 
@@ -598,6 +600,35 @@ mod tests {
 
         let checklist = controller.load_tracker().await.expect("load").expect("checklist");
         assert!(is_internal_scaffold(&checklist));
+    }
+
+    #[test]
+    fn persisted_internal_scaffold_accepts_canonical_and_legacy_spellings() {
+        for first_step_description in ["analyse", "analyze"] {
+            let checklist: TrackerChecklist = serde_json::from_value(serde_json::json!({
+                "notes": INTERNAL_SCAFFOLD_MARKER,
+                "items": [
+                    {
+                        "index": 1,
+                        "description": first_step_description,
+                        "status": "in_progress"
+                    },
+                    {
+                        "index": 2,
+                        "description": "change",
+                        "status": "pending"
+                    },
+                    {
+                        "index": 3,
+                        "description": "verify",
+                        "status": "pending"
+                    }
+                ]
+            }))
+            .expect("persisted scaffold fixture");
+
+            assert!(is_internal_scaffold(&checklist), "expected {first_step_description} scaffold to be recognized");
+        }
     }
 
     #[tokio::test]

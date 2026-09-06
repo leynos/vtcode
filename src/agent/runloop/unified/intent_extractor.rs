@@ -60,7 +60,8 @@ impl ActionMatcher {
 
         verbs.insert("explain", "Explaining");
         verbs.insert("understand", "Understanding");
-        verbs.insert("analyze", "Analyzing");
+        verbs.insert("analyse", "Analysing");
+        verbs.insert("analyze", "Analysing");
         verbs.insert("review", "Reviewing");
 
         verbs.insert("compare", "Comparing");
@@ -132,7 +133,7 @@ pub(crate) fn extract_action_suggestion(prompt: &str) -> String {
 
     // Check question patterns first (higher priority than verb matching)
     if lower.starts_with("how ") || lower.starts_with("what ") || lower.starts_with("why ") {
-        return "Analyzing".to_string();
+        return "Analysing".to_string();
     }
 
     if lower.starts_with("can you ") || lower.starts_with("could you ") {
@@ -207,10 +208,10 @@ mod tests {
 
     #[test]
     fn test_question_patterns() {
-        // Questions starting with how/what/why should analyze, even if they contain other verbs
-        assert_eq!(extract_action_suggestion("how can I fix this?"), "Analyzing");
-        assert_eq!(extract_action_suggestion("what does this code do?"), "Analyzing");
-        assert_eq!(extract_action_suggestion("why is this failing?"), "Analyzing");
+        // Questions starting with how/what/why should analyse, even if they contain other verbs
+        assert_eq!(extract_action_suggestion("how can I fix this?"), "Analysing");
+        assert_eq!(extract_action_suggestion("what does this code do?"), "Analysing");
+        assert_eq!(extract_action_suggestion("why is this failing?"), "Analysing");
         assert_eq!(extract_action_suggestion("can you help me?"), "Thinking");
     }
 
@@ -251,7 +252,12 @@ mod tests {
     #[test]
     fn test_development_operations() {
         assert_eq!(extract_action_suggestion("debug the issue"), "Debugging");
-        assert_eq!(extract_action_suggestion("analyze the performance"), "Analyzing");
+        assert_eq!(
+            extract_action_suggestion("analyse the performance"),
+            "Analysing",
+            "the canonical analyse verb should retain its action suggestion"
+        );
+        assert_eq!(extract_action_suggestion("analyze the performance"), "Analysing");
         assert_eq!(extract_action_suggestion("refactor this code"), "Refactoring");
         assert_eq!(extract_action_suggestion("optimize the query"), "Optimizing");
     }

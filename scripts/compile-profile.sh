@@ -4,7 +4,7 @@
 #
 # Commands:
 #   timings   - Generate cargo build timing report
-#   llvm      - Analyze LLVM IR line counts (requires cargo-llvm-lines)
+#   llvm      - Analyse LLVM IR line counts (requires cargo-llvm-lines)
 #   macros    - Show macro expansion stats (requires nightly)
 #   clean     - Clean build with time measurement
 #   all       - Run all profiling commands
@@ -40,7 +40,7 @@ run_llvm_lines() {
         cargo install cargo-llvm-lines
     fi
     
-    log_info "Analyzing LLVM IR line counts for vtcode-core..."
+    log_info "Analysing LLVM IR line counts for vtcode-core..."
     cargo llvm-lines --lib -p vtcode-core 2>&1 | head -60
 }
 
@@ -50,7 +50,7 @@ run_macro_stats() {
         return 1
     fi
     
-    log_info "Analyzing macro expansion stats (nightly)..."
+    log_info "Analysing macro expansion stats (nightly)..."
     RUSTFLAGS="-Zmacro-stats" cargo +nightly build 2>&1 | grep -E "(macro-stats|Macro)" | head -50
 }
 

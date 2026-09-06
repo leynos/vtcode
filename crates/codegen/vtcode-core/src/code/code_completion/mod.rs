@@ -11,6 +11,6 @@ pub mod learning;
 
 // Re-export main types for backward compatibility
 pub use cache::CompletionCache;
-pub use context::{CompletionContext, ContextAnalyzer};
+pub use context::{CompletionContext, ContextAnalyser};
 pub use engine::{CompletionEngine, CompletionKind, CompletionSuggestion};
 pub use learning::{CompletionLearningData, LearningSystem};

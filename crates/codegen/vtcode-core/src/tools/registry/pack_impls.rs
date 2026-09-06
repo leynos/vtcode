@@ -312,7 +312,7 @@ impl ToolPack for WebPack {
                         },
                         "prompt": {
                             "type": "string",
-                            "description": "Question or instruction for analyzing the fetched content. Omit for a default summary."
+                            "description": "Question or instruction for analysing the fetched content. Omit for a default summary."
                         },
                         "max_bytes": {
                             "type": "integer",

@@ -110,7 +110,7 @@ pub(crate) fn is_decision_or_tool_line(text: &str) -> bool {
 }
 
 /// Analyzes reasoning text for multiple concern patterns.
-pub(crate) fn analyze_reasoning(text: &str) -> ReasoningAnalysis {
+pub(crate) fn analyse_reasoning(text: &str) -> ReasoningAnalysis {
     ReasoningAnalysis {
         is_giving_up: is_giving_up_reasoning(text),
         is_rushing: is_rushing_to_conclude(text),
@@ -203,14 +203,14 @@ mod tests {
 
     #[test]
     fn test_analysis() {
-        let analysis = analyze_reasoning("I think we should stop here, it's too complex");
+        let analysis = analyse_reasoning("I think we should stop here, it's too complex");
         assert!(analysis.has_concerns());
         assert_eq!(analysis.priority_concern(), Some(ReasoningConcern::GivingUp));
     }
 
     #[test]
     fn test_analysis_no_concerns() {
-        let analysis = analyze_reasoning("Let me continue with the next step");
+        let analysis = analyse_reasoning("Let me continue with the next step");
         assert!(!analysis.has_concerns());
         assert_eq!(analysis.priority_concern(), None);
     }

@@ -886,7 +886,7 @@ impl EnhancedSkillLoader {
         for skill_ctx in &result.skills {
             match self.load_full_skill_from_ctx(skill_ctx) {
                 Ok(skill) => {
-                    let analysis = validator.analyze_skill(&skill);
+                    let analysis = validator.analyse_skill(&skill);
                     report.add_skill_analysis(skill.name().to_string(), analysis);
                 }
                 Err(e) => {
@@ -906,7 +906,7 @@ impl EnhancedSkillLoader {
     /// Check container requirements for a skill
     pub fn check_container_requirements(&self, skill: &Skill) -> ContainerValidationResult {
         let validator = ContainerSkillsValidator::new();
-        validator.analyze_skill(skill)
+        validator.analyse_skill(skill)
     }
 
     fn load_full_skill_from_ctx(&self, ctx: &SkillContext) -> Result<Skill> {
@@ -1097,7 +1097,7 @@ mod tests {
 
     #[test]
     fn detects_explicit_skill_mentions() {
-        let skills = vec![manifest("pdf-analyzer", "Analyze PDF files and extract tables")];
+        let skills = vec![manifest("pdf-analyzer", "Analyse PDF files and extract tables")];
         let mentions = detect_skill_mentions("Use $pdf-analyzer for this file", &skills);
         assert_eq!(mentions, vec!["pdf-analyzer".to_string()]);
     }
