@@ -739,3 +739,26 @@ The first Markdown check found 334 diagnostics against 333 on the exact parent.
 The sole added diagnostic was the rewritten Copilot instruction's line length;
 that instruction is now wrapped. Final Markdown and spelling checks include this
 handoff update. The inherited Markdown findings remain for the formatting work.
+
+## Workflow source prerequisite
+
+The workflow repair layer follows source spelling PR #66 and prepares the
+existing five workflows for Netsuke's yamllint and actionlint policy. It adds
+document markers, corrects comment spacing, expands a compact mapping, and
+wraps long commands without changing their arguments or folded Rust flags.
+Tag polling still makes 12 attempts with ten-second sleeps; diagnostics now
+include the attempt number. The binary-size fallback keeps its existing
+platform-specific probes and unknown-size outcome.
+
+The source revision is `d0bb051fac02416cb38a8e76865b1b569d5ec163` from Netsuke.
+Parsed YAML comparison preserves the CI, coverage, tool-eval, and WebMCP jobs
+exactly. Build-workflow differences are confined to the documented equivalent
+command forms and retry diagnostics. The Rust toolchain file remains byte-exact.
+This layer carries source repairs only; the next layer installs the linters,
+tests the process boundaries, and enables the gate.
+
+This layer passed format, lint, build, type-check, workspace, and harness gates:
+10,094 workspace tests passed with 17 skipped, and all 67 harness tests passed.
+Advisory checks passed in warning mode. Optional ast-grep was unavailable, and
+the same four rustdoc warnings remain under the existing configuration. Final
+document and proposed workflow-linter checks include this evidence update.

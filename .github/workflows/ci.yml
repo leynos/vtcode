@@ -1,3 +1,4 @@
+---
 name: "CI Pipeline"
 permissions: {}
 
@@ -18,9 +19,9 @@ on:
       - "**.json"
       - "**.js"
       - "**.ts"
-      - "**.md" # Still run on markdown changes since we have markdown linting
+      - "**.md"  # Still run on markdown changes since we have markdown linting
       - "scripts/**"
-      - "!.github/dependabot.yml" # Exclude dependabot changes
+      - "!.github/dependabot.yml"  # Exclude dependabot changes
       - "!.gitignore"
       - "!.vtcodegitignore"
       - "!.env*"
@@ -36,9 +37,9 @@ on:
       - "**.json"
       - "**.js"
       - "**.ts"
-      - "**.md" # Still run on markdown changes since we have markdown linting
+      - "**.md"  # Still run on markdown changes since we have markdown linting
       - "scripts/**"
-      - "!.github/dependabot.yml" # Exclude dependabot changes
+      - "!.github/dependabot.yml"  # Exclude dependabot changes
       - "!.gitignore"
       - "!.vtcodegitignore"
       - "!.env*"
@@ -68,7 +69,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -82,7 +83,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -101,7 +102,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -119,7 +120,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -134,11 +135,11 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable
         with:
           toolchain: stable
           components: rustfmt
@@ -171,12 +172,12 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-      - uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190 # v2
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable
+      - uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190  # v2
         with:
           # Pin cargo-about so CI-generated output matches local generation.
           tool: cargo-about@0.9.1
@@ -197,14 +198,15 @@ jobs:
       CARGO_TERM_VERBOSE: false
       CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-        with: { components: clippy }
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
-      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16  # v2
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
       - run: cargo clippy --locked --jobs 4
 
   # Check for unmaintained dependencies.
@@ -216,14 +218,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16  # v2
       - name: Install cargo-unmaintained
-        uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190 # v2
+        uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190  # v2
         with:
           tool: cargo-unmaintained@1.10.0
       - name: Check for unmaintained dependencies
@@ -236,13 +238,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable
       - name: Install cargo-audit
-        uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190 # v2
+        uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190  # v2
         with:
           tool: cargo-audit@0.22.2
       - name: Audit locked dependencies against RustSec
@@ -256,19 +258,19 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
       - id: filter
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d  # v4
         with:
           filters: |
             markdown:
               - '**/*.md'
               - '!.github/workflows/*.yml'
               - '!target/**'
-      - uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24.2.0
+      - uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff  # v24.2.0
         if: steps.filter.outputs.markdown == 'true'
         with:
           globs: |
@@ -294,15 +296,15 @@ jobs:
       CARGO_TERM_VERBOSE: false
       CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable
         with:
           toolchain: ${{ matrix.toolchain }}
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
-      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16  # v2
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
       - run: cargo check --locked --jobs 4
 
   check-windows:
@@ -316,15 +318,15 @@ jobs:
       CARGO_TERM_COLOR: always
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable
         with:
           targets: x86_64-pc-windows-msvc
       - name: Cache cargo
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16  # v2
         with:
           key: x86_64-pc-windows-msvc
       - name: Check Windows workspace (deny warnings)
@@ -348,20 +350,20 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - name: "Check out the repo"
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: "dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8" # stable
+      - uses: "dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8"  # stable
         with:
           toolchain: "stable"
 
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
-      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16  # v2
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190 # nextest
+        uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190  # nextest
 
       - name: Run tests
         run: cargo nextest run --locked --profile ci --cargo-profile ci
@@ -383,14 +385,14 @@ jobs:
       CARGO_TERM_VERBOSE: false
       CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@efcb852328a9f50117170cc43094fb6f09eaf1ae # nightly
+      - uses: dtolnay/rust-toolchain@efcb852328a9f50117170cc43094fb6f09eaf1ae  # nightly
         with:
           toolchain: "1.88"
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16  # v2
       - run: cargo check --locked --jobs 4
 
   nightly:
@@ -405,30 +407,30 @@ jobs:
       CARGO_TERM_VERBOSE: false
       CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@efcb852328a9f50117170cc43094fb6f09eaf1ae # nightly
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: dtolnay/rust-toolchain@efcb852328a9f50117170cc43094fb6f09eaf1ae  # nightly
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16  # v2
       - run: cargo check --locked --jobs 4
 
-  # clippy:
-  #   name: "Cargo clippy"
-  #   runs-on: "ubuntu-latest"
-  #   steps:
-  #     - name: "Check out the repo"
-  #       uses: actions/checkout@v6
+# clippy:
+#   name: "Cargo clippy"
+#   runs-on: "ubuntu-latest"
+#   steps:
+#     - name: "Check out the repo"
+#       uses: actions/checkout@v6
 
-  #     - uses: "actions-rs/toolchain@v1"
-  #       with:
-  #         profile: "minimal"
-  #         toolchain: "stable"
-  #         override: true
+#     - uses: "actions-rs/toolchain@v1"
+#       with:
+#         profile: "minimal"
+#         toolchain: "stable"
+#         override: true
 
-  #     - run: "rustup component add clippy"
+#     - run: "rustup component add clippy"
 
-  #     - uses: "actions-rs/cargo@v1"
-  #       with:
-  #         command: "clippy"
-  #         args: "-- -D warnings"
+#     - uses: "actions-rs/cargo@v1"
+#       with:
+#         command: "clippy"
+#         args: "-- -D warnings"

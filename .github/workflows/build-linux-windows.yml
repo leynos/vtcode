@@ -1,3 +1,4 @@
+---
 name: Build Linux and Windows Binaries
 
 on:
@@ -60,25 +61,25 @@ jobs:
       - name: Wait for tag to exist
         shell: bash
         run: |
-          for i in $(seq 1 12); do
+          for attempt in $(seq 1 12); do
             if git ls-remote --exit-code --tags "https://github.com/vinhnx/VTCode.git" "${{ inputs.tag }}"; then
               echo "Tag ${{ inputs.tag }} found"
               exit 0
             fi
-            echo "Tag ${{ inputs.tag }} not found yet, waiting 10s..."
+            echo "Tag ${{ inputs.tag }} not found yet (attempt ${attempt}/12), waiting 10s..."
             sleep 10
           done
           echo "::error::Tag ${{ inputs.tag }} does not exist after 120s" >&2
           exit 1
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           ref: ${{ inputs.tag }}
           fetch-depth: 1
           persist-credentials: false
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable
         with:
           targets: ${{ matrix.target }}
 
@@ -89,25 +90,27 @@ jobs:
       # cache (full match: false) and recompiles its whole dependency tree.
       # Namespace per target so each job owns its own cache entry and saves win.
       - name: Cache cargo
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16  # v2
         with:
           key: ${{ matrix.target }}
 
       - name: Install Zig
         if: matrix.target != 'x86_64-unknown-linux-gnu'
-        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29  # v2
         with:
           version: 0.15.2
 
       - name: Install Cross
         if: matrix.target != 'x86_64-unknown-linux-gnu'
-        uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190 # v2
+        uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190  # v2
         with:
           tool: cross
 
       - name: Build with cargo (${{ matrix.target }})
         if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: cargo build --locked --profile release-fast --target ${{ matrix.target }} --features allocator-jemalloc --jobs 4
+        run: >-
+          cargo build --locked --profile release-fast --target ${{ matrix.target }}
+          --features allocator-jemalloc --jobs 4
         shell: bash
         env:
           # opt-level="z" is inherited from [profile.release] via release-fast.
@@ -115,14 +118,20 @@ jobs:
           # LTO (release-fast uses lto="thin", codegen-units=4 for faster CI).
           # Rust emits -ffunction-sections -fdata-sections in release mode, so
           # --gc-sections can safely discard the dead sections at link time.
-          RUSTFLAGS: ${{ startsWith(matrix.target, 'x86_64') && '-C target-cpu=x86-64 -C link-arg=-Wl,--gc-sections' || '-C link-arg=-Wl,--gc-sections' }}
+          RUSTFLAGS: >-
+            ${{ startsWith(matrix.target, 'x86_64') && '-C target-cpu=x86-64
+            -C link-arg=-Wl,--gc-sections' || '-C link-arg=-Wl,--gc-sections' }}
 
       - name: Build with cross (${{ matrix.target }})
         if: matrix.target != 'x86_64-unknown-linux-gnu'
-        run: cross build --locked --profile release-fast --target ${{ matrix.target }} ${{ endsWith(matrix.target, 'linux-gnu') && ' --features allocator-jemalloc' || '' }} --jobs 4
+        run: >-
+          cross build --locked --profile release-fast --target ${{ matrix.target }}
+          ${{ endsWith(matrix.target, 'linux-gnu') && ' --features allocator-jemalloc' || '' }} --jobs 4
         shell: bash
         env:
-          RUSTFLAGS: ${{ startsWith(matrix.target, 'x86_64') && '-C target-cpu=x86-64 -C link-arg=-Wl,--gc-sections' || '-C link-arg=-Wl,--gc-sections' }}
+          RUSTFLAGS: >-
+            ${{ startsWith(matrix.target, 'x86_64') && '-C target-cpu=x86-64
+            -C link-arg=-Wl,--gc-sections' || '-C link-arg=-Wl,--gc-sections' }}
 
       - name: Verify Linux TLS linkage
         shell: bash
@@ -162,7 +171,14 @@ jobs:
           if [ -f "target/${{ matrix.target }}/release-fast/vtcode" ]; then
             echo "✓ Found Unix binary: vtcode"
             # Report binary size for cold-start tracking (smaller binary = faster dyld load)
-            BINARY_SIZE=$(stat -c %s "target/${{ matrix.target }}/release-fast/vtcode" 2>/dev/null || stat -f %z "target/${{ matrix.target }}/release-fast/vtcode" 2>/dev/null || echo "unknown")
+            binary_path="target/${{ matrix.target }}/release-fast/vtcode"
+            if BINARY_SIZE="$(stat -c %s "${binary_path}" 2>/dev/null)"; then
+              :
+            elif BINARY_SIZE="$(stat -f %z "${binary_path}" 2>/dev/null)"; then
+              :
+            else
+              BINARY_SIZE="unknown"
+            fi
             BINARY_SIZE_H=$(du -h "target/${{ matrix.target }}/release-fast/vtcode" 2>/dev/null | awk '{print $1}')
             echo "📦 Binary size: ${BINARY_SIZE_H} (${BINARY_SIZE} bytes)"
           else
@@ -176,13 +192,15 @@ jobs:
           tar -czf ../../../vtcode-${{ inputs.tag }}-${{ matrix.target }}.tar.gz vtcode
           cd ../../../
           if command -v sha256sum &> /dev/null; then
-            sha256sum vtcode-${{ inputs.tag }}-${{ matrix.target }}.tar.gz > vtcode-${{ inputs.tag }}-${{ matrix.target }}.sha256
+            sha256sum vtcode-${{ inputs.tag }}-${{ matrix.target }}.tar.gz \
+              > vtcode-${{ inputs.tag }}-${{ matrix.target }}.sha256
           elif command -v shasum &> /dev/null; then
-            shasum -a 256 vtcode-${{ inputs.tag }}-${{ matrix.target }}.tar.gz > vtcode-${{ inputs.tag }}-${{ matrix.target }}.sha256
+            shasum -a 256 vtcode-${{ inputs.tag }}-${{ matrix.target }}.tar.gz \
+              > vtcode-${{ inputs.tag }}-${{ matrix.target }}.sha256
           fi
 
       - name: Upload Artefacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: vtcode-${{ inputs.tag }}-${{ matrix.target }}
           path: |
@@ -207,30 +225,30 @@ jobs:
       - name: Wait for tag to exist
         shell: bash
         run: |
-          for i in $(seq 1 12); do
+          for attempt in $(seq 1 12); do
             if git ls-remote --exit-code --tags "https://github.com/vinhnx/VTCode.git" "${{ inputs.tag }}"; then
               echo "Tag ${{ inputs.tag }} found"
               exit 0
             fi
-            echo "Tag ${{ inputs.tag }} not found yet, waiting 10s..."
+            echo "Tag ${{ inputs.tag }} not found yet (attempt ${attempt}/12), waiting 10s..."
             sleep 10
           done
           echo "::error::Tag ${{ inputs.tag }} does not exist after 120s" >&2
           exit 1
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           ref: ${{ inputs.tag }}
           fetch-depth: 1
           persist-credentials: false
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable
         with:
           targets: x86_64-pc-windows-msvc
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16  # v2
         with:
           key: x86_64-pc-windows-msvc
 
@@ -248,7 +266,10 @@ jobs:
           if [ -f "target/x86_64-pc-windows-msvc/release-fast-windows/vtcode.exe" ]; then
             echo "✓ Found Windows binary: vtcode.exe"
             # Report binary size for cold-start tracking
-            FILE_SIZE=$(stat -c %s "target/x86_64-pc-windows-msvc/release-fast-windows/vtcode.exe" 2>/dev/null || wc -c < "target/x86_64-pc-windows-msvc/release-fast-windows/vtcode.exe" | tr -d ' ')
+            binary_path="target/x86_64-pc-windows-msvc/release-fast-windows/vtcode.exe"
+            if ! FILE_SIZE="$(stat -c %s "${binary_path}" 2>/dev/null)"; then
+              FILE_SIZE="$(wc -c < "${binary_path}" | tr -d ' ')"
+            fi
             echo "📦 Binary size: ${FILE_SIZE} bytes"
           else
             echo "✗ Binary not found!" && exit 1
@@ -258,12 +279,13 @@ jobs:
         shell: pwsh
         run: |
           $archive = "vtcode-${{ inputs.tag }}-x86_64-pc-windows-msvc.zip"
-          Compress-Archive -Path "target/x86_64-pc-windows-msvc/release-fast-windows/vtcode.exe" -DestinationPath $archive -Force
+          Compress-Archive -Path "target/x86_64-pc-windows-msvc/release-fast-windows/vtcode.exe" `
+            -DestinationPath $archive -Force
           $hash = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLower()
           Set-Content -Path "vtcode-${{ inputs.tag }}-x86_64-pc-windows-msvc.sha256" -Value $hash -NoNewline
 
       - name: Upload Artefacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: vtcode-${{ inputs.tag }}-x86_64-pc-windows-msvc
           path: |
