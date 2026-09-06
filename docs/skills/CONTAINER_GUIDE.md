@@ -250,7 +250,7 @@ let mut container = SkillContainer::new();
 container.add_anthropic("xlsx")?;   // Read Excel
 container.add_anthropic("pptx")?;   // Create PowerPoint
 
-let input = "analyze sales_data.xlsx and create a presentation";
+let input = "analyse sales_data.xlsx and create a presentation";
 executor.execute_container(container, input).await?;
 ```
 

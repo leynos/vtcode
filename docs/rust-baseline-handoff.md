@@ -698,3 +698,44 @@ checks passed, and its next CodeRabbit review is queued. The upper train must
 be restacked in order after that review reaches equilibrium and PR #20 merges.
 The Markdown and workflow-validation candidates remain separate offline work;
 none of their demanding configuration is enabled by this examples layer.
+
+## Final native spelling source layer
+
+`harden-lint-spelling-final-sources` follows PR #51
+`450782900cd8dc542d6d1bfa5bf488c4925a7d24` and applies the reviewed nine
+native-spelling corrections across seven paths. The changes cover authored
+prose, test prompts, comments, and command examples; the canonical command is
+`analyse`. Reviewed external names and syntax remain deliberate, including the
+`rust-analyzer` project name and registry configuration shape. No spelling
+configuration, exception, or policy change is introduced by this source layer.
+
+The Zed `allowed_tools` example now uses the canonical command spelling, but
+whether that configuration is enforced is a separate contract issue tracked in
+[issue #65](https://github.com/leynos/vtcode/issues/65). This layer does not
+claim to implement or validate that policy.
+
+Fresh format, lint, build, type-check, workspace, and harness gates passed:
+10,094 workspace tests passed with 17 skipped, and all 67 harness tests passed.
+The advisory target passed in warning mode; optional ast-grep was unavailable.
+Documentation generation retains the four previously recorded warnings.
+Python compilation and Nixie passed. The Markdown and workflow-validation
+prerequisites remain separate until their own full gates pass.
+
+The subsequent tracked-index measurement found eight correctable textual hits.
+This layer corrects the native `normalize` assertion prose and Copilot guidance
+prose. The two stale guidance references had no CodeGraph symbol or code-pattern
+wiring, so they were removed rather than renaming or inventing a tool API. The
+actual CLI keeps canonical `analyse` and its legacy alias.
+The earlier permission-hook JSON key remains accurate and
+unchanged; its precise external-contract policy treatment is separate.
+
+The proposed tracked-file spelling scan checked 3,095 existing paths and found
+zero textual findings, plus 22 informational binary-file records. Its inherited
+CHANGELOG exclusion is being replaced separately: the history audit identified
+196 prose corrections, 137 commit-hash fragments, and 22 historical identifiers
+or paths. The fixed references must remain byte-exact.
+
+The first Markdown check found 334 diagnostics against 333 on the exact parent.
+The sole added diagnostic was the rewritten Copilot instruction's line length;
+that instruction is now wrapped. Final Markdown and spelling checks include this
+handoff update. The inherited Markdown findings remain for the formatting work.

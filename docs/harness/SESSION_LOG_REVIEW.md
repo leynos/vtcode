@@ -34,7 +34,7 @@ The planning turns 912 and 913 ("make a simple plan to improve vtcode launch tim
 ### Verification
 
 - `vtcode-config`: 389 tests pass, including updated builtin-agent contract tests.
-- `vtcode-core`: new `builtin_plan_agent_keeps_planning_catalog_wire_visible` (permission-layer wire shaping against the real plan spec), planning-catalogue profile tests (Interactive + AgentRunner surfaces), `planning_workflow_keeps_exec_command_read_only`, prompt canonical-format guard, and `results`-summary tests.
+- `vtcode-core`: new `builtin_plan_agent_keeps_planning_catalogue_wire_visible` (permission-layer wire shaping against the real plan spec), planning-catalogue profile tests (Interactive + AgentRunner surfaces), `planning_workflow_keeps_exec_command_read_only`, prompt canonical-format guard, and `results`-summary tests.
 - Binary: rejected-draft reattachment unit tests and `plan_agent_is_never_an_execution_handoff_target`.
 - `./scripts/check-dev.sh --changed`: clean (5,634 tests).
 
