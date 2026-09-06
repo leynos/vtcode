@@ -322,7 +322,7 @@ fn expanded_view_skips_trailing_empty_policy_line() {
     session.appearance.thinking_display = ThinkingBlockState::Extended;
     session.transcript_width = 100;
 
-    // Push reasoning content followed by a trailing empty line (the artifact).
+    // Push reasoning content followed by a trailing empty line (the artefact).
     push_policy_lines(&mut session, &["reasoning one", "reasoning two"]);
     // Manually add the trailing empty line that streaming \n creates.
     session.push_line(InlineMessageKind::Policy, vec![]);

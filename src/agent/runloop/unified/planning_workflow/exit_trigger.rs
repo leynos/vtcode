@@ -9,7 +9,7 @@ use vtcode_core::utils::ansi::AnsiRenderer;
 use vtcode_ui::tui::app::{InlineHandle, InlineSession};
 
 use crate::agent::runloop::unified::planning_workflow::{
-    PlanApprovalRequestContext, PlanApprovalRoute, PlanApprovalTelemetryContext, PlanArtifactError,
+    PlanApprovalRequestContext, PlanApprovalRoute, PlanApprovalTelemetryContext, PlanArtefactError,
     PlanExecutionContext, PlanningFinishReason, PlanningIntent, assistant_recently_prompted_implementation,
     complete_approved_plan_handoff, detect_planning_intent, execute_plan_approval, finish_planning_workflow,
     load_plan_text_for_approval, plan_approval_route, plan_repair_directive_for_error,
@@ -130,7 +130,7 @@ pub(crate) async fn maybe_handle_planning_exit_trigger(
         PlanningIntent::ExitAndImplement => {
             let plan = match load_plan_text_for_approval(tool_registry).await {
                 Ok(plan) => plan,
-                Err(PlanArtifactError::Missing) => {
+                Err(PlanArtefactError::Missing) => {
                     display_status(
                         renderer,
                         "No completed plan draft exists yet. I will synthesize the plan from the gathered evidence before showing approval.",

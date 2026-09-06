@@ -18,7 +18,7 @@ use vtcode_ui::tui::app::{
 use crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter;
 use crate::agent::runloop::unified::overlay_prompt::{OverlayWaitOutcome, show_overlay_and_wait};
 use crate::agent::runloop::unified::planning_workflow::{
-    PlanArtifactError, PlanExecutionContext, ValidatedPlanArtifact, complete_approved_plan_handoff,
+    PlanArtefactError, PlanExecutionContext, ValidatedPlanArtefact, complete_approved_plan_handoff,
 };
 use crate::agent::runloop::unified::state::CtrlCState;
 
@@ -74,7 +74,7 @@ pub(crate) struct PlanApprovalTelemetryContext<'a> {
 }
 
 pub(crate) struct PlanApprovalRequestContext<'a> {
-    pub(crate) plan: &'a ValidatedPlanArtifact,
+    pub(crate) plan: &'a ValidatedPlanArtefact,
     pub(crate) active_agent_name: &'a str,
     pub(crate) skip_confirmations: bool,
     pub(crate) context_usage_percent: u8,
@@ -444,16 +444,16 @@ pub(crate) async fn execute_plan_confirmation_with_context(
 /// confirmation.
 pub(crate) async fn load_plan_text_for_approval(
     tool_registry: &ToolRegistry,
-) -> Result<ValidatedPlanArtifact, PlanArtifactError> {
+) -> Result<ValidatedPlanArtefact, PlanArtefactError> {
     let plan_file = tool_registry
         .planning_workflow_state()
         .get_plan_file()
         .await
-        .ok_or(PlanArtifactError::Missing)?;
+        .ok_or(PlanArtefactError::Missing)?;
     let text = tokio::fs::read_to_string(&plan_file)
         .await
-        .map_err(|source| PlanArtifactError::Read { path: plan_file.clone(), source })?;
-    ValidatedPlanArtifact::from_text(plan_file, text)
+        .map_err(|source| PlanArtefactError::Read { path: plan_file.clone(), source })?;
+    ValidatedPlanArtefact::from_text(plan_file, text)
 }
 
 use crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState;

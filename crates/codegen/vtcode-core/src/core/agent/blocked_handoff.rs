@@ -19,10 +19,10 @@ struct BlockedHandoffPaths<'a> {
     archive: &'a Path,
 }
 
-/// Artifacts produced by [`write_blocked_handoff`], containing paths to the
+/// Artefacts produced by [`write_blocked_handoff`], containing paths to the
 /// current and archived handoff files.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlockedHandoffArtifacts {
+pub struct BlockedHandoffArtefacts {
     /// Path to the current blocked handoff markdown file.
     pub current_path: PathBuf,
     /// Path to the archived blocked handoff markdown file.
@@ -51,7 +51,7 @@ pub fn write_blocked_handoff(
     outcome_code: &str,
     blocker_summary: &str,
     relevant_paths: &[PathBuf],
-) -> Result<BlockedHandoffArtifacts> {
+) -> Result<BlockedHandoffArtefacts> {
     write_blocked_handoff_with_resume(
         workspace,
         session_id,
@@ -73,7 +73,7 @@ pub fn write_blocked_handoff_with_resume(
     blocker_summary: &str,
     relevant_paths: &[PathBuf],
     resume: BlockedHandoffResume<'_>,
-) -> Result<BlockedHandoffArtifacts> {
+) -> Result<BlockedHandoffArtefacts> {
     let (workspace, tasks_dir, blockers_dir) = safe_handoff_directories(workspace)?;
     fs::create_dir_all(&blockers_dir)
         .with_context(|| format!("failed to create blockers dir {}", blockers_dir.display()))?;
@@ -102,7 +102,7 @@ pub fn write_blocked_handoff_with_resume(
     write_handoff_file(&archive_path, &markdown, false)?;
     write_handoff_file(&current_path, &markdown, true)?;
 
-    Ok(BlockedHandoffArtifacts { current_path, archive_path })
+    Ok(BlockedHandoffArtefacts { current_path, archive_path })
 }
 
 /// Parsed information from a blocked handoff file.
@@ -613,9 +613,9 @@ fn render_blocked_handoff(
     )
 }
 
-/// Artifacts produced by [`write_async_approval_blocker`].
+/// Artefacts produced by [`write_async_approval_blocker`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AsyncApprovalArtifacts {
+pub struct AsyncApprovalArtefacts {
     /// Path to the async approval blocker markdown file.
     pub current_path: PathBuf,
     /// Unique token used to approve or reject this request via CLI.
@@ -635,7 +635,7 @@ pub fn write_async_approval_blocker(
     args: &serde_json::Value,
     estimated_cost: Option<f64>,
     notify_command: Option<&str>,
-) -> Result<AsyncApprovalArtifacts> {
+) -> Result<AsyncApprovalArtefacts> {
     let (_, _, blockers_dir) = safe_handoff_directories(workspace)?;
     fs::create_dir_all(&blockers_dir)
         .with_context(|| format!("failed to create blockers dir {}", blockers_dir.display()))?;
@@ -668,7 +668,7 @@ pub fn write_async_approval_blocker(
 
     write_handoff_file(&current_path, &markdown, false)?;
 
-    Ok(AsyncApprovalArtifacts { current_path, approval_token })
+    Ok(AsyncApprovalArtefacts { current_path, approval_token })
 }
 
 #[cfg(test)]
@@ -684,7 +684,7 @@ mod tests {
         fs::create_dir_all(&tasks_dir).expect("tasks dir");
         fs::write(tasks_dir.join("current_task.md"), "# Unrelated Workspace Task\n").expect("tracker");
 
-        let artifacts = write_blocked_handoff(
+        let artefacts = write_blocked_handoff(
             temp.path(),
             "session-123",
             "loop_detected",
@@ -693,8 +693,8 @@ mod tests {
         )
         .expect("write handoff");
 
-        let current = fs::read_to_string(&artifacts.current_path).expect("current handoff");
-        let archive = fs::read_to_string(&artifacts.archive_path).expect("archive handoff");
+        let current = fs::read_to_string(&artefacts.current_path).expect("current handoff");
+        let archive = fs::read_to_string(&artefacts.archive_path).expect("archive handoff");
 
         assert_eq!(current, archive);
         assert!(current.contains("session_id: session-123"));
@@ -703,7 +703,7 @@ mod tests {
         assert!(current.contains("# Session Tracker Snapshot"));
         assert!(current.contains("workspace-global"));
         assert!(!current.contains("Unrelated Workspace Task"));
-        assert!(current.contains(&artifacts.archive_path.display().to_string()));
+        assert!(current.contains(&artefacts.archive_path.display().to_string()));
         assert!(!current.contains("resume_command:"));
         assert!(!current.contains("vtcode --resume"));
         assert!(current.contains("Resume is unavailable"));
@@ -783,7 +783,7 @@ mod tests {
     fn writes_blocked_handoff_without_resume_when_archive_is_unavailable() {
         let temp = tempfile::tempdir().expect("temp dir");
 
-        let artifacts = write_blocked_handoff_with_resume(
+        let artefacts = write_blocked_handoff_with_resume(
             temp.path(),
             "runtime-session",
             "blocked",
@@ -793,7 +793,7 @@ mod tests {
         )
         .expect("write handoff");
 
-        let current = fs::read_to_string(&artifacts.current_path).expect("current handoff");
+        let current = fs::read_to_string(&artefacts.current_path).expect("current handoff");
         assert!(!current.contains("resume_command:"));
         assert!(!current.contains("vtcode --resume"));
         assert!(current.contains("Resume is unavailable because the session archive was not persisted."));
@@ -804,7 +804,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("temp dir");
 
         let verified_identifier = VerifiedSessionArchiveIdentifier("session-archive-id".to_owned());
-        let artifacts = write_blocked_handoff_with_resume(
+        let artefacts = write_blocked_handoff_with_resume(
             temp.path(),
             "runtime-session",
             "blocked",
@@ -814,7 +814,7 @@ mod tests {
         )
         .expect("write handoff");
 
-        let current = fs::read_to_string(&artifacts.current_path).expect("current handoff");
+        let current = fs::read_to_string(&artefacts.current_path).expect("current handoff");
         assert!(current.contains("vtcode --resume session-archive-id"));
         assert!(!current.contains("vtcode --resume runtime-session"));
     }
@@ -825,7 +825,7 @@ mod tests {
         let tasks_dir = temp.path().join(".vtcode/tasks");
         fs::create_dir_all(&tasks_dir).expect("tasks dir");
 
-        let artifacts = write_async_approval_blocker(
+        let artefacts = write_async_approval_blocker(
             temp.path(),
             "session-456",
             "Push 50 commits to main?",
@@ -836,15 +836,15 @@ mod tests {
         )
         .expect("write async blocker");
 
-        assert!(!artifacts.approval_token.is_empty());
-        assert!(artifacts.current_path.exists());
+        assert!(!artefacts.approval_token.is_empty());
+        assert!(artefacts.current_path.exists());
 
-        let content = fs::read_to_string(&artifacts.current_path).expect("read blocker");
+        let content = fs::read_to_string(&artefacts.current_path).expect("read blocker");
         assert!(content.contains("Push 50 commits to main?"));
         assert!(content.contains("git_push"));
         assert!(content.contains("Estimated cost: $0.50"));
         assert!(content.contains("vtcode approve"));
-        assert!(content.contains(&artifacts.approval_token));
+        assert!(content.contains(&artefacts.approval_token));
     }
 
     #[test]
@@ -853,7 +853,7 @@ mod tests {
         let tasks_dir = temp.path().join(".vtcode/tasks");
         fs::create_dir_all(&tasks_dir).expect("tasks dir");
 
-        let artifacts = write_async_approval_blocker(
+        let artefacts = write_async_approval_blocker(
             temp.path(),
             "session-789",
             "Delete the file?",
@@ -864,10 +864,10 @@ mod tests {
         )
         .expect("write async blocker");
 
-        assert!(!artifacts.approval_token.is_empty());
-        assert!(artifacts.current_path.exists());
+        assert!(!artefacts.approval_token.is_empty());
+        assert!(artefacts.current_path.exists());
 
-        let content = fs::read_to_string(&artifacts.current_path).expect("read blocker");
+        let content = fs::read_to_string(&artefacts.current_path).expect("read blocker");
         assert!(content.contains("Delete the file?"));
         assert!(content.contains("delete_file"));
         // No cost or notify section
@@ -885,7 +885,7 @@ mod tests {
 
         // Write a blocked handoff
         let verified_identifier = VerifiedSessionArchiveIdentifier("session-archive-id".to_owned());
-        let _artifacts = write_blocked_handoff_with_resume(
+        let _artefacts = write_blocked_handoff_with_resume(
             temp.path(),
             "test-session-123",
             "blocked",
@@ -913,7 +913,7 @@ mod tests {
     #[test]
     fn session_scoped_clear_preserves_another_sessions_handoff() {
         let temp = tempfile::tempdir().expect("temp dir");
-        let artifacts =
+        let artefacts =
             write_blocked_handoff(temp.path(), "session-a", "blocked", "stalled", &[]).expect("write handoff");
 
         assert!(!clear_current_blocked_handoff_for_session(temp.path(), "session-b").expect("scoped clear"));
@@ -923,7 +923,7 @@ mod tests {
         );
         assert!(clear_current_blocked_handoff_for_session(temp.path(), "session-a").expect("scoped clear"));
         assert_eq!(read_current_blocked_handoff(temp.path()), None);
-        let archive = fs::read_to_string(artifacts.archive_path).expect("read resolved archive");
+        let archive = fs::read_to_string(artefacts.archive_path).expect("read resolved archive");
         assert!(archive.contains("# Resolution"));
         assert!(archive.contains("resolved_by_session: session-a"));
     }
@@ -961,12 +961,12 @@ mod tests {
     #[test]
     fn session_scoped_clear_rejects_hardlinked_archive() {
         let temp = tempfile::tempdir().expect("temp dir");
-        let artifacts =
+        let artefacts =
             write_blocked_handoff(temp.path(), "session-a", "blocked", "stalled", &[]).expect("write handoff");
         let external = temp.path().join("outside.md");
-        fs::copy(&artifacts.archive_path, &external).expect("copy archive");
-        fs::remove_file(&artifacts.archive_path).expect("remove original archive");
-        fs::hard_link(&external, &artifacts.archive_path).expect("create hard link");
+        fs::copy(&artefacts.archive_path, &external).expect("copy archive");
+        fs::remove_file(&artefacts.archive_path).expect("remove original archive");
+        fs::hard_link(&external, &artefacts.archive_path).expect("create hard link");
 
         assert!(clear_current_blocked_handoff_for_session(temp.path(), "session-a").is_err());
         assert!(read_current_blocked_handoff(temp.path()).is_some());
@@ -995,14 +995,14 @@ mod tests {
     #[test]
     fn session_scoped_clear_rejects_blockers_directory_outside_workspace() {
         let temp = tempfile::tempdir().expect("temp dir");
-        let artifacts =
+        let artefacts =
             write_blocked_handoff(temp.path(), "session-a", "blocked", "stalled", &[]).expect("write handoff");
         let blockers_dir = temp.path().join(TASKS_DIR).join(BLOCKERS_DIR);
         let outside_temp = tempfile::tempdir().expect("outside temp dir");
         let outside_dir = outside_temp.path().join("outside-blockers");
         fs::create_dir(&outside_dir).expect("outside directory");
-        let outside_archive = outside_dir.join(artifacts.archive_path.file_name().expect("archive file name"));
-        fs::rename(&artifacts.archive_path, &outside_archive).expect("move archive outside");
+        let outside_archive = outside_dir.join(artefacts.archive_path.file_name().expect("archive file name"));
+        fs::rename(&artefacts.archive_path, &outside_archive).expect("move archive outside");
         fs::remove_dir(&blockers_dir).expect("remove blockers directory");
         std::os::unix::fs::symlink(&outside_dir, &blockers_dir).expect("link blockers directory");
 

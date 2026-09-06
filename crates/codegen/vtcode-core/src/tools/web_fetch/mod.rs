@@ -97,7 +97,7 @@ fn fetched_content_from_bytes(bytes: &[u8], max_bytes: usize) -> Result<FetchedW
     Ok(FetchedWebContent { content, truncated_by_max_bytes, source_size_bytes })
 }
 
-/// Returns the path to the ephemeral temp directory for web_fetch artifacts.
+/// Returns the path to the ephemeral temp directory for web_fetch artefacts.
 /// Creates the directory if it doesn't exist.
 async fn web_fetch_temp_dir() -> Result<PathBuf> {
     VtCodePaths::resolve()

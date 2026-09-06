@@ -10,5 +10,5 @@ else
   export RUSTFLAGS="${EXTRA_RUSTFLAGS}"
 fi
 
-echo "[perf] local native build (portable release artifacts remain unchanged)"
+echo "[perf] local native build (portable release artefacts remain unchanged)"
 (cd "${ROOT_DIR}" && cargo build --profile release-fast "$@")

@@ -99,8 +99,8 @@ pub(super) fn timeline_rows_from_thread_events(records: &[ThreadEventRecord]) ->
                         "Messages: {} -> {}",
                         event.original_message_count, event.compacted_message_count
                     );
-                    if let Some(path) = &event.history_artifact_path {
-                        let _ = writeln!(&mut body, "History artifact: {path}");
+                    if let Some(path) = &event.history_artefact_path {
+                        let _ = writeln!(&mut body, "History artefact: {path}");
                     }
                     body
                 },

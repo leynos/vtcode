@@ -841,7 +841,7 @@ async fn plan_mode_recovery_exhausted_finalizes_instead_of_reforcing_interview()
     assert!(!plan_session.interview_pending());
     // Must conclude with the USER-facing recovery-exhausted notice (not the
     // model-addressed `*_FINALIZE` directive). With no validated persisted
-    // artifact, the user must be told to keep planning rather than implement.
+    // artefact, the user must be told to keep planning rather than implement.
     let last = history.last().unwrap();
     assert_eq!(last.role, uni::MessageRole::Assistant);
     assert_eq!(last.phase, Some(uni::AssistantPhase::FinalAnswer));
@@ -2146,7 +2146,7 @@ async fn planning_synthesis_truncated_retries_with_compact_spec() {
 }
 
 #[tokio::test]
-async fn streamed_invalid_plan_uses_one_bounded_repair_without_approval_artifacts() {
+async fn streamed_invalid_plan_uses_one_bounded_repair_without_approval_artefacts() {
     let calls = Arc::new(AtomicUsize::new(0));
     let mut backing = TestTurnProcessingBacking::new(4).await;
     backing.activate_planning_for_test();
@@ -2176,7 +2176,7 @@ async fn streamed_invalid_plan_uses_one_bounded_repair_without_approval_artifact
     let plans_dir = backing.workspace_path().join(".vtcode").join("plans");
     assert!(
         !plans_dir.exists() || fs::read_dir(&plans_dir).expect("read plans directory").next().is_none(),
-        "invalid streamed plans must not create approval artifacts"
+        "invalid streamed plans must not create approval artefacts"
     );
 
     let harness = fs::read_to_string(harness_path).expect("read harness events");
@@ -2328,7 +2328,7 @@ async fn streamed_invalid_plan_gets_a_second_repair_before_terminal_fallback() {
     let plans_dir = backing.workspace_path().join(".vtcode").join("plans");
     assert!(
         !plans_dir.exists() || fs::read_dir(&plans_dir).expect("read plans directory").next().is_none(),
-        "recoverable invalid drafts must not create approval artifacts"
+        "recoverable invalid drafts must not create approval artefacts"
     );
 }
 
@@ -2367,7 +2367,7 @@ async fn streamed_third_invalid_plan_is_terminal_and_retains_each_rejected_draft
     let plans_dir = backing.workspace_path().join(".vtcode").join("plans");
     assert!(
         !plans_dir.exists() || fs::read_dir(&plans_dir).expect("read plans directory").next().is_none(),
-        "terminally rejected plans must not create approval artifacts"
+        "terminally rejected plans must not create approval artefacts"
     );
 }
 

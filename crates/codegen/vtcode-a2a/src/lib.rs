@@ -58,5 +58,5 @@ pub use rpc::{
     TaskPushNotificationConfig,
 };
 pub use task_manager::TaskManager;
-pub use types::{Artifact, FileContent, Message, MessageRole, Part, Task, TaskState, TaskStatus};
+pub use types::{Artefact, FileContent, Message, MessageRole, Part, Task, TaskState, TaskStatus};
 pub use webhook::{WebhookError, WebhookNotifier};

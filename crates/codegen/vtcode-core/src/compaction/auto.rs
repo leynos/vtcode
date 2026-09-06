@@ -31,7 +31,7 @@ pub struct AutoCompactionOutcome {
     pub original_len: usize,
     pub compacted_len: usize,
     pub mode: CompactionMode,
-    pub history_artifact_path: Option<String>,
+    pub history_artefact_path: Option<String>,
     /// The session memory envelope produced during compaction.
     /// Used by the caller to write persistent checkpoints.
     pub envelope: Option<crate::compaction::memory_envelope::SessionMemoryEnvelope>,
@@ -135,14 +135,14 @@ pub async fn auto_compact_messages(
                     steering_update,
                 )
                 .await?;
-                let history_artifact_path = envelope.as_ref().and_then(|item| item.history_artifact_path.clone());
+                let history_artefact_path = envelope.as_ref().and_then(|item| item.history_artefact_path.clone());
                 let compacted_len = compacted.len();
                 *history = compacted;
                 return Ok(Some(AutoCompactionOutcome {
                     original_len,
                     compacted_len,
                     mode: CompactionMode::Local,
-                    history_artifact_path,
+                    history_artefact_path,
                     envelope,
                 }));
             }
@@ -189,14 +189,14 @@ pub async fn auto_compact_messages(
             steering_update,
         )
         .await?;
-        let history_artifact_path = envelope.as_ref().and_then(|item| item.history_artifact_path.clone());
+        let history_artefact_path = envelope.as_ref().and_then(|item| item.history_artefact_path.clone());
         let compacted_len = compacted.len();
         *history = compacted;
         Ok(Some(AutoCompactionOutcome {
             original_len,
             compacted_len,
             mode,
-            history_artifact_path,
+            history_artefact_path,
             envelope,
         }))
     }

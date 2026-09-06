@@ -847,7 +847,7 @@ mod tests {
             mode: CompactionMode::Local,
             original_message_count: 12,
             compacted_message_count: 5,
-            history_artifact_path: None,
+            history_artefact_path: None,
             previous_segment_id: Some("segment-0001".to_string()),
             new_segment_id: Some("segment-0002".to_string()),
             previous_prefix_hash: Some("prefix-before".to_string()),

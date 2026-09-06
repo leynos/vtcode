@@ -6,7 +6,7 @@ pub mod bootstrap;
 pub mod compaction_checkpoint;
 pub mod completion;
 pub mod context_reset;
-pub mod harness_artifacts;
+pub mod harness_artefacts;
 pub mod harness_kernel;
 
 pub mod config;
@@ -39,7 +39,7 @@ pub mod types;
 
 // Re-export main types for convenience
 pub use blocked_handoff::{
-    AsyncApprovalArtifacts, BlockedHandoffArtifacts, BlockedHandoffInfo, BlockedHandoffResume,
+    AsyncApprovalArtefacts, BlockedHandoffArtefacts, BlockedHandoffInfo, BlockedHandoffResume,
     clear_current_blocked_handoff, clear_current_blocked_handoff_for_session, read_current_blocked_handoff,
     write_blocked_handoff, write_blocked_handoff_with_resume,
 };

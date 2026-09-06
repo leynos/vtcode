@@ -5,9 +5,9 @@
 
 use super::AgentRunner;
 use super::evaluator_types::GeneralizationNote;
-use super::orchestration::{EvaluationArtifacts, PlannerArtifacts};
+use super::orchestration::{EvaluationArtefacts, PlannerArtefacts};
 use super::planner_types::ReplanResponse;
-use crate::core::agent::harness_artifacts;
+use crate::core::agent::harness_artefacts;
 use crate::core::agent::task::Task;
 use crate::tools::handlers::TaskTrackerTool;
 use crate::tools::traits::Tool;
@@ -36,13 +36,13 @@ impl AgentRunner {
     pub(super) async fn replan_from_failure(
         &mut self,
         task: &Task,
-        evaluation: &EvaluationArtifacts,
+        evaluation: &EvaluationArtefacts,
         revision_round: usize,
-    ) -> Option<PlannerArtifacts> {
-        let spec_path = harness_artifacts::current_spec_path(&self._workspace);
-        let contract_path = harness_artifacts::current_contract_path(&self._workspace);
-        let tracker_path = harness_artifacts::current_task_path(&self._workspace);
-        let feature_list_path = harness_artifacts::current_feature_list_path(&self._workspace);
+    ) -> Option<PlannerArtefacts> {
+        let spec_path = harness_artefacts::current_spec_path(&self._workspace);
+        let contract_path = harness_artefacts::current_contract_path(&self._workspace);
+        let tracker_path = harness_artefacts::current_task_path(&self._workspace);
+        let feature_list_path = harness_artefacts::current_feature_list_path(&self._workspace);
 
         // Apply evaluator's required tracker updates to the tracker tool.
         if !evaluation.required_tracker_updates.is_empty() {
@@ -68,20 +68,20 @@ impl AgentRunner {
         if let Some(ref replan) = replan {
             self.apply_replan_response(replan).await;
         } else {
-            // Fallback: annotate artifacts with evaluator feedback.
+            // Fallback: annotate artefacts with evaluator feedback.
             for (label, path) in [
                 ("spec", &spec_path),
                 ("contract", &contract_path),
                 ("feature_list", &feature_list_path),
             ] {
-                annotate_artifact(&self._workspace, path, label, &evaluation.summary, revision_round).await;
+                annotate_artefact(&self._workspace, path, label, &evaluation.summary, revision_round).await;
             }
         }
 
         self.append_generalization_scope_contract(&evaluation.generalization_notes, revision_round)
             .await;
 
-        Some(PlannerArtifacts {
+        Some(PlannerArtefacts {
             spec_path,
             contract_path,
             tracker_path,
@@ -136,7 +136,7 @@ impl AgentRunner {
             return;
         }
 
-        let contract_path = harness_artifacts::current_contract_path(&self._workspace);
+        let contract_path = harness_artefacts::current_contract_path(&self._workspace);
         let existing = tokio::fs::read_to_string(&contract_path).await.unwrap_or_default();
         let mut guardrails =
             format!("\n\n--- Evidence-Bounded Generalization Guardrails (round {revision_round}) ---\n");
@@ -147,7 +147,7 @@ impl AgentRunner {
             ));
         }
         let updated = format!("{existing}{guardrails}");
-        if let Err(error) = harness_artifacts::write_contract(&self._workspace, &updated).await {
+        if let Err(error) = harness_artefacts::write_contract(&self._workspace, &updated).await {
             warn!(error = %error, "failed to preserve generalization-note scopes in contract");
         }
     }
@@ -164,7 +164,7 @@ impl AgentRunner {
         if let Some(ref feature_list) = replan.revised_feature_list {
             let trimmed = feature_list.trim();
             if !trimmed.is_empty() {
-                if let Err(e) = harness_artifacts::write_feature_list(&self._workspace, trimmed).await {
+                if let Err(e) = harness_artefacts::write_feature_list(&self._workspace, trimmed).await {
                     warn!(error = %e, "failed to write revised feature list");
                 }
             }
@@ -173,10 +173,10 @@ impl AgentRunner {
         if let Some(ref addendum) = replan.contract_addendum {
             let trimmed = addendum.trim();
             if !trimmed.is_empty() {
-                let contract_path = harness_artifacts::current_contract_path(&self._workspace);
+                let contract_path = harness_artefacts::current_contract_path(&self._workspace);
                 let existing = tokio::fs::read_to_string(&contract_path).await.unwrap_or_default();
                 let updated = format!("{existing}\n\n--- Replan Addendum ---\n{trimmed}\n");
-                if let Err(e) = harness_artifacts::write_contract(&self._workspace, &updated).await {
+                if let Err(e) = harness_artefacts::write_contract(&self._workspace, &updated).await {
                     warn!(error = %e, "failed to write contract addendum");
                 }
             }
@@ -209,14 +209,14 @@ impl AgentRunner {
     }
 
     /// Augment a task with generator contract instructions.
-    pub(super) fn augment_generator_task(&self, task: &Task, artifacts: &PlannerArtifacts) -> Task {
+    pub(super) fn augment_generator_task(&self, task: &Task, artefacts: &PlannerArtefacts) -> Task {
         let mut effective_task = task.clone();
         let addendum = format!(
             "Generator contract:\n- Treat `{}`, `{}`, `{}`, and `{}` as the source of truth.\n- The execution contract defines what done must look like in observable terms.\n- The feature list enumerates the project's features with acceptance criteria.\n- Work one tracker step at a time.\n- Do not mark a step done until the implementation and verification evidence both support it.\n- Keep the tracker current.\n- Leave resumable state before yielding.",
-            artifacts.spec_path.display(),
-            artifacts.contract_path.display(),
-            artifacts.feature_list_path.display(),
-            artifacts.tracker_path.display()
+            artefacts.spec_path.display(),
+            artefacts.contract_path.display(),
+            artefacts.feature_list_path.display(),
+            artefacts.tracker_path.display()
         );
         effective_task.instructions = Some(match task.instructions.as_deref() {
             Some(existing) if !existing.trim().is_empty() => format!("{existing}\n\n{addendum}"),
@@ -232,7 +232,7 @@ fn preserves_generalization_scopes(response: &ReplanResponse, notes: &[Generaliz
         .all(|note| response.preserved_scopes.iter().any(|scope| scope.trim() == note.scope))
 }
 
-async fn annotate_artifact(
+async fn annotate_artefact(
     workspace: &std::path::Path,
     path: &std::path::Path,
     label: &str,
@@ -246,9 +246,9 @@ async fn annotate_artifact(
          Evaluator feedback:\n{evaluation_summary}\n",
     );
     let write_fn = match label {
-        "spec" => harness_artifacts::write_spec(workspace, &annotated).await,
-        "feature_list" => harness_artifacts::write_feature_list(workspace, &annotated).await,
-        _ => harness_artifacts::write_contract(workspace, &annotated).await,
+        "spec" => harness_artefacts::write_spec(workspace, &annotated).await,
+        "feature_list" => harness_artefacts::write_feature_list(workspace, &annotated).await,
+        _ => harness_artefacts::write_contract(workspace, &annotated).await,
     };
-    let _ = write_fn.inspect_err(|e| warn!(error = %e, "annotate_artifact: failed to annotate {label}"));
+    let _ = write_fn.inspect_err(|e| warn!(error = %e, "annotate_artefact: failed to annotate {label}"));
 }

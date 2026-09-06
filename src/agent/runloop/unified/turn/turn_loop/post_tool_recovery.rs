@@ -1435,7 +1435,7 @@ mod tests {
     async fn tool_free_recovery_keeps_planning_when_interview_denied_without_valid_plan() {
         // When `request_user_input` is permanently denied (non-interactive
         // runtime), the recovery fallback must not advertise implementation
-        // until a validated persisted artifact exists. It must keep the
+        // until a validated persisted artefact exists. It must keep the
         // planning session actionable without promising another interview.
         let mut working_history: Vec<uni::Message> = Vec::new();
         let mut plan_session = PlanningWorkflowSessionState::default();
@@ -1529,7 +1529,7 @@ mod tests {
     #[tokio::test]
     async fn plan_mode_recovery_rejects_partial_proposed_plan_salvage() {
         // A partial proposed plan is not approval-ready and must not be
-        // presented or persisted as if it were a completed artifact.
+        // presented or persisted as if it were a completed artefact.
         let mut working_history: Vec<uni::Message> = Vec::new();
         let mut plan_session = PlanningWorkflowSessionState::default();
         let partial_plan =

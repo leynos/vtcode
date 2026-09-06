@@ -323,7 +323,9 @@ pub struct ScheduledTaskRuntimeState {
     pub next_base_run_at: Option<DateTime<Utc>>,
     pub next_run_at: Option<DateTime<Utc>>,
     pub last_status: Option<TaskRunStatus>,
-    pub last_artifact_dir: Option<PathBuf>,
+    /// Wire key `last_artifact_dir` is fixed by the persisted scheduler-state schema.
+    #[serde(rename = "last_artifact_dir")]
+    pub last_artefact_dir: Option<PathBuf>,
     pub last_events_file: Option<PathBuf>,
     pub last_message_file: Option<PathBuf>,
 }
@@ -632,7 +634,7 @@ impl SchedulerPaths {
     }
 
     #[must_use]
-    pub fn artifact_dir(&self, id: &str, run_at: DateTime<Utc>) -> PathBuf {
+    pub fn artefact_dir(&self, id: &str, run_at: DateTime<Utc>) -> PathBuf {
         self.runs_dir().join(id).join(run_at.format("%Y%m%dT%H%M%SZ").to_string())
     }
 }
@@ -843,20 +845,20 @@ impl SchedulerDaemon {
                 Ok(RunOutcome {
                     ran_at: run_at,
                     status,
-                    artifact_dir: None,
+                    artefact_dir: None,
                     events_file: None,
                     last_message_file: None,
                 })
             }
             ScheduledTaskAction::Prompt { prompt } => {
-                let artifact_dir = self.store.paths().artifact_dir(&record.definition.id, run_at);
-                let events_file = artifact_dir.join("events.jsonl");
-                let last_message_file = artifact_dir.join("last-message.txt");
+                let artefact_dir = self.store.paths().artefact_dir(&record.definition.id, run_at);
+                let events_file = artefact_dir.join("events.jsonl");
+                let last_message_file = artefact_dir.join("last-message.txt");
                 let workspace_label = scheduled_workspace_label(&record.definition);
                 let workspace = resolve_scheduled_task_workspace(&record.definition);
                 let execution = async {
-                    VtCodePaths::ensure_user_dir(&artifact_dir)
-                        .with_context(|| format!("Failed to create run artifact dir {}", artifact_dir.display()))?;
+                    VtCodePaths::ensure_user_dir(&artefact_dir)
+                        .with_context(|| format!("Failed to create run artefact dir {}", artefact_dir.display()))?;
 
                     let mut command = Command::new(&self.executable_path);
                     command
@@ -894,7 +896,7 @@ impl SchedulerDaemon {
                 Ok(RunOutcome {
                     ran_at: run_at,
                     status: run_status,
-                    artifact_dir: artifact_dir.is_dir().then_some(artifact_dir),
+                    artefact_dir: artefact_dir.is_dir().then_some(artefact_dir),
                     events_file: events_file.is_file().then_some(events_file),
                     last_message_file: last_message_file.is_file().then_some(last_message_file),
                 })
@@ -1219,12 +1221,12 @@ fn apply_run_outcome(record: &mut ScheduledTaskRecord, outcome: RunOutcome) -> R
     let RunOutcome {
         ran_at,
         status,
-        artifact_dir,
+        artefact_dir,
         events_file,
         last_message_file,
     } = outcome;
 
-    record.runtime.last_artifact_dir = artifact_dir;
+    record.runtime.last_artefact_dir = artefact_dir;
     record.runtime.last_events_file = events_file;
     record.runtime.last_message_file = last_message_file;
 
@@ -1237,7 +1239,7 @@ fn apply_run_outcome(record: &mut ScheduledTaskRecord, outcome: RunOutcome) -> R
 struct RunOutcome {
     ran_at: DateTime<Utc>,
     status: TaskRunStatus,
-    artifact_dir: Option<PathBuf>,
+    artefact_dir: Option<PathBuf>,
     events_file: Option<PathBuf>,
     last_message_file: Option<PathBuf>,
 }

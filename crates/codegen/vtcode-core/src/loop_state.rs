@@ -27,8 +27,10 @@ pub struct LoopRunState {
     pub loop_id: String,
     /// Zero-based index of the current step.
     pub step_index: u32,
-    /// Path to the last artifact produced by the loop (e.g., a diff, a report).
-    pub last_artifact_path: Option<PathBuf>,
+    /// Path to the last artefact produced by the loop (e.g., a diff, a report).
+    /// Wire key `last_artifact_path` is fixed by the persisted loop-state schema.
+    #[serde(rename = "last_artifact_path")]
+    pub last_artefact_path: Option<PathBuf>,
     /// Current lifecycle status.
     pub status: LoopStatus,
     /// When the loop run started.
@@ -58,7 +60,7 @@ impl LoopRunState {
         Self {
             loop_id: loop_id.into(),
             step_index: 0,
-            last_artifact_path: None,
+            last_artefact_path: None,
             status: LoopStatus::Running,
             started_at: now,
             updated_at: now,
@@ -202,7 +204,7 @@ mod tests {
         assert_eq!(state.loop_id, "test-loop");
         assert_eq!(state.step_index, 0);
         assert_eq!(state.status, LoopStatus::Running);
-        assert!(state.last_artifact_path.is_none());
+        assert!(state.last_artefact_path.is_none());
     }
 
     #[test]
@@ -240,7 +242,7 @@ mod tests {
         let tmp = TempDir::new().expect("temp dir");
         let mut state = LoopRunState::new("round-trip-test");
         state.advance_step();
-        state.last_artifact_path = Some(PathBuf::from("/tmp/artifact.txt"));
+        state.last_artefact_path = Some(PathBuf::from("/tmp/artifact.txt"));
 
         let path = save_loop_state(tmp.path(), &state).expect("save");
         assert!(path.exists());
@@ -250,7 +252,7 @@ mod tests {
             .expect("should exist");
         assert_eq!(loaded.loop_id, "round-trip-test");
         assert_eq!(loaded.step_index, 1);
-        assert!(loaded.last_artifact_path.is_some());
+        assert!(loaded.last_artefact_path.is_some());
         assert_eq!(loaded.status, LoopStatus::Running);
     }
 
@@ -304,7 +306,7 @@ mod tests {
             let state = LoopRunState {
                 loop_id: "serde-test".to_string(),
                 step_index: 0,
-                last_artifact_path: None,
+                last_artefact_path: None,
                 status: status.clone(),
                 started_at: Utc::now(),
                 updated_at: Utc::now(),
