@@ -19,7 +19,7 @@ use vtcode_core::prompts::system::generate_system_instruction_with_config;
 use super::constants::{
     WORKSPACE_TRUST_ALREADY_SATISFIED_LOG, WORKSPACE_TRUST_DOWNGRADE_SKIPPED_LOG, WORKSPACE_TRUST_UPGRADE_LOG,
 };
-use super::helpers::PrimaryAgentCatalog;
+use super::helpers::PrimaryAgentCatalogue;
 
 pub async fn run_acp_agent(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig, title: Option<String>) -> Result<()> {
     let zed_config = &vt_cfg.acp.zed;
@@ -58,7 +58,7 @@ pub async fn run_acp_agent(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig, titl
     let discovered = discover_subagents(&SubagentDiscoveryInput::new(config.workspace.clone()))
         .context("Failed to discover primary agents for ACP bridge")?;
     let primary_agents =
-        PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, &vt_cfg.default_primary_agent);
+        PrimaryAgentCatalogue::from_specs_with_default(&discovered.effective, &vt_cfg.default_primary_agent);
 
     let local_set = tokio::task::LocalSet::new();
     let config_clone = config.clone();

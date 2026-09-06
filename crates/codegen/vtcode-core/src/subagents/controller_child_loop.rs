@@ -274,7 +274,7 @@ impl SubagentController {
         runner.set_quiet(true);
         runner.set_subagent_mode(true);
         // When this child may delegate further, attach a child-scoped
-        // controller so the subagent-lifecycle tools surface in its catalog
+        // controller so the subagent-lifecycle tools surface in its catalogue
         // and grandchild spawns inherit the incremented depth. The controller
         // is created once and reused across resumes so grandchildren remain
         // reachable for the child's lifetime. It is created with

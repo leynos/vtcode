@@ -23,7 +23,7 @@ use crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSes
 use crate::agent::runloop::unified::session_setup::IdeContextBridge;
 use crate::agent::runloop::unified::state::{CtrlCState, SessionStats};
 use crate::agent::runloop::unified::status_line::InputStatusState;
-use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
+use crate::agent::runloop::unified::tool_catalogue::ToolCatalogueState;
 use crate::agent::runloop::unified::webmcp::ActiveWebmcpBridge;
 use crate::agent::runloop::unified::workspace_links::LinkedDirectory;
 use crate::agent::runloop::welcome::SessionBootstrap;
@@ -66,7 +66,7 @@ pub(crate) struct SlashCommandContext<'a> {
     pub(crate) plan_session: &'a mut PlanningWorkflowSessionState,
     pub(crate) input_status_state: &'a mut InputStatusState,
     pub(crate) tools: &'a Arc<RwLock<Vec<uni::ToolDefinition>>>,
-    pub(crate) tool_catalog: &'a Arc<ToolCatalogState>,
+    pub(crate) tool_catalogue: &'a Arc<ToolCatalogueState>,
     pub(crate) async_mcp_manager: Option<&'a Arc<AsyncMcpManager>>,
     pub(crate) mcp_panel_state: &'a mut mcp_events::McpPanelState,
     pub(crate) linked_directories: &'a mut Vec<LinkedDirectory>,
@@ -107,7 +107,7 @@ impl<'a> SlashCommandContext<'a> {
             plan_session: self.plan_session,
             input_status_state: self.input_status_state,
             tools: self.tools,
-            tool_catalog: self.tool_catalog,
+            tool_catalogue: self.tool_catalogue,
             async_mcp_manager: self.async_mcp_manager,
             mcp_panel_state: self.mcp_panel_state,
             linked_directories: self.linked_directories,

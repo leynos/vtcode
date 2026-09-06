@@ -1,9 +1,9 @@
-mod catalog;
+mod catalogue;
 mod schemas;
 mod titles;
 
 pub use super::tooling_provider::ToolRegistryProvider;
-pub use catalog::{AcpToolRegistry, SupportedTool, ToolDescriptor};
+pub use catalogue::{AcpToolRegistry, SupportedTool, ToolDescriptor};
 pub use schemas::{
     TOOL_LIST_FILES_CASE_SENSITIVE_ARG, TOOL_LIST_FILES_CONTENT_PATTERN_ARG, TOOL_LIST_FILES_DESCRIPTION,
     TOOL_LIST_FILES_FILE_EXTENSIONS_ARG, TOOL_LIST_FILES_INCLUDE_HIDDEN_ARG, TOOL_LIST_FILES_ITEMS_KEY,

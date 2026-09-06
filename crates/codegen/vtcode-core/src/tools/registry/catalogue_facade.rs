@@ -1,4 +1,4 @@
-//! Canonical public tool catalog accessors for ToolRegistry.
+//! Canonical public tool catalogue accessors for ToolRegistry.
 
 use crate::config::ToolDocumentationMode;
 use crate::config::types::CapabilityLevel;
@@ -20,7 +20,7 @@ impl ToolRegistry {
 
     pub async fn public_tool_names(&self, surface: SessionSurface, capability_level: CapabilityLevel) -> Vec<String> {
         let assembly = self.tool_assembly.read().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut names = assembly.catalog().public_tool_names(
+        let mut names = assembly.catalogue().public_tool_names(
             SessionToolsConfig::full_public(
                 surface,
                 capability_level,
@@ -43,7 +43,7 @@ impl ToolRegistry {
 
     pub async fn schema_entries(&self, config: SessionToolsConfig) -> Vec<ToolSchemaEntry> {
         let assembly = self.tool_assembly.read().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut entries = assembly.catalog().schema_entries(config);
+        let mut entries = assembly.catalogue().schema_entries(config);
         if !self.has_subagent_controller() {
             entries.retain(|entry| !is_subagent_tool(entry.name.as_str()));
         }
@@ -52,7 +52,7 @@ impl ToolRegistry {
 
     pub async fn function_declarations(&self, config: SessionToolsConfig) -> Vec<FunctionDeclaration> {
         let assembly = self.tool_assembly.read().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut declarations = assembly.catalog().function_declarations(config);
+        let mut declarations = assembly.catalogue().function_declarations(config);
         if !self.has_subagent_controller() {
             declarations.retain(|entry| !is_subagent_tool(entry.name.as_str()));
         }
@@ -61,7 +61,7 @@ impl ToolRegistry {
 
     pub async fn model_tools(&self, config: SessionToolsConfig) -> Vec<ToolDefinition> {
         let assembly = self.tool_assembly.read().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut tools = assembly.catalog().model_tools(config);
+        let mut tools = assembly.catalogue().model_tools(config);
         if !self.has_subagent_controller() {
             tools.retain(|entry| !is_subagent_tool(entry.function_name()));
         }
@@ -73,7 +73,7 @@ impl ToolRegistry {
         if !self.has_subagent_controller() && is_subagent_tool(name) {
             return None;
         }
-        assembly.catalog().schema_for_name(name, config)
+        assembly.catalogue().schema_for_name(name, config)
     }
 
     pub(crate) fn resolve_public_tool_name_sync(&self, name: &str) -> Result<String, ToolCallError> {

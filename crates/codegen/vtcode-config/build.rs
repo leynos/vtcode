@@ -278,7 +278,7 @@ struct EntryData {
 }
 
 #[derive(Deserialize)]
-struct ProviderCatalog {
+struct ProviderCatalogue {
     #[serde(default)]
     models: IndexMap<String, CapabilityModelSpec>,
 }
@@ -397,7 +397,7 @@ fn load_model_capability_entries(manifest_dir: &Path) -> Result<Vec<CapabilityEn
     println!("cargo:rerun-if-changed={}", docs_path.display());
     let models_source =
         fs::read_to_string(&docs_path).with_context(|| format!("Failed to read {}", docs_path.display()))?;
-    let providers: IndexMap<String, ProviderCatalog> =
+    let providers: IndexMap<String, ProviderCatalogue> =
         serde_json::from_str(&models_source).context("Failed to deserialize docs/models.json providers")?;
 
     let mut entries = Vec::new();

@@ -16,7 +16,7 @@ pub type NativeCgpToolFactory = Arc<
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ToolCatalogSource {
+pub enum ToolCatalogueSource {
     Builtin,
     Mcp,
     #[default]
@@ -158,7 +158,7 @@ impl fmt::Debug for ToolHandler {
 pub struct ToolRegistration {
     name: Arc<str>,
     capability: CapabilityLevel,
-    catalog_source: ToolCatalogSource,
+    catalogue_source: ToolCatalogueSource,
     uses_pty: bool,
     expose_in_llm: bool,
     deprecated: bool,
@@ -174,7 +174,7 @@ impl fmt::Debug for ToolRegistration {
         f.debug_struct("ToolRegistration")
             .field("name", &self.name)
             .field("capability", &self.capability)
-            .field("catalog_source", &self.catalog_source)
+            .field("catalogue_source", &self.catalogue_source)
             .field("uses_pty", &self.uses_pty)
             .field("expose_in_llm", &self.expose_in_llm)
             .field("deprecated", &self.deprecated)
@@ -197,7 +197,7 @@ impl ToolRegistration {
         Self {
             name: name.into(),
             capability,
-            catalog_source: ToolCatalogSource::Dynamic,
+            catalogue_source: ToolCatalogueSource::Dynamic,
             uses_pty,
             expose_in_llm: true,
             deprecated: false,
@@ -243,7 +243,7 @@ impl ToolRegistration {
         Self {
             name: name.into(),
             capability,
-            catalog_source: ToolCatalogSource::Dynamic,
+            catalogue_source: ToolCatalogueSource::Dynamic,
             uses_pty: false,
             expose_in_llm: true,
             deprecated: false,
@@ -299,8 +299,8 @@ impl ToolRegistration {
         self
     }
 
-    pub fn with_catalog_source(mut self, catalog_source: ToolCatalogSource) -> Self {
-        self.catalog_source = catalog_source;
+    pub fn with_catalogue_source(mut self, catalogue_source: ToolCatalogueSource) -> Self {
+        self.catalogue_source = catalogue_source;
         self
     }
 
@@ -343,9 +343,9 @@ impl ToolRegistration {
         self.capability
     }
 
-    /// Returns the catalog source of this tool.
-    pub fn catalog_source(&self) -> ToolCatalogSource {
-        self.catalog_source
+    /// Returns the catalogue source of this tool.
+    pub fn catalogue_source(&self) -> ToolCatalogueSource {
+        self.catalogue_source
     }
 
     /// Returns whether this tool uses a PTY.

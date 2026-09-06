@@ -26,7 +26,7 @@ fn default_acp_tool_names() -> Vec<String> {
     ]
 }
 
-/// The public catalog order derives from rig's `ToolSet` (HashMap-backed), so
+/// The public catalogue order derives from rig's `ToolSet` (HashMap-backed), so
 /// it is not a stable contract. Compare the tool set order-insensitively.
 fn assert_same_tool_set(actual: &[String], expected: &[String]) {
     let mut actual_sorted = actual.to_vec();
@@ -37,7 +37,7 @@ fn assert_same_tool_set(actual: &[String], expected: &[String]) {
 }
 
 #[tokio::test]
-async fn audit_public_catalog_is_runtime_driven() {
+async fn audit_public_catalogue_is_runtime_driven() {
     let temp = TempDir::new().expect("tempdir");
     let registry = ToolRegistry::new(temp.path().to_path_buf()).await;
 
@@ -86,7 +86,7 @@ async fn audit_code_search_is_advanced_only() {
 }
 
 #[tokio::test]
-async fn audit_public_catalog_hides_legacy_aliases() {
+async fn audit_public_catalogue_hides_legacy_aliases() {
     let temp = TempDir::new().expect("tempdir");
     let registry = ToolRegistry::new(temp.path().to_path_buf()).await;
 
@@ -106,13 +106,13 @@ async fn audit_public_catalog_hides_legacy_aliases() {
     ] {
         assert!(
             !public_names.iter().any(|name| name == legacy_name),
-            "legacy alias leaked into public catalog: {legacy_name}"
+            "legacy alias leaked into public catalogue: {legacy_name}"
         );
     }
 }
 
 #[tokio::test]
-async fn audit_acp_subset_comes_from_same_catalog() {
+async fn audit_acp_subset_comes_from_same_catalogue() {
     let temp = TempDir::new().expect("tempdir");
     let registry = ToolRegistry::new(temp.path().to_path_buf()).await;
 

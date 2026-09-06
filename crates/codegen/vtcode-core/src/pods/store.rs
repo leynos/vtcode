@@ -1,4 +1,4 @@
-use super::catalog::PodCatalog;
+use super::catalogue::PodCatalogue;
 use super::state::PodsState;
 use anyhow::{Context, Result};
 use std::path::PathBuf;
@@ -29,7 +29,7 @@ impl PodsStore {
     }
 
     /// Return the path to the `catalog.json` file.
-    pub fn catalog_path(&self) -> PathBuf {
+    pub fn catalogue_path(&self) -> PathBuf {
         self.base_dir.join("catalog.json")
     }
 
@@ -37,8 +37,8 @@ impl PodsStore {
     pub async fn ensure_initialized(&self) -> Result<()> {
         ensure_user_dir(&self.base_dir)?;
 
-        if !tokio::fs::try_exists(&self.catalog_path()).await.unwrap_or(false) {
-            self.save_catalog(&PodCatalog::embedded_default()).await?;
+        if !tokio::fs::try_exists(&self.catalogue_path()).await.unwrap_or(false) {
+            self.save_catalogue(&PodCatalogue::embedded_default()).await?;
         }
 
         if !tokio::fs::try_exists(&self.state_path()).await.unwrap_or(false) {
@@ -64,19 +64,19 @@ impl PodsStore {
             .with_context(|| format!("failed to write pod state at {}", self.state_path().display()))
     }
 
-    /// Load the deployment catalog from disk.
-    pub async fn load_catalog(&self) -> Result<PodCatalog> {
+    /// Load the deployment catalogue from disk.
+    pub async fn load_catalogue(&self) -> Result<PodCatalogue> {
         self.ensure_initialized().await?;
-        read_private_json_file(&self.catalog_path())
+        read_private_json_file(&self.catalogue_path())
             .await
-            .with_context(|| format!("failed to read pod catalog at {}", self.catalog_path().display()))
+            .with_context(|| format!("failed to read pod catalogue at {}", self.catalogue_path().display()))
     }
 
-    pub async fn save_catalog(&self, catalog: &PodCatalog) -> Result<()> {
+    pub async fn save_catalogue(&self, catalogue: &PodCatalogue) -> Result<()> {
         ensure_user_dir(&self.base_dir)?;
-        write_private_json_file(&self.catalog_path(), catalog)
+        write_private_json_file(&self.catalogue_path(), catalogue)
             .await
-            .with_context(|| format!("failed to write pod catalog at {}", self.catalog_path().display()))
+            .with_context(|| format!("failed to write pod catalogue at {}", self.catalogue_path().display()))
     }
 }
 

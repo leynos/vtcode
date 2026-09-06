@@ -1,6 +1,6 @@
 use super::ZedAgent;
 use crate::tooling::ToolDescriptor;
-use crate::zed::helpers::PrimaryAgentCatalog;
+use crate::zed::helpers::PrimaryAgentCatalogue;
 use crate::zed::types::ToolRuntime;
 use assert_fs::TempDir;
 use serde_json::json;
@@ -56,7 +56,7 @@ async fn build_agent_with_tools_config(workspace: &Path, tools_config: ToolsConf
     let mut discovery_input = SubagentDiscoveryInput::new(workspace.to_path_buf());
     discovery_input.include_user_agents = false;
     let discovered = discover_subagents(&discovery_input).expect("discover primary agents");
-    let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, "duck");
+    let primary_agents = PrimaryAgentCatalogue::from_specs_with_default(&discovered.effective, "duck");
 
     ZedAgent::new(
         core_config,
@@ -345,13 +345,13 @@ async fn allows_tool_gates_deny_default_agent_by_tool_category() {
     // This exercises `allows_tool` for every local tool name so name drift that
     // would silently over-permit (an unrecognized name falling through to an
     // always-permitted `Other` request) is caught.
-    let catalog =
-        PrimaryAgentCatalog::from_specs_with_default(&[deny_default_agent_allowing("exec_command")], "sheller");
+    let catalogue =
+        PrimaryAgentCatalogue::from_specs_with_default(&[deny_default_agent_allowing("exec_command")], "sheller");
     let workspace = temp.path();
 
     for name in &local_names {
         let canonical = canonical_tool_name(name).to_ascii_lowercase();
-        let allowed = catalog.allows_tool("sheller", &canonical, workspace);
+        let allowed = catalogue.allows_tool("sheller", &canonical, workspace);
         if canonical == tools::EXEC_COMMAND {
             assert!(allowed, "explicitly allowed exec_command must be permitted");
         } else if canonical == tools::CODE_SEARCH || canonical == tools::WRITE_STDIN {

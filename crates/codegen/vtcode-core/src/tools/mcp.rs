@@ -9,7 +9,7 @@ use crate::config::types::CapabilityLevel;
 use crate::mcp::{McpClient, McpToolExecutor, McpToolInfo};
 use crate::tool_policy::ToolPolicy;
 use crate::tools::native_cgp_tool_factory;
-use crate::tools::registry::{ToolCatalogSource, ToolRegistration};
+use crate::tools::registry::{ToolCatalogueSource, ToolRegistration};
 use crate::tools::traits::Tool;
 
 // Re-export from shared utils to break the tool_policy <-> tools cycle.
@@ -57,7 +57,7 @@ pub fn build_mcp_registration(
     }
 
     ToolRegistration::from_tool_with_metadata(primary_name, CapabilityLevel::Basic, Arc::new(proxy), metadata)
-        .with_catalog_source(ToolCatalogSource::Mcp)
+        .with_catalogue_source(ToolCatalogueSource::Mcp)
         .with_llm_visibility(false)
         .with_native_cgp_factory(native_cgp_tool_factory(move || McpProxyTool {
             client: Arc::clone(&client),

@@ -8,7 +8,7 @@ use vtcode_commons::MultiErrors;
 
 use crate::config::FullAutoConfig;
 use crate::config::loader::VTCodeConfig;
-use crate::config::models::{catalog_provider_keys, model_catalog_entry, supported_models_for_provider};
+use crate::config::models::{catalogue_provider_keys, model_catalogue_entry, supported_models_for_provider};
 use vtcode_config::core::CustomProviderConfig;
 
 /// Result of a configuration validation check
@@ -44,7 +44,7 @@ impl Default for ValidationResult {
     }
 }
 
-/// Validate that the configured model exists in the generated model catalog.
+/// Validate that the configured model exists in the generated model catalogue.
 pub fn validate_model_exists(provider: &str, model: &str) -> Result<()> {
     if provider.eq_ignore_ascii_case("copilot") || provider.eq_ignore_ascii_case("merge-gateway") {
         if model.trim().is_empty() {
@@ -69,14 +69,14 @@ pub fn validate_model_exists(provider: &str, model: &str) -> Result<()> {
         bail!(
             "Provider '{}' not recognized. Available providers: {}",
             provider,
-            catalog_provider_keys().join(", ")
+            catalogue_provider_keys().join(", ")
         );
     }
 }
 
-/// Get context window size for a model from the catalog.
-fn catalog_model_context_window(provider: &str, model: &str) -> Result<Option<usize>> {
-    Ok(model_catalog_entry(provider, model)
+/// Get context window size for a model from the catalogue.
+fn catalogue_model_context_window(provider: &str, model: &str) -> Result<Option<usize>> {
+    Ok(model_catalogue_entry(provider, model)
         .map(|entry| entry.context_window)
         .filter(|context_window| *context_window > 0))
 }
@@ -87,7 +87,7 @@ pub fn effective_model_context_window(provider: &str, model: &str) -> Result<Opt
         return Ok(Some(crate::llm::providers::anthropic::capabilities::effective_context_size(model)));
     }
 
-    catalog_model_context_window(provider, model)
+    catalogue_model_context_window(provider, model)
 }
 
 fn custom_provider_for_model<'a>(
@@ -275,8 +275,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn generated_catalog_contains_providers() {
-        let providers = catalog_provider_keys();
+    fn generated_catalogue_contains_providers() {
+        let providers = catalogue_provider_keys();
         assert!(!providers.is_empty(), "Should expose generated providers");
         assert!(
             providers.contains(&"gemini") || providers.contains(&"openai"),
@@ -309,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_config_skips_codex_model_catalog_checks() {
+    fn validate_config_skips_codex_model_catalogue_checks() {
         let mut config = VTCodeConfig::default();
         config.agent.provider = "codex".to_string();
         config.agent.default_model = "upstream-managed-model".to_string();

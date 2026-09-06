@@ -11,7 +11,7 @@ use crate::agent::runloop::unified::async_mcp_manager::{
 use crate::agent::runloop::unified::prompts::read_system_prompt;
 use crate::agent::runloop::unified::state::should_enforce_safe_mode_prompts;
 use crate::agent::runloop::unified::tool_call_safety::ToolCallSafetyValidator;
-use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
+use crate::agent::runloop::unified::tool_catalogue::ToolCatalogueState;
 use crate::agent::runloop::welcome::prepare_session_bootstrap;
 use anyhow::{Context, Result};
 use hashbrown::HashMap;
@@ -261,7 +261,7 @@ pub(crate) async fn initialize_session(
     };
     tool_registry.enable_cgp_pipeline(cgp_mode).await;
 
-    let tool_catalog = tool_registry.tool_catalog_state();
+    let tool_catalogue = tool_registry.tool_catalogue_state();
     let anthropic_native_memory_enabled = active_anthropic_native_memory(config, vt_cfg, provider_client.as_ref());
 
     let tools = Arc::new(RwLock::new(
@@ -279,7 +279,7 @@ pub(crate) async fn initialize_session(
     register_skill_tools(
         &mut tool_registry,
         &tools,
-        &tool_catalog,
+        &tool_catalogue,
         config,
         vt_cfg,
         tool_documentation_mode,
@@ -291,7 +291,7 @@ pub(crate) async fn initialize_session(
     refresh_tool_snapshot(
         &tool_registry,
         &tools,
-        &tool_catalog,
+        &tool_catalogue,
         config,
         vt_cfg,
         tool_documentation_mode,
@@ -393,7 +393,7 @@ pub(crate) async fn initialize_session(
         provider_client,
         tool_registry,
         tools,
-        tool_catalog,
+        tool_catalogue,
         conversation_history,
         execution: ToolExecutionContext {
             tool_result_cache,
@@ -604,7 +604,7 @@ pub(crate) fn active_anthropic_native_memory(
 pub(crate) async fn refresh_tool_snapshot(
     tool_registry: &ToolRegistry,
     tools: &Arc<RwLock<Vec<uni::ToolDefinition>>>,
-    _tool_catalog: &ToolCatalogState,
+    _tool_catalogue: &ToolCatalogueState,
     config: &CoreAgentConfig,
     vt_cfg: Option<&VTCodeConfig>,
     tool_documentation_mode: vtcode_core::config::ToolDocumentationMode,
@@ -761,9 +761,9 @@ mod tests {
                 ))
                 .await,
         ));
-        let tool_catalog = registry.tool_catalog_state();
+        let tool_catalogue = registry.tool_catalogue_state();
 
-        let inactive = tool_catalog
+        let inactive = tool_catalogue
             .filtered_snapshot_with_stats(&base_tools, registry.is_planning_active(), false)
             .await;
         let inactive_names = inactive.active_tool_names.as_ref();
@@ -777,7 +777,7 @@ mod tests {
         assert!(!inactive_names.iter().any(|name| name == tools::REQUEST_USER_INPUT));
 
         registry.enable_planning();
-        let active = tool_catalog
+        let active = tool_catalogue
             .filtered_snapshot_with_stats(&base_tools, registry.is_planning_active(), true)
             .await;
         let active_names = active.active_tool_names.as_ref();
@@ -789,7 +789,7 @@ mod tests {
     async fn mcp_refresh_route_retains_configured_tool_profile() {
         let temp = TempDir::new().expect("temp dir");
         let registry = ToolRegistry::new(temp.path().to_path_buf()).await;
-        let tool_catalog = registry.tool_catalog_state();
+        let tool_catalogue = registry.tool_catalogue_state();
         let active_tools = Arc::new(RwLock::new(Vec::new()));
         let mut advanced = VTCodeConfig::default();
         advanced.tools.profile = ToolProfile::AdvancedVtCode;
@@ -811,7 +811,7 @@ mod tests {
         refresh_tool_snapshot(
             &registry,
             &active_tools,
-            tool_catalog.as_ref(),
+            tool_catalogue.as_ref(),
             &runtime_config,
             Some(&advanced),
             vtcode_core::config::ToolDocumentationMode::default(),

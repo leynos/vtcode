@@ -23,7 +23,7 @@ use super::model_presets::{
 };
 use crate::config::models::Provider;
 use crate::llm::providers::{
-    MergeCatalogAvailability, MergeCatalogFilters, MergeCatalogModel, MergeGatewayCatalogClient,
+    MergeCatalogueAvailability, MergeCatalogueFilters, MergeCatalogueModel, MergeGatewayCatalogueClient,
     llamacpp::fetch_llamacpp_models,
 };
 use vtcode_commons::VtCodePaths;
@@ -232,8 +232,8 @@ impl ModelsManager {
             .ok()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| urls::MERGE_GATEWAY_NATIVE_API_BASE.to_string());
-        let client = MergeGatewayCatalogClient::try_with_timeouts(api_key, base_url, None)
-            .context("failed to initialize Merge Gateway catalog client")?;
+        let client = MergeGatewayCatalogueClient::try_with_timeouts(api_key, base_url, None)
+            .context("failed to initialize Merge Gateway catalogue client")?;
         let cached = self.load_cache_for(Provider::MergeGateway).await;
         let etag = self
             .etag
@@ -242,9 +242,9 @@ impl ModelsManager {
             .clone()
             .or_else(|| cached.as_ref().and_then(|cache| cache.etag.clone()));
 
-        match client.fetch_snapshot(&MergeCatalogFilters::default(), etag.as_deref()).await {
+        match client.fetch_snapshot(&MergeCatalogueFilters::default(), etag.as_deref()).await {
             Ok(None) => {
-                debug!("Merge Gateway catalog is unchanged");
+                debug!("Merge Gateway catalogue is unchanged");
                 if let Some(cache) = cached {
                     let _ = self
                         .apply_remote_state_for_provider_at(
@@ -261,7 +261,7 @@ impl ModelsManager {
                 let models = snapshot
                     .models
                     .into_iter()
-                    .filter_map(Self::merge_catalog_model_info)
+                    .filter_map(Self::merge_catalogue_model_info)
                     .collect::<Vec<_>>();
                 if self
                     .apply_remote_state_for_provider_at(
@@ -278,15 +278,15 @@ impl ModelsManager {
                 Ok(())
             }
             Err(error) => {
-                error!("Failed to fetch Merge Gateway model catalog: {error}");
+                error!("Failed to fetch Merge Gateway model catalogue: {error}");
                 let _ = self.try_load_stale_cache_for_at(Provider::MergeGateway, generation).await;
                 Ok(())
             }
         }
     }
 
-    fn merge_catalog_model_info(model: MergeCatalogModel) -> Option<ModelInfo> {
-        if model.availability != MergeCatalogAvailability::Available {
+    fn merge_catalogue_model_info(model: MergeCatalogueModel) -> Option<ModelInfo> {
+        if model.availability != MergeCatalogueAvailability::Available {
             return None;
         }
 
@@ -891,12 +891,12 @@ mod tests {
     }
 
     #[test]
-    fn merge_catalog_models_map_to_picker_metadata_and_hide_deprecated_routes() {
-        let model = MergeCatalogModel {
+    fn merge_catalogue_models_map_to_picker_metadata_and_hide_deprecated_routes() {
+        let model = MergeCatalogueModel {
             model: "anthropic/claude-sonnet-5".to_string(),
             provider: "anthropic".to_string(),
             display_name: Some("Claude Sonnet 5".to_string()),
-            availability: MergeCatalogAvailability::Available,
+            availability: MergeCatalogueAvailability::Available,
             context_window: Some(200_000),
             max_output_tokens: Some(16_384),
             supports_tool_use: true,
@@ -909,7 +909,7 @@ mod tests {
             reasoning_controls: vec!["thinking.budget_tokens".to_string()],
         };
 
-        let info = ModelsManager::merge_catalog_model_info(model).expect("available model should map");
+        let info = ModelsManager::merge_catalogue_model_info(model).expect("available model should map");
         assert_eq!(info.slug, "anthropic/claude-sonnet-5");
         assert_eq!(info.display_name, "Claude Sonnet 5");
         assert_eq!(info.provider, Provider::MergeGateway);
@@ -920,13 +920,13 @@ mod tests {
         assert!(info.supports_reasoning);
         assert_eq!(info.supported_reasoning_levels.len(), ModelsManager::merge_supported_reasoning_presets(true).len());
 
-        let deprecated = MergeCatalogModel {
-            availability: MergeCatalogAvailability::Deprecated,
-            ..MergeCatalogModel {
+        let deprecated = MergeCatalogueModel {
+            availability: MergeCatalogueAvailability::Deprecated,
+            ..MergeCatalogueModel {
                 model: "openai/old".to_string(),
                 provider: "openai".to_string(),
                 display_name: None,
-                availability: MergeCatalogAvailability::Available,
+                availability: MergeCatalogueAvailability::Available,
                 context_window: None,
                 max_output_tokens: None,
                 supports_tool_use: false,
@@ -939,7 +939,7 @@ mod tests {
                 reasoning_controls: Vec::new(),
             }
         };
-        assert!(ModelsManager::merge_catalog_model_info(deprecated).is_none());
+        assert!(ModelsManager::merge_catalogue_model_info(deprecated).is_none());
     }
 
     #[tokio::test]

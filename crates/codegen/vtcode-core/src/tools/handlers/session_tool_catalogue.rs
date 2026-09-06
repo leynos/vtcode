@@ -25,7 +25,7 @@ use super::session_tool_projection::{ToolEntryProjection, ToolProjectionCache};
 use super::tool_handler::{ConfiguredToolSpec, ResponsesApiTool, ToolSpec};
 
 pub use crate::config::ToolProfile;
-pub use crate::tools::registry::ToolCatalogSource;
+pub use crate::tools::registry::ToolCatalogueSource;
 
 /// The surface (execution context) where tools are exposed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,7 +38,7 @@ pub enum SessionSurface {
     Acp,
 }
 
-/// Model-specific capabilities that affect tool catalog generation.
+/// Model-specific capabilities that affect tool catalogue generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ToolModelCapabilities {
     /// Whether the model supports the native `apply_patch` tool.
@@ -74,28 +74,28 @@ pub enum DeferredToolSearchKind {
 }
 
 /// Above this many deferable (non-core, non-`always_available`) tools, a
-/// catalog is exposed via deferred loading rather than sent eagerly. Below it,
-/// eager exposure is cheaper and simpler. Ignored when the catalog contains any
+/// catalogue is exposed via deferred loading rather than sent eagerly. Below it,
+/// eager exposure is cheaper and simpler. Ignored when the catalogue contains any
 /// MCP tool (see `model_tools`), since MCP schemas are the dominant token cost.
 const DIRECT_TOOL_EXPOSURE_THRESHOLD: usize = 15;
 /// Token budget (~4 chars/token) for the combined schema of a deferable
-/// catalog. A catalog is deferred when its estimated schema size exceeds this,
+/// catalogue. A catalogue is deferred when its estimated schema size exceeds this,
 /// even if the tool count is below `DIRECT_TOOL_EXPOSURE_THRESHOLD`. This catches
 /// a single large server whose schema dwarfs the entire builtin set.
 const DIRECT_TOOL_EXPOSURE_TOKEN_BUDGET: usize = 4_000;
 
-/// Whether a catalog is large enough that deferred loading would engage for it
+/// Whether a catalogue is large enough that deferred loading would engage for it
 /// (MCP tools present, at/over the count threshold, or over the schema-token
 /// budget). Mirrors the "would defer" branch of the `model_tools` decision -- it
 /// is the negation of `(count < THRESHOLD && !has_mcp && tokens <= BUDGET)`.
 ///
 /// Used to decide whether to warn when deferred loading is *disabled*
 /// (`tools.client_tool_search = false` on a provider without hosted tool
-/// search): in that case the user pays the full schema tax a catalog this size
+/// search): in that case the user pays the full schema tax a catalogue this size
 /// would otherwise shed. Extracted as pure logic so the warning condition is
 /// unit-testable without capturing tracing output.
 #[must_use]
-fn catalog_would_benefit_from_deferral(
+fn catalogue_would_benefit_from_deferral(
     has_mcp_tools: bool,
     deferable_tool_count: usize,
     estimated_schema_tokens: usize,
@@ -156,7 +156,7 @@ impl DeferredToolPolicy {
         matches!(self.search_kind, Some(DeferredToolSearchKind::ClientLocal))
     }
 
-    fn keeps_entry_available(&self, entry: &ToolCatalogEntry) -> bool {
+    fn keeps_entry_available(&self, entry: &ToolCatalogueEntry) -> bool {
         self.always_available_tools.contains(entry.public_name.as_str())
             || self.always_available_tools.contains(entry.registration_name.as_str())
             || entry
@@ -215,14 +215,14 @@ pub fn deferred_tool_policy_for_runtime(
         _ => {
             // No provider-hosted tool search is available (e.g. Gemini).
             // Client-local deferral is now the default so MCP schemas are not
-            // sent eagerly. Users can opt back to the eager catalog by setting
+            // sent eagerly. Users can opt back to the eager catalogue by setting
             // `tools.client_tool_search = false`. The `DIRECT_TOOL_EXPOSURE_THRESHOLD`
             // and `DIRECT_TOOL_EXPOSURE_TOKEN_BUDGET` gating that decides whether
-            // deferral is actually worthwhile for a given catalog lives downstream
-            // in `SessionToolCatalog::model_tools`, exactly as it does for the
+            // deferral is actually worthwhile for a given catalogue lives downstream
+            // in `SessionToolCatalogue::model_tools`, exactly as it does for the
             // hosted arms above -- this function only decides whether deferral is
             // *possible* for the runtime, not whether it is *used* for the
-            // current catalog.
+            // current catalogue.
             let client_tool_search_enabled = vtcode_config.is_some_and(|cfg| cfg.tools.client_tool_search);
             if client_tool_search_enabled {
                 DeferredToolPolicy::client_local(Vec::new())
@@ -248,7 +248,7 @@ pub fn anthropic_native_memory_enabled_for_runtime(
         && vtcode_config.is_some_and(|cfg| cfg.provider.anthropic.memory.enabled)
 }
 
-/// Configuration for the session's tool catalog.
+/// Configuration for the session's tool catalogue.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionToolsConfig {
     /// The execution surface (interactive, agent runner, ACP).
@@ -321,18 +321,18 @@ impl SessionToolsConfig {
     }
 }
 
-/// The kind of tool in the catalog.
+/// The kind of tool in the catalogue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CatalogToolKind {
+pub enum CatalogueToolKind {
     /// Standard function call tool.
     Function,
     /// Native apply_patch tool.
     ApplyPatch,
 }
 
-/// An entry in the session tool catalog.
+/// An entry in the session tool catalogue.
 #[derive(Debug, Clone)]
-pub struct ToolCatalogEntry {
+pub struct ToolCatalogueEntry {
     /// Name exposed to the LLM.
     pub public_name: String,
     /// Internal registration name.
@@ -349,10 +349,10 @@ pub struct ToolCatalogEntry {
     pub default_permission: ToolPolicy,
     /// Whether this tool supports parallel execution.
     pub supports_parallel_tool_calls: bool,
-    /// Source of this tool in the catalog.
-    pub source: ToolCatalogSource,
+    /// Source of this tool in the catalogue.
+    pub source: ToolCatalogueSource,
     /// The kind of tool (function or apply_patch).
-    pub kind: CatalogToolKind,
+    pub kind: CatalogueToolKind,
     /// The configured tool specification.
     pub configured_spec: ConfiguredToolSpec,
     /// Optional per-tool description length cap. When set, overrides the
@@ -375,31 +375,31 @@ pub struct ToolSchemaEntry {
     pub parameters: Value,
 }
 
-/// The session's tool catalog containing all available tools.
+/// The session's tool catalogue containing all available tools.
 #[derive(Debug, Clone)]
-pub struct SessionToolCatalog {
-    entries: Vec<ToolCatalogEntry>,
+pub struct SessionToolCatalogue {
+    entries: Vec<ToolCatalogueEntry>,
     projection_cache: Arc<ToolProjectionCache>,
 }
 
-impl Default for SessionToolCatalog {
+impl Default for SessionToolCatalogue {
     fn default() -> Self {
         Self::new(Vec::new())
     }
 }
 
-impl SessionToolCatalog {
-    /// Creates a new catalog from the given entries.
-    pub fn new(entries: Vec<ToolCatalogEntry>) -> Self {
+impl SessionToolCatalogue {
+    /// Creates a new catalogue from the given entries.
+    pub fn new(entries: Vec<ToolCatalogueEntry>) -> Self {
         let projection_cache = Arc::new(ToolProjectionCache::new(entries.len()));
         Self { entries, projection_cache }
     }
 
-    /// Rebuilds the catalog from tool registrations.
+    /// Rebuilds the catalogue from tool registrations.
     pub fn rebuild_from_registrations(registrations: Vec<ToolRegistration>) -> Self {
         let mut entries = Vec::new();
         for registration in registrations {
-            if let Some(entry) = ToolCatalogEntry::from_registration(&registration) {
+            if let Some(entry) = ToolCatalogueEntry::from_registration(&registration) {
                 entries.push(entry);
             }
         }
@@ -454,11 +454,11 @@ impl SessionToolCatalog {
             .count();
         let has_mcp_tools = visible_entry_indices
             .iter()
-            .any(|&index| matches!(self.entries[index].source, ToolCatalogSource::Mcp));
+            .any(|&index| matches!(self.entries[index].source, ToolCatalogueSource::Mcp));
         // Hosted policies (Anthropic/OpenAI) rely on `defer_loading` markers in
         // the wire payload, so they defer whenever the policy is enabled. The
         // client-local policy instead OMITS deferred definitions from the wire;
-        // applying it to a small builtin-only catalog (e.g. the plan-mode
+        // applying it to a small builtin-only catalogue (e.g. the plan-mode
         // read-only filter) can leave zero tools on the wire, which makes
         // models improvise textual XML tool calls. Below the exposure
         // threshold, eager exposure is cheaper and simpler -- exactly the gate
@@ -468,14 +468,14 @@ impl SessionToolCatalog {
             // The disabled policy needs the estimate for its advisory warning.
             let estimated_schema_tokens = self.estimate_schema_tokens(&visible_entry_indices, &config);
 
-            // Advisory one-shot: if deferred loading is disabled but this catalog
+            // Advisory one-shot: if deferred loading is disabled but this catalogue
             // is large enough that deferral would engage, the user is paying the
             // full tool-schema tax on every request they could shed by enabling
             // `tools.client_tool_search`. Warn once per process -- the config
             // choice is stable across a session and repeating per request is noise.
             // (The system-prompt-exceeds-budget warning is emitted separately in
             // `prompts::system::apply_token_budget`; this covers the tool side.)
-            if catalog_would_benefit_from_deferral(has_mcp_tools, deferable_tool_count, estimated_schema_tokens) {
+            if catalogue_would_benefit_from_deferral(has_mcp_tools, deferable_tool_count, estimated_schema_tokens) {
                 static DEFERRAL_DISABLED_WARNING: OnceLock<()> = OnceLock::new();
                 if DEFERRAL_DISABLED_WARNING.set(()).is_ok() {
                     tracing::warn!(
@@ -486,7 +486,7 @@ impl SessionToolCatalog {
                         threshold = DIRECT_TOOL_EXPOSURE_THRESHOLD,
                         token_budget = DIRECT_TOOL_EXPOSURE_TOKEN_BUDGET,
                         "Deferred tool loading is disabled (tools.client_tool_search = false) \
-                         but the catalog is large enough to benefit from it; the full tool \
+                         but the catalogue is large enough to benefit from it; the full tool \
                          schema tax is paid on every request. Enable tools.client_tool_search \
                          to omit MCP/large schemas from the wire payload until needed."
                     );
@@ -496,9 +496,9 @@ impl SessionToolCatalog {
             true
         } else if config.deferred_tool_policy.is_client_local() {
             // Client-local deferral uses the estimate to decide whether omitting
-            // the deferred definitions is worthwhile for this catalog.
+            // the deferred definitions is worthwhile for this catalogue.
             let estimated_schema_tokens = self.estimate_schema_tokens(&visible_entry_indices, &config);
-            !catalog_would_benefit_from_deferral(has_mcp_tools, deferable_tool_count, estimated_schema_tokens)
+            !catalogue_would_benefit_from_deferral(has_mcp_tools, deferable_tool_count, estimated_schema_tokens)
         } else {
             // Hosted policies always keep their deferred definitions in the wire
             // payload and therefore never need the schema-token estimate.
@@ -513,7 +513,7 @@ impl SessionToolCatalog {
             let projection = self.projection(index, entry, config.documentation_mode);
             let defer_loading = should_defer_tool_loading(entry, &config);
             match entry.kind {
-                CatalogToolKind::ApplyPatch if config.model_capabilities.supports_apply_patch_tool => {
+                CatalogueToolKind::ApplyPatch if config.model_capabilities.supports_apply_patch_tool => {
                     let mut tool =
                         ToolDefinition::apply_patch(self.description_for_entry(entry, projection, &config).to_owned());
                     if defer_loading && !expose_tools_directly {
@@ -564,7 +564,7 @@ impl SessionToolCatalog {
         self.schema_entries(config).into_iter().find(|entry| entry.name == name)
     }
 
-    pub(crate) fn entries(&self) -> &[ToolCatalogEntry] {
+    pub(crate) fn entries(&self) -> &[ToolCatalogueEntry] {
         &self.entries
     }
 
@@ -590,7 +590,7 @@ impl SessionToolCatalog {
     fn projection(
         &self,
         entry_index: usize,
-        entry: &ToolCatalogEntry,
+        entry: &ToolCatalogueEntry,
         documentation_mode: ToolDocumentationMode,
     ) -> &ToolEntryProjection {
         self.projection_cache.get_or_init(entry_index, entry, documentation_mode)
@@ -598,7 +598,7 @@ impl SessionToolCatalog {
 
     fn parameters_for_entry(
         &self,
-        entry: &ToolCatalogEntry,
+        entry: &ToolCatalogueEntry,
         projection: &ToolEntryProjection,
         config: &SessionToolsConfig,
     ) -> Value {
@@ -616,7 +616,7 @@ impl SessionToolCatalog {
 
     fn description_for_entry<'a>(
         &self,
-        entry: &'a ToolCatalogEntry,
+        entry: &'a ToolCatalogueEntry,
         projection: &'a ToolEntryProjection,
         config: &SessionToolsConfig,
     ) -> &'a str {
@@ -646,7 +646,7 @@ fn serialized_schema_token_estimate(name: &str, description: &str, parameters: &
     .unwrap_or(0)
 }
 
-impl ToolCatalogEntry {
+impl ToolCatalogueEntry {
     fn from_registration(registration: &ToolRegistration) -> Option<Self> {
         let metadata = registration.metadata();
         let description = metadata.description()?.to_string();
@@ -660,10 +660,10 @@ impl ToolCatalogEntry {
         let default_permission = metadata.default_permission().unwrap_or(ToolPolicy::Prompt);
         let supports_parallel_tool_calls = registration_supports_parallel_tool_calls(registration);
         let aliases = metadata.aliases().to_vec();
-        let kind = registration_catalog_kind(registration);
-        let source = registration_catalog_source(registration, kind);
+        let kind = registration_catalogue_kind(registration);
+        let source = registration_catalogue_source(registration, kind);
 
-        if matches!(kind, CatalogToolKind::ApplyPatch) {
+        if matches!(kind, CatalogueToolKind::ApplyPatch) {
             let public_name = tools::APPLY_PATCH.to_string();
             return Some(Self::new(
                 public_name,
@@ -744,8 +744,8 @@ impl ToolCatalogEntry {
         capability: CapabilityLevel,
         default_permission: ToolPolicy,
         supports_parallel_tool_calls: bool,
-        source: ToolCatalogSource,
-        kind: CatalogToolKind,
+        source: ToolCatalogueSource,
+        kind: CatalogueToolKind,
     ) -> Self {
         let configured_spec = ConfiguredToolSpec::new(
             ToolSpec::Function(ResponsesApiTool {
@@ -798,7 +798,7 @@ impl ToolCatalogEntry {
 fn profile_allows_tool(profile: ToolProfile, tool_name: &str, planning_active: bool) -> bool {
     match profile {
         // Planning keeps every read-only inspection surface plus the
-        // interview tool. A `code_search`-only catalog (turn_912/913) forced
+        // interview tool. A `code_search`-only catalogue (turn_912/913) forced
         // planners to answer basic "read this file / list this directory"
         // questions with repeated fuzzy searches. Mutating tools stay
         // excluded; the planning dispatch gate also hard-blocks mutations.
@@ -833,15 +833,15 @@ fn profile_allows_tool(profile: ToolProfile, tool_name: &str, planning_active: b
     }
 }
 
-fn registration_catalog_source(registration: &ToolRegistration, kind: CatalogToolKind) -> ToolCatalogSource {
-    if matches!(kind, CatalogToolKind::ApplyPatch) {
-        return ToolCatalogSource::Builtin;
+fn registration_catalogue_source(registration: &ToolRegistration, kind: CatalogueToolKind) -> ToolCatalogueSource {
+    if matches!(kind, CatalogueToolKind::ApplyPatch) {
+        return ToolCatalogueSource::Builtin;
     }
 
-    registration.catalog_source()
+    registration.catalogue_source()
 }
 
-fn should_defer_tool_loading(entry: &ToolCatalogEntry, config: &SessionToolsConfig) -> bool {
+fn should_defer_tool_loading(entry: &ToolCatalogueEntry, config: &SessionToolsConfig) -> bool {
     if !config.deferred_tool_policy.is_enabled() {
         return false;
     }
@@ -853,14 +853,14 @@ fn should_defer_tool_loading(entry: &ToolCatalogEntry, config: &SessionToolsConf
     if config.deferred_tool_policy.is_client_local() {
         return matches!(
             entry.source,
-            ToolCatalogSource::Builtin | ToolCatalogSource::Mcp | ToolCatalogSource::Dynamic
+            ToolCatalogueSource::Builtin | ToolCatalogueSource::Mcp | ToolCatalogueSource::Dynamic
         );
     }
 
-    matches!(entry.source, ToolCatalogSource::Builtin | ToolCatalogSource::Mcp | ToolCatalogSource::Dynamic)
+    matches!(entry.source, ToolCatalogueSource::Builtin | ToolCatalogueSource::Mcp | ToolCatalogueSource::Dynamic)
 }
 
-fn is_core_tool_entry(entry: &ToolCatalogEntry, config: &SessionToolsConfig) -> bool {
+fn is_core_tool_entry(entry: &ToolCatalogueEntry, config: &SessionToolsConfig) -> bool {
     // `entry.public_name` is always the canonical registration name, never an
     // alias (spawn_agent/spawn_background_subprocess/send_input/wait_agent/
     // resume_agent/close_agent all route to the single `agent` registration),
@@ -895,15 +895,15 @@ fn surface_allows_tool(surface: SessionSurface, tool_name: &str) -> bool {
     }
 }
 
-fn registration_catalog_kind(registration: &ToolRegistration) -> CatalogToolKind {
+fn registration_catalogue_kind(registration: &ToolRegistration) -> CatalogueToolKind {
     registration
         .metadata()
         .behaviour()
         .map(|behaviour| match behaviour.surface_kind {
-            ToolSurfaceKind::Function => CatalogToolKind::Function,
-            ToolSurfaceKind::ApplyPatch => CatalogToolKind::ApplyPatch,
+            ToolSurfaceKind::Function => CatalogueToolKind::Function,
+            ToolSurfaceKind::ApplyPatch => CatalogueToolKind::ApplyPatch,
         })
-        .unwrap_or(CatalogToolKind::Function)
+        .unwrap_or(CatalogueToolKind::Function)
 }
 
 fn registration_supports_parallel_tool_calls(registration: &ToolRegistration) -> bool {
@@ -992,7 +992,7 @@ mod tests {
                 .with_parameter_schema(empty_object_schema()),
         ];
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
         let mut config = SessionToolsConfig::full_public(
             SessionSurface::AgentRunner,
             CapabilityLevel::CodeSearch,
@@ -1000,7 +1000,7 @@ mod tests {
             ToolModelCapabilities::default(),
         );
         config.planning_active = false;
-        let names = catalog.public_tool_names(config);
+        let names = catalogue.public_tool_names(config);
 
         assert_eq!(
             names,
@@ -1063,8 +1063,8 @@ mod tests {
                 .with_parameter_schema(empty_object_schema()),
         ];
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
-        let normal_names = catalog.public_tool_names(SessionToolsConfig::full_public(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
+        let normal_names = catalogue.public_tool_names(SessionToolsConfig::full_public(
             SessionSurface::Interactive,
             CapabilityLevel::CodeSearch,
             ToolDocumentationMode::Full,
@@ -1080,7 +1080,7 @@ mod tests {
             ]
         );
 
-        let planning_names = catalog.public_tool_names(
+        let planning_names = catalogue.public_tool_names(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -1091,7 +1091,7 @@ mod tests {
         );
 
         // Planning must expose the full read-only inspection surface plus the
-        // interview tool — never collapse to a bare `code_search` catalog
+        // interview tool — never collapse to a bare `code_search` catalogue
         // (turn_912/913 regression). The Interactive surface additionally
         // hides read_file/list_files (they stay reachable on AgentRunner);
         // interactive planners read files through exec_command per the
@@ -1106,7 +1106,7 @@ mod tests {
             ]
         );
 
-        let agent_runner_planning_names = catalog.public_tool_names(
+        let agent_runner_planning_names = catalogue.public_tool_names(
             SessionToolsConfig::full_public(
                 SessionSurface::AgentRunner,
                 CapabilityLevel::CodeSearch,
@@ -1129,12 +1129,12 @@ mod tests {
     }
 
     /// Turn_912/913 end-to-end regression: compose the same three wire
-    /// filters the binary runloop applies (catalog profile+surface, primary
+    /// filters the binary runloop applies (catalogue profile+surface, primary
     /// agent tool policy, permission advertisement) for the built-in plan
     /// agent on the Interactive surface and assert the resulting planning
-    /// catalog. Before the fix this collapsed to `["code_search"]`.
+    /// catalogue. Before the fix this collapsed to `["code_search"]`.
     #[test]
-    fn plan_agent_interactive_wire_catalog_survives_all_filters() {
+    fn plan_agent_interactive_wire_catalogue_survives_all_filters() {
         use crate::config::PermissionsConfig;
         use crate::permissions::{build_advertised_permission_requests, evaluate_effective_permissions};
         use crate::primary_agent::{ActivePrimaryAgent, primary_agent_allows_tool};
@@ -1156,8 +1156,8 @@ mod tests {
                 .with_parameter_schema(empty_object_schema())
         })
         .collect::<Vec<_>>();
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
-        let names = catalog.public_tool_names(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
+        let names = catalogue.public_tool_names(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -1193,7 +1193,7 @@ mod tests {
                 tools::GREP_FILE.to_string(),
                 tools::REQUEST_USER_INPUT.to_string(),
             ],
-            "plan agent Interactive wire catalog must keep the read-only inspection + interview set"
+            "plan agent Interactive wire catalogue must keep the read-only inspection + interview set"
         );
     }
 
@@ -1202,8 +1202,8 @@ mod tests {
         let registration = registration(tools::EXEC_COMMAND)
             .with_description("Run command")
             .with_parameter_schema(exec_command_parameters());
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
-        let entries = catalog.schema_entries(SessionToolsConfig::full_public(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
+        let entries = catalogue.schema_entries(SessionToolsConfig::full_public(
             SessionSurface::AgentRunner,
             CapabilityLevel::CodeSearch,
             ToolDocumentationMode::Full,
@@ -1256,8 +1256,8 @@ mod tests {
                 .with_parameter_schema(empty_object_schema()),
         ];
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
-        let names = catalog.public_tool_names(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
+        let names = catalogue.public_tool_names(
             SessionToolsConfig::full_public(
                 SessionSurface::AgentRunner,
                 CapabilityLevel::CodeSearch,
@@ -1277,35 +1277,35 @@ mod tests {
                 .with_description("Search code")
                 .with_parameter_schema(empty_object_schema()),
             registration("mcp::context7::search")
-                .with_catalog_source(ToolCatalogSource::Mcp)
+                .with_catalogue_source(ToolCatalogueSource::Mcp)
                 .with_llm_visibility(false)
                 .with_description("Search documentation")
                 .with_parameter_schema(empty_object_schema())
                 .with_aliases(["mcp__context7__search"]),
             registration(tools::LOAD_SKILL)
-                .with_catalog_source(ToolCatalogSource::Builtin)
+                .with_catalogue_source(ToolCatalogueSource::Builtin)
                 .with_description("Load a skill")
                 .with_parameter_schema(empty_object_schema()),
             registration(tools::START_PLANNING)
-                .with_catalog_source(ToolCatalogSource::Builtin)
+                .with_catalogue_source(ToolCatalogueSource::Builtin)
                 .with_description("Start planning")
                 .with_parameter_schema(empty_object_schema()),
             registration(tools::SPAWN_AGENT)
-                .with_catalog_source(ToolCatalogSource::Builtin)
+                .with_catalogue_source(ToolCatalogueSource::Builtin)
                 .with_description("Spawn an agent")
                 .with_parameter_schema(empty_object_schema()),
             registration(tools::CRON_CREATE)
-                .with_catalog_source(ToolCatalogSource::Builtin)
+                .with_catalogue_source(ToolCatalogueSource::Builtin)
                 .with_description("Create a scheduled prompt")
                 .with_parameter_schema(empty_object_schema()),
             registration("dynamic_plugin_tool")
-                .with_catalog_source(ToolCatalogSource::Dynamic)
+                .with_catalogue_source(ToolCatalogueSource::Dynamic)
                 .with_description("Run a dynamic plugin tool")
                 .with_parameter_schema(empty_object_schema()),
         ];
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
-        let names = catalog.public_tool_names(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
+        let names = catalogue.public_tool_names(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -1351,8 +1351,8 @@ mod tests {
                 .with_parameter_schema(empty_object_schema()),
         ];
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
-        let names = catalog.public_tool_names(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
+        let names = catalogue.public_tool_names(
             SessionToolsConfig::full_public(
                 SessionSurface::Acp,
                 CapabilityLevel::CodeSearch,
@@ -1374,16 +1374,16 @@ mod tests {
     }
 
     #[test]
-    fn rebuild_catalog_uses_public_mcp_alias() {
+    fn rebuild_catalogue_uses_public_mcp_alias() {
         let registration = registration("mcp::context7::search")
-            .with_catalog_source(ToolCatalogSource::Mcp)
+            .with_catalogue_source(ToolCatalogueSource::Mcp)
             .with_llm_visibility(false)
             .with_description("search docs")
             .with_parameter_schema(empty_object_schema())
             .with_aliases(["mcp__context7__search"]);
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
-        let names = catalog.public_tool_names(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
+        let names = catalogue.public_tool_names(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -1402,8 +1402,8 @@ mod tests {
             .with_description("Ask the user")
             .with_parameter_schema(empty_object_schema());
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
-        let names = catalog.public_tool_names(SessionToolsConfig {
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
+        let names = catalogue.public_tool_names(SessionToolsConfig {
             surface: SessionSurface::Interactive,
             capability_level: CapabilityLevel::CodeSearch,
             documentation_mode: ToolDocumentationMode::Full,
@@ -1424,8 +1424,8 @@ mod tests {
             .with_description("Track plan tasks")
             .with_parameter_schema(empty_object_schema());
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
-        let names = catalog.public_tool_names(SessionToolsConfig {
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
+        let names = catalogue.public_tool_names(SessionToolsConfig {
             surface: SessionSurface::Interactive,
             capability_level: CapabilityLevel::CodeSearch,
             documentation_mode: ToolDocumentationMode::Full,
@@ -1445,9 +1445,9 @@ mod tests {
         let registration = registration(tools::MEMORY)
             .with_description("Native memory")
             .with_parameter_schema(empty_object_schema());
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
 
-        let hidden = catalog.public_tool_names(SessionToolsConfig::full_public(
+        let hidden = catalogue.public_tool_names(SessionToolsConfig::full_public(
             SessionSurface::Interactive,
             CapabilityLevel::CodeSearch,
             ToolDocumentationMode::Full,
@@ -1455,7 +1455,7 @@ mod tests {
         ));
         assert!(hidden.is_empty());
 
-        let visible = catalog.public_tool_names(
+        let visible = catalogue.public_tool_names(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -1473,9 +1473,9 @@ mod tests {
         let registration = registration(tools::MEMORY)
             .with_description("Native memory")
             .with_parameter_schema(empty_object_schema());
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
 
-        let definitions = catalog.model_tools(
+        let definitions = catalogue.model_tools(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -1499,8 +1499,8 @@ mod tests {
             .with_parameter_schema(apply_patch_parameters())
             .with_behaviour(ToolBehaviour::apply_patch(ToolMutationModel::Mutating, false, true));
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
-        let tools = catalog.model_tools(SessionToolsConfig::full_public(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
+        let tools = catalogue.model_tools(SessionToolsConfig::full_public(
             SessionSurface::Interactive,
             CapabilityLevel::CodeSearch,
             ToolDocumentationMode::Full,
@@ -1519,8 +1519,8 @@ mod tests {
             .with_parameter_schema(apply_patch_parameters())
             .with_behaviour(ToolBehaviour::apply_patch(ToolMutationModel::Mutating, false, true));
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
-        let tools = catalog.model_tools(SessionToolsConfig::full_public(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
+        let tools = catalogue.model_tools(SessionToolsConfig::full_public(
             SessionSurface::Interactive,
             CapabilityLevel::CodeSearch,
             ToolDocumentationMode::Full,
@@ -1541,9 +1541,9 @@ mod tests {
             .with_llm_visibility(false)
             .with_description("List files with pagination")
             .with_parameter_schema(list_files_parameters());
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![read_file, list_files]);
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![read_file, list_files]);
 
-        let interactive_names = catalog.public_tool_names(SessionToolsConfig::full_public(
+        let interactive_names = catalogue.public_tool_names(SessionToolsConfig::full_public(
             SessionSurface::Interactive,
             CapabilityLevel::CodeSearch,
             ToolDocumentationMode::Full,
@@ -1552,7 +1552,7 @@ mod tests {
         assert!(!interactive_names.contains(&tools::READ_FILE.to_string()));
         assert!(!interactive_names.contains(&tools::LIST_FILES.to_string()));
 
-        let agent_runner_names = catalog.public_tool_names(SessionToolsConfig::full_public(
+        let agent_runner_names = catalogue.public_tool_names(SessionToolsConfig::full_public(
             SessionSurface::AgentRunner,
             CapabilityLevel::CodeSearch,
             ToolDocumentationMode::Full,
@@ -1564,14 +1564,14 @@ mod tests {
 
     #[test]
     fn parallel_support_comes_from_behavior_metadata() {
-        let registration = registration("parallel_catalog_tool")
+        let registration = registration("parallel_catalogue_tool")
             .with_description("parallel-safe test tool")
             .with_parameter_schema(empty_object_schema())
             .with_behaviour(ToolBehaviour::function(ToolMutationModel::ReadOnly, true, false));
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
-        assert_eq!(catalog.entries().len(), 1);
-        assert!(catalog.entries()[0].supports_parallel_tool_calls);
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
+        assert_eq!(catalogue.entries().len(), 1);
+        assert!(catalogue.entries()[0].supports_parallel_tool_calls);
     }
 
     #[test]
@@ -1580,8 +1580,8 @@ mod tests {
             .with_description("Run the policy surface test")
             .with_parameter_schema(empty_object_schema())
             .with_permission(ToolPolicy::Allow);
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
-        let definitions = catalog.model_tools(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
+        let definitions = catalogue.model_tools(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -1639,8 +1639,8 @@ mod tests {
                 ]
             }));
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
-        let entry = &catalog.entries()[0];
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
+        let entry = &catalogue.entries()[0];
         let ToolSpec::Function(tool) = &entry.configured_spec.spec else {
             panic!("expected function tool spec");
         };
@@ -1679,7 +1679,7 @@ mod tests {
                 "required": ["cmd"]
             }));
         let mcp_tool = registration("mcp::context7::search")
-            .with_catalog_source(ToolCatalogSource::Mcp)
+            .with_catalogue_source(ToolCatalogueSource::Mcp)
             .with_llm_visibility(false)
             .with_description(
                 "Search the documentation server. This description is intentionally longer than minimal mode.",
@@ -1691,7 +1691,7 @@ mod tests {
                 }
             }))
             .with_aliases(["mcp__context7__search"]);
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![exec_command, mcp_tool]);
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![exec_command, mcp_tool]);
 
         for documentation_mode in [
             ToolDocumentationMode::Minimal,
@@ -1707,7 +1707,7 @@ mod tests {
             .with_tool_profile(ToolProfile::AdvancedVtCode)
             .with_deferred_tool_policy(DeferredToolPolicy::client_local(Vec::new()));
 
-            let expected_schema = catalog
+            let expected_schema = catalogue
                 .entries()
                 .iter()
                 .filter(|entry| entry.is_visible(&config))
@@ -1721,9 +1721,9 @@ mod tests {
                     parameters: compact_parameters(entry.parameters.clone(), documentation_mode),
                 })
                 .collect::<Vec<_>>();
-            assert_eq!(catalog.schema_entries(config.clone()), expected_schema);
+            assert_eq!(catalogue.schema_entries(config.clone()), expected_schema);
 
-            let visible_entries = catalog
+            let visible_entries = catalogue
                 .entries()
                 .iter()
                 .filter(|entry| entry.is_visible(&config))
@@ -1737,14 +1737,14 @@ mod tests {
                 .filter(|entry| should_defer_tool_loading(entry, &config))
                 .count();
             let expose_tools_directly = config.deferred_tool_policy.is_client_local()
-                && !catalog_would_benefit_from_deferral(
+                && !catalogue_would_benefit_from_deferral(
                     visible_entries
                         .iter()
-                        .any(|entry| matches!(entry.source, ToolCatalogSource::Mcp)),
+                        .any(|entry| matches!(entry.source, ToolCatalogueSource::Mcp)),
                     deferable_tool_count,
                     estimated_schema_tokens,
                 );
-            let definitions = catalog.model_tools(config.clone());
+            let definitions = catalogue.model_tools(config.clone());
 
             for entry in visible_entries {
                 let expected_deferred = should_defer_tool_loading(entry, &config) && !expose_tools_directly;
@@ -1756,7 +1756,7 @@ mod tests {
                 assert_eq!(actual_deferred, expected_deferred, "deferral changed for {}", entry.public_name);
             }
 
-            assert_eq!(catalog.model_tools(config.clone()), definitions);
+            assert_eq!(catalogue.model_tools(config.clone()), definitions);
             assert!(definitions.iter().any(|tool| tool.function_name() == tools::EXEC_COMMAND));
         }
     }
@@ -1766,12 +1766,12 @@ mod tests {
         let registrations = (0..(DIRECT_TOOL_EXPOSURE_THRESHOLD + 4))
             .map(|index| {
                 ToolRegistration::new(
-                    format!("hosted_catalog_tool_{index}"),
+                    format!("hosted_catalogue_tool_{index}"),
                     CapabilityLevel::CodeSearch,
                     false,
                     |_, _| Box::pin(async { Ok(Value::Null) }),
                 )
-                .with_description(format!("Search the hosted catalog for item {index}."))
+                .with_description(format!("Search the hosted catalogue for item {index}."))
                 .with_parameter_schema(json!({
                     "type": "object",
                     "properties": {
@@ -1781,7 +1781,7 @@ mod tests {
                 }))
             })
             .collect();
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
         let config = SessionToolsConfig::full_public(
             SessionSurface::AgentRunner,
             CapabilityLevel::CodeSearch,
@@ -1791,26 +1791,26 @@ mod tests {
         .with_tool_profile(ToolProfile::AdvancedVtCode)
         .with_deferred_tool_policy(DeferredToolPolicy::openai_hosted(Vec::new()));
 
-        let expected_schema = catalog.schema_entries(config.clone());
-        let definitions = catalog.model_tools(config.clone());
+        let expected_schema = catalogue.schema_entries(config.clone());
+        let definitions = catalogue.model_tools(config.clone());
 
-        assert_eq!(definitions.len(), expected_schema.len() + 1, "hosted search must be added to the catalog");
+        assert_eq!(definitions.len(), expected_schema.len() + 1, "hosted search must be added to the catalogue");
         assert!(definitions.iter().any(ToolDefinition::is_tool_search));
         for schema in expected_schema {
             let definition = definitions
                 .iter()
                 .find(|tool| tool.function_name() == schema.name)
                 .unwrap_or_else(|| panic!("missing hosted definition for {}", schema.name));
-            let function = definition.function.as_ref().expect("hosted catalog function definition");
+            let function = definition.function.as_ref().expect("hosted catalogue function definition");
             assert_eq!(function.name, schema.name);
             assert_eq!(function.description, schema.description);
             assert_eq!(function.parameters, schema.parameters);
             assert_eq!(definition.defer_loading, Some(true));
         }
 
-        let estimates_initialized = catalog.visible_entry_indices(&config).into_iter().any(|index| {
-            let entry = &catalog.entries[index];
-            catalog
+        let estimates_initialized = catalogue.visible_entry_indices(&config).into_iter().any(|index| {
+            let entry = &catalogue.entries[index];
+            catalogue
                 .projection(index, entry, config.documentation_mode)
                 .has_serialized_token_estimate()
         });
@@ -1826,19 +1826,19 @@ mod tests {
             let registrations = (0..(DIRECT_TOOL_EXPOSURE_THRESHOLD + 1))
                 .map(|index| {
                     ToolRegistration::new(
-                        format!("estimated_catalog_tool_{index}"),
+                        format!("estimated_catalogue_tool_{index}"),
                         CapabilityLevel::CodeSearch,
                         false,
                         |_, _| Box::pin(async { Ok(Value::Null) }),
                     )
-                    .with_description(format!("Estimate this catalog entry {index}."))
+                    .with_description(format!("Estimate this catalogue entry {index}."))
                     .with_parameter_schema(json!({
                         "type": "object",
                         "properties": { "path": { "type": "string" } }
                     }))
                 })
                 .collect();
-            let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
+            let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
             let config = SessionToolsConfig::full_public(
                 SessionSurface::AgentRunner,
                 CapabilityLevel::CodeSearch,
@@ -1848,10 +1848,10 @@ mod tests {
             .with_tool_profile(ToolProfile::AdvancedVtCode)
             .with_deferred_tool_policy(deferred_tool_policy);
 
-            let _ = catalog.model_tools(config.clone());
-            let estimates_initialized = catalog.visible_entry_indices(&config).into_iter().any(|index| {
-                let entry = &catalog.entries[index];
-                catalog
+            let _ = catalogue.model_tools(config.clone());
+            let estimates_initialized = catalogue.visible_entry_indices(&config).into_iter().any(|index| {
+                let entry = &catalogue.entries[index];
+                catalogue
                     .projection(index, entry, config.documentation_mode)
                     .has_serialized_token_estimate()
             });
@@ -1870,7 +1870,7 @@ mod tests {
             .with_parameter_schema(apply_patch_parameters())
             .with_behaviour(ToolBehaviour::apply_patch(ToolMutationModel::Mutating, false, true));
         let mcp_tool = registration("mcp::context7::search")
-            .with_catalog_source(ToolCatalogSource::Mcp)
+            .with_catalogue_source(ToolCatalogueSource::Mcp)
             .with_llm_visibility(false)
             .with_description("search docs")
             .with_parameter_schema(empty_object_schema())
@@ -1882,7 +1882,7 @@ mod tests {
             let alias = format!("mcp__context7__resolve_{index}");
             registrations.push(
                 registration(name)
-                    .with_catalog_source(ToolCatalogSource::Mcp)
+                    .with_catalogue_source(ToolCatalogueSource::Mcp)
                     .with_llm_visibility(false)
                     .with_description(format!("resolve docs {index}"))
                     .with_parameter_schema(empty_object_schema())
@@ -1890,8 +1890,8 @@ mod tests {
             );
         }
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
-        let definitions = catalog.model_tools(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
+        let definitions = catalogue.model_tools(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -1930,14 +1930,14 @@ mod tests {
     #[test]
     fn mcp_tool_registration_derives_namespace_from_server_name() {
         let mcp_tool = registration("mcp::context7::search")
-            .with_catalog_source(ToolCatalogSource::Mcp)
+            .with_catalogue_source(ToolCatalogueSource::Mcp)
             .with_llm_visibility(false)
             .with_description("search docs")
             .with_parameter_schema(empty_object_schema())
             .with_aliases(["mcp__context7__search"]);
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![mcp_tool]);
-        let entry = catalog
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![mcp_tool]);
+        let entry = catalogue
             .entries()
             .iter()
             .find(|entry| entry.public_name == "mcp__context7__search")
@@ -1957,8 +1957,8 @@ mod tests {
             .with_description("Run command")
             .with_parameter_schema(empty_object_schema());
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![exec_command]);
-        let entry = catalog
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![exec_command]);
+        let entry = catalogue
             .entries()
             .iter()
             .find(|entry| entry.public_name == tools::EXEC_COMMAND)
@@ -1973,7 +1973,7 @@ mod tests {
             .with_description("Run command")
             .with_parameter_schema(empty_object_schema());
         let mcp_tool = registration("mcp::context7::search")
-            .with_catalog_source(ToolCatalogSource::Mcp)
+            .with_catalogue_source(ToolCatalogueSource::Mcp)
             .with_llm_visibility(false)
             .with_description("search docs")
             .with_parameter_schema(empty_object_schema())
@@ -1985,7 +1985,7 @@ mod tests {
             let alias = format!("mcp__context7__resolve_{index}");
             registrations.push(
                 registration(name)
-                    .with_catalog_source(ToolCatalogSource::Mcp)
+                    .with_catalogue_source(ToolCatalogueSource::Mcp)
                     .with_llm_visibility(false)
                     .with_description(format!("resolve docs {index}"))
                     .with_parameter_schema(empty_object_schema())
@@ -1993,8 +1993,8 @@ mod tests {
             );
         }
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
-        let definitions = catalog.model_tools(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
+        let definitions = catalogue.model_tools(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -2025,19 +2025,19 @@ mod tests {
     }
 
     #[test]
-    fn small_mcp_catalog_is_deferred_despite_low_tool_count() {
+    fn small_mcp_catalogue_is_deferred_despite_low_tool_count() {
         let exec_command = registration(tools::EXEC_COMMAND)
             .with_description("Run command")
             .with_parameter_schema(empty_object_schema());
         let mcp_tool = registration("mcp::context7::search")
-            .with_catalog_source(ToolCatalogSource::Mcp)
+            .with_catalogue_source(ToolCatalogueSource::Mcp)
             .with_llm_visibility(false)
             .with_description("search docs")
             .with_parameter_schema(empty_object_schema())
             .with_aliases(["mcp__context7__search"]);
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![exec_command, mcp_tool]);
-        let definitions = catalog.model_tools(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![exec_command, mcp_tool]);
+        let definitions = catalogue.model_tools(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -2060,7 +2060,7 @@ mod tests {
     }
 
     #[test]
-    fn client_local_policy_deferred_for_small_mcp_catalog() {
+    fn client_local_policy_deferred_for_small_mcp_catalogue() {
         let exec_command = registration(tools::EXEC_COMMAND)
             .with_description("Run command")
             .with_parameter_schema(empty_object_schema());
@@ -2068,14 +2068,15 @@ mod tests {
             .with_description("Search MCP tools")
             .with_parameter_schema(empty_object_schema());
         let mcp_tool = registration("mcp::context7::search")
-            .with_catalog_source(ToolCatalogSource::Mcp)
+            .with_catalogue_source(ToolCatalogueSource::Mcp)
             .with_llm_visibility(false)
             .with_description("search docs")
             .with_parameter_schema(empty_object_schema())
             .with_aliases(["mcp__context7__search"]);
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![exec_command, mcp_search_tools, mcp_tool]);
-        let definitions = catalog.model_tools(
+        let catalogue =
+            SessionToolCatalogue::rebuild_from_registrations(vec![exec_command, mcp_search_tools, mcp_tool]);
+        let definitions = catalogue.model_tools(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -2088,7 +2089,7 @@ mod tests {
 
         assert!(
             definitions.iter().any(|tool| tool.function_name() == "mcp__context7__search"),
-            "mcp tool should still be listed in the model-facing catalog for client-local search"
+            "mcp tool should still be listed in the model-facing catalogue for client-local search"
         );
         let mcp_definition = definitions
             .iter()
@@ -2097,7 +2098,7 @@ mod tests {
         assert_eq!(
             mcp_definition.defer_loading,
             Some(true),
-            "client-local deferral should also apply to small MCP catalogs"
+            "client-local deferral should also apply to small MCP catalogues"
         );
         let search_definition = definitions
             .iter()
@@ -2107,13 +2108,13 @@ mod tests {
     }
 
     #[test]
-    fn client_local_policy_exposes_small_builtin_catalog_directly() {
-        // Plan-mode policy filtering shrinks the visible catalog to a handful
+    fn client_local_policy_exposes_small_builtin_catalogue_directly() {
+        // Plan-mode policy filtering shrinks the visible catalogue to a handful
         // of read-only builtins. Deferring that tiny set drops every tool from
         // the wire payload (on_wire_tools = 0), so the model improvises
         // textual XML tool calls instead of native ones (turn_887/turn_888).
-        // Small catalogs must stay eager: deferral exists to shed schema tax,
-        // not to hide the whole catalog.
+        // Small catalogues must stay eager: deferral exists to shed schema tax,
+        // not to hide the whole catalogue.
         let exec_command = registration(tools::EXEC_COMMAND)
             .with_description("Run command")
             .with_parameter_schema(empty_object_schema());
@@ -2124,8 +2125,8 @@ mod tests {
             .with_description("Read file")
             .with_parameter_schema(empty_object_schema());
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![exec_command, code_search, read_file]);
-        let definitions = catalog.model_tools(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![exec_command, code_search, read_file]);
+        let definitions = catalogue.model_tools(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -2138,12 +2139,12 @@ mod tests {
 
         assert!(
             definitions.iter().all(|tool| tool.defer_loading.is_none()),
-            "a small builtin-only catalog gains nothing from client-local deferral; every tool must stay on the wire"
+            "a small builtin-only catalogue gains nothing from client-local deferral; every tool must stay on the wire"
         );
     }
 
     #[test]
-    fn client_local_policy_defers_large_builtin_catalog() {
+    fn client_local_policy_defers_large_builtin_catalogue() {
         let exec_command = registration(tools::EXEC_COMMAND)
             .with_description("Run command")
             .with_parameter_schema(empty_object_schema());
@@ -2161,8 +2162,8 @@ mod tests {
             );
         }
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
-        let definitions = catalog.model_tools(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
+        let definitions = catalogue.model_tools(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -2177,7 +2178,7 @@ mod tests {
             .iter()
             .find(|tool| tool.function_name() == tools::EXEC_COMMAND)
             .expect("exec_command should be present");
-        assert_eq!(exec_tool.defer_loading, None, "core tools stay eager even in large catalogs");
+        assert_eq!(exec_tool.defer_loading, None, "core tools stay eager even in large catalogues");
         let search_tool = definitions
             .iter()
             .find(|tool| tool.function_name() == tools::CODE_SEARCH)
@@ -2185,7 +2186,7 @@ mod tests {
         assert_eq!(
             search_tool.defer_loading,
             Some(true),
-            "large builtin catalogs still defer non-core tools under client-local policy"
+            "large builtin catalogues still defer non-core tools under client-local policy"
         );
     }
 
@@ -2195,20 +2196,20 @@ mod tests {
     /// in `tools/registry/builtins.rs`. Deferred tools (`defer_loading ==
     /// Some(true)`) are omitted under the client-local policy, so they never
     /// reach the wire payload and are excluded here.
-    fn on_wire_schema_tokens(catalog: &SessionToolCatalog, config: SessionToolsConfig) -> usize {
+    fn on_wire_schema_tokens(catalogue: &SessionToolCatalogue, config: SessionToolsConfig) -> usize {
         #[derive(Serialize)]
         struct Estimate<'a> {
             name: &'a str,
             description: &'a str,
             parameters: &'a Value,
         }
-        let on_wire: FxHashSet<String> = catalog
+        let on_wire: FxHashSet<String> = catalogue
             .model_tools(config.clone())
             .into_iter()
             .filter(|tool| tool.defer_loading != Some(true))
             .map(|tool| tool.function_name().to_string())
             .collect();
-        catalog
+        catalogue
             .schema_entries(config)
             .into_iter()
             .filter(|entry| on_wire.contains(&entry.name))
@@ -2226,7 +2227,7 @@ mod tests {
 
     #[test]
     fn task_tracker_schema_token_estimate_tracks_workflow_specific_parameters() {
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![
             registration(tools::TASK_TRACKER)
                 .with_description("Track plan tasks")
                 .with_parameter_schema(empty_object_schema()),
@@ -2240,25 +2241,25 @@ mod tests {
         .with_tool_profile(ToolProfile::AdvancedVtCode);
 
         let standard_config = base_config.clone().with_planning_active(false);
-        let standard_visible = catalog.visible_entry_indices(&standard_config);
+        let standard_visible = catalogue.visible_entry_indices(&standard_config);
         assert_eq!(
-            catalog.estimate_schema_tokens(&standard_visible, &standard_config),
-            on_wire_schema_tokens(&catalog, standard_config),
+            catalogue.estimate_schema_tokens(&standard_visible, &standard_config),
+            on_wire_schema_tokens(&catalogue, standard_config),
             "inactive task_tracker token estimate should match the emitted schema",
         );
 
         let planning_config = base_config.with_planning_active(true);
-        let planning_visible = catalog.visible_entry_indices(&planning_config);
+        let planning_visible = catalogue.visible_entry_indices(&planning_config);
         assert_eq!(
-            catalog.estimate_schema_tokens(&planning_visible, &planning_config),
-            on_wire_schema_tokens(&catalog, planning_config),
+            catalogue.estimate_schema_tokens(&planning_visible, &planning_config),
+            on_wire_schema_tokens(&catalogue, planning_config),
             "planning task_tracker token estimate should match the emitted schema",
         );
     }
 
     #[test]
     fn task_tracker_schema_keeps_max_output_tokens_in_standard_and_planning_modes() {
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![
             registration(tools::TASK_TRACKER)
                 .with_description("Track plan tasks")
                 .with_parameter_schema(empty_object_schema()),
@@ -2272,7 +2273,7 @@ mod tests {
         .with_tool_profile(ToolProfile::AdvancedVtCode);
 
         for planning_active in [false, true] {
-            let function = catalog
+            let function = catalogue
                 .model_tools(base_config.clone().with_planning_active(planning_active))
                 .into_iter()
                 .find_map(|tool| (tool.function_name() == tools::TASK_TRACKER).then_some(tool.function).flatten())
@@ -2293,7 +2294,7 @@ mod tests {
         let name: &'static str = Box::leak(format!("mcp::{server}::{tool}").into_boxed_str());
         let alias = format!("mcp__{server}__{tool}");
         registration(name)
-            .with_catalog_source(ToolCatalogSource::Mcp)
+            .with_catalogue_source(ToolCatalogueSource::Mcp)
             .with_llm_visibility(false)
             .with_description(description.to_string())
             .with_parameter_schema(json!({
@@ -2343,7 +2344,7 @@ mod tests {
                 registrations.push(mcp_server_tool_registration(server, &tool, &description));
             }
         }
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
 
         let make_config = |policy: DeferredToolPolicy| {
             SessionToolsConfig::full_public(
@@ -2357,14 +2358,14 @@ mod tests {
         };
 
         // Eager: no deferral, so all 20 MCP schemas travel on the first request.
-        let eager_tokens = on_wire_schema_tokens(&catalog, make_config(DeferredToolPolicy::default()));
+        let eager_tokens = on_wire_schema_tokens(&catalogue, make_config(DeferredToolPolicy::default()));
         // Client-local deferral: MCP tools are omitted from the wire payload.
         let deferred_tokens =
-            on_wire_schema_tokens(&catalog, make_config(DeferredToolPolicy::client_local(Vec::new())));
+            on_wire_schema_tokens(&catalogue, make_config(DeferredToolPolicy::client_local(Vec::new())));
         // Baseline: the same core tools, no MCP servers, under deferral.
-        let baseline_catalog = SessionToolCatalog::rebuild_from_registrations(core_registrations());
+        let baseline_catalogue = SessionToolCatalogue::rebuild_from_registrations(core_registrations());
         let baseline_tokens =
-            on_wire_schema_tokens(&baseline_catalog, make_config(DeferredToolPolicy::client_local(Vec::new())));
+            on_wire_schema_tokens(&baseline_catalogue, make_config(DeferredToolPolicy::client_local(Vec::new())));
 
         assert!(
             eager_tokens >= deferred_tokens * 3,
@@ -2384,30 +2385,30 @@ mod tests {
     }
 
     /// Phase 7.2: the advisory warning condition for "deferred loading is
-    /// disabled but the catalog would benefit from it" is pure logic in
-    /// `catalog_would_benefit_from_deferral`. A disabled policy + a catalog
+    /// disabled but the catalogue would benefit from it" is pure logic in
+    /// `catalogue_would_benefit_from_deferral`. A disabled policy + a catalogue
     /// that would defer (MCP present, over the count threshold, or over the
     /// schema-token budget) is the only non-noisy warning case -- the count/
     /// budget thresholds *triggering* deferral when enabled is correct
     /// behavior, not a warning condition.
     #[test]
-    fn catalog_would_benefit_from_deferral_detects_each_trigger() {
-        // Small builtin-only catalog: no benefit (deferral would not engage).
+    fn catalogue_would_benefit_from_deferral_detects_each_trigger() {
+        // Small builtin-only catalogue: no benefit (deferral would not engage).
         assert!(
-            !catalog_would_benefit_from_deferral(false, 3, 500),
-            "a small builtin-only catalog does not benefit from deferral"
+            !catalogue_would_benefit_from_deferral(false, 3, 500),
+            "a small builtin-only catalogue does not benefit from deferral"
         );
         // Any MCP tool present -> benefit (MCP schemas are the dominant cost).
-        assert!(catalog_would_benefit_from_deferral(true, 1, 100), "any MCP tool means deferral would engage");
+        assert!(catalogue_would_benefit_from_deferral(true, 1, 100), "any MCP tool means deferral would engage");
         // At the count threshold -> benefit.
         assert!(
-            catalog_would_benefit_from_deferral(false, DIRECT_TOOL_EXPOSURE_THRESHOLD, 500),
+            catalogue_would_benefit_from_deferral(false, DIRECT_TOOL_EXPOSURE_THRESHOLD, 500),
             "meeting the count threshold means deferral would engage"
         );
         // Just under the count threshold but over the token budget -> benefit
         // (the single-large-server backstop).
         assert!(
-            catalog_would_benefit_from_deferral(
+            catalogue_would_benefit_from_deferral(
                 false,
                 DIRECT_TOOL_EXPOSURE_THRESHOLD - 1,
                 DIRECT_TOOL_EXPOSURE_TOKEN_BUDGET + 1,
@@ -2417,7 +2418,7 @@ mod tests {
         // Exactly at the token budget (<=, not >) and under the count threshold,
         // no MCP -> no benefit (boundary matches the `<=` in `model_tools`).
         assert!(
-            !catalog_would_benefit_from_deferral(
+            !catalogue_would_benefit_from_deferral(
                 false,
                 DIRECT_TOOL_EXPOSURE_THRESHOLD - 1,
                 DIRECT_TOOL_EXPOSURE_TOKEN_BUDGET,
@@ -2428,12 +2429,12 @@ mod tests {
     }
 
     #[test]
-    fn openai_policy_injects_tool_search_for_large_catalogs() {
+    fn openai_policy_injects_tool_search_for_large_catalogues() {
         let exec_command = registration(tools::EXEC_COMMAND)
             .with_description("Run command")
             .with_parameter_schema(empty_object_schema());
         let mcp_tool = registration("mcp::context7::search")
-            .with_catalog_source(ToolCatalogSource::Mcp)
+            .with_catalogue_source(ToolCatalogueSource::Mcp)
             .with_llm_visibility(false)
             .with_description("search docs")
             .with_parameter_schema(empty_object_schema())
@@ -2445,7 +2446,7 @@ mod tests {
             let alias = format!("mcp__context7__resolve_{index}");
             registrations.push(
                 registration(name)
-                    .with_catalog_source(ToolCatalogSource::Mcp)
+                    .with_catalogue_source(ToolCatalogueSource::Mcp)
                     .with_llm_visibility(false)
                     .with_description(format!("resolve docs {index}"))
                     .with_parameter_schema(empty_object_schema())
@@ -2453,8 +2454,8 @@ mod tests {
             );
         }
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
-        let definitions = catalog.model_tools(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
+        let definitions = catalogue.model_tools(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -2483,22 +2484,22 @@ mod tests {
     }
 
     #[test]
-    fn openai_policy_deferred_for_small_mcp_catalog() {
+    fn openai_policy_deferred_for_small_mcp_catalogue() {
         let mcp_tool = registration("mcp::context7::search")
-            .with_catalog_source(ToolCatalogSource::Mcp)
+            .with_catalogue_source(ToolCatalogueSource::Mcp)
             .with_llm_visibility(false)
             .with_description("search docs")
             .with_parameter_schema(empty_object_schema())
             .with_aliases(["mcp__context7__search"]);
         let second_mcp_tool = registration("mcp::context7::resolve")
-            .with_catalog_source(ToolCatalogSource::Mcp)
+            .with_catalogue_source(ToolCatalogueSource::Mcp)
             .with_llm_visibility(false)
             .with_description("resolve docs")
             .with_parameter_schema(empty_object_schema())
             .with_aliases(["mcp__context7__resolve"]);
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![mcp_tool, second_mcp_tool]);
-        let definitions = catalog.model_tools(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![mcp_tool, second_mcp_tool]);
+        let definitions = catalogue.model_tools(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -2511,7 +2512,7 @@ mod tests {
 
         assert!(
             definitions.iter().any(|tool| tool.tool_type == "tool_search"),
-            "MCP presence should trigger tool search even for a small catalog"
+            "MCP presence should trigger tool search even for a small catalogue"
         );
         let mcp_tool = definitions
             .iter()
@@ -2529,7 +2530,7 @@ mod tests {
     #[test]
     fn always_available_tools_match_registration_names_and_aliases() {
         let mcp_tool = registration("mcp::context7::search")
-            .with_catalog_source(ToolCatalogSource::Mcp)
+            .with_catalogue_source(ToolCatalogueSource::Mcp)
             .with_llm_visibility(false)
             .with_description("search docs")
             .with_parameter_schema(empty_object_schema())
@@ -2538,8 +2539,8 @@ mod tests {
             .with_description("dynamic skill tool")
             .with_parameter_schema(empty_object_schema());
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![mcp_tool, dynamic_tool]);
-        let definitions = catalog.model_tools(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![mcp_tool, dynamic_tool]);
+        let definitions = catalogue.model_tools(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -2567,19 +2568,19 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_providers_keep_catalog_eager() {
+    fn unsupported_providers_keep_catalogue_eager() {
         let exec_command = registration(tools::EXEC_COMMAND)
             .with_description("Run command")
             .with_parameter_schema(empty_object_schema());
         let mcp_tool = registration("mcp::context7::search")
-            .with_catalog_source(ToolCatalogSource::Mcp)
+            .with_catalogue_source(ToolCatalogueSource::Mcp)
             .with_llm_visibility(false)
             .with_description("search docs")
             .with_parameter_schema(empty_object_schema())
             .with_aliases(["mcp__context7__search"]);
 
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![exec_command, mcp_tool]);
-        let definitions = catalog.model_tools(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![exec_command, mcp_tool]);
+        let definitions = catalogue.model_tools(
             SessionToolsConfig::full_public(
                 SessionSurface::Interactive,
                 CapabilityLevel::CodeSearch,
@@ -2592,7 +2593,7 @@ mod tests {
         assert!(!definitions.iter().any(|tool| tool.is_tool_search()));
         assert!(
             definitions.iter().all(|tool| tool.defer_loading.is_none()),
-            "unsupported providers should keep the eager catalog"
+            "unsupported providers should keep the eager catalogue"
         );
     }
 

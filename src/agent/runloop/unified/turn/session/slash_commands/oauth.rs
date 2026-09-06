@@ -695,7 +695,7 @@ mod tests {
             plan_session,
             input_status_state: turn.input_status_state,
             tools: turn.tools,
-            tool_catalog: turn.tool_catalog,
+            tool_catalogue: turn.tool_catalogue,
             async_mcp_manager,
             mcp_panel_state: turn.mcp_panel_state,
             linked_directories,

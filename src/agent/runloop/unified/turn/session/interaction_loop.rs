@@ -26,7 +26,7 @@ use crate::agent::runloop::unified::planning_workflow::PlanExecutionContext;
 use crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState;
 use crate::agent::runloop::unified::session_setup::IdeContextBridge;
 use crate::agent::runloop::unified::state::{CtrlCState, SessionStats};
-use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
+use crate::agent::runloop::unified::tool_catalogue::ToolCatalogueState;
 use crate::agent::runloop::unified::webmcp::ActiveWebmcpBridge;
 use crate::agent::runloop::welcome::SessionBootstrap;
 use std::collections::BTreeSet;
@@ -51,7 +51,7 @@ pub(crate) struct InteractionLoopContext<'a> {
     pub async_mcp_manager: &'a Option<Arc<AsyncMcpManager>>,
     pub tool_registry: &'a mut vtcode_core::tools::registry::ToolRegistry,
     pub tools: &'a Arc<tokio::sync::RwLock<Vec<uni::ToolDefinition>>>,
-    pub tool_catalog: &'a Arc<ToolCatalogState>,
+    pub tool_catalogue: &'a Arc<ToolCatalogueState>,
     pub conversation_history: &'a mut Vec<uni::Message>,
     pub agent_touched_paths: &'a mut BTreeSet<PathBuf>,
     pub decision_ledger: &'a Arc<tokio::sync::RwLock<vtcode_core::core::decision_tracker::DecisionTracker>>,
@@ -105,7 +105,7 @@ impl<'a> InteractionLoopContext<'a> {
             approval_recorder: self.approval_recorder,
             tool_registry: self.tool_registry,
             tools: self.tools,
-            tool_catalog: self.tool_catalog,
+            tool_catalogue: self.tool_catalogue,
             tool_permission_cache: self.tool_permission_cache,
             permissions_state: self.permissions_state,
             safety_validator: self.safety_validator,
@@ -166,7 +166,7 @@ pub(crate) struct InteractionState<'a> {
     pub palette_state: &'a mut Option<ActivePalette>,
     pub last_known_mcp_tools: &'a mut Vec<String>,
     pub pending_mcp_refresh: &'a mut bool,
-    pub mcp_catalog_initialized: &'a mut bool,
+    pub mcp_catalogue_initialized: &'a mut bool,
     pub last_mcp_refresh: &'a mut Instant,
     pub ctrl_c_notice_displayed: &'a mut bool,
     pub inline_prompt_cost_notice_shown: &'a mut bool,

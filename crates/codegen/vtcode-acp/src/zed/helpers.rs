@@ -32,12 +32,12 @@ pub(crate) struct PrimaryAgentSessionOption {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PrimaryAgentCatalog {
+pub(crate) struct PrimaryAgentCatalogue {
     options: Vec<PrimaryAgentSessionOption>,
     default_id: String,
 }
 
-impl PrimaryAgentCatalog {
+impl PrimaryAgentCatalogue {
     #[must_use]
     pub(crate) fn from_specs_with_default(specs: &[SubagentSpec], default_primary_agent: &str) -> Self {
         let mut options = specs
@@ -298,7 +298,7 @@ fn reasoning_effort_name(level: ReasoningEffortLevel) -> &'static str {
 
 pub(crate) fn session_config_options(
     current_primary_agent: &str,
-    primary_agents: &PrimaryAgentCatalog,
+    primary_agents: &PrimaryAgentCatalogue,
     reasoning_effort: ReasoningEffortLevel,
     include_thought_level: bool,
     current_provider: &str,
@@ -426,11 +426,11 @@ mod tests {
         custom_builder.source = SubagentSource::ProjectVtcode;
 
         let specs = [builtin_primary_build_agent(), custom_builder];
-        let catalog = PrimaryAgentCatalog::from_specs_with_default(&specs, "duck");
+        let catalogue = PrimaryAgentCatalogue::from_specs_with_default(&specs, "duck");
 
-        assert_eq!(catalog.resolve_id("build"), Some("build"));
-        assert_eq!(catalog.resolve_id("builder"), Some("builder"));
-        assert_eq!(catalog.resolve_id("project-builder"), Some("builder"));
+        assert_eq!(catalogue.resolve_id("build"), Some("build"));
+        assert_eq!(catalogue.resolve_id("builder"), Some("builder"));
+        assert_eq!(catalogue.resolve_id("project-builder"), Some("builder"));
     }
 
     #[test]
@@ -441,13 +441,13 @@ mod tests {
             spec.permissions.allow = vec![permission_rule.to_string()];
             spec.tools = Some(vec!["code_search".to_string()]);
 
-            let catalog = PrimaryAgentCatalog::from_specs_with_default(&[spec], "build");
+            let catalogue = PrimaryAgentCatalogue::from_specs_with_default(&[spec], "build");
 
             assert!(
-                catalog.allows_local_tool("build", "code_search"),
+                catalogue.allows_local_tool("build", "code_search"),
                 "permission rule {permission_rule} should advertise code_search"
             );
-            assert!(!catalog.allows_local_tool("build", "exec_command"));
+            assert!(!catalogue.allows_local_tool("build", "exec_command"));
         }
     }
 

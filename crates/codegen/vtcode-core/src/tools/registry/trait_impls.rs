@@ -21,7 +21,7 @@ use crate::tools::handlers::{SessionSurface, SessionToolsConfig, ToolCallError, 
 use crate::tools::registry::{ToolExecutionRecord, ToolPermissionDecision, ToolRegistration, ToolTimeoutCategory};
 
 use super::ToolRegistry;
-use super::interfaces::{McpBridge, PtySessionControl, ToolCatalog, ToolMetrics, ToolResilience, ToolSecurity};
+use super::interfaces::{McpBridge, PtySessionControl, ToolCatalogue, ToolMetrics, ToolResilience, ToolSecurity};
 
 // ============================================================================
 // ToolSecurity
@@ -171,11 +171,11 @@ impl ToolResilience for ToolRegistry {
 }
 
 // ============================================================================
-// ToolCatalog
+// ToolCatalogue
 // ============================================================================
 
 #[async_trait::async_trait]
-impl ToolCatalog for ToolRegistry {
+impl ToolCatalogue for ToolRegistry {
     async fn register_tool(&self, registration: ToolRegistration) -> Result<()> {
         self.register_tool(registration).await
     }

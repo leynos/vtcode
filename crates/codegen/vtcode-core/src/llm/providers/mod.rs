@@ -9,8 +9,8 @@ pub use vtcode_llm::providers::reasoning::{
 };
 pub use vtcode_llm::providers::{
     AnthropicProvider, CopilotProvider, DeepSeekProvider, EvolinkProvider, GeminiProvider, HuggingFaceProvider,
-    LlamaCppProvider, LmStudioProvider, MergeCatalogAvailability, MergeCatalogFilters, MergeCatalogModel,
-    MergeCatalogServiceTier, MergeCatalogSnapshot, MergeGatewayCatalogClient, MergeGatewayProvider, MetaProvider,
+    LlamaCppProvider, LmStudioProvider, MergeCatalogueAvailability, MergeCatalogueFilters, MergeCatalogueModel,
+    MergeCatalogueServiceTier, MergeCatalogueSnapshot, MergeGatewayCatalogueClient, MergeGatewayProvider, MetaProvider,
     MiMoProvider, MinimaxProvider, MistralProvider, MoonshotProvider, NvidiaProvider, OllamaProvider, OpenAIProvider,
     OpenCodeGoProvider, OpenCodeZenProvider, OpenResponsesProvider, OpenRouterProvider, PoolsideProvider, QwenProvider,
     StepFunProvider, StreamingProgressBuilder, StreamingProgressCallback, StreamingProgressTracker, TagStreamSanitizer,
@@ -37,7 +37,7 @@ pub use vtcode_llm::providers::llamacpp;
 pub use vtcode_llm::providers::lmstudio;
 pub use vtcode_llm::providers::local_server;
 pub use vtcode_llm::providers::merge_gateway;
-pub use vtcode_llm::providers::merge_gateway_catalog;
+pub use vtcode_llm::providers::merge_gateway_catalogue;
 pub use vtcode_llm::providers::meta;
 pub use vtcode_llm::providers::mimo;
 pub use vtcode_llm::providers::minimax;

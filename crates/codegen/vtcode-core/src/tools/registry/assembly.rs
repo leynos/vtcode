@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 
 use crate::config::constants::tools;
 use crate::tool_policy::ToolPolicy;
-use crate::tools::handlers::{SessionToolCatalog, ToolCallError};
+use crate::tools::handlers::{SessionToolCatalogue, ToolCallError};
 use crate::tools::names::canonical_tool_name;
 
 use super::{ToolMetadata, ToolRegistration};
@@ -29,7 +29,7 @@ impl PublicToolResolution {
 
 pub(super) struct ToolAssembly {
     policy_seed_metadata: FxHashMap<String, ToolMetadata>,
-    catalog: SessionToolCatalog,
+    catalogue: SessionToolCatalogue,
     public_routes: FxHashMap<String, PublicToolResolution>,
 }
 
@@ -43,9 +43,9 @@ impl ToolAssembly {
             .iter()
             .map(|registration| (registration.name().to_string(), registration.metadata().clone()))
             .collect::<FxHashMap<_, _>>();
-        let catalog = SessionToolCatalog::rebuild_from_registrations(registrations);
-        let public_routes = build_public_routes(&catalog);
-        let policy_seed_metadata = catalog
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
+        let public_routes = build_public_routes(&catalogue);
+        let policy_seed_metadata = catalogue
             .entries()
             .iter()
             .filter_map(|entry| {
@@ -55,15 +55,15 @@ impl ToolAssembly {
                     .map(|metadata| (entry.registration_name.clone(), metadata))
             })
             .collect();
-        Self { policy_seed_metadata, catalog, public_routes }
+        Self { policy_seed_metadata, catalogue, public_routes }
     }
 
     pub(super) fn policy_seed_metadata(&self) -> &FxHashMap<String, ToolMetadata> {
         &self.policy_seed_metadata
     }
 
-    pub(super) fn catalog(&self) -> &SessionToolCatalog {
-        &self.catalog
+    pub(super) fn catalogue(&self) -> &SessionToolCatalogue {
+        &self.catalogue
     }
 
     pub(super) fn resolve_public_tool(&self, requested_name: &str) -> Result<PublicToolResolution, ToolCallError> {
@@ -95,10 +95,10 @@ pub(super) fn public_tool_name_candidates(name: &str) -> Vec<String> {
     candidates
 }
 
-fn build_public_routes(catalog: &SessionToolCatalog) -> FxHashMap<String, PublicToolResolution> {
+fn build_public_routes(catalogue: &SessionToolCatalogue) -> FxHashMap<String, PublicToolResolution> {
     let mut public_routes = FxHashMap::default();
 
-    for entry in catalog.entries() {
+    for entry in catalogue.entries() {
         if is_removed_public_tool_name(entry.public_name.as_str()) {
             continue;
         }
@@ -253,7 +253,7 @@ mod tests {
             );
         }
 
-        // The legacy names must not themselves be standalone catalog entries
+        // The legacy names must not themselves be standalone catalogue entries
         // (`entry.public_name` is always the canonical registration name,
         // never one of the folded alias names).
         for legacy_name in [
@@ -264,11 +264,11 @@ mod tests {
         ] {
             assert!(
                 assembly
-                    .catalog()
+                    .catalogue()
                     .entries()
                     .iter()
                     .all(|entry| entry.public_name != legacy_name),
-                "expected {legacy_name} to not be a standalone catalog entry"
+                "expected {legacy_name} to not be a standalone catalogue entry"
             );
         }
     }

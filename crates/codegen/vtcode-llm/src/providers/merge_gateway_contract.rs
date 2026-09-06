@@ -1,6 +1,6 @@
 //! Merge Gateway wire/domain contract boundary.
 //!
-//! Focused serde-friendly models for catalog and Responses payloads.
+//! Focused serde-friendly models for catalogue and Responses payloads.
 
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -132,7 +132,7 @@ impl MergeModelsListQuery {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct MergeModelCatalogResponse {
+pub struct MergeModelCatalogueResponse {
     #[serde(default = "default_list_object")]
     pub object: CompactStr,
     pub data: Vec<MergeModelRecord>,
@@ -144,9 +144,9 @@ pub struct MergeModelCatalogResponse {
     pub extra: Map<String, Value>,
 }
 
-impl MergeModelCatalogResponse {
+impl MergeModelCatalogueResponse {
     pub fn validate_envelope(&self) -> Result<()> {
-        ensure!(self.object == "list", "expected Merge model catalog envelope");
+        ensure!(self.object == "list", "expected Merge model catalogue envelope");
         Ok(())
     }
 }
@@ -229,7 +229,7 @@ impl MergeVendorCapabilities {
 }
 
 /// Per-vendor reasoning capability advertised through Merge's `/v1/models`
-/// catalog. Reasoning controls are route-specific: either a provider-native
+/// catalogue. Reasoning controls are route-specific: either a provider-native
 /// `reasoning_effort` or a Gateway-managed `thinking.budget_tokens`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MergeReasoningCapability {
@@ -650,7 +650,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn merge_models_catalog_decodes_pagination_and_capabilities() {
+    fn merge_models_catalogue_decodes_pagination_and_capabilities() {
         let payload = json!({
             "object": "list",
             "data": [
@@ -696,8 +696,8 @@ mod tests {
             "future_envelope_field": {"page": 1}
         });
 
-        let response: MergeModelCatalogResponse = serde_json::from_value(payload).expect("catalog payload");
-        response.validate_envelope().expect("catalog envelope");
+        let response: MergeModelCatalogueResponse = serde_json::from_value(payload).expect("catalogue payload");
+        response.validate_envelope().expect("catalogue envelope");
         assert!(response.has_more);
         assert_eq!(response.next_cursor.as_deref(), Some("cursor_2"));
         assert_eq!(response.extra.get("future_envelope_field").expect("extra envelope"), &json!({"page": 1}));
@@ -727,12 +727,12 @@ mod tests {
     }
 
     #[test]
-    fn merge_models_catalog_rejects_wrong_envelope() {
-        let response: MergeModelCatalogResponse = serde_json::from_value(json!({
+    fn merge_models_catalogue_rejects_wrong_envelope() {
+        let response: MergeModelCatalogueResponse = serde_json::from_value(json!({
             "object": "response",
             "data": []
         }))
-        .expect("catalog payload");
+        .expect("catalogue payload");
 
         assert!(response.validate_envelope().is_err());
     }

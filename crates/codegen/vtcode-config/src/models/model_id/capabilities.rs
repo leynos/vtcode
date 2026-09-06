@@ -7,7 +7,7 @@ mod capability_generated {
     include!(concat!(env!("OUT_DIR"), "/model_capabilities.rs"));
 }
 
-/// Catalog metadata generated from `docs/models.json`.
+/// Catalogue metadata generated from `docs/models.json`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ModelPricing {
     pub input: Option<f64>,
@@ -17,7 +17,7 @@ pub struct ModelPricing {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ModelCatalogEntry {
+pub struct ModelCatalogueEntry {
     pub(crate) provider: &'static str,
     id: &'static str,
     pub display_name: &'static str,
@@ -33,7 +33,7 @@ pub struct ModelCatalogEntry {
     pub pricing: ModelPricing,
 }
 
-fn catalog_provider_key(provider: &str) -> &str {
+fn catalogue_provider_key(provider: &str) -> &str {
     if provider.eq_ignore_ascii_case("google") || provider.eq_ignore_ascii_case("gemini") {
         "gemini"
     } else if provider.eq_ignore_ascii_case("openai") {
@@ -108,8 +108,8 @@ fn capability_provider_key(provider: Provider) -> &'static str {
     }
 }
 
-fn generated_catalog_entry(provider: &str, id: &str) -> Option<ModelCatalogEntry> {
-    capability_generated::metadata_for(catalog_provider_key(provider), id).map(|entry| ModelCatalogEntry {
+fn generated_catalogue_entry(provider: &str, id: &str) -> Option<ModelCatalogueEntry> {
+    capability_generated::metadata_for(catalogue_provider_key(provider), id).map(|entry| ModelCatalogueEntry {
         provider: entry.provider,
         id: entry.id,
         display_name: entry.display_name,
@@ -131,21 +131,21 @@ fn generated_catalog_entry(provider: &str, id: &str) -> Option<ModelCatalogEntry
     })
 }
 
-pub fn model_catalog_entry(provider: &str, id: &str) -> Option<ModelCatalogEntry> {
-    generated_catalog_entry(provider, id)
+pub fn model_catalogue_entry(provider: &str, id: &str) -> Option<ModelCatalogueEntry> {
+    generated_catalogue_entry(provider, id)
 }
 
 pub fn supported_models_for_provider(provider: &str) -> Option<&'static [&'static str]> {
-    capability_generated::models_for_provider(catalog_provider_key(provider))
+    capability_generated::models_for_provider(catalogue_provider_key(provider))
 }
 
-pub fn catalog_provider_keys() -> &'static [&'static str] {
+pub fn catalogue_provider_keys() -> &'static [&'static str] {
     capability_generated::PROVIDERS
 }
 
 impl ModelId {
-    fn generated_capabilities(&self) -> Option<ModelCatalogEntry> {
-        generated_catalog_entry(capability_provider_key(self.provider()), &self.as_str())
+    fn generated_capabilities(&self) -> Option<ModelCatalogueEntry> {
+        generated_catalogue_entry(capability_provider_key(self.provider()), &self.as_str())
     }
 
     /// Preferred built-in lightweight sibling or lower-tier fallback for this model.
