@@ -1,3 +1,7 @@
+//! Completion-context types and analyser access for code-completion callers.
+//! Callers construct [`CompletionContext`] and use [`ContextAnalyser`] to
+//! gather the current completion context.
+
 pub mod analyser;
 
 pub use analyser::ContextAnalyser;
