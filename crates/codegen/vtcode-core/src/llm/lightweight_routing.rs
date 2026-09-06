@@ -263,7 +263,7 @@ pub fn create_provider_for_model_route(
             timeouts: None,
             openai: vt_cfg.map(|cfg| cfg.provider.openai.clone()),
             anthropic: vt_cfg.map(|cfg| cfg.provider.anthropic.clone()),
-            model_behavior: runtime_config.model_behavior.clone(),
+            model_behaviour: runtime_config.model_behaviour.clone(),
             workspace_root: Some(runtime_config.workspace.clone()),
         },
     )
@@ -500,7 +500,7 @@ mod tests {
             checkpointing_max_snapshots: 0,
             checkpointing_max_age_days: None,
             max_conversation_turns: 0,
-            model_behavior: None,
+            model_behaviour: None,
         }
     }
 

@@ -1064,7 +1064,7 @@ async fn sync_openai_runtime_if_active(ctx: &mut SlashCommandContext<'_>) -> Res
             timeouts: None,
             openai: ctx.vt_cfg.as_ref().map(|cfg| cfg.provider.openai.clone()),
             anthropic: None,
-            model_behavior: ctx.config.model_behavior.clone(),
+            model_behaviour: ctx.config.model_behaviour.clone(),
             workspace_root: Some(ctx.config.workspace.clone()),
         },
     )?;
@@ -1110,7 +1110,7 @@ async fn sync_copilot_runtime_if_active(ctx: &mut SlashCommandContext<'_>) -> Re
             timeouts: None,
             openai: ctx.vt_cfg.as_ref().map(|cfg| cfg.provider.openai.clone()),
             anthropic: None,
-            model_behavior: ctx.config.model_behavior.clone(),
+            model_behaviour: ctx.config.model_behaviour.clone(),
             workspace_root: Some(ctx.config.workspace.clone()),
         },
     )?;

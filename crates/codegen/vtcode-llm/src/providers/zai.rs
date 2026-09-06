@@ -140,7 +140,7 @@ impl_openai_compat_provider!(ZAIProvider, ZaiSpec, {
         model.contains("glm")
             || self
                 .core
-                .model_behavior
+                .model_behaviour
                 .as_ref()
                 .and_then(|b| b.model_supports_reasoning)
                 .unwrap_or(false)
@@ -151,7 +151,7 @@ impl_openai_compat_provider!(ZAIProvider, ZaiSpec, {
         model.contains("glm")
             || self
                 .core
-                .model_behavior
+                .model_behaviour
                 .as_ref()
                 .and_then(|b| b.model_supports_reasoning_effort)
                 .unwrap_or(false)

@@ -13,12 +13,12 @@ pub use actions::{
 };
 pub use activity::{ShellActivity, classify_shell_activity, shell_command_is_admitted_verification_attempt};
 pub use classify::{
-    builtin_tool_behavior, canonical_command_session_tool_name, classify_tool_intent, is_command_run_tool,
+    builtin_tool_behaviour, canonical_command_session_tool_name, classify_tool_intent, is_command_run_tool,
     is_command_run_tool_call, is_command_tool, is_edited_file_conflict_guarded_call, is_parallel_safe_call,
     planning_allowed_actions, remap_file_operation_command_args_to_command_session, should_use_spool_reference_only,
 };
 pub use readonly::{is_readonly_command_session_command, is_spool_file_read_command};
-pub use types::{ToolBehavior, ToolIntent, ToolIntentClassifier, ToolMutationModel, ToolSurfaceKind};
+pub use types::{ToolBehaviour, ToolIntent, ToolIntentClassifier, ToolMutationModel, ToolSurfaceKind};
 
 #[cfg(test)]
 mod tests {

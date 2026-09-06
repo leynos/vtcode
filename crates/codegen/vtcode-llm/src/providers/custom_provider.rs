@@ -39,7 +39,7 @@ impl CustomProviderBackendRouter {
         timeouts: Option<TimeoutsConfig>,
         openai: Option<OpenAIConfig>,
         anthropic: Option<AnthropicConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
         custom_provider_auth: Option<CustomProviderAuthHandle>,
     ) -> Self {
         let provider_key = custom_config.name.clone();
@@ -62,7 +62,7 @@ impl CustomProviderBackendRouter {
             prompt_cache.clone(),
             timeouts.clone(),
             openai.clone(),
-            model_behavior.clone(),
+            model_behaviour.clone(),
             custom_provider_auth.clone(),
             Some(supported_models.clone()),
         );
@@ -75,7 +75,7 @@ impl CustomProviderBackendRouter {
             prompt_cache.clone(),
             timeouts.clone(),
             openai.clone(),
-            model_behavior.clone(),
+            model_behaviour.clone(),
             custom_provider_auth.clone(),
             Some(supported_models.clone()),
         )
@@ -89,7 +89,7 @@ impl CustomProviderBackendRouter {
             prompt_cache.clone(),
             timeouts.clone(),
             openai.clone(),
-            model_behavior.clone(),
+            model_behaviour.clone(),
             custom_provider_auth.clone(),
             Some(supported_models.clone()),
         )
@@ -101,7 +101,7 @@ impl CustomProviderBackendRouter {
             prompt_cache,
             timeouts,
             Some(anthropic_config.clone()),
-            model_behavior,
+            model_behaviour,
         )
         .with_custom_auth(custom_provider_auth);
 

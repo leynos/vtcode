@@ -536,7 +536,7 @@ fn reload_provider_client_if_matching(
             timeouts: None,
             openai: ctx.vt_cfg.as_ref().map(|cfg| cfg.provider.openai.clone()),
             anthropic: None,
-            model_behavior: ctx.config.model_behavior.clone(),
+            model_behaviour: ctx.config.model_behaviour.clone(),
             workspace_root: Some(ctx.config.workspace.clone()),
         },
     ) {

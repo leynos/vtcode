@@ -1181,11 +1181,11 @@ fn configured_custom_pro_medium_thinking_falls_back_to_high() {
     use vtcode_config::core::ModelConfig;
     use vtcode_config::types::ReasoningEffortLevel;
 
-    let model_behavior = serde_json::from_value::<ModelConfig>(json!({
+    let model_behaviour = serde_json::from_value::<ModelConfig>(json!({
         "model_supports_reasoning": true,
         "model_supports_reasoning_effort": true,
     }))
-    .expect("custom model behavior");
+    .expect("custom model behaviour");
     let provider = GeminiProvider::from_config(
         Some("test-key".to_string()),
         Some("gemini-3.1-pro-preview".to_string()),
@@ -1193,7 +1193,7 @@ fn configured_custom_pro_medium_thinking_falls_back_to_high() {
         None,
         None,
         None,
-        Some(model_behavior),
+        Some(model_behaviour),
     );
     let request = LLMRequest {
         messages: vec![Message::user("test".to_string())].into(),

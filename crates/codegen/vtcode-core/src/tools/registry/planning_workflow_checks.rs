@@ -28,8 +28,8 @@ impl ToolRegistry {
             .unwrap_or_else(|| name.to_string());
 
         if let Some(reg) = self.inventory.get_registration(&resolved_name) {
-            if let Some(behavior) = reg.metadata().behavior() {
-                return !matches!(behavior.mutation_model, crate::tools::tool_intent::ToolMutationModel::ReadOnly);
+            if let Some(behaviour) = reg.metadata().behaviour() {
+                return !matches!(behaviour.mutation_model, crate::tools::tool_intent::ToolMutationModel::ReadOnly);
             }
 
             if let super::ToolHandler::TraitObject(tool) = reg.handler() {

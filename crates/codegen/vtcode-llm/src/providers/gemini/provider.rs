@@ -9,7 +9,7 @@ pub struct GeminiProvider {
     pub(super) prompt_cache_enabled: bool,
     pub(super) prompt_cache_settings: GeminiPromptCacheSettings,
     pub(super) timeouts: TimeoutsConfig,
-    pub(super) model_behavior: Option<ModelConfig>,
+    pub(super) model_behaviour: Option<ModelConfig>,
 }
 
 impl GeminiProvider {
@@ -45,7 +45,7 @@ impl GeminiProvider {
             prompt_cache_enabled,
             prompt_cache_settings,
             timeouts,
-            model_behavior: None,
+            model_behaviour: None,
         }
     }
 
@@ -56,7 +56,7 @@ impl GeminiProvider {
         prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<TimeoutsConfig>,
         _anthropic: Option<AnthropicConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         let api_key_value = api_key.unwrap_or_default();
         let model_value = resolve_model(model, models::google::GEMINI_3_FLASH_PREVIEW);
@@ -67,7 +67,7 @@ impl GeminiProvider {
             prompt_cache,
             base_url,
             timeouts.unwrap_or_default(),
-            model_behavior,
+            model_behaviour,
         )
     }
 
@@ -77,7 +77,7 @@ impl GeminiProvider {
         prompt_cache: Option<PromptCachingConfig>,
         base_url: Option<String>,
         timeouts: TimeoutsConfig,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         use crate::http_client::HttpClientFactory;
 
@@ -99,7 +99,7 @@ impl GeminiProvider {
             prompt_cache_enabled,
             prompt_cache_settings,
             timeouts,
-            model_behavior,
+            model_behaviour,
         }
     }
 

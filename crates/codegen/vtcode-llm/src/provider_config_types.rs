@@ -17,6 +17,6 @@ pub struct ProviderConfig {
     pub timeouts: Option<TimeoutsConfig>,
     pub openai: Option<OpenAIConfig>,
     pub anthropic: Option<AnthropicConfig>,
-    pub model_behavior: Option<ModelConfig>,
+    pub model_behaviour: Option<ModelConfig>,
     pub workspace_root: Option<PathBuf>,
 }

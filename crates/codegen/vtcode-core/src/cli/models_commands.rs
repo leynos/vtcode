@@ -263,7 +263,7 @@ async fn handle_test_provider(_cli: &Cli, provider: &str) -> Result<()> {
             timeouts: None,
             openai: None,
             anthropic: None,
-            model_behavior: None,
+            model_behaviour: None,
             workspace_root: None,
         },
     )?;

@@ -38,7 +38,7 @@ pub struct HuggingFaceProvider {
     base_url: String,
     model: String,
     _timeouts: TimeoutsConfig,
-    model_behavior: Option<ModelConfig>,
+    model_behaviour: Option<ModelConfig>,
 }
 
 impl HuggingFaceProvider {
@@ -59,7 +59,7 @@ impl HuggingFaceProvider {
         model: String,
         base_url: Option<String>,
         timeouts: Option<TimeoutsConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         use crate::http_client::HttpClientFactory;
 
@@ -71,7 +71,7 @@ impl HuggingFaceProvider {
             base_url: override_base_url(urls::HUGGINGFACE_API_BASE, base_url, Some(env_vars::HUGGINGFACE_BASE_URL)),
             model,
             _timeouts: timeouts,
-            model_behavior,
+            model_behaviour,
         }
     }
 
@@ -82,11 +82,11 @@ impl HuggingFaceProvider {
         _prompt_cache: Option<PromptCachingConfig>,
         timeouts: Option<TimeoutsConfig>,
         _anthropic: Option<AnthropicConfig>,
-        model_behavior: Option<ModelConfig>,
+        model_behaviour: Option<ModelConfig>,
     ) -> Self {
         let api_key_value = api_key.unwrap_or_default();
         let model_value = resolve_model(model, models::huggingface::DEFAULT_MODEL);
-        Self::with_model_internal(api_key_value, model_value, base_url, timeouts, model_behavior)
+        Self::with_model_internal(api_key_value, model_value, base_url, timeouts, model_behaviour)
     }
 
     fn normalize_model_id(&self, model: &str) -> Result<String, LLMError> {
@@ -766,7 +766,7 @@ impl LLMProvider for HuggingFaceProvider {
         // does NOT disable it for known reasoning models.
         models::huggingface::REASONING_MODELS.contains(&model)
             || self
-                .model_behavior
+                .model_behaviour
                 .as_ref()
                 .and_then(|b| b.model_supports_reasoning)
                 .unwrap_or(false)
@@ -777,7 +777,7 @@ impl LLMProvider for HuggingFaceProvider {
         self.is_glm_model(model)
             || self.is_deepseek_model(model)
             || self
-                .model_behavior
+                .model_behaviour
                 .as_ref()
                 .and_then(|b| b.model_supports_reasoning_effort)
                 .unwrap_or(false)
