@@ -1004,3 +1004,40 @@ names the unmerged parent for the spelling-history stack; the replay moved the
 layer's own six commits onto `f2c7e5b4d` without changing their content. The
 gate evidence recorded above describes earlier replays onto unmerged parents
 and is not evidence for this head.
+
+## Module structure layer
+
+This layer moves self-named Rust modules into `mod.rs` form and extracts API-key
+and Anthropic validation sections without changing their behaviour. Forty-five
+moves preserve their complete source bytes. The API-key production section and
+all extracted test bodies retain their contents; Anthropic tool validation gains
+only the visibility needed by its new private child module.
+
+Ten relative module paths are adjusted for their new directories. Current
+source-path guidance receives 35 literal substitutions across 23 documents;
+dated historical records retain their original references. A full CodeGraph
+refresh removed stale deleted-file entries, and Leta resolves the new API-key
+module location. Existing logging and advisory rules follow their moved source
+files with unchanged scope and rationale; model-script instructions use the new
+path. One extracted test line is joined as required by the existing formatter.
+The first full test run found 15 transcript-link failures caused by a fixture
+path that still named the moved `session.rs`; the helper now follows
+`session/mod.rs`. The corrected layer passes formatting, spelling, Actions
+contracts, lint, build, type-checking, all 10,094 workspace tests (17 skipped)
+and all 67 harness tests. Advisory checks pass; AST-grep is unavailable and the
+existing optional target skips it. Four inherited rustdoc warnings remain for
+the later source-fix layer.
+
+All 24 changed documents pass Nixie. Exact-parent Markdown comparison identified
+one new long line from a longer module path, now wrapped; the other 1,134
+diagnostics are inherited. Final document validation follows that correction.
+
+## PR 71 after PR 70 merged
+
+PR #70 squash-merged into `main` as `726bbcdc5`. This layer was replayed onto
+it with `git rebase --onto 726bbcdc5 a5c4871ef`. The conflicts were this
+handoff file and the zen allowlist. The handoff keeps every earlier record; the
+allowlist takes the moved `rendering/mod.rs` path and `main`'s current
+`init.rs:526` line. The earlier record above names the unmerged parent for the
+spelling-gate stack; the replay moved the layer's own three commits onto
+`726bbcdc5` without changing their content.

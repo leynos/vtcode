@@ -33,19 +33,19 @@ class LegibilityTarget:
 
 TARGETS = (
     LegibilityTarget(
-        path="src/agent/runloop/unified/session_setup/ui.rs",
+        path="src/agent/runloop/unified/session_setup/ui/mod.rs",
         label="session setup ui",
     ),
     LegibilityTarget(
-        path="src/agent/runloop/unified/turn/context.rs",
+        path="src/agent/runloop/unified/turn/context/mod.rs",
         label="turn context",
     ),
     LegibilityTarget(
-        path="src/agent/runloop/unified/turn/turn_processing/planning_workflow.rs",
+        path="src/agent/runloop/unified/turn/turn_processing/planning_workflow/mod.rs",
         label="planning workflow",
     ),
     LegibilityTarget(
-        path="src/agent/runloop/unified/turn/tool_outcomes/execution_result.rs",
+        path="src/agent/runloop/unified/turn/tool_outcomes/execution_result/mod.rs",
         label="execution result",
     ),
     LegibilityTarget(

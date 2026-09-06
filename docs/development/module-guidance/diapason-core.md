@@ -18,7 +18,7 @@
   previews and spool-reference metadata while `registry/spool_processing.rs`
   owns pure spool decisions/preview caps; `tool_intent/activity.rs` owns
   inspection/verification classification; `read_file/batch.rs` owns batch
-  admission while `read_file.rs` owns single-file semantics;
+  admission while `read_file/mod.rs` owns single-file semantics;
   `registry/executors/` is split into `exec_command.rs`, `exec_output.rs`,
   `exec_sessions.rs`, `exec_support.rs`; `grep_file.rs` delegates to
   `grep_backend.rs`; `task_tracking.rs` owns the renderer-independent compact

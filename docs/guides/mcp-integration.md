@@ -4,7 +4,7 @@ This guide outlines how Diapason connects to external MCP (Model Context
 Protocol) servers, how allowlists control tool access, and how to troubleshoot
 common configuration issues. The configuration surface documented below maps
 directly to the serde structures in
-`crates/codegen/diapason-config/src/mcp.rs`, so the examples here stay aligned
+`crates/codegen/diapason-config/src/mcp/mod.rs`, so the examples here stay aligned
 with the loader that powers the CLI and the reusable `diapason-config` crate.
 For the canonical protocol behaviour and the latest server/client expectations,
 consult the upstream MCP reference index at

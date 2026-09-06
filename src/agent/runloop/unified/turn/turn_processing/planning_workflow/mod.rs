@@ -8,13 +8,13 @@
 
 use crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState;
 
-#[path = "planning_workflow/gating.rs"]
+#[path = "gating.rs"]
 mod gating;
-#[path = "planning_workflow/interview_context.rs"]
+#[path = "interview_context.rs"]
 mod interview_context;
-#[path = "planning_workflow/interview_forcing.rs"]
+#[path = "interview_forcing.rs"]
 mod interview_forcing;
-#[path = "planning_workflow/interview_payload.rs"]
+#[path = "interview_payload.rs"]
 mod interview_payload;
 
 use crate::agent::runloop::unified::turn::context::TurnProcessingResult;

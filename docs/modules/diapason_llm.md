@@ -70,5 +70,5 @@ calling, and provider-specific adaptations. This is a partial extraction from
 
 - [Provider Guides](../providers/PROVIDER_GUIDES.md) — setup and configuration
 - [Model Catalogue](../models.json) — full model listing with capabilities
-- `crates/codegen/diapason-core/src/config/models.rs` — model constants
+- `crates/codegen/diapason-core/src/config/models/mod.rs` — model constants
   re-export
