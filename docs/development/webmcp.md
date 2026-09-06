@@ -256,7 +256,7 @@ The default bind is loopback with an OS-selected port. `--allowed-root` explicit
 
 On Linux, each `checks.run` operation exposed through
 `RuntimeAdapter::run_checks` reads `VTCODE_LINUX_SANDBOX_EXECUTABLE` before the
-request runs. Export the sandbox helper path before starting the bridge, because
+request runs. Export the sandbox helper path before starting the bridge because
 a later change in the parent shell does not update the running bridge process:
 
 ```sh
