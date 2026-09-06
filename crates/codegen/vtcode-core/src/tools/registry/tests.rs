@@ -14,11 +14,13 @@ use crate::tools::registry::mcp_helpers::normalize_mcp_tool_identifier;
 use crate::tools::traits::Tool;
 use anyhow::Result;
 use async_trait::async_trait;
+use base64::Engine;
 use futures::future::BoxFuture;
 use rstest::{fixture, rstest};
 use serde_json::Value;
 use serde_json::json;
 use std::fs;
+use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 use vtcode_commons::canonicalize;
@@ -1783,6 +1785,238 @@ async fn apply_patch_accepts_input_payload() -> Result<()> {
     let file_contents = fs::read_to_string(temp_dir.path().join("patched_via_input.txt"))?;
     assert_eq!(file_contents, "patched\n");
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn stale_apply_patch_hash_returns_diagnostics_without_writing() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let path = temp_dir.path().join("versioned.txt");
+    fs::write(&path, "current\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+    let patch = "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n";
+    let expected = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"));
+
+    let outcome = registry
+        .execute_public_tool_request(ToolExecutionRequest::new(
+            tools::APPLY_PATCH,
+            json!({ "input": patch, "expected_content_hash": expected }),
+        ))
+        .await;
+
+    assert!(!outcome.is_success());
+    let error = outcome.error.expect("hash mismatch error");
+    assert_eq!(error.error_type, ToolErrorType::InvalidParameters);
+    let details = error.details.expect("structured mismatch details");
+    assert_eq!(details["reason"], "content_hash_mismatch");
+    assert_eq!(details["expected_content_hash"], expected);
+    assert_eq!(
+        details["current_content_hash"],
+        format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"current\n"))
+    );
+    assert_eq!(details["can_safely_rebase"], true);
+    assert!(
+        details["next_action"]
+            .as_str()
+            .is_some_and(|action| action.contains("Reread versioned.txt"))
+    );
+    let records = registry.get_recent_tool_records(1);
+    let recorded_error = records
+        .first()
+        .and_then(|record| record.result.as_ref().err())
+        .expect("structured mismatch is retained in execution history");
+    let recorded_error: Value = serde_json::from_str(recorded_error)?;
+    assert_eq!(recorded_error["details"]["reason"], "content_hash_mismatch");
+    assert_eq!(recorded_error["details"]["expected_content_hash"], expected);
+    assert_eq!(fs::read_to_string(path)?, "current\n");
+    Ok(())
+}
+
+#[tokio::test]
+async fn stale_unrebasable_patch_reports_bounded_anchor_context() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let path = temp_dir.path().join("versioned.txt");
+    fs::write(&path, "fn nearby() {\n    current();\n}\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+    let patch = "*** Begin Patch\n*** Update File: versioned.txt\n@@ fn missing()\n-    stale();\n+    changed();\n*** End Patch\n";
+    let expected = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"fn missing() {\n    stale();\n}\n"));
+
+    let outcome = registry
+        .execute_public_tool_request(ToolExecutionRequest::new(
+            tools::APPLY_PATCH,
+            json!({ "input": patch, "expected_content_hash": expected }),
+        ))
+        .await;
+
+    let details = outcome.error.and_then(|error| error.details).expect("mismatch details");
+    assert_eq!(details["can_safely_rebase"], false);
+    let failure = details["anchor_failures"]
+        .as_array()
+        .and_then(|failures| failures.first())
+        .expect("anchor failure");
+    assert_eq!(failure["anchor"], "fn missing()");
+    assert!(
+        failure["expected_excerpt"]
+            .as_str()
+            .is_some_and(|excerpt| excerpt.contains("stale"))
+    );
+    assert!(
+        failure["current_excerpt"]
+            .as_str()
+            .is_some_and(|excerpt| excerpt.contains("current"))
+    );
+    assert!(
+        failure["expected_excerpt"]
+            .as_str()
+            .is_some_and(|excerpt| excerpt.chars().count() <= 240)
+    );
+    assert!(
+        failure["current_excerpt"]
+            .as_str()
+            .is_some_and(|excerpt| excerpt.chars().count() <= 240)
+    );
+    assert_eq!(fs::read_to_string(path)?, "fn nearby() {\n    current();\n}\n");
+    Ok(())
+}
+
+#[tokio::test]
+async fn matching_apply_patch_hash_allows_the_write() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let path = temp_dir.path().join("versioned.txt");
+    fs::write(&path, "current\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+    let current = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"current\n"));
+    let patch = "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n";
+
+    let response = registry
+        .execute_tool(tools::APPLY_PATCH, json!({ "input": patch, "expected_content_hash": current }))
+        .await?;
+
+    assert_eq!(response["success"], true);
+    assert_eq!(fs::read_to_string(path)?, "changed\n");
+    Ok(())
+}
+
+#[tokio::test]
+async fn identical_no_op_patch_escalates_across_registry_clones_without_writing() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let path = temp_dir.path().join("same.txt");
+    fs::write(&path, "same\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+    let breaker = Arc::new(crate::tools::circuit_breaker::CircuitBreaker::new(Default::default()));
+    registry.set_shared_circuit_breaker(Arc::clone(&breaker));
+    let patch = "*** Begin Patch\n*** Update File: same.txt\n@@\n-same\n+same\n*** End Patch\n";
+    #[cfg(unix)]
+    let original_inode = {
+        use std::os::unix::fs::MetadataExt;
+        fs::metadata(&path)?.ino()
+    };
+
+    let first = registry.execute_tool(tools::APPLY_PATCH, json!({ "input": patch })).await?;
+    assert_eq!(first["success"], true);
+    assert_eq!(first["no_op"], true);
+    assert_eq!(first["occurrence"], 1);
+    assert!(first.get("modified_files").is_none());
+    assert!(first["message"].as_str().is_some_and(|message| message.contains("final bytes")));
+
+    let second_registry = registry.clone();
+    let third_registry = registry.clone();
+    let encoded_patch = format!("base64:{}", base64::engine::general_purpose::STANDARD.encode(patch.as_bytes()));
+    let left = tokio::spawn(async move {
+        second_registry
+            .execute_public_tool_request(ToolExecutionRequest::new(tools::APPLY_PATCH, json!({ "patch": patch })))
+            .await
+    });
+    let right = tokio::spawn(async move {
+        third_registry
+            .execute_public_tool_request(ToolExecutionRequest::new(
+                tools::APPLY_PATCH,
+                json!({ "input": encoded_patch }),
+            ))
+            .await
+    });
+    let (left, right) = tokio::try_join!(left, right)?;
+    let (second, third) = if left.is_success() {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    let second = second.output.expect("second no-op response");
+    assert_eq!(second["success"], true);
+    assert_eq!(second["no_op"], true);
+    assert_eq!(second["occurrence"], 2);
+    assert_eq!(second["retry_prohibited"], true);
+    assert!(second.get("modified_files").is_none());
+
+    let error = third.error.expect("third identical no-op must be blocked");
+    assert_eq!(error.error_type, ToolErrorType::PolicyViolation);
+    assert!(!error.retryable);
+    assert!(!error.circuit_breaker_impact);
+    assert_eq!(
+        error.details.as_ref().and_then(|details| details["reason"].as_str()),
+        Some("repeated_identical_no_op")
+    );
+    assert_eq!(breaker.state_for_tool(tools::APPLY_PATCH), crate::tools::circuit_breaker::CircuitState::Closed);
+    assert_eq!(fs::read_to_string(path)?, "same\n");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(fs::metadata(temp_dir.path().join("same.txt"))?.ino(), original_inode);
+    }
+
+    let different = "*** Begin Patch\n*** Update File: same.txt\n@@\n-same\n+different\n*** End Patch\n";
+    let available = registry.execute_tool(tools::APPLY_PATCH, json!({ "input": different })).await?;
+    assert_eq!(available["success"], true);
+    assert!(available.get("no_op").is_none());
+    assert_eq!(fs::read_to_string(temp_dir.path().join("same.txt"))?, "different\n");
+    Ok(())
+}
+
+#[tokio::test]
+async fn apply_patch_hash_rejects_malformed_and_invalid_scopes() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    fs::write(temp_dir.path().join("one.txt"), "one\n")?;
+    fs::write(temp_dir.path().join("two.txt"), "two\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+    let valid = format!("sha256:{}", "0".repeat(64));
+    let cases = [
+        (
+            "sha256:ABC",
+            "*** Begin Patch\n*** Update File: one.txt\n@@\n-one\n+changed\n*** End Patch\n",
+            "invalid_expected_content_hash",
+        ),
+        (
+            valid.as_str(),
+            "*** Begin Patch\n*** Add File: added.txt\n+added\n*** End Patch\n",
+            "invalid_precondition_scope",
+        ),
+        (
+            valid.as_str(),
+            "*** Begin Patch\n*** Delete File: one.txt\n*** Delete File: two.txt\n*** End Patch\n",
+            "invalid_precondition_scope",
+        ),
+    ];
+
+    for (hash, patch, reason) in cases {
+        let outcome = registry
+            .execute_public_tool_request(ToolExecutionRequest::new(
+                tools::APPLY_PATCH,
+                json!({ "input": patch, "expected_content_hash": hash }),
+            ))
+            .await;
+        let error = outcome.error.expect("invalid precondition error");
+        assert_eq!(error.error_type, ToolErrorType::InvalidParameters);
+        assert_eq!(error.details.as_ref().and_then(|details| details["reason"].as_str()), Some(reason));
+    }
+
+    assert_eq!(fs::read_to_string(temp_dir.path().join("one.txt"))?, "one\n");
+    assert_eq!(fs::read_to_string(temp_dir.path().join("two.txt"))?, "two\n");
+    assert!(!temp_dir.path().join("added.txt").exists());
     Ok(())
 }
 

@@ -85,6 +85,9 @@ fn tool_error_value_to_string(value: &Value) -> String {
     if let Some(message) = value.as_str() {
         return message.to_string();
     }
+    if value.get("details").is_some() {
+        return value.to_string();
+    }
     if let Some(message) = value.get("message").and_then(Value::as_str) {
         return message.to_string();
     }
@@ -979,11 +982,15 @@ impl ToolRegistry {
             }
         }
 
-        let skip_loop_detection = self.should_skip_loop_detection_for_exec_continuation(&tool_name, args).await;
+        // `apply_patch` owns a content-aware no-op ladder keyed by canonical
+        // paths, patch structure, and file versions. The generic args-only
+        // detector would otherwise block its third diagnostic occurrence.
+        let skip_loop_detection = tool_name == tools::APPLY_PATCH
+            || self.should_skip_loop_detection_for_exec_continuation(&tool_name, args).await;
         if skip_loop_detection {
             trace!(
                 tool = %tool_name,
-                "Skipping identical-call loop detection for stateful exec continuation"
+                "Skipping generic identical-call loop detection for a tool with dedicated state tracking"
             );
         }
 
