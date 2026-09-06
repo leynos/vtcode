@@ -579,3 +579,67 @@ mod tests {
         assert!(formatted.contains("Total Skills Analysed"));
     }
 }
+
+#[cfg(test)]
+mod wire_compatibility_tests {
+    //! Protect the persisted validation-report field spelling during migration.
+
+    use super::ContainerValidationReport;
+
+    #[test]
+    fn test_report_serialization_preserves_historical_key() {
+        let report = ContainerValidationReport::new();
+        let encoded = serde_json::to_value(report).expect("validation report serialization should succeed");
+        let serialized_count = encoded.get("total_skills_analyzed").and_then(|value| value.as_u64());
+
+        assert_eq!(serialized_count, Some(0), "serialized report should contain total_skills_analyzed as zero",);
+        assert!(
+            encoded.get("total_skills_analysed").is_none(),
+            "serialized report should not emit the native total_skills_analysed key",
+        );
+    }
+
+    #[test]
+    fn test_report_deserialization_accepts_both_field_spellings() {
+        let historical_json = serde_json::json!({
+            "total_skills_analyzed": 3,
+            "compatible_skills": [],
+            "incompatible_skills": [],
+            "skills_with_fallbacks": [],
+            "summary": {
+                "total_compatible": 0,
+                "total_incompatible": 0,
+                "total_with_fallbacks": 0,
+                "recommendation": ""
+            }
+        });
+        let native_json = serde_json::json!({
+            "total_skills_analysed": 3,
+            "compatible_skills": [],
+            "incompatible_skills": [],
+            "skills_with_fallbacks": [],
+            "summary": {
+                "total_compatible": 0,
+                "total_incompatible": 0,
+                "total_with_fallbacks": 0,
+                "recommendation": ""
+            }
+        });
+
+        let historical = serde_json::from_value::<ContainerValidationReport>(historical_json)
+            .expect("historical validation report field should deserialize");
+        let native = serde_json::from_value::<ContainerValidationReport>(native_json)
+            .expect("native validation report field should deserialize");
+        let historical_output = historical.format_report();
+        let native_output = native.format_report();
+
+        assert!(
+            historical_output.contains("Total Skills Analysed: 3"),
+            "historical total_skills_analyzed should populate the report count",
+        );
+        assert!(
+            native_output.contains("Total Skills Analysed: 3"),
+            "native total_skills_analysed should populate the report count",
+        );
+    }
+}

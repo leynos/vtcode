@@ -229,6 +229,7 @@ impl ManPageGenerator {
             "create-project" => Self::generate_create_project_man_page(),
             "init" => Self::generate_init_man_page(),
             "man" => Self::generate_man_man_page(),
+            "analyse" => Self::generate_analyse_man_page(),
             _ => bail!("Unknown command: {command}"),
         }
     }
@@ -307,7 +308,43 @@ impl ManPageGenerator {
         Ok(page)
     }
 
-    /// Generate man page for the analyze command
+    /// Generate man page for the analyse command
+    fn generate_analyse_man_page() -> Result<String> {
+        let current_date = Self::current_date();
+        let page = Roff::new()
+            .control("TH", ["VTCODE-ANALYSE", "1", &current_date, "VT Code", "User Commands"])
+            .control("SH", ["NAME"])
+            .text([roman("vtcode-analyse - Analyse workspace")])
+            .control("SH", ["SYNOPSIS"])
+            .text([
+                bold("vtcode"),
+                roman(" ["),
+                bold("OPTIONS"),
+                roman("] "),
+                bold("analyse"),
+                roman(" ["),
+                italic("TYPE"),
+                roman("]"),
+            ])
+            .control("SH", ["DESCRIPTION"])
+            .text([
+                roman("Analyse the current workspace and report its structure, configuration, and source layout."),
+                roman(" The optional analysis mode selects the read-only inspection to perform."),
+            ])
+            .control("SH", ["ARGUMENTS"])
+            .control("TP", [])
+            .text([bold("TYPE")])
+            .text([roman("Optional analysis mode for the workspace inspection.")])
+            .control("SH", ["EXAMPLES"])
+            .text([roman("Analyse the whole workspace:")])
+            .text([bold("  vtcode analyse")])
+            .control("SH", ["SEE ALSO"])
+            .text([bold("vtcode(1)"), roman(", "), bold("vtcode-man(1)")])
+            .render();
+
+        Ok(page)
+    }
+
     /// Generate man page for the performance command
     fn generate_performance_man_page() -> Result<String> {
         let current_date = Self::current_date();
@@ -593,5 +630,24 @@ impl ManPageGenerator {
             .render();
 
         Ok(page)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Regression coverage for command-specific man-page dispatch.
+
+    use super::ManPageGenerator;
+
+    #[test]
+    fn dispatches_analyse_man_page() {
+        let page =
+            ManPageGenerator::generate_command_man_page("analyse").expect("analyse man page should be generated");
+
+        assert!(page.contains("VTCODE-ANALYSE"), "analyse dispatch should generate the canonical man-page title");
+        assert!(
+            page.contains(r"\fBanalyse\fR"),
+            "analyse man page should include the canonical command in its synopsis"
+        );
     }
 }

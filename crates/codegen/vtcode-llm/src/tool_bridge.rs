@@ -403,10 +403,17 @@ mod tests {
 
     #[test]
     fn test_intent_extraction_analyse() {
-        let text = "Analyze the config file please";
-        let intent = ToolIntentExtractor::extract(text);
+        for (text, expected_target) in [
+            ("Analyse the config file please", "analyse"),
+            ("Analyze the config file please", "analyze"),
+        ] {
+            let intent = ToolIntentExtractor::extract(text);
 
-        assert!(matches!(intent, Some(ToolIntent::Analyse(_))));
+            let Some(ToolIntent::Analyse(target)) = intent else {
+                panic!("expected analyse intent for {text:?}");
+            };
+            assert_eq!(target, expected_target, "unexpected extracted target for input {text:?}");
+        }
     }
 
     #[test]
@@ -451,5 +458,42 @@ mod tests {
     fn test_extract_quoted_string() {
         assert_eq!(extract_quoted_string("grep for \"error pattern\""), Some("error pattern".to_owned()));
         assert_eq!(extract_quoted_string("find 'test.rs'"), Some("test.rs".to_owned()));
+    }
+}
+
+#[cfg(test)]
+mod wire_compatibility_tests {
+    //! Protect intent spelling migration and persisted `ToolIntent` wire names.
+
+    use super::ToolIntent;
+
+    #[test]
+    fn test_tool_intent_serialization_preserves_historical_name() {
+        let encoded = serde_json::to_value(ToolIntent::Analyse("config".to_owned()))
+            .expect("ToolIntent serialization should succeed");
+
+        assert_eq!(
+            encoded,
+            serde_json::json!({"Analyze": "config"}),
+            "Analyse should retain the historical Analyze wire key",
+        );
+    }
+
+    #[test]
+    fn test_tool_intent_deserialization_accepts_both_wire_names() {
+        let historical = serde_json::from_value::<ToolIntent>(serde_json::json!({"Analyze": "config"}))
+            .expect("historical ToolIntent wire name should deserialize");
+        let native = serde_json::from_value::<ToolIntent>(serde_json::json!({"Analyse": "config"}))
+            .expect("native ToolIntent wire name should deserialize");
+
+        let ToolIntent::Analyse(historical_target) = historical else {
+            panic!("historical wire name should decode to ToolIntent::Analyse");
+        };
+        let ToolIntent::Analyse(native_target) = native else {
+            panic!("native wire name should decode to ToolIntent::Analyse");
+        };
+
+        assert_eq!(historical_target, "config", "historical Analyze payload should preserve its target");
+        assert_eq!(native_target, "config", "native Analyse payload should preserve its target");
     }
 }

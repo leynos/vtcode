@@ -252,6 +252,11 @@ mod tests {
     #[test]
     fn test_development_operations() {
         assert_eq!(extract_action_suggestion("debug the issue"), "Debugging");
+        assert_eq!(
+            extract_action_suggestion("analyse the performance"),
+            "Analysing",
+            "the canonical analyse verb should retain its action suggestion"
+        );
         assert_eq!(extract_action_suggestion("analyze the performance"), "Analysing");
         assert_eq!(extract_action_suggestion("refactor this code"), "Refactoring");
         assert_eq!(extract_action_suggestion("optimize the query"), "Optimizing");
