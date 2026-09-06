@@ -248,7 +248,7 @@ fn effort_description(level: ReasoningEffortLevel, model: &str) -> &'static str 
         ReasoningEffortLevel::Medium => "Balanced approach with standard implementation and testing",
         ReasoningEffortLevel::High => "Comprehensive implementation with extensive testing and documentation",
         ReasoningEffortLevel::XHigh if model == "claude-opus-5" => {
-            "Deeper reasoning than high, just below maximum (Opus 5 only)"
+            "Deeper reasoning than high, just below maximum (Opus 4.8/5 only)"
         }
         ReasoningEffortLevel::XHigh => "Deeper reasoning for harder, longer-running problems",
         ReasoningEffortLevel::Max => {

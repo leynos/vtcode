@@ -342,24 +342,52 @@ fn test_history_with_memory_envelope() -> Vec<Message> {
     history
 }
 
-fn assert_local_compaction_history(history: &[Message], _old_envelope_index: usize) {
-    assert_local_compaction_history_with_user_count(history, 4);
+struct LocalCompactionHistoryFacts {
+    envelope_positions: Vec<usize>,
+    has_local_summary: bool,
+    user_count: usize,
 }
 
-fn assert_local_compaction_history_with_user_count(history: &[Message], _retained_user_messages: usize) {
-    let envelope_found = history.iter().any(|message| {
-        message.role == MessageRole::System && message.content.as_text().contains("[Session Memory Envelope]")
-    });
-    let summary_found = history.iter().any(|message| {
-        message.role == MessageRole::System && message.content.as_text().contains("Previous conversation summary")
-    });
-    assert!(
-        envelope_found || summary_found,
-        "Expected either a memory envelope or a summary in the compacted history"
+fn local_compaction_history_facts(history: &[Message]) -> LocalCompactionHistoryFacts {
+    LocalCompactionHistoryFacts {
+        envelope_positions: history
+            .iter()
+            .enumerate()
+            .filter_map(|(index, message)| {
+                (message.role == MessageRole::System && message.content.as_text().contains("[Session Memory Envelope]"))
+                    .then_some(index)
+            })
+            .collect(),
+        has_local_summary: history.iter().any(|message| {
+            message.role == MessageRole::System && message.content.as_text().contains("Previous conversation summary")
+        }),
+        user_count: history.iter().filter(|message| message.role == MessageRole::User).count(),
+    }
+}
+
+#[track_caller]
+fn assert_local_compaction_history(history: &[Message], envelope_index: usize) {
+    assert_local_compaction_history_with_user_count(history, envelope_index, 4);
+}
+
+#[track_caller]
+fn assert_local_compaction_history_with_user_count(
+    history: &[Message],
+    envelope_index: usize,
+    retained_user_messages: usize,
+) {
+    let facts = local_compaction_history_facts(history);
+    assert_eq!(
+        facts.envelope_positions,
+        vec![envelope_index],
+        "Expected exactly one memory envelope at index {envelope_index}"
     );
-    let user_count = history.iter().filter(|message| message.role == MessageRole::User).count();
-    assert!(user_count >= 1, "Expected at least 1 user message, got {user_count}");
-    assert!(history.len() >= 2, "history.len()={} should be at least 2", history.len());
+    assert!(facts.has_local_summary, "Expected a local-compaction summary in the compacted history");
+    assert!(
+        facts.user_count >= retained_user_messages,
+        "Expected at least {retained_user_messages} retained user messages, got {}",
+        facts.user_count
+    );
 }
 
 fn assert_history_contains_messages(history: &[Message], expected_messages: &[Message]) {
@@ -1428,7 +1456,7 @@ async fn auto_compaction_replaces_history_and_clears_response_chain() {
     // The complete fixture fits within the continuity tail, so compaction
     // preserves all protocol messages and only adds durable metadata.
     assert!(outcome.compacted_len >= outcome.original_len);
-    assert_local_compaction_history(&history, 4);
+    assert_local_compaction_history(&history, 10);
     assert_history_contains_messages(&history, &test_history());
     assert!(history[0].content.as_text().contains("Previous conversation summary"));
     assert_eq!(session_stats.previous_response_id_for("stub", "stub-model"), None);
@@ -2005,7 +2033,7 @@ async fn local_and_fork_compaction_preserve_continuity_tail() {
     .expect("compaction succeeds")
     .expect("history should compact");
 
-    assert_local_compaction_history_with_user_count(&history, 2);
+    assert_local_compaction_history_with_user_count(&history, 0, 2);
 
     let compacted = build_summarized_fork_history(
         &provider,

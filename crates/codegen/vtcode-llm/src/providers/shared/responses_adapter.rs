@@ -523,24 +523,30 @@ fn response_error_message(payload: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{ResponsesLifecycleEvent, ResponsesStreamAdapter, ResponsesStreamEvent};
+    use crate::provider::LLMError;
     use serde_json::{Value, json};
 
-    fn event_fixture(payload: Value) -> ResponsesStreamEvent {
-        ResponsesStreamAdapter::parse_sse_data(&payload.to_string()).expect("fixture should parse")
+    #[derive(Debug)]
+    struct ProviderValueBearingRigGapFixture {
+        event_type: String,
+        item_id: Option<String>,
+        call_id: Option<String>,
+        output_index: Option<usize>,
+        sequence_number: Option<u64>,
+        payload: Value,
     }
 
-    fn assert_invalid_stream_payload(payload: Value) {
-        let err = ResponsesStreamAdapter::parse_sse_data(&payload.to_string())
-            .expect_err("fixture should be rejected as invalid stream payload");
+    fn event_fixture(payload: Value) -> Result<ResponsesStreamEvent, LLMError> {
+        ResponsesStreamAdapter::parse_sse_data(&payload.to_string())
+    }
+
+    #[track_caller]
+    fn assert_invalid_stream_payload(err: &LLMError) {
         assert!(err.to_string().contains("invalid stream payload"), "unexpected error: {err}");
     }
 
-    fn assert_provider_value_bearing_rig_gap(
-        payload: Value,
-        expected_event_type: &str,
-        expected_call_id: Option<&str>,
-    ) -> Value {
-        let event = event_fixture(payload);
+    fn provider_value_bearing_rig_gap(payload: Value) -> Result<Option<ProviderValueBearingRigGapFixture>, LLMError> {
+        let event = event_fixture(payload)?;
         let ResponsesStreamEvent::ProviderValueBearingRigGap {
             event_type,
             item_id,
@@ -550,15 +556,30 @@ mod tests {
             payload,
         } = event
         else {
-            panic!("expected provider value-bearing Rig-gap event");
+            return Ok(None);
         };
 
-        assert_eq!(event_type, expected_event_type);
-        assert_eq!(item_id.as_deref(), Some("item_1"));
-        assert_eq!(call_id.as_deref(), expected_call_id);
-        assert_eq!(output_index, Some(2));
-        assert_eq!(sequence_number, Some(10));
-        payload
+        Ok(Some(ProviderValueBearingRigGapFixture {
+            event_type,
+            item_id,
+            call_id,
+            output_index,
+            sequence_number,
+            payload,
+        }))
+    }
+
+    #[track_caller]
+    fn assert_provider_value_bearing_rig_gap(
+        fixture: &ProviderValueBearingRigGapFixture,
+        expected_event_type: &str,
+        expected_call_id: Option<&str>,
+    ) {
+        assert_eq!(fixture.event_type, expected_event_type);
+        assert_eq!(fixture.item_id.as_deref(), Some("item_1"));
+        assert_eq!(fixture.call_id.as_deref(), expected_call_id);
+        assert_eq!(fixture.output_index, Some(2));
+        assert_eq!(fixture.sequence_number, Some(10));
     }
 
     #[test]
@@ -638,7 +659,8 @@ mod tests {
             "type": "response.completed",
             "sequence_number": 20,
             "response": raw_response.clone()
-        }));
+        }))
+        .expect("completed response fixture should parse");
 
         let ResponsesStreamEvent::CompletedResponse { response } = event else {
             panic!("expected completed response fallback");
@@ -664,7 +686,7 @@ mod tests {
             }
         });
 
-        let event = event_fixture(payload.clone());
+        let event = event_fixture(payload.clone()).expect("MCP output item fixture should parse");
         let ResponsesStreamEvent::ProviderValueBearingRigGap {
             event_type,
             item_id,
@@ -705,7 +727,7 @@ mod tests {
             }
         });
 
-        let event = event_fixture(payload.clone());
+        let event = event_fixture(payload.clone()).expect("code interpreter output item fixture should parse");
         let ResponsesStreamEvent::ProviderValueBearingRigGap {
             event_type,
             item_id,
@@ -728,16 +750,18 @@ mod tests {
 
     #[test]
     fn malformed_known_rig_stream_events_remain_invalid_payload() {
-        assert_invalid_stream_payload(json!({
+        let err = event_fixture(json!({
             "type": "response.output_text.delta",
             "item_id": "msg_1",
             "output_index": 0,
             "content_index": 0,
             "sequence_number": 23,
             "delta": 42
-        }));
+        }))
+        .expect_err("malformed output text delta fixture should be rejected");
+        assert_invalid_stream_payload(&err);
 
-        assert_invalid_stream_payload(json!({
+        let err = event_fixture(json!({
             "type": "response.output_item.done",
             "item_id": "fc_1",
             "output_index": 0,
@@ -749,7 +773,9 @@ mod tests {
                 "arguments": "{}",
                 "status": "completed"
             }
-        }));
+        }))
+        .expect_err("malformed function call fixture should be rejected");
+        assert_invalid_stream_payload(&err);
     }
 
     #[test]
@@ -796,7 +822,8 @@ mod tests {
                 }
             }),
         ] {
-            assert_invalid_stream_payload(payload);
+            let err = event_fixture(payload).expect_err("invalid fallback fixture should be rejected");
+            assert_invalid_stream_payload(&err);
         }
     }
 
@@ -960,7 +987,7 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                event_fixture(payload),
+                event_fixture(payload).expect("documented status marker fixture should parse"),
                 ResponsesStreamEvent::Unknown,
                 "{event_type} should be an explicit status/marker no-op"
             );
@@ -969,135 +996,147 @@ mod tests {
 
     #[test]
     fn value_bearing_code_interpreter_code_events_preserve_payload_identity_and_sequence() {
-        let delta_payload = assert_provider_value_bearing_rig_gap(
-            json!({
-                "type": "response.code_interpreter_call_code.delta",
-                "sequence_number": 10,
-                "item_id": "item_1",
-                "call_id": "call_1",
-                "output_index": 2,
-                "code_index": 0,
-                "delta": "print('hello')\n"
-            }),
+        let delta_fixture = provider_value_bearing_rig_gap(json!({
+            "type": "response.code_interpreter_call_code.delta",
+            "sequence_number": 10,
+            "item_id": "item_1",
+            "call_id": "call_1",
+            "output_index": 2,
+            "code_index": 0,
+            "delta": "print('hello')\n"
+        }))
+        .expect("code interpreter delta fixture should parse")
+        .expect("code interpreter delta fixture should produce a Rig-gap event");
+        assert_provider_value_bearing_rig_gap(
+            &delta_fixture,
             "response.code_interpreter_call_code.delta",
             Some("call_1"),
         );
+        let delta_payload = delta_fixture.payload;
         assert_eq!(delta_payload["delta"], "print('hello')\n");
         assert_eq!(delta_payload["code_index"], 0);
 
-        let done_payload = assert_provider_value_bearing_rig_gap(
-            json!({
-                "type": "response.code_interpreter_call_code.done",
-                "sequence_number": 10,
-                "item_id": "item_1",
-                "output_index": 2,
-                "code": "print('hello')\n"
-            }),
-            "response.code_interpreter_call_code.done",
-            None,
-        );
+        let done_fixture = provider_value_bearing_rig_gap(json!({
+            "type": "response.code_interpreter_call_code.done",
+            "sequence_number": 10,
+            "item_id": "item_1",
+            "output_index": 2,
+            "code": "print('hello')\n"
+        }))
+        .expect("code interpreter done fixture should parse")
+        .expect("code interpreter done fixture should produce a Rig-gap event");
+        assert_provider_value_bearing_rig_gap(&done_fixture, "response.code_interpreter_call_code.done", None);
+        let done_payload = done_fixture.payload;
         assert_eq!(done_payload["code"], "print('hello')\n");
     }
 
     #[test]
     fn value_bearing_mcp_argument_events_preserve_payload_identity_and_sequence() {
-        let delta_payload = assert_provider_value_bearing_rig_gap(
-            json!({
-                "type": "response.mcp_call_arguments.delta",
-                "sequence_number": 10,
-                "item_id": "item_1",
-                "output_index": 2,
-                "delta": "{\"path\":\"src"
-            }),
-            "response.mcp_call_arguments.delta",
-            None,
-        );
+        let delta_fixture = provider_value_bearing_rig_gap(json!({
+            "type": "response.mcp_call_arguments.delta",
+            "sequence_number": 10,
+            "item_id": "item_1",
+            "output_index": 2,
+            "delta": "{\"path\":\"src"
+        }))
+        .expect("MCP arguments delta fixture should parse")
+        .expect("MCP arguments delta fixture should produce a Rig-gap event");
+        assert_provider_value_bearing_rig_gap(&delta_fixture, "response.mcp_call_arguments.delta", None);
+        let delta_payload = delta_fixture.payload;
         assert_eq!(delta_payload["delta"], "{\"path\":\"src");
 
-        let done_payload = assert_provider_value_bearing_rig_gap(
-            json!({
-                "type": "response.mcp_call_arguments.done",
-                "sequence_number": 10,
-                "item_id": "item_1",
-                "output_index": 2,
-                "arguments": "{\"path\":\"src/main.rs\"}"
-            }),
-            "response.mcp_call_arguments.done",
-            None,
-        );
+        let done_fixture = provider_value_bearing_rig_gap(json!({
+            "type": "response.mcp_call_arguments.done",
+            "sequence_number": 10,
+            "item_id": "item_1",
+            "output_index": 2,
+            "arguments": "{\"path\":\"src/main.rs\"}"
+        }))
+        .expect("MCP arguments done fixture should parse")
+        .expect("MCP arguments done fixture should produce a Rig-gap event");
+        assert_provider_value_bearing_rig_gap(&done_fixture, "response.mcp_call_arguments.done", None);
+        let done_payload = done_fixture.payload;
         assert_eq!(done_payload["arguments"], "{\"path\":\"src/main.rs\"}");
     }
 
     #[test]
     fn value_bearing_image_partial_event_preserves_payload_identity_and_sequence() {
-        let payload = assert_provider_value_bearing_rig_gap(
-            json!({
-                "type": "response.image_generation_call.partial_image",
-                "sequence_number": 10,
-                "item_id": "item_1",
-                "output_index": 2,
-                "partial_image_index": 0,
-                "partial_image_b64": "iVBORw0KGgo="
-            }),
-            "response.image_generation_call.partial_image",
-            None,
-        );
+        let fixture = provider_value_bearing_rig_gap(json!({
+            "type": "response.image_generation_call.partial_image",
+            "sequence_number": 10,
+            "item_id": "item_1",
+            "output_index": 2,
+            "partial_image_index": 0,
+            "partial_image_b64": "iVBORw0KGgo="
+        }))
+        .expect("image partial fixture should parse")
+        .expect("image partial fixture should produce a Rig-gap event");
+        assert_provider_value_bearing_rig_gap(&fixture, "response.image_generation_call.partial_image", None);
+        let payload = fixture.payload;
         assert_eq!(payload["partial_image_index"], 0);
         assert_eq!(payload["partial_image_b64"], "iVBORw0KGgo=");
     }
 
     #[test]
     fn value_bearing_output_text_annotation_event_preserves_metadata_identity_and_sequence() {
-        let payload = assert_provider_value_bearing_rig_gap(
-            json!({
-                "type": "response.output_text.annotation.added",
-                "sequence_number": 10,
-                "item_id": "item_1",
-                "output_index": 2,
-                "content_index": 0,
-                "annotation_index": 0,
-                "annotation": {
-                    "type": "text_annotation",
-                    "text": "see docs",
-                    "start": 0,
-                    "end": 8
-                }
-            }),
-            "response.output_text.annotation.added",
-            None,
-        );
+        let fixture = provider_value_bearing_rig_gap(json!({
+            "type": "response.output_text.annotation.added",
+            "sequence_number": 10,
+            "item_id": "item_1",
+            "output_index": 2,
+            "content_index": 0,
+            "annotation_index": 0,
+            "annotation": {
+                "type": "text_annotation",
+                "text": "see docs",
+                "start": 0,
+                "end": 8
+            }
+        }))
+        .expect("output text annotation fixture should parse")
+        .expect("output text annotation fixture should produce a Rig-gap event");
+        assert_provider_value_bearing_rig_gap(&fixture, "response.output_text.annotation.added", None);
+        let payload = fixture.payload;
         assert_eq!(payload["annotation_index"], 0);
         assert_eq!(payload["annotation"]["text"], "see docs");
     }
 
     #[test]
     fn custom_tool_input_events_preserve_payload_identity_without_runtime_dispatch() {
-        let delta_payload = assert_provider_value_bearing_rig_gap(
-            json!({
-                "type": "response.custom_tool_call_input.delta",
-                "sequence_number": 10,
-                "item_id": "item_1",
-                "call_id": "call_custom_1",
-                "output_index": 2,
-                "delta": "*** Begin"
-            }),
+        let delta_fixture = provider_value_bearing_rig_gap(json!({
+            "type": "response.custom_tool_call_input.delta",
+            "sequence_number": 10,
+            "item_id": "item_1",
+            "call_id": "call_custom_1",
+            "output_index": 2,
+            "delta": "*** Begin"
+        }))
+        .expect("custom tool input delta fixture should parse")
+        .expect("custom tool input delta fixture should produce a Rig-gap event");
+        assert_provider_value_bearing_rig_gap(
+            &delta_fixture,
             "response.custom_tool_call_input.delta",
             Some("call_custom_1"),
         );
+        let delta_payload = delta_fixture.payload;
         assert_eq!(delta_payload["delta"], "*** Begin");
 
-        let done_payload = assert_provider_value_bearing_rig_gap(
-            json!({
-                "type": "response.custom_tool_call_input.done",
-                "sequence_number": 10,
-                "item_id": "item_1",
-                "call_id": "call_custom_1",
-                "output_index": 2,
-                "input": "*** Begin Patch\n*** End Patch\n"
-            }),
+        let done_fixture = provider_value_bearing_rig_gap(json!({
+            "type": "response.custom_tool_call_input.done",
+            "sequence_number": 10,
+            "item_id": "item_1",
+            "call_id": "call_custom_1",
+            "output_index": 2,
+            "input": "*** Begin Patch\n*** End Patch\n"
+        }))
+        .expect("custom tool input done fixture should parse")
+        .expect("custom tool input done fixture should produce a Rig-gap event");
+        assert_provider_value_bearing_rig_gap(
+            &done_fixture,
             "response.custom_tool_call_input.done",
             Some("call_custom_1"),
         );
+        let done_payload = done_fixture.payload;
         assert_eq!(done_payload["input"], "*** Begin Patch\n*** End Patch\n");
     }
 
@@ -1110,7 +1149,8 @@ mod tests {
                 "item_id": "rs_1",
                 "output_index": 0,
                 "delta": "private chain summary"
-            })),
+            }))
+            .expect("reasoning text delta fixture should parse"),
             ResponsesStreamEvent::ReasoningDelta { delta: "private chain summary".to_string() }
         );
 
@@ -1121,7 +1161,8 @@ mod tests {
                 "item_id": "rs_1",
                 "output_index": 0,
                 "delta": "provider reasoning content"
-            })),
+            }))
+            .expect("reasoning content delta fixture should parse"),
             ResponsesStreamEvent::ReasoningDelta { delta: "provider reasoning content".to_string() }
         );
 
@@ -1131,7 +1172,8 @@ mod tests {
                 "sequence_number": 3,
                 "item_id": "rs_1",
                 "output_index": 0
-            })),
+            }))
+            .expect("reasoning text done marker fixture should parse"),
             ResponsesStreamEvent::Unknown
         );
 
@@ -1142,7 +1184,8 @@ mod tests {
                 "item_id": "rs_1",
                 "output_index": 0,
                 "text": "final reasoning text"
-            })),
+            }))
+            .expect("reasoning text completion fixture should parse"),
             ResponsesStreamEvent::ReasoningDelta { delta: "final reasoning text".to_string() }
         );
     }
@@ -1193,7 +1236,8 @@ mod tests {
                     "output": [],
                     "tools": []
                 }
-            })),
+            }))
+            .expect("response created fixture should parse"),
             ResponsesStreamEvent::Lifecycle { kind: ResponsesLifecycleEvent::Created }
         );
 
@@ -1205,7 +1249,8 @@ mod tests {
                 "content_index": 0,
                 "sequence_number": 1,
                 "delta": "hello"
-            })),
+            }))
+            .expect("output text delta fixture should parse"),
             ResponsesStreamEvent::TextDelta { delta: "hello".to_string() }
         );
 
@@ -1217,7 +1262,8 @@ mod tests {
                 "content_index": 0,
                 "sequence_number": 2,
                 "delta": "no"
-            })),
+            }))
+            .expect("refusal delta fixture should parse"),
             ResponsesStreamEvent::RefusalDelta { delta: "no".to_string() }
         );
 
@@ -1229,7 +1275,8 @@ mod tests {
                 "summary_index": 0,
                 "sequence_number": 3,
                 "delta": "thinking"
-            })),
+            }))
+            .expect("reasoning summary delta fixture should parse"),
             ResponsesStreamEvent::ReasoningDelta { delta: "thinking".to_string() }
         );
 
@@ -1255,7 +1302,8 @@ mod tests {
                 "tools": [],
                 "vtcode_overlay": "preserved"
             }
-        }));
+        }))
+        .expect("completed response fixture should parse");
 
         let ResponsesStreamEvent::CompletedResponse { response } = completed else {
             panic!("expected completed response event");
@@ -1291,7 +1339,8 @@ mod tests {
                     "output": [],
                     "tools": []
                 }
-            })),
+            }))
+            .expect("provider failed event fixture should parse"),
             ResponsesStreamEvent::Error { message: "backend failed".to_string() }
         );
 
@@ -1316,7 +1365,8 @@ mod tests {
                     "output": [],
                     "tools": []
                 }
-            })),
+            }))
+            .expect("provider incomplete event fixture should parse"),
             ResponsesStreamEvent::Error { message: "max output tokens reached".to_string() }
         );
 
@@ -1324,7 +1374,8 @@ mod tests {
             event_fixture(json!({
                 "type": "error",
                 "error": {"message": "rate limited"}
-            })),
+            }))
+            .expect("provider error event fixture should parse"),
             ResponsesStreamEvent::Error { message: "rate limited".to_string() }
         );
     }
@@ -1345,7 +1396,8 @@ mod tests {
                         "message": "Concurrency limit exceeded for account, please retry later"
                     }
                 }
-            })),
+            }))
+            .expect("minimal failed response fixture should parse"),
             ResponsesStreamEvent::Error {
                 message: "Concurrency limit exceeded for account, please retry later".to_string()
             }
@@ -1368,7 +1420,8 @@ mod tests {
                         "message": "max output tokens reached"
                     }
                 }
-            })),
+            }))
+            .expect("minimal incomplete response fixture should parse"),
             ResponsesStreamEvent::Error { message: "max output tokens reached".to_string() }
         );
     }
@@ -1385,7 +1438,8 @@ mod tests {
                     "status": "in_progress",
                     "output": []
                 }
-            })),
+            }))
+            .expect("minimal created response fixture should parse"),
             ResponsesStreamEvent::Lifecycle { kind: ResponsesLifecycleEvent::Created }
         );
 
@@ -1399,7 +1453,8 @@ mod tests {
                     "status": "in_progress",
                     "output": []
                 }
-            })),
+            }))
+            .expect("minimal in-progress response fixture should parse"),
             ResponsesStreamEvent::Lifecycle { kind: ResponsesLifecycleEvent::InProgress }
         );
     }
@@ -1416,7 +1471,8 @@ mod tests {
                     "status": "failed",
                     "output": []
                 }
-            })),
+            }))
+            .expect("minimal failed response without error fixture should parse"),
             ResponsesStreamEvent::Error {
                 message: "Unknown error from Responses API".to_string()
             }
@@ -1439,7 +1495,8 @@ mod tests {
                     "arguments": "",
                     "status": "in_progress"
                 }
-            })),
+            }))
+            .expect("function call start fixture should parse"),
             ResponsesStreamEvent::FunctionCallNameDelta {
                 call_id: "call_1".to_string(),
                 item_id: Some("fc_1".to_string()),
@@ -1457,7 +1514,8 @@ mod tests {
                 "sequence_number": 2,
                 "call_id": "call_1",
                 "delta": "{\"query\":\"vtcode\"}"
-            })),
+            }))
+            .expect("function call arguments delta fixture should parse"),
             ResponsesStreamEvent::FunctionCallArgumentsDelta {
                 call_id: "call_1".to_string(),
                 item_id: Some("fc_1".to_string()),
@@ -1480,7 +1538,8 @@ mod tests {
                     "arguments": "{\"query\":\"vtcode\"}",
                     "status": "completed"
                 }
-            })),
+            }))
+            .expect("function call completion fixture should parse"),
             ResponsesStreamEvent::CompletedToolCall {
                 call_id: "call_1".to_string(),
                 item_id: Some("fc_1".to_string()),

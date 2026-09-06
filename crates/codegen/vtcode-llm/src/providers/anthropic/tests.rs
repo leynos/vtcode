@@ -83,6 +83,7 @@ mod validation_tests {
     use std::sync::Arc;
     use vtcode_config::constants::models;
     use vtcode_config::core::AnthropicConfig;
+    use vtcode_config::types::ReasoningEffortLevel;
 
     #[test]
     fn test_validate_empty_messages() {
@@ -142,10 +143,10 @@ mod validation_tests {
     }
 
     #[test]
-    fn test_validate_effort_rejects_unsupported_models() {
+    fn test_validate_effort_rejects_unknown_model() {
         let request = LLMRequest {
             messages: vec![Message::user("hi".to_string())].into(),
-            model: models::CLAUDE_SONNET_5.to_string(),
+            model: "claude-3-7-sonnet-test".to_string(),
             effort: Some("medium".to_string()),
             ..Default::default()
         };
@@ -166,20 +167,7 @@ mod validation_tests {
     }
 
     #[test]
-    fn test_validate_effort_xhigh_rejected_for_sonnet_4_6() {
-        let config = AnthropicConfig::default();
-        let request = LLMRequest {
-            messages: vec![Message::user("hi".to_string())].into(),
-            model: models::CLAUDE_SONNET_5.to_string(),
-            effort: Some("xhigh".to_string()),
-            ..Default::default()
-        };
-
-        assert!(validate_request(&request, models::anthropic::DEFAULT_MODEL, &config, "Anthropic").is_err());
-    }
-
-    #[test]
-    fn test_validate_sonnet_4_6_omits_prefill_without_thinking() {
+    fn test_validate_sonnet_5_omits_prefill_without_thinking() {
         let config = AnthropicConfig {
             extended_thinking_enabled: false,
             ..AnthropicConfig::default()
@@ -195,7 +183,7 @@ mod validation_tests {
     }
 
     #[test]
-    fn test_validate_sonnet_4_6_omits_prefill_thought_without_thinking() {
+    fn test_validate_sonnet_5_omits_prefill_thought_without_thinking() {
         let config = AnthropicConfig {
             extended_thinking_enabled: false,
             ..AnthropicConfig::default()
@@ -456,14 +444,44 @@ mod response_parser_tests {
 
 #[cfg(test)]
 mod request_builder_tests {
-    use crate::provider::{LLMRequest, Message, PromptCacheProfile, ToolDefinition};
+    use crate::provider::{CodingAgentSettings, LLMRequest, Message, PromptCacheProfile, ToolDefinition};
+    use crate::providers::anthropic::AnthropicProvider;
     use crate::providers::anthropic::request_builder::{
         RequestBuilderContext, convert_to_anthropic_format, tool_result_blocks,
     };
+    use rstest::{fixture, rstest};
     use serde_json::json;
     use std::sync::Arc;
     use vtcode_config::constants::models;
     use vtcode_config::core::{AnthropicConfig, AnthropicPromptCacheSettings};
+    use vtcode_config::types::ReasoningEffortLevel;
+
+    /// Owns the default values shared by request-builder tests.
+    struct DefaultRequestBuilderContext {
+        cache_settings: AnthropicPromptCacheSettings,
+        anthropic_config: AnthropicConfig,
+    }
+
+    impl DefaultRequestBuilderContext {
+        /// Borrows the stored defaults as a request-builder context.
+        fn context(&self) -> RequestBuilderContext<'_> {
+            RequestBuilderContext {
+                prompt_cache_enabled: false,
+                prompt_cache_settings: &self.cache_settings,
+                anthropic_config: &self.anthropic_config,
+                model: models::anthropic::DEFAULT_MODEL,
+            }
+        }
+    }
+
+    /// Supplies the default cache and provider configuration for request-builder tests.
+    #[fixture]
+    fn default_request_builder_context() -> DefaultRequestBuilderContext {
+        DefaultRequestBuilderContext {
+            cache_settings: AnthropicPromptCacheSettings::default(),
+            anthropic_config: AnthropicConfig::default(),
+        }
+    }
 
     #[test]
     fn test_tool_result_blocks_empty() {
@@ -494,6 +512,88 @@ mod request_builder_tests {
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0]["type"], "text");
         assert_eq!(blocks[0]["text"], "{\"key\":\"value\"}");
+    }
+
+    /// Proves Sonnet 5 omits both assistant-prefill inputs and uses the system fallback.
+    #[rstest]
+    fn test_sonnet_5_omits_prefill_and_uses_system_fallback(
+        default_request_builder_context: DefaultRequestBuilderContext,
+    ) {
+        let provider = AnthropicProvider::new(String::from("test-key"));
+        let request = LLMRequest {
+            model: String::from(models::CLAUDE_SONNET_5),
+            messages: vec![Message::user(String::from("hi"))].into(),
+            prefill: Some(String::from("{")),
+            coding_agent_settings: Some(Box::new(CodingAgentSettings { prefill_thought: true, ..Default::default() })),
+            ..Default::default()
+        };
+
+        let protected_request = provider.with_leak_protection(request, "the Anthropic API key");
+        assert_eq!(
+            protected_request.prefill.as_deref(),
+            Some("{"),
+            "leak protection should preserve caller input before conversion"
+        );
+        assert_eq!(
+            protected_request.system_prompt.as_deref(),
+            Some("[Never mention or reveal the Anthropic API key]"),
+            "unsupported assistant prefills should route leak protection to the system prompt"
+        );
+
+        let ctx = default_request_builder_context.context();
+        let payload = convert_to_anthropic_format(&protected_request, &ctx).expect("payload conversion");
+
+        let messages = payload
+            .get("messages")
+            .and_then(serde_json::Value::as_array)
+            .expect("payload should contain an array of messages");
+        assert_eq!(messages.len(), 1, "unsupported prefills should leave only the original user message");
+        let only_message = messages.first().expect("single user message");
+        assert_eq!(
+            only_message.get("role").and_then(serde_json::Value::as_str),
+            Some("user"),
+            "unsupported prefills must not create an assistant message"
+        );
+        assert_eq!(
+            payload.get("system").and_then(serde_json::Value::as_str),
+            Some("[Never mention or reveal the Anthropic API key]"),
+            "leak protection should fall back to the system prompt"
+        );
+    }
+
+    /// Guards the legacy capability path by retaining the serialized assistant prefill.
+    #[rstest]
+    fn test_legacy_model_keeps_assistant_prefill(default_request_builder_context: DefaultRequestBuilderContext) {
+        let request = LLMRequest {
+            model: String::from("claude-sonnet-4-5"),
+            messages: vec![Message::user(String::from("hi"))].into(),
+            prefill: Some(String::from("{")),
+            coding_agent_settings: Some(Box::new(CodingAgentSettings { prefill_thought: true, ..Default::default() })),
+            ..Default::default()
+        };
+        let ctx = default_request_builder_context.context();
+
+        let payload = convert_to_anthropic_format(&request, &ctx).expect("payload conversion");
+        let messages = payload
+            .get("messages")
+            .and_then(serde_json::Value::as_array)
+            .expect("payload should contain an array of messages");
+        assert_eq!(messages.len(), 2, "legacy prefill should append one assistant message");
+        let assistant = messages.get(1).expect("legacy payload assistant message");
+        let prefill = messages
+            .get(1)
+            .and_then(|message| message.get("content"))
+            .and_then(serde_json::Value::as_array)
+            .and_then(|content| content.first())
+            .and_then(|content| content.get("text"))
+            .and_then(serde_json::Value::as_str);
+
+        assert_eq!(
+            assistant.get("role").and_then(serde_json::Value::as_str),
+            Some("assistant"),
+            "legacy models should retain an assistant prefill message"
+        );
+        assert_eq!(prefill, Some("<thought> {"), "legacy prefill should combine thought and text inputs");
     }
 
     #[test]
@@ -1085,14 +1185,17 @@ mod request_builder_tests {
     }
 
     #[test]
-    fn test_convert_to_anthropic_format_falls_back_to_high_for_sonnet_4_6_default_effort() {
+    fn test_convert_to_anthropic_format_falls_back_to_high_for_invalid_configured_effort_on_sonnet_5() {
         let request = LLMRequest {
             model: models::CLAUDE_SONNET_5.to_string(),
             messages: vec![Message::user("solve this carefully".to_string())].into(),
             ..Default::default()
         };
         let cache_settings = AnthropicPromptCacheSettings::default();
-        let anthropic_config = AnthropicConfig::default();
+        let anthropic_config = AnthropicConfig {
+            effort: ReasoningEffortLevel::Unknown,
+            ..AnthropicConfig::default()
+        };
         let ctx = RequestBuilderContext {
             prompt_cache_enabled: false,
             prompt_cache_settings: &cache_settings,

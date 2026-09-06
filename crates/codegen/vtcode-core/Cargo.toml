@@ -203,10 +203,13 @@ default-target = "x86_64-unknown-linux-gnu"
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dev-dependencies]
+temp-env = { workspace = true }
+filetime = { workspace = true }
 assert_fs = { workspace = true }
 proptest = "1.11"
 criterion = { workspace = true }
 serial_test = { workspace = true }
+rstest = { workspace = true }
 
 [[bench]]
 name = "tool_pipeline"

@@ -225,8 +225,8 @@ async fn resolve_terminal_working_dir_accepts_workdir_alias() {
 }
 
 #[tokio::test]
-async fn read_only_primary_agents_hide_local_tools() {
-    let temp = TempDir::new().unwrap();
+async fn primary_agent_catalogues_respect_inspection_and_mutation_permissions() {
+    let temp = TempDir::new().expect("create isolated ACP workspace");
     let agent = build_agent(temp.path()).await;
     let enabled_tools: Vec<_> = agent
         .tool_availability(true, false)
@@ -237,12 +237,26 @@ async fn read_only_primary_agents_hide_local_tools() {
         })
         .collect();
 
-    let duck_names = definition_names(agent.tool_definitions(true, &enabled_tools, "duck").unwrap());
-    let plan_names = definition_names(agent.tool_definitions(true, &enabled_tools, "plan").unwrap());
-    let build_names = definition_names(agent.tool_definitions(true, &enabled_tools, "build").unwrap());
+    let duck_names = definition_names(
+        agent
+            .tool_definitions(true, &enabled_tools, "duck")
+            .expect("resolve duck catalogue"),
+    );
+    let plan_names = definition_names(
+        agent
+            .tool_definitions(true, &enabled_tools, "plan")
+            .expect("resolve planning catalogue"),
+    );
+    let build_names = definition_names(
+        agent
+            .tool_definitions(true, &enabled_tools, "build")
+            .expect("resolve build catalogue"),
+    );
 
     assert_eq!(duck_names, vec![tools::LIST_FILES.to_string()]);
-    assert_eq!(plan_names, duck_names);
+    // Planning permits shell inspection; its execution policy separately
+    // rejects mutations. Duck deliberately has no shell capability.
+    assert_eq!(plan_names, vec![tools::LIST_FILES.to_string(), tools::EXEC_COMMAND.to_string()]);
     let removed_tool = format!("switch_{}", "mode");
     assert!(!build_names.contains(&removed_tool));
     assert!(build_names.contains(&tools::LIST_FILES.to_string()));

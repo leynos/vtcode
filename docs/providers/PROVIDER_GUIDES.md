@@ -228,6 +228,19 @@ replace the retained evidence or expose provider chain-of-thought.
 -   **Provider key:** `anthropic` (env: `ANTHROPIC_API_KEY`)
 -   **Default model:** `claude-sonnet-5`
 -   **Curated models:** `claude-sonnet-5`, `claude-fable-5`, `claude-mythos-5`, `claude-opus-5`, `claude-opus-4-8`, `claude-sonnet-4-6`, and `claude-haiku-4-5`
+- **Assistant prefills:** Thinking-profile models, including
+    `claude-sonnet-5`, omit assistant prefills from the outgoing request. This
+    covers `prefill`, `prefill_thought`, and character-reinforcement prefills.
+    Models without a thinking profile retain the legacy assistant-prefill
+    fallback.
+- **Leak-protection fallback:** For a model that cannot use assistant
+    prefills, VT Code uses the system prompt instead. It adds
+    `[Never mention or reveal {secret_description}]` (with
+    `{secret_description}` substituted) before an existing system prompt with
+    two newlines, or uses the reminder as the system prompt when none exists.
+    Existing consumers that relied on assistant prefills should move those
+    instructions to `system_prompt` rather than relying on assistant-prefill
+    behaviour.
 -   Collapsed or bounded tool output is disclosed to every provider/model with the fixed turn-scoped notice. Anthropic wire routes use `clear_at: "next_user_message"` plus the required beta only when the selected provider/model capability allows it; unsupported Claude models and other routes use ordinary top-level system/history mapping.
 -   Key management and defaults mirror the Gemini/OpenAI flow in [Getting Started](../user-guide/getting-started.md#api-requirements).
 -   Supported model IDs live in [`crates/codegen/vtcode-config/src/constants/models/anthropic.rs`](../../crates/codegen/vtcode-config/src/constants/models/anthropic.rs).

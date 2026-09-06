@@ -711,7 +711,7 @@ mod tests {
     use super::{AnthropicProvider, capabilities, code_execution_beta_name, headers};
     use crate::provider::{ContentPart, LLMRequest, Message, MessageContent, ToolDefinition};
     use serde_json::json;
-    use vtcode_config::constants::models;
+    use vtcode_config::{constants::models, core::AnthropicConfig};
 
     #[test]
     fn resolve_minimax_base_url_defaults_to_anthropic_v1() {
@@ -980,25 +980,7 @@ mod tests {
     }
 
     #[test]
-    fn beta_header_uses_request_model_instead_of_provider_default() {
-        let provider = AnthropicProvider::with_model("test-key".to_string(), models::CLAUDE_SONNET_5.to_string());
-        let request = LLMRequest {
-            model: models::CLAUDE_SONNET_5.to_string(),
-            messages: vec![Message::user("hello".to_string())].into(),
-            ..Default::default()
-        };
-
-        let payload = provider.convert_to_anthropic_format(&request).expect("payload conversion");
-        let beta_header = provider.beta_header_for_request(&request, &payload, false, None);
-
-        assert_eq!(payload["model"], models::CLAUDE_SONNET_5);
-        if let Some(header) = &beta_header {
-            assert!(!header.contains("interleaved-thinking-2025-05-14"));
-        }
-    }
-
-    #[test]
-    fn beta_header_includes_interleaved_thinking_for_sonnet_4_6_manual_mode() {
+    fn beta_header_omits_interleaved_thinking_for_sonnet_5_manual_budget() {
         let provider = AnthropicProvider::with_model("test-key".to_string(), models::CLAUDE_SONNET_5.to_string());
         let request = LLMRequest {
             model: models::CLAUDE_SONNET_5.to_string(),
@@ -1009,12 +991,45 @@ mod tests {
         };
 
         let payload = provider.convert_to_anthropic_format(&request).expect("payload conversion");
+        let beta_header = provider.beta_header_for_request(&request, &payload, false, None);
+
+        assert_eq!(payload["model"], models::CLAUDE_SONNET_5);
+        assert_eq!(payload["thinking"]["type"], "adaptive");
+        if let Some(header) = &beta_header {
+            assert!(!header.contains("interleaved-thinking-2025-05-14"));
+        }
+    }
+
+    #[test]
+    fn beta_header_uses_request_model_task_budget_capability() {
+        let anthropic_config = AnthropicConfig {
+            task_budget_tokens: Some(20_000),
+            ..AnthropicConfig::default()
+        };
+        let task_budget_beta = anthropic_config.task_budget_beta.clone();
+        let provider = AnthropicProvider::from_config(
+            Some("test-key".to_string()),
+            Some(models::CLAUDE_SONNET_5.to_string()),
+            None,
+            None,
+            None,
+            Some(anthropic_config),
+            None,
+        );
+        let request = LLMRequest {
+            model: models::CLAUDE_OPUS_5.to_string(),
+            messages: vec![Message::user("hello".to_string())].into(),
+            ..Default::default()
+        };
+
+        let payload = provider.convert_to_anthropic_format(&request).expect("payload conversion");
         let beta_header = provider
             .beta_header_for_request(&request, &payload, false, None)
-            .expect("beta header");
+            .expect("task budget beta header");
 
-        assert_eq!(payload["thinking"]["type"], "enabled");
-        assert!(beta_header.contains("interleaved-thinking-2025-05-14"));
+        assert_eq!(payload["model"], models::CLAUDE_OPUS_5);
+        assert_eq!(payload["output_config"]["task_budget"]["total"].as_u64(), Some(20_000));
+        assert!(beta_header.contains(&task_budget_beta));
     }
 
     #[test]

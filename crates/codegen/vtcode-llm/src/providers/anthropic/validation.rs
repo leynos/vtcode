@@ -109,9 +109,7 @@ pub fn validate_request(
     }
 
     if request.thinking_budget.is_some()
-        && claude_thinking_profile(resolved_model, default_model).is_some_and(|profile| {
-            matches!(profile.mode, super::capabilities::ClaudeThinkingMode::Adaptive) && !profile.supports_manual_budget
-        })
+        && claude_thinking_profile(resolved_model, default_model).is_some_and(|profile| !profile.supports_manual_budget)
     {
         let formatted_error = error_display::format_llm_error(
             provider_name,
@@ -234,24 +232,12 @@ fn resolve_effective_thinking_mode(
         return EffectiveThinkingMode::Disabled;
     }
 
-    match profile.mode {
-        super::capabilities::ClaudeThinkingMode::Adaptive => {
-            if profile.supports_manual_budget
-                && let Some(budget) = request.thinking_budget
-            {
-                EffectiveThinkingMode::ManualBudget(budget)
-            } else {
-                EffectiveThinkingMode::Adaptive
-            }
-        }
-        super::capabilities::ClaudeThinkingMode::ManualBudget => {
-            let budget = effective_manual_thinking_budget(request, anthropic_config);
-            if budget >= 1024 {
-                EffectiveThinkingMode::ManualBudget(budget)
-            } else {
-                EffectiveThinkingMode::Disabled
-            }
-        }
+    if profile.supports_manual_budget
+        && let Some(budget) = request.thinking_budget
+    {
+        EffectiveThinkingMode::ManualBudget(budget)
+    } else {
+        EffectiveThinkingMode::Adaptive
     }
 }
 
@@ -272,26 +258,6 @@ fn effective_manual_thinking_budget_override(request: &LLMRequest) -> Option<u32
     }
 
     request.thinking_budget
-}
-
-fn effective_manual_thinking_budget(request: &LLMRequest, anthropic_config: &AnthropicConfig) -> u32 {
-    if let Some(budget) = request.thinking_budget {
-        return budget;
-    }
-
-    if let Some(effort) = request.reasoning_effort {
-        return match effort {
-            ReasoningEffortLevel::None | ReasoningEffortLevel::Unknown => 0,
-            ReasoningEffortLevel::Minimal => 1024,
-            ReasoningEffortLevel::Low => 4096,
-            ReasoningEffortLevel::Medium => 8192,
-            ReasoningEffortLevel::High => 16384,
-            ReasoningEffortLevel::XHigh => 32768,
-            ReasoningEffortLevel::Max => 32768,
-        };
-    }
-
-    anthropic_config.interleaved_thinking_budget_tokens
 }
 
 fn effective_task_budget_tokens(request: &LLMRequest, anthropic_config: &AnthropicConfig) -> Option<u32> {

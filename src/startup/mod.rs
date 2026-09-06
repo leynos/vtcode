@@ -827,8 +827,10 @@ fn command_launches_tui(command: Option<&Commands>) -> bool {
 #[cfg(test)]
 mod validation_tests {
     use super::*;
+    use anyhow::{Context, Result, anyhow};
     use assert_fs::TempDir;
     use clap::Parser;
+    use std::ffi::OsStr;
     use std::fs;
     use std::io::Write;
     use std::path::Path;
@@ -849,14 +851,17 @@ mod validation_tests {
         }
     }
 
-    fn save_workspace_config(workspace: &Path, config: &VTCodeConfig) {
+    fn save_workspace_config(workspace: &Path, config: &VTCodeConfig) -> Result<()> {
         let path = workspace.join("vtcode.toml");
-        ConfigManager::save_config_to_path(&path, config).expect("save workspace config");
+        ConfigManager::save_config_to_path(&path, config)
+            .with_context(|| format!("save workspace configuration to {}", path.display()))?;
         let mut file = fs::OpenOptions::new()
             .append(true)
-            .open(path)
-            .expect("open workspace config for isolation marker");
-        writeln!(file, "\n[workspace]\nuse_root_config = true").expect("write isolation marker");
+            .open(&path)
+            .with_context(|| format!("open {} for the workspace isolation marker", path.display()))?;
+        writeln!(file, "\n[workspace]\nuse_root_config = true")
+            .with_context(|| format!("write workspace isolation marker to {}", path.display()))?;
+        Ok(())
     }
 
     #[test]
@@ -1307,7 +1312,7 @@ mod validation_tests {
         config.agent.default_model = vtcode_core::config::constants::models::openai::GPT_5.to_string();
         config.automation.full_auto.enabled = true;
         config.automation.full_auto.require_profile_ack = false;
-        save_workspace_config(&workspace, &config);
+        save_workspace_config(&workspace, &config).expect("write full-auto workspace configuration");
 
         env_guard.set_var("OPENAI_API_KEY", "test");
         let args = Cli::parse_from([
@@ -1335,39 +1340,147 @@ mod validation_tests {
         assert!(!config.agent.codex_app_server.experimental_features);
     }
 
-    #[tokio::test]
-    async fn missing_codex_sidecar_falls_back_to_openai_and_persists_selection() {
-        let env_guard = env_lock::lock();
-        let temp = TempDir::new().expect("temp dir");
-        let workspace = temp.path().to_path_buf();
+    struct CodexFallbackFacts {
+        runtime_provider: String,
+        runtime_model: String,
+        config_provider: String,
+        config_model: String,
+        persisted_provider: String,
+        persisted_model: String,
+    }
+
+    fn missing_codex_sidecar_openai_fallback(selected_model: &str) -> Result<CodexFallbackFacts> {
+        let workspace_dir = tempfile::tempdir().context("create isolated fallback workspace")?;
+        let workspace = workspace_dir.path();
         let mut config = VTCodeConfig::default();
         config.agent.provider = "codex".to_string();
-        config.agent.default_model = "gpt-5-codex".to_string();
+        config.agent.default_model = selected_model.to_string();
         config.agent.codex_app_server.command = workspace.join("missing-codex").display().to_string();
         config.agent.credential_storage_mode = AuthCredentialsStoreMode::File;
         config.auth.openai.preferred_method = OpenAIPreferredMethod::ApiKey;
         config.auth.copilot.command = Some(workspace.join("missing-copilot").display().to_string());
-        save_workspace_config(&workspace, &config);
+        save_workspace_config(workspace, &config)?;
 
-        env_guard.set_var("OPENAI_API_KEY", "test-openai-key");
-        env_guard.remove_var("GITHUB_TOKEN");
-        let args = Cli::parse_from(["vtcode", "--workspace", workspace.to_str().expect("workspace path")]);
+        let workspace_str = workspace
+            .to_str()
+            .ok_or_else(|| anyhow!("fallback workspace path is not valid UTF-8: {}", workspace.display()))?;
+        let root = workspace.as_os_str();
+        let _environment_guard = env_lock::lock();
+        temp_env::with_vars(
+            [
+                ("CODEX_HOME", Some(root)),
+                ("GITHUB_TOKEN", None::<&OsStr>),
+                ("HOME", Some(root)),
+                ("OPENAI_API_KEY", Some(OsStr::new("test-openai-key"))),
+                ("VTCODE_CONFIG", Some(root)),
+                ("VTCODE_CONFIG_PATH", None),
+                ("VTCODE_DATA", Some(root)),
+                ("VTCODE_HOME", Some(root)),
+                ("XDG_CACHE_HOME", Some(root)),
+                ("XDG_CONFIG_DIRS", Some(root)),
+                ("XDG_CONFIG_HOME", Some(root)),
+                ("XDG_DATA_DIRS", Some(root)),
+                ("XDG_DATA_HOME", Some(root)),
+                ("XDG_RUNTIME_DIR", Some(root)),
+                ("XDG_STATE_HOME", Some(root)),
+            ],
+            || {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .context("build isolated fallback runtime")?
+                    .block_on(async {
+                        let args = Cli::try_parse_from(["vtcode", "--workspace", workspace_str])
+                            .context("parse isolated fallback startup arguments")?;
+                        let ctx = StartupContext::from_cli_args(&args)
+                            .await
+                            .context("start with the unavailable Codex sidecar")?;
+                        let persisted = ConfigManager::load_from_workspace(workspace)
+                            .context("reload persisted fallback configuration")?
+                            .config()
+                            .clone();
 
-        let ctx = StartupContext::from_cli_args(&args)
-            .await
-            .expect("startup should fall back to openai");
+                        Ok(CodexFallbackFacts {
+                            runtime_provider: ctx.agent_config.provider,
+                            runtime_model: ctx.agent_config.model,
+                            config_provider: ctx.config.agent.provider,
+                            config_model: ctx.config.agent.default_model,
+                            persisted_provider: persisted.agent.provider,
+                            persisted_model: persisted.agent.default_model,
+                        })
+                    })
+            },
+        )
+    }
 
-        assert_eq!(ctx.agent_config.provider, "openai");
-        assert_eq!(ctx.agent_config.model, "gpt-5-codex");
-        assert_eq!(ctx.config.agent.provider, "openai");
-        assert_eq!(ctx.config.agent.default_model, "gpt-5-codex");
+    #[test]
+    fn missing_codex_sidecar_preserves_supported_openai_model_and_persists_selection() -> Result<()> {
+        let selected_model = vtcode_core::config::constants::models::openai::GPT_5_6_LUNA;
+        anyhow::ensure!(
+            selected_model != vtcode_core::config::constants::models::openai::DEFAULT_MODEL,
+            "retention fixture must use a supported non-default OpenAI model"
+        );
+        let facts = missing_codex_sidecar_openai_fallback(selected_model)?;
+        anyhow::ensure!(facts.runtime_provider == "openai", "fallback runtime provider: {}", facts.runtime_provider);
+        anyhow::ensure!(
+            facts.runtime_model == selected_model,
+            "supported model should be retained at runtime: {}",
+            facts.runtime_model
+        );
+        anyhow::ensure!(
+            facts.config_provider == "openai",
+            "fallback configuration provider: {}",
+            facts.config_provider
+        );
+        anyhow::ensure!(
+            facts.config_model == selected_model,
+            "supported model should be retained in configuration: {}",
+            facts.config_model
+        );
+        anyhow::ensure!(
+            facts.persisted_provider == "openai",
+            "persisted fallback provider: {}",
+            facts.persisted_provider
+        );
+        anyhow::ensure!(
+            facts.persisted_model == selected_model,
+            "supported model should be retained in persisted configuration: {}",
+            facts.persisted_model
+        );
+        Ok(())
+    }
 
-        let persisted = ConfigManager::load_from_workspace(&workspace)
-            .expect("reload persisted config")
-            .config()
-            .clone();
-        assert_eq!(persisted.agent.provider, "openai");
-        assert_eq!(persisted.agent.default_model, "gpt-5-codex");
+    #[test]
+    fn missing_codex_sidecar_replaces_unsupported_openai_model_and_persists_selection() -> Result<()> {
+        let expected_model = vtcode_core::config::constants::models::openai::DEFAULT_MODEL;
+        let facts = missing_codex_sidecar_openai_fallback("gpt-5-codex")?;
+        anyhow::ensure!(facts.runtime_provider == "openai", "fallback runtime provider: {}", facts.runtime_provider);
+        anyhow::ensure!(
+            facts.runtime_model == expected_model,
+            "unsupported model should use current default at runtime: {}",
+            facts.runtime_model
+        );
+        anyhow::ensure!(
+            facts.config_provider == "openai",
+            "fallback configuration provider: {}",
+            facts.config_provider
+        );
+        anyhow::ensure!(
+            facts.config_model == expected_model,
+            "unsupported model should use current default in configuration: {}",
+            facts.config_model
+        );
+        anyhow::ensure!(
+            facts.persisted_provider == "openai",
+            "persisted fallback provider: {}",
+            facts.persisted_provider
+        );
+        anyhow::ensure!(
+            facts.persisted_model == expected_model,
+            "unsupported model should use current default in persisted configuration: {}",
+            facts.persisted_model
+        );
+        Ok(())
     }
 
     #[tokio::test]
@@ -1390,7 +1503,7 @@ mod validation_tests {
         config.agent.credential_storage_mode = AuthCredentialsStoreMode::File;
         config.auth.openai.preferred_method = OpenAIPreferredMethod::Chatgpt;
         config.auth.copilot.command = Some(fake_copilot.display().to_string());
-        save_workspace_config(&workspace, &config);
+        save_workspace_config(&workspace, &config).expect("write Copilot fallback workspace configuration");
 
         env_guard.remove_var("OPENAI_API_KEY");
         env_guard.set_var("GITHUB_TOKEN", "test-github-token");
@@ -1423,7 +1536,7 @@ mod validation_tests {
         config.agent.credential_storage_mode = AuthCredentialsStoreMode::File;
         config.auth.openai.preferred_method = OpenAIPreferredMethod::Chatgpt;
         config.auth.copilot.command = Some(workspace.join("missing-copilot").display().to_string());
-        save_workspace_config(&workspace, &config);
+        save_workspace_config(&workspace, &config).expect("write unavailable-fallback workspace configuration");
 
         env_guard.remove_var("OPENAI_API_KEY");
         env_guard.remove_var("GITHUB_TOKEN");

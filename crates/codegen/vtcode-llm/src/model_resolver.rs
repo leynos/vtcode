@@ -530,23 +530,28 @@ mod tests {
 
         assert_eq!(resolved.provider, Provider::OpenAI);
         assert!(resolved.known_model());
-        assert_eq!(resolved.display_name(), "GPT-5.4");
+        assert_eq!(resolved.display_name(), "GPT-5.6 Sol");
     }
 
     #[test]
-    fn resolver_uses_model_id_to_disambiguate_shared_opencode_slugs() {
-        let bare = ModelResolver::resolve(None, "glm-5.1", &[], None).expect("bare model");
-        assert_eq!(bare.provider, Provider::ZAI);
+    fn resolver_disambiguates_shared_openai_opencode_go_slug() {
+        let bare = ModelResolver::resolve(None, "gpt-5.6-luna", &[], None).expect("bare model");
+        assert_eq!(bare.provider, Provider::OpenAI);
+        assert!(bare.known_model());
+        assert_eq!(bare.display_name(), "GPT-5.6 Luna");
 
-        let zen = ModelResolver::resolve(None, "opencode/glm-5.1", &[], None).expect("opencode zen");
-        assert_eq!(zen.provider, Provider::OpenCodeZen);
-        assert!(zen.known_model());
-        assert_eq!(zen.display_name(), "GLM-5.1 (OpenCode Zen)");
-
-        let go = ModelResolver::resolve(None, "opencode-go/glm-5.1", &[], None).expect("opencode go");
+        let go = ModelResolver::resolve(None, "opencode-go/gpt-5.6-luna", &[], None).expect("opencode go");
         assert_eq!(go.provider, Provider::OpenCodeGo);
         assert!(go.known_model());
-        assert_eq!(go.display_name(), "GLM-5.1 (OpenCode Go)");
+        assert_eq!(go.display_name(), "GPT-5.6 Luna (OpenCode Go)");
+    }
+
+    #[test]
+    fn resolver_routes_opencode_zen_prefix_to_provider() {
+        let zen = ModelResolver::resolve(None, "opencode/gpt-5.6-luna", &[], None).expect("opencode zen");
+
+        assert_eq!(zen.provider, Provider::OpenCodeZen);
+        assert_eq!(zen.model_id, "opencode/gpt-5.6-luna");
     }
 
     #[test]

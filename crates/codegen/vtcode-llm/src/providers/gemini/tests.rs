@@ -961,6 +961,10 @@ fn thought_signature_roundtrip_in_request() {
                 metadata: None,
                 clear_at: None,
             },
+            Message::tool_response(
+                "call_456".to_string(),
+                json!({ "response": "Sunny and 20 degrees Celsius" }).to_string(),
+            ),
         ]
         .into(),
         model: models::google::GEMINI_3_7_FLASH.to_string(),
@@ -970,7 +974,11 @@ fn thought_signature_roundtrip_in_request() {
     let gemini_request = provider.convert_to_gemini_request(&request).expect("conversion should succeed");
 
     // Find the FunctionCall part with thought signature
-    let assistant_content = &gemini_request.contents[1];
+    let assistant_content = gemini_request
+        .contents
+        .iter()
+        .find(|content| content.role == "model")
+        .expect("assistant content should be present");
     let has_signature = assistant_content.parts.iter().any(|part| match part {
         Part::FunctionCall { thought_signature, .. } => thought_signature.as_ref() == Some(&test_signature),
         _ => false,
@@ -1091,25 +1099,21 @@ fn gemini3_flash_extended_thinking_levels() {
     // Test that Gemini 3 Flash supports extended thinking levels
     assert!(GeminiProvider::supports_extended_thinking(models::google::GEMINI_3_FLASH_PREVIEW));
 
-    // But Gemini 3 Pro does not
+    // Stable Gemini 3 Flash models do not expose the preview-only minimal level.
     assert!(!GeminiProvider::supports_extended_thinking(models::google::GEMINI_3_7_FLASH));
-    assert!(!GeminiProvider::supports_extended_thinking(models::google::GEMINI_3_7_FLASH));
+    assert!(!GeminiProvider::supports_extended_thinking(models::google::GEMINI_3_8_FLASH));
 
     // Get supported levels for each model
     let flash_levels = GeminiProvider::supported_thinking_levels(models::google::GEMINI_3_FLASH_PREVIEW);
     assert_eq!(flash_levels, vec!["minimal", "low", "medium", "high"]);
 
-    let pro31_levels = GeminiProvider::supported_thinking_levels(models::google::GEMINI_3_7_FLASH);
-    assert_eq!(pro31_levels, vec!["low", "high"]);
-
-    let pro_levels = GeminiProvider::supported_thinking_levels(models::google::GEMINI_3_7_FLASH);
-    assert_eq!(pro_levels, vec!["low", "high"]);
+    let stable_flash_levels = GeminiProvider::supported_thinking_levels(models::google::GEMINI_3_7_FLASH);
+    assert_eq!(stable_flash_levels, vec!["low", "medium", "high"]);
 }
 
 #[test]
 fn gemini_3_pro_temperature_warning_predicate_excludes_flash_models() {
-    assert!(GeminiProvider::is_gemini_3_pro_model(models::google::GEMINI_3_7_FLASH));
-    assert!(GeminiProvider::is_gemini_3_pro_model(models::google::GEMINI_3_7_FLASH));
+    assert!(GeminiProvider::is_gemini_3_pro_model("gemini-3-pro"));
     assert!(!GeminiProvider::is_gemini_3_pro_model(models::google::GEMINI_3_FLASH_PREVIEW));
     assert!(!GeminiProvider::is_gemini_3_pro_model(models::google::GEMINI_3_7_FLASH));
 }
@@ -1173,31 +1177,39 @@ fn gemini3_flash_medium_thinking_mapping() {
 }
 
 #[test]
-fn gemini3_pro_medium_thinking_fallback() {
-    use vtcode_config::constants::models;
+fn configured_custom_pro_medium_thinking_falls_back_to_high() {
+    use vtcode_config::core::ModelConfig;
     use vtcode_config::types::ReasoningEffortLevel;
 
-    let provider = GeminiProvider::new("test-key".to_string());
-
-    // Test Medium thinking level for Gemini 3 Pro (should fallback to high)
+    let model_behavior = serde_json::from_value::<ModelConfig>(json!({
+        "model_supports_reasoning": true,
+        "model_supports_reasoning_effort": true,
+    }))
+    .expect("custom model behavior");
+    let provider = GeminiProvider::from_config(
+        Some("test-key".to_string()),
+        Some("gemini-3.1-pro-preview".to_string()),
+        None,
+        None,
+        None,
+        None,
+        Some(model_behavior),
+    );
     let request = LLMRequest {
         messages: vec![Message::user("test".to_string())].into(),
-        model: models::google::GEMINI_3_7_FLASH.to_string(),
+        model: "gemini-3.1-pro-preview".to_string(),
         reasoning_effort: Some(ReasoningEffortLevel::Medium),
         ..Default::default()
     };
 
     let gemini_request = provider.convert_to_gemini_request(&request).expect("conversion should succeed");
+    let generation_config = gemini_request.generation_config.expect("generation config");
+    let thinking_config = generation_config.thinking_config.expect("thinking config");
 
-    let generation_config = gemini_request.generation_config.expect("generation_config should be present");
-    let thinking_config = generation_config
-        .thinking_config
-        .as_ref()
-        .expect("thinking_config should be present");
     assert_eq!(
-        thinking_config.thinking_level.as_deref().unwrap(),
-        "high",
-        "Gemini 3 Pro should fallback to high for medium reasoning effort"
+        thinking_config.thinking_level.as_deref(),
+        Some("high"),
+        "configured custom Gemini 3 Pro maps medium effort to its supported high level"
     );
 }
 

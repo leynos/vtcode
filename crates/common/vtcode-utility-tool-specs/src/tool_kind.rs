@@ -161,7 +161,25 @@ impl CanonicalToolMeta {
 
 #[cfg(test)]
 mod tests {
+    //! Tool taxonomy round trips and optional metadata wire fields.
+
     use super::*;
+
+    #[track_caller]
+    fn assert_json_round_trip<T>(value: &T)
+    where
+        T: Serialize + serde::de::DeserializeOwned + PartialEq + std::fmt::Debug,
+    {
+        let encoded = match serde_json::to_string(value) {
+            Ok(encoded) => encoded,
+            Err(error) => panic!("serialize round-trip fixture: {error}"),
+        };
+        let decoded: T = match serde_json::from_str(&encoded) {
+            Ok(decoded) => decoded,
+            Err(error) => panic!("deserialize round-trip fixture: {error}"),
+        };
+        assert_eq!(&decoded, value, "JSON round trip must preserve every field");
+    }
 
     #[test]
     fn tool_kind_round_trips() {
@@ -183,9 +201,7 @@ mod tests {
             ToolKind::Goal,
             ToolKind::Other,
         ] {
-            let json = serde_json::to_string(&kind).unwrap();
-            let back: ToolKind = serde_json::from_str(&json).unwrap();
-            assert_eq!(kind, back);
+            assert_json_round_trip(&kind);
             assert!(!kind.as_str().is_empty());
         }
     }
@@ -200,9 +216,7 @@ mod tests {
             ToolNamespace::Alias,
             ToolNamespace::Other,
         ] {
-            let json = serde_json::to_string(&ns).unwrap();
-            let back: ToolNamespace = serde_json::from_str(&json).unwrap();
-            assert_eq!(ns, back);
+            assert_json_round_trip(&ns);
             assert!(!ns.as_str().is_empty());
         }
     }
@@ -210,10 +224,10 @@ mod tests {
     #[test]
     fn canonical_tool_meta_serializes_without_label() {
         let meta = CanonicalToolMeta::new(ToolKind::Search, ToolNamespace::Builtin);
-        let json = serde_json::to_string(&meta).unwrap();
-        assert!(!json.contains("label"));
-        assert!(json.contains("search"));
-        assert!(json.contains("builtin"));
+        let json = serde_json::to_value(&meta).expect("tool metadata fixture must serialize");
+        assert!(json.get("label").is_none(), "absent labels must be omitted from the wire object");
+        assert_eq!(json.get("kind").and_then(serde_json::Value::as_str), Some("search"));
+        assert_eq!(json.get("namespace").and_then(serde_json::Value::as_str), Some("builtin"));
     }
 
     #[test]
@@ -222,9 +236,9 @@ mod tests {
         meta.label = Some("Shell".to_string());
         meta.side_effects = Some("mutating".to_string());
         meta.token_bucket = Some(TokenBucket::Medium);
-        let json = serde_json::to_string(&meta).unwrap();
-        assert!(json.contains("Shell"));
-        assert!(json.contains("mutating"));
-        assert!(json.contains("medium"));
+        let json = serde_json::to_value(&meta).expect("tool metadata fixture must serialize");
+        assert_eq!(json.get("label").and_then(serde_json::Value::as_str), Some("Shell"));
+        assert_eq!(json.get("side_effects").and_then(serde_json::Value::as_str), Some("mutating"));
+        assert_eq!(json.get("token_bucket").and_then(serde_json::Value::as_str), Some("medium"));
     }
 }
