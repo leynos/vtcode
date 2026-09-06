@@ -1112,3 +1112,36 @@ above describes the layer's own preservation restack; the replay moved its
 commit onto `644464ed1` without changing its content. The gate evidence
 recorded above describes earlier replays onto unmerged parents and is not
 evidence for this head.
+
+## Agent test-module extraction
+
+This layer (`harden-lint-agent-test-modules`) follows parent PR #73 at
+`bfe2c66d`. It extracts four groups: 47 tool-output-handler tests, 60
+tool-outcome helper tests, 69 system-prompt tests and 27 execution-history
+tests, including two property-test blocks. Named, test-gated module roots
+connect the child files. Shared helpers remain private to the test subtree.
+
+Independent audits verify complete items, attached attributes and comments,
+required import scope and authored diagnostic fixtures. In particular, the
+synthetic `runner/tests.rs` strings remain unchanged. Child modules contain at
+most 315 lines after formatting. Compilation exposed two move-sensitive
+references: the system-prompt fixture include needs a parent-directory prefix,
+and the extent-coverage child needs a distinct name to avoid shadowing the
+production read-extent module. Both are corrected without changing fixture
+bytes or assertions.
+
+Formatting, lint, build, type-checking, all 10,094 workspace tests (17 skipped)
+and all 67 harness tests pass. Eight spelling contracts and 13 Actions
+contracts retain their passing results; their implementation is unchanged.
+Advisory checks, handoff Markdownlint and Nixie pass. Optional AST-grep is
+unavailable, and four inherited rustdoc warnings remain for later source fixes.
+
+## PR 74 after PR 73 merged
+
+PR #73 squash-merged into `main` as `238b97a99`. This layer was replayed onto
+it with `git rebase --onto 238b97a99 cb23da405`. The only conflict was this
+handoff file, which now keeps every earlier record. The earlier record above
+names the unmerged parent `bfe2c66d`; the replay moved the layer's own commit
+onto `238b97a99` without changing its content. The gate evidence recorded above
+describes an earlier replay onto an unmerged parent and is not evidence for
+this head.
