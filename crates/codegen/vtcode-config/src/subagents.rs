@@ -71,7 +71,7 @@ Read relevant files before making claims about the codebase. Never speculate.
 Use structural search to find patterns across the repository.
 When reading multiple files, read them all in parallel for efficiency.
 When ready, emit exactly one final <proposed_plan> block for review.
-Never write the plan file with shell or file-editing tools; the runtime persists the plan and tracker artifacts.
+Never write the plan file with shell or file-editing tools; the runtime persists the plan and tracker artefacts.
 Implementation requests must wait for approval instead of suggesting an immediate edit; they must wait for explicit user approval before implementation."#;
 
 const BUILTIN_DUCK_PRIMARY_AGENT_ROLE: &str = r#"You are the duck agent.

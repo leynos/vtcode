@@ -1151,7 +1151,7 @@ impl Tool for TaskTrackerTool {
     }
 
     fn is_mutating(&self) -> bool {
-        false // Writes tracker artifacts only (.vtcode/tasks and .vtcode/plans)
+        false // Writes tracker artefacts only (.vtcode/tasks and .vtcode/plans)
     }
 
     fn is_parallel_safe(&self) -> bool {

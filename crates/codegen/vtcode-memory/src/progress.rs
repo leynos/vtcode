@@ -3,7 +3,7 @@
 //! Long-horizon agent capability requires a persistent signal of *goal
 //! progress* that survives compaction, fork, and resume. The live conversation
 //! is never reloaded into context from disk, but the progress ledger is a tiny
-//! derived artifact (like `manifest.json`) that the harness can read on each
+//! derived artefact (like `manifest.json`) that the harness can read on each
 //! turn to decide whether work is actually advancing toward completion.
 //!
 //! The ledger is stored under `<session_dir>/derived/progress.json` and

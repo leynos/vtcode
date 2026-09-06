@@ -672,8 +672,8 @@ create_and_upload_release() {
 	local binaries_dir="/tmp/vtcode-release-$released_version"
 	mkdir -p "$binaries_dir"
 
-	# Use pre-built artifacts from dist/ (step 1 built & packaged everything there)
-	print_info "Collecting pre-built artifacts from dist/..."
+	# Use pre-built artefacts from dist/ (step 1 built & packaged everything there)
+	print_info "Collecting pre-built artefacts from dist/..."
 	if ls dist/vtcode-*.tar.gz dist/vtcode-*.zip 2>/dev/null >/dev/null; then
 		cp dist/vtcode-*.tar.gz "$binaries_dir/" 2>/dev/null || true
 		cp dist/vtcode-*.zip "$binaries_dir/" 2>/dev/null || true
@@ -684,7 +684,7 @@ create_and_upload_release() {
 		done
 	fi
 
-	# Download CI artifacts if zig wasn't available locally
+	# Download CI artefacts if zig wasn't available locally
 	if [[ -n "$CI_RUN_ID" ]]; then
 		print_info "Downloading CI-built binaries (run #$CI_RUN_ID)..."
 		local ci_dir="/tmp/vtcode-ci-$released_version"

@@ -3,7 +3,7 @@ use super::continuation::VerificationResult;
 use super::evaluator_types::{EvaluatorResponse, GeneralizationNote, SkepticPanelAggregate, SkepticPanelEntry};
 use super::planner_types::{PlannerResponse, ReplanResponse};
 use crate::core::agent::events::ExecEventRecorder;
-use crate::core::agent::harness_artifacts;
+use crate::core::agent::harness_artefacts;
 use crate::core::agent::session::AgentSessionState;
 use crate::core::agent::task::Task;
 use crate::exec::events::HarnessEventKind;
@@ -18,7 +18,7 @@ use std::fmt::Write;
 const EVIDENCE_BOUNDED_GUIDANCE: &str = "Evidence-bounded reasoning follows Bennett, *The Optimal Choice of Hypothesis Is the Weakest, Not the Shortest* (arXiv:2301.12987): choose the weakest sufficient hypothesis, keep every claim within its explicit scope, cite concrete evidence, and state a falsifier. These observations are task-scoped and must not become global beliefs or persistent memory automatically.";
 
 #[derive(Debug, Clone)]
-pub(super) struct PlannerArtifacts {
+pub(super) struct PlannerArtefacts {
     pub spec_path: std::path::PathBuf,
     pub contract_path: std::path::PathBuf,
     pub tracker_path: std::path::PathBuf,
@@ -26,7 +26,7 @@ pub(super) struct PlannerArtifacts {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct EvaluationArtifacts {
+pub(super) struct EvaluationArtefacts {
     pub(super) generalization_notes: Vec<GeneralizationNote>,
     pub evaluation_path: std::path::PathBuf,
     pub passed: bool,
@@ -60,7 +60,7 @@ impl AgentRunner {
         &mut self,
         task: &Task,
         event_recorder: &mut ExecEventRecorder,
-    ) -> Result<PlannerArtifacts> {
+    ) -> Result<PlannerArtefacts> {
         event_recorder.harness_event(
             HarnessEventKind::PlanningStarted,
             Some("Generating execution spec, contract, and task tracker.".to_string()),
@@ -76,14 +76,14 @@ impl AgentRunner {
             .spec_markdown
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| self.fallback_spec_markdown(task));
-        let spec_path = harness_artifacts::write_spec(&self._workspace, &spec_markdown).await?;
+        let spec_path = harness_artefacts::write_spec(&self._workspace, &spec_markdown).await?;
 
         let tracker_items = self.build_planner_tracker_items(task, planner_response.items);
         let contract_markdown = planner_response
             .contract_markdown
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| self.render_contract_markdown(task, &tracker_items));
-        let contract_path = harness_artifacts::write_contract(&self._workspace, &contract_markdown).await?;
+        let contract_path = harness_artefacts::write_contract(&self._workspace, &contract_markdown).await?;
         let tracker_title = planner_response
             .task_title
             .filter(|value| !value.trim().is_empty())
@@ -98,15 +98,15 @@ impl AgentRunner {
             .await
             .context("seed planner task tracker")?;
 
-        let tracker_path = harness_artifacts::current_task_path(&self._workspace);
+        let tracker_path = harness_artefacts::current_task_path(&self._workspace);
 
-        // Build and write the feature list artifact. The planner may provide
+        // Build and write the feature list artefact. The planner may provide
         // it directly; otherwise we derive a fallback from the tracker items.
         let feature_list_markdown = planner_response
             .feature_list_markdown
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| self.fallback_feature_list_markdown(&tracker_items));
-        let feature_list_path = harness_artifacts::write_feature_list(&self._workspace, &feature_list_markdown).await?;
+        let feature_list_path = harness_artefacts::write_feature_list(&self._workspace, &feature_list_markdown).await?;
 
         event_recorder.harness_event(
             HarnessEventKind::PlanningCompleted,
@@ -124,7 +124,7 @@ impl AgentRunner {
             None,
         );
 
-        Ok(PlannerArtifacts {
+        Ok(PlannerArtefacts {
             spec_path,
             contract_path,
             tracker_path,
@@ -144,7 +144,7 @@ impl AgentRunner {
         session_state: &AgentSessionState,
         event_recorder: &mut ExecEventRecorder,
         verification_results: &[VerificationResult],
-    ) -> Result<EvaluationArtifacts> {
+    ) -> Result<EvaluationArtefacts> {
         event_recorder.harness_event(
             HarnessEventKind::EvaluationStarted,
             Some("Running skeptical evaluator pass.".to_string()),
@@ -180,13 +180,13 @@ impl AgentRunner {
             .validated_generalization_notes()
             .map_err(|error| anyhow::anyhow!(error))
             .context("validate evaluator generalization notes")?;
-        let evaluation_path = harness_artifacts::write_evaluation(
+        let evaluation_path = harness_artefacts::write_evaluation(
             &self._workspace,
             &self.render_evaluation(&evaluator, &generalization_notes),
         )
         .await?;
 
-        Ok(EvaluationArtifacts {
+        Ok(EvaluationArtefacts {
             evaluation_path,
             passed,
             summary,
@@ -196,10 +196,10 @@ impl AgentRunner {
         })
     }
 
-    fn evaluation_retry_prompt(&self, evaluation: &EvaluationArtifacts, revision_round: usize) -> String {
-        let tracker_path = harness_artifacts::current_task_path(&self._workspace);
+    fn evaluation_retry_prompt(&self, evaluation: &EvaluationArtefacts, revision_round: usize) -> String {
+        let tracker_path = harness_artefacts::current_task_path(&self._workspace);
         format!(
-            "Evaluator rejected the candidate implementation in round {}. Fix the reported issues, update `{}`, and try again.\n\nLatest evaluation summary:\n{}\n\nEvaluation artifact: {}",
+            "Evaluator rejected the candidate implementation in round {}. Fix the reported issues, update `{}`, and try again.\n\nLatest evaluation summary:\n{}\n\nEvaluation artefact: {}",
             revision_round,
             tracker_path.display(),
             evaluation.summary,
@@ -264,10 +264,10 @@ impl AgentRunner {
 
         // Re-plan from the current state using evaluator feedback.
         // Best-effort: if re-planning fails (e.g. mock provider in tests),
-        // fall back to the original retry prompt without updated artifacts.
-        let revised_artifacts = self.replan_from_failure(task, &evaluation, *revision_rounds_used).await;
+        // fall back to the original retry prompt without updated artefacts.
+        let revised_artefacts = self.replan_from_failure(task, &evaluation, *revision_rounds_used).await;
 
-        if let Some(ref artifacts) = revised_artifacts {
+        if let Some(ref artefacts) = revised_artefacts {
             let prompt = format!(
                 "Evaluator rejected the candidate implementation in round {}.\n\n\
                  The plan has been revised based on evaluator feedback.\n\
@@ -276,13 +276,13 @@ impl AgentRunner {
                  Updated feature list: {}\n\
                  Updated tracker: {}\n\n\
                  Latest evaluation summary:\n{}\n\n\
-                 Evaluation artifact: {}\n\n\
+                 Evaluation artefact: {}\n\n\
                  Work through the updated tracker items.",
                 *revision_rounds_used,
-                artifacts.spec_path.display(),
-                artifacts.contract_path.display(),
-                artifacts.feature_list_path.display(),
-                artifacts.tracker_path.display(),
+                artefacts.spec_path.display(),
+                artefacts.contract_path.display(),
+                artefacts.feature_list_path.display(),
+                artefacts.tracker_path.display(),
                 evaluation.summary,
                 evaluation.evaluation_path.display(),
             );
@@ -375,11 +375,11 @@ impl AgentRunner {
     pub(super) async fn request_replan_response(
         &mut self,
         task: &Task,
-        evaluation: &EvaluationArtifacts,
+        evaluation: &EvaluationArtefacts,
         revision_round: usize,
     ) -> Option<ReplanResponse> {
         let (spec_content, contract_content, _tracker_content, feature_list_content) =
-            read_harness_artifacts(&self._workspace).await;
+            read_harness_artefacts(&self._workspace).await;
 
         const SYSTEM_PROMPT: &str = "You are the VT Code exec harness replanner. The evaluator rejected the current implementation. Revise the plan based on evaluator feedback. Return strict JSON only with keys: revised_feature_list, contract_addendum, new_tracker_items, preserved_scopes, rationale. revised_feature_list should be the complete updated feature list markdown (replacing the old one). contract_addendum should be a short markdown section appended to the contract. new_tracker_items should be an array of {description, outcome, verify} objects for newly discovered acceptance criteria. preserved_scopes must repeat every supplied generalization-note scope verbatim. Every supplied falsifier must become a verification step in the revised tracker. rationale should explain your changes.";
         let system_prompt = format!("{SYSTEM_PROMPT}\n{EVIDENCE_BOUNDED_GUIDANCE}");
@@ -410,7 +410,7 @@ impl AgentRunner {
         verification_results: &[VerificationResult],
     ) -> Result<EvaluatorResponse> {
         let (spec_content, contract_content, tracker_content, feature_list_content) =
-            read_harness_artifacts(&self._workspace).await;
+            read_harness_artefacts(&self._workspace).await;
         let changed_files = load_changed_file_snapshots(&self._workspace, &session_state.modified_files).await;
         let verification_summary = format_verification_results(verification_results);
         const SYSTEM_PROMPT: &str = "You are the VT Code exec harness evaluator. You are not the builder. Judge the candidate skeptically and prefer failing borderline cases. Return strict JSON only with keys verdict, summary, high_severity_findings, scorecard, findings, unmet_contract_items, residual_risks, required_tracker_updates, generalization_notes. generalization_notes must be an array of objects with non-empty claim, scope, evidence, and falsifier strings, with at most 8 notes. The scorecard must contain 1-5 scores for contract_fidelity, functionality, code_quality, and verification_integrity. Use verdict=pass only when every provided score is at least 4, the tracker/spec/contract all agree, verification evidence is credible, and there are no high-severity issues. If you discover new acceptance criteria through testing, add them to required_tracker_updates so the replanner can update the feature list.";
@@ -464,7 +464,7 @@ impl AgentRunner {
         }
 
         let (spec_content, contract_content, tracker_content, feature_list_content) =
-            read_harness_artifacts(&self._workspace).await;
+            read_harness_artefacts(&self._workspace).await;
         let changed_files = load_changed_file_snapshots(&self._workspace, &session_state.modified_files).await;
         let verification_summary = format_verification_results(verification_results);
         const SYSTEM_PROMPT: &str = "You are the VT Code exec harness evaluator. You are not the builder. Judge the candidate skeptically and prefer failing borderline cases. Return strict JSON only with keys verdict, summary, high_severity_findings, scorecard, findings, unmet_contract_items, residual_risks, required_tracker_updates, generalization_notes. generalization_notes must be an array of objects with non-empty claim, scope, evidence, and falsifier strings, with at most 8 notes. The scorecard must contain 1-5 scores for contract_fidelity, functionality, code_quality, and verification_integrity. Use verdict=pass only when every provided score is at least 4, the tracker/spec/contract all agree, verification evidence is credible, and there are no high-severity issues. If you discover new acceptance criteria through testing, add them to required_tracker_updates so the replanner can update the feature list.";
@@ -552,11 +552,11 @@ pub(super) fn json_string_list(item: &serde_json::Value, key: &str) -> Vec<Strin
         .collect()
 }
 
-async fn read_harness_artifacts(workspace: &std::path::Path) -> (String, String, String, String) {
-    let spec = tokio::fs::read_to_string(harness_artifacts::current_spec_path(workspace));
-    let contract = tokio::fs::read_to_string(harness_artifacts::current_contract_path(workspace));
-    let tracker = tokio::fs::read_to_string(harness_artifacts::current_task_path(workspace));
-    let feature_list = tokio::fs::read_to_string(harness_artifacts::current_feature_list_path(workspace));
+async fn read_harness_artefacts(workspace: &std::path::Path) -> (String, String, String, String) {
+    let spec = tokio::fs::read_to_string(harness_artefacts::current_spec_path(workspace));
+    let contract = tokio::fs::read_to_string(harness_artefacts::current_contract_path(workspace));
+    let tracker = tokio::fs::read_to_string(harness_artefacts::current_task_path(workspace));
+    let feature_list = tokio::fs::read_to_string(harness_artefacts::current_feature_list_path(workspace));
     let (spec, contract, tracker, feature_list) = tokio::join!(spec, contract, tracker, feature_list);
     (
         spec.unwrap_or_default(),

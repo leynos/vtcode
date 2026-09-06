@@ -305,9 +305,10 @@ pub struct ListTasksParams {
     /// Filter by last updated timestamp
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) last_updated_after: Option<String>,
-    /// Include artifacts in response
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) include_artifacts: Option<bool>,
+    /// Include artefacts in response
+    /// Wire key `includeArtifacts` is fixed by the A2A schema.
+    #[serde(rename = "includeArtifacts", skip_serializing_if = "Option::is_none")]
+    pub(crate) include_artefacts: Option<bool>,
     /// Filter by metadata
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) metadata: Option<Value>,
@@ -404,20 +405,22 @@ pub enum StreamingEvent {
         #[serde(default)]
         r#final: bool,
     },
-    /// Task artifact update event
+    /// Task artefact update event
     #[serde(rename = "task-artifact")]
-    TaskArtifact {
+    TaskArtefact {
         /// Task identifier
         task_id: String,
-        /// The artifact data
-        artifact: super::types::Artifact,
-        /// If true, append parts to existing artifact; if false, replace
+        /// The artefact data
+        /// Wire key `artifact` is fixed by the A2A schema.
+        #[serde(rename = "artifact")]
+        artefact: super::types::Artefact,
+        /// If true, append parts to the existing artefact; if false, replace
         #[serde(default)]
         append: bool,
-        /// If true, indicates this is the final update for the artifact
+        /// If true, indicates this is the final update for the artefact
         #[serde(default)]
         last_chunk: bool,
-        /// Usually false for artifacts; can signal end concurrently with status
+        /// Usually false for artefacts; can signal end concurrently with status
         #[serde(default)]
         r#final: bool,
     },
@@ -440,7 +443,7 @@ impl StreamingEvent {
         match self {
             StreamingEvent::Message { r#final, .. } => *r#final,
             StreamingEvent::TaskStatus { r#final, .. } => *r#final,
-            StreamingEvent::TaskArtifact { r#final, .. } => *r#final,
+            StreamingEvent::TaskArtefact { r#final, .. } => *r#final,
             StreamingEvent::Unknown => false,
         }
     }
@@ -450,7 +453,7 @@ impl StreamingEvent {
         match self {
             StreamingEvent::Message { .. } => None,
             StreamingEvent::TaskStatus { task_id, .. } => Some(task_id),
-            StreamingEvent::TaskArtifact { task_id, .. } => Some(task_id),
+            StreamingEvent::TaskArtefact { task_id, .. } => Some(task_id),
             StreamingEvent::Unknown => None,
         }
     }
@@ -460,7 +463,7 @@ impl StreamingEvent {
         match self {
             StreamingEvent::Message { context_id, .. } => context_id.as_deref(),
             StreamingEvent::TaskStatus { context_id, .. } => context_id.as_deref(),
-            StreamingEvent::TaskArtifact { .. } | StreamingEvent::Unknown => None,
+            StreamingEvent::TaskArtefact { .. } | StreamingEvent::Unknown => None,
         }
     }
 }
@@ -526,11 +529,11 @@ mod tests {
     }
 
     #[test]
-    fn test_streaming_event_artifact() {
-        let artifact = super::super::types::Artifact::text("art-1", "Output");
-        let event = StreamingEvent::TaskArtifact {
+    fn test_streaming_event_artefact() {
+        let artefact = super::super::types::Artefact::text("art-1", "Output");
+        let event = StreamingEvent::TaskArtefact {
             task_id: "task-1".to_string(),
-            artifact,
+            artefact,
             append: false,
             last_chunk: true,
             r#final: false,

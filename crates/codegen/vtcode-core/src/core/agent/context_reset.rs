@@ -21,7 +21,7 @@ pub struct ContextResetManifest {
 impl ContextResetManifest {
     pub fn to_markdown(&self) -> String {
         format!(
-            "# Context Reset Manifest\n\n - **Triggered at:** {}\n - **Trigger:** {}\n - **Stall count:** {}\n\nThis session starts fresh from external artifacts only.\nRead the current feature list and progress tracker to reorient.\n",
+            "# Context Reset Manifest\n\n - **Triggered at:** {}\n - **Trigger:** {}\n - **Stall count:** {}\n\nThis session starts fresh from external artefacts only.\nRead the current feature list and progress tracker to reorient.\n",
             self.triggered_at, self.trigger, self.stall_count
         )
     }

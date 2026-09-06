@@ -83,7 +83,7 @@ impl SkillAuthor {
         // Create SKILL.md
         let skill_content = crate::manifest::generate_skill_template(
             skill_name,
-            "Describe the workflow, routing triggers, and expected artifact for this skill.",
+            "Describe the workflow, routing triggers, and expected artefact for this skill.",
         );
 
         let skill_md_path = skill_dir.join("SKILL.md");
@@ -550,7 +550,7 @@ mod tests {
         assert!(skill_md.starts_with("---"));
         assert!(skill_md.contains("name: test-skill"));
         assert!(skill_md.contains("# Test Skill"));
-        assert!(skill_md.contains("Output/Artifact:"));
+        assert!(skill_md.contains("Output/Artefact:"));
 
         Ok(())
     }
@@ -631,14 +631,14 @@ Use bundled resources when needed.
         // Update descriptions to be valid
         let skill1_md = skill1_dir.join("SKILL.md");
         let content1 = fs::read_to_string(&skill1_md).unwrap().replace(
-            "description: Describe the workflow, routing triggers, and expected artifact for this skill.",
+            "description: Describe the workflow, routing triggers, and expected artefact for this skill.",
             "description: Extract text and tables from PDFs",
         );
         fs::write(skill1_md, content1).unwrap();
 
         let skill2_md = skill2_dir.join("SKILL.md");
         let content2 = fs::read_to_string(&skill2_md).unwrap().replace(
-            "description: Describe the workflow, routing triggers, and expected artifact for this skill.",
+            "description: Describe the workflow, routing triggers, and expected artefact for this skill.",
             "description: Create Excel spreadsheets with charts",
         );
         fs::write(skill2_md, content2).unwrap();

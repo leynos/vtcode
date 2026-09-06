@@ -60,7 +60,7 @@ pub fn current_outcome_verification_path(workspace_root: &Path) -> PathBuf {
 }
 
 /// Return the paths of all harness artifacts that currently exist on disk.
-pub fn existing_harness_artifact_paths(workspace_root: &Path) -> Vec<PathBuf> {
+pub fn existing_harness_artefact_paths(workspace_root: &Path) -> Vec<PathBuf> {
     [
         current_spec_path(workspace_root),
         current_contract_path(workspace_root),
@@ -74,17 +74,17 @@ pub fn existing_harness_artifact_paths(workspace_root: &Path) -> Vec<PathBuf> {
     .collect()
 }
 
-/// Read a short summary of the current spec artifact, or `None` if unavailable.
+/// Read a short summary of the current spec artefact, or `None` if unavailable.
 pub fn read_spec_summary(workspace_root: &Path) -> Option<String> {
     read_markdown_summary(&current_spec_path(workspace_root), "Spec")
 }
 
-/// Read a short summary of the current contract artifact, or `None` if unavailable.
+/// Read a short summary of the current contract artefact, or `None` if unavailable.
 pub fn read_contract_summary(workspace_root: &Path) -> Option<String> {
     read_markdown_summary(&current_contract_path(workspace_root), "Contract")
 }
 
-/// Read a short summary of the current evaluation artifact, or `None` if unavailable.
+/// Read a short summary of the current evaluation artefact, or `None` if unavailable.
 pub fn read_evaluation_summary(workspace_root: &Path) -> Option<String> {
     read_markdown_summary(&current_evaluation_path(workspace_root), "Evaluation")
 }
@@ -92,25 +92,25 @@ pub fn read_evaluation_summary(workspace_root: &Path) -> Option<String> {
 /// Write the spec artifact content to disk and return the path.
 pub async fn write_spec(workspace_root: &Path, content: &str) -> Result<PathBuf> {
     let path = current_spec_path(workspace_root);
-    write_artifact(path.as_path(), content, "current spec").await?;
+    write_artefact(path.as_path(), content, "current spec").await?;
     Ok(path)
 }
 
 /// Write the evaluation artifact content to disk and return the path.
 pub async fn write_evaluation(workspace_root: &Path, content: &str) -> Result<PathBuf> {
     let path = current_evaluation_path(workspace_root);
-    write_artifact(path.as_path(), content, "current evaluation").await?;
+    write_artefact(path.as_path(), content, "current evaluation").await?;
     Ok(path)
 }
 
 /// Write the contract artifact content to disk and return the path.
 pub async fn write_contract(workspace_root: &Path, content: &str) -> Result<PathBuf> {
     let path = current_contract_path(workspace_root);
-    write_artifact(path.as_path(), content, "current contract").await?;
+    write_artefact(path.as_path(), content, "current contract").await?;
     Ok(path)
 }
 
-/// Read a short summary of the sprint contract artifact, or `None` if unavailable.
+/// Read a short summary of the sprint contract artefact, or `None` if unavailable.
 pub fn read_sprint_contract_summary(workspace_root: &Path) -> Option<String> {
     read_markdown_summary(&current_sprint_contract_path(workspace_root), "SprintContract")
 }
@@ -121,11 +121,11 @@ pub fn read_sprint_contract_summary(workspace_root: &Path) -> Option<String> {
 /// and evaluator agree on scope and acceptance criteria before code is written.
 pub async fn write_sprint_contract(workspace_root: &Path, content: &str) -> Result<PathBuf> {
     let path = current_sprint_contract_path(workspace_root);
-    write_artifact(path.as_path(), content, "sprint contract").await?;
+    write_artefact(path.as_path(), content, "sprint contract").await?;
     Ok(path)
 }
 
-/// Read a short summary of the outcome verification artifact, or `None` if unavailable.
+/// Read a short summary of the outcome verification artefact, or `None` if unavailable.
 pub fn read_outcome_verification_summary(workspace_root: &Path) -> Option<String> {
     read_markdown_summary(&current_outcome_verification_path(workspace_root), "OutcomeVerification")
 }
@@ -142,7 +142,7 @@ pub fn current_feature_list_path(workspace_root: &Path) -> PathBuf {
     workspace_root.join(TASKS_DIR).join(CURRENT_FEATURE_LIST_FILE)
 }
 
-/// Read a short summary of the feature list artifact, or `None` if unavailable.
+/// Read a short summary of the feature list artefact, or `None` if unavailable.
 pub fn read_feature_list_summary(workspace_root: &Path) -> Option<String> {
     read_markdown_summary(&current_feature_list_path(workspace_root), "FeatureList")
 }
@@ -150,7 +150,7 @@ pub fn read_feature_list_summary(workspace_root: &Path) -> Option<String> {
 /// Write the feature list artifact content to disk and return the path.
 pub async fn write_feature_list(workspace_root: &Path, content: &str) -> Result<PathBuf> {
     let path = current_feature_list_path(workspace_root);
-    write_artifact(path.as_path(), content, "feature list").await?;
+    write_artefact(path.as_path(), content, "feature list").await?;
     Ok(path)
 }
 
@@ -160,11 +160,11 @@ pub async fn write_feature_list(workspace_root: &Path, content: &str) -> Result<
 /// "evaluate outcomes, not claims" -- the agent must show proof of verification.
 pub async fn write_outcome_verification(workspace_root: &Path, content: &str) -> Result<PathBuf> {
     let path = current_outcome_verification_path(workspace_root);
-    write_artifact(path.as_path(), content, "outcome verification").await?;
+    write_artefact(path.as_path(), content, "outcome verification").await?;
     Ok(path)
 }
 
-async fn write_artifact(path: &Path, content: &str, label: &str) -> Result<()> {
+async fn write_artefact(path: &Path, content: &str, label: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -204,7 +204,7 @@ mod tests {
     use tempfile::tempdir;
 
     #[tokio::test]
-    async fn writes_and_summarizes_spec_and_evaluation_artifacts() {
+    async fn writes_and_summarizes_spec_and_evaluation_artefacts() {
         let temp = tempdir().expect("tempdir");
 
         write_spec(temp.path(), "# Spec\n\nBuild a stronger exec harness.\n\nKeep it resumable.\n")
@@ -217,7 +217,7 @@ mod tests {
             .await
             .expect("write evaluation");
 
-        let paths = existing_harness_artifact_paths(temp.path());
+        let paths = existing_harness_artefact_paths(temp.path());
         assert_eq!(paths.len(), 3);
         assert_eq!(
             read_spec_summary(temp.path()),
@@ -244,7 +244,7 @@ mod tests {
         .await
         .expect("write sprint contract");
 
-        let paths = existing_harness_artifact_paths(temp.path());
+        let paths = existing_harness_artefact_paths(temp.path());
         assert_eq!(paths.len(), 1);
         assert_eq!(
             read_sprint_contract_summary(temp.path()),
@@ -263,7 +263,7 @@ mod tests {
         .await
         .expect("write outcome verification");
 
-        let paths = existing_harness_artifact_paths(temp.path());
+        let paths = existing_harness_artefact_paths(temp.path());
         assert_eq!(paths.len(), 1);
         assert_eq!(
             read_outcome_verification_summary(temp.path()),
@@ -285,7 +285,7 @@ mod tests {
         .await
         .expect("write feature list");
 
-        let paths = existing_harness_artifact_paths(temp.path());
+        let paths = existing_harness_artefact_paths(temp.path());
         assert_eq!(paths.len(), 1);
         assert_eq!(
             read_feature_list_summary(temp.path()),
@@ -294,7 +294,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn all_artifacts_counted_in_existing_paths() {
+    async fn all_artefacts_counted_in_existing_paths() {
         let temp = tempdir().expect("tempdir");
 
         write_spec(temp.path(), "# Spec\ncontent\n").await.unwrap();
@@ -304,7 +304,7 @@ mod tests {
         write_outcome_verification(temp.path(), "# Outcome\ncontent\n").await.unwrap();
         write_feature_list(temp.path(), "# Features\ncontent\n").await.unwrap();
 
-        let paths = existing_harness_artifact_paths(temp.path());
+        let paths = existing_harness_artefact_paths(temp.path());
         assert_eq!(paths.len(), 6);
     }
 }

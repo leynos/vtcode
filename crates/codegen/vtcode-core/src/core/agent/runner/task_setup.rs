@@ -10,7 +10,7 @@ use std::time::Instant;
 use tokio::task::spawn_blocking;
 
 use crate::core::agent::events::{ExecEventRecorder, SessionStoreSinkHandle};
-use crate::core::agent::harness_artifacts;
+use crate::core::agent::harness_artefacts;
 use crate::core::agent::progress_monitor::ProgressMonitor;
 use crate::core::agent::runner::continuation::ContinuationController;
 use crate::core::agent::runtime::AgentRuntime;
@@ -144,7 +144,7 @@ impl AgentRunner {
         // Context reset: if a reset manifest exists from a previous session
         // (written by `maybe_write_reset_after_compaction` or
         // `maybe_write_reset_on_stall`), clear the conversation history so
-        // this session starts fresh from external artifacts only. The orient
+        // this session starts fresh from external artefacts only. The orient
         // context in the system prompt already includes the reset banner.
         self.apply_context_reset_if_pending(&mut session_state).await;
 
@@ -168,9 +168,9 @@ impl AgentRunner {
 
         let orchestration_enabled = self.harness_plan_build_evaluate_enabled(full_auto_active, review_like);
 
-        let planner_artifacts = if orchestration_enabled {
+        let planner_artefacts = if orchestration_enabled {
             Some(match self.run_planner_phase(task, &mut event_recorder).await {
-                Ok(artifacts) => artifacts,
+                Ok(artefacts) => artefacts,
                 Err(error) => {
                     finish_failed_setup(&mut event_recorder, &self.session_id, &error, session_store_handle).await;
                     return Err(error);
@@ -180,9 +180,9 @@ impl AgentRunner {
             None
         };
 
-        let effective_task = planner_artifacts
+        let effective_task = planner_artefacts
             .as_ref()
-            .map(|artifacts| self.augment_generator_task(task, artifacts))
+            .map(|artefacts| self.augment_generator_task(task, artefacts))
             .unwrap_or_else(|| task.clone());
 
         let mut continuation_controller = ContinuationController::new(
@@ -240,7 +240,7 @@ impl AgentRunner {
     /// fresh from external artifacts only. The manifest is consumed (deleted)
     /// so it only triggers once.
     async fn apply_context_reset_if_pending(&self, session_state: &mut AgentSessionState) {
-        let manifest_path = harness_artifacts::current_context_reset_path(&self._workspace);
+        let manifest_path = harness_artefacts::current_context_reset_path(&self._workspace);
 
         if !tokio::fs::try_exists(&manifest_path).await.unwrap_or(false) {
             return;

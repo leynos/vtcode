@@ -216,7 +216,7 @@ fn build_repeated_file_read_family_error_content(target: &str) -> String {
 
 /// Returns the path if this is a read of a planning artifact (a plan file or
 /// directory) while planning mode is active.
-fn is_plan_artifact_read(canonical_tool_name: &str, args: &Value) -> Option<String> {
+fn is_plan_artefact_read(canonical_tool_name: &str, args: &Value) -> Option<String> {
     if !is_read_action(canonical_tool_name, args) {
         return None;
     }
@@ -344,7 +344,7 @@ pub(crate) fn enforce_repeated_read_only_call_guard(
 
     // Planning-mode-specific guard: repeated plan-file reads across turns.
     if ctx.tool_registry.is_planning_active() {
-        if let Some(plan_path) = is_plan_artifact_read(canonical_tool_name, effective_args) {
+        if let Some(plan_path) = is_plan_artefact_read(canonical_tool_name, effective_args) {
             if let Some(mut reused_value) = ctx.tool_registry.find_recent_successful_by_read_target(
                 canonical_tool_name,
                 effective_args,

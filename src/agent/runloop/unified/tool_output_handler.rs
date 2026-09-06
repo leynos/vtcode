@@ -321,7 +321,7 @@ const STRUCTURED_COMMAND_OUTPUT_FIELDS: &[&str] = &[
     "exit_code",
 ];
 
-const COMPACT_COMMAND_ARTIFACT_FIELDS: &[&str] = &[
+const COMPACT_COMMAND_ARTEFACT_FIELDS: &[&str] = &[
     "generated_files",
     "json_result",
     "modified_files",
@@ -374,11 +374,11 @@ fn complete_capture_unavailable(output: &serde_json::Value, complete_capture: Op
     output.get("spool_path").is_some() && complete_capture.is_none()
 }
 
-fn has_compact_command_artifact(output: &serde_json::Value, complete_capture: Option<&str>) -> bool {
+fn has_compact_command_artefact(output: &serde_json::Value, complete_capture: Option<&str>) -> bool {
     output_text(output, "critical_note").is_some()
         || stderr_for_inline_display(output).is_some()
         || complete_capture_unavailable(output, complete_capture)
-        || COMPACT_COMMAND_ARTIFACT_FIELDS
+        || COMPACT_COMMAND_ARTEFACT_FIELDS
             .iter()
             .any(|key| output.get(*key).is_some_and(value_has_content))
         || [
@@ -943,7 +943,7 @@ async fn render_tool_output_common(
         let compact_success = renderer.tool_display_mode() == ToolDisplayMode::Compact
             && is_command_output_call(name, args_val)
             && matches!(status, ToolDisplayStatus::Success)
-            && !has_compact_command_artifact(output, complete_capture.as_deref());
+            && !has_compact_command_artefact(output, complete_capture.as_deref());
         if compact_success {
             renderer.collapse_pty_block_to_compact_activity(
                 compact_command_text(name, args_val, workspace_root),
@@ -1036,13 +1036,13 @@ async fn render_tool_output_common(
         && matches!(status, ToolDisplayStatus::Success)
         && crate::agent::runloop::unified::tool_summary::is_file_modification_tool(name, args_val)
         && has_file_operation_diff(output);
-    let compact_artifact = has_compact_command_artifact(output, complete_capture.as_deref());
+    let compact_artefact = has_compact_command_artefact(output, complete_capture.as_deref());
     if !matches!(status, ToolDisplayStatus::Success) {
         // Warnings and failures are hard boundaries even for command aliases
         // that do not use the live PTY path (for example, `bash`).
         renderer.flush_compact_command_group();
     }
-    if git_diff_payload || compact_command && compact_artifact {
+    if git_diff_payload || compact_command && compact_artefact {
         // Attention-worthy output is a hard boundary: do not let a command
         // with visible diagnostics or a diff merge into the preceding group.
         renderer.flush_compact_command_group();
@@ -1060,7 +1060,7 @@ async fn render_tool_output_common(
             None,
             viewer_id,
         )?;
-        if !compact_artifact {
+        if !compact_artefact {
             return Ok(());
         }
     }
@@ -1090,7 +1090,7 @@ async fn render_tool_output_common(
     }
 
     let result = crate::agent::runloop::tool_output::render_tool_output(renderer, Some(name), output, vt_config).await;
-    if result.is_ok() && compact_command && compact_artifact {
+    if result.is_ok() && compact_command && compact_artefact {
         render_structured_command_context(renderer, output)?;
     }
     if !matches!(status, ToolDisplayStatus::Success) {
@@ -1098,7 +1098,7 @@ async fn render_tool_output_common(
         // the active tail that a later successful command could extend.
         renderer.flush_compact_command_group();
     }
-    if compact_command && compact_artifact {
+    if compact_command && compact_artefact {
         // Some attention-worthy metadata (for example, a critical note) can
         // be rendered without emitting another line. End the active compact
         // tail explicitly so the next command cannot merge into this row.
@@ -2588,7 +2588,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn compact_command_artifacts_start_a_fresh_group() {
+    async fn compact_command_artefacts_start_a_fresh_group() {
         let (sender, mut receiver) = unbounded_channel();
         let handle = InlineHandle::new_for_tests(sender);
         let mut renderer = AnsiRenderer::with_inline_ui(handle.clone(), Default::default());
@@ -2607,7 +2607,7 @@ mod tests {
             None,
         )
         .await
-        .expect("artifact-bearing command should render");
+        .expect("artefact-bearing command should render");
 
         let activities = std::iter::from_fn(|| receiver.try_recv().ok())
             .filter_map(|command| match command {
@@ -2622,7 +2622,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn compact_pty_artifacts_flush_a_preceding_command_group() {
+    async fn compact_pty_artefacts_flush_a_preceding_command_group() {
         let (sender, mut receiver) = unbounded_channel();
         let handle = InlineHandle::new_for_tests(sender);
         let mut renderer = AnsiRenderer::with_inline_ui(handle.clone(), Default::default());
@@ -2641,7 +2641,7 @@ mod tests {
             None,
         )
         .await
-        .expect("artifact-bearing PTY command should render");
+        .expect("artefact-bearing PTY command should render");
         render_tool_output_common(
             &mut renderer,
             &handle,

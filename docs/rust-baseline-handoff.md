@@ -13,10 +13,16 @@ The complete PR train is not yet delivered.
 - [Draft PR #20](https://github.com/leynos/vtcode/pull/20) publishes
   `test-quality-sweep` against that base at
   `95e288cffa54401f24c0aa09c37b1983e0f08a26`.
-- `harden-lint-spelling` is the first spelling layer, based on
-  `test-quality-sweep`. It isolates native `analyse` API and command names,
+- [Draft PR #22](https://github.com/leynos/vtcode/pull/22) publishes
+  `harden-lint-spelling` at `dd3ee30f3744a33505f958ff166b76086d4af221`, based
+  on `test-quality-sweep`. It isolates native `analyse` API and command names,
   corresponding callers, module paths, and compatibility assertions. Existing
   `analyze` command invocations and fixed serialized names remain supported.
+- `harden-lint-spelling-artefact` is the next active layer, based on #22.
+  It renames native artefact APIs and modules, pins existing serialized names,
+  and keeps the dependent prompt golden text with its source wording change.
+  Formatting, lint, build, and the full suite (10,078 passed, 17 skipped)
+  passed, as did all 67 harness tests and the advisory checks.
 - Remaining spelling changes are preserved separately while this layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
@@ -63,6 +69,12 @@ The handoff's Markdownlint, both changed documents' Nixie validation, and the
 staged diff check passed. The embedded ast-grep skill retains 417 inherited
 Markdownlint diagnostics, matching the parent with none added or removed.
 No new suppression or exclusion was introduced.
+
+The artefact layer's first Clippy run found one omitted guard access to
+`task.artifacts` in the A2A CLI. It was corrected to `task.artefacts`; a
+native-identifier audit found no further omitted callers. The subsequent
+lint, build, and full tests passed. Logs use
+`/tmp/ACTION-2-vtcode-df12-onboarding-harden-lint-spelling-artefact.out`.
 
 The first test run exposed a spelling-layer boundary: the skill-discovery
 query used `analyse`, but its bundled metadata advertised only `analyze`.
@@ -211,3 +223,16 @@ passed again, including typecheck, 10,082 workspace tests, 17 skips and 67
 harness tests. Logs use `restack-2` on `harden-lint-spelling`; final handoff
 checks use `handoff-restack-3`. Both hosted checks passed on PR #20's
 `e93983604` head. Its full CodeRabbit review remains queued.
+
+## PR 23 review restack
+
+The artefact spelling layer is rebased onto PR #22 repair `b82c2d07a`.
+The replay completed without conflicts and exactly matches the preceding
+candidate's patch. The original candidate's full gate exposed the hook-fixture
+race documented above; that repair now arrives through PR #20. Schema names,
+compatibility aliases and both lower-layer review records remain intact.
+All eight sequential gates passed, including typecheck, 10,082 workspace
+tests, 17 skips and 67 harness tests. The hook-chain regression passed within
+the full suite. Logs use `restack-2` on `harden-lint-spelling-artefact`;
+final handoff checks use `handoff-restack-1`. The push uses an explicit lease
+against the original published PR #23 head.
