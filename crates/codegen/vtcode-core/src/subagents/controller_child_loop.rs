@@ -384,9 +384,31 @@ impl SubagentController {
         let mut task = Task::new(format!("subagent-{}", spec.name), format!("Subagent {}", spec.name), prompt);
         task.instructions = Some(compose_subagent_instructions(&spec, memory_appendix));
 
-        let results = Box::pin(runner.execute_task(&task, &[])).await?;
+        let execution = Box::pin(runner.execute_task(&task, &[])).await;
         let messages = runner.session_messages();
-        let transcript_path = persist_child_archive(&archive, &messages, spec.name.as_str()).await?;
+        let archive_result = persist_child_archive(&archive, &messages, spec.name.as_str()).await;
+        if execution.is_err()
+            && let Ok(transcript_path) = archive_result.as_ref()
+        {
+            let mut state = self.state.write().await;
+            if let Some(record) = state.children.get_mut(child_id) {
+                record.transcript_path = transcript_path.clone();
+                record.stored_messages = messages.clone();
+            }
+        }
+        let (results, transcript_path) = match (execution, archive_result) {
+            (Ok(results), Ok(path)) => (results, path),
+            (Ok(_), Err(archive_error)) => return Err(archive_error),
+            (Err(execution_error), Ok(_)) => return Err(execution_error),
+            (Err(execution_error), Err(archive_error)) => {
+                tracing::warn!(
+                    child_id,
+                    error = %archive_error,
+                    "Failed to finalize child archive after task execution failed"
+                );
+                return Err(execution_error);
+            }
+        };
 
         Ok(ChildRunResult {
             messages,

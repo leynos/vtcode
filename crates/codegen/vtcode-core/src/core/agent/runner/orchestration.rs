@@ -7,7 +7,7 @@ use crate::core::agent::harness_artifacts;
 use crate::core::agent::session::AgentSessionState;
 use crate::core::agent::task::Task;
 use crate::exec::events::HarnessEventKind;
-use crate::llm::provider::{LLMRequest, Message, ToolDefinition};
+use crate::llm::provider::{FinishReason, LLMRequest, Message, ToolDefinition};
 use crate::tools::handlers::TaskTrackerTool;
 use crate::tools::traits::Tool;
 use anyhow::{Context, Result};
@@ -71,7 +71,17 @@ impl AgentRunner {
             None,
         );
 
-        let planner_response = self.request_planner_response(task).await?;
+        let planner_response = match self.request_planner_response(task).await {
+            Ok(response) => response,
+            Err(error) => {
+                // Setup exits before the main execute loop can record its
+                // normal terminal event. Close this already-started turn on
+                // the canonical event path so the failure is durable in the
+                // unified session store and the thread is not left in flight.
+                event_recorder.turn_failed(&error.to_string(), None);
+                return Err(error);
+            }
+        };
         let spec_markdown = planner_response
             .spec_markdown
             .filter(|value| !value.trim().is_empty())
@@ -325,8 +335,12 @@ impl AgentRunner {
             })
             .await
             .context(request_label)?;
+        let finish_reason = safe_finish_reason(&response.finish_reason);
+        let request_id = safe_request_id(response.request_id.as_deref());
         let content = response.content.unwrap_or_default();
-        parse_json_response::<T>(content.as_str()).context(parse_label)
+        parse_json_response::<T>(content.as_str()).map_err(|error| {
+            structured_response_parse_error(parse_label, finish_reason, content.len(), request_id.as_deref(), &error)
+        })
     }
 
     async fn request_planner_response(&mut self, task: &Task) -> Result<PlannerResponse> {
@@ -594,7 +608,7 @@ where
 {
     let trimmed = text.trim();
     if trimmed.is_empty() {
-        anyhow::bail!("empty model response")
+        anyhow::bail!("parse_class=empty")
     }
 
     if let Ok(parsed) = serde_json::from_str::<T>(trimmed) {
@@ -607,7 +621,64 @@ where
         .map(str::trim)
         .unwrap_or(trimmed);
     let trimmed = trimmed.strip_suffix("```").map(str::trim).unwrap_or(trimmed);
-    serde_json::from_str::<T>(trimmed).context("decode json payload")
+    serde_json::from_str::<T>(trimmed).map_err(safe_json_parse_error)
+}
+
+fn safe_json_parse_error(error: serde_json::Error) -> anyhow::Error {
+    use serde_json::error::Category;
+
+    let parse_class = match error.classify() {
+        Category::Io => "io",
+        Category::Syntax => "syntax",
+        Category::Data => "schema",
+        Category::Eof => "truncated",
+    };
+    anyhow::anyhow!("parse_class={parse_class} line={} column={}", error.line(), error.column())
+}
+
+fn safe_finish_reason(reason: &FinishReason) -> &'static str {
+    match reason {
+        FinishReason::Stop => "stop",
+        FinishReason::Length => "length",
+        FinishReason::ToolCalls => "tool_calls",
+        FinishReason::ContentFilter => "content_filter",
+        FinishReason::Pause => "pause",
+        FinishReason::Refusal => "refusal",
+        FinishReason::Error(_) => "provider_error",
+    }
+}
+
+fn structured_response_parse_error(
+    phase: &str,
+    finish_reason: &str,
+    content_bytes: usize,
+    request_id: Option<&str>,
+    parse_error: &anyhow::Error,
+) -> anyhow::Error {
+    let request_id = request_id.map(|value| format!(" request_id={value}")).unwrap_or_default();
+    anyhow::anyhow!(
+        "phase={phase} finish_reason={finish_reason} content_bytes={content_bytes}{request_id} {parse_error}"
+    )
+}
+
+fn safe_request_id(request_id: Option<&str>) -> Option<String> {
+    let request_id = request_id?.trim();
+    if request_id.is_empty() {
+        return None;
+    }
+    let sanitized = vtcode_commons::sanitizer::sanitize_provider_diagnostic(request_id.as_bytes());
+    let normalized = sanitized
+        .chars()
+        .take(128)
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    (!normalized.is_empty()).then_some(normalized)
 }
 
 async fn load_changed_file_snapshots(workspace_root: &std::path::Path, files: &[String]) -> String {
@@ -687,4 +758,94 @@ fn format_verification_results(results: &[VerificationResult]) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+#[cfg(test)]
+mod planner_parse_diagnostic_tests {
+    use super::{
+        FinishReason, PlannerResponse, parse_json_response, safe_finish_reason, safe_request_id,
+        structured_response_parse_error,
+    };
+
+    fn planner_parse_error(payload: &str) -> String {
+        parse_json_response::<PlannerResponse>(payload)
+            .expect_err("fixture must be rejected")
+            .to_string()
+    }
+
+    #[test]
+    fn planner_parser_partitions_empty_prose_malformed_schema_and_truncated_payloads() {
+        let cases = [
+            ("empty", "", "parse_class=empty", false),
+            ("prose", "not json PRIVATE_PROSE", "parse_class=syntax", true),
+            ("malformed", r#"{"items":] PRIVATE_MALFORMED"#, "parse_class=syntax", true),
+            ("schema", r#"{"items":"PRIVATE_SCHEMA"}"#, "parse_class=schema", true),
+            ("truncated", r#"{"items":[{"description":"unfinished"#, "parse_class=truncated", true),
+        ];
+
+        for (name, payload, expected_class, expects_location) in cases {
+            let error = planner_parse_error(payload);
+            assert!(error.contains(expected_class), "{name}: {error}");
+            assert_eq!(error.contains("line="), expects_location, "{name}: {error}");
+            assert_eq!(error.contains("column="), expects_location, "{name}: {error}");
+            assert!(!error.contains("PRIVATE_"), "{name} diagnostic leaked model content: {error}");
+        }
+    }
+
+    #[test]
+    fn planner_parser_accepts_valid_payload_and_fenced_json() {
+        let valid = r#"{"spec_markdown":"spec","contract_markdown":"contract","feature_list_markdown":"features","task_title":"task","items":[]}"#;
+        assert!(parse_json_response::<PlannerResponse>(valid).is_ok());
+        assert!(parse_json_response::<PlannerResponse>(&format!("```json\n{valid}\n```")).is_ok());
+    }
+
+    #[test]
+    fn planner_parse_context_distinguishes_phase_finish_reason_and_payload_size_safely() {
+        let parse_error = planner_parse_error("not json");
+        let rendered = structured_response_parse_error(
+            "planner",
+            safe_finish_reason(&FinishReason::Error("PRIVATE_PROVIDER_DETAIL".to_string())),
+            17,
+            safe_request_id(Some("req-123")).as_deref(),
+            &anyhow::anyhow!(parse_error),
+        )
+        .to_string();
+
+        assert!(rendered.contains("phase=planner"));
+        assert!(rendered.contains("finish_reason=provider_error"));
+        assert!(rendered.contains("content_bytes=17"));
+        assert!(rendered.contains("request_id=req-123"));
+        assert!(rendered.contains("parse_class=syntax"));
+        assert!(!rendered.contains("PRIVATE_PROVIDER_DETAIL"));
+        assert_eq!(safe_finish_reason(&FinishReason::Stop), "stop");
+    }
+
+    #[test]
+    fn request_id_metadata_is_bounded_ascii_and_secret_redacted() {
+        let request_id = format!("req\napi_key=secret-value-{}", "x".repeat(256));
+        let sanitized = safe_request_id(Some(&request_id)).expect("nonempty request id");
+
+        assert!(sanitized.is_ascii());
+        assert!(sanitized.len() <= 128);
+        assert!(!sanitized.contains('\n'));
+        assert!(!sanitized.contains("secret-value"));
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn planner_parser_diagnostic_is_bounded_classified_and_does_not_echo_arbitrary_unicode(
+            arbitrary in ".{0,4096}"
+        ) {
+            let payload = serde_json::json!({
+                "spec_markdown": "spec",
+                "items": format!("PRIVATE_MARKER:{arbitrary}"),
+            })
+            .to_string();
+            let error = planner_parse_error(&payload);
+            proptest::prop_assert!(error.len() <= 96, "unbounded diagnostic: {error}");
+            proptest::prop_assert!(error.contains("parse_class=schema"), "{error}");
+            proptest::prop_assert!(error.contains("line=1"), "{error}");
+            proptest::prop_assert!(!error.contains("PRIVATE_MARKER"), "diagnostic echoed model content: {error}");
+        }
+    }
 }

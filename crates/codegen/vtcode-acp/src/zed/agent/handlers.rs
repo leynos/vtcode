@@ -1881,7 +1881,7 @@ mod tests {
     };
     use vtcode_core::core::threads::{ThreadBootstrap, ThreadManager};
     use vtcode_core::llm::Usage;
-    use vtcode_core::subagents::SpawnBackgroundSubprocessRequest;
+    use vtcode_core::subagents::{SpawnAgentRequest, SpawnBackgroundSubprocessRequest};
 
     pub(super) static PROMPT_PROVIDER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
 
@@ -1937,6 +1937,53 @@ mod tests {
 
         assert_eq!(lody["tasks"]["version"], 1);
         assert_eq!(lody["tasks"]["background"], true);
+    }
+
+    #[test]
+    fn acp_subagent_child_uses_single_orchestration_without_losing_tool_permissions() {
+        use vtcode_config::core::agent::HarnessOrchestrationMode;
+
+        let mut parent = vtcode_core::config::VTCodeConfig::default();
+        parent.agent.harness.orchestration_mode = HarnessOrchestrationMode::PlanBuildEvaluate;
+        parent.permissions.allow = vec!["read".to_string()];
+        let spec = vtcode_config::builtin_subagents()
+            .into_iter()
+            .find(|spec| spec.name == "explorer")
+            .expect("built-in explorer subagent");
+
+        let child = vtcode_core::subagents::build_child_config(&parent, &spec, "gpt-5-mini", Some(1), false);
+
+        assert_eq!(parent.agent.harness.orchestration_mode, HarnessOrchestrationMode::PlanBuildEvaluate);
+        assert_eq!(child.agent.harness.orchestration_mode, HarnessOrchestrationMode::Single);
+        assert_eq!(child.permissions.allow, parent.permissions.allow);
+    }
+
+    #[test]
+    fn captured_planner_fixture_is_valid_and_failure_mutation_is_empty() {
+        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../tests/fixtures/vidaimock");
+        let success: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(fixtures.join("planner-response-sanitized.json")).expect("read valid planner fixture"),
+        )
+        .expect("parse valid planner fixture envelope");
+        let success_content = success["choices"][0]["message"]["content"]
+            .as_str()
+            .expect("valid planner content");
+        let planner: serde_json::Value = serde_json::from_str(success_content).expect("parse captured planner JSON");
+        for key in [
+            "task_title",
+            "spec_markdown",
+            "contract_markdown",
+            "feature_list_markdown",
+            "items",
+        ] {
+            assert!(!planner[key].is_null(), "valid captured planner fixture must include {key}");
+        }
+
+        let empty: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(fixtures.join("planner-response-empty.json")).expect("read empty planner mutation"),
+        )
+        .expect("parse empty planner mutation envelope");
+        assert_eq!(empty["choices"][0]["message"]["content"], "");
     }
 
     #[tokio::test]
@@ -2078,6 +2125,345 @@ mod tests {
             .expect("Lody management protocol flow should succeed");
         agent_task.abort();
         drop(agent_task.await);
+    }
+
+    #[tokio::test]
+    async fn failed_child_is_distinct_from_successful_polling_and_keeps_a_durable_archive() {
+        use vtcode_config::core::CustomProviderRequestPolicyConfig;
+        use vtcode_config::core::agent::HarnessOrchestrationMode;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let _provider_guard = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+
+        let provider = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(500).set_body_json(serde_json::json!({
+                "error": { "message": "synthetic child provider failure" }
+            })))
+            .expect(1)
+            .mount(&provider)
+            .await;
+
+        let workspace = TempDir::new().expect("failed child workspace");
+        let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+        let child_provider = CustomProviderConfig {
+            name: "wire-test".to_string(),
+            display_name: "Synthetic child provider".to_string(),
+            base_url: provider.uri(),
+            model: "wire-model".to_string(),
+            models: vec!["wire-model".to_string()],
+            supports_tools: Some(true),
+            request_policy: CustomProviderRequestPolicyConfig {
+                max_retries: 0,
+                ..CustomProviderRequestPolicyConfig::default()
+            },
+            ..CustomProviderConfig::default()
+        };
+        let mut vt_config = vtcode_core::config::VTCodeConfig::default();
+        vt_config.subagents.enabled = true;
+        vt_config.agent.provider = "wire-test".to_string();
+        vt_config.agent.default_model = "wire-model".to_string();
+        vt_config.agent.harness.orchestration_mode = HarnessOrchestrationMode::PlanBuildEvaluate;
+        vt_config.permissions.allow = vec!["read".to_string()];
+        vt_config.custom_providers = vec![child_provider.clone()];
+        vtcode_core::llm::factory::register_custom_providers(&vt_config.custom_providers);
+        Box::pin(super::super::attach_acp_subagent_controller(
+            &agent.local_tool_registry,
+            &agent.config,
+            std::slice::from_ref(&child_provider),
+            Some(&vt_config),
+            None,
+            false,
+        ))
+        .await;
+        let controller = agent
+            .local_tool_registry
+            .subagent_controller()
+            .expect("failed child controller");
+
+        let (agent_channel, client_channel) = Channel::duplex();
+        let agent_connection = install_handlers(Agent.builder().name("vtcode-child-recovery-test"), Arc::clone(&agent))
+            .connect_with(agent_channel, {
+                let agent = Arc::clone(&agent);
+                async move |cx: ConnectionTo<Client>| {
+                    agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                    std::future::pending::<agent_client_protocol::Result<()>>().await
+                }
+            });
+        let agent_task = tokio::spawn(agent_connection);
+        let workspace_path = workspace.path().to_path_buf();
+        let inspected_controller = Arc::clone(&controller);
+        let client_connection = Client
+            .builder()
+            .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+                drop(
+                    cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                        .block_task()
+                        .await?,
+                );
+                let session = cx.send_request(NewSessionRequest::new(workspace_path)).block_task().await?;
+                inspected_controller.set_parent_session_id(session.session_id.to_string()).await;
+                let available_specs = inspected_controller.effective_specs().await;
+                assert!(
+                    available_specs
+                        .iter()
+                        .any(|spec| spec.name == "explorer" && spec.is_subagent() && spec.is_read_only()),
+                    "the ACP test controller must discover the built-in read-only explorer"
+                );
+                let delegation_hints = inspected_controller
+                    .set_turn_delegation_hints_from_input(
+                        "@agent-explorer inspect README.md and report whether a Usage heading exists.",
+                    )
+                    .await;
+                assert_eq!(delegation_hints, ["explorer"]);
+                let child = inspected_controller
+                    .spawn(SpawnAgentRequest {
+                        agent_type: Some("explorer".to_string()),
+                        message: Some(
+                            "Read README.md once and report whether it contains a Usage heading; do not modify files."
+                                .to_string(),
+                        ),
+                        max_turns: Some(1),
+                        ..SpawnAgentRequest::default()
+                    })
+                    .await
+                    .expect("spawn synthetic child");
+
+                let mut failed = serde_json::Value::Null;
+                for _ in 0..100 {
+                    let params = serde_json::value::to_raw_value(&serde_json::json!({
+                        "sessionId": session.session_id,
+                        "activeOnly": false,
+                    }))?;
+                    let polled = cx
+                        .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                            super::super::lody::LODY_SUBAGENTS_LIST_METHOD,
+                            params.into(),
+                        )))
+                        .block_task()
+                        .await?;
+                    if polled["tasks"][0]["status"] == "failed" {
+                        failed = polled;
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
+                assert_eq!(failed["tasks"][0]["taskId"], child.id);
+                assert_eq!(failed["tasks"][0]["status"], "failed");
+                assert!(failed["tasks"][0]["stopReason"].as_str().is_some_and(|value| !value.is_empty()));
+
+                let active_params = serde_json::value::to_raw_value(&serde_json::json!({
+                    "sessionId": session.session_id,
+                    "activeOnly": true,
+                }))?;
+                let active = cx
+                    .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                        super::super::lody::LODY_SUBAGENTS_LIST_METHOD,
+                        active_params.into(),
+                    )))
+                    .block_task()
+                    .await?;
+                assert_eq!(active, serde_json::json!({ "tasks": [] }));
+
+                let snapshot = inspected_controller
+                    .snapshot_for_thread(&child.id)
+                    .await
+                    .expect("failed child remains inspectable");
+                assert_eq!(
+                    snapshot.effective_config.agent.harness.orchestration_mode,
+                    HarnessOrchestrationMode::Single
+                );
+                assert_eq!(snapshot.effective_config.permissions.allow, ["read"]);
+                let archive_path = snapshot
+                    .archive_path
+                    .unwrap_or_else(|| panic!("failed child archive path; ACP terminal status: {failed}"));
+                let live_status = inspected_controller
+                    .status_for(&child.id)
+                    .await
+                    .expect("live failed child status");
+                assert_eq!(live_status.status, vtcode_core::subagents::SubagentStatus::Failed);
+                let live_error = live_status.error.as_deref().expect("failed child error");
+                assert!(
+                    live_error.contains("synthetic child provider failure"),
+                    "child must reach the intended provider failure: {live_error}"
+                );
+                assert_eq!(failed["tasks"][0]["stopReason"].as_str(), Some(live_error));
+                assert_eq!(live_status.transcript_path.as_ref(), Some(&archive_path));
+
+                let reloaded = vtcode_core::utils::session_archive::find_session_by_identifier(&snapshot.session_id)
+                    .await
+                    .expect("reload failed child archive")
+                    .expect("failed child archive remains discoverable");
+                assert_eq!(reloaded.path, archive_path);
+                assert!(
+                    reloaded
+                        .snapshot
+                        .messages
+                        .iter()
+                        .any(|message| message.content.as_text().contains("Read README.md")),
+                    "durable failed-child history must retain the delegated task"
+                );
+                std::fs::remove_file(archive_path).expect("remove failed child archive");
+                Ok(())
+            });
+
+        tokio::time::timeout(Duration::from_secs(8), client_connection)
+            .await
+            .expect("failed child ACP client should finish")
+            .expect("failed child ACP protocol flow should succeed");
+        agent_task.abort();
+        drop(agent_task.await);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires pinned VidaiMock 0.3.1 and validates child request physics"]
+    async fn vidaimock_child_completes_without_an_optional_planner_phase() {
+        use std::net::{TcpListener, TcpStream};
+        use std::process::{Child, Command, Stdio};
+        use std::thread;
+        use std::time::Duration as StdDuration;
+        use vtcode_config::core::CustomProviderRequestPolicyConfig;
+        use vtcode_config::core::agent::HarnessOrchestrationMode;
+
+        let _provider_guard = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+
+        struct RunningChildVidaiMock {
+            child: Child,
+            base_url: String,
+        }
+
+        impl Drop for RunningChildVidaiMock {
+            fn drop(&mut self) {
+                drop(self.child.kill());
+                drop(self.child.wait());
+            }
+        }
+
+        let version = Command::new("vidaimock")
+            .arg("--version")
+            .output()
+            .expect("vidaimock --version");
+        assert!(version.status.success());
+        assert!(String::from_utf8_lossy(&version.stdout).contains("0.3.1"));
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("reserve VidaiMock port");
+        let port = listener.local_addr().expect("VidaiMock address").port();
+        drop(listener);
+        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../tests/fixtures/vidaimock");
+        let mut child = Command::new("vidaimock")
+            .env("VIDAIMOCK_ISOLATED", "true")
+            .arg("--host")
+            .arg("127.0.0.1")
+            .arg("--port")
+            .arg(port.to_string())
+            .arg("--config")
+            .arg(fixtures.join("scenarios/trickled-stream.toml"))
+            .arg("--config-dir")
+            .arg(&fixtures)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("start VidaiMock child fixture");
+        for _ in 0..100 {
+            if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                break;
+            }
+            assert!(child.try_wait().expect("poll VidaiMock").is_none(), "VidaiMock exited before startup");
+            thread::sleep(StdDuration::from_millis(25));
+        }
+        let vidaimock = RunningChildVidaiMock {
+            child,
+            base_url: format!("http://127.0.0.1:{port}/v1/child-single"),
+        };
+
+        let workspace = TempDir::new().expect("VidaiMock child workspace");
+        std::fs::write(workspace.path().join("README.md"), "# Fixture\n\n## Usage\n").expect("write child fixture");
+        let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+        let provider = CustomProviderConfig {
+            name: "wire-test".to_string(),
+            display_name: "VidaiMock child provider".to_string(),
+            base_url: vidaimock.base_url.clone(),
+            model: "wire-model".to_string(),
+            models: vec!["wire-model".to_string()],
+            supports_tools: Some(true),
+            request_policy: CustomProviderRequestPolicyConfig {
+                max_retries: 0,
+                ..CustomProviderRequestPolicyConfig::default()
+            },
+            ..CustomProviderConfig::default()
+        };
+        let mut config = vtcode_core::config::VTCodeConfig::default();
+        config.subagents.enabled = true;
+        config.agent.provider = "wire-test".to_string();
+        config.agent.default_model = "wire-model".to_string();
+        config.agent.harness.orchestration_mode = HarnessOrchestrationMode::PlanBuildEvaluate;
+        config.permissions.allow = vec!["read".to_string()];
+        config.custom_providers = vec![provider.clone()];
+        vtcode_core::llm::factory::register_custom_providers(&config.custom_providers);
+        Box::pin(super::super::attach_acp_subagent_controller(
+            &agent.local_tool_registry,
+            &agent.config,
+            std::slice::from_ref(&provider),
+            Some(&config),
+            None,
+            false,
+        ))
+        .await;
+        let controller = agent
+            .local_tool_registry
+            .subagent_controller()
+            .expect("VidaiMock child controller");
+        let available_specs = controller.effective_specs().await;
+        assert!(
+            available_specs
+                .iter()
+                .any(|spec| spec.name == "explorer" && spec.is_subagent() && spec.is_read_only()),
+            "the VidaiMock controller must discover the built-in read-only explorer"
+        );
+        let hints = controller
+            .set_turn_delegation_hints_from_input("@agent-explorer inspect README.md for a Usage heading")
+            .await;
+        assert_eq!(hints, ["explorer"]);
+        let spawned = controller
+            .spawn(SpawnAgentRequest {
+                agent_type: Some("explorer".to_string()),
+                message: Some(
+                    "Read README.md and report whether a Usage heading exists; do not modify files.".to_string(),
+                ),
+                max_turns: Some(1),
+                ..SpawnAgentRequest::default()
+            })
+            .await
+            .expect("spawn VidaiMock child");
+        let terminal = controller
+            .wait(std::slice::from_ref(&spawned.id), Some(8_000))
+            .await
+            .expect("wait for VidaiMock child")
+            .expect("VidaiMock child reached a terminal state");
+        assert_eq!(
+            terminal.status,
+            vtcode_core::subagents::SubagentStatus::Completed,
+            "child failure: {:?}",
+            terminal.error
+        );
+        assert!(terminal.summary.as_deref().is_some_and(|summary| !summary.trim().is_empty()));
+        let snapshot = controller
+            .snapshot_for_thread(&spawned.id)
+            .await
+            .expect("VidaiMock child snapshot");
+        assert!(
+            snapshot.snapshot.messages.iter().any(|message| {
+                message.role == vtcode_core::llm::provider::MessageRole::Assistant
+                    && message.content.as_text().contains("Synthetic child completed")
+            }),
+            "child history must preserve the actual simulated response"
+        );
+        assert_eq!(snapshot.effective_config.agent.harness.orchestration_mode, HarnessOrchestrationMode::Single);
+        assert_eq!(snapshot.effective_config.permissions.allow, ["read"]);
+        if let Some(path) = snapshot.transcript_path.or(snapshot.archive_path) {
+            std::fs::remove_file(path).expect("remove VidaiMock child archive");
+        }
     }
 
     async fn lody_output_error(

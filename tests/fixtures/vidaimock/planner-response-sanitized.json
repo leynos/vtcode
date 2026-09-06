@@ -1,0 +1,15 @@
+{
+  "id": "chatcmpl-synthetic-planner-success",
+  "object": "chat.completion",
+  "created": 1788606498,
+  "model": "synthetic/planner-model",
+  "choices": [{
+    "index": 0,
+    "message": {
+      "role": "assistant",
+      "content": "{\"task_title\":\"Inspect synthetic documentation fixture for a Usage heading\",\"spec_markdown\":\"## Goal\\nRead README.md and report whether it contains a Usage heading.\",\"contract_markdown\":\"## Execution Contract\\nReport an explicit yes or no and do not modify files.\",\"feature_list_markdown\":\"## Features & Acceptance Criteria\\n- [ ] Read README.md\\n- [ ] Report whether Usage exists\",\"items\":[{\"description\":\"Read README.md and check for a Usage heading.\",\"outcome\":\"A definitive presence or absence result.\",\"verify\":\"grep for an exact Usage heading in README.md\",\"files\":[\"README.md\"]}]}"
+    },
+    "finish_reason": "stop"
+  }],
+  "usage": { "prompt_tokens": 227, "completion_tokens": 1673, "total_tokens": 1900 }
+}

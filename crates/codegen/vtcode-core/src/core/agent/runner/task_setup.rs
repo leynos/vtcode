@@ -125,6 +125,12 @@ impl AgentRunner {
         conversation.extend(crate::core::agent::conversation::build_conversation(task, contexts));
 
         let conversation_messages = crate::core::agent::conversation::build_messages_from_conversation(&conversation);
+        // Publish the accepted task before any fallible setup phase (notably
+        // harness planning). If setup fails, the child controller archives
+        // `session_messages()` and must retain the real delegated user task,
+        // not only its bootstrap history. Successful execution replaces this
+        // snapshot later with the complete runtime conversation.
+        self.thread_handle.replace_messages(conversation_messages.clone());
 
         let max_tool_loops = self.config().tools.max_tool_loops;
         let preserve_recent_turns = self.config().context.preserve_recent_turns;
@@ -169,13 +175,26 @@ impl AgentRunner {
         let orchestration_enabled = self.harness_plan_build_evaluate_enabled(full_auto_active, review_like);
 
         let planner_artifacts = if orchestration_enabled {
-            Some(match self.run_planner_phase(task, &mut event_recorder).await {
-                Ok(artifacts) => artifacts,
-                Err(error) => {
-                    finish_failed_setup(&mut event_recorder, &self.session_id, &error, session_store_handle).await;
-                    return Err(error);
+            match self.run_planner_phase(task, &mut event_recorder).await {
+                Ok(artifacts) => Some(artifacts),
+                Err(planner_error) => {
+                    // `run_planner_phase` records the canonical TurnFailed.
+                    // Close its last sink sender, then wait for the
+                    // authoritative session-store drain before exposing the
+                    // failure to the caller.
+                    drop(event_recorder);
+                    if let Err(persistence_error) = session_store_handle.close().await {
+                        let safe_error = vtcode_commons::sanitizer::sanitize_provider_diagnostic(
+                            format!("{persistence_error:#}").as_bytes(),
+                        );
+                        tracing::warn!(
+                            error = %safe_error,
+                            "Failed to drain session events after planner failure"
+                        );
+                    }
+                    return Err(planner_error);
                 }
-            })
+            }
         } else {
             None
         };
@@ -203,6 +222,9 @@ impl AgentRunner {
             )
             .await,
         );
+        if self.is_subagent() {
+            continuation_controller = continuation_controller.without_internal_scaffold();
+        }
         if let Err(error) = continuation_controller.prepare(&effective_task).await {
             finish_failed_setup(&mut event_recorder, &self.session_id, &error, session_store_handle).await;
             return Err(error);

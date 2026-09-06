@@ -1,0 +1,13 @@
+name: "child-single-physics"
+matcher: "^/v1/child-single/chat/completions$"
+priority: 125
+response_template: "arli/child_single_response.json.j2"
+error_template: "arli/error.json.j2"
+status_code: "200"
+stream:
+  enabled: true
+  frame_format: raw
+  lifecycle:
+    on_start: { template_path: "arli/physics_stream_start.j2" }
+    on_chunk: { template_path: "arli/physics_stream_chunk.j2" }
+    on_stop: { template_path: "arli/physics_stream_stop.j2" }
