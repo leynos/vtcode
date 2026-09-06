@@ -224,13 +224,97 @@ clean_commit_message() {
 	echo "$message" | sed -E 's/^[a-z]+(\([^)]+\))?:[[:space:]]*//'
 }
 
+# Return success when a changelog already contains the normalized release
+# version in any historical heading form used by this repository.
+changelog_contains_version() {
+	local changelog=$1
+	local version=${2#v}
+	local version_pattern=${version//./\\.}
+	grep -Eq "^#{1,2}[[:space:]]+(scode-)?(\\[Version[[:space:]]+|\\[?v?)?${version_pattern}(\\]|[[:space:]-])" "$changelog"
+}
+
+# Insert a complete H2 release section before the first existing H2 while
+# preserving a variable-length document preamble and the insertion separator.
+insert_changelog_section() {
+	local changelog=$1
+	local section=$2
+	local changelog_dir=${changelog%/*}
+	local changelog_name=${changelog##*/}
+	local section_file=""
+	local output_file=""
+	local status
+	if [[ $changelog_dir == "$changelog" ]]; then
+		changelog_dir=.
+	elif [[ -z $changelog_dir ]]; then
+		changelog_dir=/
+	fi
+	while [[ $section == *$'\n' ]]; do
+		section=${section%$'\n'}
+	done
+	section_file=$(mktemp "$changelog_dir/.${changelog_name}.section.XXXXXX") || {
+		status=$?
+		return "$status"
+	}
+	output_file=$(mktemp "$changelog_dir/.${changelog_name}.output.XXXXXX") || {
+		status=$?
+		rm -f "$section_file" 2>/dev/null || :
+		return "$status"
+	}
+	printf '%s\n' "$section" >"$section_file" || {
+		status=$?
+		rm -f "$section_file" "$output_file" 2>/dev/null || :
+		return "$status"
+	}
+	# Copy metadata before truncating the same-directory output temporary. The
+	# final rename is atomic and preserves the original on generation failure.
+	cp -p "$changelog" "$output_file" || {
+		status=$?
+		rm -f "$section_file" "$output_file" 2>/dev/null || :
+		return "$status"
+	}
+	awk -v section_file="$section_file" '
+		function emit_section(    line) {
+			while ((getline line < section_file) > 0) print line
+			close(section_file)
+		}
+		!inserted && /^## / {
+			if (!previous_blank) print ""
+			emit_section()
+			print ""
+			inserted = 1
+		}
+		{ print; previous_blank = ($0 == "") }
+		END {
+			if (!inserted) {
+				if (!previous_blank) print ""
+				emit_section()
+			}
+		}
+	' "$changelog" >"$output_file" || {
+		status=$?
+		rm -f "$section_file" "$output_file" 2>/dev/null || :
+		return "$status"
+	}
+	rm -f "$section_file" || {
+		status=$?
+		rm -f "$output_file" 2>/dev/null || :
+		return "$status"
+	}
+	mv -f "$output_file" "$changelog" || {
+		status=$?
+		rm -f "$output_file" 2>/dev/null || :
+		return "$status"
+	}
+}
+
 # Collect unique contributors from a commit range
 generate_contributors_section() {
 	local commits_range="$1"
+	local version=${2#v}
 	local contributors=""
 	local seen_usernames=""
 
-	while IFS= read -r author_email; do
+	while IFS= read -r author_email || [[ -n "$author_email" ]]; do
 		[[ -z "$author_email" ]] && continue
 		local username
 		username=$(get_github_username "$author_email")
@@ -248,7 +332,7 @@ generate_contributors_section() {
 	done < <(git log "$commits_range" --no-merges --pretty=format:"%ae")
 
 	if [[ -n "$contributors" ]]; then
-		echo "### Contributors"$'\n'
+		echo "### [$version] Contributors"$'\n'
 		echo "$contributors"
 	fi
 }
@@ -259,6 +343,7 @@ generate_contributors_section() {
 # Note: Uses simple arrays instead of associative arrays for bash 3.2 compatibility (macOS)
 generate_structured_changelog() {
 	local commits_range="$1"
+	local version=${2#v}
 
 	# Highlight types shown at the top; everything else goes under "Other Changes"
 	local highlight_types="feat fix docs"
@@ -279,7 +364,7 @@ generate_structured_changelog() {
 	local other_commits=""
 
 	# Get commits with their hashes, subjects, and author emails in a single git log call
-	while IFS='|' read -r hash message author_email; do
+	while IFS='|' read -r hash message author_email || [[ -n "$hash" ]]; do
 		[[ -z "$hash" ]] && continue
 
 		local type
@@ -326,7 +411,7 @@ generate_structured_changelog() {
 	local has_other=false
 
 	# Highlights section (Features, Bug Fixes, Documentation)
-	output+="### Highlights"$'\n\n'
+	output+="### [$version] Highlights"$'\n\n'
 
 	for type in $highlight_types; do
 		local commits=""
@@ -339,14 +424,14 @@ generate_structured_changelog() {
 		if [[ -n "$commits" ]]; then
 			local title
 			title=$(get_type_title "$type")
-			output+="#### ${title}"$'\n\n'
+			output+="#### [$version] ${title}"$'\n\n'
 			output+="${commits}"$'\n'
 			has_highlights=true
 		fi
 	done
 
 	if [[ "$has_highlights" == false ]]; then
-		output+="*No highlighted changes*"$'\n\n'
+		output+="- *No highlighted changes*"$'\n\n'
 	fi
 
 	# Other Changes section (Performance, Refactors, Security, Tests, Build, CI, Deps, Chores, Other)
@@ -369,26 +454,26 @@ generate_structured_changelog() {
 		if [[ -n "$commits" ]]; then
 			local title
 			title=$(get_type_title "$type")
-			other_output+="#### ${title}"$'\n\n'
+			other_output+="#### [$version] ${title}"$'\n\n'
 			other_output+="${commits}"$'\n'
 			has_other=true
 		fi
 	done
 
 	if [[ "$has_other" == true ]]; then
-		output+="### Other Changes"$'\n\n'
+		output+="### [$version] Other Changes"$'\n\n'
 		output+="${other_output}"
 	fi
 
 	# Contributors section
 	local contributors_section
-	contributors_section=$(generate_contributors_section "$commits_range")
+	contributors_section=$(generate_contributors_section "$commits_range" "$version")
 	if [[ -n "$contributors_section" ]]; then
 		output+="${contributors_section}"$'\n'
 	fi
 
 	if [[ "$has_highlights" == false && "$has_other" == false ]]; then
-		output="*No significant changes*"$'\n'
+		output="- *No significant changes*"$'\n'
 	fi
 
 	echo "$output"
@@ -484,23 +569,15 @@ update_changelog_from_commits() {
 
 			if [[ -f CHANGELOG.md ]]; then
 				# Check if this version already exists in the changelog
-				if grep -q "^## $version " CHANGELOG.md; then
+				if changelog_contains_version CHANGELOG.md "$version"; then
 					print_warning "Version $version already exists in CHANGELOG.md, skipping update"
 				else
-					# Use git-cliff's generated content, insert after header
-					local header
-					header=$(head -n 4 CHANGELOG.md)
-					local remainder
-					remainder=$(tail -n +5 CHANGELOG.md)
-					{
-						printf '%s\n' "$header"
-						if [[ -n "$version_section" ]]; then
-							printf '%s\n' "$version_section"
-						else
-							printf '%s\n' "$changelog_content"
-						fi
-						printf '%s\n' "$remainder"
-					} >CHANGELOG.md
+					# Insert structurally after the document preamble.
+					if [[ -n "$version_section" ]]; then
+						insert_changelog_section CHANGELOG.md "$version_section" || return $?
+					else
+						insert_changelog_section CHANGELOG.md "$changelog_content" || return $?
+					fi
 				fi
 			else
 				# Create new changelog with git-cliff output
@@ -559,7 +636,7 @@ update_changelog_builtin() {
 	# Generate structured changelog
 	print_info "Generating structured changelog from commits..."
 	local structured_changelog
-	structured_changelog=$(generate_structured_changelog "$commits_range")
+	structured_changelog=$(generate_structured_changelog "$commits_range" "$version")
 
 	# Save to global variable for release notes use (GitHub Release body)
 	{
@@ -588,23 +665,14 @@ update_changelog_builtin() {
 
 	if [[ -f CHANGELOG.md ]]; then
 		# Check if this version already exists in the changelog
-		if grep -q "^## $version " CHANGELOG.md; then
+		if changelog_contains_version CHANGELOG.md "$version"; then
 			print_warning "Version $version already exists in CHANGELOG.md, skipping update"
 		else
-			# Insert new entry after the header
-			local header
-			header=$(head -n 4 CHANGELOG.md)
-			local remainder
-			remainder=$(tail -n +5 CHANGELOG.md)
-			{
-				printf '%s\n' "$header"
-				printf '%b\n' "$changelog_entry"
-				printf '%s\n' "$remainder"
-			} >CHANGELOG.md
+			insert_changelog_section CHANGELOG.md "$changelog_entry" || return $?
 		fi
 	else
 		{
-			printf '%s\n' "# Changelog - vtcode"
+			printf '%s\n' "# Changelog"
 			printf '%s\n' ""
 			printf '%s\n' "All notable changes to vtcode will be documented in this file."
 			printf '%s\n' ""
@@ -1565,4 +1633,6 @@ main() {
 	print_info "Tip: Use --full-ci to build ALL platforms on GitHub Actions"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+	main "$@"
+fi

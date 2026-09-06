@@ -874,3 +874,31 @@ binary is unavailable. Four inherited rustdoc warnings remain for later
 source fixes. The handoff passes Nixie; final Markdown and spelling checks
 validate these notes.
 The tool-output test extraction remains a subsequent layer.
+
+## Changelog Markdown prerequisite
+
+This layer follows test-module PR #72. It gives changelog sections unique
+version-qualified headings while preserving non-heading history. The generated
+release sections follow the same heading contract. Hermetic fixtures exercise
+both release-script generators and pinned git-cliff without network access or
+ambient Git configuration.
+
+The fixture exposed a release-script defect: plain read loops skipped the final
+Git log record when it lacked a trailing newline. Both loops now retain a
+nonempty final record, preserving the oldest commit and contributor. Strict
+category, hash and ordering assertions remain in place.
+
+Offline checks passed the fixture and found no added Markdown diagnostics:
+8,425 remain against 11,233 in the exact source parent, with all 2,808
+differences being removals. Changelog duplicate-heading and multiple-title
+findings are zero. ShellCheck retains 21 exact-parent diagnostics. Current
+blobs match the audited candidate, and both parent document blobs match its
+exact parent, so the diagnostic identity mapping still applies.
+
+Current-layer formatting, lint, build, type-checking, all 10,094 workspace
+tests (17 skipped), all 67 harness tests, eight spelling contracts and
+13 Actions contracts pass. The generator fixture also passes on this branch.
+Advisory checks and Nixie pass; optional AST-grep is unavailable. Four inherited
+rustdoc warnings remain for later source fixes. Final handoff and spelling
+checks validate these notes; mechanical Markdown formatting follows in later
+layers.
