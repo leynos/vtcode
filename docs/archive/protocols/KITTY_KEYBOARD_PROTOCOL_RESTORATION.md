@@ -104,7 +104,7 @@ PushKeyboardEnhancementFlags / PopKeyboardEnhancementFlags
 
 ### Integration Point - Session Setup
 
-#### src/agent/runloop/unified/session_setup.rs
+#### src/agent/runloop/unified/session_setup/mod.rs
 
 - **Status**: ✓ Updated
 - **Changes**:
