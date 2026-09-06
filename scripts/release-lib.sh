@@ -130,16 +130,97 @@ clean_commit_message() {
 	echo "$message" | sed -E 's/^[a-z]+(\([^)]+\))?:\s*//' | sed -E 's/\[skip ci\]|\[ci skip\]//g' | sed 's/^ *//' | sed 's/ *$//'
 }
 
+changelog_contains_version() {
+	local changelog=$1
+	local version=${2#v}
+	local version_pattern=${version//./\\.}
+	grep -Eq "^#{1,2}[[:space:]]+(scode-)?(\\[Version[[:space:]]+|\\[?v?)?${version_pattern}(\\]|[[:space:]-])" "$changelog"
+}
+
+# Insert a complete H2 release section before the first existing H2 while
+# preserving a variable-length document preamble and the insertion separator.
+insert_changelog_section() {
+	local changelog=$1
+	local section=$2
+	local changelog_dir=${changelog%/*}
+	local changelog_name=${changelog##*/}
+	local section_file=""
+	local output_file=""
+	local status
+	if [[ $changelog_dir == "$changelog" ]]; then
+		changelog_dir=.
+	elif [[ -z $changelog_dir ]]; then
+		changelog_dir=/
+	fi
+	while [[ $section == *$'\n' ]]; do
+		section=${section%$'\n'}
+	done
+	section_file=$(mktemp "$changelog_dir/.${changelog_name}.section.XXXXXX") || {
+		status=$?
+		return "$status"
+	}
+	output_file=$(mktemp "$changelog_dir/.${changelog_name}.output.XXXXXX") || {
+		status=$?
+		rm -f "$section_file" 2>/dev/null || :
+		return "$status"
+	}
+	printf '%s\n' "$section" >"$section_file" || {
+		status=$?
+		rm -f "$section_file" "$output_file" 2>/dev/null || :
+		return "$status"
+	}
+	# Copy metadata before truncating the same-directory output temporary. The
+	# final rename is atomic and preserves the original on generation failure.
+	cp -p "$changelog" "$output_file" || {
+		status=$?
+		rm -f "$section_file" "$output_file" 2>/dev/null || :
+		return "$status"
+	}
+	awk -v section_file="$section_file" '
+		function emit_section(    line) {
+			while ((getline line < section_file) > 0) print line
+			close(section_file)
+		}
+		!inserted && /^## / {
+			if (!previous_blank) print ""
+			emit_section()
+			print ""
+			inserted = 1
+		}
+		{ print; previous_blank = ($0 == "") }
+		END {
+			if (!inserted) {
+				if (!previous_blank) print ""
+				emit_section()
+			}
+		}
+	' "$changelog" >"$output_file" || {
+		status=$?
+		rm -f "$section_file" "$output_file" 2>/dev/null || :
+		return "$status"
+	}
+	rm -f "$section_file" || {
+		status=$?
+		rm -f "$output_file" 2>/dev/null || :
+		return "$status"
+	}
+	mv -f "$output_file" "$changelog" || {
+		status=$?
+		rm -f "$output_file" 2>/dev/null || :
+		return "$status"
+	}
+}
+
 generate_contributors_section() {
 	local commits_range=$1
+	local version=${2#v}
 	local contributors
 	contributors=$(git log "$commits_range" --no-merges --format="%aN" 2>/dev/null | sort -u | grep -v "^$" | grep -v "vtcode-release-bot" || true)
 	if [[ -n "$contributors" ]]; then
-		echo ""
-		echo "**Contributors**"
+		echo "### [$version] Contributors"
 		echo ""
 		echo "$contributors" | while IFS= read -r name; do
-			[[ -n "$name" ]] && echo "  - $name"
+			[[ -n "$name" ]] && echo "- $name"
 		done
 		echo ""
 	fi
@@ -147,6 +228,7 @@ generate_contributors_section() {
 
 generate_structured_changelog() {
 	local commits_range=$1
+	local version=${2#v}
 	if [[ -z "$commits_range" ]]; then
 		commits_range="HEAD"
 	fi
@@ -178,14 +260,15 @@ generate_structured_changelog() {
 			title=$(get_type_title "$type")
 			local prefix
 			prefix=$(get_type_prefix "$type")
-			echo "### $title"
+			echo "### [$version] $title"
 			echo ""
 			echo "$type_commits" | while IFS='|' read -r t hash msg; do
-				echo "${prefix}${msg} (${hash})"
+				echo "- ${prefix#  }${msg} (${hash})"
 			done
 			echo ""
 		fi
 	done
+	generate_contributors_section "$commits_range" "$version"
 }
 
 update_changelog_from_commits() {
@@ -250,22 +333,14 @@ update_changelog_from_commits() {
 				echo "**Full Changelog**: ${full_changelog_url}"
 			} >"$RELEASE_NOTES_FILE"
 			if [[ -f CHANGELOG.md ]]; then
-				if grep -q "^## $version " CHANGELOG.md; then
+				if changelog_contains_version CHANGELOG.md "$version"; then
 					print_warning "Version $version already exists in CHANGELOG.md, skipping update"
 				else
-					local header
-					header=$(head -n 4 CHANGELOG.md)
-					local remainder
-					remainder=$(tail -n +5 CHANGELOG.md)
-					{
-						printf '%s\n' "$header"
-						if [[ -n "$version_section" ]]; then
-							printf '%s\n' "$version_section"
-						else
-							printf '%s\n' "$changelog_content"
-						fi
-						printf '%s\n' "$remainder"
-					} >CHANGELOG.md
+					if [[ -n "$version_section" ]]; then
+						insert_changelog_section CHANGELOG.md "$version_section" || return $?
+					else
+						insert_changelog_section CHANGELOG.md "$changelog_content" || return $?
+					fi
 				fi
 			else
 				cp "$temp_changelog" CHANGELOG.md
@@ -312,7 +387,7 @@ update_changelog_builtin() {
 	date_str=$(date +%Y-%m-%d)
 	print_info "Generating structured changelog from commits..."
 	local structured_changelog
-	structured_changelog=$(generate_structured_changelog "$commits_range")
+	structured_changelog=$(generate_structured_changelog "$commits_range" "$version")
 	{
 		echo "## What's Changed"
 		echo ""
@@ -334,22 +409,14 @@ update_changelog_builtin() {
 	changelog_entry="## $version - $date_str"$'\n\n'
 	changelog_entry="${changelog_entry}${structured_changelog}"$'\n'
 	if [[ -f CHANGELOG.md ]]; then
-		if grep -q "^## $version " CHANGELOG.md; then
+		if changelog_contains_version CHANGELOG.md "$version"; then
 			print_warning "Version $version already exists in CHANGELOG.md, skipping update"
 		else
-			local header
-			header=$(head -n 4 CHANGELOG.md)
-			local remainder
-			remainder=$(tail -n +5 CHANGELOG.md)
-			{
-				printf '%s\n' "$header"
-				printf '%b\n' "$changelog_entry"
-				printf '%s\n' "$remainder"
-			} >CHANGELOG.md
+			insert_changelog_section CHANGELOG.md "$changelog_entry" || return $?
 		fi
 	else
 		{
-			printf '%s\n' "# Changelog - vtcode"
+			printf '%s\n' "# Changelog"
 			printf '%s\n' ""
 			printf '%s\n' "All notable changes to vtcode will be documented in this file."
 			printf '%s\n' ""

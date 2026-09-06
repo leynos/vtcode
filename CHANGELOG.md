@@ -1,106 +1,106 @@
 # Changelog
 
 All notable changes to vtcode will be documented in this file.
-## v0.73.2 - 2026-01-29
+## 0.73.2 - 2026-01-29
 ## 0.156.1 - 2026-09-04
 
-### Highlights
-#### Bug Fixes
+### [0.156.1] Highlights
+#### [0.156.1] Bug Fixes
 
 - Single-ownership transcript spacing and markdown rhythm (d9dfbed6) 
 - Unblock verification gate after failed verifiers with bounded fix-up window (0ac78576) 
 - Track omitted line counts to keep line numbers accurate (faa2bb02) 
 - Style leading whitespace in code blocks and fix phantom line numbers (bcca153a) 
-#### Documentation
+#### [0.156.1] Documentation
 
 - Revamp with modern GFM syntax and video companions (33229ad7) (@vinhnx)
 - Group header badges and drop emoji and em-dashes (6584d240) (@vinhnx)
 - Add WebMCP greeting and separator (7e0e38db) (@vinhnx)
 - Clarify vtcode differentiators (b0e44335) 
 - Simplify badges and expand table of contents (1a60e9e4) 
-#### Features
+#### [0.156.1] Features
 
 - Add /transcript command with bounded snapshot eviction (e784ad71) 
-### Other Changes
-#### Other
+### [0.156.1] Other Changes
+#### [0.156.1] Other
 
 - Update TODO (53ebe036) 
 - Update TODO (82232175) 
 - Update TODO (e7d2fae1) 
 ## 0.156.0 - 2026-09-04
 
-### Highlights
-#### Bug Fixes
+### [0.156.0] Highlights
+#### [0.156.0] Bug Fixes
 
 - Use stable Windows hard-link inspection (6593183c) 
-### Other Changes
+### [0.156.0] Other Changes
 ## 0.155.0 - 2026-09-04
 
-### Highlights
-#### Bug Fixes
+### [0.155.0] Highlights
+#### [0.155.0] Bug Fixes
 
 - Accept in-workspace absolute paths (415b9047) 
 - Harden recovery state and replay handling (0856cc1e) 
 - Retain final diagnostics and harden handoff writes (0942e281) 
 - Use pipe gutter and solid prose colours for readable diffs (82086129)
-#### Documentation
+#### [0.155.0] Documentation
 
 - Promote features section and compact provider directory (ee7cb026) 
 - Revamp into short concise overview with blog link (c0a315bf) 
 - Restore contributing and support sections, concise wording (9bdbe6c9) 
-#### Features
+#### [0.155.0] Features
 
 - Graceful blocked-turn recovery with turn.blocked event and TUI indicators (5121237b) 
 - Add GPT-6 Astra model with guide-conformant wiring (9820863d) 
-### Other Changes
-#### Other
+### [0.155.0] Other Changes
+#### [0.155.0] Other
 
 - Delete webmcp-youtube-upload-package.md (92e1c300) (@vinhnx)
 - Delete devpost-submission.md (50bd938d) (@vinhnx)
 - Update TODO (ba6f9b8a) 
-#### Tests
+#### [0.155.0] Tests
 
 - Replace fixed sleeps with deadline-bounded polling helpers (5068d899) 
 ## 0.154.0 - 2026-09-03
 
-### Highlights
-#### Bug Fixes
+### [0.154.0] Highlights
+#### [0.154.0] Bug Fixes
 
 - Guard against truncated print_info -> nfo typo (90106841) 
 - Harden crate publish against crates.io 5xx and dirty-tree failures (9e22a20f) 
 - Clean up grouped tool call previews and wording (8d7ff085) 
 - Realign stale expectations after model catalogue and path changes (4b5b3b62)
 - Exclude root-level benches from structured logging scan (b28490bf) 
-#### Documentation
+#### [0.154.0] Documentation
 
 - Drop completed blocked-calls harness plan (2a7eb14b) 
 - Add Why VT Code highlights section (d66bd680) 
 - Replace em-dashes with colons and refine wording (343c57d9) 
-#### Features
+#### [0.154.0] Features
 
 - Graceful blocked calls, rich feedback and resumption UI (f4726a07) 
 - Add Muse Spark 1.3 and Merge Gateway routes (0c73d628) 
 - Add OpenRouter Muse Spark 1.3 routes (d46c8d99) 
-### Other Changes
+### [0.154.0] Other Changes
 ## 0.153.0 - 2026-09-02
 
-### Highlights
-#### Bug Fixes
+### [0.153.0] Highlights
+#### [0.153.0] Bug Fixes
 
 - Restore executable bit and harden crate publish invocation (619e8f2a) (@vinhnx)
 - Prevent terminal leak after exit to CLI (9315e1a3) 
 - Remove full-screen clear that left blank gap after exit (eee38b3b) 
-#### Features
+#### [0.153.0] Features
 
 - Improve colouring of grouped tool call commands and wording highlight (2cf79d89)
 - Add Gemini 3.8 Flash (0ef681e7) 
 - Refine transcript gutter and wrapping layout (cbab27e5) 
 - Add OpenRouter google/gemini-3.8-flash (daee46b6) 
-### Other Changes
+### [0.153.0] Other Changes
 ## 0.152.0 - 2026-09-02
 
-### Highlights
-#### Bug Fixes
+### [0.152.0] Highlights
+#### [0.152.0] Bug Fixes
 
 - Show git branch status only once (e9b725ba) 
 - Retain git indicator in single status entry (49888101) 
@@ -110,11 +110,11 @@ All notable changes to vtcode will be documented in this file.
 - Stabilize recovery diagnostics and PTY output (25193cad) 
 - Join TUI task before host terminal restore on exit (198201dd) 
 - Unify grep outcome classification (1cad7bed) 
-#### Documentation
+#### [0.152.0] Documentation
 
 - Sync 7jrxt42BxFZo4iAnN4CX to 40 commits (e5870916) 
 - Update contributors list (2bfe937c) 
-#### Features
+#### [0.152.0] Features
 
 - Compact tool output and transcript review (eb8370f0) 
 - Restore per-call compact tool output viewer (7c46e284) 
@@ -122,34 +122,34 @@ All notable changes to vtcode will be documented in this file.
 - Add expected-outcomes and dependencies sections to plan template (cbe74e2c) 
 - Add bounded tool failure diagnosis (ff2c5d3e) 
 - Add Claude Fable 5.1 and Claude Mythos 5.1 (a5fa9efa) 
-### Other Changes
-#### Other
+### [0.152.0] Other Changes
+#### [0.152.0] Other
 
 - Update TODO (c3c1dd51) 
 - Update TODO (2e7c84ff) 
-#### Refactors
+#### [0.152.0] Refactors
 
 - Resolve clippy 1.93 lints and bundle recovery inputs (c02987ba) 
 ## 0.151.2 - 2026-08-30
 
-### Highlights
-#### Bug Fixes
+### [0.151.2] Highlights
+#### [0.151.2] Bug Fixes
 
 - Preserve layered settings writes (0c2fd27b) 
 - Protect repository policy persistence (6df636c5) 
 - Recover stale repository provider settings (8196eb4f) 
-### Other Changes
+### [0.151.2] Other Changes
 ## 0.151.1 - 2026-08-30
 
-### Highlights
-#### Bug Fixes
+### [0.151.1] Highlights
+#### [0.151.1] Bug Fixes
 
 - Prevent terminal output on launch failure (58810a29) 
-### Other Changes
+### [0.151.1] Other Changes
 ## 0.151.0 - 2026-08-30
 
-### Highlights
-#### Bug Fixes
+### [0.151.0] Highlights
+#### [0.151.0] Bug Fixes
 
 - Enforce symlink-aware workspace containment in file_ops path policy (c07ccc34) (@7jrxt42BxFZo4iAnN4CX)
 - Reject empty and workspace-root mutation targets (c4b3a7bd) (@7jrxt42BxFZo4iAnN4CX)
@@ -190,32 +190,32 @@ All notable changes to vtcode will be documented in this file.
 - Reject untrusted provider settings (312d0b1e) 
 - Resolve contextual persistent-memory saves (339809e9) 
 - Harden subprocess transport lifecycle (c9eabbfe) 
-#### Features
+#### [0.151.0] Features
 
 - Add installer and repository links (a7ca24fd) (@vinhnx)
 - Support updatedInput in PreToolUse hook outcomes (9b6aee45) (@7jrxt42BxFZo4iAnN4CX)
 - Enable nested delegation via subagents.max_depth (e34303f7) (@7jrxt42BxFZo4iAnN4CX)
 - Add reset and live reload (7b58bd02) 
 - Add GLM-5.3 to HuggingFace and Ollama Cloud (93ce0136) 
-### Other Changes
-#### Other
+### [0.151.0] Other Changes
+#### [0.151.0] Other
 
 - Update README.md (1d565d9a) (@vinhnx)
 - Cargo fmt (cf8f10da) (@7jrxt42BxFZo4iAnN4CX)
-#### Performance
+#### [0.151.0] Performance
 
 - Defer unnecessary tool schema estimates (14dddaf2) 
-#### Refactors
+#### [0.151.0] Refactors
 
 - Use CompactStr for pending rewrite keys (dbf22c98) (@7jrxt42BxFZo4iAnN4CX)
 - Extract shared nested-controller collection helper (10132661) (@7jrxt42BxFZo4iAnN4CX)
-#### Tests
+#### [0.151.0] Tests
 
 - Cover responsive table layouts (24947885) 
 ## 0.150.0 - 2026-08-29
 
-### Highlights
-#### Bug Fixes
+### [0.150.0] Highlights
+#### [0.150.0] Bug Fixes
 
 - Restore model discovery cache recovery (b74b9686) (@vinhnx)
 - Harden browser bridge boundaries (c82feeeb) (@vinhnx)
@@ -226,7 +226,7 @@ All notable changes to vtcode will be documented in this file.
 - Version deployed browser state (14bbd8bf) (@vinhnx)
 - Serve pages assets under project path (0adcd2e5) (@vinhnx)
 - Make evidence JSON downloads durable (5af81e7e) (@vinhnx)
-#### Documentation
+#### [0.150.0] Documentation
 
 - Add Devpost submission draft (a019fdb5) (@vinhnx)
 - Align submission draft with Devpost project (7f745d18) (@vinhnx)
@@ -235,7 +235,7 @@ All notable changes to vtcode will be documented in this file.
 - Refresh preflight notes (3000a1f0) (@vinhnx)
 - Align inspector browser prerequisite (29a94f34) (@vinhnx)
 - Link WebMCP application screenshot (8b4992ce) (@vinhnx)
-#### Features
+#### [0.150.0] Features
 
 - Add challenge companion demo (a949c7fd) (@vinhnx)
 - Feat(webmcp): add dynamic approval (7fa783eb) (@vinhnx)
@@ -249,12 +249,12 @@ All notable changes to vtcode will be documented in this file.
 - Capture live client evidence (30792cf0) (@vinhnx)
 - Add OpenAI-compatible remote MCP (7620deab) (@vinhnx)
 - Support multiple hosted origins (0aa21e24) (@vinhnx)
-### Other Changes
-#### CI
+### [0.150.0] Other Changes
+#### [0.150.0] CI
 
 - Pin Bun setup action (c2286409) (@vinhnx)
 - Deploy challenge branch to Pages (aa4731e1) (@vinhnx)
-#### Other
+#### [0.150.0] Other
 
 - Update project (47464b16) (@vinhnx)
 - Resolve merge conflicts in 1 file(s) (823dbe2e) (@coderabbitai[bot])
@@ -263,42 +263,42 @@ All notable changes to vtcode will be documented in this file.
 - Update WebMCP guide (316ac8b5) (@vinhnx)
 - Update project guide (945169a1) (@vinhnx)
 - Update project (636a4b01) 
-#### Refactors
+#### [0.150.0] Refactors
 
 - Promote app out of examples (ac1eb3d3) (@vinhnx)
-#### Tests
+#### [0.150.0] Tests
 
 - Refresh stale provider expectations (5782f1e0) (@vinhnx)
 ## 0.149.0 - 2026-08-27
 
-### Highlights
-#### Bug Fixes
+### [0.149.0] Highlights
+#### [0.149.0] Bug Fixes
 
 - Remove obsolete OpenRouter models from build_data and generated metadata (3fa11c79) (@vinhnx)
-### Other Changes
+### [0.149.0] Other Changes
 ## 0.148.0 - 2026-08-27
 
-### Highlights
-#### Bug Fixes
+### [0.148.0] Highlights
+#### [0.148.0] Bug Fixes
 
 - Complete metadata startup harness (cdad0ab7) 
 - Preserve responses at recovery cap (d16e468e) 
 - Make markdown table sizing responsive (18e2378c) 
-#### Features
+#### [0.148.0] Features
 
 - Add GLM-5.3 Flash across providers; prune obsolete model variants (01ecd193) 
-### Other Changes
-#### Other
+### [0.148.0] Other Changes
+#### [0.148.0] Other
 
 - Update TODO (1ede031c) 
 ## 0.147.4 - 2026-08-25
 
-### Highlights
-### Other Changes
+### [0.147.4] Highlights
+### [0.147.4] Other Changes
 ## 0.147.3 - 2026-08-25
 
-### Highlights
-#### Bug Fixes
+### [0.147.3] Highlights
+#### [0.147.3] Bug Fixes
 
 - Reliable clipboard, ctrl+enter queue batching, selection auto-scroll  (a6d912d2) (@7jrxt42BxFZo4iAnN4CX)
 - Recover invalid plan drafts (f9e800a0) 
@@ -310,28 +310,28 @@ All notable changes to vtcode will be documented in this file.
 - Preserve approved plan handoffs (1975ccc0) 
 - Carry verification across resumed turns (78208c3d) 
 - Allow quoted readonly inspections (0160a010) 
-#### Documentation
+#### [0.147.3] Documentation
 
 - Add latest contributor 7jrxt42BxFZo4iAnN4CX (caa67c65) (@vinhnx)
 - Regenerate field reference; close generator schema coverage gaps  (28357830) (@7jrxt42BxFZo4iAnN4CX)
 - Update 7jrxt42BxFZo4iAnN4CX to 5 commits (22703341) 
-### Other Changes
-#### Other
+### [0.147.3] Other Changes
+#### [0.147.3] Other
 
 - TUI UX improvements and custom-provider fixes for non-interactive commands  (88a1cdd6) (@7jrxt42BxFZo4iAnN4CX)
 - Update TODO (4aabc378) 
-#### Performance
+#### [0.147.3] Performance
 
 - Defer nonessential launch work (57916fe5) 
 ## 0.147.2 - 2026-08-24
 
-### Highlights
+### [0.147.2] Highlights
 
-#### Features
+#### [0.147.2] Features
 
 - per-model sampling overrides for custom providers (#738) (4cc1e5641) (@7jrxt42BxFZo4iAnN4CX)
 
-#### Bug Fixes
+#### [0.147.2] Bug Fixes
 
 - accept single component commands (6c47c0a65) (@vinhnx)
 - reject malformed slash commands (1eea52082) (@vinhnx)
@@ -343,7 +343,7 @@ All notable changes to vtcode will be documented in this file.
 - require final proposed plan block (f0ffd8a62) (@vinhnx)
 - make plan discussion first (12b1256d9) (@vinhnx)
 
-#### Documentation
+#### [0.147.2] Documentation
 
 - clarify planning safety limits (eeb7f72af) (@vinhnx)
 - document planning reliability invariants (88323be73) (@vinhnx)
@@ -352,51 +352,51 @@ All notable changes to vtcode will be documented in this file.
 - exclude superpowers docs from vtcode_docs_map (3e33a4ee9) (@vinhnx)
 - design reliable plan mode (6b9928dd3) (@vinhnx)
 
-### Other Changes
+### [0.147.2] Other Changes
 
-#### Tests
+#### [0.147.2] Tests
 
 - cover explicit approval selection (50bf0e1e2) (@vinhnx)
 - cover approval ready handoff (5c682c56b) (@vinhnx)
 - cover safe compound discovery commands (6739f6bc3) (@vinhnx)
 
-#### Chores
+#### [0.147.2] Chores
 
 - remove generated plan index entry (40556cad2) (@vinhnx)
 - clean task artefacts (0a422ac26) (@vinhnx)
 
-### Contributors
+### [0.147.2] Contributors
 
 @vinhnx, @7jrxt42BxFZo4iAnN4CX
 
 ## 0.147.1 - 2026-08-23
 
-### Highlights
-#### Bug Fixes
+### [0.147.1] Highlights
+#### [0.147.1] Bug Fixes
 
 - Serialize f32 sampling params without binary tails  (cc875d39) (@7jrxt42BxFZo4iAnN4CX)
 - Guard against stale full_auto allowlist collapsing the tool catalogue (545104b4)
-### Other Changes
+### [0.147.1] Other Changes
 ## 0.147.0 - 2026-08-22
 
-### Highlights
-#### Documentation
+### [0.147.0] Highlights
+#### [0.147.0] Documentation
 
 - Update contributor list with latest contributors (7d4cb316) 
-#### Features
+#### [0.147.0] Features
 
 - Compact task tracker tree rendering (d4cf72ed) 
 - Add vision support for deepseek-v4-flash-vision-exp (6741d07f) 
 - Add XDG user data directory support (1bffe07e) 
-### Other Changes
-#### Other
+### [0.147.0] Other Changes
+#### [0.147.0] Other
 
 - Update TODO (e8c51be1) 
 - Update TODO (21b5069c) 
 ## 0.146.11 - 2026-08-22
 
-### Highlights
-#### Bug Fixes
+### [0.146.11] Highlights
+#### [0.146.11] Bug Fixes
 
 - Preserve streamed plan handoff (7cfb2466) 
 - Enforce action-aware indices (085a9d99) 
@@ -417,68 +417,68 @@ All notable changes to vtcode will be documented in this file.
 - Preserve adaptive index form (111454e6) 
 - Validate non-update indices (c8ad79c7) 
 - Harden workspace path boundaries (d38b26ee) 
-#### Documentation
+#### [0.146.11] Documentation
 
 - Document reliability contracts (8adbec5b) 
 - Record patch containment invariant (842e068d) 
-#### Features
+#### [0.146.11] Features
 
 - Add model stream tracing and error handling (680e8f1c) 
-### Other Changes
-#### Other
+### [0.146.11] Other Changes
+#### [0.146.11] Other
 
 - Update project (91857d46) 
-#### Tests
+#### [0.146.11] Tests
 
 - Cover spooled byte metadata (222424df) 
 ## 0.146.10 - 2026-08-21
 
-### Highlights
-#### Features
+### [0.146.10] Highlights
+#### [0.146.10] Features
 
 - Sync catalogue to upstream OpenCode Go 20-model list  (49aa6c14) (@xcrong)
-### Other Changes
+### [0.146.10] Other Changes
 ## 0.146.9 - 2026-08-19
 
-### Highlights
-### Other Changes
+### [0.146.9] Highlights
+### [0.146.9] Other Changes
 ## 0.146.8 - 2026-08-19
 
-### Highlights
-#### Bug Fixes
+### [0.146.8] Highlights
+#### [0.146.8] Bug Fixes
 
 - Fix #733: allow custom provider models that infer as built-in providers (149c8f7a) 
-### Other Changes
-#### Other
+### [0.146.8] Other Changes
+#### [0.146.8] Other
 
 - Update TODO (fd3e3bf7) 
 - Update README (f8385d98) 
 - Update TODO (764a68e0) 
 ## 0.146.7 - 2026-08-19
 
-### Highlights
-#### Bug Fixes
+### [0.146.7] Highlights
+#### [0.146.7] Bug Fixes
 
 - Harden blocked-turn verification recovery (2f1a31a5) 
-### Other Changes
-#### Other
+### [0.146.7] Other Changes
+#### [0.146.7] Other
 
 - Update README (85415a83) 
 ## 0.146.6 - 2026-08-19
 
-### Highlights
-#### Bug Fixes
+### [0.146.6] Highlights
+#### [0.146.6] Bug Fixes
 
 - Scope cast_possible_truncation expect to macOS (fb332e41) 
 - Surface real error from minimal response.failed frames  (48044d1e) 
-### Other Changes
-#### Other
+### [0.146.6] Other Changes
+#### [0.146.6] Other
 
 - Update TODO (18d3438a) 
 ## 0.146.5 - 2026-08-18
 
-### Highlights
-#### Bug Fixes
+### [0.146.5] Highlights
+#### [0.146.5] Bug Fixes
 
 - Render diffs and enforce verification checkpoints (c8b7a1f0) 
 - Correct LoopTracker path in handlers module (6f397554) 
@@ -486,22 +486,22 @@ All notable changes to vtcode will be documented in this file.
 - Block unverified streaming responses (960a80cc) 
 - Track in-stream verification state (0359a87e) 
 - Prevent false anti-blind edit blocks (c1aec0d3) 
-#### Features
+#### [0.146.5] Features
 
 - Forward reasoning effort per route (af93832d) 
-### Other Changes
-#### Other
+### [0.146.5] Other Changes
+#### [0.146.5] Other
 
 - Update README (3b99941b) 
 - Update notes (4199ce58) 
-#### Tests
+#### [0.146.5] Tests
 
 - Cover pending response cap in outer loop (21289fdb) 
 - Assert repeated response block reason (900c766b) 
 ## 0.146.4 - 2026-08-16
 
-### Highlights
-#### Bug Fixes
+### [0.146.4] Highlights
+#### [0.146.4] Bug Fixes
 
 - Recognize native object stream frames (46021049) 
 - Honour SSE event framing (776580ff)
@@ -510,54 +510,54 @@ All notable changes to vtcode will be documented in this file.
 - Avoid double safety admission for prevalidated tool calls (36c1ed22) 
 - Add blocked-tool recovery and status sync (2413d7fd) 
 - Require concrete verify commands in plan steps (5942c350) 
-#### Documentation
+#### [0.146.4] Documentation
 
 - Document native response streaming (914eac51) 
-#### Features
+#### [0.146.4] Features
 
 - Default to native /v1/responses API (7163aeef) 
 - Add DSML markup detection and stripping (80044ab3) 
 - Allow shell env assignments in plan artefact validation (8353cd3a)
-### Other Changes
-#### Other
+### [0.146.4] Other Changes
+#### [0.146.4] Other
 
 - Update README (1f60985e) 
 ## 0.146.3 - 2026-08-16
 
-### Highlights
-#### Bug Fixes
+### [0.146.3] Highlights
+#### [0.146.3] Bug Fixes
 
 - Fail fast on unknown LLM provider (d0f24091) 
 - Emit terminal restore only when the terminal was modified (75a21c7b) 
-#### Features
+#### [0.146.3] Features
 
 - Add native responses and catalogue integration (b6f6e533)
-### Other Changes
+### [0.146.3] Other Changes
 ## 0.146.2 - 2026-08-16
 
-### Highlights
-#### Bug Fixes
+### [0.146.2] Highlights
+#### [0.146.2] Bug Fixes
 
 - Record requested tool calls at shared dispatch point (6e642424) 
 - Clear inline TUI frames on exit via restore_tui (fixes #729) (8b8846c6) 
 - Harden context compaction and post-tool recovery (38a03b34) 
-#### Documentation
+#### [0.146.2] Documentation
 
 - Sync provider guides with current model constants (652fd95d) 
 - Restructure documentation for better clarity (71675723) 
 - Expand custom provider configuration guide (43051191) 
-### Other Changes
-#### Other
+### [0.146.2] Other Changes
+#### [0.146.2] Other
 
 - [fixes #727] chore: remove duplicate unused_results lint expectations (289228aa) 
 - Update README (4d951b8a) 
-#### Refactors
+#### [0.146.2] Refactors
 
 - Replace instruction summary rendering with full renderer (6a8eee73) 
 ## 0.146.1 - 2026-08-15
 
-### Highlights
-#### Bug Fixes
+### [0.146.1] Highlights
+#### [0.146.1] Bug Fixes
 
 - Remove Windows-only build warnings in vtcode-safety builders and plugin loader (45383068) 
 - Make every Windows-only code path lint- and test-clean (d27ab3f8) 
@@ -568,21 +568,21 @@ All notable changes to vtcode will be documented in this file.
 - Harden cfg detection and crates/ path normalization (c39b7b33) 
 - Route exec_policy_parser through the public API (f454075d) 
 - Remove build warnings (f92229dc) 
-#### Documentation
+#### [0.146.1] Documentation
 
 - Note Windows-only DB builder lint convention (91925968) 
 - Point lifecycle-hooks examples at real scripts (99a81ece) 
-#### Features
+#### [0.146.1] Features
 
 - Support verified session archive resume ids (1e493e7d) 
-### Other Changes
-#### Build
+### [0.146.1] Other Changes
+#### [0.146.1] Build
 
 - Bump lru to 0.18.2 to clear RUSTSEC-2026-0253 (613d40b9) 
-#### CI
+#### [0.146.1] CI
 
 - Deny warnings across the full workspace in check-windows (b3fb5105) 
-#### Refactors
+#### [0.146.1] Refactors
 
 - Privatize 15 restricted-visibility items (hawk) (81993266) 
 - Remove dead public code flagged by hawk (7f046553) 
@@ -598,8 +598,8 @@ All notable changes to vtcode will be documented in this file.
 - Drop orphaned doc comments left by dead-method removals (174c1cb3) 
 ## 0.146.0 - 2026-08-15
 
-### Highlights
-#### Bug Fixes
+### [0.146.0] Highlights
+#### [0.146.0] Bug Fixes
 
 - Account for tool result payloads (2c9d17a0) 
 - Preserve entries on replacement (b9c1fa15) 
@@ -612,20 +612,20 @@ All notable changes to vtcode will be documented in this file.
 - Stream paged line reads (9d5b2c1b) 
 - Tolerate missing nextest profiles (0862a858) 
 - Prevent recursive spool references (320ea48b) 
-#### Documentation
+#### [0.146.0] Documentation
 
 - Record harness hot-path invariants (a906c7f1) 
-#### Features
+#### [0.146.0] Features
 
 - Add privacy-preserving trace analyser (c48122b6)
 - Add OpenRouter Gemini 3.7 Flash model (fc93cd96) 
 - Add OpenRouter Qwen3.8 27B model (a5841ce3) 
 - Add new Merge Gateway model support (fa633606) 
-### Other Changes
-#### Other
+### [0.146.0] Other Changes
+#### [0.146.0] Other
 
 - Add Merge Gateway as an OpenAI-compatible provider (e4b1676d) 
-#### Performance
+#### [0.146.0] Performance
 
 - Borrow valid request history (c59153e8) 
 - Share request history allocation (8631be92) 
@@ -643,106 +643,106 @@ All notable changes to vtcode will be documented in this file.
 - Apply DeepSeek harness learnings (41a12a31) 
 ## 0.145.0 - 2026-08-14
 
-### Highlights
-#### Bug Fixes
+### [0.145.0] Highlights
+#### [0.145.0] Bug Fixes
 
 - Fix #725: avoid blocking CPR query when clearing terminal on exit (aba4e721) (@vinhnx)
 - Require per-workspace approval for workspace lifecycle hooks (820f0016) (@vinhnx)
 - Gate whole lifecycle engine on workspace hook content (f02910ad) (@vinhnx)
 - Carry hook approval across engine rebuilds; atomic dot-config writes (30a52328) (@vinhnx)
-#### Documentation
+#### [0.145.0] Documentation
 
 - Attribute GHSA-wqgw-crr5-cr2p reporter as security advisor (d32368d3) (@vinhnx)
 - Surface workspace lifecycle hook approval in README and security docs (0f19b6df) (@vinhnx)
-### Other Changes
+### [0.145.0] Other Changes
 ## 0.144.0 - 2026-08-14
 
-### Highlights
-#### Features
+### [0.144.0] Highlights
+#### [0.144.0] Features
 
 - Add GLM-5.3 as Z.AI flagship model (cd29faed) 
 - Add gemini-3.7-flash to Gemini provider (00f417d5) 
-### Other Changes
+### [0.144.0] Other Changes
 ## 0.143.4 - 2026-08-13
 
-### Highlights
-### Other Changes
+### [0.143.4] Highlights
+### [0.143.4] Other Changes
 ## 0.143.3 - 2026-08-13
 
-### Highlights
-#### Bug Fixes
+### [0.143.3] Highlights
+#### [0.143.3] Bug Fixes
 
 - Tolerate common Markdown variants in plan validation and close dead-end turns (8450898b) 
 - Show live tool status during stage states (5d9e5027) 
 - Correct read-only agent permissions to include required tools (f0361040) 
-#### Features
+#### [0.143.3] Features
 
 - Add grok-4.6 to xai and openrouter (af4e4823) 
-### Other Changes
+### [0.143.3] Other Changes
 ## 0.143.2 - 2026-08-12
 
-### Highlights
-#### Features
+### [0.143.2] Highlights
+#### [0.143.2] Features
 
 - Implement snapshot V2 migration and update core documentation (29996b93) 
-### Other Changes
+### [0.143.2] Other Changes
 ## 0.143.1 - 2026-08-12
 
-### Highlights
-#### Documentation
+### [0.143.1] Highlights
+#### [0.143.1] Documentation
 
 - Document Meta AI Muse and NVIDIA NIM in guides and CLI help (ed8e7d1c) 
-#### Features
+#### [0.143.1] Features
 
 - Add uuid dependency and update event_log_path docs (89916761) 
-### Other Changes
-#### Other
+### [0.143.1] Other Changes
+#### [0.143.1] Other
 
 - Update readme (2e9d215a) (@vinhnx)
 - Update README (83293df5) 
-#### Refactors
+#### [0.143.1] Refactors
 
 - Optimize preflight/tool-exec path and deduplicate harness state (3e8e1dc1) 
 ## 0.143.0 - 2026-08-11
 
-### Highlights
-#### Bug Fixes
+### [0.143.0] Highlights
+#### [0.143.0] Bug Fixes
 
 - Raise recursion limit for hawk's pinned toolchain (284e90d4) 
-#### Documentation
+#### [0.143.0] Documentation
 
 - Fix bare URL rustdoc warning in plugins CLI docs (2ff9cf98) (@vinhnx)
-#### Features
+#### [0.143.0] Features
 
 - Add Meta AI Muse support (aeefb802) 
 - Emit session-completion notification at finalization (a36032e8) 
-### Other Changes
+### [0.143.0] Other Changes
 ## 0.142.9 - 2026-08-11
 
-### Highlights
-#### Bug Fixes
+### [0.142.9] Highlights
+#### [0.142.9] Bug Fixes
 
 - Harden sandbox and OAuth boundaries (21843857) 
 - Enforce skill tool scopes (446ea318) 
-#### Features
+#### [0.142.9] Features
 
 - Add throttled download progress callbacks (9a7ab7f6) 
-### Other Changes
+### [0.142.9] Other Changes
 ## 0.142.8 - 2026-08-10
 
-### Highlights
-### Other Changes
+### [0.142.8] Highlights
+### [0.142.8] Other Changes
 ## 0.142.7 - 2026-08-10
 
-### Highlights
-#### Bug Fixes
+### [0.142.7] Highlights
+#### [0.142.7] Bug Fixes
 
 - Wait for crates.io index before publishing (76c1b733) 
-### Other Changes
-#### CI
+### [0.142.7] Other Changes
+#### [0.142.7] CI
 
 - Install ripgrep for debt scan (b310a4d2) 
-#### Other
+#### [0.142.7] Other
 
 - Update TODO (efa3265b) (@vinhnx)
 - Update TODO (fd5708b6) (@vinhnx)
@@ -750,146 +750,146 @@ All notable changes to vtcode will be documented in this file.
 - Update TODO (2c61bb19) 
 ## 0.142.6 - 2026-08-10
 
-### Highlights
-#### Bug Fixes
+### [0.142.6] Highlights
+#### [0.142.6] Bug Fixes
 
 - Repair secret scan workflow (6752348f) 
 - Keep model picker visible when skipping confirmations (ee36df24) 
-### Other Changes
-#### Other
+### [0.142.6] Other Changes
+#### [0.142.6] Other
 
 - Update TODO (20bb4868) 
 - Update TODO (0a5428e2) 
 ## 0.142.5 - 2026-08-09
 
-### Highlights
-#### Bug Fixes
+### [0.142.5] Highlights
+#### [0.142.5] Bug Fixes
 
 - Complete audit hardening and lint migration (ac9da169) 
-### Other Changes
-#### Other
+### [0.142.5] Other Changes
+#### [0.142.5] Other
 
 - Update TODO (01b57ecf) 
 - Update README (2fc6f8ee) 
 ## 0.142.4 - 2026-08-09
 
-### Highlights
-#### Bug Fixes
+### [0.142.4] Highlights
+#### [0.142.4] Bug Fixes
 
 - Accept plural models slash command  (f365b5fa) (@Sanjays2402)
-#### Documentation
+#### [0.142.4] Documentation
 
 - Add @Sanjays2402 as latest contributor (e743d824) 
 - Sort contributor list by tier and commit count (78d8f5ff) 
-#### Features
+#### [0.142.4] Features
 
 - Add evidence-bounded self-improvement safeguards (e6890ef9) 
-### Other Changes
+### [0.142.4] Other Changes
 ## 0.142.3 - 2026-08-09
 
-### Highlights
-#### Features
+### [0.142.3] Highlights
+#### [0.142.3] Features
 
 - Refine shell tool prompts for session reuse and history safety (197be97a) 
-### Other Changes
+### [0.142.3] Other Changes
 ## 0.142.2 - 2026-08-09
 
-### Highlights
-#### Features
+### [0.142.2] Highlights
+#### [0.142.2] Features
 
 - Support Codex ChatGPT session fallback for auth (e4df0b4d) 
 - Add startup tracing and cache user config for first render (7d594139) 
-### Other Changes
-#### Performance
+### [0.142.2] Other Changes
+#### [0.142.2] Performance
 
 - Reduce idle refresh overhead (41501945) 
 ## 0.142.1 - 2026-08-08
 
-### Highlights
-#### Bug Fixes
+### [0.142.1] Highlights
+#### [0.142.1] Bug Fixes
 
 - Reject invalid args in exec_command to prevent silent semantic changes (efa07f60) 
 - Eliminate blocking-in-async IO, harden audit log and editor cancellation (a0be96dd) 
-#### Documentation
+#### [0.142.1] Documentation
 
 - Document NVIDIA provider in guides and readme (fa64cf12) (@vinhnx)
-#### Features
+#### [0.142.1] Features
 
 - Support custom provider api_format and per-model capability overrides (eebfc7e3) 
-### Other Changes
-#### Other
+### [0.142.1] Other Changes
+#### [0.142.1] Other
 
 - Update TODO (f1a19adc) (@vinhnx)
 - Update notes (1dd4e68d) 
 - Update TODO (6e998537) 
-#### Performance
+#### [0.142.1] Performance
 
 - Reduce allocations in output capture and pipe buffering (e0835cae) 
 ## 0.142.0 - 2026-08-08
 
-### Highlights
-#### Features
+### [0.142.0] Highlights
+#### [0.142.0] Features
 
 - Add NVIDIA provider and Ollama Cloud model (db4ff0bc) 
-### Other Changes
-#### Other
+### [0.142.0] Other Changes
+#### [0.142.0] Other
 
 - Update TODO (8ec22eba) 
 ## 0.141.16 - 2026-08-08
 
-### Highlights
-#### Documentation
+### [0.141.16] Highlights
+#### [0.141.16] Documentation
 
 - Add branded Agent Plugins badge to README (d4139ddd) 
 - Add official logo to Agent Skills badge and link agentskills.io (6f37cf35) 
 - Keep original colour on Agent Skills badge (a9a4e926)
-### Other Changes
-#### Other
+### [0.141.16] Other Changes
+#### [0.141.16] Other
 
 - Update README (59d9d9c3) 
 ## 0.141.15 - 2026-08-08
 
-### Highlights
-#### Bug Fixes
+### [0.141.15] Highlights
+#### [0.141.15] Bug Fixes
 
 - Reject --path flag and validate release argument (1c4d4270) (@vinhnx)
-#### Documentation
+#### [0.141.15] Documentation
 
 - Revert empty changelog commit from failed --path release (22263cb0) (@vinhnx)
-#### Features
+#### [0.141.15] Features
 
 - Implement Agent Plugins feature with security hardening (b91d8460) (@vinhnx)
-### Other Changes
+### [0.141.15] Other Changes
 ## 0.141.14 - 2026-08-07
 
-### Highlights
-#### Bug Fixes
+### [0.141.14] Highlights
+#### [0.141.14] Bug Fixes
 
 - Use memchr for line reading and handle EOF/truncation (ba5c2a14) 
-#### Features
+#### [0.141.14] Features
 
 - Decompose loop_detector.rs into facade + normalization submodule (984b9352) 
 - Add vtcode-agent-plugins crate for agent plugin manifest handling (82d02f98) 
-### Other Changes
-#### Performance
+### [0.141.14] Other Changes
+#### [0.141.14] Performance
 
 - Overlap terminal palette probe and reduce startup latency (cfb968fa) 
 - Optimize release binary size for faster cold start (8118d988) 
-#### Refactors
+#### [0.141.14] Refactors
 
 - Extract memory reader functions into dedicated module (d771bfd7) 
 ## 0.141.13 - 2026-08-06
 
-### Highlights
-#### Features
+### [0.141.13] Highlights
+#### [0.141.13] Features
 
 - Add validator-owned repair feedback with canonical step format (d76d213c) (@vinhnx)
 - Add lossless output stream to vtcode-bash-runner pipes (aac68a51) 
-### Other Changes
-#### CI
+### [0.141.13] Other Changes
+#### [0.141.13] CI
 
 - Verify THIRD-PARTY-NOTICES are up to date (f1646862) 
-#### Other
+#### [0.141.13] Other
 
 - Update wiki (c7e26e8e) (@vinhnx)
 - Update TODO (2ae1252b) 
@@ -897,210 +897,210 @@ All notable changes to vtcode will be documented in this file.
 - Update TODO (a6b2e8cd) 
 ## 0.141.12 - 2026-08-05
 
-### Highlights
-#### Documentation
+### [0.141.12] Highlights
+#### [0.141.12] Documentation
 
 - Add brew trust step for Homebrew install (df33688b) 
 - Add @xcrong as latest contributor (4b34804e) 
 - Document context_window for custom providers (6e924ddb) 
-#### Features
+#### [0.141.12] Features
 
 - Support custom provider context windows  (bc1f6c0c) (@xcrong)
 - Add directory listing cache keyed by workspace and input (c128f0f4) 
-### Other Changes
-#### Other
+### [0.141.12] Other Changes
+#### [0.141.12] Other
 
 - Update TODO (a89953f6) 
-#### Performance
+#### [0.141.12] Performance
 
 - Implement custom Deserialize for A2A streaming events (59d8eb95) 
 - Optimize runtime paths and file search (4f1b8870) 
-#### Refactors
+#### [0.141.12] Refactors
 
 - Derive Deserialize for streaming response types (e59722ca) 
 ## 0.141.11 - 2026-08-03
 
-### Highlights
-#### Bug Fixes
+### [0.141.11] Highlights
+#### [0.141.11] Bug Fixes
 
 - Tolerate malformed lines during turn reconstruction (1b6385eb) 
-#### Documentation
+#### [0.141.11] Documentation
 
 - Add OmniRoute integration guide  (22323fa3) (@diegosouzapw)
 - Add @diegosouzapw as latest contributor (2b132e75) 
 - Refine agent rules and add cache-miss and planning notes (afe67757) 
-#### Features
+#### [0.141.11] Features
 
 - Add caching for prompt resources and file search (623e7b84) 
 - Compile shared runtime guidance (0763cd8b) 
 - Require validated persisted plans before approval (4e288db9) 
-### Other Changes
-#### Performance
+### [0.141.11] Other Changes
+#### [0.141.11] Performance
 
 - Optimize parsing and config reloads (0ad2af0b) 
 ## 0.141.10 - 2026-08-01
 
-### Highlights
-#### Bug Fixes
+### [0.141.10] Highlights
+#### [0.141.10] Bug Fixes
 
 - Scope credentials by provider and key (e91cba4d) 
 - Harden planning recovery handoff (d7ad7bd6) 
 - Validate config option value and update rmcp API types (d6ed196b) 
-### Other Changes
-#### Other
+### [0.141.10] Other Changes
+#### [0.141.10] Other
 
 - Revert "fix(tools): restrict planning profile to exec, search, and input tools" (7abdff96) 
-#### Refactors
+#### [0.141.10] Refactors
 
 - Open /model directly on the main model picker (70141dc2) 
 ## 0.141.9 - 2026-08-01
 
-### Highlights
-#### Bug Fixes
+### [0.141.9] Highlights
+#### [0.141.9] Bug Fixes
 
 - Add <tools:call> marker to prevent plan mode text leak (2f3e2152) 
 - Client-local policy exposes small builtin catalogues directly to avoid zero tools on wire (03d4d784)
 - Clear pending follow-up inputs on context reset (3d2f71ec) 
 - Restrict planning profile to exec, search, and input tools (7b27e1ce) 
 - Deduplicate repeated steps in plan tracker markdown (6d4bb048) 
-#### Features
+#### [0.141.9] Features
 
 - Add Ollama Cloud provider and refactor terminal mode restoration (b8888064) 
 - Implement turn-limit recovery for per-turn tool limit (a2fd970f) 
 - Update DeepSeek V4 Flash description with enhanced agent capabilities (53c40963) 
 - Add recovery boundary and sanitize model tool serialization (4932ebcc) 
 - Add show_task_panel config and Alt+G toggle (5e258670) 
-### Other Changes
-#### Other
+### [0.141.9] Other Changes
+#### [0.141.9] Other
 
 - Revert "feat(agent): implement turn-limit recovery for per-turn tool limit" (12935f6f) 
 - Update TODO (8e9a24d2) 
 ## 0.141.8 - 2026-07-30
 
-### Highlights
-#### Bug Fixes
+### [0.141.8] Highlights
+#### [0.141.8] Bug Fixes
 
 - Reorder credential discovery and add test isolation for storage (f8b95e6c) 
-#### Features
+#### [0.141.8] Features
 
 - Generate checksums manifest excluding compatibility assets (fae96abb) 
-### Other Changes
+### [0.141.8] Other Changes
 ## 0.141.7 - 2026-07-29
 
-### Highlights
-#### Bug Fixes
+### [0.141.7] Highlights
+#### [0.141.7] Bug Fixes
 
 - Strip top-level oneOf/anyOf/allOf from tool input_schema  (6476423c) (@netbrah)
-#### Documentation
+#### [0.141.7] Documentation
 
 - Update @netbrah contributor count to 2 commits (10202989) 
-### Other Changes
+### [0.141.7] Other Changes
 ## 0.141.6 - 2026-07-29
 
-### Highlights
-#### Bug Fixes
+### [0.141.6] Highlights
+#### [0.141.6] Bug Fixes
 
 - Rescue legacy v0.141.0-v0.141.4 self-update via compat assets (82c4f14b) 
-#### Documentation
+#### [0.141.6] Documentation
 
 - Design authenticated GitHub CLI guidance (a2c5a595) 
 - Design legacy updater compatibility bridge (91d29d82) 
-### Other Changes
+### [0.141.6] Other Changes
 ## 0.141.5 - 2026-07-29
 
-### Highlights
-#### Bug Fixes
+### [0.141.5] Highlights
+#### [0.141.5] Bug Fixes
 
 - Harden /messages request for Vertex AI-backed routes  (014d56d5) (@netbrah)
 - Canonicalize cache invalidation path and correct OllamaCloud tests (5e944021) 
-#### Documentation
+#### [0.141.5] Documentation
 
 - Add @netbrah to contributors (02a8a2c0) 
-#### Features
+#### [0.141.5] Features
 
 - Add ToolDisplayMode enum to separate transition grouping from tool output rendering (2bbeebfc) 
-### Other Changes
-#### Refactors
+### [0.141.5] Other Changes
+#### [0.141.5] Refactors
 
 - Replace self_update with custom archive extraction and self-replace (d3c7581b) 
 - Extract external editor logic and fix detached process reaping (93cdf7f0) 
 ## 0.141.4 - 2026-07-28
 
-### Highlights
-#### Bug Fixes
+### [0.141.4] Highlights
+#### [0.141.4] Bug Fixes
 
 - Continue past crates.io API rate-limit during publish wait (07ca6879) (@vinhnx)
 - Enable archive-tar feature for tar.gz extraction (5586f668) 
-#### Documentation
+#### [0.141.4] Documentation
 
 - Add web_fetch URL restriction and code_search request shape examples (713cb9f9) 
-#### Features
+#### [0.141.4] Features
 
 - Ship unified turn-loop budgets (6ec378e6) 
 - Record dismissed version on all dismiss actions (b4716296) 
-### Other Changes
-#### Other
+### [0.141.4] Other Changes
+#### [0.141.4] Other
 
 - Update TODO (58b7c83a) (@vinhnx)
 - Update TODO (88462117) (@vinhnx)
 - Update TODO (020a985e) 
 ## 0.141.3 - 2026-07-28
 
-### Highlights
-#### Bug Fixes
+### [0.141.3] Highlights
+#### [0.141.3] Bug Fixes
 
 - Use plain-code reference in doc comment for private item (defe6728) (@vinhnx)
-### Other Changes
-#### CI
+### [0.141.3] Other Changes
+#### [0.141.3] CI
 
 - Increase build timeout to 120 minutes for Linux and Windows, and 130 minutes in release script (eb6771d3) (@vinhnx)
 ## 0.141.2 - 2026-07-28
 
-### Highlights
-#### Bug Fixes
+### [0.141.2] Highlights
+#### [0.141.2] Bug Fixes
 
 - Correct documentation references in function_call_output and McpSandboxWrapper doc comments (58ab0a70) 
 - Resolve rustdoc private intra-doc link warnings (336d00bc) 
 - Remove unused testcontainers dependency to resolve GHSA-j5gw-2vrg-8fgx (b9db134a) 
 - Replace vld1q_u32_x2 with explicit load for GCC 5.4 compatibility (53e1a677) 
-#### Documentation
+#### [0.141.2] Documentation
 
 - Add contributing guidelines, contributor avatars, and support section to README (8cdcdd69) 
-### Other Changes
-#### Refactors
+### [0.141.2] Other Changes
+#### [0.141.2] Refactors
 
 - Remove contributor update logic from release script (41aee5fb) 
 ## 0.141.1 - 2026-07-28
 
-### Highlights
-#### Bug Fixes
+### [0.141.1] Highlights
+#### [0.141.1] Bug Fixes
 
 - Patch simdutf for aarch64 arm_neon.h include order (535c86d1) (@vinhnx)
-### Other Changes
-#### Other
+### [0.141.1] Other Changes
+#### [0.141.1] Other
 
 - Update rust toolchain config (5053b860) (@vinhnx)
 - Add VT Code banner (53462e19) (@vinhnx)
 ## 0.141.0 - 2026-07-28
 
-### Highlights
-#### Bug Fixes
+### [0.141.0] Highlights
+#### [0.141.0] Bug Fixes
 
 - Handle GitHub ID format in contributor extraction (1433b416) 
 - Improve bot detection in contributor extraction (cd6853ca) 
-#### Documentation
+#### [0.141.0] Documentation
 
 - Add contributor avatars for raphamorim and nnfrog, highlight main contributor (0b6f22c1) 
 - Revise Contributing section to highlight security, patches, and community (e7e030bd) 
 - Soften contributing copy to be more conversational (3b10ce9c) 
 - Replace em dashes with commas throughout README (bd002ef5) 
 - Use colons in feature and documentation lists (f879e443) 
-#### Features
+#### [0.141.0] Features
 
 - Add Kimi K3 to Ollama Cloud and HuggingFace providers (ad6fe0a9) 
 - Automate README contributor list updates in release script (4ace0900) 
-### Other Changes
-#### Other
+### [0.141.0] Other Changes
+#### [0.141.0] Other
 
 - Migrate PTY screen backend from vt100 to rio-vt  (3c5a5514) (@raphamorim)
 - Update README.md (46745874) (@vinhnx)
@@ -1108,19 +1108,19 @@ All notable changes to vtcode will be documented in this file.
 - Remove release workflow (6ac2f3ff) 
 ## 0.140.3 - 2026-07-27
 
-### Highlights
-#### Documentation
+### [0.140.3] Highlights
+#### [0.140.3] Documentation
 
 - Remove backticks from submodule names in documentation table (6a21e53e) (@vinhnx)
-### Other Changes
-#### Other
+### [0.140.3] Other Changes
+#### [0.140.3] Other
 
 - Merge commit from fork (3f6e6393) (@vinhnx)
 ## 0.140.2 - 2026-07-26
 
-### Highlights
-### Other Changes
-#### Refactors
+### [0.140.2] Highlights
+### [0.140.2] Other Changes
+#### [0.140.2] Refactors
 
 - Make internal functions and modules pub(crate) or pub for broader access (e546c258) (@vinhnx)
 - Replace `to_string()` with `into_owned()` for `from_utf8_lossy()` results (30415991) 
@@ -1128,8 +1128,8 @@ All notable changes to vtcode will be documented in this file.
 - Extract condensation and line reading helpers (e8b6fc13) 
 ## 0.140.1 - 2026-07-26
 
-### Highlights
-#### Bug Fixes
+### [0.140.1] Highlights
+#### [0.140.1] Bug Fixes
 
 - Allow stderr merge and cd-prefixed commands in read-only checks (675efcbf) 
 - Allow apply_patch in plan mode for plan file writes (821accd4) 
@@ -1140,165 +1140,165 @@ All notable changes to vtcode will be documented in this file.
 - Propagate legacy errors, trim provider, add keyring test (01faeef3) 
 - Improve tool header dim modifier handling for pty body consistency (bd2903db) 
 - Replace blocking file system calls with async equivalents (bf20b7d3) 
-#### Documentation
+#### [0.140.1] Documentation
 
 - Update TODO to focus on plan mode improvements (619c583d) 
 - Add DeepWiki research on Codex plan mode to TODO (037f3d2b) 
 - Add subagent guidance and reformat crate table (05755253) 
 - Rename session-store to memory crate and add trajectory log config (ab6d90d6) 
-#### Features
+#### [0.140.1] Features
 
 - Add Docker support with bollard and related dependencies (a211e519) 
 - Handle sparse summary sections and truncate plan preview (bd5483e9) 
 - Add task tracker rendering and recovery support for approved plan execution (dc71750b) 
 - Add /log command for viewing session event logs (1c7d347f) 
-### Other Changes
-#### Other
+### [0.140.1] Other Changes
+#### [0.140.1] Other
 
 - [Fixes #704]: pass wheel events outside floating overlay to transcript for scrollability (1af74f70) 
-#### Performance
+#### [0.140.1] Performance
 
 - Avoid SSE buffer allocs and switch exec mutex to parking_lot (a7bb0b11) 
 - Cache ConfigManager per workspace to avoid redundant loads (85298b50) 
-#### Refactors
+#### [0.140.1] Refactors
 
 - Improve SSE event parsing with drain (6de2a0b9) 
 ## 0.140.0 - 2026-07-24
 
-### Highlights
-#### Bug Fixes
+### [0.140.0] Highlights
+#### [0.140.0] Bug Fixes
 
 - Add serde(default) to config structs and suppress warnings (0600e369) 
-#### Features
+#### [0.140.0] Features
 
 - Add Claude Opus 5 and new Anthropic features (d9c1b6a5) 
 - Add hotpath-futures feature and update profiling dependencies (c9f1b6e2) 
-### Other Changes
-#### Refactors
+### [0.140.0] Other Changes
+#### [0.140.0] Refactors
 
 - Tighten visibility of agent card and related structs (4968ec5d) 
 ## 0.139.0 - 2026-07-24
 
-### Highlights
-#### Features
+### [0.139.0] Highlights
+#### [0.139.0] Features
 
 - Add xAI provider and Grok model family support (befac07c) 
-### Other Changes
-#### Other
+### [0.139.0] Other Changes
+#### [0.139.0] Other
 
 - Update TODO (23bf6679) 
 ## 0.138.3 - 2026-07-23
 
-### Highlights
-#### Bug Fixes
+### [0.138.3] Highlights
+#### [0.138.3] Bug Fixes
 
 - Strip examples from function schemas  (3455ad9f) (@TuanLe-bk18)
 - Preserve existing tool policies and increase planning tool call floor (e0fc164e) 
-#### Documentation
+#### [0.138.3] Documentation
 
 - Update contributor list and commit counts in README (36471ae1) 
-### Other Changes
-#### Other
+### [0.138.3] Other Changes
+#### [0.138.3] Other
 
 - Update TODO (77996bbc) 
-#### Refactors
+#### [0.138.3] Refactors
 
 - Improve error handling and performance in transport and executor (7c8c92f1) 
 - Replace keyring_entry function with keyring module (eace3672) 
 ## 0.138.2 - 2026-07-23
 
-### Highlights
-#### Bug Fixes
+### [0.138.2] Highlights
+#### [0.138.2] Bug Fixes
 
 - Wire task_tracker_auto_create, add serde alias for ToolProfile (5c0db2f9) 
-#### Features
+#### [0.138.2] Features
 
 - Improve startup instrumentation and first-run detection (df5e3792) 
 - Add role paragraph and refine operating profile for Default/Specialized modes (45f6fc5d) 
 - Add Ollama Cloud as separate provider for cloud-hosted models (452368ff) 
 - Add PlanApprovalDiscuss variant for plan discussion in chat (9e60d0ce) 
 - Add XDG config path support with fallback and serde defaults (62b2873a) 
-### Other Changes
-#### Performance
+### [0.138.2] Other Changes
+#### [0.138.2] Performance
 
 - Reduce allocations in hot paths (335c3473) 
-#### Refactors
+#### [0.138.2] Refactors
 
 - Remove finish_planning tool to simplify planning workflow (263a849c) 
 ## 0.138.1 - 2026-07-22
 
-### Highlights
-#### Bug Fixes
+### [0.138.1] Highlights
+#### [0.138.1] Bug Fixes
 
 - Keep encrypted file as fallback on keyring store to prevent silent key loss (bc514a5f) 
-#### Features
+#### [0.138.1] Features
 
 - Track reasoning run duration and update header display (d1466b43) 
 - Add follow-up input queuing and plan approval tracking (ad253a29) 
-### Other Changes
-#### Other
+### [0.138.1] Other Changes
+#### [0.138.1] Other
 
 - [Fixes #705] Restrict accessible LLM providers via providers_whitelist (8e519bde) 
 ## 0.138.0 - 2026-07-22
 
-### Highlights
-#### Features
+### [0.138.0] Highlights
+#### [0.138.0] Features
 
 - Add Poolside Laguna S 2.1 model and set as default (62ac704a) 
 - Add `providers_whitelist` config option to restrict accessible LLM providers (issue #705)
-### Other Changes
+### [0.138.0] Other Changes
 ## 0.137.0 - 2026-07-21
 
-### Highlights
-#### Bug Fixes
+### [0.137.0] Highlights
+#### [0.137.0] Bug Fixes
 
 - Fetch deps before frozen windows build (d316486e) (@vinhnx)
 - Bypass confirmation overlays when inline UI is not supported to avoid hangs (7e76bf6a) 
 - Avoid duplicate recovery plans when plan draft is already written (1da76708) 
 - Handle planning synthesis in reasoning channel and allow finish_planning call (e13aba8e) 
-#### Features
+#### [0.137.0] Features
 
 - Add gemini-3.5-flash-lite and gemini-3.6-flash under gemini and openrouter (33355a36) 
 - Accept inline plan in finish_planning and bypass budget exhaustion (dd0691a3) 
 - Add independent interview policy line (9aec496e) 
 - Auto-accept plan when approval requested, improve streaming feedback (1b6025bb) 
-### Other Changes
-#### Other
+### [0.137.0] Other Changes
+#### [0.137.0] Other
 
 - Fix doc lints (982df229) (@vinhnx)
 - Fix CI log viewer (415c83c2) (@vinhnx)
 - _processing.rs (ff377597) 
 ## 0.136.7 - 2026-07-21
 
-### Highlights
-### Other Changes
-#### Other
+### [0.136.7] Highlights
+### [0.136.7] Other Changes
+#### [0.136.7] Other
 
 - Update TODO (151a68c0) (@vinhnx)
-#### Refactors
+#### [0.136.7] Refactors
 
 - Remove anstyle-query dependency by inlining terminal colour detection (fd350b03)
 ## 0.136.6 - 2026-07-21
 
-### Highlights
-#### Bug Fixes
+### [0.136.6] Highlights
+#### [0.136.6] Bug Fixes
 
 - Use standard release profile for macOS builds (bfef032c) 
 - Allow secure prompt input and consolidate auth guidance (152c91e3) 
-#### Features
+#### [0.136.6] Features
 
 - Add current provider badge and refactor modal (8d2b370a) 
 - Enhance authentication error messages and add StepFun provider hint (16a3fd5a) 
-### Other Changes
-#### CI
+### [0.136.6] Other Changes
+#### [0.136.6] CI
 
 - Enable frozen builds and optimize build configuration (f697b7d0) 
-#### Other
+#### [0.136.6] Other
 
 - Fix linter (5478b9b8) (@vinhnx)
 - Fix warnings (f919ee90) (@vinhnx)
 - Update TODO (16119c6d) 
-#### Refactors
+#### [0.136.6] Refactors
 
 - Move secrets to public module, update API key error (45a1089d) 
 - Simplify Arc usage in agent runner message handling (d1695582) 
@@ -1306,62 +1306,62 @@ All notable changes to vtcode will be documented in this file.
 - Suppress dead code warnings for unused items (05073e9f) 
 ## 0.136.5 - 2026-07-20
 
-### Highlights
-#### Bug Fixes
+### [0.136.5] Highlights
+#### [0.136.5] Bug Fixes
 
 - Prevent cursor overflow and enhance palette UI (1dee6554) 
 - Prevent double input when slash palette is open and adjust panel layout (c930a417) 
-#### Features
+#### [0.136.5] Features
 
 - Add OAuth/managed auth detection and workspace env key removal (13f2f054) 
 - Improve agent palette rendering and layout safety (17adac16) 
-### Other Changes
+### [0.136.5] Other Changes
 ## 0.136.4 - 2026-07-19
 
-### Highlights
-#### Documentation
+### [0.136.4] Highlights
+#### [0.136.4] Documentation
 
 - Fix intra-doc links in tool format and conversion modules (fa71d449) (@vinhnx)
-#### Features
+#### [0.136.4] Features
 
 - Execute update command and fix relaunch order (e82f82a0) 
-### Other Changes
-#### Other
+### [0.136.4] Other Changes
+#### [0.136.4] Other
 
 - Update TODO (6d119a86) 
-#### Refactors
+#### [0.136.4] Refactors
 
 - Improve code quality and fix floating point comparisons (fc3deeae) 
 - Use VecDeque and LRU cache for session state and memory (98fbda32) 
 ## 0.136.3 - 2026-07-19
 
-### Highlights
-#### Bug Fixes
+### [0.136.3] Highlights
+#### [0.136.3] Bug Fixes
 
 - Wait for tag to exist before checkout in build workflows (5683a9a6) (@vinhnx)
-### Other Changes
-#### Refactors
+### [0.136.3] Other Changes
+#### [0.136.3] Refactors
 
 - Scope wrapper exec types to unix_impl (e802aa26) (@vinhnx)
 ## 0.136.2 - 2026-07-19
 
-### Highlights
-#### Bug Fixes
+### [0.136.2] Highlights
+#### [0.136.2] Bug Fixes
 
 - Only exclude top-level prompts/ from crate tarball (6439c576) 
-### Other Changes
+### [0.136.2] Other Changes
 ## 0.136.1 - 2026-07-19
 
-### Highlights
-#### Bug Fixes
+### [0.136.1] Highlights
+#### [0.136.1] Bug Fixes
 
 - Shorten invalid crates.io keyword (1a7e5c9c) 
 - Skip missing embedded assets during publish verification (317f9430) 
-### Other Changes
+### [0.136.1] Other Changes
 ## 0.136.0 - 2026-07-19
 
-### Highlights
-#### Bug Fixes
+### [0.136.0] Highlights
+#### [0.136.0] Bug Fixes
 
 - Replace private intra-doc link with literal value (1a643383) (@vinhnx)
 - Remove jemalloc feature from Windows builds; format release.sh (48452837) (@vinhnx)
@@ -1371,17 +1371,17 @@ All notable changes to vtcode will be documented in this file.
 - Resolve link_section warnings and unblock vtcode-core build (aa8a4b57) 
 - Resolve clippy warnings and dead code across registry and compaction (873e5473) 
 - Handle blocked planning tools by ending turn gracefully (e44794ed) 
-#### Documentation
+#### [0.136.0] Documentation
 
 - Add TODO for API key UI/UX and auto-discovery (c118c464) 
-#### Features
+#### [0.136.0] Features
 
 - Warn if trusted plugin directory is writable by group/others (cff365e7) 
 - Implement permission events and preflight flow for policy-denied tools (f15cd7df) 
 - Improve credential discovery with env var detail and paste UI (a6dd9480) 
 - Add /secret slash command for managing secrets (eb279628) 
-### Other Changes
-#### Other
+### [0.136.0] Other Changes
+#### [0.136.0] Other
 
 - Update README.md (967799ac) (@vinhnx)
 - Update README.md (e869ec35) (@vinhnx)
@@ -1389,7 +1389,7 @@ All notable changes to vtcode will be documented in this file.
 - Update TODO (6ff1ed1d) 
 - Update TODO (1910ff03) 
 - Update TODO (0165ff68) 
-#### Refactors
+#### [0.136.0] Refactors
 
 - Restructure extensions and xtask locations (20367519) 
 - Decompose file palette monolith, fix last_entered fragility, add tree-style rendering (413ccd2e) 
@@ -1397,89 +1397,89 @@ All notable changes to vtcode will be documented in this file.
 - Rename session-store to memory, add harness_emitter (28b451f0) 
 ## 0.135.14 - 2026-07-18
 
-### Highlights
-#### Bug Fixes
+### [0.135.14] Highlights
+#### [0.135.14] Bug Fixes
 
 - Revert setup-zig to upstream and remove --frozen from builds (07b226ea) 
-### Other Changes
+### [0.135.14] Other Changes
 ## 0.135.13 - 2026-07-18
 
-### Highlights
-#### Bug Fixes
+### [0.135.13] Highlights
+#### [0.135.13] Bug Fixes
 
 - Add workspace dependency versions for crates.io publishing (ef854c98) (@vinhnx)
-### Other Changes
-#### CI
+### [0.135.13] Other Changes
+#### [0.135.13] CI
 
 - Use local setup-zig action with node24 (db171faa) (@vinhnx)
 - Optimize platform build bottlenecks across CI and release (e1612291) 
-#### Other
+#### [0.135.13] Other
 
 - Update project (32eaa76e) 
 - Update TODO (b2540992) 
-#### Refactors
+#### [0.135.13] Refactors
 
 - Simplify auto-permission prompts and asset sync, remove redundant system prompts (c625737e) 
 ## 0.135.12 - 2026-07-17
 
-### Highlights
-#### Bug Fixes
+### [0.135.12] Highlights
+#### [0.135.12] Bug Fixes
 
 - Resolve clippy and compilation issues for publishing (d8129022) 
-#### Documentation
+#### [0.135.12] Documentation
 
 - Add config fields for system prompt token budget and trimming (a10a65ac) 
 - Update TODO.md with Phase 5 verification and remove diagnosis section (92144b5b) 
 - Add battery-packs blog post and register in index (977dd194) 
 - Update extension docs for MIT OR Apache-2.0 license (522be78d) 
-#### Features
+#### [0.135.12] Features
 
 - Add vtcode-battery-pack crate (121f4bde) 
 - Add startup config warnings and measure_system_prompt_size (3e64fe14) 
 - Add Apache-2.0 dual license and Codex attribution (876e4f63) 
 - Generate THIRD-PARTY-NOTICES and fix attribution refs (0515114d) 
 - Restructure to crates/{common,codegen}/ layout and upgrade toolchain (c217c68c) 
-### Other Changes
-#### Other
+### [0.135.12] Other Changes
+#### [0.135.12] Other
 
 - Revert "docs: add battery-packs blog post and register in index" (6a0eafb9) 
 - Revert "feat: add vtcode-battery-pack crate" (7b2fdabd) 
-#### Performance
+#### [0.135.12] Performance
 
 - Bounded channels, async offload, and runtime backpressure (5271831b) 
 ## 0.135.11 - 2026-07-17
 
-### Highlights
-### Other Changes
+### [0.135.11] Highlights
+### [0.135.11] Other Changes
 ## 0.135.10 - 2026-07-17
 
-### Highlights
+### [0.135.10] Highlights
 
-#### Features
+#### [0.135.10] Features
 
 - add Moonshot models, update model presets, fix blocks reflow (95ae2bcf3) (@vinhnx)
 - show visual TUI feedback for every /config change (eb42b19fe) (@vinhnx)
 
-#### Bug Fixes
+#### [0.135.10] Bug Fixes
 
 - remove trailing empty Policy line from streaming reasoning blocks (be920c5a0) (@vinhnx)
 - restore PTY/command tool-call display and register exec_pty_cmd (225c5c1ae) (@vinhnx)
 - persist salvaged plan to session file during plan-mode recovery (c5dcc9f6a) (@vinhnx)
 
-#### Documentation
+#### [0.135.10] Documentation
 
 - note plan-mode investigation in TODO (92298523b) (@vinhnx)
 
-### Other Changes
+### [0.135.10] Other Changes
 
-#### Performance
+#### [0.135.10] Performance
 
 - share conversation history via Arc to eliminate per-turn O(history) clones (7faf732c5) (@vinhnx)
 - cut blocking IO and redundant work on tool/event hot paths (cb012b255) (@vinhnx)
 - cut per-turn and streaming overhead across hot paths (e310ec8cb) (@vinhnx)
 - eliminate repeated work in search hot paths (669d5b9e8) (@vinhnx)
 
-#### Refactors
+#### [0.135.10] Refactors
 
 - extract ColorContext, simplify thinking header, fix PTY completion line (124629ffd) (@vinhnx)
 - consolidate PTY styles, deduplicate prefix-building, relativize paths in headers (23c75549d) (@vinhnx)
@@ -1487,7 +1487,7 @@ All notable changes to vtcode will be documented in this file.
 - lazy flat file palette with on-demand listing (8ca10317c) (@vinhnx)
 - harden native_plugin FFI and document field lifetimes (7c5a77bcd) (@vinhnx)
 
-#### Other
+#### [0.135.10] Other
 
 - Update TODO (b6274d124) (@vinhnx)
 - Update note (e7b5878e8) (@vinhnx)
@@ -1495,48 +1495,48 @@ All notable changes to vtcode will be documented in this file.
 - Update TODO (cfc90d6b0) (@vinhnx)
 - Feat/simplify search (#702) (d7232ef41) (@2789734+kernitus)
 
-### Contributors
+### [0.135.10] Contributors
 
 @vinhnx, @2789734+kernitus
 
 ## 0.135.9 - 2026-07-14
 
-### Highlights
-#### Bug Fixes
+### [0.135.9] Highlights
+#### [0.135.9] Bug Fixes
 
 - Add missing cfg(unix) attribute for env_lock import (ff652e62) (@vinhnx)
-### Other Changes
-#### Other
+### [0.135.9] Other Changes
+#### [0.135.9] Other
 
 - Refactor/tools  (b5e2b34f) (@kernitus)
 - Fix plan mode (4ceb862d)
-#### Refactors
+#### [0.135.9] Refactors
 
 - Unify plan-mode phrases and decompose workflow monolith (a505dd77)
 ## 0.135.8 - 2026-07-14
 
-### Highlights
-#### Bug Fixes
+### [0.135.8] Highlights
+#### [0.135.8] Bug Fixes
 
 - Remove unused vtcode-core dep from vtcode-eval so it can publish (0f3b92dd)
-### Other Changes
+### [0.135.8] Other Changes
 ## 0.135.7 - 2026-07-14
 
-### Highlights
-#### Bug Fixes
+### [0.135.7] Highlights
+#### [0.135.7] Bug Fixes
 
 - Add version specifications for dependencies in Cargo.toml (b2f00d1e)
-### Other Changes
+### [0.135.7] Other Changes
 ## 0.135.6 - 2026-07-14
 
-### Highlights
-#### Bug Fixes
+### [0.135.6] Highlights
+#### [0.135.6] Bug Fixes
 
 - Finalize plan on wall-clock exhaustion instead of interview loop (2493ecd7)
 - Strip tools at API level after wall-clock exhaustion (1a935c8d)
 - Enhance plan-mode fallback to reject non-plan salvage (a329fe38)
 - Trim whitespace in plan-mode recovery fallback to prevent garbage injection (f9e4d32e)
-#### Features
+#### [0.135.6] Features
 
 - Implement budget exhaustion handling in planning workflow (789845e9)
 - Implement user approval for entering planning workflow and enhance recovery directives (1eefd21b)
@@ -1544,30 +1544,30 @@ All notable changes to vtcode will be documented in this file.
 - Add thinking block collapse functionality and default state (76d30f9a)
 - Improve thinking block toggle and reflow cache handling (0434e31b)
 - Enhance thinking block rendering and state management (930ca639)
-### Other Changes
-#### Other
+### [0.135.6] Other Changes
+#### [0.135.6] Other
 
 - Implement primary agent switching in planning workflow and enhance error handling with retries (53bfcfe3)
 - Add recovery handling for planning synthesis truncation and enhance session state (623e88db)
 - Update default configurations for tool result clearing and client tool search; enhance token efficiency warnings and documentation. (3b66f9f7)
 - Implement planning workflow execution and intent detection modules (6ffa4db8)
 - Add tests for agent runner configuration and tool exposure (23d2fedf)
-#### Refactors
+#### [0.135.6] Refactors
 
 - Streamline plan mode recovery and enhance user-facing messages (dd48dc0a)
 ## 0.135.5 - 2026-07-12
 
-### Highlights
-### Other Changes
-#### Other
+### [0.135.5] Highlights
+### [0.135.5] Other Changes
+#### [0.135.5] Other
 
 - Add evaluation suite command and context reset functionality (53beae8d) 
 - Add eval suite runner and context reset logic (5ecc0441) 
 ## 0.135.4 - 2026-07-12
 
-### Highlights
-### Other Changes
-#### Other
+### [0.135.4] Highlights
+### [0.135.4] Other Changes
+#### [0.135.4] Other
 
 - Implement progress monitoring and reinforcement learning engine with persistence (233f9751) 
 - Refactor context engineering documentation and enhance planning recovery in turn loop (c895b2c7) 
@@ -1578,17 +1578,17 @@ All notable changes to vtcode will be documented in this file.
 - Refactor assertions for floating-point comparisons and improve case-insensitive path checks (9152aae4) 
 ## 0.135.3 - 2026-07-11
 
-### Highlights
-#### Bug Fixes
+### [0.135.3] Highlights
+#### [0.135.3] Bug Fixes
 
 - Namespace cache per target in CI to prevent collisions (014e8924) 
-#### Features
+#### [0.135.3] Features
 
 - Add /checkup command and optimize diagnostics output (7d26d11a) 
 - Enable debug assertions and overflow checks in release builds (f8768d32) 
 - Implement mode switch guard to prevent cycling during active turns (7551e9bc) 
-### Other Changes
-#### Other
+### [0.135.3] Other Changes
+#### [0.135.3] Other
 
 - Implement guards for tool call validation including read, shell run, spool, and task tracker guards (e9e19936) 
 - Add Claude Advisor server-side tool configuration and integration (7612fb8a) 
@@ -1598,45 +1598,45 @@ All notable changes to vtcode will be documented in this file.
 - Implement unified executors for cron, mcp, and agent actions; enhance tool descriptions and parameters; improve output processing for large results. (22276fb4) 
 - Consolidate agent and MCP tool registrations; update parameters and descriptions for clarity. Enhance action dispatching for wait and close actions in agents. Adjust risk scoring for MCP connect/disconnect actions. Remove unused parameter schemas and streamline collaboration specs. (69222268) 
 - Add tests for memory lock functionality and implement atomic file writes (f5055f80) 
-#### Refactors
+#### [0.135.3] Refactors
 
 - Expose normalize_model_id function and simplify model normalization logic (6efca878) 
 ## 0.135.2 - 2026-07-10
 
-### Highlights
-### Other Changes
+### [0.135.2] Highlights
+### [0.135.2] Other Changes
 ## 0.135.1 - 2026-07-10
 
-### Highlights
-#### Bug Fixes
+### [0.135.1] Highlights
+#### [0.135.1] Bug Fixes
 
 - Use u64 for assumed system memory constant to fix 32-bit builds (4db0d8d6) 
-#### Features
+#### [0.135.1] Features
 
 - Implement read limits configuration and update related cache handling (0f47cb4b) 
 - Implement session mode resolution and persistence logic (be087eae) 
-### Other Changes
+### [0.135.1] Other Changes
 ## 0.135.0 - 2026-07-09
 
-### Highlights
-#### Bug Fixes
+### [0.135.0] Highlights
+#### [0.135.0] Bug Fixes
 
 - Comprehensive code review and debugging fixes (060baf81) 
 - Skip CARGO_INCREMENTAL with sccache wrapper in check-dev (b3009d4a) 
 - Address critical/high/medium bugs and DRY violations across codebase (099e7d60) 
 - Dedup recovery dispatch, fix error swallowing, clean DRY (e403b78a) 
-#### Features
+#### [0.135.0] Features
 
 - Differentiate model-switch outcome variants, add harness opt-out config (b535d70f) 
 - Add immediate submit commands for slash palette (aa01bce9) 
 - Include enum options in preflight schema hint (74a9ca18) 
 - Add support for GPT-5.6 models and update related prompts and configurations (6775385c) 
-### Other Changes
-#### Other
+### [0.135.0] Other Changes
+#### [0.135.0] Other
 
 - Add planning intent detection and validation enhancements (8176201f) 
 - Update TODO (c7b353de) 
-#### Performance
+#### [0.135.0] Performance
 
 - Lowercase once per strip instead of per marker scan (83a33aaf) 
 - Pre-size summary prompt and retained-message vectors (b8de575b) 
@@ -1644,39 +1644,39 @@ All notable changes to vtcode will be documented in this file.
 - Pre-size system-prompt line vectors (4d583287) 
 - Pre-size render output lines and list stack (35a90e05) 
 - Pre-size render output strings (83407ee2) 
-#### Refactors
+#### [0.135.0] Refactors
 
 - Name failure mode in recovery retry directive (593b4c67) 
 - Extract finalize_turn helper from run_turn_loop (85460ba6) 
 - Improve error handling and streamline post-tool recovery logic (bb3aeff2) 
-#### Tests
+#### [0.135.0] Tests
 
 - Cover tool-free recovery retry-then-salvage (00f6ad3f) 
 ## 0.134.15 - 2026-07-09
 
-### Highlights
-#### Bug Fixes
+### [0.134.15] Highlights
+#### [0.134.15] Bug Fixes
 
 - Primary agent runtime config clobbers configured model with "inherit"  (fe45c4ec) (@ForrestThump)
 - Retry tool-free recovery on contract violation instead of bailing (ebc936ad) 
 - Raise recovery synthesis token cap 1024 -> 4096 (383c7151) 
 - Update contributor commit counts in README and add WIP note in TODO (891da9e0) 
 - Stop injecting contradictory resume directive during tool-free recovery (7acc042d) 
-#### Features
+#### [0.134.15] Features
 
 - Implement absolute line cap for read_file calls with continuation support (a345212b) 
 - Add absolute line cap for line-based read_file operations (c2d7a50f) 
 - Implement WorktreeReconciler with DiffVerifier for safe merges (58c257c1) 
 - Salvage prose from rejected recovery synthesis in fallback (c30ac37d) 
 - Enhance local model management and readiness checks (f7271b25) 
-### Other Changes
-#### Build
+### [0.134.15] Other Changes
+#### [0.134.15] Build
 
 - Eliminate last 2 unsafe blocks in build.rs and process_hardening.rs (650781c6) 
-#### CI
+#### [0.134.15] CI
 
 - Wire allocator-jemalloc feature into build-linux-windows.yml (e5f4b3d6) 
-#### Other
+#### [0.134.15] Other
 
 - Remove sccache + rust-cache from Windows and macOS builds (ecd69fc1) (@vinhnx)
 - Update TODO.md (51f4dad0) (@vinhnx)
@@ -1685,120 +1685,120 @@ All notable changes to vtcode will be documented in this file.
 - Update TODO.md (e8266c24) (@vinhnx)
 - Update TODOs (66a93a98) 
 - Update TODO (ec8e24ee) 
-#### Performance
+#### [0.134.15] Performance
 
 - Shallow git checkouts in CI, enable sccache for local macOS release builds (d55f76ec) 
 - Default to jemalloc on Linux and add bench-allocator RSS diagnostic (998f101e) 
 ## 0.134.14 - 2026-07-07
 
-### Highlights
-#### Bug Fixes
+### [0.134.14] Highlights
+#### [0.134.14] Bug Fixes
 
 - Resolve warnings and improve CI status reporting (cff3a5b7) (@vinhnx)
 - Improve CI status reporting to reflect accurate build conclusions (c3077862) (@vinhnx)
 - Fix #693: enhance model resolution and testing for local and custom providers (369cf8bc) 
-#### Features
+#### [0.134.14] Features
 
 - Add nord and nord-light themes with syntax highlighting support (2385d63c) 
 - Update theme colours for improved WCAG AA contrast compliance (cddb8f1b)
 - Enhance diff rendering styles for better accessibility and theme support (50152ddf) 
 - Increase codegen units for improved parallelism during check/clippy (9d57197a) 
-### Other Changes
-#### CI
+### [0.134.14] Other Changes
+#### [0.134.14] CI
 
 - Add rust-cache + sccache to all build jobs; use --cargo-profile ci for nextest (016ad679) (@vinhnx)
 - Remove redundant check job; add SCCACHE_CACHE_SIZE; consolidate sccache env (d37c812c) (@vinhnx)
-#### Other
+#### [0.134.14] Other
 
 - Update TODO (7d612523) 
-#### Refactors
+#### [0.134.14] Refactors
 
 - Improve input rendering style handling and add ANSI colour support (73a715b7)
 ## 0.134.13 - 2026-07-06
 
-### Highlights
-### Other Changes
-#### Other
+### [0.134.13] Highlights
+### [0.134.13] Other Changes
+#### [0.134.13] Other
 
 - Update TODOs (9152b2d3) 
 ## 0.134.12 - 2026-07-06
 
-### Highlights
-### Other Changes
-#### Refactors
+### [0.134.12] Highlights
+### [0.134.12] Other Changes
+#### [0.134.12] Refactors
 
 - Clean up unused compiler settings and warnings in build configurations (129517c9) (@vinhnx)
 ## 0.134.11 - 2026-07-06
 
-### Highlights
-#### Features
+### [0.134.11] Highlights
+#### [0.134.11] Features
 
 - Add MultiErrors type implementing error-parameter pattern (145ea479) 
-### Other Changes
-#### CI
+### [0.134.11] Other Changes
+#### [0.134.11] CI
 
 - Update workflows to use install-action for dependencies and enable sccache (0f3af6e4) 
-#### Other
+#### [0.134.11] Other
 
 - Update notes (68cf3fc3) 
 - Update TODO (8ae6078c) 
-#### Refactors
+#### [0.134.11] Refactors
 
 - Enhance testing commands and scripts for improved efficiency (c7fcffd1) 
 ## 0.134.10 - 2026-07-06
 
-### Highlights
-### Other Changes
-#### Other
+### [0.134.10] Highlights
+### [0.134.10] Other Changes
+#### [0.134.10] Other
 
 - Update help cli (114dbecd) 
 - Refactor provider noise handling and harmony sanitization (4c402a60) 
 ## 0.134.9 - 2026-07-05
 
-### Highlights
-#### Bug Fixes
+### [0.134.9] Highlights
+#### [0.134.9] Bug Fixes
 
 - Resolve apply_patch format confusion and updater stdout leak (53502b15) 
 - Cross-map max_results/globs/format in unified_search action=list (a8513c01) 
 - Resolve unified_search action=outline parameter confusion and refactor (be92673d) 
-### Other Changes
-#### Other
+### [0.134.9] Other Changes
+#### [0.134.9] Other
 
 - Enhance ast-grep code outline (8d2278b8) 
 ## 0.134.8 - 2026-07-05
 
-### Highlights
-#### Bug Fixes
+### [0.134.8] Highlights
+#### [0.134.8] Bug Fixes
 
 - Remove incorrect cfg gate on env_lock import (breaks Linux/Windows CI) (bb0c7d1f) (@vinhnx)
-### Other Changes
+### [0.134.8] Other Changes
 ## 0.134.7 - 2026-07-05
 
-### Highlights
-#### Bug Fixes
+### [0.134.7] Highlights
+#### [0.134.7] Bug Fixes
 
 - Retain loop-detection metadata in compacted tool output (9bfed42a) 
-### Other Changes
-#### Other
+### [0.134.7] Other Changes
+#### [0.134.7] Other
 
 - Refactor code to allow missing documentation warnings and improve error handling in tests and components (defef020) 
 - Remove unused model override warnings and related test (ab912466) 
 - Fix em-dash guidance string, improve user message retention in compaction, and update test assertions (9c7f804c) 
 ## 0.134.6 - 2026-07-04
 
-### Highlights
-### Other Changes
-#### Other
+### [0.134.6] Highlights
+### [0.134.6] Other Changes
+#### [0.134.6] Other
 
 - Fix/tool budget  (05b182c9) (@kernitus)
 ## 0.134.5 - 2026-07-04
 
-### Highlights
-#### Documentation
+### [0.134.5] Highlights
+#### [0.134.5] Documentation
 
 - Document user AGENTS loading  (bb56bfa3) (@kernitus)
-### Other Changes
-#### Other
+### [0.134.5] Other Changes
+#### [0.134.5] Other
 
 - Add tracking state and turn metrics for agent sessions; implement tool registry interfaces and trait implementations (c624c3a8) 
 - Enhance tool registration and UI components with detailed documentation and new features (44f400bc) 
@@ -1808,7 +1808,7 @@ All notable changes to vtcode will be documented in this file.
 - Refactor text tool parsers to use ParseResult for improved error handling and add consumed span tracking (eca6ddd8) 
 - Implement interactive API key prompt during first-run setup and enhance error guidance for authentication issues (e039e878) 
 - Update TODO (2ffd4a00) 
-#### Refactors
+#### [0.134.5] Refactors
 
 - Streamline test setup for loop detection and turn metrics (c12ac368) 
 - Update unwrap/expect/panic handling to use context for better error messages (c7268b71) 
@@ -1820,20 +1820,20 @@ All notable changes to vtcode will be documented in this file.
 - Streamline tool name normalization and enhance test coverage for apply_patch and file operations (998e762c) 
 ## 0.134.4 - 2026-07-04
 
-### Highlights
-#### Documentation
+### [0.134.4] Highlights
+#### [0.134.4] Documentation
 
 - Update per-crate AGENTS.md for DRY refactor conventions (daaec30c) 
-#### Features
+#### [0.134.4] Features
 
 - Enhance error handling with failure classification and guidance (93d5565c) 
 - Implement JSON schema support for string-backed identifier newtypes (62fc40c4) 
-### Other Changes
-#### Other
+### [0.134.4] Other Changes
+#### [0.134.4] Other
 
 - Fix/keyboard input & image pasting  (be4b05b3) (@kernitus)
 - Add tool definition token tracking and improve tool search indexing (65a12f25) 
-#### Refactors
+#### [0.134.4] Refactors
 
 - Unify workspace path-containment checks into vtcode-commons (48e7d3f6) 
 - Consolidate error classification onto ErrorCategory (f3372ba6) 
@@ -1852,66 +1852,66 @@ All notable changes to vtcode will be documented in this file.
 - Introduce id_newtype for plugin and marketplace identifiers (fe557352) 
 ## 0.134.3 - 2026-07-01
 
-### Highlights
-#### Bug Fixes
+### [0.134.3] Highlights
+#### [0.134.3] Bug Fixes
 
 - Revert agent-client-protocol 0.10.4 and rusqlite 0.35 to fix 0.134.2 build (f8dddd4f) 
-#### Features
+#### [0.134.3] Features
 
 - Migrate agent-client-protocol from 0.10.4 to 1.0.1 (SACP builder API) (210b1ca5) 
-### Other Changes
+### [0.134.3] Other Changes
 ## 0.134.2 - 2026-07-01
 
-### Highlights
-#### Bug Fixes
+### [0.134.2] Highlights
+#### [0.134.2] Bug Fixes
 
 - Downgrade notify-rust to 4.17.0 for rustc 1.88.0 compat (797fa278) 
 - Adapt to rmcp 2.0.0 breaking API changes (c4501adf) 
-### Other Changes
+### [0.134.2] Other Changes
 ## 0.134.1 - 2026-07-01
 
-### Highlights
-#### Bug Fixes
+### [0.134.1] Highlights
+#### [0.134.1] Bug Fixes
 
 - Scope recovery cap to current turn  (66216d16) (@kernitus)
-### Other Changes
+### [0.134.1] Other Changes
 ## 0.134.0 - 2026-07-01
 
-### Highlights
-#### Bug Fixes
+### [0.134.0] Highlights
+#### [0.134.0] Bug Fixes
 
 - Downgrade subagents visibility from pub(crate) to pub(super) (6c1da4d4) 
 - Add xhigh/max effort picker support for Sonnet 5, Fable 5, Mythos 5; fix adaptive thinking profiles per Anthropic docs (9eff2382) 
-#### Documentation
+#### [0.134.0] Documentation
 
 - Refresh stale structural_search/subagents file paths after split (4a1d7283) 
-#### Features
+#### [0.134.0] Features
 
 - Add Claude Sonnet 5, Fable 5, and Mythos 5 to Anthropic provider (12ebfcc7) 
-### Other Changes
-#### Other
+### [0.134.0] Other Changes
+#### [0.134.0] Other
 
 - Revert "refactor: remove Claude Fable 5 references and update to Claude Opus 4.8 across models and capabilities" (537a0e75) 
-#### Refactors
+#### [0.134.0] Refactors
 
 - Split structural_search.rs into focused submodules (717f75f7) 
 - Split subagents/mod.rs impl into controller submodules (f5203b6e) 
 ## 0.133.23 - 2026-06-29
 
-### Highlights
-### Other Changes
-#### Other
+### [0.133.23] Highlights
+### [0.133.23] Other Changes
+#### [0.133.23] Other
 
 - Refactor code structure for improved readability and maintainability (643f7d2c) 
 ## 0.133.22 - 2026-06-28
 
-### Highlights
-#### Bug Fixes
+### [0.133.22] Highlights
+#### [0.133.22] Bug Fixes
 
 - Stream isolated review subcalls (a7ffd7f7) (@kernitus)
 - Ignore responses keepalive events (f33650f5) (@kernitus)
 - Update compatible responses retry test (7b73ba2c) (@kernitus)
-#### Documentation
+#### [0.133.22] Documentation
 
 - Add web_search tool reference, document /continue and did-you-mean (90a321b2) 
 - Expand TODO with known tech debt items (144491a0) 
@@ -1919,12 +1919,12 @@ All notable changes to vtcode will be documented in this file.
 - Fix stale src/tui.rs references, update CONTRIBUTING.md and INDEX.md (8b0518e1) 
 - Audit and trim per-crate AGENTS.md files (018656ea) 
 - Align CI/CD docs with actual workflow files (5e39c041) 
-#### Features
+#### [0.133.22] Features
 
 - Implement cross-turn tracking and limit assistant text responses to prevent runaway loops (466c0c24) 
 - Add tiktoken integration for token counting and hierarchical summarization (3d5af4ed) 
-### Other Changes
-#### Other
+### [0.133.22] Other Changes
+#### [0.133.22] Other
 
 - Convert stringly-typed ResponseId, OutputItemId, ContentPartId to newtypes (2df60016) 
 - Implement recovery fallback messages and enhance outline search with directory summaries (75429ee7) 
@@ -1942,24 +1942,24 @@ All notable changes to vtcode will be documented in this file.
 - Refactor tool outcome handling and improve skill overflow messages for clarity (782b8fc7) 
 - Refactor model ID matching and clean up import statements for clarity (764128be) 
 - Refactor string formatting for improved readability and consistency across tests and core modules (87a375f3) 
-#### Tests
+#### [0.133.22] Tests
 
 - Fix prompt cache retention fixtures (6d032016) (@kernitus)
 ## 0.133.21 - 2026-06-28
 
-### Highlights
-### Other Changes
-#### Other
+### [0.133.21] Highlights
+### [0.133.21] Other Changes
+#### [0.133.21] Other
 
 - Update run (a2f82005) 
 ## 0.133.20 - 2026-06-28
 
-### Highlights
-#### Bug Fixes
+### [0.133.20] Highlights
+#### [0.133.20] Bug Fixes
 
 - Deserialize StatusLineMode case-insensitively (2badec48) (@RobertBorg)
 - Prevent loop detection from returning empty results and strengthen blocking (db5d7d5d) 
-#### Features
+#### [0.133.20] Features
 
 - Enhance Miri checks and add safety limits for Copilot payloads (352d610f) 
 - Add web_search, defuddle_fetch, and TOML-driven network allowlist (1fb4b50d) 
@@ -1968,19 +1968,19 @@ All notable changes to vtcode will be documented in this file.
 - Add binary override checks for ast-grep installation and testing (f5d2f650) 
 - Implement post-tool recovery cycle tracking and handling to prevent infinite loops (745e9488) 
 - Implement post-tool recovery cycle cap check and cleanup temporary files (1e36699e) 
-### Other Changes
-#### Other
+### [0.133.20] Other Changes
+#### [0.133.20] Other
 
 - Update README (fa0180f3) (@vinhnx)
 - Enhance compatibility and error handling across various modules (d5249d00) 
-#### Refactors
+#### [0.133.20] Refactors
 
 - Reduce default output limits and enhance loop detection for command tools (47eab8f4) 
 ## 0.133.19 - 2026-06-27
 
-### Highlights
-### Other Changes
-#### Other
+### [0.133.19] Highlights
+### [0.133.19] Other Changes
+#### [0.133.19] Other
 
 - Update TODO (bde8fd7e) 
 - Revert "chore: enhance build scripts for parallel processing and artefact management" (d6421236)
@@ -1988,27 +1988,27 @@ All notable changes to vtcode will be documented in this file.
 - Add new models and update configurations for OpenCode Go (b8e3282e) 
 ## 0.133.18 - 2026-06-27
 
-### Highlights
-#### Bug Fixes
+### [0.133.18] Highlights
+#### [0.133.18] Bug Fixes
 
 - Pin rmcp to =1.7.0 to prevent Arc<InitializeResult> type mismatch (e25976ae) 
-#### Features
+#### [0.133.18] Features
 
 - Colorize 'did you mean?' suggestions (15f5e609) 
-### Other Changes
+### [0.133.18] Other Changes
 ## 0.133.17 - 2026-06-26
 
-### Highlights
-### Other Changes
+### [0.133.17] Highlights
+### [0.133.17] Other Changes
 ## 0.133.16 - 2026-06-26
 
-### Highlights
-#### Features
+### [0.133.16] Highlights
+#### [0.133.16] Features
 
 - Add 'did you mean?' suggestions for unrecognized commands (46e6b56b) 
 - Add /continue command to resume the most recent session (67fb16d5) 
-### Other Changes
-#### Other
+### [0.133.16] Other Changes
+#### [0.133.16] Other
 
 - Update README to streamline provider information (87b53bb7) (@vinhnx)
 - Implement Git worktree management and loop memory persistence (e2fec1b7) 
@@ -2016,53 +2016,53 @@ All notable changes to vtcode will be documented in this file.
 - Update TODO (30307681) 
 ## 0.133.15 - 2026-06-26
 
-### Highlights
+### [0.133.15] Highlights
 
 *No highlighted changes*
 
-### Other Changes
+### [0.133.15] Other Changes
 
-#### Chores
+#### [0.133.15] Chores
 
 - enhance build scripts for parallel processing and artefact management (452221875) (@vinhnx)
 
-#### Other
+#### [0.133.15] Other
 
 - Fix release script (947307b26) (@vinhnx)
 
-### Contributors
+### [0.133.15] Contributors
 
 @vinhnx
 
 ## 0.133.13 - 2026-06-26
 
-### Highlights
+### [0.133.13] Highlights
 
 *No highlighted changes*
 
-### Other Changes
+### [0.133.13] Other Changes
 
-#### Refactors
+#### [0.133.13] Refactors
 
 - move inject_latest_memory_envelope to test configuration (991fc083f) (@vinhnx)
 
-#### Other
+#### [0.133.13] Other
 
 - Update TODO (87a03136f) (@vinhnx)
 - Update TODO (873af9c63) (@vinhnx)
 
-### Contributors
+### [0.133.13] Contributors
 
 @vinhnx
 
 ## 0.133.12 - 2026-06-25
 
-### Highlights
-### Other Changes
+### [0.133.12] Highlights
+### [0.133.12] Other Changes
 ## 0.133.11 - 2026-06-25
 
-### Highlights
-#### Bug Fixes
+### [0.133.11] Highlights
+#### [0.133.11] Bug Fixes
 
 - Shell policy byte-offset panic, glob compilation, and structural fallback bugs (a6c8ce38) (@vinhnx)
 - Security hardening, concurrency fixes, and async I/O improvements (e0fcd0fa) (@vinhnx)
@@ -2071,30 +2071,30 @@ All notable changes to vtcode will be documented in this file.
 - Preserve full resume history verbatim (5d967855) (@kernitus)
 - Resume progress archives from full history (b506f33a) (@kernitus)
 - Refine validation for format, report_style, and builtin_rules in scan workflow (2edbfd55) (@vinhnx)
-### Other Changes
-#### Other
+### [0.133.11] Other Changes
+#### [0.133.11] Other
 
 - Update gitignore (ab279a6d) (@vinhnx)
 ## 0.133.10 - 2026-06-24
 
-### Highlights
-#### Bug Fixes
+### [0.133.10] Highlights
+#### [0.133.10] Bug Fixes
 
 - Prevent false loop detection when read extent differs (26113d9c) (@vinhnx)
 - Add read-extent check to find_duplicate_in_history (fde336dc) (@vinhnx)
 - Prevent false loop detection when read extent differs (823825a6) (@vinhnx)
 - Surface edit-size limits, fix error messages, and improve task tracker continuity (80d1585a) 
-#### Documentation
+#### [0.133.10] Documentation
 
 - Track Rig upstream PRs and update stale version references (1431c9aa) 
-### Other Changes
-#### Other
+### [0.133.10] Other Changes
+#### [0.133.10] Other
 
 - Update TODO (b31383a4) (@vinhnx)
 ## 0.133.9 - 2026-06-24
 
-### Highlights
-#### Bug Fixes
+### [0.133.9] Highlights
+#### [0.133.9] Bug Fixes
 
 - Preserve responses stream call ids (bda2d6fb) (@kernitus)
 - Preserve responses stream call ids (a87f5006) (@kernitus)
@@ -2105,15 +2105,15 @@ All notable changes to vtcode will be documented in this file.
 - Avoid duplicate tool call replays (e3eaf4e1) (@kernitus)
 - Preserve rig-unknown responses items (b5345844) (@kernitus)
 - Preserve responses stream mode (9c301493) (@kernitus)
-### Other Changes
-#### Build
+### [0.133.9] Other Changes
+#### [0.133.9] Build
 
 - Test rig 0.39 compatibility (0519913d) (@kernitus)
-#### Other
+#### [0.133.9] Other
 
 - Update TODO (74789d35) 
 - Update TODO (ea9d8fe8) 
-#### Refactors
+#### [0.133.9] Refactors
 
 - Add responses adapter boundary (9486046c) (@kernitus)
 - Route chatgpt requests through rig (2c0c5223) (@kernitus)
@@ -2121,42 +2121,42 @@ All notable changes to vtcode will be documented in this file.
 - Register tools through rig toolset (a0c04d08) (@kernitus)
 - Consolidate openai chatgpt responses glue (45077f86) (@kernitus)
 - Document chatgpt rig request boundary (38198cde) (@kernitus)
-#### Tests
+#### [0.133.9] Tests
 
 - Cover responses status marker events (b8797d82) (@kernitus)
 - Preserve responses stream conversions (de597a96) (@kernitus)
 - Use documented code interpreter stream event (53c3559d) (@kernitus)
 ## 0.133.8 - 2026-06-24
 
-### Highlights
-#### Bug Fixes
+### [0.133.8] Highlights
+#### [0.133.8] Bug Fixes
 
 - Improve ast-grep structural search reliability and YAML safety (5eb728bb) 
 - Prevent loop detection from killing entire turns via blocked-streak fuse (b773e66c) 
-### Other Changes
-#### Other
+### [0.133.8] Other Changes
+#### [0.133.8] Other
 
 - Improve search (882b6c2b) 
 - Improve unified_search family key differentiation and deny in-place editing commands (9d449d37) 
 - Add up/down arrow archived history navigation and structural search exclude parameter (7cff539f) 
 ## 0.133.7 - 2026-06-24
 
-### Highlights
-#### Bug Fixes
+### [0.133.7] Highlights
+#### [0.133.7] Bug Fixes
 
 - Allow selecting auto agent from mode palette (2efcf777) 
-### Other Changes
-#### Other
+### [0.133.7] Other Changes
+#### [0.133.7] Other
 
 - Refine (6948d078) 
 ## 0.133.6 - 2026-06-23
 
-### Highlights
-#### Bug Fixes
+### [0.133.6] Highlights
+#### [0.133.6] Bug Fixes
 
 - Address turn_525 planning-mode loop issues (3e165b98) 
-### Other Changes
-#### Other
+### [0.133.6] Other Changes
+#### [0.133.6] Other
 
 - Exclude TODO (6c3c1fb9) (@vinhnx)
 - Update docs on provider config schema (a65c6e56) (@vinhnx)
@@ -2171,54 +2171,54 @@ All notable changes to vtcode will be documented in this file.
 - Implement age-based cleanup for temp files in web fetch tool and update tests (786fc39d) 
 ## 0.133.5 - 2026-06-22
 
-### Highlights
-#### Bug Fixes
+### [0.133.5] Highlights
+#### [0.133.5] Bug Fixes
 
 - Handle TUI mode in prompt capability check (7582512e) 
 - Prevent TUI corruption when cycling agents via Tab (704b65c7) 
 - Guard raw println/print calls that corrupt TUI display (61baed0d) 
 - Drain terminal events to prevent input corruption after external app execution (a461c329) 
-#### Documentation
+#### [0.133.5] Documentation
 
 - Update TUI println audit with fix status and remaining items (2b039c28) 
-#### Features
+#### [0.133.5] Features
 
 - Implement domain-scoped approval caching for web_fetch tool (70e5c760) 
 - Implement workspace configuration with root layer control (8e617121) 
-### Other Changes
-#### Other
+### [0.133.5] Other Changes
+#### [0.133.5] Other
 
 - Register web_fetch tool and implement HITL approval flow (36aed2e5) 
 - Refactor model display names to use Cow for dynamic strings; update provider handling and validation logic (7b72264b) 
 ## 0.133.4 - 2026-06-21
 
-### Highlights
-### Other Changes
-#### Refactors
+### [0.133.4] Highlights
+### [0.133.4] Other Changes
+#### [0.133.4] Refactors
 
 - Refactor: streamline theme resolution and update preference logic (1d1ecc31) 
 ## 0.133.3 - 2026-06-21
 
-### Highlights
-#### Bug Fixes
+### [0.133.3] Highlights
+#### [0.133.3] Bug Fixes
 
 - Preflight respects release channel, DRY config check, collapsible if (db12a590) 
 - Resolve clippy warnings across workspace (967c2e7d) 
 - Explicit semver equality guard prevents spurious update notices (e0573aa6) 
-#### Features
+#### [0.133.3] Features
 
 - Self-update check on every launch (4787b4d9) 
-### Other Changes
-#### Other
+### [0.133.3] Other Changes
+#### [0.133.3] Other
 
 - Simplify preflight debug logging, remove redundant variable (c2bb6672) 
-#### Refactors
+#### [0.133.3] Refactors
 
 - Update ATIF metrics handling and exit data structure for zero-allocation (908b5224) 
 ## 0.133.2 - 2026-06-21
 
-### Highlights
-#### Bug Fixes
+### [0.133.2] Highlights
+#### [0.133.2] Bug Fixes
 
 - Improve concurrency safety and fix race conditions (e270c3d6) 
 - Additional concurrency and safety improvements (6865b65d) 
@@ -2226,11 +2226,11 @@ All notable changes to vtcode will be documented in this file.
 - Replace expect() with poison recovery in search_runtime and cached_executor (14dc8a55) 
 - Wait 10ms for in-flight terminal responses in drain (defa765a) 
 - Add dead code annotations for unused methods and fields (4c200cd1) 
-### Other Changes
+### [0.133.2] Other Changes
 ## 0.133.1 - 2026-06-21
 
-### Highlights
-#### Bug Fixes
+### [0.133.1] Highlights
+#### [0.133.1] Bug Fixes
 
 - Drain terminal responses before disabling raw mode on exit (0b3a6e02) 
 - Resolve clippy issues and improve shell approval patterns (d78c2796) 
@@ -2239,27 +2239,27 @@ All notable changes to vtcode will be documented in this file.
 - Clean up recovery messaging and improve tool call handling (3079b762) 
 - Unify recovery cleanup info message wording (9975023b) 
 - Remediate modes/subagents audit and clear pre-existing test drift (6620f73c) 
-#### Documentation
+#### [0.133.1] Documentation
 
 - Add model list to vtcode.toml.example (c8538c10) 
-#### Features
+#### [0.133.1] Features
 
 - Enhance tool policy and session management with interrupt handling and approval caching (bdb857b5) 
 - Enhance tool call guards and approval handling with new patterns and configurations (0ece95d4) 
-### Other Changes
-#### Other
+### [0.133.1] Other Changes
+#### [0.133.1] Other
 
 - Refactor numeric calculations to prevent sign loss and improve precision in various modules (9c5c7bc9) 
 ## 0.133.0 - 2026-06-20
 
-### Highlights
-#### Bug Fixes
+### [0.133.0] Highlights
+#### [0.133.0] Bug Fixes
 
 - Reduce mid-run stops and eliminate wasted duplicate tool calls (884b39b0) 
 - Reduce mid-run stops and eliminate wasted duplicate tool calls (a925cb80) 
 - Silently ignore floating overlay Selection events when no palette is active (e67db4e4) 
 - Stop constant writes of background_subagents.json (5cfc6c10) 
-#### Features
+#### [0.133.0] Features
 
 - Add Z.ai GLM Coding Plan with subscription details to README (593ba1ba) (@vinhnx)
 - Enhance verification handling and refactor tool execution methods (d4f91648) 
@@ -2281,8 +2281,8 @@ All notable changes to vtcode will be documented in this file.
 - Implement tool-free recovery mode switch and refactor related logic (a379f558) 
 - Enhance workspace detection and logging for safe-mode prompts (ed91aee6) 
 - Add support for native inline compaction in LLMProvider and related providers (f8146fce) 
-### Other Changes
-#### Other
+### [0.133.0] Other Changes
+#### [0.133.0] Other
 
 - Remove references to Nemotron 3 Super model from Ollama provider and related tests (e8a7077c) (@vinhnx)
 - Refactor documentation links and update references across multiple files (8838ff0e) (@vinhnx)
@@ -2295,7 +2295,7 @@ All notable changes to vtcode will be documented in this file.
 - Update notes (8c0d97a8) 
 - Implement adaptive budget recovery mechanism and related tool definitions (1f518af1) 
 - Refactor manual compaction support and improve provider interface (29030ca3) 
-#### Refactors
+#### [0.133.0] Refactors
 
 - Update tool references from `grep_file` and `read_file` to `unified_search` and `unified_file` across documentation (87391096) (@vinhnx)
 - Clean up code formatting and improve readability in multiple files (f5b06c97) 
@@ -2304,72 +2304,72 @@ All notable changes to vtcode will be documented in this file.
 - Consolidate duplicated tool dispatch patterns and add fallback validation (0b37a840) 
 ## 0.132.0 - 2026-06-16
 
-### Highlights
-#### Bug Fixes
+### [0.132.0] Highlights
+#### [0.132.0] Bug Fixes
 
 - Correct logo path and improve formatting in README (2c6952e5) 
-#### Documentation
+#### [0.132.0] Documentation
 
 - Add signal handling architecture documentation (3d30aa17) 
 - Update tree detail rendering to use correct prefix styling (5f335b9d) 
 - Update tree detail rendering to use correct prefix character (50bb4f4a) 
 - Update safety documentation link to SECURITY_MODEL.md (5919991d) 
 - Update logo and fix documentation links in README (47c2d476) 
-#### Features
+#### [0.132.0] Features
 
 - Add include_cache_metrics parameter to stream handling functions and update related tests (200090ba) 
 - Add GLM-5.2 model support and update related configurations (a7ab54fb) 
 - Add GLM-5.2 model support and update related configurations (603720b2) 
-### Other Changes
-#### Other
+### [0.132.0] Other Changes
+#### [0.132.0] Other
 
 - Update README.md (f04686e6) (@vinhnx)
 - Update README.md (a391ca62) (@vinhnx)
 - Update TODO.md (d7aba241) (@vinhnx)
 - Delete crate-consolidation-plan.md (60a4f9d2) (@vinhnx)
 - Refactor chat completion URL handling and improve error formatting across providers (44a1f2ff) 
-#### Refactors
+#### [0.132.0] Refactors
 
 - Simplify stream handling in DeepSeek, StepFun, and ZAI providers (365e4a6a) 
 - Update reasoning_field to reasoning_fields for improved flexibility in stream handling (3fe34776) 
 ## 0.131.1 - 2026-06-14
 
-### Highlights
-#### Bug Fixes
+### [0.131.1] Highlights
+#### [0.131.1] Bug Fixes
 
 - Add libc dependency and create no-console-log test and snapshot files (a6c4b966) 
 - Update page size to read all 7 bytes in detailed file handling (1fa15165) 
 - Remove redundant 'action' parameter from noise filter (ff93faf2) 
-#### Features
+#### [0.131.1] Features
 
 - Enhance file reading guidance and tracking for unified_exec commands (82628462) 
 - Implement byte-range reading for large files with offset and page size parameters (46faf766) 
-### Other Changes
-#### Other
+### [0.131.1] Other Changes
+#### [0.131.1] Other
 
 - Update TODO (9357e9e6) 
-#### Refactors
+#### [0.131.1] Refactors
 
 - Streamline file reading logic and enhance line-numbered output (026b760d) 
 - Replace truncate_middle with truncate_path_middle for better path handling (42e0b8b1) 
 ## 0.131.0 - 2026-06-14
 
-### Highlights
-#### Bug Fixes
+### [0.131.0] Highlights
+#### [0.131.0] Bug Fixes
 
 - Remove non-publishable crates from publish list and fix cargo doc --all-features flag (41b65ad0) 
-### Other Changes
+### [0.131.0] Other Changes
 ## 0.130.0 - 2026-06-14
 
-### Highlights
-### Other Changes
-#### Other
+### [0.130.0] Highlights
+### [0.130.0] Other Changes
+#### [0.130.0] Other
 
 - Refactor crate lists in publish and release scripts for clarity and consistency (57fbe342) 
 ## 0.129.0 - 2026-06-14
 
-### Highlights
-#### Bug Fixes
+### [0.129.0] Highlights
+#### [0.129.0] Bug Fixes
 
 - Update vtcode-core dependency to use version for publishing (c11ce2aa) (@vinhnx)
 - Correct cargo test instructions and add x-ai/grok-4-fast:free to openrouter model support (0432d820) (@vinhnx)
@@ -2695,7 +2695,7 @@ All notable changes to vtcode will be documented in this file.
 - Fallback to unauthenticated GitHub API on 401 (fdc666f9) (@vinhnx)
 - Handle terminal clear failure during force redraw (b85bec6e) (@vinhnx)
 - Update default primary agent from 'duck' to 'build' across configurations and tests (db0df331) 
-#### Documentation
+#### [0.129.0] Documentation
 
 - Refresh release status for v0.11.1 (b03caac1) (@vinhnx)
 - Update README with enhanced TUI features and fix typo (54cbd08f) (@vinhnx)
@@ -2857,7 +2857,7 @@ All notable changes to vtcode will be documented in this file.
 - Enhance ast-grep documentation in AGENTS.md and TODO.md; update system prompt to prefer ast-grep for code-shape queries (50afb69a) (@vinhnx)
 - Remove Homebrew installation instruction and update provider link text (db9e269c) (@vinhnx)
 - Update README to replace tables with bullet points for features and documentation (2e9081a3) (@vinhnx)
-#### Features
+#### [0.129.0] Features
 
 - Enhance spinner functionality for async operations and improve user input handling (81a8e9ce) (@vinhnx)
 - Add support for x-ai/grok-4-fast:free in openrouter models (a75b552b) (@vinhnx)
@@ -3512,14 +3512,14 @@ All notable changes to vtcode will be documented in this file.
 - Add agent identity labels and apply them to system prompts (3ee26a3d) 
 - Update chat input placeholders and footer hints to include agent switching (4af057cb) 
 - Add primary agent colour field to header context and update related tests (15354220)
-### Other Changes
-#### CI
+### [0.129.0] Other Changes
+#### [0.129.0] CI
 
 - Allow linux packaging fallback without ghostty runtime (da97cd00) (@vinhnx)
 - Fix x86_64-unknown-linux-gnu aws-lc-sys gcc-9 panic (58a30561) (@vinhnx)
 - Enable Windows builds by default in release workflows (7bce5b8d) (@vinhnx)
 - Improve Rust toolchain management with MSRV check and nightly smoke test (9909ad4b) (@vinhnx)
-#### Other
+#### [0.129.0] Other
 
 - Fix provider inference for router (ec7a38a4) (@vinhnx)
 - Updates TODO (eeecc852) (@vinhnx)
@@ -5601,7 +5601,7 @@ All notable changes to vtcode will be documented in this file.
 - Add read-after-write guard and enhance file tracking in tool execution (fff9a2f9) 
 - Add guideline to avoid using emoji in responses (3847a5cb) 
 - Refactor contract lines and parameter schemas for consistency and clarity (b57b516d) 
-#### Performance
+#### [0.129.0] Performance
 
 - Remove redundant clones and allocations (c21dfa9d) (@vinhnx)
 - Use write! macro instead of format! with push_str (b629f8a9) (@vinhnx)
@@ -5620,7 +5620,7 @@ All notable changes to vtcode will be documented in this file.
 - Optimize memory allocations and pre-allocate buffers in various modules (e12629b8) (@vinhnx)
 - Optimize rate limiting with a read-lock fast path and refactor tool execution retry delays using constant values. (a8af7997) (@vinhnx)
 - Cache session header lines and queued input previews to optimize TUI rendering performance and remove outdated content from TODO.md. (cf87bc80) (@vinhnx)
-#### Refactors
+#### [0.129.0] Refactors
 
 - Update configuration for provider and model changes; enhance spinner display (c936153e) (@vinhnx)
 - Modularize agent bootstrap components (74749e15) (@vinhnx)
@@ -6118,7 +6118,7 @@ All notable changes to vtcode will be documented in this file.
 - Normalize legacy tool names in permission rules and enhance warnings (ecab9d29) (@vinhnx)
 - Remove Claude Fable 5 references and update to Claude Opus 4.8 across models and capabilities (3d0cd491) (@vinhnx)
 - Enhance PTY session output handling and add utility functions (71951c99) 
-#### Tests
+#### [0.129.0] Tests
 
 - Cover codex prompt filtering (37815eb0) (@vinhnx)
 - Add missing fields to LLMRequest initializers (1040c352) (@vinhnx)
@@ -6131,13 +6131,13 @@ All notable changes to vtcode will be documented in this file.
 - Add regression guard for vtcode_core::safety::hitl reachability (462b4e61) (@vinhnx)
 ## 0.128.4 - 2026-06-13
 
-### Highlights
-### Other Changes
+### [0.128.4] Highlights
+### [0.128.4] Other Changes
 ## 0.128.3 - 2026-06-13
 
-### Highlights
-### Other Changes
-#### Other
+### [0.128.3] Highlights
+### [0.128.3] Other Changes
+#### [0.128.3] Other
 
 - Update TODO (b0a2c9f3) 
 - Add MiMo authentication method support and related configurations (b23ac5d1) 
@@ -6145,79 +6145,79 @@ All notable changes to vtcode will be documented in this file.
 - Add MiMo authentication method support and update UI constants (f80f806d) 
 ## 0.128.2 - 2026-06-13
 
-### Highlights
-### Other Changes
+### [0.128.2] Highlights
+### [0.128.2] Other Changes
 ## 0.128.0 - 2026-06-13
 
-### Highlights
-#### Features
+### [0.128.0] Highlights
+#### [0.128.0] Features
 
 - Feat/refactor OpenAI chatgpt Rig  (8a57c899) (@kernitus)
 - Add compile-time validation for tool name constants and integrate ctor for pre-main checks (394677b2) 
 - Add Kimi K2.7 Code model support across configurations and descriptions (1767daec) 
-### Other Changes
-#### Other
+### [0.128.0] Other Changes
+#### [0.128.0] Other
 
 - Update TODO (c272494b) (@vinhnx)
-#### Refactors
+#### [0.128.0] Refactors
 
 - Normalize legacy tool names in permission rules and enhance warnings (ecab9d29) 
 - Remove Claude Fable 5 references and update to Claude Opus 4.8 across models and capabilities (3d0cd491) 
 ## 0.127.0 - 2026-06-12
 
-### Highlights
-### Other Changes
-#### Refactors
+### [0.127.0] Highlights
+### [0.127.0] Other Changes
+#### [0.127.0] Refactors
 
 - Remove deprecated Qwen models from openrouter_models.json (d0c22c32) 
 ## 0.126.0 - 2026-06-12
 
-### Highlights
-#### Bug Fixes
+### [0.126.0] Highlights
+#### [0.126.0] Bug Fixes
 
 - Pin ratatui-widgets to =0.3.0 to fix cargo install (c60e1663) (@vinhnx)
 - Fallback to unauthenticated GitHub API on 401 (fdc666f9) 
 - Handle terminal clear failure during force redraw (b85bec6e) 
-#### Documentation
+#### [0.126.0] Documentation
 
 - Remove Homebrew installation instruction and update provider link text (db9e269c) (@vinhnx)
 - Update README to replace tables with bullet points for features and documentation (2e9081a3) (@vinhnx)
-#### Features
+#### [0.126.0] Features
 
 - Add Kimi K2.7 Code model and update related configurations (5f74a144) 
 - Implement double-Esc detection for rewind functionality (ca7a521b) 
 - Add MiniMax-M3 model via Novita inference provider and update related configurations (ecdd32f4) 
-### Other Changes
-#### Other
+### [0.126.0] Other Changes
+#### [0.126.0] Other
 
 - Update TODO (d54a296f) (@vinhnx)
 - Update README (27a96ce8) (@vinhnx)
 - Add release notes command and display on startup after updates (8f6848fd) 
 - Refactor model provider mappings and remove deprecated models (9ead7f9c) 
-#### Refactors
+#### [0.126.0] Refactors
 
 - Move float_to_json_number to common module and update usages (98032959) (@vinhnx)
 - Simplify string formatting in tests and error handling (802e06ad) (@vinhnx)
 - Simplify archived prompts loading and adjust reasoning effort level (c6966b04) 
 ## 0.125.3 - 2026-06-11
 
-### Highlights
-### Other Changes
-#### Other
+### [0.125.3] Highlights
+### [0.125.3] Other Changes
+#### [0.125.3] Other
 
 - Fix/671 chatgpt OpenAI requests  (071c9e64) (@kernitus)
 ## 0.125.2 - 2026-06-11
 
-### Highlights
-### Other Changes
+### [0.125.2] Highlights
+### [0.125.2] Other Changes
 ## 0.125.1 - 2026-06-11
 
-### Highlights
-#### Bug Fixes
+### [0.125.1] Highlights
+#### [0.125.1] Bug Fixes
 
 - Use token-based auth for homebrew-tap push instead of gh credential (66ac78b3) (@vinhnx)
-### Other Changes
-#### Other
+### [0.125.1] Other Changes
+#### [0.125.1] Other
 
 - Update TODO (b7d216f1) (@vinhnx)
 - Fable (8781f2a4) (@vinhnx)
@@ -6225,21 +6225,21 @@ All notable changes to vtcode will be documented in this file.
 - Update README (7f4186dd) (@vinhnx)
 - Ignore vtcode plan artefact (20736d87) (@vinhnx)
 - Feat/merge modes & agents  (3e743390) (@kernitus)
-#### Refactors
+#### [0.125.1] Refactors
 
 - Streamline tool execution success handling and error reporting (69ee6119) (@vinhnx)
 - Remove obsolete core agent loop exploration plans and tasks (3edf5e1d) (@vinhnx)
 ## 0.125.0 - 2026-06-10
 
-### Highlights
-#### Features
+### [0.125.0] Highlights
+#### [0.125.0] Features
 
 - Add vtcode-ui to publish sequence and update CLI documentation (bb7228ed) 
-### Other Changes
+### [0.125.0] Other Changes
 ## 0.124.0 - 2026-06-10
 
-### Highlights
-#### Bug Fixes
+### [0.124.0] Highlights
+#### [0.124.0] Bug Fixes
 
 - Handle parameterized close tags in collect_pseudo_marker_regions (dac7afa0)
 - Apply PR review fixes (d530f6c7) 
@@ -6250,22 +6250,22 @@ All notable changes to vtcode will be documented in this file.
 - Update path handling in trim_trailing_image_path_str function (59208038) 
 - Add image handling in request processing and refactor fallback logic (52f780ae) 
 - Pin ratatui to =0.30.0 to prevent CellEffect Send breakage (8539a774) 
-#### Documentation
+#### [0.124.0] Documentation
 
 - Enhance ast-grep documentation in AGENTS.md and TODO.md; update system prompt to prefer ast-grep for code-shape queries (50afb69a) 
-#### Features
+#### [0.124.0] Features
 
 - Implement strip_textual_tool_call_regions function and update related error messages (c62e4253) 
 - Enhance recovery handling for tool-call markers and improve documentation (e30b9e68) 
 - Add Claude Fable 5 with fallback credit, remove deprecated models (d4ed7872) 
 - Enhance Anthropic provider with new request handling and response parsing (73002a49) 
 - Add support for CLAUDE_OPUS_5 in thinking profile and update test case (24fc08e8) 
-### Other Changes
-#### Other
+### [0.124.0] Other Changes
+#### [0.124.0] Other
 
 - Remove outdated documentation references and clean up project files (ebdfe55f) 
 - Update ignore (114a62ec) 
-#### Refactors
+#### [0.124.0] Refactors
 
 - Merge vtcode-design, vtcode-theme, vtcode-tui into vtcode-ui (1f13c2fa) 
 - Remove TODO.md entry from documentation map (72a0f9c6) 
@@ -6274,33 +6274,33 @@ All notable changes to vtcode will be documented in this file.
 - Simplify session_archive usage in session loop runner (1a7ccf90) 
 ## 0.123.10 - 2026-06-09
 
-### Highlights
-### Other Changes
+### [0.123.10] Highlights
+### [0.123.10] Other Changes
 ## 0.123.9 - 2026-06-09
 
-### Highlights
-### Other Changes
+### [0.123.9] Highlights
+### [0.123.9] Other Changes
 ## 0.123.8 - 2026-06-09
 
-### Highlights
-#### Documentation
+### [0.123.8] Highlights
+#### [0.123.8] Documentation
 
 - Enhance agent and subagent documentation with primary agent details (4cb84e23)
 - Add screenshot spotlight section with GIF and image table (2b2252a0)
-#### Features
+#### [0.123.8] Features
 
 - Implement subagent lifecycle tool policy and enhance subagent controller notifications (017ca5bf)
 - Add support for new package managers and improve version handling (9dda3341)
-### Other Changes
-#### CI
+### [0.123.8] Other Changes
+#### [0.123.8] CI
 
 - Improve Rust toolchain management with MSRV check and nightly smoke test (9909ad4b)
-#### Other
+#### [0.123.8] Other
 
 - Update TODOs (c47dd4fb)
 - Update TODO (d41ae5ed)
 - Refactor tool registration to use distributed slices and update README contributors script (1f1c6978)
-#### Refactors
+#### [0.123.8] Refactors
 
 - Update README layout and improve visual presentation (4aa9ef77)
 - Update README layout and improve feature descriptions (04cd5e54)
@@ -6308,19 +6308,19 @@ All notable changes to vtcode will be documented in this file.
 - Move contributing section to the end of README and update contributor images (61b61d68)
 ## 0.123.7 - 2026-06-08
 
-### Highlights
-### Other Changes
+### [0.123.7] Highlights
+### [0.123.7] Other Changes
 ## 0.123.6 - 2026-06-08
 
-### Highlights
-#### Bug Fixes
+### [0.123.6] Highlights
+#### [0.123.6] Bug Fixes
 
 - Resolve docs.rs build failure for vtcode-config (5f722204)
-#### Features
+#### [0.123.6] Features
 
 - Enrich ast-grep structural search with metaVariables, byteOffset, and url fields (5dcbc31f)
-### Other Changes
-#### Other
+### [0.123.6] Other Changes
+#### [0.123.6] Other
 
 - Feat/top level agents  (533af16b) (@kernitus)
 - Refactor file exclusion logic and enhance directory walking utilities (21119580)
@@ -6336,71 +6336,71 @@ All notable changes to vtcode will be documented in this file.
 - Add new rules and updates for various languages; enhance JSON schema for unified search parameters (db75ccf4)
 - Remove unused dependencies, enhance documentation, and update various rules for improved code quality and consistency across languages. (3cd68c2a)
 - Remove stale lint expectations that are now fulfilled (9aa04c7d)
-#### Refactors
+#### [0.123.6] Refactors
 
 - Remove vt100 legacy PTY backend, keep GhosttyCore only (4bd68ffe)
 ## 0.123.5 - 2026-06-07
 
-### Highlights
-#### Bug Fixes
+### [0.123.5] Highlights
+#### [0.123.5] Bug Fixes
 
 - Resolve 3 critical harness robustness bugs from session turn_364 (ebdbafb1)
-#### Documentation
+#### [0.123.5] Documentation
 
 - Add AGENTS.md files for various VT Code components (d56ab044)
-#### Features
+#### [0.123.5] Features
 
 - Add DRY CLI messages helper and detailed clap help for agents (f37e27c8)
 - Enhance tool permission handling and improve ANSI escape sequence detection (b6e069ce)
-### Other Changes
-#### Other
+### [0.123.5] Other Changes
+#### [0.123.5] Other
 
 - Remove Ghostty VT runtime integration and related tests; adjust terminal size in tests. (2218ca09)
 - Update TODO (8f62b657)
 ## 0.123.4 - 2026-06-07
 
-### Highlights
-### Other Changes
+### [0.123.4] Highlights
+### [0.123.4] Other Changes
 ## 0.123.3 - 2026-06-06
 
-### Highlights
-#### Bug Fixes
+### [0.123.3] Highlights
+#### [0.123.3] Bug Fixes
 
 - Add vtcode-macros to publish order before vtcode-core (55f2e4df) (@vinhnx)
 - Make crate publishing non-fatal in release.sh and add dependency validation to publish script (12ef4e7b) (@vinhnx)
 - Remove double escape functionality and update related hints (4884c153)
 - Suppress deprecation warnings for anstyle utilities (27aa88f9)
-### Other Changes
-#### Other
+### [0.123.3] Other Changes
+#### [0.123.3] Other
 
 - Refactor file operations and enhance error handling (e09bf2b5)
 - Add unified style bridging between anstyle and ratatui (47e14082)
 ## 0.123.2 - 2026-06-06
 
-### Highlights
-#### Bug Fixes
+### [0.123.2] Highlights
+#### [0.123.2] Bug Fixes
 
 - Add vtcode-ghostty-core to publish order before vtcode-core (eeb15246)
-### Other Changes
+### [0.123.2] Other Changes
 ## 0.123.1 - 2026-06-06
 
-### Highlights
-#### Bug Fixes
+### [0.123.1] Highlights
+#### [0.123.1] Bug Fixes
 
 - Resolve double escape functionality issue and improve response handling (da06eb28)
 - Skip OS keyring during tests/CI to avoid Keychain prompts (a60f1721)
 - Ensure deterministic hashing by sorting JSON object keys (38fe3afb)
-#### Documentation
+#### [0.123.1] Documentation
 
 - Enhance README with detailed command usage and workflows (62b2a576)
 - Add sponsorship section with links and current sponsors (46b40322)
 - Update feature and provider tables for clarity and consistency (1bc46f46)
 - Add allocation optimization plan to eliminate redundant heap allocations (acc0a4ba)
-#### Features
+#### [0.123.1] Features
 
 - Add support for Nemotron 3 Ultra and Gemma 4 models with updated configurations (16e6026d)
-### Other Changes
-#### Other
+### [0.123.1] Other Changes
+#### [0.123.1] Other
 
 - Audit and refactor  (9a26456c) (@vinhnx)
 - Update API key and image sizes in README.md (b7c60aa6) (@vinhnx)
@@ -6410,38 +6410,38 @@ All notable changes to vtcode will be documented in this file.
 - Refactor tool name handling to use CompactStr for improved memory efficiency (8c1c7a30)
 - Add openrouter code generation and macros for string newtypes (b875258a)
 - Implement core terminal functionality with screen management, input processing, and device reporting (ae290963)
-#### Refactors
+#### [0.123.1] Refactors
 
 - Improve file selection logic and scoring in file palette (8bd71623)
 - Improve table rendering and wrapping logic (c67f9d26)
 - Optimize table rendering logic and add space padding function (b56f3551)
 ## 0.123.0 - 2026-06-05
 
-### Highlights
-#### Features
+### [0.123.0] Highlights
+#### [0.123.0] Features
 
 - Add NVIDIA Nemotron 3 Ultra model and update provider logic (b27b6cbf)
 - Add NVIDIA Nemotron 3 Ultra model and update related configurations (bff99dc1)
 - Enhance JSON parsing to recover from truncated input (989d3bba)
-### Other Changes
+### [0.123.0] Other Changes
 ## 0.122.0 - 2026-06-05
 
-### Highlights
-#### Features
+### [0.122.0] Highlights
+#### [0.122.0] Features
 
 - Add Evolink provider (OpenAI-compatible multi-model gateway)  (bdc4c753) (@EvoLinkAI)
 - Update file palette tree defaults and styling (3af4701b)
 - Add Evolink provider support and update related documentation (e9577426)
 - Update OpenAI function parameter sanitization and change default model in configuration (8871c397)
 - Add new Evolink models and update configurations (8aafefb9)
-### Other Changes
-#### Other
+### [0.122.0] Other Changes
+#### [0.122.0] Other
 
 - Update TODO (017be561) (@vinhnx)
 - Add help modal using ratatui-cheese for keyboard shortcuts (87f3630e) (@vinhnx)
 - Update UI highlight symbols and styles across multiple components; change theme to "vitesse-black". (41503473) (@vinhnx)
 - Refactor input handling and styles across various components; unify search field rendering; update theme to ciapre-blue. (33a910d6)
-#### Refactors
+#### [0.122.0] Refactors
 
 - Extract shared provider boilerplate and consolidate error types (5df85e50) (@vinhnx)
 - Consolidate DRY violations across 4 crates (64ad80b2) (@vinhnx)
@@ -6449,13 +6449,13 @@ All notable changes to vtcode will be documented in this file.
 - Rename spinner frame function and update references (edc0c058) (@vinhnx)
 ## 0.121.1 - 2026-06-03
 
-### Highlights
-### Other Changes
-#### CI
+### [0.121.1] Highlights
+### [0.121.1] Other Changes
+#### [0.121.1] CI
 
 - Fix x86_64-unknown-linux-gnu aws-lc-sys gcc-9 panic (58a30561) (@vinhnx)
 - Enable Windows builds by default in release workflows (7bce5b8d) (@vinhnx)
-#### Refactors
+#### [0.121.1] Refactors
 
 - Improve line number styling and update reasoning effort to high (7398263f) (@vinhnx)
 - Update README structure and improve formatting for clarity (4c9f5df1)
@@ -6464,130 +6464,130 @@ All notable changes to vtcode will be documented in this file.
 - Update tool output handling and improve user guidance for reading content (1eb305ba)
 ## 0.121.0 - 2026-06-03
 
-### Highlights
-### Other Changes
+### [0.121.0] Highlights
+### [0.121.0] Other Changes
 ## 0.120.0 - 2026-06-03
 
-### Highlights
-### Other Changes
-#### Refactors
+### [0.120.0] Highlights
+### [0.120.0] Other Changes
+#### [0.120.0] Refactors
 
 - Update build workflows for Linux and Windows binaries (792337eb)
 ## 0.119.0 - 2026-06-03
 
-### Highlights
-### Other Changes
+### [0.119.0] Highlights
+### [0.119.0] Other Changes
 ## 0.118.0 - 2026-06-03
 
-### Highlights
-#### Features
+### [0.118.0] Highlights
+#### [0.118.0] Features
 
 - Add Xiaomi MiMo V2.5 and V2.5 Pro models with updated documentation and default settings (608b7fca)
-### Other Changes
-#### Other
+### [0.118.0] Other Changes
+#### [0.118.0] Other
 
 - Update README (f2b4202b)
 ## 0.117.7 - 2026-06-03
 
-### Highlights
-#### Bug Fixes
+### [0.117.7] Highlights
+#### [0.117.7] Bug Fixes
 
 - Skip Windows builds when targets missing, upload assets individually (ced93f5f)
-### Other Changes
+### [0.117.7] Other Changes
 ## 0.117.6 - 2026-06-03
 
-### Highlights
-#### Bug Fixes
+### [0.117.6] Highlights
+#### [0.117.6] Bug Fixes
 
 - Upload failure, homebrew update, skip aarch64 cross on mac (44ea5199) (@vinhnx)
-### Other Changes
-#### Refactors
+### [0.117.6] Other Changes
+#### [0.117.6] Refactors
 
 - Replace cross with cargo-zigbuild for cross-compilation and update packaging scripts (d09699ed)
 ## 0.117.5 - 2026-06-02
 
-### Highlights
-#### Bug Fixes
+### [0.117.5] Highlights
+#### [0.117.5] Bug Fixes
 
 - Run cross builds sequentially to avoid OOM on 16GB M4 (5ad249b4)
-### Other Changes
+### [0.117.5] Other Changes
 ## 0.117.4 - 2026-06-02
 
-### Highlights
-#### Bug Fixes
+### [0.117.4] Highlights
+#### [0.117.4] Bug Fixes
 
 - Cross-build platform compat, yanked core2 dep (a935bace)
 - Build windows arm64 natively, cross images require ghcr auth (395c16d5)
-### Other Changes
+### [0.117.4] Other Changes
 ## 0.117.3 - 2026-06-02
 
-### Highlights
-### Other Changes
+### [0.117.3] Highlights
+### [0.117.3] Other Changes
 ## 0.117.2 - 2026-06-02
 
-### Highlights
-#### Bug Fixes
+### [0.117.2] Highlights
+#### [0.117.2] Bug Fixes
 
 - Pin compatible protocol SDK (ec6399d2) (@vinhnx)
 - Update API key and default model settings in vtcode.toml (fc4c1dd6)
-#### Documentation
+#### [0.117.2] Documentation
 
 - Add validated model pool guidance  (278975c1) (@lucaszhu-hue)
 - Document calculate_sha256 return format and use cases (c17ecad0) (@vinhnx)
 - Update contributing guide for AI and human contributors (bca21a97)
-#### Features
+#### [0.117.2] Features
 
 - Add MiniMax-M3 cloud model and update configurations (4d8b2cd2) (@vinhnx)
 - Feat(paths): add expand_tilde function for home directory expansion (f92ab297) (@vinhnx)
 - Add support for aarch64 target in Linux and update Homebrew formula (61f9f979)
-### Other Changes
-#### Refactors
+### [0.117.2] Other Changes
+#### [0.117.2] Refactors
 
 - Route SHA256 hashing through vtcode-commons::utils::calculate_sha256 (0b73c956) (@vinhnx)
 - Consolidate serde_json pretty-print fallback into vtcode-commons (500dca36) (@vinhnx)
 - Regroup resilience primitives into tools::resilience (eea8d9aa) (@vinhnx)
 - Improve code readability and consistency across multiple files (eb4b169c)
 - Extract release-lib.sh, add cross-as-default with M4 tuning, optimize CI caching (9b035778)
-#### Tests
+#### [0.117.2] Tests
 
 - Add regression guard for vtcode_core::safety::hitl reachability (462b4e61) (@vinhnx)
 ## 0.117.1 - 2026-06-01
 
-### Highlights
-#### Features
+### [0.117.1] Highlights
+#### [0.117.1] Features
 
 - Add help modal for keyboard shortcuts and update related tests (20b360a1)
-### Other Changes
-#### Other
+### [0.117.1] Other Changes
+#### [0.117.1] Other
 
 - Fix installer filename formatting  (86e9fcc7) (@uiYzzi)
 ## 0.117.0 - 2026-06-01
 
-### Highlights
-#### Documentation
+### [0.117.0] Highlights
+#### [0.117.0] Documentation
 
 - Update README with Xiaomi MiMo V2.5 promotion details and add promotional image (786fa660)
-#### Features
+#### [0.117.0] Features
 
 - Add MiniMax-M3 model with multimodal capabilities and update default model (64b27402)
-### Other Changes
+### [0.117.0] Other Changes
 ## 0.116.4 - 2026-05-31
 
-### Highlights
-#### Features
+### [0.116.4] Highlights
+#### [0.116.4] Features
 
 - Add launch instruction after successful update installation (ce65af75)
 - Implement Readline-style keybindings for input editing and navigation (b5572979)
 - Enhance modal key handling and update quick help lines (08a09dad)
-### Other Changes
-#### Other
+### [0.116.4] Other Changes
+#### [0.116.4] Other
 
 - Update dependencies and enhance input management with undo/redo functionality (1b932528)
 - Refactor LLM provider implementations to remove backend_kind method and improve code readability (fc12014f)
 ## 0.116.3 - 2026-05-31
 
-### Highlights
-#### Features
+### [0.116.3] Highlights
+#### [0.116.3] Features
 
 - Add rebindable keybinding system with config integration (ddc2d952)
 - Implement environment variable for non-interactive trust management (ed395835)
@@ -6601,35 +6601,35 @@ All notable changes to vtcode will be documented in this file.
 - Enhance badge section in README for better visibility and organization (30515213)
 - Update README for improved clarity and organization (33c4a589)
 - Add release packaging automation and shell completions support (575e4449)
-### Other Changes
-#### Other
+### [0.116.3] Other Changes
+#### [0.116.3] Other
 
 - Update TODO (2cb0c40b)
-#### Refactors
+#### [0.116.3] Refactors
 
 - Improve code formatting and readability in multiple files (a2716021)
 ## 0.116.2 - 2026-05-31
 
-### Highlights
-#### Bug Fixes
+### [0.116.2] Highlights
+#### [0.116.2] Bug Fixes
 
 - Update provider checks to include additional model names (52a57555)
-### Other Changes
-#### Other
+### [0.116.2] Other Changes
+#### [0.116.2] Other
 
 - Fix dependency (208d6396) (@vinhnx)
 ## 0.116.1 - 2026-05-31
 
-### Highlights
-#### Features
+### [0.116.1] Highlights
+#### [0.116.1] Features
 
 - Add start and stop event stream commands to InlineCommand (2897d600)
-### Other Changes
+### [0.116.1] Other Changes
 ## 0.116.0 - 2026-05-30
 
-### Highlights
-### Other Changes
-#### Other
+### [0.116.0] Highlights
+### [0.116.0] Other Changes
+#### [0.116.0] Other
 
 - Update TODO (c4e2d4a0) (@vinhnx)
 - Update changelog (9ba9979b) (@vinhnx)
@@ -6652,119 +6652,119 @@ All notable changes to vtcode will be documented in this file.
 - Add criterion for benchmarking and improve text editing functions (dc22c528)
 ## 0.115.0 - 2026-05-30
 
-### Highlights
-#### Features
+### [0.115.0] Highlights
+#### [0.115.0] Features
 
 - Enhance deserialization for optional strings and update PlannerResponse structure (3d6643d2)
-### Other Changes
-#### Other
+### [0.115.0] Other Changes
+#### [0.115.0] Other
 
 - Add StepFun provider and model integration (c3f73b10)
-#### Refactors
+#### [0.115.0] Refactors
 
 - Update header context handling and improve reasoning effort configuration (bb71e501)
 ## 0.114.0 - 2026-05-29
 
-### Highlights
-#### Bug Fixes
+### [0.114.0] Highlights
+#### [0.114.0] Bug Fixes
 
 - Remove setrlimit/getrlimit wrappers to fix type mismatch on Linux (eb2744d1)
 - Update validation messages for structured outputs and task budget tokens in Claude Opus 4.8 (705f7def)
 - Update API response thinking modes and configuration defaults for Anthropic provider (b814f5f5)
 - Expose matches_model function for public use and update validation logic (4da619bf)
 - Update model descriptions for Claude Haiku and Claude Sonnet to enhance clarity and detail (ee381fc1)
-#### Documentation
+#### [0.114.0] Documentation
 
 - Update LLM provider integration instructions for clarity (a3f6166b)
-#### Features
+#### [0.114.0] Features
 
 - Add support for mid-conversation system messages in Claude Opus 4.8 (076d8162)
 - Add Laguna XS.2 model support and update configurations (5782eb5b)
-### Other Changes
-#### Other
+### [0.114.0] Other Changes
+#### [0.114.0] Other
 
 - Update Anthropic model to Claude Opus 4.8 and adjust related configurations (6ec1aecf)
 - Add Poolside provider and models support (4b9aa40d)
 - Add compaction support to response structures and documentation (4ad4f344)
-#### Refactors
+#### [0.114.0] Refactors
 
 - Remove MiMo V2 Pro and MiMo V2 Omni models from configurations and related files (6926f102)
 - Streamline error handling and improve code readability across multiple files (966569c2)
 ## 0.113.0 - 2026-05-28
 
-### Highlights
-#### Bug Fixes
+### [0.113.0] Highlights
+#### [0.113.0] Bug Fixes
 
 - Update parameter types for setrlimit and getrlimit functions (700440e8)
-#### Features
+#### [0.113.0] Features
 
 - Add HTTP headers for OpenRouter requests (66d456a9)
-### Other Changes
-#### Other
+### [0.113.0] Other Changes
+#### [0.113.0] Other
 
 - Add support for Qwen models in the model ID system (7445df05)
-#### Refactors
+#### [0.113.0] Refactors
 
 - Streamline model resolution and remove error handling duplication in OpenRouterProvider (764b088b)
 ## 0.112.0 - 2026-05-28
 
-### Highlights
-#### Bug Fixes
+### [0.112.0] Highlights
+#### [0.112.0] Bug Fixes
 
 - Remove invalid -C probe-stack codegen flag (74cd4eda) (@vinhnx)
-### Other Changes
-#### Other
+### [0.112.0] Other Changes
+#### [0.112.0] Other
 
 - Add Xiaomi MiMo models and provider integration (fa121dd7)
 ## 0.111.1 - 2026-05-28
 
-### Highlights
-### Other Changes
-#### Other
+### [0.111.1] Highlights
+### [0.111.1] Other Changes
+#### [0.111.1] Other
 
 - Fix release script (6636c6bc)
 ## 0.111.0 - 2026-05-28
 
-### Highlights
-### Other Changes
+### [0.111.0] Highlights
+### [0.111.0] Other Changes
 ## 0.110.0 - 2026-05-28
 
-### Highlights
-### Other Changes
+### [0.110.0] Highlights
+### [0.110.0] Other Changes
 ## 0.109.0 - 2026-05-27
 
-### Highlights
-#### Bug Fixes
+### [0.109.0] Highlights
+#### [0.109.0] Bug Fixes
 
 - Record approval decisions for pattern learning in handle_builtin_permission (39cc8183)
-#### Features
+#### [0.109.0] Features
 
 - Update default model and add support for codex provider (1f361157)
-### Other Changes
-#### Other
+### [0.109.0] Other Changes
+#### [0.109.0] Other
 
 - Add Mistral AI models and provider integration (81051c7a)
-#### Refactors
+#### [0.109.0] Refactors
 
 - Add missing crate paths for vtcode dependencies (f2c4630f)
 ## 0.108.4 - 2026-05-27
 
-### Highlights
-#### Features
+### [0.108.4] Highlights
+#### [0.108.4] Features
 
 - Add DeepSeek balance retrieval and display functionality (9c6aacc8)
 - Enhance navigation loop detection and add DeepSeek balance tracking (5e9bdf89)
 - Update balance tracking for multiple providers and refactor related logic (d3739bd3)
 - Improve Linux installation logic and enhance balance fetching timeout handling (8a51b9a0)
-### Other Changes
-#### Other
+### [0.108.4] Other Changes
+#### [0.108.4] Other
 
 - Update TODO (f679482a)
 - Update vtcode (9aa12ed8)
 - Refactor enums to derive Copy trait for improved performance and memory efficiency (bf7f239b)
 - Optimize performance and memory usage across various modules by utilizing `Vec::with_capacity`, `entry` API, and reducing unnecessary clones. Mark cold paths with `#[cold]` for better inlining control. Refactor string manipulations for efficiency and clarity. (3950f5f7)
 - Refactor formatting functions to use `vtcode_commons::formatting::collapse_whitespace` for whitespace handling and optimize string concatenation using `write!` for improved performance. (0273970c)
-#### Refactors
+#### [0.108.4] Refactors
 
 - Update documentation links to use public methods in harness and pty facades (466825fc)
 - Simplify status line layout handling and improve auto status updates (fe1c3b85)
@@ -6785,26 +6785,26 @@ All notable changes to vtcode will be documented in this file.
 - Implement process hardening functions and streamline environment variable management (42e3528e)
 ## 0.108.3 - 2026-05-24
 
-### Highlights
-#### Bug Fixes
+### [0.108.3] Highlights
+#### [0.108.3] Bug Fixes
 
 - Update stop hook to use final text for improved response handling (24739e82)
 - Ensure blank lines are rendered as placeholders in diff output (2395d8ea)
-#### Features
+#### [0.108.3] Features
 
 - Enhance continuation evaluation with relaxed intent handling and add inline preview for spooled outputs (0d08141a)
-### Other Changes
-#### Other
+### [0.108.3] Other Changes
+#### [0.108.3] Other
 
 - Update config (e95a9d64)
 ## 0.108.2 - 2026-05-24
 
-### Highlights
-#### Bug Fixes
+### [0.108.2] Highlights
+#### [0.108.2] Bug Fixes
 
 - Improve tool output rendering for command success with no output (de2f5bad)
 - Ensure duration calculations do not exceed maximum limits (c0fecf23)
-#### Features
+#### [0.108.2] Features
 
 - Add 'file' alias for file path parameters across tools (381be8e5)
 - Update tool policies and enhance DeepSeek provider handling (afaad984)
@@ -6822,54 +6822,54 @@ All notable changes to vtcode will be documented in this file.
 - Add command word splitting functionality for shell approval commands (3467ab3d)
 - Optimize vector initializations and add #[must_use] annotations for clarity (e90ee59b)
 - Update user message handling to use string slice for efficiency (854f732f)
-### Other Changes
-#### Other
+### [0.108.2] Other Changes
+#### [0.108.2] Other
 
 - Update config (632d5235)
 - Refactor completion handling and enhance tool recovery logic (ce916001)
 - Optimize string allocations and improve performance in various modules (2300d49f)
 - Refactor environment variable handling with env_lock; remove unsafe code in tests (407414e0)
 - Update tool policies to allow additional actions and modify reasoning effort handling (2266862a)
-#### Refactors
+#### [0.108.2] Refactors
 
 - Streamline tool policies and enhance DeepSeek provider error handling (9f1a794f)
 - Update message styles for tool output rendering (63263fa1)
 - Simplify condition checks and enhance clause intent evaluation logic (8abcbc01)
 ## 0.108.1 - 2026-05-22
 
-### Highlights
-### Other Changes
-#### Other
+### [0.108.1] Highlights
+### [0.108.1] Other Changes
+#### [0.108.1] Other
 
 - Update brew (36328c56)
 ## 0.108.0 - 2026-05-22
 
-### Highlights
-#### Bug Fixes
+### [0.108.0] Highlights
+#### [0.108.0] Bug Fixes
 
 - Enable atlas cloud custom provider flows  (84750086) (@lucaszhu-hue)
-#### Features
+#### [0.108.0] Features
 
 - Update model configs and wire models list through custom provider  (76f5146c) (@vinhnx)
-### Other Changes
-#### Other
+### [0.108.0] Other Changes
+#### [0.108.0] Other
 
 - Refactor tool outcome handlers and improve recovery guidance (1af72c93)
 - Refactor token usage tracking and simplify recovery logic in turn loop (a284faf9)
-## scode-v0.50.14 - 2026-05-21
+## 0.50.14 - 2026-05-21
 
-### Highlights
-#### Features
+### [0.50.14] Highlights
+#### [0.50.14] Features
 
 - Add DeepSeek V4 Flash and Pro models to Hugging Face integration (f7aac344) (@vinhnx)
 - Implement auto-scroll toggle functionality and update related key bindings (b9e91ef5) (@vinhnx)
-### Other Changes
-#### Other
+### [0.50.14] Other Changes
+#### [0.50.14] Other
 
 - Remove deprecated OpenRouter models and update data structures for better type handling (06ccb60f) (@vinhnx)
 - Refactor AgentRunner initialization and remove unused TUI session files (7da13a76) (@vinhnx)
 - Remove integration example and MCP chat adapter files; update backend integration with ChatMessage interface (31e6dafc) (@vinhnx)
-#### Refactors
+#### [0.50.14] Refactors
 
 - Enhance retry logic with structured error handling and backoff steps (8552a810) (@vinhnx)
 - Update PlaceholderSpinner initialization and add defer restore functionality (75660e9e) (@vinhnx)
@@ -6877,9 +6877,9 @@ All notable changes to vtcode will be documented in this file.
 - Remove unused 'walkdir' dependency and clean up config watcher logic (514d5a3a) (@vinhnx)
 ## 0.106.0 - 2026-05-20
 
-### Highlights
-### Other Changes
-#### Other
+### [0.106.0] Highlights
+### [0.106.0] Other Changes
+#### [0.106.0] Other
 
 - Implement slash command handling and associated models; add tests for command parsing and outcomes (2d07c12f)
 - Add status line and terminal title setup commands (edca2bfb)
@@ -6895,111 +6895,111 @@ All notable changes to vtcode will be documented in this file.
 - Add new tools to tool policy and adjust policies; update Clippy lints and test expectations (f9c6c5df)
 - Update lints and improve code quality across multiple modules (ca987323)
 - Add Gemini 3.5 Flash model (0509cebf)
-#### Refactors
+#### [0.106.0] Refactors
 
 - Optimize atomic operations and session management in PTY handling (1141a096)
 ## 0.105.13 - 2026-05-14
 
-### Highlights
-### Other Changes
+### [0.105.13] Highlights
+### [0.105.13] Other Changes
 ## 0.105.12 - 2026-05-14
 
-### Highlights
-### Other Changes
-#### Other
+### [0.105.12] Highlights
+### [0.105.12] Other Changes
+#### [0.105.12] Other
 
 - Update document about lacking support of Windows build (1757d58d) (@vinhnx)
-#### Refactors
+#### [0.105.12] Refactors
 
 - Clean up unused dependencies and empty files via cargo-shear  (a45d5063) (@vinhnx)
 ## 0.105.11 - 2026-05-12
 
-### Highlights
-### Other Changes
+### [0.105.11] Highlights
+### [0.105.11] Other Changes
 ## 0.105.10 - 2026-05-12
 
-### Highlights
-### Other Changes
+### [0.105.10] Highlights
+### [0.105.10] Other Changes
 ## 0.105.9 - 2026-05-12
 
-### Highlights
-### Other Changes
+### [0.105.9] Highlights
+### [0.105.9] Other Changes
 ## 0.105.8 - 2026-05-12
 
-### Highlights
-### Other Changes
-#### Other
+### [0.105.8] Highlights
+### [0.105.8] Other Changes
+#### [0.105.8] Other
 
 - Update AGENTs guide (c5b71a50)
-#### Refactors
+#### [0.105.8] Refactors
 
 - Update installer scripts to fetch recent releases and improve error handling  (1f45415f) (@vinhnx)
 - Convert async functions to inline-delegating wrappers to reduce coroutine state machine overhead (5ea90914)
 ## 0.105.7 - 2026-05-07
 
-### Highlights
-### Other Changes
+### [0.105.7] Highlights
+### [0.105.7] Other Changes
 ## 0.105.6 - 2026-05-03
 
-### Highlights
-### Other Changes
-#### Other
+### [0.105.6] Highlights
+### [0.105.6] Other Changes
+#### [0.105.6] Other
 
 - Refactor tool execution and configuration; add tool call delay tests and enhance agent capabilities (a8ce67f7)
 ## 0.105.5 - 2026-05-01
 
-### Highlights
-### Other Changes
-#### Other
+### [0.105.5] Highlights
+### [0.105.5] Other Changes
+#### [0.105.5] Other
 
 - Remove keyring dependency and add platform-specific keyring stores (fef8f0a2)
-#### Refactors
+#### [0.105.5] Refactors
 
 - Reorganize imports and improve relaunch logic (91a841e1)
 ## 0.105.4 - 2026-05-01
 
-### Highlights
-### Other Changes
+### [0.105.4] Highlights
+### [0.105.4] Other Changes
 ## 0.105.3 - 2026-05-01
 
-### Highlights
-### Other Changes
+### [0.105.3] Highlights
+### [0.105.3] Other Changes
 ## 0.105.2 - 2026-04-30
 
-### Highlights
-#### Features
+### [0.105.2] Highlights
+#### [0.105.2] Features
 
 - Add tempfile dependency and enhance credential file permissions handling (6c198b3a)
 - Enhance tool execution safety and prompt alignment handling (60c35814)
-### Other Changes
-#### Other
+### [0.105.2] Other Changes
+#### [0.105.2] Other
 
 - Enhance OpenAI Response's API websocket provider logic and tests; clarify documentation and comments. (7368a946)
-#### Refactors
+#### [0.105.2] Refactors
 
 - Replace direct file writes with write_private_file for secure permissions (0319c5e7)
 ## 0.105.1 - 2026-04-29
 
-### Highlights
-### Other Changes
-#### Other
+### [0.105.1] Highlights
+### [0.105.1] Other Changes
+#### [0.105.1] Other
 
 - Fix ast-grep dependencies install (21585180)
 ## 0.105.0 - 2026-04-27
 
-### Highlights
-### Other Changes
-#### Other
+### [0.105.0] Highlights
+### [0.105.0] Other Changes
+#### [0.105.0] Other
 
 - Add deepseek-v4-pro:cloud under Ollama provider (512f260b)
-#### Refactors
+#### [0.105.0] Refactors
 
 - Streamline tool handling and validation logic, remove unused code (477319a0)
 - Update skill manifest handling and permissions to use boxed types (aab2d60c)
 ## 0.104.2 - 2026-04-26
 
-### Highlights
-#### Features
+### [0.104.2] Highlights
+#### [0.104.2] Features
 
 - Update default model and add ast-grep tool support (d2599e7a)
 - Enhance local agents functionality and improve demo scripts (fea4eaf2)
@@ -7007,203 +7007,203 @@ All notable changes to vtcode will be documented in this file.
 - Enhance ownership management and borrowing practices across tools and registries (c606e2d4)
 - Add MCP lifecycle controls and related tool functionalities (c186f725)
 - Update tool policies and available tools in tool-policy.json (cd016ae5)
-### Other Changes
-#### Other
+### [0.104.2] Other Changes
+#### [0.104.2] Other
 
 - Add support for spawning background subprocesses and related configurations (17665666)
 - Refactor configuration loading and improve error handling across modules (b7be8464)
 ## 0.104.1 - 2026-04-25
 
-### Highlights
-#### Bug Fixes
+### [0.104.1] Highlights
+#### [0.104.1] Bug Fixes
 
 - Handle dated GPT-5.5 alias in model routing (34079b94)
-### Other Changes
-#### Other
+### [0.104.1] Other Changes
+#### [0.104.1] Other
 
 - Add DeepWiki badge to README (7b21006a) (@vinhnx)
 - Update config (59a5f22c)
 ## 0.104.0 - 2026-04-25
 
-### Highlights
-#### Features
+### [0.104.0] Highlights
+#### [0.104.0] Features
 
 - Update tool policies and default model configuration (fea8947a)
 - Enhance tool call safety validation and refactor permission checks (87f47eec)
 - Add tool budget warning handling and input reset functionality (bea41f6c)
 - Add tool call validation with session limit handling in CopilotRuntimeHost (a4d420b6)
 - Add support for GPT-5.5 model and update related configurations (3296c4ce)
-### Other Changes
-#### Refactors
+### [0.104.0] Other Changes
+#### [0.104.0] Refactors
 
 - Streamline tool policies and update reasoning effort defaults for OpenAI models (15e635af)
 - Reorganize AGENTS.md for clarity and improved workflow guidance (4732382c)
 ## 0.103.3 - 2026-04-24
 
-### Highlights
-#### Features
+### [0.103.3] Highlights
+#### [0.103.3] Features
 
 - Add Ollama cloud provider support for DeepSeek V4 Flash (92908fe3)
 - Add DeepSeek V4 Pro and Flash cloud models support (973ec7ff)
-### Other Changes
+### [0.103.3] Other Changes
 ## 0.103.2 - 2026-04-24
 
-### Highlights
-### Other Changes
+### [0.103.2] Highlights
+### [0.103.2] Other Changes
 ## 0.103.1 - 2026-04-24
 
-### Highlights
-### Other Changes
-#### Other
+### [0.103.1] Highlights
+### [0.103.1] Other Changes
+#### [0.103.1] Other
 
 - Update (e3590bd5)
 ## 0.103.0 - 2026-04-24
 
-### Highlights
-### Other Changes
-#### Other
+### [0.103.0] Highlights
+### [0.103.0] Other Changes
+#### [0.103.0] Other
 
 - Update (a4c12b76)
 ## 0.102.0 - 2026-04-24
 
-### Highlights
-### Other Changes
-#### Other
+### [0.102.0] Highlights
+### [0.102.0] Other Changes
+#### [0.102.0] Other
 
 - Update tests (896b1494)
 ## 0.101.0 - 2026-04-24
 
-### Highlights
-### Other Changes
-#### Other
+### [0.101.0] Highlights
+### [0.101.0] Other Changes
+#### [0.101.0] Other
 
 - DeepSeek V4 Models identifiers and descriptions to reflect version changes (be3638ba)
-#### Refactors
+#### [0.101.0] Refactors
 
 - Change function signatures to return &str instead of &'static str (8b315ada)
 ## 0.100.3 - 2026-04-21
 
-### Highlights
-### Other Changes
+### [0.100.3] Highlights
+### [0.100.3] Other Changes
 ## 0.100.2 - 2026-04-21
 
-### Highlights
-#### Features
+### [0.100.2] Highlights
+#### [0.100.2] Features
 
 - Add Kimi K2.6 support (d0a6a254)
 - Add Kimi K2.6 to OpenRouter presets (04ca6808)
 - Add MoonshotAI Kimi K2.6 model support (8882cf58)
-### Other Changes
+### [0.100.2] Other Changes
 ## 0.100.1 - 2026-04-21
 
-### Highlights
-#### Features
+### [0.100.1] Highlights
+#### [0.100.1] Features
 
 - Add Kimi K2.6 model support in Ollama and Hugging Face providers (dbb69fc0)
-### Other Changes
+### [0.100.1] Other Changes
 ## 0.100.0 - 2026-04-20
 
-### Highlights
-#### Bug Fixes
+### [0.100.0] Highlights
+#### [0.100.0] Bug Fixes
 
 - Simplify metadata code retrieval in tests (5c4dbd5b)
-#### Features
+#### [0.100.0] Features
 
 - Update Moonshot model references and configurations (365c522f)
 - Update Moonshot model references to use DEFAULT_MODEL and add presets (794ee1a5)
-### Other Changes
+### [0.100.0] Other Changes
 ## 0.99.3 - 2026-04-20
 
-### Highlights
-#### Features
+### [0.99.3] Highlights
+#### [0.99.3] Features
 
 - Add request_user_input_enabled flag to system prompt context and update related logic (ad39062d)
-### Other Changes
-#### Refactors
+### [0.99.3] Other Changes
+#### [0.99.3] Refactors
 
 - Convert async functions to return Future for improved performance (38fc4722)
 - Replace manual string truncation with truncate_byte_budget utility for consistency (29a6dc34)
 - Replace eprintln with tracing for consistent logging across modules (803235eb)
 ## 0.99.2 - 2026-04-19
 
-### Highlights
-#### Bug Fixes
+### [0.99.2] Highlights
+#### [0.99.2] Bug Fixes
 
 - Upgrade rustls-webpki to 0.103.12 (#2 #3) (b53f9c9a) (@vinhnx)
 - Update default model to claude-sonnet-4-6 across configurations and documentation (13f942bb)
-#### Features
+#### [0.99.2] Features
 
 - Implement memories subsystem with configuration options (021aa664)
-### Other Changes
-#### Other
+### [0.99.2] Other Changes
+#### [0.99.2] Other
 
 - Add OpenCode Zen and OpenCode Go providers and models (42bbea49)
 - Refactor OpenCode providers to support model ID resolution and enhance compatibility (0a5bf2c1)
 ## 0.99.1 - 2026-04-17
 
-### Highlights
-#### Features
+### [0.99.1] Highlights
+#### [0.99.1] Features
 
 - Add handling for reasoning signature in UI and ACP streams (9049a09a)
-### Other Changes
+### [0.99.1] Other Changes
 ## 0.99.0 - 2026-04-16
 
-### Highlights
-### Other Changes
-#### Other
+### [0.99.0] Highlights
+### [0.99.0] Other Changes
+#### [0.99.0] Other
 
 - Update Anthropic provider to support Claude Opus 4.7 with new task budget and reasoning effort features (0a278b96)
 ## 0.98.7 - 2026-04-15
 
-### Highlights
-#### Bug Fixes
+### [0.98.7] Highlights
+#### [0.98.7] Bug Fixes
 
 - Update condition for missing platform binaries in release script (3e88cd0e)
 - Improve user prompt handling and update configuration settings (934ee662)
-#### Features
+#### [0.98.7] Features
 
 - Add checksum generation and validation to release process (6708fec0)
 - Add generic action required status handling in overlays (6d7ffdad)
-### Other Changes
-#### Other
+### [0.98.7] Other Changes
+#### [0.98.7] Other
 
 - Update TODO (92336dc0)
 - Update tool execution status display and refine UI handling (f77c7053)
 - Implement pending user prompt handling and enhance status rendering in TUI (2c4dae7b)
 ## 0.98.6 - 2026-04-13
 
-### Highlights
-#### Features
+### [0.98.6] Highlights
+#### [0.98.6] Features
 
 - Add meta handling to elicitation response in LoggingClientHandler (0326ef68)
-### Other Changes
+### [0.98.6] Other Changes
 ## 0.98.5 - 2026-04-13
 
-### Highlights
-### Other Changes
-#### Other
+### [0.98.5] Highlights
+### [0.98.5] Other Changes
+#### [0.98.5] Other
 
 - Update deps (bd9e90ef)
 ## 0.98.4 - 2026-04-13
 
-### Highlights
-### Other Changes
+### [0.98.4] Highlights
+### [0.98.4] Other Changes
 ## 0.98.3 - 2026-04-13
 
-### Highlights
-### Other Changes
+### [0.98.3] Highlights
+### [0.98.3] Other Changes
 ## 0.98.2 - 2026-04-12
 
-### Highlights
-#### Bug Fixes
+### [0.98.2] Highlights
+#### [0.98.2] Bug Fixes
 
 - Refine asset selection logic to prioritize .tar.gz over .sha256 files (f113d8a6) (@vinhnx)
-#### Documentation
+#### [0.98.2] Documentation
 
 - Update AGENTS.md and TODO.md for clarity on development workflow (bd4f0647)
 - Remove broken copy/yank text issue description from TODO.md (29ad997b)
-### Other Changes
-#### Other
+### [0.98.2] Other Changes
+#### [0.98.2] Other
 
 - Add README files for new modules and update existing ones (5c4384be)
 - Add subagent constants, discovery, model resolution, prompt handling, and types (63230b30)
@@ -7237,26 +7237,26 @@ All notable changes to vtcode will be documented in this file.
 - Add default target for docs.rs in Cargo.toml files (12a5d068)
 - Refactor code for improved readability and consistency in multiple files (7cc15514)
 - Remove outdated TODO items from project documentation (58aec7ee)
-#### Refactors
+#### [0.98.2] Refactors
 
 - Enhance scrolling behaviour and selection adjustment in session management (34060deb)
-#### Tests
+#### [0.98.2] Tests
 
 - Enhance nested directories test to filter file matches (93d8e397)
 ## 0.98.1 - 2026-04-09
 
-### Highlights
-#### Bug Fixes
+### [0.98.1] Highlights
+#### [0.98.1] Bug Fixes
 
 - Prevent blocked handoff on tool-free recovery tool calls (f3d5a7ee)
 - Make external editor opens transient and suppress escape leaks (1e8bd327)
 - Update theme configuration to use homebrew style (4205a879)
 - Update agent configuration and tool policies for improved functionality (f9cdc03d)
-#### Features
+#### [0.98.1] Features
 
 - Enhance tool policies and workspace header signals for improved user experience (07910f3c)
-### Other Changes
-#### Other
+### [0.98.1] Other Changes
+#### [0.98.1] Other
 
 - Refactor slash command messages and update guidance for installation (09028a6a)
 - Implement status line setup and configuration, deduplicate terminal title items, and update task tracker permission in config (c4b7cb48)
@@ -7276,44 +7276,44 @@ All notable changes to vtcode will be documented in this file.
 - Enhance tool output handling and summary generation (c10d90fd)
 - Refactor CLI action resolution and improve header display logic (61f15e54)
 - Enhance CLI argument parsing and error reporting for workspace validation (77c3efbe)
-#### Refactors
+#### [0.98.1] Refactors
 
 - Clean up tool policies and improve CLI help output (b32129ff)
 ## 0.98.0 - 2026-04-07
 
-### Highlights
-#### Features
+### [0.98.0] Highlights
+#### [0.98.0] Features
 
 - Add mouse pointer shape handling and link/text selection detection (3f654089)
 - Implement clipboard copy functionality and add copy notification (5a28a4be)
 - Strip underlines from local file links in inline UI and add related tests (728eadc6)
 - Enhance CLI progress reporting with terminal clear functionality (a600a3b4)
 - Add Z.AI GLM-5.1 model support across various providers and update related tests (645df2e9)
-### Other Changes
-#### Other
+### [0.98.0] Other Changes
+#### [0.98.0] Other
 
 - Core split  (3d12f6b6) (@poelzi)
 - Update notes (f3ebfd31)
 ## 0.97.4 - 2026-04-07
 
-### Highlights
-### Other Changes
-#### Other
+### [0.97.4] Highlights
+### [0.97.4] Other Changes
+#### [0.97.4] Other
 
 - Fix formatting in README.md for clarity (979d991d) (@vinhnx)
 - Update note (9f327f92)
-#### Refactors
+#### [0.97.4] Refactors
 
 - Unify tool execution kernel and align harness safety limits (5fbfc7a8)
 ## 0.97.3 - 2026-04-07
 
-### Highlights
-### Other Changes
-#### Other
+### [0.97.3] Highlights
+### [0.97.3] Other Changes
+#### [0.97.3] Other
 
 - Fix tool batching and runloop regressions (2593f015)
 - Consolidate tool fallback and rate-limit parsing (02fdb3c9)
-#### Refactors
+#### [0.97.3] Refactors
 
 - Remove Vim mode command and related functionality (f3b44164)
 - Simplify vtcode configuration (ab835726)
@@ -7323,29 +7323,29 @@ All notable changes to vtcode will be documented in this file.
 - Improve duration handling and validation in rate limiting and retry logic (3ec14baf)
 ## 0.97.2 - 2026-04-06
 
-### Highlights
-#### Bug Fixes
+### [0.97.2] Highlights
+#### [0.97.2] Bug Fixes
 
 - Clear publish warnings (e5d2cb78)
-### Other Changes
-### Contributors
+### [0.97.2] Other Changes
+### [0.97.2] Contributors
 @vinhnx
 ## 0.97.1 - 2026-04-06
 
-### Highlights
-#### Features
+### [0.97.1] Highlights
+#### [0.97.1] Features
 
 - Enable ATIF trajectory export and update related configurations (47a230cc)
-### Other Changes
-#### Other
+### [0.97.1] Other Changes
+#### [0.97.1] Other
 
 - Update TODO.md (824acefb) (@vinhnx)
-### Contributors
+### [0.97.1] Contributors
 @vinhnx
 ## 0.97.0 - 2026-04-05
 
-### Highlights
-#### Bug Fixes
+### [0.97.0] Highlights
+#### [0.97.0] Bug Fixes
 
 - Include terminal-detection before tui publish (6f68a365) (@vinhnx)
 - Publish specs crates before core (0c1da64d) (@vinhnx)
@@ -7356,10 +7356,10 @@ All notable changes to vtcode will be documented in this file.
 - Enhance command safety checks and segment handling (d7491771)
 - Dim top-level task tail lines in tool blocks (060ec1f5)
 - Isolate shared state locks (0d685107)
-#### Documentation
+#### [0.97.0] Documentation
 
 - Add Codex and debug startup release notes (9d24fb99)
-#### Features
+#### [0.97.0] Features
 
 - Add Anthropic native memory and tool result clearing (7b7124f2)
 - Update notification delivery mode to desktop (80b49f12)
@@ -7367,8 +7367,8 @@ All notable changes to vtcode will be documented in this file.
 - Implement orchestrated harness with contract evaluation (b437d588)
 - Enhance scorecard validation and add tests for missing/invalid criteria (29e3df0a)
 - Update tool policies and add new tools with appropriate permissions (b7e51521)
-### Other Changes
-#### Other
+### [0.97.0] Other Changes
+#### [0.97.0] Other
 
 - Fix badge duplication in README.md (4ffc53bb) (@vinhnx)
 - Migrate to serde-saphyr  (c29cdd5d) (@Sachin-Bhat)
@@ -7386,54 +7386,54 @@ All notable changes to vtcode will be documented in this file.
 - Refactor vtcode.toml configuration: streamline agent settings, enhance permissions, and update context management (a5e4e440)
 - Tighten persistent memory extraction and tool policies (f15b43a5)
 - Add Agent Trajectory Interchange Format (ATIF) support for session trajectory export (0e09ef90)
-### Contributors
+### [0.97.0] Contributors
 @vinhnx
 ## 0.96.15 - 2026-04-04
 
-### Highlights
-### Other Changes
-#### Other
+### [0.96.15] Highlights
+### [0.96.15] Other Changes
+#### [0.96.15] Other
 
 - Update TODO (35cc8ccc)
-### Contributors
+### [0.96.15] Contributors
 @vinhnx
 ## 0.96.13 - 2026-04-04
 
-### Highlights
-### Other Changes
-#### Other
+### [0.96.13] Highlights
+### [0.96.13] Other Changes
+#### [0.96.13] Other
 
 - Update TODO (35cc8ccc)
-### Contributors
+### [0.96.13] Contributors
 @vinhnx
 ## 0.96.12 - 2026-04-02
 
-### Highlights
-#### Bug Fixes
+### [0.96.12] Highlights
+#### [0.96.12] Bug Fixes
 
 - Encode SHA256 digest as hex manually (db7768f8)
 - Encode config fingerprint digest as lowercase hex (4d470c5e)
-### Other Changes
-#### Other
+### [0.96.12] Other Changes
+#### [0.96.12] Other
 
 - Fix script (5655308f)
 - Refactor mock server initialization and error handling in tests; streamline MCP parameter building; update checksum calculation; enhance session rendering in TUI tests; adjust file permissions in configuration. (03d8ccc9)
-### Contributors
+### [0.96.12] Contributors
 @vinhnx
 ## 0.96.11 - 2026-04-02
 
-### Highlights
-#### Bug Fixes
+### [0.96.11] Highlights
+#### [0.96.11] Bug Fixes
 
 - Encode SHA256 digest as hex manually (db7768f8)
-### Other Changes
-### Contributors
+### [0.96.11] Other Changes
+### [0.96.11] Contributors
 @vinhnx
 ## 0.96.10 - 2026-04-02
 
-### Highlights
-### Other Changes
-#### Other
+### [0.96.10] Highlights
+### [0.96.10] Other Changes
+#### [0.96.10] Other
 
 - Fix ast-grep init (0e622cd5)
 - Fix TUI OAuth cancel without exiting VT Code (ce034434)
@@ -7447,88 +7447,88 @@ All notable changes to vtcode will be documented in this file.
 - Update example blocked patterns in vtcode.toml.example (15c69b16)
 - Enhance /compact command functionality and update configuration settings (8c31b153)
 - Add freeform default handling to wizard steps and update related prompts (39926d0b)
-### Contributors
+### [0.96.10] Contributors
 @vinhnx
 ## 0.96.9 - 2026-03-31
 
-### Highlights
-#### Bug Fixes
+### [0.96.9] Highlights
+#### [0.96.9] Bug Fixes
 
 - Make wizard modal `Enter` apply explicit freeform defaults and advance consistently with mouse submission
-### Other Changes
-### Contributors
+### [0.96.9] Other Changes
+### [0.96.9] Contributors
 @vinhnx
 ## 0.96.8 - 2026-03-31
 
-### Highlights
-### Other Changes
-#### Other
+### [0.96.8] Highlights
+### [0.96.8] Other Changes
+#### [0.96.8] Other
 
 - Fix release (ad544b2c)
-### Contributors
+### [0.96.8] Contributors
 @vinhnx
 ## 0.96.7 - 2026-03-31
 
-### Highlights
-### Other Changes
-#### Other
+### [0.96.7] Highlights
+### [0.96.7] Other Changes
+#### [0.96.7] Other
 
 - Add zread badge (6bce27c6)
 - Refactor tests and update tool policies for improved functionality (2bf10861)
-### Contributors
+### [0.96.7] Contributors
 @vinhnx
 ## 0.96.6 - 2026-03-31
 
-### Highlights
-### Other Changes
-### Contributors
+### [0.96.6] Highlights
+### [0.96.6] Other Changes
+### [0.96.6] Contributors
 @vinhnx
 ## 0.96.5 - 2026-03-31
 
-### Highlights
-#### Bug Fixes
+### [0.96.5] Highlights
+#### [0.96.5] Bug Fixes
 
 - Correct post-release regressions (3cd9dde3)
-### Other Changes
-#### Other
+### [0.96.5] Other Changes
+#### [0.96.5] Other
 
 - Update TODO (0b58348f)
-### Contributors
+### [0.96.5] Contributors
 @vinhnx
 ## 0.96.4 - 2026-03-31
 
-### Highlights
-#### Bug Fixes
+### [0.96.4] Highlights
+#### [0.96.4] Bug Fixes
 
 - Pass model behaviour to anthropic api provider (70944e75)
-### Other Changes
-### Contributors
+### [0.96.4] Other Changes
+### [0.96.4] Contributors
 @vinhnx
 ## 0.96.3 - 2026-03-31
 
-### Highlights
-### Other Changes
-#### Other
+### [0.96.3] Highlights
+### [0.96.3] Other Changes
+#### [0.96.3] Other
 
 - Update config (ce0e36d7)
-### Contributors
+### [0.96.3] Contributors
 @vinhnx
 ## 0.96.2 - 2026-03-31
 
-### Highlights
-#### Bug Fixes
+### [0.96.2] Highlights
+#### [0.96.2] Bug Fixes
 
 - Unify external URL guardrails across VT Code flows (a6444c4b)
 - Suppress loading UI for spool chunk reads (1635a52f)
-#### Documentation
+#### [0.96.2] Documentation
 
 - Update README and scripts for crate publishing process (92c4275d)
-#### Features
+#### [0.96.2] Features
 
 - Implement link click throttling and improve mouse event handling (f6746ce3)
 - Implement ast-grep command checks and improve initialization process (11e1d04f)
-### Other Changes
-#### Other
+### [0.96.2] Other Changes
+#### [0.96.2] Other
 
 - Update TODO.md (cb7ca5c1) (@vinhnx)
 - Transform Rust source files (0e4c43d8) (@codemod[bot])
@@ -7536,44 +7536,44 @@ All notable changes to vtcode will be documented in this file.
 - Add support for Codex app server integration and validation (a2a44dba)
 - Update config (2d7bb992)
 - Update TODO (76795760)
-### Contributors
+### [0.96.2] Contributors
 @vinhnx
 ## 0.96.1 - 2026-03-31
 
-### Highlights
-#### Bug Fixes
+### [0.96.1] Highlights
+#### [0.96.1] Bug Fixes
 
 - Unify external URL guardrails across VT Code flows (a6444c4b)
 - Suppress loading UI for spool chunk reads (1635a52f)
-#### Features
+#### [0.96.1] Features
 
 - Implement link click throttling and improve mouse event handling (f6746ce3)
 - Implement ast-grep command checks and improve initialization process (11e1d04f)
-### Other Changes
-#### Other
+### [0.96.1] Other Changes
+#### [0.96.1] Other
 
 - Update TODO.md (cb7ca5c1) (@vinhnx)
 - Transform Rust source files (0e4c43d8) (@codemod[bot])
 - Implement OAuth support for HTTP MCP providers and enhance CLI commands for login/logout (f6cd0c61)
 - Add support for Codex app server integration and validation (a2a44dba)
 - Update config (2d7bb992)
-### Contributors
+### [0.96.1] Contributors
 @vinhnx
 ## 0.96.0 - 2026-03-30
 
-### Highlights
-#### Bug Fixes
+### [0.96.0] Highlights
+#### [0.96.0] Bug Fixes
 
 - Update external editor instructions to reflect single-click behaviour (7f9f0557)
-#### Features
+#### [0.96.0] Features
 
 - Add shared lightweight model routing (4e41e088)
 - Implement preferred lightweight model variants and update configuration settings (2112d993)
 - Implement collect_single_response function for streamlined LLM interactions and refactor related code (a863561c)
 - Add interactive OpenAI manual compact controls (6660de5d)
 - Implement transcript link detection and wrapping functionality (9cfd3e01)
-### Other Changes
-#### Other
+### [0.96.0] Other Changes
+#### [0.96.0] Other
 
 - Add parallel batch test for file listing and unified search; refactor list_files to avoid reentrancy (b5b2d2de)
 - Add minimum turn limit for child agents and update documentation (97eb9a89)
@@ -7603,23 +7603,23 @@ All notable changes to vtcode will be documented in this file.
 - Refactor credential storage to support encrypted file storage and improve legacy migration handling (d2e97368)
 - Add model configuration commands and lightweight model support (1458605d)
 - Refactor transcript link handling and add URL guard feature (5463ab53)
-### Contributors
+### [0.96.0] Contributors
 @vinhnx
 ## 0.95.0 - 2026-03-30
 
-### Highlights
-#### Bug Fixes
+### [0.95.0] Highlights
+#### [0.95.0] Bug Fixes
 
 - Update external editor instructions to reflect single-click behaviour (7f9f0557)
-#### Features
+#### [0.95.0] Features
 
 - Add shared lightweight model routing (4e41e088)
 - Implement preferred lightweight model variants and update configuration settings (2112d993)
 - Implement collect_single_response function for streamlined LLM interactions and refactor related code (a863561c)
 - Add interactive OpenAI manual compact controls (6660de5d)
 - Implement transcript link detection and wrapping functionality (9cfd3e01)
-### Other Changes
-#### Other
+### [0.95.0] Other Changes
+#### [0.95.0] Other
 
 - Add parallel batch test for file listing and unified search; refactor list_files to avoid reentrancy (b5b2d2de)
 - Add minimum turn limit for child agents and update documentation (97eb9a89)
@@ -7649,18 +7649,18 @@ All notable changes to vtcode will be documented in this file.
 - Refactor credential storage to support encrypted file storage and improve legacy migration handling (d2e97368)
 - Add model configuration commands and lightweight model support (1458605d)
 - Refactor transcript link handling and add URL guard feature (5463ab53)
-### Contributors
+### [0.95.0] Contributors
 @vinhnx
 ## 0.94.0 - 2026-03-28
 
-### Highlights
-#### Features
+### [0.94.0] Highlights
+#### [0.94.0] Features
 
 - Add hosted shell network policy support (def96551)
 - Add support for OpenAI service tier "flex" and update related configurations (275f88c8)
 - Add support for inline file inputs in OpenAI provider and enhance file handling (c07e0ac4)
-### Other Changes
-#### Other
+### [0.94.0] Other Changes
+#### [0.94.0] Other
 
 - Refactor skills system: update documentation, remove version and author fields, streamline validation, and enhance template structure. (e6821250)
 - Add vtcode-check tool and update related configurations and tests (ae563671)
@@ -7684,26 +7684,26 @@ All notable changes to vtcode will be documented in this file.
 - Update TODO (1350cfe5)
 - Add support for agent references, local agents management, and enhance sidebar rendering (cd51b91d)
 - Refactor local agents handling and improve UI integration (f3bd979f)
-#### Refactors
+#### [0.94.0] Refactors
 
 - Unify and streamline agent harness execution (cfcf3b05)
-### Contributors
+### [0.94.0] Contributors
 @vinhnx
 ## 0.93.3 - 2026-03-25
 
-### Highlights
-#### Bug Fixes
+### [0.93.3] Highlights
+#### [0.93.3] Bug Fixes
 
 - Preserve compaction context in prompts and summaries (b38f1877)
-#### Documentation
+#### [0.93.3] Documentation
 
 - Docs: update installation instructions for Homebrew and add troubleshooting note (0cb1c08d)
 - Update architecture and contributing guidelines; add extension boundaries document (d17e267c)
-#### Features
+#### [0.93.3] Features
 
 - Improve tool output handling by ensuring summary headers are always recorded and refining stdout removal logic for specific tool types. (83e59742)
-### Other Changes
-#### Other
+### [0.93.3] Other Changes
+#### [0.93.3] Other
 
 - Update config (02384ca5)
 - Add support for summarized session forks and update related logic (1ddfd7fd)
@@ -7715,7 +7715,7 @@ All notable changes to vtcode will be documented in this file.
 - Refactor error handling, optimize token usage, and enhance performance metrics (48af5696)
 - Add streaming support OpenAI models with normalized event handling (ff76d3af)
 - Add orchestration for plan-build-evaluate workflow with harness artefacts (6968408b)
-#### Refactors
+#### [0.93.3] Refactors
 
 - Remove outdated prompt suggestion details and add subagent build task (c869b499)
 - Enhance error handling and retry logic in tool execution (89075d3d)
@@ -7729,47 +7729,47 @@ All notable changes to vtcode will be documented in this file.
 - Enhance WebSocket handling for OpenAI provider, improve error detection, and update configuration documentation (9ae3e202)
 - Enhance WebSocket handling and documentation for OpenAI provider (8df581c1)
 - Streamline code structure and improve readability across multiple files (22d1fa22)
-### Contributors
+### [0.93.3] Contributors
 @vinhnx
 ## 0.93.2 - 2026-03-24
 
-### Highlights
-#### Bug Fixes
+### [0.93.2] Highlights
+#### [0.93.2] Bug Fixes
 
 - Tighten prompt cache continuity and retention handling (7afbe9f0)
 - Update sha256 checksum for macOS ARM architecture (39e5ace9)
 - Update macOS ARM checksum and enhance Homebrew publishing script (58d1989a)
 - Stabilize Zed ACP startup and transcripts (72f91134)
-#### Documentation
+#### [0.93.2] Documentation
 
 - Add Rust style guidelines and update Clippy disallowed methods (5bedfa98)
 - Clarify Zed ACP local development setup (266a146c)
-#### Features
+#### [0.93.2] Features
 
 - Add configurable permissions policy (358f53fe)
 - Add Claude-style compatibility for allowed and disallowed tools in permissions (bad5ba15)
-### Other Changes
-#### Other
+### [0.93.2] Other Changes
+#### [0.93.2] Other
 
 - Update system prompt to specify use of plain ASCII icons for markers and bullets (3a8993f0)
 - Add terminal management features and enhance session handling (8b07cb90)
 - Update screen_backend.rs (9271147d)
-#### Refactors
+#### [0.93.2] Refactors
 
 - Simplify key handling in modal state (bfec2be3)
 - Reuse shared OpenAI prompt cache key helper (68fe597f)
 - Tighten system prompts and document accuracy tuning (450dcef2)
 - Update tool policies and enhance prompt suggestions in TODO (36313870)
-### Contributors
+### [0.93.2] Contributors
 @vinhnx
 ## 0.93.1 - 2026-03-22
 
-### Highlights
-#### Features
+### [0.93.1] Highlights
+#### [0.93.1] Features
 
 - Add thread safety primitives including `SendWrapper` and enable optional concurrency for native plugins via a `thread_safe` flag. (86c0c612)
-### Other Changes
-#### Other
+### [0.93.1] Other Changes
+#### [0.93.1] Other
 
 - Delete checksums.txt (0d1ffdfd) (@vinhnx)
 - Delete skills-lock.json (610fc7b7) (@vinhnx)
@@ -7804,19 +7804,19 @@ All notable changes to vtcode will be documented in this file.
 - Refactor metrics handling to use ToolCatalogCacheMetrics struct for improved clarity and maintainability (495b5476)
 - Refactor interrupt handling to ensure overlays are closed and improve user experience (6847f30f)
 - Update TODO (8c9c3d55)
-#### Refactors
+#### [0.93.1] Refactors
 
 - Remove explicit unsafe Send and Sync implementations for NativePlugin. (5c96c9d3)
-### Contributors
+### [0.93.1] Contributors
 @vinhnx
 ## 0.93.0 - 2026-03-22
 
-### Highlights
-#### Features
+### [0.93.0] Highlights
+#### [0.93.0] Features
 
 - Add thread safety primitives including `SendWrapper` and enable optional concurrency for native plugins via a `thread_safe` flag. (86c0c612)
-### Other Changes
-#### Other
+### [0.93.0] Other Changes
+#### [0.93.0] Other
 
 - Delete checksums.txt (0d1ffdfd) (@vinhnx)
 - Delete skills-lock.json (610fc7b7) (@vinhnx)
@@ -7851,38 +7851,38 @@ All notable changes to vtcode will be documented in this file.
 - Refactor metrics handling to use ToolCatalogCacheMetrics struct for improved clarity and maintainability (495b5476)
 - Refactor interrupt handling to ensure overlays are closed and improve user experience (6847f30f)
 - Update TODO (8c9c3d55)
-#### Refactors
+#### [0.93.0] Refactors
 
 - Remove explicit unsafe Send and Sync implementations for NativePlugin. (5c96c9d3)
-### Contributors
+### [0.93.0] Contributors
 @vinhnx
 ## 0.92.1 - 2026-03-21
 
-### Highlights
-#### Bug Fixes
+### [0.92.1] Highlights
+#### [0.92.1] Bug Fixes
 
 - Remove idle input notification (367e91ba)
-### Other Changes
-#### Other
+### [0.92.1] Other Changes
+#### [0.92.1] Other
 
 - Implement Ghostty VT backend for terminal emulation and snapshot rendering (2af5a11d)
 - Refactor code for improved readability and performance; add loading indicators for better user experience (0d20012f)
 - Add support for custom OpenAI-compatible providers in configuration (8a76debf)
-### Contributors
+### [0.92.1] Contributors
 @vinhnx
 ## 0.92.0 - 2026-03-21
 
-### Highlights
-#### Bug Fixes
+### [0.92.0] Highlights
+#### [0.92.0] Bug Fixes
 
 - Remove repeated unrelated worktree prompts (8f93b519)
 - Remove repeated unrelated worktree prompts (1f4ea2bd)
 - Handle already cleared oauth logout states (081e20a6)
-#### Documentation
+#### [0.92.0] Documentation
 
 - Update README and authentication guide to include GitHub Copilot support (2144d1d6)
-### Other Changes
-#### Other
+### [0.92.0] Other Changes
+#### [0.92.0] Other
 
 - Update README.md (fa33fa70) (@vinhnx)
 - Fix formatting in README for installation section (53fccf14) (@vinhnx)
@@ -7899,44 +7899,44 @@ All notable changes to vtcode will be documented in this file.
 - Add turn timeout management and recovery logic (bb180e82)
 - Update TURN timeout recovery to use configured max execution time (e8f27aae)
 - Refactor tool permission handling and add persistent approval cache (ca53f066)
-#### Refactors
+#### [0.92.0] Refactors
 
 - Replace custom timing with /usr/bin/time for performance measurement (5be0c3b4)
 - Update tool policies and improve command submission handling (890eacf0)
 - Improve GitHub Copilot OAuth flow and update configuration settings (86b8d667)
-### Contributors
+### [0.92.0] Contributors
 @vinhnx
 ## 0.91.1 - 2026-03-20
 
-### Highlights
-#### Bug Fixes
+### [0.91.1] Highlights
+#### [0.91.1] Bug Fixes
 
 - Auto-copy highlighted TUI selections (5a33748a)
 - Copy selected input on command-c (05a4472f)
-### Other Changes
-#### Other
+### [0.91.1] Other Changes
+#### [0.91.1] Other
 
 - Update TODO.md (a96c1aca) (@vinhnx)
 - Add unrelated worktree prompt handling and related functionality (dd59dd65)
 - Refactor model option handling and validation logic for improved performance and clarity (ed7d837a)
 - Add OAuth authentication guide and enhance README with OAuth details (0660f149)
 - Refactor system prompts and skills rendering for improved clarity and efficiency (7ba88e31)
-#### Refactors
+#### [0.91.1] Refactors
 
 - Improve git diff preview logic and update related enums (18a30a87)
 - Update prompt assembly logic and enhance instruction handling (8b6f71f5)
 - Remove unused PromptAssemblyMode and simplify related code (1f348cd4)
 - Streamline system prompt instructions for clarity and conciseness (dcf8fa34)
 - Enhance performance guidelines and simplify related documentation (f6259c32)
-### Contributors
+### [0.91.1] Contributors
 @vinhnx
 ## 0.91.0 - 2026-03-18
 
-### Highlights
-#### Bug Fixes
+### [0.91.0] Highlights
+#### [0.91.0] Bug Fixes
 
 - Ensure all OpenAI sessions are cleared on logout and fallback to API key (3d6cb033)
-#### Features
+#### [0.91.0] Features
 
 - Enhance OAuth flow with clickable URLs and improved user guidance (d5e9afa9)
 - Implement transcript link click handling and update keyboard protocol flags (12e48c6d)
@@ -7944,25 +7944,25 @@ All notable changes to vtcode will be documented in this file.
 - Implement explicit copy request for mouse selection and update Homebrew publishing process (21f2f1da)
 - Update styling for shimmer effect and change UI theme to ayu (53ca8d5e)
 - Add MiniMax-M2.7 model and update related configurations (3eeb3664)
-### Other Changes
-#### Other
+### [0.91.0] Other Changes
+#### [0.91.0] Other
 
 - Update TODO (a2eeed96)
-#### Refactors
+#### [0.91.0] Refactors
 
 - Simplify model and provider selection entries, remove unnecessary enumerations (baea18fb)
 - Streamline OpenAI session clearing by consolidating storage methods (23a6c55b)
-### Contributors
+### [0.91.0] Contributors
 @vinhnx
 ## 0.90.0 - 2026-03-17
 
-### Highlights
-#### Features
+### [0.90.0] Highlights
+#### [0.90.0] Features
 
 - Improve OAuth URL display by printing it on a separate line and remove related TODO item. (89d95a8a)
 - Highlight file paths in markdown output (b50a3d62)
-### Other Changes
-#### Other
+### [0.90.0] Other Changes
+#### [0.90.0] Other
 
 - Refactor session layout and rendering logic; consolidate bottom panel handling and improve input height management (e6e93dbf)
 - Update format (b8d5aee6)
@@ -7977,20 +7977,20 @@ All notable changes to vtcode will be documented in this file.
 - Add OpenAI tool search configuration and implement deferred loading policy (3a56178a)
 - Add model management documentation and scripts for LLM integration (861bef97)
 - Add ToolCatalogSource to tool registration and update related files (9db62221)
-### Contributors
+### [0.90.0] Contributors
 @vinhnx
 ## 0.89.2 - 2026-03-17
 
-### Highlights
-#### Bug Fixes
+### [0.89.2] Highlights
+#### [0.89.2] Bug Fixes
 
 - Improve planning workflow entry and lifecycle tracking (13638d96)
 - Improve argument and stderr preview truncation for safety (3a09f7c1)
-#### Features
+#### [0.89.2] Features
 
 - Collapse large JSON outputs in TUI messages and adjust planning workflow policies to allow. (80eed12d)
-### Other Changes
-#### Other
+### [0.89.2] Other Changes
+#### [0.89.2] Other
 
 - Refactor plan block parsing for safe character boundaries and add truncation for tool arguments and stderr previews (4b5a4b12)
 - Fix read tool config issue (73f5cb6f)
@@ -8011,36 +8011,36 @@ All notable changes to vtcode will be documented in this file.
 - Refactor planning workflow handling and improve session loop logic (86b9b95c)
 - Update TODO (ffdee65d)
 - Update circuit breaker configuration and tests for improved resiliency (aa92cd91)
-### Contributors
+### [0.89.2] Contributors
 @vinhnx
 ## 0.89.1 - 2026-03-16
 
-### Highlights
-#### Features
+### [0.89.1] Highlights
+#### [0.89.1] Features
 
 - Enhance OpenAI Responses API handling and update configuration (5d5d55af)
 - Enhance error handling by extracting human-readable messages from various JSON formats (b9d46cc2)
-### Other Changes
-#### Other
+### [0.89.1] Other Changes
+#### [0.89.1] Other
 
 - Enhance OpenAI session handling and update UI status display (caa74f23)
 - Implement recovery modes for empty responses and adjust tool call handling (e09d51c4)
 - Add clipboard support for selected text and update default model and theme (439d5cd7)
 - Refactor tool output handling to support spooled output references and improve clipboard functionality (0339abbd)
-#### Refactors
+#### [0.89.1] Refactors
 
 - Simplify error sanitization logic and preserve full error content (7a3afa95)
-### Contributors
+### [0.89.1] Contributors
 @vinhnx
 ## 0.89.0 - 2026-03-15
 
-### Highlights
-#### Bug Fixes
+### [0.89.0] Highlights
+#### [0.89.0] Bug Fixes
 
 - Add missing environment variables for Rust compilation in Dockerfile (4a51a588)
 - Update success message and fallback logic for OpenAI API key (3895d00d)
 - Enhance OpenAI OAuth handling and improve error reporting (9dd80633)
-#### Features
+#### [0.89.0] Features
 
 - Add OpenAI hosted shell support and validation checks (46031529)
 - Enhance tool permission handling with new prompt options and decision logic (d8f448ba)
@@ -8051,8 +8051,8 @@ All notable changes to vtcode will be documented in this file.
 - Enhance LLM request handling with non-streaming support and structured history integration (4180821a)
 - Update default model to gpt-5.3-codex and enhance reasoning handling in OpenAI provider (6f8b0c13)
 - Add manual input support for OpenAI OAuth flow and enhance session handling (ad2107c2)
-### Other Changes
-#### Other
+### [0.89.0] Other Changes
+#### [0.89.0] Other
 
 - Implement auto-compaction for turn loop and enhance skill templates with routing guidance (31aef8a1)
 - Refactor plan file template for clarity and structure (df3764eb)
@@ -8078,7 +8078,7 @@ All notable changes to vtcode will be documented in this file.
 - Add client request ID handling and improve responses API integration (fb3220ac)
 - Scan recent commits for bugs (dbb30d99)
 - Enhance LLM response processing and metrics logging; update OpenAI model handling (bc8dd6aa)
-#### Refactors
+#### [0.89.0] Refactors
 
 - Streamline OAuth handling and improve prompt rendering logic (91a3c73d)
 - Enhance instruction rendering and highlight extraction in project documentation (cf116dac)
@@ -8095,24 +8095,24 @@ All notable changes to vtcode will be documented in this file.
 - Clean up code formatting and improve readability in multiple files (dffcbdae)
 - Remove unused content delta handling in OpenAIStreamTelemetry (44da3f56)
 - Remove PR review status handling and optimize TUI tick rates (737a2c75)
-### Contributors
+### [0.89.0] Contributors
 @vinhnx
 ## 0.88.5 - 2026-03-13
 
-### Highlights
-#### Features
+### [0.88.5] Highlights
+#### [0.88.5] Features
 
 - Add context awareness support and related tests for Anthropic models (0ff5066e)
 - Add context window size support to header context and related components (ba2faa13)
 - Implement effective context window size handling for models (7ab580b4)
-### Other Changes
-### Contributors
+### [0.88.5] Other Changes
+### [0.88.5] Contributors
 @vinhnx
 ## 0.88.4 - 2026-03-13
 
-### Highlights
-### Other Changes
-#### Other
+### [0.88.4] Highlights
+### [0.88.4] Other Changes
+#### [0.88.4] Other
 
 - Add support for tool-free recovery mode and enhance wait feedback mechanisms (8c9f4ca1)
 - Refactor exit summary display for single and multi-model sessions; improve Ctrl+C signal handling for immediate exit (45558686)
@@ -8138,13 +8138,13 @@ All notable changes to vtcode will be documented in this file.
 - Add tool_call_correlation_id function for fallback handling in output items (134b5691)
 - Enhance command detection: support likely typos and improve tool call correlation handling (2b64d276)
 - Refactor ANSI handling: centralize constants, improve documentation, and enhance utility functions (d268d5c9)
-### Contributors
+### [0.88.4] Contributors
 @vinhnx
 ## 0.88.3 - 2026-03-12
 
-### Highlights
-### Other Changes
-#### Other
+### [0.88.3] Highlights
+### [0.88.3] Other Changes
+#### [0.88.3] Other
 
 - Overhaul model picker UI (b0f33444)
 - Enhance prompt caching and telemetry metrics; update configurations for improved cache handling (3fb970ac)
@@ -8164,13 +8164,13 @@ All notable changes to vtcode will be documented in this file.
 - Add tests for file path handling and improve location suffix resolution (71638904)
 - Add reference link for control sequences in TODO.md (d951810e)
 - Remove empty code change entries from the changes log (fb89f6c2)
-### Contributors
+### [0.88.3] Contributors
 @vinhnx
 ## 0.88.2 - 2026-03-12
 
-### Highlights
-### Other Changes
-#### Other
+### [0.88.2] Highlights
+### [0.88.2] Other Changes
+#### [0.88.2] Other
 
 - Fix install script (25a0e060) (@vinhnx)
 - Update badge colours and links in README.md (99175a26) (@vinhnx)
@@ -8179,34 +8179,34 @@ All notable changes to vtcode will be documented in this file.
 - Refactor API key handling and update model reasoning capabilities (db0bdf03)
 - Refactor reasoning handling in OpenRouterProvider and improve model checks (f237aa93)
 - Refactor configuration loading to use workspace paths and remove deprecated environment variable handling (352cc9e5)
-### Contributors
+### [0.88.2] Contributors
 @vinhnx
 ## 0.88.1 - 2026-03-12
 
-### Highlights
-#### Features
+### [0.88.1] Highlights
+#### [0.88.1] Features
 
 - Add NVIDIA Nemotron 3 Super (free) model support (c3c203a0)
 - Add live editor context and transcript file links (c330e4b3)
-### Other Changes
-#### Other
+### [0.88.1] Other Changes
+#### [0.88.1] Other
 
 - Add search tools status badge and enhance language detection (7150057d)
-#### Tests
+#### [0.88.1] Tests
 
 - Add unit test for markdown table header rendering (db088ed7)
-### Contributors
+### [0.88.1] Contributors
 @vinhnx
 ## 0.88.0 - 2026-03-11
 
-### Highlights
-#### Features
+### [0.88.0] Highlights
+#### [0.88.0] Features
 
 - Refactor pattern detection logic, improve concurrency with `parking_lot`, and optimize performance with `SmallVec` and pre-allocated buffers. (28d0d534)
 - Optimize tool execution tracking, file path parsing, and grep result handling, while preventing memory leaks in stats. (c319aebe)
 - Add Miri check to the `check.sh` script and update documentation for detecting undefined behaviour. (15f3d5c1)
-### Other Changes
-#### Other
+### [0.88.0] Other Changes
+#### [0.88.0] Other
 
 - Refactor pattern detection and command safety checks for improved efficiency and optimize tool name caching. (4abdbc6f)
 - Review ZedAgent registry mutex (3ead1b8b)
@@ -8248,16 +8248,16 @@ All notable changes to vtcode will be documented in this file.
 - Add LiteLLM provider support and documentation (327183cb)
 - Enhance parameter sanitization and alias handling for tool arguments (190ee131)
 - Update TODO (3b2e19fc)
-#### Refactors
+#### [0.88.0] Refactors
 
 - Introduce `detect_pattern_with_guard` for improved pattern detection logic and simplify `RwLock` write guard acquisition. (5f70ca7c)
-### Contributors
+### [0.88.0] Contributors
 @vinhnx
 ## 0.87.1 - 2026-03-08
 
-### Highlights
-### Other Changes
-#### Other
+### [0.87.1] Highlights
+### [0.87.1] Other Changes
+#### [0.87.1] Other
 
 - Enhance exec command functionality with session resumption and prompt handling (d234fee7)
 - Add review command and related functionality (ef0298c7)
@@ -8277,61 +8277,61 @@ All notable changes to vtcode will be documented in this file.
 - Add support for OpenAI service tier configuration and handling (5586bffc)
 - Implement VT Code ast-grep installer (f8901da1)
 - Fix build release (f9f272e9)
-#### Refactors
+#### [0.87.1] Refactors
 
 - Streamline event processing and enhance modal state management (1e7c6031)
-### Contributors
+### [0.87.1] Contributors
 @vinhnx
 ## 0.86.12 - 2026-03-07
 
-### Highlights
-#### Bug Fixes
+### [0.86.12] Highlights
+#### [0.86.12] Bug Fixes
 
 - Preserve v prefix in GitHub release URLs for install script (3f2088be) (@vinhnx)
 - Use exact tag names from GitHub API in install script (b22bd9af) (@vinhnx)
-#### Features
+#### [0.86.12] Features
 
 - Add checksum for vtcode-0.86.11-aarch64-apple-darwin.tar.gz (47a2c486) (@vinhnx)
 - Implement feature gating for tools and refactor related components (5f530f6d)
-### Other Changes
-#### Other
+### [0.86.12] Other Changes
+#### [0.86.12] Other
 
 - Refactor session-state handling and update related components (d78397ef)
 - Update TODO (ae3651f1)
 - Update TODO (fb5ee65f)
 - Refactor modal handling to use overlay system and improve session state management (d6171cfc)
-### Contributors
+### [0.86.12] Contributors
 @vinhnx
 ## 0.86.11 - 2026-03-06
 
-### Highlights
-#### Features
+### [0.86.11] Highlights
+#### [0.86.11] Features
 
 - Implement thread management and session handling improvements (e775bb58)
 - Enhance session management with loaded skills and metadata handling (cb99499b)
-### Other Changes
-### Contributors
+### [0.86.11] Other Changes
+### [0.86.11] Contributors
 @vinhnx
 ## 0.86.10 - 2026-03-06
 
-### Highlights
-#### Features
+### [0.86.10] Highlights
+#### [0.86.10] Features
 
 - Implement thread management and session handling improvements (e775bb58)
 - Enhance session management with loaded skills and metadata handling (cb99499b)
-### Other Changes
-### Contributors
+### [0.86.10] Other Changes
+### [0.86.10] Contributors
 @vinhnx
 ## 0.86.9 - 2026-03-06
 
-### Highlights
-### Other Changes
-### Contributors
+### [0.86.9] Highlights
+### [0.86.9] Other Changes
+### [0.86.9] Contributors
 @vinhnx
 ## 0.86.8 - 2026-03-06
 
-### Highlights
-#### Features
+### [0.86.8] Highlights
+#### [0.86.8] Features
 
 - Enhance command execution tracking with arguments and output aggregation (80f4e11e)
 - Refactor tool execution events to support new output and invocation structures (446a354c)
@@ -8339,20 +8339,20 @@ All notable changes to vtcode will be documented in this file.
 - Add support for OpenAI o3 and o4-mini models in Responses API (38f17b54)
 - Enhance OpenAI Responses API support with hosted tools and validation (a17b42c8)
 - Enhance shell execution approval process and protect writable metadata directories (74d40175)
-### Other Changes
-#### Other
+### [0.86.8] Other Changes
+#### [0.86.8] Other
 
 - Update OpenAI model references to GPT-5.4 and adjust reasoning effort defaults (38c7644a)
 - Implement shell command approval enhancements and justification handling (3ff40170)
-#### Refactors
+#### [0.86.8] Refactors
 
 - Streamline ToolDefinition creation and improve serialization functions (5b3cc708)
-### Contributors
+### [0.86.8] Contributors
 @vinhnx
 ## 0.87.0 - 2026-03-06
 
-### Highlights
-#### Features
+### [0.87.0] Highlights
+#### [0.87.0] Features
 
 - Enhance command execution tracking with arguments and output aggregation (80f4e11e)
 - Refactor tool execution events to support new output and invocation structures (446a354c)
@@ -8360,34 +8360,34 @@ All notable changes to vtcode will be documented in this file.
 - Add support for OpenAI o3 and o4-mini models in Responses API (38f17b54)
 - Enhance OpenAI Responses API support with hosted tools and validation (a17b42c8)
 - Enhance shell execution approval process and protect writable metadata directories (74d40175)
-### Other Changes
-#### Other
+### [0.87.0] Other Changes
+#### [0.87.0] Other
 
 - Update OpenAI model references to GPT-5.4 and adjust reasoning effort defaults (38c7644a)
 - Implement shell command approval enhancements and justification handling (3ff40170)
-#### Refactors
+#### [0.87.0] Refactors
 
 - Streamline ToolDefinition creation and improve serialization functions (5b3cc708)
-### Contributors
+### [0.87.0] Contributors
 @vinhnx
 ## 0.86.7 - 2026-03-06
 
-### Highlights
-### Other Changes
-### Contributors
+### [0.86.7] Highlights
+### [0.86.7] Other Changes
+### [0.86.7] Contributors
 @vinhnx
 ## 0.86.6 - 2026-03-05
 
-### Highlights
-#### Documentation
+### [0.86.6] Highlights
+#### [0.86.6] Documentation
 
 - Update documentation structure and add Development Setup guide (7b38475a)
-### Other Changes
-#### Other
+### [0.86.6] Other Changes
+#### [0.86.6] Other
 
 - Refactor Cargo.toml files to use workspace dependencies and update versioning scheme (a7bf7eea)
 - Add MCP requirements enforcement and update related configurations (1f39beec)
-#### Refactors
+#### [0.86.6] Refactors
 
 - Modularize components in src/ for improved readability and maintainability (f405950c)
 - Enhance plugin ABI with safety checks and optional deallocator (ef02885a)
@@ -8395,21 +8395,21 @@ All notable changes to vtcode will be documented in this file.
 - Implement schema command for runtime tool introspection and add input validation (8d2900a1)
 - Improve visual distinction between assistant agent and PTY output messages (387a45c7)
 - Update PTY fallback handling for consistent terminal output (ed0fa6c9)
-### Contributors
+### [0.86.6] Contributors
 @vinhnx
 ## 0.86.5 - 2026-03-04
 
-### Highlights
-#### Bug Fixes
+### [0.86.5] Highlights
+#### [0.86.5] Bug Fixes
 
 - Update terminal notification handling for ghostty to use bell-only (ca512670)
-#### Features
+#### [0.86.5] Features
 
 - Add Windows user profile root exclusions and enhance sensitive path matching (0a024067)
 - Add new tools and policies for cargo and git commands (110d0326)
 - Implement continuation arguments for tool execution and enhance read chunk handling (19db1b72)
-### Other Changes
-#### Other
+### [0.86.5] Other Changes
+#### [0.86.5] Other
 
 - Update API key and model provider in vtcode.toml (2939fceb)
 - Implement task guards for background operations and improve async handling in various modules (23a114ab)
@@ -8421,7 +8421,7 @@ All notable changes to vtcode will be documented in this file.
 - Refactor configuration layer loading and error handling; add support for tracking layer origins in merges; implement API for reading and writing configuration with version checks. (5fe3d2da)
 - Refactor shell command building, update justification messages, enhance search metrics, improve web fetch domain matching, and adjust tool policies in configuration. (3c5d7600)
 - Refactor code for improved readability and consistency across multiple files (adb2ad30)
-#### Refactors
+#### [0.86.5] Refactors
 
 - Streamline response handling and output printing in AgentRunner (d98a5e55)
 - Simplify function output handling in HuggingFace and OpenAI providers (71381dd3)
@@ -8430,17 +8430,17 @@ All notable changes to vtcode will be documented in this file.
 - Update configuration section markers and adjust merging logic for user settings (79bce0e0)
 - Enhance settings search functionality and improve nested key handling (81f799ca)
 - Remove agent command and related logic, update slash command descriptions (d672e41a)
-### Contributors
+### [0.86.5] Contributors
 @vinhnx
 ## 0.86.4 - 2026-03-04
 
-### Highlights
-#### Bug Fixes
+### [0.86.4] Highlights
+#### [0.86.4] Bug Fixes
 
 - Remove unused OpenRouter model variants and fix panic_hook warnings (d4afaa47)
 - Update Cargo.toml to exclude all docs except CONFIG_FIELD_REFERENCE.md (6903748b)
-### Other Changes
-#### Other
+### [0.86.4] Other Changes
+#### [0.86.4] Other
 
 - Enhance reasoning detail handling across providers and improve model detection (ef1f5a59)
 - Refactor model constants and remove deprecated models; update provider configurations and capabilities (3ba46998)
@@ -8487,16 +8487,16 @@ All notable changes to vtcode will be documented in this file.
 - Refactor imports and update configuration settings across multiple files (05d95e7b)
 - Refactor caching implementation: migrate to UnifiedCache and remove deprecated LruCache (ba04ef9b)
 - Fix path (cc0eaa6a)
-### Contributors
+### [0.86.4] Contributors
 @vinhnx
 ## 0.86.3 - 2026-03-04
 
-### Highlights
-#### Bug Fixes
+### [0.86.3] Highlights
+#### [0.86.3] Bug Fixes
 
 - Remove unused OpenRouter model variants and fix panic_hook warnings (d4afaa47)
-### Other Changes
-#### Other
+### [0.86.3] Other Changes
+#### [0.86.3] Other
 
 - Enhance reasoning detail handling across providers and improve model detection (ef1f5a59)
 - Refactor model constants and remove deprecated models; update provider configurations and capabilities (3ba46998)
@@ -8543,16 +8543,16 @@ All notable changes to vtcode will be documented in this file.
 - Refactor imports and update configuration settings across multiple files (05d95e7b)
 - Refactor caching implementation: migrate to UnifiedCache and remove deprecated LruCache (ba04ef9b)
 - Fix path (cc0eaa6a)
-### Contributors
+### [0.86.3] Contributors
 @vinhnx
 ## 0.86.2 - 2026-03-04
 
-### Highlights
-#### Bug Fixes
+### [0.86.2] Highlights
+#### [0.86.2] Bug Fixes
 
 - Remove unused OpenRouter model variants and fix panic_hook warnings (d4afaa47)
-### Other Changes
-#### Other
+### [0.86.2] Other Changes
+#### [0.86.2] Other
 
 - Enhance reasoning detail handling across providers and improve model detection (ef1f5a59)
 - Refactor model constants and remove deprecated models; update provider configurations and capabilities (3ba46998)
@@ -8598,16 +8598,16 @@ All notable changes to vtcode will be documented in this file.
 - Add bytes dependency and update output handling in process and pipe modules (0fe2017e)
 - Refactor imports and update configuration settings across multiple files (05d95e7b)
 - Refactor caching implementation: migrate to UnifiedCache and remove deprecated LruCache (ba04ef9b)
-### Contributors
+### [0.86.2] Contributors
 @vinhnx
 ## 0.86.1 - 2026-03-04
 
-### Highlights
-#### Bug Fixes
+### [0.86.1] Highlights
+#### [0.86.1] Bug Fixes
 
 - Remove unused OpenRouter model variants and fix panic_hook warnings (d4afaa47)
-### Other Changes
-#### Other
+### [0.86.1] Other Changes
+#### [0.86.1] Other
 
 - Enhance reasoning detail handling across providers and improve model detection (ef1f5a59)
 - Refactor model constants and remove deprecated models; update provider configurations and capabilities (3ba46998)
@@ -8653,13 +8653,13 @@ All notable changes to vtcode will be documented in this file.
 - Add bytes dependency and update output handling in process and pipe modules (0fe2017e)
 - Refactor imports and update configuration settings across multiple files (05d95e7b)
 - Refactor caching implementation: migrate to UnifiedCache and remove deprecated LruCache (ba04ef9b)
-### Contributors
+### [0.86.1] Contributors
 @vinhnx
 ## 0.86.0 - 2026-03-04
 
-### Highlights
-### Other Changes
-#### Other
+### [0.86.0] Highlights
+### [0.86.0] Other Changes
+#### [0.86.0] Other
 
 - Enhance reasoning detail handling across providers and improve model detection (ef1f5a59)
 - Refactor model constants and remove deprecated models; update provider configurations and capabilities (3ba46998)
@@ -8705,15 +8705,15 @@ All notable changes to vtcode will be documented in this file.
 - Add bytes dependency and update output handling in process and pipe modules (0fe2017e)
 - Refactor imports and update configuration settings across multiple files (05d95e7b)
 - Refactor caching implementation: migrate to UnifiedCache and remove deprecated LruCache (ba04ef9b)
-### Contributors
+### [0.86.0] Contributors
 @vinhnx
-# Changelog
+## Historical changelog segment 2
 
 All notable changes to vtcode will be documented in this file.
 ## 0.85.3 - 2026-03-03
 
-### Highlights
-#### Features
+### [0.85.3] Highlights
+#### [0.85.3] Features
 
 - **Native Plugin System**: Implement native code plugin support using libloading for high-performance, pre-compiled skills
   - Add `vtcode-core/src/skills/native_plugin.rs` with PluginLoader, NativePlugin, and NativePluginTrait
@@ -8724,13 +8724,13 @@ All notable changes to vtcode will be documented in this file.
   - Comprehensive documentation and example plugin (hello-world)
 - Add libloading 0.8 dependency to workspace and vtcode-core
 
-### Documentation
+### [0.85.3] Documentation
 
 - Add Native Plugin Guide (`docs/skills/NATIVE_PLUGIN_GUIDE.md`) - Complete user guide for plugin development
 - Add Native Plugin Implementation Summary (`docs/skills/NATIVE_PLUGIN_IMPLEMENTATION.md`) - Technical implementation details
 - Add example plugin with tests (`examples/plugins/hello-world/`)
 
-### Other Changes
+### [0.85.3] Other Changes
 
 - Update SkillRoot structure with is_plugin_root field for plugin directory detection
 - Add plugin discovery to skill loading system
@@ -8739,22 +8739,22 @@ All notable changes to vtcode will be documented in this file.
 
 ## 0.85.2 - 2026-03-02
 
-### Highlights
-#### Bug Fixes
+### [0.85.2] Highlights
+#### [0.85.2] Bug Fixes
 
 - Use RngExt trait for random_range method in slug.rs (b9b03932)
 - Trim whitespace from custom config and data directory environment variables (179f1ef9)
-#### Documentation
+#### [0.85.2] Documentation
 
 - Add final notes and principles for coding agents in AGENTS.md (9d2e061c)
-#### Features
+#### [0.85.2] Features
 
 - Include git version info in long_version and add tests (8a1fe108)
 - Add snapshot files for history picker and slash widget tests (b397909d)
 - Implement TUI log capture feature and enhance panic hook handling (89813122)
 - Integrate color-eyre for enhanced error reporting in debug mode (05591670)
-### Other Changes
-#### Other
+### [0.85.2] Other Changes
+#### [0.85.2] Other
 
 - Enhance skill authoring and routing logic; add response chaining support (121a8ece)
 - Add `thiserror` integration for improved error handling across multiple modules (b5081d89)
@@ -8797,7 +8797,7 @@ All notable changes to vtcode will be documented in this file.
 - Add fuzzing support for security parsers and update documentation (bd445376)
 - Refactor command safety checks and improve loop detection tests (b8ede10b)
 - Enhance command validation and tool execution with unified action handling (0c3d4b86)
-#### Refactors
+#### [0.85.2] Refactors
 
 - Remove unnecessary Clear widget calls in header and input rendering (fb1c8de7)
 - Streamline architecture documentation and enhance clarity (565ea315)
@@ -8808,13 +8808,13 @@ All notable changes to vtcode will be documented in this file.
 - Update exit summary formatting and remove unused functions (7c58ff16)
 - Streamline lint configuration and enhance exit summary output (eaca32a6)
 - Enhance exit summary formatting and improve file indexing logic (d143fe97)
-### Contributors
+### [0.85.2] Contributors
 @vinhnx
 ## 0.85.1 - 2026-03-01
 
-### Highlights
-### Other Changes
-#### Other
+### [0.85.1] Highlights
+### [0.85.1] Other Changes
+#### [0.85.1] Other
 
 - Enhance skill authoring and routing logic; add response chaining support (121a8ece)
 - Add `thiserror` integration for improved error handling across multiple modules (b5081d89)
@@ -8843,19 +8843,19 @@ All notable changes to vtcode will be documented in this file.
 - Refactor RunLoopContext and TurnProcessingContext to use constructor methods for improved clarity and maintainability (cd9d63a5)
 - Refactor TurnProcessingContext to use parts for better modularity and readability (b133ff3d)
 - Refactor code for improved readability and consistency in multiple files (2565bbdb)
-### Contributors
+### [0.85.1] Contributors
 @vinhnx
 ## 0.85.0 - 2026-03-01
 
-### Highlights
-#### Bug Fixes
+### [0.85.0] Highlights
+#### [0.85.0] Bug Fixes
 
 - Update contributor handling in changelog template (f1ef0a2c)
-#### Features
+#### [0.85.0] Features
 
 - Add diagnostics visibility toggle in transcript for debug builds (2b339962)
-### Other Changes
-#### Other
+### [0.85.0] Other Changes
+#### [0.85.0] Other
 
 - Refactor diff rendering and styling for consistency and accessibility (3edcf204)
 - Refactor token counting methods and remove unused tests across providers; update configuration for default provider and model. (55c76984)
@@ -8871,18 +8871,18 @@ All notable changes to vtcode will be documented in this file.
 - Implement postamble exit summarization with metric calculation and enhance markdown output styling (02d01e99)
 - Implement code change tracking and exit summary reporting (5e776910)
 - Refactor session handling to streamline resume logic and enhance message rendering (6654f328)
-#### Refactors
+#### [0.85.0] Refactors
 
 - Rename sessions command to resume and update related handlers (c63ab822)
 - Enhance panic handling, optimize agent harness, and improve token efficiency (c68e7ea1)
 - Enhance error handling and recovery mechanisms; improve error categorization and logging (43a4e099)
-### Contributors
+### [0.85.0] Contributors
 @vinhnx
 ## 0.84.1 - 2026-02-28
 
-### Highlights
-### Other Changes
-#### Other
+### [0.84.1] Highlights
+### [0.84.1] Other Changes
+#### [0.84.1] Other
 
 - Update code structure for improved readability and maintainability (24d81c35)
 - Refactor themes and improve UI handling (970dadf8)
@@ -8895,18 +8895,18 @@ All notable changes to vtcode will be documented in this file.
 - Fix light theme rendering issues and improve accessibility; enhance theme handling and live reload functionality (371a681b)
 - Normalize unified search arguments and enhance argument extraction logic (a732a449)
 - Fix light theme rendering issues and improve theme handling for better accessibility (ec131237)
-### Contributors
+### [0.84.1] Contributors
 ## 0.84.0 - 2026-02-28
 
-### Highlights
-#### Bug Fixes
+### [0.84.0] Highlights
+#### [0.84.0] Bug Fixes
 
 - Strip x-extension fields from tool schemas and handle empty safety blocks (7ff0b66f)
-#### Features
+#### [0.84.0] Features
 
 - Add terminal notifications for agent events and syntax highlighting for bash commands in TUI (d54ba169)
-### Other Changes
-#### Other
+### [0.84.0] Other Changes
+#### [0.84.0] Other
 
 - Update badge links in README.md (b74377e3) (@vinhnx)
 - Merge pull request #607 from LiGoldragon/mentci-gemini-json-fix (db195063) (@vinhnx)
@@ -8951,25 +8951,25 @@ All notable changes to vtcode will be documented in this file.
 - Update default model to GPT-5.3 Codex, change provider to OpenAI, and enhance reasoning effort configuration (24d3af83)
 - Remove xAI provider support and update default models in configuration files (ad6290aa)
 - Refactor code for improved readability and consistency in function calls (91fdb43a)
-#### Refactors
+#### [0.84.0] Refactors
 
 - Streamline task tracking logic and introduce TaskTrackingStatus for improved status management (3be2c784)
-### Contributors
+### [0.84.0] Contributors
 @vinhnx
 ## 0.82.6 - 2026-02-25
 
-### Documentation
+### [0.82.6] Documentation
 
 - Update TODO.md with critical release notes and improve terminal title (08d978a5) (@vinhnx)
 - Update documentation map with enhanced topics and user questions (e7dc9369) (Vinh Nguyen)
 
 
-### Features
+### [0.82.6] Features
 
 - Implement dynamic terminal title updates based on agent activity (8c29b28f) (Vinh Nguyen)
 
 
-### Other
+### [0.82.6] Other
 
 - Implement XDG Base Directory Specification, add Zed extension file search commands, enhance PTY ANSI handling, and improve PTY pipe infrastructure. (03705867) (Vinh Nguyen)
 - Update documentation links and paths across multiple files (76d81123) (Vinh Nguyen)
@@ -8977,7 +8977,7 @@ All notable changes to vtcode will be documented in this file.
 - Fix gemini streaming processor and update TODO.md (04927325) (Vinh Nguyen)
 
 
-### Refactors
+### [0.82.6] Refactors
 
 - Enhance changelog generation and update test script for versioning (4383577f) (Vinh Nguyen)
 - Update documentation and improve terminology for unified search and code understanding (57e584eb) (Vinh Nguyen)
@@ -8986,7 +8986,7 @@ All notable changes to vtcode will be documented in this file.
 - Update Z.AI model constants and enhance parsing logic for legacy support (44e33c22) (Vinh Nguyen)
 ## 0.82.5 - 2026-02-25
 
-### Bug Fixes
+### [0.82.5] Bug Fixes
 
 - Update versioning format to remove 'v' prefix in tags and URLs (081b6f73) (@vinhnx)
 - Resolve critical scrolling issue and remove unused slash command handlers (bcb81434) (@vinhnx)
@@ -9000,7 +9000,7 @@ All notable changes to vtcode will be documented in this file.
 - Improve output messages for run completion and error handling (833564dd) (@vinhnguyen2308)
 
 
-### Documentation
+### [0.82.5] Documentation
 
 - Update documentation and improve clarity on execution plans, architectural invariants, and quality scores (27c61ef7) (@vinhnx)
 - Update contributing guidelines to reference CONTRIBUTING.md and AGENTS.md. (b4a1ef7a) (@vinhnx)
@@ -9011,7 +9011,7 @@ All notable changes to vtcode will be documented in this file.
 - Update TODO.md with examples and improve TUI display for truncated outputs (269395b1) (@vinhnx)
 
 
-### Features
+### [0.82.5] Features
 
 - Add MiniMax M2.5 model support across various providers and update related constants (968963f1) (@vinhnx)
 - Add Qwen3 Coder Next model support and update related constants (5a4303e0) (@vinhnx)
@@ -9063,7 +9063,7 @@ All notable changes to vtcode will be documented in this file.
 - Make tree-sitter language parsers optional and update dependencies to disable default features (5e268705) (@vinhnguyen2308)
 
 
-### Other
+### [0.82.5] Other
 
 - Add architectural invariants, core beliefs, execution plans, quality score, and tech debt tracker documentation (80cf6d68) (@vinhnx)
 - Add support for inline skill bundles and network policies in skills (ddb9d280) (@vinhnx)
@@ -9108,7 +9108,7 @@ All notable changes to vtcode will be documented in this file.
 - Remove unified symbol extractor and related patterns; update language summarization to use file extensions; enhance README for clarity and feature descriptions; clean up unused imports in tools module. (aca4dbef) (@vinhnguyen2308)
 
 
-### Refactors
+### [0.82.5] Refactors
 
 - Remove unused ReasoningSegment import from turn_processing.rs (9f4672d7) (@vinhnx)
 - Reimplement LLM streaming and event handling using AgentSessionController and its event sink mechanism. (95bcd08f) (@vinhnx)
@@ -9127,10 +9127,10 @@ All notable changes to vtcode will be documented in this file.
 - Remove unified tool resolver module to streamline codebase (1384fe03) (@vinhnx)
 - Remove unused TUI components and improve event handling for focus changes (99fa2620) (@vinhnx)
 - Standardize continuation prefix handling in wrap_block_lines functions (0596e899) (@vinhnx)
-## [unreleased]
+## [0.82.5] [unreleased]
 
 
-### Bug Fixes
+### [0.82.5] Bug Fixes (section 2)
 - Update versioning format to remove 'v' prefix in tags and URLs (@vinhnx)
 
 - Resolve critical scrolling issue and remove unused slash command handlers (@vinhnx)
@@ -9149,7 +9149,7 @@ All notable changes to vtcode will be documented in this file.
 
 
 
-### Documentation
+### [0.82.5] Documentation (section 2)
 - Update changelog for 0.79.2 [skip ci] (vtcode-release-bot)
 
 - Update changelog for 0.79.3 [skip ci] (vtcode-release-bot)
@@ -9192,7 +9192,7 @@ All notable changes to vtcode will be documented in this file.
 
 
 
-### Features
+### [0.82.5] Features (section 2)
 - Add MiniMax M2.5 model support across various providers and update related constants (@vinhnx)
 
 - Add Qwen3 Coder Next model support and update related constants (@vinhnx)
@@ -9287,12 +9287,12 @@ All notable changes to vtcode will be documented in this file.
 
 
 
-### Other
+### [0.82.5] Other (section 2)
 - Prevent footer panic when hint is absent, refactor path argument to `&Path`, and optimize sidebar string truncation. (@vinhnx)
 
 
 
-### Refactors
+### [0.82.5] Refactors (section 2)
 - Remove unused ReasoningSegment import from turn_processing.rs (@vinhnx)
 
 - Reimplement LLM streaming and event handling using AgentSessionController and its event sink mechanism. (@vinhnx)
@@ -9328,7 +9328,7 @@ All notable changes to vtcode will be documented in this file.
 - Standardize continuation prefix handling in wrap_block_lines functions (Vinh Nguyen)
 ## 0.82.3 - 2026-02-24
 
-### Features
+### [0.82.3] Features
 
 - Implement freeform text input for wizard modals, guided by system prompt and toggled by the Tab key. (9b54cdd6) (@vinhnx)
 - Enhance `AskUserChoice` with freeform input, custom labels, placeholders, and default selections. (53e0e111) (@vinhnx)
@@ -9336,11 +9336,11 @@ All notable changes to vtcode will be documented in this file.
 - Integrate AI agent best practices into system prompts and loop detection for improved planning, root cause analysis, and uncertainty recognition. (91e5e295) (@vinhnx)
 - Implement TaskTracker tool and enhance agent guards and documentation based on NL2Repo-Bench insights. (45a9a159) (@vinhnx)
 
-### Refactors
+### [0.82.3] Refactors
 
 - improve previous SemVer tag identification by searching commit history in release scripts (0fcdce3d) (@vinhnx)
 
-### Other
+### [0.82.3] Other
 
 - Update commit (925f355d) (@vinhnx)
 - Add reference to git-cliff for changelog generation (8dd703f1) (@vinhnx)
@@ -9352,7 +9352,7 @@ All notable changes to vtcode will be documented in this file.
 
 ## 0.83.0 - 2026-02-24
 
-### Features
+### [0.83.0] Features
 
 - Implement freeform text input for wizard modals, guided by system prompt and toggled by the Tab key. (9b54cdd6) (@vinhnx)
 - Enhance `AskUserChoice` with freeform input, custom labels, placeholders, and default selections. (53e0e111) (@vinhnx)
@@ -9360,11 +9360,11 @@ All notable changes to vtcode will be documented in this file.
 - Integrate AI agent best practices into system prompts and loop detection for improved planning, root cause analysis, and uncertainty recognition. (91e5e295) (@vinhnx)
 - Implement TaskTracker tool and enhance agent guards and documentation based on NL2Repo-Bench insights. (45a9a159) (@vinhnx)
 
-### Refactors
+### [0.83.0] Refactors
 
 - improve previous SemVer tag identification by searching commit history in release scripts (0fcdce3d) (@vinhnx)
 
-### Other
+### [0.83.0] Other
 
 - Refactor user input option generation and enhance markdown rendering in modals (a72a63c0) (@vinhnx)
 - Add navigation loop guidance and improve planning workflow handling (5d162ae6) (@vinhnx)
@@ -9374,7 +9374,7 @@ All notable changes to vtcode will be documented in this file.
 
 ## 0.82.2 - 2026-02-23
 
-### Features
+### [0.82.2] Features
 
 - Add chunked file read spool progress tracking and refine token usage calculation for context management. (ef8f162d) (@vinhnx)
 - Implement chunked reading for spooled tool outputs with improved agent messaging and update default LLM provider configuration. (b5b0c230) (@vinhnx)
@@ -9414,14 +9414,14 @@ All notable changes to vtcode will be documented in this file.
 - add Qwen3 Coder Next model support and update related constants (5a4303e0) (@vinhnx)
 - add MiniMax M2.5 model support across various providers and update related constants (968963f1) (@vinhnx)
 
-### Bug Fixes
+### [0.82.2] Bug Fixes
 
 - correct changelog generation to use the previous release tag instead of a fixed version. (b0437d27) (@vinhnx)
 - Update default model in configuration to glm-5:cloud (1700a7e4) (@vinhnx)
 - correct exec_code policy and update TODO for markdown rendering issue (9b87f88b) (@vinhnx)
 - resolve critical scrolling issue and remove unused slash command handlers (bcb81434) (@vinhnx)
 
-### Refactors
+### [0.82.2] Refactors
 
 - Make TUI signal cleanup and dotfile permission backup UNIX-specific. (14a4f2d2) (@vinhnx)
 - remove unused imports and enhance configuration for credential storage (b79f2bd2) (@vinhnx)
@@ -9437,7 +9437,7 @@ All notable changes to vtcode will be documented in this file.
 - reimplement LLM streaming and event handling using AgentSessionController and its event sink mechanism. (95bcd08f) (@vinhnx)
 - remove unused ReasoningSegment import from turn_processing.rs (9f4672d7) (@vinhnx)
 
-### Documentation
+### [0.82.2] Documentation
 
 - Update TODO.md with additional PTY truncate display information and test references (cd3a3850) (@vinhnx)
 - Add a guide for adding new models to AGENTS.md. (8648b584) (@vinhnx)
@@ -9445,7 +9445,7 @@ All notable changes to vtcode will be documented in this file.
 - update contributing guidelines to reference CONTRIBUTING.md and AGENTS.md. (b4a1ef7a) (@vinhnx)
 - update documentation and improve clarity on execution plans, architectural invariants, and quality scores feat: enhance system instruction generation to replace placeholders with unified tool guidance (27c61ef7) (@vinhnx)
 
-### Chores
+### [0.82.2] Chores
 
 - Release (cf5d5f7e) (@vinhnx)
 - Release (28a8476b) (@vinhnx)
@@ -9460,7 +9460,7 @@ All notable changes to vtcode will be documented in this file.
 - Release (69df0e20) (@vinhnx)
 - Release (10e4f284) (@vinhnx)
 
-### Other
+### [0.82.2] Other
 
 - Increase max tool calls per turn to 48 and implement budget warning system in harness (7b6cade0) (@vinhnx)
 - Add spool chunk read tracking and enforce limits per turn (c09ef6d3) (@vinhnx)
@@ -9492,7 +9492,7 @@ All notable changes to vtcode will be documented in this file.
 
 ## 0.82.1 - 2026-02-20
 
-### Features
+### [0.82.1] Features
 
 - introduce CI cost optimization strategies, add a new `--ci-only` release mode, and document release workflow details. (dd2f3168) (@vinhnx)
 - standardize MiniMax-M2.5 model identifier, promote it as the default, and update configuration defaults. (ff6dcef6) (@vinhnx)
@@ -9525,12 +9525,12 @@ All notable changes to vtcode will be documented in this file.
 - add Qwen3 Coder Next model support and update related constants (5a4303e0) (@vinhnx)
 - add MiniMax M2.5 model support across various providers and update related constants (968963f1) (@vinhnx)
 
-### Bug Fixes
+### [0.82.1] Bug Fixes
 
 - correct exec_code policy and update TODO for markdown rendering issue (9b87f88b) (@vinhnx)
 - resolve critical scrolling issue and remove unused slash command handlers (bcb81434) (@vinhnx)
 
-### Refactors
+### [0.82.1] Refactors
 
 - Make TUI signal cleanup and dotfile permission backup UNIX-specific. (14a4f2d2) (@vinhnx)
 - remove unused imports and enhance configuration for credential storage (b79f2bd2) (@vinhnx)
@@ -9546,14 +9546,14 @@ All notable changes to vtcode will be documented in this file.
 - reimplement LLM streaming and event handling using AgentSessionController and its event sink mechanism. (95bcd08f) (@vinhnx)
 - remove unused ReasoningSegment import from turn_processing.rs (9f4672d7) (@vinhnx)
 
-### Documentation
+### [0.82.1] Documentation
 
 - Add a guide for adding new models to AGENTS.md. (8648b584) (@vinhnx)
 - update documentation for TECH_DEBT_TRACKER and QUALITY_SCORE; add tests for subagent loading and file operations (fb7c0944) (@vinhnx)
 - update contributing guidelines to reference CONTRIBUTING.md and AGENTS.md. (b4a1ef7a) (@vinhnx)
 - update documentation and improve clarity on execution plans, architectural invariants, and quality scores feat: enhance system instruction generation to replace placeholders with unified tool guidance (27c61ef7) (@vinhnx)
 
-### Chores
+### [0.82.1] Chores
 
 - Release (28a8476b) (@vinhnx)
 - Release (77422bee) (@vinhnx)
@@ -9567,7 +9567,7 @@ All notable changes to vtcode will be documented in this file.
 - Release (69df0e20) (@vinhnx)
 - Release (10e4f284) (@vinhnx)
 
-### Other
+### [0.82.1] Other
 
 - Update commit (9d05e9de) (@vinhnx)
 - Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
@@ -9595,7 +9595,7 @@ All notable changes to vtcode will be documented in this file.
 
 ## 0.82.0 - 2026-02-20
 
-### Features
+### [0.82.0] Features
 
 - Implement Gemini prompt caching with TTL using a new `CacheControl` part and add support for Gemini 3.1 Pro preview models. (8b5b42a1) (@vinhnx)
 - Implement Gemini 3.1 Pro Preview models with updated token limits and system prompt handling. (dc0742c0) (@vinhnx)
@@ -9624,12 +9624,12 @@ All notable changes to vtcode will be documented in this file.
 - add Qwen3 Coder Next model support and update related constants (5a4303e0) (@vinhnx)
 - add MiniMax M2.5 model support across various providers and update related constants (968963f1) (@vinhnx)
 
-### Bug Fixes
+### [0.82.0] Bug Fixes
 
 - correct exec_code policy and update TODO for markdown rendering issue (9b87f88b) (@vinhnx)
 - resolve critical scrolling issue and remove unused slash command handlers (bcb81434) (@vinhnx)
 
-### Refactors
+### [0.82.0] Refactors
 
 - remove unused imports and enhance configuration for credential storage (b79f2bd2) (@vinhnx)
 - clean up code formatting and improve readability across multiple files (b1ae3ad9) (@vinhnx)
@@ -9644,14 +9644,14 @@ All notable changes to vtcode will be documented in this file.
 - reimplement LLM streaming and event handling using AgentSessionController and its event sink mechanism. (95bcd08f) (@vinhnx)
 - remove unused ReasoningSegment import from turn_processing.rs (9f4672d7) (@vinhnx)
 
-### Documentation
+### [0.82.0] Documentation
 
 - Add a guide for adding new models to AGENTS.md. (8648b584) (@vinhnx)
 - update documentation for TECH_DEBT_TRACKER and QUALITY_SCORE; add tests for subagent loading and file operations (fb7c0944) (@vinhnx)
 - update contributing guidelines to reference CONTRIBUTING.md and AGENTS.md. (b4a1ef7a) (@vinhnx)
 - update documentation and improve clarity on execution plans, architectural invariants, and quality scores feat: enhance system instruction generation to replace placeholders with unified tool guidance (27c61ef7) (@vinhnx)
 
-### Chores
+### [0.82.0] Chores
 
 - Release (77422bee) (@vinhnx)
 - Release (14027810) (@vinhnx)
@@ -9664,7 +9664,7 @@ All notable changes to vtcode will be documented in this file.
 - Release (69df0e20) (@vinhnx)
 - Release (10e4f284) (@vinhnx)
 
-### Other
+### [0.82.0] Other
 
 - Update commit (9d05e9de) (@vinhnx)
 - Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
@@ -9692,7 +9692,7 @@ All notable changes to vtcode will be documented in this file.
 
 ## 0.81.3 - 2026-02-20
 
-### Features
+### [0.81.3] Features
 
 - refactor build process to use conditional cross compilation for Linux and Windows (d15bb558) (@vinhnx)
 - add full CI mode to release script for all platforms (326a2c8c) (@vinhnx)
@@ -9715,12 +9715,12 @@ All notable changes to vtcode will be documented in this file.
 - add Qwen3 Coder Next model support and update related constants (5a4303e0) (@vinhnx)
 - add MiniMax M2.5 model support across various providers and update related constants (968963f1) (@vinhnx)
 
-### Bug Fixes
+### [0.81.3] Bug Fixes
 
 - correct exec_code policy and update TODO for markdown rendering issue (9b87f88b) (@vinhnx)
 - resolve critical scrolling issue and remove unused slash command handlers (bcb81434) (@vinhnx)
 
-### Refactors
+### [0.81.3] Refactors
 
 - remove unused imports and enhance configuration for credential storage (b79f2bd2) (@vinhnx)
 - clean up code formatting and improve readability across multiple files (b1ae3ad9) (@vinhnx)
@@ -9735,13 +9735,13 @@ All notable changes to vtcode will be documented in this file.
 - reimplement LLM streaming and event handling using AgentSessionController and its event sink mechanism. (95bcd08f) (@vinhnx)
 - remove unused ReasoningSegment import from turn_processing.rs (9f4672d7) (@vinhnx)
 
-### Documentation
+### [0.81.3] Documentation
 
 - update documentation for TECH_DEBT_TRACKER and QUALITY_SCORE; add tests for subagent loading and file operations (fb7c0944) (@vinhnx)
 - update contributing guidelines to reference CONTRIBUTING.md and AGENTS.md. (b4a1ef7a) (@vinhnx)
 - update documentation and improve clarity on execution plans, architectural invariants, and quality scores feat: enhance system instruction generation to replace placeholders with unified tool guidance (27c61ef7) (@vinhnx)
 
-### Chores
+### [0.81.3] Chores
 
 - Release (14027810) (@vinhnx)
 - Release (6c982a35) (@vinhnx)
@@ -9753,7 +9753,7 @@ All notable changes to vtcode will be documented in this file.
 - Release (69df0e20) (@vinhnx)
 - Release (10e4f284) (@vinhnx)
 
-### Other
+### [0.81.3] Other
 
 - Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
 - Add scripts for documentation link validation and markdown location checks (7290fc5b) (@vinhnx)
@@ -9780,7 +9780,7 @@ All notable changes to vtcode will be documented in this file.
 
 ## 0.81.2 - 2026-02-19
 
-### Features
+### [0.81.2] Features
 
 - add full CI mode to release script for all platforms (326a2c8c) (@vinhnx)
 - add CI workflows for building Linux and Windows binaries; optimize release process (090bebb4) (@vinhnx)
@@ -9802,12 +9802,12 @@ All notable changes to vtcode will be documented in this file.
 - add Qwen3 Coder Next model support and update related constants (5a4303e0) (@vinhnx)
 - add MiniMax M2.5 model support across various providers and update related constants (968963f1) (@vinhnx)
 
-### Bug Fixes
+### [0.81.2] Bug Fixes
 
 - correct exec_code policy and update TODO for markdown rendering issue (9b87f88b) (@vinhnx)
 - resolve critical scrolling issue and remove unused slash command handlers (bcb81434) (@vinhnx)
 
-### Refactors
+### [0.81.2] Refactors
 
 - remove unused imports and enhance configuration for credential storage (b79f2bd2) (@vinhnx)
 - clean up code formatting and improve readability across multiple files (b1ae3ad9) (@vinhnx)
@@ -9822,13 +9822,13 @@ All notable changes to vtcode will be documented in this file.
 - reimplement LLM streaming and event handling using AgentSessionController and its event sink mechanism. (95bcd08f) (@vinhnx)
 - remove unused ReasoningSegment import from turn_processing.rs (9f4672d7) (@vinhnx)
 
-### Documentation
+### [0.81.2] Documentation
 
 - update documentation for TECH_DEBT_TRACKER and QUALITY_SCORE; add tests for subagent loading and file operations (fb7c0944) (@vinhnx)
 - update contributing guidelines to reference CONTRIBUTING.md and AGENTS.md. (b4a1ef7a) (@vinhnx)
 - update documentation and improve clarity on execution plans, architectural invariants, and quality scores feat: enhance system instruction generation to replace placeholders with unified tool guidance (27c61ef7) (@vinhnx)
 
-### Chores
+### [0.81.2] Chores
 
 - Release (6c982a35) (@vinhnx)
 - clean up configuration file by removing unused custom API keys and simplifying array formatting (ad594e41) (@vinhnx)
@@ -9839,7 +9839,7 @@ All notable changes to vtcode will be documented in this file.
 - Release (69df0e20) (@vinhnx)
 - Release (10e4f284) (@vinhnx)
 
-### Other
+### [0.81.2] Other
 
 - Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
 - Add scripts for documentation link validation and markdown location checks (7290fc5b) (@vinhnx)
@@ -9866,7 +9866,7 @@ All notable changes to vtcode will be documented in this file.
 
 ## 0.81.1 - 2026-02-17
 
-### Features
+### [0.81.1] Features
 
 - implement secure storage for custom API keys using OS keyring (3da5a60a) (@vinhnx)
 - add Qwen3.5-397B-A17B model with hybrid architecture and update configuration (26a9a7ee) (@vinhnx)
@@ -9886,12 +9886,12 @@ All notable changes to vtcode will be documented in this file.
 - add Qwen3 Coder Next model support and update related constants (5a4303e0) (@vinhnx)
 - add MiniMax M2.5 model support across various providers and update related constants (968963f1) (@vinhnx)
 
-### Bug Fixes
+### [0.81.1] Bug Fixes
 
 - correct exec_code policy and update TODO for markdown rendering issue (9b87f88b) (@vinhnx)
 - resolve critical scrolling issue and remove unused slash command handlers (bcb81434) (@vinhnx)
 
-### Refactors
+### [0.81.1] Refactors
 
 - remove unused imports and enhance configuration for credential storage (b79f2bd2) (@vinhnx)
 - clean up code formatting and improve readability across multiple files (b1ae3ad9) (@vinhnx)
@@ -9906,13 +9906,13 @@ All notable changes to vtcode will be documented in this file.
 - reimplement LLM streaming and event handling using AgentSessionController and its event sink mechanism. (95bcd08f) (@vinhnx)
 - remove unused ReasoningSegment import from turn_processing.rs (9f4672d7) (@vinhnx)
 
-### Documentation
+### [0.81.1] Documentation
 
 - update documentation for TECH_DEBT_TRACKER and QUALITY_SCORE; add tests for subagent loading and file operations (fb7c0944) (@vinhnx)
 - update contributing guidelines to reference CONTRIBUTING.md and AGENTS.md. (b4a1ef7a) (@vinhnx)
 - update documentation and improve clarity on execution plans, architectural invariants, and quality scores feat: enhance system instruction generation to replace placeholders with unified tool guidance (27c61ef7) (@vinhnx)
 
-### Chores
+### [0.81.1] Chores
 
 - clean up configuration file by removing unused custom API keys and simplifying array formatting (ad594e41) (@vinhnx)
 - Release (4bd94bdb) (@vinhnx)
@@ -9922,7 +9922,7 @@ All notable changes to vtcode will be documented in this file.
 - Release (69df0e20) (@vinhnx)
 - Release (10e4f284) (@vinhnx)
 
-### Other
+### [0.81.1] Other
 
 - Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
 - Add scripts for documentation link validation and markdown location checks (7290fc5b) (@vinhnx)
@@ -9949,7 +9949,7 @@ All notable changes to vtcode will be documented in this file.
 
 ## 0.81.0 - 2026-02-16
 
-### Features
+### [0.81.0] Features
 
 - add Qwen3.5-397B-A17B model with hybrid architecture and update configuration (26a9a7ee) (@vinhnx)
 - implement mouse scroll handling for improved navigation (24a2d640) (@vinhnx)
@@ -9968,12 +9968,12 @@ All notable changes to vtcode will be documented in this file.
 - add Qwen3 Coder Next model support and update related constants (5a4303e0) (@vinhnx)
 - add MiniMax M2.5 model support across various providers and update related constants (968963f1) (@vinhnx)
 
-### Bug Fixes
+### [0.81.0] Bug Fixes
 
 - correct exec_code policy and update TODO for markdown rendering issue (9b87f88b) (@vinhnx)
 - resolve critical scrolling issue and remove unused slash command handlers (bcb81434) (@vinhnx)
 
-### Refactors
+### [0.81.0] Refactors
 
 - remove unused imports and enhance configuration for credential storage (b79f2bd2) (@vinhnx)
 - clean up code formatting and improve readability across multiple files (b1ae3ad9) (@vinhnx)
@@ -9988,13 +9988,13 @@ All notable changes to vtcode will be documented in this file.
 - reimplement LLM streaming and event handling using AgentSessionController and its event sink mechanism. (95bcd08f) (@vinhnx)
 - remove unused ReasoningSegment import from turn_processing.rs (9f4672d7) (@vinhnx)
 
-### Documentation
+### [0.81.0] Documentation
 
 - update documentation for TECH_DEBT_TRACKER and QUALITY_SCORE; add tests for subagent loading and file operations (fb7c0944) (@vinhnx)
 - update contributing guidelines to reference CONTRIBUTING.md and AGENTS.md. (b4a1ef7a) (@vinhnx)
 - update documentation and improve clarity on execution plans, architectural invariants, and quality scores feat: enhance system instruction generation to replace placeholders with unified tool guidance (27c61ef7) (@vinhnx)
 
-### Chores
+### [0.81.0] Chores
 
 - Release (800c7069) (@vinhnx)
 - Release (a08f765d) (@vinhnx)
@@ -10002,7 +10002,7 @@ All notable changes to vtcode will be documented in this file.
 - Release (69df0e20) (@vinhnx)
 - Release (10e4f284) (@vinhnx)
 
-### Other
+### [0.81.0] Other
 
 - Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
 - Add scripts for documentation link validation and markdown location checks (7290fc5b) (@vinhnx)
@@ -10029,7 +10029,7 @@ All notable changes to vtcode will be documented in this file.
 
 ## 0.80.1 - 2026-02-16
 
-### Features
+### [0.80.1] Features
 
 - implement mouse scroll handling for improved navigation (24a2d640) (@vinhnx)
 - add timeout handling for turn metadata collection (1b1f91d4) (@vinhnx)
@@ -10047,12 +10047,12 @@ All notable changes to vtcode will be documented in this file.
 - add Qwen3 Coder Next model support and update related constants (5a4303e0) (@vinhnx)
 - add MiniMax M2.5 model support across various providers and update related constants (968963f1) (@vinhnx)
 
-### Bug Fixes
+### [0.80.1] Bug Fixes
 
 - correct exec_code policy and update TODO for markdown rendering issue (9b87f88b) (@vinhnx)
 - resolve critical scrolling issue and remove unused slash command handlers (bcb81434) (@vinhnx)
 
-### Refactors
+### [0.80.1] Refactors
 
 - remove unused imports and enhance configuration for credential storage (b79f2bd2) (@vinhnx)
 - clean up code formatting and improve readability across multiple files (b1ae3ad9) (@vinhnx)
@@ -10067,20 +10067,20 @@ All notable changes to vtcode will be documented in this file.
 - reimplement LLM streaming and event handling using AgentSessionController and its event sink mechanism. (95bcd08f) (@vinhnx)
 - remove unused ReasoningSegment import from turn_processing.rs (9f4672d7) (@vinhnx)
 
-### Documentation
+### [0.80.1] Documentation
 
 - update documentation for TECH_DEBT_TRACKER and QUALITY_SCORE; add tests for subagent loading and file operations (fb7c0944) (@vinhnx)
 - update contributing guidelines to reference CONTRIBUTING.md and AGENTS.md. (b4a1ef7a) (@vinhnx)
 - update documentation and improve clarity on execution plans, architectural invariants, and quality scores feat: enhance system instruction generation to replace placeholders with unified tool guidance (27c61ef7) (@vinhnx)
 
-### Chores
+### [0.80.1] Chores
 
 - Release (a08f765d) (@vinhnx)
 - Release (accdcc25) (@vinhnx)
 - Release (69df0e20) (@vinhnx)
 - Release (10e4f284) (@vinhnx)
 
-### Other
+### [0.80.1] Other
 
 - Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
 - Add scripts for documentation link validation and markdown location checks (7290fc5b) (@vinhnx)
@@ -10107,7 +10107,7 @@ All notable changes to vtcode will be documented in this file.
 
 ## 0.80.0 - 2026-02-16
 
-### Features
+### [0.80.0] Features
 
 - add Kimi K2.5 model support across OpenRouter, Ollama, and HuggingFace. (fddc4887) (@vinhnx)
 - introduce agent legibility guidelines and refine steering message variants for clarity and structured output. (52b13dd1) (@vinhnx)
@@ -10121,7 +10121,7 @@ All notable changes to vtcode will be documented in this file.
 - add Qwen3 Coder Next model support and update related constants (5a4303e0) (@vinhnx)
 - add MiniMax M2.5 model support across various providers and update related constants (968963f1) (@vinhnx)
 
-### Refactors
+### [0.80.0] Refactors
 
 - consolidate duplicated logic across workspace crates into shared utility functions (a9df41fd) (@vinhnx)
 - replace manual file operations with shared utility functions for consistency (15c45f9a) (@vinhnx)
@@ -10132,18 +10132,18 @@ All notable changes to vtcode will be documented in this file.
 - reimplement LLM streaming and event handling using AgentSessionController and its event sink mechanism. (95bcd08f) (@vinhnx)
 - remove unused ReasoningSegment import from turn_processing.rs (9f4672d7) (@vinhnx)
 
-### Documentation
+### [0.80.0] Documentation
 
 - update contributing guidelines to reference CONTRIBUTING.md and AGENTS.md. (b4a1ef7a) (@vinhnx)
 - update documentation and improve clarity on execution plans, architectural invariants, and quality scores feat: enhance system instruction generation to replace placeholders with unified tool guidance (27c61ef7) (@vinhnx)
 
-### Chores
+### [0.80.0] Chores
 
 - Release (accdcc25) (@vinhnx)
 - Release (69df0e20) (@vinhnx)
 - Release (10e4f284) (@vinhnx)
 
-### Other
+### [0.80.0] Other
 
 - Update default model in vtcode.toml to minimax-m2:cloud; format code for consistency (e024a48d) (@vinhnx)
 - Add additional_agent_dirs configuration option to vtcode.toml (0f6d1747) (@vinhnx)
@@ -10168,53 +10168,53 @@ All notable changes to vtcode will be documented in this file.
 
 ## 0.79.4 - 2026-02-14
 
-### Features
+### [0.79.4] Features
 
 - implement planning workflow toggle and strip proposed plan blocks in rendering (79f0327d) (@vinhnx)
 - add skill bundle import/export functionality with zip support (dea5b5b7) (@vinhnx)
 - add Qwen3 Coder Next model support and update related constants (5a4303e0) (@vinhnx)
 - add MiniMax M2.5 model support across various providers and update related constants (968963f1) (@vinhnx)
 
-### Documentation
+### [0.79.4] Documentation
 
 - update documentation and improve clarity on execution plans, architectural invariants, and quality scores feat: enhance system instruction generation to replace placeholders with unified tool guidance (27c61ef7) (@vinhnx)
 
-### Chores
+### [0.79.4] Chores
 
 - Release (69df0e20) (@vinhnx)
 - Release (10e4f284) (@vinhnx)
 
-### Other
+### [0.79.4] Other
 
 - Add support for inline skill bundles and network policies in skills (ddb9d280) (@vinhnx)
 - Add architectural invariants, core beliefs, execution plans, quality score, and tech debt tracker documentation (80cf6d68) (@vinhnx)
 
 ## 0.79.3 - 2026-02-13
 
-### Features
+### [0.79.3] Features
 
 - add Qwen3 Coder Next model support and update related constants (5a4303e0) (@vinhnx)
 - add MiniMax M2.5 model support across various providers and update related constants (968963f1) (@vinhnx)
 
-### Chores
+### [0.79.3] Chores
 
 - Release (10e4f284) (@vinhnx)
 
 ## 0.79.2 - 2026-02-13
 
-### Features
+### [0.79.2] Features
 
 - add MiniMax M2.5 model support across various providers and update related constants (968963f1) (@vinhnx)
 
-## v0.79.1 - 2026-02-13
+## 0.79.1 - 2026-02-13
 
-### Features
+### [0.79.1] Features
 
 - add support for MoonshotAI Kimi K2 models in ModelId (90e18ff2) (@vinhnx)
 - complete model migration, fix test failures, and enhance UI stability (32f252ec) (@vinhnx)
 - add pty_stream module and integrate it into tool pipeline execution (17b0c9d6) (@vinhnx)
 
-### Refactors
+### [0.79.1] Refactors
 
 - increase spooling thresholds and improve output handling for large tool outputs (dbae38d2) (@vinhnx)
 - enhance file output handling and add no_spool flag for read operations (a3c134c4) (@vinhnx)
@@ -10239,15 +10239,15 @@ All notable changes to vtcode will be documented in this file.
 - optimize line truncation logic in summarizers (4996c6ad) (@vinhnx)
 - consolidate path resolution logic and remove redundant functions (d0a10bad) (@vinhnx)
 
-### Tests
+### [0.79.1] Tests
 
 - skip TUI-dependent tests in non-interactive environments (4559d31e) (@vinhnx)
 
-### Chores
+### [0.79.1] Chores
 
 - Release (4000421c) (@vinhnx)
 
-### Other
+### [0.79.1] Other
 
 - Update models and configurations for Gemini 3 and GLM-5; adjust tool capabilities and user confirmations (7f05b778) (@vinhnx)
 - Add GLM-5 model support and remove deprecated GLM-4.5/4.6 models (29d0992a) (@vinhnx)
@@ -10257,14 +10257,14 @@ All notable changes to vtcode will be documented in this file.
 - Add safety validation and transition functions for planning workflow handling (9db46b25) (@vinhnx)
 - Refactor optimizer and tool result handling; enhance turn duration recording; update validation and state management; optimize loop detection; improve LLM request handling; remove fallback chains module; streamline tool execution checks; fix TUI modal search handling; adjust integration tests for tool usage. (9df107c3) (@vinhnx)
 
-## v0.79.0 - 2026-02-13
+## 0.79.0 - 2026-02-13
 
-### Features
+### [0.79.0] Features
 
 - complete model migration, fix test failures, and enhance UI stability (32f252ec) (@vinhnx)
 - add pty_stream module and integrate it into tool pipeline execution (17b0c9d6) (@vinhnx)
 
-### Refactors
+### [0.79.0] Refactors
 
 - increase spooling thresholds and improve output handling for large tool outputs (dbae38d2) (@vinhnx)
 - enhance file output handling and add no_spool flag for read operations (a3c134c4) (@vinhnx)
@@ -10289,11 +10289,11 @@ All notable changes to vtcode will be documented in this file.
 - optimize line truncation logic in summarizers (4996c6ad) (@vinhnx)
 - consolidate path resolution logic and remove redundant functions (d0a10bad) (@vinhnx)
 
-### Tests
+### [0.79.0] Tests
 
 - skip TUI-dependent tests in non-interactive environments (4559d31e) (@vinhnx)
 
-### Other
+### [0.79.0] Other
 
 - Update models and configurations for Gemini 3 and GLM-5; adjust tool capabilities and user confirmations (7f05b778) (@vinhnx)
 - Add GLM-5 model support and remove deprecated GLM-4.5/4.6 models (29d0992a) (@vinhnx)
@@ -10303,48 +10303,48 @@ All notable changes to vtcode will be documented in this file.
 - Add safety validation and transition functions for planning workflow handling (9db46b25) (@vinhnx)
 - Refactor optimizer and tool result handling; enhance turn duration recording; update validation and state management; optimize loop detection; improve LLM request handling; remove fallback chains module; streamline tool execution checks; fix TUI modal search handling; adjust integration tests for tool usage. (9df107c3) (@vinhnx)
 
-## v0.78.8 - 2026-02-09
+## 0.78.8 - 2026-02-09
 
-### Refactors
+### [0.78.8] Refactors
 
 - streamline release process and remove deprecated crate waiting logic (4436c3cc) (@vinhnx)
 
-## v0.78.7 - 2026-02-09
+## 0.78.7 - 2026-02-09
 
 *No significant changes*
 
-## v0.78.6 - 2026-02-09
+## 0.78.6 - 2026-02-09
 
-### Features
+### [0.78.6] Features
 
 - add wait_for_crates_io function to ensure crate availability on crates.io (8b4ac577) (@vinhnx)
 
-## v0.78.5 - 2026-02-09
+## 0.78.5 - 2026-02-09
 
-### Other
+### [0.78.5] Other
 
 - Remove outdated optimization notes and focus on DRY opportunities in the codebase (c9ac418b) (@vinhnx)
 - Refactor to use rustc_hash::FxHashMap for improved performance and memory efficiency; update related structures and configurations. (3b166144) (@vinhnx)
 
-## v0.78.4 - 2026-02-08
+## 0.78.4 - 2026-02-08
 
 *No significant changes*
 
-## v0.78.3 - 2026-02-08
+## 0.78.3 - 2026-02-08
 
-### Features
+### [0.78.3] Features
 
 - enhance crate publishing process with reliable version parsing and no-verify option (4fb5612c) (@vinhnx)
 - implement delete_word_forward method in Session (5936d8bc) (@vinhnx)
 - add delete_word_forward method to InputManager and update LayoutMode footer behaviour (29e2dd09) (@vinhnx)
 
-### Other
+### [0.78.3] Other
 
 - Revert "feat: integrate `tui_input` crate for enhanced input management and modal search functionality" (b6e27465) (@vinhnx)
 
-## v0.78.2 - 2026-02-08
+## 0.78.2 - 2026-02-08
 
-### Features
+### [0.78.2] Features
 
 - Display a scroll indicator in the TUI footer and adjust status height calculation based on layout mode. (6c5efc03) (@vinhnx)
 - Introduce compile-time optimization guide and profiling script, and add general performance principles to TODO. (f1257ba9) (@vinhnx)
@@ -10355,44 +10355,44 @@ All notable changes to vtcode will be documented in this file.
 - implement command blocking during running tasks and update configuration for LLM provider (da55d7cd) (@vinhnx)
 - enhance Planning workflow with reminders and execution prompts (ba69b139) (@vinhnx)
 
-### Performance
+### [0.78.2] Performance
 
 - Cache session header lines and queued input previews to optimize TUI rendering performance and remove outdated content from TODO.md. (cf87bc80) (@vinhnx)
 
-### Refactors
+### [0.78.2] Refactors
 
 - Improve string truncation logic to ensure character boundaries are respected (83ebed35) (@vinhnx)
 - Optimize I/O operations with buffered writes and simplify `ToolCallRecord`'s `tool_name` ownership. (a66a3a9d) (@vinhnx)
 - remove scroll indicator from footer widget and associated UI logic. (4f060bed) (@vinhnx)
 
-### Other
+### [0.78.2] Other
 
 - Immprove (e3fc8d93) (@vinhnx)
 - Add team context and teammate management features (b322e6cd) (@vinhnx)
 
-## v0.78.1 - 2026-02-07
+## 0.78.1 - 2026-02-07
 
-### Features
+### [0.78.1] Features
 
 - enhance input handling with queue overlay and update input placeholders (8394895f) (@vinhnx)
 - implement queue editing functionality and update input handling (6c0d373b) (@vinhnx)
 - add support for inline data URLs and images in message content (90254442) (@vinhnx)
 
-### Bug Fixes
+### [0.78.1] Bug Fixes
 
 - add finish_planning tool to planner agent and update tests (63a6835e) (@vinhnx)
 
-### Other
+### [0.78.1] Other
 
 - Implement collapsible pasted message handling and improve image path parsing (5efac36e) (@vinhnx)
 
-## v0.78.0 - 2026-02-06
+## 0.78.0 - 2026-02-06
 
-### Documentation
+### [0.78.0] Documentation
 
 - add task summaries feature to agent teams and enhance subagent matching logic (5fa919c1) (@vinhnx)
 
-### Other
+### [0.78.0] Other
 
 - Refactor CLI argument documentation for clarity and consistency (087be239) (@vinhnx)
 - Enhance user input tools to restrict usage to Planning workflow only (93675177) (@vinhnx)
@@ -10401,15 +10401,15 @@ All notable changes to vtcode will be documented in this file.
 - Update script (35c8d01f) (@vinhnx)
 - Remove code repetition and special casing of local providers (ec4b2099) (@gzsombor)
 
-## v0.77.1 - 2026-02-06
+## 0.77.1 - 2026-02-06
 
-### Chores
+### [0.77.1] Chores
 
 - Release (210e6503) (@vinhnx)
 - update tool policy and improve tool registration descriptions (09e87101) (@vinhnx)
 - update config - enable list_skills tool and adjust settings (401cc2f9) (@vinhnx)
 
-### Other
+### [0.77.1] Other
 
 - Update commit (717601ea) (@vinhnx)
 - Add jq dependency check and improve cargo release process (5c9a2c82) (@vinhnx)
@@ -10425,14 +10425,14 @@ All notable changes to vtcode will be documented in this file.
 - Refactor test assertion for compact_title method in MCP event (4f44b68a) (@vinhnx)
 - Implement command caching and gatekeeper policy; enhance file reading with async logging and performance tracking (e464ee31) (@vinhnx)
 
-## v0.77.0 - 2026-02-06
+## 0.77.0 - 2026-02-06
 
-### Chores
+### [0.77.0] Chores
 
 - update tool policy and improve tool registration descriptions (09e87101) (@vinhnx)
 - update config - enable list_skills tool and adjust settings (401cc2f9) (@vinhnx)
 
-### Other
+### [0.77.0] Other
 
 - Add support for effort parameter in Anthropic API and related validation (9519a720) (@vinhnx)
 - Add adaptive thinking support for Claude Opus 4.6 model and update related configurations (19515dee) (@vinhnx)
@@ -10446,22 +10446,22 @@ All notable changes to vtcode will be documented in this file.
 - Refactor test assertion for compact_title method in MCP event (4f44b68a) (@vinhnx)
 - Implement command caching and gatekeeper policy; enhance file reading with async logging and performance tracking (e464ee31) (@vinhnx)
 
-## v0.76.2 - 2026-02-05
+## 0.76.2 - 2026-02-05
 
-### Other
+### [0.76.2] Other
 
 - Improve CI CD (79589790) (@vinhnx)
 - Refactor MCP integration and update dependencies (b31b5407) (@vinhnx)
 
-## v0.76.1 - 2026-02-05
+## 0.76.1 - 2026-02-05
 
-### Other
+### [0.76.1] Other
 
 - Refactor MCP integration and update dependencies (b31b5407) (@vinhnx)
 
-## v0.76.0 - 2026-02-05
+## 0.76.0 - 2026-02-05
 
-### Features
+### [0.76.0] Features
 
 - add turn metadata support for LLM requests with git context (46a57d6d) (@vinhnx)
 - enhance command safety checks for git subcommands and improve branch operation validation (ca9833f4) (@vinhnx)
@@ -10475,16 +10475,16 @@ All notable changes to vtcode will be documented in this file.
 - add support for inline streaming and recent spooled output retrieval (eee866c7) (@vinhnx)
 - enhance diff view with changed lines count summary and line numbers (808464e9) (@vinhnx)
 
-### Refactors
+### [0.76.0] Refactors
 
 - simplify workspace directory creation in first run setup (6a35774d) (@vinhnx)
 
-### Other
+### [0.76.0] Other
 
 - Implement no_spool functionality for tool output and enhance cursor behaviour during scrolling and shimmer states (477209fd) (@vinhnx)
 - Refactor diff handling and rendering for improved clarity and summary display (f8dbf9e1) (@vinhnx)
 
-## v0.75.2 - 2026-02-04
+## 0.75.2 - 2026-02-04
 
 - Update TODO (fb065df0) (@vinhnx)
 - feat: add Qwen3 Coder Next model with enhanced reasoning capabilities (26a65840) (@vinhnx)
@@ -10501,24 +10501,24 @@ All notable changes to vtcode will be documented in this file.
 - chore: update homebrew formula to v0.75.1 (b52a37dd)
 
 
-## v0.75.1 - 2026-02-03
+## 0.75.1 - 2026-02-03
 
 - refactor: reorganize release steps and update Homebrew process (e3d99f5a)
 
 
-## v0.75.0 - 2026-02-03
+## 0.75.0 - 2026-02-03
 
 - fix: resolve tool call ID mapping issue and update JSON handling in messages (9af9d34b) (@vinhnx)
 - chore: update homebrew formula to v0.74.17 (2af3f3ff)
 
 
-## v0.74.17 - 2026-02-03
+## 0.74.17 - 2026-02-03
 
 - feat: add Step 3.5 Flash model and update configuration for OpenRouter (c50770ab) (@vinhnx)
 - chore: update homebrew formula to v0.74.16 (a92e5a23)
 
 
-## v0.74.16 - 2026-02-03
+## 0.74.16 - 2026-02-03
 
 - Improve release (ff4ae644) (@vinhnx)
 - chore(release): bump version to 0.74.15 [skip ci] (6a88018d) (@vinhnx)
@@ -10527,13 +10527,13 @@ All notable changes to vtcode will be documented in this file.
 - chore: update homebrew formula to v0.74.14 (03234509)
 
 
-## v0.74.15 - 2026-02-03
+## 0.74.15 - 2026-02-03
 
 - Revert "refactor: enhance base URL resolution and improve JSON handling in request builder" (4cb8f2d9) (@vinhnx)
 - chore: update homebrew formula to v0.74.14 (03234509)
 
 
-## v0.74.14 - 2026-02-02
+## 0.74.14 - 2026-02-02
 
 - chore(release): bump version to 0.74.13 [skip ci] (e49f412f) (@vinhnx)
 - docs: update changelog for v0.74.13 [skip ci] (d64665d0) (@vtcode-release-bot)
@@ -10546,7 +10546,7 @@ All notable changes to vtcode will be documented in this file.
 - chore: update homebrew formula to v0.74.12 (0e743b32)
 
 
-## v0.74.13 - 2026-02-02
+## 0.74.13 - 2026-02-02
 
 - Update commit (171a2aa6) (@vinhnx)
 - Refactor agent guidelines, improve spacing in TODO, and enhance model picker logic; update Anthropic provider tests and configuration (0dece6ac) (@vinhnx)
@@ -10557,7 +10557,7 @@ All notable changes to vtcode will be documented in this file.
 - chore: update homebrew formula to v0.74.12 (0e743b32)
 
 
-## v0.74.12 - 2026-02-02
+## 0.74.12 - 2026-02-02
 
 - chore: update vtcode.gif resource (68cdf67b) (@vinhnx)
 - docs: add compliance testing section and request object for Open Responses (ee2bcf14) (@vinhnx)
@@ -10579,7 +10579,7 @@ All notable changes to vtcode will be documented in this file.
 - chore: update homebrew formula to v0.74.10 (c08a491c)
 
 
-## v0.74.11 - 2026-02-02
+## 0.74.11 - 2026-02-02
 
 - fix: update spinner finish behaviour for cancellation handling (36d1f577) (@vinhnx)
 - refactor: remove unused set_defer_rendering method from StreamingReasoningState (756c86ba) (@vinhnx)
@@ -10596,52 +10596,32 @@ All notable changes to vtcode will be documented in this file.
 - chore: update homebrew formula to v0.74.10 (c08a491c)
 
 
-## v0.74.10 - 2026-02-02
+## 0.74.10 - 2026-02-02
 
 - Update commit (cbde5c0b)
 - chore: update homebrew formula to v0.74.9 (6b604f22)
 
 
-## v0.74.9 - 2026-02-02
+## 0.74.9 - 2026-02-02 (historical record 1 of 2)
 
 
-### Documentation
+### [0.74.9/r1] Documentation
 
 
 
-##### [View changes on GitHub](https://github.com/vinhnx/vtcode/compare/v0.74.8...v0.74.9)
+#### [0.74.9/r1] [View changes on GitHub](https://github.com/vinhnx/vtcode/compare/v0.74.8...v0.74.9)
 
-## v0.74.9 - 2026-02-02
+## 0.74.9 - 2026-02-02 (historical record 2 of 2)
 
 
 *No significant changes*
 
-##### [View changes on GitHub](https://github.com/vinhnx/vtcode/compare/v0.74.8...v0.74.9)
+### [0.74.9/r2] [View changes on GitHub](https://github.com/vinhnx/vtcode/compare/v0.74.8...v0.74.9)
 
-## v0.74.8 - 2026-02-02
-
-
-### Refactors
+## 0.74.8 - 2026-02-02
 
 
-
-
-- **commons**:
-
-- **llm**:
-
-
-
-### Documentation
-
-
-
-##### [View changes on GitHub](https://github.com/vinhnx/vtcode/compare/v0.74.7...v0.74.8)
-
-## v - 2026-02-02
-
-
-### Refactors
+### [0.74.8] Refactors
 
 
 
@@ -10652,26 +10632,46 @@ All notable changes to vtcode will be documented in this file.
 
 
 
-##### [View changes on GitHub](https://github.com/vinhnx/vtcode/compare/v0.74.7...v)
+### [0.74.8] Documentation
 
-## v0.74.7 - 2026-02-01
+
+
+#### [0.74.8] [View changes on GitHub](https://github.com/vinhnx/vtcode/compare/v0.74.7...v0.74.8)
+
+## [unidentified-release-2026-02-02] v - 2026-02-02
+
+
+### [unidentified-release-2026-02-02] Refactors
+
+
+
+
+- **commons**:
+
+- **llm**:
+
+
+
+#### [unidentified-release-2026-02-02] [View changes on GitHub](https://github.com/vinhnx/vtcode/compare/v0.74.7...v)
+
+## 0.74.7 - 2026-02-01
 
 * Update commit (3edfdb95)
 * fix: rename directory with colon to be Windows-compatible (f533addc)
 * chore: update homebrew formula to v0.74.6 (dad20e9c)
 
-## v0.74.6 - 2026-02-01
+## 0.74.6 - 2026-02-01
 
 * Migrate LM Studio 0.4 REST API (4d12e993)
 * Update release (bb930a4e)
 * chore: update homebrew formula to v0.74.5 (dd7bdd0a)
 
-## v0.74.5 - 2026-02-01
+## 0.74.5 - 2026-02-01
 
 * Update CI (c9cf0a74)
 * chore: update homebrew formula to v0.74.4 (1dbb0e27)
 
-## v0.74.4 - 2026-02-01
+## 0.74.4 - 2026-02-01
 
 * Fix: Skip hanging GitHub CLI refresh in build script (c77bb4aa)
 * Fix: Skip hanging GitHub CLI refresh in release script (5bf61747)
@@ -10699,7 +10699,7 @@ All notable changes to vtcode will be documented in this file.
 * Fix badge links in README.md (e098b997)
 * chore: update homebrew formula to v0.74.2 (744e7902)
 
-## v0.74.3 - 2026-02-01
+## 0.74.3 - 2026-02-01
 
 * fix: skip gh auth checks during dry-run execution (8f4f8dae)
 * automation: enhance release.sh with direct GitHub binary upload via gh CLI (9168134d)
@@ -10721,7 +10721,7 @@ All notable changes to vtcode will be documented in this file.
 * Fix badge links in README.md (e098b997)
 * chore: update homebrew formula to v0.74.2 (744e7902)
 
-## v0.74.2 - 2026-01-31
+## 0.74.2 - 2026-01-31 (historical record 1 of 2)
 
 * feat: add ACP authentication methods and configuration support (e51a5658)
 * docs: update changelog for v0.74.2 [skip ci] (6d29ab5b)
@@ -10734,7 +10734,7 @@ All notable changes to vtcode will be documented in this file.
 * Update README.md to fix badge links (7b44cfa4)
 * chore: update homebrew formula to v0.74.1 (73b0bf06)
 
-## v0.74.2 - 2026-01-31
+## 0.74.2 - 2026-01-31 (historical record 2 of 2)
 
 * refactor: add dead code allowance for search_position and start_search method (39dc545b)
 * Implement OpenRouter OAuth PKCE authentication flow and related utilities (c338e631)
@@ -10745,7 +10745,7 @@ All notable changes to vtcode will be documented in this file.
 * Update README.md to fix badge links (7b44cfa4)
 * chore: update homebrew formula to v0.74.1 (73b0bf06)
 
-## v0.74.1 - 2026-01-31
+## 0.74.1 - 2026-01-31
 
 * refactor: update terminal theme to ciapre-dark (157b61cd)
 * refactor: improve formatting of model pull commands in Ollama provider documentation (252114fc)
@@ -10758,7 +10758,7 @@ All notable changes to vtcode will be documented in this file.
 * refactor: improve malloc warning suppression and enhance spinner behaviour in UI interactions (241c53fe)
 * refactor: enhance local build process for macOS and Linux in release scripts (98cb01fb)
 
-## v0.74.0 - 2026-01-31
+## 0.74.0 - 2026-01-31
 
 * Fix permission (e2511d7e)
 * docs: update AGENTS.md for improved clarity and formatting (775a0db7)
@@ -10789,7 +10789,7 @@ All notable changes to vtcode will be documented in this file.
 * fix: update default theme, enable todo planning, refine tool output and display settings, and adjust tool policies for streamlined configuration (3308c57e)
 * Update commit (db294299)
 
-## v0.73.6 - 2026-01-30
+## 0.73.6 - 2026-01-30
 
 * fix: update default theme, enable todo planning, refine tool output and display settings, and adjust tool policies for streamlined configuration (dcc7043e)
 * fix: add persistence for editing and autonomous execution settings, and align theme with active configuration (ecacbc19)
@@ -10806,12 +10806,12 @@ All notable changes to vtcode will be documented in this file.
 * fix: streamline platform-specific binary builds, refactor `ask` command implementation, and enhance local release workflow (d3bca9c2)
 * chore: update homebrew formula to v0.73.5 (fd22abb9)
 
-## v0.73.5 - 2026-01-29
+## 0.73.5 - 2026-01-29
 
 * fix: improve release fetching with fallback for older versions, enhance platform-specific binary handling (5d1344a8)
 * Improve deploy release (6b931dd7)
 
-## v0.73.4 - 2026-01-29
+## 0.73.4 - 2026-01-29
 
 * Fix vtcode-file-search build error (8437a13d)
 * chore(release): bump version to 0.73.3 [skip ci] (48dd4c9b)
@@ -10820,7 +10820,7 @@ All notable changes to vtcode will be documented in this file.
 * chore: switch LLM provider to Ollama and update related configs, fix minor lint issues in release script (dc2e637d)
 * chore: update homebrew formula to v0.73.2 (bf537280)
 
-## v0.73.3 - 2026-01-29
+## 0.73.3 - 2026-01-29
 
 * fix: streamline output handling in ask command and improve code extraction logic (8de09e16)
 * chore: switch LLM provider to Ollama and update related configs, fix minor lint issues in release script (dc2e637d)
@@ -10830,31 +10830,31 @@ All notable changes to vtcode will be documented in this file.
 * fix: update GitHub release title format and improve changelog generation (97571aa2)
 * chore: update homebrew formula to v0.73.1 (4ca75038)
 
-## [Unreleased] - 2025-12-14
-# [Version 0.73.1] - 2026-01-28
+## [0.73.3] [Unreleased] - 2025-12-14
+## 0.73.1 - 2026-01-28
 
 
-### Chores
+### [0.73.1] Chores
     - chore: update homebrew formula to v0.73.0 and fix update script
-# [Version 0.73.0] - 2026-01-28
+## 0.73.0 - 2026-01-28 (historical record 1 of 2)
 
 
-### Features
+### [0.73.0/r1] Features
     - feat: add GitHub Actions release workflow and update release script for better error handling
 
 
-### Chores
+### [0.73.0/r1] Chores
     - chore: enhance GitHub CLI authentication checks in release scripts
-# [Version 0.72.4] - 2026-01-28
+## 0.72.4 - 2026-01-28
 
 
-### Documentation
+### [0.72.4] Documentation
     - docs: update changelog for v0.72.3 [skip ci]
     - docs: update changelog for v0.73.0 [skip ci]
     - docs: centre align VT Code GIF in README
 
 
-### Chores
+### [0.72.4] Chores
     - chore: fix README paths, benchmark inclusion, and release config
     - chore(release): bump version to {{version}}
     - chore: fix Cross.toml warnings and sync vtcode.toml version
@@ -10862,7 +10862,7 @@ All notable changes to vtcode will be documented in this file.
     - chore: update npm package.json to v0.72.2 version =  [skip ci]
 
 
-### Other Changes
+### [0.72.4] Other Changes
     - Fix docker build
     - Refactor Cross.toml to consolidate Docker configuration for cross-compilation
     - Enhance Open Responses specification conformance and update documentation
@@ -10871,21 +10871,21 @@ All notable changes to vtcode will be documented in this file.
     - Refactor code structure for improved readability and maintainability
     - Implement Open Responses integration and configuration options
     - Implement Open Responses specification with streaming events, output items, and response handling
-# [Version 0.72.3] - 2026-01-28
+## 0.72.3 - 2026-01-28
 
 
-### Documentation
+### [0.72.3] Documentation
     - docs: update changelog for v0.73.0 [skip ci]
     - docs: centre align VT Code GIF in README
 
 
-### Chores
+### [0.72.3] Chores
     - chore: fix Cross.toml warnings and sync vtcode.toml version
     - chore: update Cargo.toml to exclude resources directory and add VT Code GIF to README
     - chore: update npm package.json to v0.72.2 version =  [skip ci]
 
 
-### Other Changes
+### [0.72.3] Other Changes
     - Refactor Cross.toml to consolidate Docker configuration for cross-compilation
     - Enhance Open Responses specification conformance and update documentation
     - Add technical whitepapers on security architecture and modular design principles
@@ -10893,19 +10893,19 @@ All notable changes to vtcode will be documented in this file.
     - Refactor code structure for improved readability and maintainability
     - Implement Open Responses integration and configuration options
     - Implement Open Responses specification with streaming events, output items, and response handling
-# [Version 0.73.0] - 2026-01-28
+## 0.73.0 - 2026-01-28 (historical record 2 of 2)
 
 
-### Documentation
+### [0.73.0/r2] Documentation
     - docs: centre align VT Code GIF in README
 
 
-### Chores
+### [0.73.0/r2] Chores
     - chore: update Cargo.toml to exclude resources directory and add VT Code GIF to README
     - chore: update npm package.json to v0.72.2 version =  [skip ci]
 
 
-### Other Changes
+### [0.73.0/r2] Other Changes
     - Refactor Cross.toml to consolidate Docker configuration for cross-compilation
     - Enhance Open Responses specification conformance and update documentation
     - Add technical whitepapers on security architecture and modular design principles
@@ -10913,21 +10913,21 @@ All notable changes to vtcode will be documented in this file.
     - Refactor code structure for improved readability and maintainability
     - Implement Open Responses integration and configuration options
     - Implement Open Responses specification with streaming events, output items, and response handling
-# [Version 0.72.2] - 2026-01-28
+## 0.72.2 - 2026-01-28
 
 
-### Documentation
+### [0.72.2] Documentation
     - docs: update changelog for v0.72.1 [skip ci]
 
 
-### Chores
+### [0.72.2] Chores
     - chore: update npm package.json to v0.72.1 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.72.0 version =  [skip ci]
-# [Version 0.72.1] - 2026-01-28
+## 0.72.1 - 2026-01-28
 
 
-### Refactors
+### [0.72.1] Refactors
     - refactor: enhance rendering logic for consistent tool output styling, simplify message spans, and update spinner handling for better readability
     - refactor: remove DESIGN_SYSTEM.md, update default model to minimax-m2.5:cloud, and improve TUI spinner handling with `is_spinner_frame` function
     - refactor: update authorship information across multiple crates, enhance TUI performance with increased tick rates, and integrate new tui-shimmer dependency for improved UI effects
@@ -10944,22 +10944,22 @@ All notable changes to vtcode will be documented in this file.
     - refactor: switch default provider to Ollama, update model and API key configurations, and apply "if-let" refactoring for cleaner conditionals
 
 
-### Documentation
+### [0.72.1] Documentation
     - docs: update changelog for v0.72.0 [skip ci]
 
 
-### Chores
+### [0.72.1] Chores
     - chore: update npm package.json to v0.72.0 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.71.7 version =  [skip ci]
-# [Version 0.72.0] - 2026-01-28
+## 0.72.0 - 2026-01-28
 
 
-### Features
+### [0.72.0] Features
     - feat: add new logo assets and update existing images for branding consistency
 
 
-### Refactors
+### [0.72.0] Refactors
     - refactor: enhance rendering logic for consistent tool output styling, simplify message spans, and update spinner handling for better readability
     - refactor: remove DESIGN_SYSTEM.md, update default model to minimax-m2.5:cloud, and improve TUI spinner handling with `is_spinner_frame` function
     - refactor: update authorship information across multiple crates, enhance TUI performance with increased tick rates, and integrate new tui-shimmer dependency for improved UI effects
@@ -10979,124 +10979,124 @@ All notable changes to vtcode will be documented in this file.
     - refactor: update default model and tool policy permissions, add Codex harness learnings documentation
 
 
-### Documentation
+### [0.72.0] Documentation
     - docs: update changelog for v0.71.7 [skip ci]
     - docs: update changelog for v0.71.6 [skip ci]
     - docs: update changelog for v0.71.5 [skip ci]
     - docs: add comprehensive AgentSkills support section to README
 
 
-### Chores
+### [0.72.0] Chores
     - chore: update npm package.json to v0.71.7 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: remove obsolete demo files and update README to reflect changes
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.71.4 version =  [skip ci]
-# [Version 0.71.7] - 2026-01-27
+## 0.71.7 - 2026-01-27
 
 
-### Features
+### [0.71.7] Features
     - feat: add new logo assets and update existing images for branding consistency
 
 
-### Refactors
+### [0.71.7] Refactors
     - refactor: switch default provider to Hugging Face and add Moonshot Kimi K2.5 model support
     - refactor: switch default LLM provider to Anthropics, enhance reasoning deduplication, and apply Codex-inspired output limits
     - refactor: update default model and tool policy permissions, add Codex harness learnings documentation
     - refactor: update tool policy to allow file editing and enhance output spooling for PTY-related tools
 
 
-### Documentation
+### [0.71.7] Documentation
     - docs: update changelog for v0.71.6 [skip ci]
     - docs: update changelog for v0.71.5 [skip ci]
     - docs: add comprehensive AgentSkills support section to README
     - docs: update changelog for v0.71.4 [skip ci]
 
 
-### Chores
+### [0.71.7] Chores
     - chore: remove obsolete demo files and update README to reflect changes
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.71.4 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.71.3 version =  [skip ci]
-# [Version 0.71.6] - 2026-01-27
+## 0.71.6 - 2026-01-27
 
 
-### Features
+### [0.71.6] Features
     - feat: add new logo assets and update existing images for branding consistency
 
 
-### Refactors
+### [0.71.6] Refactors
     - refactor: switch default LLM provider to Anthropics, enhance reasoning deduplication, and apply Codex-inspired output limits
     - refactor: update default model and tool policy permissions, add Codex harness learnings documentation
     - refactor: update tool policy to allow file editing and enhance output spooling for PTY-related tools
 
 
-### Documentation
+### [0.71.6] Documentation
     - docs: update changelog for v0.71.5 [skip ci]
     - docs: add comprehensive AgentSkills support section to README
     - docs: update changelog for v0.71.4 [skip ci]
 
 
-### Chores
+### [0.71.6] Chores
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.71.4 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.71.3 version =  [skip ci]
-# [Version 0.71.5] - 2026-01-27
+## 0.71.5 - 2026-01-27
 
 
-### Features
+### [0.71.5] Features
     - feat: add new logo assets and update existing images for branding consistency
 
 
-### Refactors
+### [0.71.5] Refactors
     - refactor: switch default LLM provider to Anthropics, enhance reasoning deduplication, and apply Codex-inspired output limits
     - refactor: update default model and tool policy permissions, add Codex harness learnings documentation
     - refactor: update tool policy to allow file editing and enhance output spooling for PTY-related tools
 
 
-### Documentation
+### [0.71.5] Documentation
     - docs: add comprehensive AgentSkills support section to README
     - docs: update changelog for v0.71.4 [skip ci]
 
 
-### Chores
+### [0.71.5] Chores
     - chore: update npm package.json to v0.71.4 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.71.3 version =  [skip ci]
-# [Version 0.71.4] - 2026-01-27
+## 0.71.4 - 2026-01-27
 
 
-### Refactors
+### [0.71.4] Refactors
     - refactor: update tool policy to allow file editing and enhance output spooling for PTY-related tools
 
 
-### Documentation
+### [0.71.4] Documentation
     - docs: update changelog for v0.71.3 [skip ci]
 
 
-### Chores
+### [0.71.4] Chores
     - chore: update npm package.json to v0.71.3 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.71.2 version =  [skip ci]
-# [Version 0.71.3] - 2026-01-26
+## 0.71.3 - 2026-01-26
 
 
-### Documentation
+### [0.71.3] Documentation
     - docs: update changelog for v0.71.2 [skip ci]
 
 
-### Chores
+### [0.71.3] Chores
     - chore: update npm package.json to v0.71.2 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.71.1 version =  [skip ci]
-# [Version 0.71.2] - 2026-01-26
+## 0.71.2 - 2026-01-26
 
 
-### Features
+### [0.71.2] Features
     - feat: add UI support for modal layouts and wizard states in TUI session
     - feat: add enhanced caching logic and tool execution pipeline improvements
     - feat: streamline `file_ops` by removing legacy recursive search methods and enhance OpenAI provider with streaming logic
@@ -11108,12 +11108,12 @@ All notable changes to vtcode will be documented in this file.
     - feat: add OpenAI provider support for chat message parsing, request building, response parsing, and streaming decoder implementations
 
 
-### Bug Fixes
+### [0.71.2] Bug Fixes
     - fix: remove `check_output.txt` to clean up outdated and obsolete error logs
     - fix: address unresolved imports and modules in tests across multiple components
 
 
-### Refactors
+### [0.71.2] Refactors
     - refactor: adjust formatting, imports, and re-exports for improved consistency
     - refactor: remove `read_file_handler.rs`, `bash_runner.rs`, and unused code
     - refactor: remove `read_file_handler.rs`, `bash_runner.rs`, and unused code
@@ -11130,24 +11130,24 @@ All notable changes to vtcode will be documented in this file.
     - refactor: remove `OpenAIPromptCacheSettings` import from `xai.rs` to clean up unused dependencies
 
 
-### Documentation
+### [0.71.2] Documentation
     - docs: update changelog for v0.71.1 [skip ci]
     - docs: update changelog for v0.71.0 [skip ci]
 
 
-### Tests
+### [0.71.2] Tests
     - test: add environment variable handling and cleanup in `test_get_gemini_api_key_from_config`
 
 
-### Chores
+### [0.71.2] Chores
     - chore: update npm package.json to v0.71.1 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.70.1 version =  [skip ci]
-# [Version 0.71.1] - 2026-01-26
+## 0.71.1 - 2026-01-26
 
 
-### Features
+### [0.71.1] Features
     - feat: add UI support for modal layouts and wizard states in TUI session
     - feat: add enhanced caching logic and tool execution pipeline improvements
     - feat: streamline `file_ops` by removing legacy recursive search methods and enhance OpenAI provider with streaming logic
@@ -11162,12 +11162,12 @@ All notable changes to vtcode will be documented in this file.
     - feat: migrate `XAIProvider` to use the new `Responses API`, improve support for tools, caching, and error handling
 
 
-### Bug Fixes
+### [0.71.1] Bug Fixes
     - fix: remove `check_output.txt` to clean up outdated and obsolete error logs
     - fix: address unresolved imports and modules in tests across multiple components
 
 
-### Refactors
+### [0.71.1] Refactors
     - refactor: adjust formatting, imports, and re-exports for improved consistency
     - refactor: remove `read_file_handler.rs`, `bash_runner.rs`, and unused code
     - refactor: remove `read_file_handler.rs`, `bash_runner.rs`, and unused code
@@ -11185,24 +11185,24 @@ All notable changes to vtcode will be documented in this file.
     - refactor: optimize memory usage and runtime efficiency, improve error handling, and enhance circuit breaker logic
 
 
-### Documentation
+### [0.71.1] Documentation
     - docs: update changelog for v0.71.0 [skip ci]
     - docs: update changelog for v0.70.1 [skip ci]
 
 
-### Tests
+### [0.71.1] Tests
     - test: add environment variable handling and cleanup in `test_get_gemini_api_key_from_config`
 
 
-### Chores
+### [0.71.1] Chores
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.70.1 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.70.0 version =  [skip ci]
-# [Version 0.71.0] - 2026-01-26
+## 0.71.0 - 2026-01-26
 
 
-### Features
+### [0.71.0] Features
     - feat: add UI support for modal layouts and wizard states in TUI session
     - feat: add enhanced caching logic and tool execution pipeline improvements
     - feat: streamline `file_ops` by removing legacy recursive search methods and enhance OpenAI provider with streaming logic
@@ -11217,12 +11217,12 @@ All notable changes to vtcode will be documented in this file.
     - feat: migrate `XAIProvider` to use the new `Responses API`, improve support for tools, caching, and error handling
 
 
-### Bug Fixes
+### [0.71.0] Bug Fixes
     - fix: remove `check_output.txt` to clean up outdated and obsolete error logs
     - fix: address unresolved imports and modules in tests across multiple components
 
 
-### Refactors
+### [0.71.0] Refactors
     - refactor: adjust formatting, imports, and re-exports for improved consistency
     - refactor: remove `read_file_handler.rs`, `bash_runner.rs`, and unused code
     - refactor: remove `read_file_handler.rs`, `bash_runner.rs`, and unused code
@@ -11240,22 +11240,22 @@ All notable changes to vtcode will be documented in this file.
     - refactor: optimize memory usage and runtime efficiency, improve error handling, and enhance circuit breaker logic
 
 
-### Documentation
+### [0.71.0] Documentation
     - docs: update changelog for v0.70.1 [skip ci]
 
 
-### Tests
+### [0.71.0] Tests
     - test: add environment variable handling and cleanup in `test_get_gemini_api_key_from_config`
 
 
-### Chores
+### [0.71.0] Chores
     - chore: update npm package.json to v0.70.1 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.70.0 version =  [skip ci]
-# [Version 0.70.1] - 2026-01-25
+## 0.70.1 - 2026-01-25
 
 
-### Features
+### [0.70.1] Features
     - feat: add human-readable slug generator for plan file naming, update TUI header editing-state handling
     - feat: migrate `XAIProvider` to use the new `Responses API`, improve support for tools, caching, and error handling
     - feat: migrate `XAIProvider` to use the new `Responses API`, improve support for tools, caching, and error handling
@@ -11267,7 +11267,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: add subagent system with optional enablement, commands, and configuration updates
 
 
-### Refactors
+### [0.70.1] Refactors
     - refactor: optimize memory usage and runtime efficiency, improve error handling, and enhance circuit breaker logic
     - refactor: remove `ui.show_message_dividers` config, simplify divider logic, and enhance tool summary rendering
     - refactor: transition `UnifiedCache` to use `RwLock` for interior mutability, enhance test coverage, and simplify cache operations
@@ -11275,18 +11275,18 @@ All notable changes to vtcode will be documented in this file.
     - refactor: remove unused fields and path handling from `HarnessEventEmitter` and `HarnessTurnState`
 
 
-### Documentation
+### [0.70.1] Documentation
     - docs: update changelog for v0.70.0 [skip ci]
 
 
-### Chores
+### [0.70.1] Chores
     - chore: update npm package.json to v0.70.0 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.69.1 version =  [skip ci]
-# [Version 0.70.0] - 2026-01-24
+## 0.70.0 - 2026-01-24
 
 
-### Features
+### [0.70.0] Features
     - feat: introduce `InputHistoryEntry` to manage input with attachments, enhance reverse search and history navigation
     - feat: introduce `InputHistoryEntry` to manage input with attachments, enhance reverse search and history navigation
     - feat: refine tool output styling, and enhance agent configuration
@@ -11297,12 +11297,12 @@ All notable changes to vtcode will be documented in this file.
     - feat: add adaptive logo SVGs for different colour schemes
 
 
-### Bug Fixes
+### [0.70.0] Bug Fixes
     - fix: update allowed tools list to include request_user_input
     - fix: enhance output spooling logic for PTY commands and handle double-serialized JSON
 
 
-### Refactors
+### [0.70.0] Refactors
     - refactor: remove `ui.show_message_dividers` config, simplify divider logic, and enhance tool summary rendering
     - refactor: transition `UnifiedCache` to use `RwLock` for interior mutability, enhance test coverage, and simplify cache operations
     - refactor: disable subagents by default and update documentation with usage and configuration details
@@ -11310,92 +11310,92 @@ All notable changes to vtcode will be documented in this file.
     - refactor: update queue display to show follow-ups and improve styling
 
 
-### Documentation
+### [0.70.0] Documentation
     - docs: update changelog for v0.69.1 [skip ci]
     - docs: update changelog for v0.69.0 [skip ci]
     - docs: add note to check amp in vscode session
 
 
-### Chores
+### [0.70.0] Chores
     - chore: update npm package.json to v0.69.1 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.68.2 version =  [skip ci]
-# [Version 0.69.1] - 2026-01-24
+## 0.69.1 - 2026-01-24
 
 
-### Features
+### [0.69.1] Features
     - feat: add harness event emitter and session persistence for enhanced logging and state management
     - feat: add adaptive logo SVGs for different colour schemes
     - feat: implement batch file reading with token-efficient command transformation
     - feat: add support for additional programming languages including swift in syntax highlighting and configuration
 
 
-### Bug Fixes
+### [0.69.1] Bug Fixes
     - fix: update allowed tools list to include request_user_input
     - fix: enhance output spooling logic for PTY commands and handle double-serialized JSON
 
 
-### Refactors
+### [0.69.1] Refactors
     - refactor: update queue display to show follow-ups and improve styling
     - refactor: enhance token-efficient output handling and command parsing in executors
     - refactor: update finish_planning policy to prompt; enhance OpenResponsesProvider with version handling and reasoning content support
 
 
-### Documentation
+### [0.69.1] Documentation
     - docs: update changelog for v0.69.0 [skip ci]
     - docs: add note to check amp in vscode session
     - docs: update changelog for v0.68.2 [skip ci]
 
 
-### Chores
+### [0.69.1] Chores
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.68.2 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.68.1 version =  [skip ci]
-# [Version 0.69.0] - 2026-01-24
+## 0.69.0 - 2026-01-24
 
 
-### Features
+### [0.69.0] Features
     - feat: add harness event emitter and session persistence for enhanced logging and state management
     - feat: add adaptive logo SVGs for different colour schemes
     - feat: implement batch file reading with token-efficient command transformation
     - feat: add support for additional programming languages including swift in syntax highlighting and configuration
 
 
-### Bug Fixes
+### [0.69.0] Bug Fixes
     - fix: update allowed tools list to include request_user_input
     - fix: enhance output spooling logic for PTY commands and handle double-serialized JSON
 
 
-### Refactors
+### [0.69.0] Refactors
     - refactor: update queue display to show follow-ups and improve styling
     - refactor: enhance token-efficient output handling and command parsing in executors
     - refactor: update finish_planning policy to prompt; enhance OpenResponsesProvider with version handling and reasoning content support
 
 
-### Documentation
+### [0.69.0] Documentation
     - docs: add note to check amp in vscode session
     - docs: update changelog for v0.68.2 [skip ci]
 
 
-### Chores
+### [0.69.0] Chores
     - chore: update npm package.json to v0.68.2 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.68.1 version =  [skip ci]
-# [Version 0.68.2] - 2026-01-24
+## 0.68.2 - 2026-01-24
 
 
-### Features
+### [0.68.2] Features
     - feat: implement batch file reading with token-efficient command transformation
     - feat: add support for additional programming languages including swift in syntax highlighting and configuration
 
 
-### Bug Fixes
+### [0.68.2] Bug Fixes
     - fix: remove unused methods is_planner_active and is_coder_active
 
 
-### Refactors
+### [0.68.2] Refactors
     - refactor: enhance token-efficient output handling and command parsing in executors
     - refactor: update finish_planning policy to prompt; enhance OpenResponsesProvider with version handling and reasoning content support
     - refactor: increase max_conversation_turns to 150 and streamline allowed_tools format; add auto_finish_planning_attempted to context for improved planning workflow handling
@@ -11403,193 +11403,193 @@ All notable changes to vtcode will be documented in this file.
     - refactor: rename default method to default_cache and update default implementations for various structs
 
 
-### Documentation
+### [0.68.2] Documentation
     - docs: update changelog for v0.68.1 [skip ci]
 
 
-### Chores
+### [0.68.2] Chores
     - chore: update npm package.json to v0.68.1 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: clean up Cargo.toml and Cargo.lock by removing unused dependencies and updating package versions
     - chore: update Rust version to 1.93.0 in documentation and templates
     - chore: update npm package.json to v0.68.0 version =  [skip ci]
-# [Version 0.68.1] - 2026-01-23
+## 0.68.1 - 2026-01-23
 
 
-### Bug Fixes
+### [0.68.1] Bug Fixes
     - fix: remove unused methods is_planner_active and is_coder_active
 
 
-### Refactors
+### [0.68.1] Refactors
     - refactor: increase max_conversation_turns to 150 and streamline allowed_tools format; add auto_finish_planning_attempted to context for improved planning workflow handling
     - refactor: integrate clean_reasoning_text function to streamline reasoning text handling across multiple modules
     - refactor: rename default method to default_cache and update default implementations for various structs
 
 
-### Documentation
+### [0.68.1] Documentation
     - docs: update changelog for v0.68.0 [skip ci]
 
 
-### Chores
+### [0.68.1] Chores
     - chore: clean up Cargo.toml and Cargo.lock by removing unused dependencies and updating package versions
     - chore: update Rust version to 1.93.0 in documentation and templates
     - chore: update npm package.json to v0.68.0 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.67.0 version =  [skip ci]
-# [Version 0.68.0] - 2026-01-22
+## 0.68.0 - 2026-01-22
 
 
-### Refactors
+### [0.68.0] Refactors
     - refactor: simplify codebase by auditing markdown.rs, removing unused tests, and standardizing effort parameter in tool calls
     - refactor: remove tui-syntax-highlight dependency and streamline syntax highlighting implementation
     - refactor: adjust output thresholds and preview line counts for improved token efficiency
 
 
-### Documentation
+### [0.68.0] Documentation
     - docs: update changelog for v0.67.0 [skip ci]
 
 
-### Chores
+### [0.68.0] Chores
     - chore: update npm package.json to v0.67.0 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.66.8 version =  [skip ci]
-# [Version 0.67.0] - 2026-01-22
+## 0.67.0 - 2026-01-22 (historical record 1 of 3)
 
 
-### Features
+### [0.67.0/r1] Features
     - feat: enhance CLI with quick start guidance and slash command notes
 
 
-### Refactors
+### [0.67.0/r1] Refactors
     - refactor: simplify codebase by auditing markdown.rs, removing unused tests, and standardizing effort parameter in tool calls
     - refactor: remove tui-syntax-highlight dependency and streamline syntax highlighting implementation
     - refactor: adjust output thresholds and preview line counts for improved token efficiency
 
 
-### Documentation
+### [0.67.0/r1] Documentation
     - docs: update changelog for v0.66.8 [skip ci]
 
 
-### Chores
+### [0.67.0/r1] Chores
     - chore: update npm package.json to v0.66.8 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.66.7 version =  [skip ci]
-# [Version 0.66.8] - 2026-01-22
+## 0.66.8 - 2026-01-22
 
 
-### Features
+### [0.66.8] Features
     - feat: enhance CLI with quick start guidance and slash command notes
 
 
-### Refactors
+### [0.66.8] Refactors
     - refactor: use AsRef trait for string conversion in command rendering
 
 
-### Documentation
+### [0.66.8] Documentation
     - docs: update changelog for v0.66.7 [skip ci]
 
 
-### Chores
+### [0.66.8] Chores
     - chore: update npm package.json to v0.66.7 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.66.6 version =  [skip ci]
-# [Version 0.66.7] - 2026-01-22
+## 0.66.7 - 2026-01-22
 
 
-### Bug Fixes
+### [0.66.7] Bug Fixes
     - fix: resolve ambiguous AsRef trait for Cow in zed.rs
     - fix: resolve ambiguous AsRef trait for Cow<'_, str>
 
 
-### Refactors
+### [0.66.7] Refactors
     - refactor: use AsRef trait for string conversion in command rendering
 
 
-### Documentation
+### [0.66.7] Documentation
     - docs: update changelog for v0.66.6 [skip ci]
     - docs: update changelog for v0.66.5 [skip ci]
     - docs: update changelog for v0.66.4 [skip ci]
 
 
-### Chores
+### [0.66.7] Chores
     - chore: update npm package.json to v0.66.6 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.66.3 version =  [skip ci]
-# [Version 0.66.6] - 2026-01-22
+## 0.66.6 - 2026-01-22
 
 
-### Bug Fixes
+### [0.66.6] Bug Fixes
     - fix: resolve ambiguous AsRef trait for Cow in zed.rs
     - fix: resolve ambiguous AsRef trait for Cow<'_, str>
 
 
-### Refactors
+### [0.66.6] Refactors
     - refactor: optimize string handling with dereferencing in multiple files
 
 
-### Documentation
+### [0.66.6] Documentation
     - docs: update changelog for v0.66.5 [skip ci]
     - docs: update changelog for v0.66.4 [skip ci]
     - docs: update changelog for v0.66.3 [skip ci]
 
 
-### Chores
+### [0.66.6] Chores
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.66.3 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.66.2 version =  [skip ci]
-# [Version 0.66.5] - 2026-01-22
+## 0.66.5 - 2026-01-22
 
 
-### Bug Fixes
+### [0.66.5] Bug Fixes
     - fix: resolve ambiguous AsRef trait for Cow in zed.rs
     - fix: resolve ambiguous AsRef trait for Cow<'_, str>
 
 
-### Refactors
+### [0.66.5] Refactors
     - refactor: optimize string handling with dereferencing in multiple files
 
 
-### Documentation
+### [0.66.5] Documentation
     - docs: update changelog for v0.66.4 [skip ci]
     - docs: update changelog for v0.66.3 [skip ci]
 
 
-### Chores
+### [0.66.5] Chores
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.66.3 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.66.2 version =  [skip ci]
-# [Version 0.66.4] - 2026-01-22
+## 0.66.4 - 2026-01-22
 
 
-### Bug Fixes
+### [0.66.4] Bug Fixes
     - fix: resolve ambiguous AsRef trait for Cow<'_, str>
 
 
-### Refactors
+### [0.66.4] Refactors
     - refactor: optimize string handling with dereferencing in multiple files
 
 
-### Documentation
+### [0.66.4] Documentation
     - docs: update changelog for v0.66.3 [skip ci]
 
 
-### Chores
+### [0.66.4] Chores
     - chore: update npm package.json to v0.66.3 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.66.2 version =  [skip ci]
-# [Version 0.66.3] - 2026-01-22
+## 0.66.3 - 2026-01-22
 
 
-### Features
+### [0.66.3] Features
     - feat: add support for image URLs in @ pattern parsing and implement vision support for LLM providers
 
 
-### Refactors
+### [0.66.3] Refactors
     - refactor: optimize string handling with dereferencing in multiple files
     - refactor: enhance log event filtering and improve user message styling in TUI
     - refactor: optimize inline event handling and improve command safety checks
@@ -11604,32 +11604,32 @@ All notable changes to vtcode will be documented in this file.
     - refactor: simplify conditional checks for context awareness in prompt building
 
 
-### Documentation
+### [0.66.3] Documentation
     - docs: update changelog for v0.66.2 [skip ci]
     - docs: update changelog for v0.67.0 [skip ci]
     - docs: update changelog for v0.67.0 [skip ci]
 
 
-### Tests
+### [0.66.3] Tests
     - test: add streaming event deserialization tests
 
 
-### Chores
+### [0.66.3] Chores
     - chore: update npm package.json to v0.66.2 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: add #[allow(dead_code)] annotations to unused items across multiple files
     - chore: update npm package.json to v0.66.1 version =  [skip ci]
-# [Version 0.66.2] - 2026-01-22
+## 0.66.2 - 2026-01-22
 
 
-### Features
+### [0.66.2] Features
     - feat: add support for image URLs in @ pattern parsing and implement vision support for LLM providers
     - feat: Add Z.AI GLM-4.7-Flash model support and update configuration
     - feat: Add extended thinking configuration for Anthropic models
     - feat: Implement Anthropic token counting, allowing estimation of input tokens via a new configurable option.
 
 
-### Refactors
+### [0.66.2] Refactors
     - refactor: enhance log event filtering and improve user message styling in TUI
     - refactor: optimize inline event handling and improve command safety checks
     - refactor: streamline syntax highlighting by introducing a dedicated module and optimizing theme management
@@ -11643,33 +11643,33 @@ All notable changes to vtcode will be documented in this file.
     - refactor: simplify conditional checks for context awareness in prompt building
 
 
-### Documentation
+### [0.66.2] Documentation
     - docs: update changelog for v0.67.0 [skip ci]
     - docs: update changelog for v0.67.0 [skip ci]
     - docs: update changelog for v0.66.1 [skip ci]
     - docs: update changelog for v0.66.0 [skip ci]
 
 
-### Tests
+### [0.66.2] Tests
     - test: add streaming event deserialization tests
 
 
-### Chores
+### [0.66.2] Chores
     - chore: add #[allow(dead_code)] annotations to unused items across multiple files
     - chore: update npm package.json to v0.66.1 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
-# [Version 0.67.0] - 2026-01-20
+## 0.67.0 - 2026-01-20 (historical record 2 of 3)
 
 
-### Features
+### [0.67.0/r2] Features
     - feat: add support for image URLs in @ pattern parsing and implement vision support for LLM providers
     - feat: Add Z.AI GLM-4.7-Flash model support and update configuration
     - feat: Add extended thinking configuration for Anthropic models
     - feat: Implement Anthropic token counting, allowing estimation of input tokens via a new configurable option.
 
 
-### Refactors
+### [0.67.0/r2] Refactors
     - refactor: update thinking budget constants and enhance extended thinking configuration
     - refactor: implement Chain-of-Thought monitoring and context anxiety management patterns
     - refactor: improve history navigation and update input handling
@@ -11680,32 +11680,32 @@ All notable changes to vtcode will be documented in this file.
     - refactor: simplify conditional checks for context awareness in prompt building
 
 
-### Documentation
+### [0.67.0/r2] Documentation
     - docs: update changelog for v0.67.0 [skip ci]
     - docs: update changelog for v0.66.1 [skip ci]
     - docs: update changelog for v0.66.0 [skip ci]
 
 
-### Tests
+### [0.67.0/r2] Tests
     - test: add streaming event deserialization tests
 
 
-### Chores
+### [0.67.0/r2] Chores
     - chore: add #[allow(dead_code)] annotations to unused items across multiple files
     - chore: update npm package.json to v0.66.1 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
-# [Version 0.67.0] - 2026-01-20
+## 0.67.0 - 2026-01-20 (historical record 3 of 3)
 
 
-### Features
+### [0.67.0/r3] Features
     - feat: add support for image URLs in @ pattern parsing and implement vision support for LLM providers
     - feat: Add Z.AI GLM-4.7-Flash model support and update configuration
     - feat: Add extended thinking configuration for Anthropic models
     - feat: Implement Anthropic token counting, allowing estimation of input tokens via a new configurable option.
 
 
-### Refactors
+### [0.67.0/r3] Refactors
     - refactor: update thinking budget constants and enhance extended thinking configuration
     - refactor: implement Chain-of-Thought monitoring and context anxiety management patterns
     - refactor: improve history navigation and update input handling
@@ -11716,80 +11716,80 @@ All notable changes to vtcode will be documented in this file.
     - refactor: simplify conditional checks for context awareness in prompt building
 
 
-### Documentation
+### [0.67.0/r3] Documentation
     - docs: update changelog for v0.66.1 [skip ci]
     - docs: update changelog for v0.66.0 [skip ci]
 
 
-### Tests
+### [0.67.0/r3] Tests
     - test: add streaming event deserialization tests
 
 
-### Chores
+### [0.67.0/r3] Chores
     - chore: add #[allow(dead_code)] annotations to unused items across multiple files
     - chore: update npm package.json to v0.66.1 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
-# [Version 0.66.1] - 2026-01-19
+## 0.66.1 - 2026-01-19
 
 
-### Features
+### [0.66.1] Features
     - feat: Add Z.AI GLM-4.7-Flash model support and update configuration
     - feat: Add extended thinking configuration for Anthropic models
     - feat: Implement Anthropic token counting, allowing estimation of input tokens via a new configurable option.
 
 
-### Documentation
+### [0.66.1] Documentation
     - docs: update changelog for v0.66.0 [skip ci]
 
 
-### Chores
+### [0.66.1] Chores
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.65.5 version =  [skip ci]
-# [Version 0.66.0] - 2026-01-19
+## 0.66.0 - 2026-01-19
 
 
-### Features
+### [0.66.0] Features
     - feat: Add Z.AI GLM-4.7-Flash model support and update configuration
     - feat: Add extended thinking configuration for Anthropic models
     - feat: Implement Anthropic token counting, allowing estimation of input tokens via a new configurable option.
     - feat: add effort parameter for Claude Opus 4.5 to control token usage
 
 
-### Documentation
+### [0.66.0] Documentation
     - docs: update changelog for v0.65.5 [skip ci]
 
 
-### Chores
+### [0.66.0] Chores
     - chore: update npm package.json to v0.65.5 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.65.4 version =  [skip ci]
-# [Version 0.65.5] - 2026-01-19
+## 0.65.5 - 2026-01-19
 
 
-### Features
+### [0.65.5] Features
     - feat: add effort parameter for Claude Opus 4.5 to control token usage
     - feat: implement autonomous execution with reduced HITL prompts and update related configurations
     - feat: enhance output spooling for read_file and unified_file with raw content extraction
     - feat: enhance context awareness with token usage tracking and context window size
 
 
-### Bug Fixes
+### [0.65.5] Bug Fixes
     - fix: prevent duplicate reasoning output during finalization
 
 
-### Documentation
+### [0.65.5] Documentation
     - docs: update changelog for v0.65.4 [skip ci]
 
 
-### Chores
+### [0.65.5] Chores
     - chore: update npm package.json to v0.65.4 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.65.3 version =  [skip ci]
-# [Version 0.65.4] - 2026-01-18
+## 0.65.4 - 2026-01-18
 
 
-### Features
+### [0.65.4] Features
     - feat: implement autonomous execution with reduced HITL prompts and update related configurations
     - feat: enhance output spooling for read_file and unified_file with raw content extraction
     - feat: enhance context awareness with token usage tracking and context window size
@@ -11805,29 +11805,29 @@ All notable changes to vtcode will be documented in this file.
     - feat: improve code block indentation normalization to handle mixed whitespace and refine markdown table rendering separators.
 
 
-### Bug Fixes
+### [0.65.4] Bug Fixes
     - fix: prevent duplicate reasoning output during finalization
 
 
-### Refactors
+### [0.65.4] Refactors
     - refactor: Simplify tracing initialization with unwrap_or_default
     - refactor: Replace map_or with is_none_or for improved clarity in MCP tool filtering
     - refactor: Remove unnecessary cloning and assignment of `_updated_snapshot`.
     - refactor: Inline table row rendering logic, remove duplicate parameters, and clean up the TODO list.
 
 
-### Documentation
+### [0.65.4] Documentation
     - docs: update changelog for v0.65.3 [skip ci]
 
 
-### Chores
+### [0.65.4] Chores
     - chore: update npm package.json to v0.65.3 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.65.2 version =  [skip ci]
-# [Version 0.65.3] - 2026-01-18
+## 0.65.3 - 2026-01-18
 
 
-### Features
+### [0.65.3] Features
     - feat: Add max_conversation_turns configuration to various components and update tests
     - feat: Implement autonomous loop detection with TUI warnings, integrate into agent runloop, and add project TODO documentation.
     - feat: Enhance agent robustness with exponential backoff for circuit breakers, custom tool loop limits, and conversation turn limits.
@@ -11848,7 +11848,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: Add support for new Anthropic Claude 4 and 3.x models, enable new beta features, and refine reasoning parameter validation.
 
 
-### Refactors
+### [0.65.3] Refactors
     - refactor: Simplify tracing initialization with unwrap_or_default
     - refactor: Replace map_or with is_none_or for improved clarity in MCP tool filtering
     - refactor: Remove unnecessary cloning and assignment of `_updated_snapshot`.
@@ -11856,19 +11856,19 @@ All notable changes to vtcode will be documented in this file.
     - refactor: update reasoning colour and style for improved readability and placeholder effect
 
 
-### Documentation
+### [0.65.3] Documentation
     - docs: update changelog for v0.65.2 [skip ci]
     - docs: Add a new document detailing strategies for reducing Anthropic latency and link it from the Anthropic API overview.
 
 
-### Chores
+### [0.65.3] Chores
     - chore: update npm package.json to v0.65.2 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.65.1 version =  [skip ci]
-# [Version 0.65.2] - 2026-01-18
+## 0.65.2 - 2026-01-18
 
 
-### Features
+### [0.65.2] Features
     - feat: Add an empirical evaluation framework for measuring LLM performance and link it in the main README.
     - feat: implement a new evaluation framework with test cases, metrics, and report generation, and update LLM provider integrations to support it.
     - feat: Introduce coding agent settings to LLM requests to refine model behaviour, implementing their application in the Anthropic provider for system prompt adjustments, prefill, message reordering, and XML document handling.
@@ -11880,30 +11880,30 @@ All notable changes to vtcode will be documented in this file.
     - feat: add tool search configuration and integration for Anthropic provider
 
 
-### Refactors
+### [0.65.2] Refactors
     - refactor: update reasoning colour and style for improved readability and placeholder effect
 
 
-### Documentation
+### [0.65.2] Documentation
     - docs: Add a new document detailing strategies for reducing Anthropic latency and link it from the Anthropic API overview.
     - docs: update changelog for v0.65.1 [skip ci]
     - docs: update changelog for v0.65.1 [skip ci]
 
 
-### Chores
+### [0.65.2] Chores
     - chore: update npm package.json to v0.65.1 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.65.0 version =  [skip ci]
-# [Version 0.65.1] - 2026-01-17
+## 0.65.1 - 2026-01-17 (historical record 1 of 2)
 
 
-### Features
+### [0.65.1/r1] Features
     - feat: add tool search configuration and integration for Anthropic provider
     - feat: Refactor API response handling and file search parameters, add conditional Anthropic API compilation, and enable schema generation for core types.
     - feat: add Anthropic API compatibility server and documentation
 
 
-### Documentation
+### [0.65.1/r1] Documentation
     - docs: update changelog for v0.65.1 [skip ci]
     - docs: update changelog for v0.65.0 [skip ci]
     - docs: update changelog for v0.64.0 [skip ci]
@@ -11916,7 +11916,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.61.0 [skip ci]
 
 
-### Chores
+### [0.65.1/r1] Chores
     - chore: update npm package.json to v0.65.0 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
@@ -11925,16 +11925,16 @@ All notable changes to vtcode will be documented in this file.
     - chore: update remaining crate versions to 0.62.0
     - chore: bump version to 0.62.0
     - chore: update npm package.json to v0.60.8 version =  [skip ci]
-# [Version 0.65.1] - 2026-01-17
+## 0.65.1 - 2026-01-17 (historical record 2 of 2)
 
 
-### Features
+### [0.65.1/r2] Features
     - feat: add tool search configuration and integration for Anthropic provider
     - feat: Refactor API response handling and file search parameters, add conditional Anthropic API compilation, and enable schema generation for core types.
     - feat: add Anthropic API compatibility server and documentation
 
 
-### Documentation
+### [0.65.1/r2] Documentation
     - docs: update changelog for v0.65.0 [skip ci]
     - docs: update changelog for v0.64.0 [skip ci]
     - docs: update changelog for v0.63.0 [skip ci]
@@ -11946,7 +11946,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.61.0 [skip ci]
 
 
-### Chores
+### [0.65.1/r2] Chores
     - chore: update npm package.json to v0.65.0 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
@@ -11955,15 +11955,15 @@ All notable changes to vtcode will be documented in this file.
     - chore: update remaining crate versions to 0.62.0
     - chore: bump version to 0.62.0
     - chore: update npm package.json to v0.60.8 version =  [skip ci]
-# [Version 0.65.0] - 2026-01-17
+## 0.65.0 - 2026-01-17
 
 
-### Features
+### [0.65.0] Features
     - feat: Refactor API response handling and file search parameters, add conditional Anthropic API compilation, and enable schema generation for core types.
     - feat: add Anthropic API compatibility server and documentation
 
 
-### Documentation
+### [0.65.0] Documentation
     - docs: update changelog for v0.64.0 [skip ci]
     - docs: update changelog for v0.63.0 [skip ci]
     - docs: update changelog for v0.63.0 [skip ci]
@@ -11975,7 +11975,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.60.8 [skip ci]
 
 
-### Chores
+### [0.65.0] Chores
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
     - chore: update Cargo.lock
@@ -11986,15 +11986,15 @@ All notable changes to vtcode will be documented in this file.
     - chore: update logo image to higher resolution
     - chore: update README layout and add new logo assets
     - chore: update npm package.json to v0.60.7 version =  [skip ci]
-# [Version 0.64.0] - 2026-01-17
+## 0.64.0 - 2026-01-17
 
 
-### Features
+### [0.64.0] Features
     - feat: Refactor API response handling and file search parameters, add conditional Anthropic API compilation, and enable schema generation for core types.
     - feat: add Anthropic API compatibility server and documentation
 
 
-### Documentation
+### [0.64.0] Documentation
     - docs: update changelog for v0.63.0 [skip ci]
     - docs: update changelog for v0.63.0 [skip ci]
     - docs: update changelog for v0.63.0 [skip ci]
@@ -12005,7 +12005,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.60.8 [skip ci]
 
 
-### Chores
+### [0.64.0] Chores
     - chore(release): bump version to {{version}}
     - chore: update Cargo.lock
     - chore: update remaining crate versions to 0.62.0
@@ -12015,15 +12015,15 @@ All notable changes to vtcode will be documented in this file.
     - chore: update logo image to higher resolution
     - chore: update README layout and add new logo assets
     - chore: update npm package.json to v0.60.7 version =  [skip ci]
-# [Version 0.63.0] - 2026-01-17
+## 0.63.0 - 2026-01-17 (historical record 1 of 3)
 
 
-### Features
+### [0.63.0/r1] Features
     - feat: Refactor API response handling and file search parameters, add conditional Anthropic API compilation, and enable schema generation for core types.
     - feat: add Anthropic API compatibility server and documentation
 
 
-### Documentation
+### [0.63.0/r1] Documentation
     - docs: update changelog for v0.63.0 [skip ci]
     - docs: update changelog for v0.63.0 [skip ci]
     - docs: update changelog for v0.61.0 [skip ci]
@@ -12033,7 +12033,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.60.8 [skip ci]
 
 
-### Chores
+### [0.63.0/r1] Chores
     - chore: update Cargo.lock
     - chore: update remaining crate versions to 0.62.0
     - chore: bump version to 0.62.0
@@ -12042,15 +12042,15 @@ All notable changes to vtcode will be documented in this file.
     - chore: update logo image to higher resolution
     - chore: update README layout and add new logo assets
     - chore: update npm package.json to v0.60.7 version =  [skip ci]
-# [Version 0.63.0] - 2026-01-17
+## 0.63.0 - 2026-01-17 (historical record 2 of 3)
 
 
-### Features
+### [0.63.0/r2] Features
     - feat: Refactor API response handling and file search parameters, add conditional Anthropic API compilation, and enable schema generation for core types.
     - feat: add Anthropic API compatibility server and documentation
 
 
-### Documentation
+### [0.63.0/r2] Documentation
     - docs: update changelog for v0.63.0 [skip ci]
     - docs: update changelog for v0.61.0 [skip ci]
     - docs: update changelog for v0.61.0 [skip ci]
@@ -12059,7 +12059,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.60.8 [skip ci]
 
 
-### Chores
+### [0.63.0/r2] Chores
     - chore: update remaining crate versions to 0.62.0
     - chore: bump version to 0.62.0
     - chore: update npm package.json to v0.60.8 version =  [skip ci]
@@ -12067,15 +12067,15 @@ All notable changes to vtcode will be documented in this file.
     - chore: update logo image to higher resolution
     - chore: update README layout and add new logo assets
     - chore: update npm package.json to v0.60.7 version =  [skip ci]
-# [Version 0.63.0] - 2026-01-17
+## 0.63.0 - 2026-01-17 (historical record 3 of 3)
 
 
-### Features
+### [0.63.0/r3] Features
     - feat: Refactor API response handling and file search parameters, add conditional Anthropic API compilation, and enable schema generation for core types.
     - feat: add Anthropic API compatibility server and documentation
 
 
-### Documentation
+### [0.63.0/r3] Documentation
     - docs: update changelog for v0.61.0 [skip ci]
     - docs: update changelog for v0.61.0 [skip ci]
     - docs: update changelog for v0.60.9 [skip ci]
@@ -12083,235 +12083,235 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.60.8 [skip ci]
 
 
-### Chores
+### [0.63.0/r3] Chores
     - chore: bump version to 0.62.0
     - chore: update npm package.json to v0.60.8 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update logo image to higher resolution
     - chore: update README layout and add new logo assets
     - chore: update npm package.json to v0.60.7 version =  [skip ci]
-# [Version 0.62.0] - 2026-01-17
+## 0.62.0 - 2026-01-17
 
 
-### Features
+### [0.62.0] Features
     - feat: Refactor API response handling and file search parameters, add conditional Anthropic API compilation, and enable schema generation for core types.
     - feat: add Anthropic API compatibility server and documentation
 
 
-### Documentation
+### [0.62.0] Documentation
     - docs: update changelog for v0.61.0 [skip ci]
     - docs: update changelog for v0.60.9 [skip ci]
     - docs: update changelog for v0.61.0 [skip ci]
     - docs: update changelog for v0.60.8 [skip ci]
 
 
-### Chores
+### [0.62.0] Chores
     - chore: update npm package.json to v0.60.8 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update logo image to higher resolution
     - chore: update README layout and add new logo assets
     - chore: update npm package.json to v0.60.7 version =  [skip ci]
-# [Version 0.61.0] - 2026-01-17
+## 0.61.0 - 2026-01-17 (historical record 1 of 2)
 
 
-### Features
+### [0.61.0/r1] Features
     - feat: Refactor API response handling and file search parameters, add conditional Anthropic API compilation, and enable schema generation for core types.
     - feat: add Anthropic API compatibility server and documentation
 
 
-### Documentation
+### [0.61.0/r1] Documentation
     - docs: update changelog for v0.60.9 [skip ci]
     - docs: update changelog for v0.61.0 [skip ci]
     - docs: update changelog for v0.60.8 [skip ci]
 
 
-### Chores
+### [0.61.0/r1] Chores
     - chore: update npm package.json to v0.60.8 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update logo image to higher resolution
     - chore: update README layout and add new logo assets
     - chore: update npm package.json to v0.60.7 version =  [skip ci]
-# [Version 0.60.9] - 2026-01-17
+## 0.60.9 - 2026-01-17
 
 
-### Features
+### [0.60.9] Features
     - feat: Refactor API response handling and file search parameters, add conditional Anthropic API compilation, and enable schema generation for core types.
     - feat: add Anthropic API compatibility server and documentation
 
 
-### Documentation
+### [0.60.9] Documentation
     - docs: update changelog for v0.61.0 [skip ci]
     - docs: update changelog for v0.60.8 [skip ci]
 
 
-### Chores
+### [0.60.9] Chores
     - chore: update npm package.json to v0.60.8 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update logo image to higher resolution
     - chore: update README layout and add new logo assets
     - chore: update npm package.json to v0.60.7 version =  [skip ci]
-# [Version 0.61.0] - 2026-01-17
+## 0.61.0 - 2026-01-17 (historical record 2 of 2)
 
 
-### Features
+### [0.61.0/r2] Features
     - feat: Refactor API response handling and file search parameters, add conditional Anthropic API compilation, and enable schema generation for core types.
     - feat: add Anthropic API compatibility server and documentation
 
 
-### Documentation
+### [0.61.0/r2] Documentation
     - docs: update changelog for v0.60.8 [skip ci]
 
 
-### Chores
+### [0.61.0/r2] Chores
     - chore: update npm package.json to v0.60.8 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update logo image to higher resolution
     - chore: update README layout and add new logo assets
     - chore: update npm package.json to v0.60.7 version =  [skip ci]
-# [Version 0.60.8] - 2026-01-17
+## 0.60.8 - 2026-01-17
 
 
-### Documentation
+### [0.60.8] Documentation
     - docs: update changelog for v0.60.7 [skip ci]
 
 
-### Chores
+### [0.60.8] Chores
     - chore: update logo image to higher resolution
     - chore: update README layout and add new logo assets
     - chore: update npm package.json to v0.60.7 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: enable contributors in changelog configuration
     - chore: update npm package.json to v0.60.6 version =  [skip ci]
-# [Version 0.60.7] - 2026-01-17
+## 0.60.7 - 2026-01-17
 
 
-### Features
+### [0.60.7] Features
     - feat: add debug logging for subagent parsing and loading; update error messages for context and segment not found
 
 
-### Refactors
+### [0.60.7] Refactors
     - refactor: remove unused LLM provider implementations
 
 
-### Documentation
+### [0.60.7] Documentation
     - docs: update changelog for v0.60.6 [skip ci]
 
 
-### Chores
+### [0.60.7] Chores
     - chore: enable contributors in changelog configuration
     - chore: update npm package.json to v0.60.6 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.60.5 version =  [skip ci]
-# [Version 0.60.6] - 2026-01-17
+## 0.60.6 - 2026-01-17
 
 
-### Features
+### [0.60.6] Features
     - feat: add debug logging for subagent parsing and loading; update error messages for context and segment not found
     - feat: update tool policies, enhance file handling, and modify agent configuration for improved functionality
 
 
-### Refactors
+### [0.60.6] Refactors
     - refactor: remove unused LLM provider implementations
 
 
-### Documentation
+### [0.60.6] Documentation
     - docs: update changelog for v0.60.5 [skip ci]
 
 
-### Chores
+### [0.60.6] Chores
     - chore: update npm package.json to v0.60.5 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.60.4 version =  [skip ci]
-# [Version 0.60.5] - 2026-01-16
+## 0.60.5 - 2026-01-16
 
 
-### Features
+### [0.60.5] Features
     - feat: update tool policies, enhance file handling, and modify agent configuration for improved functionality
     - feat: update tool policies and agent configuration for improved execution control and user confirmation
     - feat: enhance agent behaviour configuration with Codex-inspired patterns and update tool response truncation settings
     - feat: add GPT-5.2 Codex model and improve code formatting across multiple files
 
 
-### Documentation
+### [0.60.5] Documentation
     - docs: update changelog for v0.60.4 [skip ci]
 
 
-### Chores
+### [0.60.5] Chores
     - chore: update npm package.json to v0.60.4 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.60.3 version =  [skip ci]
-# [Version 0.60.4] - 2026-01-16
+## 0.60.4 - 2026-01-16
 
 
-### Features
+### [0.60.4] Features
     - feat: update tool policies and agent configuration for improved execution control and user confirmation
     - feat: enhance agent behaviour configuration with Codex-inspired patterns and update tool response truncation settings
     - feat: add GPT-5.2 Codex model and improve code formatting across multiple files
     - feat: enhance sandboxing with new documentation and environment handling
 
 
-### Refactors
+### [0.60.4] Refactors
     - refactor: streamline code by simplifying conditional checks and improving output handling
     - refactor: clean up code formatting and improve readability in multiple files
 
 
-### Documentation
+### [0.60.4] Documentation
     - docs: update changelog for v0.60.3 [skip ci]
 
 
-### Chores
+### [0.60.4] Chores
     - chore: update npm package.json to v0.60.3 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.60.2 version =  [skip ci]
-# [Version 0.60.3] - 2026-01-14
+## 0.60.3 - 2026-01-14
 
 
-### Features
+### [0.60.3] Features
     - feat: enhance sandboxing with new documentation and environment handling
     - feat: update tool policies and enhance session limit handling for tool loops
 
 
-### Refactors
+### [0.60.3] Refactors
     - refactor: streamline code by simplifying conditional checks and improving output handling
     - refactor: clean up code formatting and improve readability in multiple files
     - refactor: update tool policies to allow write_file and unified_file actions; remove redundant error logging
 
 
-### Documentation
+### [0.60.3] Documentation
     - docs: update changelog for v0.60.2 [skip ci]
 
 
-### Chores
+### [0.60.3] Chores
     - chore: update npm package.json to v0.60.2 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update .gitignore and tool policies; change provider and API key in vtcode.toml
     - chore: update npm package.json to v0.60.1 version =  [skip ci]
-# [Version 0.60.2] - 2026-01-10
+## 0.60.2 - 2026-01-10
 
 
-### Features
+### [0.60.2] Features
     - feat: update tool policies and enhance session limit handling for tool loops
     - feat: implement planning workflow tools for managing planning workflow and enhance code block indentation normalization
     - feat: implement session limit increase prompt and safety validation enhancements
 
 
-### Refactors
+### [0.60.2] Refactors
     - refactor: update tool policies to allow write_file and unified_file actions; remove redundant error logging
 
 
-### Documentation
+### [0.60.2] Documentation
     - docs: update changelog for v0.60.1 [skip ci]
 
 
-### Chores
+### [0.60.2] Chores
     - chore: update .gitignore and tool policies; change provider and API key in vtcode.toml
     - chore: update npm package.json to v0.60.1 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.60.0 version =  [skip ci]
-# [Version 0.60.1] - 2026-01-10
+## 0.60.1 - 2026-01-10
 
 
-### Features
+### [0.60.1] Features
     - feat: implement planning workflow tools for managing planning workflow and enhance code block indentation normalization
     - feat: implement session limit increase prompt and safety validation enhancements
     - feat: update tool policies to allow apply_patch, unified_exec, and unified_file actions
@@ -12319,19 +12319,19 @@ All notable changes to vtcode will be documented in this file.
     - feat: implement Planning workflow for read-only exploration and planning
 
 
-### Documentation
+### [0.60.1] Documentation
     - docs: update changelog for v0.60.0 [skip ci]
 
 
-### Chores
+### [0.60.1] Chores
     - chore: update npm package.json to v0.60.0 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update tool policies and remove unused dependencies
     - chore: update npm package.json to v0.59.2 version =  [skip ci]
-# [Version 0.60.0] - 2026-01-10
+## 0.60.0 - 2026-01-10
 
 
-### Features
+### [0.60.0] Features
     - feat: update tool policies to allow apply_patch, unified_exec, and unified_file actions
     - feat: add implementation/default-agent commands for workflow control
     - feat: implement Planning workflow for read-only exploration and planning
@@ -12340,422 +12340,422 @@ All notable changes to vtcode will be documented in this file.
     - feat: implement dynamic context discovery with file spooling for large outputs
 
 
-### Documentation
+### [0.60.0] Documentation
     - docs: update changelog for v0.59.2 [skip ci]
 
 
-### Chores
+### [0.60.0] Chores
     - chore: update tool policies and remove unused dependencies
     - chore: update npm package.json to v0.59.2 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.59.1 version =  [skip ci]
-# [Version 0.59.2] - 2026-01-08
+## 0.59.2 - 2026-01-08
 
 
-### Features
+### [0.59.2] Features
     - feat: implement sandboxing configuration and policies
     - feat: enhance dynamic context discovery and update configuration
     - feat: implement dynamic context discovery with file spooling for large outputs
 
 
-### Refactors
+### [0.59.2] Refactors
     - refactor: update tool policies, enhance subagent cleanup, and improve documentation
 
 
-### Documentation
+### [0.59.2] Documentation
     - docs: update changelog for v0.59.1 [skip ci]
 
 
-### Chores
+### [0.59.2] Chores
     - chore: update npm package.json to v0.59.1 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.59.0 version =  [skip ci]
-# [Version 0.59.1] - 2026-01-07
+## 0.59.1 - 2026-01-07
 
 
-### Refactors
+### [0.59.1] Refactors
     - refactor: update tool policies, enhance subagent cleanup, and improve documentation
     - refactor: clean up code formatting and improve readability across multiple files
 
 
-### Documentation
+### [0.59.1] Documentation
     - docs: update changelog for v0.59.0 [skip ci]
     - docs: update changelog for v0.58.26 [skip ci]
     - docs: update ACP V2 Migration Guide for improved clarity and formatting
 
 
-### Chores
+### [0.59.1] Chores
     - chore: update npm package.json to v0.59.0 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.25 version =  [skip ci]
-# [Version 0.59.0] - 2026-01-06
+## 0.59.0 - 2026-01-06
 
 
-### Features
+### [0.59.0] Features
     - feat: add LRU cache for canonicalized paths and optimize vector allocations
     - feat: restore Kitty keyboard protocol support and update session handling
 
 
-### Refactors
+### [0.59.0] Refactors
     - refactor: clean up code formatting and improve readability across multiple files
 
 
-### Documentation
+### [0.59.0] Documentation
     - docs: update changelog for v0.58.26 [skip ci]
     - docs: update ACP V2 Migration Guide for improved clarity and formatting
     - docs: update changelog for v0.58.25 [skip ci]
 
 
-### Chores
+### [0.59.0] Chores
     - chore: update npm package.json to v0.58.25 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.24 version =  [skip ci]
-# [Version 0.58.26] - 2026-01-06
+## 0.58.26 - 2026-01-06
 
 
-### Features
+### [0.58.26] Features
     - feat: add LRU cache for canonicalized paths and optimize vector allocations
     - feat: restore Kitty keyboard protocol support and update session handling
 
 
-### Refactors
+### [0.58.26] Refactors
     - refactor: clean up code formatting and improve readability across multiple files
 
 
-### Documentation
+### [0.58.26] Documentation
     - docs: update ACP V2 Migration Guide for improved clarity and formatting
     - docs: update changelog for v0.58.25 [skip ci]
 
 
-### Chores
+### [0.58.26] Chores
     - chore: update npm package.json to v0.58.25 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.24 version =  [skip ci]
-# [Version 0.58.25] - 2026-01-06
+## 0.58.25 - 2026-01-06
 
 
-### Features
+### [0.58.25] Features
     - feat: add LRU cache for canonicalized paths and optimize vector allocations
     - feat: restore Kitty keyboard protocol support and update session handling
 
 
-### Documentation
+### [0.58.25] Documentation
     - docs: update changelog for v0.58.24 [skip ci]
 
 
-### Chores
+### [0.58.25] Chores
     - chore: update npm package.json to v0.58.24 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.23 version =  [skip ci]
-# [Version 0.58.24] - 2026-01-05
+## 0.58.24 - 2026-01-05
 
 
-### Documentation
+### [0.58.24] Documentation
     - docs: update changelog for v0.58.23 [skip ci]
 
 
-### Chores
+### [0.58.24] Chores
     - chore: update npm package.json to v0.58.23 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.22 version =  [skip ci]
-# [Version 0.58.23] - 2026-01-05
+## 0.58.23 - 2026-01-05
 
 
-### Documentation
+### [0.58.23] Documentation
     - docs: update changelog for v0.58.22 [skip ci]
 
 
-### Chores
+### [0.58.23] Chores
     - chore: update npm package.json to v0.58.22 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.21 version =  [skip ci]
-# [Version 0.58.22] - 2026-01-04
+## 0.58.22 - 2026-01-04
 
 
-### Documentation
+### [0.58.22] Documentation
     - docs: update changelog for v0.58.21 [skip ci]
 
 
-### Chores
+### [0.58.22] Chores
     - chore: update npm package.json to v0.58.21 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.20 version =  [skip ci]
-# [Version 0.58.21] - 2026-01-04
+## 0.58.21 - 2026-01-04
 
 
-### Bug Fixes
+### [0.58.21] Bug Fixes
     - fix: suppress dead code warnings for unused UI and agent functions
 
 
-### Documentation
+### [0.58.21] Documentation
     - docs: update changelog for v0.58.20 [skip ci]
 
 
-### Chores
+### [0.58.21] Chores
     - chore: update npm package.json to v0.58.20 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.19 version =  [skip ci]
-# [Version 0.58.20] - 2026-01-04
+## 0.58.20 - 2026-01-04
 
 
-### Bug Fixes
+### [0.58.20] Bug Fixes
     - fix: suppress dead code warnings for unused UI and agent functions
     - fix: prefix unused variable with underscore in config_watcher
 
 
-### Documentation
+### [0.58.20] Documentation
     - docs: update changelog for v0.58.19 [skip ci]
 
 
-### Chores
+### [0.58.20] Chores
     - chore: update npm package.json to v0.58.19 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.18 version =  [skip ci]
-# [Version 0.58.19] - 2026-01-04
+## 0.58.19 - 2026-01-04
 
 
-### Features
+### [0.58.19] Features
     - feat(core): enhance tool caching and UI redraw optimization
 
 
-### Bug Fixes
+### [0.58.19] Bug Fixes
     - fix: prefix unused variable with underscore in config_watcher
     - fix: remove dead code and fix compilation errors
 
 
-### Documentation
+### [0.58.19] Documentation
     - docs: update changelog for v0.58.18 [skip ci]
     - docs: update changelog for v0.58.17 [skip ci]
     - docs: update changelog for v0.58.16 [skip ci]
 
 
-### Chores
+### [0.58.19] Chores
     - chore: update npm package.json to v0.58.18 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.15 version =  [skip ci]
-# [Version 0.58.18] - 2026-01-04
+## 0.58.18 - 2026-01-04
 
 
-### Features
+### [0.58.18] Features
     - feat(core): enhance tool caching and UI redraw optimization
     - feat(core): add file system watcher and performance optimization infrastructure
     - feat(core): integrate real performance optimizations into tool registry
 
 
-### Bug Fixes
+### [0.58.18] Bug Fixes
     - fix: remove dead code and fix compilation errors
 
 
-### Documentation
+### [0.58.18] Documentation
     - docs: update changelog for v0.58.17 [skip ci]
     - docs: update changelog for v0.58.16 [skip ci]
     - docs: update changelog for v0.58.15 [skip ci]
     - docs: reorganize documentation and integrate skill tools into registry
 
 
-### Chores
+### [0.58.18] Chores
     - chore(release): bump version to {{version}}
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.15 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.14 version =  [skip ci]
-# [Version 0.58.17] - 2026-01-04
+## 0.58.17 - 2026-01-04
 
 
-### Features
+### [0.58.17] Features
     - feat(core): enhance tool caching and UI redraw optimization
     - feat(core): add file system watcher and performance optimization infrastructure
     - feat(core): integrate real performance optimizations into tool registry
 
 
-### Documentation
+### [0.58.17] Documentation
     - docs: update changelog for v0.58.16 [skip ci]
     - docs: update changelog for v0.58.15 [skip ci]
     - docs: reorganize documentation and integrate skill tools into registry
 
 
-### Chores
+### [0.58.17] Chores
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.15 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.14 version =  [skip ci]
-# [Version 0.58.16] - 2026-01-04
+## 0.58.16 - 2026-01-04
 
 
-### Features
+### [0.58.16] Features
     - feat(core): enhance tool caching and UI redraw optimization
     - feat(core): add file system watcher and performance optimization infrastructure
     - feat(core): integrate real performance optimizations into tool registry
 
 
-### Documentation
+### [0.58.16] Documentation
     - docs: update changelog for v0.58.15 [skip ci]
     - docs: reorganize documentation and integrate skill tools into registry
 
 
-### Chores
+### [0.58.16] Chores
     - chore: update npm package.json to v0.58.15 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.14 version =  [skip ci]
-# [Version 0.58.15] - 2026-01-04
+## 0.58.15 - 2026-01-04
 
 
-### Features
+### [0.58.15] Features
     - feat(core): add file system watcher and performance optimization infrastructure
     - feat(core): integrate real performance optimizations into tool registry
 
 
-### Documentation
+### [0.58.15] Documentation
     - docs: reorganize documentation and integrate skill tools into registry
     - docs: update changelog for v0.58.14 [skip ci]
 
 
-### Chores
+### [0.58.15] Chores
     - chore: update npm package.json to v0.58.14 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: remove unused GeminiPromptCacheMode import.
     - chore: update npm package.json to v0.58.13 version =  [skip ci]
-# [Version 0.58.14] - 2026-01-03
+## 0.58.14 - 2026-01-03
 
 
-### Features
+### [0.58.14] Features
     - feat: enhance LLM provider initialization with client injection and refine prompt caching
     - feat: Refactor tool registry to use MCP tool index cache and update mutability of inventory and tool policy access.
     - feat: Implement parallel tool execution for agent actions and update tool registry operations to be asynchronous.
     - feat: Refactor tool permission context and enhance command safety validation with new progress updates for tool execution.
 
 
-### Refactors
+### [0.58.14] Refactors
     - refactor: simplify nested conditional logic with chained `&& let` patterns
     - refactor: update symbol name extraction to use `ChildByField` and add Rust language test.
     - refactor: Extract progress update guard and elapsed time updater to `progress.rs` and add `PlaceholderSpinner::force_refresh`.
 
 
-### Documentation
+### [0.58.14] Documentation
     - docs: update changelog for v0.58.13 [skip ci]
 
 
-### Style Changes
+### [0.58.14] Style Changes
     - style: apply consistent formatting and whitespace adjustments
 
 
-### Chores
+### [0.58.14] Chores
     - chore: remove unused GeminiPromptCacheMode import.
     - chore: update npm package.json to v0.58.13 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.12 version =  [skip ci]
-# [Version 0.58.13] - 2026-01-03
+## 0.58.13 - 2026-01-03
 
 
-### Features
+### [0.58.13] Features
     - feat: enhance LLM provider initialization with client injection and refine prompt caching
     - feat: Refactor tool registry to use MCP tool index cache and update mutability of inventory and tool policy access.
     - feat: Implement parallel tool execution for agent actions and update tool registry operations to be asynchronous.
     - feat: Refactor tool permission context and enhance command safety validation with new progress updates for tool execution.
 
 
-### Bug Fixes
+### [0.58.13] Bug Fixes
     - fix: resolve Windows build errors in vtcode-core
 
 
-### Refactors
+### [0.58.13] Refactors
     - refactor: simplify nested conditional logic with chained `&& let` patterns
     - refactor: update symbol name extraction to use `ChildByField` and add Rust language test.
     - refactor: Extract progress update guard and elapsed time updater to `progress.rs` and add `PlaceholderSpinner::force_refresh`.
 
 
-### Documentation
+### [0.58.13] Documentation
     - docs: update changelog for v0.58.12 [skip ci]
     - docs: add Windows build fixes documentation
 
 
-### Style Changes
+### [0.58.13] Style Changes
     - style: apply consistent formatting and whitespace adjustments
 
 
-### Chores
+### [0.58.13] Chores
     - chore: update npm package.json to v0.58.12 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.11 version =  [skip ci]
-# [Version 0.58.12] - 2026-01-02
+## 0.58.12 - 2026-01-02
 
 
-### Bug Fixes
+### [0.58.12] Bug Fixes
     - fix: resolve Windows build errors in vtcode-core
     - fix: suppress dead_code warnings for planned/stub functions
 
 
-### Documentation
+### [0.58.12] Documentation
     - docs: add Windows build fixes documentation
     - docs: update changelog for v0.58.11 [skip ci]
 
 
-### Chores
+### [0.58.12] Chores
     - chore: update npm package.json to v0.58.11 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.10 version =  [skip ci]
-# [Version 0.58.11] - 2026-01-02
+## 0.58.11 - 2026-01-02
 
 
-### Bug Fixes
+### [0.58.11] Bug Fixes
     - fix: suppress dead_code warnings for planned/stub functions
     - fix: build-release workflow now triggers on tag push events
 
 
-### Documentation
+### [0.58.11] Documentation
     - docs: update changelog for v0.58.10 [skip ci]
 
 
-### Chores
+### [0.58.11] Chores
     - chore: update npm package.json to v0.58.10 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.9 version =  [skip ci]
-# [Version 0.58.10] - 2026-01-02
+## 0.58.10 - 2026-01-02
 
 
-### Bug Fixes
+### [0.58.10] Bug Fixes
     - fix: build-release workflow now triggers on tag push events
 
 
-### Documentation
+### [0.58.10] Documentation
     - docs: update changelog for v0.58.9 [skip ci]
 
 
-### Chores
+### [0.58.10] Chores
     - chore: update npm package.json to v0.58.9 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.8 version =  [skip ci]
-# [Version 0.58.9] - 2026-01-02
+## 0.58.9 - 2026-01-02
 
 
-### Features
+### [0.58.9] Features
     - feat: auto-trigger build-release workflow on GitHub release creation
 
 
-### Documentation
+### [0.58.9] Documentation
     - docs: update changelog for v0.58.8 [skip ci]
 
 
-### Chores
+### [0.58.9] Chores
     - chore: update npm package.json to v0.58.8 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.7 version =  [skip ci]
-# [Version 0.58.8] - 2026-01-02
+## 0.58.8 - 2026-01-02
 
 
-### Features
+### [0.58.8] Features
     - feat: auto-trigger build-release workflow on GitHub release creation
 
 
-### Bug Fixes
+### [0.58.8] Bug Fixes
     - fix: suppress unused_imports warning in openai.rs for CI compatibility
     - fix: install OpenSSL dependencies for Linux builds in CI
     - fix: conditionally import debug-only items to fix release build
 
 
-### Documentation
+### [0.58.8] Documentation
     - docs: update changelog for v0.58.7 [skip ci]
     - docs: add instructions for manually triggering release build
     - docs: add quick reference for monitoring and auto-install
@@ -12765,14 +12765,14 @@ All notable changes to vtcode will be documented in this file.
     - docs: add release v0.58.6 and installer test guide
 
 
-### Chores
+### [0.58.8] Chores
     - chore: update npm package.json to v0.58.7 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.6 version =  [skip ci]
-# [Version 0.58.7] - 2026-01-02
+## 0.58.7 - 2026-01-02
 
 
-### Bug Fixes
+### [0.58.7] Bug Fixes
     - fix: suppress unused_imports warning in openai.rs for CI compatibility
     - fix: install OpenSSL dependencies for Linux builds in CI
     - fix: conditionally import debug-only items to fix release build
@@ -12780,7 +12780,7 @@ All notable changes to vtcode will be documented in this file.
     - fix: redirect all logging to stderr in installer script
 
 
-### Documentation
+### [0.58.7] Documentation
     - docs: add instructions for manually triggering release build
     - docs: add quick reference for monitoring and auto-install
     - docs: add release monitoring guide with auto-install instructions
@@ -12791,25 +12791,25 @@ All notable changes to vtcode will be documented in this file.
     - docs: add native installer implementation status report
 
 
-### Chores
+### [0.58.7] Chores
     - chore: update npm package.json to v0.58.6 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: update npm package.json to v0.58.5 version =  [skip ci]
-# [Version 0.58.6] - 2026-01-02
+## 0.58.6 - 2026-01-02
 
 
-### Features
+### [0.58.6] Features
     - feat: add native installer with auto-updater module
 
 
-### Bug Fixes
+### [0.58.6] Bug Fixes
     - fix: ensure get_download_url outputs only URL to stdout
     - fix: redirect all logging to stderr in installer script
     - fix: correct Python variable substitution in Homebrew workflow
     - fix: improve release.toml commit message template for consistency
 
 
-### Documentation
+### [0.58.6] Documentation
     - docs: add native installer implementation status report
     - docs: update changelog for v0.58.5 [skip ci]
     - docs: add .nojekyll to bypass Jekyll processing
@@ -12824,20 +12824,20 @@ All notable changes to vtcode will be documented in this file.
     - docs: add guide for setting up custom homebrew tap repository
 
 
-### Chores
+### [0.58.6] Chores
     - chore: update npm package.json to v0.58.5 version =  [skip ci]
     - chore(release): bump version to {{version}}
     - chore: remove Pages workflow - using simpler direct branch deployment
     - chore: remove redundant release-on-tag.yml workflow
     - chore: update npm package.json to v0.58.4 version =  [skip ci]
-# [Version 0.58.5] - 2026-01-02
+## 0.58.5 - 2026-01-02
 
 
-### Features
+### [0.58.5] Features
     - feat: add native installer with auto-updater module
 
 
-### Bug Fixes
+### [0.58.5] Bug Fixes
     - fix: correct Python variable substitution in Homebrew workflow
     - fix: improve release.toml commit message template for consistency
     - fix: resolve python string interpolation in homebrew formula updates
@@ -12845,7 +12845,7 @@ All notable changes to vtcode will be documented in this file.
     - fix: homebrew release automation and YAML workflow indentation
 
 
-### Documentation
+### [0.58.5] Documentation
     - docs: add .nojekyll to bypass Jekyll processing
     - docs: remove HTML index, use Jekyll markdown
     - docs: add HTML landing page for GitHub Pages
@@ -12860,16 +12860,16 @@ All notable changes to vtcode will be documented in this file.
     - docs: add verification summary for homebrew release fixes
 
 
-### Chores
+### [0.58.5] Chores
     - chore: remove Pages workflow - using simpler direct branch deployment
     - chore: remove redundant release-on-tag.yml workflow
     - chore: update npm package.json to v0.58.4 version =  [skip ci]
     - chore: release v{{version}}
     - chore: update npm package.json to v0.58.3 version =  [skip ci]
-# [Version 0.58.4] - 2026-01-02
+## 0.58.4 - 2026-01-02
 
 
-### Features
+### [0.58.4] Features
     - feat(runner): add keyboard protocol environment check and enhance logging
     - feat(tools): Add move and copy file operations with error handling
     - feat(command-safety): Enhance command safety module with comprehensive integration and documentation
@@ -12883,7 +12883,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement the Desire Paths philosophy by updating agent prompts and documentation to improve agent UX.
 
 
-### Bug Fixes
+### [0.58.4] Bug Fixes
     - fix: resolve python string interpolation in homebrew formula updates
     - fix: improve homebrew formula regex patterns for reliable checksum updates
     - fix: homebrew release automation and YAML workflow indentation
@@ -12891,11 +12891,11 @@ All notable changes to vtcode will be documented in this file.
     - fix(models): Correct ClaudeOpus41 version and update related assertions refactor(loader): Adjust config loading order and clarify comments feat(output-styles): Add kebab-case renaming for OutputStyleFileConfig
 
 
-### Refactors
+### [0.58.4] Refactors
     - refactor(config): Remove ConfigOptimizer and implement ConfigBuilder for streamlined configuration management
 
 
-### Documentation
+### [0.58.4] Documentation
     - docs: add verification summary for homebrew release fixes
     - docs: update changelog for v0.58.3 [skip ci]
     - docs: update changelog for v0.58.2 [skip ci]
@@ -12907,7 +12907,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: Update implementation summary and configuration for file search and system prompt enhancements
 
 
-### Chores
+### [0.58.4] Chores
     - chore: update npm package.json to v0.58.3 version =  [skip ci]
     - chore: release v{{version}}
     - chore: release v{{version}}
@@ -12917,10 +12917,10 @@ All notable changes to vtcode will be documented in this file.
     - chore: fix release metadata for vtcode-file-search and vtcode-process-hardening, add version constraint
     - chore: add missing metadata to vtcode-file-search and vtcode-process-hardening
     - chore(deps): bump the all-rust-deps group with 14 updates
-# [Version 0.58.3] - 2026-01-02
+## 0.58.3 - 2026-01-02
 
 
-### Features
+### [0.58.3] Features
     - feat(runner): add keyboard protocol environment check and enhance logging
     - feat(tools): Add move and copy file operations with error handling
     - feat(command-safety): Enhance command safety module with comprehensive integration and documentation
@@ -12934,16 +12934,16 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement the Desire Paths philosophy by updating agent prompts and documentation to improve agent UX.
 
 
-### Bug Fixes
+### [0.58.3] Bug Fixes
     - fix: update dependencies and improve error handling in terminal functions
     - fix(models): Correct ClaudeOpus41 version and update related assertions refactor(loader): Adjust config loading order and clarify comments feat(output-styles): Add kebab-case renaming for OutputStyleFileConfig
 
 
-### Refactors
+### [0.58.3] Refactors
     - refactor(config): Remove ConfigOptimizer and implement ConfigBuilder for streamlined configuration management
 
 
-### Documentation
+### [0.58.3] Documentation
     - docs: update changelog for v0.58.2 [skip ci]
     - docs: update changelog for v0.58.1 [skip ci]
     - docs: update changelog for v0.58.0 [skip ci]
@@ -12953,7 +12953,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: Update implementation summary and configuration for file search and system prompt enhancements
 
 
-### Chores
+### [0.58.3] Chores
     - chore: release v{{version}}
     - chore: release v{{version}}
     - chore: release v{{version}}
@@ -12962,10 +12962,10 @@ All notable changes to vtcode will be documented in this file.
     - chore: add missing metadata to vtcode-file-search and vtcode-process-hardening
     - chore(deps): bump the all-rust-deps group with 14 updates
     - chore: update npm package.json to v0.55.1 [skip ci]
-# [Version 0.58.2] - 2026-01-02
+## 0.58.2 - 2026-01-02
 
 
-### Features
+### [0.58.2] Features
     - feat(runner): add keyboard protocol environment check and enhance logging
     - feat(tools): Add move and copy file operations with error handling
     - feat(command-safety): Enhance command safety module with comprehensive integration and documentation
@@ -12979,15 +12979,15 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement the Desire Paths philosophy by updating agent prompts and documentation to improve agent UX.
 
 
-### Bug Fixes
+### [0.58.2] Bug Fixes
     - fix(models): Correct ClaudeOpus41 version and update related assertions refactor(loader): Adjust config loading order and clarify comments feat(output-styles): Add kebab-case renaming for OutputStyleFileConfig
 
 
-### Refactors
+### [0.58.2] Refactors
     - refactor(config): Remove ConfigOptimizer and implement ConfigBuilder for streamlined configuration management
 
 
-### Documentation
+### [0.58.2] Documentation
     - docs: update changelog for v0.58.1 [skip ci]
     - docs: update changelog for v0.58.0 [skip ci]
     - docs: update changelog for v0.57.0 [skip ci]
@@ -12996,7 +12996,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: Update implementation summary and configuration for file search and system prompt enhancements
 
 
-### Chores
+### [0.58.2] Chores
     - chore: release v{{version}}
     - chore: release v{{version}}
     - chore: release v{{version}}
@@ -13004,10 +13004,10 @@ All notable changes to vtcode will be documented in this file.
     - chore: add missing metadata to vtcode-file-search and vtcode-process-hardening
     - chore(deps): bump the all-rust-deps group with 14 updates
     - chore: update npm package.json to v0.55.1 [skip ci]
-# [Version 0.58.1] - 2026-01-02
+## 0.58.1 - 2026-01-02
 
 
-### Features
+### [0.58.1] Features
     - feat(runner): add keyboard protocol environment check and enhance logging
     - feat(tools): Add move and copy file operations with error handling
     - feat(command-safety): Enhance command safety module with comprehensive integration and documentation
@@ -13028,16 +13028,16 @@ All notable changes to vtcode will be documented in this file.
     - feat(marketplace): add marketplace and plugin management commands
 
 
-### Bug Fixes
+### [0.58.1] Bug Fixes
     - fix(models): Correct ClaudeOpus41 version and update related assertions refactor(loader): Adjust config loading order and clarify comments feat(output-styles): Add kebab-case renaming for OutputStyleFileConfig
 
 
-### Refactors
+### [0.58.1] Refactors
     - refactor(config): Remove ConfigOptimizer and implement ConfigBuilder for streamlined configuration management
     - refactor: improve Linux checksum handling and release verification in scripts
 
 
-### Documentation
+### [0.58.1] Documentation
     - docs: update changelog for v0.58.0 [skip ci]
     - docs: update changelog for v0.57.0 [skip ci]
     - docs: update changelog for v0.56.0 [skip ci]
@@ -13048,7 +13048,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.54.4 [skip ci]
 
 
-### Chores
+### [0.58.1] Chores
     - chore: release v{{version}}
     - chore: release v{{version}}
     - chore: fix release metadata for vtcode-file-search and vtcode-process-hardening, add version constraint
@@ -13058,10 +13058,10 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.55.0
     - chore: release v0.54.4
     - chore: update npm package.json to v0.54.3 [skip ci]
-# [Version 0.58.0] - 2026-01-02
+## 0.58.0 - 2026-01-02
 
 
-### Features
+### [0.58.0] Features
     - feat(runner): add keyboard protocol environment check and enhance logging
     - feat(tools): Add move and copy file operations with error handling
     - feat(command-safety): Enhance command safety module with comprehensive integration and documentation
@@ -13082,16 +13082,16 @@ All notable changes to vtcode will be documented in this file.
     - feat(marketplace): add marketplace and plugin management commands
 
 
-### Bug Fixes
+### [0.58.0] Bug Fixes
     - fix(models): Correct ClaudeOpus41 version and update related assertions refactor(loader): Adjust config loading order and clarify comments feat(output-styles): Add kebab-case renaming for OutputStyleFileConfig
 
 
-### Refactors
+### [0.58.0] Refactors
     - refactor(config): Remove ConfigOptimizer and implement ConfigBuilder for streamlined configuration management
     - refactor: improve Linux checksum handling and release verification in scripts
 
 
-### Documentation
+### [0.58.0] Documentation
     - docs: update changelog for v0.57.0 [skip ci]
     - docs: update changelog for v0.56.0 [skip ci]
     - docs: Add Phase 3 extension integration planning and file search documentation
@@ -13101,7 +13101,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.54.4 [skip ci]
 
 
-### Chores
+### [0.58.0] Chores
     - chore: release v{{version}}
     - chore: fix release metadata for vtcode-file-search and vtcode-process-hardening, add version constraint
     - chore: add missing metadata to vtcode-file-search and vtcode-process-hardening
@@ -13110,10 +13110,10 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.55.0
     - chore: release v0.54.4
     - chore: update npm package.json to v0.54.3 [skip ci]
-# [Version 0.57.0] - 2026-01-02
+## 0.57.0 - 2026-01-02
 
 
-### Features
+### [0.57.0] Features
     - feat(runner): add keyboard protocol environment check and enhance logging
     - feat(tools): Add move and copy file operations with error handling
     - feat(command-safety): Enhance command safety module with comprehensive integration and documentation
@@ -13134,16 +13134,16 @@ All notable changes to vtcode will be documented in this file.
     - feat(marketplace): add marketplace and plugin management commands
 
 
-### Bug Fixes
+### [0.57.0] Bug Fixes
     - fix(models): Correct ClaudeOpus41 version and update related assertions refactor(loader): Adjust config loading order and clarify comments feat(output-styles): Add kebab-case renaming for OutputStyleFileConfig
 
 
-### Refactors
+### [0.57.0] Refactors
     - refactor(config): Remove ConfigOptimizer and implement ConfigBuilder for streamlined configuration management
     - refactor: improve Linux checksum handling and release verification in scripts
 
 
-### Documentation
+### [0.57.0] Documentation
     - docs: update changelog for v0.56.0 [skip ci]
     - docs: Add Phase 3 extension integration planning and file search documentation
     - docs: Update implementation summary and configuration for file search and system prompt enhancements
@@ -13152,7 +13152,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.54.4 [skip ci]
 
 
-### Chores
+### [0.57.0] Chores
     - chore: fix release metadata for vtcode-file-search and vtcode-process-hardening, add version constraint
     - chore: add missing metadata to vtcode-file-search and vtcode-process-hardening
     - chore: update npm package.json to v0.55.1 [skip ci]
@@ -13160,10 +13160,10 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.55.0
     - chore: release v0.54.4
     - chore: update npm package.json to v0.54.3 [skip ci]
-# [Version 0.56.0] - 2026-01-02
+## 0.56.0 - 2026-01-02 (historical record 1 of 2)
 
 
-### Features
+### [0.56.0/r1] Features
     - feat(runner): add keyboard protocol environment check and enhance logging
     - feat(tools): Add move and copy file operations with error handling
     - feat(command-safety): Enhance command safety module with comprehensive integration and documentation
@@ -13184,16 +13184,16 @@ All notable changes to vtcode will be documented in this file.
     - feat(marketplace): add marketplace and plugin management commands
 
 
-### Bug Fixes
+### [0.56.0/r1] Bug Fixes
     - fix(models): Correct ClaudeOpus41 version and update related assertions refactor(loader): Adjust config loading order and clarify comments feat(output-styles): Add kebab-case renaming for OutputStyleFileConfig
 
 
-### Refactors
+### [0.56.0/r1] Refactors
     - refactor(config): Remove ConfigOptimizer and implement ConfigBuilder for streamlined configuration management
     - refactor: improve Linux checksum handling and release verification in scripts
 
 
-### Documentation
+### [0.56.0/r1] Documentation
     - docs: update changelog for v0.56.0 [skip ci]
     - docs: Add Phase 3 extension integration planning and file search documentation
     - docs: Update implementation summary and configuration for file search and system prompt enhancements
@@ -13202,17 +13202,17 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.54.4 [skip ci]
 
 
-### Chores
+### [0.56.0/r1] Chores
     - chore: add missing metadata to vtcode-file-search and vtcode-process-hardening
     - chore: update npm package.json to v0.55.1 [skip ci]
     - chore: release v0.55.1
     - chore: release v0.55.0
     - chore: release v0.54.4
     - chore: update npm package.json to v0.54.3 [skip ci]
-# [Version 0.56.0] - 2026-01-02
+## 0.56.0 - 2026-01-02 (historical record 2 of 2)
 
 
-### Features
+### [0.56.0/r2] Features
     - feat(runner): add keyboard protocol environment check and enhance logging
     - feat(tools): Add move and copy file operations with error handling
     - feat(command-safety): Enhance command safety module with comprehensive integration and documentation
@@ -13233,16 +13233,16 @@ All notable changes to vtcode will be documented in this file.
     - feat(marketplace): add marketplace and plugin management commands
 
 
-### Bug Fixes
+### [0.56.0/r2] Bug Fixes
     - fix(models): Correct ClaudeOpus41 version and update related assertions refactor(loader): Adjust config loading order and clarify comments feat(output-styles): Add kebab-case renaming for OutputStyleFileConfig
 
 
-### Refactors
+### [0.56.0/r2] Refactors
     - refactor(config): Remove ConfigOptimizer and implement ConfigBuilder for streamlined configuration management
     - refactor: improve Linux checksum handling and release verification in scripts
 
 
-### Documentation
+### [0.56.0/r2] Documentation
     - docs: Add Phase 3 extension integration planning and file search documentation
     - docs: Update implementation summary and configuration for file search and system prompt enhancements
     - docs: update changelog for v0.55.1 [skip ci]
@@ -13250,16 +13250,16 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.54.4 [skip ci]
 
 
-### Chores
+### [0.56.0/r2] Chores
     - chore: update npm package.json to v0.55.1 [skip ci]
     - chore: release v0.55.1
     - chore: release v0.55.0
     - chore: release v0.54.4
     - chore: update npm package.json to v0.54.3 [skip ci]
-# [Version 0.55.1] - 2025-12-29
+## 0.55.1 - 2025-12-29
 
 
-### Features
+### [0.55.1] Features
     - feat: add tokio dependency and improve error handling in background task execution
     - feat(subagents): document subagent system and built-in agents; update README and changelog
     - feat(statusline): add custom status line scripts and JSON input handling
@@ -13272,26 +13272,26 @@ All notable changes to vtcode will be documented in this file.
     - feat(release): enhance GitHub account handling for CI environments
 
 
-### Refactors
+### [0.55.1] Refactors
     - refactor: improve Linux checksum handling and release verification in scripts
 
 
-### Documentation
+### [0.55.1] Documentation
     - docs: update changelog for v0.55.0 [skip ci]
     - docs: update changelog for v0.54.4 [skip ci]
     - docs: update changelog for v0.54.3 [skip ci]
 
 
-### Chores
+### [0.55.1] Chores
     - chore: release v0.55.0
     - chore: release v0.54.4
     - chore: update npm package.json to v0.54.3 [skip ci]
     - chore: release v0.54.3
     - chore: update npm package.json to v0.54.2 [skip ci]
-# [Version 0.55.0] - 2025-12-29
+## 0.55.0 - 2025-12-29 (historical record 1 of 2)
 
 
-### Features
+### [0.55.0/r1] Features
     - feat(subagents): document subagent system and built-in agents; update README and changelog
     - feat(statusline): add custom status line scripts and JSON input handling
     - feat: add reverse search and background operation handling in TUI
@@ -13303,24 +13303,24 @@ All notable changes to vtcode will be documented in this file.
     - feat(release): enhance GitHub account handling for CI environments
 
 
-### Refactors
+### [0.55.0/r1] Refactors
     - refactor: improve Linux checksum handling and release verification in scripts
 
 
-### Documentation
+### [0.55.0/r1] Documentation
     - docs: update changelog for v0.54.4 [skip ci]
     - docs: update changelog for v0.54.3 [skip ci]
 
 
-### Chores
+### [0.55.0/r1] Chores
     - chore: release v0.54.4
     - chore: update npm package.json to v0.54.3 [skip ci]
     - chore: release v0.54.3
     - chore: update npm package.json to v0.54.2 [skip ci]
-# [Version 0.54.4] - 2025-12-29
+## 0.54.4 - 2025-12-29
 
 
-### Features
+### [0.54.4] Features
     - feat(subagents): document subagent system and built-in agents; update README and changelog
     - feat(statusline): add custom status line scripts and JSON input handling
     - feat: add reverse search and background operation handling in TUI
@@ -13332,22 +13332,22 @@ All notable changes to vtcode will be documented in this file.
     - feat(release): enhance GitHub account handling for CI environments
 
 
-### Refactors
+### [0.54.4] Refactors
     - refactor: improve Linux checksum handling and release verification in scripts
 
 
-### Documentation
+### [0.54.4] Documentation
     - docs: update changelog for v0.54.3 [skip ci]
 
 
-### Chores
+### [0.54.4] Chores
     - chore: update npm package.json to v0.54.3 [skip ci]
     - chore: release v0.54.3
     - chore: update npm package.json to v0.54.2 [skip ci]
 
-# [Version 0.54.3] - 2025-12-28
+## 0.54.3 - 2025-12-28
 
-### Features
+### [0.54.3] Features
 
     - feat(subagents): add subagent system for delegating tasks to specialized agents
         - Built-in subagents: explore (haiku, read-only), plan (sonnet, research), general (sonnet, full), code-reviewer, debugger
@@ -13370,7 +13370,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: Refactor tool permission handling for TUI-only execution and update default LLM provider configuration.
     - feat: Add GitHub account switching and cleanup functionality in release script
 
-### Refactors
+### [0.54.3] Refactors
 
     - refactor(a2a): clean up unused imports and improve webhook handling
     - refactor: Enhance analysis command to support multiple analysis types and improve error handling
@@ -13381,22 +13381,22 @@ All notable changes to vtcode will be documented in this file.
     - refactor: Remove token budget management and related token estimation/truncation components, and add associated documentation and verification scripts.
     - refactor: improve error message for missing MCP tools with installation instructions
 
-### Documentation
+### [0.54.3] Documentation
 
     - docs: update changelog for v0.54.2 [skip ci]
     - docs: update changelog for v0.55.0 [skip ci]
     - docs(a2a): add comprehensive documentation for A2A Protocol implementation
     - docs(a2a): add Phase 3 implementation status tracker
 
-### Chores
+### [0.54.3] Chores
 
     - chore: update npm package.json to v0.54.2 [skip ci]
     - chore: release v0.54.2
     - chore: update npm package.json to v0.54.1 [skip ci]
 
-# [Version 0.54.2] - 2025-12-28
+## 0.54.2 - 2025-12-28
 
-### Features
+### [0.54.2] Features
 
     - feat(a2a): complete CLI integration and documentation\n\n- Add full A2A CLI with serve, discover, send-task, list-tasks, get-task, cancel-task commands\n- Create comprehensive CLI handlers for all A2A operations\n- Fix streaming event handling with proper pinning\n- Update server.rs Box<dyn Stream> return type for axum compatibility\n- Add completion summary document\n- All checks pass: cargo check --package vtcode-core\n\nImplements: A2A Protocol Phase 4 - CLI integration and user-facing features
     - feat(a2a): add A2A client with streaming support\n\n- New A2aClient for discovery, task ops, push config, and streaming\n- SSE client parses streaming events without extra deps\n- Simple incremental request IDs and HTTPS agent card fetch\n- Tests added for SSE parsing helpers\n\nTests: cargo test --package vtcode-core --lib a2a (39/39)
@@ -13427,7 +13427,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement timed double Ctrl+C for agent exit, deferring shutdown, and update the default model.
     - feat: Add `--skip-release` option and enhance GitHub release verification logic with CI environment detection.
 
-### Refactors
+### [0.54.2] Refactors
 
     - refactor(a2a): clean up unused imports and improve webhook handling
     - refactor: Enhance analysis command to support multiple analysis types and improve error handling
@@ -13441,7 +13441,7 @@ All notable changes to vtcode will be documented in this file.
     - refactor: consistently use `adaptive_trim` with `pruning_ledger` across all proactive token budget guards.
     - refactor: Restructure agent turn execution with new guard, context, and tool outcome modules, removing old loop detection, and updating LSP tools.
 
-### Documentation
+### [0.54.2] Documentation
 
     - docs: update changelog for v0.55.0 [skip ci]
     - docs(a2a): add comprehensive documentation for A2A Protocol implementation
@@ -13449,15 +13449,15 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.54.1 [skip ci]
     - docs: Streamline TODO by removing verbose system skill enumeration and adding a focused task.
 
-### Chores
+### [0.54.2] Chores
 
     - chore: update npm package.json to v0.54.1 [skip ci]
     - chore: release v0.54.1
     - chore: update npm package.json to v0.54.0 [skip ci]
 
-# [Version 0.55.0] - 2025-12-28
+## 0.55.0 - 2025-12-28 (historical record 2 of 2)
 
-### Features
+### [0.55.0/r2] Features
 
     - feat(a2a): complete CLI integration and documentation\n\n- Add full A2A CLI with serve, discover, send-task, list-tasks, get-task, cancel-task commands\n- Create comprehensive CLI handlers for all A2A operations\n- Fix streaming event handling with proper pinning\n- Update server.rs Box<dyn Stream> return type for axum compatibility\n- Add completion summary document\n- All checks pass: cargo check --package vtcode-core\n\nImplements: A2A Protocol Phase 4 - CLI integration and user-facing features
     - feat(a2a): add A2A client with streaming support\n\n- New A2aClient for discovery, task ops, push config, and streaming\n- SSE client parses streaming events without extra deps\n- Simple incremental request IDs and HTTPS agent card fetch\n- Tests added for SSE parsing helpers\n\nTests: cargo test --package vtcode-core --lib a2a (39/39)
@@ -13488,7 +13488,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement timed double Ctrl+C for agent exit, deferring shutdown, and update the default model.
     - feat: Add `--skip-release` option and enhance GitHub release verification logic with CI environment detection.
 
-### Refactors
+### [0.55.0/r2] Refactors
 
     - refactor(a2a): clean up unused imports and improve webhook handling
     - refactor: Enhance analysis command to support multiple analysis types and improve error handling
@@ -13502,22 +13502,22 @@ All notable changes to vtcode will be documented in this file.
     - refactor: consistently use `adaptive_trim` with `pruning_ledger` across all proactive token budget guards.
     - refactor: Restructure agent turn execution with new guard, context, and tool outcome modules, removing old loop detection, and updating LSP tools.
 
-### Documentation
+### [0.55.0/r2] Documentation
 
     - docs(a2a): add comprehensive documentation for A2A Protocol implementation
     - docs(a2a): add Phase 3 implementation status tracker
     - docs: update changelog for v0.54.1 [skip ci]
     - docs: Streamline TODO by removing verbose system skill enumeration and adding a focused task.
 
-### Chores
+### [0.55.0/r2] Chores
 
     - chore: update npm package.json to v0.54.1 [skip ci]
     - chore: release v0.54.1
     - chore: update npm package.json to v0.54.0 [skip ci]
 
-# [Version 0.54.1] - 2025-12-27
+## 0.54.1 - 2025-12-27
 
-### Features
+### [0.54.1] Features
 
     - feat: Introduce `EnhancedSkillLoader` and `EnhancedSkill` for unified skill and tool management, and refactor skill discovery results across the agent and CLI.
     - feat: add support for loading skill `references/` and `assets/` directories and introduce `ResourceType::Asset`
@@ -13538,45 +13538,45 @@ All notable changes to vtcode will be documented in this file.
     - feat: Add `--skip-release` option and enhance GitHub release verification logic with CI environment detection.
     - feat: Implement LSP client and manager with agent slash commands, and add LLM provider caching tests.
 
-### Refactors
+### [0.54.1] Refactors
 
     - refactor: Introduce a dedicated interaction loop for centralized user input and turn flow, updating session and context management.
     - refactor: consistently use `adaptive_trim` with `pruning_ledger` across all proactive token budget guards.
     - refactor: Restructure agent turn execution with new guard, context, and tool outcome modules, removing old loop detection, and updating LSP tools.
 
-### Documentation
+### [0.54.1] Documentation
 
     - docs: Streamline TODO by removing verbose system skill enumeration and adding a focused task.
     - docs: update changelog for v0.54.0 [skip ci]
 
-### Chores
+### [0.54.1] Chores
 
     - chore: update npm package.json to v0.54.0 [skip ci]
     - chore: release v0.54.0
     - chore: update npm package.json to v0.53.2 [skip ci]
 
-# [Version 0.54.0] - 2025-12-27
+## 0.54.0 - 2025-12-27
 
-### Features
+### [0.54.0] Features
 
     - feat: Implement LSP client and manager with agent slash commands, and add LLM provider caching tests.
     - feat: Update default agent configuration to HuggingFace and refine tool schemas and prompt generation logic.
     - feat: Introduce dynamic system prompt enhancements including temporal context and working directory awareness, along with refined tool usage guidelines for improved agent performance.
     - feat: Enhance textual tool call parsing, pre-validate arguments, and refine tool failure detection to improve agent robustness.
 
-### Documentation
+### [0.54.0] Documentation
 
     - docs: update changelog for v0.53.2 [skip ci]
 
-### Chores
+### [0.54.0] Chores
 
     - chore: update npm package.json to v0.53.2 [skip ci]
     - chore: release v0.53.2
     - chore: update npm package.json to v0.53.1 [skip ci]
 
-# [Version 0.53.2] - 2025-12-26
+## 0.53.2 - 2025-12-26
 
-### Features
+### [0.53.2] Features
 
     - feat: Update default agent configuration to HuggingFace and refine tool schemas and prompt generation logic.
     - feat: Introduce dynamic system prompt enhancements including temporal context and working directory awareness, along with refined tool usage guidelines for improved agent performance.
@@ -13587,26 +13587,26 @@ All notable changes to vtcode will be documented in this file.
     - feat: enhance documentation and prompts for clarity, consistency, and performance improvements
     - feat: optimize ANSI syntax highlighting in diff renderer for improved performance
 
-### Refactors
+### [0.53.2] Refactors
 
     - refactor: update reasoning labels for clarity in justification and session headers
     - refactor: streamline toolset by merging agent diagnostics and removing deprecated tools
     - refactor: simplify error handling in dotenv loading
 
-### Documentation
+### [0.53.2] Documentation
 
     - docs: update changelog for v0.53.1 [skip ci]
 
-### Chores
+### [0.53.2] Chores
 
     - chore: update npm package.json to v0.53.1 [skip ci]
     - chore: release v0.53.1
     - chore: remove completed tasks from TODO.md and improve memory usage for large conversations
     - chore: update npm package.json to v0.53.0 [skip ci]
 
-# [Version 0.53.1] - 2025-12-26
+## 0.53.1 - 2025-12-26
 
-### Features
+### [0.53.1] Features
 
     - feat: Enhance session resume/fork logic and improve conversation history display during session startup.
     - feat: add session resumption functionality and update related actions
@@ -13631,19 +13631,19 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement terminal setup wizard with support for multiple terminals and features, and update LLM provider models.
     - feat: add code intelligence tool with LSP-like navigation features
 
-### Bug Fixes
+### [0.53.1] Bug Fixes
 
     - fix: Disable JSON object output and Responses API for GLM models and refine streaming completion event content handling.
     - fix: disable npm publishing in release.sh
     - fix: remove npm installation due to GitHub Actions costs
 
-### Refactors
+### [0.53.1] Refactors
 
     - refactor: update reasoning labels for clarity in justification and session headers
     - refactor: streamline toolset by merging agent diagnostics and removing deprecated tools
     - refactor: simplify error handling in dotenv loading
 
-### Documentation
+### [0.53.1] Documentation
 
     - docs: update changelog for v0.53.0 [skip ci]
     - docs: Update README with new sections for Keyboard Shortcuts and macOS Alt Shortcut Troubleshooting; refine TODO list entries for clarity and consistency.
@@ -13652,7 +13652,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.52.9 [skip ci]
     - docs: update installation instructions and scripts for npm package
 
-### Chores
+### [0.53.1] Chores
 
     - chore: remove completed tasks from TODO.md and improve memory usage for large conversations
     - chore: update npm package.json to v0.53.0 [skip ci]
@@ -13664,9 +13664,9 @@ All notable changes to vtcode will be documented in this file.
     - chore(deps): bump actions/cache from 4 to 5
     - chore(deps): bump actions/upload-artifact from 5 to 6
 
-# [Version 0.53.0] - 2025-12-25
+## 0.53.0 - 2025-12-25
 
-### Features
+### [0.53.0] Features
 
     - feat: add agent option to CLI for temporary model override
     - feat: enhance planning tool with quality validation and detailed descriptions for task phases
@@ -13686,14 +13686,14 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement terminal setup wizard with support for multiple terminals and features, and update LLM provider models.
     - feat: add code intelligence tool with LSP-like navigation features
 
-### Bug Fixes
+### [0.53.0] Bug Fixes
 
     - fix: Disable JSON object output and Responses API for GLM models and refine streaming completion event content handling.
     - fix: disable npm publishing in release.sh
     - fix: remove npm installation due to GitHub Actions costs
     - fix: rename npm package from vtcode-bin to vtcode
 
-### Documentation
+### [0.53.0] Documentation
 
     - docs: Update README with new sections for Keyboard Shortcuts and macOS Alt Shortcut Troubleshooting; refine TODO list entries for clarity and consistency.
     - docs: Add a comprehensive list of new features, bug fixes, and performance improvements to the project TODO list.
@@ -13701,7 +13701,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.52.9 [skip ci]
     - docs: update installation instructions and scripts for npm package
 
-### Chores
+### [0.53.0] Chores
 
     - chore: release v0.52.10
     - chore: release v0.52.9
@@ -13713,27 +13713,27 @@ All notable changes to vtcode will be documented in this file.
     - chore(deps): bump actions/cache from 4 to 5
     - chore(deps): bump actions/upload-artifact from 5 to 6
 
-# [Version 0.52.10] - 2025-12-25
+## 0.52.10 - 2025-12-25
 
-### Features
+### [0.52.10] Features
 
     - feat: Refactor and expand slash command handling with new diagnostics, skills, tools, workspace, and context commands.
     - feat: Implement terminal setup wizard with support for multiple terminals and features, and update LLM provider models.
     - feat: add code intelligence tool with LSP-like navigation features
 
-### Bug Fixes
+### [0.52.10] Bug Fixes
 
     - fix: Disable JSON object output and Responses API for GLM models and refine streaming completion event content handling.
     - fix: disable npm publishing in release.sh
     - fix: remove npm installation due to GitHub Actions costs
     - fix: rename npm package from vtcode-bin to vtcode
 
-### Documentation
+### [0.52.10] Documentation
 
     - docs: update changelog for v0.52.9 [skip ci]
     - docs: update installation instructions and scripts for npm package
 
-### Chores
+### [0.52.10] Chores
 
     - chore: release v0.52.9
     - chore(deps): bump the all-rust-deps group with 21 updates
@@ -13744,25 +13744,25 @@ All notable changes to vtcode will be documented in this file.
     - chore(deps): bump actions/cache from 4 to 5
     - chore(deps): bump actions/upload-artifact from 5 to 6
 
-# [Version 0.52.9] - 2025-12-25
+## 0.52.9 - 2025-12-25
 
-### Features
+### [0.52.9] Features
 
     - feat: Refactor and expand slash command handling with new diagnostics, skills, tools, workspace, and context commands.
     - feat: Implement terminal setup wizard with support for multiple terminals and features, and update LLM provider models.
     - feat: add code intelligence tool with LSP-like navigation features
 
-### Bug Fixes
+### [0.52.9] Bug Fixes
 
     - fix: disable npm publishing in release.sh
     - fix: remove npm installation due to GitHub Actions costs
     - fix: rename npm package from vtcode-bin to vtcode
 
-### Documentation
+### [0.52.9] Documentation
 
     - docs: update installation instructions and scripts for npm package
 
-### Chores
+### [0.52.9] Chores
 
     - chore(deps): bump the all-rust-deps group with 21 updates
     - chore: release v0.52.8
@@ -13772,48 +13772,48 @@ All notable changes to vtcode will be documented in this file.
     - chore(deps): bump actions/cache from 4 to 5
     - chore(deps): bump actions/upload-artifact from 5 to 6
 
-# [Version 0.52.5] - 2025-12-24
+## 0.52.5 - 2025-12-24
 
-### Bug Fixes
+### [0.52.5] Bug Fixes
 
     - fix: update release workflow to handle npm publishing correctly
     - fix: unignore .github directory to enable GitHub Actions CI/CD workflows
 
-### Documentation
+### [0.52.5] Documentation
 
     - docs: update changelog for v0.52.4 [skip ci]
 
-### Chores
+### [0.52.5] Chores
 
     - chore: update npm package.json to v0.52.4 [skip ci]
     - chore: release v0.52.4
     - chore: update npm package.json to v0.52.3 [skip ci]
 
-# [Version 0.52.4] - 2025-12-24
+## 0.52.4 - 2025-12-24
 
-### Features
+### [0.52.4] Features
 
     - feat: Add new Z.AI GLM models, refine reasoning support, and update Hugging Face model naming conventions.
     - feat: reimplement HuggingFace LLM provider with dedicated logic to handle its unique API behaviours and compatibility.
     - feat: Add Hugging Face integration documentation and update tool policies to include git and cargo commands while removing some mcp time-related tools.
 
-### Bug Fixes
+### [0.52.4] Bug Fixes
 
     - fix: unignore .github directory to enable GitHub Actions CI/CD workflows
 
-### Documentation
+### [0.52.4] Documentation
 
     - docs: update changelog for v0.52.3 [skip ci]
 
-### Chores
+### [0.52.4] Chores
 
     - chore: update npm package.json to v0.52.3 [skip ci]
     - chore: release v0.52.3
     - chore: update npm package.json to v0.52.2 [skip ci]
 
-# [Version 0.52.3] - 2025-12-24
+## 0.52.3 - 2025-12-24
 
-### Features
+### [0.52.3] Features
 
     - feat: Add new Z.AI GLM models, refine reasoning support, and update Hugging Face model naming conventions.
     - feat: reimplement HuggingFace LLM provider with dedicated logic to handle its unique API behaviours and compatibility.
@@ -13831,24 +13831,24 @@ All notable changes to vtcode will be documented in this file.
     - feat: Include Claude agent configurations and GitHub workflows in version control, and update existing agent definitions, skills, commands, hooks, and CI/CD configurations.
     - feat: Introduce agent giving-up reasoning detection and constructive responses, and set `execute_code` tool policy to prompt.
 
-### Bug Fixes
+### [0.52.3] Bug Fixes
 
     - fix: add missing package-lock.json      r npm CI workflow
 
-### Documentation
+### [0.52.3] Documentation
 
     - docs: update changelog for v0.52.2 [skip ci]
 
-### Chores
+### [0.52.3] Chores
 
     - chore: update npm package.json to v0.52.2 [skip ci]
     - chore: release v0.52.2
     - chore: remove temporary file `temp_check.rs`
     - chore: update npm package.json to v0.52.1 [skip ci]
 
-# [Version 0.52.2] - 2025-12-24
+## 0.52.2 - 2025-12-24
 
-### Features
+### [0.52.2] Features
 
     - feat: Add MiniMax model support to the Anthropic provider and adjust its API base URL.
     - feat: Reorganize Hugging Face model identifiers and enhance Anthropic model validation
@@ -13864,107 +13864,107 @@ All notable changes to vtcode will be documented in this file.
     - feat: Introduce agent giving-up reasoning detection and constructive responses, and set `execute_code` tool policy to prompt.
     - feat: add keyboard protocol configuration and documentation for enhanced keyboard event handling
 
-### Bug Fixes
+### [0.52.2] Bug Fixes
 
     - fix: add missing package-lock.json      r npm CI workflow
 
-### Refactors
+### [0.52.2] Refactors
 
     - refactor: simplify configuration handling and update tool permissions in multiple files
     - refactor: apply clippy fixes for code quality improvements
     - refactor: clean up whitespace and formatting across multiple files for improved readability
 
-### Documentation
+### [0.52.2] Documentation
 
     - docs: update changelog for v0.52.1 [skip ci]
 
-### Tests
+### [0.52.2] Tests
 
     - test: add missing fields to LLMRequest initializers
 
-### Chores
+### [0.52.2] Chores
 
     - chore: remove temporary file `temp_check.rs`
     - chore: update npm package.json to v0.52.1 [skip ci]
     - chore: release v0.52.1
     - chore: update npm package.json to v0.52.0 [skip ci]
 
-# [Version 0.52.1] - 2025-12-23
+## 0.52.1 - 2025-12-23
 
-### Features
+### [0.52.1] Features
 
     - feat: add keyboard protocol configuration and documentation for enhanced keyboard event handling
     - feat: Introduce advanced LLM parameters, add default implementations for LLMRequest, Message, and ToolChoice, and remove nextest.toml.
 
-### Refactors
+### [0.52.1] Refactors
 
     - refactor: simplify configuration handling and update tool permissions in multiple files
     - refactor: apply clippy fixes for code quality improvements
     - refactor: clean up whitespace and formatting across multiple files for improved readability
     - refactor: Migrate testing from `cargo nextest` to `cargo test` and enhance Anthropic LLM configuration with new parameters.
 
-### Documentation
+### [0.52.1] Documentation
 
     - docs: update changelog for v0.52.0 [skip ci]
     - docs: Add guidelines for git operations in AGENTS.md and update LLM provider configuration in vtcode.toml
     - docs: Replace all cargo nextest references with cargo test across documentation and agent rules
 
-### Tests
+### [0.52.1] Tests
 
     - test: add missing fields to LLMRequest initializers
 
-### Chores
+### [0.52.1] Chores
 
     - chore: update npm package.json to v0.52.0 [skip ci]
     - chore: release v0.52.0
     - chore: update npm package.json to v0.51.2 [skip ci]
 
-# [Version 0.52.0] - 2025-12-23
+## 0.52.0 - 2025-12-23
 
-### Features
+### [0.52.0] Features
 
     - feat: Introduce advanced LLM parameters, add default implementations for LLMRequest, Message, and ToolChoice, and remove nextest.toml.
     - feat: Add new model constants for grok-4-1-fast and grok-code-fast-1
 
-### Refactors
+### [0.52.0] Refactors
 
     - refactor: Migrate testing from `cargo nextest` to `cargo test` and enhance Anthropic LLM configuration with new parameters.
 
-### Documentation
+### [0.52.0] Documentation
 
     - docs: Add guidelines for git operations in AGENTS.md and update LLM provider configuration in vtcode.toml
     - docs: Replace all cargo nextest references with cargo test across documentation and agent rules
     - docs: update changelog for v0.51.2 [skip ci]
 
-### Chores
+### [0.52.0] Chores
 
     - chore: update npm package.json to v0.51.2 [skip ci]
     - chore: release v0.51.2
     - chore: update npm package.json to v0.51.1 [skip ci]
 
-# [Version 0.51.2] - 2025-12-22
+## 0.51.2 - 2025-12-22
 
-### Features
+### [0.51.2] Features
 
     - feat: Add new model constants for grok-4-1-fast and grok-code-fast-1
     - feat: Implement search and filter functionality for the TUI configuration palette.
     - feat: Introduce a TUI config palette, refactor rendering logic, and enable dynamic theme application.
 
-### Documentation
+### [0.51.2] Documentation
 
     - docs: update changelog for v0.51.1 [skip ci]
     - docs: update changelog for v0.51.0 [skip ci]
 
-### Chores
+### [0.51.2] Chores
 
     - chore: update npm package.json to v0.51.1 [skip ci]
     - chore: release v0.51.1
     - chore: release v0.51.0
     - chore: update npm package.json to v0.50.13 [skip ci]
 
-# [Version 0.51.1] - 2025-12-22
+## 0.51.1 - 2025-12-22
 
-### Features
+### [0.51.1] Features
 
     - feat: Implement search and filter functionality for the TUI configuration palette.
     - feat: Introduce a TUI config palette, refactor rendering logic, and enable dynamic theme application.
@@ -13977,32 +13977,32 @@ All notable changes to vtcode will be documented in this file.
     - feat: enhance list rendering with highlight symbol and repeat option
     - feat: implement XDG Base Directory Specification for configuration and data storage
 
-### Bug Fixes
+### [0.51.1] Bug Fixes
 
     - fix: redirect terminal commands from stdout to stderr for TUI functionality
     - fix: change terminal output from stderr to stdout for ModernTui
     - fix: reorder MCP time policies and update tool policy documentation
     - fix: align OpenAI Responses API implementation with official spec
 
-### Refactors
+### [0.51.1] Refactors
 
     - refactor: streamline widget block creation and layout definitions in TUI components
 
-### Documentation
+### [0.51.1] Documentation
 
     - docs: update changelog for v0.51.0 [skip ci]
     - docs: update changelog for v0.50.13 [skip ci]
 
-### Chores
+### [0.51.1] Chores
 
     - chore: release v0.51.0
     - chore: update npm package.json to v0.50.13 [skip ci]
     - chore: release v0.50.13
     - chore: update npm package.json to v0.50.12 [skip ci]
 
-# [Version 0.51.0] - 2025-12-22
+## 0.51.0 - 2025-12-22
 
-### Features
+### [0.51.0] Features
 
     - feat: Introduce a TUI config palette, refactor rendering logic, and enable dynamic theme application.
     - feat: enhance session logging functionality and update default model
@@ -14014,30 +14014,30 @@ All notable changes to vtcode will be documented in this file.
     - feat: enhance list rendering with highlight symbol and repeat option
     - feat: implement XDG Base Directory Specification for configuration and data storage
 
-### Bug Fixes
+### [0.51.0] Bug Fixes
 
     - fix: redirect terminal commands from stdout to stderr for TUI functionality
     - fix: change terminal output from stderr to stdout for ModernTui
     - fix: reorder MCP time policies and update tool policy documentation
     - fix: align OpenAI Responses API implementation with official spec
 
-### Refactors
+### [0.51.0] Refactors
 
     - refactor: streamline widget block creation and layout definitions in TUI components
 
-### Documentation
+### [0.51.0] Documentation
 
     - docs: update changelog for v0.50.13 [skip ci]
 
-### Chores
+### [0.51.0] Chores
 
     - chore: update npm package.json to v0.50.13 [skip ci]
     - chore: release v0.50.13
     - chore: update npm package.json to v0.50.12 [skip ci]
 
-# [Version 0.50.13] - 2025-12-21
+## 0.50.13 - 2025-12-21
 
-### Features
+### [0.50.13] Features
 
     - feat: enhance session logging functionality and update default model
     - feat: integrate SessionWidget into main render function
@@ -14054,34 +14054,34 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement pre-flight LLM request and tool definition validation, and ensure `mark_tool_loop_limit_hit` is idempotent.
     - feat: improve release process by adding Linux build automation and related documentation.
 
-### Bug Fixes
+### [0.50.13] Bug Fixes
 
     - fix: redirect terminal commands from stdout to stderr for TUI functionality
     - fix: change terminal output from stderr to stdout for ModernTui
     - fix: reorder MCP time policies and update tool policy documentation
     - fix: align OpenAI Responses API implementation with official spec
 
-### Performance Improvements
+### [0.50.13] Performance Improvements
 
     - perf: optimize rate limiting with a read-lock fast path and refactor tool execution retry delays using constant values.
 
-### Refactors
+### [0.50.13] Refactors
 
     - refactor: streamline widget block creation and layout definitions in TUI components
 
-### Documentation
+### [0.50.13] Documentation
 
     - docs: update changelog for v0.50.12 [skip ci]
 
-### Chores
+### [0.50.13] Chores
 
     - chore: update npm package.json to v0.50.12 [skip ci]
     - chore: release v0.50.12
     - chore: update npm package.json to v0.50.11 [skip ci]
 
-# [Version 0.50.12] - 2025-12-20
+## 0.50.12 - 2025-12-20
 
-### Features
+### [0.50.12] Features
 
     - feat: Enhance tool execution error handling and implement Planning workflow warnings
     - feat: Implement TUI-aware tool approval prompts and human-in-the-loop notification bell.
@@ -14091,38 +14091,38 @@ All notable changes to vtcode will be documented in this file.
     - feat: improve release process by adding Linux build automation and related documentation.
     - feat: Add Linux build and release support, fix npm publish, and improve release asset uploads and install script error handling.
 
-### Performance Improvements
+### [0.50.12] Performance Improvements
 
     - perf: optimize rate limiting with a read-lock fast path and refactor tool execution retry delays using constant values.
 
-### Documentation
+### [0.50.12] Documentation
 
     - docs: update changelog for v0.50.11 [skip ci]
 
-### Chores
+### [0.50.12] Chores
 
     - chore: update npm package.json to v0.50.11 [skip ci]
     - chore: release v0.50.11
     - chore: update VSCode extension package.json to v0.50.10 [skip ci]
     - chore: update npm package.json to v0.50.10 [skip ci]
 
-# [Version 0.50.11] - 2025-12-20
+## 0.50.11 - 2025-12-20
 
-### Features
+### [0.50.11] Features
 
     - feat: Add Linux build and release support, fix npm publish, and improve release asset uploads and install script error handling.
     - feat: Add npm publishing troubleshooting guide and authentication setup script, and automate binary stub creation in the release process.
     - feat: Enable manual versioned builds in the release workflow and significantly enhance the install script with improved dependency/platform detection, asset verification, and a cargo fallback.
 
-### Bug Fixes
+### [0.50.11] Bug Fixes
 
     - fix: resolve GitHub release binary upload failures and enhance release script verification with new documentation.
 
-### Documentation
+### [0.50.11] Documentation
 
     - docs: update changelog for v0.50.10 [skip ci]
 
-### Chores
+### [0.50.11] Chores
 
     - chore: update VSCode extension package.json to v0.50.10 [skip ci]
     - chore: update npm package.json to v0.50.10 [skip ci]
@@ -14130,9 +14130,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.50.9 [skip ci]
     - chore: update npm package.json to v0.50.9 [skip ci]
 
-# [Version 0.50.10] - 2025-12-20
+## 0.50.10 - 2025-12-20
 
-### Features
+### [0.50.10] Features
 
     - feat: Add npm publishing troubleshooting guide and authentication setup script, and automate binary stub creation in the release process.
     - feat: Enable manual versioned builds in the release workflow and significantly enhance the install script with improved dependency/platform detection, asset verification, and a cargo fallback.
@@ -14148,23 +14148,23 @@ All notable changes to vtcode will be documented in this file.
     - feat: implement circuit breaker pattern for MCP client failures and optimize tool inventory management
     - feat: add code reviewer and commit message generator skills
 
-### Bug Fixes
+### [0.50.10] Bug Fixes
 
     - fix: resolve GitHub release binary upload failures and enhance release script verification with new documentation.
     - fix: update tool policies and configuration settings for improved performance
     - fix: remove external editor keybinding (Control+E)
     - fix: prevent arrow keys from triggering external editor launch
 
-### Refactors
+### [0.50.10] Refactors
 
     - refactor: remove router configuration and related core logic
 
-### Documentation
+### [0.50.10] Documentation
 
     - docs: update changelog for v0.50.9 [skip ci]
     - docs: update changelog for v0.50.8 [skip ci]
 
-### Chores
+### [0.50.10] Chores
 
     - chore: update VSCode extension package.json to v0.50.9 [skip ci]
     - chore: update npm package.json to v0.50.9 [skip ci]
@@ -14174,9 +14174,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.50.7 [skip ci]
     - chore: update npm package.json to v0.50.7 [skip ci]
 
-# [Version 0.50.9] - 2025-12-20
+## 0.50.9 - 2025-12-20
 
-### Features
+### [0.50.9] Features
 
     - feat: Implement agent task retry with exponential backoff and render tool follow-up prompts.
     - feat: Enhance skill validation and file reference checks for Agent Skills compliance
@@ -14190,23 +14190,23 @@ All notable changes to vtcode will be documented in this file.
     - feat: implement circuit breaker pattern for MCP client failures and optimize tool inventory management
     - feat: add code reviewer and commit message generator skills
 
-### Bug Fixes
+### [0.50.9] Bug Fixes
 
     - fix: update tool policies and configuration settings for improved performance
     - fix: remove external editor keybinding (Control+E)
     - fix: prevent arrow keys from triggering external editor launch
 
-### Refactors
+### [0.50.9] Refactors
 
     - refactor: remove router configuration and related core logic
 
-### Documentation
+### [0.50.9] Documentation
 
     - docs: update changelog for v0.50.8 [skip ci]
     - docs: update changelog for v0.50.7 [skip ci]
     - docs: update changelog for v0.50.6 [skip ci]
 
-### Chores
+### [0.50.9] Chores
 
     - chore: release v0.50.8
     - chore: remove AI model routing configuration from TOML files
@@ -14217,9 +14217,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.50.5 [skip ci]
     - chore: update npm package.json to v0.50.5 [skip ci]
 
-# [Version 0.50.8] - 2025-12-20
+## 0.50.8 - 2025-12-20
 
-### Features
+### [0.50.8] Features
 
     - feat: Implement Agent Skills specification by adding `compatibility` and `metadata` fields to skill manifests, updating `allowed-tools` to a space-delimited string, and clarifying skill loading behaviour.
     - feat: Enhance tool execution policy with granular user confirmation, auto-acceptance, and feedback capabilities.
@@ -14231,22 +14231,22 @@ All notable changes to vtcode will be documented in this file.
     - feat: implement circuit breaker pattern for MCP client failures and optimize tool inventory management
     - feat: add code reviewer and commit message generator skills
 
-### Bug Fixes
+### [0.50.8] Bug Fixes
 
     - fix: update tool policies and configuration settings for improved performance
     - fix: remove external editor keybinding (Control+E)
     - fix: prevent arrow keys from triggering external editor launch
 
-### Refactors
+### [0.50.8] Refactors
 
     - refactor: remove router configuration and related core logic
 
-### Documentation
+### [0.50.8] Documentation
 
     - docs: update changelog for v0.50.7 [skip ci]
     - docs: update changelog for v0.50.6 [skip ci]
 
-### Chores
+### [0.50.8] Chores
 
     - chore: remove AI model routing configuration from TOML files
     - chore: update VSCode extension package.json to v0.50.7 [skip ci]
@@ -14256,9 +14256,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.50.5 [skip ci]
     - chore: update npm package.json to v0.50.5 [skip ci]
 
-# [Version 0.50.7] - 2025-12-19
+## 0.50.7 - 2025-12-19
 
-### Features
+### [0.50.7] Features
 
     - feat: Add success indicators to renderer on exit commands and session end
     - feat: Update tool policy to prompt for file creation and execution, enhance session state management, and adjust LLM provider settings in configuration.
@@ -14266,21 +14266,21 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement shell command policy checking with regex and glob patterns and add new metadata fields to skill definitions.
     - feat: enhance line ending handling in patch operations and tests
 
-### Bug Fixes
+### [0.50.7] Bug Fixes
 
     - fix: Correct test expectations for token threshold boundaries
     - fix: handle errors in AtomicWriter creation and improve diff operations tests
 
-### Refactors
+### [0.50.7] Refactors
 
     - refactor: remove unnecessary whitespace in diff and test files
 
-### Documentation
+### [0.50.7] Documentation
 
     - docs: update changelog for v0.50.6 [skip ci]
     - docs: update changelog for v0.50.5 [skip ci]
 
-### Chores
+### [0.50.7] Chores
 
     - chore: release v0.50.6
     - chore: update VSCode extension package.json to v0.50.5 [skip ci]
@@ -14289,9 +14289,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.50.4 [skip ci]
     - chore: update npm package.json to v0.50.4 [skip ci]
 
-# [Version 0.50.6] - 2025-12-19
+## 0.50.6 - 2025-12-19
 
-### Features
+### [0.50.6] Features
 
     - feat: Add success indicators to renderer on exit commands and session end
     - feat: Update tool policy to prompt for file creation and execution, enhance session state management, and adjust LLM provider settings in configuration.
@@ -14299,20 +14299,20 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement shell command policy checking with regex and glob patterns and add new metadata fields to skill definitions.
     - feat: enhance line ending handling in patch operations and tests
 
-### Bug Fixes
+### [0.50.6] Bug Fixes
 
     - fix: Correct test expectations for token threshold boundaries
     - fix: handle errors in AtomicWriter creation and improve diff operations tests
 
-### Refactors
+### [0.50.6] Refactors
 
     - refactor: remove unnecessary whitespace in diff and test files
 
-### Documentation
+### [0.50.6] Documentation
 
     - docs: update changelog for v0.50.5 [skip ci]
 
-### Chores
+### [0.50.6] Chores
 
     - chore: update VSCode extension package.json to v0.50.5 [skip ci]
     - chore: update npm package.json to v0.50.5 [skip ci]
@@ -14320,9 +14320,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.50.4 [skip ci]
     - chore: update npm package.json to v0.50.4 [skip ci]
 
-# [Version 0.50.5] - 2025-12-19
+## 0.50.5 - 2025-12-19
 
-### Features
+### [0.50.5] Features
 
     - feat: Add success indicators to renderer on exit commands and session end
     - feat: Update tool policy to prompt for file creation and execution, enhance session state management, and adjust LLM provider settings in configuration.
@@ -14331,21 +14331,21 @@ All notable changes to vtcode will be documented in this file.
     - feat: enhance line ending handling in patch operations and tests
     - feat: add Gemini 3 Flash Preview model and update configurations
 
-### Bug Fixes
+### [0.50.5] Bug Fixes
 
     - fix: Correct test expectations for token threshold boundaries
     - fix: handle errors in AtomicWriter creation and improve diff operations tests
 
-### Refactors
+### [0.50.5] Refactors
 
     - refactor: remove unnecessary whitespace in diff and test files
 
-### Documentation
+### [0.50.5] Documentation
 
     - docs: update changelog for v0.50.4 [skip ci]
     - docs: update changelog for v0.50.3 [skip ci]
 
-### Chores
+### [0.50.5] Chores
 
     - chore: update VSCode extension package.json to v0.50.4 [skip ci]
     - chore: update npm package.json to v0.50.4 [skip ci]
@@ -14354,18 +14354,18 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.50.2 [skip ci]
     - chore: update npm package.json to v0.50.2 [skip ci]
 
-# [Version 0.50.4] - 2025-12-18
+## 0.50.4 - 2025-12-18
 
-### Features
+### [0.50.4] Features
 
     - feat: add Gemini 3 Flash Preview model and update configurations
 
-### Documentation
+### [0.50.4] Documentation
 
     - docs: update changelog for v0.50.3 [skip ci]
     - docs: update changelog for v0.50.2 [skip ci]
 
-### Chores
+### [0.50.4] Chores
 
     - chore: release v0.50.3
     - chore: update VSCode extension package.json to v0.50.2 [skip ci]
@@ -14374,17 +14374,17 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.50.1 [skip ci]
     - chore: update npm package.json to v0.50.1 [skip ci]
 
-# [Version 0.50.3] - 2025-12-18
+## 0.50.3 - 2025-12-18
 
-### Features
+### [0.50.3] Features
 
     - feat: add Gemini 3 Flash Preview model and update configurations
 
-### Documentation
+### [0.50.3] Documentation
 
     - docs: update changelog for v0.50.2 [skip ci]
 
-### Chores
+### [0.50.3] Chores
 
     - chore: update VSCode extension package.json to v0.50.2 [skip ci]
     - chore: update npm package.json to v0.50.2 [skip ci]
@@ -14392,17 +14392,17 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.50.1 [skip ci]
     - chore: update npm package.json to v0.50.1 [skip ci]
 
-# [Version 0.50.2] - 2025-12-16
+## 0.50.2 - 2025-12-16
 
-### Bug Fixes
+### [0.50.2] Bug Fixes
 
     - fix: correct logical operator for XAI provider model check
 
-### Documentation
+### [0.50.2] Documentation
 
     - docs: update changelog for v0.50.1 [skip ci]
 
-### Chores
+### [0.50.2] Chores
 
     - chore: update VSCode extension package.json to v0.50.1 [skip ci]
     - chore: update npm package.json to v0.50.1 [skip ci]
@@ -14410,21 +14410,21 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.50.0 [skip ci]
     - chore: update npm package.json to v0.50.0 [skip ci]
 
-# [Version 0.50.1] - 2025-12-16
+## 0.50.1 - 2025-12-16
 
-### Features
+### [0.50.1] Features
 
     - feat: implement rate limiting for tool calls and add Nemotron-3-Nano model support
 
-### Bug Fixes
+### [0.50.1] Bug Fixes
 
     - fix: correct logical operator for XAI provider model check
 
-### Documentation
+### [0.50.1] Documentation
 
     - docs: update changelog for v0.50.0 [skip ci]
 
-### Chores
+### [0.50.1] Chores
 
     - chore: update VSCode extension package.json to v0.50.0 [skip ci]
     - chore: update npm package.json to v0.50.0 [skip ci]
@@ -14432,17 +14432,17 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.49.8 [skip ci]
     - chore: update npm package.json to v0.49.8 [skip ci]
 
-# [Version 0.50.0] - 2025-12-16
+## 0.50.0 - 2025-12-16
 
-### Features
+### [0.50.0] Features
 
     - feat: implement rate limiting for tool calls and add Nemotron-3-Nano model support
 
-### Documentation
+### [0.50.0] Documentation
 
     - docs: update changelog for v0.49.8 [skip ci]
 
-### Chores
+### [0.50.0] Chores
 
     - chore: update VSCode extension package.json to v0.49.8 [skip ci]
     - chore: update npm package.json to v0.49.8 [skip ci]
@@ -14450,14 +14450,14 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.49.7 [skip ci]
     - chore: update npm package.json to v0.49.7 [skip ci]
 
-# [Version 0.49.8] - 2025-12-16
+## 0.49.8 - 2025-12-16
 
-### Documentation
+### [0.49.8] Documentation
 
     - docs: update changelog for v0.49.7 [skip ci]
     - docs: update changelog for v0.49.6 [skip ci]
 
-### Chores
+### [0.49.8] Chores
 
     - chore: update VSCode extension package.json to v0.49.7 [skip ci]
     - chore: update npm package.json to v0.49.7 [skip ci]
@@ -14466,13 +14466,13 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.49.5 [skip ci]
     - chore: update npm package.json to v0.49.5 [skip ci]
 
-# [Version 0.49.7] - 2025-12-15
+## 0.49.7 - 2025-12-15
 
-### Bug Fixes
+### [0.49.7] Bug Fixes
 
     - fix: include templates directory in package for crates.io publishing
 
-### Documentation
+### [0.49.7] Documentation
 
     - docs: update changelog for v0.49.6 [skip ci]
     - docs: update changelog for v0.49.5 [skip ci]
@@ -14480,7 +14480,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.49.3 [skip ci]
     - docs: update changelog for v0.49.2 [skip ci]
 
-### Chores
+### [0.49.7] Chores
 
     - chore: release v0.49.6
     - chore: update VSCode extension package.json to v0.49.5 [skip ci]
@@ -14492,20 +14492,20 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.49.1 [skip ci]
     - chore: update npm package.json to v0.49.1 [skip ci]
 
-# [Version 0.49.6] - 2025-12-15
+## 0.49.6 - 2025-12-15
 
-### Bug Fixes
+### [0.49.6] Bug Fixes
 
     - fix: include templates directory in package for crates.io publishing
 
-### Documentation
+### [0.49.6] Documentation
 
     - docs: update changelog for v0.49.5 [skip ci]
     - docs: update changelog for v0.49.4 [skip ci]
     - docs: update changelog for v0.49.3 [skip ci]
     - docs: update changelog for v0.49.2 [skip ci]
 
-### Chores
+### [0.49.6] Chores
 
     - chore: update VSCode extension package.json to v0.49.5 [skip ci]
     - chore: update npm package.json to v0.49.5 [skip ci]
@@ -14516,20 +14516,20 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.49.1 [skip ci]
     - chore: update npm package.json to v0.49.1 [skip ci]
 
-# [Version 0.49.5] - 2025-12-14
+## 0.49.5 - 2025-12-14
 
-### Bug Fixes
+### [0.49.5] Bug Fixes
 
     - fix: include templates directory in package for crates.io publishing
 
-### Documentation
+### [0.49.5] Documentation
 
     - docs: update changelog for v0.49.4 [skip ci]
     - docs: update changelog for v0.49.3 [skip ci]
     - docs: update changelog for v0.49.2 [skip ci]
     - docs: update changelog for v0.49.1 [skip ci]
 
-### Chores
+### [0.49.5] Chores
 
     - chore: release v0.49.4
     - chore: release v0.49.3
@@ -14539,15 +14539,15 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.49.1
     - chore: update npm package.json to v0.49.0 [skip ci]
 
-# [Version 0.49.4] - 2025-12-14
+## 0.49.4 - 2025-12-14
 
-### Documentation
+### [0.49.4] Documentation
 
     - docs: update changelog for v0.49.3 [skip ci]
     - docs: update changelog for v0.49.2 [skip ci]
     - docs: update changelog for v0.49.1 [skip ci]
 
-### Chores
+### [0.49.4] Chores
 
     - chore: release v0.49.3
     - chore: release v0.49.2
@@ -14556,14 +14556,14 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.49.1
     - chore: update npm package.json to v0.49.0 [skip ci]
 
-# [Version 0.49.3] - 2025-12-14
+## 0.49.3 - 2025-12-14
 
-### Documentation
+### [0.49.3] Documentation
 
     - docs: update changelog for v0.49.2 [skip ci]
     - docs: update changelog for v0.49.1 [skip ci]
 
-### Chores
+### [0.49.3] Chores
 
     - chore: release v0.49.2
     - chore: update VSCode extension package.json to v0.49.1 [skip ci]
@@ -14571,20 +14571,20 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.49.1
     - chore: update npm package.json to v0.49.0 [skip ci]
 
-# [Version 0.49.2] - 2025-12-14
+## 0.49.2 - 2025-12-14
 
-### Documentation
+### [0.49.2] Documentation
 
     - docs: update changelog for v0.49.1 [skip ci]
 
-### Chores
+### [0.49.2] Chores
 
     - chore: update VSCode extension package.json to v0.49.1 [skip ci]
     - chore: update npm package.json to v0.49.1 [skip ci]
     - chore: release v0.49.1
     - chore: update npm package.json to v0.49.0 [skip ci]
 
-### Added
+### [0.49.2] Added
 
 -   **Comprehensive Skills Location System**: Implemented multi-location skill discovery with precedence handling
     -   VT Code User Skills (`~/.vtcode/skills/`) - Highest precedence
@@ -14596,16 +14596,16 @@ All notable changes to vtcode will be documented in this file.
 -   **Migration Support**: All existing skills migrated from `.claude/skills` to `.vtcode/skills` with backward compatibility
 -   **Enhanced Skill Loader**: Updated loader to integrate with new location system while maintaining backward compatibility
 
-### Changed
+### [0.49.2] Changed
 
 -   Updated skills documentation to reflect new location system and precedence handling
 -   Enhanced skill discovery to support recursive scanning and proper name collision resolution
 
-## [Version 0.43.0] - 2025-11-09
+## 0.43.0 - 2025-11-09 (historical record 1 of 2)
 
-# [Version 0.49.1] - 2025-12-13
+## 0.49.1 - 2025-12-13
 
-### Bug Fixes
+### [0.49.1] Bug Fixes
 
     - fix: update execute_code and skill policies to allow execution
     - fix: remove outdated skill discovery documentation and integrate new skill loading functionality
@@ -14614,21 +14614,21 @@ All notable changes to vtcode will be documented in this file.
     - fix: add missing skill tool function declaration
     - fix: vtcode agent skill discovery using SkillLoader instead of SkillManager
 
-### Documentation
+### [0.49.1] Documentation
 
     - docs: update changelog for v0.49.0 [skip ci]
     - docs: add complete skill tool fix summary
 
-### Chores
+### [0.49.1] Chores
 
     - chore: update npm package.json to v0.49.0 [skip ci]
     - chore: release v0.49.0
     - chore: update VSCode extension package.json to v0.48.3 [skip ci]
     - chore: update npm package.json to v0.48.3 [skip ci]
 
-# [Version 0.49.0] - 2025-12-13
+## 0.49.0 - 2025-12-13
 
-### Bug Fixes
+### [0.49.0] Bug Fixes
 
     - fix: update execute_code and skill policies to allow execution
     - fix: remove outdated skill discovery documentation and integrate new skill loading functionality
@@ -14637,12 +14637,12 @@ All notable changes to vtcode will be documented in this file.
     - fix: add missing skill tool function declaration
     - fix: vtcode agent skill discovery using SkillLoader instead of SkillManager
 
-### Documentation
+### [0.49.0] Documentation
 
     - docs: add complete skill tool fix summary
     - docs: update changelog for v0.48.3 [skip ci]
 
-### Chores
+### [0.49.0] Chores
 
     - chore: update VSCode extension package.json to v0.48.3 [skip ci]
     - chore: update npm package.json to v0.48.3 [skip ci]
@@ -14650,9 +14650,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.48.2 [skip ci]
     - chore: update npm package.json to v0.48.2 [skip ci]
 
-# [Version 0.48.3] - 2025-12-13
+## 0.48.3 - 2025-12-13
 
-### Refactors
+### [0.48.3] Refactors
 
     - refactor: update LLMError handling in turn_processing
     - refactor: standardize LLMError structure across providers
@@ -14660,12 +14660,12 @@ All notable changes to vtcode will be documented in this file.
     - refactor: enhance context trimming and session management features
     - refactor: update configuration and documentation for improved clarity and performance
 
-### Documentation
+### [0.48.3] Documentation
 
     - docs: update changelog for v0.48.2 [skip ci]
     - docs: update changelog for v0.48.1 [skip ci]
 
-### Chores
+### [0.48.3] Chores
 
     - chore: update VSCode extension package.json to v0.48.2 [skip ci]
     - chore: update npm package.json to v0.48.2 [skip ci]
@@ -14674,20 +14674,20 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.48.0 [skip ci]
     - chore: update npm package.json to v0.48.0 [skip ci]
 
-# [Version 0.48.2] - 2025-12-13
+## 0.48.2 - 2025-12-13
 
-### Features
+### [0.48.2] Features
 
     - feat: update OpenAI provider to support GPT-5.2 and enhance reasoning options
     - feat: enhance response output with reasoning traces
     - feat: implement timeout warning management for tool execution
     - feat: enhance tool execution with rate limiting and workspace management
 
-### Bug Fixes
+### [0.48.2] Bug Fixes
 
     - fix: improve error handling in LLM client creation and tool execution
 
-### Refactors
+### [0.48.2] Refactors
 
     - refactor: update LLMError handling in turn_processing
     - refactor: standardize LLMError structure across providers
@@ -14699,12 +14699,12 @@ All notable changes to vtcode will be documented in this file.
     - refactor: remove logging statements from UI interaction and session handling
     - refactor: remove outdated vibe_tooling_mapping documentation
 
-### Documentation
+### [0.48.2] Documentation
 
     - docs: update changelog for v0.48.1 [skip ci]
     - docs: update changelog for v0.48.0 [skip ci]
 
-### Chores
+### [0.48.2] Chores
 
     - chore: release v0.48.1
     - chore: update VSCode extension package.json to v0.48.0 [skip ci]
@@ -14713,20 +14713,20 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.47.16 [skip ci]
     - chore: update npm package.json to v0.47.16 [skip ci]
 
-# [Version 0.48.1] - 2025-12-13
+## 0.48.1 - 2025-12-13
 
-### Features
+### [0.48.1] Features
 
     - feat: update OpenAI provider to support GPT-5.2 and enhance reasoning options
     - feat: enhance response output with reasoning traces
     - feat: implement timeout warning management for tool execution
     - feat: enhance tool execution with rate limiting and workspace management
 
-### Bug Fixes
+### [0.48.1] Bug Fixes
 
     - fix: improve error handling in LLM client creation and tool execution
 
-### Refactors
+### [0.48.1] Refactors
 
     - refactor: standardize LLMError structure across providers
     - refactor: enhance Z.AI provider error handling and API key validation
@@ -14737,11 +14737,11 @@ All notable changes to vtcode will be documented in this file.
     - refactor: remove logging statements from UI interaction and session handling
     - refactor: remove outdated vibe_tooling_mapping documentation
 
-### Documentation
+### [0.48.1] Documentation
 
     - docs: update changelog for v0.48.0 [skip ci]
 
-### Chores
+### [0.48.1] Chores
 
     - chore: update VSCode extension package.json to v0.48.0 [skip ci]
     - chore: update npm package.json to v0.48.0 [skip ci]
@@ -14749,9 +14749,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.47.16 [skip ci]
     - chore: update npm package.json to v0.47.16 [skip ci]
 
-# [Version 0.48.0] - 2025-12-12
+## 0.48.0 - 2025-12-12
 
-### Features
+### [0.48.0] Features
 
     - feat: update OpenAI provider to support GPT-5.2 and enhance reasoning options
     - feat: enhance response output with reasoning traces
@@ -14771,11 +14771,11 @@ All notable changes to vtcode will be documented in this file.
     - feat: enhance timeout configuration and adaptive timeout handling
     - feat: add search_replace tool and enhance file operations
 
-### Bug Fixes
+### [0.48.0] Bug Fixes
 
     - fix: improve error handling in LLM client creation and tool execution
 
-### Refactors
+### [0.48.0] Refactors
 
     - refactor: update GPT-5.2 model identifiers and documentation
     - refactor: streamline error handling and conditional checks in various modules
@@ -14783,11 +14783,11 @@ All notable changes to vtcode will be documented in this file.
     - refactor: remove outdated vibe_tooling_mapping documentation
     - refactor: enhance loop detection logic and add tests
 
-### Documentation
+### [0.48.0] Documentation
 
     - docs: update changelog for v0.47.16 [skip ci]
 
-### Chores
+### [0.48.0] Chores
 
     - chore: update VSCode extension package.json to v0.47.16 [skip ci]
     - chore: update npm package.json to v0.47.16 [skip ci]
@@ -14795,9 +14795,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.47.15 [skip ci]
     - chore: update npm package.json to v0.47.15 [skip ci]
 
-# [Version 0.47.16] - 2025-12-11
+## 0.47.16 - 2025-12-11
 
-### Features
+### [0.47.16] Features
 
     - feat: enhance logging and error handling in orchestrator and agent components
     - feat: improve tracing initialization and error handling in main
@@ -14813,7 +14813,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: enhance timeout configuration and adaptive timeout handling
     - feat: add search_replace tool and enhance file operations
 
-### Refactors
+### [0.47.16] Refactors
 
     - refactor: enhance loop detection logic and add tests
     - refactor: simplify line style selection logic in tool output
@@ -14821,12 +14821,12 @@ All notable changes to vtcode will be documented in this file.
     - refactor: simplify ToolCallUpdateFields initialization
     - refactor: update tool policy and improve middleware handling
 
-### Documentation
+### [0.47.16] Documentation
 
     - docs: update changelog for v0.47.15 [skip ci]
     - docs: update changelog for v0.47.14 [skip ci]
 
-### Chores
+### [0.47.16] Chores
 
     - chore: update VSCode extension package.json to v0.47.15 [skip ci]
     - chore: update npm package.json to v0.47.15 [skip ci]
@@ -14835,9 +14835,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.47.13 [skip ci]
     - chore: update npm package.json to v0.47.13 [skip ci]
 
-# [Version 0.47.15] - 2025-12-11
+## 0.47.15 - 2025-12-11
 
-### Refactors
+### [0.47.15] Refactors
 
     - refactor: simplify line style selection logic in tool output
     - refactor: streamline initialization and error handling in various modules
@@ -14856,12 +14856,12 @@ All notable changes to vtcode will be documented in this file.
     - refactor: streamline conditional checks and improve code readability
     - refactor: unify token budget constants and improve context management
 
-### Documentation
+### [0.47.15] Documentation
 
     - docs: update changelog for v0.47.14 [skip ci]
     - docs: update changelog for v0.47.13 [skip ci]
 
-### Chores
+### [0.47.15] Chores
 
     - chore: release v0.47.14
     - chore: update VSCode extension package.json to v0.47.13 [skip ci]
@@ -14870,9 +14870,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.47.12 [skip ci]
     - chore: update npm package.json to v0.47.12 [skip ci]
 
-# [Version 0.47.14] - 2025-12-11
+## 0.47.14 - 2025-12-11
 
-### Refactors
+### [0.47.14] Refactors
 
     - refactor: simplify line style selection logic in tool output
     - refactor: streamline initialization and error handling in various modules
@@ -14891,11 +14891,11 @@ All notable changes to vtcode will be documented in this file.
     - refactor: streamline conditional checks and improve code readability
     - refactor: unify token budget constants and improve context management
 
-### Documentation
+### [0.47.14] Documentation
 
     - docs: update changelog for v0.47.13 [skip ci]
 
-### Chores
+### [0.47.14] Chores
 
     - chore: update VSCode extension package.json to v0.47.13 [skip ci]
     - chore: update npm package.json to v0.47.13 [skip ci]
@@ -14903,14 +14903,14 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.47.12 [skip ci]
     - chore: update npm package.json to v0.47.12 [skip ci]
 
-# [Version 0.47.13] - 2025-12-10
+## 0.47.13 - 2025-12-10
 
-### Features
+### [0.47.13] Features
 
     - feat: update tool policy and enhance loop detection functionality
     - feat: implement tool call safety validation and execution tracking
 
-### Refactors
+### [0.47.13] Refactors
 
     - refactor: remove deprecated tools and update tool policies
     - refactor: update tool policy and streamline follow-up handling
@@ -14932,13 +14932,13 @@ All notable changes to vtcode will be documented in this file.
     - refactor: update model configurations to use OpenRouter for Moonshot models; remove deprecated entries and enhance model support
     - refactor: enhance reasoning model support and update tool policies; remove deprecated Moonshot models
 
-### Documentation
+### [0.47.13] Documentation
 
     - docs: update changelog for v0.47.12 [skip ci]
     - docs: update changelog for v0.47.11 [skip ci]
     - docs: update changelog for v0.47.10 [skip ci]
 
-### Chores
+### [0.47.13] Chores
 
     - chore: update VSCode extension package.json to v0.47.12 [skip ci]
     - chore: update npm package.json to v0.47.12 [skip ci]
@@ -14949,15 +14949,15 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.47.9 [skip ci]
     - chore: update npm package.json to v0.47.9 [skip ci]
 
-# [Version 0.47.12] - 2025-12-08
+## 0.47.12 - 2025-12-08
 
-### Features
+### [0.47.12] Features
 
     - feat: update tool policy and enhance loop detection functionality
     - feat: implement tool call safety validation and execution tracking
     - feat(build): add multi-stage Dockerfile for building and running vtcode
 
-### Refactors
+### [0.47.12] Refactors
 
     - refactor: update tool policy and enhance tool validation
     - refactor: improve code formatting and structure across multiple files
@@ -14968,14 +14968,14 @@ All notable changes to vtcode will be documented in this file.
     - refactor: enhance reasoning model support and update tool policies; remove deprecated Moonshot models
     - refactor: improve code readability by simplifying conditional statements and updating deprecated usages across multiple modules
 
-### Documentation
+### [0.47.12] Documentation
 
     - docs: update changelog for v0.47.11 [skip ci]
     - docs: update changelog for v0.47.10 [skip ci]
     - docs: update changelog for v0.47.9 [skip ci]
     - docs: update changelog for v0.47.8 [skip ci]
 
-### Chores
+### [0.47.12] Chores
 
     - chore: release v0.47.11
     - chore: update dependencies and improve code formatting
@@ -14988,15 +14988,15 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.47.7 [skip ci]
     - chore: update npm package.json to v0.47.7 [skip ci]
 
-# [Version 0.47.11] - 2025-12-08
+## 0.47.11 - 2025-12-08
 
-### Features
+### [0.47.11] Features
 
     - feat: update tool policy and enhance loop detection functionality
     - feat: implement tool call safety validation and execution tracking
     - feat(build): add multi-stage Dockerfile for building and running vtcode
 
-### Refactors
+### [0.47.11] Refactors
 
     - refactor: update tool policy and enhance tool validation
     - refactor: improve code formatting and structure across multiple files
@@ -15007,13 +15007,13 @@ All notable changes to vtcode will be documented in this file.
     - refactor: enhance reasoning model support and update tool policies; remove deprecated Moonshot models
     - refactor: improve code readability by simplifying conditional statements and updating deprecated usages across multiple modules
 
-### Documentation
+### [0.47.11] Documentation
 
     - docs: update changelog for v0.47.10 [skip ci]
     - docs: update changelog for v0.47.9 [skip ci]
     - docs: update changelog for v0.47.8 [skip ci]
 
-### Chores
+### [0.47.11] Chores
 
     - chore: update dependencies and improve code formatting
     - chore: release v0.47.10
@@ -15025,13 +15025,13 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.47.7 [skip ci]
     - chore: update npm package.json to v0.47.7 [skip ci]
 
-# [Version 0.47.10] - 2025-12-07
+## 0.47.10 - 2025-12-07
 
-### Features
+### [0.47.10] Features
 
     - feat(build): add multi-stage Dockerfile for building and running vtcode
 
-### Refactors
+### [0.47.10] Refactors
 
     - refactor: optimize core agent execution and consolidate utility modules
     - refactor: introduce warning and error handling methods in AgentRunner; streamline tool failure logging and path normalization utilities
@@ -15039,12 +15039,12 @@ All notable changes to vtcode will be documented in this file.
     - refactor: enhance reasoning model support and update tool policies; remove deprecated Moonshot models
     - refactor: improve code readability by simplifying conditional statements and updating deprecated usages across multiple modules
 
-### Documentation
+### [0.47.10] Documentation
 
     - docs: update changelog for v0.47.9 [skip ci]
     - docs: update changelog for v0.47.8 [skip ci]
 
-### Chores
+### [0.47.10] Chores
 
     - chore: update VSCode extension package.json to v0.47.9 [skip ci]
     - chore: update npm package.json to v0.47.9 [skip ci]
@@ -15054,24 +15054,24 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.47.7 [skip ci]
     - chore: update npm package.json to v0.47.7 [skip ci]
 
-# [Version 0.47.9] - 2025-12-05
+## 0.47.9 - 2025-12-05
 
-### Features
+### [0.47.9] Features
 
     - feat: update tool policies and improve code structure with dead code allowances
     - feat(build): add multi-stage Dockerfile for building and running vtcode
 
-### Refactors
+### [0.47.9] Refactors
 
     - refactor: improve code readability by simplifying conditional statements and updating deprecated usages across multiple modules
     - refactor: remove unused tools from tool policies
 
-### Documentation
+### [0.47.9] Documentation
 
     - docs: update changelog for v0.47.8 [skip ci]
     - docs: update changelog for v0.47.7 [skip ci]
 
-### Chores
+### [0.47.9] Chores
 
     - chore: release v0.47.8
     - chore: update tool policies and optimize configuration loading
@@ -15084,22 +15084,22 @@ All notable changes to vtcode will be documented in this file.
     - chore(deps): bump the all-rust-deps group with 15 updates
     - chore: update npm package.json to v0.47.6 [skip ci]
 
-# [Version 0.47.8] - 2025-12-05
+## 0.47.8 - 2025-12-05
 
-### Features
+### [0.47.8] Features
 
     - feat: update tool policies and improve code structure with dead code allowances
     - feat(build): add multi-stage Dockerfile for building and running vtcode
 
-### Refactors
+### [0.47.8] Refactors
 
     - refactor: remove unused tools from tool policies
 
-### Documentation
+### [0.47.8] Documentation
 
     - docs: update changelog for v0.47.7 [skip ci]
 
-### Chores
+### [0.47.8] Chores
 
     - chore: update tool policies and optimize configuration loading
     - chore: update VSCode extension package.json to v0.47.7 [skip ci]
@@ -15111,14 +15111,14 @@ All notable changes to vtcode will be documented in this file.
     - chore(deps): bump the all-rust-deps group with 15 updates
     - chore: update npm package.json to v0.47.6 [skip ci]
 
-# [Version 0.47.7] - 2025-12-03
+## 0.47.7 - 2025-12-03
 
-### Features
+### [0.47.7] Features
 
     - feat: update tool policies and improve code structure with dead code allowances
     - feat: add diff suppression logic and constants for large changes
 
-### Performance Improvements
+### [0.47.7] Performance Improvements
 
     - perf: optimize memory allocations and pre-allocate buffers in various modules
     - perf: use write! macro in metrics module
@@ -15136,7 +15136,7 @@ All notable changes to vtcode will be documented in this file.
     - perf(core): use write! macro instead of format! with push_str
     - perf(core): remove redundant clones and allocations
 
-### Refactors
+### [0.47.7] Refactors
 
     - refactor: remove unused tools from tool policies
     - refactor: optimize completion learning modules with .into() patterns
@@ -15149,17 +15149,17 @@ All notable changes to vtcode will be documented in this file.
     - refactor(llm): extract common provider helpers to reduce duplication
     - refactor: optimize diff rendering and suppression logic
 
-### Documentation
+### [0.47.7] Documentation
 
     - docs: update changelog for v0.47.6 [skip ci]
     - docs: add comprehensive optimization report
 
-### Style Changes
+### [0.47.7] Style Changes
 
     - style: fix clippy warnings (assign_op, unnecessary_cast, collapsible_if, const thread_local)
     - style: remove redundant closures
 
-### Chores
+### [0.47.7] Chores
 
     - chore: update VSCode extension package.json to v0.47.6 [skip ci]
     - chore(deps): bump DavidAnson/markdownlint-cli2-action from 20 to 21
@@ -15170,19 +15170,19 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.47.5 [skip ci]
     - chore: update npm package.json to v0.47.5 [skip ci]
 
-# [Version 0.47.6] - 2025-11-30
+## 0.47.6 - 2025-11-30
 
-### Features
+### [0.47.6] Features
 
     - feat: add diff suppression logic and constants for large changes
     - feat: parse and display friendly error messages from Anthropic API responses
 
-### Bug Fixes
+### [0.47.6] Bug Fixes
 
     - fix: clear spinner before displaying error message
     - fix: gracefully handle provider API errors without panicking
 
-### Performance Improvements
+### [0.47.6] Performance Improvements
 
     - perf: optimize memory allocations and pre-allocate buffers in various modules
     - perf: use write! macro in metrics module
@@ -15200,7 +15200,7 @@ All notable changes to vtcode will be documented in this file.
     - perf(core): use write! macro instead of format! with push_str
     - perf(core): remove redundant clones and allocations
 
-### Refactors
+### [0.47.6] Refactors
 
     - refactor: optimize completion learning modules with .into() patterns
     - refactor: optimize linting and code completion modules
@@ -15213,19 +15213,19 @@ All notable changes to vtcode will be documented in this file.
     - refactor: optimize diff rendering and suppression logic
     - refactor: streamline code formatting and improve readability across multiple files
 
-### Documentation
+### [0.47.6] Documentation
 
     - docs: add comprehensive optimization report
     - docs: clarify spinner cleanup implementation details
     - docs: update changelog for v0.47.5 [skip ci]
     - docs: update changes summary with comprehensive error handling improvements
 
-### Style Changes
+### [0.47.6] Style Changes
 
     - style: fix clippy warnings (assign_op, unnecessary_cast, collapsible_if, const thread_local)
     - style: remove redundant closures
 
-### Chores
+### [0.47.6] Chores
 
     - chore: update VSCode extension package.json to v0.47.5 [skip ci]
     - chore: update npm package.json to v0.47.5 [skip ci]
@@ -15233,28 +15233,28 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.47.4 [skip ci]
     - chore: update npm package.json to v0.47.4 [skip ci]
 
-# [Version 0.47.5] - 2025-11-25
+## 0.47.5 - 2025-11-25
 
-### Features
+### [0.47.5] Features
 
     - feat: parse and display friendly error messages from Anthropic API responses
 
-### Bug Fixes
+### [0.47.5] Bug Fixes
 
     - fix: clear spinner before displaying error message
     - fix: gracefully handle provider API errors without panicking
     - fix: remove unused spawn_session import
 
-### Refactors
+### [0.47.5] Refactors
 
     - refactor: streamline code formatting and improve readability across multiple files
 
-### Documentation
+### [0.47.5] Documentation
 
     - docs: update changes summary with comprehensive error handling improvements
     - docs: update changelog for v0.47.4 [skip ci]
 
-### Chores
+### [0.47.5] Chores
 
     - chore: update VSCode extension package.json to v0.47.4 [skip ci]
     - chore: update npm package.json to v0.47.4 [skip ci]
@@ -15262,18 +15262,18 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.47.3 [skip ci]
     - chore: update npm package.json to v0.47.3 [skip ci]
 
-# [Version 0.47.4] - 2025-11-25
+## 0.47.4 - 2025-11-25
 
-### Bug Fixes
+### [0.47.4] Bug Fixes
 
     - fix: remove unused spawn_session import
 
-### Documentation
+### [0.47.4] Documentation
 
     - docs: update changelog for v0.47.3 [skip ci]
     - docs: update changelog for v0.47.2 [skip ci]
 
-### Chores
+### [0.47.4] Chores
 
     - chore: update VSCode extension package.json to v0.47.3 [skip ci]
     - chore: update npm package.json to v0.47.3 [skip ci]
@@ -15282,16 +15282,16 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.47.1 [skip ci]
     - chore: update npm package.json to v0.47.1 [skip ci]
 
-# [Version 0.47.3] - 2025-11-25
+## 0.47.3 - 2025-11-25
 
-### Features
+### [0.47.3] Features
 
     - feat: Enhance tool policy with pre-approval allowlist, improve file operation error messages, and refine tool declarations.
     - feat: Integrate production-grade tool improvements system
     - feat: Implement animated thinking spinner for user input submission
     - feat: Add comprehensive ANSI escape sequence documentation and a new core utility module for ANSI codes.
 
-### Bug Fixes
+### [0.47.3] Bug Fixes
 
     - fix: correct RUSTFLAGS invalid option and align system prompt with actual tool definitions
     - fix: resolve all cargo clippy warnings and update rust toolchain to stable
@@ -15299,18 +15299,18 @@ All notable changes to vtcode will be documented in this file.
     - fix: Move thinking spinner display to after user message in transcript
     - fix: Clear thinking spinner message on all agent response command types
 
-### Refactors
+### [0.47.3] Refactors
 
     - refactor: Update ThinkingSpinner struct visibility for better encapsulation
     - refactor: remove redundant reasoning handling, clarify intent
 
-### Documentation
+### [0.47.3] Documentation
 
     - docs: update changelog for v0.47.2 [skip ci]
     - docs: update changelog for v0.47.1 [skip ci]
     - docs: update changelog for v0.47.0 [skip ci]
 
-### Chores
+### [0.47.3] Chores
 
     - chore: release v0.47.2
     - chore: update VSCode extension package.json to v0.47.1 [skip ci]
@@ -15320,16 +15320,16 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.46.0 [skip ci]
     - chore: update npm package.json to v0.46.0 [skip ci]
 
-# [Version 0.47.2] - 2025-11-25
+## 0.47.2 - 2025-11-25
 
-### Features
+### [0.47.2] Features
 
     - feat: Enhance tool policy with pre-approval allowlist, improve file operation error messages, and refine tool declarations.
     - feat: Integrate production-grade tool improvements system
     - feat: Implement animated thinking spinner for user input submission
     - feat: Add comprehensive ANSI escape sequence documentation and a new core utility module for ANSI codes.
 
-### Bug Fixes
+### [0.47.2] Bug Fixes
 
     - fix: correct RUSTFLAGS invalid option and align system prompt with actual tool definitions
     - fix: resolve all cargo clippy warnings and update rust toolchain to stable
@@ -15337,17 +15337,17 @@ All notable changes to vtcode will be documented in this file.
     - fix: Move thinking spinner display to after user message in transcript
     - fix: Clear thinking spinner message on all agent response command types
 
-### Refactors
+### [0.47.2] Refactors
 
     - refactor: Update ThinkingSpinner struct visibility for better encapsulation
     - refactor: remove redundant reasoning handling, clarify intent
 
-### Documentation
+### [0.47.2] Documentation
 
     - docs: update changelog for v0.47.1 [skip ci]
     - docs: update changelog for v0.47.0 [skip ci]
 
-### Chores
+### [0.47.2] Chores
 
     - chore: update VSCode extension package.json to v0.47.1 [skip ci]
     - chore: update npm package.json to v0.47.1 [skip ci]
@@ -15356,9 +15356,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.46.0 [skip ci]
     - chore: update npm package.json to v0.46.0 [skip ci]
 
-# [Version 0.47.1] - 2025-11-23
+## 0.47.1 - 2025-11-23
 
-### Features
+### [0.47.1] Features
 
     - feat: Enhance tool policy with pre-approval allowlist, improve file operation error messages, and refine tool declarations.
     - feat: Integrate production-grade tool improvements system
@@ -15366,7 +15366,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: Add comprehensive ANSI escape sequence documentation and a new core utility module for ANSI codes.
     - feat: Refactor install script, rename `run_pty_cmd` to `run_terminal_cmd`, and update installation instructions for Homebrew and NPM.
 
-### Bug Fixes
+### [0.47.1] Bug Fixes
 
     - fix: correct RUSTFLAGS invalid option and align system prompt with actual tool definitions
     - fix: resolve all cargo clippy warnings and update rust toolchain to stable
@@ -15376,7 +15376,7 @@ All notable changes to vtcode will be documented in this file.
     - fix: Update public re-export and documentation to reference file_helpers instead of legacy
     - fix: Improve `edit_file` tool's robustness
 
-### Refactors
+### [0.47.1] Refactors
 
     - refactor: Update ThinkingSpinner struct visibility for better encapsulation
     - refactor: remove redundant reasoning handling, clarify intent
@@ -15384,7 +15384,7 @@ All notable changes to vtcode will be documented in this file.
     - refactor(mcp): Clean up unused imports
     - refactor: Rename `run_terminal_cmd` to `run_pty_cmd` across documentation, examples, and tests.
 
-### Documentation
+### [0.47.1] Documentation
 
     - docs: update changelog for v0.47.0 [skip ci]
     - docs: update changelog for v0.46.0 [skip ci]
@@ -15400,7 +15400,7 @@ All notable changes to vtcode will be documented in this file.
     - docs/mcp: Complete documentation migration - consolidate and organize
     - docs: Update and expand documentation across various topics, add a new MCP diagnostic guide, and adjust project configurations and dependencies.
 
-### Chores
+### [0.47.1] Chores
 
     - chore: release v0.47.0
     - chore: update VSCode extension package.json to v0.46.0 [skip ci]
@@ -15409,9 +15409,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.45.6 [skip ci]
     - chore: update npm package.json to v0.45.6 [skip ci]
 
-# [Version 0.47.0] - 2025-11-23
+## 0.47.0 - 2025-11-23
 
-### Features
+### [0.47.0] Features
 
     - feat: Enhance tool policy with pre-approval allowlist, improve file operation error messages, and refine tool declarations.
     - feat: Integrate production-grade tool improvements system
@@ -15419,7 +15419,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: Add comprehensive ANSI escape sequence documentation and a new core utility module for ANSI codes.
     - feat: Refactor install script, rename `run_pty_cmd` to `run_terminal_cmd`, and update installation instructions for Homebrew and NPM.
 
-### Bug Fixes
+### [0.47.0] Bug Fixes
 
     - fix: correct RUSTFLAGS invalid option and align system prompt with actual tool definitions
     - fix: resolve all cargo clippy warnings and update rust toolchain to stable
@@ -15429,7 +15429,7 @@ All notable changes to vtcode will be documented in this file.
     - fix: Update public re-export and documentation to reference file_helpers instead of legacy
     - fix: Improve `edit_file` tool's robustness
 
-### Refactors
+### [0.47.0] Refactors
 
     - refactor: Update ThinkingSpinner struct visibility for better encapsulation
     - refactor: remove redundant reasoning handling, clarify intent
@@ -15437,7 +15437,7 @@ All notable changes to vtcode will be documented in this file.
     - refactor(mcp): Clean up unused imports
     - refactor: Rename `run_terminal_cmd` to `run_pty_cmd` across documentation, examples, and tests.
 
-### Documentation
+### [0.47.0] Documentation
 
     - docs: update changelog for v0.46.0 [skip ci]
     - docs/mcp: integrate DEPLOYMENT_GUIDE and update INDEX navigation
@@ -15452,7 +15452,7 @@ All notable changes to vtcode will be documented in this file.
     - docs/mcp: Complete documentation migration - consolidate and organize
     - docs: Update and expand documentation across various topics, add a new MCP diagnostic guide, and adjust project configurations and dependencies.
 
-### Chores
+### [0.47.0] Chores
 
     - chore: update VSCode extension package.json to v0.46.0 [skip ci]
     - chore: update npm package.json to v0.46.0 [skip ci]
@@ -15460,9 +15460,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.45.6 [skip ci]
     - chore: update npm package.json to v0.45.6 [skip ci]
 
-# [Version 0.46.0] - 2025-11-21
+## 0.46.0 - 2025-11-21
 
-### Features
+### [0.46.0] Features
 
     - feat: Refactor install script, rename `run_pty_cmd` to `run_terminal_cmd`, and update installation instructions for Homebrew and NPM.
     - feat: Add new tools to tool-policy and update permissions for fetch and time providers
@@ -15470,7 +15470,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: Add external editor integration with TUI suspension, alternate screen handling, and stability improvements.
     - feat: update tool policies, add setup script, and enhance README with configuration details
 
-### Bug Fixes
+### [0.46.0] Bug Fixes
 
     - fix: Update public re-export and documentation to reference file_helpers instead of legacy
     - fix: Improve `edit_file` tool's robustness
@@ -15479,14 +15479,14 @@ All notable changes to vtcode will be documented in this file.
     - fix: Add environment() and path() to EditorBuilder to properly detect and launch editor
     - fix: Remove duplicate test block with non-existent method in zed.rs
 
-### Refactors
+### [0.46.0] Refactors
 
     - refactor: Rename `legacy` module to `file_helpers` and fix critical `edit_file` bugs related to newline handling, matching, and trailing newlines.
     - refactor(mcp): Clean up unused imports
     - refactor: Rename `run_terminal_cmd` to `run_pty_cmd` across documentation, examples, and tests.
     - refactor: Remove static default editor, rely on try_common_editors for fallback
 
-### Documentation
+### [0.46.0] Documentation
 
     - docs/mcp: integrate DEPLOYMENT_GUIDE and update INDEX navigation
     - docs/mcp: Add lessons learned - project retrospective
@@ -15506,7 +15506,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: add Ratatui FAQ-based TUI best practices guides
     - docs: Add External Editor Configuration to docs index
 
-### Chores
+### [0.46.0] Chores
 
     - chore: update VSCode extension package.json to v0.45.6 [skip ci]
     - chore: update npm package.json to v0.45.6 [skip ci]
@@ -15514,9 +15514,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.45.5 [skip ci]
     - chore: update npm package.json to v0.45.5 [skip ci]
 
-# [Version 0.45.6] - 2025-11-20
+## 0.45.6 - 2025-11-20
 
-### Features
+### [0.45.6] Features
 
     - feat: Add new tools to tool-policy and update permissions for fetch and time providers
     - feat: Add default editor fallback (vi on Unix, notepad on Windows) when EDITOR/VISUAL not set
@@ -15527,7 +15527,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: implement interactive tree UI for file structure visualization
     - feat: enhance diff display with full-width backgrounds and improve terminal command visibility
 
-### Bug Fixes
+### [0.45.6] Bug Fixes
 
     - fix: Track fire-and-forget tokio::spawn tasks with JoinHandles
     - fix: Apply Ratatui FAQ best practices - fix async/tokio issues
@@ -15541,7 +15541,7 @@ All notable changes to vtcode will be documented in this file.
     - fix: remove duplicate user message from conversation history
     - fix: remove duplicate user message in turn loop
 
-### Refactors
+### [0.45.6] Refactors
 
     - refactor: Remove static default editor, rely on try_common_editors for fallback
     - refactor: Remove sandbox functionality and streamline shell command
@@ -15554,7 +15554,7 @@ All notable changes to vtcode will be documented in this file.
     - refactor: streamline command execution error suggestions and implement unified run command executor
     - refactor: streamline loop detection logic and improve non-interactive handling
 
-### Documentation
+### [0.45.6] Documentation
 
     - docs: add comprehensive Ratatui improvements summary
     - docs: Add async improvements documentation
@@ -15571,7 +15571,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update PTY command execution improvements documentation
     - docs: add embedded assets management guide and pre-commit hook
 
-### Chores
+### [0.45.6] Chores
 
     - chore: update VSCode extension package.json to v0.45.5 [skip ci]
     - chore: update npm package.json to v0.45.5 [skip ci]
@@ -15580,16 +15580,16 @@ All notable changes to vtcode will be documented in this file.
     - chore: update VSCode extension package.json to v0.45.4 and commit changes [skip ci]
     - chore: update npm package.json to v0.45.4 [skip ci]
 
-# [Version 0.45.5] - 2025-11-19
+## 0.45.5 - 2025-11-19
 
-### Features
+### [0.45.5] Features
 
     - feat: VT Code System Prompt v3 - Context Optimized Implementation
     - feat: add Bash tool and remove non-existent run_pty_cmd references
     - feat: implement interactive tree UI for file structure visualization
     - feat: enhance diff display with full-width backgrounds and improve terminal command visibility
 
-### Bug Fixes
+### [0.45.5] Bug Fixes
 
     - fix: expose shell tool to LLM by setting expose_in_llm to true
     - fix: ensure development tools are always in PATH with fallback paths
@@ -15600,7 +15600,7 @@ All notable changes to vtcode will be documented in this file.
     - fix: remove duplicate user message in turn loop
     - fix: suppress dead_code warnings for intentionally disabled features
 
-### Refactors
+### [0.45.5] Refactors
 
     - refactor: Remove sandbox functionality and streamline shell command
     - refactor: eliminate wrapper layer in execute_shell_command
@@ -15613,7 +15613,7 @@ All notable changes to vtcode will be documented in this file.
     - refactor: streamline loop detection logic and improve non-interactive handling
     - refactor: replace dissimilar with optimized Myers diff algorithm
 
-### Documentation
+### [0.45.5] Documentation
 
     - docs: Add implementation completion summary for System Prompt v3
     - docs: fix misleading comment for RUN_PTY_CMD constant
@@ -15626,7 +15626,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.45.4 [skip ci]
     - docs: update AGENTS.md with comprehensive agent guide and tool usage guidelines
 
-### Chores
+### [0.45.5] Chores
 
     - chore: standardize default shell in workflow files and set job timeouts
     - chore: update VSCode extension package.json to v0.45.4 and commit changes [skip ci]
@@ -15634,9 +15634,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.45.4
     - chore: update npm package.json to v0.45.3 [skip ci]
 
-# [Version 0.45.4] - 2025-11-17
+## 0.45.4 - 2025-11-17
 
-### Bug Fixes
+### [0.45.4] Bug Fixes
 
     - fix: suppress dead_code warnings for intentionally disabled features
     - fix: prevent infinite tool loops by using >= instead of >
@@ -15645,35 +15645,35 @@ All notable changes to vtcode will be documented in this file.
     - fix: truncate verbose reasoning output to reduce noise during tool execution
     - fix(llm): update lmstudio provider: remove stale 'For now' comment and simplify validation; update related utility and policy files
 
-### Refactors
+### [0.45.4] Refactors
 
     - refactor: replace dissimilar with optimized Myers diff algorithm
     - refactor: organize documentation into docs/phases and docs/scroll subdirectories; consolidate PHASE5 and SCROLL artefacts for better maintainability
 
-### Documentation
+### [0.45.4] Documentation
 
     - docs: update AGENTS.md with comprehensive agent guide and tool usage guidelines
     - docs: update changelog for v0.45.3 [skip ci]
     - docs: reorganize root-level docs into docs/ subdirectories per AGENTS.md
     - docs: clarify run_pty_cmd usage for git, cargo, and one-off shell commands
 
-### Style Changes
+### [0.45.4] Style Changes
 
     - style: apply cargo fmt
 
-### Chores
+### [0.45.4] Chores
 
     - chore: update npm package.json to v0.45.3 [skip ci]
     - chore: release v0.45.3
     - chore: update npm package.json to v0.45.2 [skip ci]
 
-# [Version 0.45.3] - 2025-11-17
+## 0.45.3 - 2025-11-17
 
-### Features
+### [0.45.3] Features
 
     - feat: implement token-based truncation for tool outputs and update configuration
 
-### Bug Fixes
+### [0.45.3] Bug Fixes
 
     - fix: prevent infinite tool loops by using >= instead of >
     - fix: resolve clippy warnings (range_contains, doc comments, identical blocks)
@@ -15681,44 +15681,44 @@ All notable changes to vtcode will be documented in this file.
     - fix: truncate verbose reasoning output to reduce noise during tool execution
     - fix(llm): update lmstudio provider: remove stale 'For now' comment and simplify validation; update related utility and policy files
 
-### Refactors
+### [0.45.3] Refactors
 
     - refactor: organize documentation into docs/phases and docs/scroll subdirectories; consolidate PHASE5 and SCROLL artefacts for better maintainability
 
-### Documentation
+### [0.45.3] Documentation
 
     - docs: reorganize root-level docs into docs/ subdirectories per AGENTS.md
     - docs: clarify run_pty_cmd usage for git, cargo, and one-off shell commands
     - docs: update changelog for v0.45.2 [skip ci]
     - docs: update changelog for v0.45.1 [skip ci]
 
-### Style Changes
+### [0.45.3] Style Changes
 
     - style: apply cargo fmt
 
-### Chores
+### [0.45.3] Chores
 
     - chore: update npm package.json to v0.45.2 [skip ci]
     - chore: release v0.45.2
     - chore: release v0.45.1
     - chore: update npm package.json to v0.45.0 [skip ci]
 
-# [Version 0.45.2] - 2025-11-17
+## 0.45.2 - 2025-11-17
 
-### Features
+### [0.45.2] Features
 
     - feat: implement token-based truncation for tool outputs and update configuration
 
-### Refactors
+### [0.45.2] Refactors
 
     - refactor(runloop): extract tool pipeline into  and add  — reduce run loop complexity
 
-### Documentation
+### [0.45.2] Documentation
 
     - docs: update changelog for v0.45.1 [skip ci]
     - docs: update changelog for v0.45.0 [skip ci]
 
-### Chores
+### [0.45.2] Chores
 
     - chore: release v0.45.1
     - chore: update npm package.json to v0.45.0 [skip ci]
@@ -15729,21 +15729,21 @@ All notable changes to vtcode will be documented in this file.
     - chore(runloop): Extract run_single_agent_loop_unified to run_loop.rs
     - chore: update npm package.json to v0.44.1 [skip ci]
 
-# [Version 0.45.1] - 2025-11-17
+## 0.45.1 - 2025-11-17
 
-### Features
+### [0.45.1] Features
 
     - feat: implement token-based truncation for tool outputs and update configuration
 
-### Refactors
+### [0.45.1] Refactors
 
     - refactor(runloop): extract tool pipeline into  and add  — reduce run loop complexity
 
-### Documentation
+### [0.45.1] Documentation
 
     - docs: update changelog for v0.45.0 [skip ci]
 
-### Chores
+### [0.45.1] Chores
 
     - chore: update npm package.json to v0.45.0 [skip ci]
     - chore: release v0.45.0
@@ -15753,22 +15753,22 @@ All notable changes to vtcode will be documented in this file.
     - chore(runloop): Extract run_single_agent_loop_unified to run_loop.rs
     - chore: update npm package.json to v0.44.1 [skip ci]
 
-# [Version 0.45.0] - 2025-11-16
+## 0.45.0 - 2025-11-16
 
-### Bug Fixes
+### [0.45.0] Bug Fixes
 
     - fix: update Claude model identifiers and descriptions for accuracy
 
-### Refactors
+### [0.45.0] Refactors
 
     - refactor(runloop): extract tool pipeline into  and add  — reduce run loop complexity
 
-### Documentation
+### [0.45.0] Documentation
 
     - docs: update changelog for v0.44.1 [skip ci]
     - docs: update changelog for v0.44.0 [skip ci]
 
-### Chores
+### [0.45.0] Chores
 
     - chore: update GitHub Actions workflows for improved performance and consistency; adjust dependency management and environment variables
     - chore(runloop): make session.rs minimal exposing slash_commands
@@ -15780,19 +15780,19 @@ All notable changes to vtcode will be documented in this file.
     - chore: update configuration files for VT Code support
     - chore: update npm package.json to v0.43.17 [skip ci]
 
-# [Version 0.44.1] - 2025-11-15
+## 0.44.1 - 2025-11-15
 
-### Bug Fixes
+### [0.44.1] Bug Fixes
 
     - fix: update Claude model identifiers and descriptions for accuracy
 
-### Documentation
+### [0.44.1] Documentation
 
     - docs: update changelog for v0.44.0 [skip ci]
     - docs: update changelog for v0.43.17 [skip ci]
     - docs: update changelog for v0.43.16 [skip ci]
 
-### Chores
+### [0.44.1] Chores
 
     - chore: release v0.44.0
     - chore: update configuration files for VT Code support
@@ -15801,14 +15801,14 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.43.16
     - chore: update npm package.json to v0.43.15 [skip ci]
 
-# [Version 0.44.0] - 2025-11-15
+## 0.44.0 - 2025-11-15
 
-### Documentation
+### [0.44.0] Documentation
 
     - docs: update changelog for v0.43.17 [skip ci]
     - docs: update changelog for v0.43.16 [skip ci]
 
-### Chores
+### [0.44.0] Chores
 
     - chore: update configuration files for VT Code support
     - chore: update npm package.json to v0.43.17 [skip ci]
@@ -15816,9 +15816,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.43.16
     - chore: update npm package.json to v0.43.15 [skip ci]
 
-# [Version 0.43.17] - 2025-11-15
+## 0.43.17 - 2025-11-15
 
-### Documentation
+### [0.43.17] Documentation
 
     - docs: update changelog for v0.43.16 [skip ci]
     - docs: update changelog for v0.43.15 [skip ci]
@@ -15826,7 +15826,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.43.13 [skip ci]
     - docs: update changelog for v0.43.12 [skip ci]
 
-### Chores
+### [0.43.17] Chores
 
     - chore: release v0.43.16
     - chore: update npm package.json to v0.43.15 [skip ci]
@@ -15836,20 +15836,20 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.43.12
     - chore: update npm package.json to v0.43.11 [skip ci]
 
-### Features
+### [0.43.17] Features
 
     - feat(openai): add `prompt_cache_retention` option in vtcode.toml to control Responses API cache retention (e.g., "24h")
 
-# [Version 0.43.16] - 2025-11-15
+## 0.43.16 - 2025-11-15
 
-### Documentation
+### [0.43.16] Documentation
 
     - docs: update changelog for v0.43.15 [skip ci]
     - docs: update changelog for v0.43.14 [skip ci]
     - docs: update changelog for v0.43.13 [skip ci]
     - docs: update changelog for v0.43.12 [skip ci]
 
-### Chores
+### [0.43.16] Chores
 
     - chore: update npm package.json to v0.43.15 [skip ci]
     - chore: release v0.43.15
@@ -15858,16 +15858,16 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.43.12
     - chore: update npm package.json to v0.43.11 [skip ci]
 
-# [Version 0.43.15] - 2025-11-14
+## 0.43.15 - 2025-11-14
 
-### Documentation
+### [0.43.15] Documentation
 
     - docs: update changelog for v0.43.14 [skip ci]
     - docs: update changelog for v0.43.13 [skip ci]
     - docs: update changelog for v0.43.12 [skip ci]
     - docs: update changelog for v0.43.11 [skip ci]
 
-### Chores
+### [0.43.15] Chores
 
     - chore: release v0.43.14
     - chore: release v0.43.13
@@ -15876,15 +15876,15 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.43.11
     - chore: update npm package.json to v0.43.10 [skip ci]
 
-# [Version 0.43.14] - 2025-11-14
+## 0.43.14 - 2025-11-14
 
-### Documentation
+### [0.43.14] Documentation
 
     - docs: update changelog for v0.43.13 [skip ci]
     - docs: update changelog for v0.43.12 [skip ci]
     - docs: update changelog for v0.43.11 [skip ci]
 
-### Chores
+### [0.43.14] Chores
 
     - chore: release v0.43.13
     - chore: release v0.43.12
@@ -15892,54 +15892,54 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.43.11
     - chore: update npm package.json to v0.43.10 [skip ci]
 
-# [Version 0.43.13] - 2025-11-14
+## 0.43.13 - 2025-11-14
 
-### Documentation
+### [0.43.13] Documentation
 
     - docs: update changelog for v0.43.12 [skip ci]
     - docs: update changelog for v0.43.11 [skip ci]
 
-### Chores
+### [0.43.13] Chores
 
     - chore: release v0.43.12
     - chore: update npm package.json to v0.43.11 [skip ci]
     - chore: release v0.43.11
     - chore: update npm package.json to v0.43.10 [skip ci]
 
-# [Version 0.43.12] - 2025-11-14
+## 0.43.12 - 2025-11-14
 
-### Documentation
+### [0.43.12] Documentation
 
     - docs: update changelog for v0.43.11 [skip ci]
 
-### Chores
+### [0.43.12] Chores
 
     - chore: update npm package.json to v0.43.11 [skip ci]
     - chore: release v0.43.11
     - chore: update npm package.json to v0.43.10 [skip ci]
 
-# [Version 0.43.11] - 2025-11-13
+## 0.43.11 - 2025-11-13
 
-### Documentation
+### [0.43.11] Documentation
 
     - docs: update changelog for v0.43.10 [skip ci]
     - docs: update changelog for v0.43.9 [skip ci]
 
-### Chores
+### [0.43.11] Chores
 
     - chore: update npm package.json to v0.43.10 [skip ci]
     - chore: release v0.43.10
     - chore: release v0.43.9
     - chore: update npm package.json to v0.43.8 [skip ci]
 
-# [Version 0.43.10] - 2025-11-13
+## 0.43.10 - 2025-11-13
 
-### Features
+### [0.43.10] Features
 
     - feat(ripgrep): Add automatic installation and management for ripgrep dependency
     - feat(loop_detection): Refactor loop hang detection for improved accuracy and user experience
 
-### Documentation
+### [0.43.10] Documentation
 
     - docs: update changelog for v0.43.9 [skip ci]
     - docs: update changelog for v0.43.8 [skip ci]
@@ -15947,7 +15947,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.43.7 [skip ci]
     - docs: update changelog for v0.43.7 [skip ci]
 
-### Chores
+### [0.43.10] Chores
 
     - chore: release v0.43.9
     - chore: update npm package.json to v0.43.8 [skip ci]
@@ -15955,30 +15955,30 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.43.7
     - chore: update npm package.json to v0.43.6 [skip ci]
 
-# [Version 0.43.9] - 2025-11-13
+## 0.43.9 - 2025-11-13
 
-### Features
+### [0.43.9] Features
 
     - feat(ripgrep): Add automatic installation and management for ripgrep dependency
     - feat(loop_detection): Refactor loop hang detection for improved accuracy and user experience
 
-### Documentation
+### [0.43.9] Documentation
 
     - docs: update changelog for v0.43.8 [skip ci]
     - docs: update changelog for v0.43.7 [skip ci]
     - docs: update changelog for v0.43.7 [skip ci]
     - docs: update changelog for v0.43.7 [skip ci]
 
-### Chores
+### [0.43.9] Chores
 
     - chore: update npm package.json to v0.43.8 [skip ci]
     - chore: release v0.43.8
     - chore: release v0.43.7
     - chore: update npm package.json to v0.43.6 [skip ci]
 
-# [Version 0.43.8] - 2025-11-13
+## 0.43.8 - 2025-11-13
 
-### Features
+### [0.43.8] Features
 
     - feat(ripgrep): Add automatic installation and management for ripgrep dependency
     - feat(loop_detection): Refactor loop hang detection for improved accuracy and user experience
@@ -15986,13 +15986,13 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement token-based truncation for tool output rendering
     - feat: Enhance command execution with additional PATH entries and environment variable handling
 
-### Refactors
+### [0.43.8] Refactors
 
     - refactor: replace cargo_bin_cmd with assert_cmd in CLI tests and simplify InlineTextStyle initialization
     - refactor: update InlineTextStyle to include bg_color and effects in snapshot tests
     - refactor: update command execution in tests and remove unused imports
 
-### Documentation
+### [0.43.8] Documentation
 
     - docs: update changelog for v0.43.7 [skip ci]
     - docs: update changelog for v0.43.7 [skip ci]
@@ -16000,45 +16000,16 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.43.6 [skip ci]
     - docs: Add truncation audit and remove unused terminal output line-limit constants
 
-### Chores
+### [0.43.8] Chores
 
     - chore: release v0.43.7
     - chore: update npm package.json to v0.43.6 [skip ci]
     - chore: release v0.43.6
     - chore: update npm package.json to v0.43.5 [skip ci]
 
-# [Version 0.43.7] - 2025-11-13
+## 0.43.7 - 2025-11-13 (historical record 1 of 3)
 
-### Features
-
-    - feat(ripgrep): Add automatic installation and management for ripgrep dependency
-    - feat(loop_detection): Refactor loop hang detection for improved accuracy and user experience
-    - feat(web_fetch): Introduce Web Fetch tool with security configurations
-    - feat: Implement token-based truncation for tool output rendering
-    - feat: Enhance command execution with additional PATH entries and environment variable handling
-
-### Refactors
-
-    - refactor: replace cargo_bin_cmd with assert_cmd in CLI tests and simplify InlineTextStyle initialization
-    - refactor: update InlineTextStyle to include bg_color and effects in snapshot tests
-    - refactor: update command execution in tests and remove unused imports
-
-### Documentation
-
-    - docs: update changelog for v0.43.7 [skip ci]
-    - docs: update changelog for v0.43.7 [skip ci]
-    - docs: update changelog for v0.43.6 [skip ci]
-    - docs: Add truncation audit and remove unused terminal output line-limit constants
-
-### Chores
-
-    - chore: update npm package.json to v0.43.6 [skip ci]
-    - chore: release v0.43.6
-    - chore: update npm package.json to v0.43.5 [skip ci]
-
-# [Version 0.43.7] - 2025-11-13
-
-### Features
+### [0.43.7/r1] Features
 
     - feat(ripgrep): Add automatic installation and management for ripgrep dependency
     - feat(loop_detection): Refactor loop hang detection for improved accuracy and user experience
@@ -16046,27 +16017,28 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement token-based truncation for tool output rendering
     - feat: Enhance command execution with additional PATH entries and environment variable handling
 
-### Refactors
+### [0.43.7/r1] Refactors
 
     - refactor: replace cargo_bin_cmd with assert_cmd in CLI tests and simplify InlineTextStyle initialization
     - refactor: update InlineTextStyle to include bg_color and effects in snapshot tests
     - refactor: update command execution in tests and remove unused imports
 
-### Documentation
+### [0.43.7/r1] Documentation
 
+    - docs: update changelog for v0.43.7 [skip ci]
     - docs: update changelog for v0.43.7 [skip ci]
     - docs: update changelog for v0.43.6 [skip ci]
     - docs: Add truncation audit and remove unused terminal output line-limit constants
 
-### Chores
+### [0.43.7/r1] Chores
 
     - chore: update npm package.json to v0.43.6 [skip ci]
     - chore: release v0.43.6
     - chore: update npm package.json to v0.43.5 [skip ci]
 
-# [Version 0.43.7] - 2025-11-13
+## 0.43.7 - 2025-11-13 (historical record 2 of 3)
 
-### Features
+### [0.43.7/r2] Features
 
     - feat(ripgrep): Add automatic installation and management for ripgrep dependency
     - feat(loop_detection): Refactor loop hang detection for improved accuracy and user experience
@@ -16074,55 +16046,83 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement token-based truncation for tool output rendering
     - feat: Enhance command execution with additional PATH entries and environment variable handling
 
-### Refactors
+### [0.43.7/r2] Refactors
 
     - refactor: replace cargo_bin_cmd with assert_cmd in CLI tests and simplify InlineTextStyle initialization
     - refactor: update InlineTextStyle to include bg_color and effects in snapshot tests
     - refactor: update command execution in tests and remove unused imports
 
-### Documentation
+### [0.43.7/r2] Documentation
 
+    - docs: update changelog for v0.43.7 [skip ci]
     - docs: update changelog for v0.43.6 [skip ci]
     - docs: Add truncation audit and remove unused terminal output line-limit constants
 
-### Chores
+### [0.43.7/r2] Chores
 
     - chore: update npm package.json to v0.43.6 [skip ci]
     - chore: release v0.43.6
     - chore: update npm package.json to v0.43.5 [skip ci]
 
-# [Version 0.43.6] - 2025-11-12
+## 0.43.7 - 2025-11-13 (historical record 3 of 3)
 
-### Features
+### [0.43.7/r3] Features
 
+    - feat(ripgrep): Add automatic installation and management for ripgrep dependency
+    - feat(loop_detection): Refactor loop hang detection for improved accuracy and user experience
     - feat(web_fetch): Introduce Web Fetch tool with security configurations
     - feat: Implement token-based truncation for tool output rendering
     - feat: Enhance command execution with additional PATH entries and environment variable handling
 
-### Refactors
+### [0.43.7/r3] Refactors
 
     - refactor: replace cargo_bin_cmd with assert_cmd in CLI tests and simplify InlineTextStyle initialization
     - refactor: update InlineTextStyle to include bg_color and effects in snapshot tests
     - refactor: update command execution in tests and remove unused imports
 
-### Documentation
+### [0.43.7/r3] Documentation
+
+    - docs: update changelog for v0.43.6 [skip ci]
+    - docs: Add truncation audit and remove unused terminal output line-limit constants
+
+### [0.43.7/r3] Chores
+
+    - chore: update npm package.json to v0.43.6 [skip ci]
+    - chore: release v0.43.6
+    - chore: update npm package.json to v0.43.5 [skip ci]
+
+## 0.43.6 - 2025-11-12
+
+### [0.43.6] Features
+
+    - feat(web_fetch): Introduce Web Fetch tool with security configurations
+    - feat: Implement token-based truncation for tool output rendering
+    - feat: Enhance command execution with additional PATH entries and environment variable handling
+
+### [0.43.6] Refactors
+
+    - refactor: replace cargo_bin_cmd with assert_cmd in CLI tests and simplify InlineTextStyle initialization
+    - refactor: update InlineTextStyle to include bg_color and effects in snapshot tests
+    - refactor: update command execution in tests and remove unused imports
+
+### [0.43.6] Documentation
 
     - docs: Add truncation audit and remove unused terminal output line-limit constants
     - docs: update changelog for v0.43.5 [skip ci]
 
-### Chores
+### [0.43.6] Chores
 
     - chore: update npm package.json to v0.43.5 [skip ci]
     - chore: release v0.43.5
     - chore: update npm package.json to v0.43.4 [skip ci]
 
-# [Version 0.43.5] - 2025-11-11
+## 0.43.5 - 2025-11-11
 
-### Features
+### [0.43.5] Features
 
     - feat: Implement permission system with command resolution, audit logging, and caching
 
-### Improvements
+### [0.43.5] Improvements
 
     - improve: Enhanced token approximation algorithm with median-based heuristics for fallback tokenization
     - improve: Fixed token counting fallback to use consistent 3.5 chars/token ratio across head/tail sections
@@ -16136,7 +16136,7 @@ All notable changes to vtcode will be documented in this file.
     - improve: Added comprehensive module-level documentation for token-aware truncation strategy
     - improve: Clarified token budget messaging to users about what content is preserved
 
-### Refactors
+### [0.43.5] Refactors
 
     - refactor: Remove unused audit log and history navigation methods
     - refactor: Remove references to ast_grep_search from documentation and tool policies
@@ -16146,21 +16146,21 @@ All notable changes to vtcode will be documented in this file.
     - refactor: Phase 2 Step 1 - add manager fields to Session struct
     - refactor: extract input history navigation logic fix in InputManager
 
-### Documentation
+### [0.43.5] Documentation
 
     - docs: update changelog for v0.43.4 [skip ci]
     - docs: update Phase 2 progress - Step 4 complete with all input methods migrated
     - docs: add VT Code execution policy documentation and update command validation
 
-### Chores
+### [0.43.5] Chores
 
     - chore: update npm package.json to v0.43.4 [skip ci]
     - chore: release v0.43.4
     - chore: update npm package.json to v0.43.3 [skip ci]
 
-# [Version 0.43.4] - 2025-11-10
+## 0.43.4 - 2025-11-10
 
-### Features
+### [0.43.4] Features
 
     - feat: Implement permission system with command resolution, audit logging, and caching
     - feat: Add Git colour configuration support and theme management
@@ -16170,11 +16170,11 @@ All notable changes to vtcode will be documented in this file.
     - feat: Integrate anstyle-parse for ANSI escape sequence handling
     - feat: implement styling refactor - centralize colour palettes and style helpers
 
-### Bug Fixes
+### [0.43.4] Bug Fixes
 
     - fix: redirect logging to stderr to prevent stdout pollution in install script
 
-### Refactors
+### [0.43.4] Refactors
 
     - refactor: Remove unused audit log and history navigation methods
     - refactor: Remove references to ast_grep_search from documentation and tool policies
@@ -16188,7 +16188,7 @@ All notable changes to vtcode will be documented in this file.
     - refactor: implement styling suggestions from STYLING_REFACTOR_GUIDE
     - refactor: implement styling refactor from guide - centralize color/style management
 
-### Documentation
+### [0.43.4] Documentation
 
     - docs: update Phase 2 progress - Step 4 complete with all input methods migrated
     - docs: add VT Code execution policy documentation and update command validation
@@ -16201,16 +16201,16 @@ All notable changes to vtcode will be documented in this file.
     - docs: add styling implementation completion status
     - docs: update installation guides with CDN caching troubleshooting and fix details
 
-### Chores
+### [0.43.4] Chores
 
     - chore: update npm package.json to v0.43.3 [skip ci]
     - chore: release v0.43.3
     - chore: update install script to log messages to stderr and bump version to 0.43.2
     - chore: update npm package.json to v0.43.2 [skip ci]
 
-# [Version 0.43.3] - 2025-11-09
+## 0.43.3 - 2025-11-09
 
-### Features
+### [0.43.3] Features
 
     - feat: Add Git colour configuration support and theme management
     - feat: Add Styling Quick Start Guide and Refactor Completion Report
@@ -16219,14 +16219,14 @@ All notable changes to vtcode will be documented in this file.
     - feat: Integrate anstyle-parse for ANSI escape sequence handling
     - feat: implement styling refactor - centralize colour palettes and style helpers
 
-### Bug Fixes
+### [0.43.3] Bug Fixes
 
     - fix: redirect logging to stderr to prevent stdout pollution in install script
     - fix: optimize list_files tool for improved pagination and reduce default page size
     - fix: update LLM provider and models to use Ollama
     - fix: revert extension.toml to valid Zed format
 
-### Refactors
+### [0.43.3] Refactors
 
     - refactor(styling): implement central style helpers and diff colour palette
     - refactor: improve styling consistency with bold_color() and ColorPalette
@@ -16235,7 +16235,7 @@ All notable changes to vtcode will be documented in this file.
     - refactor: integrate CommandBuilder throughout commands module
     - refactor: restructure zed-extension to modular architecture with comprehensive error handling and caching
 
-### Documentation
+### [0.43.3] Documentation
 
     - docs: add comprehensive styling documentation index
     - docs: add Phase 2 planning and implementation guides for advanced styling features
@@ -16249,27 +16249,27 @@ All notable changes to vtcode will be documented in this file.
     - docs: add comprehensive final improvements summary
     - docs: update STATUS with improvements session results
 
-### Chores
+### [0.43.3] Chores
 
     - chore: update install script to log messages to stderr and bump version to 0.43.2
     - chore: update npm package.json to v0.43.2 [skip ci]
     - chore: release v0.43.2
     - chore: update npm package.json to v0.43.1 [skip ci]
 
-# [Version 0.43.2] - 2025-11-09
+## 0.43.2 - 2025-11-09
 
-### Bug Fixes
+### [0.43.2] Bug Fixes
 
     - fix: optimize list_files tool for improved pagination and reduce default page size
     - fix: update LLM provider and models to use Ollama
     - fix: revert extension.toml to valid Zed format
 
-### Refactors
+### [0.43.2] Refactors
 
     - refactor: integrate CommandBuilder throughout commands module
     - refactor: restructure zed-extension to modular architecture with comprehensive error handling and caching
 
-### Documentation
+### [0.43.2] Documentation
 
     - docs: add file listing output behaviour pattern to AGENTS.md
     - docs: add comprehensive final improvements summary
@@ -16279,18 +16279,18 @@ All notable changes to vtcode will be documented in this file.
     - docs: Add release action checklist for v0.43.0
     - docs: Add comprehensive v0.43.0 release summary
 
-### Chores
+### [0.43.2] Chores
 
     - chore: update npm package.json to v0.43.1 [skip ci]
     - chore: release v0.43.1
 
-# [Version 0.43.1] - 2025-11-09
+## 0.43.1 - 2025-11-09
 
-### Features
+### [0.43.1] Features
 
     - feat: Implement Agent Communication Protocol (ACP) integration
 
-### Documentation
+### [0.43.1] Documentation
 
     - docs: Add release readiness confirmation document
     - docs: Add release action checklist for v0.43.0
@@ -16299,13 +16299,13 @@ All notable changes to vtcode will be documented in this file.
     - docs: Add ACP next steps and release checklist
     - docs: Add ACP implementation completion summary
 
-### Chores
+### [0.43.1] Chores
 
     - chore: release v0.43.0
     - chore: bump version to 0.43.0 for ACP release
     - chore: update npm package.json to v0.42.20 [skip ci]
 
-### Features
+### [0.43.1] Features (section 2)
 
     - feat: Implement Agent Communication Protocol (ACP) integration for multi-agent orchestration
     - feat: Add ACP client with sync/async RPC methods
@@ -16315,7 +16315,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: Integrate ACP with Zed editor for terminal command execution
     - feat: Support distributed agent workflows via HTTP-based RPC
 
-### Documentation
+### [0.43.1] Documentation (section 2)
 
     - docs: Add comprehensive ACP integration guide
     - docs: Add ACP quick reference for developers
@@ -16323,15 +16323,15 @@ All notable changes to vtcode will be documented in this file.
     - docs: Add implementation completion summary
     - docs: Add release checklist and next steps guide
 
-### Testing
+### [0.43.1] Testing
 
     - test: Add full test coverage for ACP client (6 unit tests)
     - test: Add ACP tool integration tests
     - test: Add distributed workflow example
 
-## [Version 0.42.20] - 2025-11-09
+## 0.42.20 - 2025-11-09
 
-### Features
+### [0.42.20] Features
 
     - feat: Implement tool approval dialog with enhanced UX and risk assessment
     - feat: Step 8 - Implement tool versioning and compatibility checking
@@ -16340,12 +16340,12 @@ All notable changes to vtcode will be documented in this file.
     - feat: Step 2 Phase 2 - IPC handler integration for tool invocation
     - feat: Step 2 - Code executor with SDK generation and IPC
 
-### Bug Fixes
+### [0.42.20] Bug Fixes
 
     - fix: Resolve compilation warnings and duplicate test module
     - fix: remove unused import in code_executor
 
-### Documentation
+### [0.42.20] Documentation
 
     - docs: update changelog for v0.42.19 [skip ci]
     - docs: update changelog for v0.42.18 [skip ci]
@@ -16357,7 +16357,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: Add Step 6 integration testing guide and test scenarios
     - docs: Update Step 2 completion status and add SDK examples
 
-### Chores
+### [0.42.20] Chores
 
     - chore: update npm package.json to v0.42.19 [skip ci]
     - chore: release v0.42.19
@@ -16365,9 +16365,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: finalize tool configuration and system prompt updates
     - chore: update npm package.json to v0.42.17 [skip ci]
 
-# [Version 0.42.19] - 2025-11-08
+## 0.42.19 - 2025-11-08
 
-### Features
+### [0.42.19] Features
 
     - feat: Step 8 - Implement tool versioning and compatibility checking
     - feat: Step 7 - Observability & Metrics system for MCP execution
@@ -16378,12 +16378,12 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement configurable MCP initialization and tool execution timeouts
     - feat: Add OpenRouter Interleaved Thinking Implementation Plan and Quick Reference
 
-### Bug Fixes
+### [0.42.19] Bug Fixes
 
     - fix: Resolve compilation warnings and duplicate test module
     - fix: remove unused import in code_executor
 
-### Documentation
+### [0.42.19] Documentation
 
     - docs: update changelog for v0.42.18 [skip ci]
     - docs: add comprehensive tool configuration status document
@@ -16395,7 +16395,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: Update Step 2 completion status and add SDK examples
     - docs: update changelog for v0.42.17 [skip ci]
 
-### Chores
+### [0.42.19] Chores
 
     - chore: release v0.42.18
     - chore: finalize tool configuration and system prompt updates
@@ -16404,9 +16404,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update documentation and code structure for clarity
     - chore: update npm package.json to v0.42.16 [skip ci]
 
-# [Version 0.42.18] - 2025-11-08
+## 0.42.18 - 2025-11-08
 
-### Features
+### [0.42.18] Features
 
     - feat: Step 8 - Implement tool versioning and compatibility checking
     - feat: Step 7 - Observability & Metrics system for MCP execution
@@ -16417,12 +16417,12 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement configurable MCP initialization and tool execution timeouts
     - feat: Add OpenRouter Interleaved Thinking Implementation Plan and Quick Reference
 
-### Bug Fixes
+### [0.42.18] Bug Fixes
 
     - fix: Resolve compilation warnings and duplicate test module
     - fix: remove unused import in code_executor
 
-### Documentation
+### [0.42.18] Documentation
 
     - docs: add comprehensive tool configuration status document
     - docs: add agent prompt optimization summary
@@ -16433,7 +16433,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: Update Step 2 completion status and add SDK examples
     - docs: update changelog for v0.42.17 [skip ci]
 
-### Chores
+### [0.42.18] Chores
 
     - chore: finalize tool configuration and system prompt updates
     - chore: update npm package.json to v0.42.17 [skip ci]
@@ -16441,91 +16441,91 @@ All notable changes to vtcode will be documented in this file.
     - chore: update documentation and code structure for clarity
     - chore: update npm package.json to v0.42.16 [skip ci]
 
-# [Version 0.42.17] - 2025-11-08
+## 0.42.17 - 2025-11-08
 
-### Features
+### [0.42.17] Features
 
     - feat: Add comprehensive timeout implementation summary and configuration details
     - feat: Implement configurable MCP initialization and tool execution timeouts
     - feat: Add OpenRouter Interleaved Thinking Implementation Plan and Quick Reference
 
-### Bug Fixes
+### [0.42.17] Bug Fixes
 
     - fix: update tool policies and disable time provider in configuration
 
-### Documentation
+### [0.42.17] Documentation
 
     - docs: update changelog for v0.42.16 [skip ci]
 
-### Chores
+### [0.42.17] Chores
 
     - chore: update documentation and code structure for clarity
     - chore: update npm package.json to v0.42.16 [skip ci]
     - chore: release v0.42.16
     - chore: update npm package.json to v0.42.15 [skip ci]
 
-# [Version 0.42.16] - 2025-11-08
+## 0.42.16 - 2025-11-08
 
-### Bug Fixes
+### [0.42.16] Bug Fixes
 
     - fix: update tool policies and disable time provider in configuration
 
-### Documentation
+### [0.42.16] Documentation
 
     - docs: update changelog for v0.42.15 [skip ci]
 
-### Chores
+### [0.42.16] Chores
 
     - chore: update npm package.json to v0.42.15 [skip ci]
     - chore: release v0.42.15
     - chore: update package name and publishing instructions for npmjs.com and GitHub Packages
     - chore: update npm package.json to v0.42.14 [skip ci]
 
-# [Version 0.42.15] - 2025-11-08
+## 0.42.15 - 2025-11-08
 
-### Bug Fixes
+### [0.42.15] Bug Fixes
 
     - fix: revert version in package.json to 0.42.13
 
-### Documentation
+### [0.42.15] Documentation
 
     - docs: update changelog for v0.42.14 [skip ci]
 
-### Chores
+### [0.42.15] Chores
 
     - chore: update package name and publishing instructions for npmjs.com and GitHub Packages
     - chore: update npm package.json to v0.42.14 [skip ci]
     - chore: release v0.42.14
 
-# [Version 0.42.14] - 2025-11-08
+## 0.42.14 - 2025-11-08
 
-### Features
+### [0.42.14] Features
 
     - feat: Remove deprecated tool and add test_tool to policy
     - feat: Implement NPM package publishing for VT Code
     - feat: add configurable LLM generation parameters in vtcode.toml
 
-### Bug Fixes
+### [0.42.14] Bug Fixes
 
     - fix: revert version in package.json to 0.42.13
 
-### Documentation
+### [0.42.14] Documentation
 
     - docs: update changelog for v0.42.13 [skip ci]
 
-### Chores
+### [0.42.14] Chores
 
     - chore: release v0.42.13
 
-# [Version 0.42.13] - 2025-11-08
+## 0.42.13 - 2025-11-08
 
-### Features
+### [0.42.13] Features
 
     - feat: Remove deprecated tool and add test_tool to policy
     - feat: Implement NPM package publishing for VT Code
     - feat: add configurable LLM generation parameters in vtcode.toml
 
-### Bug Fixes
+### [0.42.13] Bug Fixes
 
     - fix: redirect print functions to stderr to avoid command substitution issues
     - fix: use temporary file approach with awk for changelog updates on macOS
@@ -16533,28 +16533,28 @@ All notable changes to vtcode will be documented in this file.
     - fix: use awk instead of sed for changelog updates on macOS
     - fix: escape newlines properly in sed command for macOS
 
-### Refactors
+### [0.42.13] Refactors
 
     - refactor: update tool policies and improve MCP tool handling
 
-### Documentation
+### [0.42.13] Documentation
 
     - docs: update changelog for v0.42.12 [skip ci]
 
-### Chores
+### [0.42.13] Chores
 
     - chore: release v0.42.12
     - chore: release vscode extension v0.42.18
     - chore: release vscode extension v0.42.17
     - chore: release vscode extension v0.42.16
 
-# [Version 0.42.12] - 2025-11-08
+## 0.42.12 - 2025-11-08
 
-### Features
+### [0.42.12] Features
 
     - feat: update vtcode.toml configuration for new model provider
 
-### Bug Fixes
+### [0.42.12] Bug Fixes
 
     - fix: redirect print functions to stderr to avoid command substitution issues
     - fix: use temporary file approach with awk for changelog updates on macOS
@@ -16563,16 +16563,16 @@ All notable changes to vtcode will be documented in this file.
     - fix: escape newlines properly in sed command for macOS
     - fix: update Moonshot model references from KIMI_K2_THINKING_HEAVY to KIMI_K2_THINKING_TURBO
 
-### Refactors
+### [0.42.12] Refactors
 
     - refactor: update tool policies and improve MCP tool handling
 
-### Documentation
+### [0.42.12] Documentation
 
     - docs: update changelog for v0.42.11 [skip ci]
     - docs: update changelog for v0.42.10 [skip ci]
 
-### Chores
+### [0.42.12] Chores
 
     - chore: release vscode extension v0.42.18
     - chore: release vscode extension v0.42.17
@@ -16580,14 +16580,14 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.42.11
     - chore: release v0.42.10
 
-# [Version 0.42.11] - 2025-11-07
+## 0.42.11 - 2025-11-07
 
-### Features
+### [0.42.11] Features
 
     - feat: update vtcode.toml configuration for new model provider
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Bug Fixes
+### [0.42.11] Bug Fixes
 
     - fix: update Moonshot model references from KIMI_K2_THINKING_HEAVY to KIMI_K2_THINKING_TURBO
     - fix: add Debug trait to MessageStyle enum
@@ -16600,11 +16600,11 @@ All notable changes to vtcode will be documented in this file.
     - fix: remove .cargo_vcs_info.json and update vtcode-core dependency version in Cargo.toml
     - fix: update mcp-types dependency path in Cargo.toml and add jsonschema to dependencies
 
-### Refactors
+### [0.42.11] Refactors
 
     - refactor: remove unused app constant and update elicitation capability handling
 
-### Documentation
+### [0.42.11] Documentation
 
     - docs: update changelog for v0.42.10 [skip ci]
     - docs: update changelog for v0.42.9 [skip ci]
@@ -16625,7 +16625,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.40.1 [skip ci]
     - docs: update changelog for v0.40.0 [skip ci]
 
-### Chores
+### [0.42.11] Chores
 
     - chore: release v0.42.10
     - chore: release v0.42.9
@@ -16642,14 +16642,14 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.40.1
     - chore: release v0.40.0
 
-# [Version 0.42.10] - 2025-11-07
+## 0.42.10 - 2025-11-07
 
-### Features
+### [0.42.10] Features
 
     - feat: update vtcode.toml configuration for new model provider
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Bug Fixes
+### [0.42.10] Bug Fixes
 
     - fix: add Debug trait to MessageStyle enum
     - fix: remove jsonschema dependency from mcp-types in Cargo.lock
@@ -16661,11 +16661,11 @@ All notable changes to vtcode will be documented in this file.
     - fix: remove .cargo_vcs_info.json and update vtcode-core dependency version in Cargo.toml
     - fix: update mcp-types dependency path in Cargo.toml and add jsonschema to dependencies
 
-### Refactors
+### [0.42.10] Refactors
 
     - refactor: remove unused app constant and update elicitation capability handling
 
-### Documentation
+### [0.42.10] Documentation
 
     - docs: update changelog for v0.42.9 [skip ci]
     - docs: update changelog for v0.42.8 [skip ci]
@@ -16685,7 +16685,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.40.1 [skip ci]
     - docs: update changelog for v0.40.0 [skip ci]
 
-### Chores
+### [0.42.10] Chores
 
     - chore: release v0.42.9
     - chore: release v0.42.8
@@ -16701,13 +16701,13 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.40.1
     - chore: release v0.40.0
 
-# [Version 0.42.9] - 2025-11-07
+## 0.42.9 - 2025-11-07
 
-### Features
+### [0.42.9] Features
 
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Bug Fixes
+### [0.42.9] Bug Fixes
 
     - fix: add Debug trait to MessageStyle enum
     - fix: remove jsonschema dependency from mcp-types in Cargo.lock
@@ -16719,11 +16719,11 @@ All notable changes to vtcode will be documented in this file.
     - fix: remove .cargo_vcs_info.json and update vtcode-core dependency version in Cargo.toml
     - fix: update mcp-types dependency path in Cargo.toml and add jsonschema to dependencies
 
-### Refactors
+### [0.42.9] Refactors
 
     - refactor: remove unused app constant and update elicitation capability handling
 
-### Documentation
+### [0.42.9] Documentation
 
     - docs: update changelog for v0.42.8 [skip ci]
     - docs: update changelog for v0.42.7 [skip ci]
@@ -16743,7 +16743,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
 
-### Chores
+### [0.42.9] Chores
 
     - chore: release v0.42.8
     - chore: release v0.42.7
@@ -16759,13 +16759,13 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.40.0
     - chore: release v0.40.1
 
-# [Version 0.42.8] - 2025-11-07
+## 0.42.8 - 2025-11-07
 
-### Features
+### [0.42.8] Features
 
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Bug Fixes
+### [0.42.8] Bug Fixes
 
     - fix: add Debug trait to MessageStyle enum
     - fix: remove jsonschema dependency from mcp-types in Cargo.lock
@@ -16777,7 +16777,7 @@ All notable changes to vtcode will be documented in this file.
     - fix: remove .cargo_vcs_info.json and update vtcode-core dependency version in Cargo.toml
     - fix: update mcp-types dependency path in Cargo.toml and add jsonschema to dependencies
 
-### Documentation
+### [0.42.8] Documentation
 
     - docs: update changelog for v0.42.7 [skip ci]
     - docs: update changelog for v0.42.6 [skip ci]
@@ -16796,7 +16796,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
 
-### Chores
+### [0.42.8] Chores
 
     - chore: release v0.42.7
     - chore: release v0.42.6
@@ -16811,13 +16811,13 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.40.0
     - chore: release v0.40.1
 
-# [Version 0.42.7] - 2025-11-07
+## 0.42.7 - 2025-11-07
 
-### Features
+### [0.42.7] Features
 
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Bug Fixes
+### [0.42.7] Bug Fixes
 
     - fix: remove jsonschema dependency from mcp-types in Cargo.lock
     - fix: remove mcp-types configuration from release.toml
@@ -16828,7 +16828,7 @@ All notable changes to vtcode will be documented in this file.
     - fix: remove .cargo_vcs_info.json and update vtcode-core dependency version in Cargo.toml
     - fix: update mcp-types dependency path in Cargo.toml and add jsonschema to dependencies
 
-### Documentation
+### [0.42.7] Documentation
 
     - docs: update changelog for v0.42.6 [skip ci]
     - docs: update changelog for v0.42.6 [skip ci]
@@ -16846,7 +16846,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
 
-### Chores
+### [0.42.7] Chores
 
     - chore: release v0.42.6
     - chore: release v0.42.5
@@ -16860,13 +16860,13 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.40.0
     - chore: release v0.40.1
 
-# [Version 0.42.6] - 2025-11-07
+## 0.42.6 - 2025-11-07 (historical record 1 of 3)
 
-### Features
+### [0.42.6/r1] Features
 
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Bug Fixes
+### [0.42.6/r1] Bug Fixes
 
     - fix: remove jsonschema dependency from mcp-types in Cargo.lock
     - fix: remove mcp-types configuration from release.toml
@@ -16877,7 +16877,7 @@ All notable changes to vtcode will be documented in this file.
     - fix: remove .cargo_vcs_info.json and update vtcode-core dependency version in Cargo.toml
     - fix: update mcp-types dependency path in Cargo.toml and add jsonschema to dependencies
 
-### Documentation
+### [0.42.6/r1] Documentation
 
     - docs: update changelog for v0.42.6 [skip ci]
     - docs: update changelog for v0.42.6 [skip ci]
@@ -16894,7 +16894,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
 
-### Chores
+### [0.42.6/r1] Chores
 
     - chore: release v0.42.5
     - chore: release v0.42.4
@@ -16907,13 +16907,13 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.40.0
     - chore: release v0.40.1
 
-# [Version 0.42.6] - 2025-11-07
+## 0.42.6 - 2025-11-07 (historical record 2 of 3)
 
-### Features
+### [0.42.6/r2] Features
 
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Bug Fixes
+### [0.42.6/r2] Bug Fixes
 
     - fix: remove mcp-types configuration from release.toml
     - fix: ensure publish is set to false for mcp-types in release.toml
@@ -16923,7 +16923,7 @@ All notable changes to vtcode will be documented in this file.
     - fix: remove .cargo_vcs_info.json and update vtcode-core dependency version in Cargo.toml
     - fix: update mcp-types dependency path in Cargo.toml and add jsonschema to dependencies
 
-### Documentation
+### [0.42.6/r2] Documentation
 
     - docs: update changelog for v0.42.6 [skip ci]
     - docs: update changelog for v0.42.5 [skip ci]
@@ -16939,7 +16939,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
 
-### Chores
+### [0.42.6/r2] Chores
 
     - chore: release v0.42.5
     - chore: release v0.42.4
@@ -16952,13 +16952,13 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.40.0
     - chore: release v0.40.1
 
-# [Version 0.42.6] - 2025-11-07
+## 0.42.6 - 2025-11-07 (historical record 3 of 3)
 
-### Features
+### [0.42.6/r3] Features
 
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Bug Fixes
+### [0.42.6/r3] Bug Fixes
 
     - fix: ensure publish is set to false for mcp-types in release.toml
     - fix: update mcp-types version to 0.1.1 in Cargo.lock
@@ -16967,7 +16967,7 @@ All notable changes to vtcode will be documented in this file.
     - fix: remove .cargo_vcs_info.json and update vtcode-core dependency version in Cargo.toml
     - fix: update mcp-types dependency path in Cargo.toml and add jsonschema to dependencies
 
-### Documentation
+### [0.42.6/r3] Documentation
 
     - docs: update changelog for v0.42.5 [skip ci]
     - docs: update changelog for v0.42.4 [skip ci]
@@ -16982,7 +16982,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
 
-### Chores
+### [0.42.6/r3] Chores
 
     - chore: release v0.42.5
     - chore: release v0.42.4
@@ -16995,19 +16995,19 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.40.0
     - chore: release v0.40.1
 
-# [Version 0.42.5] - 2025-11-07
+## 0.42.5 - 2025-11-07
 
-### Features
+### [0.42.5] Features
 
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Bug Fixes
+### [0.42.5] Bug Fixes
 
     - fix: ensure publish is set to false in Cargo.toml
     - fix: remove .cargo_vcs_info.json and update vtcode-core dependency version in Cargo.toml
     - fix: update mcp-types dependency path in Cargo.toml and add jsonschema to dependencies
 
-### Documentation
+### [0.42.5] Documentation
 
     - docs: update changelog for v0.42.4 [skip ci]
     - docs: update changelog for v0.42.3 [skip ci]
@@ -17021,7 +17021,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
 
-### Chores
+### [0.42.5] Chores
 
     - chore: release v0.42.4
     - chore: release v0.42.3
@@ -17033,18 +17033,18 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.40.0
     - chore: release v0.40.1
 
-# [Version 0.42.4] - 2025-11-07
+## 0.42.4 - 2025-11-07
 
-### Features
+### [0.42.4] Features
 
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Bug Fixes
+### [0.42.4] Bug Fixes
 
     - fix: remove .cargo_vcs_info.json and update vtcode-core dependency version in Cargo.toml
     - fix: update mcp-types dependency path in Cargo.toml and add jsonschema to dependencies
 
-### Documentation
+### [0.42.4] Documentation
 
     - docs: update changelog for v0.42.3 [skip ci]
     - docs: update changelog for v0.42.3 [skip ci]
@@ -17057,7 +17057,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
 
-### Chores
+### [0.42.4] Chores
 
     - chore: release v0.42.3
     - chore: release v0.42.2
@@ -17068,18 +17068,18 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.40.0
     - chore: release v0.40.1
 
-# [Version 0.42.3] - 2025-11-07
+## 0.42.3 - 2025-11-07 (historical record 1 of 2)
 
-### Features
+### [0.42.3/r1] Features
 
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Bug Fixes
+### [0.42.3/r1] Bug Fixes
 
     - fix: remove .cargo_vcs_info.json and update vtcode-core dependency version in Cargo.toml
     - fix: update mcp-types dependency path in Cargo.toml and add jsonschema to dependencies
 
-### Documentation
+### [0.42.3/r1] Documentation
 
     - docs: update changelog for v0.42.3 [skip ci]
     - docs: update changelog for v0.42.2 [skip ci]
@@ -17091,7 +17091,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
 
-### Chores
+### [0.42.3/r1] Chores
 
     - chore: release v0.42.2
     - chore: release v0.42.1
@@ -17101,17 +17101,17 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.40.0
     - chore: release v0.40.1
 
-# [Version 0.42.3] - 2025-11-07
+## 0.42.3 - 2025-11-07 (historical record 2 of 2)
 
-### Features
+### [0.42.3/r2] Features
 
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Bug Fixes
+### [0.42.3/r2] Bug Fixes
 
     - fix: update mcp-types dependency path in Cargo.toml and add jsonschema to dependencies
 
-### Documentation
+### [0.42.3/r2] Documentation
 
     - docs: update changelog for v0.42.2 [skip ci]
     - docs: update changelog for v0.42.1 [skip ci]
@@ -17122,7 +17122,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
 
-### Chores
+### [0.42.3/r2] Chores
 
     - chore: release v0.42.2
     - chore: release v0.42.1
@@ -17132,13 +17132,13 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.40.0
     - chore: release v0.40.1
 
-# [Version 0.42.2] - 2025-11-07
+## 0.42.2 - 2025-11-07
 
-### Features
+### [0.42.2] Features
 
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Documentation
+### [0.42.2] Documentation
 
     - docs: update changelog for v0.42.1 [skip ci]
     - docs: update changelog for v0.43.0 [skip ci]
@@ -17148,7 +17148,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
 
-### Chores
+### [0.42.2] Chores
 
     - chore: release v0.42.1
     - chore: release v0.42.0
@@ -17157,13 +17157,13 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.40.0
     - chore: release v0.40.1
 
-# [Version 0.42.1] - 2025-11-07
+## 0.42.1 - 2025-11-07
 
-### Features
+### [0.42.1] Features
 
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Documentation
+### [0.42.1] Documentation
 
     - docs: update changelog for v0.43.0 [skip ci]
     - docs: update changelog for v0.42.0 [skip ci]
@@ -17172,7 +17172,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
 
-### Chores
+### [0.42.1] Chores
 
     - chore: release v0.42.0
     - chore: release v0.41.0
@@ -17180,13 +17180,13 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.40.0
     - chore: release v0.40.1
 
-# [Version 0.43.0] - 2025-11-07
+## 0.43.0 - 2025-11-07 (historical record 2 of 2)
 
-### Features
+### [0.43.0/r2] Features
 
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Documentation
+### [0.43.0/r2] Documentation
 
     - docs: update changelog for v0.42.0 [skip ci]
     - docs: update changelog for v0.41.0 [skip ci]
@@ -17194,7 +17194,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
 
-### Chores
+### [0.43.0/r2] Chores
 
     - chore: release v0.42.0
     - chore: release v0.41.0
@@ -17202,43 +17202,43 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.40.0
     - chore: release v0.40.1
 
-# [Version 0.42.0] - 2025-11-07
+## 0.42.0 - 2025-11-07
 
-### Features
+### [0.42.0] Features
 
     - feat: add Kimi K2 Thinking model support and update Moonshot provider logic
 
-### Documentation
+### [0.42.0] Documentation
 
     - docs: update changelog for v0.41.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
 
-### Chores
+### [0.42.0] Chores
 
     - chore: release v0.41.0
     - chore: release v0.40.1
     - chore: release v0.40.0
     - chore: release v0.40.1
 
-# [Version 0.41.0] - 2025-11-07
+## 0.41.0 - 2025-11-07
 
-### Documentation
+### [0.41.0] Documentation
 
     - docs: update changelog for v0.40.1 [skip ci]
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: update changelog for v0.40.1 [skip ci]
 
-### Chores
+### [0.41.0] Chores
 
     - chore: release v0.40.1
     - chore: release v0.40.0
     - chore: release v0.40.1
 
-# [Version 0.40.1] - 2025-11-06
+## 0.40.1 - 2025-11-06
 
-### Features
+### [0.40.1] Features
 
     - feat: Enhance workspace trust and automation features
     - feat: add workspace trust request functionality
@@ -17246,11 +17246,11 @@ All notable changes to vtcode will be documented in this file.
     - feat: add experimental smart summarization feature for conversation compression
     - feat: replace tempfile with assert_fs for improved temporary directory handling
 
-### Bug Fixes
+### [0.40.1] Bug Fixes
 
     - fix: add wasm32-wasip2 component to toolchain configuration
 
-### Refactors
+### [0.40.1] Refactors
 
     - refactor: remove wasm32-wasip2 component from toolchain configuration and clean up test imports
     - refactor: clean up test module by removing unused imports and structures
@@ -17261,18 +17261,18 @@ All notable changes to vtcode will be documented in this file.
     - refactor: update extension ID and name for consistency
     - refactor: remove unused imports and streamline timeout error handling
 
-### Documentation
+### [0.40.1] Documentation
 
     - docs: update changelog for v0.40.0 [skip ci]
     - docs: add troubleshooting section for development installation
 
-### Chores
+### [0.40.1] Chores
 
     - chore: release v0.40.0
 
-# [Version 0.40.0] - 2025-11-06
+## 0.40.0 - 2025-11-06
 
-### Features
+### [0.40.0] Features
 
     - feat: Enhance workspace trust and automation features
     - feat: add workspace trust request functionality
@@ -17280,11 +17280,11 @@ All notable changes to vtcode will be documented in this file.
     - feat: add experimental smart summarization feature for conversation compression
     - feat: replace tempfile with assert_fs for improved temporary directory handling
 
-### Bug Fixes
+### [0.40.0] Bug Fixes
 
     - fix: add wasm32-wasip2 component to toolchain configuration
 
-### Refactors
+### [0.40.0] Refactors
 
     - refactor: remove wasm32-wasip2 component from toolchain configuration and clean up test imports
     - refactor: clean up test module by removing unused imports and structures
@@ -17295,157 +17295,157 @@ All notable changes to vtcode will be documented in this file.
     - refactor: update extension ID and name for consistency
     - refactor: remove unused imports and streamline timeout error handling
 
-### Documentation
+### [0.40.0] Documentation
 
     - docs: add troubleshooting section for development installation
     - docs: update changelog for v0.39.13 [skip ci]
 
-### Chores
+### [0.40.0] Chores
 
     - chore: release v0.39.13
 
-# [Version 0.39.13] - 2025-11-03
+## 0.39.13 - 2025-11-03
 
-### Features
+### [0.39.13] Features
 
     - feat: disable Docker usage by default in build script and update Cross.toml comments
 
-### Documentation
+### [0.39.13] Documentation
 
     - docs: update changelog for v0.39.12 [skip ci]
 
-### Chores
+### [0.39.13] Chores
 
     - chore: release v0.39.12
 
-# [Version 0.39.12] - 2025-11-03
+## 0.39.12 - 2025-11-03
 
-### Features
+### [0.39.12] Features
 
     - feat: disable Docker usage by default in build script and update Cross.toml comments
     - feat: add initial implementation of VT Code Zed extension with icons, themes, and logging commands
 
-### Documentation
+### [0.39.12] Documentation
 
     - docs: update changelog for v0.39.11 [skip ci]
 
-### Chores
+### [0.39.12] Chores
 
     - chore: release v0.39.11
     - chore: update dependencies, enhance README, and add diagnostics commands for Zed extension
 
-# [Version 0.39.11] - 2025-11-03
+## 0.39.11 - 2025-11-03
 
-### Features
+### [0.39.11] Features
 
     - feat: add initial implementation of VT Code Zed extension with icons, themes, and logging commands
 
-### Refactors
+### [0.39.11] Refactors
 
     - refactor: remove npm package support and update installation instructions
     - refactor: update docs.rs URL and improve response handling in release script
 
-### Documentation
+### [0.39.11] Documentation
 
     - docs: update changelog for v0.39.10 [skip ci]
     - docs: update changelog for v0.39.9 [skip ci]
 
-### Chores
+### [0.39.11] Chores
 
     - chore: update dependencies, enhance README, and add diagnostics commands for Zed extension
     - chore: release v0.39.10
     - chore: release v0.39.9
 
-# [Version 0.39.10] - 2025-11-03
+## 0.39.10 - 2025-11-03
 
-### Refactors
+### [0.39.10] Refactors
 
     - refactor: remove npm package support and update installation instructions
     - refactor: update docs.rs URL and improve response handling in release script
 
-### Documentation
+### [0.39.10] Documentation
 
     - docs: update changelog for v0.39.9 [skip ci]
     - docs: update changelog for v0.39.8 [skip ci]
 
-### Chores
+### [0.39.10] Chores
 
     - chore: release v0.39.9
     - chore: release v0.39.8
 
-# [Version 0.39.9] - 2025-11-03
+## 0.39.9 - 2025-11-03
 
-### Refactors
+### [0.39.9] Refactors
 
     - refactor: remove npm package support and update installation instructions
     - refactor: update docs.rs URL and improve response handling in release script
 
-### Documentation
+### [0.39.9] Documentation
 
     - docs: update changelog for v0.39.8 [skip ci]
 
-### Chores
+### [0.39.9] Chores
 
     - chore: release v0.39.8
 
-# [Version 0.39.8] - 2025-11-03
+## 0.39.8 - 2025-11-03
 
-### Bug Fixes
+### [0.39.8] Bug Fixes
 
     - fix: restore npm/package.json file removed in error
 
-### Documentation
+### [0.39.8] Documentation
 
     - docs: update changelog for v0.39.7 [skip ci]
 
-### Chores
+### [0.39.8] Chores
 
     - chore: release v0.39.7
     - chore: update npm package to v0.39.7
     - chore: update Cross.toml and release script for improved environment variable handling
 
-# [Version 0.39.7] - 2025-11-03
+## 0.39.7 - 2025-11-03
 
-### Bug Fixes
+### [0.39.7] Bug Fixes
 
     - fix: restore npm/package.json file removed in error
 
-### Documentation
+### [0.39.7] Documentation
 
     - docs: update changelog for v0.39.6 [skip ci]
 
-### Chores
+### [0.39.7] Chores
 
     - chore: update npm package to v0.39.7
     - chore: update Cross.toml and release script for improved environment variable handling
     - chore: release v0.39.6
     - chore: update npm package to v0.39.6
 
-# [Version 0.39.6] - 2025-11-03
+## 0.39.6 - 2025-11-03
 
-### Features
+### [0.39.6] Features
 
     - feat: add cross-compilation configuration and documentation
     - feat: Enhance development and release process for VT Code extension
 
-### Bug Fixes
+### [0.39.6] Bug Fixes
 
     - fix: update changelog generation to handle date formatting correctly
     - fix: rename VT Code Update Plan tool for consistency
     - fix: update language model tool properties for VT Code Update Plan
 
-### Refactors
+### [0.39.6] Refactors
 
     - refactor: remove unused IdeContextBridge and clean up session initialization
 
-### Documentation
+### [0.39.6] Documentation
 
     - docs: update changelog for v0.39.5 [skip ci]
     - docs: update changelog for v0.39.4 [skip ci]
     - docs: update changelog for v0.39.3 [skip ci]
     - docs: update homebrew installation to use core tap
 
-### Chores
+### [0.39.6] Chores
 
     - chore: update npm package to v0.39.6
     - chore: release v0.39.5
@@ -17457,29 +17457,29 @@ All notable changes to vtcode will be documented in this file.
     - chore: update version to 0.1.1 and add release date to changelog
     - chore(deps): bump the cargo-monthly-rollup group across 1 directory with 28 updates
 
-### Features
+### [0.39.6] Features (section 2)
 
     - feat: add cross-compilation configuration and documentation|
     - feat: Enhance development and release process for VT Code extension|
 
-### Bug Fixes
+### [0.39.6] Bug Fixes (section 2)
 
     - fix: update changelog generation to handle date formatting correctly|
     - fix: rename VT Code Update Plan tool for consistency|
     - fix: update language model tool properties for VT Code Update Plan|
 
-### Refactors
+### [0.39.6] Refactors (section 2)
 
     - refactor: remove unused IdeContextBridge and clean up session initialization|
 
-### Documentation
+### [0.39.6] Documentation (section 2)
 
     - docs: update changelog for v0.39.4 [skip ci]|
     - docs: update changelog for v0.39.3 [skip ci]|
     - docs: update homebrew installation to use core tap|
     - docs: update changelog for v0.39.2 [skip ci]|
 
-### Chores
+### [0.39.6] Chores (section 2)
 
     - chore: update npm package to v0.39.5|
     - chore: release v0.39.4|
@@ -17491,7 +17491,7 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.39.2|
     - chore: update npm package to v0.39.2|
 
-# [Version 0.39.4] - 2025-11-03$'
+## 0.39.4 - 2025-11-03
 
 '### Features$'
 '    - feat: Enhance development and release process for VT Code extension$'
@@ -17519,7 +17519,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.39.3] - 2025-11-03$'
+## 0.39.3 - 2025-11-03
 
 '### Features$'
 '    - feat: Enhance development and release process for VT Code extension$'
@@ -17539,7 +17539,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.39.2] - 2025-11-03$'
+## 0.39.2 - 2025-11-03
 
 '### Documentation$'
 '    - docs: update changelog for v0.39.1 [skip ci]
@@ -17554,7 +17554,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.39.1] - 2025-11-03$'
+## 0.39.1 - 2025-11-03
 
 '### Documentation$'
 '    - docs: update tool-policy and extension files to remove quotes from schema_version
@@ -17577,7 +17577,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.39.0] - 2025-11-03$'
+## 0.39.0 - 2025-11-03
 
 '### Features$'
 '    - feat: Add clear screen command to session and implement related functionality$'
@@ -17604,7 +17604,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.38.2] - 2025-11-02$'
+## 0.38.2 - 2025-11-02
 
 '### Features$'
 '    - feat: Add clear screen command to session and implement related functionality$'
@@ -17628,7 +17628,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.38.1] - 2025-11-02$'
+## 0.38.1 - 2025-11-02
 
 '### Features$'
 '    - feat: Add clear screen command to session and implement related functionality
@@ -17660,7 +17660,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.38.0] - 2025-11-02$'
+## 0.38.0 - 2025-11-02
 
 '### Features$'
 '    - feat: Add clear screen command to session and implement related functionality
@@ -17694,7 +17694,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.37.1] - 2025-10-30$'
+## 0.37.1 - 2025-10-30
 
 '### Features$'
 '    - feat: enhance command execution policies and UI interactions
@@ -17726,7 +17726,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.37.0] - 2025-10-30$'
+## 0.37.0 - 2025-10-30
 
 '### Features$'
 '    - feat: enhance command execution policies and UI interactions
@@ -17799,7 +17799,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.36.0] - 2025-10-30$'
+## 0.36.0 - 2025-10-30
 
 '### Features$'
 '    - feat: enhance command execution policies and UI interactions
@@ -17869,7 +17869,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.19] - 2025-10-27$'
+## 0.35.19 - 2025-10-27
 
 '### Features$'
 '    - feat: add asset synchronization script for managing embedded assets
@@ -17937,7 +17937,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.18] - 2025-10-27$'
+## 0.35.18 - 2025-10-27
 
 '### Features$'
 '    - feat: add embedded asset management for prompts and documentation
@@ -18003,7 +18003,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.17] - 2025-10-27$'
+## 0.35.17 - 2025-10-27
 
 '### Features$'
 '    - feat: increase max_tool_loops to 100 and add workspace config refresh functionality
@@ -18065,7 +18065,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.16] - 2025-10-27$'
+## 0.35.16 - 2025-10-27
 
 '### Features$'
 '    - feat: add templates for agent file generation and VT Code session initiation$'
@@ -18123,7 +18123,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.15] - 2025-10-27$'
+## 0.35.15 - 2025-10-27
 
 '### Features$'
 '    - feat: add templates for agent file generation and VT Code session initiation$'
@@ -18175,7 +18175,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.14] - 2025-10-27$'
+## 0.35.14 - 2025-10-27
 
 '### Features$'
 '    - feat: add templates for agent file generation and VT Code session initiation$'
@@ -18224,7 +18224,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.13] - 2025-10-27$'
+## 0.35.13 - 2025-10-27
 
 '### Documentation$'
 '    - docs: update changelog for v0.35.12 [skip ci]
@@ -18267,7 +18267,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.12] - 2025-10-27$'
+## 0.35.12 - 2025-10-27
 
 '### Documentation$'
 '    - docs: update changelog for v0.35.11 [skip ci]
@@ -18307,7 +18307,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.11] - 2025-10-27$'
+## 0.35.11 - 2025-10-27
 
 '### Documentation$'
 '    - docs: update changelog for v0.35.10 [skip ci]
@@ -18344,7 +18344,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.10] - 2025-10-27$'
+## 0.35.10 - 2025-10-27
 
 '### Documentation$'
 '    - docs: update changelog for v0.35.9 [skip ci]
@@ -18378,7 +18378,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.9] - 2025-10-27$'
+## 0.35.9 - 2025-10-27
 
 '### Documentation$'
 '    - docs: update changelog for v0.35.8 [skip ci]
@@ -18409,7 +18409,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.8] - 2025-10-27$'
+## 0.35.8 - 2025-10-27
 
 '### Documentation$'
 '    - docs: update changelog for v0.35.7 [skip ci]
@@ -18437,7 +18437,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.7] - 2025-10-27$'
+## 0.35.7 - 2025-10-27
 
 '### Documentation$'
 '    - docs: update changelog for v0.35.6 [skip ci]
@@ -18452,7 +18452,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.6] - 2025-10-27$'
+## 0.35.6 - 2025-10-27
 
 '### Features$'
 '    - feat(minimax: Add MiniMax provider integration and related constants
@@ -18496,7 +18496,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.5] - 2025-10-27$'
+## 0.35.5 - 2025-10-27
 
 '### Features$'
 '    - feat(minimax: Add MiniMax provider integration and related constants
@@ -18537,7 +18537,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.4] - 2025-10-27$'
+## 0.35.4 - 2025-10-27
 
 '### Features$'
 '    - feat(minimax: Add MiniMax provider integration and related constants
@@ -18579,7 +18579,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.3] - 2025-10-27$'
+## 0.35.3 - 2025-10-27
 
 '### Documentation$'
 '    - docs: update changelog for v0.35.2 [skip ci]
@@ -18593,7 +18593,7 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-# [Version 0.35.2] - 2025-10-27$'
+## 0.35.2 - 2025-10-27
 
 '### Documentation$'
 '    - docs: update user guide and changelog with quick access shortcuts and enhancements
@@ -18606,9 +18606,9 @@ All notable changes to vtcode will be documented in this file.
 
 '
 
-## [0.35.1] - 2025-10-27
+## 0.35.1 - 2025-10-27
 
-### Features
+### [0.35.1] Features
 
     - feat: update custom prompt command syntax from /prompts to /prompt
     - feat: Update README and documentation for Cursor and Windsurf support
@@ -18617,16 +18617,16 @@ All notable changes to vtcode will be documented in this file.
     - feat: Enhance model picker and dynamic model fetching
     - feat: add synchronous fetching of LMStudio models and improve model selection
 
-### Bug Fixes
+### [0.35.1] Bug Fixes
 
     - fix: remove mdbook workflow causing CI failure
 
-### Documentation
+### [0.35.1] Documentation
 
     - docs: update changelog for v0.35.0 [skip ci]
     - docs: add lifecycle hooks guide
 
-### Chores
+### [0.35.1] Chores
 
     - chore: update npm package to v0.35.1
     - chore: release v0.35.0
@@ -18648,9 +18648,9 @@ All notable changes to vtcode will be documented in this file.
     - chore(deps): bump actions/checkout from 3 to 5
     - chore(deps): bump actions/setup-node from 4 to 6
 
-## [0.35.0] - 2025-10-27
+## 0.35.0 - 2025-10-27
 
-### Features
+### [0.35.0] Features
 
     - feat: update custom prompt command syntax from /prompts to /prompt
     - feat: Update README and documentation for Cursor and Windsurf support
@@ -18665,22 +18665,22 @@ All notable changes to vtcode will be documented in this file.
     - feat(security): Implement comprehensive security documentation and fixes
     - feat: add comprehensive security audit and model documentation
 
-### Bug Fixes
+### [0.35.0] Bug Fixes
 
     - fix: remove mdbook workflow causing CI failure
 
-### Refactors
+### [0.35.0] Refactors
 
     - refactor: Rename extension from "VT Code Companion" to "VT Code" and update CHANGELOG
     - refactor: use unsafe blocks for environment variable manipulation in tests
     - refactor: remove unused tools and simplify tool policies
 
-### Documentation
+### [0.35.0] Documentation
 
     - docs: update changelog for v0.34.0 [skip ci]
     - docs: add lifecycle hooks guide
 
-### Chores
+### [0.35.0] Chores
 
     - chore: update npm package to v0.35.0
     - chore: remove .vscodeignore file and update VSIX package
@@ -18702,9 +18702,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.34.0
     - chore: update npm package to v0.34.0
 
-## [0.34.0] - 2025-10-25
+## 0.34.0 - 2025-10-25
 
-### Features
+### [0.34.0] Features
 
     - feat: Add IDE integration and troubleshooting guides to documentation
     - feat: Add VSCode extension publishing support to release script
@@ -18714,17 +18714,17 @@ All notable changes to vtcode will be documented in this file.
     - feat: add comprehensive security audit and model documentation
     - feat: add changelog generation from commits in release script
 
-### Refactors
+### [0.34.0] Refactors
 
     - refactor: Rename extension from "VT Code Companion" to "VT Code" and update CHANGELOG
     - refactor: use unsafe blocks for environment variable manipulation in tests
     - refactor: remove unused tools and simplify tool policies
 
-### Documentation
+### [0.34.0] Documentation
 
     - docs: update changelog for v0.33.1 [skip ci]
 
-### Chores
+### [0.34.0] Chores
 
     - chore: update npm package to v0.34.0
     - chore: release v0.33.1
@@ -18732,9 +18732,9 @@ All notable changes to vtcode will be documented in this file.
     - chore: update README.md for improved installation instructions and feature highlights
     - chore: update CHANGELOG.md with recent enhancements for v0.33.0
 
-## [0.33.1] - 2025-01-30
+## 0.33.1 - 2025-01-30
 
-### Features
+### [0.33.1] Features
 
 -   feat: add changelog generation from commits in release script
 -   feat: run doctests separately in publish_extracted_crates.sh
@@ -18742,7 +18742,7 @@ All notable changes to vtcode will be documented in this file.
 -   feat: add demo section with updated demo GIF in README
 -   feat: add VT Code VHS showcase and demo files
 
-### Chores
+### [0.33.1] Chores
 
 -   chore: update npm package to v0.33.1
 -   chore: update README.md for improved installation instructions and feature highlights
@@ -18753,7 +18753,7 @@ All notable changes to vtcode will be documented in this file.
 -   chore: update npm package to v0.32.0
 -   chore: update demo GIF for VHS showcase
 
-### Recent Enhancements (v0.33.0 and beyond)
+### [0.33.1] Recent Enhancements (v0.33.0 and beyond)
 
 -   **Enhanced Tool Execution & Output Handling**: Improved tool execution with better error handling and output formatting for enhanced reliability and user experience
 -   **Enhanced Timeout Detection & Token Budget Management**: Improved timeout handling and more sophisticated token budget management with better attention management for enhanced performance
@@ -18765,7 +18765,7 @@ All notable changes to vtcode will be documented in this file.
 -   **Configuration System Improvements**: Enhanced configuration handling with better default preservation and schema validation
 -   **Component Extraction Strategy**: Continued work on extracting reusable components including vtcode-exec-events, vtcode-bash-runner, vtcode-config, and vtcode-indexer
 
-### Extracted crates release preparation
+### [0.33.1] Extracted crates release preparation
 
 -   **vtcode-commons 0.1.0** – marks the shared workspace path/telemetry traits crate ready for publishing with repository and
     documentation metadata in `Cargo.toml`.
@@ -18782,20 +18782,20 @@ All notable changes to vtcode will be documented in this file.
 -   Scheduled the sequential publish order, tagging plan, and post-release dependency bumps in `docs/component_release_plan.md` so the crates can be released without coordination gaps.
 -   Scripted the sequential publish workflow in `scripts/publish_extracted_crates.sh` to automate validation, publishing, and tagging steps with optional dry-run rehearsals.
 
-### `vtcode-exec-events`
+### [0.33.1] `vtcode-exec-events`
 
 -   Added schema metadata (`EVENT_SCHEMA_VERSION`) and a `VersionedThreadEvent` wrapper so consumers can negotiate compatibility before processing telemetry streams.
 -   Introduced an `EventEmitter` trait with optional `LogEmitter` and `TracingEmitter` adapters to integrate JSON and tracing pipelines without boilerplate.
 -   Published JSON helper utilities and optional schema export support to simplify serialization round-trips and documentation workflows.
 
-### `vtcode-bash-runner`
+### [0.33.1] `vtcode-bash-runner`
 
 -   Added feature-gated executors for process, pure-Rust, and dry-run operation so adopters can tailor shell execution strategies without forking the runner.F:vtcode-bash-runner/Cargo.toml†L1-L40F:vtcode-bash-runner/src/executor.rs†L1-L356
 -   Introduced the `EventfulExecutor` bridge to emit `vtcode-exec-events` telemetry from standalone shell invocations, plus documentation covering the new feature flags and integrations.F:vtcode-bash-runner/src/executor.rs†L358-L470F:docs/modules/modules/vtcode_bash_runner.md†L1-L120F:docs/modules/modules/vtcode_exec_events.md†L1-L160
 
-### **Major Enhancements - Context Engineering & Attention Management** (Phase 1 & 2)
+### [0.33.1] Major enhancements: context engineering and attention management
 
-#### Phase 1: Enhanced System Prompts
+#### [0.33.1] Phase 1: Enhanced System Prompts
 
 -   **Explicit Response Framework**: All system prompts now include a clear 5-step framework
     1. Assess the situation - Understand what the user needs
@@ -18813,7 +18813,7 @@ All notable changes to vtcode will be documented in this file.
 -   Lightweight prompt: Added minimal 4-step approach for quick tasks
 -   Specialized prompt: Added tool selection strategy by phase, advanced guidelines, and multi-turn coherence
 
-#### Phase 2: Dynamic Context Curation
+#### [0.33.1] Phase 2: Dynamic Context Curation
 
 -   **New Module**: `context_curator.rs` - Implements iterative per-turn context selection based on Anthropic's principles
 -   **Conversation Phase Detection**: Automatically detects phase (Exploration, Implementation, Validation, Debugging, Unknown)
@@ -18859,7 +18859,7 @@ include_recent_errors = true
 max_recent_errors = 3
 ```
 
-#### Token Budget Tracking & Attention Management
+#### [0.33.1] Token Budget Tracking & Attention Management
 
 -   **New Module**: `token_budget.rs` - Real-time token budget tracking using Hugging Face `tokenizers`
 -   **Component-Level Tracking**: Monitor token usage by category (system prompt, messages, tool results, decision ledger)
@@ -18880,7 +18880,7 @@ warning_threshold = 0.75
 detailed_tracking = false
 ```
 
-#### Optimized System Prompts & Tool Descriptions
+#### [0.33.1] Optimized System Prompts & Tool Descriptions
 
 -   **67-82% Token Reduction**: System prompts streamlined from ~600 tokens to ~200 tokens
 -   **80% Tool Description Efficiency**: Average tool description reduced from ~400 to ~80 tokens
@@ -18903,7 +18903,7 @@ detailed_tracking = false
 -   Auto-chunking behaviour documented
 -   Metadata-first approach emphasized
 
-#### Context Engineering Documentation
+#### [0.33.1] Context Engineering Documentation
 
 -   **New Documentation**: `docs/context_engineering.md` - Comprehensive guide to context management
 -   **Implementation Summary**: `docs/context_engineering_implementation.md` - Technical details
@@ -18912,23 +18912,23 @@ detailed_tracking = false
 -   **Performance Metrics**: Token efficiency improvements documented
 -   **References**: Links to Anthropic research and related resources
 
-#### Bug Fixes
+#### [0.33.1] Bug Fixes
 
 -   **Fixed MCP Server Initialization**: Removed premature `cleanup_dead_providers()` call that caused `BrokenPipeError` during initialization
 -   **MCP Process Management**: Improved connection lifecycle management to prevent pipe closure issues
 
-#### Dependencies
+#### [0.33.1] Dependencies
 
 -   **Added**: `tokenizers = "0.15"` for accurate token counting
 -   **Updated**: Cargo.lock with new dependencies
 
-#### Release Automation
+#### [0.33.1] Release Automation
 
 -   **Cargo Release Integration**: Adopted `cargo release` with a shared workspace configuration (`release.toml`) and updated `scripts/release.sh` to drive changelog-powered GitHub releases, coordinated crates.io publishing, and npm version synchronization.
 
-### **Major Enhancements - Anthropic-Inspired Architecture**
+### [0.33.1] **Major Enhancements - Anthropic-Inspired Architecture**
 
-#### Decision Transparency System
+#### [0.33.1] Decision Transparency System
 
 -   **New Module**: `decision_tracker.rs` - Complete audit trail of all agent decisions
 -   **Real-time Tracking**: Every action logged with reasoning and confidence scores
@@ -18936,7 +18936,7 @@ detailed_tracking = false
 -   **Confidence Scoring**: Quality assessment for all agent actions
 -   **Context Preservation**: Full conversation context maintained across decisions
 
-#### Error Recovery & Resilience
+#### [0.33.1] Error Recovery & Resilience
 
 -   **New Module**: `error_recovery.rs` - Intelligent error handling system
 -   **Pattern Detection**: Automatic identification of recurring errors
@@ -18944,7 +18944,7 @@ detailed_tracking = false
 -   **Recovery Strategies**: Multiple approaches for handling errors gracefully
 -   **Error Statistics**: Comprehensive analysis of error patterns and recovery rates
 
-#### Conversation Summarization
+#### [0.33.1] Conversation Summarization
 
 -   **New Module**: `conversation_summarizer.rs` - Automatic conversation compression
 -   **Intelligent Summaries**: Key decisions, completed tasks, and error patterns
@@ -18952,29 +18952,29 @@ detailed_tracking = false
 -   **Confidence Scoring**: Quality assessment for summary reliability
 -   **Context Efficiency**: Maintain useful context without hitting limits
 
-### **Tool Design Improvements**
+### [0.33.1] **Tool Design Improvements**
 
-#### Enhanced Tool Documentation
+#### [0.33.1] Enhanced Tool Documentation
 
 -   **Comprehensive Specifications**: Extensive tool descriptions with examples and error cases
 -   **Error-Proofing**: Anticipate and prevent common model misunderstandings
 -   **Clear Usage Guidelines**: Detailed instructions for each tool parameter
 -   **Debugging Support**: Specific guidance for troubleshooting tool failures
 
-#### Improved System Instruction
+#### [0.33.1] Improved System Instruction
 
 -   **Model-Driven Control**: Give maximum autonomy to the language model
 -   **Thorough Reasoning**: Encourage deep thinking for complex problems
 -   **Flexible Methodology**: Adaptable problem-solving approaches
 -   **Quality First**: Emphasize correctness over speed
 
-### **Release Automation**
+### [0.33.1] **Release Automation**
 
 -   **Coordinated Version Bumps**: `scripts/release.sh` now prompts maintainers to bump the `vtagent-core` crate alongside the main binary, keeping release metadata synchronized.
 
-### **Transparency & Observability**
+### [0.33.1] **Transparency & Observability**
 
-#### Verbose Mode Enhancements
+#### [0.33.1] Verbose Mode Enhancements
 
 -   **Real-time Decision Tracking**: See exactly why each action is taken
 -   **Error Recovery Monitoring**: Observe intelligent error handling
@@ -18982,16 +18982,16 @@ detailed_tracking = false
 -   **Session Statistics**: Comprehensive metrics and pattern analysis
 -   **Pattern Detection**: Automatic identification of recurring issues
 
-#### Session Reporting
+#### [0.33.1] Session Reporting
 
 -   **Final Transparency Reports**: Complete session summaries with success metrics
 -   **Error Recovery Statistics**: Analysis of error patterns and recovery rates
 -   **Decision Quality Metrics**: Confidence scores and decision success rates
 -   **Context Usage Monitoring**: Automatic warnings for approaching limits
 
-### **Configuration System Improvements**
+### [0.33.1] **Configuration System Improvements**
 
-#### Two-Way Configuration Synchronization
+#### [0.33.1] Two-Way Configuration Synchronization
 
 -   **Smart Config Generation**: `vtcode config` now reads existing `vtcode.toml` and preserves customizations
 -   **Complete Template Generation**: Ensures all configuration sections are present, even missing ones
@@ -18999,9 +18999,9 @@ detailed_tracking = false
 -   **Fallback Safety**: Uses system defaults when no configuration file exists
 -   **TOML Serialization**: Replaced hardcoded templates with proper TOML generation
 
-## [Previous Versions]
+## [historical-archive-previous-versions] [Previous Versions]
 
-### v0.1.0 - Initial Release
+### [historical-archive-previous-versions] v0.1.0 - Initial Release
 
 -   Basic agent architecture with Gemini integration
 -   Core file system tools (list_files, read_file, write_file, edit_file)
@@ -19009,41 +19009,41 @@ detailed_tracking = false
 -   Workspace safety and path validation
 -   Comprehensive logging and debugging support
 
-## **Performance & Reliability**
+## [historical-archive-previous-versions] **Performance & Reliability**
 
-### SWE-bench Inspired Improvements
+### [historical-archive-previous-versions] SWE-bench Inspired Improvements
 
 -   **49% Target Achievement**: Architecture designed following Anthropic's breakthrough approach
 -   **Error-Proofed Tools**: Extensive validation and error handling
 -   **Context Engineering**: Research-preview conversation management techniques
 -   **Model Empowerment**: Maximum control given to language models
 
-### Reliability Enhancements
+### [historical-archive-previous-versions] Reliability Enhancements
 
 -   **Context Preservation**: Never lose important information during failures
 -   **Recovery Strategies**: Multiple approaches for error handling
 -   **Pattern Detection**: Automatic identification of recurring issues
 -   **Comprehensive Logging**: Full audit trail of all agent actions
 
-## **Technical Improvements**
+## [historical-archive-previous-versions] **Technical Improvements**
 
-### Architecture Refactoring
+### [historical-archive-previous-versions] Architecture Refactoring
 
 -   **Modular Design**: Separate modules for transparency, error recovery, and summarization
 -   **Clean Interfaces**: Well-defined APIs between components
 -   **Performance Optimization**: Efficient data structures and algorithms
 -   **Error Handling**: Comprehensive error management throughout
 
-### Code Quality
+### [historical-archive-previous-versions] Code Quality
 
 -   **Documentation**: Extensive inline documentation and examples
 -   **Type Safety**: Strong typing with comprehensive error handling
 -   **Testing**: Unit tests for core functionality
 -   **Linting**: Clean, well-formatted code following Rust best practices
 
-## **Key Features Summary**
+## [historical-archive-previous-versions] **Key Features Summary**
 
-### New Capabilities
+### [historical-archive-previous-versions] New Capabilities
 
 1. **Complete Decision Transparency** - Every action tracked and explained
 2. **Intelligent Error Recovery** - Learn from mistakes and adapt strategies
@@ -19051,7 +19051,7 @@ detailed_tracking = false
 3. **Confidence Scoring** - Quality assessment for all agent actions
 4. **Pattern Detection** - Identify and address recurring issues
 
-### Enhanced User Experience
+### [historical-archive-previous-versions] Enhanced User Experience
 
 1. **Verbose Mode Overhaul** - Rich transparency and debugging information
 2. **Better Error Messages** - Clear, actionable feedback for all failures
@@ -19059,31 +19059,31 @@ detailed_tracking = false
 4. **Improved Tool Reliability** - Error-proofed design prevents common issues
 5. **Context Management** - Intelligent handling of conversation limits
 
-## **Future Roadmap**
+## [historical-archive-previous-versions] **Future Roadmap**
 
-### Planned Enhancements
+### [historical-archive-previous-versions] Planned Enhancements
 
 -   **Multi-file Operations**: Batch processing capabilities
 -   **Project Templates**: Predefined scaffolds for common projects
 -   **Integration APIs**: REST endpoints for external integration
 
-### Research Areas
+### [historical-archive-previous-versions] Research Areas
 
 -   **Multi-modal Support**: Images, diagrams, and audio processing
 -   **Collaborative Workflows**: Enhanced human-agent teaming
 -   **Domain Specialization**: Industry-specific optimizations
 -   **Performance Benchmarking**: SWE-bench style evaluation capabilities
 
-## **Contributing**
+## [historical-archive-previous-versions] **Contributing**
 
-### Development Guidelines
+### [historical-archive-previous-versions] Development Guidelines
 
 -   **Feature Branches**: Create feature branches for new capabilities
 -   **Comprehensive Testing**: Include tests for all new functionality
 -   **Documentation Updates**: Update README, BUILD.md, and this CHANGELOG
 -   **Code Standards**: Follow established Rust idioms and best practices
 
-### Areas of Interest
+### [historical-archive-previous-versions] Areas of Interest
 
 -   **Tool Enhancements**: Additional tools for specific use cases
 -   **Workflow Patterns**: New specialized workflows and patterns
@@ -19092,7 +19092,7 @@ detailed_tracking = false
 
 ---
 
-## **Related Breakthroughs**
+## [historical-archive-previous-versions] **Related Breakthroughs**
 
 This release incorporates insights from Anthropic's engineering approach that achieved **49% on SWE-bench Verified**, including:
 
