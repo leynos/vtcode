@@ -531,7 +531,7 @@ fn test_model_helpers_include_curated_opencode_models() {
 
 #[test]
 fn test_enum_variants_match_all_models_collection() {
-    let src = include_str!("model_id.rs");
+    let src = include_str!("model_id/mod.rs");
     let mut in_enum = false;
     let mut enum_variants = std::collections::BTreeSet::new();
 
