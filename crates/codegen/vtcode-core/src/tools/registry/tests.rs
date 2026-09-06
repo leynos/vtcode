@@ -48,9 +48,16 @@ async fn wait_for_harness_session_completion(registry: &ToolRegistry, session_id
     .with_context(|| format!("harness PTY session '{session_id}' did not complete before the test deadline"))?
 }
 
-async fn wait_for_harness_session_output_drain(registry: &ToolRegistry, session_id: &str) -> Result<()> {
+async fn drain_harness_session_output_until_drained(
+    registry: &ToolRegistry,
+    session_id: &str,
+    output: &mut String,
+) -> Result<()> {
     tokio::time::timeout(HARNESS_COMPLETION_TIMEOUT, async {
         loop {
+            if let Some(pending_output) = registry.read_harness_exec_session_output(session_id, true).await? {
+                output.push_str(&pending_output);
+            }
             if registry.exec_sessions.is_output_drained(session_id).await? {
                 return Ok(());
             }
@@ -117,10 +124,7 @@ impl Tool for CustomEchoTool {
 #[async_trait]
 impl Tool for SlowTimeoutTool {
     async fn execute(&self, _args: Value) -> Result<Value> {
-        tokio::time::sleep(Duration::from_millis(1_100)).await;
-        Ok(json!({
-            "ok": true,
-        }))
+        std::future::pending::<Result<Value>>().await
     }
 
     fn name(&self) -> &str {
@@ -660,11 +664,9 @@ async fn harness_terminal_runs_retain_completed_sessions_until_close(
         .as_str()
         .expect("terminal run should expose session_id")
         .to_string();
-    let initial_output = response["output"].as_str().unwrap_or_default().to_owned();
+    let mut observed_output = response["output"].as_str().unwrap_or_default().to_owned();
     let exit_code = wait_for_harness_session_completion(registry, &session_id).await?;
-    wait_for_harness_session_output_drain(registry, &session_id).await?;
-    let pending_output = registry.read_harness_exec_session_output(&session_id, true).await?;
-    let observed_output = format!("{initial_output}{}", pending_output.as_deref().unwrap_or_default());
+    drain_harness_session_output_until_drained(registry, &session_id, &mut observed_output).await?;
 
     assert_eq!(exit_code, 0, "completed harness PTY session returned an unexpected exit code");
     assert_eq!(observed_output, "vtcode-terminal", "harness PTY output was not fully observed");
