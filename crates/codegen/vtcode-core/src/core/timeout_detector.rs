@@ -497,7 +497,6 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
-    use tokio::time::sleep;
 
     #[tokio::test]
     async fn test_timeout_detection() {
@@ -514,8 +513,7 @@ mod tests {
 
         let result = detector
             .execute_with_timeout_retry("test_operation".to_owned(), OperationType::ApiCall, || async {
-                sleep(Duration::from_millis(20)).await;
-                Ok("success")
+                std::future::pending::<Result<&str, anyhow::Error>>().await
             })
             .await;
 
@@ -545,12 +543,10 @@ mod tests {
                 async move {
                     let count = call_count.fetch_add(1, Ordering::SeqCst) + 1;
                     if count == 1 {
-                        // First call fails with timeout
-                        sleep(Duration::from_millis(60)).await;
-                        Ok("should not reach here")
+                        // A pending future cannot complete before the configured timeout.
+                        std::future::pending::<Result<&str, anyhow::Error>>().await
                     } else {
-                        // Second call succeeds
-                        sleep(Duration::from_millis(10)).await;
+                        // The second attempt succeeds after the configured retry delay.
                         Ok("success")
                     }
                 }

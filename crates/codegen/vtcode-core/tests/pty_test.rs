@@ -829,7 +829,7 @@ async fn test_write_stdin_wait_spools_high_volume_pipe_output() {
         .expect("start high-volume pipe command");
     let sid = exec_session_id(&start).expect("execution session ID");
 
-    let completed = registry
+    let mut completed = registry
         .execute_tool(
             "write_stdin",
             json!({
@@ -846,7 +846,34 @@ async fn test_write_stdin_wait_spools_high_volume_pipe_output() {
     assert_eq!(completed["is_exited"], true);
     assert_eq!(completed["exit_code"].as_i64(), Some(0));
     assert!(completed["output_truncated"].as_bool().is_some(), "wait should expose truncation state");
-    assert!(completed["total_output_bytes"].as_u64().unwrap_or_default() > 200_000);
+
+    let spool_complete = completed.get("spool_complete").and_then(|value| value.as_bool());
+    if spool_complete != Some(true) {
+        completed = registry
+            .execute_tool(
+                "write_stdin",
+                json!({
+                    "action": "wait",
+                    "session_id": sid.as_str(),
+                    "wait_timeout_seconds": 10,
+                    "max_output_tokens": 8,
+                }),
+            )
+            .await
+            .expect("wait for high-volume pipe output spool to complete");
+    }
+
+    let final_spool_complete = completed.get("spool_complete").and_then(|value| value.as_bool());
+    assert_eq!(
+        final_spool_complete,
+        Some(true),
+        "high-volume pipe wait must report a complete output spool before byte assertions: {completed:?}"
+    );
+    let total_output_bytes = completed.get("total_output_bytes").and_then(|value| value.as_u64());
+    assert!(
+        total_output_bytes.is_some_and(|bytes| bytes > 200_000),
+        "high-volume pipe output was incomplete after spool completion: total_output_bytes={total_output_bytes:?}; response={completed:?}"
+    );
 
     let spool_path = completed["spool_path"].as_str().expect("wait should expose pipe spool");
     let spooled = fs::read_to_string(temp.path().join(spool_path)).expect("read high-volume pipe spool");

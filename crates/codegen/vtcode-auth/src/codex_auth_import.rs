@@ -221,16 +221,27 @@ fn try_load_codex_chatgpt_session_once() -> Result<Option<OpenAIChatGptSession>>
 /// non-ChatGPT auth mode (e.g. API key). Returns `Err` if the file exists but
 /// cannot be read or parsed after all retries.
 pub fn try_load_codex_chatgpt_session() -> Result<Option<OpenAIChatGptSession>> {
+    try_load_codex_chatgpt_session_with_retry(try_load_codex_chatgpt_session_once, std::thread::sleep)
+}
+
+fn try_load_codex_chatgpt_session_with_retry<LoadOnce, Sleep>(
+    mut load_once: LoadOnce,
+    mut sleep: Sleep,
+) -> Result<Option<OpenAIChatGptSession>>
+where
+    LoadOnce: FnMut() -> Result<Option<OpenAIChatGptSession>>,
+    Sleep: FnMut(std::time::Duration),
+{
     let mut last_err = None;
     for attempt in 0..CODEX_REFRESH_MAX_ATTEMPTS {
-        match try_load_codex_chatgpt_session_once() {
+        match load_once() {
             Ok(result) => return Ok(result),
             Err(err) => last_err = Some(err),
         }
         // Only sleep between attempts, not after the last one.
         if attempt + 1 < CODEX_REFRESH_MAX_ATTEMPTS {
             if let Some(&delay) = CODEX_REFRESH_BACKOFF_MS.get(attempt) {
-                std::thread::sleep(std::time::Duration::from_millis(delay));
+                sleep(std::time::Duration::from_millis(delay));
             }
         }
     }
@@ -305,53 +316,66 @@ pub struct CodexAuthJsonRefresher;
 const CODEX_REFRESH_MAX_ATTEMPTS: usize = 4;
 const CODEX_REFRESH_BACKOFF_MS: &[u64] = &[10, 30, 100];
 
-#[async_trait]
-impl OpenAIChatGptSessionRefresher for CodexAuthJsonRefresher {
-    async fn refresh_session(&self, current: &OpenAIChatGptSession) -> Result<OpenAIChatGptSession> {
-        let mut last_err = None;
-        for attempt in 0..CODEX_REFRESH_MAX_ATTEMPTS {
-            // Use the retry-free primitive — this fn owns the async retry loop.
-            // Calling the public try_load_codex_chatgpt_session() here would
-            // multiply delays (sync retries inside async retries).
-            match try_load_codex_chatgpt_session_once() {
-                Ok(Some(session)) => {
-                    // Reject any known-expired token. If it's the same as the
-                    // current token, Codex hasn't refreshed the file. If it's
-                    // different but also expired, it's a rotated-but-stale
-                    // replacement — still not usable.
-                    if is_session_expired(&session) {
-                        if session.access_token == current.access_token {
-                            bail!(
-                                "Codex's auth.json contains an expired access token that has not been refreshed. \
-                                 Run `codex login` to refresh it, or `vtcode login openai` for a VT Code session."
-                            );
-                        }
+async fn refresh_codex_chatgpt_session_with_retry<LoadOnce, Sleep, SleepFuture>(
+    current: &OpenAIChatGptSession,
+    mut load_once: LoadOnce,
+    mut sleep: Sleep,
+) -> Result<OpenAIChatGptSession>
+where
+    LoadOnce: FnMut() -> Result<Option<OpenAIChatGptSession>>,
+    Sleep: FnMut(std::time::Duration) -> SleepFuture,
+    SleepFuture: Future<Output = ()>,
+{
+    let mut last_err = None;
+    for attempt in 0..CODEX_REFRESH_MAX_ATTEMPTS {
+        // Use the retry-free primitive — this fn owns the async retry loop.
+        // Calling the public try_load_codex_chatgpt_session() here would
+        // multiply delays (sync retries inside async retries).
+        match load_once() {
+            Ok(Some(session)) => {
+                // Reject any known-expired token. If it's the same as the
+                // current token, Codex hasn't refreshed the file. If it's
+                // different but also expired, it's a rotated-but-stale
+                // replacement — still not usable.
+                if is_session_expired(&session) {
+                    if session.access_token == current.access_token {
                         bail!(
-                            "Codex's auth.json contains an expired replacement access token. \
+                            "Codex's auth.json contains an expired access token that has not been refreshed. \
                              Run `codex login` to refresh it, or `vtcode login openai` for a VT Code session."
                         );
                     }
-                    return Ok(session);
-                }
-                Ok(None) => {
-                    // File missing, no tokens, or non-ChatGPT mode — no point retrying.
                     bail!(
-                        "Codex auth.json no longer contains ChatGPT tokens. \
+                        "Codex's auth.json contains an expired replacement access token. \
                          Run `codex login` to refresh it, or `vtcode login openai` for a VT Code session."
                     );
                 }
-                Err(err) => {
-                    // Transient I/O or parse failure — likely a partial write.
-                    last_err = Some(err);
-                    if attempt + 1 < CODEX_REFRESH_MAX_ATTEMPTS {
-                        let delay = CODEX_REFRESH_BACKOFF_MS.get(attempt).copied().unwrap_or(100);
-                        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-                    }
+                return Ok(session);
+            }
+            Ok(None) => {
+                // File missing, no tokens, or non-ChatGPT mode — no point retrying.
+                bail!(
+                    "Codex auth.json no longer contains ChatGPT tokens. \
+                     Run `codex login` to refresh it, or `vtcode login openai` for a VT Code session."
+                );
+            }
+            Err(err) => {
+                // Transient I/O or parse failure — likely a partial write.
+                last_err = Some(err);
+                if attempt + 1 < CODEX_REFRESH_MAX_ATTEMPTS {
+                    let delay = CODEX_REFRESH_BACKOFF_MS.get(attempt).copied().unwrap_or(100);
+                    sleep(std::time::Duration::from_millis(delay)).await;
                 }
             }
         }
-        // All retries exhausted — propagate the last transient error.
-        Err(last_err.unwrap_or_else(|| anyhow!("failed to read codex auth.json after retries")))
+    }
+    // All retries exhausted — propagate the last transient error.
+    Err(last_err.unwrap_or_else(|| anyhow!("failed to read codex auth.json after retries")))
+}
+
+#[async_trait]
+impl OpenAIChatGptSessionRefresher for CodexAuthJsonRefresher {
+    async fn refresh_session(&self, current: &OpenAIChatGptSession) -> Result<OpenAIChatGptSession> {
+        refresh_codex_chatgpt_session_with_retry(current, try_load_codex_chatgpt_session_once, tokio::time::sleep).await
     }
 }
 
@@ -732,25 +756,37 @@ mod tests {
     #[test]
     #[serial]
     fn initial_load_retries_partial_write_then_succeeds() {
-        // Simulate a concurrent Codex refresh: file starts as truncated/invalid
-        // JSON, then becomes valid. The bounded retry should absorb the partial
-        // write and return the session once the file is complete.
+        // Drive an invalid first read and a valid replacement read without
+        // relying on a background writer winning a scheduler race.
         let temp = tempfile::tempdir().expect("create temp dir");
         let prev = std::env::var("CODEX_HOME").ok();
         vtcode_commons::env_lock::set_var("CODEX_HOME", temp.path());
-        // Write a truncated file (partial write — invalid JSON).
-        write_codex_auth_json(temp.path(), r#"{"auth_mode":"chatg"#);
-        // Spawn a thread that completes the file after a short delay.
-        let path = temp.path().join("auth.json");
-        drop(std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(15));
-            std::fs::write(&path, codex_auth_json_with_access_token("oauth-access")).expect("complete the file");
-        }));
-        let result = try_load_codex_chatgpt_session();
+        let mut attempt_count = 0;
+        let mut backoff_delays_vec = Vec::new();
+        let result = try_load_codex_chatgpt_session_with_retry(
+            || {
+                attempt_count += 1;
+                let auth_json = if attempt_count == 1 {
+                    r#"{"auth_mode":"chatg"#.to_string()
+                } else {
+                    codex_auth_json_with_access_token("oauth-access")
+                };
+                write_codex_auth_json(temp.path(), &auth_json);
+                try_load_codex_chatgpt_session_once()
+            },
+            |delay| backoff_delays_vec.push(delay),
+        );
         vtcode_commons::env_lock::lock().restore_var("CODEX_HOME", prev.as_deref());
-        let session = result.expect("should succeed after retry");
-        assert!(session.is_some(), "retry should absorb the partial write and return the session");
-        assert_eq!(session.unwrap().access_token, "oauth-access");
+        assert_eq!(attempt_count, 2, "loader should retry the partial read exactly once");
+        assert_eq!(
+            backoff_delays_vec,
+            vec![std::time::Duration::from_millis(10)],
+            "loader should apply only the first backoff before the valid replacement"
+        );
+        let session = result
+            .expect("should succeed after retry")
+            .expect("retry should absorb the partial write and return the session");
+        assert_eq!(session.access_token, "oauth-access");
     }
 
     #[test]
@@ -916,12 +952,9 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn refresher_uses_single_attempt_primitive() {
-        // If the refresher called the public try_load_codex_chatgpt_session()
-        // (which has its own sync retry loop), a permanently-invalid file would
-        // incur sync sleeps INSIDE each async attempt, multiplying delays.
-        // This test verifies the refresher completes quickly even with a
-        // permanently invalid file, proving it uses the single-attempt primitive.
+    async fn refresh_retry_helper_uses_bounded_attempts_and_backoffs() {
+        // Count reads and capture backoffs directly so scheduler load cannot
+        // turn the intended 140 ms delay into a false failure.
         let temp = tempfile::tempdir().expect("create temp dir");
         let prev = std::env::var("CODEX_HOME").ok();
         vtcode_commons::env_lock::set_var("CODEX_HOME", temp.path());
@@ -938,19 +971,39 @@ mod tests {
             refreshed_at: 0,
             expires_at: None,
         };
-        let refresher = CodexAuthJsonRefresher;
-        let start = std::time::Instant::now();
-        let result = refresher.refresh_session(&current).await;
-        let elapsed = start.elapsed();
+        let mut attempt_count = 0;
+        let mut backoff_delays_vec = Vec::new();
+        let result = refresh_codex_chatgpt_session_with_retry(
+            &current,
+            || {
+                attempt_count += 1;
+                try_load_codex_chatgpt_session_once()
+            },
+            |delay| {
+                backoff_delays_vec.push(delay);
+                std::future::ready(())
+            },
+        )
+        .await;
         vtcode_commons::env_lock::lock().restore_var("CODEX_HOME", prev.as_deref());
-        assert!(result.is_err(), "invalid file should error");
-        // The async refresher sleeps 10+30+100=140ms across its 4 attempts.
-        // If it also called the sync retry wrapper (which sleeps the same),
-        // total would be ~280ms+. We allow 200ms as a generous upper bound
-        // that proves no double-retry.
+        assert_eq!(
+            attempt_count, CODEX_REFRESH_MAX_ATTEMPTS,
+            "refresher should call the single-attempt loader once per async attempt"
+        );
+        let expected_backoff_delays_vec = CODEX_REFRESH_BACKOFF_MS
+            .iter()
+            .copied()
+            .map(std::time::Duration::from_millis)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            backoff_delays_vec, expected_backoff_delays_vec,
+            "refresher should apply each configured async backoff exactly once"
+        );
+        let err = result.expect_err("invalid file should error after the bounded attempts");
+        let message = err.to_string();
         assert!(
-            elapsed < std::time::Duration::from_millis(200),
-            "refresher should not multiply retry delays (took {elapsed:?})"
+            message.contains("failed to parse codex auth.json"),
+            "refresher should preserve the final parse error: {message}"
         );
     }
 }

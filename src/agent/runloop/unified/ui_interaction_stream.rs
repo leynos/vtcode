@@ -1060,7 +1060,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
-    use tokio::sync::{Notify, mpsc};
+    use tokio::sync::{Notify, mpsc, oneshot};
     use vtcode_core::copilot::{CopilotObservedToolCall, CopilotObservedToolCallStatus, CopilotRuntimeRequest};
     use vtcode_core::llm::provider::{self as uni, FinishReason, LLMResponse, LLMStreamEvent};
     use vtcode_core::utils::ansi::AnsiRenderer;
@@ -1072,6 +1072,7 @@ mod tests {
 
     struct ToggleSuppressionRuntimeHandler {
         signal: Arc<AtomicBool>,
+        cleared_signal: Arc<Notify>,
     }
 
     struct EnableSuppressionRuntimeHandler {
@@ -1098,6 +1099,7 @@ mod tests {
             _request: CopilotRuntimeRequest,
         ) -> Result<(), uni::LLMError> {
             self.signal.store(false, Ordering::Release);
+            self.cleared_signal.notify_one();
             Ok(())
         }
     }
@@ -1464,15 +1466,23 @@ mod tests {
         let ctrl_c_notify = Arc::new(Notify::new());
         let suppress_output_signal = Arc::new(AtomicBool::new(true));
         let handler_signal = suppress_output_signal.clone();
+        let verification_cleared = Arc::new(Notify::new());
+        let stream_verification_cleared = verification_cleared.clone();
+        let (token_emitted_tx, token_emitted_rx) = oneshot::channel();
 
         let mut stream: uni::LLMStream = Box::pin(async_stream::stream! {
             yield Ok(LLMStreamEvent::Token { delta: "hidden before verification".to_string() });
-            tokio::time::sleep(Duration::from_millis(20)).await;
+            token_emitted_tx
+                .send(())
+                .expect("stream should signal its suppressed token");
+            stream_verification_cleared.notified().await;
             yield Ok(LLMStreamEvent::Completed { response: Box::new(completed_response("final response")) });
         });
         let (runtime_tx, mut runtime_rx) = mpsc::unbounded_channel();
         tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(5)).await;
+            token_emitted_rx
+                .await
+                .expect("stream should yield the suppressed token before verification");
             runtime_tx
                 .send(CopilotRuntimeRequest::ObservedToolCall(CopilotObservedToolCall {
                     tool_call_id: "call_1".to_string(),
@@ -1485,7 +1495,10 @@ mod tests {
                 .expect("send runtime request");
         });
 
-        let mut handler = ToggleSuppressionRuntimeHandler { signal: handler_signal };
+        let mut handler = ToggleSuppressionRuntimeHandler {
+            signal: handler_signal,
+            cleared_signal: verification_cleared,
+        };
         let mut output_deltas = Vec::new();
         let mut on_progress = |event| {
             if let StreamProgressEvent::OutputDelta(delta) = event {

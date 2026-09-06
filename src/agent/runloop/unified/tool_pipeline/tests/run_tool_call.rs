@@ -232,7 +232,7 @@ async fn test_run_tool_call_hook_rewrite_runs_hooks_exactly_once() {
     // executing the rewritten arguments.
     let hook_invocations = test_ctx.workspace.join("rewrite-hook-invocations");
     let hook_script = format!(
-        "f=\"{}\"; [ -f \"$f\" ] && exit 2; touch \"$f\"; printf '%s' '{{\"hookSpecificOutput\":{{\"hookEventName\":\"PreToolUse\",\"updatedInput\":{{\"path\":\"HOOK_REWROTE.md\"}}}}}}'",
+        "f=\"{}\"; cat >/dev/null; [ -f \"$f\" ] && exit 2; touch \"$f\"; printf '%s' '{{\"hookSpecificOutput\":{{\"hookEventName\":\"PreToolUse\",\"updatedInput\":{{\"path\":\"HOOK_REWROTE.md\"}}}}}}'",
         hook_invocations.display()
     );
     let hooks_config = HooksConfig {

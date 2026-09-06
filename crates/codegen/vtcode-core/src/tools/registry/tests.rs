@@ -12,7 +12,7 @@ use crate::tools::handlers::{
 };
 use crate::tools::registry::mcp_helpers::normalize_mcp_tool_identifier;
 use crate::tools::traits::Tool;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use futures::future::BoxFuture;
 use rstest::{fixture, rstest};
@@ -32,6 +32,41 @@ const REENTRANT_TOOL_NAME: &str = "reentrant_guard_test_tool";
 const MUTUAL_REENTRANT_TOOL_A: &str = "mutual_reentrant_tool_a";
 const MUTUAL_REENTRANT_TOOL_B: &str = "mutual_reentrant_tool_b";
 const REPLACE_DISPATCH_TOOL_NAME: &str = "replace_dispatch_test_tool";
+const HARNESS_COMPLETION_TIMEOUT: Duration = Duration::from_secs(2);
+const HARNESS_COMPLETION_POLL_INTERVAL: Duration = Duration::from_millis(20);
+
+async fn wait_for_harness_session_completion(registry: &ToolRegistry, session_id: &str) -> Result<i32> {
+    tokio::time::timeout(HARNESS_COMPLETION_TIMEOUT, async {
+        loop {
+            if let Some(exit_code) = registry.harness_exec_session_completed(session_id).await? {
+                return Ok(exit_code);
+            }
+            tokio::time::sleep(HARNESS_COMPLETION_POLL_INTERVAL).await;
+        }
+    })
+    .await
+    .with_context(|| format!("harness PTY session '{session_id}' did not complete before the test deadline"))?
+}
+
+async fn drain_harness_session_output_until_drained(
+    registry: &ToolRegistry,
+    session_id: &str,
+    output: &mut String,
+) -> Result<()> {
+    tokio::time::timeout(HARNESS_COMPLETION_TIMEOUT, async {
+        loop {
+            if let Some(pending_output) = registry.read_harness_exec_session_output(session_id, true).await? {
+                output.push_str(&pending_output);
+            }
+            if registry.exec_sessions.is_output_drained(session_id).await? {
+                return Ok(());
+            }
+            tokio::time::sleep(HARNESS_COMPLETION_POLL_INTERVAL).await;
+        }
+    })
+    .await
+    .with_context(|| format!("harness PTY session '{session_id}' output did not drain before the test deadline"))?
+}
 
 fn command_session_fixture_commands_config() -> CommandsConfig {
     let mut config = CommandsConfig::default();
@@ -89,10 +124,7 @@ impl Tool for CustomEchoTool {
 #[async_trait]
 impl Tool for SlowTimeoutTool {
     async fn execute(&self, _args: Value) -> Result<Value> {
-        tokio::time::sleep(Duration::from_millis(1_100)).await;
-        Ok(json!({
-            "ok": true,
-        }))
+        std::future::pending::<Result<Value>>().await
     }
 
     fn name(&self) -> &str {
@@ -632,12 +664,20 @@ async fn harness_terminal_runs_retain_completed_sessions_until_close(
         .as_str()
         .expect("terminal run should expose session_id")
         .to_string();
-    assert_eq!(response["exit_code"], 0);
-    assert_eq!(response["output"].as_str(), Some("vtcode-terminal"));
-    assert_eq!(registry.harness_exec_session_completed(&session_id).await?, Some(0));
+    let mut observed_output = response["output"].as_str().unwrap_or_default().to_owned();
+    let exit_code = wait_for_harness_session_completion(registry, &session_id).await?;
+    drain_harness_session_output_until_drained(registry, &session_id, &mut observed_output).await?;
 
-    registry.close_harness_exec_session(&session_id).await?;
-    registry.harness_exec_session_completed(&session_id).await.unwrap_err();
+    assert_eq!(exit_code, 0, "completed harness PTY session returned an unexpected exit code");
+    assert_eq!(observed_output, "vtcode-terminal", "harness PTY output was not fully observed");
+
+    let close_result = registry.close_harness_exec_session(&session_id).await;
+    close_result?;
+    let completion_after_close = registry.harness_exec_session_completed(&session_id).await;
+    assert!(
+        completion_after_close.is_err(),
+        "closed harness PTY session remained queryable: {completion_after_close:?}"
+    );
 
     Ok(())
 }
