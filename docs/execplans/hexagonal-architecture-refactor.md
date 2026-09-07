@@ -291,3 +291,98 @@ completed review or merged issue is claimed.
 
 Revision note: Initial programme record captures live source-train constraints,
 delegation, stage obligations and the first two issue handoffs.
+
+## ACP stack rebase milestone (7 September 2026)
+
+Hexagonal implementation remains paused. Eight focused ACP tool-surface tests
+are green: four core tests in
+`/tmp/acp-tool-surface-green-core-final.out` and four ACP tests in
+`/tmp/acp-tool-surface-green-acp-rerun-5.out`. Full gates and executable release
+verification remain pending. One implementation journeyman subsequently hit
+an account usage limit; the scrutineer remains available.
+
+Root verified that PR #24 is still the latest merged layer in Stack #37 and
+fast-forwarded local main and origin/main from 1aa90f196 to
+`dddd1352fcdf41e86abe380423221f4b41f171e0`. GitHub readback agrees; the main
+worktree was clean before and after. No open Stack #37 branch was changed.
+
+### Rebase ownership and recovery state
+
+A journeyman owns the remaining local cascading rebase in
+`/home/leynos/Projects/VTCode.worktrees/acp-stack-integration`. Root owns
+publication, saved-WIP restoration, release installation and final merges.
+Use artisans for bounded individual conflicts, wyverns for source/history
+questions and scrutineers for sequential syntax and final gates. Always use
+absolute paths with apply_patch: its relative base is the root conversation
+worktree, not an exec command's working directory.
+
+Native gh-stack tracking now adopts these ten branches, bottom to top:
+11, 12, 13, 14, 17, 103, 104, 53, 55, 56. Recovery references are
+`refs/archive/acp-linearized-20260907/pr-N` for each PR. The immutable initial
+heads and bases are recorded in
+`/tmp/vtcode-acp-stack-before-rebase-20260907.json`.
+
+Saved WIP records are in `/tmp/vtcode-acp-rebase-wip-20260907.json`:
+
+- ebcc73bc1fc6caa2101465cfe774661d5468adee: PR11 initializer repair.
+- 08db8c85e6a22b6e99495e38e8b66ea9d38446d3: PR13 review plan and initial
+  atomic-thread-mutation API/test. This patch was relocated from an accidental
+  root-worktree edit; root is otherwise free of implementation edits.
+- feb450f4a38c5327bfab24622af26bb57fd15e4b: the tool-surface repair, plan and
+  offline executable smoke fixture. Its smoke has not been executed.
+
+The parked #21 architecture diagnostics remain dirty and untouched on local
+branch `hex/issue-21-diagnostics-parked`; do not include them in the PR53 rebase.
+Other occupied ACP branch worktrees were detached before adopting the stack.
+Do not apply/drop stashes or change those worktrees during this milestone.
+
+### Conflict strategy and current stop
+
+Read rebase, github-stacks, sem and weave-git-merge skills and repository
+instructions. Root inspected Weave's preview through the reconnaissance agent.
+Use the built-in merge path for this cascading import/API rename replay by
+passing the following environment to every gh-stack rebase/continue call:
+
+    GH_REPO=leynos/vtcode GIT_CONFIG_COUNT=2
+    GIT_CONFIG_KEY_0=remote.origin.gh-resolved GIT_CONFIG_VALUE_0=base
+    GIT_CONFIG_KEY_1=core.attributesFile GIT_CONFIG_VALUE_1=/dev/null
+
+This is a per-command override, not a global config edit. Attribute readback
+confirmed merge is unspecified for the affected Rust files with this override.
+Use `gh stack rebase --continue` after staging each resolved conflict; never
+start a competing plain rebase or silently abort the current gh-stack state.
+Do not push until root has reviewed the result and applicable gates are green.
+
+The first stop replays d2c39f961 in PR11. Root inspected all three index stages
+of `vtcode-llm/src/providers/openai/provider.rs`, retained the merged
+`model_behaviour` spelling and added `custom_provider_config` field/defaults.
+The working file is resolved but not yet staged. Scrutineer syntax validation
+and diff-check passed; stdout is
+`/tmp/acp-rebase-openai-provider-syntax.rs`, stderr is the adjacent `.err` file.
+Stage this one resolved file and continue before investigating the next stop.
+
+For every conflict, inspect index stages and original commit intent before
+editing. Preserve ACP runtime behavior and merged analyse/artefact/behaviour
+names, including harness_artefacts.rs. Do not resurrect deleted synthetic plan
+progress solely for a spelling rename. Preserve d57491acb's bounded registry
+fixture synchronization alongside later tests. Do not mechanically replace
+wire/JSON fields, legacy aliases or external API names.
+
+After each conflict, ask a scrutineer to syntax-check affected files without
+modifying tracked files and capture /tmp logs. All gates are globally serial;
+no other gate is active at handoff. Final acceptance requires no unmerged
+index entries, linear ancestry from new main through all ten layers, bounded
+range-diff/semantic review, and final applicable deterministic gates after
+root restores lower-layer repairs. No CodeRabbit request before those gates.
+Report the completed old-to-new SHA map and any unresolved semantic concerns.
+
+Root subsequently restored the tool-surface stash onto its unchanged b928ed34
+worktree to let an artisan correct the smoke harness's ACP result-envelope
+validation. That worktree is dirty again and is not in the ten-layer native
+stack. Save its latest state again before rebasing that additional top branch.
+
+The harness envelope correction is now saved with the full tool-surface WIP
+in `ce1547c6904fbf953b4d977bb0eaa67b461b6c50`, superseding feb450f4 for
+restoration. The old stash is retained for recovery. The tool-surface worktree
+is clean again. CI prerequisites separately advanced to dddd1352 and retained
+the new baseline handoff bytes during archival; their gates remain pending.
