@@ -196,13 +196,23 @@ all conflicts and preserving both branches' intent.
 
 ## Active execution record
 
-At the latest update, issue40 holds the global gate slot for its initial
-focused red tests. The cold build is compiling workspace dependencies; its log
-is `/tmp/issue40-red-hex-issue-40-read-metadata.out`. Next are the corrected
-programme Markdown rerun, issue41 focused red tests, then prerequisite repair
-and issue21 checks as each is ready. Confirm slot ownership with the agents
-before launching anything; this queue is a snapshot, not a substitute for
-coordination.
+Issue40's corrected red run confirmed two reducer contract failures. Its
+runner fixture still denied read_file: the tool is deliberately hidden from
+AgentRunner's model catalogue, not missing from the behavior map. No new issue
+is warranted. The supported file_operation route supplies runner-history and
+guarded-patch integration coverage; the reducer tests supply the negative
+control. Root authorized the narrow fix. Evidence is in
+`/tmp/issue40-corrected-red-hex-issue-40-read-metadata.out`.
+
+Issue41's real snapshot consumer has failed the intended tools-capability
+assertion, recorded in `/tmp/issue41-red-vtcode.out`. Its library test had a
+borrowed-boolean fixture error, now corrected. The consumer red is sufficient
+negative-control evidence: root authorized the narrow global-cache removal,
+now applied with three configured-router tests and the actual snapshot test
+passing. Its obsolete cache-related lint expectation still needs removal.
+Next are issue21's red regression and CI prerequisite gates, then queued
+issue40/issue42 validation. Confirm slot ownership with root before any suite;
+this queue is a snapshot.
 
 The issue21 worktree is `hex-issue-21-planning-diagnostics` on existing branch
 `fix/issue-21-subagent-planner-recovery`; its approved plan is
@@ -213,15 +223,34 @@ change initializes optional checkpoint `turn_diagnostics` to `None`; an artisan
 verified that ThreadSnapshot has no diagnostic value to supply. It still needs
 full gates and root-coordinated publication before descendants can rebase.
 
-The first programme Markdown gate failed on spacing/wrapping; root corrected
-and staged the file, but the rerun waits for the gate slot. No programme commit
-has been made. No issue code has been committed, pushed or reviewed yet.
+The programme document passed scoped Markdown and whitespace gates and was
+committed as `7c620bbf0`. No issue code has been committed, pushed or reviewed.
+
+The CI prerequisite worktree is `hex-ci-prerequisites`, branch
+`hex/ci-prerequisites`, with approved `docs/execplans/ci-prerequisites.md`.
+It contains bounded coverage/Windows/h2/notices repairs and a byte-identical
+move of the transient handoff to docs/archive, as required by repository
+policy. The generator used pinned cargo-about 0.9.1. Gates remain pending.
+
+The issue42 seed worktree is `hex-issue-42-boundary-seed`, branch
+`hex/issue-42-boundary-seed`, with approved plan
+`docs/execplans/issue-42-boundary-seed.md`. A journeyman is preparing the
+protected application crate, existing request/response consumers and scoped
+dependency enforcement while Wave 1 gates run. It cannot close full #42.
+
+Always specify `--repo leynos/vtcode` in gh calls: no default is configured,
+and an unqualified read selected upstream vinhnx/VTCode. Root corrected that
+read before any mutation. Existing stacked PRs can show green evaluation
+without full CI, which currently targets main; require actual integration
+checks before merge.
 
 ## Outcomes & retrospective
 
-Only planning, branch setup and reconnaissance are complete. No new PR, passing
-gate, completed review or merged issue is claimed. Update this section and the
-living sections as each delivered plateau is verified.
+Planning, branch setup, reconnaissance and the initial programme document
+commit are complete. Both immediate defects have failing regression evidence;
+three #41 router tests and its snapshot regression pass after the fix. Full
+code gates and remaining integration evidence are pending. No new PR,
+completed review or merged issue is claimed.
 
 Revision note: Initial programme record captures live source-train constraints,
 delegation, stage obligations and the first two issue handoffs.
