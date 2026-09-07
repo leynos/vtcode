@@ -45,6 +45,8 @@ use agent_client_protocol::{
 };
 use futures::StreamExt;
 use serde_json::json;
+use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -72,6 +74,10 @@ mod rate_limit_tests;
 #[cfg(test)]
 #[path = "rate_limit_timing_tests.rs"]
 mod rate_limit_timing_tests;
+
+#[cfg(test)]
+#[path = "responses_tests.rs"]
+mod responses_tests;
 
 #[cfg(test)]
 struct PromptProviderOverride {
@@ -296,6 +302,111 @@ struct GenerationTelemetry {
     started_at: Instant,
     first_output_at: Option<Instant>,
     estimated_output_tokens: u64,
+}
+
+#[derive(Default)]
+struct StreamedToolInputPreviews {
+    calls: BTreeMap<String, StreamedToolInputPreview>,
+}
+
+struct StreamedToolInputPreview {
+    name: Option<String>,
+    input: String,
+    truncated: bool,
+}
+
+const STREAMED_TOOL_PREVIEW_MAX_CHARS: usize = 8_192;
+
+impl StreamedToolInputPreviews {
+    async fn start(&mut self, agent: &ZedAgent, session_id: &acp::SessionId, call_id: String, name: Option<String>) {
+        let title = streamed_tool_preview_title(name.as_deref(), "Preparing", false);
+        let preview = StreamedToolInputPreview { name, input: String::new(), truncated: false };
+        match self.calls.entry(call_id.clone()) {
+            Entry::Vacant(entry) => {
+                let _preview = entry.insert(preview);
+            }
+            Entry::Occupied(_) => return,
+        }
+        let update = acp::ToolCall::new(streamed_tool_preview_id(&call_id), title)
+            .kind(acp::ToolKind::Other)
+            .status(acp::ToolCallStatus::Pending)
+            .content(streamed_tool_preview_content("", "Input is streaming; it has not been executed.", false));
+        drop(agent.send_update(session_id, acp::SessionUpdate::ToolCall(update)).await);
+    }
+
+    async fn push_delta(&mut self, agent: &ZedAgent, session_id: &acp::SessionId, call_id: String, delta: &str) {
+        if !self.calls.contains_key(&call_id) {
+            self.start(agent, session_id, call_id.clone(), None).await;
+        }
+        let Some(preview) = self.calls.get_mut(&call_id) else {
+            return;
+        };
+        let retained_chars = preview.input.chars().count();
+        let mut delta_chars = delta.chars();
+        preview.input.extend(
+            delta_chars
+                .by_ref()
+                .take(STREAMED_TOOL_PREVIEW_MAX_CHARS.saturating_sub(retained_chars)),
+        );
+        preview.truncated |= delta_chars.next().is_some();
+        let fields = acp::ToolCallUpdateFields::new()
+            .title(streamed_tool_preview_title(preview.name.as_deref(), "Preparing", false))
+            .status(acp::ToolCallStatus::Pending)
+            .content(streamed_tool_preview_content(
+                &preview.input,
+                "Input is streaming; it has not been executed.",
+                preview.truncated,
+            ));
+        let update = acp::ToolCallUpdate::new(streamed_tool_preview_id(&call_id), fields);
+        drop(agent.send_update(session_id, acp::SessionUpdate::ToolCallUpdate(update)).await);
+    }
+
+    async fn finish(
+        &mut self,
+        agent: &ZedAgent,
+        session_id: &acp::SessionId,
+        status: acp::ToolCallStatus,
+        terminal_note: &str,
+    ) {
+        for (call_id, preview) in &self.calls {
+            let verb = if status == acp::ToolCallStatus::Completed {
+                "Prepared"
+            } else {
+                "Abandoned"
+            };
+            let fields = acp::ToolCallUpdateFields::new()
+                .title(streamed_tool_preview_title(preview.name.as_deref(), verb, true))
+                .status(status)
+                .content(streamed_tool_preview_content(&preview.input, terminal_note, preview.truncated));
+            let update = acp::ToolCallUpdate::new(streamed_tool_preview_id(call_id), fields);
+            drop(agent.send_update(session_id, acp::SessionUpdate::ToolCallUpdate(update)).await);
+        }
+        self.calls.clear();
+    }
+}
+
+fn streamed_tool_preview_id(call_id: &str) -> String {
+    format!("provider-input-preview:{call_id}")
+}
+
+fn streamed_tool_preview_title(name: Option<&str>, verb: &str, terminal: bool) -> String {
+    let name = name.unwrap_or("tool");
+    let suffix = if terminal {
+        "input preview (not executed)"
+    } else {
+        "input (not executed)"
+    };
+    format!("{verb} {name} {suffix}")
+}
+
+fn streamed_tool_preview_content(input: &str, note: &str, truncated: bool) -> Vec<acp::ToolCallContent> {
+    let truncation_note = if truncated { "\n\n[preview truncated]" } else { "" };
+    let text = if input.is_empty() {
+        format!("{note}{truncation_note}")
+    } else {
+        format!("{note}\n\n{input}{truncation_note}")
+    };
+    vec![acp::ContentBlock::Text(acp::TextContent::new(text)).into()]
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -1076,6 +1187,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         let mut attempt_index = 0u32;
         let mut backoff = RetryBackoff::new();
         let mut emitted_output = false;
+        let mut tool_input_previews = StreamedToolInputPreviews::default();
 
         'stream_attempts: loop {
             let permit = match provider_runtime.acquire(&session.cancellation).await {
@@ -1168,6 +1280,14 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 let next_deadline = stream_deadlines.next();
                 let event = tokio::select! {
                     () = session.cancellation.cancelled() => {
+                        tool_input_previews
+                            .finish(
+                                &agent,
+                                &args.session_id,
+                                acp::ToolCallStatus::Failed,
+                                "Input streaming was cancelled; it was not executed.",
+                            )
+                            .await;
                         stop_reason = acp::StopReason::Cancelled;
                         break 'stream_attempts;
                     }
@@ -1187,6 +1307,14 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     };
                     if emitted_output {
                         telemetry.failed(&provider_runtime, attempt_index, "partial_output_visible", &error);
+                        tool_input_previews
+                            .finish(
+                                &agent,
+                                &args.session_id,
+                                acp::ToolCallStatus::Failed,
+                                "Provider input streaming ended early; it was not executed.",
+                            )
+                            .await;
                         return Ok(finish_failed_provider_turn(
                             &agent,
                             &session,
@@ -1308,6 +1436,14 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         agent
                             .publish_rate_limit_notice(&args.session_id, provider_runtime.provider_name(), &error, None)
                             .await;
+                        tool_input_previews
+                            .finish(
+                                &agent,
+                                &args.session_id,
+                                acp::ToolCallStatus::Failed,
+                                "Provider input streaming failed; it was not executed.",
+                            )
+                            .await;
                         return Ok(finish_failed_provider_turn(
                             &agent,
                             &session,
@@ -1351,6 +1487,20 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     }
                     LLMStreamEvent::ReasoningStage { .. } => {}
                     LLMStreamEvent::ReasoningSignature { .. } => {}
+                    LLMStreamEvent::ToolCallStart { call_id, name } => {
+                        emitted_output = true;
+                        stream_deadlines.observe_output();
+                        telemetry.observe_output(&provider_runtime, name.as_deref().unwrap_or(&call_id), attempt_index);
+                        tool_input_previews.start(&agent, &args.session_id, call_id, name).await;
+                    }
+                    LLMStreamEvent::ToolCallDelta { call_id, delta } => {
+                        if !delta.is_empty() {
+                            emitted_output = true;
+                            stream_deadlines.observe_output();
+                            telemetry.observe_output(&provider_runtime, &delta, attempt_index);
+                            tool_input_previews.push_delta(&agent, &args.session_id, call_id, &delta).await;
+                        }
+                    }
                     LLMStreamEvent::Completed { response } => {
                         let response = *response;
                         if telemetry.first_output_at.is_none() {
@@ -1362,6 +1512,14 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             }
                         }
                         telemetry.complete(&provider_runtime, &response, attempt_index, false);
+                        tool_input_previews
+                            .finish(
+                                &agent,
+                                &args.session_id,
+                                acp::ToolCallStatus::Completed,
+                                "Provider input streaming completed; execution is handled separately.",
+                            )
+                            .await;
                         agent.publish_lody_usage(&args.session_id, &session_provider_name, &session_model, &response);
                         if assistant_message.is_empty()
                             && let Some(content) = response.content

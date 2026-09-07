@@ -468,12 +468,15 @@ pub(crate) fn serialize_tools_for_responses(
                 }
                 tools::SHELL => hosted_shell.and_then(serialize_openai_hosted_shell),
                 "custom" => tool.function.as_ref().map(|func| {
-                    json!({
+                    let mut definition = json!({
                         "type": "custom",
                         "name": &func.name,
-                        "description": &func.description,
-                        "format": func.parameters.get("format")
-                    })
+                        "description": &func.description
+                    });
+                    if let Some(format) = func.parameters.get("format").filter(|format| !format.is_null()) {
+                        definition["format"] = format.clone();
+                    }
+                    definition
                 }),
                 "grammar" => tool.grammar.as_ref().map(|grammar| {
                     json!({
@@ -530,6 +533,20 @@ mod tests {
     use crate::provider::ToolDefinition;
     use serde_json::json;
     use vtcode_config::constants::tools;
+
+    #[test]
+    fn raw_custom_tool_omits_absent_and_null_format() {
+        let mut tool = ToolDefinition::custom("patch".into(), "Edit a fixture".into());
+        for parameters in [json!({}), json!({"format": null})] {
+            tool.function.as_mut().unwrap().parameters = parameters;
+            let definitions = serialize_tools_for_responses(&[tool.clone()], None).unwrap();
+            assert_eq!(definitions[0]["type"], "custom");
+            assert!(definitions[0].get("format").is_none());
+        }
+        let format = json!({"type":"text"});
+        tool.function.as_mut().unwrap().parameters = json!({"format":format});
+        assert_eq!(serialize_tools_for_responses(&[tool], None).unwrap()[0]["format"], format);
+    }
 
     #[test]
     fn apply_patch_fallback_schema_requires_workspace_relative_paths() {

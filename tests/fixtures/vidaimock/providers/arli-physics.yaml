@@ -6,6 +6,7 @@ error_template: "arli/error.json.j2"
 status_code: "200"
 stream:
   enabled: true
+  frame_format: raw
   lifecycle:
     on_start: { template_path: "arli/physics_stream_start.j2" }
     on_chunk: { template_path: "arli/physics_stream_chunk.j2" }

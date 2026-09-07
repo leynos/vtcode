@@ -30,6 +30,8 @@ Entry point for VT Code contributor workflows.
 - [Async Performance Audit](./async-performance-audit.md) - Async architecture performance findings.
 - [Session Event Persistence](./session-persistence.md) - Canonical session events, exporter boundaries, retention, and verification.
 - [Configuration reset and live reload](./configuration-reload.md) - Shared reset service, watcher contract, runtime application, and verification.
+- [Responses Hardening](./responses-hardening.md) - Completion, reasoning,
+  tool-input, usage and WebSocket recovery contracts and their verification.
 - [Custom Provider Request Policy](./CUSTOM_PROVIDER_REQUEST_POLICY.md) -
   Per-process admission, retries, cancellation, and turn safety for custom
   providers.

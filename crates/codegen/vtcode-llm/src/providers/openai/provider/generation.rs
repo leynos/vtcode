@@ -68,6 +68,7 @@ async fn collect_streamed_response(stream: provider::LLMStream) -> Result<provid
             provider::LLMStreamEvent::Reasoning { delta } => streamed_reasoning.push_str(&delta),
             provider::LLMStreamEvent::ReasoningSignature { .. } => {}
             provider::LLMStreamEvent::ReasoningStage { .. } => {}
+            provider::LLMStreamEvent::ToolCallStart { .. } | provider::LLMStreamEvent::ToolCallDelta { .. } => {}
             provider::LLMStreamEvent::Completed { response } => {
                 completed = Some(*response);
                 break;
@@ -315,8 +316,10 @@ impl OpenAIProvider {
         let attempt_responses = should_attempt_responses_api(responses_state);
         if attempt_responses {
             if self.websocket_mode_enabled(&request.model) {
-                if let Ok(response) = self.generate_via_responses_websocket(&request).await {
-                    return Ok(response);
+                match self.generate_via_responses_websocket(&request).await {
+                    Ok(response) => return Ok(response),
+                    Err(error) if super::websocket::websocket_error_prohibits_replay(&error) => return Err(error),
+                    Err(_) => {}
                 }
             }
 

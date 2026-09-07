@@ -541,8 +541,8 @@ impl RunningVidaiMock {
         let version = Command::new("vidaimock").arg("--version").output()?;
         anyhow::ensure!(version.status.success(), "vidaimock --version failed");
         anyhow::ensure!(
-            String::from_utf8_lossy(&version.stdout).contains("0.1.3"),
-            "physics fixtures require VidaiMock 0.1.3"
+            String::from_utf8_lossy(&version.stdout).contains("0.3.1"),
+            "physics fixtures require VidaiMock 0.3.1"
         );
         let listener = TcpListener::bind(("127.0.0.1", 0))?;
         let port = listener.local_addr()?.port();
@@ -645,7 +645,7 @@ async fn physics_gateway(State(state): State<PhysicsGatewayState>, body: Bytes) 
 }
 
 #[tokio::test]
-#[ignore = "requires pinned VidaiMock 0.1.3 and validates real wall-clock streaming physics"]
+#[ignore = "requires pinned VidaiMock 0.3.1 and validates real wall-clock streaming physics"]
 async fn vidaimock_gateway_preserves_retry_floors_and_stream_token_cadence() {
     let vidaimock = RunningVidaiMock::start("trickled-stream.toml").expect("start VidaiMock physics fixture");
     let request_times = Arc::new(Mutex::new(Vec::new()));
