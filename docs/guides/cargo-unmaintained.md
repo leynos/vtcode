@@ -67,18 +67,24 @@ cargo unmaintained --tree
 
 ## Configuration
 
-### Ignoring Packages
+### Classified baseline
 
-To ignore specific unmaintained packages, add them to your workspace's
-`Cargo.toml`:
+CI runs `scripts/check_unmaintained_baseline.py`. It invokes the pinned
+`cargo-unmaintained` release with JSON output, validates the documented output
+shape, and compares every stable finding field with
+`scripts/cargo_unmaintained_baseline.json`.
 
-```toml
-[package.metadata.unmaintained]
-ignore = ["package-name-1", "package-name-2"]
-```
+The baseline is tracked debt for [issue #108](https://github.com/leynos/vtcode/issues/108),
+not an ignore list. Every entry records its exact package version, repository
+status kind, stale dependency requirements, classification, and rationale.
+The checker deliberately ignores only the changing age count. A new package,
+version, status, requirement, malformed result, scanner error, or invalid
+baseline fails CI.
 
-VT Code already includes this configuration section in `Cargo.toml` at the
-workspace root.
+Do not add packages to `[package.metadata.unmaintained].ignore` to pass this
+check. Do not add `--no-exit-code`, `continue-on-error`, or an automated
+baseline refresh. A missing previous finding is reported as eligible for
+manual removal after it has been reviewed.
 
 ### GitHub Token (Optional)
 
@@ -129,7 +135,7 @@ Add to your pre-commit workflow to catch unmaintained dependencies early:
 ```bash
 #!/bin/bash
 # .git/hooks/pre-commit
-cargo unmaintained --no-warnings
+python3 scripts/check_unmaintained_baseline.py
 ```
 
 ### CI/CD Integration
@@ -138,7 +144,7 @@ Add to your GitHub Actions workflow:
 
 ```yaml
 - name: Check for unmaintained dependencies
-  run: cargo unmaintained --no-warnings
+  run: python3 scripts/check_unmaintained_baseline.py
 ```
 
 ### Periodic Audits
@@ -175,15 +181,18 @@ cargo unmaintained --no-warnings
 
 ### False Positives
 
-Some packages may be flagged incorrectly. If a package is stable but flagged:
+The scanner uses maintenance heuristics; an entry may need an upstream review,
+but CI does not suppress it. If a finding is new or changes:
 
-1. Check the package's repository activity
-2. If it's actively maintained, add to ignore list in `Cargo.toml`
-3. Consider opening an issue with the package maintainer
+1. Inspect the package's lockfile and dependency path.
+2. Check its repository and release metadata.
+3. Open or update the tracking issue with the evidence.
+4. Deliberately update the classified baseline only when the finding remains
+   accepted debt.
 
 ## Example Output
 
-```
+```text
 Scanning 632 packages and their dependencies
 archival status of `some-crate` using GitHub API...ok (unarchived)
 membership of `some-crate` using shallow clone...ok (member)
