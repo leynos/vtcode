@@ -4,6 +4,10 @@ Generated: 7 September 2026. Priority: immediate user-reported interruption.
 Falsification sub-agent: alchemist. Root is the planning agent and does not
 execute the falsification experiment.
 
+Current status: the command policy finding is addressed by a narrow Lody
+configuration update, while the installed-binary tool-surface check remains
+RED. A fresh ACP process is required to consume the configuration update.
+
 ## Problem statement
 
 The ACP session ae7940cf-5804-4edf-9e75-cbaba123b74b cannot run gh pr view,
@@ -21,14 +25,16 @@ vtcode-zed-session-bbe03cfd-b3c9-4d7a-8792-8d7aecb3b0ca. The session is idle.
 Its Lody agent configuration is 46946871-b957-4323-b286-8c0bedf122ce in the
 leynos workspace. It launches the Friendli wrapper with the permission-skip
 flag; the wrapper loads /home/leynos/.vtcode/vtcode.toml explicitly. That TOML
-has no commands override, and the agent configuration has no environment
-overrides. The tool-level policy allows exec_command with empty constraints.
+has no commands override. The agent configuration was updated additively with
+`VTCODE_COMMANDS_ALLOW_LIST=gh pr view,gh pr ready,gh --version`; a fresh ACP
+process is required, and the existing session was not restarted. The tool-level
+policy allows exec_command with empty constraints.
 
 The installed binary reports version 0.156.1. Its exact source SHA is not
 embedded in that output; do not assert exact binary/source parity. Current
-source at root HEAD 4c2d64ea5 has the same exact denial text and documented
-command allowlist behavior. No paid provider request or PR mutation is needed
-for the experiment.
+source at the original investigation HEAD 4c2d64ea5 had the same exact denial
+text and documented command allowlist behavior. No paid provider request or PR
+mutation is needed for the experiment.
 
 ## Error artefacts
 
@@ -100,22 +106,47 @@ or credential contents. Capture the exact command/output and toolchain in
 Run H1 only. Return falsified, not-falsified or inconclusive, identifying which
 prediction failed. Root decides whether a new hypothesis or implementation is
 needed. The alchemist must not mutate Lody configuration, PRs or sessions.
-Root owns any subsequent narrow configuration update and its readback.
+Root owned the subsequent narrow configuration update and its readback after
+this experiment returned inconclusive.
 
-## Configuration proposal if H1 survives
+## Configuration update after the inconclusive probe
 
-Add the tested environment override to the affected Lody agent configuration,
-preserving all existing settings. This avoids replacing default TOML lists or
-changing command access for every VTCode configuration. Verify stored readback
-and explain any requirement for a fresh ACP process. Do not restart/cancel a
-session or trigger a paid provider request to test it. No broad gh wildcard or
-credential API workaround is required for the reported workflow.
+The affected Lody agent configuration was updated with the additive override,
+preserving all existing settings. This scopes the grant to the
+affected agent rather than replacing default TOML lists or changing command
+access for every VTCode configuration. Stored readback confirmed the setting.
+The existing ACP session was not restarted, so its original denial is not
+evidence against the update. No broad gh wildcard or credential API workaround
+is required for the reported workflow.
 
 ## First experiment outcome
 
 The alchemist returned inconclusive: both existing vtcode_core rlibs failed
 linkage with rustc 1.93.0 and E0463, before the evaluator could run. The log is
 /tmp/vtcode-acp-gh-policy-probe.out. No classified command executed and no
-configuration changed. The user's subsequent report of absent MCP tools and
-skills adds a release-provenance check and a discovery-path audit before any
-claim that the installed executable contains the pending ACP fixes.
+configuration changed during the experiment. Root subsequently applied the
+narrow Lody update described above; that change was not validated by the
+inconclusive scratch probe.
+
+## Installed-binary and ACP surface evidence
+
+The installed binary remains byte-identified as SHA-256
+`0450179e27b5c011cd923fed23b763ab9b241aa2941d338eac39ce572a39d80d` with Build
+ID `d810a3c724d1e2a0b897f52f26837d5b44eae02c`. The exact offline ACP smoke run
+is RED at
+`/tmp/acp-tool-surface-installed-red-1788781135/run-3535276`: the advertised
+surface contains exactly `read_file`, `list_files`, `apply_patch`,
+`exec_command`, `write_stdin`, `agent` and `task_tracker`, with the three skill
+tools and mock MCP surface missing. This is direct evidence that the installed
+binary does not expose the required tool surface; its exact source SHA remains
+unknown. No reinstall or paid provider call was made.
+
+Pinned Markdownlint 0.23.2 evidence is split: literal quoted arguments lint
+zero files with exit 0, while normalized arguments lint 353 files and report
+23,053 issues with exit 1. The logs are
+`/tmp/ci-prerequisites-markdownlint-case-a-hex-ci-prerequisites.out` and
+`/tmp/ci-prerequisites-markdownlint-case-b-hex-ci-prerequisites.out`.
+Issue #107 is titled “Reconcile full Markdownlint baseline after repairing
+zero-file CI checks” and tracks the full-baseline follow-up. The separate CI
+prerequisite repair enforces only incrementally changed-file coverage, with no
+claim of a full-baseline pass or mass formatting.

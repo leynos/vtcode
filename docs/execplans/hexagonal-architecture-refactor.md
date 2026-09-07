@@ -1,7 +1,9 @@
 # Deliver the hexagonal architecture remediation programme
 
 Status: IN PROGRESS under the user's standing authorization to implement,
-review and merge each issue on green without per-plan approval.
+review and merge each issue on green without per-plan approval. Hexagonal
+implementation is ON HOLD while the ACP hardening stack and its tool-surface
+recovery are brought to review equilibrium.
 
 ## Purpose / big picture
 
@@ -20,8 +22,10 @@ Reference was supplied. Preserve existing architecture/event guidance and the
 source-pinned evidence in those issues. The audit reviewed separate trains:
 baseline `86ced9a6ce851c3e49f7aac5124d1d9285e8ba42` and capability
 `d49d44ad5070e53c6c8e11a55bb520c6b67438b4`; neither is a combined integration.
-Current main and the programme branch start at
-`1aa90f196dacfb40ac96beb6e5aeafb7784a7d10`.
+The initial programme and ACP-stack work started from
+`1aa90f196dacfb40ac96beb6e5aeafb7784a7d10`. Following the latest merged
+Stack #37 layer, local `main` and `origin/main` now point to
+`dddd1352fcdf41e86abe380423221f4b41f171e0`.
 
 ## Constraints
 
@@ -72,8 +76,9 @@ and use the known-path/Leta fallback; Context Pack MCP handles handoffs.
 
 - [x] (2026-09-07) Load requested skills, root guidance and live issue
   requirements.
-- [x] (2026-09-07) Verify clean programme branch equals origin/main; no rebase
-  needed.
+- [x] (2026-09-07) Verify the clean programme branch initially matched
+  origin/main; that was the initial-base check, before the ACP integration
+  rebase and the main fast-forward.
 - [x] (2026-09-07) Identify unmerged #11/#12 prerequisites and existing #21 PR
   #53.
 - [x] (2026-09-07) Approve and dispatch detailed #40 and #41 plans to
@@ -250,8 +255,11 @@ The user escalated missing gh access, MCP tools and skills in the Lody ACP
 session, then requested verification that the installed release contains the
 pending fixes. The installed wrapper invokes ~/.cargo/bin/vtcode with an
 explicit ~/.vtcode/vtcode.toml; version 0.156.1 alone does not establish
-source provenance. Read-only binary and MCP/skill discovery audits are
-underway. No release replacement or configuration change has yet been made.
+source provenance. The affected Lody agent configuration now has the additive
+environment setting
+`VTCODE_COMMANDS_ALLOW_LIST=gh pr view,gh pr ready,gh --version`. It applies
+to a fresh ACP process; the original denial remains valid for the already
+running session.
 
 The command-policy probe could not link existing vtcode_core rlibs (E0463),
 so its result is inconclusive, not a policy test pass. Exact logs and the
@@ -270,24 +278,29 @@ Keep issues #35 and #36 logically separate even when their PRs share the
 stack; no paid probes are authorized. Dependabot PR #78 is not our authored
 work.
 
-CI prerequisite cheap gates and notice freshness passed; expensive gates are
-paused. The user now requires ACP linearization first, then tool/MCP/skills
+Some CI prerequisite cheap gates and notice freshness passed; the pinned
+Markdownlint zero-file check was a false green and its full-baseline repair is
+tracked separately. Expensive gates are paused. The user required ACP
+linearization first, then tool/MCP/skills
 resolution, then fast-forwarding main and origin/main to the latest merged
-Stack #37 PR and rebasing the ACP stack. Bring ACP to green checks, review
-equilibrium and merge before resuming hexagonal architecture work. Stack #16
-is explicitly ours. All hexagonal worktrees are parked with uncommitted work
-preserved. No main update or history rewrite has been performed. Issue21's
-scaffold import error has been repaired, but its runtime red remains
-unverified. Issue40, issue41 and issue42 await explicit slots. No CodeRabbit
-review has been requested without successful deterministic gates.
+Stack #37 PR and rebasing the ACP stack. The main fast-forward is complete at
+`dddd1352`; the ACP cascade is complete locally. Bring ACP to green checks,
+review equilibrium and merge before resuming hexagonal architecture work.
+Stack #16 is explicitly ours. All hexagonal worktrees remain parked with
+uncommitted work preserved. No paid provider calls, GitHub mutation from the
+release probe, or binary reinstall has been performed. Issue21's scaffold
+import error has been repaired, but its runtime red remains unverified.
+Issue40, issue41 and issue42 await explicit slots. No CodeRabbit review has
+been requested without successful deterministic gates.
 
 ## Outcomes & retrospective
 
 Planning, branch setup, reconnaissance and the initial programme document
 commit are complete. Both immediate defects have failing regression evidence;
 three #41 router tests and its snapshot regression pass after the fix. Full
-code gates and remaining integration evidence are pending. No new PR,
-completed review or merged issue is claimed.
+code gates and remaining integration evidence are pending. This retrospective
+describes the initial programme state; the later ACP stack update records the
+current rebase and release evidence.
 
 Revision note: Initial programme record captures live source-train constraints,
 delegation, stage obligations and the first two issue handoffs.
@@ -308,7 +321,7 @@ worktree was clean before and after. No open Stack #37 branch was changed.
 
 ### Rebase ownership and recovery state
 
-A journeyman owns the remaining local cascading rebase in
+A journeyman completed the local cascading rebase in
 `/home/leynos/Projects/VTCode.worktrees/acp-stack-integration`. Root owns
 publication, saved-WIP restoration, release installation and final merges.
 Use artisans for bounded individual conflicts, wyverns for source/history
@@ -328,15 +341,19 @@ Saved WIP records are in `/tmp/vtcode-acp-rebase-wip-20260907.json`:
 - 08db8c85e6a22b6e99495e38e8b66ea9d38446d3: PR13 review plan and initial
   atomic-thread-mutation API/test. This patch was relocated from an accidental
   root-worktree edit; root is otherwise free of implementation edits.
-- feb450f4a38c5327bfab24622af26bb57fd15e4b: the tool-surface repair, plan and
-  offline executable smoke fixture. Its smoke has not been executed.
+- ce1547c6904fbf953b4d977bb0eaa67b461b6c50: the latest tool-surface repair,
+  plan and offline executable smoke fixture. Its installed-binary smoke has
+  now run RED; candidate binary verification remains pending. It supersedes
+  feb450f4a38c5327bfab24622af26bb57fd15e4b, which remains retained for
+  recovery; the superseded stash's smoke was not executed.
 
 The parked #21 architecture diagnostics remain dirty and untouched on local
-branch `hex/issue-21-diagnostics-parked`; do not include them in the PR53 rebase.
+branch `hex/issue-21-diagnostics-parked`; do not include them in the PR53
+rebase.
 Other occupied ACP branch worktrees were detached before adopting the stack.
 Do not apply/drop stashes or change those worktrees during this milestone.
 
-### Conflict strategy and current stop
+### Historical conflict strategy and initial stop
 
 Read rebase, github-stacks, sem and weave-git-merge skills and repository
 instructions. Root inspected Weave's preview through the reconnaissance agent.
@@ -353,13 +370,15 @@ Use `gh stack rebase --continue` after staging each resolved conflict; never
 start a competing plain rebase or silently abort the current gh-stack state.
 Do not push until root has reviewed the result and applicable gates are green.
 
-The first stop replays d2c39f961 in PR11. Root inspected all three index stages
+The initial stop replayed d2c39f961 in PR11. Root inspected all three index
+stages
 of `vtcode-llm/src/providers/openai/provider.rs`, retained the merged
 `model_behaviour` spelling and added `custom_provider_config` field/defaults.
 The working file is resolved but not yet staged. Scrutineer syntax validation
 and diff-check passed; stdout is
 `/tmp/acp-rebase-openai-provider-syntax.rs`, stderr is the adjacent `.err` file.
-Stage this one resolved file and continue before investigating the next stop.
+The file was then staged and the cascade continued. This is historical context,
+not the current rebase stop.
 
 For every conflict, inspect index stages and original commit intent before
 editing. Preserve ACP runtime behavior and merged analyse/artefact/behaviour
@@ -406,19 +425,36 @@ journeyman now owns restoration of ce1547c onto a separate tool-surface branch
 based on 8e436821, followed by its existing source and offline release plan.
 Saved stashes remain available. No parked hexagonal patch is included.
 
-CI prerequisites currently owns the global sequential gate slot through the
-shared scrutineer. Other journeymen prepare bounded changes without running
-tests, formatters or linters until the slot is handed over. The separate CI
-repair is intended to become the bottom layer of Stack #16 after validation;
-root must verify the full ordered `gh stack link` update and cascade the
-remaining layers again. PR11 and PR13 repairs likewise require gating and
-propagation before publication. Do not treat the present linear topology as
-evidence that these pending repairs have been integrated or reviewed.
+PR13 review repair completed its positive-control and fault-injection gates
+through the shared scrutineer, then released the sequential gate slot. Other
+journeymen prepare bounded changes without running tests, formatters or
+linters until the slot is handed over. The
+separate CI repair is intended to become the bottom layer of Stack #16 after
+validation; root must verify the full ordered `gh stack link` update and
+cascade the remaining layers again. PR11 and PR13 repairs likewise require
+gating and propagation before publication. Do not treat the present linear
+topology as evidence that these pending repairs have been integrated or
+reviewed.
 
 The installed binary was rechecked on 7 September: SHA-256 remains
 0450179e27b5c011cd923fed23b763ab9b241aa2941d338eac39ce572a39d80d and Build ID
-d810a3c724d1e2a0b897f52f26837d5b44eae02c. No replacement was installed.
-Local main and origin/main still both point to dddd1352.
+d810a3c724d1e2a0b897f52f26837d5b44eae02c. An installed-binary ACP smoke run
+is RED at `/tmp/acp-tool-surface-installed-red-1788781135/run-3535276`. It
+advertised exactly `read_file`, `list_files`, `apply_patch`, `exec_command`,
+`write_stdin`, `agent` and `task_tracker`; the three skill tools and mock MCP
+surface were absent. This is direct evidence that the installed binary does
+not expose the required tools; its exact source SHA remains unknown. No
+replacement was installed. Local main and origin/main
+both point to dddd1352.
+
+The PR11 inherited-rebase compatibility repair is prepared in four files but
+is uncommitted. PR13 has a valid archive-attachment RED and a passing atomic
+message test. Its real-client positive control now passes, and both streaming
+and buffered write-ahead tests fail on the observed filesystem mutation after
+a failed checkpoint. The decisive logs are
+`/tmp/acp-pr13-write-ahead-positive-control.out` and
+`/tmp/acp-pr13-focused-red-write-ahead-real-client.out`. The journeyman has
+released the gate slot and is dispatching the approved production repairs.
 
 Revision note: records the completed local cascade, restored repair ownership
 and exclusive gate handoff. Remaining work is deterministic validation,
