@@ -692,3 +692,26 @@ remain serial and are not run by implementation workers.
 Revision note: recorded actual physics execution and a second installed
 permission-path regression. Neither the installed binary nor the ACP stack
 has been advanced on the strength of these partial results.
+
+### Expanded read physics and first permission executable
+
+The permission branch now passes all 258 ACP tests with warnings denied
+(`/tmp/acp-permission-unit-2.out`). Its Python harness passes formatting,
+lint and syntax checks. The selected core sandbox test passed; the separate
+lifecycle-veto test is ignored on Linux and is not counted as coverage.
+The debug executable built successfully (`/tmp/acp-permission-build-1.out`).
+Its first harness run executed the new-session marker, then stopped on an
+invalid load fixture missing `mcpServers`. The fixture is corrected and the
+full executable scenario set remains pending; no installed binary changed.
+
+The expanded read branch passes 274 ACP tests with warnings denied
+(`/tmp/acp-read-window-phase2-unit-3.out`). Its actual Vidaimock two-window
+scenario now also passes (`/tmp/acp-read-window-phase2-physics-2.out`), proving
+the requested line windows, bounded model results, terminal-frame ordering
+and paced output. The first physics run exposed repeated sequence numbers in
+the fixture's text deltas; removing that fixed sequence restored the existing
+cadence assertions. A separate test correction selects exact tool-call IDs
+instead of the first historical result. Neither repair weakens the assertions.
+
+Revision note: recorded new measured results while retaining executable
+integration, broader gates, review and installation as outstanding work.
