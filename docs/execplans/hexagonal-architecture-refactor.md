@@ -619,3 +619,36 @@ Revision note: recorded non-vacuous baseline controls and published design
 artifacts. Focused Green checks, full commit gates, actual Vidaimock physics,
 combined executable recordings, installation and ACP review/merge remain
 required; no narrower milestone substitutes for the five-contract objective.
+
+### Focused read validation and remaining contract coverage
+
+The read-window repair passed formatting and all 270 ACP crate tests, with
+six tests skipped. Logs are `/tmp/acp-read-window-green-fmt-2.out` and
+`/tmp/acp-read-window-focused-green.out`. This is focused Green evidence;
+it does not establish the skipped physics scenarios or release acceptance.
+The build emitted four test-code warnings; these must be repaired before
+the warning-denying commit gates and CodeRabbit review.
+The same repair still needs ACP-specific continuation guidance, schema
+assertions, a non-compliant client recording and a paced two-window
+Vidaimock scenario before its milestone is ready for full gates and review.
+
+The corrected MCP fixture compiled and failed its registration assertion on
+the isolated baseline, then passed on the repaired tree: exactly one test
+ran in each case. Logs are `/tmp/acp-primary-mcp-corrected-red.out` and
+`/tmp/acp-primary-mcp-corrected-green.out`. A separate resumed-skill regression
+exercises list, load and resource execution under a deny-default primary,
+but has not
+yet been integrated or run. Review of the skill physics source found that
+whole-request substring matching could select historical tool IDs and
+double-count terminal events across stream chunks. Structural output-record
+selection and bounded SSE frame parsing are required before those tests run.
+
+Further source review found an uncovered read-progress case: a byte limit
+smaller than the next UTF-8 scalar, or a one-byte CRLF fragment, can produce
+empty content with an unchanged continuation. The read team must add those
+regressions and return an actionable error or bounded forward progress.
+Reported source-byte extent also needs review where ANSI stripping changes
+the returned content. The earlier Green result does not cover these cases.
+
+Revision note: recorded the first read-window Green result without treating
+it as end-to-end completion; retained all outstanding acceptance layers.
