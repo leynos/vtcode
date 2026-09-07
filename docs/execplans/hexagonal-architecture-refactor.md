@@ -519,3 +519,66 @@ with tool-surface recovery; allowlist composition remains a separate narrow
 follow-up. Exclude the candidate-only integration plan from those PRs.
 Publication, hosted CI, queued reviews and bottom-up merges remain pending.
 Hexagonal implementation stays paused until the ACP stack has converged.
+
+### ACP behavioural acceptance expanded after live incident
+
+The user's 7 September continuation makes five ACP contracts explicit:
+honour the permission-skip flag and enforce permissions without it; advertise
+and load the skill menu; keep skills usable; preserve MCP functionality; and
+return accurate, bounded file windows with truthful position, length and
+continuation metadata. Completion requires unit, behavioural, property and
+data-contract tests, executable ACP scenarios with retained session recordings,
+and Vidaimock timing/failure scenarios. These requirements supersede treating
+the earlier fixture-only smoke as sufficient installed-session acceptance.
+
+The installed executable still hashes to
+`2dc544f8ec5eba14544e13da77380f53123f506eb4e9289c00ec73dc279c04ed`.
+It was installed at 17:31:51 UTC. Lody logs show the reported rstest-bdd session
+`16f610b6-3473-45d9-9611-fb19d007f54e` starting at 17:42:10 UTC, after that
+installation. Its skill failures cannot be dismissed solely as an old process.
+The previous smoke proved a fixture skill and an explicitly allowed command;
+it did not prove real home skills or the requested skip-flag behaviour.
+
+Read-only tracing identified invalid frontmatter in the installed `rebase`
+and `python-testing` skills, and a separate primary-agent filter that can omit
+skill tools. A fixed offline provider sequence now probes real home skill
+loads and direct reads through the installed binary, without executing skill
+instructions or calling paid providers. The retained recording in
+`/tmp/acp-real-home-skills-probe/run-1390512/probe-report.json` proves
+`pr-creation` and `rust-router` load, both malformed skills fail, and direct
+home-file reads are rejected. Local frontmatter repairs preserve instruction
+bodies byte for byte; upstream reports are agent-helper-scripts #116 and
+python-skill #4. The post-repair executable recording in
+`/tmp/acp-real-home-skills-probe-fixed/run-1526860/probe-report.json` proves
+all four skill loads succeed. Direct home-file reads remain rejected; this
+does not establish resumed-session or restricted-agent skill access.
+
+Issue #111 tracks ACP read-window normalization: core-style offset aliases
+are silently dropped by the ACP route. The original report lacks raw tool
+arguments, so source evidence establishes the dropped-alias defect without
+claiming it explains every display discrepancy. A separate journeyman owns
+the bounded read repair and property/behavioural regression coverage.
+
+For permission acceptance, ordinary commands must work with the skip flag
+without individual default allowlist grants; the inverse path must prove
+enforcement with no side effect. Explicit configured denies remain effective.
+The permission journeyman owns runtime propagation and its regression tests
+in a new worktree based on the immutable installed candidate. No candidate
+files or existing stack heads may be overwritten by these investigations.
+
+The CI foundation is now draft PR #110. Local gates and CLI review passed,
+but hosted checks exposed further Windows and notice-generation failures.
+The CI lead owns those repairs. Root coordinates one scrutineer gate slot
+across all teams. Context Pack creation failed on an oversized unrelated
+stored pack; exact commit/path handoffs are the temporary fallback.
+
+At the user's request, an Astra agent owns two separate spycatcher-harness
+draft PRs: roadmap/ADR for a strict cassette-backed ACP file-read slice, and
+an RFC for broader ACP act/expect control with cassette inference. It works
+in separate repository worktrees and shares the serial validation slot.
+
+Revision note: expanded ACP acceptance to the user's five functional contracts
+and required verification layers; recorded the installed-session counterexample
+and delegated independent permission and file-read repairs. Skill and MCP
+integration verification, source-stack publication and green review/merge
+remain outstanding. Hexagonal work remains on hold.
