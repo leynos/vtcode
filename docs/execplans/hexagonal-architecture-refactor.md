@@ -652,3 +652,43 @@ the returned content. The earlier Green result does not cover these cases.
 
 Revision note: recorded the first read-window Green result without treating
 it as end-to-end completion; retained all outstanding acceptance layers.
+
+### First actual skill physics and installed hook controls
+
+The skill repair passed 259 ACP tests with warnings denied; eight ignored
+tests were excluded from that run (`/tmp/acp-skills-physics-unit-3.out`).
+The two explicitly selected Vidaimock 0.3.1 scenarios then executed:
+partial skill-call cancellation passed, while the complete list/load/resource
+flow failed its first-request menu assertion
+(`/tmp/acp-skills-physics-real-1.out`). Investigation found an intentionally
+capped, alphabetical five-entry menu that omitted the late-named workspace
+fixture. This is not evidence that all skill menus or provider instructions
+are absent. A workspace-first ordering repair preserves the cap and overflow
+discovery guidance; its direct baseline control and physics rerun are pending.
+
+The subsequent direct renderer control failed on the baseline and passed
+with workspace-first ordering (`/tmp/acp-skill-render-{red,green}.out`).
+The updated ACP suite passed all 260 tests with warnings denied
+(`/tmp/acp-skills-physics-unit-4.out`), and both actual Vidaimock scenarios
+passed (`/tmp/acp-skills-physics-real-2.out`). The core provenance test also
+passed (`/tmp/acp-skills-core-provenance-1.out`). Resumed-skill integration,
+full gates and installed-executable acceptance remain separate obligations.
+
+The installed executable also reproduced forced lifecycle prompting under
+the dangerous skip flag. The Ask fixture explicitly allows its marker command,
+records the hook running and then observes `session/request_permission`.
+See `/tmp/acp-permission-installed-ask-red.out` and its sibling artifacts
+directory. The permission team is repairing ordinary Ask dispatch while
+preserving explicit Deny decisions. Paired flag-off, veto and owned loopback
+sandbox controls remain required through the rebuilt executable.
+
+A separate executable-acceptance worktree now owns recorded skill resume,
+selected-primary MCP and bounded read-window scenarios against an explicit
+binary path. These complement in-process ACP and Vidaimock tests; they do not
+replace either layer. Collaboration thread limits temporarily prevented gate
+runner activation, but the existing scrutineer became available again. Gates
+remain serial and are not run by implementation workers.
+
+Revision note: recorded actual physics execution and a second installed
+permission-path regression. Neither the installed binary nor the ACP stack
+has been advanced on the strength of these partial results.
