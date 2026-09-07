@@ -715,3 +715,28 @@ instead of the first historical result. Neither repair weakens the assertions.
 
 Revision note: recorded new measured results while retaining executable
 integration, broader gates, review and installation as outstanding work.
+
+### Independent permission controls prevent premature installation
+
+The rebuilt permission candidate passes the flag-off control and paired
+ordinary-Ask cases. Ask with the flag executes with zero permission requests;
+without it, execution follows one affirmative permission response. The
+independent explicit-deny case is a genuine counterexample: with an anchored
+deny for `./permission-marker`, `pwd; ./permission-marker` executes both
+commands and writes the marker. Preserve
+`/tmp/acp-permission-independent-deny/deny/acp-wire.jsonl` and the sibling
+marker as Red evidence. Installation remains prohibited by this failed
+invariant until command admission preserves explicit denies for each executed
+compound-command fragment.
+
+The other independent controls must not be overclaimed. The lifecycle hook
+correctly vetoed execution, but the harness rejected its distinct diagnostic.
+The network probe was blocked by generic command security before reaching the
+sandbox, so it does not prove sandbox isolation. Child execution writes one
+marker but its completion fixture still needs investigation. The skill
+archive-resume test now passes after modelling the normal handler's one-shot
+admission for loading; production policy was unchanged
+(`/tmp/acp-skills-resume-unit-4.out`).
+
+Revision note: recorded the executable compound-deny counterexample and kept
+fixture failures distinct from runtime failures and verified passes.
