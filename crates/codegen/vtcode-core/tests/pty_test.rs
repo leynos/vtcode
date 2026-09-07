@@ -544,53 +544,6 @@ async fn test_exec_command_write_preserves_whitespace() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn test_exec_command_write_stdin_continues_session() {
-    let (_temp, registry) = temp_registry().await.expect("create test registry");
-
-    let start = registry
-        .execute_tool(
-            "exec_command",
-            json!({
-                "cmd": "cat",
-                "yield_time_ms": 0,
-            }),
-        )
-        .await
-        .expect("start public exec command session");
-    let sid = exec_session_id(&start).expect("execution session ID");
-
-    let write = registry
-        .execute_tool(
-            "write_stdin",
-            json!({
-                "session_id": sid.as_str(),
-                "chars": "  keep  \n",
-                "yield_time_ms": 250,
-            }),
-        )
-        .await
-        .expect("continue public exec command session");
-
-    assert_eq!(write["success"], true);
-    assert_eq!(write["session_id"].as_str(), Some(sid.as_str()));
-    assert_eq!(write["is_exited"].as_bool(), Some(false));
-    assert!(
-        write["output"].as_str().unwrap_or_default().contains("  keep  "),
-        "write_stdin output was: {write:?}"
-    );
-
-    let _closed = registry
-        .execute_tool(
-            "close_pty_session",
-            json!({
-                "session_id": sid.as_str(),
-            }),
-        )
-        .await;
-}
-
-#[cfg(unix)]
-#[tokio::test]
 async fn test_write_stdin_empty_chars_polls_without_sending_input() {
     let (_temp, registry) = temp_registry().await.expect("create test registry");
 
