@@ -125,31 +125,64 @@ pub const TURN_METADATA_HEADER: &str = "X-Turn-Metadata";
 
 #[cfg(test)]
 mod tests {
+    //! Verifies turn metadata serialization against controlled Git workspace state.
+
     use super::*;
-    use std::path::PathBuf;
+    use crate::git_info::test_support::{FIXTURE_REMOTE_URL, isolated_git_repository};
 
     #[test]
     fn test_build_turn_metadata_header() {
-        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let metadata = build_turn_metadata_header(&repo_root).unwrap();
+        let fixture = isolated_git_repository().expect("create isolated Git repository fixture");
+        let metadata =
+            build_turn_metadata_header(&fixture.repo_root).expect("build metadata header from fixture repository");
+        assert!(!metadata.is_empty(), "fixture repository must produce a metadata header");
+        let parsed: TurnMetadata = serde_json::from_str(&metadata).expect("decode fixture metadata header JSON");
 
-        // Should produce valid JSON
-        let parsed: Value = serde_json::from_str(&metadata).unwrap();
-        assert!(parsed.get("workspace").is_some());
+        assert_eq!(
+            parsed.workspace.remote_urls.get("origin").map(String::as_str),
+            Some(FIXTURE_REMOTE_URL),
+            "metadata header must retain the fixture origin URL"
+        );
+        assert_eq!(
+            parsed.workspace.commit_hash.as_deref(),
+            Some(fixture.short_head.as_str()),
+            "metadata header must retain the fixture short HEAD"
+        );
+        assert_eq!(
+            parsed.workspace.repo_root.as_deref(),
+            fixture.repo_root.to_str(),
+            "metadata header must retain the fixture repository root"
+        );
     }
 
     #[test]
     fn test_build_turn_metadata_value() {
-        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let value = build_turn_metadata_value(&repo_root).unwrap();
+        let fixture = isolated_git_repository().expect("create isolated Git repository fixture");
+        let value =
+            build_turn_metadata_value(&fixture.repo_root).expect("build metadata value from fixture repository");
+        assert!(!value.is_null(), "fixture repository must produce metadata value");
+        let parsed: TurnMetadata = serde_json::from_value(value).expect("decode fixture metadata value");
 
-        assert!(!value.is_null());
-        assert!(value.get("workspace").is_some());
+        assert_eq!(
+            parsed.workspace.remote_urls.get("origin").map(String::as_str),
+            Some(FIXTURE_REMOTE_URL),
+            "metadata value must retain the fixture origin URL"
+        );
+        assert_eq!(
+            parsed.workspace.commit_hash.as_deref(),
+            Some(fixture.short_head.as_str()),
+            "metadata value must retain the fixture short HEAD"
+        );
+        assert_eq!(
+            parsed.workspace.repo_root.as_deref(),
+            fixture.repo_root.to_str(),
+            "metadata value must retain the fixture repository root"
+        );
     }
 
     #[test]
     fn test_turn_metadata_header_constant() {
-        assert_eq!(TURN_METADATA_HEADER, "X-Turn-Metadata");
+        assert_eq!(TURN_METADATA_HEADER, "X-Turn-Metadata", "metadata header name must remain stable");
     }
 
     #[test]
@@ -163,10 +196,10 @@ mod tests {
             repo_root: Some("/path/to/repo".to_string()),
         };
 
-        let json = serde_json::to_string(&workspace).unwrap();
-        assert!(json.contains("origin"));
-        assert!(json.contains("abc1234"));
-        assert!(json.contains("/path/to/repo"));
+        let json = serde_json::to_string(&workspace).expect("serialize populated workspace metadata");
+        assert!(json.contains("origin"), "serialized workspace must include the remote name");
+        assert!(json.contains("abc1234"), "serialized workspace must include the commit hash");
+        assert!(json.contains("/path/to/repo"), "serialized workspace must include the repository root");
     }
 
     #[test]
@@ -177,9 +210,8 @@ mod tests {
             repo_root: None,
         };
 
-        let json = serde_json::to_string(&workspace).unwrap();
-        // Empty remotes should be skipped due to skip_serializing_if
-        assert!(!json.contains("remote_urls"));
-        assert!(json.contains("commit_hash"));
+        let json = serde_json::to_string(&workspace).expect("serialize workspace without remotes");
+        assert!(!json.contains("remote_urls"), "empty remote map must be omitted from serialized metadata");
+        assert!(json.contains("commit_hash"), "present commit hash must remain serialized");
     }
 }
