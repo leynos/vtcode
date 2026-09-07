@@ -30,7 +30,7 @@ use vtcode_config::auth::{OpenAIChatGptAuthHandle, OpenAIChatGptSession};
 use vtcode_config::constants::models;
 use vtcode_config::core::{
     AnthropicConfig, CustomProviderConfig, ModelConfig, OpenAIConfig, OpenAIHostedShellConfig,
-    OpenAIPromptCacheSettings, OpenAIServiceTier, PromptCachingConfig,
+    OpenAIPromptCacheSettings, OpenAIServiceTier, PromptCachingConfig, RateLimitHeaderConfig,
 };
 
 // Import from extracted modules
@@ -95,6 +95,17 @@ pub struct OpenAIProvider {
 }
 
 impl OpenAIProvider {
+    fn error_provider_name(&self) -> &str {
+        self.provider_display_override.as_deref().unwrap_or("OpenAI")
+    }
+
+    fn rate_limit_headers(&self) -> RateLimitHeaderConfig {
+        self.custom_provider_config.as_ref().map_or_else(
+            || RateLimitHeaderConfig::for_provider_name(self.error_provider_name()),
+            |config| config.effective_rate_limit_headers(),
+        )
+    }
+
     fn requires_streaming_responses(model: &str) -> bool {
         matches!(model, models::openai::GPT | models::openai::GPT_5_6_SOL)
     }

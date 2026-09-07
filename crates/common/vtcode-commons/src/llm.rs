@@ -576,6 +576,39 @@ impl LLMResponse {
     }
 }
 
+/// Typed, provider-neutral quota metadata captured from response headers.
+///
+/// Field names include their units so callers cannot accidentally treat a
+/// per-second limit as a per-minute limit. Missing or malformed provider
+/// headers remain `None`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RateLimitMetadata {
+    pub requests_limit_per_minute: Option<u64>,
+    pub requests_remaining_per_minute: Option<u64>,
+    pub tokens_limit_per_minute: Option<u64>,
+    pub tokens_remaining_per_minute: Option<u64>,
+    pub requests_limit_per_second: Option<u64>,
+    pub requests_remaining_per_second: Option<u64>,
+    pub tokens_limit_per_second: Option<u64>,
+    pub tokens_remaining_per_second: Option<u64>,
+    pub prompt_tokens_limit_per_second: Option<u64>,
+    pub cache_adjusted_prompt_tokens_limit_per_second: Option<u64>,
+    pub generated_tokens_limit_per_second: Option<u64>,
+    /// Number of prompt tokens consumed by this request.
+    pub prompt_tokens: Option<u64>,
+    /// Cached subset of [`Self::prompt_tokens`] for this request.
+    pub cached_prompt_tokens: Option<u64>,
+    /// Provider-suggested reset interval, rounded up to whole milliseconds.
+    pub reset_after_millis: Option<u64>,
+}
+
+impl RateLimitMetadata {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
 #[derive(Clone, Deserialize, PartialEq, Eq)]
 pub struct LLMErrorMetadata {
     provider: Option<String>,
@@ -584,6 +617,7 @@ pub struct LLMErrorMetadata {
     request_id: Option<String>,
     organization_id: Option<String>,
     pub retry_after: Option<String>,
+    pub rate_limit: Option<RateLimitMetadata>,
     pub message: Option<String>,
 }
 
@@ -597,6 +631,7 @@ impl fmt::Debug for LLMErrorMetadata {
             .field("request_id", &self.request_id)
             .field("organization_id", &self.organization_id)
             .field("retry_after", &self.retry_after)
+            .field("rate_limit", &self.rate_limit)
             .field(
                 "message",
                 &self
@@ -613,13 +648,14 @@ impl Serialize for LLMErrorMetadata {
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("LLMErrorMetadata", 7)?;
+        let mut state = serializer.serialize_struct("LLMErrorMetadata", 8)?;
         state.serialize_field("provider", &self.provider)?;
         state.serialize_field("status", &self.status)?;
         state.serialize_field("code", &self.code)?;
         state.serialize_field("request_id", &self.request_id)?;
         state.serialize_field("organization_id", &self.organization_id)?;
         state.serialize_field("retry_after", &self.retry_after)?;
+        state.serialize_field("rate_limit", &self.rate_limit)?;
         let message = self
             .message
             .as_deref()
@@ -649,8 +685,16 @@ impl LLMErrorMetadata {
             request_id,
             organization_id,
             retry_after,
+            rate_limit: None,
             message: message.map(|message| sanitize_provider_diagnostic(message.as_bytes())),
         })
+    }
+
+    /// Attach bounded, typed rate-limit response metadata.
+    #[must_use]
+    pub fn with_rate_limit(mut self: Box<Self>, rate_limit: Option<RateLimitMetadata>) -> Box<Self> {
+        self.rate_limit = rate_limit;
+        self
     }
 }
 

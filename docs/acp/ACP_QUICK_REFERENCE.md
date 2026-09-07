@@ -72,9 +72,14 @@ tokens). Cache pricing is optional.
 Automatic context compaction is advertised as `_meta.lody.compaction` version
 1 and is emitted through standard `tool_call` and `tool_call_update` updates.
 The updates carry `_meta.lody.activity` for token counts, duration, and failure
-details. VT Code does not advertise `_meta.lody.rateLimits` without trustworthy
-quota state; HTTP 429 and `Retry-After` are instead reported in warning notices
-and provider telemetry.
+details. HTTP 429 notices include configured provider quota headers, preserving
+per-minute, per-second, and per-request units. `Retry-After` and configured
+reset intervals set a minimum for exponential back-off; missing headers are
+silent. See [provider rate-limit headers](../development/provider-rate-limit-headers.md).
+VT Code advertises push-only `_meta.lody.rateLimits` version 1 and emits
+`_lody/rate_limits/update` for observed quota headers. Complete limit/remaining
+pairs produce utilization windows; limit-only headers retain the absolute
+limit in `limitName` with no invented utilization. There is no query method.
 
 ## Legacy REST ACP client reference
 

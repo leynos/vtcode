@@ -73,11 +73,17 @@ Automatic context compaction is advertised as `_meta.lody.compaction = {
 call ID and carry `_meta.lody.activity` with the activity kind, token counts,
 duration, and any failure reason; no private ACP update type is required.
 
-VT Code does not advertise `_meta.lody.rateLimits` unless it has trustworthy
-quota state. A Baseten HTTP 429 is not treated as a quota window: the response
-and any `Retry-After` value are surfaced through warning notices and provider
-telemetry instead. This avoids presenting fabricated reset times or usage
-percentages.
+VT Code advertises push-only `_meta.lody.rateLimits = { "version": 1 }`.
+Recognized HTTP 429 quota headers produce `_lody/rate_limits/update` snapshots
+scoped to the provider and model. Complete nonzero limit/remaining pairs
+produce `usedPercent` and the provider's documented window duration. Missing
+reset times remain null. Limit-only headers, including Fireworks throughput
+ceilings, retain their absolute values in `limitName` with empty `windows`.
+There is no quota query method or inferred account identifier. Per-request
+token counters, `Retry-After`, and other diagnostics remain in warning notices;
+they are not added to usage deltas. See
+[provider rate-limit headers](../development/provider-rate-limit-headers.md)
+for configuration and retry semantics.
 
 The current server is launched with `vtcode acp` and communicates over stdio;
 it does not expose the legacy `/messages`, `/metadata`, or `/health` HTTP

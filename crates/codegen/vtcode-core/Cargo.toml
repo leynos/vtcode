@@ -74,6 +74,7 @@ lru = "0.18"
 num_cpus = { workspace = true }
 chrono = { workspace = true } # For timestamp handling in CLI
 humantime = "2.1"
+httpdate = "1.0"
 terminal_size = "0.4.4"
 async-trait = { workspace = true }
 # Home directory detection

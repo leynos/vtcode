@@ -36,8 +36,12 @@ vtcode-safety = { workspace = true }
 
 [dev-dependencies]
 assert_fs = { workspace = true }
+axum = "0.8"
 proptest = "1.11"
+tokio = { workspace = true, features = ["test-util"] }
 toml = { workspace = true }
+wiremock = "0.6.5"
+vtcode-llm = { workspace = true }
 
 [lib]
 doctest = false
