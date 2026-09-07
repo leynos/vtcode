@@ -460,3 +460,62 @@ Revision note: records the completed local cascade, restored repair ownership
 and exclusive gate handoff. Remaining work is deterministic validation,
 lower-layer repair propagation, executable release verification, review and
 bottom-up merge; hexagonal implementation remains paused.
+
+### Installed ACP release accepted
+
+Later on 7 September, root completed the installed-release acceptance. This
+supersedes the earlier installed-binary RED and no-install status above.
+The isolated integration candidate is clean at commit
+`30b348853b7f934f8ce004e48dc1f5b87b336cd3`, with tree
+`ad62497332da7216845798d703f8785afee2605a`. It includes the separate CI,
+PR11, PR13 and tool-surface repairs, canonical MCP routing, and the subsequent
+MCP allowlist composition repair. It is an integration artifact, not an
+aggregate PR or evidence that the narrow source branches have been published.
+
+The final Rust suite passed 10,419 tests with 30 skipped; the harness and
+documentation gates passed. CodeRabbit reviewed the final eight-file delta
+with zero findings after deterministic gates. Root atomically installed the
+release artifact at `/home/leynos/.cargo/bin/vtcode`. Its SHA-256 is
+`2dc544f8ec5eba14544e13da77380f53123f506eb4e9289c00ec73dc279c04ed`;
+the previous executable remains in the release-artifacts rollback directory.
+Both artifact and installed-path offline smoke tests passed: all three skill
+operations, exactly one MCP echo call, successful `gh --version`, and the
+final ACP marker. Existing processes were not restarted by installation.
+
+Evidence is retained in
+`/tmp/acp-installed-release-provenance-policy-final.txt`,
+`/tmp/acp-installed-release-install-record-20260907.json` and
+`/tmp/acp-installed-release-policy-installed-smoke-final.out`.
+The built candidate's tracked plan remains unchanged after its build; these
+external records preserve the exact source-to-artifact relationship.
+
+Operator configuration was repaired separately. Four Lody ACP configurations
+now include the requested local comenq, GitHub comment, issue and PR creation
+command grants; the issue-comment API grant is scoped to that endpoint.
+No SSH allowance was added. Exact registered MCP tool grants were added to
+the global policy and the reported rstest-bdd and Cuprum workspace policies,
+with rollback copies and field-preserving readback checks. Fresh processes
+are required to inherit the command environment. These configuration edits
+do not imply that every existing workspace policy has been migrated.
+
+The user-requested `~/.local/bin/vtcode_for_lody` helper was installed outside
+the repository after formatting, lint, syntax and eleven mocked protocol
+tests passed. Its default is read-only status; `--terminate` uses Lody's
+session-specific local RPC after verifying the agent configuration and daemon
+identity. Root used that RPC for the requested Cuprum session and received
+an exact-session success response. No PID is guessed by the helper.
+
+Issue #109 separately tracks primary-agent inline MCP providers omitted by
+ACP startup. Unified/full-auto callers do merge them. This is a static
+follow-up finding, distinct from the repaired allowlist composition and
+PR11's partial-initialization fixes; its offline acceptance remains pending.
+
+The serial gate slot now belongs to the combined fifteen-path CI foundation
+in `hex-ci-prerequisites`. It incorporates the reviewed #108 maintenance
+ratchet and the earlier CI repairs so the bottom PR can pass independently;
+issues #107 and #108 remain open debt. The ACP lead prepares narrow replay
+packets without running gates concurrently. Canonical MCP routing belongs
+with tool-surface recovery; allowlist composition remains a separate narrow
+follow-up. Exclude the candidate-only integration plan from those PRs.
+Publication, hosted CI, queued reviews and bottom-up merges remain pending.
+Hexagonal implementation stays paused until the ACP stack has converged.
