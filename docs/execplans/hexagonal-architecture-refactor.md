@@ -386,3 +386,41 @@ in `ce1547c6904fbf953b4d977bb0eaa67b461b6c50`, superseding feb450f4 for
 restoration. The old stash is retained for recovery. The tool-surface worktree
 is clean again. CI prerequisites separately advanced to dddd1352 and retained
 the new baseline handoff bytes during archival; their gates remain pending.
+
+### Completed rebase and repair handoff
+
+The ten-layer local cascade is complete. Its base is dddd1352 and its top is
+8e436821. Intermediate heads in PR order are 654378e0 (#11), 272f0883 (#12),
+399370bd (#13), 470d3e19 (#14), 57162a56 (#17), 493e376e (#103),
+6527596a (#104), d9ca178d (#53) and 637439de (#55). The integration worktree
+is clean, has no unmerged index entries or merge commits in this range, and
+native stack tracking reports no layer needing a rebase. Exact heads are in
+`/tmp/acp-stack-rebase-local-stack-view.json`; the reviewed range-diff is in
+`/tmp/acp-stack-rebase-range-diff.out`. All conflict syntax checks passed.
+These are local integration results; the rewritten branches are not pushed.
+
+Root restored the one-field PR11 checkpoint initializer repair onto 654378e0
+in its dedicated worktree. The PR13 journeyman owns restoration onto 399370bd
+and prepares the approved review regressions with artisans. The stack-rebase
+journeyman now owns restoration of ce1547c onto a separate tool-surface branch
+based on 8e436821, followed by its existing source and offline release plan.
+Saved stashes remain available. No parked hexagonal patch is included.
+
+CI prerequisites currently owns the global sequential gate slot through the
+shared scrutineer. Other journeymen prepare bounded changes without running
+tests, formatters or linters until the slot is handed over. The separate CI
+repair is intended to become the bottom layer of Stack #16 after validation;
+root must verify the full ordered `gh stack link` update and cascade the
+remaining layers again. PR11 and PR13 repairs likewise require gating and
+propagation before publication. Do not treat the present linear topology as
+evidence that these pending repairs have been integrated or reviewed.
+
+The installed binary was rechecked on 7 September: SHA-256 remains
+0450179e27b5c011cd923fed23b763ab9b241aa2941d338eac39ce572a39d80d and Build ID
+d810a3c724d1e2a0b897f52f26837d5b44eae02c. No replacement was installed.
+Local main and origin/main still both point to dddd1352.
+
+Revision note: records the completed local cascade, restored repair ownership
+and exclusive gate handoff. Remaining work is deterministic validation,
+lower-layer repair propagation, executable release verification, review and
+bottom-up merge; hexagonal implementation remains paused.
