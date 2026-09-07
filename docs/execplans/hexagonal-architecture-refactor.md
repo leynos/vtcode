@@ -582,3 +582,40 @@ and required verification layers; recorded the installed-session counterexample
 and delegated independent permission and file-read repairs. Skill and MCP
 integration verification, source-stack publication and green review/merge
 remain outstanding. Hexagonal work remains on hold.
+
+### Baseline controls and related publications
+
+The read and skill baseline tests fail at the intended behavioural assertions,
+not merely because a proposed API is missing. ACP forwards no starting line
+for `offset: 108`, instead of `Some(108)`
+(`/tmp/acp-read-window-rpc-isolated-red.out`). The restricted `duck` primary
+omits `list_skills` (`/tmp/acp-skills-baseline-red.out`). Each run compiled and
+executed exactly one selected test against the immutable baseline plus its
+isolated regression. An earlier read run selected the wrong worktree and
+failed compilation; it is retained separately and is not regression evidence.
+
+The MCP registration test also compiled and failed, but subsequent inspection
+found that its runtime fixture still selected the default `duck` agent rather
+than `research`. The corrected fixture needs fresh baseline and repaired-tree
+runs before those results establish the selected-primary regression.
+
+The permission executable fixture independently reproduces parent and child
+command denial with the skip flag against the installed binary. Flag-off and
+explicit-deny controls leave the marker unexecuted. Evidence is in
+`/tmp/acp-permission-installed-{new,child,off,deny}-red.out`. Runtime repairs
+also propagate full sandbox, permission and timeout configuration, fail
+initialization on configuration errors, and pass effective command policy to
+child controllers. These source changes are not yet release-validated.
+
+Spycatcher-harness draft PRs #110 and #111 now contain the separate roadmap/ADR
+and ACP puppeteering RFC. Both passed documentation gates and CLI review with
+zero findings; hosted CI was pending at publication. VTCode issues #112 and
+\#113 separately request missing-name and recoverable-YAML tolerance with a
+shared strict mode; the user requested issue creation, not parser changes in
+the current catalogue repair. Issue #114 tracks startup prompt validation
+before provider authentication, exposed by the restored coverage execution.
+
+Revision note: recorded non-vacuous baseline controls and published design
+artifacts. Focused Green checks, full commit gates, actual Vidaimock physics,
+combined executable recordings, installation and ACP review/merge remain
+required; no narrower milestone substitutes for the five-contract objective.
