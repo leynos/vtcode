@@ -63,6 +63,16 @@ async fn assert_sequential_denied_tools_are_rejected() {
     let thread_id = "thread-denied-tool";
     let session_id = "session-denied-tool";
     let mut runner = Box::pin(make_runner(&temp, DiapasonConfig::default(), thread_id)).await;
+    runner
+        .tool_registry
+        .register_tool(crate::tools::registry::ToolRegistration::new(
+            tools::UNIFIED_EXEC,
+            CapabilityLevel::Bash,
+            false,
+            |_, _| Box::pin(std::future::pending::<anyhow::Result<serde_json::Value>>()),
+        ))
+        .await
+        .expect("pending test executor should register");
     runner.enable_full_auto(&[tools::UNIFIED_FILE.to_string()]).await;
 
     let tool_calls = denied_unified_exec_calls();
@@ -70,11 +80,25 @@ async fn assert_sequential_denied_tools_are_rejected() {
 
     let mut runtime = AgentRuntime::new(AgentSessionState::new(session_id.to_string(), 16, 4, 128_000), None, None);
     let mut recorder = ExecEventRecorder::new(thread_id, None, None);
-    runner
-        .execute_tool_call_batches(tool_calls, &mut runtime, &mut recorder, "[denied]", false, false)
-        .await
-        .expect("tool execution should finish");
 
+    let mut execution =
+        Box::pin(runner.execute_tool_call_batches(tool_calls, &mut runtime, &mut recorder, "[denied]", false, false));
+    let waker = futures::task::noop_waker_ref();
+    let mut context = std::task::Context::from_waker(waker);
+    match Future::poll(execution.as_mut(), &mut context) {
+        std::task::Poll::Ready(result) => result.expect("tool execution should finish"),
+        std::task::Poll::Pending => {
+            panic!("denied tool admission must complete before the pending executor can be polled")
+        }
+    }
+    drop(execution);
+
+    let expected_denial = format!("Tool execution denied: {}", tools::UNIFIED_EXEC);
+    assert!(
+        runtime.state.warnings.iter().any(|warning| warning == &expected_denial),
+        "denied tool warning should be recorded: {:?}",
+        runtime.state.warnings
+    );
     assert!(!runtime.state.executed_commands.iter().any(|tool| tool == tools::UNIFIED_EXEC));
 
     let events = recorder.into_events();
