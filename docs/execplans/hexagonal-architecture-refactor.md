@@ -773,3 +773,36 @@ merging remain outstanding.
 
 Revision note: recorded reproducible installed failures and fresh lint and
 physics evidence without claiming that the deployed executable is repaired.
+
+### Rebuilt permission candidate passes recorded controls
+
+The shared command-policy repair passes all 31 shell-parser tests and ten
+registry tests with warnings denied
+(`/tmp/acp-compound-green-{parser,core}-2.out`). The negative tests require
+structured operation errors and no command effects, including prefix effects
+before embedded or nested shell wrappers. Positive controls retain quoted
+literals, admitted pipelines and safe substitutions. Formatting also passes.
+
+The rebuilt debug binary has SHA-256
+`8e283b5c3b40eb6be57dae39121a68fcd1709547fc6e93be984497bce791885d`.
+Independent recorded executable cases pass for configured denial,
+environment-supplied denial, flag-off prompting, new sessions, loaded sessions,
+real child completion and paired ordinary Ask hooks. See
+`/tmp/acp-permission-{deny,env-deny,off,new,load,child,ask}-green-2.out` and
+their sibling recording directories. Denial cases leave no marker; positive
+skip-mode cases execute with zero permission requests. Flag-off rejection
+leaves no marker, while affirmative Ask approval permits execution.
+
+The skills branch also passes workspace documentation, type-check and build
+gates (`/tmp/acp-skills-full-{lint-docs,typecheck,build}-1.out`). Its executable
+fixture required an explicit initial-turn completion before restart and load;
+the earlier accidental repeated load was not a valid resume test. The corrected
+case passes through a real restart and archive load
+(`/tmp/acp-skills-executable-candidate-3.out`), repeating discovery, loading,
+resource retrieval and skill invocation. Its remaining formatter-only
+correction is separate from that behavioural result. Permission physics,
+remaining boundary controls, broader gates, integrated acceptance and review
+remain outstanding. The installed binary has not changed.
+
+Revision note: 2026-09-08. Recorded actual rebuilt-executable permission
+evidence while preserving the distinction from installation and full delivery.
