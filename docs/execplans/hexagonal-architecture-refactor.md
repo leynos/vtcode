@@ -244,6 +244,43 @@ read before any mutation. Existing stacked PRs can show green evaluation
 without full CI, which currently targets main; require actual integration
 checks before merge.
 
+## ACP priority and stack integration update
+
+The user escalated missing gh access, MCP tools and skills in the Lody ACP
+session, then requested verification that the installed release contains the
+pending fixes. The installed wrapper invokes ~/.cargo/bin/vtcode with an
+explicit ~/.vtcode/vtcode.toml; version 0.156.1 alone does not establish
+source provenance. Read-only binary and MCP/skill discovery audits are
+underway. No release replacement or configuration change has yet been made.
+
+The command-policy probe could not link existing vtcode_core rlibs (E0463),
+so its result is inconclusive, not a policy test pass. Exact logs and the
+bounded hypothesis are in docs/debugging/debugging-plan-20260907-acp-gh-
+policy.md. The session logs and source independently identify the command
+allowlist gate.
+
+Live GitHub stack inventory on 7 September 2026 identifies Stack #37 as the
+other agent's exclusive train; do not rebase, relink or publish its
+branches. Our existing ACP train is Stack #16 (11, 12, 13, 14, 17), followed
+by three commits on feat/acp-responses-hardening without a PR, then Stack
+\#57 (53, 55, 56). Local remote-tracking ancestry is linear with no merge
+commits at each edge. Preserve the missing three-commit layer in the review
+chain before joining the stacks. Refresh remote heads before any mutation.
+Keep issues #35 and #36 logically separate even when their PRs share the
+stack; no paid probes are authorized. Dependabot PR #78 is not our authored
+work.
+
+CI prerequisite cheap gates and notice freshness passed; expensive gates are
+paused. The user now requires ACP linearization first, then tool/MCP/skills
+resolution, then fast-forwarding main and origin/main to the latest merged
+Stack #37 PR and rebasing the ACP stack. Bring ACP to green checks, review
+equilibrium and merge before resuming hexagonal architecture work. Stack #16
+is explicitly ours. All hexagonal worktrees are parked with uncommitted work
+preserved. No main update or history rewrite has been performed. Issue21's
+scaffold import error has been repaired, but its runtime red remains
+unverified. Issue40, issue41 and issue42 await explicit slots. No CodeRabbit
+review has been requested without successful deterministic gates.
+
 ## Outcomes & retrospective
 
 Planning, branch setup, reconnaissance and the initial programme document
