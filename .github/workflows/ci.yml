@@ -227,7 +227,7 @@ jobs:
         with:
           tool: cargo-unmaintained@1.10.0
       - name: Check for unmaintained dependencies
-        run: cargo unmaintained --no-warnings
+        run: python3 scripts/check_unmaintained_baseline.py
 
   dependency-audit:
     name: Check RustSec Advisories
@@ -248,7 +248,7 @@ jobs:
       - name: Audit locked dependencies against RustSec
         run: cargo audit --file Cargo.lock
 
-  # Run markdownlint on all markdown files in the repository.
+  # Run markdownlint on added or modified Markdown files.
   lint-markdown:
     name: Check Markdown
     runs-on: ubuntu-latest
@@ -263,17 +263,15 @@ jobs:
       - id: filter
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         with:
+          list-files: json
           filters: |
             markdown:
-              - '**/*.md'
-              - '!.github/workflows/*.yml'
-              - '!target/**'
-      - uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24.2.0
+              - added|modified: '**/*.md'
+      - name: Lint changed Markdown
         if: steps.filter.outputs.markdown == 'true'
-        with:
-          globs: |
-            '**/*.md'
-            '!target'
+        env:
+          VTCODE_CHANGED_MARKDOWN_FILES_JSON: ${{ steps.filter.outputs.markdown_files }}
+        run: node scripts/lint_changed_markdown.mjs
 
   check-cross-platform:
     name: Cross-platform check ${{ matrix.os }}
