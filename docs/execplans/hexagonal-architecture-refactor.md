@@ -740,3 +740,36 @@ admission for loading; production policy was unchanged
 
 Revision note: recorded the executable compound-deny counterexample and kept
 fixture failures distinct from runtime failures and verified passes.
+
+### Installed acceptance recordings and workspace lint evidence
+
+The standalone executable harness reproduced three defects against the
+unchanged installed binary, whose SHA-256 remains
+`2dc544f8ec5eba14544e13da77380f53123f506eb4e9289c00ec73dc279c04ed`.
+The restricted Duck request advertises only `read_file`, `list_files` and
+`task_tracker`; the selected primary agent omits its configured MCP route;
+and the file-read RPC forwards `limit: 13` but loses the requested line.
+The causal provider and ACP recordings live under
+`/tmp/acp-installed-baseline-{skills,primary-mcp,read-window}-1/`.
+Missing final text alone is not the evidence for the first two failures.
+
+Source review then reconciled the harness with the repair contracts: preserve
+the hyphen in `mcp__primary-mock__echo`, assert `capped_by_limit` and client
+response bounds, and distinguish returned fragment bytes from source size.
+The corrected harness passes Python format, lint and syntax checks, and the
+unchanged original smoke still passes
+(`/tmp/acp-original-smoke-regression-1.out`). A repaired executable run remains
+required; these checks do not make the installed baseline Green.
+
+The skills branch passes full workspace Clippy with warnings denied after a
+small boxed-error correction in its test gateway
+(`/tmp/acp-skills-full-lint-clippy-2.out`). Both actual Vidaimock scenarios
+passed again (`/tmp/acp-skills-physics-real-3.out`, two passed, 267 skipped).
+The child executable scenario also passes with exactly one marker and no
+permission request (`/tmp/acp-permission-child-6.out`). The compound-deny
+repair remains unverified and must cover embedded and nested shell wrappers
+before installation. Broader gates, integrated acceptance, review and stack
+merging remain outstanding.
+
+Revision note: recorded reproducible installed failures and fresh lint and
+physics evidence without claiming that the deployed executable is repaired.
