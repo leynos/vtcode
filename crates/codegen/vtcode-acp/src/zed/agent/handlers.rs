@@ -216,6 +216,21 @@ async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, b
     session.update_transcript_path().await;
 }
 
+async fn require_session_checkpoint(
+    agent: &ZedAgent,
+    session: &SessionHandle,
+    boundary: &'static str,
+) -> Result<(), SdkError> {
+    if let Err(error) = agent.checkpoint_session(session).await {
+        warn!(%error, boundary, "Failed to persist ACP session checkpoint");
+        return Err(
+            SdkError::internal_error().data(format!("Failed to persist ACP session checkpoint at {boundary}: {error}"))
+        );
+    }
+    session.update_transcript_path().await;
+    Ok(())
+}
+
 async fn finish_failed_provider_turn(
     agent: &ZedAgent,
     session: &SessionHandle,
@@ -1306,7 +1321,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 assistant_tool_message.reasoning = Some(assistant_reasoning.clone());
                             }
                             drop(stage_thread_tool_calls(&thread, assistant_tool_message));
-                            persist_session_checkpoint(&agent, &session, "assistant_tool_calls_write_ahead").await;
+                            require_session_checkpoint(&agent, &session, "assistant_tool_calls_write_ahead").await?;
                             if let Some(controller) = agent.session_subagent_controller(&session) {
                                 controller.set_parent_session_id(args.session_id.to_string()).await;
                                 controller.set_parent_messages(&agent.resolved_messages(&session)).await;
@@ -1456,7 +1471,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     &thread,
                     Message::assistant_with_tools(response.content.clone().unwrap_or_default(), tool_calls.clone()),
                 ));
-                persist_session_checkpoint(&agent, &session, "assistant_tool_calls_write_ahead").await;
+                require_session_checkpoint(&agent, &session, "assistant_tool_calls_write_ahead").await?;
                 if let Some(controller) = agent.session_subagent_controller(&session) {
                     controller.set_parent_session_id(args.session_id.to_string()).await;
                     controller.set_parent_messages(&agent.resolved_messages(&session)).await;
@@ -1998,6 +2013,12 @@ mod tests {
 
     struct PartialThenFailProvider;
 
+    struct InvalidateArchiveBeforeToolProvider {
+        calls: Arc<AtomicUsize>,
+        archive_path: PathBuf,
+        patch_arguments: String,
+    }
+
     struct BlockingPromptProvider {
         started: Arc<Notify>,
         release: Arc<Notify>,
@@ -2135,6 +2156,64 @@ mod tests {
 
         async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
             panic!("partial-stream test must not use buffered generation")
+        }
+    }
+
+    #[async_trait]
+    impl LLMProvider for InvalidateArchiveBeforeToolProvider {
+        fn name(&self) -> &str {
+            "wire-test"
+        }
+
+        fn supported_models(&self) -> Vec<String> {
+            vec!["wire-model".to_string()]
+        }
+
+        fn supports_streaming(&self) -> bool {
+            true
+        }
+
+        fn supports_tools(&self, _model: &str) -> bool {
+            true
+        }
+
+        fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+            Ok(())
+        }
+
+        async fn stream(&self, _request: LLMRequest) -> Result<vtcode_core::llm::provider::LLMStream, LLMError> {
+            let response_index = self.calls.fetch_add(1, Ordering::SeqCst);
+            let events = if response_index == 0 {
+                std::fs::remove_file(&self.archive_path)
+                    .map_err(|error| LLMError::Provider { message: error.to_string(), metadata: None })?;
+                std::fs::create_dir(&self.archive_path)
+                    .map_err(|error| LLMError::Provider { message: error.to_string(), metadata: None })?;
+                let response = LLMResponse {
+                    content: Some("I need to edit the fixture.".to_string()),
+                    tool_calls: Some(vec![vtcode_core::llm::provider::ToolCall::function(
+                        "write-ahead-checkpoint-tool".to_string(),
+                        "apply_patch".to_string(),
+                        self.patch_arguments.clone(),
+                    )]),
+                    finish_reason: vtcode_core::llm::provider::FinishReason::ToolCalls,
+                    model: "wire-model".to_string(),
+                    ..LLMResponse::default()
+                };
+                vec![Ok(LLMStreamEvent::Completed { response: Box::new(response) })]
+            } else {
+                let response = LLMResponse {
+                    content: Some("Tool complete.".to_string()),
+                    finish_reason: vtcode_core::llm::provider::FinishReason::Stop,
+                    model: "wire-model".to_string(),
+                    ..LLMResponse::default()
+                };
+                vec![Ok(LLMStreamEvent::Completed { response: Box::new(response) })]
+            };
+            Ok(Box::pin(futures::stream::iter(events)))
+        }
+
+        async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+            panic!("write-ahead checkpoint test must use streaming")
         }
     }
 
@@ -2595,6 +2674,110 @@ mod tests {
             }))
         );
         assert_eq!(plans[1], plan, "the next prompt must replay the same persisted plan");
+    }
+
+    #[tokio::test]
+    async fn failed_write_ahead_checkpoint_prevents_acp_tool_execution() {
+        // Review 3791762676: a tool call cannot cross the execution boundary
+        // when its write-ahead checkpoint did not become durable.
+        let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+        let workspace = TempDir::new().expect("wire test workspace");
+        let archive_path = workspace.path().join("checkpoint.json");
+        let patch_path = workspace.path().join("must-not-change.txt");
+        std::fs::write(&patch_path, "original\n").expect("write patch target");
+        let patch = format!(
+            "*** Begin Patch\n*** Update File: {}\n@@\n-original\n+changed\n*** End Patch\n",
+            patch_path.display()
+        );
+        let calls = Arc::new(AtomicUsize::new(0));
+        let factory_calls = Arc::clone(&calls);
+        let patch_arguments = serde_json::json!({"patch": patch}).to_string();
+        let archive_for_provider = archive_path.clone();
+        let _factory_guard = PromptProviderFactoryGuard::install(
+            "wire-test",
+            Arc::new(move || {
+                Box::new(InvalidateArchiveBeforeToolProvider {
+                    calls: Arc::clone(&factory_calls),
+                    archive_path: archive_for_provider.clone(),
+                    patch_arguments: patch_arguments.clone(),
+                })
+            }),
+        );
+        let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+        let session_id = agent.register_session();
+        let session = agent.session_handle(&session_id).expect("registered session");
+        let metadata = session
+            .data
+            .lock()
+            .expect("session data")
+            .thread
+            .metadata()
+            .expect("session metadata");
+        let listing = vtcode_core::utils::session_archive::SessionListing {
+            path: archive_path.clone(),
+            snapshot: vtcode_core::utils::session_archive::SessionSnapshot {
+                metadata: metadata.clone(),
+                started_at: chrono::Utc::now(),
+                ended_at: chrono::Utc::now(),
+                total_messages: 0,
+                distinct_tools: Vec::new(),
+                transcript: Vec::new(),
+                messages: Vec::new(),
+                progress: None,
+                error_logs: Vec::new(),
+            },
+        };
+        session.data.lock().expect("session data").archive =
+            Some(vtcode_core::utils::session_archive::SessionArchive::resume_from_listing(&listing, metadata));
+
+        let (agent_channel, client_channel) = Channel::duplex();
+        let agent_connection =
+            install_handlers(Agent.builder().name("vtcode-write-ahead-checkpoint-test"), Arc::clone(&agent))
+                .connect_with(agent_channel, {
+                    let agent = Arc::clone(&agent);
+                    async move |cx: ConnectionTo<Client>| {
+                        agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                        std::future::pending::<agent_client_protocol::Result<()>>().await
+                    }
+                });
+        let agent_task = tokio::spawn(agent_connection);
+
+        let client_connection = Client
+            .builder()
+            .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+                drop(
+                    cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                        .block_task()
+                        .await?,
+                );
+                let error = cx
+                    .send_request(PromptRequest::new(
+                        session_id,
+                        vec![acp::ContentBlock::Text(acp::TextContent::new("Change the fixture"))],
+                    ))
+                    .block_task()
+                    .await
+                    .expect_err("failed write-ahead checkpoint must fail the prompt before execution");
+                assert!(
+                    format!("{error:?}").contains("Failed to persist ACP session checkpoint"),
+                    "checkpoint failure must be visible to the ACP caller: {error:?}"
+                );
+                Ok(())
+            });
+
+        tokio::time::timeout(Duration::from_secs(5), client_connection)
+            .await
+            .expect("client connection should finish")
+            .expect("write-ahead checkpoint protocol flow should finish");
+        agent_task.abort();
+        drop(agent_task.await);
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "the provider should not be called again after checkpoint failure");
+        assert_eq!(
+            std::fs::read_to_string(&patch_path).expect("read patch target"),
+            "original\n",
+            "a failed write-ahead checkpoint must prevent tool side effects"
+        );
     }
 
     #[tokio::test]
