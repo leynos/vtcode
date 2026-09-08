@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
 use vtcode_core::core::interfaces::session::PlanningEntrySource;
 use vtcode_core::core::threads::{ArchivedSessionIntent, SessionQueryScope, list_recent_sessions_in_scope};
-use vtcode_core::utils::colors::style;
+use vtcode_core::utils::colours::style;
 use vtcode_core::utils::session_archive::{
     SessionContinuationMetadata, SessionContinuationRecommendedAction, SessionListing, session_workspace_path,
 };

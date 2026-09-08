@@ -2,7 +2,7 @@ use super::*;
 use crate::tui::config::constants::ui;
 use crate::tui::core_tui::session::list_panel::input_styles_from_theme;
 use crate::tui::core_tui::session::transcript_links::decorate_detected_link_lines;
-use crate::tui::core_tui::style::ratatui_color_from_ansi;
+use crate::tui::core_tui::style::ratatui_colour_from_ansi;
 use crate::tui::core_tui::types::InlineMessageKind;
 use crate::tui::ui::tui::session::modal::{
     ModalBodyContext, ModalListState, ModalRenderStyles, render_modal_body, render_wizard_modal_body,
@@ -23,7 +23,7 @@ fn modal_base_style(session: &Session) -> Style {
 
 fn modal_heading_style(session: &Session) -> Style {
     modal_base_style(session)
-        .fg(ratatui_color_from_ansi(resolve_modal_chrome_ansi_color(session)))
+        .fg(ratatui_colour_from_ansi(resolve_modal_chrome_ansi_colour(session)))
         .add_modifier(Modifier::BOLD)
 }
 
@@ -59,7 +59,7 @@ fn modal_has_title(session: &Session) -> bool {
     !modal_title_text(session).trim().is_empty()
 }
 
-fn resolve_modal_chrome_ansi_color(session: &Session) -> AnsiColorEnum {
+fn resolve_modal_chrome_ansi_colour(session: &Session) -> AnsiColorEnum {
     session
         .theme
         .tool_accent
@@ -431,7 +431,7 @@ pub(crate) fn modal_render_styles(session: &Session) -> ModalRenderStyles {
     let chrome_border_style = session
         .styles
         .border_style()
-        .fg(ratatui_color_from_ansi(resolve_modal_chrome_ansi_color(session)))
+        .fg(ratatui_colour_from_ansi(resolve_modal_chrome_ansi_colour(session)))
         .remove_modifier(Modifier::DIM)
         .add_modifier(Modifier::BOLD);
     ModalRenderStyles {
@@ -502,7 +502,7 @@ mod tests {
     }
 
     #[test]
-    fn modal_title_style_uses_explicit_chrome_color() {
+    fn modal_title_style_uses_explicit_chrome_colour() {
         let session = Session::new(InlineTheme::default(), None, 20);
         let styles = modal_render_styles(&session);
 
@@ -513,7 +513,7 @@ mod tests {
     }
 
     #[test]
-    fn modal_section_headers_use_chrome_color_on_base_background() {
+    fn modal_section_headers_use_chrome_colour_on_base_background() {
         let theme = InlineTheme {
             foreground: Some(AnsiColorEnum::Ansi256(Ansi256Color(16))),
             background: Some(AnsiColorEnum::Ansi256(Ansi256Color(231))),

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::tui::ui::FileColorizer;
+use crate::tui::ui::FileColourizer;
 
 mod filtering;
 mod listing;
@@ -82,7 +82,7 @@ pub struct FilePalette {
     /// ascending with `go_up`.
     last_entered: Option<PathBuf>,
     workspace_root: PathBuf,
-    file_colorizer: FileColorizer,
+    file_colourizer: FileColourizer,
     /// Supplies immediate directory contents on demand (see [`DirLister`]).
     dir_lister: DirLister,
 }
@@ -99,7 +99,7 @@ impl FilePalette {
             mode: PickerMode::Browse,
             last_entered: None,
             workspace_root,
-            file_colorizer: FileColorizer::new(),
+            file_colourizer: FileColourizer::new(),
             dir_lister: DirLister::new(|_| Vec::new()),
         }
     }
@@ -188,7 +188,7 @@ impl FilePalette {
 
     pub(crate) fn style_for_entry(&self, entry: &FileEntry) -> Option<anstyle::Style> {
         let path = Path::new(&entry.path);
-        self.file_colorizer.style_for_path(path)
+        self.file_colourizer.style_for_path(path)
     }
 }
 

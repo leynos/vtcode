@@ -4,11 +4,11 @@ use std::path::Path;
 
 use anstyle::Ansi256Color;
 use anyhow::{Context, Result, bail};
-use vtcode_commons::color256_theme::rgb_to_ansi256_for_theme;
+use vtcode_commons::colour256_theme::rgb_to_ansi256_for_theme;
 use vtcode_core::utils::dot_config::{WorkspaceTrustLevel, load_workspace_trust_level, update_workspace_trust};
-use vtcode_core::utils::style_helpers::{ColorPalette, render_styled};
+use vtcode_core::utils::style_helpers::{ColourPalette, render_styled};
 use vtcode_core::utils::tty::TtyExt;
-use vtcode_core::utils::{ansi_capabilities, ansi_capabilities::ColorScheme};
+use vtcode_core::utils::{ansi_capabilities, ansi_capabilities::ColourScheme};
 
 const WARNING_RGB: (u8, u8, u8) = (166, 51, 51);
 const INFO_RGB: (u8, u8, u8) = (217, 154, 78);
@@ -79,7 +79,7 @@ pub(crate) async fn auto_grant_tui_full_auto_workspace_trust(workspace: &Path) -
 /// can exit gracefully without a hard error.
 pub(crate) async fn ensure_full_auto_workspace_trust(workspace: &Path) -> Result<bool> {
     let outcome = resolve_full_auto_workspace_trust(workspace, "benchmark").await?;
-    let palette = ColorPalette::default();
+    let palette = ColourPalette::default();
     match outcome {
         TrustOutcome::Granted => Ok(true),
         TrustOutcome::UserDeclined => {
@@ -145,7 +145,7 @@ async fn resolve_full_auto_workspace_trust(workspace: &Path, command_name: &str)
                     .await
                     .context("Failed to persist full-auto workspace trust")?;
                 if !quiet_env_overrides() {
-                    let palette = ColorPalette::default();
+                    let palette = ColourPalette::default();
                     let msg = format!("Workspace trusted via {TRUST_OVERRIDE_ENV}=full-auto for {command_name}.");
                     println!("{}", render_styled(&msg, palette.success, None));
                 }
@@ -167,7 +167,7 @@ async fn resolve_full_auto_workspace_trust(workspace: &Path, command_name: &str)
             update_workspace_trust(workspace, WorkspaceTrustLevel::FullAuto)
                 .await
                 .context("Failed to persist full-auto workspace trust")?;
-            let palette = ColorPalette::default();
+            let palette = ColourPalette::default();
             let msg = "Workspace marked as trusted with full auto capabilities.";
             println!("{}", render_styled(msg, palette.success, None));
             Ok(TrustOutcome::Granted)
@@ -302,17 +302,17 @@ fn print_prompt_line(message: &str, tone: PromptTone) {
 fn styled_prompt_message(message: &str, tone: PromptTone) -> String {
     use anstyle::Color;
 
-    let is_light_theme = matches!(ansi_capabilities::detect_color_scheme(), ColorScheme::Light);
+    let is_light_theme = matches!(ansi_capabilities::detect_colour_scheme(), ColourScheme::Light);
     let (rgb, is_heading) = match tone {
         PromptTone::Heading => (WARNING_RGB, true),
         PromptTone::Body => (INFO_RGB, false),
     };
 
-    let color = Color::Ansi256(Ansi256Color(rgb_to_ansi256_for_theme(rgb.0, rgb.1, rgb.2, is_light_theme)));
+    let colour = Color::Ansi256(Ansi256Color(rgb_to_ansi256_for_theme(rgb.0, rgb.1, rgb.2, is_light_theme)));
     if is_heading {
-        render_styled(message, color, Some("bold".to_string()))
+        render_styled(message, colour, Some("bold".to_string()))
     } else {
-        render_styled(message, color, None)
+        render_styled(message, colour, None)
     }
 }
 

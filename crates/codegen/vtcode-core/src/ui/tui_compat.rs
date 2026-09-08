@@ -65,7 +65,7 @@ pub fn to_tui_fullscreen(config: &VTCodeConfig) -> FullscreenInteractionSettings
 
 /// Build an [`InlineTheme`] from core [`ThemeStyles`].
 pub fn inline_theme_from_core_styles(styles: &ThemeStyles) -> InlineTheme {
-    crate::ui::tui::theme_from_color_fields(
+    crate::ui::tui::theme_from_colour_fields(
         styles.foreground,
         styles.background,
         styles.primary,

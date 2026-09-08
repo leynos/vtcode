@@ -27,13 +27,13 @@
 //!   runs it synchronously, preserving the original behaviour.
 //!
 //! [`probe_and_cache_terminal_palette_harmony`]:
-//!     vtcode_core::utils::terminal_color_probe::probe_and_cache_terminal_palette_harmony
+//!     vtcode_core::utils::terminal_colour_probe::probe_and_cache_terminal_palette_harmony
 
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::Notify;
-use vtcode_core::utils::terminal_color_probe::probe_and_cache_terminal_palette_harmony;
+use vtcode_core::utils::terminal_colour_probe::probe_and_cache_terminal_palette_harmony;
 
 static PROBE_NOTIFY: LazyLock<Notify> = LazyLock::new(Notify::new);
 static PROBE_STARTED: AtomicBool = AtomicBool::new(false);

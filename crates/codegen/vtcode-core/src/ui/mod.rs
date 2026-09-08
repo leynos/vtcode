@@ -38,7 +38,7 @@ pub mod tui_mode;
 /// User confirmation dialogs.
 pub mod user_confirmation;
 
-pub use git_config::GitColorConfig;
+pub use git_config::GitColourConfig;
 pub use markdown::*;
 pub use search::*;
 pub use slash::*;
@@ -50,7 +50,7 @@ pub use theme_manager::ThemeManager;
 pub use tui::*;
 pub use tui_compat::*;
 pub use tui_mode::*;
-pub use vtcode_ui::tui::ui::FileColorizer;
+pub use vtcode_ui::tui::ui::FileColourizer;
 
 #[cfg(test)]
 mod tests {

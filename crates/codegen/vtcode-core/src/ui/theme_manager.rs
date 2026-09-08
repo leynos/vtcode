@@ -3,7 +3,7 @@
 //! This module provides functionality to load custom theme configurations
 //! from .vtcode/theme.toml files and apply them to the application.
 
-use crate::ui::{FileColorizer, GitColorConfig, ThemeConfig};
+use crate::ui::{FileColourizer, GitColourConfig, ThemeConfig};
 use anyhow::Result;
 use std::path::Path;
 
@@ -14,10 +14,10 @@ pub struct ThemeManager {
     pub custom_config: Option<ThemeConfig>,
 
     /// System Git configuration
-    pub git_config: Option<GitColorConfig>,
+    pub git_config: Option<GitColourConfig>,
 
-    /// System file colorizer
-    pub file_colorizer: FileColorizer,
+    /// System file colourizer
+    pub file_colourizer: FileColourizer,
 }
 
 impl ThemeManager {
@@ -25,9 +25,9 @@ impl ThemeManager {
     pub fn new(workspace_root: Option<&Path>) -> Self {
         let custom_config = Self::load_custom_config(workspace_root);
         let git_config = Self::load_git_config(workspace_root);
-        let file_colorizer = FileColorizer::new();
+        let file_colourizer = FileColourizer::new();
 
-        Self { custom_config, git_config, file_colorizer }
+        Self { custom_config, git_config, file_colourizer }
     }
 
     /// Load custom theme configuration from .vtcode/theme.toml
@@ -51,19 +51,19 @@ impl ThemeManager {
         }
     }
 
-    /// Load Git configuration for diff/status colors
-    fn load_git_config(workspace_root: Option<&Path>) -> Option<GitColorConfig> {
+    /// Load Git configuration for diff/status colours
+    fn load_git_config(workspace_root: Option<&Path>) -> Option<GitColourConfig> {
         if let Some(workspace) = workspace_root {
             let git_config_path = workspace.join(".git").join("config");
             if git_config_path.exists() {
-                match GitColorConfig::from_git_config(&git_config_path) {
+                match GitColourConfig::from_git_config(&git_config_path) {
                     Ok(config) => {
                         tracing::info!("Loaded Git color configuration from: {}", git_config_path.display());
                         Some(config)
                     }
                     Err(e) => {
                         tracing::warn!("Failed to load Git config from {}: {}", git_config_path.display(), e);
-                        GitColorConfig::default().into()
+                        GitColourConfig::default().into()
                     }
                 }
             } else {
@@ -103,8 +103,8 @@ mod tests {
         let manager = ThemeManager::new(None);
         assert!(manager.custom_config.is_none());
         assert!(manager.git_config.is_none());
-        // FileColorizer should always be initialized
-        assert_eq!(manager.file_colorizer.style_for_path(Path::new("/tmp/test.rs")), None);
+        // FileColourizer should always be initialized
+        assert_eq!(manager.file_colourizer.style_for_path(Path::new("/tmp/test.rs")), None);
     }
 
     #[test]

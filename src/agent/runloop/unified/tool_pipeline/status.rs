@@ -2,7 +2,7 @@ use anstyle::Color;
 use serde_json::Value;
 use std::fmt::Write;
 use vtcode_core::tools::registry::ToolExecutionError;
-use vtcode_core::utils::style_helpers::ColorPalette;
+use vtcode_core::utils::style_helpers::ColourPalette;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ToolDisplayStatus {
@@ -22,7 +22,7 @@ impl ToolDisplayStatus {
         }
     }
 
-    pub(crate) fn color(self, palette: ColorPalette) -> Color {
+    pub(crate) fn colour(self, palette: ColourPalette) -> Color {
         match self {
             Self::Success => palette.success,
             Self::Failure => palette.error,

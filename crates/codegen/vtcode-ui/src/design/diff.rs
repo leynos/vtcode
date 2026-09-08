@@ -1,7 +1,7 @@
-//! Unified diff formatting with ANSI colors.
+//! Unified diff formatting with ANSI colours.
 //!
-//! Provides `format_colored_diff` as the single canonical implementation
-//! for rendering diff hunks with terminal colors. Previously duplicated
+//! Provides `format_coloured_diff` as the single canonical implementation
+//! for rendering diff hunks with terminal colours. Previously duplicated
 //! in `vtcode-core` and `vtcode-ui`.
 
 use anstyle::{AnsiColor, Color, Reset, Style};
@@ -16,20 +16,20 @@ pub use vtcode_commons::diff::{
 pub fn format_unified_diff(old: &str, new: &str, options: DiffOptions<'_>) -> String {
     let mut options = options;
     options.missing_newline_hint = false;
-    let bundle = compute_diff(old, new, options, format_colored_diff);
+    let bundle = compute_diff(old, new, options, format_coloured_diff);
     vtcode_commons::ansi::strip_ansi(&bundle.formatted)
 }
 
 /// Compute a structured diff bundle using the default theme-aware formatter.
 pub fn compute_diff_with_theme(old: &str, new: &str, options: DiffOptions<'_>) -> DiffBundle {
-    compute_diff(old, new, options, format_colored_diff)
+    compute_diff(old, new, options, format_coloured_diff)
 }
 
-/// Format diff hunks with standard ANSI colors for terminal display.
+/// Format diff hunks with standard ANSI colours for terminal display.
 ///
 /// This is the single canonical implementation. Both `vtcode-core` and
 /// `vtcode-ui` delegate to this function.
-pub fn format_colored_diff(hunks: &[DiffHunk], options: &DiffOptions<'_>) -> String {
+pub fn format_coloured_diff(hunks: &[DiffHunk], options: &DiffOptions<'_>) -> String {
     if hunks.is_empty() {
         return String::new();
     }
@@ -109,7 +109,7 @@ mod tests {
                 new_label: Some("new"),
                 ..Default::default()
             },
-            format_colored_diff,
+            format_coloured_diff,
         );
 
         assert!(!bundle.is_empty);
@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn empty_hunks_returns_empty_string() {
-        let result = format_colored_diff(&[], &DiffOptions::default());
+        let result = format_coloured_diff(&[], &DiffOptions::default());
         assert!(result.is_empty());
     }
 

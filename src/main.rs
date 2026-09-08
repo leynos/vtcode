@@ -30,8 +30,8 @@ use anyhow::{Context, Result};
 mod allocator;
 
 use clap::FromArgMatches;
-use colorchoice::ColorChoice as GlobalColorChoice;
-use vtcode_commons::color_policy;
+use colorchoice::ColorChoice as GlobalColourChoice;
+use vtcode_commons::colour_policy;
 use vtcode_commons::{VtCodePaths, env_lock};
 use vtcode_core::cli::args::Cli;
 use vtcode_core::config::api_keys::load_dotenv;
@@ -48,7 +48,7 @@ mod updater;
 use main_helpers::{
     build_augmented_cli_command, configure_debug_session_routing, configure_runtime_relaunch_context,
     debug_runtime_flag_enabled, initialize_default_error_tracing, initialize_tracing, initialize_tracing_from_config,
-    perform_queued_runtime_relaunch, resolve_runtime_color_policy, resolve_startup_context, try_enhance_clap_error,
+    perform_queued_runtime_relaunch, resolve_runtime_colour_policy, resolve_startup_context, try_enhance_clap_error,
 };
 
 struct PreparedRun {
@@ -205,8 +205,8 @@ fn bootstrap_main() -> Result<BootstrapOutcome> {
     vtcode_commons::startup_trace::record_phase("cli_parsing", cli_phase);
     let startup_policy = startup::command_startup_policy(&args);
     panic_hook::set_debug_mode(args.debug);
-    let color_eyre_enabled = debug_runtime_flag_enabled(args.debug, "VTCODE_COLOR_EYRE");
-    panic_hook::set_color_eyre_enabled(color_eyre_enabled);
+    let colour_eyre_enabled = debug_runtime_flag_enabled(args.debug, "VTCODE_COLOR_EYRE");
+    panic_hook::set_colour_eyre_enabled(colour_eyre_enabled);
     let tui_log_capture_enabled = debug_runtime_flag_enabled(args.debug, "VTCODE_TUI_LOGS");
     vtcode_ui::tui::log::set_tui_log_capture_enabled(tui_log_capture_enabled);
 
@@ -231,12 +231,12 @@ fn bootstrap_main() -> Result<BootstrapOutcome> {
     }
 
     let print_mode = args.print.clone();
-    let color_policy = resolve_runtime_color_policy(&args);
-    color_policy::set_color_output_policy(color_policy);
+    let colour_policy = resolve_runtime_colour_policy(&args);
+    colour_policy::set_colour_output_policy(colour_policy);
 
-    args.color.write_global();
-    if !color_policy.enabled {
-        GlobalColorChoice::Never.write_global();
+    args.colour.write_global();
+    if !colour_policy.enabled {
+        GlobalColourChoice::Never.write_global();
     }
 
     // Build the multi-threaded runtime once; it serves both the startup context

@@ -1,5 +1,5 @@
 use clap::{ArgAction, ColorChoice, Parser, Subcommand, ValueHint};
-use colorchoice_clap::Color as ColorSelection;
+use colorchoice_clap::Color as ColourSelection;
 use std::env;
 use std::path::PathBuf;
 
@@ -48,9 +48,9 @@ pub use webmcp::{WebmcpCommand, WebmcpPairArgs, WebmcpServeArgs};
 
 #[derive(Parser, Debug, Clone)]
 pub struct Cli {
-    /// Color output selection (auto, always, never)
+    /// Colour output selection (auto, always, never)
     #[command(flatten)]
-    pub color: ColorSelection,
+    pub colour: ColourSelection,
 
     /// Optional positional path to run vtcode against a different workspace
     #[arg(
@@ -134,9 +134,9 @@ pub struct Cli {
     #[arg(long, global = true, default_value = "info")]
     pub log_level: String,
 
-    /// Disable color output (equivalent to `--color never`)
-    #[arg(long, global = true)]
-    pub no_color: bool,
+    /// Disable colour output (equivalent to `--color never`)
+    #[arg(long = "no-colour", visible_alias = "no-color", global = true)]
+    pub no_colour: bool,
 
     /// Select UI theme (e.g., ciapre-dark, ciapre-blue)
     #[arg(long, global = true, value_name = "THEME")]
@@ -845,7 +845,7 @@ pub enum Commands {
 impl Default for Cli {
     fn default() -> Self {
         Self {
-            color: ColorSelection { color: ColorChoice::Auto },
+            colour: ColourSelection { color: ColorChoice::Auto },
             workspace_path: None,
             model: Some(ModelId::default().to_string()),
             provider: Some("gemini".to_owned()),
@@ -861,7 +861,7 @@ impl Default for Cli {
             quiet: false,
             config: Vec::new(),
             log_level: "info".to_owned(),
-            no_color: false,
+            no_colour: false,
             theme: None,
             skip_confirmations: false,
             codex_experimental: false,
@@ -983,7 +983,7 @@ pub fn long_version() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
+    use clap::{CommandFactory, Parser};
 
     #[test]
     fn long_version_includes_expected_sections() {
@@ -1053,6 +1053,22 @@ mod tests {
             legacy.command,
             Some(Commands::Analyse { ref analysis_type }) if analysis_type == "security"
         ));
+    }
+
+    #[test]
+    fn no_colour_flag_accepts_canonical_and_legacy_spellings() {
+        let canonical = Cli::try_parse_from(["vtcode", "--no-colour"]).expect("the canonical colour flag should parse");
+        let legacy =
+            Cli::try_parse_from(["vtcode", "--no-color"]).expect("the legacy colour flag should remain supported");
+        let mut command = Cli::command();
+        let help = command.render_long_help().to_string();
+
+        assert!(canonical.no_colour, "the canonical flag should disable colour");
+        assert_eq!(canonical.no_colour, legacy.no_colour, "both spellings should set the same option");
+        assert!(
+            help.lines().any(|line| line.trim_start().starts_with("--no-colour")),
+            "help should advertise the British spelling as the primary option"
+        );
     }
 
     #[test]

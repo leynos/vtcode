@@ -14,7 +14,7 @@ pub use vtcode_commons::ui_protocol::{
     InlineListSelection, InlineMessageKind, InlineSegment, InlineTextStyle, InlineTheme, LayoutModeOverride,
     PlanContent, PlanPhase, PlanStep, ReasoningDisplayMode, RewindAction, SecurePromptConfig, SessionSurface,
     SlashCommandItem, ThinkingBlockState, ToolOutputId, UiMode, WizardModalMode, WizardStep, convert_style,
-    theme_from_color_fields,
+    theme_from_colour_fields,
 };
 
 pub use vtcode_commons::ui_protocol::KeyboardProtocolSettings;
@@ -285,7 +285,7 @@ mod headless {
 
     /// Build an [`InlineTheme`](super::InlineTheme) from core theme styles.
     pub fn theme_from_styles(styles: &ThemeStyles) -> super::InlineTheme {
-        super::theme_from_color_fields(
+        super::theme_from_colour_fields(
             styles.foreground,
             styles.background,
             styles.primary,

@@ -294,7 +294,7 @@ pub const RESET_REVERSE: &str = "\x1b[27m";
 pub const RESET_HIDDEN: &str = "\x1b[28m";
 pub const RESET_STRIKETHROUGH: &str = "\x1b[29m";
 
-// === Foreground Colors (30-37) ===
+// === Foreground Colours (30-37) ===
 pub const FG_BLACK: &str = "\x1b[30m";
 pub const FG_RED: &str = "\x1b[31m";
 pub const FG_GREEN: &str = "\x1b[32m";
@@ -305,7 +305,7 @@ pub const FG_CYAN: &str = "\x1b[36m";
 pub const FG_WHITE: &str = "\x1b[37m";
 pub const FG_DEFAULT: &str = "\x1b[39m";
 
-// === Background Colors (40-47) ===
+// === Background Colours (40-47) ===
 pub const BG_BLACK: &str = "\x1b[40m";
 pub const BG_RED: &str = "\x1b[41m";
 pub const BG_GREEN: &str = "\x1b[42m";
@@ -316,7 +316,7 @@ pub const BG_CYAN: &str = "\x1b[46m";
 pub const BG_WHITE: &str = "\x1b[47m";
 pub const BG_DEFAULT: &str = "\x1b[49m";
 
-// === Bright Foreground Colors (90-97) ===
+// === Bright Foreground Colours (90-97) ===
 pub const FG_BRIGHT_BLACK: &str = "\x1b[90m";
 pub const FG_BRIGHT_RED: &str = "\x1b[91m";
 pub const FG_BRIGHT_GREEN: &str = "\x1b[92m";
@@ -326,7 +326,7 @@ pub const FG_BRIGHT_MAGENTA: &str = "\x1b[95m";
 pub const FG_BRIGHT_CYAN: &str = "\x1b[96m";
 pub const FG_BRIGHT_WHITE: &str = "\x1b[97m";
 
-// === Bright Background Colors (100-107) ===
+// === Bright Background Colours (100-107) ===
 pub const BG_BRIGHT_BLACK: &str = "\x1b[100m";
 pub const BG_BRIGHT_RED: &str = "\x1b[101m";
 pub const BG_BRIGHT_GREEN: &str = "\x1b[102m";
@@ -455,12 +455,12 @@ pub const OSC_SET_TITLE_PREFIX: &str = "\x1b]2;";
 pub const OSC_SET_ICON_PREFIX: &str = "\x1b]1;";
 /// Set icon name and title — OSC 0 ; Pt BEL
 pub const OSC_SET_ICON_AND_TITLE_PREFIX: &str = "\x1b]0;";
-/// Query/set foreground color — OSC 10
-pub const OSC_FG_COLOR_PREFIX: &str = "\x1b]10;";
-/// Query/set background color — OSC 11
-pub const OSC_BG_COLOR_PREFIX: &str = "\x1b]11;";
-/// Query/set cursor color — OSC 12
-pub const OSC_CURSOR_COLOR_PREFIX: &str = "\x1b]12;";
+/// Query/set foreground colour — OSC 10
+pub const OSC_FG_COLOUR_PREFIX: &str = "\x1b]10;";
+/// Query/set background colour — OSC 11
+pub const OSC_BG_COLOUR_PREFIX: &str = "\x1b]11;";
+/// Query/set cursor colour — OSC 12
+pub const OSC_CURSOR_COLOUR_PREFIX: &str = "\x1b]12;";
 /// Hyperlink — OSC 8
 const OSC_HYPERLINK_PREFIX: &str = "\x1b]8;";
 /// Clipboard access — OSC 52
@@ -518,13 +518,13 @@ fn format_redraw_line(content: &str) -> String {
 }
 
 #[inline]
-pub fn fg_256(color_id: u8) -> String {
-    format!("{CSI}38;5;{color_id}m")
+pub fn fg_256(colour_id: u8) -> String {
+    format!("{CSI}38;5;{colour_id}m")
 }
 
 #[inline]
-pub fn bg_256(color_id: u8) -> String {
-    format!("{CSI}48;5;{color_id}m")
+pub fn bg_256(colour_id: u8) -> String {
+    format!("{CSI}48;5;{colour_id}m")
 }
 
 #[inline]
@@ -538,8 +538,8 @@ pub fn bg_rgb(r: u8, g: u8, b: u8) -> String {
 }
 
 #[inline]
-pub fn colored(text: &str, color: &str) -> String {
-    format!("{color}{text}{RESET}")
+pub fn coloured(text: &str, colour: &str) -> String {
+    format!("{colour}{text}{RESET}")
 }
 
 #[inline]

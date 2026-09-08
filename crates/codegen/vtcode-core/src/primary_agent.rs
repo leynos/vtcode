@@ -31,7 +31,7 @@ pub struct ActivePrimaryAgent {
     pub identity: ActivePrimaryAgentSpecIdentity,
     pub display_name: String,
     pub description: String,
-    pub color: Option<String>,
+    pub colour: Option<String>,
     pub aliases: Vec<String>,
     pub instructions: String,
     pub tools: Option<Vec<String>>,
@@ -62,7 +62,7 @@ impl ActivePrimaryAgent {
             },
             display_name: runtime.display_name.clone(),
             description: runtime.description.clone(),
-            color: runtime.color.clone(),
+            colour: runtime.colour.clone(),
             aliases: runtime.aliases.clone(),
             instructions: runtime.instructions.clone(),
             tools: runtime.tools.clone(),
@@ -450,7 +450,7 @@ mod tests {
         assert_eq!(active.identity.name, "planner");
         assert_eq!(active.display_name, "planner");
         assert_eq!(active.description, "planner description");
-        assert_eq!(active.color.as_deref(), Some("blue"));
+        assert_eq!(active.colour.as_deref(), Some("blue"));
         assert_eq!(active.instructions, "planner instructions");
         assert_eq!(active.tools, Some(vec!["code_search".to_string()]));
         assert_eq!(active.disallowed_tools, vec!["file_operation".to_string()]);
@@ -513,7 +513,7 @@ mod tests {
         assert_eq!(active.identity.name, "worker");
         assert_eq!(active.display_name, "worker");
         assert_eq!(active.description, "worker description");
-        assert_eq!(active.color.as_deref(), Some("blue"));
+        assert_eq!(active.colour.as_deref(), Some("blue"));
         assert_eq!(active.aliases, vec!["builder".to_string()]);
         assert_eq!(active.instructions, "worker instructions");
         assert_eq!(active.tools, Some(vec!["code_search".to_string()]));
@@ -530,7 +530,7 @@ mod tests {
     fn primary_runtime_adapter_uses_shared_resolved_view_for_overlapping_fields() {
         let mut spec = test_spec("worker");
         spec.description = "Worker display metadata".to_string();
-        spec.color = Some("green".to_string());
+        spec.colour = Some("green".to_string());
         spec.aliases = vec!["builder".to_string()];
         spec.skills = vec!["rust".to_string(), "repo".to_string()];
         spec.mcp_servers = vec![SubagentMcpServer::Named("filesystem".to_string())];
@@ -543,7 +543,7 @@ mod tests {
         assert_eq!(runtime.canonical_name, "worker");
         assert_eq!(runtime.display_name, "worker");
         assert_eq!(runtime.description, "Worker display metadata");
-        assert_eq!(runtime.color.as_deref(), Some("green"));
+        assert_eq!(runtime.colour.as_deref(), Some("green"));
         assert_eq!(runtime.aliases, vec!["builder".to_string()]);
         assert_eq!(runtime.skills, vec!["rust".to_string(), "repo".to_string()]);
         assert_eq!(runtime.mcp_servers.len(), 1);
@@ -553,7 +553,7 @@ mod tests {
         assert_eq!(active.identity.name, runtime.canonical_name);
         assert_eq!(active.display_name, runtime.display_name);
         assert_eq!(active.description, runtime.description);
-        assert_eq!(active.color, runtime.color);
+        assert_eq!(active.colour, runtime.colour);
         assert_eq!(active.aliases, runtime.aliases);
         assert_eq!(active.instructions, runtime.instructions);
         assert_eq!(active.tools, runtime.tools);
@@ -984,7 +984,7 @@ mod tests {
     fn active_primary_state_recomputes_skills_mcp_and_metadata_on_switch() {
         let mut first = test_spec("first");
         first.description = "First metadata".to_string();
-        first.color = Some("red".to_string());
+        first.colour = Some("red".to_string());
         first.aliases = vec!["one".to_string()];
         first.skills = vec!["rust".to_string()];
         first.mcp_servers = vec![SubagentMcpServer::Inline(BTreeMap::from([(
@@ -1001,7 +1001,7 @@ mod tests {
         state.select_from_specs(&specs, "one").expect("selected first by alias");
         assert_eq!(state.active().identity.name, "first");
         assert_eq!(state.active().description, "First metadata");
-        assert_eq!(state.active().color.as_deref(), Some("red"));
+        assert_eq!(state.active().colour.as_deref(), Some("red"));
         assert_eq!(state.active().aliases, vec!["one".to_string()]);
         assert_eq!(state.active().skills, vec!["rust".to_string()]);
         assert_eq!(state.active().mcp_servers.len(), 1);
@@ -1009,7 +1009,7 @@ mod tests {
         state.select_from_specs(&specs, "second").expect("selected second");
         assert_eq!(state.active().identity.name, "second");
         assert_eq!(state.active().description, "second description");
-        assert_eq!(state.active().color.as_deref(), Some("blue"));
+        assert_eq!(state.active().colour.as_deref(), Some("blue"));
         assert!(state.active().aliases.is_empty());
         assert!(state.active().skills.is_empty());
         assert!(state.active().mcp_servers.is_empty());
@@ -1023,7 +1023,7 @@ mod tests {
             tools: Some(vec!["code_search".to_string()]),
             disallowed_tools: vec!["file_operation".to_string()],
             model: Some("gpt-5.1".to_string()),
-            color: Some("blue".to_string()),
+            colour: Some("blue".to_string()),
             reasoning_effort: Some(ReasoningEffortLevel::High),
             permissions: AgentPermissionsConfig::new(PermissionDefault::Deny),
             skills: Vec::new(),

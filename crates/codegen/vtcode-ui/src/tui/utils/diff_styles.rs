@@ -5,14 +5,14 @@
 
 // Re-export diff theme from vtcode-commons
 pub use vtcode_commons::diff_theme::{
-    DiffColorLevel, DiffTheme, diff_add_bg, diff_del_bg, diff_gutter_bg_add_light, diff_gutter_bg_del_light,
+    DiffColourLevel, DiffTheme, diff_add_bg, diff_del_bg, diff_gutter_bg_add_light, diff_gutter_bg_del_light,
     diff_gutter_fg_light,
 };
-pub use vtcode_commons::styling::DiffColorPalette;
+pub use vtcode_commons::styling::DiffColourPalette;
 
 use crate::tui::ui::syntax_highlight::{DiffScopeBackgroundRgbs, diff_scope_background_rgbs};
-use ratatui::style::{Color as RatatuiColor, Modifier, Style as RatatuiStyle};
-use vtcode_commons::color256_theme::rgb_to_ansi256_for_theme;
+use ratatui::style::{Color as RatatuiColour, Modifier, Style as RatatuiStyle};
+use vtcode_commons::colour256_theme::rgb_to_ansi256_for_theme;
 
 // ── WCAG AA accessible colours ─────────────────────────────────────────────
 //
@@ -21,22 +21,22 @@ use vtcode_commons::color256_theme::rgb_to_ansi256_for_theme;
 
 /// Foreground colour for deletion markers and content on dark themes.
 /// Brighter than standard ANSI Red (#CD0000) to pass WCAG AA on dark del bg.
-const DELETION_FG_DARK: RatatuiColor = RatatuiColor::Rgb(255, 90, 90);
+const DELETION_FG_DARK: RatatuiColour = RatatuiColour::Rgb(255, 90, 90);
 
 /// Foreground colour for insertion markers and content on dark themes.
-const INSERTION_FG_DARK: RatatuiColor = RatatuiColor::LightGreen;
+const INSERTION_FG_DARK: RatatuiColour = RatatuiColour::LightGreen;
 
 /// Foreground colour for deletion markers on light themes.
-const DELETION_FG_LIGHT: RatatuiColor = RatatuiColor::LightRed;
+const DELETION_FG_LIGHT: RatatuiColour = RatatuiColour::LightRed;
 
 /// Foreground colour for insertion markers on light themes.
-const INSERTION_FG_LIGHT: RatatuiColor = RatatuiColor::LightGreen;
+const INSERTION_FG_LIGHT: RatatuiColour = RatatuiColour::LightGreen;
 
 // ── Conversion helpers ─────────────────────────────────────────────────────
 
 /// Convert anstyle Color to ratatui Color.
-fn ratatui_color_from_anstyle(color: anstyle::Color) -> RatatuiColor {
-    crate::design::color::anstyle_to_ratatui_color(color)
+fn ratatui_colour_from_anstyle(colour: anstyle::Color) -> RatatuiColour {
+    crate::design::colour::anstyle_to_ratatui_colour(colour)
 }
 
 // ── TUI-specific diff line styling ─────────────────────────────────────────
@@ -51,28 +51,28 @@ pub enum DiffLineType {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 struct ResolvedDiffBackgrounds {
-    add: Option<RatatuiColor>,
-    del: Option<RatatuiColor>,
+    add: Option<RatatuiColour>,
+    del: Option<RatatuiColour>,
 }
 
 /// Snapshot of diff styling inputs that can be reused while rendering.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DiffRenderStyleContext {
     theme: DiffTheme,
-    level: DiffColorLevel,
+    level: DiffColourLevel,
     backgrounds: ResolvedDiffBackgrounds,
 }
 
 /// Resolve the current terminal and syntax-theme styling into one context.
 pub(crate) fn current_diff_render_style_context() -> DiffRenderStyleContext {
     let theme = DiffTheme::detect();
-    let level = DiffColorLevel::detect();
+    let level = DiffColourLevel::detect();
     diff_render_style_context_for(theme, level, scope_backgrounds_for_level(level))
 }
 
 fn diff_render_style_context_for(
     theme: DiffTheme,
-    level: DiffColorLevel,
+    level: DiffColourLevel,
     scope_backgrounds: DiffScopeBackgroundRgbs,
 ) -> DiffRenderStyleContext {
     DiffRenderStyleContext {
@@ -84,50 +84,50 @@ fn diff_render_style_context_for(
 
 fn resolve_diff_backgrounds_for(
     theme: DiffTheme,
-    level: DiffColorLevel,
+    level: DiffColourLevel,
     scope_backgrounds: DiffScopeBackgroundRgbs,
 ) -> ResolvedDiffBackgrounds {
     let mut resolved = fallback_diff_backgrounds(theme, level);
-    if level == DiffColorLevel::Ansi16 {
+    if level == DiffColourLevel::Ansi16 {
         return resolved;
     }
 
     if let Some(rgb) = scope_backgrounds.inserted
-        && let Some(color) = color_from_rgb_for_level(rgb, theme, level)
+        && let Some(colour) = colour_from_rgb_for_level(rgb, theme, level)
     {
-        resolved.add = Some(color);
+        resolved.add = Some(colour);
     }
 
     if let Some(rgb) = scope_backgrounds.deleted
-        && let Some(color) = color_from_rgb_for_level(rgb, theme, level)
+        && let Some(colour) = colour_from_rgb_for_level(rgb, theme, level)
     {
-        resolved.del = Some(color);
+        resolved.del = Some(colour);
     }
 
     resolved
 }
 
-fn fallback_diff_backgrounds(theme: DiffTheme, level: DiffColorLevel) -> ResolvedDiffBackgrounds {
+fn fallback_diff_backgrounds(theme: DiffTheme, level: DiffColourLevel) -> ResolvedDiffBackgrounds {
     match level {
-        DiffColorLevel::Ansi16 => ResolvedDiffBackgrounds::default(),
-        DiffColorLevel::TrueColor | DiffColorLevel::Ansi256 => ResolvedDiffBackgrounds {
-            add: Some(ratatui_color_from_anstyle(diff_add_bg(theme, level))),
-            del: Some(ratatui_color_from_anstyle(diff_del_bg(theme, level))),
+        DiffColourLevel::Ansi16 => ResolvedDiffBackgrounds::default(),
+        DiffColourLevel::TrueColour | DiffColourLevel::Ansi256 => ResolvedDiffBackgrounds {
+            add: Some(ratatui_colour_from_anstyle(diff_add_bg(theme, level))),
+            del: Some(ratatui_colour_from_anstyle(diff_del_bg(theme, level))),
         },
     }
 }
 
-fn color_from_rgb_for_level(rgb: (u8, u8, u8), theme: DiffTheme, level: DiffColorLevel) -> Option<RatatuiColor> {
+fn colour_from_rgb_for_level(rgb: (u8, u8, u8), theme: DiffTheme, level: DiffColourLevel) -> Option<RatatuiColour> {
     match level {
-        DiffColorLevel::TrueColor => Some(RatatuiColor::Rgb(rgb.0, rgb.1, rgb.2)),
-        DiffColorLevel::Ansi256 => {
-            Some(RatatuiColor::Indexed(rgb_to_ansi256_for_theme(rgb.0, rgb.1, rgb.2, theme.is_light())))
+        DiffColourLevel::TrueColour => Some(RatatuiColour::Rgb(rgb.0, rgb.1, rgb.2)),
+        DiffColourLevel::Ansi256 => {
+            Some(RatatuiColour::Indexed(rgb_to_ansi256_for_theme(rgb.0, rgb.1, rgb.2, theme.is_light())))
         }
-        DiffColorLevel::Ansi16 => None,
+        DiffColourLevel::Ansi16 => None,
     }
 }
 
-fn content_background(kind: DiffLineType, style_context: DiffRenderStyleContext) -> Option<RatatuiColor> {
+fn content_background(kind: DiffLineType, style_context: DiffRenderStyleContext) -> Option<RatatuiColour> {
     match kind {
         DiffLineType::Insert => style_context.backgrounds.add,
         DiffLineType::Delete => style_context.backgrounds.del,
@@ -150,17 +150,17 @@ pub(crate) fn style_line_bg(kind: DiffLineType, style_context: DiffRenderStyleCo
     }
 }
 
-fn scope_backgrounds_for_level(level: DiffColorLevel) -> DiffScopeBackgroundRgbs {
+fn scope_backgrounds_for_level(level: DiffColourLevel) -> DiffScopeBackgroundRgbs {
     match level {
-        DiffColorLevel::Ansi16 => DiffScopeBackgroundRgbs::default(),
-        DiffColorLevel::TrueColor | DiffColorLevel::Ansi256 => diff_scope_background_rgbs(),
+        DiffColourLevel::Ansi16 => DiffScopeBackgroundRgbs::default(),
+        DiffColourLevel::TrueColour | DiffColourLevel::Ansi256 => diff_scope_background_rgbs(),
     }
 }
 
 // ── Private colour helpers ──────────────────────────────────────────────────
 
 /// Resolve the foreground colour for a diff indicator (gutter/sign).
-fn indicator_fg(kind: DiffLineType, theme: DiffTheme) -> Option<RatatuiColor> {
+fn indicator_fg(kind: DiffLineType, theme: DiffTheme) -> Option<RatatuiColour> {
     match (kind, theme) {
         (DiffLineType::Insert, DiffTheme::Dark) => Some(INSERTION_FG_DARK),
         (DiffLineType::Delete, DiffTheme::Dark) => Some(DELETION_FG_DARK),
@@ -178,8 +178,8 @@ fn indicator_dim(kind: DiffLineType, theme: DiffTheme) -> bool {
 /// Build a style for a line-level indicator (gutter or sign).
 fn indicator_style(kind: DiffLineType, theme: DiffTheme) -> RatatuiStyle {
     let mut s = RatatuiStyle::default();
-    if let Some(color) = indicator_fg(kind, theme) {
-        s = s.fg(color);
+    if let Some(colour) = indicator_fg(kind, theme) {
+        s = s.fg(colour);
     }
     if indicator_dim(kind, theme) {
         s = s.add_modifier(Modifier::DIM);
@@ -209,8 +209,8 @@ pub(crate) fn style_content(kind: DiffLineType, style_context: DiffRenderStyleCo
         (_, DiffTheme::Light, _, Some(bg)) => RatatuiStyle::default().bg(bg),
         (_, DiffTheme::Light, _, None) => RatatuiStyle::default(),
         // ANSI16: foreground-only — no background support.
-        (_, _, DiffColorLevel::Ansi16, _) => fg.map(|c| RatatuiStyle::default().fg(c)).unwrap_or_default(),
-        // TrueColor/256 + tinted bg: coloured text on tinted background.
+        (_, _, DiffColourLevel::Ansi16, _) => fg.map(|c| RatatuiStyle::default().fg(c)).unwrap_or_default(),
+        // TrueColour/256 + tinted bg: coloured text on tinted background.
         (_, _, _, Some(bg)) => fg
             .map(|c| RatatuiStyle::default().fg(c).bg(bg))
             .unwrap_or_else(|| RatatuiStyle::default().bg(bg)),
@@ -222,40 +222,40 @@ pub(crate) fn style_content(kind: DiffLineType, style_context: DiffRenderStyleCo
 mod tests {
     use super::*;
 
-    fn test_style_context(theme: DiffTheme, level: DiffColorLevel) -> DiffRenderStyleContext {
+    fn test_style_context(theme: DiffTheme, level: DiffColourLevel) -> DiffRenderStyleContext {
         diff_render_style_context_for(theme, level, scope_backgrounds_for_level(level))
     }
 
     #[test]
     fn dark_add_bg_is_subtle_green_tint() {
-        let bg = diff_add_bg(DiffTheme::Dark, DiffColorLevel::TrueColor);
+        let bg = diff_add_bg(DiffTheme::Dark, DiffColourLevel::TrueColour);
         assert_eq!(bg, anstyle::Color::Rgb(anstyle::RgbColor(20, 58, 45)));
     }
 
     #[test]
     fn dark_del_bg_is_subtle_red_tint() {
-        let bg = diff_del_bg(DiffTheme::Dark, DiffColorLevel::TrueColor);
+        let bg = diff_del_bg(DiffTheme::Dark, DiffColourLevel::TrueColour);
         assert_eq!(bg, anstyle::Color::Rgb(anstyle::RgbColor(70, 38, 42)));
     }
 
     #[test]
     fn light_add_bg_is_subtle_green_tint() {
-        let bg = diff_add_bg(DiffTheme::Light, DiffColorLevel::TrueColor);
+        let bg = diff_add_bg(DiffTheme::Light, DiffColourLevel::TrueColour);
         assert_eq!(bg, anstyle::Color::Rgb(anstyle::RgbColor(218, 246, 225)));
     }
 
     #[test]
     fn light_del_bg_is_subtle_red_tint() {
-        let bg = diff_del_bg(DiffTheme::Light, DiffColorLevel::TrueColor);
+        let bg = diff_del_bg(DiffTheme::Light, DiffColourLevel::TrueColour);
         assert_eq!(bg, anstyle::Color::Rgb(anstyle::RgbColor(255, 224, 224)));
     }
 
     #[test]
     fn all_levels_use_same_theme_tints() {
         for level in [
-            DiffColorLevel::TrueColor,
-            DiffColorLevel::Ansi256,
-            DiffColorLevel::Ansi16,
+            DiffColourLevel::TrueColour,
+            DiffColourLevel::Ansi256,
+            DiffColourLevel::Ansi16,
         ] {
             assert_eq!(diff_add_bg(DiffTheme::Dark, level), anstyle::Color::Rgb(anstyle::RgbColor(20, 58, 45)));
             assert_eq!(diff_del_bg(DiffTheme::Dark, level), anstyle::Color::Rgb(anstyle::RgbColor(70, 38, 42)));
@@ -265,64 +265,64 @@ mod tests {
     #[test]
     fn context_line_bg_is_default() {
         let style =
-            style_line_bg(DiffLineType::Context, test_style_context(DiffTheme::Dark, DiffColorLevel::TrueColor));
+            style_line_bg(DiffLineType::Context, test_style_context(DiffTheme::Dark, DiffColourLevel::TrueColour));
         assert_eq!(style, RatatuiStyle::default());
     }
 
     #[test]
     fn dark_gutter_context_has_no_style() {
-        let ctx = test_style_context(DiffTheme::Dark, DiffColorLevel::TrueColor);
+        let ctx = test_style_context(DiffTheme::Dark, DiffColourLevel::TrueColour);
         let style = style_gutter(DiffLineType::Context, ctx);
         assert_eq!(style, RatatuiStyle::default());
     }
 
     #[test]
     fn insert_gutter_uses_light_green_on_dark() {
-        let ctx = test_style_context(DiffTheme::Dark, DiffColorLevel::TrueColor);
+        let ctx = test_style_context(DiffTheme::Dark, DiffColourLevel::TrueColour);
         let style = style_gutter(DiffLineType::Insert, ctx);
-        assert_eq!(style.fg, Some(RatatuiColor::LightGreen));
+        assert_eq!(style.fg, Some(RatatuiColour::LightGreen));
         assert!(!style.add_modifier.contains(Modifier::DIM));
     }
 
     #[test]
     fn delete_gutter_uses_custom_red_on_dark() {
-        let ctx = test_style_context(DiffTheme::Dark, DiffColorLevel::TrueColor);
+        let ctx = test_style_context(DiffTheme::Dark, DiffColourLevel::TrueColour);
         let style = style_gutter(DiffLineType::Delete, ctx);
-        assert_eq!(style.fg, Some(RatatuiColor::Rgb(255, 90, 90)));
+        assert_eq!(style.fg, Some(RatatuiColour::Rgb(255, 90, 90)));
     }
 
     #[test]
     fn dark_ansi16_content_uses_foreground_only() {
-        let style = style_content(DiffLineType::Insert, test_style_context(DiffTheme::Dark, DiffColorLevel::Ansi16));
-        assert_eq!(style.fg, Some(RatatuiColor::LightGreen));
+        let style = style_content(DiffLineType::Insert, test_style_context(DiffTheme::Dark, DiffColourLevel::Ansi16));
+        assert_eq!(style.fg, Some(RatatuiColour::LightGreen));
         assert_eq!(style.bg, None);
     }
 
     #[test]
     fn sign_style_dark_uses_light_green_and_custom_red() {
-        let ctx = test_style_context(DiffTheme::Dark, DiffColorLevel::TrueColor);
+        let ctx = test_style_context(DiffTheme::Dark, DiffColourLevel::TrueColour);
         let add_sign = style_sign(DiffLineType::Insert, ctx);
         let del_sign = style_sign(DiffLineType::Delete, ctx);
-        assert_eq!(add_sign.fg, Some(RatatuiColor::LightGreen));
-        assert_eq!(del_sign.fg, Some(RatatuiColor::Rgb(255, 90, 90)));
+        assert_eq!(add_sign.fg, Some(RatatuiColour::LightGreen));
+        assert_eq!(del_sign.fg, Some(RatatuiColour::Rgb(255, 90, 90)));
     }
 
     #[test]
     fn sign_style_light_uses_light_green_and_light_red_with_dim() {
-        let ctx = test_style_context(DiffTheme::Light, DiffColorLevel::TrueColor);
+        let ctx = test_style_context(DiffTheme::Light, DiffColourLevel::TrueColour);
         let add_sign = style_sign(DiffLineType::Insert, ctx);
         let del_sign = style_sign(DiffLineType::Delete, ctx);
-        assert_eq!(add_sign.fg, Some(RatatuiColor::LightGreen));
-        assert_eq!(del_sign.fg, Some(RatatuiColor::LightRed));
+        assert_eq!(add_sign.fg, Some(RatatuiColour::LightGreen));
+        assert_eq!(del_sign.fg, Some(RatatuiColour::LightRed));
         assert!(add_sign.add_modifier.contains(Modifier::DIM));
         assert!(del_sign.add_modifier.contains(Modifier::DIM));
     }
 
     #[test]
-    fn theme_scope_backgrounds_override_truecolor_fallback_when_available() {
+    fn theme_scope_backgrounds_override_truecolour_fallback_when_available() {
         let style_context = diff_render_style_context_for(
             DiffTheme::Dark,
-            DiffColorLevel::TrueColor,
+            DiffColourLevel::TrueColour,
             DiffScopeBackgroundRgbs {
                 inserted: Some((1, 2, 3)),
                 deleted: Some((4, 5, 6)),
@@ -331,11 +331,11 @@ mod tests {
 
         assert_eq!(
             style_line_bg(DiffLineType::Insert, style_context),
-            RatatuiStyle::default().bg(RatatuiColor::Rgb(1, 2, 3))
+            RatatuiStyle::default().bg(RatatuiColour::Rgb(1, 2, 3))
         );
         assert_eq!(
             style_line_bg(DiffLineType::Delete, style_context),
-            RatatuiStyle::default().bg(RatatuiColor::Rgb(4, 5, 6))
+            RatatuiStyle::default().bg(RatatuiColour::Rgb(4, 5, 6))
         );
     }
 
@@ -343,24 +343,24 @@ mod tests {
     fn theme_scope_backgrounds_quantize_to_ansi256() {
         let style_context = diff_render_style_context_for(
             DiffTheme::Dark,
-            DiffColorLevel::Ansi256,
+            DiffColourLevel::Ansi256,
             DiffScopeBackgroundRgbs { inserted: Some((0, 95, 0)), deleted: None },
         );
         assert_eq!(
             style_line_bg(DiffLineType::Insert, style_context),
-            RatatuiStyle::default().bg(RatatuiColor::Indexed(22))
+            RatatuiStyle::default().bg(RatatuiColour::Indexed(22))
         );
         assert_eq!(
             style_line_bg(DiffLineType::Delete, style_context),
-            RatatuiStyle::default().bg(RatatuiColor::Rgb(70, 38, 42))
+            RatatuiStyle::default().bg(RatatuiColour::Rgb(70, 38, 42))
         );
     }
 
     #[test]
-    fn ansi16_disables_line_backgrounds_even_with_scope_colors() {
+    fn ansi16_disables_line_backgrounds_even_with_scope_colours() {
         let style_context = diff_render_style_context_for(
             DiffTheme::Dark,
-            DiffColorLevel::Ansi16,
+            DiffColourLevel::Ansi16,
             DiffScopeBackgroundRgbs {
                 inserted: Some((8, 9, 10)),
                 deleted: Some((11, 12, 13)),
@@ -373,7 +373,7 @@ mod tests {
     #[test]
     fn ansi16_content_has_no_background() {
         let style_context =
-            diff_render_style_context_for(DiffTheme::Dark, DiffColorLevel::Ansi16, DiffScopeBackgroundRgbs::default());
+            diff_render_style_context_for(DiffTheme::Dark, DiffColourLevel::Ansi16, DiffScopeBackgroundRgbs::default());
         let add = style_content(DiffLineType::Insert, style_context);
         let del = style_content(DiffLineType::Delete, style_context);
         assert_eq!(add.fg, Some(INSERTION_FG_DARK));
@@ -386,10 +386,10 @@ mod tests {
     fn partial_scope_override_keeps_missing_side_fallback() {
         let style_context = diff_render_style_context_for(
             DiffTheme::Dark,
-            DiffColorLevel::TrueColor,
+            DiffColourLevel::TrueColour,
             DiffScopeBackgroundRgbs { inserted: Some((12, 34, 56)), deleted: None },
         );
-        assert_eq!(content_background(DiffLineType::Insert, style_context), Some(RatatuiColor::Rgb(12, 34, 56)));
-        assert_eq!(content_background(DiffLineType::Delete, style_context), Some(RatatuiColor::Rgb(70, 38, 42)));
+        assert_eq!(content_background(DiffLineType::Insert, style_context), Some(RatatuiColour::Rgb(12, 34, 56)));
+        assert_eq!(content_background(DiffLineType::Delete, style_context), Some(RatatuiColour::Rgb(70, 38, 42)));
     }
 }

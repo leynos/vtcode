@@ -56,3 +56,12 @@ fn vtcode_invalid_option_shows_usage_help() {
     let _argument = cmd.arg("--definitely-invalid-option");
     let _assertion = cmd.assert().failure().stderr(contains("Usage: vtcode"));
 }
+
+#[test]
+fn vtcode_binary_accepts_both_no_colour_spellings() {
+    for flag in ["--no-colour", "--no-color"] {
+        let (_home, mut cmd) = isolated_vtcode_command();
+        let _argument = cmd.arg(flag).arg("--help");
+        let _assertion = cmd.assert().success().stdout(contains("--no-colour"));
+    }
+}

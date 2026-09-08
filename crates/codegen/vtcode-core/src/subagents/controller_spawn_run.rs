@@ -612,7 +612,7 @@ impl SubagentController {
                     display_label: subagent_display_label(&spec),
                     description: spec.description.clone(),
                     source: spec.source.label(),
-                    color: spec.color.clone(),
+                    colour: spec.colour.clone(),
                     session_id: session_id.clone(),
                     exec_session_id: exec_session_id.clone(),
                     desired_enabled: true,

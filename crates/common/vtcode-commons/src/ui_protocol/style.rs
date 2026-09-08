@@ -7,36 +7,36 @@ use anstyle::{Color as AnsiColorEnum, Effects, Style as AnsiStyle};
 /// Inline text styling with foreground/background color and text effects.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct InlineTextStyle {
-    pub color: Option<AnsiColorEnum>,
-    pub bg_color: Option<AnsiColorEnum>,
+    pub colour: Option<AnsiColorEnum>,
+    pub bg_colour: Option<AnsiColorEnum>,
     pub effects: Effects,
 }
 
 impl InlineTextStyle {
     #[must_use]
-    pub fn with_color(mut self, color: Option<AnsiColorEnum>) -> Self {
-        self.color = color;
+    pub fn with_colour(mut self, colour: Option<AnsiColorEnum>) -> Self {
+        self.colour = colour;
         self
     }
 
     #[must_use]
-    pub fn with_bg_color(mut self, color: Option<AnsiColorEnum>) -> Self {
-        self.bg_color = color;
+    pub fn with_bg_colour(mut self, colour: Option<AnsiColorEnum>) -> Self {
+        self.bg_colour = colour;
         self
     }
 
     #[must_use]
-    pub fn merge_color(mut self, fallback: Option<AnsiColorEnum>) -> Self {
-        if self.color.is_none() {
-            self.color = fallback;
+    pub fn merge_colour(mut self, fallback: Option<AnsiColorEnum>) -> Self {
+        if self.colour.is_none() {
+            self.colour = fallback;
         }
         self
     }
 
     #[must_use]
-    pub fn merge_bg_color(mut self, fallback: Option<AnsiColorEnum>) -> Self {
-        if self.bg_color.is_none() {
-            self.bg_color = fallback;
+    pub fn merge_bg_colour(mut self, fallback: Option<AnsiColorEnum>) -> Self {
+        if self.bg_colour.is_none() {
+            self.bg_colour = fallback;
         }
         self
     }
@@ -68,10 +68,10 @@ impl InlineTextStyle {
     #[must_use]
     pub fn to_ansi_style(&self, fallback: Option<AnsiColorEnum>) -> AnsiStyle {
         let mut style = AnsiStyle::new();
-        if let Some(color) = self.color.or(fallback) {
-            style = style.fg_color(Some(color));
+        if let Some(colour) = self.colour.or(fallback) {
+            style = style.fg_color(Some(colour));
         }
-        if let Some(bg) = self.bg_color {
+        if let Some(bg) = self.bg_colour {
             style = style.bg_color(Some(bg));
         }
         if self.effects.contains(Effects::BOLD) {
@@ -111,7 +111,7 @@ pub struct InlineLinkRange {
     pub target: InlineLinkTarget,
 }
 
-/// Resolved theme colors for inline rendering.
+/// Resolved theme colours for inline rendering.
 #[derive(Clone, Debug, Default)]
 pub struct InlineTheme {
     pub foreground: Option<AnsiColorEnum>,
@@ -177,7 +177,7 @@ pub struct InlineHeaderContext {
     pub tools: String,
     pub mcp: String,
     pub primary_agent: Option<String>,
-    pub primary_agent_color: Option<String>,
+    pub primary_agent_colour: Option<String>,
     pub highlights: Vec<InlineHeaderHighlight>,
     pub subagent_badges: Vec<InlineHeaderBadge>,
 }
@@ -202,7 +202,7 @@ impl Default for InlineHeaderContext {
             tools: "Tools: unavailable".to_string(),
             mcp: "MCP: unavailable".to_string(),
             primary_agent: None,
-            primary_agent_color: None,
+            primary_agent_colour: None,
             highlights: Vec::new(),
             subagent_badges: Vec::new(),
         }
@@ -213,33 +213,33 @@ impl Default for InlineHeaderContext {
 // Conversion helpers
 // ---------------------------------------------------------------------------
 
-fn convert_ansi_color(color: AnsiColorEnum) -> Option<AnsiColorEnum> {
-    Some(match color {
+fn convert_ansi_colour(colour: AnsiColorEnum) -> Option<AnsiColorEnum> {
+    Some(match colour {
         AnsiColorEnum::Ansi(ansi) => AnsiColorEnum::Ansi(ansi),
         AnsiColorEnum::Ansi256(value) => AnsiColorEnum::Ansi256(value),
         AnsiColorEnum::Rgb(rgb) => AnsiColorEnum::Rgb(rgb),
     })
 }
 
-fn convert_style_color(style: &AnsiStyle) -> Option<AnsiColorEnum> {
-    style.get_fg_color().and_then(convert_ansi_color)
+fn convert_style_colour(style: &AnsiStyle) -> Option<AnsiColorEnum> {
+    style.get_fg_color().and_then(convert_ansi_colour)
 }
 
-fn convert_style_bg_color(style: &AnsiStyle) -> Option<AnsiColorEnum> {
-    style.get_bg_color().and_then(convert_ansi_color)
+fn convert_style_bg_colour(style: &AnsiStyle) -> Option<AnsiColorEnum> {
+    style.get_bg_color().and_then(convert_ansi_colour)
 }
 
 /// Convert an `anstyle::Style` to an [`InlineTextStyle`].
 pub fn convert_style(style: AnsiStyle) -> InlineTextStyle {
     InlineTextStyle {
-        color: convert_style_color(&style),
-        bg_color: convert_style_bg_color(&style),
+        colour: convert_style_colour(&style),
+        bg_colour: convert_style_bg_colour(&style),
         effects: style.get_effects(),
     }
 }
 
 /// Build an [`InlineTheme`] from individual theme colour fields.
-pub fn theme_from_color_fields(
+pub fn theme_from_colour_fields(
     foreground: AnsiColorEnum,
     background: AnsiColorEnum,
     primary: AnsiStyle,
@@ -249,12 +249,12 @@ pub fn theme_from_color_fields(
     pty_output: AnsiStyle,
 ) -> InlineTheme {
     InlineTheme {
-        foreground: convert_ansi_color(foreground),
-        background: convert_ansi_color(background),
-        primary: convert_style_color(&primary),
-        secondary: convert_style_color(&secondary),
-        tool_accent: convert_style_color(&tool),
-        tool_body: convert_style_color(&tool_detail),
-        pty_body: convert_style_color(&pty_output),
+        foreground: convert_ansi_colour(foreground),
+        background: convert_ansi_colour(background),
+        primary: convert_style_colour(&primary),
+        secondary: convert_style_colour(&secondary),
+        tool_accent: convert_style_colour(&tool),
+        tool_body: convert_style_colour(&tool_detail),
+        pty_body: convert_style_colour(&pty_output),
     }
 }

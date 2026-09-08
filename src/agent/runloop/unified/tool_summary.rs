@@ -4,7 +4,7 @@ use std::path::Path;
 use anstyle::{Color, Reset, Style as AnsiStyle};
 use anyhow::Result;
 use serde_json::Value;
-use vtcode_commons::color_policy;
+use vtcode_commons::colour_policy;
 use vtcode_commons::formatting::wrap_text_words;
 use vtcode_commons::ui_protocol::{CompactToolSummaryLine, CompactToolSummaryLineKind};
 
@@ -14,7 +14,7 @@ use vtcode_core::tools::registry::labels::tool_action_label;
 use vtcode_core::tools::tool_intent;
 use vtcode_core::ui::theme;
 use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_core::utils::style_helpers::{ColorPalette, render_styled};
+use vtcode_core::utils::style_helpers::{ColourPalette, render_styled};
 use vtcode_ui::tui::ui::syntax_highlight;
 
 use crate::agent::runloop::tool_output::render_tree_detail;
@@ -73,7 +73,7 @@ pub(crate) fn render_file_operation_indicator(
     args: &Value,
     ctx: &ToolSummaryRenderContext,
 ) -> Result<()> {
-    let palette = ColorPalette::default();
+    let palette = ColourPalette::default();
 
     // Only show indicators for file modification tools
     let (indicator_icon, action_verb) = match tool_name {
@@ -159,7 +159,7 @@ pub(crate) fn render_tool_call_summary(
     args: &Value,
     stream_label: Option<&str>,
     ctx: &ToolSummaryRenderContext,
-    bullet_color: Color,
+    bullet_colour: Color,
 ) -> Result<()> {
     let data = prepare_summary_data(tool_name, args, ctx.workspace_root);
 
@@ -167,7 +167,7 @@ pub(crate) fn render_tool_call_summary(
         return render_compact_tool_summary_data(renderer, &data, stream_label);
     }
 
-    render_expanded_tool_summary_data(renderer, &data, stream_label, bullet_color)
+    render_expanded_tool_summary_data(renderer, &data, stream_label, bullet_colour)
 }
 
 pub(crate) fn render_expanded_tool_call_summary(
@@ -176,34 +176,34 @@ pub(crate) fn render_expanded_tool_call_summary(
     args: &Value,
     stream_label: Option<&str>,
     ctx: &ToolSummaryRenderContext,
-    bullet_color: Color,
+    bullet_colour: Color,
 ) -> Result<()> {
     let data = prepare_summary_data(tool_name, args, ctx.workspace_root);
-    render_expanded_tool_summary_data(renderer, &data, stream_label, bullet_color)
+    render_expanded_tool_summary_data(renderer, &data, stream_label, bullet_colour)
 }
 
 fn render_expanded_tool_summary_data(
     renderer: &mut AnsiRenderer,
     data: &SummaryData,
     stream_label: Option<&str>,
-    bullet_color: Color,
+    bullet_colour: Color,
 ) -> Result<()> {
     let theme_styles = theme::active_styles();
-    let main_color = theme_styles
+    let main_colour = theme_styles
         .primary
         .get_fg_color()
         .unwrap_or(Color::Ansi(anstyle::AnsiColor::Green));
-    let palette = ColorPalette::default();
+    let palette = ColourPalette::default();
 
     let mut line = String::with_capacity(128);
-    line.push_str(&render_styled("•", bullet_color, None));
+    line.push_str(&render_styled("•", bullet_colour, None));
     line.push(' ');
 
-    let wrapped_run_segments = render_bullet_line(&mut line, data, stream_label, main_color, &palette);
+    let wrapped_run_segments = render_bullet_line(&mut line, data, stream_label, main_colour, &palette);
 
     renderer.line_with_override_style(MessageStyle::Info, AnsiStyle::new(), &line)?;
 
-    render_continuation_lines(renderer, &wrapped_run_segments, main_color, &palette)?;
+    render_continuation_lines(renderer, &wrapped_run_segments, main_colour, &palette)?;
     render_command_line(renderer, &data.command_line, &palette)?;
     render_details(renderer, &data.details)?;
 
@@ -310,22 +310,22 @@ fn render_bullet_line(
     line: &mut String,
     data: &SummaryData,
     stream_label: Option<&str>,
-    main_color: Color,
-    palette: &ColorPalette,
+    main_colour: Color,
+    palette: &ColourPalette,
 ) -> Option<Vec<String>> {
     let mut wrapped_run_segments: Option<Vec<String>> = None;
     if let Some(command) = data.summary.strip_prefix("Ran ") {
         let wrapped = wrap_text_words(command, RUN_SUMMARY_FIRST_WIDTH, RUN_SUMMARY_CONTINUATION_WIDTH);
         let first_segment = wrapped.first().cloned().unwrap_or_else(|| "command".to_string());
         wrapped_run_segments = Some(wrapped);
-        line.push_str(&render_styled("Ran", main_color, Some("bold".to_string())));
+        line.push_str(&render_styled("Ran", main_colour, Some("bold".to_string())));
         line.push(' ');
-        line.push_str(&render_command_segment(&first_segment, main_color, palette.muted, true));
+        line.push_str(&render_command_segment(&first_segment, main_colour, palette.muted, true));
     } else {
         line.push_str(&render_summary_with_highlights(
             &data.summary,
             &data.summary_highlights,
-            main_color,
+            main_colour,
             palette.accent,
             palette.muted,
         ));
@@ -348,8 +348,8 @@ fn render_bullet_line(
 fn render_continuation_lines(
     renderer: &mut AnsiRenderer,
     wrapped_run_segments: &Option<Vec<String>>,
-    main_color: Color,
-    palette: &ColorPalette,
+    main_colour: Color,
+    palette: &ColourPalette,
 ) -> Result<()> {
     if let Some(wrapped) = wrapped_run_segments {
         for segment in wrapped.iter().skip(1) {
@@ -357,7 +357,7 @@ fn render_continuation_lines(
             continuation.push_str("  ");
             continuation.push_str(&render_styled("│", palette.muted, Some("dim".to_string())));
             continuation.push(' ');
-            continuation.push_str(&render_command_segment(segment, main_color, palette.muted, false));
+            continuation.push_str(&render_command_segment(segment, main_colour, palette.muted, false));
             renderer.line(MessageStyle::Info, &continuation)?;
         }
     }
@@ -367,7 +367,7 @@ fn render_continuation_lines(
 fn render_command_line(
     renderer: &mut AnsiRenderer,
     command_line: &Option<String>,
-    palette: &ColorPalette,
+    palette: &ColourPalette,
 ) -> Result<()> {
     if let Some(command_line) = command_line {
         let mut styled = String::with_capacity(64);
@@ -390,12 +390,12 @@ fn render_details(renderer: &mut AnsiRenderer, details: &[String]) -> Result<()>
 fn render_summary_with_highlights(
     summary: &str,
     highlights: &[String],
-    main_color: Color,
-    accent_color: Color,
-    muted_color: Color,
+    main_colour: Color,
+    accent_colour: Color,
+    muted_colour: Color,
 ) -> String {
     if highlights.is_empty() {
-        return render_styled(summary, main_color, None);
+        return render_styled(summary, main_colour, None);
     }
 
     let mut ranges: Vec<(usize, usize)> = highlights
@@ -409,7 +409,7 @@ fn render_summary_with_highlights(
         .collect();
 
     if ranges.is_empty() {
-        return render_styled(summary, main_color, None);
+        return render_styled(summary, main_colour, None);
     }
 
     ranges.sort_by_key(|(start, _)| *start);
@@ -421,13 +421,13 @@ fn render_summary_with_highlights(
             continue;
         }
         if cursor < start {
-            rendered.push_str(&render_styled(&summary[cursor..start], muted_color, None));
+            rendered.push_str(&render_styled(&summary[cursor..start], muted_colour, None));
         }
-        rendered.push_str(&render_styled(&summary[start..end], accent_color, Some("bold".to_string())));
+        rendered.push_str(&render_styled(&summary[start..end], accent_colour, Some("bold".to_string())));
         cursor = end;
     }
     if cursor < summary.len() {
-        rendered.push_str(&render_styled(&summary[cursor..], muted_color, None));
+        rendered.push_str(&render_styled(&summary[cursor..], muted_colour, None));
     }
 
     rendered
@@ -436,35 +436,35 @@ fn render_summary_with_highlights(
 /// Render a command-line segment using the bash grammar syntax highlighter.
 ///
 /// Tries the syntect bash grammar first (the same engine used by the live PTY
-/// stream). When the grammar produces distinct foreground colors the result is
-/// converted to ANSI escape sequences with `args_color` merged in for tokens
+/// stream). When the grammar produces distinct foreground colours the result is
+/// converted to ANSI escape sequences with `args_colour` merged in for tokens
 /// that have no explicit color. Falls back to a simple command-name / args
 /// two-color scheme when the grammar is unavailable or yields a single color.
-fn render_command_segment(segment: &str, command_color: Color, args_color: Color, expect_command: bool) -> String {
+fn render_command_segment(segment: &str, command_colour: Color, args_colour: Color, expect_command: bool) -> String {
     if segment.is_empty() {
         return String::new();
     }
 
-    if !color_policy::color_output_enabled() {
+    if !colour_policy::colour_output_enabled() {
         return segment.to_string();
     }
 
-    if let Some(highlighted) = try_bash_grammar_ansi(segment, args_color) {
+    if let Some(highlighted) = try_bash_grammar_ansi(segment, args_colour) {
         return highlighted;
     }
 
     // Fallback: simple two-color scheme.
     if expect_command {
-        render_run_command_segment(segment, command_color, args_color)
+        render_run_command_segment(segment, command_colour, args_colour)
     } else {
-        render_styled(segment, args_color, None)
+        render_styled(segment, args_colour, None)
     }
 }
 
 /// Convert a command string to ANSI-highlighted text via the syntect bash
 /// grammar, returning `None` when highlighting is unavailable or produces no
-/// distinct foreground colors (in which case the caller should fall back).
-fn try_bash_grammar_ansi(command: &str, fallback_color: Color) -> Option<String> {
+/// distinct foreground colours (in which case the caller should fall back).
+fn try_bash_grammar_ansi(command: &str, fallback_colour: Color) -> Option<String> {
     let theme_name = syntax_highlight::get_active_syntax_theme();
     let segments = syntax_highlight::highlight_line_to_anstyle_segments(command, Some("bash"), theme_name, true)?;
     if segments.is_empty() {
@@ -479,13 +479,13 @@ fn try_bash_grammar_ansi(command: &str, fallback_color: Color) -> Option<String>
     }
 
     // Only use the grammar result when it produces at least two distinct
-    // foreground colors among non-whitespace tokens — a single color means
+    // foreground colours among non-whitespace tokens — a single color means
     // the grammar added no semantic value, so the two-color fallback is
     // more informative.
     let non_ws: Vec<&(AnsiStyle, String)> = segments.iter().filter(|(_, t)| !t.trim().is_empty()).collect();
     if non_ws.len() > 1 {
-        let colors: HashSet<Option<Color>> = non_ws.iter().map(|(style, _)| style.get_fg_color()).collect();
-        if colors.len() <= 1 {
+        let colours: HashSet<Option<Color>> = non_ws.iter().map(|(style, _)| style.get_fg_color()).collect();
+        if colours.len() <= 1 {
             return None;
         }
     }
@@ -494,7 +494,7 @@ fn try_bash_grammar_ansi(command: &str, fallback_color: Color) -> Option<String>
     for (style, text) in &segments {
         let mut effective = *style;
         if effective.get_fg_color().is_none() {
-            effective = effective.fg_color(Some(fallback_color));
+            effective = effective.fg_color(Some(fallback_colour));
         }
         output.push_str(&effective.to_string());
         output.push_str(text);
@@ -503,16 +503,16 @@ fn try_bash_grammar_ansi(command: &str, fallback_color: Color) -> Option<String>
     Some(output)
 }
 
-fn render_run_command_segment(segment: &str, command_color: Color, args_color: Color) -> String {
+fn render_run_command_segment(segment: &str, command_colour: Color, args_colour: Color) -> String {
     let (command, args) = split_command_and_args(segment);
     if command.is_empty() {
-        return render_styled(segment, args_color, None);
+        return render_styled(segment, args_colour, None);
     }
 
     let mut rendered = String::with_capacity(segment.len() * 2);
-    rendered.push_str(&render_styled(command, command_color, None));
+    rendered.push_str(&render_styled(command, command_colour, None));
     if !args.is_empty() {
-        rendered.push_str(&render_styled(&format!(" {args}"), args_color, None));
+        rendered.push_str(&render_styled(&format!(" {args}"), args_colour, None));
     }
     rendered
 }
@@ -971,10 +971,10 @@ mod tests {
         // Force color output on. The color policy uses a Lazy initializer that
         // reads NO_COLOR from the env; we must trigger it first, then override.
         // (nextest runs each test in its own process, so this is safe.)
-        let _ = vtcode_commons::color_policy::current_color_output_policy();
-        vtcode_commons::color_policy::set_color_output_policy(vtcode_commons::color_policy::ColorOutputPolicy {
+        let _ = vtcode_commons::colour_policy::current_colour_output_policy();
+        vtcode_commons::colour_policy::set_colour_output_policy(vtcode_commons::colour_policy::ColourOutputPolicy {
             enabled: true,
-            source: vtcode_commons::color_policy::ColorOutputPolicySource::CliColorAlways,
+            source: vtcode_commons::colour_policy::ColourOutputPolicySource::CliColourAlways,
         });
 
         let result = super::render_command_segment(
@@ -991,10 +991,10 @@ mod tests {
 
     #[test]
     fn inline_tool_summary_keeps_command_tokens_independently_styled() {
-        let _ = vtcode_commons::color_policy::current_color_output_policy();
-        vtcode_commons::color_policy::set_color_output_policy(vtcode_commons::color_policy::ColorOutputPolicy {
+        let _ = vtcode_commons::colour_policy::current_colour_output_policy();
+        vtcode_commons::colour_policy::set_colour_output_policy(vtcode_commons::colour_policy::ColourOutputPolicy {
             enabled: true,
-            source: vtcode_commons::color_policy::ColorOutputPolicySource::CliColorAlways,
+            source: vtcode_commons::colour_policy::ColourOutputPolicySource::CliColourAlways,
         });
 
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
@@ -1040,16 +1040,16 @@ mod tests {
                     .collect();
                 panic!("expected inline command summary, got {texts:?}");
             });
-        let command_color = summary_segments
+        let command_colour = summary_segments
             .iter()
             .find(|segment| segment.text.contains("find"))
-            .and_then(|segment| segment.style.color);
-        let option_color = summary_segments
+            .and_then(|segment| segment.style.colour);
+        let option_colour = summary_segments
             .iter()
             .find(|segment| segment.text.contains("maxdepth"))
-            .and_then(|segment| segment.style.color);
+            .and_then(|segment| segment.style.colour);
 
-        assert_ne!(command_color, option_color);
+        assert_ne!(command_colour, option_colour);
     }
 
     #[test]

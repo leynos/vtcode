@@ -419,7 +419,7 @@ fn render_diff_content(
     )
 }
 
-pub(super) fn colorize_diff_summary_line(line: &str, _supports_color: bool) -> Option<String> {
+pub(super) fn colourise_diff_summary_line(line: &str, _supports_colour: bool) -> Option<String> {
     let trimmed = line.trim_start();
     let is_summary = trimmed.contains(" file changed")
         || trimmed.contains(" files changed")

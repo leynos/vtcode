@@ -16,7 +16,7 @@ use ratatui::{
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use super::{
-    style::{measure_text_width, ratatui_color_from_ansi, ratatui_style_from_inline},
+    style::{measure_text_width, ratatui_colour_from_ansi, ratatui_style_from_inline},
     types::{
         ActivityState, InlineCommand, InlineEvent, InlineHeaderContext, InlineListSelection, InlineMessageKind,
         InlineTextStyle, InlineTheme, OverlayRequest,
@@ -104,7 +104,7 @@ use super::types::InlineHeaderHighlight;
 use crate::tui::ui::tui::log::{LogEntry, highlight_log_entry};
 
 const USER_PREFIX: &str = "";
-const PLACEHOLDER_COLOR: RgbColor = RgbColor(ui::PLACEHOLDER_R, ui::PLACEHOLDER_G, ui::PLACEHOLDER_B);
+const PLACEHOLDER_COLOUR: RgbColor = RgbColor(ui::PLACEHOLDER_R, ui::PLACEHOLDER_G, ui::PLACEHOLDER_B);
 const MAX_LOG_LINES: usize = 256;
 const MAX_LOG_DRAIN_PER_TICK: usize = 256;
 

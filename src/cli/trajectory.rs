@@ -8,7 +8,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::utils::colors::style;
+use vtcode_core::utils::colours::style;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind")]

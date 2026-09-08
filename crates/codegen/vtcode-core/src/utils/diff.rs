@@ -14,7 +14,7 @@ pub fn compute_diff_with_theme(old: &str, new: &str, options: DiffOptions<'_>) -
     vtcode_ui::design::diff::compute_diff_with_theme(old, new, options)
 }
 
-/// Format diff hunks with standard ANSI colors for terminal display.
-pub fn format_colored_diff(hunks: &[DiffHunk], options: &DiffOptions<'_>) -> String {
-    vtcode_ui::design::diff::format_colored_diff(hunks, options)
+/// Format diff hunks with standard ANSI colours for terminal display.
+pub fn format_coloured_diff(hunks: &[DiffHunk], options: &DiffOptions<'_>) -> String {
+    vtcode_ui::design::diff::format_coloured_diff(hunks, options)
 }

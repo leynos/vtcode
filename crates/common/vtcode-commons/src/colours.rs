@@ -11,7 +11,7 @@
 use anstyle::{AnsiColor, Color, Effects, RgbColor, Style};
 
 /// Create an RGB color from hex string
-pub fn color_from_hex(hex: &str) -> Option<Color> {
+pub fn colour_from_hex(hex: &str) -> Option<Color> {
     let hex = hex.trim_start_matches('#');
     if hex.len() != 6 {
         return None;
@@ -25,14 +25,14 @@ pub fn color_from_hex(hex: &str) -> Option<Color> {
     Some(Color::Rgb(RgbColor(r, g, b)))
 }
 
-/// Blend two RGB colors
+/// Blend two RGB colours
 #[allow(
     clippy::cast_sign_loss,
     reason = "Intentional compatibility, platform, or test-only suppression."
 )]
-pub fn blend_colors(color1: &Color, color2: &Color, ratio: f32) -> Option<Color> {
-    let rgb1 = color_to_rgb(color1)?;
-    let rgb2 = color_to_rgb(color2)?;
+pub fn blend_colours(colour1: &Color, colour2: &Color, ratio: f32) -> Option<Color> {
+    let rgb1 = colour_to_rgb(colour1)?;
+    let rgb2 = colour_to_rgb(colour2)?;
 
     let r = (rgb1.r() as f32 * (1.0 - ratio) + rgb2.r() as f32 * ratio) as u8;
     let g = (rgb1.g() as f32 * (1.0 - ratio) + rgb2.g() as f32 * ratio) as u8;
@@ -42,17 +42,17 @@ pub fn blend_colors(color1: &Color, color2: &Color, ratio: f32) -> Option<Color>
 }
 
 /// Convert an ANSI color to RGB, if possible
-fn color_to_rgb(color: &Color) -> Option<RgbColor> {
-    match color {
+fn colour_to_rgb(colour: &Color) -> Option<RgbColor> {
+    match colour {
         Color::Rgb(rgb) => Some(*rgb),
-        Color::Ansi(ansi_color) => ansi_to_rgb(*ansi_color),
-        Color::Ansi256(ansi256_color) => ansi256_to_rgb(*ansi256_color),
+        Color::Ansi(ansi_colour) => ansi_to_rgb(*ansi_colour),
+        Color::Ansi256(ansi256_colour) => ansi256_to_rgb(*ansi256_colour),
     }
 }
 
 /// Convert an ANSI color to RGB approximation
-fn ansi_to_rgb(ansi_color: AnsiColor) -> Option<RgbColor> {
-    match ansi_color {
+fn ansi_to_rgb(ansi_colour: AnsiColor) -> Option<RgbColor> {
+    match ansi_colour {
         AnsiColor::Black => Some(RgbColor(0, 0, 0)),
         AnsiColor::Red => Some(RgbColor(170, 0, 0)),
         AnsiColor::Green => Some(RgbColor(0, 170, 0)),
@@ -73,8 +73,8 @@ fn ansi_to_rgb(ansi_color: AnsiColor) -> Option<RgbColor> {
 }
 
 /// Convert an ANSI256 color to RGB approximation
-fn ansi256_to_rgb(ansi256_color: anstyle::Ansi256Color) -> Option<RgbColor> {
-    let code = ansi256_color.0;
+fn ansi256_to_rgb(ansi256_colour: anstyle::Ansi256Color) -> Option<RgbColor> {
+    let code = ansi256_colour.0;
     match code {
         0 => Some(RgbColor(0, 0, 0)),
         1 => Some(RgbColor(170, 0, 0)),
@@ -109,8 +109,8 @@ fn ansi256_to_rgb(ansi256_color: anstyle::Ansi256Color) -> Option<RgbColor> {
 }
 
 /// Determine if a color is light (for contrast calculations)
-pub fn is_light_color(color: &Color) -> bool {
-    let rgb = color_to_rgb(color);
+pub fn is_light_colour(colour: &Color) -> bool {
+    let rgb = colour_to_rgb(colour);
     if let Some(RgbColor(r, g, b)) = rgb {
         let luminance = (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32) / 255.0;
         luminance > 0.5
@@ -120,8 +120,8 @@ pub fn is_light_color(color: &Color) -> bool {
 }
 
 /// Get a contrasting color (black or white) for better readability
-pub fn contrasting_color(color: &Color) -> Color {
-    if is_light_color(color) {
+pub fn contrasting_colour(colour: &Color) -> Color {
+    if is_light_colour(colour) {
         Color::Ansi(AnsiColor::Black)
     } else {
         Color::Ansi(AnsiColor::White)
@@ -133,8 +133,8 @@ pub fn contrasting_color(color: &Color) -> Color {
     clippy::cast_sign_loss,
     reason = "Intentional compatibility, platform, or test-only suppression."
 )]
-pub fn desaturate_color(color: &Color, amount: f32) -> Option<Color> {
-    let rgb = color_to_rgb(color)?;
+pub fn desaturate_colour(colour: &Color, amount: f32) -> Option<Color> {
+    let rgb = colour_to_rgb(colour)?;
     let r = rgb.r() as f32;
     let g = rgb.g() as f32;
     let b = rgb.b() as f32;
@@ -330,6 +330,6 @@ mod tests {
 
     #[test]
     fn non_ascii_hex_is_rejected_without_panicking() {
-        assert!(color_from_hex("红色").is_none());
+        assert!(colour_from_hex("红色").is_none());
     }
 }

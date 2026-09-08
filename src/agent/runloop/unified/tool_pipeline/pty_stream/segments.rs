@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anstyle::{Ansi256Color, AnsiColor, Color as AnsiColorEnum, Effects, RgbColor, Style as AnsiStyle};
 use vtcode_core::ui::theme;
-use vtcode_core::utils::style_helpers::ColorPalette;
+use vtcode_core::utils::style_helpers::ColourPalette;
 use vtcode_ui::tui::app::{InlineLinkRange, InlineLinkTarget, InlineSegment, InlineTextStyle};
 use vtcode_ui::tui::core::convert_style;
 use vtcode_ui::tui::ui::syntax_highlight;
@@ -24,7 +24,7 @@ pub(super) struct PtyLineStyles {
 impl PtyLineStyles {
     pub(super) fn new() -> Self {
         let theme_styles = theme::active_styles();
-        let palette = ColorPalette::default();
+        let palette = ColourPalette::default();
         // Use the theme's dedicated blended PTY output style for body text.
         // Header spans remove DIM during reflow and therefore remain opaque.
         let output = Arc::new(convert_style(theme_styles.pty_output));
@@ -215,7 +215,7 @@ fn shell_syntax_segments(text: &str, styles: &PtyLineStyles, expect_command: boo
         .into_iter()
         .map(|(style, text)| InlineSegment {
             text,
-            style: Arc::new(convert_style(style).merge_color(styles.args.color)),
+            style: Arc::new(convert_style(style).merge_colour(styles.args.colour)),
         })
         .collect::<Vec<_>>();
 
@@ -226,21 +226,21 @@ fn shell_syntax_segments(text: &str, styles: &PtyLineStyles, expect_command: boo
 
     let non_ws_count = semantic.iter().filter(|segment| !segment.text.trim().is_empty()).count();
     if non_ws_count > 1 {
-        let mut first_colors: Option<(Option<AnsiColorEnum>, Option<AnsiColorEnum>)> = None;
+        let mut first_colours: Option<(Option<AnsiColorEnum>, Option<AnsiColorEnum>)> = None;
         let mut has_distinct = false;
         for style in converted
             .iter()
             .filter(|segment| !segment.text.trim().is_empty())
             .map(|segment| segment.style.as_ref())
         {
-            let colors = (style.color, style.bg_color);
-            if let Some(seed) = first_colors {
-                if colors != seed {
+            let colours = (style.colour, style.bg_colour);
+            if let Some(seed) = first_colours {
+                if colours != seed {
                     has_distinct = true;
                     break;
                 }
             } else {
-                first_colors = Some(colors);
+                first_colours = Some(colours);
             }
         }
         if !has_distinct {
@@ -251,8 +251,8 @@ fn shell_syntax_segments(text: &str, styles: &PtyLineStyles, expect_command: boo
     converted
 }
 
-fn ansi_color_from_ansi_code(code: u16) -> Option<AnsiColorEnum> {
-    let color = match code {
+fn ansi_colour_from_ansi_code(code: u16) -> Option<AnsiColorEnum> {
+    let colour = match code {
         30 | 90 => AnsiColor::Black,
         31 | 91 => AnsiColor::Red,
         32 | 92 => AnsiColor::Green,
@@ -263,7 +263,7 @@ fn ansi_color_from_ansi_code(code: u16) -> Option<AnsiColorEnum> {
         37 | 97 => AnsiColor::White,
         _ => return None,
     };
-    Some(AnsiColorEnum::Ansi(color))
+    Some(AnsiColorEnum::Ansi(colour))
 }
 
 fn clear_sgr_effects(effects: &mut Effects, code: u16) {
@@ -299,24 +299,24 @@ fn apply_sgr_codes(sequence: &str, current: &mut InlineTextStyle, fallback: &Inl
             3 => current.effects |= Effects::ITALIC,
             4 => current.effects |= Effects::UNDERLINE,
             22..=24 => clear_sgr_effects(&mut current.effects, code),
-            30..=37 | 90..=97 => current.color = ansi_color_from_ansi_code(code),
-            39 => current.color = fallback.color,
+            30..=37 | 90..=97 => current.colour = ansi_colour_from_ansi_code(code),
+            39 => current.colour = fallback.colour,
             40..=47 | 100..=107 => {
                 let fg_code = code - 10;
-                current.bg_color = ansi_color_from_ansi_code(fg_code);
+                current.bg_colour = ansi_colour_from_ansi_code(fg_code);
             }
-            49 => current.bg_color = fallback.bg_color,
+            49 => current.bg_colour = fallback.bg_colour,
             38 | 48 => {
                 let is_fg = code == 38;
                 if let Some(mode) = params.get(index + 1).copied() {
                     match mode {
                         5 => {
                             if let Some(value) = params.get(index + 2).copied() {
-                                let color = AnsiColorEnum::Ansi256(Ansi256Color(value as u8));
+                                let colour = AnsiColorEnum::Ansi256(Ansi256Color(value as u8));
                                 if is_fg {
-                                    current.color = Some(color);
+                                    current.colour = Some(colour);
                                 } else {
-                                    current.bg_color = Some(color);
+                                    current.bg_colour = Some(colour);
                                 }
                                 index += 2;
                             }
@@ -326,11 +326,11 @@ fn apply_sgr_codes(sequence: &str, current: &mut InlineTextStyle, fallback: &Inl
                                 let r = params[index + 2] as u8;
                                 let g = params[index + 3] as u8;
                                 let b = params[index + 4] as u8;
-                                let color = AnsiColorEnum::Rgb(RgbColor(r, g, b));
+                                let colour = AnsiColorEnum::Rgb(RgbColor(r, g, b));
                                 if is_fg {
-                                    current.color = Some(color);
+                                    current.colour = Some(colour);
                                 } else {
-                                    current.bg_color = Some(color);
+                                    current.bg_colour = Some(colour);
                                 }
                                 index += 4;
                             }
@@ -558,7 +558,7 @@ mod tests {
     }
 
     #[test]
-    fn command_header_preserves_distinct_semantic_token_colors() {
+    fn command_header_preserves_distinct_semantic_token_colours() {
         let styles = PtyLineStyles::new();
         let (segments, _) =
             line_to_segments("• Ran find src/agent/runloop -maxdepth 3 -type f -name *.rs | sort", &styles);
@@ -573,6 +573,6 @@ mod tests {
             .iter()
             .find(|segment| segment.text.contains("find"))
             .unwrap_or_else(|| panic!("expected command token in segments: {segments:?}"));
-        assert_ne!(option.style.color, command.style.color);
+        assert_ne!(option.style.colour, command.style.colour);
     }
 }
