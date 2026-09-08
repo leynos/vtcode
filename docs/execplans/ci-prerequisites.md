@@ -155,6 +155,19 @@ staging.
   now returns its original error to the test harness; no lint allowance or
   assertion weakening was added. The final packet reruns format, all four CLI
   controls under the CI profile, Clippy, and this plan's Markdown check.
+- [x] (2026-09-08) Commit the 25-path CI candidate as
+  `2719cde82fe65c12f54dde7714d890e57f879163` after the final formatter gate;
+  coverage artefacts remain untracked and excluded from the commit.
+- [ ] (2026-09-08) Address the committed candidate's introduced CodeScene
+  findings before any CodeRabbit request. The Python baseline checker and the
+  changed-Markdown Node helper receive bounded parser/validation decompositions
+  with their existing contracts retained. The two Rust safety repairs require
+  a separate source review: any complexity reduction must preserve their
+  total, fail-closed semantics rather than conceal a branch or fabricate data.
+- [ ] (2026-09-08) Re-run only the affected focused checks after the first
+  CodeScene repair packet exposed a non-hermetic skills count assertion and
+  formatter output. The test must assert exclusion of its invalid fixture
+  without treating the deliberately installed system-skill catalogue as empty.
 
 ## Surprises & discoveries
 
@@ -450,6 +463,30 @@ The Windows allowances now use the exact unused predicates: home_dir is
 allowed only when the macOS branch cannot consume it, and the permissions path
 only when the Unix body cannot consume it. This preserves behaviour without a
 general warning exemption.
+
+The committed candidate's CodeScene comparison against `dddd1352` found newly
+introduced complexity and test-structure findings in the PR-owned baseline
+ratchet and changed-Markdown helper. Root approved coherent helper extraction
+and contract-preserving test consolidation for those scripts; no CodeScene
+threshold change, suppression, or diagnostic relaxation is permitted. The
+same comparison reports complexity increases in `ListSkillsTool::execute` and
+`InputManager::replace_range` from prior `expect` removals. Those functions
+remain safety-sensitive: their follow-up must demonstrate a meaningful total
+representation or decomposition before changing code. The 1,025-line
+`input.rs` result includes this candidate's one-line optional-regex guard after
+an existing 1,024-line baseline. It remains tracked by #118 because reducing
+the module below 1,000 lines requires unrelated pre-existing decomposition;
+this is a reasoned structural follow-up, not a waiver of the new guard.
+
+The skills loop now uses `filter_map` to state its actual domain: only skill
+metadata with a manifest reaches filtering and presentation, while discovery
+errors remain reported separately. The input replacement derives its final
+segment with `rsplit_once`, which is total for empty, single-line and
+trailing-newline strings and keeps every existing range and multiline branch.
+A direct Unicode/trailing-newline replacement test records that behaviour.
+The GLM-5.3 Flash accessor example moved beside the manual `ModelId` accessors,
+so `models/tests.rs` returns to its prior responsibility count without
+weakening all-model metadata coverage.
 
 ## Context and orientation
 

@@ -636,10 +636,11 @@ impl Tool for ListSkillsTool {
 
         let mut skill_list = Vec::new();
 
-        for skill_meta in &discovery.skills {
-            let Some(manifest) = skill_meta.manifest.as_ref() else {
-                continue;
-            };
+        for (skill_meta, manifest) in discovery
+            .skills
+            .iter()
+            .filter_map(|skill_meta| skill_meta.manifest.as_ref().map(|manifest| (skill_meta, manifest)))
+        {
             let keywords = extract_metadata_keywords(&manifest.metadata);
             if !matches_skill_filters(
                 manifest.name.as_str(),
@@ -1350,8 +1351,12 @@ Use `/rust-skills`.
             Some(temp_codex_home(temp_dir.path())),
         );
 
-        let result = tool.execute(json!({})).await.expect("list skills succeeds");
+        let result = tool
+            .execute(json!({ "query": "broken-skill" }))
+            .await
+            .expect("list skills succeeds");
 
+        assert_eq!(result["count"].as_u64(), Some(0));
         assert_eq!(result["discovery_errors"].as_u64(), Some(1));
         let samples = result["discovery_error_samples"].as_array().expect("error samples");
         assert_eq!(samples.len(), 1);

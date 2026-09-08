@@ -344,9 +344,7 @@ impl InputManager {
 
         let rep_parts: Vec<&str> = replacement.split('\n').collect();
         let has_newlines = rep_parts.len() > 1;
-        let Some(last_replacement_part) = rep_parts.last() else {
-            return;
-        };
+        let last_replacement_part = replacement.rsplit_once('\n').map_or(replacement, |(_, tail)| tail);
         self.track_compact_paste_replace(start, end, replacement.len());
 
         if start_line == end_line {
@@ -1091,6 +1089,17 @@ mod tests {
         assert_eq!(manager.content(), "hello there");
         assert_eq!(manager.cursor(), "hello there".len());
         assert!(!manager.has_selection());
+    }
+
+    #[test]
+    fn replace_range_preserves_unicode_suffix_after_trailing_newline_replacement() {
+        let mut manager = InputManager::new();
+        manager.set_content("pre 中 suffix尾".to_owned());
+
+        manager.replace_range("pre ".len(), "pre 中".len(), "first\nlast\n");
+
+        assert_eq!(manager.content(), "pre first\nlast\n suffix尾");
+        assert_eq!(manager.cursor(), "pre first\nlast\n".len());
     }
 
     #[test]

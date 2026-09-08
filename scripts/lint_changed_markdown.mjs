@@ -23,6 +23,12 @@ function parseChangedFiles(rawValue) {
         throw new Error(`${CHANGED_FILES_ENV} is required`);
     }
 
+    const changedFiles = parseChangedFilesJson(rawValue);
+    validateChangedFileList(changedFiles);
+    return changedFiles;
+}
+
+function parseChangedFilesJson(rawValue) {
     let changedFiles;
     try {
         changedFiles = JSON.parse(rawValue);
@@ -33,28 +39,46 @@ function parseChangedFiles(rawValue) {
     if (!Array.isArray(changedFiles)) {
         throw new Error(`${CHANGED_FILES_ENV} must be a JSON array of paths`);
     }
+
+    return changedFiles;
+}
+
+function validateChangedFileList(changedFiles) {
     if (changedFiles.length === 0) {
         throw new Error(`${CHANGED_FILES_ENV} must contain at least one path`);
     }
 
     for (const [index, candidate] of changedFiles.entries()) {
-        if (typeof candidate !== "string") {
-            throw new Error(`${CHANGED_FILES_ENV}[${index}] must be a string`);
-        }
-        if (
-            candidate.length === 0 ||
-            candidate.includes("\0") ||
-            isAbsolutePath(candidate) ||
-            candidate.split(/[\\/]/).includes("..") ||
-            !candidate.endsWith(".md")
-        ) {
-            throw new Error(
-                `${CHANGED_FILES_ENV}[${index}] must be a safe repository-relative .md path`,
-            );
-        }
+        validateChangedFileCandidate(candidate, index);
+    }
+}
+
+function validateChangedFileCandidate(candidate, index) {
+    if (typeof candidate !== "string") {
+        throw new Error(`${CHANGED_FILES_ENV}[${index}] must be a string`);
     }
 
-    return changedFiles;
+    if (isUnsafeChangedFilePath(candidate)) {
+        throw new Error(
+            `${CHANGED_FILES_ENV}[${index}] must be a safe repository-relative .md path`,
+        );
+    }
+}
+
+function isUnsafeChangedFilePath(candidate) {
+    if (candidate.length === 0) {
+        return true;
+    }
+    if (candidate.includes("\0")) {
+        return true;
+    }
+    if (isAbsolutePath(candidate)) {
+        return true;
+    }
+    if (candidate.split(/[\\/]/).includes("..")) {
+        return true;
+    }
+    return !candidate.endsWith(".md");
 }
 
 function isWithinCheckoutRoot(checkoutRoot, candidatePath) {
