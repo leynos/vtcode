@@ -636,8 +636,10 @@ impl Tool for ListSkillsTool {
 
         let mut skill_list = Vec::new();
 
-        for skill_meta in discovery.skills.iter().filter(|skill| skill.manifest.is_some()) {
-            let manifest = skill_meta.manifest.as_ref().expect("filtered to skills with manifests");
+        for skill_meta in &discovery.skills {
+            let Some(manifest) = skill_meta.manifest.as_ref() else {
+                continue;
+            };
             let keywords = extract_metadata_keywords(&manifest.metadata);
             if !matches_skill_filters(
                 manifest.name.as_str(),

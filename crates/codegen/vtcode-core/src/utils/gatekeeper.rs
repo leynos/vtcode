@@ -9,7 +9,8 @@ use crate::config::GatekeeperConfig;
 #[cfg(target_os = "macos")]
 use vtcode_commons::canonicalize;
 
-const GATEKEEPER_CACHE_MAX_ENTRIES: usize = 1024;
+// `NonZeroUsize::MIN` is one, so this exact cache capacity is non-zero by construction.
+const GATEKEEPER_CACHE_MAX_ENTRIES: NonZeroUsize = NonZeroUsize::MIN.saturating_add(1023);
 
 #[cfg_attr(
     not(target_os = "macos"),
@@ -56,9 +57,7 @@ impl GatekeeperPolicy {
             warn_on_quarantine: config.warn_on_quarantine,
             auto_clear_quarantine: config.auto_clear_quarantine,
             auto_clear_paths,
-            cache: Arc::new(Mutex::new(LruCache::new(
-                NonZeroUsize::new(GATEKEEPER_CACHE_MAX_ENTRIES).expect("GATEKEEPER_CACHE_MAX_ENTRIES = 1024 > 0"),
-            ))),
+            cache: Arc::new(Mutex::new(LruCache::new(GATEKEEPER_CACHE_MAX_ENTRIES))),
         }
     }
 

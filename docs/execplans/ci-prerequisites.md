@@ -43,20 +43,33 @@ smallest compatible h2 lockfile update, generated THIRD-PARTY-NOTICES and this
 plan. Root additionally approved `.github/workflows/ci.yml` plus a small Node
 helper and its contract test for safe incremental changed-Markdown linting.
 The reviewed issue #108 ratchet is now combined with this component because
-neither prerequisite can satisfy hosted CI alone. The combined CI-foundation
-source has exactly fifteen paths: these ten paths plus issue #108's baseline,
+neither prerequisite can satisfy hosted CI alone. The initial CI-foundation
+source had exactly fifteen paths: these ten paths plus issue #108's baseline,
 checker, checker test, guide and plan, with `.github/workflows/ci.yml` shared.
-There are no API changes, unrelated dependency updates or new production
-dependencies. Escalate additional failures with exact evidence before editing
-outside this scope. Never add blanket cargo-unmaintained or unwrap/expect
-exemptions to obtain green checks.
+After hosted validation reached the next Windows warning, root approved one
+additional `vtcode-auth` parameter allowance with the exact `not(unix)`
+predicate used by its consuming body. Root also approved a deterministic
+notices-generator repair after the pinned tool produced different ordering in
+CI and restoration of the lost tracked cargo-nextest `ci` profile. Root also
+approved the minimal three-file `--print` input-before-startup correction from
+issue #114 because an external descendant would leave this foundation PR's
+coverage gate red and create a merge-order cycle. There are no API changes,
+unrelated dependency updates or new production dependencies in this PR. Never
+add blanket cargo-unmaintained or unwrap/expect exemptions to obtain green
+checks.
 
 Root authorised one inherited gate-blocker repair after actionlint identified
 two unused retry-loop counters in `.github/workflows/build-linux-windows.yml`.
 Changing each `for i` to `for _` preserves the twelve-attempt loop behaviour
-without expanding the workflow's runtime policy. The combined source has seven
-tracked modifications, one archive rename and seven untracked additions: the
-approved fifteen paths.
+without expanding the workflow's runtime policy. The historical combined source
+had seven tracked modifications, one archive rename and seven untracked
+additions: the approved fifteen paths. The current repair adds the narrowly
+approved auth, notice-generator, nextest and issue #114 paths. The proposed
+tracked source had twenty-one paths before the unwrap enforcement repair. The
+seven non-model implementation paths and four model accessor/test paths bring
+the proposed tracked source to thirty-two paths. The nextest configuration
+remains ignored by default and must be force-added at commit; recount before
+staging.
 
 ## Progress
 
@@ -86,8 +99,62 @@ approved fifteen paths.
   `/tmp/coderabbit-VTCode-hex-ci-prerequisites-2.out`.
 - [x] P2a: Commit and publish draft PR
   [#110](https://github.com/leynos/vtcode/pull/110).
-- [ ] P2b: Repair applicable hosted failures, reach external review
-  equilibrium and merge on green.
+- [ ] P2b: Repair the approved hosted Windows and notices failures, rerun
+  applicable gates and CodeRabbit, then reach hosted and external-review
+  equilibrium before merge. Restore the intended nextest retry profile and
+  repair the narrowly traced `--print` startup-order defect under issue #114.
+  Complete the thirteen applicable main-baseline production unwrap/expect
+  findings without extending the allowlist, then rerun the enforcement gate.
+  The model accessor repair must add real GLM-5.3 metadata and preserve the
+  fail-loud invariant.
+- [x] (2026-09-08) Reconciled the 17-finding enforcement report against the
+  actual CI-foundation base. Twelve main-baseline repairs were already in the
+  dirty source; the remaining `gatekeeper.rs` capacity invariant is now total
+  without an unwrap/expect. Four other reported findings were introduced by
+  the unmerged PR #12 and #104 ancestry, so they remain owned by those ACP
+  branches rather than being fabricated in this main-based prerequisite.
+- [ ] (2026-09-08) Re-run the audit and notices freshness gates after the
+  lockfile-only `chacha20` 0.10.2 update. RustSec maintenance debt is tracked
+  separately in #119 and #120; no audit warning is allow-listed.
+- [x] (2026-09-08) Regenerate `THIRD-PARTY-NOTICES` through the pinned
+  repository generator after the `chacha20` lockfile update; the independent
+  freshness gate remains pending.
+- [x] (2026-09-08) Make the CLI harness fixture hermetic after the current
+  full test packet found a host `arli` selection instead of the intended
+  OpenRouter authentication control. Focused format, all four harness tests,
+  workspace rustdoc, and changed-Markdown checks are green; their logs are
+  `/tmp/acp-ci110-hermetic-{fmt,cli-tests,rustdoc,markdown}-1.out`.
+- [ ] (2026-09-08) Freeze the candidate for the remaining serial gates. The
+  current diff has 24 tracked paths; force-add ignored `.config/nextest.toml`
+  as the 25th candidate path before committing. Never stage ignored
+  `target-coverage/` or `vtcode-commons.lcov`, which are local coverage
+  artefacts only.
+- [ ] (2026-09-08) Complete the current-source CI-profile nextest and
+  instrumented coverage witnesses, then only the fixture-invalidated Clippy
+  and plan-Markdown checks. Existing notices, audit and advisory evidence is
+  current for its unchanged inputs. Use hosted CI for Windows; this Linux host
+  is not a Windows green witness. Run CodeScene and CodeRabbit only against
+  the resulting committed candidate.
+- [x] (2026-09-08) Run the exact CI test command in
+  `/tmp/acp-ci110-actual-ci-profile-1.out`: 7,294 tests passed under the
+  restored `ci` profile, with 16 skipped, one retry-dependent test, and five
+  leaky diagnostics. The retry-dependent test is independently tracked by
+  PR #117. Four named configuration leaks are recorded by pandalump in
+  [#101](https://github.com/leynos/vtcode/issues/101#issuecomment-5584356455);
+  their files are unchanged from this candidate's base and their resource
+  cause remains unresolved.
+- [x] (2026-09-08) Run the workflow-faithful coverage command in
+  `/tmp/acp-ci110-full-coverage-1.out`: all 10,054 tests passed, with 17
+  skipped; it wrote a 27,668,310-byte `lcov.info` covering 1,624 sources and
+  266,574 hit lines. The output is an ignored local artefact, never staged.
+- [x] (2026-09-08) Validate the final plan-only Markdown change with pinned
+  markdownlint-cli2 0.23.2 in
+  `/tmp/acp-ci110-final-fixture-plan-markdown-1.out`.
+- [x] (2026-09-08) Replace the eight Clippy-rejected `expect` calls introduced
+  by the hermetic fixture with fallible `Result` propagation. Each setup step
+  now returns its original error to the test harness; no lint allowance or
+  assertion weakening was added. The final packet reruns format, all four CLI
+  controls under the CI profile, Clippy, and this plan's Markdown check.
 
 ## Surprises & discoveries
 
@@ -115,12 +182,37 @@ expect findings are already scoped in the separate baseline train; do not
 duplicate or broaden those exceptions. Two PR12-specific expectations require
 separate reconciliation after the baseline is integrated.
 
+The current audit also reports yanked `chacha20 0.10.1` through `rand 0.10.2`.
+The crates.io index resolves the direct compatible replacement `chacha20 0.10.2`
+without a manifest change; Cargo updated only the lockfile version and checksum.
+The remaining unmaintained advisory paths are tracked separately: #120 owns
+`syntect 5.3.0`'s `bincode 1.3.3` and `yaml-rust 0.4.5` paths, and #119 owns
+`image 0.25.10`'s `paste 1.0.15` backend paths. Neither is suppressed or folded
+into #108's cargo-unmaintained baseline ratchet.
+
 The upstream EmbarkStudios cargo-about 0.9.1 release supplies an
 x86_64-unknown-linux-musl archive and SHA-256 sidecar. Its published checksum
 verified before generation. A first command was rejected before execution
 because its cleanup trap used `rm -rf`; the replacement used a retained
 `mktemp` scratch directory and the verified archive directly. It did not
-compile or install a Cargo tool.
+compile or install a Cargo tool. After PR #110's hosted notice check disagreed
+with that output, a retained official archive again verified as
+`c0e7dc6f5d74b0beec5c0053d39ab24514c717d19acd91886907a22457ea9e98`, with
+binary SHA-256 `c6e1f29e4ef8b34eab4689a6295ac42eb0063cff8699fad90bb0beceb48d19e9`.
+The CI log shows the pinned install action falls back to cargo-binstall and
+obtains the x86_64 musl package from GitHub. The template exposes no explicit
+sorting; source investigation and a repeat-generation witness must therefore
+precede a generator repair.
+
+Cargo-about 0.9.2 is the smallest upstream release that fixes the relevant
+license-text preservation defect. Its official x86_64 musl archive verified
+as `9099a59e820c38a68b9d65f300662a567d56562f9a10f6aa4c7e86c17c2566af`, and
+the extracted binary verified as
+`b06bd6a8bfd726cffb90e3e0588e3e0b1cfbb582bf6a34f4c1c2692ba8f2e7b8`.
+Two generation runs with that binary produced byte-identical notices with
+SHA-256 `8bdd004658b7eb48be49481ca5790e8fdfc13ca7c02debdb7a0af3554429474d`;
+two subsequent `--check` runs passed. The generator now requires that exact
+tool version and retains generator diagnostics instead of discarding stderr.
 
 The available cargo-audit was 0.22.1 while CI pins 0.22.2. The matching
 official RustSec 0.22.2 x86_64-unknown-linux-gnu archive was downloaded to
@@ -191,7 +283,52 @@ recovery patch is `/tmp/issue108-baseline-ratchet-0b51c9ba.patch` with SHA-256
 `git apply --check` succeeded before replay. The source applies no behaviour
 beyond the two already reviewed components.
 
-The final combined deterministic packet is green. It passed the pinned
+The final combined deterministic packet was green before hosted validation.
+Hosted PR #110 then exposed two further CI-foundation concerns: the approved
+common-platform repair let Windows reach an unused
+`enforce_private_permissions` parameter in `vtcode-auth`, while the hosted
+notice generation placed `libmimalloc-sys` under a different MIT grouping than
+the separately verified local generator. The production unwrap enforcement
+fails identically on main with twelve unrelated paths and remains outside this
+PR; no allowlist expansion is authorised. The next packet verifies the two
+approved repairs before another review.
+
+Hosted-green delivery requires the twelve production unwrap/expect findings as
+well. The inherited enforcement report identifies twelve findings across ten
+implementation files: three model metadata accessors, two session helpers,
+skill discovery, OpenAI response history, three TUI helpers, and CLI stdin
+preparation. Root requires direct fallible or total replacements rather than
+an allowlist. The repairs preserve valid outputs, turn invalid lifecycle/input
+states into results, and keep optional UI enhancement failure nonfatal.
+
+The only model whose generated/table metadata misses a built-in variant is
+`OpenRouterZaiGlm53Flash`. Its exact canonical values are API id
+`z-ai/glm-5.3-flash`, display `GLM-5.3 Flash`, and description
+`Z.AI GLM-5.3 Flash efficient multimodal model via OpenRouter`. A fabricated
+fallback would risk a wrong external request, so the accessors add this real
+manual mapping. Every residual impossible built-in case uses the explicit
+fail-loud `unreachable!("built-in model missing generated or table metadata")`
+instead of repeating the metadata lookup. Direct exact regression and
+all-model accessor coverage prevent a future table omission from hiding.
+
+Hosted Cargo nextest also fails before compiling tests because the workflow
+selects `--profile ci` but the repository does not track `.config/nextest.toml`.
+The existing Cargo `[profile.ci]` is distinct from nextest's test profile.
+Historical source records the intended test policy as two retries, no
+fail-fast, failing-test status output and flaky final status. Restore only that
+explicit nextest profile, rather than dropping the workflow argument and
+silently losing retry policy.
+
+The coverage job now executes tests, then exposes a product defect:
+`vtcode --print` without a prompt resolves provider startup before it validates
+input, so an unrelated missing OpenRouter credential masks `No prompt
+provided`. A fake test API key would conceal the ordering defect. Correcting
+the input-before-startup sequence crosses into runtime dispatch. Root approved
+the exact three-file correction under issue #114 as an exception to this
+foundation PR's ordinary CI-only boundary, because a separate descendant would
+leave its coverage gate red and introduce a circular merge dependency.
+
+The prior final combined deterministic packet passed the pinned
 changed-Markdown helper and seven Node contracts, thirteen #108 checker tests,
 location/link/workflow/actionlint checks, notices with verified cargo-about
 0.9.1, the locked audit with verified cargo-audit 0.22.2, and the live
@@ -205,10 +342,11 @@ file. Logs are under `/tmp/*-VTCode-hex-ci-prerequisites.out`.
 
 Root selected one main-based CI-foundation PR because these defects predate and
 affect multiple issue branches, and the reviewed #108 ratchet is required for
-the component's hosted CI to pass. Scope is limited to the fifteen verified
-combined paths. Existing baseline and capability fixes retain their own
-delivery provenance. Plans are approved under the user's authorization;
-workers do not request per-milestone user approval.
+the component's hosted CI to pass. Initial scope was limited to the fifteen
+verified combined paths; root later approved the bounded hosted repairs and
+issue #114 exception described above. Existing baseline and capability fixes
+retain their own delivery provenance. Plans are approved under the user's
+authorization; workers do not request per-milestone user approval.
 
 Root approved the narrow documentation adjustment after the location invariant
 required a move rather than an allowlist exception. The file is moved
@@ -222,9 +360,9 @@ the merged document rather than the obsolete pre-fast-forward content.
 
 Root superseded the separate issue #108 prerequisite PR shape with this focused
 CI-foundation PR. The #108 commit and branch remain recovery and review
-provenance. Its five unique paths join this component's ten paths; the shared
-CI workflow makes fifteen paths in the combined source. The issue's baseline
-debt remains open and visible; this decision changes delivery ordering only.
+provenance. Its five unique paths joined this component's ten paths; the shared
+CI workflow made fifteen initial paths. The issue's baseline debt remains open
+and visible; this decision changes delivery ordering only.
 
 Root approved a narrow changed-Markdown CI ratchet after the exact pinned
 0.23.2 witness showed current quote-bearing workflow arguments select zero
@@ -239,6 +377,65 @@ a broad root scan and duplicates the helper. The helper invokes exactly
 `npx --yes --package markdownlint-cli2@0.23.2 markdownlint-cli2 -- <paths>`
 through `spawnSync` with `shell: false`; its test-only command override exists
 solely to capture and assert that production argv contract.
+
+Root approved restoration of the missing nextest `ci` configuration after the
+hosted job exited 96 with only `default` and `default-miri` known. The forced
+tracked configuration restores the historical retry policy. It does not alter
+the existing Cargo build profile or remove the workflow's `--profile ci`
+argument.
+
+Issue #114 owns the runtime-correctness invariant. Its expected user contract
+is that `vtcode --print` without inline or piped input reports the prompt error
+without requiring any provider credential. The minimal repair is delivered in
+this PR because it is required for the hosted coverage gate. It must not fake
+an API key or otherwise hide the defect.
+
+The #114 implementation resolves the existing print helper before
+`StartupContext` construction, carries its resulting prompt through dispatch,
+and does not reread stdin. The no-input harness removes `OPENROUTER_API_KEY`
+and rejects provider-auth diagnostics; a present-inline-input harness removes
+the same key and requires the provider-auth diagnostic. Both are offline
+negative controls and make no provider request.
+
+The unwrap enforcement repair is deliberately local: guarded non-negative
+integer conversion uses a total cast; JSON `Value` uses its total display
+serialization; missing skill manifests are skipped directly; and the already
+non-empty tool-call identifier is retained by the match. Terminal restoration
+now returns a contextual error if disarmed; regex construction makes compaction
+unavailable instead of panicking; impossible empty replacement parts return
+before input mutation; and required stdin absence returns the existing prompt
+error. No warning suppressions or default fabricated values are introduced.
+
+For the gatekeeper cache, the exact 1024-entry capacity now uses the safe const
+construction `NonZeroUsize::MIN.saturating_add(1023)`. It retains the exact
+capacity and establishes non-zero at compile time, without an unwrap, expect,
+runtime panic, or unsafe precondition.
+
+Cargo updated only `chacha20` from 0.10.1 to its unyanked, Rust-1.85-compatible
+0.10.2 release. This satisfies `rand 0.10.2`'s existing `^0.10.0` requirement;
+the follow-up audit and notice freshness checks remain required before publish.
+The separate, non-suppressed RustSec remediation work is #119 and #120.
+
+The final compile repair removes an unnecessary crate qualification in the
+binary's local `main_helpers` call and uses `isize::cast_unsigned()` after the
+existing `delta >= 0` guard. The latter is stable since Rust 1.87, remains below
+the 1.88 MSRV, and removes the checked-cast lint without weakening the guard.
+
+The later full test batch passed 10,091 tests, skipped 17, and failed only
+`print_mode_with_prompt_requires_provider_authentication`: host configuration
+selected `arli` despite the fixture's intended OpenRouter assertion. The
+fixture now writes a root-only workspace configuration, passes the explicit
+OpenRouter provider/model flags, clears inherited environment credentials, and
+uses private HOME, VTCODE, and XDG roots under `TestHarness`. This keeps the
+missing-prompt/authentication ordering controls offline and deterministic; it
+does not broaden the expected provider error. The same batch's four rustdoc
+warnings are repaired by making the two private UI references plain code,
+linking the public trait method through `Self`, and making the private
+`close_tree` reference plain code. Focused format, rustdoc, changed-Markdown,
+and all four CLI harness controls now pass. The only failed test was fixed
+without broadening its OpenRouter assertion. The exact CI-profile and coverage
+commands still require a fresh serial run because they exercise the full
+current test graph and the instrumented workflow path.
 
 A separately retained release-integration source snapshot includes this full
 tracked-and-untracked patch and manifest. At that snapshot, the long standalone
@@ -309,12 +506,24 @@ CARGO_TARGET_DIR, preserving default CARGO_HOME and registry cache.
 Minimum evidence: scoped Markdown/workflow/security checks, generated-notice
 freshness and advisory checks, all required code commit gates, locked Cargo
 checking with warnings denied, and the Windows target check if the configured
-toolchain supports it. The actual main Makefile is the required full
-release/PR route: run `make -j1 typecheck`, then `make -j1 check`, with
-`RUSTFLAGS=-D warnings` and the shared target directory. This replaces the
-legacy script's duplicate, partly unlocked sequence; it does not waive any
-gate. Do not claim hosted Windows coverage from Linux-only checks. Record any
-environment prerequisite precisely rather than silently skipping a gate.
+toolchain supports it. The actual main Makefile is the required full release/PR
+route. Run
+`make -j1 typecheck`, then `make -j1 check-fmt`, followed by
+`make -j1 lint build test test-harness advisory`, with `RUSTFLAGS=-D warnings`
+and the shared target directory. This is the exact `make check` sequence with
+only `check-ast-grep` omitted: its discovered executable is mode 0600 and root
+explicitly prohibits invoking or bypassing it. This does not claim that the
+optional scan passed. Do not claim hosted Windows coverage from Linux-only
+checks. Record any environment prerequisite precisely rather than silently
+skipping a gate.
+
+Before the full packet, run the two #114 harness tests and focused model,
+core, LLM and TUI regression tests with the restored nextest `ci` profile and
+Cargo `ci` build profile. They must show that no input
+returns the prompt diagnostic without OpenRouter authentication, while an
+inline prompt reaches the existing missing-provider diagnostic. This is a
+local, no-network contract witness. The full CI nextest invocation must then
+recognise the `ci` profile and retain its two-retry, no-fail-fast policy.
 
 Coverage's negative control is the archived hosted failure before any test
 execution. The corrected path must execute instrumented nextest tests and
@@ -331,6 +540,50 @@ run then uses the actual pinned CLI 0.23.2 against each new or modified
 Markdown path; changed Markdown must be green. This is incremental coverage,
 not evidence that the baseline full-repository scan tracked by issue #107 is
 green.
+
+### Frozen current-source gate packet
+
+The final focused repair changed only the CLI test fixture and four public-doc
+lines after the prior broad packet. The focused evidence above is therefore
+current for format, the four affected tests, rustdoc, and changed Markdown.
+The earlier locked typecheck, ordinary build, and focused harness evidence is
+reusable for unchanged production source; do not repeat it merely to create
+duplicate logs.
+
+The shared scrutineer ran the commands sequentially with tee logs after the
+candidate was frozen:
+
+1. `cargo clippy --locked --workspace --all-targets --all-features --jobs 6 --
+   -D warnings` with `RUSTFLAGS=-D warnings` and the shared target directory.
+   The current CI-profile test command does not lint the changed Rust test
+   fixture, while shell, policy, production Clippy and rustdoc inputs are
+   unchanged since their green runs. The corrected invocation is active in
+   `/tmp/acp-ci110-final-fixture-clippy-2.out`; no source failure has been
+   observed.
+2. `cargo nextest run --locked --profile ci --cargo-profile ci`. This is the
+   exact CI test-job command and the required full current-source test witness;
+   it confirmed the restored `ci` nextest profile rather than the local default.
+3. `CARGO_INCREMENTAL=0 cargo llvm-cov nextest --locked --workspace --lcov
+   --output-path lcov.info`. This workflow command passed all 10,054 tests
+   and emitted the non-empty LCOV witness recorded above. `lcov.info`,
+   `target-coverage/`, and `vtcode-commons.lcov` remain untracked artefacts.
+4. The pinned changed-Markdown CLI passed for
+   `docs/execplans/ci-prerequisites.md`; no other Markdown source changed
+   after the focused Markdown evidence.
+
+No notices or audit rerun is needed: both notices `--check` passes occurred
+after the `chacha20` update and generation, and
+`/tmp/acp-ci110-repair-audit-1.out` is the post-update audit witness. No
+advisory rerun is needed: the current production unwrap enforcement passed,
+the modified harness path is excluded from that scanner, it remains below the
+500-line file-length threshold, and the allowlist and legibility inputs are
+unchanged. The three unmaintained warnings remain tracked by #119 and #120;
+the yanked chacha20 warning is absent from the post-update audit.
+
+After the active Clippy run is green and the candidate is committed, run
+`cs delta dddd1352fcdf41e86abe380423221f4b41f171e0 <candidate>` through the
+shared runner, request CodeRabbit only after the deterministic packet is green,
+and retain hosted CI as the Windows and final coverage authority.
 
 CLI review rate limits require vsleep for a randomly selected 45–90 minutes
 before retrying, as instructed by the user. Report the wait to root so other
@@ -352,7 +605,14 @@ Markdown CLI and `git diff --check`, with evidence in
 CodeRabbit reviewed the exact staged combined source after the final
 documentation recheck and returned zero findings. Its transcript is
 `/tmp/coderabbit-VTCode-hex-ci-prerequisites-2.out`; no review repair or gate
-rerun is required before commit.
+rerun was required before the prior draft commit. The current thirty-two-path
+repair requires a fresh review after its own deterministic packet.
+
+Read-only GitHub inspection confirms draft PR #110 still points at prior head
+`e5a091ece8510315e942a210df61a2e62e1e0fed`. Its completed failure inventory is
+limited to coverage, unwrap enforcement, licence notices, Windows, and nextest;
+all are from that old source and have scoped WIP repairs. No current job is
+running. Do not use those old results as validation for the WIP.
 
 ## Recovery and residual boundaries
 
@@ -368,18 +628,27 @@ integration work. This PR does not claim to complete architectural issues.
 Bounded implementation is complete: Windows-only unused-parameter allowances
 preserve their platform branches; coverage now invokes instrumented nextest;
 the lockfile pins h2 0.4.16; the transient handoff was archived byte-identically.
-THIRD-PARTY-NOTICES was regenerated with verified cargo-about 0.9.1 output.
+THIRD-PARTY-NOTICES was regenerated with verified cargo-about 0.9.2 output.
 The frozen component was applied unchanged to clean reviewed ACP candidate
 `21b24eaeacac7c5595477ebf5da94b9c299121b3`; only its matching Rust attribute
 layout is retained here. The reviewed #108 ratchet now joins it as one
-fifteen-path CI-foundation source. Initial scoped evidence passed: diff checks,
+initial fifteen-path CI-foundation source. Initial scoped evidence passed: diff
+checks,
 changed-Markdown helper contracts and selected-file lint, documentation
 location/links, workflow security, and corrected actionlint. Commit
-`62548b081afb01014e787a812a504e4ab8a2eec6` and draft PR
+`e5a091ece8510315e942a210df61a2e62e1e0fed` and draft PR
 [#110](https://github.com/leynos/vtcode/pull/110) now carry the source. Hosted
-CI, external review equilibrium and merge remain pending. Windows remains an
-explicit host cross-toolchain limitation rather than a passing result. The
-final staged CodeRabbit review returned zero findings.
+CI, external review equilibrium and merge remain pending. Hosted Windows
+validation exposed the approved `vtcode-auth` allowance after the original
+common-platform repair passed; hosted notice ordering requires the approved
+deterministic-generator repair. Hosted nextest requires the restored `ci`
+profile, and coverage requires the issue #114 input-before-startup repair.
+The enforcement gate requires the direct thirteen-finding main-baseline repair
+and its model-table regression coverage. Four additional report rows arose in
+unmerged ACP PR #12/#104 source and require their owning-branch repairs, not
+duplicate CI-foundation changes. The previous staged CodeRabbit review returned
+zero findings; the repaired thirty-two-path source requires a fresh review
+after its applicable gates pass.
 
 Revision note: Initial approved packet separates shared CI repairs from the
 Wave 1 runtime defects and records exact negative controls and scope limits.

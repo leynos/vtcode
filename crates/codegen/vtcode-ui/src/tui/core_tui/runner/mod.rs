@@ -178,10 +178,10 @@ impl TerminalModeRestoreGuard {
         Self { state: Some(state) }
     }
 
-    fn state_mut(&mut self) -> &mut TerminalModeState {
+    fn state_mut(&mut self) -> Result<&mut TerminalModeState> {
         self.state
             .as_mut()
-            .expect("terminal mode restore guard must stay armed until shutdown")
+            .context("terminal mode restore guard must stay armed until shutdown")
     }
 
     fn restore(&mut self) -> Result<()> {
@@ -258,16 +258,16 @@ where
     let mut stderr = io::stderr();
     let mut mode_restore_guard =
         TerminalModeRestoreGuard::new(enable_terminal_modes(&mut stderr, &options.fullscreen)?);
-    mode_restore_guard.state_mut().save_cursor_position(&mut stderr);
+    mode_restore_guard.state_mut()?.save_cursor_position(&mut stderr);
     if surface.use_alternate() {
-        mode_restore_guard.state_mut().enter_alternate_screen(&mut stderr)?;
+        mode_restore_guard.state_mut()?.enter_alternate_screen(&mut stderr)?;
         // Record the surface so the canonical restore path can skip the
         // full-screen clear: leaving the alternate buffer already restores
         // the main screen (see panic_hook::restore_tui).
         crate::tui::core_tui::panic_hook::state::mark_alternate_screen_active(true);
     }
     mode_restore_guard
-        .state_mut()
+        .state_mut()?
         .push_keyboard_enhancement_flags(&mut stderr, keyboard_flags);
 
     session.update_terminal_title();

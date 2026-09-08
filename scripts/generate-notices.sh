@@ -9,7 +9,7 @@
 #   3. License links  — SPDX license text references
 #
 # Prerequisites:
-#   cargo install --locked --features cli cargo-about
+#   cargo install --locked --features cli --version 0.9.2 cargo-about
 #
 # Usage:
 #   scripts/generate-notices.sh          # write to THIRD-PARTY-NOTICES
@@ -21,15 +21,27 @@ root_dir="$(cd "$script_dir/.." && pwd)"
 header="$script_dir/templates/third-party-header.txt"
 template="$script_dir/templates/third-party-notices.hbs"
 output="$root_dir/THIRD-PARTY-NOTICES"
+expected_cargo_about_version="cargo-about 0.9.2"
 
 if ! command -v cargo-about &>/dev/null; then
     echo "ERROR: cargo-about is not installed." >&2
-    echo "  Install with: cargo install --locked --features cli cargo-about" >&2
+    echo "  Install with: cargo install --locked --features cli --version 0.9.2 cargo-about" >&2
+    exit 1
+fi
+
+if ! cargo_about_version="$(cargo-about --version)"; then
+    echo "ERROR: could not determine the installed cargo-about version." >&2
+    echo "  Install with: cargo install --locked --features cli --version 0.9.2 cargo-about" >&2
+    exit 1
+fi
+if [[ "$cargo_about_version" != "$expected_cargo_about_version" ]]; then
+    echo "ERROR: expected $expected_cargo_about_version, found $cargo_about_version." >&2
+    echo "  Install with: cargo install --locked --features cli --version 0.9.2 cargo-about" >&2
     exit 1
 fi
 
 # Generate the auto-generated dependency section.
-body=$(cd "$root_dir" && cargo about generate "$template" 2>/dev/null)
+body=$(cd "$root_dir" && cargo about generate "$template")
 
 # Assemble the full file.
 {
