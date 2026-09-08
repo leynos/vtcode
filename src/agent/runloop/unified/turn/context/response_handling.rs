@@ -564,6 +564,7 @@ impl<'a> TurnProcessingContext<'a> {
 
         if let Some(plan_text) = proposed_plan {
             let planning_active = self.is_planning_active();
+            let plan_state = self.tool_registry.planning_workflow_state();
             tracing::info!(
                 target: "vtcode.planning_workflow",
                 plan_ready = true,
@@ -574,6 +575,7 @@ impl<'a> TurnProcessingContext<'a> {
             // follow the event's plan_file can read the completed draft.
             let validation = validate_plan_content(&plan_text);
             if !validation.is_ready() {
+                plan_state.record_plan_validation_rejection(&validation);
                 let error = PlanArtefactError::Invalid {
                     reasons: validation.reasons().join("; "),
                     report: Box::new(validation),
@@ -581,7 +583,7 @@ impl<'a> TurnProcessingContext<'a> {
                 return self.reject_plan_artefact(error, &plan_text, !tool_free_recovery_pass);
             }
 
-            let persisted = match persist_plan_draft(&self.tool_registry.planning_workflow_state(), &plan_text).await {
+            let persisted = match persist_plan_draft(&plan_state, &plan_text).await {
                 Ok(persisted) => persisted,
                 Err(error) => {
                     let error = PlanArtefactError::Persistence { reason: error.to_string() };
@@ -593,7 +595,7 @@ impl<'a> TurnProcessingContext<'a> {
             // here is redundant. The persisted-readiness gate below rereads the
             // file from disk and verifies sidecar trackers exist — that check
             // is NOT redundant and stays.
-            if !persisted_plan_is_ready(&self.tool_registry.planning_workflow_state()).await {
+            if !persisted_plan_is_ready(&plan_state).await {
                 let error = PlanArtefactError::Persistence {
                     reason: "plan, sidecar tracker, and workspace tracker were not published completely".to_string(),
                 };
@@ -606,7 +608,6 @@ impl<'a> TurnProcessingContext<'a> {
                 plan_text.clone(),
                 persisted.validation.clone(),
             );
-            let plan_state = self.tool_registry.planning_workflow_state();
             emit_plan_ready_events(
                 self.plan_session,
                 &plan_state,

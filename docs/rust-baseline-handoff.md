@@ -39,7 +39,7 @@ The complete PR train is not yet delivered.
   now follows the two changed source sentences; placeholder validation accepts
   both native and legacy spellings as unfinished template text. Full gates
   passed on the original retry: 10,079 tests, 17 skipped and 67 harness tests.
-  Formatting, lint, build, advisory, VS Code bundling, and changed Python/shell
+  Formatting, lint, build, advisory checks, VS Code bundling, and changed Python/shell
   syntax checks passed. Optional ast-grep remained unavailable.
 - Remaining spelling changes are preserved separately while this layer is
   validated. Later layers cover other native spelling groups, ordinary prose,

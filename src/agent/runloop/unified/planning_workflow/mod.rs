@@ -400,4 +400,21 @@ Improve launch time.
         assert!(!non_ready.is_ready());
         let _ = ValidatedPlanArtefact::from_validated(PathBuf::from("/tmp/plan.md"), "unused".to_string(), non_ready);
     }
+
+    #[tokio::test]
+    async fn repeated_invalid_readiness_probes_do_not_record_rejections() {
+        let workspace = tempfile::tempdir().expect("temporary workspace should be created");
+        let plan_file = workspace.path().join("plan.md");
+        tokio::fs::write(&plan_file, "[file, symbol, or behavior confirmed from the repo]")
+            .await
+            .expect("invalid plan should be written");
+
+        let collector = std::sync::Arc::new(vtcode_core::metrics::MetricsCollector::new());
+        let state = PlanningWorkflowState::new(workspace.path().to_path_buf()).with_metrics(collector.clone());
+        state.set_plan_file(Some(plan_file)).await;
+
+        assert!(!persisted_plan_is_ready(&state).await);
+        assert!(!persisted_plan_is_ready(&state).await);
+        assert_eq!(collector.get_planning_metrics().placeholder_token_rejections, 0);
+    }
 }

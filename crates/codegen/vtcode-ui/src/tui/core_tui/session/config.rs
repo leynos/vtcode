@@ -435,9 +435,26 @@ mod tests {
 
     #[test]
     fn test_config_serialization() {
-        let config = SessionConfig::new();
-        let serialized = toml::to_string_pretty(&config).unwrap();
+        let mut config = SessionConfig::new();
+        config.behaviour.max_input_lines = 15;
+
+        let serialized = toml::to_string_pretty(&config).expect("serialize SessionConfig for the wire-key regression");
         assert!(serialized.contains("theme"));
+        assert!(
+            serialized.contains("[behavior]"),
+            "serialized configuration must retain the fixed behavior table key"
+        );
+        assert!(
+            !serialized.contains("[behaviour]"),
+            "serialized configuration must not emit the native Rust field spelling"
+        );
+
+        let round_tripped: SessionConfig =
+            toml::from_str(&serialized).expect("deserialize the serialized SessionConfig through the fixed wire key");
+        assert_eq!(
+            round_tripped.behaviour.max_input_lines, 15,
+            "the fixed behavior wire key must retain a non-default value across the round trip"
+        );
     }
 
     #[test]

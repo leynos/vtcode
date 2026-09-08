@@ -18,6 +18,7 @@ use std::time::Instant;
 pub mod discovery_metrics;
 pub mod execution_metrics;
 pub mod filtering_metrics;
+pub mod planning_metrics;
 pub mod sdk_metrics;
 pub mod security_metrics;
 pub mod skill_metrics;
@@ -25,17 +26,19 @@ pub mod skill_metrics;
 pub use discovery_metrics::DiscoveryMetrics;
 pub use execution_metrics::ExecutionMetrics;
 pub use filtering_metrics::FilteringMetrics;
+pub use planning_metrics::{PlanValidationRejectionReason, PlanningValidationMetrics};
 pub use sdk_metrics::SdkMetrics;
 pub use security_metrics::SecurityMetrics;
 pub use skill_metrics::SkillMetrics;
 
 /// Central metrics collector for all MCP execution activities
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MetricsCollector {
     discovery: Arc<Mutex<DiscoveryMetrics>>,
     execution: Arc<Mutex<ExecutionMetrics>>,
     sdk: Arc<Mutex<SdkMetrics>>,
     filtering: Arc<Mutex<FilteringMetrics>>,
+    planning: Arc<Mutex<PlanningValidationMetrics>>,
     skills: Arc<Mutex<SkillMetrics>>,
     security: Arc<Mutex<SecurityMetrics>>,
     start_time: Instant,
@@ -49,6 +52,7 @@ pub struct MetricsSummary {
     pub execution: ExecutionMetrics,
     pub sdk: SdkMetrics,
     pub filtering: FilteringMetrics,
+    pub planning: PlanningValidationMetrics,
     pub skills: SkillMetrics,
     pub security: SecurityMetrics,
 }
@@ -61,6 +65,7 @@ impl MetricsCollector {
             execution: Arc::new(Mutex::new(ExecutionMetrics::new())),
             sdk: Arc::new(Mutex::new(SdkMetrics::new())),
             filtering: Arc::new(Mutex::new(FilteringMetrics::new())),
+            planning: Arc::new(Mutex::new(PlanningValidationMetrics::default())),
             skills: Arc::new(Mutex::new(SkillMetrics::new())),
             security: Arc::new(Mutex::new(SecurityMetrics::new())),
             start_time: Instant::now(),
@@ -215,6 +220,11 @@ impl MetricsCollector {
         metrics.record_operation(operation_type, input_size, output_size, duration_ms);
     }
 
+    /// Record a bounded plan validation rejection category.
+    pub fn record_plan_validation_rejection(&self, reason: PlanValidationRejectionReason) {
+        self.planning.lock().record_rejection(reason);
+    }
+
     // ========== Skill Metrics ==========
 
     /// Record skill execution
@@ -277,6 +287,11 @@ impl MetricsCollector {
         self.filtering.lock().clone()
     }
 
+    /// Get the current planning validation metrics snapshot.
+    pub fn get_planning_metrics(&self) -> PlanningValidationMetrics {
+        self.planning.lock().clone()
+    }
+
     /// Get current skill metrics snapshot
     pub fn get_skill_metrics(&self) -> SkillMetrics {
         self.skills.lock().clone()
@@ -296,6 +311,7 @@ impl MetricsCollector {
             execution: self.get_execution_metrics(),
             sdk: self.get_sdk_metrics(),
             filtering: self.get_filtering_metrics(),
+            planning: self.get_planning_metrics(),
             skills: self.get_skill_metrics(),
             security: self.get_security_metrics(),
         }
@@ -314,6 +330,7 @@ impl MetricsCollector {
         let discovery = self.get_discovery_metrics();
         let execution = self.get_execution_metrics();
         let filtering = self.get_filtering_metrics();
+        let planning = self.get_planning_metrics();
         let skills = self.get_skill_metrics();
         let security = self.get_security_metrics();
 
@@ -408,6 +425,14 @@ impl MetricsCollector {
              # TYPE vtcode_filtering_operations_total counter\n\
              vtcode_filtering_operations_total {}\n\n",
             filtering.total_operations
+        );
+
+        let _ = write!(
+            output,
+            "# HELP vtcode_plan_validation_rejected_total Total plan validation rejections by reason\n\
+             # TYPE vtcode_plan_validation_rejected_total counter\n\
+             vtcode_plan_validation_rejected_total{{reason=\"placeholder_token\"}} {}\n\n",
+            planning.placeholder_token_rejections
         );
 
         let _ = write!(

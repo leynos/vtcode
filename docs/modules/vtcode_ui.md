@@ -4,7 +4,7 @@ Unified UI framework for VT Code: design system, theme registry, and TUI framewo
 
 ## Overview
 
-`vtcode-ui` consolidates the design system, theme registry, and terminal UI framework into a single crate. It provides the public UI-facing API surface for downstream consumers while keeping host-specific integrations inside `vtcode-core`.
+`vtcode-ui` consolidates the design system, theme registry, and terminal UI framework into a single workspace crate. Its TUI module provides a publicly reachable UI-facing Rust path, while host-specific integrations remain in `vtcode-core`.
 
 ## Architecture
 
@@ -39,20 +39,34 @@ Unified UI framework for VT Code: design system, theme registry, and TUI framewo
 
 ## Usage
 
-The crate is re-exported at the root for backward compatibility:
+The design system and theme modules are re-exported at the crate root for
+backward compatibility:
 
 ```rust
 pub use design::*;
 pub use theme::*;
 ```
 
+### Behaviour configuration API migration
+
+The native Rust type formerly named `BehaviorConfig` is intentionally renamed
+to `BehaviourConfig`; no alias for the old name is retained. Import it through
+the public TUI module path:
+
+```rust
+use vtcode_ui::tui::core_tui::session::config::BehaviourConfig;
+```
+
+This is a Rust identifier change only. Persisted session configuration keeps
+the TOML table key `[behavior]`, so existing files do not need a migration.
+
 ## Notes
 
-- Internal crate (`publish = false`) — not published to crates.io
+- Internal workspace crate (`publish = false`); it is not published to crates.io
 - Depends on `vtcode-commons` for `anstyle_utils` (gated behind `tui` feature)
 - `crossterm` dependency enables `event-stream` and `osc52` features
 
 ## See Also
 
 - [Architecture Guide](../ARCHITECTURE.md) — TUI architecture section
-- `vtcode-core::ui::tui` — canonical runtime type surface
+- `vtcode-core::ui::tui` — host integration surface for the TUI
