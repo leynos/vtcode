@@ -50,6 +50,16 @@ async fn denied_tool_call_emits_one_failed_output_for_runtime_invocation() {
 async fn denied_parallel_tool_halt_returns_promptly() {
     let temp = TempDir::new().expect("tempdir");
     let mut runner = Box::pin(make_runner(&temp, VTCodeConfig::default(), "thread-denied-parallel")).await;
+    runner
+        .tool_registry
+        .register_tool(crate::tools::registry::ToolRegistration::new(
+            tools::UNIFIED_EXEC,
+            CapabilityLevel::Bash,
+            false,
+            |_, _| Box::pin(std::future::pending::<anyhow::Result<serde_json::Value>>()),
+        ))
+        .await
+        .expect("pending test executor should register");
     runner.enable_full_auto(&[tools::UNIFIED_FILE.to_string()]).await;
 
     let tool_calls = tool_call_response(
@@ -66,13 +76,35 @@ async fn denied_parallel_tool_halt_returns_promptly() {
         AgentRuntime::new(AgentSessionState::new("session-denied-parallel".to_string(), 16, 4, 128_000), None, None);
     let mut recorder = ExecEventRecorder::new("thread-denied-parallel", None, None);
 
-    let start = Instant::now();
-    runner
-        .execute_tool_call_batches(tool_calls, &mut runtime, &mut recorder, "[parallel]", false, false)
-        .await
-        .expect("tool execution should finish");
+    let mut execution =
+        Box::pin(runner.execute_tool_call_batches(tool_calls, &mut runtime, &mut recorder, "[parallel]", false, false));
+    let waker = futures::task::noop_waker_ref();
+    let mut context = std::task::Context::from_waker(waker);
+    match Future::poll(execution.as_mut(), &mut context) {
+        std::task::Poll::Ready(result) => result.expect("tool execution should finish"),
+        std::task::Poll::Pending => {
+            panic!("denied tool admission must complete before the pending executor can be polled")
+        }
+    }
 
-    assert!(start.elapsed() < Duration::from_millis(200));
+    drop(execution);
+
+    let expected_denial = format!("Tool execution denied: {}", tools::UNIFIED_EXEC);
+    assert!(
+        runtime.state.warnings.iter().any(|warning| warning == &expected_denial),
+        "denied tool warning should be recorded: {:?}",
+        runtime.state.warnings
+    );
+    assert!(runtime.state.executed_commands.is_empty(), "denied tool must not execute a command");
+
+    let events = recorder.into_events();
+    let call_item_id = completed_tool_invocation_item_id(&events, "call-1")
+        .expect("denied parallel call should complete its lifecycle");
+    assert_eq!(
+        completed_tool_output_count(&events, "call-1", ToolCallStatus::Failed, &call_item_id),
+        1,
+        "denied parallel call should emit one failed tool output"
+    );
 }
 
 #[tokio::test]
