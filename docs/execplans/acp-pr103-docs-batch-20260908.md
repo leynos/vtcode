@@ -90,6 +90,11 @@ the stack lead owns publication and review replies.
   calling `Path.relative_to` on an unrelated directory. The proposed source is
   frozen for the shared runner's focused six-test, Ruff, fresh-schema, and
   documentation gate packet.
+- 2026-09-08: The CodeScene follow-up extracted default serialisation and
+  truncation helpers, plus the field walker, branch handling, object maps, and
+  array traversal into private functions. The generated 946-field reference
+  remains untouched; shared gates must confirm byte identity and complexity
+  thresholds before this repair is integrated.
 
 ## Decisions and discoveries
 
