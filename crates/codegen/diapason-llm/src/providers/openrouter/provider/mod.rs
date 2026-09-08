@@ -22,6 +22,11 @@ use std::str::FromStr;
 const OPENROUTER_REFERER: &str = "https://github.com/leynos/vtcode";
 const OPENROUTER_TITLE: &str = "Diapason";
 const OPENROUTER_CATEGORIES: &str = "agents,coding";
+const OPENROUTER_PROVIDER_NAME: &str = "OpenRouter";
+
+fn openrouter_rate_limit_headers() -> RateLimitHeaderConfig {
+    RateLimitHeaderConfig::for_provider_name(OPENROUTER_PROVIDER_NAME)
+}
 
 mod client_impl;
 mod parsing;
@@ -232,11 +237,11 @@ impl OpenRouterProvider {
 
         if fallback_status.as_u16() == 429 || fallback_text.contains("quota") {
             return Err(parse_api_error_with_headers(
-                "OpenRouter",
+                OPENROUTER_PROVIDER_NAME,
                 fallback_status,
                 &fallback_text,
                 &fallback_headers,
-                &RateLimitHeaderConfig::for_provider_name("OpenRouter"),
+                &openrouter_rate_limit_headers(),
             ));
         }
 
@@ -321,11 +326,11 @@ impl OpenRouterProvider {
 
         if status.as_u16() == 429 || error_text.contains("quota") {
             return Err(parse_api_error_with_headers(
-                "OpenRouter",
+                OPENROUTER_PROVIDER_NAME,
                 status,
                 &error_text,
                 &headers,
-                &RateLimitHeaderConfig::for_provider_name("OpenRouter"),
+                &openrouter_rate_limit_headers(),
             ));
         }
 
@@ -365,11 +370,11 @@ impl OpenRouterProvider {
 
         // Use unified error parsing for consistent error categorization
         Err(parse_api_error_with_headers(
-            "OpenRouter",
+            OPENROUTER_PROVIDER_NAME,
             status,
             &error_text,
             &headers,
-            &RateLimitHeaderConfig::for_provider_name("OpenRouter"),
+            &openrouter_rate_limit_headers(),
         ))
     }
 }
