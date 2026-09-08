@@ -576,11 +576,7 @@ fn extract_rate_limit_metadata(
 
 fn extract_u64_header(headers: &HeaderMap, configured_name: &Option<String>) -> Option<u64> {
     let name = HeaderName::from_bytes(configured_name.as_deref()?.as_bytes()).ok()?;
-    let value = headers.get(name)?.to_str().ok()?.trim();
-    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    value.parse().ok()
+    parse_ascii_u64(headers.get(name)?.to_str().ok()?.trim())
 }
 
 fn extract_reset_after_millis(headers: &HeaderMap, configured_name: &Option<String>) -> Option<u64> {
@@ -597,28 +593,34 @@ fn parse_reset_after_millis(raw_seconds: &str) -> Option<u64> {
         Some(_) => return None,
         None => (raw_seconds, None),
     };
-    if whole_seconds.is_empty() || !whole_seconds.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    let whole_millis = whole_seconds.parse::<u64>().ok()?.checked_mul(1_000)?;
-    let fractional_millis = fractional_seconds.map_or(Some(0), |fraction| {
-        if !fraction.bytes().all(|byte| byte.is_ascii_digit()) {
-            return None;
-        }
-        let milliseconds_digits = fraction.len().min(3);
-        let mut milliseconds = fraction[..milliseconds_digits].parse::<u64>().ok()?;
-        milliseconds *= 10_u64.pow(u32::try_from(3 - milliseconds_digits).ok()?);
-        if fraction
-            .as_bytes()
-            .get(3..)
-            .is_some_and(|tail| tail.iter().any(|digit| *digit != b'0'))
-        {
-            milliseconds += 1;
-        }
-        Some(milliseconds)
-    })?;
+    let whole_millis = parse_ascii_u64(whole_seconds)?.checked_mul(1_000)?;
+    let fractional_millis = fractional_seconds.map_or(Some(0), parse_fractional_millis)?;
     let millis = whole_millis.checked_add(fractional_millis)?;
     (millis <= MAX_RESET_AFTER_MILLIS).then_some(millis)
+}
+
+fn parse_ascii_u64(value: &str) -> Option<u64> {
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    value.parse().ok()
+}
+
+fn parse_fractional_millis(fraction: &str) -> Option<u64> {
+    if !fraction.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let milliseconds_digits = fraction.len().min(3);
+    let mut milliseconds = parse_ascii_u64(&fraction[..milliseconds_digits])?;
+    milliseconds *= 10_u64.pow(u32::try_from(3 - milliseconds_digits).ok()?);
+    if fraction
+        .as_bytes()
+        .get(3..)
+        .is_some_and(|tail| tail.iter().any(|digit| *digit != b'0'))
+    {
+        milliseconds += 1;
+    }
+    Some(milliseconds)
 }
 
 #[cfg(test)]
