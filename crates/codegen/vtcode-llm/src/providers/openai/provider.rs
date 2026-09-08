@@ -10,6 +10,7 @@
 use crate::error_display;
 use crate::provider;
 use crate::provider::LLMProvider;
+use crate::providers::error_handling::error_metadata_from_headers;
 use hashbrown::{HashMap, HashSet};
 use reqwest::Client as HttpClient;
 use reqwest::StatusCode;
@@ -104,6 +105,25 @@ impl OpenAIProvider {
             || RateLimitHeaderConfig::for_provider_name(self.error_provider_name()),
             |config| config.effective_rate_limit_headers(),
         )
+    }
+
+    fn provider_error_with_headers(
+        &self,
+        message: String,
+        status: StatusCode,
+        body: &str,
+        headers: &HeaderMap,
+    ) -> provider::LLMError {
+        provider::LLMError::Provider {
+            message,
+            metadata: Some(error_metadata_from_headers(
+                self.error_provider_name(),
+                status,
+                body,
+                headers,
+                &self.rate_limit_headers(),
+            )),
+        }
     }
 
     fn requires_streaming_responses(model: &str) -> bool {

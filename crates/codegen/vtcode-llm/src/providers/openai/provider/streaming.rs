@@ -9,9 +9,7 @@ use super::OpenAIProvider;
 use crate::error_display;
 use crate::provider::LLMProvider;
 use crate::provider::{self, LLMNormalizedStream};
-use crate::providers::error_handling::{
-    error_metadata_from_headers, is_rate_limit_error, parse_api_error_with_headers,
-};
+use crate::providers::error_handling::{is_rate_limit_error, parse_api_error_with_headers};
 use crate::providers::shared::{ResponsesNormalizedStreamOptions, create_responses_normalized_stream};
 use async_stream::try_stream;
 use futures::StreamExt;
@@ -112,16 +110,7 @@ impl OpenAIProvider {
                         Some(&client_request_id),
                     ),
                 );
-                return Err(provider::LLMError::Provider {
-                    message: formatted_error,
-                    metadata: Some(error_metadata_from_headers(
-                        self.error_provider_name(),
-                        status,
-                        &error_text,
-                        &headers,
-                        &self.rate_limit_headers(),
-                    )),
-                });
+                return Err(self.provider_error_with_headers(formatted_error, status, &error_text, &headers));
             }
 
             if matches!(responses_state, ResponsesApiState::Allowed)
@@ -146,16 +135,7 @@ impl OpenAIProvider {
                 "OpenAI",
                 &format_openai_error(status, &error_text, &headers, "Responses API error", Some(&client_request_id)),
             );
-            return Err(provider::LLMError::Provider {
-                message: formatted_error,
-                metadata: Some(error_metadata_from_headers(
-                    self.error_provider_name(),
-                    status,
-                    &error_text,
-                    &headers,
-                    &self.rate_limit_headers(),
-                )),
-            });
+            return Err(self.provider_error_with_headers(formatted_error, status, &error_text, &headers));
         }
     }
 
@@ -231,16 +211,7 @@ impl OpenAIProvider {
                         Some(&client_request_id),
                     ),
                 );
-                return Err(provider::LLMError::Provider {
-                    message: formatted_error,
-                    metadata: Some(error_metadata_from_headers(
-                        self.error_provider_name(),
-                        status,
-                        &error_text,
-                        &headers,
-                        &self.rate_limit_headers(),
-                    )),
-                });
+                return Err(self.provider_error_with_headers(formatted_error, status, &error_text, &headers));
             }
 
             if matches!(responses_state, ResponsesApiState::Allowed)
@@ -266,16 +237,7 @@ impl OpenAIProvider {
                 "OpenAI",
                 &format_openai_error(status, &error_text, &headers, "Responses API error", Some(&client_request_id)),
             );
-            return Err(provider::LLMError::Provider {
-                message: formatted_error,
-                metadata: Some(error_metadata_from_headers(
-                    self.error_provider_name(),
-                    status,
-                    &error_text,
-                    &headers,
-                    &self.rate_limit_headers(),
-                )),
-            });
+            return Err(self.provider_error_with_headers(formatted_error, status, &error_text, &headers));
         }
     }
 
@@ -326,16 +288,7 @@ impl OpenAIProvider {
                 "OpenAI",
                 &format_openai_error(status, &error_text, &headers, "Chat Completions error", Some(&client_request_id)),
             );
-            return Err(provider::LLMError::Provider {
-                message: formatted_error,
-                metadata: Some(error_metadata_from_headers(
-                    self.error_provider_name(),
-                    status,
-                    &error_text,
-                    &headers,
-                    &self.rate_limit_headers(),
-                )),
-            });
+            return Err(self.provider_error_with_headers(formatted_error, status, &error_text, &headers));
         }
 
         Ok(stream_decoder::create_chat_stream(response, model.clone(), self.model_supports_reasoning(&model)))
