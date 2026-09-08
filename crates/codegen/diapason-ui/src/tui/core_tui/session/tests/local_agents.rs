@@ -218,7 +218,7 @@ fn shift_tab_does_not_cycle_primary_agent_while_running() {
 #[test]
 fn tab_cycles_primary_agent_back_to_default_after_last_agent() {
     let mut session = app_session_with_input("", 0);
-    session.handle_command(app_types::InlineCommand::SetPrimaryAgent { name: Some("beta".to_string()), color: None });
+    session.handle_command(app_types::InlineCommand::SetPrimaryAgent { name: Some("beta".to_string()), colour: None });
 
     let event = session.process_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
 
@@ -353,8 +353,8 @@ fn active_subagent_input_border_adds_extra_height() {
     session.header_context.subagent_badges = vec![InlineHeaderBadge {
         text: "rust-engineer".to_string(),
         style: InlineTextStyle {
-            color: Some(AnsiColorEnum::Rgb(RgbColor(0xFF, 0xFF, 0xFF))),
-            bg_color: Some(AnsiColorEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))),
+            colour: Some(AnsiColorEnum::Rgb(RgbColor(0xFF, 0xFF, 0xFF))),
+            bg_colour: Some(AnsiColorEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))),
             ..InlineTextStyle::default()
         },
         full_background: true,
@@ -369,8 +369,8 @@ fn header_shows_active_subagent_badge_with_full_background() {
     session.header_context.subagent_badges = vec![InlineHeaderBadge {
         text: "rust-engineer".to_string(),
         style: InlineTextStyle {
-            color: Some(AnsiColorEnum::Rgb(RgbColor(0xFF, 0xFF, 0xFF))),
-            bg_color: Some(AnsiColorEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))),
+            colour: Some(AnsiColorEnum::Rgb(RgbColor(0xFF, 0xFF, 0xFF))),
+            bg_colour: Some(AnsiColorEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))),
             ..InlineTextStyle::default()
         },
         full_background: true,
@@ -395,8 +395,8 @@ fn input_block_shows_active_subagent_title_with_badge_style() {
     session.header_context.subagent_badges = vec![InlineHeaderBadge {
         text: "rust-engineer".to_string(),
         style: InlineTextStyle {
-            color: Some(AnsiColorEnum::Rgb(RgbColor(0xFF, 0xFF, 0xFF))),
-            bg_color: Some(AnsiColorEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))),
+            colour: Some(AnsiColorEnum::Rgb(RgbColor(0xFF, 0xFF, 0xFF))),
+            bg_colour: Some(AnsiColorEnum::Rgb(RgbColor(0x4F, 0x8F, 0xD8))),
             ..InlineTextStyle::default()
         },
         full_background: true,

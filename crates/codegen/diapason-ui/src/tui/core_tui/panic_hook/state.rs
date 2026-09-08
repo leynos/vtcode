@@ -54,11 +54,11 @@ pub(crate) fn is_debug_mode() -> bool {
     DEBUG_MODE.load(Ordering::SeqCst)
 }
 
-pub fn set_color_eyre_enabled(enabled: bool) {
+pub fn set_colour_eyre_enabled(enabled: bool) {
     COLOR_EYRE_ENABLED.store(enabled, Ordering::SeqCst);
 }
 
-pub(crate) fn is_color_eyre_enabled() -> bool {
+pub(crate) fn is_colour_eyre_enabled() -> bool {
     COLOR_EYRE_ENABLED.load(Ordering::SeqCst)
 }
 
@@ -167,8 +167,8 @@ pub(crate) fn is_restore_claimed() -> bool {
 
 /// Install color-eyre's eyre hook for richer top-level error rendering in dev/debug mode.
 #[cfg(debug_assertions)]
-pub(crate) fn maybe_prepare_color_eyre_hooks() {
-    if !is_color_eyre_enabled() {
+pub(crate) fn maybe_prepare_colour_eyre_hooks() {
+    if !is_colour_eyre_enabled() {
         return;
     }
 
@@ -189,19 +189,19 @@ pub(crate) fn maybe_prepare_color_eyre_hooks() {
 }
 
 #[cfg(not(debug_assertions))]
-pub(crate) fn maybe_prepare_color_eyre_hooks() {}
+pub(crate) fn maybe_prepare_colour_eyre_hooks() {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_color_eyre_toggle() {
+    fn test_colour_eyre_toggle() {
         COLOR_EYRE_ENABLED.store(false, Ordering::SeqCst);
-        assert!(!is_color_eyre_enabled());
+        assert!(!is_colour_eyre_enabled());
 
-        set_color_eyre_enabled(true);
-        assert!(is_color_eyre_enabled());
+        set_colour_eyre_enabled(true);
+        assert!(is_colour_eyre_enabled());
 
         COLOR_EYRE_ENABLED.store(false, Ordering::SeqCst);
     }

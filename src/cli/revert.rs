@@ -1,7 +1,7 @@
 use anyhow::Result;
 use diapason_core::config::types::AgentConfig as CoreAgentConfig;
 use diapason_core::core::agent::snapshots::{RevertScope, SnapshotManager};
-use diapason_core::utils::colors::style;
+use diapason_core::utils::colours::style;
 
 use super::checkpoints::{snapshot_config, snapshot_manager};
 

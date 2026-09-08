@@ -12,7 +12,7 @@ use diapason_core::config::types::{
 use diapason_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS};
 use diapason_core::core::interfaces::session::PlanningEntrySource;
 use diapason_core::ui::theme::DEFAULT_THEME_ID;
-use diapason_core::utils::colors::style;
+use diapason_core::utils::colours::style;
 use diapason_core::utils::file_utils::ensure_dir_exists;
 use diapason_core::utils::tty::TtyExt;
 use std::collections::BTreeMap;

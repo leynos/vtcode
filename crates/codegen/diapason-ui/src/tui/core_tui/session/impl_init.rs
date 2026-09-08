@@ -206,7 +206,7 @@ impl Session {
             // --- Double-Esc Detection ---
             last_esc_press: None,
         };
-        session.ensure_prompt_style_color();
+        session.ensure_prompt_style_colour();
         session
     }
 

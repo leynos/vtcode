@@ -193,8 +193,9 @@ pub struct SubagentSpec {
     pub disallowed_tools: Vec<String>,
     #[serde(default)]
     pub model: Option<String>,
-    #[serde(default)]
-    pub color: Option<String>,
+    /// The serialized key `color` is fixed by the schema; `colour` is accepted as a British spelling alias.
+    #[serde(rename = "color", alias = "colour", default)]
+    pub colour: Option<String>,
     #[serde(default)]
     pub reasoning_effort: Option<ReasoningEffortLevel>,
     pub permissions: AgentPermissionsConfig,
@@ -241,7 +242,7 @@ impl Default for SubagentSpec {
             tools: None,
             disallowed_tools: Vec::new(),
             model: None,
-            color: None,
+            colour: None,
             reasoning_effort: None,
             permissions: AgentPermissionsConfig {
                 default: PermissionDefault::Ask,
@@ -332,7 +333,7 @@ impl SubagentSpec {
 pub(crate) fn classify_agent_spec_field(field: &str) -> Option<AgentSpecFieldClass> {
     match field.trim() {
         "name" | "prompt" => Some(AgentSpecFieldClass::Shared),
-        "description" | "color" | "aliases" => Some(AgentSpecFieldClass::PrimaryMetadata),
+        "description" | "color" | "colour" | "aliases" => Some(AgentSpecFieldClass::PrimaryMetadata),
         "tools" | "disallowed_tools" | "disallowedTools" | "permissions" | "model" | "reasoning_effort" | "skills"
         | "mcp_servers" | "mcpServers" | "hooks" | "memory" => Some(AgentSpecFieldClass::PrimaryRuntime),
         "background"
@@ -528,7 +529,7 @@ fn builtin_subagents_inner() -> Vec<SubagentSpec> {
             tools: None,
             disallowed_tools: Vec::new(),
             model: Some("inherit".to_string()),
-            color: Some("blue".to_string()),
+            colour: Some("blue".to_string()),
             reasoning_effort: None,
             permissions: mutating_agent_permissions(),
             skills: Vec::new(),
@@ -554,7 +555,7 @@ fn builtin_subagents_inner() -> Vec<SubagentSpec> {
             tools: Some(builtin_readonly_tool_ids()),
             disallowed_tools: builtin_readonly_disallowed_tool_ids(),
             model: Some("small".to_string()),
-            color: Some("cyan".to_string()),
+            colour: Some("cyan".to_string()),
             reasoning_effort: Some(ReasoningEffortLevel::Low),
             permissions: readonly_agent_permissions(),
             skills: Vec::new(),
@@ -580,7 +581,7 @@ fn builtin_subagents_inner() -> Vec<SubagentSpec> {
             tools: None,
             disallowed_tools: Vec::new(),
             model: Some("inherit".to_string()),
-            color: Some("magenta".to_string()),
+            colour: Some("magenta".to_string()),
             reasoning_effort: None,
             permissions: mutating_agent_permissions(),
             skills: Vec::new(),
@@ -610,7 +611,7 @@ pub fn builtin_primary_build_agent() -> SubagentSpec {
         tools: None,
         disallowed_tools: Vec::new(),
         model: Some("inherit".to_string()),
-        color: Some(ui::AGENT_COLOR_BUILD.to_string()),
+        colour: Some(ui::AGENT_COLOUR_BUILD.to_string()),
         reasoning_effort: None,
         permissions: mutating_agent_permissions(),
         skills: Vec::new(),
@@ -643,7 +644,7 @@ pub fn builtin_primary_auto_agent() -> SubagentSpec {
         tools: None,
         disallowed_tools: Vec::new(),
         model: Some("inherit".to_string()),
-        color: Some(ui::AGENT_COLOR_AUTO.to_string()),
+        colour: Some(ui::AGENT_COLOUR_AUTO.to_string()),
         reasoning_effort: None,
         permissions: auto_agent_permissions(),
         skills: Vec::new(),
@@ -676,7 +677,7 @@ pub fn builtin_plan_agent() -> SubagentSpec {
         tools: Some(builtin_primary_readonly_tool_ids()),
         disallowed_tools: builtin_readonly_disallowed_tool_ids(),
         model: Some("inherit".to_string()),
-        color: Some(ui::AGENT_COLOR_PLAN.to_string()),
+        colour: Some(ui::AGENT_COLOUR_PLAN.to_string()),
         reasoning_effort: None,
         permissions: plan_agent_permissions(),
         skills: Vec::new(),
@@ -705,7 +706,7 @@ pub fn builtin_primary_duck_agent() -> SubagentSpec {
         tools: Some(builtin_primary_readonly_tool_ids()),
         disallowed_tools: builtin_readonly_disallowed_tool_ids(),
         model: Some("inherit".to_string()),
-        color: Some(ui::AGENT_COLOR_DUCK.to_string()),
+        colour: Some(ui::AGENT_COLOUR_DUCK.to_string()),
         reasoning_effort: None,
         permissions: readonly_interview_agent_permissions(),
         skills: Vec::new(),
@@ -858,8 +859,9 @@ fn load_cli_agents(value: &JsonValue) -> Result<Vec<SubagentSpec>> {
         let tools = optional_string_list(config.get("tools"))?;
         let disallowed_tools = optional_string_list(config.get("disallowedTools"))?.unwrap_or_default();
         let model = config.get("model").and_then(JsonValue::as_str).map(ToString::to_string);
-        let color = config
+        let colour = config
             .get("color")
+            .or_else(|| config.get("colour"))
             .or_else(|| config.get("badgeColor"))
             .or_else(|| config.get("badge_color"))
             .and_then(JsonValue::as_str)
@@ -913,7 +915,7 @@ fn load_cli_agents(value: &JsonValue) -> Result<Vec<SubagentSpec>> {
             tools,
             disallowed_tools,
             model,
-            color,
+            colour,
             reasoning_effort,
             permissions,
             skills,
@@ -1012,8 +1014,9 @@ fn subagent_spec_from_json_map(
         .unwrap_or_default(),
     );
     let model = object.get("model").and_then(JsonValue::as_str).map(ToString::to_string);
-    let color = object
+    let colour = object
         .get("color")
+        .or_else(|| object.get("colour"))
         .or_else(|| object.get("badgeColor"))
         .or_else(|| object.get("badge_color"))
         .and_then(JsonValue::as_str)
@@ -1067,7 +1070,7 @@ fn subagent_spec_from_json_map(
         tools,
         disallowed_tools,
         model,
-        color,
+        colour,
         reasoning_effort,
         permissions,
         skills,
@@ -1531,7 +1534,7 @@ mod tests {
     use super::{
         AgentMode, AgentSpecFieldClass, BackgroundSubagentConfig, IsolationMode, ReasoningEffortLevel,
         SubagentDiscoveryInput, SubagentMcpServer, SubagentMemoryScope, SubagentRuntimeLimits, SubagentSource,
-        builtin_plan_agent, builtin_primary_duck_agent, builtin_subagents, classify_agent_spec_field,
+        SubagentSpec, builtin_plan_agent, builtin_primary_duck_agent, builtin_subagents, classify_agent_spec_field,
         discover_subagents, load_cli_agents, load_subagent_from_file, normalize_subagent_tools,
         readonly_agent_permissions, readonly_interview_agent_permissions,
     };
@@ -1738,7 +1741,7 @@ Primary prompt."#,
         assert!(matches!(spec.mcp_servers[0], SubagentMcpServer::Named(_)));
         assert!(matches!(spec.mcp_servers[1], SubagentMcpServer::Inline(_)));
         assert_eq!(spec.memory, Some(SubagentMemoryScope::Project));
-        assert_eq!(spec.color.as_deref(), Some("blue"));
+        assert_eq!(spec.colour.as_deref(), Some("blue"));
         assert_eq!(spec.aliases, vec!["builder".to_string(), "implementer".to_string()]);
         assert_eq!(spec.mode, AgentMode::Primary);
         assert!(spec.hooks.is_some());
@@ -1877,7 +1880,7 @@ Review the target changes."#,
         assert_eq!(spec.name, "reviewer");
         assert_eq!(spec.description, "Review code");
         assert_eq!(spec.model.as_deref(), Some("sonnet"));
-        assert_eq!(spec.color.as_deref(), Some("blue"));
+        assert_eq!(spec.colour.as_deref(), Some("blue"));
         assert_eq!(spec.tools, Some(vec![tools::EXEC_COMMAND.to_string()]));
         assert_eq!(spec.disallowed_tools, vec![tools::APPLY_PATCH.to_string()]);
         assert!(spec.background);
@@ -1979,9 +1982,142 @@ permissions = { default = "ask" }
         assert_eq!(spec.description, "Write-capable implementation agent");
         assert_eq!(spec.prompt, "Implement the assigned change.");
         assert_eq!(spec.model.as_deref(), Some("gpt-5.6-sol"));
-        assert_eq!(spec.color.as_deref(), Some("#4f8fd8"));
+        assert_eq!(spec.colour.as_deref(), Some("#4f8fd8"));
         assert_eq!(spec.reasoning_effort, Some(ReasoningEffortLevel::High));
         assert_eq!(spec.nickname_candidates, vec!["builder".to_string()]);
+        Ok(())
+    }
+
+    #[test]
+    fn parses_british_colour_from_markdown_frontmatter() -> Result<()> {
+        let temp = TempDir::new()?;
+        let path = temp.path().join("colour-agent.md");
+        fs::write(
+            &path,
+            r#"---
+name: colour-agent
+description: Markdown agent with British spelling
+colour: orchid
+permissions:
+  default: ask
+---
+Prompt."#,
+        )?;
+
+        let spec = load_subagent_from_file(&path, SubagentSource::ProjectVtcode)?;
+
+        assert_eq!(spec.colour.as_deref(), Some("orchid"), "Markdown frontmatter preserves the British `colour` alias");
+        Ok(())
+    }
+
+    #[test]
+    fn parses_british_colour_from_codex_toml() -> Result<()> {
+        let temp = TempDir::new()?;
+        let path = temp.path().join("colour-agent.toml");
+        fs::write(
+            &path,
+            r#"name = "colour-agent"
+description = "Codex agent with British spelling"
+prompt = "Prompt."
+colour = "orchid"
+permissions = { default = "ask" }
+"#,
+        )?;
+
+        let spec = load_subagent_from_file(&path, SubagentSource::ProjectCodex)?;
+
+        assert_eq!(spec.colour.as_deref(), Some("orchid"), "Codex TOML preserves the British `colour` alias");
+        Ok(())
+    }
+
+    #[test]
+    fn parses_british_colour_from_cli_agents() {
+        let cli_agents = json!({
+            "colour-agent": {
+                "description": "CLI agent with British spelling",
+                "colour": "orchid",
+                "permissions": { "default": "ask" }
+            }
+        });
+
+        let specs = load_cli_agents(&cli_agents).expect("CLI subagent payload with British `colour` should parse");
+
+        assert_eq!(specs.len(), 1, "one CLI agent should produce one subagent specification");
+        let spec = specs.first().expect("one parsed CLI agent should have a specification");
+        assert_eq!(spec.colour.as_deref(), Some("orchid"), "CLI JSON preserves the British `colour` alias");
+    }
+
+    #[test]
+    fn subagent_spec_serializes_canonical_colour_key_and_rejects_duplicate_aliases() {
+        let spec = SubagentSpec {
+            name: "colour-agent".to_string(),
+            description: "A colour contract fixture".to_string(),
+            colour: Some("orchid".to_string()),
+            ..SubagentSpec::default()
+        };
+
+        let mut canonical = serde_json::to_value(&spec).expect("the subagent specification should serialize");
+        assert_eq!(
+            canonical.get("color"),
+            Some(&json!("orchid")),
+            "serialization should emit the canonical color wire key"
+        );
+        assert!(canonical.get("colour").is_none(), "serialization should not emit the British alias");
+
+        let canonical_value = canonical
+            .as_object_mut()
+            .expect("a serialized subagent specification should be an object")
+            .remove("color")
+            .expect("the canonical color key should be present");
+        let previous_british_alias = canonical
+            .as_object_mut()
+            .expect("a serialized subagent specification should remain an object")
+            .insert("colour".to_string(), canonical_value);
+        assert!(
+            previous_british_alias.is_none(),
+            "the British alias should be absent before its deserialization test"
+        );
+        let british: SubagentSpec =
+            serde_json::from_value(canonical.clone()).expect("the British colour alias should deserialize");
+        assert_eq!(british.colour.as_deref(), Some("orchid"), "the British alias should preserve its value");
+
+        let previous_canonical_key = canonical
+            .as_object_mut()
+            .expect("a serialized subagent specification should remain an object")
+            .insert("color".to_string(), json!("violet"));
+        assert!(
+            previous_canonical_key.is_none(),
+            "the canonical key should be absent before the duplicate-alias test"
+        );
+        let duplicate = serde_json::from_value::<SubagentSpec>(canonical);
+        assert!(duplicate.is_err(), "both spellings should be rejected as duplicate aliases");
+    }
+
+    #[test]
+    fn discover_subagents_prefers_canonical_color_for_cli_agents() -> Result<()> {
+        let temp = TempDir::new()?;
+        let mut input = SubagentDiscoveryInput::new(temp.path().to_path_buf());
+        input.include_user_agents = false;
+        input.cli_agents = Some(json!({
+            "colour-agent": {
+                "description": "CLI agent with both spellings",
+                "color": "violet",
+                "colour": "orchid",
+                "permissions": { "default": "ask" }
+            }
+        }));
+
+        let discovered = discover_subagents(&input)?;
+        let spec = discovered
+            .effective
+            .iter()
+            .find(|spec| spec.name == "colour-agent")
+            .ok_or_else(|| anyhow::anyhow!("the public discovery boundary should return the CLI agent"))?;
+        assert_eq!(
+            spec.colour.as_deref(),
+            Some("violet"),
+            "CLI JSON should prefer the canonical color key when both spellings are present"
+        );
         Ok(())
     }
 

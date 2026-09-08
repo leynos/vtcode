@@ -6,9 +6,9 @@
 //! - **Design constants**: Shared UI constants (ellipses, spacing, breakpoints)
 //! - **Layout**: Responsive layout mode logic
 //! - **Panel**: Base panel widget primitive
-//! - **Diff formatting**: Unified diff rendering with ANSI colors
+//! - **Diff formatting**: Unified diff rendering with ANSI colours
 
-pub(crate) mod color;
+pub(crate) mod colour;
 pub mod constants;
 pub mod diff;
 pub mod layout;

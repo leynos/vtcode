@@ -512,9 +512,9 @@ impl Session {
     }
 
     /// Ensure the prompt style has a color set
-    pub(crate) fn ensure_prompt_style_color(&mut self) {
-        if self.prompt_style.color.is_none() {
-            self.prompt_style.color = self.theme.primary.or(self.theme.foreground);
+    pub(crate) fn ensure_prompt_style_colour(&mut self) {
+        if self.prompt_style.colour.is_none() {
+            self.prompt_style.colour = self.theme.primary.or(self.theme.foreground);
         }
     }
 

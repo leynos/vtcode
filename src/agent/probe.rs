@@ -27,12 +27,12 @@
 //!   runs it synchronously, preserving the original behaviour.
 //!
 //! [`probe_and_cache_terminal_palette_harmony`]:
-//!     diapason_core::utils::terminal_color_probe::probe_and_cache_terminal_palette_harmony
+//!     diapason_core::utils::terminal_colour_probe::probe_and_cache_terminal_palette_harmony
 
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use diapason_core::utils::terminal_color_probe::probe_and_cache_terminal_palette_harmony;
+use diapason_core::utils::terminal_colour_probe::probe_and_cache_terminal_palette_harmony;
 use tokio::sync::Notify;
 
 static PROBE_NOTIFY: LazyLock<Notify> = LazyLock::new(Notify::new);

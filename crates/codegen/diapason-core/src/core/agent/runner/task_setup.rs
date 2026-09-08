@@ -103,7 +103,7 @@ impl AgentRunner {
 
         self.runner_println(format_args!(
             "{} Executing {} task: {}",
-            crate::utils::colors::style("[AGENT]").magenta().bold().on_black(),
+            crate::utils::colours::style("[AGENT]").magenta().bold().on_black(),
             self.agent_type,
             task.title
         ));

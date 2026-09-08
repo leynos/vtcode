@@ -3,7 +3,7 @@ use diapason_core::config::loader::DiapasonConfig;
 use diapason_core::tools::registry::{ExecSettlementMode, ToolProgressCallback, ToolRegistry};
 use diapason_core::tools::result_cache::{ToolCacheKey, ToolResultCache};
 use diapason_core::tools::tool_intent;
-use diapason_core::utils::style_helpers::ColorPalette;
+use diapason_core::utils::style_helpers::ColourPalette;
 use serde_json::Value;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -298,7 +298,7 @@ async fn execute_with_cache_and_streaming_inner(
     .await;
 
     if let Some(runtime) = pty_stream_runtime {
-        runtime.shutdown(pty_header_color(&outcome)).await;
+        runtime.shutdown(pty_header_colour(&outcome)).await;
     }
     if let Some(coalescer) = output_coalescer.as_ref() {
         coalescer.flush();
@@ -409,8 +409,8 @@ async fn cache_successful_output(
     }
 }
 
-fn pty_header_color(status: &ToolExecutionStatus) -> Color {
-    status.display_status().color(ColorPalette::default())
+fn pty_header_colour(status: &ToolExecutionStatus) -> Color {
+    status.display_status().colour(ColourPalette::default())
 }
 
 fn should_cache_success_output(name: &str, output: &Value, command_success: bool) -> bool {

@@ -177,7 +177,7 @@ pub fn should_highlight(code: &str) -> bool {
 
 /// Get the recommended syntax theme for the current UI theme
 ///
-/// This ensures syntax highlighting colors complement the UI theme background.
+/// This ensures syntax highlighting colours complement the UI theme background.
 /// Based on OpenAI Codex PRs #11447 and #12581.
 #[inline]
 pub fn get_active_syntax_theme() -> &'static str {
@@ -200,7 +200,7 @@ pub struct DiffScopeBackgroundRgbs {
     pub(crate) deleted: Option<(u8, u8, u8)>,
 }
 
-/// Resolve diff-scope background colors from the currently active syntax theme.
+/// Resolve diff-scope background colours from the currently active syntax theme.
 pub(crate) fn diff_scope_background_rgbs() -> DiffScopeBackgroundRgbs {
     let theme_name = get_active_syntax_theme();
     let theme = load_theme(theme_name, true);
@@ -222,7 +222,7 @@ fn scope_background_rgb(highlighter: &Highlighter<'_>, scope_name: &str) -> Opti
     Some((background.r, background.g, background.b))
 }
 
-fn ansi_palette_color(index: u8) -> anstyle::Color {
+fn ansi_palette_colour(index: u8) -> anstyle::Color {
     match index {
         0x00 => AnsiColor::Black.into(),
         0x01 => AnsiColor::Red.into(),
@@ -236,16 +236,16 @@ fn ansi_palette_color(index: u8) -> anstyle::Color {
     }
 }
 
-fn convert_syntect_color(color: syntect::highlighting::Color) -> Option<anstyle::Color> {
-    match color.a {
+fn convert_syntect_colour(colour: syntect::highlighting::Color) -> Option<anstyle::Color> {
+    match colour.a {
         // Bat-compatible encoding for ANSI-family themes.
-        ANSI_ALPHA_INDEX => Some(ansi_palette_color(color.r)),
+        ANSI_ALPHA_INDEX => Some(ansi_palette_colour(colour.r)),
         // Preserve terminal defaults rather than forcing black.
         ANSI_ALPHA_DEFAULT => None,
         // Standard syntect themes use opaque RGB values.
-        OPAQUE_ALPHA => Some(RgbColor(color.r, color.g, color.b).into()),
+        OPAQUE_ALPHA => Some(RgbColor(colour.r, colour.g, colour.b).into()),
         // Some theme dumps use other alpha values; keep them readable as RGB.
-        _ => Some(RgbColor(color.r, color.g, color.b).into()),
+        _ => Some(RgbColor(colour.r, colour.g, colour.b).into()),
     }
 }
 
@@ -262,8 +262,8 @@ fn convert_syntect_style(style: syntect::highlighting::Style) -> AnstyleStyle {
     }
 
     AnstyleStyle::new()
-        .fg_color(convert_syntect_color(style.foreground))
-        .bg_color(convert_syntect_color(style.background))
+        .fg_color(convert_syntect_colour(style.foreground))
+        .bg_color(convert_syntect_colour(style.background))
         .effects(effects)
 }
 
@@ -416,7 +416,7 @@ pub fn highlight_code_to_ansi(code: &str, language: Option<&str>, theme_name: &s
 mod tests {
     use super::*;
     use std::str::FromStr;
-    use syntect::highlighting::Color as SyntectColor;
+    use syntect::highlighting::Color as SyntectColour;
     use syntect::highlighting::ScopeSelectors;
     use syntect::highlighting::StyleModifier;
     use syntect::highlighting::ThemeItem;
@@ -426,7 +426,7 @@ mod tests {
         ThemeItem {
             scope: ScopeSelectors::from_str(scope).expect("scope selector should parse"),
             style: StyleModifier {
-                background: background.map(|(r, g, b)| SyntectColor { r, g, b, a: 255 }),
+                background: background.map(|(r, g, b)| SyntectColour { r, g, b, a: 255 }),
                 ..StyleModifier::default()
             },
         }
@@ -472,8 +472,8 @@ mod tests {
     #[test]
     fn convert_syntect_style_uses_named_ansi_for_low_palette_indexes() {
         let style = convert_syntect_style(syntect::highlighting::Style {
-            foreground: SyntectColor { r: 0x02, g: 0, b: 0, a: ANSI_ALPHA_INDEX },
-            background: SyntectColor { r: 0, g: 0, b: 0, a: OPAQUE_ALPHA },
+            foreground: SyntectColour { r: 0x02, g: 0, b: 0, a: ANSI_ALPHA_INDEX },
+            background: SyntectColour { r: 0, g: 0, b: 0, a: OPAQUE_ALPHA },
             font_style: FontStyle::empty(),
         });
 
@@ -483,8 +483,8 @@ mod tests {
     #[test]
     fn convert_syntect_style_uses_ansi256_for_high_palette_indexes() {
         let style = convert_syntect_style(syntect::highlighting::Style {
-            foreground: SyntectColor { r: 0x9a, g: 0, b: 0, a: ANSI_ALPHA_INDEX },
-            background: SyntectColor { r: 0, g: 0, b: 0, a: OPAQUE_ALPHA },
+            foreground: SyntectColour { r: 0x9a, g: 0, b: 0, a: ANSI_ALPHA_INDEX },
+            background: SyntectColour { r: 0, g: 0, b: 0, a: OPAQUE_ALPHA },
             font_style: FontStyle::empty(),
         });
 
@@ -494,8 +494,8 @@ mod tests {
     #[test]
     fn convert_syntect_style_uses_terminal_default_for_alpha_one() {
         let style = convert_syntect_style(syntect::highlighting::Style {
-            foreground: SyntectColor { r: 0, g: 0, b: 0, a: ANSI_ALPHA_DEFAULT },
-            background: SyntectColor { r: 0, g: 0, b: 0, a: OPAQUE_ALPHA },
+            foreground: SyntectColour { r: 0, g: 0, b: 0, a: ANSI_ALPHA_DEFAULT },
+            background: SyntectColour { r: 0, g: 0, b: 0, a: OPAQUE_ALPHA },
             font_style: FontStyle::empty(),
         });
 
@@ -505,8 +505,8 @@ mod tests {
     #[test]
     fn convert_syntect_style_falls_back_to_rgb_for_unexpected_alpha() {
         let style = convert_syntect_style(syntect::highlighting::Style {
-            foreground: SyntectColor { r: 10, g: 20, b: 30, a: 0x80 },
-            background: SyntectColor { r: 0, g: 0, b: 0, a: OPAQUE_ALPHA },
+            foreground: SyntectColour { r: 10, g: 20, b: 30, a: 0x80 },
+            background: SyntectColour { r: 0, g: 0, b: 0, a: OPAQUE_ALPHA },
             font_style: FontStyle::empty(),
         });
 
@@ -516,8 +516,8 @@ mod tests {
     #[test]
     fn convert_syntect_style_preserves_effects() {
         let style = convert_syntect_style(syntect::highlighting::Style {
-            foreground: SyntectColor { r: 10, g: 20, b: 30, a: OPAQUE_ALPHA },
-            background: SyntectColor { r: 0, g: 0, b: 0, a: OPAQUE_ALPHA },
+            foreground: SyntectColour { r: 10, g: 20, b: 30, a: OPAQUE_ALPHA },
+            background: SyntectColour { r: 0, g: 0, b: 0, a: OPAQUE_ALPHA },
             font_style: FontStyle::BOLD | FontStyle::ITALIC | FontStyle::UNDERLINE,
         });
 
@@ -528,11 +528,11 @@ mod tests {
     }
 
     #[test]
-    fn highlight_pipeline_decodes_alpha_encoded_theme_colors() {
+    fn highlight_pipeline_decodes_alpha_encoded_theme_colours() {
         let theme = Theme {
             settings: ThemeSettings {
-                foreground: Some(SyntectColor { r: 0x02, g: 0, b: 0, a: ANSI_ALPHA_INDEX }),
-                background: Some(SyntectColor { r: 0, g: 0, b: 0, a: ANSI_ALPHA_DEFAULT }),
+                foreground: Some(SyntectColour { r: 0x02, g: 0, b: 0, a: ANSI_ALPHA_INDEX }),
+                background: Some(SyntectColour { r: 0, g: 0, b: 0, a: ANSI_ALPHA_DEFAULT }),
                 ..ThemeSettings::default()
             },
             ..Theme::default()

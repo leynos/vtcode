@@ -197,7 +197,7 @@ mod tests {
         assert!(
             segments
                 .iter()
-                .any(|segment| !segment.text.trim().is_empty() && segment.style.color.is_some())
+                .any(|segment| !segment.text.trim().is_empty() && segment.style.colour.is_some())
         );
     }
 
@@ -217,8 +217,8 @@ mod tests {
         let err_segment = segments
             .iter()
             .find(|segment| segment.text.contains("ERR"))
-            .expect("colored text segment should be present");
-        assert_eq!(err_segment.style.color, Some(AnsiColorEnum::Ansi(AnsiColor::Red)));
+            .expect("coloured text segment should be present");
+        assert_eq!(err_segment.style.colour, Some(AnsiColorEnum::Ansi(AnsiColor::Red)));
     }
 
     #[test]
@@ -252,7 +252,7 @@ mod tests {
         assert!(
             segments
                 .iter()
-                .any(|segment| !segment.text.trim().is_empty() && segment.style.color.is_some())
+                .any(|segment| !segment.text.trim().is_empty() && segment.style.colour.is_some())
         );
     }
 

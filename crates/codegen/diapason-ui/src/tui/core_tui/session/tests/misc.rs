@@ -375,7 +375,7 @@ fn timeline_visible_selects_latest_item() {
 
 #[test]
 fn tool_detail_renders_with_border_and_body_style() {
-    let theme = themed_inline_colors();
+    let theme = themed_inline_colours();
     let mut session = Session::new(theme, None, VIEW_ROWS);
     let detail_style = InlineTextStyle::default().italic();
     session.push_line(
@@ -397,7 +397,7 @@ fn tool_detail_renders_with_border_and_body_style() {
 
 #[test]
 fn top_level_task_tree_tail_line_is_dimmed_in_tool_blocks() {
-    let theme = themed_inline_colors();
+    let theme = themed_inline_colours();
     let mut session = Session::new(theme, None, VIEW_ROWS);
     session.push_line(
         InlineMessageKind::Tool,

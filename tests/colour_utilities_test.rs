@@ -2,10 +2,10 @@
     missing_docs,
     reason = "Intentional compatibility, platform, test, or API-shape suppression."
 )]
-use diapason_core::utils::colors::*;
+use diapason_core::utils::colours::*;
 
 #[test]
-fn test_basic_colors() {
+fn test_basic_colours() {
     let red_text = red("Hello");
     assert!(red_text.to_string().contains("Hello"));
 

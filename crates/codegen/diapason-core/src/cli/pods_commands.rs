@@ -2,7 +2,7 @@
 
 use crate::cli::PodsCommands;
 use crate::pods::{PodGpu, PodManager, PodStartRequest, PodState, PodStatusDetail, PodStatusReport};
-use crate::utils::colors::{bold, cyan, green, underline, yellow};
+use crate::utils::colours::{bold, cyan, green, underline, yellow};
 use anyhow::{Result, anyhow};
 
 /// Handle GPU pod commands.

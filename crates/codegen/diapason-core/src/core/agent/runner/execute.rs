@@ -31,7 +31,7 @@ use crate::prompts::{
     PromptContext, RuntimePromptContract, append_runtime_mode_sections,
     append_runtime_tool_prompt_sections_for_profile, upsert_harness_limits_section,
 };
-use crate::utils::colors::style;
+use crate::utils::colours::style;
 use anyhow::{Context, Result};
 use serde_json::json;
 use std::sync::Arc;

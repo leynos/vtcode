@@ -18,7 +18,7 @@
 use anyhow::{Context, Result};
 use assert_fs::TempDir;
 use diapason_core::config::constants::tools;
-use diapason_core::utils::colors::style;
+use diapason_core::utils::colours::style;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -152,7 +152,7 @@ impl ToolPolicyManager {
         let mut deny_count = 0;
 
         for (tool, policy) in &self.config.policies {
-            let (status, color_name) = match policy {
+            let (status, colour_name) = match policy {
                 ToolPolicy::Allow => {
                     allow_count += 1;
                     ("ALLOW", "green")
@@ -167,7 +167,7 @@ impl ToolPolicyManager {
                 }
             };
 
-            let status_styled = match color_name {
+            let status_styled = match colour_name {
                 "green" => style(status).green(),
                 "yellow" => style(status).cyan(),
                 "red" => style(status).red(),

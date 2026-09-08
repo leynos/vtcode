@@ -27,8 +27,8 @@ pub fn init_panic_hook() {
             }
 
             if cfg!(debug_assertions) && is_debug {
-                if state::is_color_eyre_enabled() {
-                    state::maybe_prepare_color_eyre_hooks();
+                if state::is_colour_eyre_enabled() {
+                    state::maybe_prepare_colour_eyre_hooks();
                     if let Some(panic_hook) = state::COLOR_EYRE_PANIC_HOOK.get() {
                         eprintln!("{}", panic_hook.panic_report(panic_info));
                         return;

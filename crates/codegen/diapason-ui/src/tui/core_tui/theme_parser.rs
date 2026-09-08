@@ -62,8 +62,8 @@ impl ThemeConfigParser {
     /// # Errors
     ///
     /// Returns error if the input doesn't match LS_COLORS syntax.
-    fn parse_ls_colors(&self, input: &str) -> Result<AnsiStyle> {
-        self.cached_parser.parse_ls_colors(input)
+    fn parse_ls_colours(&self, input: &str) -> Result<AnsiStyle> {
+        self.cached_parser.parse_ls_colours(input)
     }
 
     /// Parse a style string, attempting Git syntax first, then LS_COLORS as fallback.
@@ -91,7 +91,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_git_hex_color() {
+    fn test_parse_git_hex_colour() {
         let parser = ThemeConfigParser::default();
         let style = parser.parse_git_style("#0000ee").unwrap();
         assert!(style.get_fg_color().is_some());
@@ -120,24 +120,24 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_ls_colors_blue() {
+    fn test_parse_ls_colours_blue() {
         let parser = ThemeConfigParser::default();
-        let style = parser.parse_ls_colors("34").unwrap();
+        let style = parser.parse_ls_colours("34").unwrap();
         assert!(style.get_fg_color().is_some());
     }
 
     #[test]
-    fn test_parse_ls_colors_bold_blue() {
+    fn test_parse_ls_colours_bold_blue() {
         let parser = ThemeConfigParser::default();
-        let style = parser.parse_ls_colors("01;34").unwrap();
+        let style = parser.parse_ls_colours("01;34").unwrap();
         assert!(style.get_effects().contains(anstyle::Effects::BOLD));
         assert!(style.get_fg_color().is_some());
     }
 
     #[test]
-    fn test_parse_ls_colors_black_on_white() {
+    fn test_parse_ls_colours_black_on_white() {
         let parser = ThemeConfigParser::default();
-        let style = parser.parse_ls_colors("30;47").unwrap();
+        let style = parser.parse_ls_colours("30;47").unwrap();
         assert!(style.get_fg_color().is_some());
         assert!(style.get_bg_color().is_some());
     }
@@ -164,9 +164,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_ls_colors_fails_on_invalid() {
+    fn test_parse_ls_colours_fails_on_invalid() {
         let parser = ThemeConfigParser::default();
-        let result = parser.parse_ls_colors("invalid");
+        let result = parser.parse_ls_colours("invalid");
         result.unwrap_err();
     }
 }
