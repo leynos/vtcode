@@ -72,10 +72,12 @@ rates (USD per million tokens). Cache pricing is optional.
 Automatic context compaction is advertised as `_meta.lody.compaction` version
 1 and is emitted through standard `tool_call` and `tool_call_update` updates.
 The updates carry `_meta.lody.activity` for the `compacted` outcome, token
-counts, duration, and failure details. HTTP 429 notices include configured
-provider quota headers, preserving per-minute, per-second, and per-request
-units. `Retry-After` and configured reset intervals set a minimum for
-exponential back-off; missing headers are silent. See
+counts, duration, and failure details.
+
+HTTP 429 notices include configured provider quota headers, preserving
+per-minute, per-second, and per-request units. `Retry-After` and configured
+reset intervals set a minimum for exponential back-off; missing headers are
+silent. See
 [provider rate-limit headers](../development/provider-rate-limit-headers.md).
 VT Code advertises push-only `_meta.lody.rateLimits` version 1 and emits
 `_lody/rate_limits/update` for observed quota headers. Complete limit/remaining
@@ -265,7 +267,7 @@ let client = AcpClientBuilder::new("local-agent".to_string())
 
 ## MCP Tool Usage (From Main Agent)
 
-### Discover Agents
+### MCP tool: Discover Agents
 
 ```json
 {
@@ -288,7 +290,7 @@ let client = AcpClientBuilder::new("local-agent".to_string())
 }
 ```
 
-### Call Remote Agent (Sync)
+### MCP tool: Call Remote Agent (Sync)
 
 ```json
 {
@@ -302,7 +304,7 @@ let client = AcpClientBuilder::new("local-agent".to_string())
 }
 ```
 
-### Call Remote Agent (Async)
+### MCP tool: Call Remote Agent (Async)
 
 ```json
 {
@@ -316,7 +318,7 @@ let client = AcpClientBuilder::new("local-agent".to_string())
 }
 ```
 
-### Check Agent Health
+### MCP tool: Check Agent Health
 
 ```json
 {
@@ -331,20 +333,20 @@ let client = AcpClientBuilder::new("local-agent".to_string())
 
 ### POST /messages
 
-```
+```text
 Request: AcpMessage
 Response: AcpResponse
 ```
 
 ### GET /metadata
 
-```
+```text
 Response: AgentInfo
 ```
 
 ### GET /health
 
-```
+```text
 Response: "OK" or JSON status
 ```
 
@@ -443,7 +445,7 @@ cargo run --example acp_distributed_workflow
 
 ### Agent Not Found
 
-```
+```text
 Error: Agent not found: agent-id
 → Check if agent was registered
 → Check registry.list_all() to see what's registered
@@ -451,7 +453,7 @@ Error: Agent not found: agent-id
 
 ### Network Error
 
-```
+```text
 Error: Network error: Connection refused
 → Check if remote agent is running
 → Verify base_url is correct
@@ -460,7 +462,7 @@ Error: Network error: Connection refused
 
 ### Timeout
 
-```
+```text
 Error: Request exceeded 30s timeout
 → Increase timeout with AcpClientBuilder.with_timeout()
 → Check if remote agent is responding slowly
@@ -469,7 +471,7 @@ Error: Request exceeded 30s timeout
 
 ### Serialization Error
 
-```
+```text
 Error: Failed to parse response
 → Check remote agent is returning valid JSON
 → Verify message format matches ACP spec

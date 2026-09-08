@@ -6,7 +6,7 @@ they do not prevent the normal retry policy from running. Zero remaining
 requests or tokens is a meaningful value and is shown.
 
 Each custom provider can map response header names to specific metrics under
-`[custom_providers.rate_limit_headers]`. Header matching is case insensitive.
+`[custom_providers.rate_limit_headers]`. Header matching is case-insensitive.
 The defaults recognize Baseten's four per-minute headers, including when the
 provider has a local alias such as `baseten-glm`. Known Fireworks and Together
 provider names also select their provider-specific defaults. Explicit mappings
@@ -86,7 +86,7 @@ Notices use the existing standard `session/update` notification with
       "notice": {
         "level": "warning",
         "source": "provider_rate_limit",
-        "message": "baseten returned HTTP 429 (rate limited); request limit/min: 60; requests remaining/min: 0; VTCode will retry in 15.0s"
+        "message": "baseten 429; 60/min limit; 0/min left; retry 15.0s"
       }
     }
   }
@@ -120,7 +120,7 @@ identity, wallet, plan, or quota query API is inferred from response headers.
 
 Unit tests cover partial/malformed headers, provider overrides, notice
 rendering, HTTP dates, and retry budgets. Property tests exercise parsing and
-the retry floor across varied inputs. ACP behavioral tests run the official
+the retry floor across varied inputs. ACP behavioural tests run the official
 Rust client through initialize, session creation, and prompting against
 scripted HTTP errors and successful streams. They inspect the same warning
 metadata consumed by Lody.
