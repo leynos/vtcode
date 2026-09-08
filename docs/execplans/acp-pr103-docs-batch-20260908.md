@@ -95,6 +95,14 @@ the stack lead owns publication and review replies.
   array traversal into private functions. The generated 946-field reference
   remains untouched; shared gates must confirm byte identity and complexity
   thresholds before this repair is integrated.
+- 2026-09-08: The traversal-state follow-up consolidates `root_schema` and
+  `field_map` in one private `_FieldCollector`. Walker methods now take the
+  current `FieldEntry` where its path and effective requiredness already carry
+  the state, while the explicit depth argument preserves the recursion guard.
+  The generated reference and focused tests remain unchanged. One shared pass
+  must run the focused generator tests, Ruff format and lint, fresh locked
+  schema regeneration with byte comparison, documentation checks, and the
+  candidate CodeScene analysis.
 
 ## Decisions and discoveries
 
@@ -123,6 +131,6 @@ public API, dependency, persistent format, or architecture change.
 
 ## Outcome and retrospective
 
-Pending the focused post-fix Python and Python-format validation, fresh Cargo
-schema regeneration, and documentation checks, then commit integration already
-authorised by the user.
+Pending the one-pass focused generator and Python-format validation, fresh
+Cargo schema regeneration, documentation checks, and candidate CodeScene
+analysis, then commit integration already authorised by the user.
