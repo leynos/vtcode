@@ -67,7 +67,7 @@ fn contains_verification_invocation(command: &str) -> bool {
 /// Fail-closed smuggling guard: every parsed shell segment must be a
 /// verification invocation or an allow-listed readonly command. A chained
 /// mutation such as `cargo check && rm -rf target` therefore stays blocked
-/// instead of riding through on the verifier prefix. Unparseable (dynamic)
+/// instead of riding through on the verifier prefix. Unparsable (dynamic)
 /// shell syntax also stays blocked.
 pub fn shell_command_is_admitted_verification_attempt(args: &Value) -> bool {
     let Some(command) = crate::tools::command_args::raw_command_text(args) else {
@@ -201,6 +201,7 @@ mod tests {
 
     use super::*;
     use crate::config::constants::tools;
+    #[cfg(unix)]
     use crate::tools::tool_intent::is_readonly_command_session_command;
 
     fn exec_command(command: &str) -> Value {
@@ -318,7 +319,7 @@ mod tests {
             "git diff --output=out",
             "git diff '--output=out'",
             "git diff -o out",
-            "git diff -oout",
+            concat!("git diff -o", "out"),
             "git log --output=out",
             "git show --textconv",
             "git -C /external/repo=alt status",

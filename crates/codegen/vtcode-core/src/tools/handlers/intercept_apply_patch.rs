@@ -167,10 +167,14 @@ pub enum ApplyPatchError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::tools::handlers::Constrained;
+    #[cfg(unix)]
     use crate::tools::handlers::adapter::DefaultToolSession;
+    #[cfg(unix)]
     use crate::tools::handlers::tool_handler::ShellEnvironmentPolicy;
 
+    #[cfg(unix)]
     fn test_turn_context(cwd: PathBuf) -> TurnContext {
         TurnContext {
             cwd,
