@@ -259,7 +259,10 @@ fn resolve_prompt(prompt_arg: Option<String>, quiet: bool) -> Result<String> {
             } else {
                 StdinPromptBehaviour::RequiredIfPiped
             };
-            read_prompt_from_stdin(behaviour, quiet)?.expect("required stdin prompt should produce content")
+            let Some(prompt) = read_prompt_from_stdin(behaviour, quiet)? else {
+                bail!("No prompt provided. Pass a prompt argument, pipe input, or use '-' to read from stdin.");
+            };
+            prompt
         }
     };
 

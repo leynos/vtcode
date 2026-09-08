@@ -36,12 +36,12 @@ Do not edit by hand — regenerate after dependency changes.
 --------------------------------------------------------------------------------
 License Overview
 --------------------------------------------------------------------------------
-  Apache License 2.0 (518 crates) — SPDX: Apache-2.0
-  MIT License (220 crates) — SPDX: MIT
+  Apache License 2.0 (526 crates) — SPDX: Apache-2.0
+  MIT License (229 crates) — SPDX: MIT
+  ISC License (23 crates) — SPDX: ISC
   Unicode License v3 (19 crates) — SPDX: Unicode-3.0
-  BSD 3-Clause "New" or "Revised" License (8 crates) — SPDX: BSD-3-Clause
-  ISC License (8 crates) — SPDX: ISC
-  BSD 2-Clause "Simplified" License (3 crates) — SPDX: BSD-2-Clause
+  BSD 3-Clause "New" or "Revised" License (9 crates) — SPDX: BSD-3-Clause
+  BSD 2-Clause "Simplified" License (4 crates) — SPDX: BSD-2-Clause
   Community Data License Agreement Permissive 2.0 (3 crates) — SPDX: CDLA-Permissive-2.0
   zlib License (3 crates) — SPDX: Zlib
   Boost Software License 1.0 (2 crates) — SPDX: BSL-1.0
@@ -122,6 +122,30 @@ Apache License 2.0 — SPDX: Apache-2.0
   zeroize_derive 1.5.0
     Source: https://github.com/RustCrypto/utils
     License: Apache-2.0 OR MIT
+--------------------------------------------------------------------------------
+Apache License 2.0 — SPDX: Apache-2.0
+--------------------------------------------------------------------------------
+  linux-raw-sys 0.12.1
+    Source: https://github.com/sunfishcode/linux-raw-sys
+    License: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
+  rustix 1.1.4
+    Source: https://github.com/bytecodealliance/rustix
+    License: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
+  wasi 0.11.1+wasi-snapshot-preview1
+    Source: https://github.com/bytecodealliance/wasi
+    License: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
+  wasip2 1.0.4+wasi-0.2.12
+    Source: https://github.com/bytecodealliance/wasi-rs
+    License: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
+  wit-bindgen 0.57.1
+    Source: https://github.com/bytecodealliance/wit-bindgen
+    License: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
+--------------------------------------------------------------------------------
+Apache License 2.0 — SPDX: Apache-2.0
+--------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
 --------------------------------------------------------------------------------
 Apache License 2.0 — SPDX: Apache-2.0
 --------------------------------------------------------------------------------
@@ -1247,7 +1271,7 @@ Apache License 2.0 — SPDX: Apache-2.0
   cbc 0.1.2
     Source: https://github.com/RustCrypto/block-modes
     License: MIT OR Apache-2.0
-  chacha20 0.10.1
+  chacha20 0.10.2
     Source: https://github.com/RustCrypto/stream-ciphers
     License: MIT OR Apache-2.0
   cipher 0.4.4
@@ -1762,12 +1786,27 @@ Apache License 2.0 — SPDX: Apache-2.0
   vtcode 0.156.1
     Source: https://github.com/vinhnx/vtcode
     License: MIT OR Apache-2.0
+  vtcode 0.156.1
+    Source: https://github.com/vinhnx/vtcode
+    License: MIT OR Apache-2.0
+--------------------------------------------------------------------------------
+Apache License 2.0 — SPDX: Apache-2.0
+--------------------------------------------------------------------------------
+  vtcode 0.156.1
+    Source: https://github.com/vinhnx/vtcode
+    License: MIT OR Apache-2.0
 --------------------------------------------------------------------------------
 Apache License 2.0 — SPDX: Apache-2.0
 --------------------------------------------------------------------------------
   chrono 0.4.45
     Source: https://github.com/chronotope/chrono
     License: MIT OR Apache-2.0
+--------------------------------------------------------------------------------
+BSD 2-Clause "Simplified" License — SPDX: BSD-2-Clause
+--------------------------------------------------------------------------------
+  rav1e 0.8.1
+    Source: https://github.com/xiph/rav1e/
+    License: BSD-2-Clause
 --------------------------------------------------------------------------------
 BSD 2-Clause "Simplified" License — SPDX: BSD-2-Clause
 --------------------------------------------------------------------------------
@@ -1786,6 +1825,12 @@ BSD 2-Clause "Simplified" License — SPDX: BSD-2-Clause
   av1-grain 0.2.5
     Source: https://github.com/rust-av/av1-grain
     License: BSD-2-Clause
+--------------------------------------------------------------------------------
+BSD 3-Clause "New" or "Revised" License — SPDX: BSD-3-Clause
+--------------------------------------------------------------------------------
+  encoding_rs 0.8.35
+    Source: https://github.com/hsivonen/encoding_rs
+    License: (Apache-2.0 OR MIT) AND BSD-3-Clause
 --------------------------------------------------------------------------------
 BSD 3-Clause "New" or "Revised" License — SPDX: BSD-3-Clause
 --------------------------------------------------------------------------------
@@ -1864,9 +1909,99 @@ Community Data License Agreement Permissive 2.0 — SPDX: CDLA-Permissive-2.0
 --------------------------------------------------------------------------------
 ISC License — SPDX: ISC
 --------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
+--------------------------------------------------------------------------------
+ISC License — SPDX: ISC
+--------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
+--------------------------------------------------------------------------------
+ISC License — SPDX: ISC
+--------------------------------------------------------------------------------
   untrusted 0.9.0
     Source: https://github.com/briansmith/untrusted
     License: ISC
+--------------------------------------------------------------------------------
+ISC License — SPDX: ISC
+--------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
+--------------------------------------------------------------------------------
+ISC License — SPDX: ISC
+--------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
+--------------------------------------------------------------------------------
+ISC License — SPDX: ISC
+--------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
+--------------------------------------------------------------------------------
+ISC License — SPDX: ISC
+--------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
+--------------------------------------------------------------------------------
+ISC License — SPDX: ISC
+--------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
+--------------------------------------------------------------------------------
+ISC License — SPDX: ISC
+--------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
+--------------------------------------------------------------------------------
+ISC License — SPDX: ISC
+--------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
+--------------------------------------------------------------------------------
+ISC License — SPDX: ISC
+--------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
+--------------------------------------------------------------------------------
+ISC License — SPDX: ISC
+--------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
+--------------------------------------------------------------------------------
+ISC License — SPDX: ISC
+--------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
+--------------------------------------------------------------------------------
+ISC License — SPDX: ISC
+--------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
+--------------------------------------------------------------------------------
+ISC License — SPDX: ISC
+--------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
+--------------------------------------------------------------------------------
+ISC License — SPDX: ISC
+--------------------------------------------------------------------------------
+  ring 0.17.14
+    Source: https://github.com/briansmith/ring
+    License: Apache-2.0 AND ISC
 --------------------------------------------------------------------------------
 ISC License — SPDX: ISC
 --------------------------------------------------------------------------------
@@ -1915,6 +2050,15 @@ MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
+  cfg_aliases 0.1.1
+    Source: https://github.com/katharostech/cfg_aliases
+    License: MIT
+  cfg_aliases 0.2.2
+    Source: https://github.com/katharostech/cfg_aliases
+    License: MIT
+--------------------------------------------------------------------------------
+MIT License — SPDX: MIT
+--------------------------------------------------------------------------------
   instability 0.3.12
     Source: https://github.com/ratatui/instability
     License: MIT
@@ -1923,6 +2067,18 @@ MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
   dotenvy 0.15.7
     Source: https://github.com/allan2/dotenvy
+    License: MIT
+--------------------------------------------------------------------------------
+MIT License — SPDX: MIT
+--------------------------------------------------------------------------------
+  schemars 1.2.2
+    Source: https://github.com/GREsau/schemars
+    License: MIT
+--------------------------------------------------------------------------------
+MIT License — SPDX: MIT
+--------------------------------------------------------------------------------
+  globwalk 0.9.1
+    Source: https://github.com/gilnaa/globwalk
     License: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
@@ -2167,6 +2323,9 @@ MIT License — SPDX: MIT
   micromap 0.3.0
     Source: https://github.com/yegor256/micromap
     License: MIT
+  micromap 0.3.0
+    Source: https://github.com/yegor256/micromap
+    License: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
@@ -2217,6 +2376,12 @@ MIT License — SPDX: MIT
     License: MIT
   mimalloc 0.1.52
     Source: https://github.com/purpleprotocol/mimalloc_rust
+    License: MIT
+--------------------------------------------------------------------------------
+MIT License — SPDX: MIT
+--------------------------------------------------------------------------------
+  wayland-protocols 0.32.13
+    Source: https://github.com/smithay/wayland-rs
     License: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
@@ -2316,6 +2481,15 @@ MIT License — SPDX: MIT
     License: MIT
   portable-pty 0.9.0
     Source: https://github.com/wezterm/wezterm
+    License: MIT
+--------------------------------------------------------------------------------
+MIT License — SPDX: MIT
+--------------------------------------------------------------------------------
+  libmimalloc-sys 0.1.49
+    Source: https://github.com/purpleprotocol/mimalloc_rust/tree/master/libmimalloc-sys
+    License: MIT
+  libmimalloc-sys 0.1.49
+    Source: https://github.com/purpleprotocol/mimalloc_rust/tree/master/libmimalloc-sys
     License: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
@@ -2689,6 +2863,9 @@ MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
+  tracing-core 0.1.36
+    Source: https://github.com/tokio-rs/tracing
+    License: MIT
   zip 8.6.0
     Source: https://github.com/zip-rs/zip2
     License: MIT

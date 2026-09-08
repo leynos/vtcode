@@ -241,16 +241,16 @@ fn append_tool_result_to_instructions(
         return;
     }
 
-    let (heading_str, heading_cap) = match tool_call_id {
-        Some(id) if !id.is_empty() => (None, 26 + id.len()),
-        _ => (Some("Previous tool result:"), 0),
+    let (heading_str, heading_cap, nonempty_tool_call_id) = match tool_call_id {
+        Some(id) if !id.is_empty() => (None, 26 + id.len(), id),
+        _ => (Some("Previous tool result:"), 0, ""),
     };
     let mut s = String::with_capacity(heading_str.map_or(heading_cap, |h| h.len()) + 1 + text.len());
     match heading_str {
         Some(h) => s.push_str(h),
         None => {
             s.push_str("Previous tool result (");
-            s.push_str(tool_call_id.expect("heading_str is None only when tool_call_id is Some"));
+            s.push_str(nonempty_tool_call_id);
             s.push_str("):");
         }
     }

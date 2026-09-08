@@ -34,6 +34,15 @@ fn test_model_string_conversion() {
 }
 
 #[test]
+fn test_openrouter_glm53_flash_metadata() {
+    let model = ModelId::OpenRouterZaiGlm53Flash;
+
+    assert_eq!(model.as_str(), "z-ai/glm-5.3-flash");
+    assert_eq!(model.display_name(), "GLM-5.3 Flash");
+    assert_eq!(model.description(), "Z.AI GLM-5.3 Flash efficient multimodal model via OpenRouter");
+}
+
+#[test]
 fn test_model_from_string() {
     // Gemini models
     assert_eq!(models::GEMINI_3_7_FLASH.parse::<ModelId>().unwrap(), ModelId::Gemini37Flash);
@@ -574,11 +583,16 @@ fn test_enum_variants_match_all_models_collection() {
 }
 
 #[test]
-fn test_all_models_have_non_empty_metadata_and_parse() {
+fn test_all_models_have_metadata_accessors_and_parse() {
     for model in ModelId::all_models() {
-        assert!(!model.as_str().is_empty());
-        assert!(!model.display_name().is_empty());
-        assert!(!model.description().is_empty());
+        // Evaluate every accessor for every built-in model so missing metadata
+        // fails at the source instead of being hidden by a later lookup.
+        let model_id = model.as_str();
+        let display_name = model.display_name();
+        let description = model.description();
+        assert!(!model_id.is_empty());
+        assert!(!display_name.is_empty());
+        assert!(!description.is_empty());
         assert!(!model.generation().is_empty());
         let parsed = match model {
             ModelId::OpenCodeGoGlm52 => ModelId::from_str("opencode-go/glm-5.2"),
@@ -618,7 +632,7 @@ fn test_all_models_have_non_empty_metadata_and_parse() {
             | ModelId::MergeGatewayGoogleGemini37Flash
             | ModelId::MergeGatewayGoogleGemini38Flash
             | ModelId::MergeGatewayMetaMuseSpark13 => continue,
-            _ => ModelId::from_str(&model.as_str()),
+            _ => ModelId::from_str(&model_id),
         };
         assert_eq!(parsed.unwrap(), model);
     }
