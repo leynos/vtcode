@@ -23,9 +23,9 @@ pub mod ansi_codes;
 pub mod async_utils;
 pub mod at_pattern;
 pub mod cgp;
-pub mod color256_theme;
-pub mod color_policy;
-pub mod colors;
+pub mod colour256_theme;
+pub mod colour_policy;
+pub mod colours;
 pub mod diff;
 pub mod diff_paths;
 pub mod diff_preview;
@@ -75,7 +75,7 @@ pub mod vtcode_paths;
 pub mod vtcodegitignore;
 pub mod walk;
 pub mod workspace_snapshot;
-pub use colors::{blend_colors, color_from_hex, contrasting_color, is_light_color, style};
+pub use colours::{blend_colours, colour_from_hex, contrasting_colour, is_light_colour, style};
 pub use editor::{
     EditorPoint, EditorTarget, normalize_editor_hash_fragment, parse_editor_target, resolve_editor_path,
     resolve_editor_target,
@@ -98,7 +98,7 @@ pub use paths::{
 pub use project::{ProjectOverview, build_project_overview};
 pub use reference::{MemoryErrorReporter, MemoryTelemetry, StaticWorkspacePaths};
 pub use stop_hints::{STOP_HINT_COMPACT, STOP_HINT_INLINE, with_stop_hint};
-pub use styling::{ColorPalette, DiffColorPalette, render_styled};
+pub use styling::{ColourPalette, DiffColourPalette, render_styled};
 pub use telemetry::{NoopTelemetry, TelemetrySink};
 pub use tokens::{estimate_tokens, truncate_to_tokens};
 pub use unicode::{UNICODE_MONITOR, UnicodeMonitor, UnicodeValidationContext};

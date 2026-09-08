@@ -1056,7 +1056,7 @@ mod tests {
             tools: None,
             disallowed_tools: Vec::new(),
             model: None,
-            color: None,
+            colour: None,
             reasoning_effort: None,
             permissions: AgentPermissionsConfig::new(PermissionDefault::Deny),
             skills: Vec::new(),

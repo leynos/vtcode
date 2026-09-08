@@ -2,7 +2,7 @@
 
 use crate::tool_policy::{ToolPolicy, ToolPolicyManager};
 use crate::tools::ToolRegistry;
-use crate::utils::colors::style;
+use crate::utils::colours::style;
 use anyhow::Result;
 use clap::Subcommand;
 

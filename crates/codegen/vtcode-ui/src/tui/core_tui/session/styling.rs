@@ -4,13 +4,13 @@ use vtcode_config::constants::tools;
 
 use crate::tui::config::constants::ui;
 use crate::tui::ui::tui::{
-    style::{ratatui_color_from_ansi, ratatui_style_from_inline},
+    style::{ratatui_colour_from_ansi, ratatui_style_from_inline},
     types::{InlineMessageKind, InlineTextStyle, InlineTheme},
 };
 
 use super::message::MessageLine;
 
-fn mix(color: RgbColor, target: RgbColor, ratio: f32) -> RgbColor {
+fn mix(colour: RgbColor, target: RgbColor, ratio: f32) -> RgbColor {
     let ratio = ratio.clamp(ui::THEME_MIX_RATIO_MIN, ui::THEME_MIX_RATIO_MAX);
     let blend = |c: u8, t: u8| -> u8 {
         let c = c as f32;
@@ -18,7 +18,7 @@ fn mix(color: RgbColor, target: RgbColor, ratio: f32) -> RgbColor {
         ((c + (t - c) * ratio).round()).clamp(ui::THEME_BLEND_CLAMP_MIN, ui::THEME_BLEND_CLAMP_MAX) as u8
     };
 
-    RgbColor(blend(color.0, target.0), blend(color.1, target.1), blend(color.2, target.2))
+    RgbColor(blend(colour.0, target.0), blend(colour.1, target.1), blend(colour.2, target.2))
 }
 
 fn normalize_tool_name(tool_name: &str) -> &'static str {
@@ -38,7 +38,7 @@ pub(crate) fn tool_inline_style_for(tool_name: &str, theme: &InlineTheme) -> Inl
     let normalized_name = normalize_tool_name(tool_name);
     let mut style = InlineTextStyle::default().bold();
 
-    style.color = match normalized_name {
+    style.colour = match normalized_name {
         "read" => Some(AnsiColor::Cyan.into()),
         "list" => Some(AnsiColor::Green.into()),
         "search" => Some(AnsiColor::Cyan.into()),
@@ -74,7 +74,7 @@ impl SessionStyles {
         let accent = self.theme.primary.or(self.theme.tool_accent).or(self.theme.foreground);
         let mut style = self.default_style().add_modifier(Modifier::BOLD);
         if let Some(accent) = accent {
-            style = style.fg(ratatui_color_from_ansi(accent));
+            style = style.fg(ratatui_colour_from_ansi(accent));
         }
         style
     }
@@ -94,10 +94,10 @@ impl SessionStyles {
     /// color scheme (e.g. a light theme on a dark terminal no longer appears blank).
     pub(crate) fn default_style(&self) -> Style {
         let mut style = Style::default();
-        if let Some(background) = self.theme.background.map(ratatui_color_from_ansi) {
+        if let Some(background) = self.theme.background.map(ratatui_colour_from_ansi) {
             style = style.bg(background);
         }
-        if let Some(foreground) = self.theme.foreground.map(ratatui_color_from_ansi) {
+        if let Some(foreground) = self.theme.foreground.map(ratatui_colour_from_ansi) {
             style = style.fg(foreground);
         }
         style
@@ -106,7 +106,7 @@ impl SessionStyles {
     /// Get the default inline style (for tests and inline conversions)
     pub(crate) fn default_inline_style(&self) -> InlineTextStyle {
         InlineTextStyle {
-            color: self.theme.foreground,
+            colour: self.theme.foreground,
             ..InlineTextStyle::default()
         }
     }
@@ -114,7 +114,7 @@ impl SessionStyles {
     /// Get the accent inline style
     pub(crate) fn accent_inline_style(&self) -> InlineTextStyle {
         InlineTextStyle {
-            color: self.theme.primary.or(self.theme.foreground),
+            colour: self.theme.primary.or(self.theme.foreground),
             ..InlineTextStyle::default()
         }
     }
@@ -126,7 +126,7 @@ impl SessionStyles {
 
     pub(crate) fn transcript_link_style(&self) -> Style {
         let style = InlineTextStyle {
-            color: self.theme.tool_accent.or(self.theme.primary).or(self.theme.foreground),
+            colour: self.theme.tool_accent.or(self.theme.primary).or(self.theme.foreground),
             ..InlineTextStyle::default()
         };
         ratatui_style_from_inline(&style, self.theme.foreground)
@@ -135,7 +135,7 @@ impl SessionStyles {
     /// Get the border inline style
     fn border_inline_style(&self) -> InlineTextStyle {
         InlineTextStyle {
-            color: self.theme.secondary.or(self.theme.foreground),
+            colour: self.theme.secondary.or(self.theme.foreground),
             ..InlineTextStyle::default()
         }
     }
@@ -167,10 +167,10 @@ impl SessionStyles {
             (AnsiColorEnum::Rgb(bg), Some(AnsiColorEnum::Rgb(fg))) => {
                 AnsiColorEnum::Rgb(mix(bg, fg, ui::THEME_INPUT_BACKGROUND_MIX_RATIO))
             }
-            (color, _) => color,
+            (colour, _) => colour,
         };
 
-        style = style.bg(ratatui_color_from_ansi(resolved));
+        style = style.bg(ratatui_colour_from_ansi(resolved));
         style
     }
 
@@ -178,9 +178,9 @@ impl SessionStyles {
     pub(crate) fn prefix_style(&self, line: &MessageLine) -> InlineTextStyle {
         let fallback = self.text_fallback(line.kind).or(self.theme.foreground);
 
-        let color = line.segments.iter().find_map(|segment| segment.style.color).or(fallback);
+        let colour = line.segments.iter().find_map(|segment| segment.style.colour).or(fallback);
 
-        InlineTextStyle { color, ..InlineTextStyle::default() }
+        InlineTextStyle { colour, ..InlineTextStyle::default() }
     }
 
     /// Get the fallback text color for a message kind
@@ -201,9 +201,9 @@ impl SessionStyles {
     pub(crate) fn message_divider_style(&self, kind: InlineMessageKind) -> Style {
         let mut style = InlineTextStyle::default();
         if kind == InlineMessageKind::User {
-            style.color = self.theme.primary.or(self.theme.foreground);
+            style.colour = self.theme.primary.or(self.theme.foreground);
         } else {
-            style.color = self.text_fallback(kind).or(self.theme.foreground);
+            style.colour = self.text_fallback(kind).or(self.theme.foreground);
         }
         let resolved = ratatui_style_from_inline(&style, self.theme.foreground);
         resolved.add_modifier(Modifier::DIM)

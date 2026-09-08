@@ -34,7 +34,7 @@ fn test_inline_segment_snapshot() {
     };
     assert_snapshot!(
         &format!("{segment:?}"),
-        @"InlineSegment { text: \"Hello, world!\", style: InlineTextStyle { color: None, bg_color: None, effects: Effects(BOLD) } }"
+        @"InlineSegment { text: \"Hello, world!\", style: InlineTextStyle { colour: None, bg_colour: None, effects: Effects(BOLD) } }"
     );
 }
 
@@ -53,7 +53,7 @@ fn test_header_context_snapshot() {
         git: "clean".to_string(),
         mcp: "disabled".to_string(),
         primary_agent: None,
-        primary_agent_color: None,
+        primary_agent_colour: None,
         highlights: vec![],
         subagent_badges: vec![],
         version: "0.37.1".to_string(),
@@ -64,7 +64,7 @@ fn test_header_context_snapshot() {
     };
     assert_snapshot!(
         &format!("{context:?}"),
-        @"InlineHeaderContext { app_name: \"VT Code\", provider: \"openai\", model: \"gpt-oss-20b\", context_window_size: None, version: \"0.37.1\", search_tools: None, persistent_memory: None, pr_review: None, editor_context: None, git: \"clean\", reasoning: \"creative\", reasoning_stage: None, workspace_trust: \"trusted\", tools: \"enabled\", mcp: \"disabled\", primary_agent: None, primary_agent_color: None, highlights: [], subagent_badges: [] }"
+        @"InlineHeaderContext { app_name: \"VT Code\", provider: \"openai\", model: \"gpt-oss-20b\", context_window_size: None, version: \"0.37.1\", search_tools: None, persistent_memory: None, pr_review: None, editor_context: None, git: \"clean\", reasoning: \"creative\", reasoning_stage: None, workspace_trust: \"trusted\", tools: \"enabled\", mcp: \"disabled\", primary_agent: None, primary_agent_colour: None, highlights: [], subagent_badges: [] }"
     );
 }
 
@@ -83,7 +83,7 @@ fn test_inline_command_debug() {
     let segment_debug = format!("{segment:?}");
     assert_snapshot!(
         &segment_debug,
-        @"InlineSegment { text: \"Hello! I'm your AI assistant.\", style: InlineTextStyle { color: None, bg_color: None, effects: Effects(BOLD) } }"
+        @"InlineSegment { text: \"Hello! I'm your AI assistant.\", style: InlineTextStyle { colour: None, bg_colour: None, effects: Effects(BOLD) } }"
     );
 }
 
@@ -108,8 +108,8 @@ fn test_ui_component_combinations() {
     assert_snapshot!(
         &combined_repr,
         @r###"
-    Message: InlineSegment { text: "This is a test message with styling", style: InlineTextStyle { color: None, bg_color: None, effects: Effects(BOLD | ITALIC) } }
-    Context: InlineHeaderContext { app_name: "App", provider: "anthropic", model: "claude-3", context_window_size: None, version: "test-version", search_tools: None, persistent_memory: None, pr_review: None, editor_context: None, git: "git: unavailable", reasoning: "unavailable", reasoning_stage: None, workspace_trust: "Trust: unavailable", tools: "Tools: unavailable", mcp: "MCP: unavailable", primary_agent: None, primary_agent_color: None, highlights: [], subagent_badges: [] }
+    Message: InlineSegment { text: "This is a test message with styling", style: InlineTextStyle { colour: None, bg_colour: None, effects: Effects(BOLD | ITALIC) } }
+    Context: InlineHeaderContext { app_name: "App", provider: "anthropic", model: "claude-3", context_window_size: None, version: "test-version", search_tools: None, persistent_memory: None, pr_review: None, editor_context: None, git: "git: unavailable", reasoning: "unavailable", reasoning_stage: None, workspace_trust: "Trust: unavailable", tools: "Tools: unavailable", mcp: "MCP: unavailable", primary_agent: None, primary_agent_colour: None, highlights: [], subagent_badges: [] }
     "###
     );
 }

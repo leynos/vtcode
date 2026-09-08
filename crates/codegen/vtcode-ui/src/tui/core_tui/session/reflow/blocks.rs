@@ -3,7 +3,7 @@ use unicode_width::UnicodeWidthStr;
 use vtcode_commons::diff_paths::{is_diff_addition_line, is_diff_deletion_line};
 
 use super::super::super::style::{
-    ratatui_color_from_ansi, ratatui_pty_detail_style_from_inline, ratatui_pty_style_from_inline,
+    ratatui_colour_from_ansi, ratatui_pty_detail_style_from_inline, ratatui_pty_style_from_inline,
     ratatui_style_from_ansi, ratatui_style_from_inline,
 };
 use super::super::super::types::{InlineLinkRange, InlineMessageKind, InlineTextStyle};
@@ -22,9 +22,9 @@ impl Session {
         let is_subdued_foreground = [self.theme.pty_body, self.theme.tool_body]
             .into_iter()
             .flatten()
-            .map(ratatui_color_from_ansi)
-            .any(|color| style.fg == Some(color));
-        if is_subdued_foreground && let Some(foreground) = self.theme.foreground.map(ratatui_color_from_ansi) {
+            .map(ratatui_colour_from_ansi)
+            .any(|colour| style.fg == Some(colour));
+        if is_subdued_foreground && let Some(foreground) = self.theme.foreground.map(ratatui_colour_from_ansi) {
             style = style.fg(foreground);
         }
         style
@@ -33,7 +33,7 @@ impl Session {
     fn tool_header_action_style(&self, action: &str) -> Style {
         if action == "Ran" {
             let style = InlineTextStyle {
-                color: self.theme.primary.or(self.theme.foreground),
+                colour: self.theme.primary.or(self.theme.foreground),
                 ..InlineTextStyle::default()
             }
             .bold();
@@ -47,10 +47,10 @@ impl Session {
 
     fn tool_header_body_style(&self) -> Style {
         let style = InlineTextStyle {
-            // `tool_body` is an accent color in several themes. It must not be
-            // used as the fallback here because a whole status-colored header
-            // would still appear colored after the status span is split off.
-            color: self.theme.foreground,
+            // `tool_body` is an accent colour in several themes. It must not be
+            // used as the fallback here because a whole status-coloured header
+            // would still appear coloured after the status span is split off.
+            colour: self.theme.foreground,
             ..InlineTextStyle::default()
         };
         ratatui_style_from_inline(&style, self.theme.foreground).remove_modifier(Modifier::DIM)
@@ -181,7 +181,7 @@ impl Session {
         let content_line = Line::from(content);
         // URL-aware wrapping historically reused the first span's style for
         // every fragment. That makes a path-bearing command header inherit
-        // the status-colored bullet. Preserve header spans through the normal
+        // the status-coloured bullet. Preserve header spans through the normal
         // style-aware wrapper; URL-aware wrapping remains useful for output.
         let mut wrapped = if let Some(prefix) = tree_continuation_prefix {
             text_utils::wrap_line_with_hanging_prefix(content_line, content_width, &prefix)
@@ -292,7 +292,7 @@ impl Session {
             let line_text: String = line_spans.iter().map(|span| span.content.as_ref()).collect();
             let is_summary = has_summary_prefix(&line_text);
             if is_summary {
-                // Style the tool call prefix ("• <Action>") with tool-specific ANSI color + bold.
+                // Style the tool call prefix ("• <Action>") with tool-specific ANSI colour + bold.
                 let mut styled_spans = Vec::with_capacity(line_spans.len() + 1);
                 for (i, span) in line_spans.into_iter().enumerate() {
                     if i == 0 {
@@ -301,12 +301,12 @@ impl Session {
                         if let Some((action, prefix)) = parse_tool_call_prefix(&text) {
                             let mut bullet_style = style.remove_modifier(Modifier::DIM);
                             if bullet_style.fg.is_none() {
-                                if let Some(c) = self.theme.foreground.map(ratatui_color_from_ansi) {
+                                if let Some(c) = self.theme.foreground.map(ratatui_colour_from_ansi) {
                                     bullet_style = bullet_style.fg(c);
                                 }
                             }
                             if bullet_style.bg.is_none() {
-                                if let Some(c) = self.theme.background.map(ratatui_color_from_ansi) {
+                                if let Some(c) = self.theme.background.map(ratatui_colour_from_ansi) {
                                     bullet_style = bullet_style.bg(c);
                                 }
                             }
@@ -449,7 +449,7 @@ impl Session {
         let pty_fallback = self.text_fallback(InlineMessageKind::Pty).or(self.theme.foreground);
 
         // Command header lines ("• Ran ...", "• Read ...", "• Write ...", etc.)
-        // use full-brightness tool-colored styling so the tool name and arguments
+        // use full-brightness tool-coloured styling so the tool name and arguments
         // are visually distinct from dimmed PTY body text.
         // Every PTY line can begin a new tool command. `is_start` only marks
         // the beginning of the surrounding PTY block, so using it here would
@@ -462,8 +462,8 @@ impl Session {
 
             if is_command_header && i == 0 {
                 if let Some((action, prefix)) = parse_tool_call_prefix(&stripped_text) {
-                    let fg = self.theme.foreground.map(ratatui_color_from_ansi);
-                    let bg = self.theme.background.map(ratatui_color_from_ansi);
+                    let fg = self.theme.foreground.map(ratatui_colour_from_ansi);
+                    let bg = self.theme.background.map(ratatui_colour_from_ansi);
 
                     let mut bullet_style =
                         ratatui_style_from_inline(&segment.style, pty_fallback).remove_modifier(Modifier::DIM);
@@ -484,8 +484,8 @@ impl Session {
 
                     let rest = &stripped_text[prefix.len()..];
                     if !rest.is_empty() {
-                        // A streamed header can arrive as one status-colored
-                        // segment. Keep that status color on the bullet only;
+                        // A streamed header can arrive as one status-coloured
+                        // segment. Keep that status colour on the bullet only;
                         // never let it leak into the command and arguments.
                         body_spans.push(Span::styled(rest.to_owned(), self.tool_header_body_style()));
                     }

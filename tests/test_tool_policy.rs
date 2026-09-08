@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use vtcode_core::config::constants::tools;
-use vtcode_core::utils::colors::style;
+use vtcode_core::utils::colours::style;
 
 /// Tool execution policy
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -152,7 +152,7 @@ impl ToolPolicyManager {
         let mut deny_count = 0;
 
         for (tool, policy) in &self.config.policies {
-            let (status, color_name) = match policy {
+            let (status, colour_name) = match policy {
                 ToolPolicy::Allow => {
                     allow_count += 1;
                     ("ALLOW", "green")
@@ -167,7 +167,7 @@ impl ToolPolicyManager {
                 }
             };
 
-            let status_styled = match color_name {
+            let status_styled = match colour_name {
                 "green" => style(status).green(),
                 "yellow" => style(status).cyan(),
                 "red" => style(status).red(),

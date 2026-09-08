@@ -11,7 +11,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use vtcode_core::core::agent::task::TaskResults;
 use vtcode_core::exec::events::{CommandExecutionStatus, ThreadEvent, ThreadItem, ThreadItemDetails, ToolCallStatus};
-use vtcode_core::utils::colors::style;
+use vtcode_core::utils::colours::style;
 
 pub(super) struct ExecEventProcessor<WStdout, WEvents, WStderr> {
     json: bool,

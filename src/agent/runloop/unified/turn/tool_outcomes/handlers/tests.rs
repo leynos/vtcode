@@ -331,7 +331,7 @@ fn test_primary_agent_spec(name: &str) -> SubagentSpec {
         tools: Some(vec![tool_names::READ_FILE.to_string()]),
         disallowed_tools: Vec::new(),
         model: None,
-        color: None,
+        colour: None,
         reasoning_effort: None,
         permissions: AgentPermissionsConfig::new(PermissionDefault::Deny),
         skills: Vec::new(),

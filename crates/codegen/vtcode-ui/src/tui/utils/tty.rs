@@ -22,7 +22,7 @@
 
 use crossterm::tty::IsTty;
 use std::io;
-use vtcode_commons::color_policy::no_color_env_active;
+use vtcode_commons::colour_policy::no_colour_env_active;
 
 /// Extension trait for TTY detection on standard I/O streams.
 ///
@@ -35,11 +35,11 @@ pub trait TtyExt {
     /// that provides consistent behavior across the codebase.
     fn is_tty_ext(&self) -> bool;
 
-    /// Returns `true` if this stream supports ANSI color codes.
+    /// Returns `true` if this stream supports ANSI colour codes.
     ///
     /// This checks both TTY status and common environment variables
     /// that might disable color output.
-    fn supports_color(&self) -> bool;
+    fn supports_colour(&self) -> bool;
 
     /// Returns `true` if this stream supports interactive features.
     ///
@@ -53,13 +53,13 @@ impl TtyExt for io::Stdout {
         self.is_tty()
     }
 
-    fn supports_color(&self) -> bool {
+    fn supports_colour(&self) -> bool {
         if !self.is_tty() {
             return false;
         }
 
         // Check NO_COLOR with strict non-empty semantics.
-        if no_color_env_active() {
+        if no_colour_env_active() {
             return false;
         }
 
@@ -72,7 +72,7 @@ impl TtyExt for io::Stdout {
     }
 
     fn is_interactive(&self) -> bool {
-        self.is_tty() && self.supports_color()
+        self.is_tty() && self.supports_colour()
     }
 }
 
@@ -81,13 +81,13 @@ impl TtyExt for io::Stderr {
         self.is_tty()
     }
 
-    fn supports_color(&self) -> bool {
+    fn supports_colour(&self) -> bool {
         if !self.is_tty() {
             return false;
         }
 
         // Check NO_COLOR with strict non-empty semantics.
-        if no_color_env_active() {
+        if no_colour_env_active() {
             return false;
         }
 
@@ -100,7 +100,7 @@ impl TtyExt for io::Stderr {
     }
 
     fn is_interactive(&self) -> bool {
-        self.is_tty() && self.supports_color()
+        self.is_tty() && self.supports_colour()
     }
 }
 
@@ -109,8 +109,8 @@ impl TtyExt for io::Stdin {
         self.is_tty()
     }
 
-    fn supports_color(&self) -> bool {
-        // Stdin doesn't output color, but we check if it's interactive
+    fn supports_colour(&self) -> bool {
+        // Stdin doesn't output colour, but we check if it's interactive
         self.is_tty()
     }
 
@@ -123,7 +123,7 @@ impl TtyExt for io::Stdin {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TtyCapabilities {
     /// Whether the terminal supports ANSI color codes.
-    color: bool,
+    colour: bool,
     /// Whether the terminal supports cursor movement and manipulation.
     cursor: bool,
     /// Whether the terminal supports bracketed paste mode.
@@ -153,7 +153,7 @@ impl TtyCapabilities {
         }
 
         Some(Self {
-            color: stderr.supports_color(),
+            colour: stderr.supports_colour(),
             cursor: true,               // All TTYs support basic cursor movement
             bracketed_paste: true,      // Assume support, will fail gracefully if not
             focus_events: true,         // Assume support, will fail gracefully if not
@@ -164,7 +164,7 @@ impl TtyCapabilities {
 
     /// Returns `true` if the terminal supports all advanced features.
     pub fn is_fully_featured(&self) -> bool {
-        self.color
+        self.colour
             && self.cursor
             && self.bracketed_paste
             && self.focus_events
@@ -174,7 +174,7 @@ impl TtyCapabilities {
 
     /// Returns `true` if the terminal supports basic TUI features.
     pub(crate) fn is_basic_tui(&self) -> bool {
-        self.color && self.cursor
+        self.colour && self.cursor
     }
 }
 
@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn capability_predicates_require_their_declared_features() {
         let fully_featured = TtyCapabilities {
-            color: true,
+            colour: true,
             cursor: true,
             bracketed_paste: true,
             focus_events: true,
@@ -211,9 +211,9 @@ mod tests {
         assert!(fully_featured.is_fully_featured());
         assert!(fully_featured.is_basic_tui());
 
-        let no_color = TtyCapabilities { color: false, ..fully_featured };
-        assert!(!no_color.is_fully_featured());
-        assert!(!no_color.is_basic_tui());
+        let no_colour = TtyCapabilities { colour: false, ..fully_featured };
+        assert!(!no_colour.is_fully_featured());
+        assert!(!no_colour.is_basic_tui());
 
         let no_mouse = TtyCapabilities { mouse: false, ..fully_featured };
         assert!(!no_mouse.is_fully_featured());

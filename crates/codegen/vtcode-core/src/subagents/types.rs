@@ -84,8 +84,9 @@ pub struct SubagentStatusEntry {
     pub display_label: String,
     pub description: String,
     pub source: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub color: Option<String>,
+    /// The serialized key `color` is fixed by the schema; `colour` is accepted as a British spelling alias.
+    #[serde(rename = "color", alias = "colour", default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
     pub status: SubagentStatus,
     pub background: bool,
     pub depth: usize,
@@ -112,8 +113,9 @@ pub struct BackgroundSubprocessEntry {
     pub display_label: String,
     pub description: String,
     pub source: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub color: Option<String>,
+    /// The serialized key `color` is fixed by the schema; `colour` is accepted as a British spelling alias.
+    #[serde(rename = "color", alias = "colour", default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
     pub status: BackgroundSubprocessStatus,
     pub desired_enabled: bool,
     pub created_at: DateTime<Utc>,
@@ -274,7 +276,9 @@ pub struct PersistedBackgroundRecord {
     display_label: String,
     description: String,
     source: String,
-    color: Option<String>,
+    /// The serialized key `color` is fixed by the schema; `colour` is accepted as a British spelling alias.
+    #[serde(rename = "color", alias = "colour")]
+    colour: Option<String>,
     session_id: String,
     exec_session_id: String,
     desired_enabled: bool,
@@ -308,7 +312,9 @@ pub struct BackgroundRecord {
     pub(crate) display_label: String,
     pub(crate) description: String,
     pub(crate) source: String,
-    pub(crate) color: Option<String>,
+    /// The serialized key `color` is fixed by the schema; `colour` is accepted as a British spelling alias.
+    #[serde(rename = "color", alias = "colour")]
+    pub(crate) colour: Option<String>,
     pub(crate) session_id: String,
     pub(crate) exec_session_id: String,
     pub(crate) desired_enabled: bool,
@@ -348,7 +354,7 @@ impl StatusEntryBuilder for BackgroundRecord {
             display_label: self.display_label.clone(),
             description: self.description.clone(),
             source: self.source.clone(),
-            color: self.color.clone(),
+            colour: self.colour.clone(),
             status: self.status,
             desired_enabled: self.desired_enabled,
             created_at: self.created_at,
@@ -376,7 +382,7 @@ impl StatusEntryBuilder for ChildRecord {
             display_label: self.display_label.clone(),
             description: self.spec.description.clone(),
             source: self.spec.source.label(),
-            color: self.spec.color.clone(),
+            colour: self.spec.colour.clone(),
             status: self.status,
             background: self.background,
             depth: self.depth,
@@ -465,7 +471,7 @@ impl BackgroundRecord {
             display_label: self.display_label,
             description: self.description,
             source: self.source,
-            color: self.color,
+            colour: self.colour,
             session_id: self.session_id,
             exec_session_id: self.exec_session_id,
             desired_enabled: self.desired_enabled,
@@ -494,7 +500,7 @@ impl BackgroundRecord {
             display_label: record.display_label,
             description: record.description,
             source: record.source,
-            color: record.color,
+            colour: record.colour,
             session_id: record.session_id,
             exec_session_id: record.exec_session_id,
             desired_enabled: record.desired_enabled,
@@ -541,4 +547,171 @@ pub struct ChildRunResult {
     pub(crate) summary: String,
     pub(crate) outcome: TaskOutcome,
     pub(crate) transcript_path: Option<PathBuf>,
+}
+
+#[cfg(test)]
+mod tests {
+    //! Verifies stable colour aliases for subagent status and persistence wire records.
+
+    use super::*;
+    use chrono::{DateTime, Utc};
+    use serde_json::json;
+
+    #[test]
+    fn subagent_status_entry_accepts_colour_and_serializes_color() {
+        let now = DateTime::<Utc>::UNIX_EPOCH;
+        let entry = SubagentStatusEntry {
+            id: "child-1".to_string(),
+            session_id: "session-1".to_string(),
+            parent_thread_id: "thread-1".to_string(),
+            agent_name: "colour-agent".to_string(),
+            display_label: "Colour agent".to_string(),
+            description: "A status wire fixture".to_string(),
+            source: "project".to_string(),
+            colour: Some("orchid".to_string()),
+            status: SubagentStatus::Running,
+            background: false,
+            depth: 1,
+            created_at: now,
+            updated_at: now,
+            completed_at: None,
+            summary: None,
+            error: None,
+            transcript_path: None,
+            nickname: None,
+        };
+
+        let mut canonical = serde_json::to_value(&entry).expect("the status entry should serialize");
+        assert_eq!(canonical.get("color"), Some(&json!("orchid")), "status output should use the canonical color key");
+        let canonical_value = canonical
+            .as_object_mut()
+            .expect("a serialized status entry should be an object")
+            .remove("color")
+            .expect("the canonical color key should be present");
+        let previous_british_alias = canonical
+            .as_object_mut()
+            .expect("a serialized status entry should remain an object")
+            .insert("colour".to_string(), canonical_value);
+        assert!(previous_british_alias.is_none(), "the British alias should be absent before deserialization");
+
+        let british: SubagentStatusEntry =
+            serde_json::from_value(canonical.clone()).expect("the British status-entry alias should deserialize");
+        assert_eq!(british.colour.as_deref(), Some("orchid"), "the British alias should preserve the status colour");
+
+        let previous_canonical_key = canonical
+            .as_object_mut()
+            .expect("a serialized status entry should remain an object")
+            .insert("color".to_string(), json!("violet"));
+        assert!(
+            previous_canonical_key.is_none(),
+            "the canonical key should be absent before duplicate-alias testing"
+        );
+        assert!(
+            serde_json::from_value::<SubagentStatusEntry>(canonical).is_err(),
+            "both status-entry spellings should be rejected as duplicate aliases"
+        );
+    }
+
+    #[test]
+    fn background_subprocess_entry_accepts_colour_and_serializes_color() {
+        let now = DateTime::<Utc>::UNIX_EPOCH;
+        let entry = BackgroundSubprocessEntry {
+            id: "background-1".to_string(),
+            session_id: "session-1".to_string(),
+            exec_session_id: "exec-1".to_string(),
+            agent_name: "colour-agent".to_string(),
+            display_label: "Colour agent".to_string(),
+            description: "A background wire fixture".to_string(),
+            source: "project".to_string(),
+            colour: Some("orchid".to_string()),
+            status: BackgroundSubprocessStatus::Running,
+            desired_enabled: true,
+            created_at: now,
+            updated_at: now,
+            started_at: Some(now),
+            ended_at: None,
+            pid: None,
+            summary: None,
+            error: None,
+            archive_path: None,
+            transcript_path: None,
+        };
+
+        let mut canonical = serde_json::to_value(&entry).expect("the background entry should serialize");
+        assert_eq!(
+            canonical.get("color"),
+            Some(&json!("orchid")),
+            "background output should use the canonical color key"
+        );
+        let canonical_value = canonical
+            .as_object_mut()
+            .expect("a serialized background entry should be an object")
+            .remove("color")
+            .expect("the canonical color key should be present");
+        let previous_british_alias = canonical
+            .as_object_mut()
+            .expect("a serialized background entry should remain an object")
+            .insert("colour".to_string(), canonical_value);
+        assert!(previous_british_alias.is_none(), "the British alias should be absent before deserialization");
+
+        let british: BackgroundSubprocessEntry =
+            serde_json::from_value(canonical).expect("the British background-entry alias should deserialize");
+        assert_eq!(
+            british.colour.as_deref(),
+            Some("orchid"),
+            "the British alias should preserve the background colour"
+        );
+    }
+
+    #[test]
+    fn persisted_background_record_accepts_colour_and_serializes_color() {
+        let now = DateTime::<Utc>::UNIX_EPOCH;
+        let record = PersistedBackgroundRecord {
+            id: "background-1".to_string(),
+            agent_name: "colour-agent".to_string(),
+            display_label: "Colour agent".to_string(),
+            description: "A persistence wire fixture".to_string(),
+            source: "project".to_string(),
+            colour: Some("orchid".to_string()),
+            session_id: "session-1".to_string(),
+            exec_session_id: "exec-1".to_string(),
+            desired_enabled: true,
+            status: BackgroundSubprocessStatus::Running,
+            created_at: now,
+            updated_at: now,
+            started_at: Some(now),
+            ended_at: None,
+            pid: None,
+            prompt: "resume".to_string(),
+            summary: None,
+            error: None,
+            archive_path: None,
+            transcript_path: None,
+            max_turns: None,
+            model_override: None,
+            reasoning_override: None,
+            restart_attempts: 0,
+        };
+
+        let mut canonical = serde_json::to_value(&record).expect("the persisted record should serialize");
+        assert_eq!(
+            canonical.get("color"),
+            Some(&json!("orchid")),
+            "persisted state should use the canonical color key"
+        );
+        let canonical_value = canonical
+            .as_object_mut()
+            .expect("a serialized persisted record should be an object")
+            .remove("color")
+            .expect("the canonical color key should be present");
+        let previous_british_alias = canonical
+            .as_object_mut()
+            .expect("a serialized persisted record should remain an object")
+            .insert("colour".to_string(), canonical_value);
+        assert!(previous_british_alias.is_none(), "the British alias should be absent before deserialization");
+
+        let british: PersistedBackgroundRecord =
+            serde_json::from_value(canonical).expect("the British persisted-record alias should deserialize");
+        assert_eq!(british.colour.as_deref(), Some("orchid"), "the British alias should preserve persisted colour");
+    }
 }

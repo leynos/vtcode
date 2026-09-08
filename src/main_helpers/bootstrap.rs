@@ -1,10 +1,10 @@
 use anstyle::{AnsiColor, Effects};
 use anyhow::{Context, Result};
 use clap::builder::Styles;
-use clap::builder::styling::{AnsiColor as ClapAnsiColor, Effects as ClapEffects};
-use clap::{ColorChoice as CliColorChoice, CommandFactory};
+use clap::builder::styling::{AnsiColor as ClapAnsiColour, Effects as ClapEffects};
+use clap::{ColorChoice as CliColourChoice, CommandFactory};
 use std::time::Instant;
-use vtcode_commons::color_policy::{self, ColorOutputPolicy, ColorOutputPolicySource};
+use vtcode_commons::colour_policy::{self, ColourOutputPolicy, ColourOutputPolicySource};
 use vtcode_core::cli::args::Cli;
 
 use crate::startup::StartupContext;
@@ -20,33 +20,33 @@ pub(crate) fn debug_runtime_flag_enabled(debug_arg_enabled: bool, env_var: &str)
     cfg!(debug_assertions) && (debug_arg_enabled || env_flag_enabled(env_var))
 }
 
-pub(crate) fn resolve_runtime_color_policy(args: &Cli) -> ColorOutputPolicy {
-    if args.no_color {
-        return ColorOutputPolicy {
+pub(crate) fn resolve_runtime_colour_policy(args: &Cli) -> ColourOutputPolicy {
+    if args.no_colour {
+        return ColourOutputPolicy {
             enabled: false,
-            source: ColorOutputPolicySource::CliNoColor,
+            source: ColourOutputPolicySource::CliNoColour,
         };
     }
 
-    match args.color.color {
-        CliColorChoice::Always => ColorOutputPolicy {
+    match args.colour.color {
+        CliColourChoice::Always => ColourOutputPolicy {
             enabled: true,
-            source: ColorOutputPolicySource::CliColorAlways,
+            source: ColourOutputPolicySource::CliColourAlways,
         },
-        CliColorChoice::Never => ColorOutputPolicy {
+        CliColourChoice::Never => ColourOutputPolicy {
             enabled: false,
-            source: ColorOutputPolicySource::CliColorNever,
+            source: ColourOutputPolicySource::CliColourNever,
         },
-        CliColorChoice::Auto => {
-            if color_policy::no_color_env_active() {
-                ColorOutputPolicy {
+        CliColourChoice::Auto => {
+            if colour_policy::no_colour_env_active() {
+                ColourOutputPolicy {
                     enabled: false,
-                    source: ColorOutputPolicySource::NoColorEnv,
+                    source: ColourOutputPolicySource::NoColourEnv,
                 }
             } else {
-                ColorOutputPolicy {
+                ColourOutputPolicy {
                     enabled: true,
-                    source: ColorOutputPolicySource::DefaultAuto,
+                    source: ColourOutputPolicySource::DefaultAuto,
                 }
             }
         }
@@ -55,7 +55,7 @@ pub(crate) fn resolve_runtime_color_policy(args: &Cli) -> ColorOutputPolicy {
 
 pub(crate) fn build_augmented_cli_command() -> clap::Command {
     let mut cmd = Cli::command();
-    if let Some(choice) = requested_help_color_choice() {
+    if let Some(choice) = requested_help_colour_choice() {
         cmd = cmd.color(choice);
     }
     cmd = cmd.styles(clap_help_styles());
@@ -71,24 +71,24 @@ pub(crate) fn build_augmented_cli_command() -> clap::Command {
 
 fn clap_help_styles() -> Styles {
     Styles::styled()
-        .header(ClapAnsiColor::BrightBlue.on_default().effects(ClapEffects::BOLD))
-        .usage(ClapAnsiColor::BrightBlue.on_default().effects(ClapEffects::BOLD))
-        .literal(ClapAnsiColor::BrightGreen.on_default().effects(ClapEffects::BOLD))
-        .placeholder(ClapAnsiColor::BrightCyan.on_default())
+        .header(ClapAnsiColour::BrightBlue.on_default().effects(ClapEffects::BOLD))
+        .usage(ClapAnsiColour::BrightBlue.on_default().effects(ClapEffects::BOLD))
+        .literal(ClapAnsiColour::BrightGreen.on_default().effects(ClapEffects::BOLD))
+        .placeholder(ClapAnsiColour::BrightCyan.on_default())
 }
 
-fn requested_help_color_choice() -> Option<CliColorChoice> {
+fn requested_help_colour_choice() -> Option<CliColourChoice> {
     let mut requested = None;
     let mut args = std::env::args().skip(1);
 
     while let Some(arg) = args.next() {
-        if arg == "--no-color" {
-            requested = Some(CliColorChoice::Never);
+        if arg == "--no-color" || arg == "--no-colour" {
+            requested = Some(CliColourChoice::Never);
             continue;
         }
 
         if let Some(value) = arg.strip_prefix("--color=") {
-            if let Some(choice) = parse_help_color_choice(value) {
+            if let Some(choice) = parse_help_colour_choice(value) {
                 requested = Some(choice);
             }
             continue;
@@ -96,7 +96,7 @@ fn requested_help_color_choice() -> Option<CliColorChoice> {
 
         if arg == "--color"
             && let Some(value) = args.next()
-            && let Some(choice) = parse_help_color_choice(&value)
+            && let Some(choice) = parse_help_colour_choice(&value)
         {
             requested = Some(choice);
         }
@@ -111,11 +111,11 @@ Quick start:\n\
   2. Start interactive chat: vtcode chat --provider openai --model gpt-5\n\
   3. Run one prompt directly: vtcode --print=\"summarize this repository\"\n\n\
 Use `vtcode <command> --help` for command-specific details.";
-fn parse_help_color_choice(value: &str) -> Option<CliColorChoice> {
+fn parse_help_colour_choice(value: &str) -> Option<CliColourChoice> {
     match value.trim().to_ascii_lowercase().as_str() {
-        "always" => Some(CliColorChoice::Always),
-        "auto" => Some(CliColorChoice::Auto),
-        "never" => Some(CliColorChoice::Never),
+        "always" => Some(CliColourChoice::Always),
+        "auto" => Some(CliColourChoice::Auto),
+        "never" => Some(CliColourChoice::Never),
         _ => None,
     }
 }
@@ -148,6 +148,7 @@ const GLOBAL_FLAG_CANDIDATES: &[&str] = &[
     "--quiet",
     "--color",
     "--no-color",
+    "--no-colour",
     "--help",
     "--version",
 ];
@@ -192,7 +193,7 @@ fn build_candidate_list() -> Vec<String> {
 /// Apply ANSI styling to text if the terminal supports color output.
 ///
 /// Uses `colorchoice::ColorChoice::global()` to respect `--color`, `--no-color`,
-/// and `NO_COLOR` env var. Falls back to raw text when colors are disabled.
+/// and `NO_COLOR` env var. Falls back to raw text when colours are disabled.
 fn styled(text: &str, style: anstyle::Style) -> String {
     if colorchoice::ColorChoice::global() == colorchoice::ColorChoice::Never {
         return text.to_string();

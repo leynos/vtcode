@@ -84,7 +84,7 @@ pub(crate) fn make_segment(text: &str) -> InlineSegment {
     }
 }
 
-pub(crate) fn themed_inline_colors() -> InlineTheme {
+pub(crate) fn themed_inline_colours() -> InlineTheme {
     InlineTheme {
         foreground: Some(AnsiColorEnum::Rgb(RgbColor(0xEE, 0xEE, 0xEE))),
         tool_accent: Some(AnsiColorEnum::Rgb(RgbColor(0xBF, 0x45, 0x45))),
@@ -180,7 +180,7 @@ pub(crate) fn sample_local_agent_entry_with_id(
         id: id.to_string(),
         display_label: display_label.to_string(),
         agent_name: display_label.to_string(),
-        color: Some("cyan".to_string()),
+        colour: Some("cyan".to_string()),
         kind,
         status: "running".to_string(),
         summary: Some("Reviewing the workspace".to_string()),

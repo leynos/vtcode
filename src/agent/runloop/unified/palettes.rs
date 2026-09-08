@@ -336,10 +336,10 @@ pub(crate) async fn refresh_runtime_config_from_manager(
     renderer.set_tool_display_mode(runtime_config.ui.tool_display_mode);
     vtcode_ui::tui::panic_hook::set_show_diagnostics(runtime_config.ui.show_diagnostics_in_transcript);
 
-    theme::set_color_accessibility_config(theme::ColorAccessibilityConfig {
+    theme::set_colour_accessibility_config(theme::ColourAccessibilityConfig {
         minimum_contrast: runtime_config.ui.minimum_contrast,
         bold_is_bright: runtime_config.ui.bold_is_bright,
-        safe_colors_only: runtime_config.ui.safe_colors_only,
+        safe_colours_only: runtime_config.ui.safe_colours_only,
     });
     if theme::set_active_theme(&runtime_config.agent.theme).is_err() {
         let _ = theme::set_active_theme(theme::DEFAULT_THEME_ID);

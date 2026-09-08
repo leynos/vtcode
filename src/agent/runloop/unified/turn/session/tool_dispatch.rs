@@ -602,7 +602,7 @@ mod tests {
             tools: Some(vec!["read_file".to_string()]),
             disallowed_tools: Vec::new(),
             model: None,
-            color: None,
+            colour: None,
             reasoning_effort: None,
             permissions: AgentPermissionsConfig::new(PermissionDefault::Ask),
             skills: Vec::new(),

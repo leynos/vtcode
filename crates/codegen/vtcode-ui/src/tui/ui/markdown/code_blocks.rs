@@ -3,7 +3,7 @@ use super::{CODE_LINE_NUMBER_MIN_WIDTH, MarkdownLine, MarkdownSegment, RenderMar
 use crate::tui::config::loader::SyntaxHighlightingConfig;
 use crate::tui::ui::syntax_highlight;
 use crate::tui::ui::theme::ThemeStyles;
-use crate::tui::utils::diff_styles::DiffColorPalette;
+use crate::tui::utils::diff_styles::DiffColourPalette;
 use anstyle::{Effects, Style};
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 use std::fmt::Write;
@@ -317,7 +317,7 @@ fn render_diff_code_block(
     prefix_segments: &[MarkdownSegment],
 ) -> Vec<MarkdownLine> {
     let mut lines = Vec::new();
-    let palette = DiffColorPalette::default();
+    let palette = DiffColourPalette::default();
     let context_style = code_block_style(theme_styles, base_style);
     let header_style = palette.header_style();
     let added_style = palette.added_style();
@@ -412,10 +412,10 @@ fn line_number_style(theme_styles: &ThemeStyles, base_style: Style) -> Style {
     // No DIMMED effect — keep line numbers readable without squinting.
     let blended_fg = source
         .get_fg_color()
-        .and_then(|fg| vtcode_commons::colors::blend_colors(&fg, &theme_styles.background, 0.35));
+        .and_then(|fg| vtcode_commons::colours::blend_colours(&fg, &theme_styles.background, 0.35));
     let mut style = Style::new();
-    if let Some(color) = blended_fg {
-        style = style.fg_color(Some(color));
+    if let Some(colour) = blended_fg {
+        style = style.fg_color(Some(colour));
     } else if let Some(fg) = source.get_fg_color() {
         style = style.fg_color(Some(fg));
     } else {
@@ -535,8 +535,8 @@ fn code_block_style(theme_styles: &ThemeStyles, base_style: Style) -> Style {
         theme_fg.or(base_fg)
     };
     let mut style = base_style;
-    if let Some(color) = fg {
-        style = style.fg_color(Some(color));
+    if let Some(colour) = fg {
+        style = style.fg_color(Some(colour));
     } else {
         // Ensure code text always has a visible foreground color
         style = style.fg_color(Some(theme_styles.foreground));
@@ -667,7 +667,7 @@ pub(crate) fn render_diff_content_segments(
         return vec![MarkdownSegment::new(fallback_style, " ")];
     }
 
-    // Prose diffs render as solid fallback: syntax colors on tinted diff
+    // Prose diffs render as solid fallback: syntax colours on tinted diff
     // backgrounds hurt contrast and obscure add/del semantics.
     if is_prose_language_hint(language) {
         return vec![MarkdownSegment::new(fallback_style, text)];

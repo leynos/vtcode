@@ -18,7 +18,7 @@ use super::layout::{ModalBodyContext, ModalRenderStyles, ModalSection};
 use super::state::{ModalListState, ModalSearchState, WizardModalState, WizardStepState};
 use crate::tui::core_tui::session::transcript_links::{TranscriptFileLinkTarget, decorate_detected_link_lines};
 use crate::tui::ui::tui::session::wrapping;
-use ratatui::style::Color as RatatuiColor;
+use ratatui::style::Color as RatatuiColour;
 use std::mem;
 use std::path::Path;
 
@@ -680,8 +680,8 @@ fn classify_diff_line(line: &str) -> Option<DiffLineKind> {
 
 fn diff_line_style(kind: &DiffLineKind) -> Style {
     match kind {
-        DiffLineKind::Addition => Style::default().fg(RatatuiColor::LightGreen),
-        DiffLineKind::Deletion => Style::default().fg(RatatuiColor::LightRed),
+        DiffLineKind::Addition => Style::default().fg(RatatuiColour::LightGreen),
+        DiffLineKind::Deletion => Style::default().fg(RatatuiColour::LightRed),
         DiffLineKind::HunkHeader => Style::default().add_modifier(Modifier::DIM),
     }
 }

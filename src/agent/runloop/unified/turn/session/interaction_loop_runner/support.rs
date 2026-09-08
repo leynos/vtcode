@@ -648,12 +648,12 @@ pub(super) fn apply_live_theme_and_appearance(
     cfg: &VTCodeConfig,
     session_bootstrap: &SessionBootstrap,
 ) {
-    let color_config = theme::ColorAccessibilityConfig {
+    let colour_config = theme::ColourAccessibilityConfig {
         minimum_contrast: cfg.ui.minimum_contrast,
         bold_is_bright: cfg.ui.bold_is_bright,
-        safe_colors_only: cfg.ui.safe_colors_only,
+        safe_colours_only: cfg.ui.safe_colours_only,
     };
-    theme::set_color_accessibility_config(color_config);
+    theme::set_colour_accessibility_config(colour_config);
 
     let selected = cfg.agent.theme.trim();
     let selected = if selected.is_empty() {
@@ -1063,10 +1063,15 @@ async fn load_primary_agent_specs(ctx: &InteractionLoopContext<'_>) -> Result<Ve
 }
 
 fn set_primary_agent_display(ctx: &mut InteractionLoopContext<'_>, name: String) {
-    let color = ctx.active_primary_agent.active().color.clone().filter(|c| !c.trim().is_empty());
+    let colour = ctx
+        .active_primary_agent
+        .active()
+        .colour
+        .clone()
+        .filter(|c| !c.trim().is_empty());
     ctx.header_context.primary_agent = Some(name.clone());
-    ctx.header_context.primary_agent_color = color.clone();
-    ctx.handle.set_primary_agent(Some(name), color);
+    ctx.header_context.primary_agent_colour = colour.clone();
+    ctx.handle.set_primary_agent(Some(name), colour);
 }
 
 fn next_primary_agent_name(
@@ -1240,7 +1245,7 @@ mod tests {
             tools: None,
             disallowed_tools: Vec::new(),
             model: None,
-            color: None,
+            colour: None,
             reasoning_effort: None,
             permissions: AgentPermissionsConfig::new(PermissionDefault::Ask),
             skills: Vec::new(),

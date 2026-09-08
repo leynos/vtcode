@@ -1,12 +1,12 @@
 //! Unified message styles and their logical mappings
 
 use crate::ansi_codes::RESET;
-use crate::color_policy;
+use crate::colour_policy;
 use anstyle::{AnsiColor, Color, Effects, Style};
 
 /// Standard color palette with semantic names
 #[derive(Debug, Clone, Copy)]
-pub struct ColorPalette {
+pub struct ColourPalette {
     pub success: Color, // Green
     pub error: Color,   // Red
     pub warning: Color, // Yellow
@@ -16,7 +16,7 @@ pub struct ColorPalette {
     pub muted: Color,   // Gray/Dim
 }
 
-impl Default for ColorPalette {
+impl Default for ColourPalette {
     fn default() -> Self {
         Self {
             success: Color::Ansi(AnsiColor::Green),
@@ -31,10 +31,10 @@ impl Default for ColorPalette {
 }
 
 /// Render text with a single color and optional effects
-pub fn render_styled(text: &str, color: Color, effects: Option<String>) -> String {
+pub fn render_styled(text: &str, colour: Color, effects: Option<String>) -> String {
     let mut style = Style::new();
-    if color_policy::color_output_enabled() {
-        style = style.fg_color(Some(color));
+    if colour_policy::colour_output_enabled() {
+        style = style.fg_color(Some(colour));
     }
 
     if let Some(effects_str) = effects {
@@ -67,15 +67,15 @@ pub fn render_styled(text: &str, color: Color, effects: Option<String>) -> Strin
 }
 
 /// Build style from CSS/terminal color name
-pub fn style_from_color_name(name: &str) -> Style {
-    let (color_name, dimmed) = if let Some(idx) = name.find(':') {
-        let (color, modifier) = name.split_at(idx);
-        (color, modifier.strip_prefix(':').unwrap_or(""))
+pub fn style_from_colour_name(name: &str) -> Style {
+    let (colour_name, dimmed) = if let Some(idx) = name.find(':') {
+        let (colour, modifier) = name.split_at(idx);
+        (colour, modifier.strip_prefix(':').unwrap_or(""))
     } else {
         (name, "")
     };
 
-    let color = match color_name.to_lowercase().as_str() {
+    let colour = match colour_name.to_lowercase().as_str() {
         "red" => Color::Ansi(AnsiColor::Red),
         "green" => Color::Ansi(AnsiColor::Green),
         "blue" => Color::Ansi(AnsiColor::Blue),
@@ -87,27 +87,27 @@ pub fn style_from_color_name(name: &str) -> Style {
         _ => return Style::new(),
     };
 
-    let mut style = Style::new().fg_color(Some(color));
+    let mut style = Style::new().fg_color(Some(colour));
     if dimmed.eq_ignore_ascii_case("dimmed") {
         style = style.dimmed();
     }
     style
 }
 
-/// Create a bold colored style from AnsiColor
-pub fn bold_color(color: AnsiColor) -> Style {
-    Style::new().bold().fg_color(Some(Color::Ansi(color)))
+/// Create a bold coloured style from AnsiColor
+pub fn bold_colour(colour: AnsiColor) -> Style {
+    Style::new().bold().fg_color(Some(Color::Ansi(colour)))
 }
 
-/// Create a dimmed colored style from AnsiColor
-pub fn dimmed_color(color: AnsiColor) -> Style {
-    Style::new().dimmed().fg_color(Some(Color::Ansi(color)))
+/// Create a dimmed coloured style from AnsiColor
+pub fn dimmed_colour(colour: AnsiColor) -> Style {
+    Style::new().dimmed().fg_color(Some(Color::Ansi(colour)))
 }
 
 /// Diff color palette for consistent git diff styling
-/// Uses standard ANSI colors without bold for accessibility and consistency.
+/// Uses standard ANSI colours without bold for accessibility and consistency.
 #[derive(Debug, Clone, Copy)]
-pub struct DiffColorPalette {
+pub struct DiffColourPalette {
     pub added_fg: Color,
     added_bg: Color,
     pub removed_fg: Color,
@@ -116,7 +116,7 @@ pub struct DiffColorPalette {
     header_bg: Color,
 }
 
-impl Default for DiffColorPalette {
+impl Default for DiffColourPalette {
     fn default() -> Self {
         Self {
             added_fg: Color::Ansi(AnsiColor::Green),
@@ -129,7 +129,7 @@ impl Default for DiffColorPalette {
     }
 }
 
-impl DiffColorPalette {
+impl DiffColourPalette {
     pub fn added_style(&self) -> Style {
         Style::new().fg_color(Some(self.added_fg))
     }
@@ -145,7 +145,7 @@ impl DiffColorPalette {
 
 // Re-export diff theme configuration
 pub use crate::diff_theme::{
-    DiffColorLevel, DiffTheme, diff_add_bg, diff_del_bg, diff_gutter_bg_add_light, diff_gutter_bg_del_light,
+    DiffColourLevel, DiffTheme, diff_add_bg, diff_del_bg, diff_gutter_bg_add_light, diff_gutter_bg_del_light,
     diff_gutter_fg_light,
 };
 

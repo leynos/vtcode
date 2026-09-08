@@ -73,7 +73,7 @@ impl Session {
             InlineCommand::SetPrompt { prefix, style } => {
                 self.prompt_prefix = prefix;
                 self.prompt_style = style;
-                self.ensure_prompt_style_color();
+                self.ensure_prompt_style_colour();
             }
             InlineCommand::SetPlaceholder { hint, style } => {
                 self.placeholder = hint;
@@ -89,7 +89,7 @@ impl Session {
                 let mut next_context = *context;
                 next_context.reasoning_stage = self.header_context.reasoning_stage.clone();
                 next_context.primary_agent = self.header_context.primary_agent.clone();
-                next_context.primary_agent_color = self.header_context.primary_agent_color.clone();
+                next_context.primary_agent_colour = self.header_context.primary_agent_colour.clone();
                 self.header_context = next_context;
                 self.invalidate_header_cache();
             }
@@ -153,7 +153,7 @@ impl Session {
                 self.theme = theme.clone();
                 self.styles.set_theme(theme);
                 self.retint_lines_for_theme_change(&previous_theme);
-                self.ensure_prompt_style_color();
+                self.ensure_prompt_style_colour();
                 self.invalidate_transcript_cache();
             }
             InlineCommand::SetAppearance { appearance } => {
@@ -178,9 +178,9 @@ impl Session {
                 self.subagent_preview = text.filter(|value| !value.trim().is_empty());
                 self.invalidate_sidebar_cache();
             }
-            InlineCommand::SetPrimaryAgent { name, color } => {
+            InlineCommand::SetPrimaryAgent { name, colour } => {
                 self.header_context.primary_agent = name.filter(|value| !value.trim().is_empty());
-                self.header_context.primary_agent_color = color.filter(|value| !value.trim().is_empty());
+                self.header_context.primary_agent_colour = colour.filter(|value| !value.trim().is_empty());
                 self.invalidate_header_cache();
             }
             InlineCommand::SetCursorVisible(value) => {

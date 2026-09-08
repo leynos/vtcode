@@ -620,17 +620,19 @@ fn update_header_for_plan_selection(
     header_context: &mut InlineHeaderContext,
     handle: &InlineHandle,
 ) {
-    let (name, color) = match selection {
+    let (name, colour) = match selection {
         InlineListSelection::PlanApprovalExecute | InlineListSelection::PlanApprovalAutoAccept => {
-            (Some("build".to_string()), Some(ui::AGENT_COLOR_BUILD.to_string()))
+            (Some("build".to_string()), Some(ui::AGENT_COLOUR_BUILD.to_string()))
         }
-        InlineListSelection::PlanApprovalEditPlan => (Some("plan".to_string()), Some(ui::AGENT_COLOR_PLAN.to_string())),
+        InlineListSelection::PlanApprovalEditPlan => {
+            (Some("plan".to_string()), Some(ui::AGENT_COLOUR_PLAN.to_string()))
+        }
         _ => return,
     };
 
     header_context.primary_agent = name.clone();
-    header_context.primary_agent_color = color.clone();
-    handle.set_primary_agent(name, color);
+    header_context.primary_agent_colour = colour.clone();
+    handle.set_primary_agent(name, colour);
 }
 
 enum ModelPickerOutcome {
