@@ -74,6 +74,7 @@ pub(super) struct TurnGuard {
 impl TurnGuard {
     pub(super) fn begin(thread: ThreadRuntimeHandle) -> Result<Self, SdkError> {
         let _submission_id = thread.begin_turn().map_err(|error| {
+            warn!(thread_id = %thread.thread_id(), prompt_outcome = "turn_in_progress_rejected", "Rejected concurrent ACP prompt");
             SdkError::internal_error().data(json!({ "reason": "turn_in_progress", "detail": error.to_string() }))
         })?;
         Ok(Self { thread })
@@ -221,18 +222,24 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
     };
     let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
     drop(stage_thread_tool_calls(&thread, assistant_tool_message));
+    let tool_call_count = tool_calls.len();
+    info!(session_id = %session_id, tool_call_count, tool_loop_count = *tool_loop_count,
+          tool_recovery_outcome = "placeholders_staged", "ACP tool recovery placeholders staged");
     require_session_checkpoint(agent, session, "assistant_tool_calls_write_ahead").await?;
 
     let tool_results = match agent.execute_tool_calls(session, session_id, tool_calls).await {
         Ok(results) => results,
         Err(error) => {
-            warn!(%error, "Tool execution failed");
+            warn!(%error, session_id = %session_id, tool_call_count,
+                  tool_recovery_outcome = "execution_interrupted", "Tool execution failed");
             persist_session_checkpoint(agent, session, "interrupted_tool_results").await;
             return Err(error);
         }
     };
 
-    let _finalized = replace_thread_tool_results(&thread, &tool_results);
+    let finalized_tool_count = replace_thread_tool_results(&thread, &tool_results);
+    info!(session_id = %session_id, tool_call_count, tool_loop_count = *tool_loop_count,
+          finalized_tool_count, tool_recovery_outcome = "results_replaced", "ACP tool recovery results replaced");
     persist_session_checkpoint(agent, session, "tool_results").await;
 
     Ok(if session.cancellation.is_cancelled() {
@@ -389,6 +396,10 @@ pub(super) fn assistant_tool_call_message(
     message
 }
 
+/// Persists the strict write-ahead checkpoint required before tool execution.
+///
+/// Ordinary transcript checkpoints remain best-effort through
+/// [`persist_session_checkpoint`].
 async fn require_session_checkpoint(
     agent: &ZedAgent,
     session: &SessionHandle,

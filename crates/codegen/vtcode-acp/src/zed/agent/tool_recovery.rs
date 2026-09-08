@@ -1,14 +1,26 @@
+//! ACP tool-call history recovery preserves durable evidence without replaying
+//! uncertain effects. Before execution, callers stage incomplete result
+//! placeholders beside each assistant request; normal completion replaces them
+//! with terminal results. Legacy archives receive the same repair on load.
+//!
+//! A uniquely attributable late terminal result may be returned to its request
+//! batch. Duplicate, conflicting, or orphaned evidence is ambiguous: recovery
+//! fails closed, leaves the archive as the durable record, and never replays a
+//! tool call automatically.
+
 use super::super::types::ToolCallResult;
 use serde_json::json;
 use std::collections::HashSet;
 use vtcode_core::core::threads::ThreadRuntimeHandle;
 use vtcode_core::llm::provider::{Message, MessageRole, ToolCall};
 
+/// Counts placeholders inserted while repairing an archived tool-call history.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(super) struct RecoveryReport {
     pub(super) repaired_calls: usize,
 }
 
+/// Signals that archived terminal results cannot be attributed safely.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct AmbiguousToolResultHistory;
 
@@ -20,6 +32,7 @@ impl std::fmt::Display for AmbiguousToolResultHistory {
 
 impl std::error::Error for AmbiguousToolResultHistory {}
 
+/// Appends an assistant tool request and one incomplete result for every call.
 pub(super) fn stage_tool_calls(messages: &mut Vec<Message>, assistant: Message) -> Vec<String> {
     let calls = assistant.tool_calls.as_deref().unwrap_or_default().to_vec();
     let call_ids = calls.iter().map(|call| call.id.clone()).collect();
@@ -28,6 +41,7 @@ pub(super) fn stage_tool_calls(messages: &mut Vec<Message>, assistant: Message) 
     call_ids
 }
 
+/// Replaces staged result placeholders with terminal tool-call results.
 pub(super) fn replace_tool_results(messages: &mut Vec<Message>, results: &[ToolCallResult]) -> usize {
     let mut finalized = 0;
     for result in results {
@@ -43,14 +57,17 @@ pub(super) fn replace_tool_results(messages: &mut Vec<Message>, results: &[ToolC
     finalized
 }
 
+/// Stages tool calls while holding the canonical thread-history lock.
 pub(super) fn stage_thread_tool_calls(thread: &ThreadRuntimeHandle, assistant: Message) -> Vec<String> {
     thread.mutate_messages(|messages| stage_tool_calls(messages, assistant))
 }
 
+/// Replaces staged results while holding the canonical thread-history lock.
 pub(super) fn replace_thread_tool_results(thread: &ThreadRuntimeHandle, results: &[ToolCallResult]) -> usize {
     thread.mutate_messages(|messages| replace_tool_results(messages, results))
 }
 
+/// Repairs missing terminal results without replaying any archived tool call.
 pub(super) fn repair_unresolved_tool_calls(
     messages: &mut Vec<Message>,
 ) -> Result<RecoveryReport, AmbiguousToolResultHistory> {
@@ -102,6 +119,7 @@ pub(super) fn repair_unresolved_tool_calls(
     Ok(RecoveryReport { repaired_calls })
 }
 
+/// Validates that one completed assistant batch has unique matching results.
 fn validate_completed_tool_batch(
     messages: &[Message],
     message_index: &mut usize,
@@ -148,6 +166,7 @@ fn reject_ambiguous_tool_result_history(messages: &[Message]) -> Result<(), Ambi
     Ok(())
 }
 
+/// Moves a single uniquely attributable late result back to its request batch.
 fn relocate_unique_late_results(
     messages: &mut Vec<Message>,
     assistant_index: usize,
@@ -195,6 +214,7 @@ fn relocate_unique_late_results(
     );
 }
 
+/// Creates the durable uncertain-effect placeholder for an incomplete call.
 fn incomplete_tool_result(call: &ToolCall) -> Message {
     let tool_name = call.function.as_ref().map_or("unknown", |function| function.name.as_str());
     let content = json!({
