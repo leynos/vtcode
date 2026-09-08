@@ -26,7 +26,9 @@ BASELINE_ENTRY_KEYS = SCANNER_KEYS | {"classification", "rationale", "issue"}
 REPOSITORY = "leynos/vtcode"
 SCHEMA_VERSION = 1
 ISSUE_NUMBER = 108
-REPOSITORY_STATUSES = frozenset({"Uncloneable", "Unnamed", "Unassociated", "Nonexistent", "Archived"})
+REPOSITORY_STATUSES = frozenset(
+    {"Uncloneable", "Unnamed", "Unassociated", "Nonexistent", "Archived"}
+)
 
 
 class ValidationError(ValueError):
@@ -50,7 +52,9 @@ def _require_string(value: object, field: str) -> str:
     return value
 
 
-def _require_exact_keys(value: object, keys: frozenset[str], label: str) -> dict[str, object]:
+def _require_exact_keys(
+    value: object, keys: frozenset[str], label: str
+) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValidationError(f"{label} must be an object")
     if frozenset(value) != keys:
@@ -86,65 +90,108 @@ def _finding_identity(value: object, label: str) -> tuple[object, ...]:
     dependency_identities: list[tuple[str, str, str, str]] = []
     for index, dependency in enumerate(dependencies):
         dependency_label = f"{label}.outdated_deps[{index}]"
-        dependency_object = _require_exact_keys(dependency, DEPENDENCY_KEYS, dependency_label)
+        dependency_object = _require_exact_keys(
+            dependency, DEPENDENCY_KEYS, dependency_label
+        )
         dependency_identities.append(
             (
                 _require_string(dependency_object["name"], f"{dependency_label}.name"),
                 _require_string(dependency_object["req"], f"{dependency_label}.req"),
-                _require_string(dependency_object["version_used"], f"{dependency_label}.version_used"),
-                _require_string(dependency_object["version_latest"], f"{dependency_label}.version_latest"),
+                _require_string(
+                    dependency_object["version_used"],
+                    f"{dependency_label}.version_used",
+                ),
+                _require_string(
+                    dependency_object["version_latest"],
+                    f"{dependency_label}.version_latest",
+                ),
             )
         )
 
     return (name, version, status, tuple(sorted(dependency_identities)))
 
 
-def _load_baseline() -> dict[tuple[object, ...], dict[str, object]]:
+def _read_baseline_document() -> dict[str, object]:
     try:
         text = BASELINE_PATH.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
-        raise ValidationError(f"cannot read baseline {BASELINE_PATH}: {error}") from error
+        raise ValidationError(
+            f"cannot read baseline {BASELINE_PATH}: {error}"
+        ) from error
 
-    baseline = _require_exact_keys(_load_json(text, str(BASELINE_PATH)), BASELINE_KEYS, "baseline")
+    return _require_exact_keys(
+        _load_json(text, str(BASELINE_PATH)), BASELINE_KEYS, "baseline"
+    )
+
+
+def _validate_baseline_metadata(baseline: dict[str, object]) -> None:
     schema_version = baseline["schema_version"]
-    if isinstance(schema_version, bool) or not isinstance(schema_version, int) or schema_version != SCHEMA_VERSION:
+    if (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version != SCHEMA_VERSION
+    ):
         raise ValidationError(f"baseline.schema_version must be {SCHEMA_VERSION}")
     if baseline["repository"] != REPOSITORY:
         raise ValidationError(f"baseline.repository must be {REPOSITORY!r}")
 
+
+def _baseline_entries(baseline: dict[str, object]) -> list[object]:
     entries = baseline["entries"]
     if not isinstance(entries, list):
         raise ValidationError("baseline.entries must be a list")
+    return entries
 
+
+def _parse_baseline_entry(
+    entry: object, index: int
+) -> tuple[tuple[object, ...], dict[str, object]]:
+    label = f"baseline.entries[{index}]"
+    entry_object = _require_exact_keys(entry, BASELINE_ENTRY_KEYS, label)
+    classification = _require_string(
+        entry_object["classification"], f"{label}.classification"
+    )
+    rationale = _require_string(entry_object["rationale"], f"{label}.rationale")
+    issue = entry_object["issue"]
+    if isinstance(issue, bool) or not isinstance(issue, int) or issue != ISSUE_NUMBER:
+        raise ValidationError(f"{label}.issue must be {ISSUE_NUMBER}")
+
+    finding_fields = {key: entry_object[key] for key in SCANNER_KEYS}
+    identity = _finding_identity(finding_fields, label)
+    metadata = {
+        "name": entry_object["name"],
+        "version": entry_object["version"],
+        "classification": classification,
+        "rationale": rationale,
+        "issue": issue,
+    }
+    return identity, metadata
+
+
+def _index_baseline_entries(
+    entries: list[object],
+) -> dict[tuple[object, ...], dict[str, object]]:
     by_identity: dict[tuple[object, ...], dict[str, object]] = {}
     for index, entry in enumerate(entries):
-        label = f"baseline.entries[{index}]"
-        entry_object = _require_exact_keys(entry, BASELINE_ENTRY_KEYS, label)
-        classification = _require_string(entry_object["classification"], f"{label}.classification")
-        rationale = _require_string(entry_object["rationale"], f"{label}.rationale")
-        issue = entry_object["issue"]
-        if isinstance(issue, bool) or not isinstance(issue, int) or issue != ISSUE_NUMBER:
-            raise ValidationError(f"{label}.issue must be {ISSUE_NUMBER}")
-
-        finding_fields = {key: entry_object[key] for key in SCANNER_KEYS}
-        identity = _finding_identity(finding_fields, label)
+        identity, metadata = _parse_baseline_entry(entry, index)
         if identity in by_identity:
-            raise ValidationError(f"duplicate baseline finding identity at {label}")
-        by_identity[identity] = {
-            "name": entry_object["name"],
-            "version": entry_object["version"],
-            "classification": classification,
-            "rationale": rationale,
-            "issue": issue,
-        }
-
+            raise ValidationError(
+                f"duplicate baseline finding identity at baseline.entries[{index}]"
+            )
+        by_identity[identity] = metadata
     return by_identity
 
 
-def _load_scanner_output(scanner: str) -> tuple[int, object]:
+def _load_baseline() -> dict[tuple[object, ...], dict[str, object]]:
+    baseline = _read_baseline_document()
+    _validate_baseline_metadata(baseline)
+    return _index_baseline_entries(_baseline_entries(baseline))
+
+
+def _run_scanner(scanner: str) -> subprocess.CompletedProcess[str]:
     command = [scanner, "unmaintained", "--json", "--no-warnings"]
     try:
-        completed = subprocess.run(
+        return subprocess.run(
             command,
             cwd=REPO_ROOT,
             capture_output=True,
@@ -154,6 +201,10 @@ def _load_scanner_output(scanner: str) -> tuple[int, object]:
     except (OSError, UnicodeError) as error:
         raise ValidationError(f"could not launch scanner: {error}") from error
 
+
+def _parse_scanner_output(
+    completed: subprocess.CompletedProcess[str], scanner: str
+) -> list[object]:
     try:
         output = _load_json(completed.stdout, f"scanner {scanner!r}")
     except ValidationError as error:
@@ -163,16 +214,28 @@ def _load_scanner_output(scanner: str) -> tuple[int, object]:
 
     if not isinstance(output, list):
         raise ValidationError("scanner JSON top level must be a list")
-    if completed.returncode not in (0, 1):
-        raise ValidationError(f"scanner exited with unexpected status {completed.returncode}")
-    if (completed.returncode == 0) != (not output):
+    return output
+
+
+def _validate_scanner_status(status: int, output: list[object]) -> None:
+    if status not in (0, 1):
+        raise ValidationError(f"scanner exited with unexpected status {status}")
+    if (status == 0) != (not output):
         raise ValidationError(
-            f"scanner status {completed.returncode} contradicts finding count {len(output)}"
+            f"scanner status {status} contradicts finding count {len(output)}"
         )
+
+
+def _load_scanner_output(scanner: str) -> tuple[int, list[object]]:
+    completed = _run_scanner(scanner)
+    output = _parse_scanner_output(completed, scanner)
+    _validate_scanner_status(completed.returncode, output)
     return completed.returncode, output
 
 
-def _validate_findings(findings: object) -> list[tuple[tuple[object, ...], dict[str, object]]]:
+def _validate_findings(
+    findings: object,
+) -> list[tuple[tuple[object, ...], dict[str, object]]]:
     if not isinstance(findings, list):
         raise ValidationError("scanner output must be a list")
 
@@ -198,32 +261,40 @@ def _parse_arguments(argv: list[str] | None) -> str | None:
     return arguments.scanner
 
 
-def main(argv: list[str] | None = None) -> int:
-    scanner = _parse_arguments(argv)
-    if scanner is None:
-        print("usage: check_unmaintained_baseline.py [--scanner PATH]", file=sys.stderr)
-        return 2
+def _load_current_state(
+    scanner: str,
+) -> tuple[
+    list[tuple[tuple[object, ...], dict[str, object]]],
+    dict[tuple[object, ...], dict[str, object]],
+]:
+    _scanner_status, raw_findings = _load_scanner_output(scanner)
+    return _validate_findings(raw_findings), _load_baseline()
 
-    try:
-        _scanner_status, raw_findings = _load_scanner_output(scanner)
-        findings = _validate_findings(raw_findings)
-        baseline = _load_baseline()
-    except ValidationError as error:
-        print(f"error: {error}", file=sys.stderr)
-        return 2
 
-    current_identities = {identity for identity, _finding in findings}
-    unexpected = [identity for identity, _finding in findings if identity not in baseline]
-    if unexpected:
-        for identity in unexpected:
-            name, version, status, dependencies = identity
-            print(
-                f"error: unreviewed or changed finding {name}@{version} "
-                f"(repository status {status}, {len(dependencies)} outdated dependencies)",
-                file=sys.stderr,
-            )
-        return 1
+def _report_unexpected_findings(
+    findings: list[tuple[tuple[object, ...], dict[str, object]]],
+    baseline: dict[tuple[object, ...], dict[str, object]],
+) -> bool:
+    unexpected = [
+        identity for identity, _finding in findings if identity not in baseline
+    ]
+    if not unexpected:
+        return False
 
+    for identity in unexpected:
+        name, version, status, dependencies = identity
+        print(
+            f"error: unreviewed or changed finding {name}@{version} "
+            f"(repository status {status}, {len(dependencies)} outdated dependencies)",
+            file=sys.stderr,
+        )
+    return True
+
+
+def _report_accepted_findings(
+    findings: list[tuple[tuple[object, ...], dict[str, object]]],
+    baseline: dict[tuple[object, ...], dict[str, object]],
+) -> None:
     for identity, finding in findings:
         metadata = baseline[identity]
         print(
@@ -232,12 +303,37 @@ def main(argv: list[str] | None = None) -> int:
             f"classification: {metadata['classification']})"
         )
 
+
+def _report_removable_baseline_entries(
+    findings: list[tuple[tuple[object, ...], dict[str, object]]],
+    baseline: dict[tuple[object, ...], dict[str, object]],
+) -> None:
+    current_identities = {identity for identity, _finding in findings}
     for identity, metadata in baseline.items():
         if identity not in current_identities:
             print(
                 f"baseline entry eligible for manual removal: {metadata['name']}@{metadata['version']} "
                 f"(issue #{ISSUE_NUMBER})"
             )
+
+
+def main(argv: list[str] | None = None) -> int:
+    scanner = _parse_arguments(argv)
+    if scanner is None:
+        print("usage: check_unmaintained_baseline.py [--scanner PATH]", file=sys.stderr)
+        return 2
+
+    try:
+        findings, baseline = _load_current_state(scanner)
+    except ValidationError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+
+    if _report_unexpected_findings(findings, baseline):
+        return 1
+
+    _report_accepted_findings(findings, baseline)
+    _report_removable_baseline_entries(findings, baseline)
 
     return 0
 

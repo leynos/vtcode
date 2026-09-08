@@ -21,6 +21,7 @@ const CHANGED_FILES_ENV = "VTCODE_CHANGED_MARKDOWN_FILES_JSON";
 const COMMAND_ENV = "VTCODE_MARKDOWNLINT_COMMAND";
 const CAPTURE_ENV = "VTCODE_MARKDOWNLINT_CAPTURE";
 const EXIT_STATUS_ENV = "VTCODE_MARKDOWNLINT_EXIT_STATUS";
+const UNSUPPORTED_SYMLINK_CODES = new Set(["EACCES", "EPERM", "ENOTSUP"]);
 
 function makeTemporaryDirectory() {
     return mkdtempSync(join(tmpdir(), "vtcode-lint-changed-markdown-"));
@@ -85,6 +86,29 @@ function runHelper(directory, rawChangedFiles, { exitStatus = 0, useDefaultComma
     };
 }
 
+function assertRejectedBeforeChildLaunch({ rawChangedFiles, message, setup = () => {} }) {
+    const directory = makeTemporaryDirectory();
+    try {
+        setup(directory);
+        const { result, capturePath } = runHelper(directory, rawChangedFiles);
+
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, message);
+        assert.equal(existsSync(capturePath), false);
+    } finally {
+        rmSync(directory, { force: true, recursive: true });
+    }
+}
+
+function skipUnsupportedSymlinkTest(testContext, error) {
+    if (!UNSUPPORTED_SYMLINK_CODES.has(error?.code)) {
+        return false;
+    }
+
+    testContext.skip("the host does not support creating symlinks");
+    return true;
+}
+
 test("uses the fixed default npx argv and passes selected paths literally", () => {
     const directory = makeTemporaryDirectory();
     try {
@@ -144,18 +168,28 @@ test("rejects malformed selections before launching the child", () => {
     }
 });
 
-test("requires the changed-files environment variable", () => {
-    const directory = makeTemporaryDirectory();
-    try {
-        const { result, capturePath } = runHelper(directory);
-
-        assert.notEqual(result.status, 0);
-        assert.match(result.stderr, /VTCODE_CHANGED_MARKDOWN_FILES_JSON is required/);
-        assert.equal(existsSync(capturePath), false);
-    } finally {
-        rmSync(directory, { force: true, recursive: true });
-    }
-});
+// Workflow precondition: deleted-only changes are skipped upstream, so this
+// helper receives no empty selection. The helper rejects [] as a fail-closed
+// guard if that precondition is ever violated.
+for (const rejectionCase of [
+    {
+        name: "requires the changed-files environment variable",
+        message: /VTCODE_CHANGED_MARKDOWN_FILES_JSON is required/,
+    },
+    {
+        name: "rejects an existing directory with a Markdown suffix",
+        rawChangedFiles: JSON.stringify(["README.md"]),
+        message: /existing regular/,
+        setup: (directory) => mkdirSync(join(directory, "README.md")),
+    },
+    {
+        name: "rejects an empty selection before child launch",
+        rawChangedFiles: "[]",
+        message: /at least one path/,
+    },
+]) {
+    test(rejectionCase.name, () => assertRejectedBeforeChildLaunch(rejectionCase));
+}
 
 test("preserves the child exit status", () => {
     const directory = makeTemporaryDirectory();
@@ -164,20 +198,6 @@ test("preserves the child exit status", () => {
         const { result } = runHelper(directory, JSON.stringify(["README.md"]), { exitStatus: 23 });
 
         assert.equal(result.status, 23);
-    } finally {
-        rmSync(directory, { force: true, recursive: true });
-    }
-});
-
-test("rejects an existing directory with a Markdown suffix", () => {
-    const directory = makeTemporaryDirectory();
-    try {
-        mkdirSync(join(directory, "README.md"));
-        const { result, capturePath } = runHelper(directory, JSON.stringify(["README.md"]));
-
-        assert.notEqual(result.status, 0);
-        assert.match(result.stderr, /existing regular/);
-        assert.equal(existsSync(capturePath), false);
     } finally {
         rmSync(directory, { force: true, recursive: true });
     }
@@ -194,8 +214,7 @@ test("rejects a symlink whose real path escapes the checkout", (t) => {
         try {
             symlinkSync(outsideFile, linkPath);
         } catch (error) {
-            if (error?.code === "EACCES" || error?.code === "EPERM" || error?.code === "ENOTSUP") {
-                t.skip("the host does not support creating symlinks");
+            if (skipUnsupportedSymlinkTest(t, error)) {
                 return;
             }
             throw error;
@@ -209,21 +228,5 @@ test("rejects a symlink whose real path escapes the checkout", (t) => {
     } finally {
         rmSync(directory, { force: true, recursive: true });
         rmSync(outsideDirectory, { force: true, recursive: true });
-    }
-});
-
-// Workflow precondition: deleted-only changes are skipped upstream, so this
-// helper receives no empty selection. The helper rejects [] as a fail-closed
-// guard if that precondition is ever violated.
-test("rejects an empty selection before child launch", () => {
-    const directory = makeTemporaryDirectory();
-    try {
-        const { result, capturePath } = runHelper(directory, "[]");
-
-        assert.notEqual(result.status, 0);
-        assert.match(result.stderr, /at least one path/);
-        assert.equal(existsSync(capturePath), false);
-    } finally {
-        rmSync(directory, { force: true, recursive: true });
     }
 });

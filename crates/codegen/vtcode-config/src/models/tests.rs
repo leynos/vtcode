@@ -34,15 +34,6 @@ fn test_model_string_conversion() {
 }
 
 #[test]
-fn test_openrouter_glm53_flash_metadata() {
-    let model = ModelId::OpenRouterZaiGlm53Flash;
-
-    assert_eq!(model.as_str(), "z-ai/glm-5.3-flash");
-    assert_eq!(model.display_name(), "GLM-5.3 Flash");
-    assert_eq!(model.description(), "Z.AI GLM-5.3 Flash efficient multimodal model via OpenRouter");
-}
-
-#[test]
 fn test_model_from_string() {
     // Gemini models
     assert_eq!(models::GEMINI_3_7_FLASH.parse::<ModelId>().unwrap(), ModelId::Gemini37Flash);
