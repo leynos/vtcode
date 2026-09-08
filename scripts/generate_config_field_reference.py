@@ -267,53 +267,6 @@ def normalize_description(text: str | None) -> str:
     return " ".join(text.strip().split())
 
 
-def _upsert_field(field_map: dict[str, FieldEntry], entry: FieldEntry) -> None:
-    existing = field_map.get(entry.path)
-    if existing is None:
-        field_map[entry.path] = entry
-        return
-
-    description = existing.description
-    if not description and entry.description:
-        description = entry.description
-    default = existing.default
-    if default == "" and entry.default:
-        default = entry.default
-    type_name = existing.type_name
-    if type_name == "unknown" and entry.type_name != "unknown":
-        type_name = entry.type_name
-    field_map[entry.path] = FieldEntry(
-        path=existing.path,
-        type_name=type_name,
-        required=existing.required or entry.required,
-        default=default,
-        description=description,
-    )
-
-
-def _build_field_entry(
-    node: dict[str, Any],
-    path: str,
-    required: bool,
-    root_schema: dict[str, Any],
-) -> tuple[dict[str, Any], FieldEntry]:
-    normalized = normalize_schema_node(node, root_schema)
-    description = normalize_description(normalized.get("description"))
-    default = (
-        format_default(normalized["default"], normalized.get("format"))
-        if "default" in normalized
-        else ""
-    )
-    entry = FieldEntry(
-        path=path,
-        type_name=format_type_name(normalized),
-        required=required,
-        default=default,
-        description=description,
-    )
-    return normalized, entry
-
-
 def _is_union_schema(node: dict[str, Any]) -> bool:
     return "oneOf" in node or "anyOf" in node
 
@@ -326,192 +279,144 @@ def _is_array_schema(node: dict[str, Any]) -> bool:
     return node.get("type") == "array" or "items" in node
 
 
-def _walk_properties(
-    node: dict[str, Any],
-    path: str,
-    depth: int,
-    parent_required: bool,
-    root_schema: dict[str, Any],
-    field_map: dict[str, FieldEntry],
-) -> None:
-    properties = node.get("properties", {})
-    required_set = set(node.get("required", []))
-    for prop_name in sorted(properties):
-        child_path = f"{path}.{prop_name}" if path else prop_name
-        _walk_field(
-            properties[prop_name],
-            child_path,
-            parent_required and prop_name in required_set,
-            depth,
-            root_schema,
-            field_map,
+class _FieldCollector:
+    def __init__(self, root_schema: dict[str, Any]) -> None:
+        self.root_schema = root_schema
+        self.field_map: dict[str, FieldEntry] = {}
+
+    def collect(self) -> list[FieldEntry]:
+        self._walk_field(self.root_schema, "", required=False, depth=0)
+        entries = [entry for entry in self.field_map.values() if entry.path]
+        entries.sort(key=lambda item: item.path)
+        return entries
+
+    def _upsert_field(self, entry: FieldEntry) -> None:
+        existing = self.field_map.get(entry.path)
+        if existing is None:
+            self.field_map[entry.path] = entry
+            return
+
+        description = existing.description
+        if not description and entry.description:
+            description = entry.description
+        default = existing.default
+        if default == "" and entry.default:
+            default = entry.default
+        type_name = existing.type_name
+        if type_name == "unknown" and entry.type_name != "unknown":
+            type_name = entry.type_name
+        self.field_map[entry.path] = FieldEntry(
+            path=existing.path,
+            type_name=type_name,
+            required=existing.required or entry.required,
+            default=default,
+            description=description,
         )
 
-
-def _union_object_branches(
-    node: dict[str, Any], root_schema: dict[str, Any]
-) -> list[dict[str, Any]]:
-    branches = [node] if "properties" in node else []
-    for key in ("oneOf", "anyOf"):
-        for option in node.get(key, []):
-            resolved = normalize_schema_node(option, root_schema)
-            if _is_object_schema(resolved):
-                branches.append(resolved)
-    return branches
-
-
-def _walk_union(
-    node: dict[str, Any],
-    entry: FieldEntry,
-    path: str,
-    required: bool,
-    depth: int,
-    root_schema: dict[str, Any],
-    field_map: dict[str, FieldEntry],
-) -> None:
-    _upsert_field(field_map, entry)
-    # Optional/enum-wrapped objects (`Option<T>`, untagged variants) still
-    # define concrete child fields; walk their object branches.
-    for branch in _union_object_branches(node, root_schema):
-        _walk_properties(
-            branch,
-            path,
-            depth + 1,
-            required or not path,
-            root_schema,
-            field_map,
+    def _build_field_entry(
+        self, node: dict[str, Any], path: str, required: bool
+    ) -> tuple[dict[str, Any], FieldEntry]:
+        normalized = normalize_schema_node(node, self.root_schema)
+        description = normalize_description(normalized.get("description"))
+        default = (
+            format_default(normalized["default"], normalized.get("format"))
+            if "default" in normalized
+            else ""
         )
-
-
-def _walk_additional_properties(
-    node: dict[str, Any],
-    path: str,
-    depth: int,
-    root_schema: dict[str, Any],
-    field_map: dict[str, FieldEntry],
-) -> None:
-    additional = node.get("additionalProperties")
-    if isinstance(additional, dict):
-        map_path = f"{path}.*" if path else "*"
-        _walk_field(
-            additional,
-            map_path,
-            required=False,
-            depth=depth + 1,
-            root_schema=root_schema,
-            field_map=field_map,
+        entry = FieldEntry(
+            path=path,
+            type_name=format_type_name(normalized),
+            required=required,
+            default=default,
+            description=description,
         )
-    elif additional is True and path:
-        _upsert_field(
-            field_map,
-            FieldEntry(
-                path=f"{path}.*",
-                type_name="any",
-                required=False,
-                default="",
-                description="Additional map entries.",
-            ),
-        )
+        return normalized, entry
 
+    def _walk_properties(
+        self, node: dict[str, Any], entry: FieldEntry, depth: int
+    ) -> None:
+        path = entry.path
+        parent_required = entry.required or not path
+        properties = node.get("properties", {})
+        required_set = set(node.get("required", []))
+        for prop_name in sorted(properties):
+            child_path = f"{path}.{prop_name}" if path else prop_name
+            self._walk_field(
+                properties[prop_name],
+                child_path,
+                parent_required and prop_name in required_set,
+                depth,
+            )
 
-def _walk_object(
-    node: dict[str, Any],
-    entry: FieldEntry,
-    path: str,
-    required: bool,
-    depth: int,
-    root_schema: dict[str, Any],
-    field_map: dict[str, FieldEntry],
-) -> None:
-    properties = node.get("properties", {})
-    if not properties:
-        _upsert_field(field_map, entry)
-    _walk_properties(
-        node,
-        path,
-        depth + 1,
-        required or not path,
-        root_schema,
-        field_map,
-    )
-    _walk_additional_properties(node, path, depth, root_schema, field_map)
+    def _union_object_branches(self, node: dict[str, Any]) -> list[dict[str, Any]]:
+        branches = [node] if "properties" in node else []
+        for key in ("oneOf", "anyOf"):
+            for option in node.get(key, []):
+                resolved = normalize_schema_node(option, self.root_schema)
+                if _is_object_schema(resolved):
+                    branches.append(resolved)
+        return branches
 
+    def _walk_union(self, node: dict[str, Any], entry: FieldEntry, depth: int) -> None:
+        self._upsert_field(entry)
+        # Optional/enum-wrapped objects (`Option<T>`, untagged variants) still
+        # define concrete child fields; walk their object branches.
+        for branch in self._union_object_branches(node):
+            self._walk_properties(branch, entry, depth + 1)
 
-def _walk_array(
-    node: dict[str, Any],
-    entry: FieldEntry,
-    path: str,
-    depth: int,
-    root_schema: dict[str, Any],
-    field_map: dict[str, FieldEntry],
-) -> None:
-    _upsert_field(field_map, entry)
-    items = node.get("items")
-    if isinstance(items, dict):
-        _walk_field(
-            items,
-            f"{path}[]",
-            required=False,
-            depth=depth + 1,
-            root_schema=root_schema,
-            field_map=field_map,
-        )
+    def _walk_additional_properties(
+        self, node: dict[str, Any], entry: FieldEntry, depth: int
+    ) -> None:
+        additional = node.get("additionalProperties")
+        if isinstance(additional, dict):
+            map_path = f"{entry.path}.*" if entry.path else "*"
+            self._walk_field(additional, map_path, required=False, depth=depth + 1)
+        elif additional is True and entry.path:
+            self._upsert_field(
+                FieldEntry(
+                    path=f"{entry.path}.*",
+                    type_name="any",
+                    required=False,
+                    default="",
+                    description="Additional map entries.",
+                )
+            )
 
+    def _walk_object(self, node: dict[str, Any], entry: FieldEntry, depth: int) -> None:
+        properties = node.get("properties", {})
+        if not properties:
+            self._upsert_field(entry)
+        self._walk_properties(node, entry, depth + 1)
+        self._walk_additional_properties(node, entry, depth)
 
-def _walk_field(
-    node: dict[str, Any],
-    path: str,
-    required: bool,
-    depth: int,
-    root_schema: dict[str, Any],
-    field_map: dict[str, FieldEntry],
-) -> None:
-    # Real config nesting stays under ~10 levels; the cap only guards against
-    # pathological self-referential `$ref` schemas.
-    if depth > _MAX_WALK_DEPTH:
-        return
-    normalized, entry = _build_field_entry(node, path, required, root_schema)
-    if _is_union_schema(normalized):
-        _walk_union(
-            normalized,
-            entry,
-            path,
-            required,
-            depth,
-            root_schema,
-            field_map,
-        )
-        return
-    if _is_object_schema(normalized):
-        _walk_object(
-            normalized,
-            entry,
-            path,
-            required,
-            depth,
-            root_schema,
-            field_map,
-        )
-        return
-    if _is_array_schema(normalized):
-        _walk_array(normalized, entry, path, depth, root_schema, field_map)
-        return
-    _upsert_field(field_map, entry)
+    def _walk_array(self, node: dict[str, Any], entry: FieldEntry, depth: int) -> None:
+        self._upsert_field(entry)
+        items = node.get("items")
+        if isinstance(items, dict):
+            self._walk_field(items, f"{entry.path}[]", required=False, depth=depth + 1)
+
+    def _walk_field(
+        self, node: dict[str, Any], path: str, required: bool, depth: int
+    ) -> None:
+        # Real config nesting stays under ~10 levels; the cap only guards against
+        # pathological self-referential `$ref` schemas.
+        if depth > _MAX_WALK_DEPTH:
+            return
+        normalized, entry = self._build_field_entry(node, path, required)
+        if _is_union_schema(normalized):
+            self._walk_union(normalized, entry, depth)
+            return
+        if _is_object_schema(normalized):
+            self._walk_object(normalized, entry, depth)
+            return
+        if _is_array_schema(normalized):
+            self._walk_array(normalized, entry, depth)
+            return
+        self._upsert_field(entry)
 
 
 def collect_fields(root_schema: dict[str, Any]) -> list[FieldEntry]:
-    field_map: dict[str, FieldEntry] = {}
-    _walk_field(
-        root_schema,
-        "",
-        required=False,
-        depth=0,
-        root_schema=root_schema,
-        field_map=field_map,
-    )
-    entries = [entry for entry in field_map.values() if entry.path]
-    entries.sort(key=lambda item: item.path)
-    return entries
+    return _FieldCollector(root_schema).collect()
 
 
 def escape_cell(value: str) -> str:
