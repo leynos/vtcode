@@ -25,6 +25,8 @@ use vtcode_commons::canonicalize;
 
 #[path = "../../../tests/support/config_defaults.rs"]
 mod config_defaults;
+#[cfg(unix)]
+mod pipe_session;
 
 const CUSTOM_TOOL_NAME: &str = "custom_test_tool";
 const SLOW_TIMEOUT_TOOL_NAME: &str = "slow_timeout_test_tool";
@@ -73,6 +75,7 @@ fn command_session_fixture_commands_config() -> CommandsConfig {
     config.allow_list.clear();
     config.allow_glob.clear();
     config.allow_regex = vec![
+        r"^cat$".to_owned(),
         r"^sleep 0\.4 && printf second && sleep 0\.4 && printf third && sleep 0\.4 && printf done$".to_owned(),
         r"^/bin/sh -lc printf vtcode-terminal$".to_owned(),
     ];
