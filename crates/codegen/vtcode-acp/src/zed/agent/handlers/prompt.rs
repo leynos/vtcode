@@ -221,7 +221,7 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
     };
     let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
     drop(stage_thread_tool_calls(&thread, assistant_tool_message));
-    persist_session_checkpoint(agent, session, "assistant_tool_calls_write_ahead").await;
+    require_session_checkpoint(agent, session, "assistant_tool_calls_write_ahead").await?;
 
     let tool_results = match agent.execute_tool_calls(session, session_id, tool_calls).await {
         Ok(results) => results,
@@ -387,4 +387,27 @@ pub(super) fn assistant_tool_call_message(
         message.reasoning = Some(reasoning.to_owned());
     }
     message
+}
+
+async fn require_session_checkpoint(
+    agent: &ZedAgent,
+    session: &SessionHandle,
+    boundary: &'static str,
+) -> Result<(), SdkError> {
+    if let Err(error) = agent.checkpoint_session(session).await {
+        warn!(%error, boundary, "Failed to persist ACP session checkpoint");
+        return Err(
+            SdkError::internal_error().data(format!("Failed to persist ACP session checkpoint at {boundary}: {error}"))
+        );
+    }
+    if let Err(error) = session.update_transcript_path().await {
+        log_suppressed_error(&error, "transcript_update", "transcript_write_failed");
+        warn!(
+            operation = "transcript_update",
+            error_category = "transcript_write_failed",
+            boundary,
+            "Failed to update ACP session transcript path"
+        );
+    }
+    Ok(())
 }
