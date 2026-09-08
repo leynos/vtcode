@@ -163,137 +163,64 @@ pub async fn get_head_commit_hash_async(cwd: std::path::PathBuf) -> Result<Optio
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
-    //! Builds deterministic local Git repositories for core unit tests.
-
-    use anyhow::{Context, Result, bail};
-    use std::path::{Path, PathBuf};
-    use std::process::{Command, Output};
-    use tempfile::TempDir;
-    use vtcode_commons::canonicalize;
-
-    const FIXTURE_COMMIT_MESSAGE: &str = "git-info fixture commit";
-    pub(crate) const FIXTURE_REMOTE_URL: &str = "https://example.invalid/vtcode.git";
-    const FIXTURE_AUTHOR_NAME: &str = "VTCode Test";
-    const FIXTURE_AUTHOR_EMAIL: &str = "vtcode-test@example.invalid";
-    const FIXTURE_COMMIT_DATE: &str = "2000-01-02T03:04:05+00:00";
-
-    pub(crate) struct GitFixture {
-        _temp_dir: TempDir,
-        pub(crate) repo_root: PathBuf,
-        pub(crate) short_head: String,
-    }
-
-    fn fixture_git_command(cwd: &Path) -> Command {
-        let mut command = Command::new("git");
-        command
-            .current_dir(cwd)
-            .env_remove("GIT_DIR")
-            .env_remove("GIT_WORK_TREE")
-            .env_remove("GIT_INDEX_FILE")
-            .env_remove("GIT_OBJECT_DIRECTORY")
-            .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
-            .env_remove("GIT_CEILING_DIRECTORIES")
-            .env_remove("GIT_CONFIG_PARAMETERS")
-            .env_remove("GIT_CONFIG")
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", cwd.join("fixture-global-git-config"))
-            .env("GIT_TEMPLATE_DIR", cwd)
-            .env("GIT_CONFIG_COUNT", "0")
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .env("GIT_AUTHOR_NAME", FIXTURE_AUTHOR_NAME)
-            .env("GIT_AUTHOR_EMAIL", FIXTURE_AUTHOR_EMAIL)
-            .env("GIT_COMMITTER_NAME", FIXTURE_AUTHOR_NAME)
-            .env("GIT_COMMITTER_EMAIL", FIXTURE_AUTHOR_EMAIL)
-            .env("GIT_AUTHOR_DATE", FIXTURE_COMMIT_DATE)
-            .env("GIT_COMMITTER_DATE", FIXTURE_COMMIT_DATE);
-        command
-    }
-
-    fn run_fixture_git(cwd: &Path, args: &[&str]) -> Result<Output> {
-        let output = fixture_git_command(cwd)
-            .args(args)
-            .output()
-            .with_context(|| format!("run fixture git command: git {}", args.join(" ")))?;
-        if !output.status.success() {
-            bail!(
-                "fixture git command failed (git {}): {}",
-                args.join(" "),
-                String::from_utf8_lossy(&output.stderr).trim()
-            );
-        }
-        Ok(output)
-    }
-
-    pub(crate) fn isolated_git_repository() -> Result<GitFixture> {
-        let temp_dir = TempDir::new().context("create isolated Git fixture directory")?;
-        let repo_root = temp_dir.path().join("repository");
-        run_fixture_git(
-            temp_dir.path(),
-            &[
-                "init",
-                "--quiet",
-                "--initial-branch=main",
-                "--object-format=sha1",
-                "repository",
-            ],
-        )?;
-        let repo_root = canonicalize(repo_root).context("canonicalize isolated Git fixture root")?;
-        run_fixture_git(&repo_root, &["config", "core.abbrev", "7"])?;
-        run_fixture_git(&repo_root, &["remote", "add", "origin", FIXTURE_REMOTE_URL])?;
-        run_fixture_git(
-            &repo_root,
-            &[
-                "commit",
-                "--quiet",
-                "--allow-empty",
-                "--message",
-                FIXTURE_COMMIT_MESSAGE,
-            ],
-        )?;
-        let head_output = run_fixture_git(&repo_root, &["rev-parse", "--short", "HEAD"])?;
-        let short_head = String::from_utf8(head_output.stdout)
-            .context("decode fixture Git short HEAD")?
-            .trim()
-            .to_owned();
-        if short_head.is_empty() {
-            bail!("fixture Git repository must have a short HEAD");
-        }
-
-        Ok(GitFixture { _temp_dir: temp_dir, repo_root, short_head })
-    }
-}
+#[path = "git_info_test_support.rs"]
+pub(crate) mod test_support;
 
 #[cfg(test)]
 mod tests {
     //! Verifies Git information collection against hermetic local repositories.
 
-    use super::test_support::{FIXTURE_REMOTE_URL, isolated_git_repository};
+    use super::test_support::{
+        CLEAN_TEST_CHILD_ENV, FIXTURE_REMOTE_URL, isolated_git_repository, isolated_git_repository_with,
+        no_command_configuration, run_in_clean_test_process,
+    };
     use super::*;
+    use anyhow::{Context, Result};
     use std::path::PathBuf;
     use tempfile::TempDir;
 
     #[test]
     fn test_is_git_repo() {
-        let fixture = isolated_git_repository().expect("create isolated Git repository fixture");
+        run_in_clean_test_process("git_info::tests::test_is_git_repo", no_command_configuration, test_is_git_repo_body)
+            .expect("run isolated Git repository test");
+    }
+
+    fn test_is_git_repo_body() -> Result<()> {
+        let fixture = isolated_git_repository()?;
         assert!(is_git_repo(&fixture.repo_root), "fixture repository must be recognized as Git");
+        Ok(())
     }
 
     #[test]
     fn test_get_git_repo_root() {
-        let fixture = isolated_git_repository().expect("create isolated Git repository fixture");
-        let root = get_git_repo_root(&fixture.repo_root)
-            .expect("collect fixture Git root")
-            .expect("fixture repository must have a Git root");
+        run_in_clean_test_process(
+            "git_info::tests::test_get_git_repo_root",
+            no_command_configuration,
+            test_get_git_repo_root_body,
+        )
+        .expect("run isolated Git repository test");
+    }
+
+    fn test_get_git_repo_root_body() -> Result<()> {
+        let fixture = isolated_git_repository()?;
+        let root = get_git_repo_root(&fixture.repo_root)?.context("fixture repository must have a Git root")?;
         assert_eq!(PathBuf::from(root), fixture.repo_root, "Git top-level path must equal the created fixture root");
+        Ok(())
     }
 
     #[test]
     fn test_get_head_commit_hash() {
-        let fixture = isolated_git_repository().expect("create isolated Git repository fixture");
-        let hash = get_head_commit_hash(&fixture.repo_root)
-            .expect("collect fixture Git short HEAD")
-            .expect("fixture repository must have a short HEAD");
+        run_in_clean_test_process(
+            "git_info::tests::test_get_head_commit_hash",
+            no_command_configuration,
+            test_get_head_commit_hash_body,
+        )
+        .expect("run isolated Git repository test");
+    }
+
+    fn test_get_head_commit_hash_body() -> Result<()> {
+        let fixture = isolated_git_repository()?;
+        let hash = get_head_commit_hash(&fixture.repo_root)?.context("fixture repository must have a short HEAD")?;
         assert_eq!(hash, fixture.short_head, "short HEAD must match the fixture commit");
         assert!(
             hash.len() >= 7 && hash.len() <= 12,
@@ -303,12 +230,22 @@ mod tests {
             hash.chars().all(|character| character.is_ascii_hexdigit()),
             "fixture short HEAD must contain only hexadecimal characters"
         );
+        Ok(())
     }
 
     #[test]
     fn test_collect_git_info() {
-        let fixture = isolated_git_repository().expect("create isolated Git repository fixture");
-        let info = collect_git_info(&fixture.repo_root).expect("collect isolated fixture Git information");
+        run_in_clean_test_process(
+            "git_info::tests::test_collect_git_info",
+            no_command_configuration,
+            test_collect_git_info_body,
+        )
+        .expect("run isolated Git repository test");
+    }
+
+    fn test_collect_git_info_body() -> Result<()> {
+        let fixture = isolated_git_repository()?;
+        let info = collect_git_info(&fixture.repo_root)?;
 
         assert_eq!(
             info.head_commit.as_deref(),
@@ -325,6 +262,77 @@ mod tests {
             Some(FIXTURE_REMOTE_URL),
             "collected fetch remote must match the configured fixture URL"
         );
+        Ok(())
+    }
+
+    const ADVERSARIAL_TARGET_ROOT_ENV: &str = "VTCODE_GIT_INFO_ADVERSARIAL_TARGET_ROOT";
+    const ADVERSARIAL_TARGET_HEAD_ENV: &str = "VTCODE_GIT_INFO_ADVERSARIAL_TARGET_HEAD";
+    const ADVERSARIAL_FOREIGN_REMOTE_URL: &str = "https://example.invalid/foreign.git";
+    const ADVERSARIAL_FOREIGN_COMMIT_MESSAGE: &str = "git-info foreign fixture commit";
+
+    #[test]
+    fn test_clean_reexec_ignores_git_overrides() {
+        const TEST_NAME: &str = "git_info::tests::test_clean_reexec_ignores_git_overrides";
+
+        if std::env::var_os(CLEAN_TEST_CHILD_ENV).is_some() {
+            run_in_clean_test_process(
+                TEST_NAME,
+                no_command_configuration,
+                test_clean_reexec_ignores_git_overrides_body,
+            )
+            .expect("run isolated Git environment test");
+            return;
+        }
+
+        let target = isolated_git_repository().expect("create target Git fixture");
+        let foreign = isolated_git_repository_with(ADVERSARIAL_FOREIGN_REMOTE_URL, ADVERSARIAL_FOREIGN_COMMIT_MESSAGE)
+            .expect("create foreign Git fixture");
+        assert_ne!(target.repo_root, foreign.repo_root, "target and foreign fixture roots must differ");
+        assert_ne!(target.short_head, foreign.short_head, "target and foreign fixture HEADs must differ");
+        assert_ne!(FIXTURE_REMOTE_URL, ADVERSARIAL_FOREIGN_REMOTE_URL, "target and foreign origins must differ");
+
+        let target_root = target.repo_root.clone();
+        let target_head = target.short_head.clone();
+        let foreign_root = foreign.repo_root.clone();
+        run_in_clean_test_process(
+            TEST_NAME,
+            move |command| {
+                command
+                    .env(ADVERSARIAL_TARGET_ROOT_ENV, target_root)
+                    .env(ADVERSARIAL_TARGET_HEAD_ENV, target_head)
+                    .env("GIT_DIR", foreign_root.join(".git"))
+                    .env("GIT_WORK_TREE", foreign_root);
+            },
+            test_clean_reexec_ignores_git_overrides_body,
+        )
+        .expect("run isolated Git environment test");
+    }
+
+    fn test_clean_reexec_ignores_git_overrides_body() -> Result<()> {
+        let target_root = std::env::var_os(ADVERSARIAL_TARGET_ROOT_ENV)
+            .map(PathBuf::from)
+            .context("adversarial child is missing the target fixture root")?;
+        let target_head =
+            std::env::var(ADVERSARIAL_TARGET_HEAD_ENV).context("adversarial child is missing the target short HEAD")?;
+        let target_root_string = target_root.to_str().context("target fixture root is not UTF-8")?;
+        let info = collect_git_info(&target_root)?;
+
+        assert_eq!(
+            info.repo_root.as_deref(),
+            Some(target_root_string),
+            "clean re-exec must query the target fixture root"
+        );
+        assert_eq!(
+            info.head_commit.as_deref(),
+            Some(target_head.as_str()),
+            "clean re-exec must query the target fixture short HEAD"
+        );
+        assert_eq!(
+            info.remotes.get("origin").map(String::as_str),
+            Some(FIXTURE_REMOTE_URL),
+            "clean re-exec must query the target fixture origin"
+        );
+        Ok(())
     }
 
     #[test]
