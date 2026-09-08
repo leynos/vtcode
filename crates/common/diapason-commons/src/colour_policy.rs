@@ -121,6 +121,8 @@ pub fn colour_output_enabled() -> bool {
 
 #[cfg(test)]
 mod tests {
+    //! Regression coverage for environment-driven colour output policy.
+
     use super::no_colour_env_active_from;
     use std::ffi::OsString;
 
