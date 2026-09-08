@@ -9,10 +9,10 @@
 
 use std::future::Future;
 use std::result::Result as StdResult;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use crate::error::{ErrorCategory, VtCodeError};
-use crate::retry_after::retry_after_from_llm_metadata;
+use crate::retry_after::{retry_after_from_llm_metadata, retry_after_from_llm_metadata_at, retry_after_is_http_date};
 use crate::tools::registry::ToolExecutionError;
 use crate::tools::tool_intent::is_command_tool;
 use crate::tools::unified_error::UnifiedToolError;
@@ -108,8 +108,7 @@ impl RetryPolicyCoreExt for RetryPolicy {
         attempt_index: u32,
         backoff: &mut RetryBackoff,
     ) -> RetryDecision {
-        let retry_after = llm_metadata(error).and_then(retry_after_from_llm_metadata);
-        self.decision_for_category_with_backoff(ErrorCategory::from(error), attempt_index, retry_after, backoff)
+        decision_for_llm_error_with_backoff_at(self, error, attempt_index, backoff, SystemTime::now())
     }
 
     fn decision_for_tool_error(&self, error: &UnifiedToolError, attempt_index: u32) -> RetryDecision {
@@ -156,6 +155,43 @@ impl RetryPolicyCoreExt for RetryPolicy {
         );
         error.with_retry_decision(decision)
     }
+}
+
+fn decision_for_llm_error_with_backoff_at(
+    policy: &RetryPolicy,
+    error: &LLMError,
+    attempt_index: u32,
+    backoff: &mut RetryBackoff,
+    now: SystemTime,
+) -> RetryDecision {
+    let Some(metadata) = llm_metadata(error) else {
+        return policy.decision_for_category_with_backoff(ErrorCategory::from(error), attempt_index, None, backoff);
+    };
+    let retry_after = retry_after_from_llm_metadata_at(metadata, now);
+    if !retry_after_is_http_date(metadata) {
+        return policy.decision_for_category_with_backoff(
+            ErrorCategory::from(error),
+            attempt_index,
+            retry_after,
+            backoff,
+        );
+    }
+
+    let reset_floor = metadata
+        .rate_limit
+        .as_ref()
+        .and_then(|rate_limit| rate_limit.reset_after_millis)
+        .map(Duration::from_millis);
+    let mut decision =
+        policy.decision_for_category_with_backoff(ErrorCategory::from(error), attempt_index, reset_floor, backoff);
+    if let Some(retry_after) = retry_after
+        && decision.retryable
+    {
+        let local_delay = decision.delay.unwrap_or(Duration::ZERO);
+        decision.delay = Some(local_delay.max(retry_after));
+        decision.retry_after = Some(retry_after);
+    }
+    decision
 }
 
 fn decision_for_category_with_tool(
@@ -425,6 +461,51 @@ mod tests {
         assert_eq!(first.delay, Some(Duration::from_secs(7)));
         assert_eq!(later.retry_after, None);
         assert_eq!(later.delay, Some(Duration::from_secs(14)));
+    }
+
+    #[test]
+    fn retry_backoff_does_not_retain_an_http_date_floor() {
+        let policy = RetryPolicy::from_retries(3, Duration::from_secs(1), Duration::from_secs(8), 2.0);
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_445_412_420);
+        let retry_date = httpdate::fmt_http_date(now + Duration::from_secs(60));
+        let first_error = LLMError::RateLimit {
+            metadata: Some(LLMErrorMetadata::new(
+                "Anthropic",
+                Some(429),
+                Some("rate_limit_error".to_string()),
+                None,
+                None,
+                Some(retry_date),
+                Some("too many requests".to_string()),
+            )),
+        };
+        let later_error = LLMError::RateLimit {
+            metadata: Some(LLMErrorMetadata::new(
+                "Anthropic",
+                Some(429),
+                Some("rate_limit_error".to_string()),
+                None,
+                None,
+                None,
+                Some("too many requests".to_string()),
+            )),
+        };
+        let mut backoff = RetryBackoff::new();
+
+        let first = decision_for_llm_error_with_backoff_at(&policy, &first_error, 0, &mut backoff, now);
+        let later = decision_for_llm_error_with_backoff_at(
+            &policy,
+            &later_error,
+            1,
+            &mut backoff,
+            now + Duration::from_secs(61),
+        );
+
+        assert_eq!(first.retry_after, Some(Duration::from_secs(60)));
+        assert_eq!(first.delay, Some(Duration::from_secs(60)));
+        assert_eq!(backoff.provider_floor(), None);
+        assert_eq!(later.retry_after, None);
+        assert_eq!(later.delay, Some(Duration::from_secs(2)));
     }
 
     #[test]

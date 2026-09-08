@@ -2,6 +2,9 @@ use std::time::{Duration, SystemTime};
 
 use vtcode_commons::llm::LLMErrorMetadata;
 
+/// Longest provider-supplied delta accepted for one retry wait.
+const MAX_RETRY_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
+
 fn parse_retry_after_header_at(raw: &str, now: SystemTime) -> Option<Duration> {
     let raw = raw.trim();
     if raw.is_empty() {
@@ -18,7 +21,11 @@ fn parse_retry_after_header_at(raw: &str, now: SystemTime) -> Option<Duration> {
 
 fn parse_delta_seconds(raw: &str) -> Option<Duration> {
     if !raw.is_empty() && raw.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Some(raw.parse::<u64>().map_or(Duration::MAX, Duration::from_secs));
+        return Some(
+            raw.parse::<u64>()
+                .map_or(MAX_RETRY_AFTER, Duration::from_secs)
+                .min(MAX_RETRY_AFTER),
+        );
     }
 
     let (whole_seconds, fractional_seconds) = raw.split_once('.')?;
@@ -34,7 +41,7 @@ fn parse_delta_seconds(raw: &str) -> Option<Duration> {
     } else {
         match whole_seconds.parse::<u64>() {
             Ok(seconds) => seconds,
-            Err(_) => return Some(Duration::MAX),
+            Err(_) => return Some(MAX_RETRY_AFTER),
         }
     };
     let nanos_digits = fractional_seconds.get(..fractional_seconds.len().min(9))?;
@@ -53,12 +60,19 @@ fn parse_delta_seconds(raw: &str) -> Option<Duration> {
     if nanoseconds == 1_000_000_000 {
         seconds = match seconds.checked_add(1) {
             Some(seconds) => seconds,
-            None => return Some(Duration::MAX),
+            None => return Some(MAX_RETRY_AFTER),
         };
         nanoseconds = 0;
     }
 
-    Some(Duration::new(seconds, nanoseconds))
+    Some(Duration::new(seconds, nanoseconds).min(MAX_RETRY_AFTER))
+}
+
+pub(crate) fn retry_after_is_http_date(metadata: &LLMErrorMetadata) -> bool {
+    metadata.retry_after.as_deref().is_some_and(|raw| {
+        let raw = raw.trim();
+        parse_delta_seconds(raw).is_none() && httpdate::parse_http_date(raw).is_ok()
+    })
 }
 
 pub(crate) fn retry_after_from_llm_metadata(metadata: &LLMErrorMetadata) -> Option<Duration> {
@@ -106,11 +120,11 @@ mod tests {
     }
 
     #[test]
-    fn retry_after_delta_seconds_saturates_huge_values() {
-        assert_eq!(parse_retry_after_header_at("18446744073709551616", SystemTime::UNIX_EPOCH), Some(Duration::MAX));
+    fn retry_after_delta_seconds_cap_huge_values() {
+        assert_eq!(parse_retry_after_header_at("18446744073709551616", SystemTime::UNIX_EPOCH), Some(MAX_RETRY_AFTER));
         assert_eq!(
             parse_retry_after_header_at("18446744073709551615.9999999999", SystemTime::UNIX_EPOCH),
-            Some(Duration::MAX)
+            Some(MAX_RETRY_AFTER)
         );
     }
 
@@ -120,6 +134,24 @@ mod tests {
         let now = retry_at + Duration::from_secs(1);
 
         assert_eq!(parse_retry_after_header_at("Wed, 21 Oct 2015 07:28:00 GMT", now), Some(Duration::ZERO));
+    }
+
+    #[test]
+    fn retry_after_http_date_is_identified_without_treating_delta_as_absolute() {
+        let date_metadata = LLMErrorMetadata::new(
+            "Together",
+            Some(429),
+            None,
+            None,
+            None,
+            Some("Wed, 21 Oct 2015 07:28:00 GMT".to_string()),
+            None,
+        );
+        let delta_metadata =
+            LLMErrorMetadata::new("Together", Some(429), None, None, None, Some("7".to_string()), None);
+
+        assert!(retry_after_is_http_date(&date_metadata));
+        assert!(!retry_after_is_http_date(&delta_metadata));
     }
 
     #[test]

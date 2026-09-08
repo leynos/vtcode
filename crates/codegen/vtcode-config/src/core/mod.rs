@@ -11,6 +11,7 @@ pub mod plugins;
 pub mod prompt_cache;
 pub mod provider;
 pub mod provider_override;
+mod rate_limit_headers;
 pub mod sandbox;
 pub mod security;
 pub mod skills;

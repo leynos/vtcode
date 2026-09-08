@@ -109,6 +109,26 @@ const STATUS_FORBIDDEN: u16 = 403;
 const STATUS_BAD_REQUEST: u16 = 400;
 const STATUS_TOO_MANY_REQUESTS: u16 = 429;
 
+// Gemini does not expose the OpenAI-compatible quota headers. Keep the
+// mapping explicit so a future default mapping cannot project another
+// provider's headers as Gemini quota metadata.
+const GEMINI_RATE_LIMIT_HEADERS: RateLimitHeaderConfig = RateLimitHeaderConfig {
+    requests_limit_per_minute: None,
+    requests_remaining_per_minute: None,
+    tokens_limit_per_minute: None,
+    tokens_remaining_per_minute: None,
+    requests_limit_per_second: None,
+    requests_remaining_per_second: None,
+    tokens_limit_per_second: None,
+    tokens_remaining_per_second: None,
+    prompt_tokens_limit_per_second: None,
+    cache_adjusted_prompt_tokens_limit_per_second: None,
+    generated_tokens_limit_per_second: None,
+    prompt_tokens: None,
+    cached_prompt_tokens: None,
+    reset_after_seconds: None,
+};
+
 /// Common rate limit error patterns (pre-lowercased for efficient matching)
 const RATE_LIMIT_PATTERNS: &[&str] = &[
     "insufficient_quota",
@@ -134,7 +154,7 @@ pub async fn handle_gemini_http_error(response: Response) -> Result<Response, LL
     }
 
     let status = response.status();
-    let metadata = extract_response_metadata(response.headers(), &RateLimitHeaderConfig::for_provider_name("Gemini"));
+    let metadata = extract_response_metadata(response.headers(), &GEMINI_RATE_LIMIT_HEADERS);
     let error_text = read_provider_error_body(response).await;
     Err(parse_api_error_with_metadata("Gemini", status, &error_text, metadata))
 }
@@ -507,7 +527,7 @@ fn extract_response_metadata(headers: &HeaderMap, rate_limit_headers: &RateLimit
 pub(crate) fn error_metadata_from_headers(
     provider_name: &str,
     status: reqwest::StatusCode,
-    body: &str,
+    _body: &str,
     headers: &HeaderMap,
     rate_limit_headers: &RateLimitHeaderConfig,
 ) -> Box<LLMErrorMetadata> {
@@ -519,7 +539,7 @@ pub(crate) fn error_metadata_from_headers(
         metadata.request_id,
         metadata.organization_id,
         metadata.retry_after,
-        Some(body.to_string()),
+        None,
     )
     .with_rate_limit(metadata.rate_limit)
 }
@@ -577,6 +597,9 @@ fn parse_reset_after_millis(raw_seconds: &str) -> Option<u64> {
         Some(_) => return None,
         None => (raw_seconds, None),
     };
+    if whole_seconds.is_empty() || !whole_seconds.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
     let whole_millis = whole_seconds.parse::<u64>().ok()?.checked_mul(1_000)?;
     let fractional_millis = fractional_seconds.map_or(Some(0), |fraction| {
         if !fraction.bytes().all(|byte| byte.is_ascii_digit()) {
@@ -722,6 +745,54 @@ mod tests {
     }
 
     #[test]
+    fn error_metadata_from_headers_does_not_retain_provider_body() {
+        let provider_body = r#"{"error":{"message":"customer-record=confidential-123"}}"#;
+        let metadata = error_metadata_from_headers(
+            "OpenAI",
+            reqwest::StatusCode::BAD_GATEWAY,
+            provider_body,
+            &HeaderMap::new(),
+            &RateLimitHeaderConfig::default(),
+        );
+
+        assert_eq!(metadata.message, None);
+        let serialized = serde_json::to_string(&metadata).expect("metadata should serialize");
+        assert!(!serialized.contains("customer-record=confidential-123"));
+    }
+
+    #[tokio::test]
+    async fn gemini_http_errors_keep_retry_after_without_baseten_quota_metadata() {
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
+
+        let server = MockServer::start().await;
+        Mock::given(path("/gemini-error"))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("retry-after", "7")
+                    .insert_header("x-ratelimit-limit-requests", "120")
+                    .insert_header("x-ratelimit-remaining-requests", "3")
+                    .set_body_json(serde_json::json!({"error": {"message": "quota exhausted"}})),
+            )
+            .mount(&server)
+            .await;
+
+        let response = reqwest::Client::new()
+            .get(format!("{}/gemini-error", server.uri()))
+            .send()
+            .await
+            .expect("offline Gemini response should be available");
+        let error = handle_gemini_http_error(response)
+            .await
+            .expect_err("Gemini 429 response should become an LLM error");
+
+        let LLMError::RateLimit { metadata: Some(metadata) } = error else {
+            panic!("expected Gemini rate-limit metadata");
+        };
+        assert_eq!(metadata.retry_after.as_deref(), Some("7"));
+        assert_eq!(metadata.rate_limit, None);
+    }
+
+    #[test]
     fn mapped_baseten_headers_and_retry_after_are_retained_without_raw_headers() {
         let mut headers = HeaderMap::new();
         headers.insert("retry-after", "7".parse().expect("static retry-after"));
@@ -760,6 +831,12 @@ mod tests {
         headers.insert("x-ratelimit-limit-tokens", "18446744073709551616".parse().expect("overflowing numeric header"));
 
         assert_eq!(extract_rate_limit_metadata(&headers, &RateLimitHeaderConfig::default()), None);
+    }
+
+    #[test]
+    fn signed_reset_after_seconds_are_rejected() {
+        assert_eq!(parse_reset_after_millis("+5"), None);
+        assert_eq!(parse_reset_after_millis("5"), Some(5_000));
     }
 
     #[test]
