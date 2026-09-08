@@ -177,6 +177,13 @@ staging.
   imports. `Read` remains unconditional because the bounded-reader helper is
   compiled on every target. This is an import-only platform repair; shared
   validation remains pending.
+- [ ] (2026-09-08) Install ripgrep before the CI nextest and coverage jobs.
+  Both hosted jobs execute a code-search cache-invalidation contract that
+  requests a text result through the external `rg` backend. The runner image
+  did not provide `rg`, so the backend was marked unavailable and the contract
+  failed before exercising cache invalidation. This follows the existing
+  tool-evaluation workflow's explicit installation pattern, retains the
+  success assertion, and awaits the focused selector plus hosted reruns.
 
 ## Surprises & discoveries
 
