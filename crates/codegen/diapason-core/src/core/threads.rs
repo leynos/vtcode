@@ -241,6 +241,17 @@ impl ThreadRuntimeHandle {
         self.inner.session.lock().messages.clone()
     }
 
+    /// Applies a short, synchronous mutation while holding the session lock.
+    ///
+    /// The callback must not call methods on this handle, perform I/O, or
+    /// await.  Keeping the callback non-reentrant and bounded ensures that
+    /// callers can update the message history atomically without introducing
+    /// another owner for session state.
+    pub fn mutate_messages<T>(&self, mutation: impl FnOnce(&mut Vec<Message>) -> T) -> T {
+        let mut session = self.inner.session.lock();
+        mutation(&mut session.messages)
+    }
+
     pub fn replace_messages(&self, messages: Vec<Message>) {
         self.inner.session.lock().messages = messages;
     }
@@ -517,6 +528,61 @@ mod tests {
         assert!(err.to_string().contains("in-flight turn"));
         handle.finish_turn();
         handle.begin_turn().expect("turn after finish");
+    }
+
+    #[test]
+    fn mutate_messages_keeps_an_append_started_during_the_mutation() {
+        use std::sync::{Arc, Barrier, mpsc};
+
+        let manager = ThreadManager::new();
+        let handle = manager.start_thread_with_identifier(
+            "thread-atomic-messages",
+            ThreadBootstrap::new(None).with_messages(vec![Message::user("before".to_string())]),
+        );
+        let mutation_started = Arc::new(Barrier::new(2));
+        let release_mutation = Arc::new(Barrier::new(2));
+        let (append_started_tx, append_started_rx) = mpsc::channel();
+        let (append_finished_tx, append_finished_rx) = mpsc::channel();
+
+        std::thread::scope(|scope| {
+            let mutation_handle = handle.clone();
+            let mutation_started_for_worker = Arc::clone(&mutation_started);
+            let release_mutation_for_worker = Arc::clone(&release_mutation);
+            let mutation = scope.spawn(move || {
+                mutation_handle.mutate_messages(|messages| {
+                    messages.push(Message::assistant("staged".to_string()));
+                    mutation_started_for_worker.wait();
+                    release_mutation_for_worker.wait();
+                });
+            });
+
+            mutation_started.wait();
+            let append_handle = handle.clone();
+            let append = scope.spawn(move || {
+                append_started_tx.send(()).expect("append start observer");
+                append_handle.append_message(Message::user("concurrent".to_string()));
+                append_finished_tx.send(()).expect("append completion observer");
+            });
+
+            append_started_rx
+                .recv()
+                .expect("append worker starts after mutation lock acquisition");
+            assert!(
+                append_finished_rx.try_recv().is_err(),
+                "an append begun while the mutation holds the lock must not finish before release"
+            );
+            release_mutation.wait();
+            mutation.join().expect("message mutation thread");
+            append_finished_rx.recv().expect("append finishes after mutation release");
+            append.join().expect("message append thread");
+        });
+
+        let contents = handle
+            .messages()
+            .into_iter()
+            .map(|message| message.content.as_text().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(contents, ["before", "staged", "concurrent"]);
     }
 
     #[test]

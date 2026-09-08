@@ -21,6 +21,18 @@ use super::{SessionHandleBootstrap, ZedAgent, safe_internal_error, safe_invalid_
 use crate::zed::agent::log_suppressed_error;
 use crate::zed::agent::tool_recovery::{RecoveryReport, repair_unresolved_tool_calls};
 
+use vtcode_core::core::agent::snapshots::SnapshotTurnDiagnostics;
+use vtcode_core::core::threads::{ThreadBootstrap, messages_from_session_listing};
+use vtcode_core::hooks::SessionStartTrigger;
+use vtcode_core::llm::provider::MessageRole;
+use vtcode_core::utils::session_archive::{
+    SessionArchive, SessionListing, SessionMessage, SessionProgressArgs, SessionProgressPersistenceStatus,
+    find_session_by_identifier, history_persistence_enabled, list_recent_sessions, session_workspace_path,
+};
+
+//! Durable archive persistence and workspace-bound session restoration.
+};
+
 pub(super) fn trace_storage_operation<'a, T: 'a, E: 'a, F>(
     operation: &'static str,
     future: F,
@@ -46,10 +58,22 @@ where
 
 impl ZedAgent {
     pub(in crate::zed::agent) async fn checkpoint_session(&self, session: &SessionHandle) -> anyhow::Result<()> {
-        trace_storage_operation("checkpoint", self.checkpoint_session_inner(session)).await
+        self.checkpoint_session_with_turn_diagnostics(session, None).await
     }
 
-    async fn checkpoint_session_inner(&self, session: &SessionHandle) -> anyhow::Result<()> {
+    async fn checkpoint_session_with_turn_diagnostics(
+        &self,
+        session: &SessionHandle,
+        turn_diagnostics: Option<SnapshotTurnDiagnostics>,
+    ) -> anyhow::Result<()> {
+        trace_storage_operation("checkpoint", self.checkpoint_session_inner(session, turn_diagnostics)).await
+    }
+
+    async fn checkpoint_session_inner(
+        &self,
+        session: &SessionHandle,
+        turn_diagnostics: Option<SnapshotTurnDiagnostics>,
+    ) -> anyhow::Result<()> {
         if !history_persistence_enabled() {
             debug!("Skipped ACP session checkpoint because history persistence is disabled");
             return Ok(());
@@ -100,7 +124,7 @@ impl ZedAgent {
                 token_usage: None,
                 max_context_tokens: None,
                 loaded_skills: Some(snapshot.loaded_skills),
-                turn_diagnostics: None,
+                turn_diagnostics,
             })
             .await?;
         let persistence_outcome = match persistence_status {
@@ -141,7 +165,14 @@ impl ZedAgent {
             workspace_match == WorkspaceMatch::Matches,
             "archived session '{identifier}' belongs to a different workspace"
         );
-        let recovery = repair_archived_tool_calls(&mut listing);
+        let preserved_turn_diagnostics = listing
+            .snapshot
+            .progress
+            .as_ref()
+            .and_then(|progress| progress.turn_diagnostics.clone());
+        let recovery = repair_archived_tool_calls(&mut listing).map_err(|error| {
+            anyhow::anyhow!("Archived ACP session has ambiguous tool-result history and was not resumed; inspect the archive before continuing: {error}")
+        })?;
         let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
         let thread = self
             .thread_manager
@@ -160,6 +191,16 @@ impl ZedAgent {
                 workspace_lease: Some(workspace_lease),
             },
         );
+        if recovery.repaired_calls > 0 {
+            self.checkpoint_session_with_turn_diagnostics(&handle, preserved_turn_diagnostics)
+                .await
+                .context("Failed to persist repaired ACP tool-call history")?;
+            warn!(
+                session_id = %session_id,
+                repaired_calls = recovery.repaired_calls,
+                "Repaired unresolved tool calls while loading durable ACP session"
+            );
+        }
         let registration = self
             .sessions
             .lock()
@@ -196,16 +237,6 @@ impl ZedAgent {
                 );
             }
             return Ok(existing);
-        }
-        if recovery.repaired_calls > 0 {
-            self.checkpoint_session(&handle)
-                .await
-                .context("Failed to persist repaired ACP tool-call history")?;
-            warn!(
-                session_id = %session_id,
-                repaired_calls = recovery.repaired_calls,
-                "Repaired unresolved tool calls while loading durable ACP session"
-            );
         }
         Ok(handle)
     }
@@ -518,14 +549,14 @@ pub(super) fn session_listing_workspace_match(
     canonical_workspace_match(&stored_workspace, requested_workspace)
 }
 
-pub(super) fn repair_archived_tool_calls(listing: &mut SessionListing) -> RecoveryReport {
+pub(super) fn repair_archived_tool_calls(
+    listing: &mut SessionListing,
+) -> Result<RecoveryReport, crate::zed::agent::tool_recovery::AmbiguousToolResultHistory> {
     let mut messages = messages_from_session_listing(listing);
-    let report = repair_unresolved_tool_calls(&mut messages);
+    let report = repair_unresolved_tool_calls(&mut messages)?;
     if report.repaired_calls > 0 {
         listing.snapshot.total_messages = messages.len();
         listing.snapshot.messages = messages.iter().map(SessionMessage::from).collect();
     }
-    report
+    Ok(report)
 }
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/session_state/archive.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/session_state/archive.rs' for per-hunk detail, 'weave check' to verify your resolution

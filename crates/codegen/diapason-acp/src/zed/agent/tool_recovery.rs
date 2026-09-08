@@ -9,6 +9,17 @@ pub(super) struct RecoveryReport {
     pub(super) repaired_calls: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct AmbiguousToolResultHistory;
+
+impl std::fmt::Display for AmbiguousToolResultHistory {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("ambiguous tool-result attribution")
+    }
+}
+
+impl std::error::Error for AmbiguousToolResultHistory {}
+
 pub(super) fn stage_tool_calls(messages: &mut Vec<Message>, assistant: Message) -> Vec<String> {
     let calls = assistant.tool_calls.as_deref().unwrap_or_default().to_vec();
     let call_ids = calls.iter().map(|call| call.id.clone()).collect();
@@ -33,20 +44,16 @@ pub(super) fn replace_tool_results(messages: &mut Vec<Message>, results: &[ToolC
 }
 
 pub(super) fn stage_thread_tool_calls(thread: &ThreadRuntimeHandle, assistant: Message) -> Vec<String> {
-    let mut messages = thread.messages();
-    let call_ids = stage_tool_calls(&mut messages, assistant);
-    thread.replace_messages(messages);
-    call_ids
+    thread.mutate_messages(|messages| stage_tool_calls(messages, assistant))
 }
 
 pub(super) fn replace_thread_tool_results(thread: &ThreadRuntimeHandle, results: &[ToolCallResult]) -> usize {
-    let mut messages = thread.messages();
-    let finalized = replace_tool_results(&mut messages, results);
-    thread.replace_messages(messages);
-    finalized
+    thread.mutate_messages(|messages| replace_tool_results(messages, results))
 }
 
-pub(super) fn repair_unresolved_tool_calls(messages: &mut Vec<Message>) -> RecoveryReport {
+pub(super) fn repair_unresolved_tool_calls(
+    messages: &mut Vec<Message>,
+) -> Result<RecoveryReport, AmbiguousToolResultHistory> {
     let mut repaired_calls = 0;
     let mut message_index = 0;
 
@@ -74,6 +81,16 @@ pub(super) fn repair_unresolved_tool_calls(messages: &mut Vec<Message>) -> Recov
             group_end += 1;
         }
 
+        relocate_unique_late_results(messages, message_index, group_end, &calls);
+        group_end = message_index + 1;
+        completed_ids.clear();
+        while let Some(message) = messages.get(group_end).filter(|message| message.role == MessageRole::Tool) {
+            if let Some(call_id) = message.tool_call_id.as_deref() {
+                let _ = completed_ids.insert(call_id.to_string());
+            }
+            group_end += 1;
+        }
+
         let missing = calls
             .iter()
             .filter(|call| !completed_ids.contains(call.id.as_str()))
@@ -85,7 +102,92 @@ pub(super) fn repair_unresolved_tool_calls(messages: &mut Vec<Message>) -> Recov
         message_index = group_end + missing_count;
     }
 
-    RecoveryReport { repaired_calls }
+    reject_ambiguous_tool_result_history(messages)?;
+    Ok(RecoveryReport { repaired_calls })
+}
+
+/// Refuse to resume a history whose tool results cannot be mapped one-for-one
+/// to the immediately preceding assistant batch. The archive remains the
+/// durable record of the uncertain effect; guessing a canonical wire history
+/// here could hide a result or cause a later continuation to use the wrong one.
+fn reject_ambiguous_tool_result_history(messages: &[Message]) -> Result<(), AmbiguousToolResultHistory> {
+    let mut message_index = 0;
+    while let Some(message) = messages.get(message_index) {
+        if message.role != MessageRole::Assistant || message.tool_calls.as_deref().is_none_or(|calls| calls.is_empty())
+        {
+            if message.role == MessageRole::Tool {
+                return Err(AmbiguousToolResultHistory);
+            }
+            message_index += 1;
+            continue;
+        }
+
+        let calls = message.tool_calls.as_deref().unwrap_or_default();
+        let call_ids = calls.iter().map(|call| call.id.as_str()).collect::<HashSet<_>>();
+        if call_ids.len() != calls.len() {
+            return Err(AmbiguousToolResultHistory);
+        }
+
+        message_index += 1;
+        let mut result_ids = HashSet::with_capacity(calls.len());
+        while let Some(result) = messages.get(message_index).filter(|result| result.role == MessageRole::Tool) {
+            let Some(call_id) = result.tool_call_id.as_deref() else {
+                return Err(AmbiguousToolResultHistory);
+            };
+            if !call_ids.contains(call_id) || !result_ids.insert(call_id) {
+                return Err(AmbiguousToolResultHistory);
+            }
+            message_index += 1;
+        }
+    }
+    Ok(())
+}
+
+fn relocate_unique_late_results(
+    messages: &mut Vec<Message>,
+    assistant_index: usize,
+    contiguous_end: usize,
+    calls: &[ToolCall],
+) {
+    let mut result_end = contiguous_end;
+    for call in calls {
+        let call_id = call.id.as_str();
+        let call_count = messages
+            .iter()
+            .filter(|message| message.role == MessageRole::Assistant)
+            .flat_map(|message| message.tool_calls.iter().flatten())
+            .filter(|candidate| candidate.id == call_id)
+            .take(2)
+            .count();
+        if call_count != 1 {
+            continue;
+        }
+
+        let matching_results = messages
+            .iter()
+            .enumerate()
+            .filter(|(_, message)| {
+                message.role == MessageRole::Tool && message.tool_call_id.as_deref() == Some(call_id)
+            })
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        let [result_index] = matching_results.as_slice() else {
+            continue;
+        };
+        if *result_index < contiguous_end {
+            continue;
+        }
+
+        let result = messages.remove(*result_index);
+        messages.insert(result_end, result);
+        result_end += 1;
+    }
+
+    debug_assert!(
+        messages
+            .get(assistant_index)
+            .is_some_and(|message| message.role == MessageRole::Assistant)
+    );
 }
 
 fn incomplete_tool_result(call: &ToolCall) -> Message {
@@ -153,7 +255,7 @@ mod tests {
     fn repair_inserts_incomplete_result_before_later_messages() {
         let mut messages = vec![assistant([call("call-1")]), Message::user("continue".to_string())];
 
-        let report = repair_unresolved_tool_calls(&mut messages);
+        let report = repair_unresolved_tool_calls(&mut messages).expect("unambiguous history should repair");
 
         assert_eq!(report.repaired_calls, 1);
         assert_eq!(tool_ids_after(&messages, 0), ["call-1"]);
@@ -175,10 +277,58 @@ mod tests {
         let mut messages = vec![assistant([call("call-1")]), tool_result("call-1", "real result")];
         let expected = messages.clone();
 
-        let report = repair_unresolved_tool_calls(&mut messages);
+        let report = repair_unresolved_tool_calls(&mut messages).expect("complete history should be unambiguous");
 
         assert_eq!(report.repaired_calls, 0);
         assert_eq!(messages, expected);
+    }
+
+    #[test]
+    fn recovery_rejects_duplicate_result_without_discarding_terminal_evidence() {
+        // Review 3944816968: duplicate terminal results cannot be safely
+        // attributed to one canonical provider result. Keep the evidence in
+        // durable history and reject continuation instead of guessing.
+        let mut messages = vec![
+            assistant([call("call-1"), call("call-2")]),
+            tool_result("call-1", "first result"),
+            tool_result("call-1", "duplicate result"),
+        ];
+
+        let error = repair_unresolved_tool_calls(&mut messages).expect_err("duplicate results are ambiguous");
+
+        assert_eq!(error, AmbiguousToolResultHistory);
+        assert_eq!(tool_ids_after(&messages, 0), ["call-1", "call-1", "call-2"]);
+        assert_eq!(content_for(&messages, "call-1"), Some("first result"));
+        assert!(
+            messages.iter().any(|message| {
+                message.role == MessageRole::Tool
+                    && message.tool_call_id.as_deref() == Some("call-1")
+                    && message.content.as_text() == "duplicate result"
+            }),
+            "duplicate terminal evidence must remain represented rather than being guessed away"
+        );
+        assert!(content_for(&messages, "call-2").is_some_and(|content| content.contains("\"status\":\"incomplete\"")));
+    }
+
+    #[test]
+    fn recovery_preserves_and_relocates_unique_non_contiguous_result() {
+        // Review 3944816968: results arriving after an unrelated message are
+        // not part of the preceding assistant batch and must not remain as a
+        // second, non-contiguous result after recovery.
+        let late_result = tool_result("call-1", "late result");
+        let mut messages = vec![
+            assistant([call("call-1"), call("call-2")]),
+            Message::user("continue".to_string()),
+            late_result.clone(),
+        ];
+
+        let report = repair_unresolved_tool_calls(&mut messages).expect("unique late result should be attributable");
+
+        assert_eq!(report.repaired_calls, 1);
+        assert_eq!(tool_ids_after(&messages, 0), ["call-1", "call-2"]);
+        assert_eq!(messages[1], late_result);
+        assert_eq!(messages[3].role, MessageRole::User);
+        assert_eq!(messages.iter().filter(|message| message.role == MessageRole::Tool).count(), 2);
     }
 
     #[test]
@@ -189,6 +339,24 @@ mod tests {
 
         assert_eq!(call_ids, ["call-1", "call-2"]);
         assert_eq!(tool_ids_after(&messages, 1), ["call-1", "call-2"]);
+    }
+
+    #[test]
+    fn recovery_accepts_repeated_call_ids_in_separate_completed_batches() {
+        let mut messages = vec![
+            assistant([call("reused-call")]),
+            tool_result("reused-call", "first result"),
+            Message::user("continue".to_string()),
+            assistant([call("reused-call")]),
+            tool_result("reused-call", "second result"),
+        ];
+
+        let report = repair_unresolved_tool_calls(&mut messages)
+            .expect("separate assistant batches make the reused id unambiguous");
+
+        assert_eq!(report.repaired_calls, 0);
+        assert_eq!(tool_ids_after(&messages, 0), ["reused-call"]);
+        assert_eq!(tool_ids_after(&messages, 3), ["reused-call"]);
     }
 
     #[test]
@@ -227,9 +395,11 @@ mod tests {
             messages.push(Message::user("after".to_string()));
             let expected_missing = cases.len() - expected_real.len();
 
-            let first = repair_unresolved_tool_calls(&mut messages);
+            let first = repair_unresolved_tool_calls(&mut messages)
+                .expect("generated unique calls are unambiguous");
             let once = messages.clone();
-            let second = repair_unresolved_tool_calls(&mut messages);
+            let second = repair_unresolved_tool_calls(&mut messages)
+                .expect("repaired generated history remains unambiguous");
 
             prop_assert_eq!(first.repaired_calls, expected_missing);
             prop_assert_eq!(second.repaired_calls, 0);
