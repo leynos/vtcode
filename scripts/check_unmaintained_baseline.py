@@ -72,7 +72,7 @@ def _repo_status_identity(value: object, label: str) -> str:
 
     status = _require_exact_keys(value, frozenset({"Age"}), label)
     age = status["Age"]
-    if isinstance(age, bool) or not isinstance(age, int) or age < 0:
+    if type(age) is not int or age < 0:
         raise ValidationError(f"{label}.Age must be a non-negative integer")
     return "Age"
 
@@ -126,11 +126,7 @@ def _read_baseline_document() -> dict[str, object]:
 
 def _validate_baseline_metadata(baseline: dict[str, object]) -> None:
     schema_version = baseline["schema_version"]
-    if (
-        isinstance(schema_version, bool)
-        or not isinstance(schema_version, int)
-        or schema_version != SCHEMA_VERSION
-    ):
+    if type(schema_version) is not int or schema_version != SCHEMA_VERSION:
         raise ValidationError(f"baseline.schema_version must be {SCHEMA_VERSION}")
     if baseline["repository"] != REPOSITORY:
         raise ValidationError(f"baseline.repository must be {REPOSITORY!r}")
@@ -153,7 +149,7 @@ def _parse_baseline_entry(
     )
     rationale = _require_string(entry_object["rationale"], f"{label}.rationale")
     issue = entry_object["issue"]
-    if isinstance(issue, bool) or not isinstance(issue, int) or issue != ISSUE_NUMBER:
+    if type(issue) is not int or issue != ISSUE_NUMBER:
         raise ValidationError(f"{label}.issue must be {ISSUE_NUMBER}")
 
     finding_fields = {key: entry_object[key] for key in SCANNER_KEYS}

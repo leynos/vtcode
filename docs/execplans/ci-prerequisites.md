@@ -168,6 +168,10 @@ staging.
   CodeScene repair packet exposed a non-hermetic skills count assertion and
   formatter output. The test must assert exclusion of its invalid fixture
   without treating the deliberately installed system-skill catalogue as empty.
+- [ ] (2026-09-08) Commit the final strict-JSON guard repair, then compare the
+  immutable head with `dddd1352` in CodeScene. The earlier comparison used
+  `2719cde82` and therefore did not include the committed repair
+  `26fe6dbdf`; it is not evidence against that repair.
 
 ## Surprises & discoveries
 
@@ -487,6 +491,21 @@ A direct Unicode/trailing-newline replacement test records that behaviour.
 The GLM-5.3 Flash accessor example moved beside the manual `ModelId` accessors,
 so `models/tests.rs` returns to its prior responsibility count without
 weakening all-model metadata coverage.
+
+The final CodeScene pass over `26fe6dbdf` identifies three strict decoded-JSON
+integer guards as two-branch conditionals. Each now uses `type(value) is not
+int` before its existing value predicate, which rejects JSON booleans and
+floats without a special boolean branch or a schema relaxation. One focused
+subtest-driven control now covers boolean and float rejection for age,
+schema-version and issue, retaining each field-specific diagnostic.
+`ListSkillsTool::execute` retains its baseline cyclomatic complexity of 12; its
+three added lines are formatter layout for the manifest-backed iterator, with
+no new decision path. The changed-Markdown helper has no complex method above
+threshold; its 4.78 aggregate reflects nine explicit JSON, path, filesystem,
+symlink and child-process fail-closed functions. Splitting those functions
+again would only change the denominator and weaken local boundary legibility.
+These are documented scope dispositions, not CodeScene suppressions. The
+`input.rs` 1,024-to-1,025 safety guard remains separately tracked by #118.
 
 ## Context and orientation
 

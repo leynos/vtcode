@@ -46,7 +46,9 @@ def baseline_entry(
 class CheckerHarness:
     """Copy the checker into a temporary repository and run its real wrapper."""
 
-    def __init__(self, scanner_output: str, scanner_status: int, baseline: object) -> None:
+    def __init__(
+        self, scanner_output: str, scanner_status: int, baseline: object
+    ) -> None:
         self.scanner_output = scanner_output
         self.scanner_status = scanner_status
         self.baseline = baseline
@@ -77,7 +79,9 @@ class CheckerHarness:
         scanner.chmod(scanner.stat().st_mode | stat.S_IXUSR)
         return scanner
 
-    def run(self, scanner_name: str = "fake-scanner") -> subprocess.CompletedProcess[str]:
+    def run(
+        self, scanner_name: str = "fake-scanner"
+    ) -> subprocess.CompletedProcess[str]:
         scanner = self.scanner(scanner_name)
         return subprocess.run(
             [sys.executable, str(self.checker), "--scanner", str(scanner)],
@@ -104,7 +108,11 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
         scanner_status: int,
         baseline_entries: list[dict[str, object]] | None = None,
     ) -> subprocess.CompletedProcess[str]:
-        output = scanner_output if isinstance(scanner_output, str) else json.dumps(scanner_output)
+        output = (
+            scanner_output
+            if isinstance(scanner_output, str)
+            else json.dumps(scanner_output)
+        )
         baseline = {
             "schema_version": 1,
             "repository": "leynos/vtcode",
@@ -113,7 +121,9 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
         with CheckerHarness(output, scanner_status, baseline) as harness:
             return harness.run()
 
-    def test_known_finding_is_accepted_and_printed_with_issue_and_classification(self) -> None:
+    def test_known_finding_is_accepted_and_printed_with_issue_and_classification(
+        self,
+    ) -> None:
         package = finding(
             repo_status={"Age": 999},
             outdated_deps=[
@@ -136,7 +146,9 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
     def test_age_value_is_not_part_of_finding_identity(self) -> None:
         scanner_package = finding(repo_status={"Age": 4})
         baseline_package = finding(repo_status={"Age": 4_000_000})
-        result = self.run_checker([scanner_package], 1, [baseline_entry(baseline_package)])
+        result = self.run_checker(
+            [scanner_package], 1, [baseline_entry(baseline_package)]
+        )
 
         self.assertEqual(result.returncode, 0)
 
@@ -230,10 +242,73 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
                     result = harness.run()
                 self.assertEqual(result.returncode, 2)
 
+    def test_non_integer_control_fields_fail_closed_with_field_diagnostics(
+        self,
+    ) -> None:
+        known = finding()
+        valid_baseline = {
+            "schema_version": 1,
+            "repository": "leynos/vtcode",
+            "entries": [baseline_entry(known)],
+        }
+        cases = [
+            (
+                "age boolean",
+                [finding(repo_status={"Age": True})],
+                valid_baseline,
+                "scanner.findings[0].repo_status.Age must be a non-negative integer",
+            ),
+            (
+                "age float",
+                [finding(repo_status={"Age": 1.5})],
+                valid_baseline,
+                "scanner.findings[0].repo_status.Age must be a non-negative integer",
+            ),
+            (
+                "schema version boolean",
+                [known],
+                {**valid_baseline, "schema_version": True},
+                "baseline.schema_version must be 1",
+            ),
+            (
+                "schema version float",
+                [known],
+                {**valid_baseline, "schema_version": 1.0},
+                "baseline.schema_version must be 1",
+            ),
+            (
+                "issue boolean",
+                [known],
+                {
+                    **valid_baseline,
+                    "entries": [baseline_entry(known) | {"issue": True}],
+                },
+                "baseline.entries[0].issue must be 108",
+            ),
+            (
+                "issue float",
+                [known],
+                {
+                    **valid_baseline,
+                    "entries": [baseline_entry(known) | {"issue": 108.0}],
+                },
+                "baseline.entries[0].issue must be 108",
+            ),
+        ]
+        for label, scanner_output, baseline, diagnostic in cases:
+            with self.subTest(label=label):
+                with CheckerHarness(json.dumps(scanner_output), 1, baseline) as harness:
+                    result = harness.run()
+
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(diagnostic, result.stderr)
+
     def test_scanner_operational_failure_fails_even_with_plausible_json(self) -> None:
         for scanner_status in (2, 7):
             with self.subTest(scanner_status=scanner_status):
-                result = self.run_checker([finding()], scanner_status, [baseline_entry(finding())])
+                result = self.run_checker(
+                    [finding()], scanner_status, [baseline_entry(finding())]
+                )
 
                 self.assertEqual(result.returncode, 2)
                 self.assertIn(f"unexpected status {scanner_status}", result.stderr)
@@ -242,7 +317,9 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
         cases = [(1, []), (0, [finding()])]
         for scanner_status, output in cases:
             with self.subTest(scanner_status=scanner_status, output=output):
-                result = self.run_checker(output, scanner_status, [baseline_entry(finding())])
+                result = self.run_checker(
+                    output, scanner_status, [baseline_entry(finding())]
+                )
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("contradicts finding count", result.stderr)
 
@@ -254,7 +331,12 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
         }
         with CheckerHarness("[]", 0, baseline) as harness:
             result = subprocess.run(
-                [sys.executable, str(harness.checker), "--scanner", str(harness.root / "missing-scanner")],
+                [
+                    sys.executable,
+                    str(harness.checker),
+                    "--scanner",
+                    str(harness.root / "missing-scanner"),
+                ],
                 cwd=harness.root,
                 capture_output=True,
                 text=True,
@@ -270,7 +352,11 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
         package = finding()
         baseline = baseline_entry(package)
         output = json.dumps([package])
-        baseline_document = {"schema_version": 1, "repository": "leynos/vtcode", "entries": [baseline]}
+        baseline_document = {
+            "schema_version": 1,
+            "repository": "leynos/vtcode",
+            "entries": [baseline],
+        }
         with CheckerHarness(output, 1, baseline_document) as harness:
             arguments_path = harness.root / "arguments.json"
             scanner = harness.root / scanner_name
