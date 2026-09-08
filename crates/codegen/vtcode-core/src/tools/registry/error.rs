@@ -2,6 +2,7 @@ use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::borrow::Cow;
+use tracing::debug;
 use vtcode_commons::ErrorCategory;
 
 use crate::retry::{RetryDecision, RetryPolicy, RetryPolicyCoreExt};
@@ -432,6 +433,12 @@ fn apply_explicit_error_state(mut error: ToolExecutionError, tool_name: &str, so
     if tool_name == crate::config::constants::tools::WRITE_STDIN
         && let Some(missing) = source.downcast_ref::<crate::tools::exec_session::ExecSessionNotFound>()
     {
+        debug!(
+            tool_name,
+            session_id = %missing.session_id,
+            tool_recovery_outcome = "stale_exec_session_rejected",
+            "Rejected stale write_stdin session"
+        );
         error.category = ErrorCategory::ResourceNotFound;
         error.error_type = ToolErrorType::ResourceNotFound;
         error.retryable = false;

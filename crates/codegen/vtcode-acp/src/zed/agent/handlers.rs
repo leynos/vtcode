@@ -96,6 +96,11 @@ struct TurnGuard {
 impl TurnGuard {
     fn begin(thread: ThreadRuntimeHandle) -> Result<Self, SdkError> {
         let _submission_id = thread.begin_turn().map_err(|error| {
+            warn!(
+                thread_id = %thread.thread_id(),
+                prompt_outcome = "turn_in_progress_rejected",
+                "Rejected concurrent ACP prompt"
+            );
             SdkError::internal_error().data(json!({ "reason": "turn_in_progress", "detail": error.to_string() }))
         })?;
         Ok(Self { thread })
@@ -216,6 +221,10 @@ async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, b
     session.update_transcript_path().await;
 }
 
+/// Persists the strict write-ahead checkpoint required before tool execution.
+///
+/// Ordinary transcript checkpoints remain best-effort through
+/// [`persist_session_checkpoint`].
 async fn require_session_checkpoint(
     agent: &ZedAgent,
     session: &SessionHandle,
@@ -1321,6 +1330,14 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 assistant_tool_message.reasoning = Some(assistant_reasoning.clone());
                             }
                             drop(stage_thread_tool_calls(&thread, assistant_tool_message));
+                            let tool_call_count = tool_calls.len();
+                            info!(
+                                session_id = %args.session_id,
+                                tool_call_count,
+                                tool_loop_count,
+                                tool_recovery_outcome = "placeholders_staged",
+                                "ACP tool recovery placeholders staged"
+                            );
                             require_session_checkpoint(&agent, &session, "assistant_tool_calls_write_ahead").await?;
                             if let Some(controller) = agent.session_subagent_controller(&session) {
                                 controller.set_parent_session_id(args.session_id.to_string()).await;
@@ -1330,12 +1347,26 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 match agent.execute_tool_calls(&session, &args.session_id, &tool_calls).await {
                                     Ok(results) => results,
                                     Err(error) => {
-                                        warn!(%error, "Tool execution failed");
+                                        warn!(
+                                            %error,
+                                            session_id = %args.session_id,
+                                            tool_call_count,
+                                            tool_recovery_outcome = "execution_interrupted",
+                                            "Tool execution failed"
+                                        );
                                         persist_session_checkpoint(&agent, &session, "interrupted_tool_results").await;
                                         return Err(error);
                                     }
                                 };
-                            let _finalized = replace_thread_tool_results(&thread, &tool_results);
+                            let finalized_tool_count = replace_thread_tool_results(&thread, &tool_results);
+                            info!(
+                                session_id = %args.session_id,
+                                tool_call_count,
+                                tool_loop_count,
+                                finalized_tool_count,
+                                tool_recovery_outcome = "results_replaced",
+                                "ACP tool recovery results replaced"
+                            );
                             persist_session_checkpoint(&agent, &session, "tool_results").await;
                             if session.cancellation.is_cancelled() {
                                 stop_reason = acp::StopReason::Cancelled;
@@ -1471,6 +1502,14 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     &thread,
                     Message::assistant_with_tools(response.content.clone().unwrap_or_default(), tool_calls.clone()),
                 ));
+                let tool_call_count = tool_calls.len();
+                info!(
+                    session_id = %args.session_id,
+                    tool_call_count,
+                    tool_loop_count,
+                    tool_recovery_outcome = "placeholders_staged",
+                    "ACP tool recovery placeholders staged"
+                );
                 require_session_checkpoint(&agent, &session, "assistant_tool_calls_write_ahead").await?;
                 if let Some(controller) = agent.session_subagent_controller(&session) {
                     controller.set_parent_session_id(args.session_id.to_string()).await;
@@ -1479,12 +1518,26 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 let tool_results = match agent.execute_tool_calls(&session, &args.session_id, &tool_calls).await {
                     Ok(results) => results,
                     Err(error) => {
-                        warn!(%error, "Tool execution failed");
+                        warn!(
+                            %error,
+                            session_id = %args.session_id,
+                            tool_call_count,
+                            tool_recovery_outcome = "execution_interrupted",
+                            "Tool execution failed"
+                        );
                         persist_session_checkpoint(&agent, &session, "interrupted_tool_results").await;
                         return Err(error);
                     }
                 };
-                let _finalized = replace_thread_tool_results(&thread, &tool_results);
+                let finalized_tool_count = replace_thread_tool_results(&thread, &tool_results);
+                info!(
+                    session_id = %args.session_id,
+                    tool_call_count,
+                    tool_loop_count,
+                    finalized_tool_count,
+                    tool_recovery_outcome = "results_replaced",
+                    "ACP tool recovery results replaced"
+                );
                 persist_session_checkpoint(&agent, &session, "tool_results").await;
                 if session.cancellation.is_cancelled() {
                     stop_reason = acp::StopReason::Cancelled;

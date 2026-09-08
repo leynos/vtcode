@@ -104,6 +104,11 @@ an archive with ambiguous terminal results is rejected before continuation.
   CodeScene follow-up, including formatter wrapping. The exact +603 delta is
   within that ceiling; no assertion was removed or code minified to meet the
   superseded +600 count.
+- [x] (2026-09-08) Froze the approved six-path pre-merge manifest and added
+  module/API documentation plus bounded recovery observations. Traces carry
+  static outcome labels and existing identifiers/counts only; they do not
+  record tool arguments, results, archive contents, or a new metric/event
+  stream. The source change awaits the sole shared scrutineer's scoped packet.
 - [ ] Obtain the remaining ACP/core relevant tests, Clippy and documentation
   checks through the shared scrutineer before a commit proposal.
 - [ ] Obtain root-scheduled deterministic gates, CodeRabbit review, and the
@@ -171,6 +176,11 @@ an archive with ambiguous terminal results is rejected before continuation.
   to +603 non-plan lines. This exceeds the root-approved +600 limit by three
   lines. Root then approved a one-purpose +650 ceiling that also covers
   formatter wrapping; it does not authorize feature growth or scope expansion.
+- The approved bounded artisan and scribe assignments could not be dispatched:
+  both attempts returned `agent thread limit reached`. No active agent was
+  interrupted. Root authorised direct journeyman implementation of the frozen
+  six-file packet, while preserving the independent shared-scrutineer review
+  and gate requirement.
 
 ## Decision log
 
@@ -240,6 +250,18 @@ an archive with ambiguous terminal results is rejected before continuation.
   lines, and reducing that count by minifying or weakening assertions would
   damage the required evidence without reducing feature scope.
   Date/Author: 2026-09-08 / root-approved PR13 CodeScene tolerance decision.
+- Decision: satisfy recovery observability with the existing tracing surface:
+  stable outcome labels with session/thread identifiers and call/result counts.
+  Do not create an ACP metric collector, event bus, payload logging, or log
+  while a thread-history mutex is held.
+  Rationale: this makes durable admission and recovery outcomes diagnosable
+  without widening the runtime contract or exposing tool inputs/results.
+  Date/Author: 2026-09-08 / root-approved PR13 pre-merge packet.
+- Decision: when agent capacity prevented the approved disjoint artisan/scribe
+  packets, complete the mechanical six-file change directly as journeyman;
+  retain independent verification through the root-designated scrutineer.
+  Rationale: no agent was available without disrupting concurrent ACP work.
+  Date/Author: 2026-09-08 / root authorised.
 
 ## Outcomes & retrospective
 
@@ -251,6 +273,12 @@ shared scrutineer was the sole runner; an interrupted artisan attempt is not
 evidence. The plan therefore records the honest source-to-green limitation
 and will add the remaining gate, review, commit, and disposition evidence
 before the plateau is complete.
+
+The pre-merge documentation and tracing amendment is implemented but not yet
+validated. Its intended outcome is explicit fail-closed archive-resume
+guidance, documented strict admission sequencing, and bounded static recovery
+observations. The shared scrutineer must supply all formatter, test, lint, and
+documentation evidence before any commit, publication, or CodeRabbit reply.
 
 ## Context and orientation
 
@@ -275,6 +303,7 @@ request #13's interrupted-tool recovery scope. Review records are Codex
 ACP-GOAL-DURABILITY -> PR13-RECOVERY -> EP-M1 -> checkpoint failure test
 ACP-GOAL-DURABILITY -> PR13-RECOVERY -> EP-M1 -> atomic history property test
 PR13-RECOVERY -> EP-M2 -> repaired archive behavioural tests
+PR13-RECOVERY -> PR13-PREMERGE -> docs and bounded recovery observations
 ```
 
 ## Verification plan
@@ -318,6 +347,14 @@ rejection while accepting repeated IDs in distinct completed batches. The
 checkpoint test retains its real ACP request, caller-visible checkpoint error,
 one provider-call count and unchanged target assertion. Re-run its one handler
 selector and the three recovery selectors through the shared scrutineer.
+
+`INV-RECOVERY-OBSERVABILITY`: recovery observations record only a static
+outcome label plus existing session/thread identifiers and counts. Placeholder
+staging, terminal replacement, interrupted execution, rejected ambiguous
+archives, concurrent prompts, and stale exec sessions retain their existing
+control flow and wire errors. Compile/lint coverage verifies the additions;
+existing behavioural selectors verify the unchanged recovery path without
+requiring a log-capture dependency.
 
 The only external axiom is the filesystem's reported checkpoint error. Tests
 exercise repository-owned error handling using an invalid archive destination;
@@ -418,3 +455,10 @@ approved additive public `mutate_messages<T>` method, +572 non-plan line delta,
 and exact focused green logs. The planned Red stage remains a design oracle,
 not claimed execution evidence; the remaining packet is ACP/core relevant
 tests, Clippy and documentation checks before commit and review convergence.
+
+2026-09-08: added the root-approved six-path documentation and observability
+follow-up. Agent capacity prevented the planned bounded artisan/scribe split,
+so root authorised direct journeyman implementation without interrupting other
+ACP work. The independent shared scrutineer remains the only validation
+authority. Published review dispositions remain deferred until a verified,
+rebased SHA exists and use the `pandalump` token process when authorised.
