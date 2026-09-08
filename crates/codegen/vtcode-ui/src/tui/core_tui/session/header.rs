@@ -453,7 +453,7 @@ impl Session {
             push_badge(&mut spans, "Safe".to_string(), badge_style, &mut first_section);
         }
 
-        // Show active subagent badge (first one, matching input block behavior)
+        // Show active subagent badge (first one, matching input block behaviour)
         if let Some(badge) = self.header_context.subagent_badges.first() {
             let mut badge_style = ratatui_style_from_inline(&badge.style, self.theme.foreground);
             if badge.full_background {

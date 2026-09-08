@@ -40,9 +40,9 @@ fn load_system_prompt_from_existing_file() {
     assert!(loaded_content.contains("test_tool"));
 }
 
-/// Test behavior when system prompt file doesn't exist
+/// Test behaviour when system prompt file doesn't exist
 #[test]
-fn prompt_file_missing_behavior() {
+fn prompt_file_missing_behaviour() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let nonexistent_path = temp_dir.path().join("prompts").join("system.md");
 

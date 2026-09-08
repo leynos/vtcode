@@ -135,7 +135,7 @@ fn lightweight_model_options(provider: Provider, main_model: &str) -> Vec<Lightw
         LightweightModelOption {
             label: "Use main model".to_string(),
             subtitle: format!(
-                "Keep memory extraction on {} for accuracy-first behavior.",
+                "Keep memory extraction on {} for accuracy-first behaviour.",
                 display_model_label(main_model)
             ),
             value: main_model.to_string(),

@@ -85,7 +85,7 @@ impl Approvable<ApplyPatchRequest> for ApplyPatchRuntime {
     }
 
     fn exec_approval_requirement(&self, _req: &ApplyPatchRequest) -> Option<ExecApprovalRequirement> {
-        // Preserve existing behavior from the legacy orchestrator path:
+        // Preserve existing behaviour from the legacy orchestrator path:
         // apply_patch is executed without additional approval prompts here.
         Some(ExecApprovalRequirement::Skip {
             bypass_sandbox: false,

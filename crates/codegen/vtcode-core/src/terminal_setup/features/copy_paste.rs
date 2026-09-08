@@ -47,11 +47,11 @@ bindings = [
         .to_string(),
 
         TerminalType::TerminalApp => r#"Terminal.app copy/paste is built-in.
-Configure profile behavior in Terminal → Settings.
+Configure profile behaviour in Terminal → Settings.
 "#
         .to_string(),
 
-        TerminalType::Xterm => r#"xterm copy/paste behavior is controlled via X resources and selection settings.
+        TerminalType::Xterm => r#"xterm copy/paste behaviour is controlled via X resources and selection settings.
 "#
         .to_string(),
 
@@ -102,7 +102,7 @@ Configure profile behavior in Terminal → Settings.
 3. Enable "Copy to pasteboard on selection"
 4. Go to Pointer tab
 5. Set middle-click action to "Paste from Clipboard"
-6. Under Advanced, search for "paste" to customize paste behavior
+6. Under Advanced, search for "paste" to customize paste behaviour
 "#
         .to_string(),
 

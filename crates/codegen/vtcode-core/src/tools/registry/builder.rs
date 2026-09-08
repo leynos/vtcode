@@ -141,7 +141,8 @@ impl ToolRegistry {
         } = workspace_config;
         let edited_file_monitor = Arc::new(crate::tools::edited_file_monitor::EditedFileMonitor::new());
         let inventory = ToolInventory::new(workspace_root.clone(), Arc::clone(&edited_file_monitor));
-        let planning_workflow_state = PlanningWorkflowState::new(workspace_root.clone());
+        let metrics = Arc::new(crate::metrics::MetricsCollector::new());
+        let planning_workflow_state = PlanningWorkflowState::new(workspace_root.clone()).with_metrics(metrics.clone());
 
         register_builtin_packs(&inventory, &planning_workflow_state, &tool_config).await;
 
@@ -156,7 +157,6 @@ impl ToolRegistry {
         };
 
         let optimization_config = vtcode_config::OptimizationConfig::default();
-        let metrics = Arc::new(crate::metrics::MetricsCollector::new());
         let hot_cache_size = std::num::NonZeroUsize::new(optimization_config.tool_registry.hot_cache_size)
             .unwrap_or(std::num::NonZeroUsize::MIN);
         let output_spooler = Arc::new(ToolOutputSpooler::with_config(&workspace_root, spooler_config));

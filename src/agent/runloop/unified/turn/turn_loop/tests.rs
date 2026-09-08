@@ -68,7 +68,7 @@ This draft is missing concrete step evidence.
 1. Run the focused planning test.
 
 ## Assumptions and Defaults
-1. Preserve the existing behavior.
+1. Preserve the existing behaviour.
 "#;
 
 #[derive(Clone, Copy)]

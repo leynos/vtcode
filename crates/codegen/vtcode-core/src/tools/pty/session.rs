@@ -222,7 +222,7 @@ impl Drop for PtySessionHandle {
         }
 
         // Kill child process and its process group using graceful termination.
-        // Match the robust termination behavior from codex-rs/utils/pty PR 12688
+        // Match the robust termination behaviour from codex-rs/utils/pty PR 12688
         // which ensures descendants from interactive shells/REPLs do not survive.
         {
             let mut child = self.child.lock();

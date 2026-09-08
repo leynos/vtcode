@@ -51,7 +51,7 @@ async fn test_adaptive_loop_detection_integration() -> Result<()> {
 
     // 4. Test "list_files" limit (Should NOT trigger on 3rd attempt)
     let list_tool = tools::LIST_FILES;
-    // Call 1-3 with different paths to avoid identical-call hard-stop behavior.
+    // Call 1-3 with different paths to avoid identical-call hard-stop behaviour.
     let _warning = executor.record_tool_call(list_tool, &json!({ "path": "/tmp/a" }));
     let _warning = executor.record_tool_call(list_tool, &json!({ "path": "/tmp/b" }));
     let warning_list = executor.record_tool_call(list_tool, &json!({ "path": "/tmp/c" }));

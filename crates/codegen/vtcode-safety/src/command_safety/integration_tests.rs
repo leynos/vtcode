@@ -247,7 +247,7 @@ mod tests {
     async fn test_whitespace_only_command_denied() {
         let evaluator = UnifiedCommandEvaluator::new();
         let cmd = vec!["   ".to_string()];
-        // Note: This may or may not be caught at this level depending on trim behavior
+        // Note: This may or may not be caught at this level depending on trim behaviour
         // Just ensure it doesn't panic
         drop(evaluator.evaluate(&cmd).await);
     }

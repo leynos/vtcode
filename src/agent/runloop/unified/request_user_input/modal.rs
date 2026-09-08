@@ -276,7 +276,7 @@ mod tests {
                     "description": "Keep the implementation focused."
                 }, {
                     "label": "Broader scope",
-                    "description": "Cover adjacent behavior in the same change."
+                    "description": "Cover adjacent behaviour in the same change."
                 }]
             }]
         });

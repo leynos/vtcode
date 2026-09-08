@@ -445,15 +445,20 @@ pub(crate) async fn execute_plan_confirmation_with_context(
 pub(crate) async fn load_plan_text_for_approval(
     tool_registry: &ToolRegistry,
 ) -> Result<ValidatedPlanArtefact, PlanArtefactError> {
-    let plan_file = tool_registry
-        .planning_workflow_state()
-        .get_plan_file()
-        .await
-        .ok_or(PlanArtefactError::Missing)?;
+    let state = tool_registry.planning_workflow_state();
+    let plan_file = state.get_plan_file().await.ok_or(PlanArtefactError::Missing)?;
     let text = tokio::fs::read_to_string(&plan_file)
         .await
         .map_err(|source| PlanArtefactError::Read { path: plan_file.clone(), source })?;
-    ValidatedPlanArtefact::from_text(plan_file, text)
+    match ValidatedPlanArtefact::from_text(plan_file, text) {
+        Err(error) => {
+            if let PlanArtefactError::Invalid { report, .. } = &error {
+                state.record_plan_validation_rejection(report);
+            }
+            Err(error)
+        }
+        result => result,
+    }
 }
 
 use crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState;
@@ -625,11 +630,12 @@ mod tests {
     use tokio::sync::{Notify, mpsc};
 
     use super::{
-        PlanApprovalRoute, PlanConfirmationOutcome, build_plan_confirmation_request_with_context,
-        execute_plan_confirmation, plan_approval_route, plan_confirmation_submission_to_outcome, render_plan_summary,
-        render_structured_plan,
+        PlanApprovalRoute, PlanArtefactError, PlanConfirmationOutcome, build_plan_confirmation_request_with_context,
+        execute_plan_confirmation, load_plan_text_for_approval, plan_approval_route,
+        plan_confirmation_submission_to_outcome, render_plan_summary, render_structured_plan,
     };
     use crate::agent::runloop::unified::state::CtrlCState;
+    use vtcode_core::tools::registry::ToolRegistry;
     use vtcode_ui::tui::app::{
         InlineCommand, InlineEvent, InlineHandle, InlineListSelection, InlineMessageKind, InlineSession,
         ListOverlayRequest, TransientEvent, TransientHotkeyAction, TransientRequest, TransientSubmission,
@@ -732,6 +738,24 @@ mod tests {
         assert!(lines.iter().any(|line| line.starts_with("1. Instrument startup timing")));
         assert!(lines.iter().any(|line| line == "… and 2 more plan steps"));
         assert!(!lines.iter().any(|line| line == "Summary"));
+    }
+
+    #[tokio::test]
+    async fn later_approval_placeholder_rejection_records_once() {
+        let workspace = tempfile::tempdir().expect("temporary workspace should be created");
+        let plan_file = workspace.path().join("plan.md");
+        tokio::fs::write(&plan_file, "[file, symbol, or behavior confirmed from the repo]")
+            .await
+            .expect("invalid plan should be written");
+
+        let registry = ToolRegistry::new(workspace.path().to_path_buf()).await;
+        registry.planning_workflow_state().set_plan_file(Some(plan_file)).await;
+
+        let error = load_plan_text_for_approval(&registry)
+            .await
+            .expect_err("placeholder plan should be rejected at later approval");
+        assert!(matches!(error, PlanArtefactError::Invalid { .. }));
+        assert_eq!(registry.metrics_collector().get_planning_metrics().placeholder_token_rejections, 1);
     }
 
     // --- C: approval outcomes (submission mapping, request items) ------

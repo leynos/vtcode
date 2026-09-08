@@ -697,7 +697,7 @@ impl LoopDetector {
 
             // Fuzzy detection: if tool names match but hashes differ, check semantic similarity?
             // For now, simpler fuzzy check: ignore edit_file content arguments?
-            // Better: Detecting "oscillating" behavior A->B->A->B even if args slightly differ.
+            // Better: Detecting "oscillating" behaviour A->B->A->B even if args slightly differ.
             // If tool names match exactly for a sequence of length >= 3
             let suffix_names: Vec<&str> = suffix.iter().map(|(n, _)| *n).collect();
             let prev_names: Vec<&str> = prev.iter().map(|(n, _)| *n).collect();

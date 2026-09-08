@@ -14,7 +14,7 @@ interface KeyMetadata {
 const SECTION_METADATA: Record<string, SectionMetadata> = {
     agent: {
         label: "Agent",
-        description: "Core VT Code agent behavior and model defaults.",
+        description: "Core VT Code agent behaviour and model defaults.",
     },
     "agent.onboarding": {
         label: "Onboarding",
@@ -22,7 +22,7 @@ const SECTION_METADATA: Record<string, SectionMetadata> = {
     },
     prompt_cache: {
         label: "Prompt Cache",
-        description: "Caching behavior that reduces repeated API calls.",
+        description: "Caching behaviour that reduces repeated API calls.",
     },
     security: {
         label: "Security",

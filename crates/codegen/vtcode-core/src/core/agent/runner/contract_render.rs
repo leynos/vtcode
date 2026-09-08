@@ -110,7 +110,7 @@ impl AgentRunner {
         }
 
         markdown.push_str(
-            "\n## Review Standard\n- Prefer observable behavior over claimed completion.\n- Prefer failing borderline output over accepting unverifiable work.\n",
+            "\n## Review Standard\n- Prefer observable behaviour over claimed completion.\n- Prefer failing borderline output over accepting unverifiable work.\n",
         );
         markdown
     }

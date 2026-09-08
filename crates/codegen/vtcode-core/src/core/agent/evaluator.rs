@@ -177,7 +177,7 @@ pub fn default_code_rubric() -> EvaluationRubric {
             weight: 0.4,
             hard_threshold: 0.9,
             description: "The code implements what was asked, not just something \
-                that looks right. Edge cases are handled. Behavior matches the spec."
+                that looks right. Edge cases are handled. Behaviour matches the spec."
                 .to_string(),
         },
         ScoringDimension {
@@ -274,7 +274,7 @@ mod tests {
     fn multiple_failures_reported() {
         let rubric = default_code_rubric();
         let result = rubric.evaluate(&[
-            ("correctness", 0.5, "wrong behavior"),
+            ("correctness", 0.5, "wrong behaviour"),
             ("functionality", 0.3, "tests fail"),
             ("code_quality", 0.85, "clean"),
             ("test_coverage", 0.7, "good"),

@@ -200,7 +200,7 @@ mod tests {
         }
     }
 
-    // SessionOptions behavior tests.
+    // SessionOptions behaviour tests.
 
     #[test]
     fn session_options_from_host_uses_defaults() {

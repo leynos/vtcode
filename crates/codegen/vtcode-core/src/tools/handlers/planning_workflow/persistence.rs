@@ -82,6 +82,7 @@ pub async fn sync_tracker_into_plan_file(plan_file: &Path, tracker_markdown: &st
 pub async fn persist_plan_draft(state: &PlanningWorkflowState, plan_markdown: &str) -> Result<PersistedPlanDraft> {
     let validation = validate_plan_content(plan_markdown);
     if !validation.is_ready() {
+        state.record_plan_validation_rejection(&validation);
         bail!("plan draft is not ready for persistence: {}", validation.reasons().join("; "));
     }
 
@@ -387,5 +388,27 @@ pub(super) fn detect_validation_command_hints(workspace_root: &Path) -> Validati
     ValidationCommandHints {
         build_and_lint: "[project build and lint command(s)]".to_string(),
         tests: "[project test command(s)]".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::persist_plan_draft;
+    use crate::metrics::MetricsCollector;
+    use crate::tools::handlers::planning_workflow::state::PlanningWorkflowState;
+    use std::sync::Arc;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn placeholder_rejection_at_persistence_boundary_counts_once() {
+        let workspace = tempdir().expect("temporary workspace should be created");
+        let collector = Arc::new(MetricsCollector::new());
+        let state = PlanningWorkflowState::new(workspace.path().to_path_buf()).with_metrics(collector.clone());
+
+        let error = persist_plan_draft(&state, "[file, symbol, or behavior confirmed from the repo]")
+            .await
+            .expect_err("legacy placeholder should be rejected before persistence");
+        assert!(error.to_string().contains("placeholder tokens"));
+        assert_eq!(collector.get_planning_metrics().placeholder_token_rejections, 1);
     }
 }

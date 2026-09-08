@@ -7,6 +7,7 @@ VT Code uses a configuration file named `vtcode.toml` that can be placed at the 
 ## Quick navigation
 
 - [Feature flags](#feature-flags)
+- [SessionConfig compatibility](#sessionconfig-compatibility)
 - [Settings palette and reset](#settings-palette-and-reset)
 - [Live reload](#live-reload)
 - [Model selection](#model-selection)
@@ -34,6 +35,12 @@ VT Code supports several mechanisms for setting config values:
 - Environment variables that can override certain configuration options.
 
 Both the workspace `vtcode.toml` and the main `vtcode.toml` file support the following options:
+
+## SessionConfig compatibility
+
+Existing persisted `SessionConfig` TOML continues to use the `[behavior]`
+table. No TOML migration is required: the spelling change applies only to the
+native Rust identifier and public API (`BehaviourConfig`).
 
 ## Settings palette and reset
 

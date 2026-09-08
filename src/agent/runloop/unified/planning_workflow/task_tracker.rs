@@ -228,6 +228,7 @@ pub(crate) async fn create_task_tracker_from_active_plan(
         .with_context(|| format!("failed to read approved plan {}", plan_file.display()))?;
     let validation = validate_plan_content(&plan_content);
     if !validation.is_ready() {
+        plan_state.record_plan_validation_rejection(&validation);
         bail!("approved plan is not ready for execution: {}", validation.reasons().join("; "));
     }
 
@@ -357,7 +358,7 @@ mod tests {
     fn tracker_only_contains_implementation_steps() {
         let plan = PlanContent::from_markdown(
             "Launch plan".to_string(),
-            "## Summary\nImprove startup behavior.\n\n## Implementation Steps\n1. Update src/startup.rs -> verify: cargo nextest run -p vtcode\n\n## Test Cases and Validation\n1. Run cargo nextest run -p vtcode\n\n## Assumptions and Defaults\n1. Existing startup policy remains unchanged.",
+            "## Summary\nImprove startup behaviour.\n\n## Implementation Steps\n1. Update src/startup.rs -> verify: cargo nextest run -p vtcode\n\n## Test Cases and Validation\n1. Run cargo nextest run -p vtcode\n\n## Assumptions and Defaults\n1. Existing startup policy remains unchanged.",
             None,
         );
 

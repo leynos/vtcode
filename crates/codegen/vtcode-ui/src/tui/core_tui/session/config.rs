@@ -16,8 +16,10 @@ pub struct SessionConfig {
     /// Key binding preferences
     key_bindings: KeyBindingConfig,
 
-    /// Behavior preferences
-    behavior: BehaviorConfig,
+    /// Behaviour preferences.
+    /// Wire key `behavior` is fixed for configuration compatibility.
+    #[serde(rename = "behavior")]
+    behaviour: BehaviourConfig,
 
     /// Performance related settings
     performance: PerformanceConfig,
@@ -238,9 +240,9 @@ impl Default for KeyBindingConfig {
     }
 }
 
-/// Behavior configuration
+/// Behaviour configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BehaviorConfig {
+pub struct BehaviourConfig {
     /// Maximum lines for input area
     max_input_lines: usize,
 
@@ -254,7 +256,7 @@ pub struct BehaviorConfig {
     show_queued_inputs: bool,
 }
 
-impl Default for BehaviorConfig {
+impl Default for BehaviourConfig {
     fn default() -> Self {
         Self {
             max_input_lines: 10,
@@ -351,7 +353,7 @@ impl SessionConfig {
         // parsing and validation for different configuration types
         match key {
             "behavior.max_input_lines" => {
-                self.behavior.max_input_lines =
+                self.behaviour.max_input_lines =
                     value.parse().map_err(|_| format!("Cannot parse '{value}' as number"))?;
             }
             "performance.lru_cache_size" => {
@@ -366,7 +368,7 @@ impl SessionConfig {
     /// Gets a configuration value by key
     fn get_value(&self, key: &str) -> Option<String> {
         match key {
-            "behavior.max_input_lines" => Some(self.behavior.max_input_lines.to_string()),
+            "behavior.max_input_lines" => Some(self.behaviour.max_input_lines.to_string()),
             "performance.lru_cache_size" => Some(self.performance.lru_cache_size.to_string()),
             _ => None,
         }
@@ -376,7 +378,7 @@ impl SessionConfig {
     fn validate(&self) -> Result<(), Vec<String>> {
         let mut errors = Vec::new();
 
-        if self.behavior.history_size == 0 {
+        if self.behaviour.history_size == 0 {
             errors.push("history_size must be greater than 0".to_owned());
         }
 
@@ -399,7 +401,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = SessionConfig::new();
-        assert_eq!(config.behavior.history_size, 100);
+        assert_eq!(config.behaviour.history_size, 100);
         assert_eq!(config.appearance.reasoning_display_mode, ReasoningDisplayMode::Toggle);
         assert!(config.appearance.reasoning_visible_default);
         assert!(config.appearance.reasoning_visible());
@@ -433,9 +435,26 @@ mod tests {
 
     #[test]
     fn test_config_serialization() {
-        let config = SessionConfig::new();
-        let serialized = toml::to_string_pretty(&config).unwrap();
+        let mut config = SessionConfig::new();
+        config.behaviour.max_input_lines = 15;
+
+        let serialized = toml::to_string_pretty(&config).expect("serialize SessionConfig for the wire-key regression");
         assert!(serialized.contains("theme"));
+        assert!(
+            serialized.contains("[behavior]"),
+            "serialized configuration must retain the fixed behavior table key"
+        );
+        assert!(
+            !serialized.contains("[behaviour]"),
+            "serialized configuration must not emit the native Rust field spelling"
+        );
+
+        let round_tripped: SessionConfig =
+            toml::from_str(&serialized).expect("deserialize the serialized SessionConfig through the fixed wire key");
+        assert_eq!(
+            round_tripped.behaviour.max_input_lines, 15,
+            "the fixed behavior wire key must retain a non-default value across the round trip"
+        );
     }
 
     #[test]
@@ -443,7 +462,7 @@ mod tests {
         let mut config = SessionConfig::new();
 
         config.set_value("behavior.max_input_lines", "15").unwrap();
-        assert_eq!(config.behavior.max_input_lines, 15);
+        assert_eq!(config.behaviour.max_input_lines, 15);
 
         assert!(config.set_value("behavior.max_input_lines", "not_a_number").is_err());
     }
@@ -461,7 +480,7 @@ mod tests {
 
         // Test invalid history size
         let mut invalid_config = config.clone();
-        invalid_config.behavior.history_size = 0;
+        invalid_config.behaviour.history_size = 0;
         assert!(invalid_config.validate().is_err());
 
         // Test invalid cache size
@@ -475,10 +494,10 @@ mod tests {
         let mut config = SessionConfig::new();
 
         // Test setting custom values
-        config.behavior.max_input_lines = 20;
+        config.behaviour.max_input_lines = 20;
         config.performance.lru_cache_size = 256;
 
-        assert_eq!(config.behavior.max_input_lines, 20);
+        assert_eq!(config.behaviour.max_input_lines, 20);
         assert_eq!(config.performance.lru_cache_size, 256);
     }
 }

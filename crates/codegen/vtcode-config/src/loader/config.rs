@@ -237,7 +237,7 @@ pub struct VTCodeConfig {
     #[serde(default)]
     pub hooks: HooksConfig,
 
-    /// Model-specific behavior configuration
+    /// Model-specific behaviour configuration
     #[serde(default)]
     pub model: ModelConfig,
 
@@ -644,7 +644,7 @@ persistence = "file"
 # Show onboarding hints on the welcome screen
 # show_tooltips = true
 
-# Core agent behavior; see docs/config/CONFIGURATION_PRECEDENCE.md.
+# Core agent behaviour; see docs/config/CONFIGURATION_PRECEDENCE.md.
 [agent]
 # Primary LLM provider to use (e.g., "openai", "gemini", "anthropic", "openrouter")
 provider = "openai"
@@ -1130,7 +1130,7 @@ cache_friendly_prompt_shaping = true
     # "session" creates one stable key per VT Code conversation.
     prompt_cache_key_mode = "session"
     # Optional: server-side prompt cache retention for OpenAI Responses API
-    # Supported values: "in_memory" or "24h" (leave commented out for default behavior)
+    # Supported values: "in_memory" or "24h" (leave commented out for default behaviour)
     # prompt_cache_retention = "24h"
 
 # Prompt cache configuration for Anthropic

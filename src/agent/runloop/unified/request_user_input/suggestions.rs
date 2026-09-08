@@ -167,8 +167,8 @@ fn verification_evidence_options() -> Vec<RequestUserInputOption> {
                 .to_string(),
         },
         RequestUserInputOption {
-            label: "Behavioral/manual proof".to_string(),
-            description: "Use concrete manual checks tied to user-visible behavior when automation is limited."
+            label: "Behavioural/manual proof".to_string(),
+            description: "Use concrete manual checks tied to user-visible behaviour when automation is limited."
                 .to_string(),
         },
         RequestUserInputOption {
@@ -245,7 +245,7 @@ fn append_domain_priority_options(options: &mut Vec<RequestUserInputOption>, con
             push_unique_option(
                 options,
                 "Provider fallback hardening",
-                "Prioritize timeout recovery and stream-to-non-stream fallback behavior first.",
+                "Prioritize timeout recovery and stream-to-non-stream fallback behaviour first.",
             );
         }
 

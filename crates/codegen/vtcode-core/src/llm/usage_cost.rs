@@ -100,7 +100,7 @@ pub fn estimate_session_costs(
 ///
 /// `effective_usd` can exceed `raw_usd` early in a session when
 /// cache-creation tokens (billed at a premium) dominate the accumulated
-/// usage. `raw_usd` remains the enforcement figure so budget behavior stays
+/// usage. `raw_usd` remains the enforcement figure so budget behaviour stays
 /// deterministic and discount-free.
 pub fn estimate_session_costs_with_pricing(
     pricing: ModelPricing,
