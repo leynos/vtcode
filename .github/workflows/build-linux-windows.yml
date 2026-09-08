@@ -60,7 +60,7 @@ jobs:
       - name: Wait for tag to exist
         shell: bash
         run: |
-          for i in $(seq 1 12); do
+          for _ in $(seq 1 12); do
             if git ls-remote --exit-code --tags "https://github.com/vinhnx/VTCode.git" "${{ inputs.tag }}"; then
               echo "Tag ${{ inputs.tag }} found"
               exit 0
@@ -207,7 +207,7 @@ jobs:
       - name: Wait for tag to exist
         shell: bash
         run: |
-          for i in $(seq 1 12); do
+          for _ in $(seq 1 12); do
             if git ls-remote --exit-code --tags "https://github.com/vinhnx/VTCode.git" "${{ inputs.tag }}"; then
               echo "Tag ${{ inputs.tag }} found"
               exit 0

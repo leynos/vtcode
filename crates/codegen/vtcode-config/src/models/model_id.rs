@@ -12,6 +12,9 @@ mod parse;
 mod provider;
 mod table;
 
+#[cfg(test)]
+mod tests;
+
 pub use capabilities::{
     ModelCatalogEntry, ModelPricing, catalog_provider_keys, model_catalog_entry, supported_models_for_provider,
 };

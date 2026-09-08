@@ -1110,7 +1110,7 @@ fn compact_image_label(content: &str) -> Option<String> {
     Some(label.to_string())
 }
 
-static IMAGE_PATH_INLINE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+static IMAGE_PATH_INLINE_REGEX: LazyLock<Option<Regex>> = LazyLock::new(|| {
     Regex::new(
         r#"(?ix)
         (?:^|[\s\(\[\{<\"'`])
@@ -1126,12 +1126,13 @@ static IMAGE_PATH_INLINE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
             \.(?:png|jpe?g|gif|bmp|webp|tiff?|svg)
         )"#,
     )
-    .expect("Failed to compile inline image path regex")
+    .ok()
 });
 
 fn compact_image_placeholders(content: &str) -> Option<String> {
+    let regex = IMAGE_PATH_INLINE_REGEX.as_ref()?;
     let mut matches = Vec::new();
-    for capture in IMAGE_PATH_INLINE_REGEX.captures_iter(content) {
+    for capture in regex.captures_iter(content) {
         let Some(path_match) = capture.get(1) else {
             continue;
         };

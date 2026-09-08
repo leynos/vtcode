@@ -25,9 +25,9 @@ pub(crate) fn resolve_action(
     startup: &StartupContext,
     print_mode: Option<String>,
 ) -> Result<ResolvedCliAction> {
-    if let Some(print_value) = print_mode {
+    if let Some(prompt) = print_mode {
         return Ok(ResolvedCliAction::Ask {
-            prompt: Some(crate::main_helpers::build_print_prompt(print_value)?),
+            prompt: Some(prompt),
             options: ask_options(args, None, startup.skip_confirmations),
         });
     }

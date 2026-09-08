@@ -636,7 +636,7 @@ async fn pre_tool_use_hook_rewrite_reaches_approved_args() {
                 matcher: Some(tools::READ_FILE.into()),
                 hooks: vec![HookCommandConfig {
                     kind: Default::default(),
-                    command: r#"printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"path":"src/lib.rs"}}}'"#.into(),
+                    command: r#"cat >/dev/null; printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"path":"src/lib.rs"}}}'"#.into(),
                     timeout_seconds: None,
                 }],
             }],

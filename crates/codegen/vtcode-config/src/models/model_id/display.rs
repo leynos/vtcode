@@ -19,15 +19,10 @@ impl ModelId {
             ModelId::OpenRouterMoonshotaiKimiK3 => Cow::Borrowed("Kimi K3 (OpenRouter)"),
             ModelId::OpenRouterMoonshotaiKimiK27Code => Cow::Borrowed("Kimi K2.7 Code (OpenRouter)"),
             ModelId::OpenRouterZaiGlm52 => Cow::Borrowed("GLM-5.2 (OpenRouter)"),
+            ModelId::OpenRouterZaiGlm53Flash => Cow::Borrowed("GLM-5.3 Flash"),
             // Custom user-defined models
             ModelId::Custom(_, model) => Cow::Owned(model.clone()),
-            // OpenRouter models
-            model => Cow::Borrowed(
-                model
-                    .openrouter_metadata()
-                    .expect("generated OpenRouter model should have metadata")
-                    .display,
-            ),
+            _ => unreachable!("built-in model missing generated or table metadata"),
         }
     }
 }

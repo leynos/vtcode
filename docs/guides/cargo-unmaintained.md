@@ -4,11 +4,15 @@ Guide for using `cargo-unmaintained` to detect unmaintained dependencies in VT C
 
 ## Overview
 
-[`cargo-unmaintained`](https://github.com/trailofbits/cargo-unmaintained) is a Rust tool that automatically finds unmaintained packages in Rust projects. It uses heuristics to detect unmaintained packages by checking:
+[`cargo-unmaintained`](https://github.com/trailofbits/cargo-unmaintained) is a Rust
+tool that automatically finds unmaintained packages in Rust projects. It uses
+heuristics to detect unmaintained packages by checking:
 
 1. **Archived repository** - The package's repository is archived
 2. **Not a repository member** - The package is not a member of its named repository
-3. **Stale dependencies** - The package depends on a package whose latest version is incompatible and was released over a year ago, and the package either has no repository or its last commit was over a year ago
+3. **Stale dependencies** - The package depends on a package whose latest version
+   is incompatible and was released over a year ago, and the package either has
+   no repository or its last commit was over a year ago
 
 ## Installation
 
@@ -61,16 +65,24 @@ cargo unmaintained --tree
 
 ## Configuration
 
-### Ignoring Packages
+### Classified baseline
 
-To ignore specific unmaintained packages, add them to your workspace's `Cargo.toml`:
+CI runs `scripts/check_unmaintained_baseline.py`. It invokes the pinned
+`cargo-unmaintained` release with JSON output, validates the documented output
+shape, and compares every stable finding field with
+`scripts/cargo_unmaintained_baseline.json`.
 
-```toml
-[package.metadata.unmaintained]
-ignore = ["package-name-1", "package-name-2"]
-```
+The baseline is tracked debt for [issue #108](https://github.com/leynos/vtcode/issues/108),
+not an ignore list. Every entry records its exact package version, repository
+status kind, stale dependency requirements, classification, and rationale.
+The checker deliberately ignores only the changing age count. A new package,
+version, status, requirement, malformed result, scanner error, or invalid
+baseline fails CI.
 
-VT Code already includes this configuration section in `Cargo.toml` at the workspace root.
+Do not add packages to `[package.metadata.unmaintained].ignore` to pass this
+check. Do not add `--no-exit-code`, `continue-on-error`, or an automated
+baseline refresh. A missing previous finding is reported as eligible for
+manual removal after it has been reviewed.
 
 ### GitHub Token (Optional)
 
@@ -98,19 +110,29 @@ cargo unmaintained --save-token
 
 ## Common Options
 
-| Option | Description |
-|--------|-------------|
-| `--color <WHEN>` | Color output: `always`, `auto`, or `never` (default: `auto`) |
-| `--fail-fast` | Exit as soon as an unmaintained package is found |
-| `--json` | Output JSON (experimental) |
-| `--max-age <DAYS>` | Max age for repository commits (default: 365) |
-| `--no-cache` | Disable disk caching |
-| `--no-exit-code` | Don't set exit code on unmaintained packages |
-| `--no-warnings` | Suppress warnings |
-| `-p, --package <NAME>` | Check only a specific package |
-| `--purge` | Remove cached data and exit |
-| `--tree` | Show dependency paths to unmaintained packages |
-| `--verbose` | Show detailed progress information |
+- **Option:** `--color <WHEN>`
+  - **Description:** Color output: `always`, `auto`, or `never` (default:
+    `auto`)
+- **Option:** `--fail-fast`
+  - **Description:** Exit as soon as an unmaintained package is found
+- **Option:** `--json`
+  - **Description:** Output JSON (experimental)
+- **Option:** `--max-age <DAYS>`
+  - **Description:** Max age for repository commits (default: 365)
+- **Option:** `--no-cache`
+  - **Description:** Disable disk caching
+- **Option:** `--no-exit-code`
+  - **Description:** Don't set exit code on unmaintained packages
+- **Option:** `--no-warnings`
+  - **Description:** Suppress warnings
+- **Option:** `-p, --package <NAME>`
+  - **Description:** Check only a specific package
+- **Option:** `--purge`
+  - **Description:** Remove cached data and exit
+- **Option:** `--tree`
+  - **Description:** Show dependency paths to unmaintained packages
+- **Option:** `--verbose`
+  - **Description:** Show detailed progress information
 
 ## Integration with VT Code Development
 
@@ -121,7 +143,7 @@ Add to your pre-commit workflow to catch unmaintained dependencies early:
 ```bash
 #!/bin/bash
 # .git/hooks/pre-commit
-cargo unmaintained --no-warnings
+python3 scripts/check_unmaintained_baseline.py
 ```
 
 ### CI/CD Integration
@@ -130,7 +152,7 @@ Add to your GitHub Actions workflow:
 
 ```yaml
 - name: Check for unmaintained dependencies
-  run: cargo unmaintained --no-warnings
+  run: python3 scripts/check_unmaintained_baseline.py
 ```
 
 ### Periodic Audits
@@ -154,7 +176,8 @@ export GITHUB_TOKEN_PATH="$HOME/.github_token"
 
 ### Slow Scans
 
-For large workspaces like VT Code, scans can take time. Use these options to speed up:
+For large workspaces like VT Code, scans can take time. Use these options to
+speed up:
 
 ```bash
 # Disable caching for fresh scan
@@ -166,15 +189,18 @@ cargo unmaintained --no-warnings
 
 ### False Positives
 
-Some packages may be flagged incorrectly. If a package is stable but flagged:
+The scanner uses maintenance heuristics; an entry may need an upstream review,
+but CI does not suppress it. If a finding is new or changes:
 
-1. Check the package's repository activity
-2. If it's actively maintained, add to ignore list in `Cargo.toml`
-3. Consider opening an issue with the package maintainer
+1. Inspect the package's lockfile and dependency path.
+2. Check its repository and release metadata.
+3. Open or update the tracking issue with the evidence.
+4. Deliberately update the classified baseline only when the finding remains
+   accepted debt.
 
 ## Example Output
 
-```
+```text
 Scanning 632 packages and their dependencies
 archival status of `some-crate` using GitHub API...ok (unarchived)
 membership of `some-crate` using shallow clone...ok (member)
