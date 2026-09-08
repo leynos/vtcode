@@ -172,6 +172,11 @@ staging.
   immutable head with `dddd1352` in CodeScene. The earlier comparison used
   `2719cde82` and therefore did not include the committed repair
   `26fe6dbdf`; it is not evidence against that repair.
+- [x] (2026-09-08) Scope `Seek`, `SeekFrom`, and `Write` imports to the Unix
+  compare-and-replace implementation after hosted Windows denied the unused
+  imports. `Read` remains unconditional because the bounded-reader helper is
+  compiled on every target. This is an import-only platform repair; shared
+  validation remains pending.
 
 ## Surprises & discoveries
 
