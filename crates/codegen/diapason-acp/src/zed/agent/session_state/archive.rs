@@ -33,6 +33,21 @@ use vtcode_core::utils::session_archive::{
 //! Durable archive persistence and workspace-bound session restoration.
 };
 
+
+//! Durable archive persistence and workspace-bound session restoration.
+<<<<<<< ours
+};
+};
+//! Durable archive persistence and workspace-bound session restoration.
+||||||| original
+=======
+//!
+//! Archive recovery records unresolved tool effects as uncertain before a
+//! session becomes active. Ambiguous terminal-result history is rejected
+//! without replaying calls or registering a resumable session.
+>>>>>>> theirs
+};
+
 pub(super) fn trace_storage_operation<'a, T: 'a, E: 'a, F>(
     operation: &'static str,
     future: F,
@@ -171,6 +186,8 @@ impl ZedAgent {
             .as_ref()
             .and_then(|progress| progress.turn_diagnostics.clone());
         let recovery = repair_archived_tool_calls(&mut listing).map_err(|error| {
+            warn!(session_id = %session_id, tool_recovery_outcome = "ambiguous_history_rejected",
+                  "Rejected archived ACP session with ambiguous tool-result history");
             anyhow::anyhow!("Archived ACP session has ambiguous tool-result history and was not resumed; inspect the archive before continuing: {error}")
         })?;
         let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
@@ -549,6 +566,7 @@ pub(super) fn session_listing_workspace_match(
     canonical_workspace_match(&stored_workspace, requested_workspace)
 }
 
+/// Repairs unresolved archived calls into uncertain-effect placeholders for checkpointing.
 pub(super) fn repair_archived_tool_calls(
     listing: &mut SessionListing,
 ) -> Result<RecoveryReport, crate::zed::agent::tool_recovery::AmbiguousToolResultHistory> {
