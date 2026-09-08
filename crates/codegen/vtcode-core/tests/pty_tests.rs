@@ -27,7 +27,9 @@ fn shell_command(script: &str) -> Vec<String> {
 const POLL_INTERVAL_MS: u64 = 50;
 const SESSION_READY_TIMEOUT_MS: u64 = 2_000;
 const OUTPUT_TIMEOUT_MS: u64 = 2_000;
+#[cfg(unix)]
 const BG_PID_TIMEOUT_MS: u64 = 5_000;
+#[cfg(unix)]
 const KILL_TIMEOUT_MS: u64 = 2_000;
 
 async fn sleep_ms(ms: u64) {
@@ -77,6 +79,7 @@ async fn wait_for_session_output(
     manager.read_session_output(session_id, drain).ok().flatten()
 }
 
+#[cfg(unix)]
 fn parse_bg_pid(output: &str) -> Option<i32> {
     output
         .lines()
@@ -85,6 +88,7 @@ fn parse_bg_pid(output: &str) -> Option<i32> {
         .and_then(|pid_str| pid_str.trim().parse::<i32>().ok())
 }
 
+#[cfg(unix)]
 async fn wait_for_bg_pid(manager: &PtyManager, session_id: &str, timeout_ms: u64) -> Option<i32> {
     let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
     while tokio::time::Instant::now() < deadline {

@@ -184,6 +184,28 @@ staging.
   failed before exercising cache invalidation. This follows the existing
   tool-evaluation workflow's explicit installation pattern, retains the
   success assertion, and awaits the focused selector plus hosted reruns.
+- [ ] (2026-09-08) Scope four Unix-only test-fixture imports and helpers after
+  hosted Windows at `27efb526` confirmed the WebMCP import repair, then reached
+  pre-existing `vtcode-core` test warnings under `-D warnings`. The repair
+  retains every portable test and Unix symlink/process-group contract; it only
+  compiles imports, constants and helpers on the platform of their sole users.
+  The next local packet checks formatting, warning-denied core all-target
+  Clippy, the affected Unix tests, this plan's Markdown and spelling. Fresh
+  hosted Windows remains the authoritative target-platform witness.
+- [ ] (2026-09-08) Make the PreToolUse rewrite fixture consume the hook JSON
+  payload before emitting its unchanged response. Hosted coverage first failed
+  at `pre_tool_use_hook_rewrite_reaches_approved_args`: the expected rewrite
+  was absent after the print-only child could exit before the engine completed
+  its stdin write. This is a source-backed fixture-race inference, not a claim
+  that the hosted log captured a broken-pipe diagnostic. Existing #54 and #92
+  own the related runtime early-stdin-close behaviour; PR #117 applies the
+  same fixture-drain pattern elsewhere and does not own this file.
+- [ ] (2026-09-08) Retain the attached `-o` flag with the `out` filename in
+  the shell-intent mutation fixture while clearing the focused spelling gate.
+  The repository has no tracked spelling configuration, so a global dictionary
+  exemption would broaden unrelated checks. A `concat!` literal preserves the
+  exact runtime command while presenting the two ordinary lexical tokens
+  separately to the checker.
 
 ## Surprises & discoveries
 
@@ -196,6 +218,25 @@ merge absent profraw data. The latest baseline still uses that command. The
 Windows native_roots home_dir parameter and non-Unix set_private_permissions
 path parameter produce deny-warnings failures on Windows. The stable handoff
 document remains outside scripts/docs_top_level_allowlist.txt.
+
+After the WebMCP `filesystem.rs` import repair passed in the Windows job,
+Windows compiled far enough to expose test-only Unix dependencies in
+`vtcode-core`. The four affected modules are byte-identical between merged
+baseline `dddd1352`, prior PR #110 head `8b98cddf`, and `27efb526`; this is
+pre-existing conditional-fixture debt rather than a regression from the
+foundation work. The source repair gates only items whose existing sole callers
+are already `#[cfg(unix)]`; it does not suppress warnings or remove portable
+test coverage.
+
+Hosted coverage at `27efb526` no longer failed in the external `rg` backend,
+but its first subsequent failure was the PreToolUse rewrite fixture. The engine
+awaits its stdin write before collecting child output, while that fixture used
+only `printf` and could close stdin first. The resulting engine error is
+handled as a hook diagnostic and the permission path proceeds without a
+rewrite. The log records the missing rewrite rather than a broken-pipe error,
+so the causal mechanism is source-backed inference. Draining stdin in the
+fixture before printing identical JSON is the established test pattern; #54
+and #92 retain ownership of the production early-close boundary.
 
 The documentation-location invariant classifies the tracked baseline handoff
 as a transient checkpoint report, rather than a stable top-level entrypoint.
@@ -321,6 +362,26 @@ the separately verified local generator. The production unwrap enforcement
 fails identically on main with twelve unrelated paths and remains outside this
 PR; no allowlist expansion is authorised. The next packet verifies the two
 approved repairs before another review.
+
+When the refreshed hosted Windows job reached `vtcode-core`, root approved the
+smallest platform-scoped fixture correction: imports and helpers used only by
+existing Unix tests must themselves be `#[cfg(unix)]`. This retains the tests
+on Unix and leaves portable test cases compiled on Windows. No broad test
+skipping, `allow(unused)`, `allow(dead_code)`, public API, or runtime behaviour
+change is permitted.
+
+Root also approved the one-line PreToolUse fixture drain after the hosted
+coverage failure: `cat >/dev/null` must consume the engine payload before the
+fixture emits the same `updatedInput` JSON. The changed test continues to prove
+the existing rewrite contract and does not change the production early-close
+path tracked by #54 and #92. This follows PR #117's fixture pattern without
+duplicating that PR's different files.
+
+The focused spelling packet found one prose correction and one deliberate
+lexer false positive. The prose now uses the accepted adjective. The test must
+retain the attached `-o` flag with its `out` filename because it is an
+adversarial mutation case; compile-time string concatenation produces the same
+command without adding a repository-wide spelling exemption.
 
 Hosted-green delivery requires the twelve production unwrap/expect findings as
 well. The inherited enforcement report identifies twelve findings across ten
@@ -599,6 +660,21 @@ produce non-empty lcov data. A textual command replacement alone does not
 prove the coverage workflow. The fixed advisory must disappear from the
 resolved lockfile check without suppressing it. Licence regeneration must be
 idempotent. Windows compilation is the witness for platform warning removal.
+
+For the Unix-only fixture correction, the serial packet is limited to
+`cargo fmt --check`, warning-denied `vtcode-core` all-target Clippy, the two
+apply-patch symlink contracts, the Unix-only shell-intent assertion, and the
+two PTY process-group contracts, followed by pinned Markdown and spelling for
+this plan. Do not retry this Linux host's direct Windows cross-check: its
+`aws-lc-sys` cross-environment failure is non-decisive. The refreshed hosted
+Windows workflow is the target-platform acceptance proof.
+
+The same serial packet runs the repaired root-binary hook fixture with
+`-p vtcode --bin vtcode` under the CI nextest profile and under scoped
+instrumented coverage, so neither command builds the default-member test
+inventory for this one contract. The test keeps its existing timeout and
+rewrite assertion. Its adjacent forwarded-phase control remains in the normal
+focused selector because it proves the distinct no-double-invocation path.
 
 Changed-Markdown validation first runs `node --test
 scripts/tests/lint_changed_markdown.test.mjs`. Its contract covers JSON parsing,
