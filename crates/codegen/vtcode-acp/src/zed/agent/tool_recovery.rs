@@ -73,17 +73,13 @@ pub(super) fn repair_unresolved_tool_calls(
         }
 
         let mut group_end = message_index + 1;
-        let mut completed_ids = HashSet::with_capacity(calls.len());
-        while let Some(message) = messages.get(group_end).filter(|message| message.role == MessageRole::Tool) {
-            if let Some(call_id) = message.tool_call_id.as_deref() {
-                let _ = completed_ids.insert(call_id.to_string());
-            }
+        while messages.get(group_end).is_some_and(|message| message.role == MessageRole::Tool) {
             group_end += 1;
         }
 
         relocate_unique_late_results(messages, message_index, group_end, &calls);
         group_end = message_index + 1;
-        completed_ids.clear();
+        let mut completed_ids = HashSet::with_capacity(calls.len());
         while let Some(message) = messages.get(group_end).filter(|message| message.role == MessageRole::Tool) {
             if let Some(call_id) = message.tool_call_id.as_deref() {
                 let _ = completed_ids.insert(call_id.to_string());
@@ -106,6 +102,30 @@ pub(super) fn repair_unresolved_tool_calls(
     Ok(RecoveryReport { repaired_calls })
 }
 
+fn validate_completed_tool_batch(
+    messages: &[Message],
+    message_index: &mut usize,
+    calls: &[ToolCall],
+) -> Result<(), AmbiguousToolResultHistory> {
+    let call_ids = calls.iter().map(|call| call.id.as_str()).collect::<HashSet<_>>();
+    if call_ids.len() != calls.len() {
+        return Err(AmbiguousToolResultHistory);
+    }
+
+    *message_index += 1;
+    let mut result_ids = HashSet::with_capacity(calls.len());
+    while let Some(result) = messages.get(*message_index).filter(|result| result.role == MessageRole::Tool) {
+        let Some(call_id) = result.tool_call_id.as_deref() else {
+            return Err(AmbiguousToolResultHistory);
+        };
+        if !call_ids.contains(call_id) || !result_ids.insert(call_id) {
+            return Err(AmbiguousToolResultHistory);
+        }
+        *message_index += 1;
+    }
+    Ok(())
+}
+
 /// Refuse to resume a history whose tool results cannot be mapped one-for-one
 /// to the immediately preceding assistant batch. The archive remains the
 /// durable record of the uncertain effect; guessing a canonical wire history
@@ -123,22 +143,7 @@ fn reject_ambiguous_tool_result_history(messages: &[Message]) -> Result<(), Ambi
         }
 
         let calls = message.tool_calls.as_deref().unwrap_or_default();
-        let call_ids = calls.iter().map(|call| call.id.as_str()).collect::<HashSet<_>>();
-        if call_ids.len() != calls.len() {
-            return Err(AmbiguousToolResultHistory);
-        }
-
-        message_index += 1;
-        let mut result_ids = HashSet::with_capacity(calls.len());
-        while let Some(result) = messages.get(message_index).filter(|result| result.role == MessageRole::Tool) {
-            let Some(call_id) = result.tool_call_id.as_deref() else {
-                return Err(AmbiguousToolResultHistory);
-            };
-            if !call_ids.contains(call_id) || !result_ids.insert(call_id) {
-                return Err(AmbiguousToolResultHistory);
-            }
-            message_index += 1;
-        }
+        validate_completed_tool_batch(messages, &mut message_index, calls)?;
     }
     Ok(())
 }
