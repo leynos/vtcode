@@ -128,15 +128,26 @@ mod tests {
     //! Verifies turn metadata serialization against controlled Git workspace state.
 
     use super::*;
-    use crate::git_info::test_support::{FIXTURE_REMOTE_URL, isolated_git_repository};
+    use crate::git_info::test_support::{
+        FIXTURE_REMOTE_URL, isolated_git_repository, no_command_configuration, run_in_clean_test_process,
+    };
+    use anyhow::Result;
 
     #[test]
     fn test_build_turn_metadata_header() {
-        let fixture = isolated_git_repository().expect("create isolated Git repository fixture");
-        let metadata =
-            build_turn_metadata_header(&fixture.repo_root).expect("build metadata header from fixture repository");
+        run_in_clean_test_process(
+            "turn_metadata::tests::test_build_turn_metadata_header",
+            no_command_configuration,
+            test_build_turn_metadata_header_body,
+        )
+        .expect("run isolated turn metadata test");
+    }
+
+    fn test_build_turn_metadata_header_body() -> Result<()> {
+        let fixture = isolated_git_repository()?;
+        let metadata = build_turn_metadata_header(&fixture.repo_root)?;
         assert!(!metadata.is_empty(), "fixture repository must produce a metadata header");
-        let parsed: TurnMetadata = serde_json::from_str(&metadata).expect("decode fixture metadata header JSON");
+        let parsed: TurnMetadata = serde_json::from_str(&metadata)?;
 
         assert_eq!(
             parsed.workspace.remote_urls.get("origin").map(String::as_str),
@@ -153,15 +164,24 @@ mod tests {
             fixture.repo_root.to_str(),
             "metadata header must retain the fixture repository root"
         );
+        Ok(())
     }
 
     #[test]
     fn test_build_turn_metadata_value() {
-        let fixture = isolated_git_repository().expect("create isolated Git repository fixture");
-        let value =
-            build_turn_metadata_value(&fixture.repo_root).expect("build metadata value from fixture repository");
+        run_in_clean_test_process(
+            "turn_metadata::tests::test_build_turn_metadata_value",
+            no_command_configuration,
+            test_build_turn_metadata_value_body,
+        )
+        .expect("run isolated turn metadata test");
+    }
+
+    fn test_build_turn_metadata_value_body() -> Result<()> {
+        let fixture = isolated_git_repository()?;
+        let value = build_turn_metadata_value(&fixture.repo_root)?;
         assert!(!value.is_null(), "fixture repository must produce metadata value");
-        let parsed: TurnMetadata = serde_json::from_value(value).expect("decode fixture metadata value");
+        let parsed: TurnMetadata = serde_json::from_value(value)?;
 
         assert_eq!(
             parsed.workspace.remote_urls.get("origin").map(String::as_str),
@@ -178,6 +198,7 @@ mod tests {
             fixture.repo_root.to_str(),
             "metadata value must retain the fixture repository root"
         );
+        Ok(())
     }
 
     #[test]
