@@ -2019,6 +2019,15 @@ mod tests {
         patch_arguments: String,
     }
 
+    struct FailedWriteAheadCheckpointFixture {
+        _workspace: TempDir,
+        patch_path: PathBuf,
+        calls: Arc<AtomicUsize>,
+        _factory_guard: PromptProviderFactoryGuard,
+        agent: Arc<ZedAgent>,
+        session_id: acp::SessionId,
+    }
+
     struct BlockingPromptProvider {
         started: Arc<Notify>,
         release: Arc<Notify>,
@@ -2214,6 +2223,66 @@ mod tests {
 
         async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
             panic!("write-ahead checkpoint test must use streaming")
+        }
+    }
+
+    async fn failed_write_ahead_checkpoint_fixture() -> FailedWriteAheadCheckpointFixture {
+        let workspace = TempDir::new().expect("wire test workspace");
+        let archive_path = workspace.path().join("checkpoint.json");
+        let patch_path = workspace.path().join("must-not-change.txt");
+        std::fs::write(&patch_path, "original\n").expect("write patch target");
+        let patch = format!(
+            "*** Begin Patch\n*** Update File: {}\n@@\n-original\n+changed\n*** End Patch\n",
+            patch_path.display()
+        );
+        let calls = Arc::new(AtomicUsize::new(0));
+        let factory_calls = Arc::clone(&calls);
+        let patch_arguments = serde_json::json!({"patch": patch}).to_string();
+        let archive_for_provider = archive_path.clone();
+        let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+        let session_id = agent.register_session();
+        let session = agent.session_handle(&session_id).expect("registered session");
+        let metadata = session
+            .data
+            .lock()
+            .expect("session data")
+            .thread
+            .metadata()
+            .expect("session metadata");
+        let listing = vtcode_core::utils::session_archive::SessionListing {
+            path: archive_path,
+            snapshot: vtcode_core::utils::session_archive::SessionSnapshot {
+                metadata: metadata.clone(),
+                started_at: chrono::Utc::now(),
+                ended_at: chrono::Utc::now(),
+                total_messages: 0,
+                distinct_tools: Vec::new(),
+                transcript: Vec::new(),
+                messages: Vec::new(),
+                progress: None,
+                error_logs: Vec::new(),
+            },
+        };
+        session.data.lock().expect("session data").archive =
+            Some(vtcode_core::utils::session_archive::SessionArchive::resume_from_listing(&listing, metadata));
+        let factory_guard = PromptProviderFactoryGuard::install(
+            "wire-test",
+            Arc::new(move || {
+                Box::new(InvalidateArchiveBeforeToolProvider {
+                    calls: Arc::clone(&factory_calls),
+                    archive_path: archive_for_provider.clone(),
+                    patch_arguments: patch_arguments.clone(),
+                })
+            }),
+        );
+
+        FailedWriteAheadCheckpointFixture {
+            _workspace: workspace,
+            patch_path,
+            calls,
+            _factory_guard: factory_guard,
+            agent,
+            session_id,
         }
     }
 
@@ -2681,60 +2750,14 @@ mod tests {
         // Review 3791762676: a tool call cannot cross the execution boundary
         // when its write-ahead checkpoint did not become durable.
         let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
-        let workspace = TempDir::new().expect("wire test workspace");
-        let archive_path = workspace.path().join("checkpoint.json");
-        let patch_path = workspace.path().join("must-not-change.txt");
-        std::fs::write(&patch_path, "original\n").expect("write patch target");
-        let patch = format!(
-            "*** Begin Patch\n*** Update File: {}\n@@\n-original\n+changed\n*** End Patch\n",
-            patch_path.display()
-        );
-        let calls = Arc::new(AtomicUsize::new(0));
-        let factory_calls = Arc::clone(&calls);
-        let patch_arguments = serde_json::json!({"patch": patch}).to_string();
-        let archive_for_provider = archive_path.clone();
-        let _factory_guard = PromptProviderFactoryGuard::install(
-            "wire-test",
-            Arc::new(move || {
-                Box::new(InvalidateArchiveBeforeToolProvider {
-                    calls: Arc::clone(&factory_calls),
-                    archive_path: archive_for_provider.clone(),
-                    patch_arguments: patch_arguments.clone(),
-                })
-            }),
-        );
-        let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
-        let session_id = agent.register_session();
-        let session = agent.session_handle(&session_id).expect("registered session");
-        let metadata = session
-            .data
-            .lock()
-            .expect("session data")
-            .thread
-            .metadata()
-            .expect("session metadata");
-        let listing = vtcode_core::utils::session_archive::SessionListing {
-            path: archive_path.clone(),
-            snapshot: vtcode_core::utils::session_archive::SessionSnapshot {
-                metadata: metadata.clone(),
-                started_at: chrono::Utc::now(),
-                ended_at: chrono::Utc::now(),
-                total_messages: 0,
-                distinct_tools: Vec::new(),
-                transcript: Vec::new(),
-                messages: Vec::new(),
-                progress: None,
-                error_logs: Vec::new(),
-            },
-        };
-        session.data.lock().expect("session data").archive =
-            Some(vtcode_core::utils::session_archive::SessionArchive::resume_from_listing(&listing, metadata));
+        let fixture = failed_write_ahead_checkpoint_fixture().await;
+        let session_id = fixture.session_id.clone();
 
         let (agent_channel, client_channel) = Channel::duplex();
         let agent_connection =
-            install_handlers(Agent.builder().name("vtcode-write-ahead-checkpoint-test"), Arc::clone(&agent))
+            install_handlers(Agent.builder().name("vtcode-write-ahead-checkpoint-test"), Arc::clone(&fixture.agent))
                 .connect_with(agent_channel, {
-                    let agent = Arc::clone(&agent);
+                    let agent = Arc::clone(&fixture.agent);
                     async move |cx: ConnectionTo<Client>| {
                         agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
                         std::future::pending::<agent_client_protocol::Result<()>>().await
@@ -2772,9 +2795,13 @@ mod tests {
         agent_task.abort();
         drop(agent_task.await);
 
-        assert_eq!(calls.load(Ordering::SeqCst), 1, "the provider should not be called again after checkpoint failure");
         assert_eq!(
-            std::fs::read_to_string(&patch_path).expect("read patch target"),
+            fixture.calls.load(Ordering::SeqCst),
+            1,
+            "the provider should not be called again after checkpoint failure"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&fixture.patch_path).expect("read patch target"),
             "original\n",
             "a failed write-ahead checkpoint must prevent tool side effects"
         );

@@ -37,9 +37,10 @@ an archive with ambiguous terminal results is rejected before continuation.
 ## Tolerances (exception triggers)
 
 - Stop and escalate if the repair needs more than eight tracked production or
-  test files, more than 600 net non-plan lines, a public API change other than
+  test files, more than 650 net non-plan lines, a public API change other than
   the root-approved `ThreadRuntimeHandle::mutate_messages<T>` method, a new
-  dependency, or a persistent/wire-format migration.
+  dependency, or a persistent/wire-format migration. The +650 ceiling applies
+  only to the current CodeScene follow-up, including formatter wrapping.
 - Stop if atomic mutation cannot be expressed inside the existing
   `ThreadRuntimeHandle` locking model, or if the correct checkpoint policy is
   ambiguous after examining its callers.
@@ -92,6 +93,17 @@ an archive with ambiguous terminal results is rejected before continuation.
   interleaving test in `/tmp/acp-pr13-terminal-admission-core-1.out`, then
   passed the six ACP recovery/admission tests and formatter in
   `/tmp/acp-pr13-terminal-admission-{acp,fmt}-2.out`.
+- [x] (2026-09-08) Triaged `/tmp/acp-pr13-repair-codescene-1.json`. The
+  write-ahead checkpoint test now keeps its ACP request and causal assertions
+  in the test while a private fixture owns only archive/provider setup. The
+  recovery loop now finds its pre-relocation boundary without an unused result
+  collection and validates each completed assistant batch in a private helper.
+  Source-only diff checking is clean; the shared scrutineer remains the sole
+  validation runner.
+- [x] (2026-09-08) Root approved a narrow +650 non-plan-line ceiling for this
+  CodeScene follow-up, including formatter wrapping. The exact +603 delta is
+  within that ceiling; no assertion was removed or code minified to meet the
+  superseded +600 count.
 - [ ] Obtain the remaining ACP/core relevant tests, Clippy and documentation
   checks through the shared scrutineer before a commit proposal.
 - [ ] Obtain root-scheduled deterministic gates, CodeRabbit review, and the
@@ -142,6 +154,23 @@ an archive with ambiguous terminal results is rejected before continuation.
   deletions, or +572 non-plan lines. It remains within the root-approved
   +600 tolerance. The only public interface addition is the approved existing
   handle method; no wire or archive format changes were made.
+- CodeScene reports the four observations in
+  `ambiguous_archive_is_not_resumed_or_replayed_and_preserves_the_archive` as
+  a large assertion block. They are one failure contract for one resume
+  attempt: an actionable error, no registered session, byte-identical archive,
+  and unchanged external target. Splitting or weakening them would obscure the
+  causal relation and could permit an unsafe partial failure, so the metric is
+  deliberately retained with this evidence.
+- The `handlers.rs` file-size warning predates this narrow repair (#118). The
+  added checkpoint test and its private fixture are accounted for as scoped
+  admission evidence: the CodeScene-focused refactor is `+75/-52` lines from
+  committed PR13 head `738381075`, a net +23 private-test-fixture lines. The
+  warning is not waived and no whole-module reduction is attempted in this
+  recovery plateau.
+- The CodeScene-only source changes raise the four-file PR13 delta from +572
+  to +603 non-plan lines. This exceeds the root-approved +600 limit by three
+  lines. Root then approved a one-purpose +650 ceiling that also covers
+  formatter wrapping; it does not authorize feature growth or scope expansion.
 
 ## Decision log
 
@@ -192,6 +221,25 @@ an archive with ambiguous terminal results is rejected before continuation.
   Rationale: durable evidence cannot be deleted or guessed into a wire-valid
   result, and provider serializers differ in their unsafe duplicate handling.
   Date/Author: 2026-09-08 / root-approved ACP stack convergence decision.
+- Decision: retain the four assertions in the ambiguous-archive admission test
+  as one atomic failure contract instead of reducing CodeScene's large-block
+  count by splitting them.
+  Rationale: they observe the same rejected resume attempt across its caller,
+  in-memory registration, durable archive, and external side-effect boundary;
+  separate attempts would no longer prove the required fail-closed outcome.
+  Date/Author: 2026-09-08 / root-directed PR13 CodeScene triage.
+- Decision: treat the `handlers.rs` file-size finding as a tracked baseline
+  concern (#118), while reducing only the newly added checkpoint test's method
+  size through a private fixture.
+  Rationale: a whole-module reduction exceeds this recovery plateau, but the
+  new admission coverage must remain explicit and reviewable.
+  Date/Author: 2026-09-08 / root-directed PR13 CodeScene triage.
+- Decision: raise the non-plan-line ceiling from +600 to +650 only for the
+  current CodeScene follow-up and any formatter wrapping it requires.
+  Rationale: the coherent fixture and single-batch validator produce +603
+  lines, and reducing that count by minifying or weakening assertions would
+  damage the required evidence without reducing feature scope.
+  Date/Author: 2026-09-08 / root-approved PR13 CodeScene tolerance decision.
 
 ## Outcomes & retrospective
 
@@ -262,6 +310,14 @@ pass vacuously.
 rejected before registration, archive persistence, provider continuation, or
 tool replay; its exact on-disk bytes and side-effect sentinel remain unchanged.
 Repeated IDs in two completed assistant batches are a non-ambiguous control.
+
+`INV-CODESCENE-RECOVERY`: the post-relocation recovery group computes its
+boundary before relocation and collects completed IDs exactly once afterwards;
+the private batch validator preserves duplicate, conflicting and orphan-result
+rejection while accepting repeated IDs in distinct completed batches. The
+checkpoint test retains its real ACP request, caller-visible checkpoint error,
+one provider-call count and unchanged target assertion. Re-run its one handler
+selector and the three recovery selectors through the shared scrutineer.
 
 The only external axiom is the filesystem's reported checkpoint error. Tests
 exercise repository-owned error handling using an invalid archive destination;
