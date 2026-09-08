@@ -109,11 +109,27 @@ contracts.
   are independent: B1 owns Gemini/error-metadata sites, while A owns strict
   reset parsing. The integrated candidate now has the six approved source
   paths plus this plan and remains uncommitted pending shared validation.
+- 2026-09-08: Addressed the introduced CodeScene cyclomatic warning on private
+  `parse_reset_after_millis` (threshold 9) with private `parse_ascii_u64` and
+  `parse_fractional_millis` helpers. The former is shared by the existing
+  whole-second header extractor and reset parser; the latter owns the existing
+  strict fractional digit validation, three-digit truncation, ceiling
+  rounding, and overflow behavior. This repair modifies only
+  `crates/codegen/vtcode-llm/src/providers/error_handling.rs` and this plan.
+  The serial runner owns all gates; they are delegated and were not run by the
+  artisan. The separate five-argument
+  `decision_for_llm_error_with_backoff_at` CodeScene finding remains
+  intentionally retained because its policy, error, attempt, mutable
+  backoff, and injected `SystemTime` inputs are independent and the fixed-time
+  seam is required by its regression test.
 
 ## Decisions and risks
 
 - Keep every added helper private. The explicit `SystemTime` retry seam is
   deterministic test support, not a general clock abstraction.
+- Existing malformed/overflow, signed-reset, and fractional non-under-rounding
+  tests cover the extracted parser branches; no additional regression test was
+  identified as necessary for this semantics-preserving refactor.
 - Preserve the error body only in the provider error path, never in exported
   metadata. The Gemini empty mapping prevents accidental adoption of another
   provider's quota vocabulary.
