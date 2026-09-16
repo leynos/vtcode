@@ -1894,8 +1894,8 @@ fix: "bar($MAYBE_COMMA$newArg)"
 - The `$CONTENT` meta variable in the injection rule designates which portion
   of the host match should be parsed as the injected language. Without it,
   ast-grep cannot identify the embedded region.
-- Typical patterns are `styled.$TAG\`$CONTENT\`` for CSS-in-JS and `graphql\`
-  $CONTENT\`` for GraphQL template literals.
+- Typical patterns are `` styled.$TAG`$CONTENT` `` for CSS-in-JS and
+  `` graphql`$CONTENT` `` for GraphQL template literals.
 - ast-grep parses the extracted subregion with the injected language, not the
   parent document language. That is why CSS patterns can match inside
   JavaScript once injection is configured.

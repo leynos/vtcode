@@ -25,6 +25,18 @@ source "$SCRIPT_DIR/release-assets.sh"
 RELEASE_NOTES_FILE=$(mktemp)
 trap 'rm -f "$RELEASE_NOTES_FILE"' EXIT
 
+# Format generated Markdown with the estate rules (see `MDTABLEFIX_RULES` in
+# the Makefile) before committing it, so the next `make check-fmt` passes.
+# Run twice: wrapping and renumbering can interact on the first pass.
+format_generated_markdown() {
+	if command -v mdtablefix >/dev/null 2>&1; then
+		mdtablefix --in-place --wrap --renumber --breaks --ellipsis --fences "$@" >/dev/null
+		mdtablefix --in-place --wrap --renumber --breaks --ellipsis --fences "$@" >/dev/null
+	else
+		print_warning "mdtablefix is not installed; run 'make fmt' before pushing $*"
+	fi
+}
+
 print_distribution() {
 	printf '%b\n' "${PURPLE}DISTRIBUTION:${NC} $1"
 }
@@ -520,6 +532,7 @@ update_changelog_from_commits() {
 		return $?
 	fi
 
+	format_generated_markdown CHANGELOG.md
 	git add CHANGELOG.md
 	if ! git diff --cached --quiet; then
 		GIT_AUTHOR_NAME="vtcode-release-bot" \
@@ -612,6 +625,7 @@ update_changelog_builtin() {
 		} >CHANGELOG.md
 	fi
 
+	format_generated_markdown CHANGELOG.md
 	git add CHANGELOG.md
 	if ! git diff --cached --quiet; then
 		GIT_AUTHOR_NAME="vtcode-release-bot" \
@@ -1048,6 +1062,7 @@ main() {
 	else
 		python3 scripts/generate_docs_map.py
 		python3 scripts/sync_embedded_assets.py
+		format_generated_markdown docs/modules/vtcode_docs_map.md
 		git add docs/modules/vtcode_docs_map.md
 		if ! git diff --cached --quiet; then
 			GIT_AUTHOR_NAME="vtcode-release-bot" \

@@ -490,8 +490,8 @@ attached to both approval paths. A fresh handoff clears only transient
 transcript, continuation, cache-lineage, recovery, and tool-budget state; the
 plan file, task tracker, working tree, configuration, provider, permissions,
 and aggregate usage remain intact. The UI shows
-`Preparing fresh execution thread…`, `Restoring approved plan…`, and
-`Starting build…` while the handoff is active and guards input and mode
+`Preparing fresh execution thread...`, `Restoring approved plan...`, and
+`Starting build...` while the handoff is active and guards input and mode
 switches until it completes.
 
 The confirmation policy is explicit handoff state and is not inferred from the
