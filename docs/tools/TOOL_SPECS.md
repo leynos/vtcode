@@ -5,10 +5,10 @@ the Codex-style tool migration.
 
 ## Public Profiles
 
-| Profile | Tools | Use |
-|---|---|---|
-| Default | `exec_command`, `write_stdin`, `apply_patch`, `search_tools` | Normal repository work plus deferred capability discovery. |
-| Advanced VT Code | Default tools plus `code_search` | Bounded workspace search for definitions, syntactic usages, literal text, and matching paths. |
+| Profile          | Tools                                                        | Use                                                                                           |
+| ---------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Default          | `exec_command`, `write_stdin`, `apply_patch`, `search_tools` | Normal repository work plus deferred capability discovery.                                    |
+| Advanced VT Code | Default tools plus `code_search`                             | Bounded workspace search for definitions, syntactic usages, literal text, and matching paths. |
 
 No `unified_*` schema, alias, hidden public tool, or compatibility profile is
 available after this migration. Those names are legacy external schema names
@@ -74,31 +74,31 @@ Example:
 ### `apply_patch`
 
 Applies a freeform patch through VT Code's workspace-boundary and edit-safety
-checks. Use it for file edits, additions, moves, and deletions when the model has
-the patch tool. Successful responses include a bounded `diff` array with one
-entry per planned file (`path`, `operation`, bounded unified `content`, and
+checks. Use it for file edits, additions, moves, and deletions when the model
+has the patch tool. Successful responses include a bounded `diff` array with
+one entry per planned file (`path`, `operation`, bounded unified `content`, and
 available `additions`/`deletions`); no-op entries are marked `is_empty`. The
 legacy single-file `diff_preview` response is normalized to this same shape by
 the terminal and session renderers.
 
 Every `apply_patch` path, including move sources and destinations, must be
 workspace-relative. Absolute paths, `..`, and traversal-like path forms are
-rejected; resolution also rejects an in-workspace symlink that leads outside the
-workspace before any patch mutation begins.
+rejected; resolution also rejects an in-workspace symlink that leads outside
+the workspace before any patch mutation begins.
 
 After several effective mutations, anti-blind-editing temporarily allows reads,
 inspection, task tracking, and verification while blocking further workspace
 mutations until a verification command completes.
 
-The checkpoint is cleared only by a successful verification command. Inspection,
-link checks, and `git diff --check` are useful diagnostics but do not prove that
-the requested build or tests pass. Failed mutations do not count as effective
-mutations, and a blocked turn remains blocked even when its recovery response is
-published successfully. The recovery response identifies the reason: pending
-verification includes `cargo check --locked` and the relevant `cargo nextest run`
-guidance; context-capacity recovery says that completed outputs were retained and
-suggests resuming after reducing context or switching models; other blocked
-turns receive a generic retry handoff.
+The checkpoint is cleared only by a successful verification command.
+Inspection, link checks, and `git diff --check` are useful diagnostics but do
+not prove that the requested build or tests pass. Failed mutations do not count
+as effective mutations, and a blocked turn remains blocked even when its
+recovery response is published successfully. The recovery response identifies
+the reason: pending verification includes `cargo check --locked` and the
+relevant `cargo nextest run` guidance; context-capacity recovery says that
+completed outputs were retained and suggests resuming after reducing context or
+switching models; other blocked turns receive a generic retry handoff.
 
 Example:
 
@@ -136,16 +136,16 @@ It accepts exactly five inputs:
 - `max_results` optionally sets the returned limit from 1 to 100. It defaults
   to 20.
 
-Definitions are recognised declarations with an exact matching name. Usages
-are exact syntactic identifiers outside recognised declaration names. They are
-not resolved references, so an unrelated identifier with the same spelling may
+Definitions are recognised declarations with an exact matching name. Usages are
+exact syntactic identifiers outside recognised declaration names. They are not
+resolved references, so an unrelated identifier with the same spelling may
 appear. Text results cover comments, strings, prose, configuration, and other
 unclassified content. Path results match existing filenames or paths.
 
 Omit `result_types` to search all four categories. Results are ordered by
 category, then source location. `truncated: true` means the bounded search may
-have more candidates; it does not report an exact repository-wide total.
-Narrow `path`, `file_types`, or `result_types` in another call.
+have more candidates; it does not report an exact repository-wide total. Narrow
+`path`, `file_types`, or `result_types` in another call.
 
 Example:
 
@@ -177,14 +177,15 @@ use case justifies them. They must not reuse a legacy `unified_*` name.
 
 ## Platform Profiles
 
-VT Code selects the model-facing shell guidance from `agent.shell_prompt_profile`.
+VT Code selects the model-facing shell guidance from
+`agent.shell_prompt_profile`.
 
-| Platform | Default profile | Guidance |
-|---|---|---|
-| Linux | `unix_like` | Use Unix-like shell commands in `exec_command.cmd`. |
-| macOS | `unix_like` | Use BSD-compatible flags where BSD tools differ. |
-| WSL | `unix_like` | Recommended route for Unix-like workflows on Windows. |
-| Native Windows | `powershell` | Use native PowerShell syntax. |
+| Platform       | Default profile | Guidance                                              |
+| -------------- | --------------- | ----------------------------------------------------- |
+| Linux          | `unix_like`     | Use Unix-like shell commands in `exec_command.cmd`.   |
+| macOS          | `unix_like`     | Use BSD-compatible flags where BSD tools differ.      |
+| WSL            | `unix_like`     | Recommended route for Unix-like workflows on Windows. |
+| Native Windows | `powershell`    | Use native PowerShell syntax.                         |
 
 The setting accepts `auto`, `unix_like`, or `powershell`. It controls prompt
 examples and expected command syntax only. VT Code does not translate GNU flags
@@ -194,15 +195,15 @@ for macOS BSD tools, and it does not translate Unix commands to PowerShell.
 
 External users of the removed legacy schemas must update their calls directly:
 
-| Removed legacy schema | Replacement |
-|---|---|
-| `unified_exec` run | `exec_command` |
-| `unified_exec` session input | `write_stdin` |
-| `unified_file` patch or edit | `apply_patch` |
-| `unified_file` read or write | Shell commands through `exec_command.cmd` by default, or separately named non-default tools if added later. |
-| `unified_search` text search | `rg` or `grep` through `exec_command.cmd` |
-| `unified_search` search | `code_search` in the advanced profile, using its five query-led inputs |
-| `unified_search` web, skills, errors, discovery | Separate tools only where those affordances are retained. |
+| Removed legacy schema                           | Replacement                                                                                                 |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `unified_exec` run                              | `exec_command`                                                                                              |
+| `unified_exec` session input                    | `write_stdin`                                                                                               |
+| `unified_file` patch or edit                    | `apply_patch`                                                                                               |
+| `unified_file` read or write                    | Shell commands through `exec_command.cmd` by default, or separately named non-default tools if added later. |
+| `unified_search` text search                    | `rg` or `grep` through `exec_command.cmd`                                                                   |
+| `unified_search` search                         | `code_search` in the advanced profile, using its five query-led inputs                                      |
+| `unified_search` web, skills, errors, discovery | Separate tools only where those affordances are retained.                                                   |
 
 Short replacements:
 

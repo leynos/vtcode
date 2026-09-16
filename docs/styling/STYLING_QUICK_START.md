@@ -77,6 +77,7 @@ let span = Span::styled("Done", anstyle_to_ratatui(theme.success));
 ## Color Reference
 
 ### Standard Colors
+
 - `AnsiColor::Black`
 - `AnsiColor::Red`
 - `AnsiColor::Green`
@@ -87,6 +88,7 @@ let span = Span::styled("Done", anstyle_to_ratatui(theme.success));
 - `AnsiColor::White`
 
 ### Effects
+
 - `Effects::BOLD`
 - `Effects::ITALIC`
 - `Effects::UNDERLINE`
@@ -96,6 +98,7 @@ let span = Span::styled("Done", anstyle_to_ratatui(theme.success));
 - `Effects::STRIKETHROUGH`
 
 ### Color Types
+
 ```rust
 use anstyle::Color;
 
@@ -108,6 +111,7 @@ Color::Ansi256(196)                   // 256-color indexed
 ## Common Patterns
 
 ### Error Messages
+
 ```rust
 use vtcode_core::utils::colors::style;
 eprintln!("{}", style("Error: ").red().bold());
@@ -115,6 +119,7 @@ eprintln!("{}", style(message).red());
 ```
 
 ### Status Display
+
 ```rust
 use anstyle::{Style, Color, AnsiColor};
 
@@ -127,6 +132,7 @@ println!("Status: {}{}{}", success.render(), "OK", success.render_reset());
 ```
 
 ### TUI List Item
+
 ```rust
 use vtcode_core::utils::ratatui_styles::anstyle_to_ratatui;
 use ratatui::text::{Line, Span};
@@ -152,7 +158,8 @@ let line = Line::from(vec![
 
 - `docs/styling_integration.md` - Detailed guide
 - `vtcode-core/examples/anstyle_ratatui_example.rs` - Full working example
-- `crates/codegen/vtcode-core/src/utils/ratatui_styles.rs` - Module documentation
+- `crates/codegen/vtcode-core/src/utils/ratatui_styles.rs` - Module
+  documentation
 
 ## Running the Example
 
@@ -163,6 +170,7 @@ cargo run --example anstyle_ratatui_example
 ```
 
 Demonstrates:
+
 - CLI colored output
 - TUI widget styling
 - Unified theme management

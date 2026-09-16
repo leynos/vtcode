@@ -4,8 +4,8 @@ Quick API lookup for VT Code's LM Studio integration.
 
 ## Module
 
-| Item | Type | Purpose |
-|------|------|---------|
+| Item                       | Type   | Purpose                            |
+| -------------------------- | ------ | ---------------------------------- |
 | `lmstudio::LMStudioClient` | Struct | Main client for server interaction |
 
 ## Common Tasks
@@ -51,47 +51,56 @@ client.download_model("lmstudio-community/openai-gpt-oss-20b").await?;
 ```rust
 pub async fn try_from_base_url(base_url: &str) -> io::Result<Self>
 ```
+
 Create a client and verify server is reachable.
 
 ```rust
 pub async fn try_from_base_url_with_api_version(base_url: &str, use_native_api: bool) -> io::Result<Self>
 ```
+
 Create a client with explicit API version selection.
 
 ```rust
 pub async fn fetch_models(&self) -> io::Result<Vec<String>>
 ```
+
 Get list of available model IDs.
 
 ```rust
 pub async fn load_model(&self, model: &str) -> io::Result<()>
 ```
+
 Pre-load model into memory via minimal request.
 
 ```rust
 pub async fn unload_model(&self, model: &str) -> io::Result<()>
 ```
+
 Unload model from memory (native API only).
 
 ```rust
 pub async fn download_model(&self, model: &str) -> io::Result<()>
 ```
+
 Download model using `lms` CLI tool.
 
 ## Error Handling
 
 ### Connection Error
+
 ```
 LM Studio is not responding. Install from https://lmstudio.ai/download 
 and run 'lms server start'.
 ```
 
 ### Model Not Found in Response
+
 ```
 No 'data' array in response
 ```
 
 ### Missing `lms` CLI Tool
+
 ```
 LM Studio not found. Please install LM Studio from https://lmstudio.ai/
 ```
@@ -112,18 +121,20 @@ http://localhost:1234
 
 ## Environment Variables
 
-- `LMSTUDIO_BASE_URL` - Override server URL (optional, default: `http://localhost:1234/v1`)
+- `LMSTUDIO_BASE_URL` - Override server URL (optional, default:
+  `http://localhost:1234/v1`)
 - `LMSTUDIO_API_KEY` - API key when authentication is enabled (optional)
-- `LMSTUDIO_USE_NATIVE_API` - Set `true` to use native REST API for model listing (optional)
+- `LMSTUDIO_USE_NATIVE_API` - Set `true` to use native REST API for model
+  listing (optional)
 
 ## Endpoints Used
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/v1/models` | GET | List available models |
-| `/api/v0/models` | GET | List models (native API, opt-in) |
-| `/api/v0/models/load` | POST | Load model (native API) |
-| `/api/v0/models/unload` | POST | Unload model (native API) |
+| Endpoint                | Method | Purpose                          |
+| ----------------------- | ------ | -------------------------------- |
+| `/v1/models`            | GET    | List available models            |
+| `/api/v0/models`        | GET    | List models (native API, opt-in) |
+| `/api/v0/models/load`   | POST   | Load model (native API)          |
+| `/api/v0/models/unload` | POST   | Unload model (native API)        |
 
 ## Testing
 

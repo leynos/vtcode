@@ -1,10 +1,12 @@
 # Installation Guide
 
-VT Code supports multiple installation methods. Choose the one that works best for you.
+VT Code supports multiple installation methods. Choose the one that works best
+for you.
 
 ## Quick Install
 
-The default macOS/Linux native installer also attempts the recommended `ripgrep` + `ast-grep` bundle.
+The default macOS/Linux native installer also attempts the recommended
+`ripgrep` + `ast-grep` bundle.
 
 ### macOS & Linux
 
@@ -21,7 +23,10 @@ curl -fsSL https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.
 irm https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.ps1 | iex
 ```
 
-Windows release builds are currently best-effort and may lag behind macOS/Linux. The release pipeline still depends on `cross`, Docker, and GitHub Actions capacity for Windows packaging, and those build minutes can be costly, so Windows artifacts may not appear in every release.
+Windows release builds are currently best-effort and may lag behind
+macOS/Linux. The release pipeline still depends on `cross`, Docker, and GitHub
+Actions capacity for Windows packaging, and those build minutes can be costly,
+so Windows artifacts may not appear in every release.
 
 ### Homebrew (macOS & Linux)
 
@@ -53,12 +58,13 @@ npm install -g @vinhnx/vtcode --registry=https://npm.pkg.github.com
 | Method               | Platforms         | Command                                                               | Notes                                 |
 | -------------------- | ----------------- | --------------------------------------------------------------------- | ------------------------------------- |
 | **Native Installer** | macOS, Linux, WSL | See Quick Install above                                               | Recommended, auto-detects platform    |
-| **Homebrew**         | macOS, Linux      | `brew trust vinhnx/tap && brew install vinhnx/tap/vtcode`              | Package manager, easy updates         |
+| **Homebrew**         | macOS, Linux      | `brew trust vinhnx/tap && brew install vinhnx/tap/vtcode`             | Package manager, easy updates         |
 | **Cargo**            | All               | `cargo install vtcode`                                                | Build from source, latest dev version |
 | **npm**              | All               | `npm install -g @vinhnx/vtcode --registry=https://npm.pkg.github.com` | JavaScript package manager            |
 | **npx**              | All               | `npx @vinhnx/vtcode`                                                  | No installation, run directly         |
 
-Windows release artifacts may lag behind macOS/Linux while the build pipeline is being finalized.
+Windows release artifacts may lag behind macOS/Linux while the build pipeline
+is being finalized.
 
 ## After Installation
 
@@ -89,20 +95,25 @@ vtcode
 
 ## Supported AI Providers
 
--   **GitHub Copilot** (requires `copilot` CLI; see [GitHub Copilot Auth](../guides/oauth-authentication.md#github-copilot-managed-auth))
--   **OpenAI** (OPENAI_API_KEY)
--   **Anthropic** (ANTHROPIC_API_KEY)
--   **Google Gemini** (GEMINI_API_KEY)
--   **Meta AI** (MODEL_API_KEY or META_API_KEY; see [Meta AI Provider](../providers/meta.md))
--   **NVIDIA NIM** (NVIDIA_API_KEY; see [NVIDIA NIM Provider](../providers/nvidia.md))
--   **Merge Gateway** (MERGE_GATEWAY_API_KEY; see [Merge Gateway Provider](../providers/merge-gateway.md))
--   **xAI** (XAI_API_KEY)
--   **DeepSeek** (DEEPSEEK_API_KEY)
--   **OpenRouter** (OPENROUTER_API_KEY)
--   **Ollama** (local, no API key)
--   **LM Studio** (local, no API key by default)
+- **GitHub Copilot** (requires `copilot` CLI; see
+    [GitHub Copilot Auth](../guides/oauth-authentication.md#github-copilot-managed-auth))
+- **OpenAI** (OPENAI_API_KEY)
+- **Anthropic** (ANTHROPIC_API_KEY)
+- **Google Gemini** (GEMINI_API_KEY)
+- **Meta AI** (MODEL_API_KEY or META_API_KEY; see
+    [Meta AI Provider](../providers/meta.md))
+- **NVIDIA NIM** (NVIDIA_API_KEY; see
+    [NVIDIA NIM Provider](../providers/nvidia.md))
+- **Merge Gateway** (MERGE_GATEWAY_API_KEY; see
+    [Merge Gateway Provider](../providers/merge-gateway.md))
+- **xAI** (XAI_API_KEY)
+- **DeepSeek** (DEEPSEEK_API_KEY)
+- **OpenRouter** (OPENROUTER_API_KEY)
+- **Ollama** (local, no API key)
+- **LM Studio** (local, no API key by default)
 
-Set the corresponding environment variable for your chosen provider. For GitHub Copilot, install the `copilot` CLI and authenticate using `copilot login`.
+Set the corresponding environment variable for your chosen provider. For GitHub
+Copilot, install the `copilot` CLI and authenticate using `copilot login`.
 
 ## Troubleshooting
 
@@ -116,8 +127,7 @@ source ~/.bashrc    # bash
 source ~/.zshrc     # zsh
 ```
 
-**Windows:**
-Restart PowerShell or Command Prompt.
+**Windows:** Restart PowerShell or Command Prompt.
 
 ### Installation fails with "No such file or directory"
 
@@ -128,7 +138,8 @@ This typically indicates a network or CDN caching issue. Try one of:
 curl -fsSL https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.sh | bash
 
 # Or use GitHub API (always fresh)
-curl -fsSL "https://api.github.com/repos/vinhnx/vtcode/contents/scripts/install.sh?ref=main" | jq -r '.content' | base64 -d | bash
+curl -fsSL "https://api.github.com/repos/vinhnx/vtcode/contents/scripts/install.sh?ref=main" \
+  | jq -r '.content' | base64 -d | bash
 ```
 
 ### Permission denied
@@ -139,8 +150,7 @@ curl -fsSL "https://api.github.com/repos/vinhnx/vtcode/contents/scripts/install.
 chmod +x /usr/local/bin/vtcode
 ```
 
-**Windows:**
-Run PowerShell as Administrator.
+**Windows:** Run PowerShell as Administrator.
 
 ### Download failed
 
@@ -151,9 +161,9 @@ Run PowerShell as Administrator.
 
 ### Still stuck?
 
--   Open an issue: https://github.com/vinhnx/vtcode/issues
--   Check docs: https://github.com/vinhnx/vtcode/docs
--   See [detailed guide](./NATIVE_INSTALLERS.md)
+- Open an issue: <https://github.com/vinhnx/vtcode/issues>
+- Check docs: <https://github.com/vinhnx/vtcode/docs>
+- See [detailed guide](./NATIVE_INSTALLERS.md)
 
 ## Uninstall
 
@@ -195,20 +205,23 @@ Remove-Item "C:\Program Files\VT Code\vtcode.exe"
 
 ### macOS & Linux Paths
 
--   `/usr/local/bin/vtcode` (standard)
--   `/opt/local/bin/vtcode` (Homebrew ARM64)
--   `~/.local/bin/vtcode` (user fallback)
+- `/usr/local/bin/vtcode` (standard)
+- `/opt/local/bin/vtcode` (Homebrew ARM64)
+- `~/.local/bin/vtcode` (user fallback)
 
 ### Windows Paths
 
--   `C:\Program Files\VT Code\vtcode.exe` (system-wide, requires admin)
--   `%LOCALAPPDATA%\VT Code\vtcode.exe` (user-scoped)
+- `C:\Program Files\VT Code\vtcode.exe` (system-wide, requires admin)
+- `%LOCALAPPDATA%\VT Code\vtcode.exe` (user-scoped)
 
 The native installers automatically select the best location and add it to PATH.
 
 ## Additional Resources
 
--   **[Detailed Native Installers Guide](./NATIVE_INSTALLERS.md)** - Technical details and advanced options
--   **[Quick Reference](./QUICK_REFERENCE.md)** - One-liner commands
--   **[GitHub Releases](https://github.com/vinhnx/vtcode/releases)** - Download binaries manually
--   **[Documentation](https://github.com/vinhnx/vtcode/docs)** - Full documentation
+- **[Detailed Native Installers Guide](./NATIVE_INSTALLERS.md)** - Technical
+    details and advanced options
+- **[Quick Reference](./QUICK_REFERENCE.md)** - One-liner commands
+- **[GitHub Releases](https://github.com/vinhnx/vtcode/releases)** - Download
+    binaries manually
+- **[Documentation](https://github.com/vinhnx/vtcode/docs)** - Full
+    documentation

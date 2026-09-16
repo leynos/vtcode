@@ -37,8 +37,8 @@ ast-grep run --lang typescript --pattern 'console.log($$$ARGS)' packages
 ast-grep run --lang python --pattern '$OBJ.$METHOD($$$ARGS)' app tests
 ```
 
-For machine-readable results, request ast-grep's native JSON and disable terminal
-colour:
+For machine-readable results, request ast-grep's native JSON and disable
+terminal colour:
 
 ```sh
 ast-grep run --lang rust --pattern '$VALUE.unwrap()' --json=stream --color=never src
@@ -119,8 +119,8 @@ ast-grep scan --config sgconfig.yml --inspect=summary .
 ast-grep scan --config sgconfig.yml --inspect=entity .
 ```
 
-Use `--filter` to narrow configured rules. Use `--rule` for one standalone rule;
-it conflicts with `--config`.
+Use `--filter` to narrow configured rules. Use `--rule` for one standalone
+rule; it conflicts with `--config`.
 
 ## Rule Tests
 
@@ -181,13 +181,13 @@ those operations in explicit rule files so their scope and tests remain visible.
 ## Custom Languages and Injections
 
 Register custom parsers, file mappings, and embedded-language rules in
-`sgconfig.yml`. Inspect discovery with `ast-grep scan --inspect=summary`. If the
-grammar itself is unclear, compare ast-grep's debug output with
+`sgconfig.yml`. Inspect discovery with `ast-grep scan --inspect=summary`. If
+the grammar itself is unclear, compare ast-grep's debug output with
 `tree-sitter parse <file>`.
 
-`languageGlobs` remaps whole files. `languageInjections` parses a matched region
-with another language. `customLanguages` registers a tree-sitter parser that
-ast-grep does not bundle.
+`languageGlobs` remaps whole files. `languageInjections` parses a matched
+region with another language. `customLanguages` registers a tree-sitter parser
+that ast-grep does not bundle.
 
 ## Choosing the Interface
 

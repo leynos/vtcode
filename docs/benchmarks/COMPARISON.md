@@ -1,6 +1,7 @@
 # Benchmark Comparison
 
-This document compares VT Code's performance across different models and configurations.
+This document compares VT Code's performance across different models and
+configurations.
 
 ## Current Results
 
@@ -9,7 +10,8 @@ This document compares VT Code's performance across different models and configu
 | **gpt-5-nano**         | OpenAI   | **94.5%** | 10.4s         | ~$0.10-0.30/1M | 2025-10-22 | **Frontier** |
 | gemini-3-flash-preview | Google   | 61.6%     | 0.97s         | $0.00 (free)   | 2025-10-22 | Mid-Range    |
 
-**Major Achievement:** gpt-5-nano achieves frontier-tier performance (94.5%), ranking in TOP 5 globally at very affordable pricing.
+**Major Achievement:** gpt-5-nano achieves frontier-tier performance (94.5%),
+ranking in TOP 5 globally at very affordable pricing.
 
 See [README.md](README.md) for benchmark details.
 

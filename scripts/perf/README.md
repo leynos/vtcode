@@ -40,16 +40,26 @@ All artifacts are written to `.vtcode/perf/`:
 - `baseline.json` / `latest.json`: captured metrics
 - `*-cargo_check.log`: cargo check output
 - `*-bench_tool_pipeline.log`: `vtcode-core` tool-pipeline bench output
-- `*-bench_agent_harness.log`: `vtcode-core` interactive harness and optimization bench output
-- `*-cold_startup.json`, `*-warm_startup.json`, `*-first_user_io.json`: raw release launch samples
+- `*-bench_agent_harness.log`: `vtcode-core` interactive harness and
+  optimization bench output
+- `*-cold_startup.json`, `*-warm_startup.json`, `*-first_user_io.json`: raw
+  release launch samples
 - `*-interactive_first_render.json`: raw PTY prompt-render samples
 - `diff.md`: markdown comparison report
 
 ## Notes
 
-- Cargo steps clear `RUSTC_WRAPPER` and `CARGO_BUILD_RUSTC_WRAPPER` by default so the scripts still work when the environment or `.cargo/config.toml` points at a blocked `sccache`.
-- Set `PERF_KEEP_RUSTC_WRAPPER=1` if you explicitly want the perf run to keep the configured wrapper.
-- `startup_ms` is retained as an alias for `warm_startup_ms` for compatibility with older reports.
-- `cold_startup_ms` measures three launches of fresh copies in `/tmp`; it is a fresh-copy loader/process signal, not a page-cache eviction benchmark.
-- `interactive_first_render_ms` ends when the PTY sees the initial `Type a request` prompt and terminates the isolated sample.
-- The harness uses a release build and a credential-free temporary `HOME`/config directory, so it does not use provider credentials or write to the real user config.
+- Cargo steps clear `RUSTC_WRAPPER` and `CARGO_BUILD_RUSTC_WRAPPER` by default
+  so the scripts still work when the environment or `.cargo/config.toml` points
+  at a blocked `sccache`.
+- Set `PERF_KEEP_RUSTC_WRAPPER=1` if you explicitly want the perf run to keep
+  the configured wrapper.
+- `startup_ms` is retained as an alias for `warm_startup_ms` for compatibility
+  with older reports.
+- `cold_startup_ms` measures three launches of fresh copies in `/tmp`; it is a
+  fresh-copy loader/process signal, not a page-cache eviction benchmark.
+- `interactive_first_render_ms` ends when the PTY sees the initial
+  `Type a request` prompt and terminates the isolated sample.
+- The harness uses a release build and a credential-free temporary `HOME`
+  /config directory, so it does not use provider credentials or write to the
+  real user config.

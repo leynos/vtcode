@@ -1,14 +1,16 @@
 # Meta AI Integration Guide
 
 VT Code has a first-class Meta AI provider for Meta's Muse models. Prefer this
-provider when you want to call Meta directly; use the [OpenRouter guide](./openrouter.md#meta-muse-models)
-when you specifically want OpenRouter billing, routing, or fallback options.
+provider when you want to call Meta directly; use the
+[OpenRouter guide](./openrouter.md#meta-muse-models) when you specifically want
+OpenRouter billing, routing, or fallback options.
 
 ## Prerequisites
 
-Create a Meta AI API key using the [Meta AI developer documentation](https://dev.meta.ai/docs/llms.txt).
-Meta's documentation uses `MODEL_API_KEY`; VT Code accepts that variable and
-also supports the provider-specific `META_API_KEY` variable.
+Create a Meta AI API key using the
+[Meta AI developer documentation](https://dev.meta.ai/docs/llms.txt). Meta's
+documentation uses `MODEL_API_KEY`; VT Code accepts that variable and also
+supports the provider-specific `META_API_KEY` variable.
 
 ```bash
 export MODEL_API_KEY="your-meta-api-key"
@@ -36,25 +38,25 @@ compatible gateway or test endpoint is required.
 
 ## Curated models
 
-| Model | Notes |
-| --- | --- |
-| `muse-spark-1.2` | Default and latest curated Standard-tier Muse Spark model |
-| `muse-spark-1.1` | Previous curated Standard-tier Muse Spark model |
+| Model                        | Notes                                                                    |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `muse-spark-1.2`             | Default and latest curated Standard-tier Muse Spark model                |
+| `muse-spark-1.1`             | Previous curated Standard-tier Muse Spark model                          |
 | `muse-spark-1.2-contributor` | Opt-in Contributor-tier variant; review Meta's data-use terms before use |
 
 All three models are exposed through the `/model` picker and support streaming,
 function tools, structured output, multimodal input, and reasoning effort
 controls through Meta's OpenAI-compatible Chat Completions API.
 
-See the [Meta model catalog](https://developer.meta.com/ai/models),
-[Chat Completions protocol](https://dev.meta.ai/docs/protocols/chat-completions.md),
+See the
+[Meta model catalog](https://developer.meta.com/ai/models), [Chat Completions protocol](https://dev.meta.ai/docs/protocols/chat-completions.md),
 and [authentication guide](https://dev.meta.ai/docs/authentication.md) for
 provider-side details.
 
 ## Troubleshooting
 
-| Symptom | Resolution |
-| --- | --- |
-| Missing credentials | Set `META_API_KEY` or the documented `MODEL_API_KEY` variable. |
-| Model rejected | Use one of `muse-spark-1.1`, `muse-spark-1.2`, or `muse-spark-1.2-contributor` for the official Meta provider. |
-| Custom endpoint failure | Confirm the endpoint implements Meta's `/v1/chat/completions` protocol and set `META_BASE_URL`. |
+| Symptom                 | Resolution                                                                                                     |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Missing credentials     | Set `META_API_KEY` or the documented `MODEL_API_KEY` variable.                                                 |
+| Model rejected          | Use one of `muse-spark-1.1`, `muse-spark-1.2`, or `muse-spark-1.2-contributor` for the official Meta provider. |
+| Custom endpoint failure | Confirm the endpoint implements Meta's `/v1/chat/completions` protocol and set `META_BASE_URL`.                |

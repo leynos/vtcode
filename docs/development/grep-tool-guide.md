@@ -20,11 +20,11 @@ usages, text, and paths.
 
 ## Architecture
 
--   **Backend**: `rg` on PATH, or `grep` as a fallback
--   **Search type**: regex by default, literal string matching with `rg -F`
--   **File filtering**: `rg --glob`, `rg -t`, path arguments, and size limits
--   **Performance**: `rg` respects `.gitignore` and `.ignore` files by default
--   **Output control**: line numbers, column numbers, filename-only output, and
+- **Backend**: `rg` on PATH, or `grep` as a fallback
+- **Search type**: regex by default, literal string matching with `rg -F`
+- **File filtering**: `rg --glob`, `rg -t`, path arguments, and size limits
+- **Performance**: `rg` respects `.gitignore` and `.ignore` files by default
+- **Output control**: line numbers, column numbers, filename-only output, and
     nearby lines are shell flags
 
 ## Basic Usage
@@ -59,46 +59,46 @@ rg -n -i --glob "**/*.ts" "^import\\s.*from" .
 
 ### Core Flags
 
-| Need | `rg` command form |
-| --- | --- |
-| Search under a path | `rg "TODO" src` |
-| Show line numbers | `rg -n "TODO" src` |
-| Limit result volume | `rg -n "TODO" src | head -c 4000` |
-| Return only filenames | `rg -l "TODO" src` |
+| Need                  | `rg` command form                  |
+| --------------------- | ---------------------------------- |
+| Search under a path   | `rg "TODO" src`                    |
+| Show line numbers     | `rg -n "TODO" src`                 |
+| Limit result volume   | `rg -n "TODO" src \| head -c 4000` |
+| Return only filenames | `rg -l "TODO" src`                 |
 
 ### Pattern Matching
 
-| Need | `rg` flag |
-| --- | --- |
-| Literal string search | `-F` |
-| Case-insensitive search | `-i` |
-| Case-sensitive search | `-s` |
-| Smart-case search | `-S` |
-| Whole-word search | `-w` |
-| Invert a match | `-v` |
-| Show only matched text | `-o` |
+| Need                    | `rg` flag |
+| ----------------------- | --------- |
+| Literal string search   | `-F`      |
+| Case-insensitive search | `-i`      |
+| Case-sensitive search   | `-s`      |
+| Smart-case search       | `-S`      |
+| Whole-word search       | `-w`      |
+| Invert a match          | `-v`      |
+| Show only matched text  | `-o`      |
 
 ### File Filtering
 
-| Need | `rg` flag |
-| --- | --- |
-| Glob file filter | `--glob "**/*.rs"` |
-| Language type filter | `-t rust`, `-t python`, `-t ts` |
-| Skip large files | `--max-filesize 5M` |
-| Search hidden files | `--hidden` |
-| Include ignored files | `--no-ignore` |
-| Search binary files | `-a` |
+| Need                  | `rg` flag                       |
+| --------------------- | ------------------------------- |
+| Glob file filter      | `--glob "**/*.rs"`              |
+| Language type filter  | `-t rust`, `-t python`, `-t ts` |
+| Skip large files      | `--max-filesize 5M`             |
+| Search hidden files   | `--hidden`                      |
+| Include ignored files | `--no-ignore`                   |
+| Search binary files   | `-a`                            |
 
 ### Output Formatting
 
-| Need | `rg` flag |
-| --- | --- |
-| Nearby lines | `-C 3` |
-| Lines before matches | `-B 2` |
-| Lines after matches | `-A 2` |
-| Column numbers | `--column` |
-| Trim leading whitespace | `--trim` |
-| JSON output for scripts | `--json` |
+| Need                    | `rg` flag  |
+| ----------------------- | ---------- |
+| Nearby lines            | `-C 3`     |
+| Lines before matches    | `-B 2`     |
+| Lines after matches     | `-A 2`     |
+| Column numbers          | `--column` |
+| Trim leading whitespace | `--trim`   |
+| JSON output for scripts | `--json`   |
 
 ## Common Patterns
 
@@ -196,8 +196,8 @@ rg -n -i -C 1 "config\\." .
 
 Use `rg -S` for smart-case matching:
 
--   `rg -S "todo"` matches `TODO`, `Todo`, and `todo`
--   `rg -S "TODO"` matches `TODO` only
+- `rg -S "todo"` matches `TODO`, `Todo`, and `todo`
+- `rg -S "TODO"` matches `TODO` only
 
 Use `rg -s` when you always need case-sensitive matching:
 
@@ -266,15 +266,15 @@ rg -n -i -C 1 "hardcoded.*password|api.*key.*=|token.*=" .
 
 ## Comparison with ast-grep
 
-| Feature | `rg` | ast-grep |
-| --- | --- | --- |
-| **Speed** | Very fast | Fast |
-| **Pattern type** | Regex and literal text | AST queries |
-| **File filtering** | Glob, type, size | Language-aware source files |
-| **Language support** | All text files | Supported programming languages |
-| **Installation** | Usually pre-installed | Requires binary |
-| **Learning curve** | Regex knowledge | AST query knowledge |
-| **Use cases** | General code search, prose, config | Syntax-aware code queries |
+| Feature              | `rg`                               | ast-grep                        |
+| -------------------- | ---------------------------------- | ------------------------------- |
+| **Speed**            | Very fast                          | Fast                            |
+| **Pattern type**     | Regex and literal text             | AST queries                     |
+| **File filtering**   | Glob, type, size                   | Language-aware source files     |
+| **Language support** | All text files                     | Supported programming languages |
+| **Installation**     | Usually pre-installed              | Requires binary                 |
+| **Learning curve**   | Regex knowledge                    | AST query knowledge             |
+| **Use cases**        | General code search, prose, config | Syntax-aware code queries       |
 
 ## Advanced `code_search`
 
@@ -282,19 +282,18 @@ rg -n -i -C 1 "hardcoded.*password|api.*key.*=|token.*=" .
 `query` and optional `path`, `file_types`, `result_types`, and `max_results`.
 Omitting `result_types` enables all four categories:
 
-| Result type | Meaning |
-| --- | --- |
-| `definition` | A recognised declaration whose name exactly matches the query. |
-| `usage` | An exact syntactic identifier outside recognised declaration names. It is not a resolved reference. |
-| `text` | A literal match in prose, configuration, comments, strings, or otherwise unclassified content. |
-| `path` | A matching existing filename or path. |
+| Result type  | Meaning                                                                                             |
+| ------------ | --------------------------------------------------------------------------------------------------- |
+| `definition` | A recognised declaration whose name exactly matches the query.                                      |
+| `usage`      | An exact syntactic identifier outside recognised declaration names. It is not a resolved reference. |
+| `text`       | A literal match in prose, configuration, comments, strings, or otherwise unclassified content.      |
+| `path`       | A matching existing filename or path.                                                               |
 
 A wholly lower-case query matches without case sensitivity. A query containing
 an upper-case character is case-sensitive. Query punctuation is literal. A
 query containing `|` is split into trimmed literal alternatives (empty terms
-are dropped), so `tokio|async-std|runtime` matches any of the three terms;
-each term is escaped as a literal, so `|` is the only character with special
-meaning.
+are dropped), so `tokio|async-std|runtime` matches any of the three terms; each
+term is escaped as a literal, so `|` is the only character with special meaning.
 
 ```json
 {"query":"ToolRegistration","path":"crates/codegen/vtcode-core/src/tools","file_types":["rust"],"result_types":["definition","usage"],"max_results":20}
@@ -302,9 +301,8 @@ meaning.
 
 Each search component is bounded. `truncated: true` means further candidates
 may exist, without claiming an exact repository-wide total. Narrow `path`,
-`file_types`, or `result_types` in another independent call. Use
-`exec_command` or the specialised ast-grep skill for arbitrary structural
-patterns.
+`file_types`, or `result_types` in another independent call. Use `exec_command`
+or the specialised ast-grep skill for arbitrary structural patterns.
 
 ## Troubleshooting
 
@@ -359,5 +357,5 @@ todos = [line for line in results.stdout.splitlines() if "TODO" in line]
 
 ## See Also
 
--   [AGENTS.md](../../AGENTS.md) for system prompt integration
--   [Tool Registry](../modules/vtcode_docs_map.md) for tool execution
+- [AGENTS.md](../../AGENTS.md) for system prompt integration
+- [Tool Registry](../modules/vtcode_docs_map.md) for tool execution

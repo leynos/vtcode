@@ -1,12 +1,14 @@
 # Terminal Rendering Best Practices for VT Code
 
-This guide documents rendering patterns and best practices specific to VT Code, based on Ratatui conventions.
+This guide documents rendering patterns and best practices specific to VT Code,
+based on Ratatui conventions.
 
 ## Core Principle: Single Draw Per Frame
 
-VT Code follows the **Ratatui recipe** of rendering everything in a single `terminal.draw()` closure per frame cycle.
+VT Code follows the **Ratatui recipe** of rendering everything in a single
+`terminal.draw()` closure per frame cycle.
 
-###   Anti-Pattern: Multiple Draws
+### Anti-Pattern: Multiple Draws
 
 ```rust
 loop {
@@ -22,9 +24,10 @@ loop {
 }
 ```
 
-**Why it fails:** Ratatui uses **double buffering**—only the last `draw()` call within a frame cycle gets rendered. The first two calls are overwritten.
+**Why it fails:** Ratatui uses **double buffering**—only the last `draw()` call
+within a frame cycle gets rendered. The first two calls are overwritten.
 
-###   Correct Pattern: Single Orchestrated Draw
+### Correct Pattern: Single Orchestrated Draw
 
 ```rust
 loop {
@@ -41,6 +44,7 @@ loop {
 File: `crates/codegen/vtcode-core/src/ui/tui/session.rs`
 
 The `Session::render()` method orchestrates all UI components:
+
 - Header (top bar with model/status)
 - Navigation pane (left sidebar)
 - Transcript (message history, center)
@@ -53,7 +57,9 @@ All rendering happens in one frame cycle.
 
 ### Single Buffer Concept
 
-Ratatui allocates one rendering buffer for the entire terminal area. When you call `terminal.draw()`, all widgets write to this buffer. At frame end, diffs are sent to the terminal.
+Ratatui allocates one rendering buffer for the entire terminal area. When you
+call `terminal.draw()`, all widgets write to this buffer. At frame end, diffs
+are sent to the terminal.
 
 **Impact on VT Code:**
 
@@ -63,7 +69,8 @@ Ratatui allocates one rendering buffer for the entire terminal area. When you ca
 
 ### Out-of-Bounds Protection
 
-Ratatui **does not prevent** panics from rendering outside the buffer. VT Code must defend against this.
+Ratatui **does not prevent** panics from rendering outside the buffer. VT Code
+must defend against this.
 
 **Pattern (from Ratatui FAQ):**
 
@@ -76,6 +83,7 @@ fn render_ref(&self, area: Rect, buf: &mut Buffer) {
 ```
 
 **Best practices:**
+
 - Use `Rect::intersection(other)` to clamp to valid regions
 - Use `Rect::clamp(constraining_rect)` to clamp coordinates
 - Use `Rect::columns()` and `Rect::rows()` iterators (safe by design)
@@ -84,7 +92,8 @@ fn render_ref(&self, area: Rect, buf: &mut Buffer) {
 
 ### Constraint-Based Layouts
 
-VT Code uses Ratatui's `Layout` system, which guarantees valid region calculations:
+VT Code uses Ratatui's `Layout` system, which guarantees valid region
+calculations:
 
 ```rust
 use ratatui::layout::{Constraint, Direction, Layout};
@@ -100,6 +109,7 @@ let chunks = Layout::default()
 ```
 
 **Safety guarantees:**
+
 - `Constraint::Length(n)` - Exactly n rows/cols
 - `Constraint::Percentage(p)` - p% of available space
 - `Constraint::Min(n)` - At least n, fill remaining
@@ -122,6 +132,7 @@ let y = (area.top() as u32 + offset).min(area.bottom() as u32) as u16;
 ```
 
 Better yet, use iterators:
+
 ```rust
 //   Safest: Iterator-based (can't go out of bounds)
 for (i, cell) in f.buffer_mut().content.iter_mut().enumerate() {
@@ -135,9 +146,11 @@ for (i, cell) in f.buffer_mut().content.iter_mut().enumerate() {
 
 ### Composition Pattern
 
-VT Code composes widgets hierarchically. Each "pane" renders into its allocated area:
+VT Code composes widgets hierarchically. Each "pane" renders into its allocated
+area:
 
 **Structure:**
+
 ```
 
  Header: Info, status, theme       Render size: full_width × 1
@@ -151,6 +164,7 @@ VT Code composes widgets hierarchically. Each "pane" renders into its allocated 
 ```
 
 **Implementation:**
+
 ```rust
 pub fn render(&mut self, f: &mut Frame) {
     let area = f.area();
@@ -172,9 +186,11 @@ pub fn render(&mut self, f: &mut Frame) {
 
 ### Widget Type Safety
 
-VT Code uses Ratatui's widget trait (`Widget`) for reusable components. Rendering happens via `widget.render()` call.
+VT Code uses Ratatui's widget trait (`Widget`) for reusable components.
+Rendering happens via `widget.render()` call.
 
 **Pattern:**
+
 ```rust
 // Stateless widget (implements Widget trait)
 impl Widget for MyCustomWidget {
@@ -193,9 +209,11 @@ f.render_widget(my_widget, area);
 
 ### Dynamic Text Reflow
 
-VT Code's message transcript must reflow when terminal resizes. This is expensive, so VT Code caches reflowed text:
+VT Code's message transcript must reflow when terminal resizes. This is
+expensive, so VT Code caches reflowed text:
 
 **Pattern (from vtcode-core):**
+
 ```rust
 struct Message {
     text: String,
@@ -222,6 +240,7 @@ fn get_reflowed_lines(&self, width: u16) -> Vec<String> {
 ### Handling Terminal Resize
 
 On `Event::Resize(w, h)`:
+
 1. Clear reflow caches
 2. Recalculate layout constraints
 3. Trigger next `Event::Render`
@@ -249,6 +268,7 @@ f.render_widget(
 ```
 
 **Portable color options:**
+
 - Named: `Color::Red`, `Color::Blue`, etc.
 - Indexed: `Color::Indexed(200)` (256-color palette)
 - RGB: `Color::Rgb(255, 0, 0)` (24-bit color, terminal permitting)
@@ -266,11 +286,13 @@ Converts ANSI SGR codes (like `\x1b[1;31m` for bold red) to Ratatui `Style`.
 ### Double Buffering Efficiency
 
 Ratatui's double buffer means:
+
 - Only cells that changed are sent to terminal
 - No "flicker" (frame is complete before display)
 - Terminal I/O is optimized via escape sequence diffing
 
 **VT Code optimization:**
+
 - Only send `Event::Render` at 60 FPS (not on every state change)
 - Batch state updates into `Event::Tick` (4 Hz)
 - Let Ratatui handle diff logic
@@ -311,7 +333,8 @@ f.render_widget(Paragraph::new(&self.status_str), area);
 
 ### Issue 1: Widget Disappears on Resize
 
-**Cause:** Hard-coded area sizes (e.g., `area.top() + 10` without bounds checking)
+**Cause:** Hard-coded area sizes (e.g., `area.top() + 10` without bounds
+checking)
 
 **Fix:** Use `Constraint` and `Layout`, not manual offsets.
 

@@ -49,7 +49,8 @@ Any other frontmatter key is rejected during parsing and validation.
 
 - `license`: maximum 512 characters
 - `compatibility`: 1 to 500 characters if present
-- `allowed-tools`: normalized to a space-delimited string and limited to 16 tools
+- `allowed-tools`: normalized to a space-delimited string and limited to 16
+  tools
 
 ## Discovery Precedence
 
@@ -64,12 +65,16 @@ Any other frontmatter key is rejected during parsing and validation.
 VT Code does not support:
 
 - legacy VT Code skill frontmatter extensions
-- deprecated skill locations such as `.vtcode/skills`, `.claude/skills`, `.pi/skills`, `.codex/skills`, `.github/skills`, or `./skills`
+- deprecated skill locations such as `.vtcode/skills`, `.claude/skills`,
+  `.pi/skills`, `.codex/skills`, `.github/skills`, or `./skills`
 - `agents/openai.yaml`
 
 ## Runtime Surface
 
-- `skills list` and `skills info` render strict-spec metadata plus VT Code's explicit command-skill metadata
+- `skills list` and `skills info` render strict-spec metadata plus VT Code's
+  explicit command-skill metadata
 - skill prompts include only name, description, file path, and scope
 - routing logic uses `description`; legacy trigger fields are not considered
-- skills with `disable-model-invocation: true` are hidden from the model-facing startup catalog but remain available for explicit slash or `/skills use` activation
+- skills with `disable-model-invocation: true` are hidden from the model-facing
+  startup catalog but remain available for explicit slash or `/skills use`
+  activation

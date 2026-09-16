@@ -301,6 +301,7 @@ mod tests {
 **File: `crates/codegen/vtcode-core/src/utils/mod.rs`**
 
 Add:
+
 ```rust
 pub mod ansi_parser;
 ```
@@ -384,7 +385,8 @@ fn parse_ansi_sequence(text: &str) -> Option<usize> {
 
 ## Step 5: Update ANSI Stripping
 
-**File: `crates/codegen/vtcode-core/src/tools/registry/executors/exec_output.rs`**
+**File:**
+`crates/codegen/vtcode-core/src/tools/registry/executors/exec_output.rs`
 
 Replace `strip_ansi` function with:
 
@@ -400,9 +402,11 @@ Simplifies from ~60 lines to 1 line!
 
 ## Step 6: Testing
 
-**File: `crates/codegen/vtcode-core/src/utils/ansi_parser.rs` (already included in Step 2)**
+**File: `crates/codegen/vtcode-core/src/utils/ansi_parser.rs` (already included
+in Step 2)**
 
 Run tests:
+
 ```bash
 cargo test ansi_parser::tests
 ```
@@ -422,7 +426,8 @@ fn test_ansi_parser_with_real_tool_output() {
 ## Step 7: Documentation
 
 Update `docs/ANSTYLE_PARSE_REVIEW.md` with:
--   Dependency added
+
+- Dependency added
 - Implementation dates
 - Performance benchmarks
 - Lessons learned
@@ -486,10 +491,10 @@ pub fn truncate_with_ansi(text: &str, width: usize) -> String {
 
 `anstyle-parse` vs alternatives:
 
-| Implementation | Speed | Code Size | Maintainability |
-|---|---|---|---|
-| Manual parser | Fast | 40 LOC | Low |
-| vte crate | Medium | Dependency | Medium |
-| **anstyle-parse** | **Medium** | **Dependency** | **High** |
+| Implementation    | Speed      | Code Size      | Maintainability |
+| ----------------- | ---------- | -------------- | --------------- |
+| Manual parser     | Fast       | 40 LOC         | Low             |
+| vte crate         | Medium     | Dependency     | Medium          |
+| **anstyle-parse** | **Medium** | **Dependency** | **High**        |
 
 Use `cargo bench` to compare if performance critical.

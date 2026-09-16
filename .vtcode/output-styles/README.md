@@ -1,11 +1,14 @@
 # VT Code Output Styles
 
-Output styles allow you to customize the behavior and response format of VT Code by modifying the system prompt. This feature enables different modes of operation, from concise responses to detailed explanations.
+Output styles allow you to customize the behavior and response format of VT
+Code by modifying the system prompt. This feature enables different modes of
+operation, from concise responses to detailed explanations.
 
 ## Overview
 
 Output styles work by modifying VT Code's system prompt. Each style can:
-- Add custom instructions to the base prompt (when `keep-coding-instructions: true`)
+- Add custom instructions to the base prompt (when
+  `keep-coding-instructions: true`)
 - Replace the base prompt entirely (when `keep-coding-instructions: false`)
 
 ## Configuration
@@ -19,7 +22,8 @@ active_style = "default"  # Set the active output style
 
 ## Creating Custom Output Styles
 
-Output styles are defined in `.vtcode/output-styles/` directory as markdown files with YAML frontmatter:
+Output styles are defined in `.vtcode/output-styles/` directory as markdown
+files with YAML frontmatter:
 
 ```markdown
 ---
@@ -37,12 +41,15 @@ Add your custom instructions here. These will be added to the system prompt.
 
 - `name`: The name of the output style (required)
 - `description`: A brief description of the style (optional)
-- `keep-coding-instructions`: Whether to preserve VT Code's base instructions (default: true)
+- `keep-coding-instructions`: Whether to preserve VT Code's base instructions
+  (default: true)
 
 ### Style Behavior
 
-- When `keep-coding-instructions` is `true`: Your custom content is appended to VT Code's base system prompt
-- When `keep-coding-instructions` is `false`: Your custom content replaces VT Code's base system prompt entirely
+- When `keep-coding-instructions` is `true`: Your custom content is appended to
+  VT Code's base system prompt
+- When `keep-coding-instructions` is `false`: Your custom content replaces VT
+  Code's base system prompt entirely
 
 ## Available Output Styles
 
@@ -50,7 +57,8 @@ VT Code ships with several built-in output styles:
 
 ### Default
 - Name: `default`
-- Description: Standard VT Code output style with concise responses and efficient tool handling
+- Description: Standard VT Code output style with concise responses and
+  efficient tool handling
 - Keeps base instructions: Yes
 
 ### Explanatory
@@ -60,17 +68,20 @@ VT Code ships with several built-in output styles:
 
 ### Learning
 - Name: `learning`
-- Description: Collaborative learning mode where VT Code guides users to contribute code themselves
+- Description: Collaborative learning mode where VT Code guides users to
+  contribute code themselves
 - Keeps base instructions: Yes
 
 ### Developer
 - Name: `developer`
-- Description: Developer-focused output style optimized for coding tasks and technical work
+- Description: Developer-focused output style optimized for coding tasks and
+  technical work
 - Keeps base instructions: Yes
 
 ### Architect
 - Name: `architect`
-- Description: Architecture-focused output style for system design and high-level planning
+- Description: Architecture-focused output style for system design and
+  high-level planning
 - Keeps base instructions: Yes
 
 ## Examples
@@ -114,11 +125,15 @@ You are a friendly pair programming partner.
 
 ## Using Output Styles
 
-To switch between output styles, update your `vtcode.toml` configuration file and restart VT Code.
+To switch between output styles, update your `vtcode.toml` configuration file
+and restart VT Code.
 
 ## Best Practices
 
-1. **Start Simple**: Begin with existing styles and modify them to suit your needs
-2. **Test Thoroughly**: Different styles may affect VT Code's behavior significantly
-3. **Document Your Styles**: Add clear descriptions to help others understand your custom styles
+1. **Start Simple**: Begin with existing styles and modify them to suit your
+   needs
+2. **Test Thoroughly**: Different styles may affect VT Code's behavior
+   significantly
+3. **Document Your Styles**: Add clear descriptions to help others understand
+   your custom styles
 4. **Consider Context**: Some styles work better for specific tasks or projects

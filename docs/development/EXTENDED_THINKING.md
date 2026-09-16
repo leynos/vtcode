@@ -1,17 +1,18 @@
 # Anthropic Thinking in VT Code
 
-VT Code currently splits direct Anthropic Claude thinking into two runtime paths:
+VT Code currently splits direct Anthropic Claude thinking into two runtime
+paths:
 
 - Adaptive by default: `claude-opus-4-8`, `claude-sonnet-4-6`
 - Manual budget only: `claude-haiku-4-5`
 
 ## Compact Runtime Matrix
 
-| Model                   | VT Code default | What VT Code emits                                                                                              |
-| ----------------------- | --------------- | --------------------------------------------------------------------------------------------------------------- |
-| `claude-opus-4-8`       | Adaptive        | `thinking: { type: "adaptive" }`, default `effort = xhigh`, optional `task_budget`                              |
-| `claude-sonnet-4-6`     | Adaptive        | `thinking: { type: "adaptive" }`, default `effort = high`, explicit `thinking_budget` falls back to manual mode |
-| `claude-haiku-4-5`      | Manual budget   | `thinking: { type: "enabled", budget_tokens: N }`                                                               |
+| Model               | VT Code default | What VT Code emits                                                                                              |
+| ------------------- | --------------- | --------------------------------------------------------------------------------------------------------------- |
+| `claude-opus-4-8`   | Adaptive        | `thinking: { type: "adaptive" }`, default `effort = xhigh`, optional `task_budget`                              |
+| `claude-sonnet-4-6` | Adaptive        | `thinking: { type: "adaptive" }`, default `effort = high`, explicit `thinking_budget` falls back to manual mode |
+| `claude-haiku-4-5`  | Manual budget   | `thinking: { type: "enabled", budget_tokens: N }`                                                               |
 
 ## Configuration
 
@@ -28,7 +29,8 @@ thinking_display = "summarized"
 
 ### Important defaults
 
-- `effort` now defaults to `xhigh`; models that do not support `xhigh` fall back to their supported default, typically `high`
+- `effort` now defaults to `xhigh`; models that do not support `xhigh` fall
+  back to their supported default, typically `high`
 - `xhigh` is only valid for Claude Opus 4.8/4.7
 - `task_budget_tokens` is only sent for Claude Opus 4.8/4.7
 - `thinking_display` defaults to the Anthropic API default when unset
@@ -48,11 +50,14 @@ For adaptive models, VT Code sends:
 ### Adaptive model notes
 
 - Claude Opus 4.8/4.7 is adaptive-only in VT Code
-- Claude Opus 4.6 and Claude Sonnet 4.6 are adaptive by default, but still accept explicit manual budgets for backward compatibility
-- `thinking_budget` is rejected on adaptive-only models and forces manual mode only on Claude Opus 4.6 / Sonnet 4.6
+- Claude Opus 4.6 and Claude Sonnet 4.6 are adaptive by default, but still
+  accept explicit manual budgets for backward compatibility
+- `thinking_budget` is rejected on adaptive-only models and forces manual mode
+  only on Claude Opus 4.6 / Sonnet 4.6
 - `effort` is enabled on Claude Opus 4.8/4.7, Claude Opus 4.6, Claude Sonnet 4.6
 - Claude Opus 4.8/4.7 supports `low`, `medium`, `high`, `xhigh`, and `max`
-- Claude Opus 4.6 and Claude Sonnet 4.6 support `low`, `medium`, `high`, and `max`
+- Claude Opus 4.6 and Claude Sonnet 4.6 support `low`, `medium`, `high`, and
+  `max`
 
 ## Budgeted Thinking Behavior
 
@@ -77,8 +82,10 @@ For budgeted-thinking models, VT Code sends:
 ### Manual-mode notes
 
 - Claude Haiku 4.5 stays on the budgeted path
-- Claude Sonnet 4.6 only uses the interleaved-thinking beta header when it falls back to manual mode; adaptive thinking does not require it
-- Claude Opus 4.6 can still use manual budgets, but VT Code does not enable interleaved manual thinking for it
+- Claude Sonnet 4.6 only uses the interleaved-thinking beta header when it
+  falls back to manual mode; adaptive thinking does not require it
+- Claude Opus 4.6 can still use manual budgets, but VT Code does not enable
+  interleaved manual thinking for it
 - When interleaving is unavailable, `budget_tokens` must stay below `max_tokens`
 
 ## Feature Compatibility
@@ -86,8 +93,10 @@ For budgeted-thinking models, VT Code sends:
 When thinking is active, VT Code enforces or normalizes the following behavior:
 
 - `tool_choice` is limited to `auto` or `none`
-- assistant prefills are incompatible with Claude Opus 4.6/4.7 and Claude Sonnet 4.6
-- `thinking_display = "summarized"` restores visible summarized thinking on models that default to omitted output
+- assistant prefills are incompatible with Claude Opus 4.6/4.7 and Claude
+  Sonnet 4.6
+- `thinking_display = "summarized"` restores visible summarized thinking on
+  models that default to omitted output
 - Claude Opus 4.8/4.7 rejects explicit `temperature`, `top_p`, and `top_k`
 
 ## Disabling Thinking
@@ -109,7 +118,9 @@ Current VT Code behavior:
 
 ### Use General Instructions First
 
-Claude often performs better with high-level instructions rather than step-by-step prescriptive guidance. The model's creativity in approaching problems may exceed a human's ability to prescribe the optimal thinking process.
+Claude often performs better with high-level instructions rather than
+step-by-step prescriptive guidance. The model's creativity in approaching
+problems may exceed a human's ability to prescribe the optimal thinking process.
 
 **Instead of:**
 
@@ -130,9 +141,12 @@ Try different methods if your first approach doesn't work.
 
 ### Multishot Prompting
 
-Multishot prompting works well with extended thinking. When you provide examples of how to think through problems, Claude will follow similar reasoning patterns.
+Multishot prompting works well with extended thinking. When you provide
+examples of how to think through problems, Claude will follow similar reasoning
+patterns.
 
-You can include few-shot examples using XML tags like `<thinking>` or `<scratchpad>` to indicate canonical patterns of extended thinking.
+You can include few-shot examples using XML tags like `<thinking>` or
+`<scratchpad>` to indicate canonical patterns of extended thinking.
 
 ### Self-Verification
 
@@ -151,10 +165,14 @@ And fix any issues you find.
 ### Best Practices
 
 1. **Start small**: Begin with minimum budget (1024) and increase incrementally
-2. **Use batch processing**: For budgets above 32K tokens to avoid networking issues
-3. **Language**: Extended thinking performs best in English (outputs can be in any supported language)
-4. **Clean responses**: Instruct Claude not to repeat its extended thinking if you want cleaner output
-5. **Don't pass back thinking**: Passing Claude's extended thinking back in user text blocks doesn't improve performance
+2. **Use batch processing**: For budgets above 32K tokens to avoid networking
+   issues
+3. **Language**: Extended thinking performs best in English (outputs can be in
+   any supported language)
+4. **Clean responses**: Instruct Claude not to repeat its extended thinking if
+   you want cleaner output
+5. **Don't pass back thinking**: Passing Claude's extended thinking back in
+   user text blocks doesn't improve performance
 
 ### What NOT to Do
 

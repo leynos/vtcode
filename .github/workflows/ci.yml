@@ -142,7 +142,11 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt
-      - run: cargo fmt --all -- --check
+      - name: Install mdtablefix
+        uses: leynos/shared-actions/.github/actions/install-mdtablefix@c5a54701c8603a0fa756a6b34c49bc2af75a6c11
+        with:
+          version: "0.6.0"
+      - run: make check-fmt
 
   # Check for typos in the codebase.
   # See <https://github.com/crate-ci/typos/>
@@ -271,9 +275,7 @@ jobs:
       - uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24.2.0
         if: steps.filter.outputs.markdown == 'true'
         with:
-          globs: |
-            '**/*.md'
-            '!target'
+          globs: '**/*.md'
 
   check-cross-platform:
     name: Cross-platform check ${{ matrix.os }}

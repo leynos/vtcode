@@ -1,13 +1,16 @@
 # A2A Protocol Support for VT Code
 
-VT Code now implements the [Agent2Agent (A2A) Protocol](https://a2a-protocol.org), an open standard enabling communication and interoperability between AI agents.
+VT Code now implements the
+[Agent2Agent (A2A) Protocol](https://a2a-protocol.org), an open standard
+enabling communication and interoperability between AI agents.
 
 ## Overview
 
 The A2A Protocol enables:
 
 - **Agent Discovery**: Via Agent Cards at `/.well-known/agent-card.json`
-- **Task Lifecycle Management**: States like `submitted`, `working`, `completed`, `failed`
+- **Task Lifecycle Management**: States like `submitted`, `working`,
+  `completed`, `failed`
 - **Real-time Streaming**: Via Server-Sent Events (SSE)
 - **Rich Content Types**: Text, file, and structured data parts
 - **Push Notifications**: Webhook-based async updates
@@ -447,7 +450,7 @@ cargo nextest run -p vtcode-a2a --features a2a-server
 - v **Phase 1**: Core types, task manager, server
 - v **Phase 2**: Integration tests, streaming, webhooks
 - v **Phase 3**: Authenticated client requests
--  **Phase 4**: Extended documentation, examples
+- **Phase 4**: Extended documentation, examples
 
 ## Dependencies
 
@@ -467,10 +470,12 @@ cargo nextest run -p vtcode-a2a --features a2a-server
 
 ## Security Notes
 
-- The agent card endpoint is public; RPC and streaming endpoints require bearer authentication.
+- The agent card endpoint is public; RPC and streaming endpoints require bearer
+  authentication.
 - Cross-origin browser access is disabled by default.
 - Task listings omit conversation history unless a history length is requested.
-- Webhook URLs require HTTPS or exact localhost/loopback HTTP, and redirects are disabled.
+- Webhook URLs require HTTPS or exact localhost/loopback HTTP, and redirects
+  are disabled.
 - Webhook authentication via headers
 - Request validation per JSON-RPC spec
 - Error code sanitization

@@ -2,16 +2,21 @@
 
 ## Overview
 
-The `web_fetch` tool now includes comprehensive security checks to prevent fetching from sensitive, malicious, or privacy-compromising URLs. These checks are applied at the validation stage before any network request is made.
+The `web_fetch` tool now includes comprehensive security checks to prevent
+fetching from sensitive, malicious, or privacy-compromising URLs. These checks
+are applied at the validation stage before any network request is made.
 
 ## Security Layers
 
 ### 1. Protocol Validation
+
 - **HTTPS only**: All URLs must use HTTPS protocol
 - **Rejects**: HTTP, FTP, and other non-secure protocols
 
 ### 2. Network Isolation
-- **Blocks local/private networks**: `localhost`, `127.0.0.1`, `0.0.0.0`, `::1`, `.local`, `.internal`
+
+- **Blocks local/private networks**: `localhost`, `127.0.0.1`, `0.0.0.0`, `::1`,
+  `.local`, `.internal`
 - **Prevents SSRF attacks**: Protects against Server-Side Request Forgery
 
 ### 3. Sensitive Domain Blocklist
@@ -19,6 +24,7 @@ The `web_fetch` tool now includes comprehensive security checks to prevent fetch
 Blocks access to sensitive/privacy-sensitive domains including:
 
 #### Banking & Financial
+
 - `paypal.com`
 - `stripe.com`
 - `square.com`
@@ -26,6 +32,7 @@ Blocks access to sensitive/privacy-sensitive domains including:
 - `wire.com`
 
 #### Authentication & Identity
+
 - `github.com/login`
 - `gitlab.com/users/login`
 - `okta.com`
@@ -35,25 +42,30 @@ Blocks access to sensitive/privacy-sensitive domains including:
 - `login.apple.com`
 
 #### Email Providers
+
 - `mail.google.com`
 - `outlook.live.com`
 - `icloud.com/mail`
 
 #### Personal/Private Services
+
 - `myfitnesspal.com`
 - `health.apple.com`
 - `health.google.com`
 
 #### VPN & Proxy Services
+
 - `expressvpn.com`
 - `nordvpn.com`
 
 #### Medical & Health Records
+
 - `healthvault.com`
 - `epic.com`
 - `cerner.com`
 
 #### Legal Documents
+
 - `docusign.com`
 - `adobe.com/sign`
 
@@ -61,7 +73,8 @@ Blocks access to sensitive/privacy-sensitive domains including:
 
 Blocks URLs containing sensitive query parameters and paths:
 
-- **Credentials**: `password=`, `token=`, `api_key=`, `secret=`, `session=`, `cookie=`
+- **Credentials**: `password=`, `token=`, `api_key=`, `secret=`, `session=`,
+  `cookie=`
 - **Authentication**: `auth=`, `oauth`, `bearer%20`, `x-auth`, `authorization:`
 - **Private Paths**: `/admin`, `/private`, `/internal`, `/secret`
 
@@ -70,28 +83,38 @@ Blocks URLs containing sensitive query parameters and paths:
 Blocks URLs containing common malware and phishing indicators:
 
 #### Obfuscation & Evasion
-- Executable file patterns: `.zip"`, `.exe"`, `.scr"`, `.bat"`, `.cmd"`, `.vbs"`, `.ps1"`
+
+- Executable file patterns: `.zip"`, `.exe"`, `.scr"`, `.bat"`, `.cmd"`,
+  `.vbs"`, `.ps1"`
 
 #### Domain Confusion (Typosquatting)
-- Homograph attacks: `g00gle`, `g0ogle`, `gooogle`, `micr0soft`, `micro$oft`, `amaz0n`, `facebk`, `faceb00k`
+
+- Homograph attacks: `g00gle`, `g0ogle`, `gooogle`, `micr0soft`, `micro$oft`,
+  `amaz0n`, `facebk`, `faceb00k`
 
 #### Suspicious Subdomains
+
 - `admin.`, `backup.`, `dev.`, `test.`, `temp.`, `tmp.`
 
 #### URL Shorteners
+
 - `bit.ly/`, `short.link/`, `tinyurl.com/`, `goo.gl/`
-- These can obscure the real destination and are commonly used in phishing campaigns
+- These can obscure the real destination and are commonly used in phishing
+  campaigns
 
 ## Error Messages
 
-When a URL is blocked, the tool returns a clear error message indicating the reason:
+When a URL is blocked, the tool returns a clear error message indicating the
+reason:
 
+<!-- markdownlint-disable MD013 -- literal asserted by the Rust source -->
 ```json
 {
   "error": "web_fetch: failed to fetch URL 'https://paypal.com/login': Access to sensitive domain 'paypal.com' is blocked for privacy and security reasons",
   "url": "https://paypal.com/login"
 }
 ```
+<!-- markdownlint-enable MD013 -->
 
 ## Implementation Details
 
@@ -134,6 +157,7 @@ The implementation includes comprehensive test cases:
 - `rejects_url_shorteners()` - URL shortener blocking
 
 Run tests with:
+
 ```bash
 cargo test --lib web_fetch
 ```
@@ -145,7 +169,8 @@ Potential improvements:
 1. **Dynamic blocklist**: Load sensitive domains from external configuration
 2. **Machine learning**: Add ML-based phishing detection
 3. **Content scanning**: Scan fetched content for malware signatures
-4. **DNS validation**: Check against public DNS blocklists (Google Safe Browsing, etc.)
+4. **DNS validation**: Check against public DNS blocklists (Google Safe
+   Browsing, etc.)
 5. **Certificate validation**: Enhanced SSL/TLS certificate validation
 6. **Whitelist mode**: Optional mode to only allow whitelisted domains
 
@@ -171,11 +196,13 @@ Potential improvements:
 
 ### Adding New Blocked Domains
 
-Edit `crates/codegen/vtcode-core/src/tools/web_fetch.rs` in the `validate_url_safety()` function's `blocked_domains` array.
+Edit `crates/codegen/vtcode-core/src/tools/web_fetch.rs` in the
+`validate_url_safety()` function's `blocked_domains` array.
 
 ### Updating Malicious Patterns
 
-Modify the `malicious_patterns` array in the `check_malicious_indicators()` function.
+Modify the `malicious_patterns` array in the `check_malicious_indicators()`
+function.
 
 ## References
 

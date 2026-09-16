@@ -1,6 +1,8 @@
 # Web Search Tool
 
-The `web_search` tool performs web searches and returns ranked results (title, URL, snippet) inline. It uses DuckDuckGo's HTML endpoint keylessly — no API key required.
+The `web_search` tool performs web searches and returns ranked results (title,
+URL, snippet) inline. It uses DuckDuckGo's HTML endpoint keylessly — no API key
+required.
 
 ## Usage
 
@@ -14,10 +16,10 @@ The tool accepts a `query` string and optional `max_results`:
 
 Optional parameters:
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `query` | `string` | — | Search query (also accepts `pattern` as alias) |
-| `max_results` | `number` | config default | Cap returned results (max 20) |
+| Field         | Type     | Default        | Description                                    |
+| ------------- | -------- | -------------- | ---------------------------------------------- |
+| `query`       | `string` | —              | Search query (also accepts `pattern` as alias) |
+| `max_results` | `number` | config default | Cap returned results (max 20)                  |
 
 ## Output
 
@@ -61,11 +63,14 @@ session_max_requests = 12
 ## Guard Rails
 
 - **Cooldown** — prevents hammering the endpoint (default 3s between requests)
-- **Result cache** — identical queries served from memory (default 5min TTL, no network call)
+- **Result cache** — identical queries served from memory (default 5min TTL, no
+  network call)
 - **Session cap** — limits total outbound requests per session (default 12)
 - **Timeout** — per-request timeout (default 15s, max 60s)
 - **Results cap** — max 20 results per call
 
 ## Related Tools
 
-- `web_fetch` — fetch full page content from a specific URL; pass `format="markdown"` for defuddle-style cleaned-markdown extraction (consolidates the former `defuddle_fetch` tool)
+- `web_fetch` — fetch full page content from a specific URL; pass
+  `format="markdown"` for defuddle-style cleaned-markdown extraction
+  (consolidates the former `defuddle_fetch` tool)

@@ -68,7 +68,9 @@ Summarize the workflow and outcome.
 vtcode skills validate ./.agents/skills/my-skill
 ```
 
-Validation fails if `SKILL.md` contains unsupported fields such as `version`, `author`, `when-to-use`, `when-not-to-use`, `model`, `mode`, `context`, `agent`, `network`, or `permissions`.
+Validation fails if `SKILL.md` contains unsupported fields such as `version`,
+`author`, `when-to-use`, `when-not-to-use`, `model`, `mode`, `context`, `agent`,
+`network`, or `permissions`.
 
 ## Routing Guidance
 

@@ -20,7 +20,8 @@ Describe the solution you'd like to see implemented.
 
 ## Alternatives
 
-A clear and concise description of any alternative solutions or features you've considered.
+A clear and concise description of any alternative solutions or features you've
+considered.
 
 ## Additional Context
 

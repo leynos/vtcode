@@ -6,7 +6,8 @@ This checklist covers the exact steps to publish VTCode assets that pass
 ## Preconditions
 
 1. Merge ACP auth-method changes into `main`.
-2. Confirm `crates/codegen/vtcode-acp/src/zed/agent/handlers.rs` returns `authMethods` in `initialize`.
+2. Confirm `crates/codegen/vtcode-acp/src/zed/agent/handlers.rs` returns
+   `authMethods` in `initialize`.
 3. Ensure GitHub CLI is authenticated with permissions: `repo`, `workflow`.
 
 ## 1) Build and publish a macOS asset (local)
@@ -86,7 +87,8 @@ gh api -X POST repos/vinhnx/VTCode/actions/workflows/236250414/dispatches \
   -f 'inputs[build_windows]=true'
 ```
 
-When finished, upload Windows zip and checksum from workflow artifacts to the same release.
+When finished, upload Windows zip and checksum from workflow artifacts to the
+same release.
 
 ## 4) Update ACP registry entry
 

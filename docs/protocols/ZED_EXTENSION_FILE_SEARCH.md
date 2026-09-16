@@ -2,7 +2,9 @@
 
 ## Overview
 
-Phase 3a integrates the optimized file search system into the VT Code Zed extension, exposing file enumeration and discovery capabilities directly through Zed's command palette and IDE interface.
+Phase 3a integrates the optimized file search system into the VT Code Zed
+extension, exposing file enumeration and discovery capabilities directly
+through Zed's command palette and IDE interface.
 
 ## New Commands
 
@@ -14,7 +16,8 @@ The Zed extension now provides three file search commands:
 find_files(pattern: &str, limit: Option<usize>) -> CommandResponse
 ```
 
-**Description**: Performs fuzzy pattern matching on filenames using the optimized file search bridge.
+**Description**: Performs fuzzy pattern matching on filenames using the
+optimized file search bridge.
 
 **Features**:
 
@@ -403,8 +406,8 @@ let files = parse_response(response);
 
 **Phase 3b**: [wait] In Progress
 
--  This documentation file
--  Command palette integration
--  Zed keybinding examples
+- This documentation file
+- Command palette integration
+- Zed keybinding examples
 
 **Next**: VS Code extension integration (Phase 3c)

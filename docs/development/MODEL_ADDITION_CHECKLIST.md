@@ -9,13 +9,15 @@ Complete this checklist when adding a new LLM model to VT Code.
 - [ ] Know context window, capabilities, costs
 - [ ] Confirmed tool calling support status
 - [ ] Confirmed reasoning support status (if applicable)
-- [ ] For gateway providers, confirmed whether model IDs are route-qualified and which native fields are intentionally out of scope
+- [ ] For gateway providers, confirmed whether model IDs are route-qualified
+      and which native fields are intentionally out of scope
 
 ## Phase 1: Constants & Metadata (Database Layer)
 
 **Files:** `openai.rs`, `models.json`
 
-- [ ] Added to `SUPPORTED_MODELS` in the provider's constants module (for example, `constants/models/nvidia.rs`)
+- [ ] Added to `SUPPORTED_MODELS` in the provider's constants module (for
+      example, `constants/models/nvidia.rs`)
 - [ ] Added convenience constant (e.g., `GPT_5_6_LUNA: &str = "gpt-5.6-luna"`)
 - [ ] Updated relevant arrays:
   - [ ] `RESPONSES_API_MODELS` (if applicable)
@@ -32,36 +34,46 @@ Complete this checklist when adding a new LLM model to VT Code.
   - [ ] `modalities.input` array
   - [ ] `modalities.output` array
   - [ ] `context` field (token count)
-- [ ] For gateway providers, recorded the compatibility endpoint and left the local allowlist open when valid provider/model IDs are intentionally pass-through
+- [ ] For gateway providers, recorded the compatibility endpoint and left the
+      local allowlist open when valid provider/model IDs are intentionally
+      pass-through
 - [ ] Validated JSON: `python3 -m json.tool docs/models.json > /dev/null`
 
 ## Phase 2: Model ID Resolution (Core Layer)
 
-**Files:** `model_id.rs`, `as_str.rs`, `display.rs`, `description.rs`, `parse.rs`, `provider.rs`
+**Files:** `model_id.rs`, `as_str.rs`, `display.rs`, `description.rs`,
+`parse.rs`, `provider.rs`
 
 ### model_id.rs (Enum Definition)
+
 - [ ] Added enum variant in correct provider section (OpenAI, Anthropic, etc.)
 - [ ] Added doc comment with model description
 - [ ] Used PascalCase naming (e.g., `GPT56Luna`)
 - [ ] Variant appears in correct alphabetical position
 
 ### as_str.rs (String Mapping)
+
 - [ ] Added match arm: `ModelId::GPT56Luna => models::openai::GPT_5_6_LUNA`
 - [ ] Constant reference matches defined constant
 
 ### display.rs (Human-Readable Name)
+
 - [ ] Added match arm with display name: `"GPT-5.4 Nano"`
 - [ ] Name matches `docs/models.json` "name" field
 
 ### description.rs (Full Description)
+
 - [ ] Added match arm with description text
 - [ ] Description matches `docs/models.json` "description" field
 
 ### parse.rs (String → Enum)
-- [ ] Added parse rule: `s if s == models::openai::GPT_5_6_LUNA => Ok(ModelId::GPT56Luna)`
+
+- [ ] Added parse rule:
+      `s if s == models::openai::GPT_5_6_LUNA => Ok(ModelId::GPT56Luna)`
 - [ ] Handles variant correctly
 
 ### provider.rs (Provider Assignment)
+
 - [ ] Added to correct provider match block (OpenAI, Anthropic, etc.)
 - [ ] Match statement is exhaustive (no missing arms)
 
@@ -70,11 +82,13 @@ Complete this checklist when adding a new LLM model to VT Code.
 **Files:** `collection.rs`, `capabilities.rs`
 
 ### collection.rs (All Models List)
+
 - [ ] Added to `all_models()` vector
 - [ ] Positioned alphabetically within provider section
 - [ ] Not duplicated elsewhere
 
 ### capabilities.rs (Trait Methods)
+
 - [ ] Added to `generation()` match with version string (e.g., "5.4")
 - [ ] Added to `non_reasoning_variant()` if NOT a reasoning model
 - [ ] Added to `is_top_tier()` if flagship class (optional)
@@ -109,7 +123,8 @@ Complete this checklist when adding a new LLM model to VT Code.
 
 - [ ] Added to `docs/providers/PROVIDER_GUIDES.md` (if new provider)
 - [ ] Added to relevant architecture docs
-- [ ] Added or updated the provider guide and quick reference when this is a new first-class provider
+- [ ] Added or updated the provider guide and quick reference when this is a
+      new first-class provider
 - [ ] Updated CHANGELOG.md with model addition
 - [ ] Updated any example configurations that reference models
 
@@ -125,18 +140,18 @@ Complete this checklist when adding a new LLM model to VT Code.
 
 ## Quick Reference: Files to Update
 
-| File | Update Type | Lines of Change |
-|------|------------|-----------------|
-| openai.rs | Add to array + const | 2 |
-| models.json | Add full object | 10-15 |
-| model_id.rs | Add enum variant | 2-3 |
-| as_str.rs | Add match arm | 1 |
-| display.rs | Add match arm | 1 |
-| description.rs | Add match arm | 1-2 |
-| parse.rs | Add match arm | 1 |
-| provider.rs | Add to match | 1 |
-| collection.rs | Add to vector | 1 |
-| capabilities.rs | Add to match arms | 1-3 |
+| File            | Update Type          | Lines of Change |
+| --------------- | -------------------- | --------------- |
+| openai.rs       | Add to array + const | 2               |
+| models.json     | Add full object      | 10-15           |
+| model_id.rs     | Add enum variant     | 2-3             |
+| as_str.rs       | Add match arm        | 1               |
+| display.rs      | Add match arm        | 1               |
+| description.rs  | Add match arm        | 1-2             |
+| parse.rs        | Add match arm        | 1               |
+| provider.rs     | Add to match         | 1               |
+| collection.rs   | Add to vector        | 1               |
+| capabilities.rs | Add to match arms    | 1-3             |
 
 **Total: ~10 files, ~30-50 lines of code**
 
@@ -169,18 +184,22 @@ mod model_tests {
 ## Common Issues & Fixes
 
 ### Error: Pattern not covered in `provider.rs`
+
 - **Cause:** Added enum variant but forgot to add to provider match
 - **Fix:** Add new variant to appropriate provider match arm
 
 ### Error: "Unknown model" when parsing
+
 - **Cause:** Forgot parse rule or constant name mismatch
 - **Fix:** Check parse.rs and ensure constant matches openai.rs
 
 ### JSON validation fails
+
 - **Cause:** Missing quotes, trailing comma, or structural error
 - **Fix:** Use `python3 -m json.tool` to find exact issue
 
 ### Model doesn't appear in `/model` help
+
 - **Cause:** Forgot to add to collection.rs all_models()
 - **Fix:** Add to all_models() vector
 
@@ -192,7 +211,8 @@ To automate model addition:
 ./scripts/add_model.sh
 ```
 
-This generates a summary of all required changes. Apply manually or integrate with editor snippets for faster workflow.
+This generates a summary of all required changes. Apply manually or integrate
+with editor snippets for faster workflow.
 
 ## Related Documentation
 

@@ -2,28 +2,27 @@
 
 `vtcode-webmcp` is the production WebMCP bridge shipped with VT Code. It
 provides the authenticated transport, pairing, protocol, and bounded workspace
-adapter used by the VT Code browser integration. It is deliberately
-independent of the TUI so an active session can supply its own runtime adapter
-while `vtcode webmcp serve` uses the safe filesystem adapter. The Vite app
-under `apps/webmcp` is the browser application, not the
-bridge's authority boundary.
+adapter used by the VT Code browser integration. It is deliberately independent
+of the TUI so an active session can supply its own runtime adapter while
+`vtcode webmcp serve` uses the safe filesystem adapter. The Vite app under
+`apps/webmcp` is the browser application, not the bridge's authority boundary.
 
 The bridge is opt-in, binds to loopback by default, requires an expiring
 one-time pairing code, validates the browser `Origin` header, and keeps pairing
 tokens in process memory. The configured TTL is the inactivity lease for an
-authenticated session; authenticated requests refresh it. Browser patch requests are proposals: the adapter
-must authorize the mutation and the base digest must still match before any
-file is changed. The listener does not terminate TLS; remote access must go
-through a TLS-terminating reverse proxy.
+authenticated session; authenticated requests refresh it. Browser patch
+requests are proposals: the adapter must authorize the mutation and the base
+digest must still match before any file is changed. The listener does not
+terminate TLS; remote access must go through a TLS-terminating reverse proxy.
 
 ## Published browser origins
 
 The maintained browser app is published at two exact origins:
 
-| Deployment | URL | Origin |
-| --- | --- | --- |
+| Deployment   | URL                                   | Origin                               |
+| ------------ | ------------------------------------- | ------------------------------------ |
 | ChatGPT Site | <https://vtcode.vinhnx.chatgpt.site/> | `https://vtcode.vinhnx.chatgpt.site` |
-| GitHub Pages | <https://vinhnx.github.io/VTCode/> | `https://vinhnx.github.io` |
+| GitHub Pages | <https://vinhnx.github.io/VTCode/>    | `https://vinhnx.github.io`           |
 
 The bridge does not hardcode these deployments. A caller must explicitly add
 the origins it intends to accept; the GitHub Pages `/VTCode/` path is not part
@@ -43,8 +42,8 @@ session messages at `/messages/{session_id}`. The only advertised tools are:
 
 The handlers use the same `RuntimeAdapter::list_files` and
 `RuntimeAdapter::read_file` boundary as the bridge. Search is deterministic and
-case-insensitive, with defaults of 20 results, 256 scanned files, and 16 MiB
-of scanned UTF-8 content. Both tools return structured content and matching JSON
+case-insensitive, with defaults of 20 results, 256 scanned files, and 16 MiB of
+scanned UTF-8 content. Both tools return structured content and matching JSON
 text content and are marked read-only, non-destructive, idempotent, and closed
 world. Citation URLs are empty unless a prefix is configured; the crate never
 serves workspace files over HTTP.
@@ -53,9 +52,9 @@ The listener remains loopback-only. An external TLS proxy or identity provider
 must validate the public OAuth bearer, remove it, and inject an internal bearer
 token from the environment variable configured by `proxy_token_env`. VT Code
 validates that internal token and exposes protected-resource metadata at
-`/.well-known/oauth-protected-resource`; it does not implement an OAuth,
-token, or JWKS server. The nested MCP Origin allowlist is separate from the
-browser pairing allowlist, and missing MCP `Origin` is accepted.
+`/.well-known/oauth-protected-resource`; it does not implement an OAuth, token,
+or JWKS server. The nested MCP Origin allowlist is separate from the browser
+pairing allowlist, and missing MCP `Origin` is accepted.
 
 Example:
 
@@ -73,7 +72,8 @@ configuration, security boundaries, and transport tests.
 
 The optional live Responses API smoke test is ignored by default. Set
 `OPENAI_API_KEY` and `VTCODE_WEBMCP_LIVE_SSE_URL` to a reachable public HTTPS
-`/sse/` URL, then run `cargo nextest run -p vtcode-webmcp --locked
+`/sse/` URL, then run
+`cargo nextest run -p vtcode-webmcp --locked
 --run-ignored all -E 'test(live_openai_responses_api_smoke)'`.
 
 The browser diff is a review preview only. For an active turn, the browser

@@ -1,7 +1,7 @@
 # VT Code Code Organization Patterns
 
-This guide adapts the Rust code organization patterns from Codex DeepWiki section `8.3`
-for VT Code's workspace and runtime architecture.
+This guide adapts the Rust code organization patterns from Codex DeepWiki
+section `8.3` for VT Code's workspace and runtime architecture.
 
 It is intentionally pragmatic: use these rules when adding or changing code in
 `vtcode-core/` and `src/`.
@@ -16,8 +16,8 @@ Session-scoped state lives across many turns and should only store stable data:
 - Managers, registries, and shared clients
 - Long-lived caches with clear invalidation
 
-In VT Code, this maps to components like shared runloop/session configuration and
-global managers in `vtcode-core`.
+In VT Code, this maps to components like shared runloop/session configuration
+and global managers in `vtcode-core`.
 
 ### Turn-Scoped State
 
@@ -54,11 +54,12 @@ type system and in field comments, because the compiler cannot check them:
 
 - Every `#[repr(C)]` field that holds a raw pointer (`*const`/`*mut`) must name,
   in a doc comment, which party owns and frees the pointee. A raw-pointer field
-  with no named free owner is a latent leak — treat it as dead code and remove it.
+  with no named free owner is a latent leak — treat it as dead code and remove
+  it.
 - When a struct borrows validity from another resource (for example a raw
   function pointer copied out of a loaded `Library`), the field comment must
-  state the lifetime invariant: the resource outlives `self`, and the struct has
-  no `Drop` of its own when cleanup is delegated to that resource's `Drop`.
+  state the lifetime invariant: the resource outlives `self`, and the struct
+  has no `Drop` of its own when cleanup is delegated to that resource's `Drop`.
 - Prefer delegating cleanup to an existing `Drop` (RAII) over manual free calls.
   A guard/handle type that drops its OS resource on scope exit is correct even
   across `?` early returns and panics.
@@ -66,9 +67,10 @@ type system and in field comments, because the compiler cannot check them:
   small safe wrapper with a single `// SAFETY:` note, so the audit surface is
   one place rather than scattered call sites.
 
-`crates/codegen/vtcode-skills/src/native_plugin.rs` (`NativePlugin`, `get_plugin_symbol`) and
-`crates/codegen/vtcode-bash-runner/src/process.rs` (`ProcessHandle`, `PtyHandles`) are the
-reference implementations of these rules.
+`crates/codegen/vtcode-skills/src/native_plugin.rs` (`NativePlugin`,
+`get_plugin_symbol`) and `crates/codegen/vtcode-bash-runner/src/process.rs`
+(`ProcessHandle`, `PtyHandles`) are the reference implementations of these
+rules.
 
 ## Background Task Lifecycle
 
@@ -82,7 +84,8 @@ This avoids task leaks and makes shutdown behavior deterministic.
 
 ## Channel Boundaries
 
-Use channels to isolate producers and consumers instead of sharing mutable state:
+Use channels to isolate producers and consumers instead of sharing mutable
+state:
 
 - Bounded channels for inbound work queues (backpressure)
 - Unbounded channels for non-blocking event fanout only when justified
@@ -111,8 +114,8 @@ module.
 
 ## Applied in VT Code
 
-As part of adopting these patterns, the tool execution pipeline now explicitly owns and
-cleans up its background processing task:
+As part of adopting these patterns, the tool execution pipeline now explicitly
+owns and cleans up its background processing task:
 
 - Tracks spawned processing `JoinHandle`
 - Rejects duplicate starts
@@ -120,4 +123,3 @@ cleans up its background processing task:
 - Aborts lingering task on drop
 
 See: `crates/codegen/vtcode-core/src/tools/exec_session.rs`.
-

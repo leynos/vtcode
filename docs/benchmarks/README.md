@@ -1,22 +1,24 @@
 # VT Code Benchmarks
 
-This directory contains benchmark results and documentation for evaluating VT Code's code generation capabilities.
+This directory contains benchmark results and documentation for evaluating VT
+Code's code generation capabilities.
 
 ## Overview
 
 VT Code is evaluated on industry-standard benchmarks to measure:
 
--   **Code Generation Quality**: Correctness and functionality of generated code
--   **Performance**: Response latency and throughput
--   **Cost Efficiency**: Token usage and API costs across providers
+- **Code Generation Quality**: Correctness and functionality of generated code
+- **Performance**: Response latency and throughput
+- **Cost Efficiency**: Token usage and API costs across providers
 
 ## Next.js AI Agent Evaluations
 
 [Next.js AI Agent Evaluations](https://nextjs.org/evals) measure AI coding
 agents on Next.js code generation and migration tasks. The public leaderboard
-currently lists merged `vercel/next-evals-oss` results; the VT Code result below
-is submitted in [PR #83](https://github.com/vercel/next-evals-oss/pull/83) and
-is pending upstream merge.
+currently lists merged `vercel/next-evals-oss` results; the VT Code result
+below is submitted in
+[PR #83](https://github.com/vercel/next-evals-oss/pull/83) and is pending
+upstream merge.
 
 ### Leaderboard Snapshot + Pending VT Code Submission
 
@@ -53,11 +55,13 @@ Providers. The merged leaderboard snapshot was fetched from nextjs.org on
 
 ## HumanEval Benchmark
 
-[HumanEval](https://github.com/openai/human-eval) is a benchmark for evaluating code generation models on 164 hand-written programming problems. Each problem includes:
+[HumanEval](https://github.com/openai/human-eval) is a benchmark for evaluating
+code generation models on 164 hand-written programming problems. Each problem
+includes:
 
--   Function signature and docstring
--   Unit tests to verify correctness
--   Pass@1 metric (percentage of problems solved on first attempt)
+- Function signature and docstring
+- Unit tests to verify correctness
+- Pass@1 metric (percentage of problems solved on first attempt)
 
 ### Latest Results (October 2025)
 
@@ -65,9 +69,9 @@ Providers. The merged leaderboard snapshot was fetched from nextjs.org on
 
 **Two models benchmarked:**
 
-| Model                 | Provider | Pass@1    | Passed  | Failed | Latency (P50) | Cost           |
-| --------------------- | -------- | --------- | ------- | ------ | ------------- | -------------- |
-| **gpt-5-nano**        | OpenAI   | **94.5%** | 155/164 | 9/164  | 10.4s         | ~$0.10-0.30/1M |
+| Model                  | Provider | Pass@1    | Passed  | Failed | Latency (P50) | Cost           |
+| ---------------------- | -------- | --------- | ------- | ------ | ------------- | -------------- |
+| **gpt-5-nano**         | OpenAI   | **94.5%** | 155/164 | 9/164  | 10.4s         | ~$0.10-0.30/1M |
 | gemini-3-flash-preview | Google   | 61.6%     | 101/164 | 63/164 | 0.97s         | $0.00 (free)   |
 
 **Configuration:** `temperature=0.0`, `seed=42`, `timeout=120s`
@@ -76,35 +80,36 @@ Providers. The merged leaderboard snapshot was fetched from nextjs.org on
 
 **gpt-5-nano:**
 
--   Frontier-tier performance (94.5%)
--   TOP 5 globally
--   Very affordable (~$0.10-0.30/1M tokens)
--   10-50x cheaper than premium competitors
--   10.4s median latency
+- Frontier-tier performance (94.5%)
+- TOP 5 globally
+- Very affordable (~$0.10-0.30/1M tokens)
+- 10-50x cheaper than premium competitors
+- 10.4s median latency
 
 **gemini-3-flash-preview:**
 
--   10x faster (0.97s)
--   Completely FREE (Google free tier)
--   Good for development (61.6%)
--   Perfect for rapid iteration
--   Ideal for high-volume testing
+- 10x faster (0.97s)
+- Completely FREE (Google free tier)
+- Good for development (61.6%)
+- Perfect for rapid iteration
+- Ideal for high-volume testing
 
 **Strategic Choice:**
 
--   Use **gpt-5-nano** for production validation and critical tasks
--   Use **gemini-3-flash-preview** for development and prototyping
+- Use **gpt-5-nano** for production validation and critical tasks
+- Use **gemini-3-flash-preview** for development and prototyping
 
 See [README.md](README.md) for detailed comparison.
 | Estimated Cost | $0.0000 |
 
-> **Note:** Token counts are not currently reported by vtcode. The model is in Google's free tier, so actual cost is $0.
+> **Note:** Token counts are not currently reported by vtcode. The model is in
+> Google's free tier, so actual cost is $0.
 
 ### Comparison with Other Models
 
 | Model                      | Pass@1 | Latency (P50) | Cost (est.) |
 | -------------------------- | ------ | ------------- | ----------- |
-| gemini-3-flash-preview      | 61.6%  | 0.97s         | $0.00       |
+| gemini-3-flash-preview     | 61.6%  | 0.97s         | $0.00       |
 | _More results coming soon_ | -      | -             | -           |
 
 ### Methodology
@@ -148,21 +153,21 @@ make bench-humaneval \
 
 #### Environment Variables
 
-| Variable       | Default                 | Description                                    |
-| -------------- | ----------------------- | ---------------------------------------------- |
-| `PROVIDER`     | `gemini`                | LLM provider (gemini, openai, anthropic, etc.) |
+| Variable       | Default                  | Description                                    |
+| -------------- | ------------------------ | ---------------------------------------------- |
+| `PROVIDER`     | `gemini`                 | LLM provider (gemini, openai, anthropic, etc.) |
 | `MODEL`        | `gemini-3-flash-preview` | Model identifier                               |
-| `N_HE`         | `164`                   | Number of tasks to run (max 164)               |
-| `SEED`         | `1337`                  | Random seed for reproducibility                |
-| `USE_TOOLS`    | `0`                     | Enable tool usage (0=disabled, 1=enabled)      |
-| `TEMP`         | `0.0`                   | Temperature for sampling                       |
-| `MAX_OUT`      | `1024`                  | Maximum output tokens                          |
-| `TIMEOUT_S`    | `120`                   | Timeout per task in seconds                    |
-| `SLEEP_MS`     | `0`                     | Sleep between tasks (ms)                       |
-| `RETRY_MAX`    | `2`                     | Maximum retry attempts                         |
-| `BACKOFF_MS`   | `500`                   | Backoff delay for retries (ms)                 |
-| `INPUT_PRICE`  | `0.0`                   | Cost per 1k input tokens (USD)                 |
-| `OUTPUT_PRICE` | `0.0`                   | Cost per 1k output tokens (USD)                |
+| `N_HE`         | `164`                    | Number of tasks to run (max 164)               |
+| `SEED`         | `1337`                   | Random seed for reproducibility                |
+| `USE_TOOLS`    | `0`                      | Enable tool usage (0=disabled, 1=enabled)      |
+| `TEMP`         | `0.0`                    | Temperature for sampling                       |
+| `MAX_OUT`      | `1024`                   | Maximum output tokens                          |
+| `TIMEOUT_S`    | `120`                    | Timeout per task in seconds                    |
+| `SLEEP_MS`     | `0`                      | Sleep between tasks (ms)                       |
+| `RETRY_MAX`    | `2`                      | Maximum retry attempts                         |
+| `BACKOFF_MS`   | `500`                    | Backoff delay for retries (ms)                 |
+| `INPUT_PRICE`  | `0.0`                    | Cost per 1k input tokens (USD)                 |
+| `OUTPUT_PRICE` | `0.0`                    | Cost per 1k output tokens (USD)                |
 
 #### Visualization
 
@@ -178,7 +183,8 @@ cat reports/HE_*_summary.md
 
 ### Results Archive
 
-All benchmark results are stored in the `reports/` directory with the naming convention:
+All benchmark results are stored in the `reports/` directory with the naming
+convention:
 
 ```
 HE_YYYYMMDD-HHMMSS_<model>_tools-<0|1>_N<count>.json
@@ -186,23 +192,26 @@ HE_YYYYMMDD-HHMMSS_<model>_tools-<0|1>_N<count>.json
 
 Each report includes:
 
--   Metadata (model, provider, configuration)
--   Summary statistics (pass@1, latency, cost)
--   Individual task results (passed/failed, errors, timing)
+- Metadata (model, provider, configuration)
+- Summary statistics (pass@1, latency, cost)
+- Individual task results (passed/failed, errors, timing)
 
 ### Known Issues
 
-1. **Token Counting**: vtcode doesn't currently report token usage from the LLM API
-2. **Stderr Pollution**: Fixed in v0.30.4 - .env loading message no longer pollutes output
-3. **CLI Flags**: `--temperature` and `--max-output-tokens` not supported by `ask` command
+1. **Token Counting**: vtcode doesn't currently report token usage from the LLM
+   API
+2. **Stderr Pollution**: Fixed in v0.30.4 - .env loading message no longer
+   pollutes output
+3. **CLI Flags**: `--temperature` and `--max-output-tokens` not supported by
+   `ask` command
 
 ### Future Work
 
--   [ ] Add support for more benchmarks (MBPP, CodeContests)
--   [ ] Multi-model comparison dashboard
--   [ ] Token usage tracking and reporting
--   [ ] Cost optimization analysis
--   [ ] Performance profiling and optimization
+- [ ] Add support for more benchmarks (MBPP, CodeContests)
+- [ ] Multi-model comparison dashboard
+- [ ] Token usage tracking and reporting
+- [ ] Cost optimization analysis
+- [ ] Performance profiling and optimization
 
 ## Contributing
 
@@ -215,6 +224,8 @@ To add new benchmarks or improve existing ones:
 
 ## References
 
--   [HumanEval Paper](https://arxiv.org/abs/2107.03374) - Original benchmark paper
--   [OpenAI HumanEval](https://github.com/openai/human-eval) - Official implementation
--   [Benchmark Scripts](../../scripts/) - VT Code benchmark implementations
+- [HumanEval Paper](https://arxiv.org/abs/2107.03374) - Original benchmark
+    paper
+- [OpenAI HumanEval](https://github.com/openai/human-eval) - Official
+    implementation
+- [Benchmark Scripts](../../scripts/) - VT Code benchmark implementations

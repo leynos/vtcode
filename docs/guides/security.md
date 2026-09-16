@@ -2,14 +2,16 @@
 
 ## Overview
 
-VT Code is designed with security as a first-class concern. This guide explains the security features, best practices, and how to configure VT Code for maximum safety in your environment.
+VT Code is designed with security as a first-class concern. This guide explains
+the security features, best practices, and how to configure VT Code for maximum
+safety in your environment.
 
 ### Workspace instructions are context, not policy
 
 `AGENTS.md`, `CLAUDE.md`, and `.vtcode/rules/` are dynamically loaded
-user/workspace context. They help the model understand project conventions,
-but they are not a security boundary and cannot grant permissions, bypass
-the sandbox, or replace executable validation. Review instruction files from
+user/workspace context. They help the model understand project conventions, but
+they are not a security boundary and cannot grant permissions, bypass the
+sandbox, or replace executable validation. Review instruction files from
 untrusted repositories the same way you review other repository content.
 
 Universal user-facing behavior comes from the compiled runtime-guidance layer,
@@ -17,7 +19,8 @@ which is independent of workspace file contents.
 
 ## Security Architecture
 
-VT Code implements a **defense-in-depth security model** with multiple layers of protection:
+VT Code implements a **defense-in-depth security model** with multiple layers
+of protection:
 
 ### Layer 1: Command Allowlist
 
@@ -34,6 +37,7 @@ Only explicitly approved commands can execute. The allowlist includes:
 - `which` - Locate programs
 
 **All other commands are blocked by default**, including:
+
 - Destructive commands: `rm`, `dd`, `shred`
 - Privilege escalation: `sudo`, `su`, `doas`
 - System modification: `chmod`, `chown`, `systemctl`
@@ -50,6 +54,7 @@ Each allowed command has a dedicated validator that:
 - **Rejects unknown flags** - Unknown flags are blocked by default
 
 Example: Ripgrep validation blocks dangerous preprocessor flags:
+
 ```rust
 // BLOCKED: Preprocessor execution
 rg --pre "bash -c 'malicious command'" pattern .
@@ -90,8 +95,8 @@ the workspace. All targets are preflighted before the first file mutation.
 
 ### Process sandbox boundaries
 
-When a restrictive sandbox policy is active, VT Code applies the same policy
-to the command's pipe and PTY sessions. The sanitized environment removes
+When a restrictive sandbox policy is active, VT Code applies the same policy to
+the command's pipe and PTY sessions. The sanitized environment removes
 credential, token, cloud-provider, linker, and dynamic-loader variables. A
 sandboxed command override cannot re-add one of those variables; this prevents
 an inherited credential from crossing the process boundary accidentally.
@@ -105,12 +110,11 @@ logged.
 
 Provider-owned subprocesses use the same inherited-environment filter. Local
 Ollama, LM Studio, and llama.cpp helpers, plus custom provider authentication
-commands, do not receive unrelated API keys, cloud credentials, tokens,
-linker overrides, or dynamic-loader variables. Copilot forwards only its
-documented GitHub authentication variables, and the optional `gh` status probe
-forwards only GitHub CLI authentication variables; this preserves the
-provider's intended login flow without exposing credentials for other
-providers.
+commands, do not receive unrelated API keys, cloud credentials, tokens, linker
+overrides, or dynamic-loader variables. Copilot forwards only its documented
+GitHub authentication variables, and the optional `gh` status probe forwards
+only GitHub CLI authentication variables; this preserves the provider's
+intended login flow without exposing credentials for other providers.
 
 ### Workspace provider configuration trust boundary
 
@@ -131,13 +135,13 @@ defense in depth; it is not approval for repository-supplied commands.
 
 ### Native plugin loading
 
-Dynamic libraries are executable code: their initialization routines can run
-as soon as the library is opened, before VT Code can inspect plugin metadata.
-For that reason, repository-controlled `.agents/plugins/` and
-`.vtcode/plugins/` directories are metadata-only and are never trusted native
-plugin roots by the high-level skill loader. Native loading is limited to
-user/application-managed trusted locations, and `load_skill` is approval-
-required so a future executable-backed skill cannot become silently allowed.
+Dynamic libraries are executable code: their initialization routines can run as
+soon as the library is opened, before VT Code can inspect plugin metadata. For
+that reason, repository-controlled `.agents/plugins/` and `.vtcode/plugins/`
+directories are metadata-only and are never trusted native plugin roots by the
+high-level skill loader. Native loading is limited to user/application-managed
+trusted locations, and `load_skill` is approval- required so a future
+executable-backed skill cannot become silently allowed.
 
 Do not treat a plugin manifest, README, `AGENTS.md`, or other repository text
 as consent to load native code. Review the plugin's provenance and approve an
@@ -149,8 +153,8 @@ Platform behavior is explicit:
 - Linux uses the configured sandbox helper when one is available; a restrictive
   policy fails closed if the helper cannot be applied.
 - macOS preserves full-network and blocked-network modes. Hostname allowlists
-  are rejected unless exact enforcement is available; Seatbelt profiles are
-  not treated as a reliable third-party domain-filtering contract.
+  are rejected unless exact enforcement is available; Seatbelt profiles are not
+  treated as a reliable third-party domain-filtering contract.
 - Windows restrictive policies fail closed because native restricted-token
   isolation is not yet implemented. Native Windows isolation remains outside
   this release's scope.
@@ -163,10 +167,10 @@ Provider response bodies, fallback errors, provider logs, and custom
 authentication-command stderr pass through one bounded, UTF-8-safe diagnostic
 sanitizer. HTTP error streams are capped at 16 KiB before parsing, and exposed
 diagnostics are capped at 8 KiB. The sanitizer redacts API keys, bearer tokens,
-cloud credentials, and generic secret assignments before values reach `LLMError`
-debug output, serialization, logs, or user-facing messages. HTTP status,
-request ID, retry metadata, and error classification remain available to
-callers, including the 401 refresh path.
+cloud credentials, and generic secret assignments before values reach
+`LLMError` debug output, serialization, logs, or user-facing messages. HTTP
+status, request ID, retry metadata, and error classification remain available
+to callers, including the 401 refresh path.
 
 ### Layer 4: Human-in-the-Loop
 
@@ -197,14 +201,15 @@ workspace.
   `vtcode.toml` or an agent spec — invalidates the approval and requires a new
   review before anything runs again.
 
-User-level hooks in the canonical user config `vtcode.toml` run without approval when the
-workspace defines no lifecycle hook content of its own.
+User-level hooks in the canonical user config `vtcode.toml` run without
+approval when the workspace defines no lifecycle hook content of its own.
 
 ## Threat Model
 
 ### Protected Against
 
   **Prompt Injection Attacks**
+
 - Malicious prompts from users
 - Embedded prompts in code comments
 - Prompts in repository files
@@ -240,7 +245,8 @@ workspace defines no lifecycle hook content of its own.
 
 Configure default tool policies in the canonical user `vtcode.toml` (on
 Linux/BSD this is `$XDG_CONFIG_HOME/vtcode/vtcode.toml`, defaulting to
-`~/.config/vtcode/vtcode.toml`; see the [user data directories guide](user-data-directories.md)):
+`~/.config/vtcode/vtcode.toml`; see the
+[user data directories guide](user-data-directories.md)):
 
 ```toml
 [tools]
@@ -262,7 +268,8 @@ that JSON file; it is not a second TOML configuration file.
 
 ### Execution Policy
 
-The execution policy is enforced at the code level and cannot be disabled. However, you can configure workspace boundaries:
+The execution policy is enforced at the code level and cannot be disabled.
+However, you can configure workspace boundaries:
 
 ```toml
 [workspace]
@@ -278,7 +285,8 @@ root = "/path/to/project"
 ### For Users
 
 1. **Review Tool Approvals**
-   - Review the generated `tool-policy.json` in the canonical user config directory regularly
+   - Review the generated `tool-policy.json` in the canonical user config
+     directory regularly
    - Use "Approve Once" for unfamiliar operations
    - Only use "Always Allow" for trusted tools
 
@@ -299,12 +307,12 @@ root = "/path/to/project"
    - Use deny-by-default approach
    - Regular policy reviews
 
-3. **Audit and Monitoring**
+2. **Audit and Monitoring**
    - Centralized log collection
    - Automated anomaly detection
    - Incident response procedures
 
-4. **Security Training**
+3. **Security Training**
    - Educate users on prompt injection
    - Share security best practices
    - Regular security updates
@@ -359,8 +367,10 @@ Stay informed about security updates:
 
 ## Additional Resources
 
-- [Security Model](../security/SECURITY_MODEL.md) - Complete security architecture
-- [Tool Policies](../modules/vtcode_tools_policy.md) - Command execution policies
+- [Security Model](../security/SECURITY_MODEL.md) - Complete security
+  architecture
+- [Tool Policies](../modules/vtcode_tools_policy.md) - Command execution
+  policies
 - [CWE-88: Argument Injection](https://cwe.mitre.org/data/definitions/88.html)
 - [OWASP Command Injection](https://owasp.org/www-community/attacks/Command_Injection)
 
@@ -373,7 +383,7 @@ VT Code's security model is informed by:
 - OpenAI Codex execution policy
 - Industry best practices for command execution
 
----
+______________________________________________________________________
 
 **Last Updated**: October 25, 2025  
 **Security Model Version**: 1.0

@@ -306,6 +306,6 @@ for line in clean_output.lines() {
 
 ## See Also
 
--   `docs/reference/ansi-escape-sequences.md` - Full ANSI reference
--   `docs/reference/ansi-in-vtcode.md` - VT Code-specific usage
--   `crates/codegen/vtcode-core/src/utils/ansi_parser.rs` - Implementation
+- `docs/reference/ansi-escape-sequences.md` - Full ANSI reference
+- `docs/reference/ansi-in-vtcode.md` - VT Code-specific usage
+- `crates/codegen/vtcode-core/src/utils/ansi_parser.rs` - Implementation

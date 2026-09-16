@@ -7,8 +7,8 @@ model receives only the bounded preview.
 ## Overview
 
 Public command tools can cap large responses per call. Prefer
-`max_output_tokens` in model-facing calls; internal compatibility paths may still
-normalise older output-limit field names.
+`max_output_tokens` in model-facing calls; internal compatibility paths may
+still normalise older output-limit field names.
 
 Output caps reduce prompt pressure while preserving command status, exit codes,
 and spool metadata when the full output is too large for the response.
@@ -75,13 +75,13 @@ command rather than repeatedly dumping the whole file.
 
 ## Recommended Budgets
 
-| Operation | Recommended `max_output_tokens` |
-|---|---:|
-| Small file slice | 2,000 |
-| Medium file slice | 5,000 |
-| Large grep result | 8,000 |
-| Command output | 10,000 |
-| Session continuation | 10,000 |
+| Operation            | Recommended `max_output_tokens` |
+| -------------------- | ------------------------------: |
+| Small file slice     | 2,000                           |
+| Medium file slice    | 5,000                           |
+| Large grep result    | 8,000                           |
+| Command output       | 10,000                          |
+| Session continuation | 10,000                          |
 
 ## Guidance
 

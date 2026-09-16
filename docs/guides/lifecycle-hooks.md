@@ -6,9 +6,11 @@ notifications, or block risky operations automatically. This guide explains how
 hooks are configured in `vtcode.toml`, which events are available, and how the
 agent interprets hook output.
 
-Similar to Claude Code Hooks: https://docs.claude.com/en/docs/claude-code/hooks.
+Similar to Claude Code Hooks:
+<https://docs.claude.com/en/docs/claude-code/hooks>.
 
-For the surrounding runtime lifecycle and event mapping, see [Agent Loop Contract](./agent-loop-contract.md).
+For the surrounding runtime lifecycle and event mapping, see
+[Agent Loop Contract](./agent-loop-contract.md).
 
 ## Configuration Overview
 
@@ -41,10 +43,10 @@ validator is a placeholder; substitute a script that exists in your project.
 
 Each hook entry maps to the following structures:
 
-* **`matcher`** – optional string or regular expression that is applied to the
+- **`matcher`** – optional string or regular expression that is applied to the
 event-specific value (see [Matchers](#matchers)). Use `"*"` or leave empty to
 match everything.
-* **`hooks`** – array of commands. Every command must specify a `command`
+- **`hooks`** – array of commands. Every command must specify a `command`
 string and may set an explicit `timeout_seconds` (defaults to 60 seconds).
 
 > Tip: Put reusable scripts under `.vtcode/hooks/` (or similar) and reference
@@ -55,28 +57,28 @@ directory.
 
 Matchers let you scope hooks to specific triggers:
 
-* **Session events** (`session_start`, `session_end`) – compared to the trigger
+- **Session events** (`session_start`, `session_end`) – compared to the trigger
 string (`startup`, `resume`, `clear`, `compact`) or end reason (`clear`,
 `logout`, `prompt_input_exit`, `other`).
-* **PreCompact** (`pre_compact`) – compared to the compaction trigger
+- **PreCompact** (`pre_compact`) – compared to the compaction trigger
 (`manual` or `auto`).
-* **UserPromptSubmit** – compared against the entire prompt text. Use regular
+- **UserPromptSubmit** – compared against the entire prompt text. Use regular
 expressions to detect policies or keywords.
-* **PreToolUse / PostToolUse** – compared against the tool name. Match builtin
-names like `Write`, `Edit`, `Task`, `Bash`, or Model Context Protocol tools such
-as `mcp__filesystem__read_file`.
-* **PermissionRequest** – compared against the tool name only when VT Code is
+- **PreToolUse / PostToolUse** – compared against the tool name. Match builtin
+names like `Write`, `Edit`, `Task`, `Bash`, or Model Context Protocol tools
+such as `mcp__filesystem__read_file`.
+- **PermissionRequest** – compared against the tool name only when VT Code is
 about to show a human approval prompt.
-* **Stop** – compared against the configured matcher string before VT Code
+- **Stop** – compared against the configured matcher string before VT Code
 finalizes a turn.
-* **Notification** – compared against the notification type (`permission_prompt`
+- **Notification** – compared against the notification type (`permission_prompt`
 or `idle_prompt`).
 
 The matcher syntax accepts:
 
-* Empty string or `"*"` – matches all values.
-* Plain string – exact match.
-* Regular expression – interpreted as `^(?:PATTERN)$` to enforce a full match.
+- Empty string or `"*"` – matches all values.
+- Plain string – exact match.
+- Regular expression – interpreted as `^(?:PATTERN)$` to enforce a full match.
 
 Invalid regular expressions will cause configuration validation to fail at load
 time.
@@ -89,10 +91,10 @@ root with the serialized JSON payload on stdin. The process inherits a
 
 The following environment variables are set for every hook command:
 
-* `VT_PROJECT_DIR` / `CLAUDE_PROJECT_DIR` – absolute project root.
-* `VT_SESSION_ID` / `CLAUDE_SESSION_ID` – unique session identifier.
-* `VT_HOOK_EVENT` – current lifecycle event name (e.g., `PreToolUse`).
-* `VT_TRANSCRIPT_PATH` / `CLAUDE_TRANSCRIPT_PATH` – current transcript path when
+- `VT_PROJECT_DIR` / `CLAUDE_PROJECT_DIR` – absolute project root.
+- `VT_SESSION_ID` / `CLAUDE_SESSION_ID` – unique session identifier.
+- `VT_HOOK_EVENT` – current lifecycle event name (e.g., `PreToolUse`).
+- `VT_TRANSCRIPT_PATH` / `CLAUDE_TRANSCRIPT_PATH` – current transcript path when
 available.
 
 Use these variables to locate scripts, persist artifacts, or provide additional
@@ -162,8 +164,8 @@ Hooks can inject extra context for the model or block prompt handling entirely.
 
 ### PreToolUse
 
-Triggered after the agent prepares tool parameters but before the tool executes.
-Payload fields include `tool_name`, serialized `tool_input`, and
+Triggered after the agent prepares tool parameters but before the tool
+executes. Payload fields include `tool_name`, serialized `tool_input`, and
 `transcript_path`. Use this hook to allow, deny, or ask for confirmation before
 running a tool.
 
@@ -271,8 +273,8 @@ Payload:
 ```
 
 Use `matcher = "permission_prompt"` to react to approval and MCP elicitation
-prompts, or `matcher = "idle_prompt"` to react when VT Code has been waiting for
-user input for 60 seconds.
+prompts, or `matcher = "idle_prompt"` to react when VT Code has been waiting
+for user input for 60 seconds.
 
 ## Interpreting Hook Results
 
@@ -281,12 +283,12 @@ optional JSON output.
 
 ### Exit Codes
 
-* `0` – success. Stdout becomes user-visible for most events (and is injected as
+- `0` – success. Stdout becomes user-visible for most events (and is injected as
 context for `UserPromptSubmit`).
-* `2` – blocking error. The event-specific behavior matches Claude Code's
+- `2` – blocking error. The event-specific behavior matches Claude Code's
 lifecycle semantics: for example, `PreToolUse` blocks tool execution and
 provides stderr back to the agent.
-* Any other code – non-blocking failure. Stderr is surfaced to the user, but the
+- Any other code – non-blocking failure. Stderr is surfaced to the user, but the
 agent continues processing.
 
 Timed-out commands are treated as blocking errors and reported with an error
@@ -297,21 +299,20 @@ message.
 If stdout parses as JSON, VT Code interprets fields compatible with Claude Code
 hooks:
 
-| Field | Purpose |
-| --- | --- |
-| `continue` / `stopReason` | Control whether the agent proceeds after the hook. |
-| `suppressOutput` | Hide stdout from the transcript. |
-| `systemMessage` | Display an informational message. |
-| `decision` / `reason` | Event-specific decisions (block prompt, block stop, etc.). |
-| `hookSpecificOutput` | Structured data keyed by `hookEventName` with additional context. |
+| Field                     | Purpose                                                           |
+| ------------------------- | ----------------------------------------------------------------- |
+| `continue` / `stopReason` | Control whether the agent proceeds after the hook.                |
+| `suppressOutput`          | Hide stdout from the transcript.                                  |
+| `systemMessage`           | Display an informational message.                                 |
+| `decision` / `reason`     | Event-specific decisions (block prompt, block stop, etc.).        |
+| `hookSpecificOutput`      | Structured data keyed by `hookEventName` with additional context. |
 
 `PermissionRequest` hooks support Claude-style
 `hookSpecificOutput.decision.behavior`, `updatedInput`, `updatedPermissions`,
 `message`, and `interrupt`. `PreToolUse` hooks support
 `hookSpecificOutput.permissionDecision`, `permissionDecisionReason`, and
 `updatedInput` (applied before permission checks; later hooks see rewritten
-input). `Stop` hooks support either
-`{"decision":"block","reason":"..."}` or
+input). `Stop` hooks support either `{"decision":"block","reason":"..."}` or
 `{"continue":false,"stopReason":"..."}`. User prompt hooks can block prompt
 processing and include a custom reason.
 
@@ -330,12 +331,12 @@ transcript visibility is controlled by `ui.show_diagnostics_in_transcript`.
 
 ## Best Practices
 
-* Validate regular expressions and configuration with `vtcode config validate`.
-* Keep hook scripts idempotent and side-effect aware—hooks may run multiple
+- Validate regular expressions and configuration with `vtcode config validate`.
+- Keep hook scripts idempotent and side-effect aware—hooks may run multiple
 commands in parallel for matching groups.
-* Use short timeouts and descriptive error messages so users understand why an
+- Use short timeouts and descriptive error messages so users understand why an
 operation was blocked.
-* Store reusable hooks alongside your repository and reference them with
+- Store reusable hooks alongside your repository and reference them with
 project-root environment variables.
 
 ## Practical Setup Guide
@@ -344,18 +345,19 @@ project-root environment variables.
 
 To start using lifecycle hooks in your project:
 
-1. **Create a `vtcode.toml` configuration file** in your project root if you don't already have one:
+1. **Create a `vtcode.toml` configuration file** in your project root if you
+   don't already have one:
 
-```bash
-touch vtcode.toml
-```
+   ```bash
+   touch vtcode.toml
+   ```
 
 2. **Add the lifecycle hooks section** to your configuration:
 
-```toml
-[hooks.lifecycle]
-# Add your hooks here
-```
+   ```toml
+   [hooks.lifecycle]
+   # Add your hooks here
+   ```
 
 3. **Create a hooks directory** to store your hook scripts:
 
@@ -365,36 +367,38 @@ mkdir -p .vtcode/hooks
 
 ### Example Setup: Notification On SessionStart
 
-Here's a minimal example that sends a VT Code notification and then shows a line in the TUI when a session starts:
+Here's a minimal example that sends a VT Code notification and then shows a
+line in the TUI when a session starts:
 
 1. **Create a notification script** at `.vtcode/hooks/send-notification.sh`:
 
-```bash
-#!/bin/bash
+   ```bash
+   #!/bin/bash
 
-# Consume the JSON payload so the pipe is drained cleanly.
-cat >/dev/null
+   # Consume the JSON payload so the pipe is drained cleanly.
+   cat >/dev/null
 
-vtcode notify --title "VT Code" "Session started"
-```
+   vtcode notify --title "VT Code" "Session started"
+   ```
 
 2. **Create a TUI message script** at `.vtcode/hooks/session-banner.sh`:
 
-```bash
-#!/bin/bash
+   ```bash
+   #!/bin/bash
 
-# Consume the JSON payload so the pipe is drained cleanly.
-cat >/dev/null
+   # Consume the JSON payload so the pipe is drained cleanly.
+   cat >/dev/null
 
-printf '%s\n' '{"systemMessage":"VT Code: SessionStart hook is active.","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"SessionStart hook is active."}}'
-```
+   printf '%s\n' '{"systemMessage":"VT Code: SessionStart hook is active.",'\
+   '"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"SessionStart hook is active."}}'
+   ```
 
 3. **Make both scripts executable**:
 
-```bash
-chmod +x .vtcode/hooks/send-notification.sh
-chmod +x .vtcode/hooks/session-banner.sh
-```
+   ```bash
+   chmod +x .vtcode/hooks/send-notification.sh
+   chmod +x .vtcode/hooks/session-banner.sh
+   ```
 
 4. **Configure the hooks** in your `vtcode.toml`:
 
@@ -415,27 +419,27 @@ Here's a practical example that adds project context when a session starts:
 
 1. **Create a script** at `.vtcode/hooks/session-context.sh`:
 
-```bash
-#!/bin/bash
+   ```bash
+   #!/bin/bash
 
-# Read the JSON payload from stdin
-payload=$(cat)
+   # Read the JSON payload from stdin
+   payload=$(cat)
 
-# Extract project info and return as context
-echo "Project: $(basename $VT_PROJECT_DIR)" > /tmp/context.txt
-echo "Files in project root:" >> /tmp/context.txt
-ls -la $VT_PROJECT_DIR >> /tmp/context.txt
+   # Extract project info and return as context
+   echo "Project: $(basename $VT_PROJECT_DIR)" > /tmp/context.txt
+   echo "Files in project root:" >> /tmp/context.txt
+   ls -la $VT_PROJECT_DIR >> /tmp/context.txt
 
-# Output additional context for the model
-cat /tmp/context.txt
-rm /tmp/context.txt
-```
+   # Output additional context for the model
+   cat /tmp/context.txt
+   rm /tmp/context.txt
+   ```
 
 2. **Make the script executable**:
 
-```bash
-chmod +x .vtcode/hooks/session-context.sh
-```
+   ```bash
+   chmod +x .vtcode/hooks/session-context.sh
+   ```
 
 3. **Configure the hook** in your `vtcode.toml`:
 
@@ -450,24 +454,24 @@ Here's how to set up validation before running bash commands:
 
 1. **Create a validation script** at `.vtcode/hooks/validate-bash.sh`:
 
-```bash
-#!/bin/bash
+   ```bash
+   #!/bin/bash
 
-# Read the JSON payload from stdin
-payload=$(cat)
+   # Read the JSON payload from stdin
+   payload=$(cat)
 
-# Extract the command being run
-command=$(echo "$payload" | jq -r '.tool_input.command // ""')
+   # Extract the command being run
+   command=$(echo "$payload" | jq -r '.tool_input.command // ""')
 
-# Block dangerous commands
-if [[ "$command" == *"rm -rf"* ]] || [[ "$command" == *"/"* ]]; then
-    echo "Dangerous command blocked: $command" >&2
-    exit 2  # This will block the command
-fi
+   # Block dangerous commands
+   if [[ "$command" == *"rm -rf"* ]] || [[ "$command" == *"/"* ]]; then
+       echo "Dangerous command blocked: $command" >&2
+       exit 2  # This will block the command
+   fi
 
-# Allow safe commands
-echo "Command approved: $command"
-```
+   # Allow safe commands
+   echo "Command approved: $command"
+   ```
 
 2. **Configure the pre-tool hook**:
 
@@ -490,15 +494,16 @@ pre_tool_use = [
 
 1. **Validate your configuration**:
 
-```bash
-vtcode config validate
-```
+   ```bash
+   vtcode config validate
+   ```
 
 2. **Test hook execution manually** by simulating the JSON payload:
 
 ```bash
 # Create a test payload file
-echo '{"session_id": "test", "cwd": "/tmp", "hook_event_name": "SessionStart", "source": "startup", "transcript_path": null}' > test_payload.json
+echo '{"session_id": "test", "cwd": "/tmp", "hook_event_name": "SessionStart",'\
+' "source": "startup", "transcript_path": null}' > test_payload.json
 
 # Run your hook manually to test
 cat test_payload.json | .vtcode/hooks/session-context.sh
@@ -508,11 +513,11 @@ cat test_payload.json | .vtcode/hooks/session-context.sh
 
 Here are some common lifecycle hook use cases you might want to implement:
 
-**Security Validation**: Validate dangerous commands before execution
-**Context Enrichment**: Add project-specific information when sessions start
-**Policy Enforcement**: Block prompts containing sensitive keywords
-**Logging**: Track agent activity and tool usage
-**Environment Setup**: Configure project-specific environment variables or settings
+**Security Validation**: Validate dangerous commands before execution **Context
+Enrichment**: Add project-specific information when sessions start **Policy
+Enforcement**: Block prompts containing sensitive keywords **Logging**: Track
+agent activity and tool usage **Environment Setup**: Configure project-specific
+environment variables or settings
 
 ### Detailed Example Configurations
 
@@ -707,27 +712,28 @@ Before using lifecycle hooks in production, validate your configuration:
 vtcode config validate
 ```
 
-This checks that your `vtcode.toml` file has valid syntax and that all regular expressions in matchers are properly formatted.
+This checks that your `vtcode.toml` file has valid syntax and that all regular
+expressions in matchers are properly formatted.
 
-2. **Test hooks manually** by simulating the JSON payload:
+1. **Test hooks manually** by simulating the JSON payload:
 
-```bash
-# Create a test payload file that matches the expected format
-cat > test-payload.json << 'EOF'
-{
-  "session_id": "test-session-123",
-  "cwd": "/path/to/project",
-  "hook_event_name": "SessionStart",
-  "source": "startup",
-  "transcript_path": null
-}
-EOF
+   ```bash
+   # Create a test payload file that matches the expected format
+   cat > test-payload.json << 'EOF'
+   {
+     "session_id": "test-session-123",
+     "cwd": "/path/to/project",
+     "hook_event_name": "SessionStart",
+     "source": "startup",
+     "transcript_path": null
+   }
+   EOF
 
-# Run your hook manually to test it
-cat test-payload.json | .vtcode/hooks/session-context.sh
-```
+   # Run your hook manually to test it
+   cat test-payload.json | .vtcode/hooks/session-context.sh
+   ```
 
-3. **Check script permissions** - make sure your hook scripts are executable:
+2. **Check script permissions** - make sure your hook scripts are executable:
 
 ```bash
 chmod +x .vtcode/hooks/*.sh
@@ -740,11 +746,12 @@ chmod +x .vtcode/hooks/*.sh
 3. **Set shorter timeouts** during development to avoid hanging processes
 4. **Log to files** for debugging complex hook logic:
 
-```bash
-echo "$(date): Processing hook for $VT_HOOK_EVENT" >> /tmp/vtcode-hooks.log
-```
+   ```bash
+   echo "$(date): Processing hook for $VT_HOOK_EVENT" >> /tmp/vtcode-hooks.log
+   ```
 
-5. **Test exit codes** - remember that exit code 2 blocks execution, so test carefully during development:
+5. **Test exit codes** - remember that exit code 2 blocks execution, so test
+   carefully during development:
 
 ```bash
 # Test with a script that won't block
@@ -756,15 +763,18 @@ rm temp_hook.sh
 
 ### Security Considerations
 
-1. **Sandbox your scripts** - avoid running potentially malicious code from hook outputs
-2. **Validate all inputs** - never trust user input or tool parameters without validation
+1. **Sandbox your scripts** - avoid running potentially malicious code from
+   hook outputs
+2. **Validate all inputs** - never trust user input or tool parameters without
+   validation
 3. **Use relative paths** - prefer `$VT_PROJECT_DIR` over hardcoded paths
 4. **Minimize permissions** - run hooks with minimal required privileges
 5. **Audit script content** - regularly review hook scripts for security issues
 
 ### Performance Optimization
 
-1. **Optimize timeout values** - set appropriate timeouts for different operations:
+1. **Optimize timeout values** - set appropriate timeouts for different
+   operations:
    - Fast validations: 1-5 seconds
    - Code analysis: 10-30 seconds
    - Full project scans: 30-60 seconds
@@ -772,13 +782,15 @@ rm temp_hook.sh
 
 2. **Cache expensive operations** to avoid repeating the same work:
 
-```bash
-# Example: cache git status results
-cache_file="/tmp/vtcode_git_status_$VT_SESSION_ID"
-if [[ ! -f "$cache_file" ]] || [[ $(find "$cache_file" -mmin +5) ]]; then
-  git status --porcelain > "$cache_file"
-fi
-cat "$cache_file"
-```
+   ```bash
+   # Example: cache git status results
+   cache_file="/tmp/vtcode_git_status_$VT_SESSION_ID"
+   if [[ ! -f "$cache_file" ]] || [[ $(find "$cache_file" -mmin +5) ]]; then
+     git status --porcelain > "$cache_file"
+   fi
+   cat "$cache_file"
+   ```
 
-3. **Parallel execution considerations** - hooks in the same group run sequentially, but multiple matching groups might run in parallel, so design your hooks to be thread-safe if needed.
+3. **Parallel execution considerations** - hooks in the same group run
+   sequentially, but multiple matching groups might run in parallel, so design
+   your hooks to be thread-safe if needed.

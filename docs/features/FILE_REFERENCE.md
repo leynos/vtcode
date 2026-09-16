@@ -2,13 +2,17 @@
 
 ## Overview
 
-The file reference feature allows users to target specific files in their codebase using the "@" symbol in the VT Code TUI. This provides context-aware operations by explicitly specifying which files are relevant to the current query.
+The file reference feature allows users to target specific files in their
+codebase using the "@" symbol in the VT Code TUI. This provides context-aware
+operations by explicitly specifying which files are relevant to the current
+query.
 
 ## Usage
 
 ### Basic Syntax
 
-- `@` - Opens file browser showing all available files with pagination (10 items per page)
+- `@` - Opens file browser showing all available files with pagination (10
+  items per page)
 - `@filename` - Filters to show matching files (e.g., `@main.rs`)
 - `@path/to/file` - Filters by relative path (e.g., `@src/main.rs`)
 
@@ -25,16 +29,19 @@ The file reference feature allows users to target specific files in their codeba
 ```
 @src/main.rs
 ```
+
 References the main.rs file in the src directory.
 
 ```
 @vtcode.toml
 ```
+
 References the vtcode.toml configuration file.
 
 ```
 @ 
 ```
+
 Opens file browser showing all available files.
 
 ## UI Design
@@ -42,12 +49,14 @@ Opens file browser showing all available files.
 ### Modal Approach (Recommended)
 
 The file browser appears as a centered modal overlay that:
+
 - Provides focused interaction without blocking chat history
 - Shows clear visual separation from the main interface
 - Displays pagination info (e.g., "Page 2/5")
 - Includes search/filter feedback
 
 **Advantages:**
+
 - Less visual clutter
 - Focused user attention
 - Clear interaction model
@@ -57,7 +66,8 @@ The file browser appears as a centered modal overlay that:
 
 ### Components
 
-1. **File Palette Module** (`crates/codegen/vtcode-core/src/ui/tui/file_palette.rs`)
+1. **File Palette Module**
+   (`crates/codegen/vtcode-core/src/ui/tui/file_palette.rs`)
    - Manages file list state
    - Handles filtering and pagination
    - Integrates with vtcode-indexer

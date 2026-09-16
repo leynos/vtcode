@@ -22,12 +22,17 @@ This guide covers common issues and solutions when using VT Code with your IDE.
     ```
 
 2. Check that VT Code is in your PATH:
+
     ```bash
     vtcode --version
     ```
-3. If VT Code is installed in a custom location, update your IDE settings to point to the correct path:
-    - VS Code: Set `vtcode.commandPath` in settings to the full path of the VT Code executable
-    - Cursor/Windsurf: Look for similar extension settings to specify the VT Code executable path
+
+3. If VT Code is installed in a custom location, update your IDE settings to
+   point to the correct path:
+    - VS Code: Set `vtcode.commandPath` in settings to the full path of the VT
+      Code executable
+    - Cursor/Windsurf: Look for similar extension settings to specify the
+      VT Code executable path
 
 ## Extension Not Working
 
@@ -57,7 +62,8 @@ This guide covers common issues and solutions when using VT Code with your IDE.
 
 **Solution**:
 
-1. For large codebases, consider excluding large directories in your `vtcode.toml`
+1. For large codebases, consider excluding large directories in your
+   `vtcode.toml`
 2. Check that your system has sufficient memory and CPU resources
 3. Ensure your internet connection is stable if using cloud-based AI providers
 4. Consider switching to a faster AI model in your configuration
@@ -75,22 +81,27 @@ This guide covers common issues and solutions when using VT Code with your IDE.
 
 ## VS Code-Compatible Editors
 
-**Issue**: Using VT Code with Cursor, Windsurf, or other VS Code-compatible editors.
+**Issue**: Using VT Code with Cursor, Windsurf, or other VS Code-compatible
+editors.
 
-**Solution**:
-VT Code works with any VS Code-compatible editor through the Open VSX registry:
+**Solution**: VT Code works with any VS Code-compatible editor through the Open
+VSX registry:
 
 1. Ensure the VT Code CLI is installed separately on your system
 2. Install the extension from the Open VSX registry or via VSIX file
 3. The extension behavior should be identical to VS Code
-4. Configuration settings may be located in different places depending on the editor
+4. Configuration settings may be located in different places depending on the
+   editor
 
 ## Need More Help?
 
 If you're still experiencing issues:
 
 1. Check the [main documentation](../README.md)
-2. Review the [Cursor and Windsurf Setup Guide](./cursor-windsurf-setup.md) for editor-specific instructions
+2. Review the [Cursor and Windsurf Setup Guide](./cursor-windsurf-setup.md) for
+   editor-specific instructions
 3. Join our [community Discord](https://discord.gg/vtcode)
-4. Open an issue on our [GitHub repository](https://github.com/vinhnx/vtcode/issues)
-5. Provide detailed information about your setup, the issue you're experiencing, and any error messages
+4. Open an issue on our
+   [GitHub repository](https://github.com/vinhnx/vtcode/issues)
+5. Provide detailed information about your setup, the issue you're
+   experiencing, and any error messages

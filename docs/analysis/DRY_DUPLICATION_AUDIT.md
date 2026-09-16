@@ -11,7 +11,8 @@ This pass targeted high-value duplication with low behavioral risk:
 - repeated local timestamp helpers
 - a narrow slice of duplicated UI text/default constants
 
-The goal was to remove duplicated logic while preserving the existing output policies and public behavior.
+The goal was to remove duplicated logic while preserving the existing output
+policies and public behavior.
 
 ## Implemented Refactors
 
@@ -43,7 +44,8 @@ Benefits:
 - one canonical implementation for byte condensation with UTF-8 boundary safety
 - fewer drift risks across PTY, tool-output, and executor previews
 
-Risk level: low. The policy knobs stayed local; only the excerpt/condensation logic moved.
+Risk level: low. The policy knobs stayed local; only the excerpt/condensation
+logic moved.
 
 ### 2. Shared diff display model
 
@@ -57,7 +59,8 @@ Added:
 - `display_lines_from_unified_diff`
 - `diff_display_line_number_width`
 
-Kept `format_numbered_unified_diff()` as a compatibility wrapper over the shared model.
+Kept `format_numbered_unified_diff()` as a compatibility wrapper over the
+shared model.
 
 Replaced duplicate diff semantics in:
 
@@ -70,7 +73,8 @@ Benefits:
 - start-only hunk headers are generated once
 - diff line-number width calculation is centralized
 
-Risk level: low to medium. Rendering adapters still own styling, but parsing/numbering now comes from one source.
+Risk level: low to medium. Rendering adapters still own styling, but
+parsing/numbering now comes from one source.
 
 ### 3. Exact duplicate prompt-budget constants
 
@@ -125,7 +129,8 @@ Added canonical image helper:
 
 Removed duplicate logic from:
 
-- `crates/codegen/vtcode-core/src/tools/file_ops/mod.rs` now re-exports `vtcode_commons::fs::is_image_path`
+- `crates/codegen/vtcode-core/src/tools/file_ops/mod.rs` now re-exports
+  `vtcode_commons::fs::is_image_path`
 - deleted `crates/codegen/vtcode-ui/src/tui/utils/file_utils.rs`
 
 Updated TUI call sites to use `vtcode-commons::fs` directly:
@@ -147,7 +152,8 @@ Canonical owner for shared UI text/defaults remains:
 
 - `crates/codegen/vtcode-config/src/constants/ui.rs`
 
-`crates/codegen/vtcode-ui/src/tui/config/constants/ui.rs` now aliases a small shared subset instead of redefining it:
+`crates/codegen/vtcode-ui/src/tui/config/constants/ui.rs` now aliases a small
+shared subset instead of redefining it:
 
 - tool output mode strings
 - default reasoning visibility
@@ -159,7 +165,8 @@ TUI-only layout/runtime knobs were intentionally kept local.
 Benefits:
 
 - reduced drift in stable cross-surface copy/defaults
-- avoided forcing TUI layout behavior through config constants that are intentionally local
+- avoided forcing TUI layout behavior through config constants that are
+  intentionally local
 
 Risk level: low.
 
@@ -187,13 +194,17 @@ Risk level: low.
 
 ### `crates/codegen/vtcode-core/src/utils` wrapper sprawl
 
-This workspace still contains many thin `vtcode-core::utils::*` compatibility wrappers over `vtcode-commons`.
+This workspace still contains many thin `vtcode-core::utils::*` compatibility
+wrappers over `vtcode-commons`.
 
 Reason not removed in this pass:
 
 - the import surface is broad across the workspace
-- deleting them all at once would create high-churn edits with low immediate payoff
-- the narrow wrapper removal in `crates/codegen/vtcode-ui/src/tui/utils/file_utils.rs` delivered a safer first reduction
+- deleting them all at once would create high-churn edits with low immediate
+  payoff
+- the narrow wrapper removal in
+  `crates/codegen/vtcode-ui/src/tui/utils/file_utils.rs` delivered a safer
+  first reduction
 
 Recommended follow-up:
 
@@ -205,18 +216,22 @@ Recommended follow-up:
 
 The storage-location policy split was preserved:
 
-- `crates/codegen/vtcode-core/src/tools/output_spooler.rs` keeps workspace-relative spool behavior
-- `src/agent/runloop/tool_output/large_output.rs` keeps temp-file UI spool behavior
+- `crates/codegen/vtcode-core/src/tools/output_spooler.rs` keeps
+  workspace-relative spool behavior
+- `src/agent/runloop/tool_output/large_output.rs` keeps temp-file UI spool
+  behavior
 
 Only shared condensation/excerpt logic was deduplicated.
 
 ## Expected Benefits
 
 - less duplicated parsing/rendering code in the two diff-preview paths
-- less duplicated preview code across command output, PTY live preview, spool previews, and inspect output
+- less duplicated preview code across command output, PTY live preview, spool
+  previews, and inspect output
 - fewer independent utility copies to maintain
 - lower drift risk for shared UI copy/defaults
-- simpler future bug fixes because the shared helpers now live in `vtcode-commons`
+- simpler future bug fixes because the shared helpers now live in
+  `vtcode-commons`
 
 ## Verification
 
@@ -229,11 +244,14 @@ Post-change verification:
 - `cargo check --workspace` passed
 - `cargo clippy --workspace --all-targets -- -D warnings` passed
 
-`cargo nextest run --workspace` did not complete because of pre-existing missing snapshot baselines in:
+`cargo nextest run --workspace` did not complete because of pre-existing
+missing snapshot baselines in:
 
 - `advanced_tui_scenario_tests__message_combo_user_agent_exchange`
 - `advanced_tui_scenario_tests__header_context_basic_context`
 - `advanced_tui_scenario_tests__tui_with_conversation_history`
 - `advanced_tui_scenario_tests__styled_segment_plain_text`
 
-Those failures produced `.snap.new` files only; no accepted `.snap` baseline exists for those cases in `scripts/tests/snapshots/`. The generated `.snap.new` files were removed after verification to keep the worktree clean.
+Those failures produced `.snap.new` files only; no accepted `.snap` baseline
+exists for those cases in `scripts/tests/snapshots/`. The generated `.snap.new`
+files were removed after verification to keep the worktree clean.

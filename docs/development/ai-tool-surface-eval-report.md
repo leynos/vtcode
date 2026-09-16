@@ -5,7 +5,9 @@ old tool-surface implementation was completed.
 
 ## Scope
 
-The checked-in task set is [ai-tool-surface-eval-cases.json](./ai-tool-surface-eval-cases.json). It contains seven executable cases and covers:
+The checked-in task set is
+[ai-tool-surface-eval-cases.json](./ai-tool-surface-eval-cases.json). It
+contains seven executable cases and covers:
 
 - Ordinary file discovery through `exec_command.cmd`.
 - Text search through shell commands such as `rg`.
@@ -21,21 +23,21 @@ telemetry, so the case schema makes no telemetry claim.
 ## Baseline Data
 
 No checked-in archived baseline report for the old tool surface was found in
-`scripts/evals/`, `docs/`, or benchmark report paths during this slice. No live provider
-run was performed for this report. The baseline column is therefore marked
-unavailable. This context is report prose, not an executable eval case.
+`scripts/evals/`, `docs/`, or benchmark report paths during this slice. No live
+provider run was performed for this report. The baseline column is therefore
+marked unavailable. This context is report prose, not an executable eval case.
 
 ## Comparison Table
 
-| Task id | Capability | Default profile | Advanced profile | Archived baseline | Suite validation |
-|---|---|---|---|---|---|
-| `tool_surface_discovery_default` | Ordinary file discovery | Uses `exec_command.cmd` with shell file discovery | Same target, no advanced tool needed | Unavailable | JSON loads; profile and `llm_grader` metric are recognised |
-| `tool_surface_text_search_default` | Text search | Uses `exec_command.cmd` with `rg` | Same target, no advanced tool needed | Unavailable | JSON loads; profile and `llm_grader` metric are recognised |
-| `tool_surface_code_search_types_advanced` | Definition, usage, text, and path classification | Unavailable | Requests all four result classifications | Unavailable | JSON loads; profile and `llm_grader` metric are recognised |
-| `tool_surface_code_search_smart_case_advanced` | Literal smart-case | Unavailable | Compares lower-case and mixed-case queries | Unavailable | JSON loads; profile and `llm_grader` metric are recognised |
-| `tool_surface_code_search_bounds_advanced` | Bounded refinement | Unavailable | Narrows filters in another call after truncation | Unavailable | JSON loads; profile and `llm_grader` metric are recognised |
-| `tool_surface_patch_default` | Patch editing | Uses `apply_patch` | Same target, no advanced tool needed | Unavailable | JSON loads; profile and `contains_match` metric are recognised |
-| `tool_surface_interactive_default` | Interactive continuation | Uses `exec_command` then `write_stdin` | Same target, no advanced tool needed | Unavailable | JSON loads; profile and `contains_match` metric are recognised |
+| Task id                                        | Capability                                       | Default profile                                   | Advanced profile                                 | Archived baseline | Suite validation                                               |
+| ---------------------------------------------- | ------------------------------------------------ | ------------------------------------------------- | ------------------------------------------------ | ----------------- | -------------------------------------------------------------- |
+| `tool_surface_discovery_default`               | Ordinary file discovery                          | Uses `exec_command.cmd` with shell file discovery | Same target, no advanced tool needed             | Unavailable       | JSON loads; profile and `llm_grader` metric are recognised     |
+| `tool_surface_text_search_default`             | Text search                                      | Uses `exec_command.cmd` with `rg`                 | Same target, no advanced tool needed             | Unavailable       | JSON loads; profile and `llm_grader` metric are recognised     |
+| `tool_surface_code_search_types_advanced`      | Definition, usage, text, and path classification | Unavailable                                       | Requests all four result classifications         | Unavailable       | JSON loads; profile and `llm_grader` metric are recognised     |
+| `tool_surface_code_search_smart_case_advanced` | Literal smart-case                               | Unavailable                                       | Compares lower-case and mixed-case queries       | Unavailable       | JSON loads; profile and `llm_grader` metric are recognised     |
+| `tool_surface_code_search_bounds_advanced`     | Bounded refinement                               | Unavailable                                       | Narrows filters in another call after truncation | Unavailable       | JSON loads; profile and `llm_grader` metric are recognised     |
+| `tool_surface_patch_default`                   | Patch editing                                    | Uses `apply_patch`                                | Same target, no advanced tool needed             | Unavailable       | JSON loads; profile and `contains_match` metric are recognised |
+| `tool_surface_interactive_default`             | Interactive continuation                         | Uses `exec_command` then `write_stdin`            | Same target, no advanced tool needed             | Unavailable       | JSON loads; profile and `contains_match` metric are recognised |
 
 ## Result Format
 

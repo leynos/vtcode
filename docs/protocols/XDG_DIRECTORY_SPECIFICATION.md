@@ -13,20 +13,20 @@ For practical setup, diagnostics, and rollback instructions, see the
 On Linux and BSD, the defaults below are relative to the user's home directory.
 The application name is `vtcode`.
 
-| Category | Environment variable | Default | Typical contents |
-| --- | --- | --- | --- |
-| Config | `XDG_CONFIG_HOME` | `~/.config/vtcode` | `vtcode.toml`, update settings, agents, rules, MCP/tool policy, plugin manifests, auth files |
-| Data | `XDG_DATA_HOME` | `~/.local/share/vtcode` | installed plugins and skills, durable downloads, catalogs and assets |
-| State | `XDG_STATE_HOME` | `~/.local/state/vtcode` | sessions, persistent memory, scheduler/pod state, audit/debug logs, migration reports and backups |
-| Cache | `XDG_CACHE_HOME` | `~/.cache/vtcode` | model/prompt/approval caches, web-fetch files, ast-grep data, large-output spools and update snapshots |
-| Runtime | `XDG_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/vtcode` | transient sockets, locks and process coordination; falls back to `state/runtime` |
-| Executable | `XDG_BIN_HOME` | `~/.local/bin` | managed helper binaries and updater-installed tools |
+| Category   | Environment variable | Default                   | Typical contents                                                                                       |
+| ---------- | -------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Config     | `XDG_CONFIG_HOME`    | `~/.config/vtcode`        | `vtcode.toml`, update settings, agents, rules, MCP/tool policy, plugin manifests, auth files           |
+| Data       | `XDG_DATA_HOME`      | `~/.local/share/vtcode`   | installed plugins and skills, durable downloads, catalogs and assets                                   |
+| State      | `XDG_STATE_HOME`     | `~/.local/state/vtcode`   | sessions, persistent memory, scheduler/pod state, audit/debug logs, migration reports and backups      |
+| Cache      | `XDG_CACHE_HOME`     | `~/.cache/vtcode`         | model/prompt/approval caches, web-fetch files, ast-grep data, large-output spools and update snapshots |
+| Runtime    | `XDG_RUNTIME_DIR`    | `$XDG_RUNTIME_DIR/vtcode` | transient sockets, locks and process coordination; falls back to `state/runtime`                       |
+| Executable | `XDG_BIN_HOME`       | `~/.local/bin`            | managed helper binaries and updater-installed tools                                                    |
 
 `VTCODE_CONFIG` and `VTCODE_DATA` override the corresponding canonical VT Code
-roots. `VTCODE_HOME` names the legacy root used for compatibility and migration;
-it does not replace the canonical XDG roots. Empty XDG values and relative XDG
-values are ignored. Absolute explicit VT Code overrides are validated and fail
-closed when unsafe.
+roots. `VTCODE_HOME` names the legacy root used for compatibility and
+migration; it does not replace the canonical XDG roots. Empty XDG values and
+relative XDG values are ignored. Absolute explicit VT Code overrides are
+validated and fail closed when unsafe.
 
 System search roots follow XDG ordering. `XDG_CONFIG_DIRS` and `XDG_DATA_DIRS`
 are parsed as ordered, absolute path lists; invalid entries are ignored. Their
@@ -75,9 +75,9 @@ prompts, commands, tool policy, MCP configuration and auth move to config;
 plugins, skills, durable assets, legacy `tools/` and `bin/` move to data or the
 executable directory; projects, sessions, memory, scheduler/pod state, logs,
 audits and backups move to state; and model/prompt/approval caches, installer
-state, web-fetch files and large-output spools move to cache. Unknown
-top-level legacy entries are retained and recorded as unmapped rather than
-silently reclassified.
+state, web-fetch files and large-output spools move to cache. Unknown top-level
+legacy entries are retained and recorded as unmapped rather than silently
+reclassified.
 
 Migration writes a versioned marker and a JSON report under the state directory
 only after the scan completes. The report records copied, skipped, conflicting
@@ -92,8 +92,8 @@ the runtime/cache policy, while the old directory remains available only for
 compatibility and is not automatically removed.
 
 To roll back a migration, stop VT Code, keep the new roots as a backup, remove
-the migration marker from `<state>/migration/legacy-v1.complete`, and start
-with `VTCODE_HOME` pointing at the preserved legacy directory. Resolve any
+the migration marker from `<state>/migration/legacy-v1.complete`, and start with
+`VTCODE_HOME` pointing at the preserved legacy directory. Resolve any
 destination conflicts manually; VT Code will not overwrite them.
 
 Authentication lookup also checks legacy `auth.json` locations when startup

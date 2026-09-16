@@ -1,15 +1,17 @@
 # **Testing Guide**
 
-This guide covers VT Code's comprehensive test suite, including unit tests, integration tests, benchmarks, and testing best practices.
+This guide covers VT Code's comprehensive test suite, including unit tests,
+integration tests, benchmarks, and testing best practices.
 
 ## **Test Overview**
 
-VT Code includes a multi-layered test suite designed to ensure reliability and performance:
+VT Code includes a multi-layered test suite designed to ensure reliability and
+performance:
 
--   **Unit Tests**: Test individual components and functions
--   **Integration Tests**: Test end-to-end functionality
--   **Performance Benchmarks**: Measure and track performance
--   **Mock Testing**: Test with realistic mock data
+- **Unit Tests**: Test individual components and functions
+- **Integration Tests**: Test end-to-end functionality
+- **Performance Benchmarks**: Measure and track performance
+- **Mock Testing**: Test with realistic mock data
 
 ## **Running Tests**
 
@@ -25,8 +27,7 @@ VTCODE_BIN="$PWD/target/release/vtcode" \
   cargo bench --locked --bench startup -- --noplot
 ```
 
-The case matrix is intentionally limited to short-lived, provider-free
-commands:
+The case matrix is intentionally limited to short-lived, provider-free commands:
 
 ```text
 vtcode --version
@@ -42,13 +43,13 @@ directories, so the benchmark cannot read or modify the developer's normal
 configuration, credentials, data, or repository. The workspace is also
 explicitly selected for each child process.
 
-The harness writes the raw duration samples and reports a stable median and
-p95 for every case/mode. Keep the raw samples with the result so regressions
-can be reproduced and distributions can be inspected; do not compare a lone
-best-case launch. Fresh executable copies are a process/loader cold proxy,
-not an operating-system cache flush: the benchmark deliberately does not
-flush or evict OS page caches. `VTCODE_STARTUP_TRACE=1` may be enabled for
-phase diagnostics, but should remain disabled for timing samples.
+The harness writes the raw duration samples and reports a stable median and p95
+for every case/mode. Keep the raw samples with the result so regressions can be
+reproduced and distributions can be inspected; do not compare a lone best-case
+launch. Fresh executable copies are a process/loader cold proxy, not an
+operating-system cache flush: the benchmark deliberately does not flush or
+evict OS page caches. `VTCODE_STARTUP_TRACE=1` may be enabled for phase
+diagnostics, but should remain disabled for timing samples.
 
 For the broader local performance capture (which also includes cargo-check,
 first-user-I/O, and PTY first-render measurements), use:
@@ -90,7 +91,10 @@ cargo nextest run --release
 
 ### Local Test Build Optimization
 
-For local test iteration, the test build uses `CARGO_INCREMENTAL=1` (via `check-dev.sh`) to avoid full recompiles when only a few files have changed. This overrides the `incremental = false` setting in `[profile.dev]` (which is needed for sccache compatibility in CI).
+For local test iteration, the test build uses `CARGO_INCREMENTAL=1` (via
+`check-dev.sh`) to avoid full recompiles when only a few files have changed.
+This overrides the `incremental = false` setting in `[profile.dev]` (which is
+needed for sccache compatibility in CI).
 
 ```bash
 # Fast local test builds with incremental compilation
@@ -126,13 +130,14 @@ let _config_defaults =
 
 Tests that change process environment variables must use the shared environment
 lock together with the scoped `temp-env` helpers. Use `filetime` when a test
-needs deterministic file modification times; process-isolated cases can use
-the workspace's `rusty-fork` test dependency. These dependencies are for test
+needs deterministic file modification times; process-isolated cases can use the
+workspace's `rusty-fork` test dependency. These dependencies are for test
 fixtures and do not change the runtime dependency surface.
 
 ### Structural Rule Checks
 
-VT Code bundles a generic `ast-grep` project scaffold and materializes it into the current workspace when you run `vtcode init`.
+VT Code bundles a generic `ast-grep` project scaffold and materializes it into
+the current workspace when you run `vtcode init`.
 
 ```bash
 # Install ast-grep if needed
@@ -155,30 +160,75 @@ ast-grep scan --config sgconfig.yml
 ```
 
 If `ast-grep` is not installed yet, run `vtcode dependencies install ast-grep`.
-If the workspace does not have `sgconfig.yml` yet, run `vtcode init` before invoking the check command.
-If a user asks for ast-grep installation or first-use help, route them to the bundled `ast-grep` skill before falling back to external package-manager instructions.
+If the workspace does not have `sgconfig.yml` yet, run `vtcode init` before
+invoking the check command. If a user asks for ast-grep installation or
+first-use help, route them to the bundled `ast-grep` skill before falling back
+to external package-manager instructions.
 
-For ast-grep rule authoring guidance, use the bundled `ast-grep` skill. It now covers the atomic / relational / composite / utility rule cheat sheet, the YAML config cheat sheet, and CLI iteration with `scan --rule` and `scan --inline-rules`.
-That skill also covers project bootstrapping with `ast-grep new` / `ast-grep new rule`, though this repository already includes the required scaffold.
-Rewrite workflows such as `ast-grep run --rewrite`, YAML string `fix`, `FixConfig`, and `expandStart` or `expandEnd` are intentionally routed through that skill, including comma and list-item cleanup cases where the rewritten range must grow beyond the matched node.
-CLI-only topics such as `--stdin`, raw `--json`, `scan -r`, `lsp`, shell completions, and GitHub Action setup are also documented there.
-When ast-grep rule syntax is not expressive enough, that skill now also documents when to switch to ast-grep’s JavaScript/Python/Rust API instead of piling more complexity into YAML.
-It also covers ast-grep pattern syntax itself, including `$VAR`, `$$$ARGS`, `$_`, `$$VAR`, object-style patterns when fragments are ambiguous, rule-object features such as positive root-rule requirements, limited `kind` ESQuery syntax, `nthChild` formulas / `reverse` / `ofRule`, `range`, relational `field`, `stopBy`, and local/global utility rules, plus config keys and semantics such as `url`, `metadata`, `constraints`, `severity`, `message`, `note`, `labels`, `files`, `ignores`, `transform`, `fix`, `rewriters`, `caseInsensitive` glob objects, YAML `---` rule separators, `severity: off`, `--include-metadata`, `./` glob pitfalls, and `files` / `ignores` precedence.
-It also covers FAQ-style troubleshooting such as Playground and CLI differences, using `ast-grep run --debug-query`, incomplete fragments that need `context` plus `selector`, `kind` plus `pattern` pitfalls, rule-order sensitivity, multi-language guidance, naming-convention matching via `constraints.regex`, and ast-grep’s static-analysis limits.
-It also covers the high-level ast-grep workflow: pattern / YAML / API inputs, Tree-Sitter parsing, Rust tree matching, search/rewrite/lint/analyze scenarios, and why ast-grep scales well across CPU cores.
-It also covers pattern core concepts such as textual vs structural matching, CST vs AST, named vs unnamed nodes, `kind` vs `field`, and significant vs trivial syntax.
-It also covers pattern parsing details such as invalid / incomplete / ambiguous snippets, effective-node selection via `selector`, meta-variable detection rules, unnamed-node capture, lazy `$$$ARGS`, and when `expandoChar` matters.
-It also covers the match algorithm and strictness levels used by ast-grep commands.
-It also covers Find & Patch style rewrites such as `rewriters`, `transform.rewrite`, `joinBy`, and one-to-many rewrites like splitting barrel imports.
-It also covers transformation-object details such as `replace`, `substring`, `convert`, `toCase`, `separatedBy`, `CaseChange`, string-form transforms, and the experimental matching-order behavior of `transform.rewrite`.
-It also covers rewriter-specific rules such as required `id` / `rule` / `fix`, rewriter-local capture scope, rewriter-local `utils` / `transform`, and using sibling rewriters from the same list.
-It also covers `sgconfig.yml` itself in more detail: `ruleDirs`, `testConfigs`, `testDir`, `snapshotDir`, `utilDirs`, `languageGlobs` precedence, target-triple `libraryPath`, `languageSymbol`, and dynamic `injected` language selection through `$LANG`.
-It also covers custom language setup, including `customLanguages`, parser compilation with `tree-sitter build`, the `TREE_SITTER_LIBDIR` fallback, `expandoChar`, and parser inspection with `tree-sitter parse`.
-It also covers multi-language documents and language injection, including built-in HTML `<script>` / `<style>` extraction, `languageInjections`, `hostLanguage`, `injected`, `$CONTENT` captures, styled-components CSS, and GraphQL template literals.
-It also covers ast-grep’s built-in language catalog, alias selection for `--lang` / YAML `language`, built-in extension mapping, and when VT Code’s local inference subset differs from ast-grep’s full built-in list.
-It also covers the programmatic API surface in more concrete terms: Node NAPI `parse` / `kind` / `pattern`, `Lang`, `SgRoot`, `SgNode`, `NapiConfig`, Python `SgRoot` / `SgNode`, edit objects, and the deprecation of language-specific JS objects like `js.parse(...)`.
-Quick-start guidance there also covers shell quoting for metavariables, Linux `ast-grep` vs `sg`, and the optional-chaining rewrite example.
-Catalog-style example discovery and adaptation are also routed there, especially when examples depend on `constraints`, `utils`, `transform`, `rewriters`, or built-in fixes.
+For ast-grep rule authoring guidance, use the bundled `ast-grep` skill. It now
+covers the atomic / relational / composite / utility rule cheat sheet, the YAML
+config cheat sheet, and CLI iteration with `scan --rule` and
+`scan --inline-rules`. That skill also covers project bootstrapping with
+`ast-grep new` / `ast-grep new rule`, though this repository already includes
+the required scaffold. Rewrite workflows such as `ast-grep run --rewrite`, YAML
+string `fix`, `FixConfig`, and `expandStart` or `expandEnd` are intentionally
+routed through that skill, including comma and list-item cleanup cases where
+the rewritten range must grow beyond the matched node. CLI-only topics such as
+`--stdin`, raw `--json`, `scan -r`, `lsp`, shell completions, and GitHub Action
+setup are also documented there. When ast-grep rule syntax is not expressive
+enough, that skill now also documents when to switch to ast-grep’s
+JavaScript/Python/Rust API instead of piling more complexity into YAML. It also
+covers ast-grep pattern syntax itself, including `$VAR`, `$$$ARGS`, `$_`,
+`$$VAR`, object-style patterns when fragments are ambiguous, rule-object
+features such as positive root-rule requirements, limited `kind` ESQuery syntax,
+`nthChild` formulas / `reverse` / `ofRule`, `range`, relational `field`,
+`stopBy`, and local/global utility rules, plus config keys and semantics such as
+`url`, `metadata`, `constraints`, `severity`, `message`, `note`, `labels`,
+`files`, `ignores`, `transform`, `fix`, `rewriters`, `caseInsensitive` glob
+objects, YAML `---` rule separators, `severity: off`, `--include-metadata`,
+`./` glob pitfalls, and `files` / `ignores` precedence. It also covers
+FAQ-style troubleshooting such as Playground and CLI differences, using
+`ast-grep run --debug-query`, incomplete fragments that need `context` plus
+`selector`, `kind` plus `pattern` pitfalls, rule-order sensitivity,
+multi-language guidance, naming-convention matching via `constraints.regex`,
+and ast-grep’s static-analysis limits. It also covers the high-level ast-grep
+workflow: pattern / YAML / API inputs, Tree-Sitter parsing, Rust tree matching,
+search/rewrite/lint/analyze scenarios, and why ast-grep scales well across CPU
+cores. It also covers pattern core concepts such as textual vs structural
+matching, CST vs AST, named vs unnamed nodes, `kind` vs `field`, and
+significant vs trivial syntax. It also covers pattern parsing details such as
+invalid / incomplete / ambiguous snippets, effective-node selection via
+`selector`, meta-variable detection rules, unnamed-node capture, lazy
+`$$$ARGS`, and when `expandoChar` matters. It also covers the match algorithm
+and strictness levels used by ast-grep commands. It also covers Find & Patch
+style rewrites such as `rewriters`, `transform.rewrite`, `joinBy`, and
+one-to-many rewrites like splitting barrel imports. It also covers
+transformation-object details such as `replace`, `substring`, `convert`,
+`toCase`, `separatedBy`, `CaseChange`, string-form transforms, and the
+experimental matching-order behavior of `transform.rewrite`. It also covers
+rewriter-specific rules such as required `id` / `rule` / `fix`, rewriter-local
+capture scope, rewriter-local `utils` / `transform`, and using sibling
+rewriters from the same list. It also covers `sgconfig.yml` itself in more
+detail: `ruleDirs`, `testConfigs`, `testDir`, `snapshotDir`, `utilDirs`,
+`languageGlobs` precedence, target-triple `libraryPath`, `languageSymbol`, and
+dynamic `injected` language selection through `$LANG`. It also covers custom
+language setup, including `customLanguages`, parser compilation with
+`tree-sitter build`, the `TREE_SITTER_LIBDIR` fallback, `expandoChar`, and
+parser inspection with `tree-sitter parse`. It also covers multi-language
+documents and language injection, including built-in HTML `<script>` /
+`<style>` extraction, `languageInjections`, `hostLanguage`, `injected`,
+`$CONTENT` captures, styled-components CSS, and GraphQL template literals. It
+also covers ast-grep’s built-in language catalog, alias selection for `--lang`
+/ YAML `language`, built-in extension mapping, and when VT Code’s local
+inference subset differs from ast-grep’s full built-in list. It also covers the
+programmatic API surface in more concrete terms: Node NAPI `parse` / `kind` /
+`pattern`, `Lang`, `SgRoot`, `SgNode`, `NapiConfig`, Python `SgRoot` /
+`SgNode`, edit objects, and the deprecation of language-specific JS objects like
+`js.parse(...)`. Quick-start guidance there also covers shell quoting for
+metavariables, Linux `ast-grep` vs `sg`, and the optional-chaining rewrite
+example. Catalog-style example discovery and adaptation are also routed there,
+especially when examples depend on `constraints`, `utils`, `transform`,
+`rewriters`, or built-in fixes.
 
 ### Integration Tests
 
@@ -212,7 +262,8 @@ cargo +nightly fuzz build shell_parser
 cargo +nightly fuzz run shell_parser -- -max_total_time=60
 ```
 
-See [Fuzzing Guide](./fuzzing.md) for target details, corpus layout, and crash reproduction.
+See [Fuzzing Guide](./fuzzing.md) for target details, corpus layout, and crash
+reproduction.
 
 ## **Test Structure**
 
@@ -236,24 +287,25 @@ src/
 
 ## **Test Profiles & Groups**
 
-Tests are organized into nextest profiles and test groups for selective execution:
+Tests are organized into nextest profiles and test groups for selective
+execution:
 
-| Profile | Use Case | Key Settings |
-|---|---|---|
-| `default` | Local dev – everything | `fail-fast`, 30s timeout, 3 retry periods |
-| `quick` | TDD iteration (optional) | Skips integration/e2e/slow tests, 10s timeout |
-| `changed` | Changed-crate testing | `--changed --since HEAD~1` support |
-| `ci` | Full CI gate (optional) | `fail-fast=false`, 2 retries, 60s timeout |
-| `ci-partition` | Parallel CI shards | Hash-based partition, 1 retry |
+| Profile        | Use Case                 | Key Settings                                  |
+| -------------- | ------------------------ | --------------------------------------------- |
+| `default`      | Local dev – everything   | `fail-fast`, 30s timeout, 3 retry periods     |
+| `quick`        | TDD iteration (optional) | Skips integration/e2e/slow tests, 10s timeout |
+| `changed`      | Changed-crate testing    | `--changed --since HEAD~1` support            |
+| `ci`           | Full CI gate (optional)  | `fail-fast=false`, 2 retries, 60s timeout     |
+| `ci-partition` | Parallel CI shards       | Hash-based partition, 1 retry                 |
 
 ### Test Groups
 
 Tests assigned to groups inherit resource and timeout constraints:
 
-| Group | Max Threads | Timeout | Assigned Tests |
-|---|---|---|---|
-| `slow` | 2 | 120s | Tests tagged with `/slow_\|bench_\|heavy/` |
-| `integration` | 4 | 60s | Integration binaries, tests tagged `/e2e\|integration/` |
+| Group         | Max Threads | Timeout | Assigned Tests                                          |
+| ------------- | ----------- | ------- | ------------------------------------------------------- |
+| `slow`        | 2           | 120s    | Tests tagged with `/slow_\|bench_\|heavy/`              |
+| `integration` | 4           | 60s     | Integration binaries, tests tagged `/e2e\|integration/` |
 
 ## **Test Categories**
 
@@ -294,7 +346,8 @@ mod integration_tests {
 
 Located in standalone files in `tests/`:
 
--   `tests/open_responses_compliance.rs`: Validates strict adherence to the [Open Responses](https://www.openresponses.org/) specification.
+- `tests/open_responses_compliance.rs`: Validates strict adherence to the
+    [Open Responses](https://www.openresponses.org/) specification.
 
 ```bash
 # Run Open Responses compliance tests
@@ -435,8 +488,8 @@ cargo bench -p vtcode-core --bench tool_pipeline
 
 Measures:
 
--   Rate limiter throughput and latency
--   Tool pipeline outcome construction overhead
+- Rate limiter throughput and latency
+- Tool pipeline outcome construction overhead
 
 ### Interactive Prompt and Indexed Search Performance
 
@@ -452,7 +505,8 @@ and comparative rather than a CI threshold.
 ### Tool Cache Performance
 
 Measures:
--   Owned vs `Arc` retrieval overhead
+
+- Owned vs `Arc` retrieval overhead
 
 ## **Testing Best Practices**
 
@@ -572,27 +626,33 @@ fn test_with_debug_output() {
 
 ## **Testing Checklist**
 
--   [ ] Unit tests for all public functions
--   [ ] Integration tests for component interactions
--   [ ] Error handling tests
--   [ ] Edge case testing
--   [ ] Performance benchmarks
--   [ ] Documentation examples tested
--   [ ] Cross-platform compatibility
--   [ ] Memory leak testing (if applicable)
+- [ ] Unit tests for all public functions
+- [ ] Integration tests for component interactions
+- [ ] Error handling tests
+- [ ] Edge case testing
+- [ ] Performance benchmarks
+- [ ] Documentation examples tested
+- [ ] Cross-platform compatibility
+- [ ] Memory leak testing (if applicable)
 
 ## **Additional Resources**
 
 ### Testing Frameworks
 
--   **[Rust Testing Book](https://doc.rust-lang.org/book/ch11-00-testing.html)**
--   **[Criterion.rs Documentation](https://bheisler.github.io/criterion.rs/book/)**
--   **[Mockito Documentation](https://docs.rs/mockito/latest/mockito/)**
+- **[Rust Testing Book](https://doc.rust-lang.org/book/ch11-00-testing.html)**
+- **
+    [Criterion.rs Documentation](https://bheisler.github.io/criterion.rs/book/)
+    **
+- **[Mockito Documentation](https://docs.rs/mockito/latest/mockito/)**
 
 ### Best Practices
 
--   **[Rust Testing Guidelines](https://rust-lang.github.io/rfcs/2909-destructuring-assignment.html)**
--   **[Effective Rust Testing](https://www.lurklurk.org/effective-rust/testing.html)**
+- **
+    [Rust Testing Guidelines](https://rust-lang.github.io/rfcs/2909-destructuring-assignment.html)
+    **
+- **
+    [Effective Rust Testing](https://www.lurklurk.org/effective-rust/testing.html)
+    **
 
 ## **Getting Help**
 
@@ -600,30 +660,30 @@ fn test_with_debug_output() {
 
 **Test fails intermittently**
 
--   Check for race conditions in async tests
--   Ensure proper test isolation
--   Use unique test data for each test
+- Check for race conditions in async tests
+- Ensure proper test isolation
+- Use unique test data for each test
 
 **Benchmark results vary**
 
--   Run benchmarks multiple times
--   Use statistical significance testing
--   Consider environmental factors
+- Run benchmarks multiple times
+- Use statistical significance testing
+- Consider environmental factors
 
 **Mock setup is complex**
 
--   Simplify test scenarios
--   Use builder patterns for complex objects
--   Consider integration tests instead of complex mocks
+- Simplify test scenarios
+- Use builder patterns for complex objects
+- Consider integration tests instead of complex mocks
 
----
+______________________________________________________________________
 
 ## **Navigation**
 
--   **[Back to Documentation Index](./../README.md)**
--   **[User Guide](../user-guide/)**
--   **[Contributing Guide](../CONTRIBUTING.md)**
+- **[Back to Documentation Index](./../README.md)**
+- **[User Guide](../user-guide/)**
+- **[Contributing Guide](../CONTRIBUTING.md)**
 
----
+______________________________________________________________________
 
-**Happy Testing! **
+**Happy Testing!**

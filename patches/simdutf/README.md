@@ -1,8 +1,6 @@
 # simdutf
 
-[![Latest Version]][crates.io]
-[![Documentation]][docs.rs] 
-![License]
+[![Latest Version]][crates.io] [![Documentation]][docs.rs] ![License]
 
 Unicode validation and transcoding at billions of characters per second.
 
@@ -18,4 +16,4 @@ Documentation: <https://docs.rs/simdutf>
 
 ## Contributing
 
-+ [Development Guide](./CONTRIBUTING.md)
+- [Development Guide](./CONTRIBUTING.md)

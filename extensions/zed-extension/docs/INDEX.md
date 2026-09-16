@@ -6,98 +6,98 @@ Complete navigation guide for the VT Code Zed extension documentation.
 
 ### Getting Started
 
--   **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Installation and setup instructions
--   **[QUICK_START.md](QUICK_START.md)** - 5-minute quick start guide
--   **[README.md](README.md)** - Extension overview and features
+- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Installation and setup instructions
+- **[QUICK_START.md](QUICK_START.md)** - 5-minute quick start guide
+- **[README.md](README.md)** - Extension overview and features
 
 ### Documentation
 
--   **[extension-features.md](extension-features.md)** - Detailed feature documentation
--   **[DEVELOPMENT.md](DEVELOPMENT.md)** - Development setup and workflow
+- **[extension-features.md](extension-features.md)** - Detailed feature
+    documentation
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Development setup and workflow
 
 ### License
 
--   **[LICENSE](LICENSE)** - MIT OR Apache-2.0
+- **[LICENSE](LICENSE)** - MIT OR Apache-2.0
 
----
+______________________________________________________________________
 
 ## By Use Case
 
-### I Want to...
+### I Want to…
 
-#### ...Install the Extension
+#### …Install the Extension
 
 → Start with **[SETUP_GUIDE.md](SETUP_GUIDE.md)**
 
--   Prerequisite checks
--   Installation steps (3 options)
--   Verification checklist
--   Troubleshooting
+- Prerequisite checks
+- Installation steps (3 options)
+- Verification checklist
+- Troubleshooting
 
-#### ...Get Started in 5 Minutes
+#### …Get Started in 5 Minutes
 
 → Read **[QUICK_START.md](QUICK_START.md)**
 
--   Install prerequisites (1 min)
--   Install extension (1 min)
--   Create basic configuration (1 min)
--   First use examples (2 min)
+- Install prerequisites (1 min)
+- Install extension (1 min)
+- Create basic configuration (1 min)
+- First use examples (2 min)
 
-#### ...Understand What Features Are Available
+#### …Understand What Features Are Available
 
 → Check **[extension-features.md](extension-features.md)**
 
--   Current features
--   Planned features
--   Architecture overview
--   Configuration structure
--   Workflow examples
+- Current features
+- Planned features
+- Architecture overview
+- Configuration structure
+- Workflow examples
 
-#### ...Set Up Development Environment
+#### …Set Up Development Environment
 
 → Follow **[DEVELOPMENT.md](DEVELOPMENT.md)**
 
--   Prerequisites verification
--   Building the extension
--   Installing as dev extension
--   Testing and debugging
--   Project structure
--   Troubleshooting
+- Prerequisites verification
+- Building the extension
+- Installing as dev extension
+- Testing and debugging
+- Project structure
+- Troubleshooting
 
-#### ...Understand Future Development Plans
+#### …Understand Future Development Plans
 
+- Current status
+- 3-phase development plan
+- Implementation details
+- Timeline estimates
+- Success criteria
 
--   Current status
--   3-phase development plan
--   Implementation details
--   Timeline estimates
--   Success criteria
-
-#### ...Find General Information
+#### …Find General Information
 
 → Read **[README.md](README.md)**
 
--   Features overview
--   Installation methods
--   Basic usage
--   Configuration
--   Requirements
--   Support information
+- Features overview
+- Installation methods
+- Basic usage
+- Configuration
+- Requirements
+- Support information
 
----
+______________________________________________________________________
 
 ## Document Purposes
 
-| Document                      | Purpose                                   | Audience                  | Time      |
-| ----------------------------- | ----------------------------------------- | ------------------------- | --------- |
-| **SETUP_GUIDE.md**            | Complete installation and troubleshooting | Users                     | 15-30 min |
-| **QUICK_START.md**            | Minimal viable setup                      | New users                 | 5 min     |
-| **README.md**                 | General overview                          | Everyone                  | 5-10 min  |
-| **extension-features.md**     | Feature documentation                     | Users, developers         | 10-15 min |
-| **DEVELOPMENT.md**            | Development workflow                      | Contributors              | 20-30 min |
-| **INDEX.md**                  | This file - navigation                    | Everyone                  | 5 min     |
+| Document                  | Purpose                                   | Audience          | Time      |
+| ------------------------- | ----------------------------------------- | ----------------- | --------- |
+| **SETUP_GUIDE.md**        | Complete installation and troubleshooting | Users             | 15-30 min |
+| **QUICK_START.md**        | Minimal viable setup                      | New users         | 5 min     |
+| **README.md**             | General overview                          | Everyone          | 5-10 min  |
+| **extension-features.md** | Feature documentation                     | Users, developers | 10-15 min |
+| **DEVELOPMENT.md**        | Development workflow                      | Contributors      | 20-30 min |
+| **INDEX.md**              | This file - navigation                    | Everyone          | 5 min     |
 
----
+______________________________________________________________________
 
 ## Reading Paths
 
@@ -118,75 +118,74 @@ Complete navigation guide for the VT Code Zed extension documentation.
 
 1. [README.md](README.md) - Overview
 2. [DEVELOPMENT.md](DEVELOPMENT.md) - Setup
-4. Review `src/lib.rs` - Source code
+3. Review `src/lib.rs` - Source code
 
 ### Path 4: Understand Architecture (30 minutes)
 
 1. [extension-features.md](extension-features.md) - Architecture diagram
-3. [src/lib.rs](src/lib.rs) - Current implementation
+2. [src/lib.rs](src/lib.rs) - Current implementation
 
----
+______________________________________________________________________
 
 ## Key Sections by Document
 
 ### SETUP_GUIDE.md
 
--   Prerequisites (Zed, Rust, VT Code CLI)
--   5 installation methods
--   Configuration examples
--   Troubleshooting matrix
--   Environment variables
--   Performance tuning
+- Prerequisites (Zed, Rust, VT Code CLI)
+- 5 installation methods
+- Configuration examples
+- Troubleshooting matrix
+- Environment variables
+- Performance tuning
 
 ### QUICK_START.md
 
--   1-minute VT Code CLI install
--   1-minute extension install
--   1-minute configuration
--   2 minutes first use
--   Configuration patterns
--   Tips & tricks
+- 1-minute VT Code CLI install
+- 1-minute extension install
+- 1-minute configuration
+- 2 minutes first use
+- Configuration patterns
+- Tips & tricks
 
 ### README.md
 
--   Feature overview
--   Installation instructions
--   Quick start
--   Commands list
--   Configuration options
--   Requirements
--   Contributing info
+- Feature overview
+- Installation instructions
+- Quick start
+- Commands list
+- Configuration options
+- Requirements
+- Contributing info
 
 ### extension-features.md
 
--   Current & planned features
--   Architecture diagram
--   Configuration structure
--   Workflow examples
--   Dependencies
--   Performance notes
--   Security model
+- Current & planned features
+- Architecture diagram
+- Configuration structure
+- Workflow examples
+- Dependencies
+- Performance notes
+- Security model
 
 ### DEVELOPMENT.md
 
--   Prerequisites (Rust setup)
--   Build commands
--   Installation as dev extension
--   Testing procedures
--   Project structure
--   Build & publish instructions
--   Troubleshooting for devs
+- Prerequisites (Rust setup)
+- Build commands
+- Installation as dev extension
+- Testing procedures
+- Project structure
+- Build & publish instructions
+- Troubleshooting for devs
 
+- Current status checklist
+- Phase 1-3 breakdown
+- Implementation details
+- File structure
+- Timeline & dependencies
+- Success criteria
+- Contributing guidelines
 
--   Current status checklist
--   Phase 1-3 breakdown
--   Implementation details
--   File structure
--   Timeline & dependencies
--   Success criteria
--   Contributing guidelines
-
----
+______________________________________________________________________
 
 ## Quick Reference
 
@@ -200,10 +199,10 @@ cargo install vtcode
 
 ### Key Files
 
--   **Configuration**: `vtcode.toml` (in your workspace)
--   **Extension Config**: `extension.toml`
--   **Source Code**: `src/lib.rs`
--   **License**: `LICENSE` (MIT)
+- **Configuration**: `vtcode.toml` (in your workspace)
+- **Extension Config**: `extension.toml`
+- **Source Code**: `src/lib.rs`
+- **License**: `LICENSE` (MIT)
 
 ### Common Commands
 
@@ -225,7 +224,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 export OPENAI_API_KEY="sk-..."
 ```
 
----
+______________________________________________________________________
 
 ## File Organization
 
@@ -257,35 +256,37 @@ extensions/zed-extension/
      .gitignore
 ```
 
----
+______________________________________________________________________
 
 ## Support & Resources
 
 ### Official Resources
 
--   **GitHub**: [vinhnx/vtcode](https://github.com/vinhnx/vtcode)
--   **Issues**: [Report bugs](https://github.com/vinhnx/vtcode/issues)
--   **Discussions**: [Ask questions](https://github.com/vinhnx/vtcode/discussions)
+- **GitHub**: [vinhnx/vtcode](https://github.com/vinhnx/vtcode)
+- **Issues**: [Report bugs](https://github.com/vinhnx/vtcode/issues)
+- **Discussions**:
+    [Ask questions](https://github.com/vinhnx/vtcode/discussions)
 
 ### External Resources
 
--   **Zed Docs**: [zed.dev/docs](https://zed.dev/docs)
--   **Rust Book**: [doc.rust-lang.org](https://doc.rust-lang.org)
--   **VT Code CLI**: [GitHub repo](https://github.com/vinhnx/vtcode)
+- **Zed Docs**: [zed.dev/docs](https://zed.dev/docs)
+- **Rust Book**: [doc.rust-lang.org](https://doc.rust-lang.org)
+- **VT Code CLI**: [GitHub repo](https://github.com/vinhnx/vtcode)
 
 ### Tools & Utilities
 
--   **Rust Installation**: [rustup.rs](https://rustup.rs)
--   **Zed Download**: [zed.dev/download](https://zed.dev/download)
--   **Cargo Package Manager**: [crates.io](https://crates.io)
+- **Rust Installation**: [rustup.rs](https://rustup.rs)
+- **Zed Download**: [zed.dev/download](https://zed.dev/download)
+- **Cargo Package Manager**: [crates.io](https://crates.io)
 
----
+______________________________________________________________________
 
 ## Frequently Asked Questions
 
 ### Q: Where do I start?
 
-**A**: Go to [SETUP_GUIDE.md](SETUP_GUIDE.md) if installing, or [QUICK_START.md](QUICK_START.md) for a fast overview.
+**A**: Go to [SETUP_GUIDE.md](SETUP_GUIDE.md) if installing, or
+[QUICK_START.md](QUICK_START.md) for a fast overview.
 
 ### Q: How do I troubleshoot installation issues?
 
@@ -293,10 +294,10 @@ extensions/zed-extension/
 
 ### Q: What should I read for development?
 
-**A**: Follow the "Path 3" reading path above, starting with [DEVELOPMENT.md](DEVELOPMENT.md).
+**A**: Follow the "Path 3" reading path above, starting with
+[DEVELOPMENT.md](DEVELOPMENT.md).
 
 ### Q: What features are planned?
-
 
 ### Q: Can I contribute?
 
@@ -304,52 +305,52 @@ extensions/zed-extension/
 
 ### Q: Is this extension official?
 
-**A**: It's the official Zed extension for VT Code, maintained as part of the VT Code project.
+**A**: It's the official Zed extension for VT Code, maintained as part of the
+VT Code project.
 
----
+______________________________________________________________________
 
 ## Document Versions
 
-| Document                  | Last Updated | Status  |
-| ------------------------- | ------------ | ------- |
-| INDEX.md                  | Nov 2024     | Current |
-| README.md                 | Nov 2024     | Current |
-| SETUP_GUIDE.md            | Nov 2024     | Current |
-| QUICK_START.md            | Nov 2024     | Current |
-| DEVELOPMENT.md            | Nov 2024     | Current |
-| extension-features.md     | Nov 2024     | Current |
+| Document              | Last Updated | Status  |
+| --------------------- | ------------ | ------- |
+| INDEX.md              | Nov 2024     | Current |
+| README.md             | Nov 2024     | Current |
+| SETUP_GUIDE.md        | Nov 2024     | Current |
+| QUICK_START.md        | Nov 2024     | Current |
+| DEVELOPMENT.md        | Nov 2024     | Current |
+| extension-features.md | Nov 2024     | Current |
 
----
+______________________________________________________________________
 
 ## Quick Links
 
 ### Installation & Setup
 
--   [Get Started in 5 Minutes](QUICK_START.md)
--   [Full Setup Guide](SETUP_GUIDE.md)
--   [Troubleshooting](SETUP_GUIDE.md#troubleshooting-installation)
+- [Get Started in 5 Minutes](QUICK_START.md)
+- [Full Setup Guide](SETUP_GUIDE.md)
+- [Troubleshooting](SETUP_GUIDE.md#troubleshooting-installation)
 
 ### Understanding the Extension
 
--   [Features & Capabilities](extension-features.md)
--   [Architecture](extension-features.md#architecture)
--   [Configuration Options](extension-features.md#configuration-structure)
+- [Features & Capabilities](extension-features.md)
+- [Architecture](extension-features.md#architecture)
+- [Configuration Options](extension-features.md#configuration-structure)
 
 ### Development
 
--   [Development Setup](DEVELOPMENT.md)
--   [Source Code](src/lib.rs)
+- [Development Setup](DEVELOPMENT.md)
+- [Source Code](src/lib.rs)
 
 ### Community & Support
 
--   [Report Issues](https://github.com/vinhnx/vtcode/issues)
--   [Discussions](https://github.com/vinhnx/vtcode/discussions)
--   [Star on GitHub](https://github.com/vinhnx/vtcode)
+- [Report Issues](https://github.com/vinhnx/vtcode/issues)
+- [Discussions](https://github.com/vinhnx/vtcode/discussions)
+- [Star on GitHub](https://github.com/vinhnx/vtcode)
 
----
+______________________________________________________________________
 
 **Need help?** Check the relevant document above or open an issue on GitHub!
 
-**Last Updated**: November 2024
-**Extension Version**: 0.1.0
-**Status**: Ready for Installation
+**Last Updated**: November 2024 **Extension Version**: 0.1.0 **Status**: Ready
+for Installation

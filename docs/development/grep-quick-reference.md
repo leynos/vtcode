@@ -30,18 +30,18 @@ For the live AI-facing tool call, pass the command through `exec_command.cmd`:
 
 ## Common Search Patterns
 
-| Task | Regex | File filter | Notes |
-| --- | --- | --- | --- |
-| Find functions | `^(pub )?fn \w+\(` | `--glob "**/*.rs"` | Rust function definitions |
-| Find imports | `^import.*from` | `--glob "**/*.ts"` | TypeScript and JavaScript imports |
-| Find classes | `^class \w+` | `--glob "**/*.java"` | Java class definitions |
-| Find TODOs | `TODO\|FIXME` | `--glob "**/*.rs"` | Common markers |
-| Find errors | `panic!\|unwrap\|throw` | `--glob "**/*.rs"` | Error patterns |
-| Find API calls | `\.get\(\|\.post\(` | `--glob "**/*.ts"` | HTTP verbs |
-| Find exports | `^export ` | `--glob "**/*.ts"` | Module exports |
-| Find config | `config\.` | `--glob "**/*.py"` | Config references |
-| Find async | `async fn` | `--glob "**/*.rs"` | Async functions |
-| Find unused | `^pub fn` | `--glob "**/*.rs"` | Public functions for refactoring |
+| Task           | Regex                   | File filter          | Notes                             |
+| -------------- | ----------------------- | -------------------- | --------------------------------- |
+| Find functions | `^(pub )?fn \w+\(`      | `--glob "**/*.rs"`   | Rust function definitions         |
+| Find imports   | `^import.*from`         | `--glob "**/*.ts"`   | TypeScript and JavaScript imports |
+| Find classes   | `^class \w+`            | `--glob "**/*.java"` | Java class definitions            |
+| Find TODOs     | `TODO\|FIXME`           | `--glob "**/*.rs"`   | Common markers                    |
+| Find errors    | `panic!\|unwrap\|throw` | `--glob "**/*.rs"`   | Error patterns                    |
+| Find API calls | `\.get\(\|\.post\(`     | `--glob "**/*.ts"`   | HTTP verbs                        |
+| Find exports   | `^export`               | `--glob "**/*.ts"`   | Module exports                    |
+| Find config    | `config\.`              | `--glob "**/*.py"`   | Config references                 |
+| Find async     | `async fn`              | `--glob "**/*.rs"`   | Async functions                   |
+| Find unused    | `^pub fn`               | `--glob "**/*.rs"`   | Public functions for refactoring  |
 
 ## Smart Patterns by Language
 
@@ -74,14 +74,14 @@ rg -n -C 2 "@property|@staticmethod" .
 
 ## Performance Tips
 
-| Optimisation | Benefit | Example |
-| --- | --- | --- |
-| Use `--glob` | 10-100x faster | `--glob "**/*.rs"` |
-| Use `-t` | 5-10x faster | `-t rust` |
-| Set `--max-filesize` | Skip large files | `--max-filesize 5M` |
-| Keep ignore files enabled | Skip `node_modules` and build output | default |
-| Reduce nearby lines | Smaller output | omit `-C`, `-A`, and `-B` |
-| Use `-F` | Faster for exact strings | `rg -F "literal text"` |
+| Optimisation              | Benefit                              | Example                   |
+| ------------------------- | ------------------------------------ | ------------------------- |
+| Use `--glob`              | 10-100x faster                       | `--glob "**/*.rs"`        |
+| Use `-t`                  | 5-10x faster                         | `-t rust`                 |
+| Set `--max-filesize`      | Skip large files                     | `--max-filesize 5M`       |
+| Keep ignore files enabled | Skip `node_modules` and build output | default                   |
+| Reduce nearby lines       | Smaller output                       | omit `-C`, `-A`, and `-B` |
+| Use `-F`                  | Faster for exact strings             | `rg -F "literal text"`    |
 
 ## Output Example
 
@@ -151,23 +151,22 @@ rg -n -C 2 -t typescript "try\\s*\\{|catch\\s*\\(|throw " .
 
 ## Regex Cheat Sheet
 
-| Regex | Matches |
-| --- | --- |
-| `.` | Any character |
-| `\w` | Word character `[a-zA-Z0-9_]` |
-| `\d` | Digit `[0-9]` |
-| `\s` | Whitespace |
-| `^` | Line start |
-| `$` | Line end |
-| `\|` | OR in shell examples that need escaping |
-| `(...)` | Group |
-| `*` | 0 or more |
-| `+` | 1 or more |
-| `?` | 0 or 1 |
-| `[...]` | Character class |
+| Regex   | Matches                                 |
+| ------- | --------------------------------------- |
+| `.`     | Any character                           |
+| `\w`    | Word character `[a-zA-Z0-9_]`           |
+| `\d`    | Digit `[0-9]`                           |
+| `\s`    | Whitespace                              |
+| `^`     | Line start                              |
+| `$`     | Line end                                |
+| `\|`    | OR in shell examples that need escaping |
+| `(...)` | Group                                   |
+| `*`     | 0 or more                               |
+| `+`     | 1 or more                               |
+| `?`     | 0 or 1                                  |
+| `[...]` | Character class                         |
 
-Escape backslashes for JSON shell strings, for example `\\w`, `\\d`, and
-`\\s`.
+Escape backslashes for JSON shell strings, for example `\\w`, `\\d`, and `\\s`.
 
 ## Decision Tree
 
@@ -201,14 +200,14 @@ What do you want to find?
 
 ## Common Mistakes
 
-| Wrong | Right | Why |
-| --- | --- | --- |
-| `rg "fn test"` | `rg "^fn test"` | Anchor patterns to line start |
-| `rg --glob "*.rs"` | `rg --glob "**/*.rs"` | Use `**` for recursive filters |
-| `rg "my.variable"` | `rg "my\\.variable"` | Escape special chars |
-| `rg "needle" .` on a huge tree | `rg --glob "src/**/*.ts" "needle" .` | Narrow scope |
-| `rg -C 50 "needle"` | `rg -C 3 "needle"` | Keep nearby output small |
-| Large codebase searches | `rg -t rust "needle"` | Use a type filter where possible |
+| Wrong                          | Right                                | Why                              |
+| ------------------------------ | ------------------------------------ | -------------------------------- |
+| `rg "fn test"`                 | `rg "^fn test"`                      | Anchor patterns to line start    |
+| `rg --glob "*.rs"`             | `rg --glob "**/*.rs"`                | Use `**` for recursive filters   |
+| `rg "my.variable"`             | `rg "my\\.variable"`                 | Escape special chars             |
+| `rg "needle" .` on a huge tree | `rg --glob "src/**/*.ts" "needle" .` | Narrow scope                     |
+| `rg -C 50 "needle"`            | `rg -C 3 "needle"`                   | Keep nearby output small         |
+| Large codebase searches        | `rg -t rust "needle"`                | Use a type filter where possible |
 
 ## See Also
 
@@ -216,4 +215,4 @@ What do you want to find?
 - Advanced code search: see the grep-tool-guide "Advanced `code_search`"
   section.
 - System prompt: agent instructions for grep usage
-- ripgrep docs: https://github.com/BurntSushi/ripgrep
+- ripgrep docs: <https://github.com/BurntSushi/ripgrep>

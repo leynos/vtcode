@@ -1,14 +1,20 @@
 # Cargo-Unmaintained
 
-Guide for using `cargo-unmaintained` to detect unmaintained dependencies in VT Code.
+Guide for using `cargo-unmaintained` to detect unmaintained dependencies in VT
+Code.
 
 ## Overview
 
-[`cargo-unmaintained`](https://github.com/trailofbits/cargo-unmaintained) is a Rust tool that automatically finds unmaintained packages in Rust projects. It uses heuristics to detect unmaintained packages by checking:
+[`cargo-unmaintained`](https://github.com/trailofbits/cargo-unmaintained) is a
+Rust tool that automatically finds unmaintained packages in Rust projects. It
+uses heuristics to detect unmaintained packages by checking:
 
 1. **Archived repository** - The package's repository is archived
-2. **Not a repository member** - The package is not a member of its named repository
-3. **Stale dependencies** - The package depends on a package whose latest version is incompatible and was released over a year ago, and the package either has no repository or its last commit was over a year ago
+2. **Not a repository member** - The package is not a member of its named
+   repository
+3. **Stale dependencies** - The package depends on a package whose latest
+   version is incompatible and was released over a year ago, and the package
+   either has no repository or its last commit was over a year ago
 
 ## Installation
 
@@ -63,14 +69,16 @@ cargo unmaintained --tree
 
 ### Ignoring Packages
 
-To ignore specific unmaintained packages, add them to your workspace's `Cargo.toml`:
+To ignore specific unmaintained packages, add them to your workspace's
+`Cargo.toml`:
 
 ```toml
 [package.metadata.unmaintained]
 ignore = ["package-name-1", "package-name-2"]
 ```
 
-VT Code already includes this configuration section in `Cargo.toml` at the workspace root.
+VT Code already includes this configuration section in `Cargo.toml` at the
+workspace root.
 
 ### GitHub Token (Optional)
 
@@ -98,19 +106,19 @@ cargo unmaintained --save-token
 
 ## Common Options
 
-| Option | Description |
-|--------|-------------|
-| `--color <WHEN>` | Color output: `always`, `auto`, or `never` (default: `auto`) |
-| `--fail-fast` | Exit as soon as an unmaintained package is found |
-| `--json` | Output JSON (experimental) |
-| `--max-age <DAYS>` | Max age for repository commits (default: 365) |
-| `--no-cache` | Disable disk caching |
-| `--no-exit-code` | Don't set exit code on unmaintained packages |
-| `--no-warnings` | Suppress warnings |
-| `-p, --package <NAME>` | Check only a specific package |
-| `--purge` | Remove cached data and exit |
-| `--tree` | Show dependency paths to unmaintained packages |
-| `--verbose` | Show detailed progress information |
+| Option                 | Description                                                  |
+| ---------------------- | ------------------------------------------------------------ |
+| `--color <WHEN>`       | Color output: `always`, `auto`, or `never` (default: `auto`) |
+| `--fail-fast`          | Exit as soon as an unmaintained package is found             |
+| `--json`               | Output JSON (experimental)                                   |
+| `--max-age <DAYS>`     | Max age for repository commits (default: 365)                |
+| `--no-cache`           | Disable disk caching                                         |
+| `--no-exit-code`       | Don't set exit code on unmaintained packages                 |
+| `--no-warnings`        | Suppress warnings                                            |
+| `-p, --package <NAME>` | Check only a specific package                                |
+| `--purge`              | Remove cached data and exit                                  |
+| `--tree`               | Show dependency paths to unmaintained packages               |
+| `--verbose`            | Show detailed progress information                           |
 
 ## Integration with VT Code Development
 
@@ -154,7 +162,8 @@ export GITHUB_TOKEN_PATH="$HOME/.github_token"
 
 ### Slow Scans
 
-For large workspaces like VT Code, scans can take time. Use these options to speed up:
+For large workspaces like VT Code, scans can take time. Use these options to
+speed up:
 
 ```bash
 # Disable caching for fresh scan

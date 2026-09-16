@@ -1,10 +1,13 @@
 # Execution Plans
 
-Execution plans are self-contained, living design documents for complex multi-step work in VT Code. They capture the goal, context, steps, decisions made during execution, and retrospective notes.
+Execution plans are self-contained, living design documents for complex
+multi-step work in VT Code. They capture the goal, context, steps, decisions
+made during execution, and retrospective notes.
 
 ## Why Exec Plans?
 
-- **Agent continuity**: an agent picking up mid-task can read the exec plan and resume without the original conversation context.
+- **Agent continuity**: an agent picking up mid-task can read the exec plan and
+  resume without the original conversation context.
 - **Decision logging**: captures why choices were made, not just what was done.
 - **Retrospectives**: completed plans become learning artifacts for future work.
 
@@ -12,11 +15,15 @@ Execution plans are self-contained, living design documents for complex multi-st
 
 These are distinct concepts:
 
-- **Exec Plans** are persistent design documents stored in `docs/harness/exec-plans/`. They capture goals, decisions, and retrospectives for complex work. They survive across sessions.
-- The **planning workflow** is driven by the `plan` primary agent and `/plan`. It is for repository exploration and proposal drafting before implementation.
+- **Exec Plans** are persistent design documents stored in
+  `docs/harness/exec-plans/`. They capture goals, decisions, and retrospectives
+  for complex work. They survive across sessions.
+- The **planning workflow** is driven by the `plan` primary agent and `/plan`.
+  It is for repository exploration and proposal drafting before implementation.
 
-Exec Plans are written to `docs/harness/exec-plans/active/` and are part of the repository's knowledge base.
-Planning workflow artefacts may be written to `.vtcode/plans/` when the active agent permission policy allows them.
+Exec Plans are written to `docs/harness/exec-plans/active/` and are part of the
+repository's knowledge base. Planning workflow artefacts may be written to
+`.vtcode/plans/` when the active agent permission policy allows them.
 
 ## Directory Structure
 
@@ -41,7 +48,8 @@ One sentence describing the desired end state. Must be verifiable.
 
 ### 2. Context
 
-Why this work is needed. Link to related issues, tech debt items, or quality scores.
+Why this work is needed. Link to related issues, tech debt items, or quality
+scores.
 
 ### 3. Steps
 
@@ -76,7 +84,7 @@ Timestamped entries for non-obvious choices made during execution:
 
 Filled in after completion. What went well, what didn't, what to do differently.
 
----
+______________________________________________________________________
 
 ## Template
 
@@ -121,7 +129,7 @@ Filled in after completion. What went well, what didn't, what to do differently.
 -
 ```
 
----
+______________________________________________________________________
 
 ## Agent Guidelines
 
@@ -144,7 +152,8 @@ Do not create an exec plan for:
 - Mark steps as completed (`[x]`) as you finish them.
 - Keep exactly one step `[~]` (in progress) at a time.
 - Add decision log entries for any non-trivial choice.
-- If scope changes, update the steps and add a decision log entry explaining why.
+- If scope changes, update the steps and add a decision log entry explaining
+  why.
 
 ### Completing an Exec Plan
 
@@ -156,7 +165,8 @@ Do not create an exec plan for:
 ### Referencing Exec Plans
 
 - From AGENTS.md: `See docs/harness/exec-plans/active/NNN-description.md`
-- From code comments (rare, only for complex architectural changes): `// See EP-NNN`
+- From code comments (rare, only for complex architectural changes):
+  `// See EP-NNN`
 - From tech debt tracker: link to the exec plan in the Description column.
 
 ## Relationship to Tech Debt Tracker
@@ -166,4 +176,5 @@ Exec plans and tech debt items are complementary:
 - **Tech debt items** identify what needs fixing (the "what").
 - **Exec plans** describe how to fix it (the "how").
 
-A tech debt item may reference an exec plan. An exec plan may be created to resolve one or more tech debt items.
+A tech debt item may reference an exec plan. An exec plan may be created to
+resolve one or more tech debt items.

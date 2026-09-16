@@ -4,26 +4,47 @@
 
 ## Conventions
 
-- `events.jsonl` is canonical; `derived/` and `index/` are regenerated views — never persist session history elsewhere.
-- `progress.rs` hosts the `GoalTracker` state machine and compaction-safe `ProgressLedger` view.
+- `events.jsonl` is canonical; `derived/` and `index/` are regenerated views —
+  never persist session history elsewhere.
+- `progress.rs` hosts the `GoalTracker` state machine and compaction-safe
+  `ProgressLedger` view.
 - Append-only: do not mutate historical events; new facts go through `append`.
-- Off the hot path: never read the log back into agent context; use derived queries for revert/compaction/analytics.
-- Public API uses `anyhow::Result<T>` + `.context()`; no `unwrap`/`expect` in non-test code.
-- Keep ordinary appends buffered; flush at turn boundaries, reads, cap rewrites, and close.
-- Return persistence errors to callers; do not silently discard cap-enforcement failures.
-- Retention may remove only validated direct child session directories; preserve active manifests and reject manifest-controlled paths or symlink entries.
-- `event_log.rs`: turn-lifecycle state machine is `LogState::apply_lifecycle_event` (single impl shared by `append` and `scan` via `LifecycleKind`). Serialization+rollback is `LogState::serialize_event`. Cap eviction planning is `LogState::plan_cap_eviction` (I/O stays in `enforce_event_cap`). Do not duplicate these state transitions inline.
-- Session event bytes are synced before metadata; compaction and metadata use private atomic replacement, and reopening rescans when metadata is malformed or offsets exceed the canonical log.
-- Session directories are `0700` and session files are `0600`; preserve the symlink-safe `vtcode-commons` filesystem primitives.
+- Off the hot path: never read the log back into agent context; use derived
+  queries for revert/compaction/analytics.
+- Public API uses `anyhow::Result<T>` + `.context()`; no `unwrap`/`expect` in
+  non-test code.
+- Keep ordinary appends buffered; flush at turn boundaries, reads, cap
+  rewrites, and close.
+- Return persistence errors to callers; do not silently discard cap-enforcement
+  failures.
+- Retention may remove only validated direct child session directories;
+  preserve active manifests and reject manifest-controlled paths or symlink
+  entries.
+- `event_log.rs`: turn-lifecycle state machine is
+  `LogState::apply_lifecycle_event` (single impl shared by `append` and `scan`
+  via `LifecycleKind`). Serialization+rollback is `LogState::serialize_event`.
+  Cap eviction planning is `LogState::plan_cap_eviction` (I/O stays in
+  `enforce_event_cap`). Do not duplicate these state transitions inline.
+- Session event bytes are synced before metadata; compaction and metadata use
+  private atomic replacement, and reopening rescans when metadata is malformed
+  or offsets exceed the canonical log.
+- Session directories are `0700` and session files are `0600`; preserve the
+  symlink-safe `vtcode-commons` filesystem primitives.
 
 ## Dependencies
 
-- `vtcode-commons` owns symlink-safe private directories/files and atomic writes.
-- `vtcode-exec-events` owns the `ThreadEvent` / `VersionedThreadEvent` contract; never reinvent event types.
-- `walkdir` handles directory-size and GC walks; `chrono`, `serde`, and `serde_json` handle persistence metadata.
+- `vtcode-commons` owns symlink-safe private directories/files and atomic
+  writes.
+- `vtcode-exec-events` owns the `ThreadEvent` / `VersionedThreadEvent`
+  contract; never reinvent event types.
+- `walkdir` handles directory-size and GC walks; `chrono`, `serde`, and
+  `serde_json` handle persistence metadata.
 - `uuid` supports verifier-id generation for the goal tracker.
 
 ## Testing
 
-- Use `cargo nextest run -p vtcode-memory` and cover ordering, reopen/index reconstruction, retention, and write boundaries.
-- Index rebuild reads the versioned envelope and `event.type`, with targeted full-shape validation for lifecycle events so malformed records cannot create phantom turns; broader decoding belongs to turn reconstruction.
+- Use `cargo nextest run -p vtcode-memory` and cover ordering, reopen/index
+  reconstruction, retention, and write boundaries.
+- Index rebuild reads the versioned envelope and `event.type`, with targeted
+  full-shape validation for lifecycle events so malformed records cannot create
+  phantom turns; broader decoding belongs to turn reconstruction.

@@ -12,9 +12,9 @@ A clear and concise description of what the bug is.
 
 ## Steps to Reproduce
 
-1. Go to '...'
-2. Click on '...'
-3. Scroll down to '...'
+1. Go to '…'
+2. Click on '…'
+3. Scroll down to '…'
 4. See error
 
 ## Expected Behavior
@@ -39,7 +39,8 @@ If applicable, add screenshots to help explain your problem.
 
 ## Configuration
 
-If applicable, share relevant parts of your `vtcode.toml` configuration file (be sure to remove any sensitive information like API keys):
+If applicable, share relevant parts of your `vtcode.toml` configuration file
+(be sure to remove any sensitive information like API keys):
 
 ```toml
 # Paste your relevant configuration here

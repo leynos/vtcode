@@ -1,7 +1,7 @@
 # Configuration reset and live reload
 
-This guide describes the implementation contract for configuration changes
-made while VT Code is running.
+This guide describes the implementation contract for configuration changes made
+while VT Code is running.
 
 ## Shared reset service
 

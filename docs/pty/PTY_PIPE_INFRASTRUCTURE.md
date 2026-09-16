@@ -1,6 +1,7 @@
 # PTY and Pipe Infrastructure
 
-This document describes the process spawning infrastructure in VT Code, inspired by the [codex-rs](https://github.com/openai/codex) PTY utilities.
+This document describes the process spawning infrastructure in VT Code,
+inspired by the [codex-rs](https://github.com/openai/codex) PTY utilities.
 
 ## Overview
 
@@ -9,7 +10,8 @@ VT Code provides two main process spawning backends:
 1. **PTY (Pseudo Terminal)** - For interactive processes that need TTY features
 2. **Pipe** - For non-interactive processes using standard pipes
 
-Both backends share a unified `ProcessHandle` interface for consistent interaction.
+Both backends share a unified `ProcessHandle` interface for consistent
+interaction.
 
 ## Module Structure
 
@@ -176,7 +178,8 @@ unsafe {
 
 ### Unified Graceful Shutdown
 
-The recommended approach uses the unified `graceful_kill_process_group` function:
+The recommended approach uses the unified `graceful_kill_process_group`
+function:
 
 ```rust
 use vtcode_bash_runner::{
@@ -220,7 +223,9 @@ match result {
 
 ### Environment Filtering
 
-When using sandboxed execution (via `crates/codegen/vtcode-core/src/sandboxing/child_spawn.rs`), sensitive environment variables are filtered:
+When using sandboxed execution (via
+`crates/codegen/vtcode-core/src/sandboxing/child_spawn.rs`), sensitive
+environment variables are filtered:
 
 - API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)
 - Cloud credentials (AWS*\*, AZURE*\_, GOOGLE\_\_)
@@ -228,7 +233,8 @@ When using sandboxed execution (via `crates/codegen/vtcode-core/src/sandboxing/c
 
 ### Workspace Isolation
 
-Process working directories are validated against workspace boundaries to prevent escapes.
+Process working directories are validated against workspace boundaries to
+prevent escapes.
 
 ## Comparison with codex-rs
 
@@ -243,12 +249,13 @@ Process working directories are validated against workspace boundaries to preven
 
 ## PTY Session Integration
 
-The PTY system in `crates/codegen/vtcode-core/src/tools/pty/` integrates with the process group utilities
-for robust process cleanup:
+The PTY system in `crates/codegen/vtcode-core/src/tools/pty/` integrates with
+the process group utilities for robust process cleanup:
 
 ### Graceful Termination
 
-PTY sessions now use a unified graceful termination pattern via `graceful_kill_process_group()`:
+PTY sessions now use a unified graceful termination pattern via
+`graceful_kill_process_group()`:
 
 1. Send `SIGTERM` to the process group (allows cleanup handlers to run)
 2. Wait up to 500ms for graceful shutdown (configurable)
@@ -289,7 +296,8 @@ pub(super) struct PtySessionHandle {
 When a `PtySessionHandle` is dropped:
 
 1. Writer is closed with an `exit\n` command
-2. Process group receives graceful termination via `graceful_kill_process_group()`
+2. Process group receives graceful termination via
+   `graceful_kill_process_group()`
     - First: `SIGTERM` to the process group
     - Wait: Up to 500ms for graceful exit
     - Then: `SIGKILL` if still running

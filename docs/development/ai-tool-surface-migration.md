@@ -12,14 +12,14 @@ profile adds the query-led `code_search` tool.
 
 ## Replacement Map
 
-| Removed legacy schema | Use now |
-|---|---|
-| `unified_exec` | `exec_command` to start commands, `write_stdin` for live sessions. |
-| `unified_file` patch or edit | `apply_patch`. |
-| `unified_file` read or write | Shell commands through `exec_command.cmd` by default. Separately named non-default file tools may be added later only with a concrete justification. |
-| `unified_search` text search | `rg` or `grep` through `exec_command.cmd`. |
-| `unified_search` search | `code_search` in the advanced VT Code profile. |
-| `unified_search` web, skills, errors, discovery | Separate tools only where retained. |
+| Removed legacy schema                           | Use now                                                                                                                                              |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unified_exec`                                  | `exec_command` to start commands, `write_stdin` for live sessions.                                                                                   |
+| `unified_file` patch or edit                    | `apply_patch`.                                                                                                                                       |
+| `unified_file` read or write                    | Shell commands through `exec_command.cmd` by default. Separately named non-default file tools may be added later only with a concrete justification. |
+| `unified_search` text search                    | `rg` or `grep` through `exec_command.cmd`.                                                                                                           |
+| `unified_search` search                         | `code_search` in the advanced VT Code profile.                                                                                                       |
+| `unified_search` web, skills, errors, discovery | Separate tools only where retained.                                                                                                                  |
 
 ## Short Examples
 
@@ -67,8 +67,8 @@ structural patterns.
 ## File Tool Finding
 
 Codex core does not expose default model-visible `read_file` or `write_file`
-tools. VT Code follows that finding: inspect files with shell commands, internal
-filesystem affordances, or MCP tools when present, and edit files with
+tools. VT Code follows that finding: inspect files with shell commands,
+internal filesystem affordances, or MCP tools when present, and edit files with
 `apply_patch`.
 
 ## Platform Handling

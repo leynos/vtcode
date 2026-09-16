@@ -1,6 +1,8 @@
 # Performance Optimization
 
-VT Code uses a local-first performance workflow. Performance checks are measured manually and are not hard CI gates. The default stance is simple: do not guess, measure first, and only keep complexity that pays for itself.
+VT Code uses a local-first performance workflow. Performance checks are
+measured manually and are not hard CI gates. The default stance is simple: do
+not guess, measure first, and only keep complexity that pays for itself.
 
 ## Goals
 
@@ -10,19 +12,34 @@ VT Code uses a local-first performance workflow. Performance checks are measured
 
 ## Performance & Simplicity Rules
 
-- Do not guess where time goes. Capture a baseline before changing code that claims a performance win.
-- Measure before tuning. Keep before/after numbers from `baseline.sh`, targeted timers, or benchmarks.
+- Do not guess where time goes. Capture a baseline before changing code that
+  claims a performance win.
+- Measure before tuning. Keep before/after numbers from `baseline.sh`, targeted
+  timers, or benchmarks.
 - Prefer simple algorithms when input sizes are small or not yet proven large.
-- Avoid fancy algorithms and broad refactors unless measurements justify their constant-factor and maintenance cost.
-- Start with data structures and layout. In VT Code, the right cache shape, queue boundary, or representation usually matters more than clever control flow.
+- Avoid fancy algorithms and broad refactors unless measurements justify their
+  constant-factor and maintenance cost.
+- Start with data structures and layout. In VT Code, the right cache shape,
+  queue boundary, or representation usually matters more than clever control
+  flow.
 
-These rules apply to product code and refactors alike. The burden of proof is on the optimization, not on the simpler baseline.
+These rules apply to product code and refactors alike. The burden of proof is
+on the optimization, not on the simpler baseline.
 
 ### Filter before expensive projection or normalization
 
-Establish relevance before performing expensive projection or normalization work. In practice, filter a catalog, request, or candidate set before serializing schemas, constructing derived views, or normalizing data that will not be used. This keeps common paths from paying for work that only matters after a policy or relevance check succeeds.
+Establish relevance before performing expensive projection or normalization
+work. In practice, filter a catalog, request, or candidate set before
+serializing schemas, constructing derived views, or normalizing data that will
+not be used. This keeps common paths from paying for work that only matters
+after a policy or relevance check succeeds.
 
-The default documentation gate follows the same principle: `cargo doc --workspace --no-deps` builds the public API documentation and intentionally excludes private items. Private-item documentation expands the work to internal implementation details that are not part of the contributor-facing API artifact. Maintainers who need internal API inspection can opt in with `cargo doc --workspace --no-deps --document-private-items`.
+The default documentation gate follows the same principle:
+`cargo doc --workspace --no-deps` builds the public API documentation and
+intentionally excludes private items. Private-item documentation expands the
+work to internal implementation details that are not part of the
+contributor-facing API artifact. Maintainers who need internal API inspection
+can opt in with `cargo doc --workspace --no-deps --document-private-items`.
 
 ### Bounded I/O on the agent hot path
 
@@ -37,8 +54,8 @@ filesystem latency.
 ### Agent-loop hot-path invariants
 
 Tool-result cache size is measured from the payload bytes, not the `String`
-container. Replacing an existing key updates the byte total in place, so a
-full cache does not evict an unrelated entry during replacement; zero-capacity
+container. Replacing an existing key updates the byte total in place, so a full
+cache does not evict an unrelated entry during replacement; zero-capacity
 caches reject inserts. Keep these accounting rules intact when changing cache
 entry representations.
 
@@ -48,10 +65,10 @@ the provider requires compaction. This keeps the common no-injection path from
 allocating multiple equivalent histories while preserving the existing
 normalization and continuation boundaries.
 
-Request envelopes retain the source tool-catalog `Arc` within a request segment.
-When model/provider/mode/prompt identity is unchanged, subsequent turns reuse
-the frozen ordered catalog without cloning, sorting, or re-hashing its schema;
-segment boundaries clear that marker before rebuilding.
+Request envelopes retain the source tool-catalog `Arc` within a request
+segment. When model/provider/mode/prompt identity is unchanged, subsequent
+turns reuse the frozen ordered catalog without cloning, sorting, or re-hashing
+its schema; segment boundaries clear that marker before rebuilding.
 
 Read-only tool calls are batched only after per-call preflight confirms that
 each call is parallel-safe; duplicate names are not a safety signal. Batch line
@@ -64,8 +81,8 @@ Legacy text reads use the same bounded line reader as paged reads. This keeps
 large files and minified one-line bundles from creating an unbounded temporary
 buffer; invalid UTF-8 remains lossily decoded for compatibility. A physical
 line that exceeds the bound is reported as `line_truncated` so the agent can
-switch to byte ranges or targeted inspection instead of treating the preview
-as complete. Live command-output spools are never result-cached, and
+switch to byte ranges or targeted inspection instead of treating the preview as
+complete. Live command-output spools are never result-cached, and
 directory-scoped read caches invalidate on descendant edits. A command-cache
 miss also invalidates filesystem-derived results before shell/PTY execution,
 while completed read-only command cache hits remain reusable.
@@ -75,9 +92,9 @@ while completed read-only command cache hits remain reusable.
 Avoid combining `#[serde(flatten)]` with `#[serde(untagged)]` on frequent,
 discriminator-driven protocol payloads. Serde must buffer the surrounding map
 to decide which flattened shape applies; direct wire structs can decode the
-known fields once and construct the tagged payload afterward. VT Code uses
-this for OpenResponses and ACP streaming notifications. Keep flattening when
-it is the actual contract, such as trace metadata's vendor-extension map.
+known fields once and construct the tagged payload afterward. VT Code uses this
+for OpenResponses and ACP streaming notifications. Keep flattening when it is
+the actual contract, such as trace metadata's vendor-extension map.
 
 Keep streaming payloads as borrowed SSE text until a consumer needs an owned
 payload. The normalized Responses adapter now avoids the old
@@ -94,10 +111,11 @@ continues to use the canonical `VersionedThreadEvent` decoder.
 
 Use `vtcode_eval::analyze_jsonl_file` or `analyze_jsonl_reader` for offline
 DeepSeek/VT Code harness analysis. The file and reader paths process one JSONL
-record at a time (with a 1 MiB record limit), retain only aggregate counters, and never copy prompts,
-arguments, paths, file contents, output text, or free-form error messages into
-the returned summary. Tool names and error values are mapped to bounded known
-labels; unknown values are grouped under `other_tool` or `error`.
+record at a time (with a 1 MiB record limit), retain only aggregate counters,
+and never copy prompts, arguments, paths, file contents, output text, or
+free-form error messages into the returned summary. Tool names and error values
+are mapped to bounded known labels; unknown values are grouped under
+`other_tool` or `error`.
 
 The analyzer treats `ThreadCompleted` usage as a fallback when no per-turn
 usage exists, so a normal thread trace does not double-count its aggregate.
@@ -124,12 +142,13 @@ cache usage, and output volume before changing the runtime.
 Artifacts are written to `.vtcode/perf/` and include JSON metrics plus raw logs.
 
 The perf harness builds and measures `target/release/vtcode`, not `cargo run`
-or the debug binary. It clears `RUSTC_WRAPPER` and
-`CARGO_BUILD_RUSTC_WRAPPER` by default for its cargo steps so local
-measurements still work when `sccache` is configured but unavailable. Set
-`PERF_KEEP_RUSTC_WRAPPER=1` only when you explicitly want to keep the wrapper.
+or the debug binary. It clears `RUSTC_WRAPPER` and `CARGO_BUILD_RUSTC_WRAPPER`
+by default for its cargo steps so local measurements still work when `sccache`
+is configured but unavailable. Set `PERF_KEEP_RUSTC_WRAPPER=1` only when you
+explicitly want to keep the wrapper.
 
-Use this loop for any non-trivial performance change. Change one thing at a time so the comparison stays attributable.
+Use this loop for any non-trivial performance change. Change one thing at a
+time so the comparison stays attributable.
 
 ## Standalone startup benchmark
 
@@ -153,12 +172,11 @@ vtcode schema tools --format ndjson --name code_search
 
 Run every case as both a cold and warm sample. Cold means copying the
 executable to a new temporary path for each launch, then timing the launch of
-that freshly copied executable;
-this approximates fresh executable loader/relocation work. Warm means timing
-repeated launches of the same executable after warm-up. Cold does not mean
-flushing the operating system's page cache: the harness never flushes or
-evicts OS page caches, so label and compare the result as a fresh-copy cold
-proxy.
+that freshly copied executable; this approximates fresh executable
+loader/relocation work. Warm means timing repeated launches of the same
+executable after warm-up. Cold does not mean flushing the operating system's
+page cache: the harness never flushes or evicts OS page caches, so label and
+compare the result as a fresh-copy cold proxy.
 
 Every child receives an isolated temporary `HOME`, config root, data root,
 explicit config-file path, and workspace. This prevents credentials, user
@@ -168,13 +186,12 @@ registry construction while remaining standalone and provider-free.
 
 For each case and launch mode, retain the raw millisecond samples and report
 the median and p95. The median is the primary central result; p95 exposes
-startup tail behavior. Use the same binary, machine, environment, sample
-count, and isolation layout for before/after comparisons. Keep
+startup tail behavior. Use the same binary, machine, environment, sample count,
+and isolation layout for before/after comparisons. Keep
 `VTCODE_STARTUP_TRACE=0` (or unset) during timed runs; enable
 `VTCODE_STARTUP_TRACE=1` only for a separate diagnostic run.
 
-The broader capture remains available when its additional workloads are
-needed:
+The broader capture remains available when its additional workloads are needed:
 
 ```bash
 ./scripts/perf/baseline.sh baseline
@@ -200,21 +217,21 @@ early startup work is observable without adding work to normal launches.
 
 ### Patterns that pay off on the startup path
 
-- **Join independent disk I/O.** `initialize_dot_folder`, `init_global_guardian`,
-  `determine_theme`, and `resolve_runtime_provider_auth` only depend on config
-  that is already resolved; run them through `tokio::join!` so their disk reads
-  overlap instead of running serially.
+- **Join independent disk I/O.** `initialize_dot_folder`,
+  `init_global_guardian`, `determine_theme`, and
+  `resolve_runtime_provider_auth` only depend on config that is already
+  resolved; run them through `tokio::join!` so their disk reads overlap instead
+  of running serially.
 - **Gate inits behind `command_skips_provider_auth`.** Commands that never run
-  tools (Login, Logout, Auth, ToolPolicy, AppServer, Notify, Pods, Schedule)
-  do not need the guardian, file/command caches, gatekeeper, session-archive,
-  or perf-telemetry init — skip them entirely.
-- **Keep file reads bounded.** The dotfile audit log (`audit.rs::read_last_hash`)
-  is append-only and grows unbounded; read only the tail window so startup cost
-  stays `O(window)`, not `O(file size)`.
+  tools (Login, Logout, Auth, ToolPolicy, AppServer, Notify, Pods, Schedule) do
+  not need the guardian, file/command caches, gatekeeper, session-archive, or
+  perf-telemetry init — skip them entirely.
+- **Keep file reads bounded.** The dotfile audit log
+  (`audit.rs::read_last_hash`) is append-only and grows unbounded; read only
+  the tail window so startup cost stays `O(window)`, not `O(file size)`.
 - **Defer non-critical background work.** Temp-spool cleanup
   (`cleanup_old_temp_spools`) runs in `spawn_blocking` so a cold user-cache
-  `large-output/` directory
-  never blocks first user I/O.
+  `large-output/` directory never blocks first user I/O.
 
 ### Release artifact assumptions
 
@@ -226,11 +243,11 @@ size before attributing a result to Rust startup code; a debug binary is not a
 valid proxy for the shipped launch path.
 
 Cold and warm results answer different questions. Warm results isolate process
-and loader overhead after the binary is resident. Fresh-copy results expose
-the size and relocation cost paid by a newly spawned process, which is the
-relevant signal for subprocess-heavy workflows. Interactive results additionally
-include configuration, authentication, terminal initialization, and session
-setup through the first usable frame.
+and loader overhead after the binary is resident. Fresh-copy results expose the
+size and relocation cost paid by a newly spawned process, which is the relevant
+signal for subprocess-heavy workflows. Interactive results additionally include
+configuration, authentication, terminal initialization, and session setup
+through the first usable frame.
 
 The default binary links heavy subsystems that most invocations never use:
 
@@ -272,7 +289,8 @@ For local experiments only:
 ./scripts/perf/native-run.sh -- --version
 ```
 
-These scripts append `-C target-cpu=native` for local runs only. They do not change portable release defaults.
+These scripts append `-C target-cpu=native` for local runs only. They do not
+change portable release defaults.
 
 ## Benchmarks
 
@@ -283,7 +301,8 @@ cargo bench -p vtcode-core --bench tool_pipeline
 cargo bench -p vtcode-core --bench agent_harness
 ```
 
-Use benches when a hotspot is stable and repeatable. Use the baseline/profile scripts when the question is broader end-to-end behavior.
+Use benches when a hotspot is stable and repeatable. Use the baseline/profile
+scripts when the question is broader end-to-end behavior.
 
 ### Interactive latency workloads
 
@@ -314,11 +333,12 @@ shape; the async path reuses its single metadata result for directory checks.
 The same target also includes uncached filesystem workloads:
 `agent_harness_file_search_uncached` measures parallel traversal and bounded
 candidate aggregation, while `agent_harness_file_index_build` measures a full
-index construction per iteration. `agent_harness_tool_catalog_projection_repeat`
-measures repeated schema/model-tool projection after the catalog is warm; its
-projection cache is private to an immutable catalog and keyed by documentation
-mode. These benchmarks expose repeated work and synchronization cost rather
-than serving as universal CI thresholds.
+index construction per iteration.
+`agent_harness_tool_catalog_projection_repeat` measures repeated
+schema/model-tool projection after the catalog is warm; its projection cache is
+private to an immutable catalog and keyed by documentation mode. These
+benchmarks expose repeated work and synchronization cost rather than serving as
+universal CI thresholds.
 
 Code-search changes should be checked for both backend overlap and blocking
 pool behavior; progress-ledger changes should be checked for bounded queue
@@ -342,5 +362,6 @@ profile hotspot and a separate build-performance budget.
 - Keep changes surgical and behavior-preserving.
 - Prefer simple, safe single-pass reductions over broad refactors.
 - Revisit data structures before introducing algorithmic sophistication.
-- Keep the simplest implementation until measured workload data proves it insufficient.
+- Keep the simplest implementation until measured workload data proves it
+  insufficient.
 - For hashers, follow the selective policy in `performance-hasher-policy.md`.

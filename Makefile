@@ -3,9 +3,19 @@ BUILD_JOBS ?= --jobs 6
 NEXTEST_PROFILE ?= default
 
 .DEFAULT_GOAL := check
+# `make fmt` and `make check-fmt` call mdtablefix directly. `--git` selects the
+# Markdown files Git tracks and `--include-untracked` adds the untracked files
+# Git does not ignore, so a new document is formatted before it is staged.
+# Both modes need mdtablefix 0.6.0 or later; CI pins the version at the
+# install-mdtablefix step.
+MDTABLEFIX ?= mdtablefix
+MDTABLEFIX_SELECT = --git --include-untracked
+MDTABLEFIX_RULES = --wrap --renumber --breaks --ellipsis --fences
+MDLINT ?= $(shell command -v markdownlint-cli2 2>/dev/null || printf '%s' "$$HOME/.bun/bin/markdownlint-cli2")
+
 .NOTPARALLEL:
 
-.PHONY: check check-fmt lint lint-clippy lint-docs lint-policies lint-shell \
+.PHONY: check check-fmt fmt lint lint-clippy lint-docs lint-policies lint-shell \
 	advisory build typecheck test test-harness check-ast-grep
 
 # Run the complete local release/PR gate in the same sequential order as the
@@ -14,6 +24,13 @@ check: check-fmt lint build test test-harness check-ast-grep advisory
 
 check-fmt:
 	$(CARGO) fmt --all -- --check
+	$(MDTABLEFIX) --check $(MDTABLEFIX_SELECT) $(MDTABLEFIX_RULES)
+
+# Apply the formatters check-fmt verifies.
+fmt:
+	$(CARGO) fmt --all
+	$(MDTABLEFIX) --in-place $(MDTABLEFIX_SELECT) $(MDTABLEFIX_RULES)
+	$(MDLINT) --fix "**/*.md"
 
 lint: lint-shell lint-policies lint-clippy lint-docs
 

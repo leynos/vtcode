@@ -1,18 +1,22 @@
-`vtcode-indexer` provides a lightweight, pluggable workspace indexer suitable for
-command-line tooling and autonomous agents that need fast filesystem scans
+# `vtcode-indexer`
+
+`vtcode-indexer` provides a lightweight, pluggable workspace indexer suitable
+for command-line tooling and autonomous agents that need fast filesystem scans
 without external services.
 
 ## Core concepts
 
--   **`SimpleIndexer`** walks a workspace, caches metadata, and offers helpers for
+- **`SimpleIndexer`** walks a workspace, caches metadata, and offers helpers
+    for
     search, file lookup, and content retrieval.
--   **`SimpleIndexerConfig`** lets callers toggle hidden directory handling,
+- **`SimpleIndexerConfig`** lets callers toggle hidden directory handling,
     specify custom index directories, and refine include/exclude lists without
     hardcoding VT Code's `.vtcode` layout.
--   **`IndexStorage`** is a trait abstraction for persisting `FileIndex` entries.
+- **`IndexStorage`** is a trait abstraction for persisting `FileIndex`
+    entries.
     The crate ships with a Markdown implementation and accepts custom backends
     through `SimpleIndexer::with_storage`.
--   **`TraversalFilter`** centralizes directory descent and file-level inclusion
+- **`TraversalFilter`** centralizes directory descent and file-level inclusion
     decisions, giving downstream users a single place to implement glob rules or
     binary detection before indexing.
 
@@ -54,9 +58,10 @@ through `anyhow::Result`.
 
 ## Tailoring traversal
 
-`TraversalFilter` implementors can short-circuit directory descent or file-level
-indexing. The default `ConfigTraversalFilter` follows `SimpleIndexerConfig`
-settings. Custom filters can extend those decisions with domain-specific logic:
+`TraversalFilter` implementors can short-circuit directory descent or
+file-level indexing. The default `ConfigTraversalFilter` follows
+`SimpleIndexerConfig` settings. Custom filters can extend those decisions with
+domain-specific logic:
 
 ```rust
 use std::path::Path;
@@ -107,7 +112,8 @@ paths printed to stdout.
 
 ## Next steps
 
--   Publish release notes and crate-level documentation updates before the first
+- Publish release notes and crate-level documentation updates before the first
     crates.io release.
--   Gather feedback from early adopters to validate trait ergonomics and identify
+- Gather feedback from early adopters to validate trait ergonomics and
+    identify
     additional feature flags worth exposing.

@@ -1,16 +1,19 @@
 # CI/CD and Code Quality
 
-This document describes the CI/CD pipeline and code quality tools used in the vtcode project.
+This document describes the CI/CD pipeline and code quality tools used in the
+vtcode project.
 
 ## GitHub Actions Workflows
 
-The project uses several GitHub Actions workflows to ensure code quality and automate testing:
+The project uses several GitHub Actions workflows to ensure code quality and
+automate testing:
 
 ### 1. CI Workflow (`ci.yml`)
 
 **Triggers:**
 
-- Push to `main` (filtered by `.rs`, `.toml`, `.lock`, `.yml`, `.json`, `.md`, `scripts/`)
+- Push to `main` (filtered by `.rs`, `.toml`, `.lock`, `.yml`, `.json`, `.md`,
+  `scripts/`)
 - Pull requests to `main` (same path filters)
 - Weekly schedule (Monday 5 AM UTC)
 - Manual `workflow_dispatch`
@@ -28,7 +31,8 @@ The project uses several GitHub Actions workflows to ensure code quality and aut
 
 **Triggers:**
 
-- Push and PR to `main` on `.rs`, `.toml`, `.lock`, `scripts/`, `.github/workflows/`
+- Push and PR to `main` on `.rs`, `.toml`, `.lock`, `scripts/`,
+  `.github/workflows/`
 
 **Jobs:**
 
@@ -44,47 +48,51 @@ The project uses several GitHub Actions workflows to ensure code quality and aut
 
 **Jobs:**
 
-- **Build Linux**: Compiles `x86_64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, and `aarch64-unknown-linux-gnu` binaries
+- **Build Linux**: Compiles `x86_64-unknown-linux-gnu`,
+  `x86_64-unknown-linux-musl`, and `aarch64-unknown-linux-gnu` binaries
 - **Build Windows**: Compiles `x86_64-pc-windows-msvc` binary
-- **Upload Artifacts**: Stores compiled binaries + extension-stripped `.sha256` sidecars for release
+- **Upload Artifacts**: Stores compiled binaries + extension-stripped `.sha256`
+  sidecars for release
 
 **Required release target matrix** (enforced by `scripts/release.sh`):
 
-| Target | Built by | Archive |
-| --- | --- | --- |
-| `x86_64-apple-darwin` | local (`release.sh`) | `.tar.gz` |
-| `aarch64-apple-darwin` | local (`release.sh`) | `.tar.gz` |
-| `x86_64-unknown-linux-gnu` | `build-linux-windows.yml` | `.tar.gz` |
-| `x86_64-unknown-linux-musl` | `build-linux-windows.yml` | `.tar.gz` |
-| `aarch64-unknown-linux-gnu` | `build-linux-windows.yml` | `.tar.gz` |
-| `x86_64-pc-windows-msvc` | `build-linux-windows.yml` | `.zip` (required by default) |
+| Target                      | Built by                  | Archive                      |
+| --------------------------- | ------------------------- | ---------------------------- |
+| `x86_64-apple-darwin`       | local (`release.sh`)      | `.tar.gz`                    |
+| `aarch64-apple-darwin`      | local (`release.sh`)      | `.tar.gz`                    |
+| `x86_64-unknown-linux-gnu`  | `build-linux-windows.yml` | `.tar.gz`                    |
+| `x86_64-unknown-linux-musl` | `build-linux-windows.yml` | `.tar.gz`                    |
+| `aarch64-unknown-linux-gnu` | `build-linux-windows.yml` | `.tar.gz`                    |
+| `x86_64-pc-windows-msvc`    | `build-linux-windows.yml` | `.zip` (required by default) |
 
-`release.sh` derives a raw `compat-vtcode-<v>-<target>.tar.gz.compat` executable from
-each normal archive. These are the legacy updater compatibility bridge for
-v0.141.0-v0.141.4 (see [Update System Guide](../guides/UPDATE_SYSTEM.md)). The
-`compat-` prefix is load-bearing: GitHub returns release assets sorted alphabetically
-by name, and the prefix makes the compat asset sort before `vtcode-<v>-<target>.tar.gz`
-so the broken legacy updater picks the raw binary instead of the gzip archive it
+`release.sh` derives a raw `compat-vtcode-<v>-<target>.tar.gz.compat`
+executable from each normal archive. These are the legacy updater compatibility
+bridge for v0.141.0-v0.141.4 (see
+[Update System Guide](../guides/UPDATE_SYSTEM.md)). The `compat-` prefix is
+load-bearing: GitHub returns release assets sorted alphabetically by name, and
+the prefix makes the compat asset sort before `vtcode-<v>-<target>.tar.gz` so
+the broken legacy updater picks the raw binary instead of the gzip archive it
 cannot extract. The release fails if any required target archive (including
 Windows by default) is missing. Set `RELEASE_REQUIRE_WINDOWS=false` only for an
 emergency macOS/Linux rescue when Windows CI is flaky.
 
 **Binary size & cold-start optimization:**
 
-All release profiles inherit `[profile.release]` which uses `opt-level = "z"` (size
-optimization) + full LTO + `codegen-units = 1`. Binary size directly impacts cold-start
-time — dyld page-faults loading the Mach-O dominate the first-launch latency.
+All release profiles inherit `[profile.release]` which uses `opt-level = "z"`
+(size optimization) + full LTO + `codegen-units = 1`. Binary size directly
+impacts cold-start time — dyld page-faults loading the Mach-O dominate the
+first-launch latency.
 
-| Build path | Profile | Extra size flags |
-| --- | --- | --- |
-| macOS local (`release.sh`) | `release` | `-Wl,-dead_strip` via `CARGO_TARGET_*_RUSTFLAGS` |
-| Linux CI | `release-fast` (thin LTO, 4 codegen units) | `-Wl,--gc-sections` via `RUSTFLAGS` |
-| Windows CI | `release-fast-windows` (no LTO, 16 codegen units) | MSVC `/OPT:REF` (default) |
+| Build path                 | Profile                                           | Extra size flags                                 |
+| -------------------------- | ------------------------------------------------- | ------------------------------------------------ |
+| macOS local (`release.sh`) | `release`                                         | `-Wl,-dead_strip` via `CARGO_TARGET_*_RUSTFLAGS` |
+| Linux CI                   | `release-fast` (thin LTO, 4 codegen units)        | `-Wl,--gc-sections` via `RUSTFLAGS`              |
+| Windows CI                 | `release-fast-windows` (no LTO, 16 codegen units) | MSVC `/OPT:REF` (default)                        |
 
-`release.sh` also runs a cold-start spot check (fresh `/tmp` copy → `--version` timing)
-after the macOS aarch64 build to catch sub-1s regressions before shipping. All build
-commands use `--locked` to ensure the Cargo.lock matches Cargo.toml so the size-optimized
-profiles are actually applied.
+`release.sh` also runs a cold-start spot check (fresh `/tmp` copy → `--version`
+timing) after the macOS aarch64 build to catch sub-1s regressions before
+shipping. All build commands use `--locked` to ensure the Cargo.lock matches
+Cargo.toml so the size-optimized profiles are actually applied.
 
 ### 4. Coverage (`coverage.yml`)
 
@@ -132,8 +140,8 @@ cargo fmt --all
 cargo fmt --print-config default rustfmt.toml
 ```
 
-**Configuration:**
-Create a `rustfmt.toml` or `.rustfmt.toml` file in your project root:
+**Configuration:** Create a `rustfmt.toml` or `.rustfmt.toml` file in your
+project root:
 
 ```toml
 edition = "2021"
@@ -378,8 +386,8 @@ scripts/generate-notices.sh --check  # CI mode: exit 1 if out of date
 The `license-notices` CI job runs `scripts/generate-notices.sh --check` on
 every PR to catch stale license notices before merge. The file has a manual
 header (`scripts/templates/third-party-header.txt` for in-tree source ports)
-and an auto-generated dependency listing (`scripts/templates/third-party-notices.hbs`
-via cargo-about).
+and an auto-generated dependency listing
+(`scripts/templates/third-party-notices.hbs` via cargo-about).
 
 ## References
 

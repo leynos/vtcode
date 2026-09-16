@@ -60,8 +60,7 @@ approval gate. This removes the ambiguity that caused the model to attempt
 
 The runtime planning guidance will repeat this boundary because primary-agent
 prompts are user-overridable. The compiled system contract, not only the
-built-in prompt, must tell every planning agent how canonical persistence
-works.
+built-in prompt, must tell every planning agent how canonical persistence works.
 
 ### Read-only discovery tools
 
@@ -115,9 +114,9 @@ The data flow remains:
 The existing execution-agent resolver remains authoritative. A prior
 write-capable `build` or `auto` agent is restored when possible. A read-only
 `plan` or `duck` agent is never used for implementation; resolution falls back
-to the configured write-capable default and then built-in `build`/`auto`.
-Tests will cover current-context and fresh-context approval plus explicit
-Build/Auto legacy selections.
+to the configured write-capable default and then built-in `build`/`auto`. Tests
+will cover current-context and fresh-context approval plus explicit Build/Auto
+legacy selections.
 
 ### Planning budgets
 

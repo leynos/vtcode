@@ -1,16 +1,17 @@
+# VT Code
+
 <div align="center">
 
-<picture>
-  <img src="./resources/logo/vt_code_adaptive.svg" alt="VT Code" width="300" />
-</picture>
+<picture> <img src="./resources/logo/vt_code_adaptive.svg" alt="VT Code"
+width="300" /> </picture>
 
 **Secure, open, universal terminal coding agent in Rust.**
 
-[![Agent Skills](https://img.shields.io/badge/Agent_Skills-BFB38F?style=flat-square)](https://agentskills.io/)
-[![Agent Client Protocol](https://img.shields.io/badge/Agent_Client_Protocol-383B73?style=flat-square&logo=zedindustries&logoColor=white)](./docs/guides/zed-acp.md)
-[![Model Context Protocol](https://img.shields.io/badge/Model_Context_Protocol-A63333?style=flat-square&logo=modelcontextprotocol&logoColor=white)](./docs/guides/mcp-integration.md)
-[![Agent Plugins](https://img.shields.io/badge/Agent_Plugins-5865F2?style=flat-square)](./docs/guides/agent-plugins.md)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/vinhnx/VTCode)
+[![Agent Skills][agent-skills-badge]][agent-skills]
+[![Agent Client Protocol][agent-client-protocol-badge]][agent-client-protocol]
+[![Model Context Protocol][model-context-protocol-badge]][
+model-context-protocol] [![Agent Plugins][agent-plugins-badge]][agent-plugins]
+[![Ask DeepWiki][deepwiki-badge]][deepwiki]
 
 </div>
 
@@ -18,8 +19,7 @@
 > New here? Start with [Installation](./docs/installation/README.md), then
 > [Getting Started](./docs/user-guide/getting-started.md).
 
-<details>
-<summary><strong>Contents</strong></summary>
+<details> <summary><strong>Contents</strong></summary>
 
 - [Overview](#overview)
 - [Why VT Code](#why-vt-code)
@@ -46,14 +46,13 @@
 <div align="center">
 
 <img src="./resources/gif/vtcode.gif" alt="VT Code demo" width="60%" />
-<br />
 <em>Secure, open, universal.</em>
 
 </div>
 
 VT Code is an open-source Rust terminal coding agent for interactive and
-long-running autonomous work. It is a **harness, not just an LLM wrapper**:
-the model provides reasoning, while the runtime provides the tools, context,
+long-running autonomous work. It is a **harness, not just an LLM wrapper**: the
+model provides reasoning, while the runtime provides the tools, context,
 sandbox, state, evaluation, and verification needed to turn that reasoning into
 safe, reviewable progress.
 
@@ -65,8 +64,11 @@ the terminal.
 > **Status:** Active development. Local inference and some automation flows are
 > experimental and may change between releases.
 
+<!-- -->
+
 > [!TIP]
-> **Behind the build:** [Building VT Code, a year in](https://huggingface.co/blog/vinhnx90/building-vtcode-a-year-in):
+> **Behind the build:**
+> [Building VT Code, a year in](https://huggingface.co/blog/vinhnx90/building-vtcode-a-year-in):
 > harness design, evals, security, and lessons from a year of building.
 >
 > **Video companions:** [Podcast](https://www.youtube.com/watch?v=XLoswcd5rH0) ·
@@ -193,20 +195,23 @@ See [Development setup](./docs/development/DEVELOPMENT_SETUP.md) and
 
 ## Contributing
 
-VT Code grows with its community. Bug fixes, docs, ideas, testing, and
-reviews are all welcome.
+VT Code grows with its community. Bug fixes, docs, ideas, testing, and reviews
+are all welcome.
 
 ### Ways to contribute
 
-- **Security advisories**: Please report vulnerabilities privately first: [Security Policy](https://github.com/vinhnx/VTCode/security/policy).
+- **Security advisories**: Please report vulnerabilities privately first:
+  [Security Policy](https://github.com/vinhnx/VTCode/security/policy).
 - **Bug fixes and patches**: Small or large, every fix counts.
 - **Documentation**: Guides, examples, and corrections help everyone.
 - **Features and ideas**: Open an issue or start a discussion.
-- **Code reviews and testing**: Trying things out and reporting breakage keeps the project healthy.
+- **Code reviews and testing**: Trying things out and reporting breakage keeps
+  the project healthy.
 
 ### Getting started
 
-- Browse [good first issues](https://github.com/vinhnx/vtcode/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)
+- Browse
+  [good first issues](https://github.com/vinhnx/vtcode/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)
 - Read [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for humans
 - Check [AGENTS.md](./AGENTS.md) for AI agents
 
@@ -217,33 +222,97 @@ reviews are all welcome.
 
 Thank you to everyone who shaped VT Code.
 
-<details>
-<summary><strong>Show all contributors</strong></summary>
+<details> <summary><strong>Show all contributors</strong></summary>
 
-<div align="center">
-  <a href="https://github.com/kernitus"><img src="https://avatars.githubusercontent.com/u/2789734?s=60" width="40" height="40" alt="@kernitus" title="@kernitus Main Contributor (52 commits)" style="border-radius: 50%; border: 2px solid #FFD700;" /></a>&nbsp;
-  <a href="https://github.com/7jrxt42BxFZo4iAnN4CX"><img src="https://avatars.githubusercontent.com/u/72938937?s=60" width="40" height="40" alt="@7jrxt42BxFZo4iAnN4CX" title="@7jrxt42BxFZo4iAnN4CX Core contributor (40 commits) - subagents, hooks, config & TUI fixes (#737, #738, #740-#742+)" style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp;
-  <a href="https://github.com/oiwn"><img src="https://avatars.githubusercontent.com/u/398035?s=60" width="40" height="40" alt="@oiwn" title="@oiwn Core contributor (6 commits)" style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp;
-  <a href="https://github.com/Sachin-Bhat"><img src="https://avatars.githubusercontent.com/u/25080916?s=60" width="40" height="40" alt="@Sachin-Bhat" title="@Sachin-Bhat Core contributor (3 commits)" style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp;
-  <a href="https://github.com/chenrui333"><img src="https://avatars.githubusercontent.com/u/1580956?s=60" width="40" height="40" alt="@chenrui333" title="@chenrui333 Core contributor (3 commits)" style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp;
-  <a href="https://github.com/gzsombor"><img src="https://avatars.githubusercontent.com/u/66230?s=60" width="40" height="40" alt="@gzsombor" title="@gzsombor Core contributor (2 commits)" style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp;
-  <a href="https://github.com/leonj1"><img src="https://avatars.githubusercontent.com/u/5171829?s=60" width="40" height="40" alt="@leonj1" title="@leonj1 Core contributor (2 commits)" style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp;
-  <a href="https://github.com/netbrah"><img src="https://avatars.githubusercontent.com/u/162479981?s=60" width="40" height="40" alt="@netbrah" title="@netbrah Core contributor (2 commits)" style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp;
-  <a href="https://github.com/xcrong"><img src="https://avatars.githubusercontent.com/u/46434477?s=60" width="40" height="40" alt="@xcrong" title="@xcrong Core contributor (2 commits)" style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp;
-  <a href="https://github.com/lucaszhu-hue"><img src="https://avatars.githubusercontent.com/u/278269343?s=60" width="40" height="40" alt="@lucaszhu-hue" title="@lucaszhu-hue Core contributor (2 commits) - Atlas Cloud (#648, #662)" style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp;
-  <a href="https://github.com/raphamorim"><img src="https://avatars.githubusercontent.com/u/3630346?s=60" width="40" height="40" alt="@raphamorim" title="@raphamorim PR #708, rio-vt migration (1 commit)" style="border-radius: 50%; border: 2px solid #4A90D9;" /></a>&nbsp;
-  <a href="https://github.com/nnfrog"><img src="https://avatars.githubusercontent.com/u/142202920?s=60" width="40" height="40" alt="@nnfrog" title="@nnfrog GHSA-r249-hpfx-x2w7 (security advisory)" style="border-radius: 50%; border: 2px solid #FF6B6B;" /></a>&nbsp;
-  <a href="https://github.com/glmgbj233"><img src="https://avatars.githubusercontent.com/u/115564047?s=60" width="40" height="40" alt="@glmgbj233" title="@glmgbj233 GHSA-wqgw-crr5-cr2p (security advisory)" style="border-radius: 50%; border: 2px solid #FF6B6B;" /></a>&nbsp;
-  <a href="https://github.com/EvoLinkAI"><img src="https://avatars.githubusercontent.com/u/253253881?s=60" width="40" height="40" alt="@EvoLinkAI" title="@EvoLinkAI Contributor (1 commit) - Evolink provider (#664)" style="border-radius: 50%; border: 2px solid #B19CD9;" /></a>&nbsp;
-  <a href="https://github.com/diegosouzapw"><img src="https://avatars.githubusercontent.com/u/8016841?s=60" width="40" height="40" alt="@diegosouzapw" title="@diegosouzapw Contributor (1 commit)" style="border-radius: 50%; border: 2px solid #B19CD9;" /></a>&nbsp;
-  <a href="https://github.com/ForrestThump"><img src="https://avatars.githubusercontent.com/u/44280834?s=60" width="40" height="40" alt="@ForrestThump" title="@ForrestThump Contributor (1 commit)" style="border-radius: 50%; border: 2px solid #B19CD9;" /></a>&nbsp;
-  <a href="https://github.com/morler"><img src="https://avatars.githubusercontent.com/u/478444?s=60" width="40" height="40" alt="@morler" title="@morler Contributor (1 commit)" style="border-radius: 50%; border: 2px solid #B19CD9;" /></a>&nbsp;
-  <a href="https://github.com/poelzi"><img src="https://avatars.githubusercontent.com/u/66107?s=60" width="40" height="40" alt="@poelzi" title="@poelzi Contributor (1 commit)" style="border-radius: 50%; border: 2px solid #B19CD9;" /></a>&nbsp;
-  <a href="https://github.com/RobertBorg"><img src="https://avatars.githubusercontent.com/u/1288566?s=60" width="40" height="40" alt="@RobertBorg" title="@RobertBorg Contributor (1 commit)" style="border-radius: 50%; border: 2px solid #B19CD9;" /></a>&nbsp;
-  <a href="https://github.com/Sanjays2402"><img src="https://avatars.githubusercontent.com/u/51058514?s=60" width="40" height="40" alt="@Sanjays2402" title="@Sanjays2402 Contributor (1 commit)" style="border-radius: 50%; border: 2px solid #B19CD9;" /></a>&nbsp;
-  <a href="https://github.com/TuanLe-bk18"><img src="https://avatars.githubusercontent.com/u/222461688?s=60" width="40" height="40" alt="@TuanLe-bk18" title="@TuanLe-bk18 Contributor (1 commit)" style="border-radius: 50%; border: 2px solid #B19CD9;" /></a>&nbsp;
-  <a href="https://github.com/uiYzzi"><img src="https://avatars.githubusercontent.com/u/40852301?s=60" width="40" height="40" alt="@uiYzzi" title="@uiYzzi Contributor (1 commit)" style="border-radius: 50%; border: 2px solid #B19CD9;" /></a>
-</div>
+<div align="center"> <a href="https://github.com/kernitus"><img
+src="https://avatars.githubusercontent.com/u/2789734?s=60" width="40"
+height="40" alt="@kernitus" title="@kernitus Main Contributor (52 commits)"
+style="border-radius: 50%; border: 2px solid #FFD700;" /></a>&nbsp; <a
+href="https://github.com/7jrxt42BxFZo4iAnN4CX"><img
+src="https://avatars.githubusercontent.com/u/72938937?s=60" width="40"
+height="40" alt="@7jrxt42BxFZo4iAnN4CX" title="@7jrxt42BxFZo4iAnN4CX Core
+contributor (40 commits) - subagents, hooks, config & TUI fixes (#737, #738,
+#740-#742+)" style="border-radius: 50%; border: 2px solid #50C878;"
+/></a>&nbsp; <a href="https://github.com/oiwn"><img
+src="https://avatars.githubusercontent.com/u/398035?s=60" width="40"
+height="40" alt="@oiwn" title="@oiwn Core contributor (6 commits)"
+style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp; <a
+href="https://github.com/Sachin-Bhat"><img
+src="https://avatars.githubusercontent.com/u/25080916?s=60" width="40"
+height="40" alt="@Sachin-Bhat" title="@Sachin-Bhat Core contributor (3
+commits)" style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp;
+<a href="https://github.com/chenrui333"><img
+src="https://avatars.githubusercontent.com/u/1580956?s=60" width="40"
+height="40" alt="@chenrui333" title="@chenrui333 Core contributor (3 commits)"
+style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp; <a
+href="https://github.com/gzsombor"><img
+src="https://avatars.githubusercontent.com/u/66230?s=60" width="40" height="40"
+alt="@gzsombor" title="@gzsombor Core contributor (2 commits)"
+style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp; <a
+href="https://github.com/leonj1"><img
+src="https://avatars.githubusercontent.com/u/5171829?s=60" width="40"
+height="40" alt="@leonj1" title="@leonj1 Core contributor (2 commits)"
+style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp; <a
+href="https://github.com/netbrah"><img
+src="https://avatars.githubusercontent.com/u/162479981?s=60" width="40"
+height="40" alt="@netbrah" title="@netbrah Core contributor (2 commits)"
+style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp; <a
+href="https://github.com/xcrong"><img
+src="https://avatars.githubusercontent.com/u/46434477?s=60" width="40"
+height="40" alt="@xcrong" title="@xcrong Core contributor (2 commits)"
+style="border-radius: 50%; border: 2px solid #50C878;" /></a>&nbsp; <a
+href="https://github.com/lucaszhu-hue"><img
+src="https://avatars.githubusercontent.com/u/278269343?s=60" width="40"
+height="40" alt="@lucaszhu-hue" title="@lucaszhu-hue Core contributor (2
+commits) - Atlas Cloud (#648, #662)" style="border-radius: 50%; border: 2px
+solid #50C878;" /></a>&nbsp; <a href="https://github.com/raphamorim"><img
+src="https://avatars.githubusercontent.com/u/3630346?s=60" width="40"
+height="40" alt="@raphamorim" title="@raphamorim PR #708, rio-vt migration (1
+commit)" style="border-radius: 50%; border: 2px solid #4A90D9;" /></a>&nbsp; <a
+href="https://github.com/nnfrog"><img
+src="https://avatars.githubusercontent.com/u/142202920?s=60" width="40"
+height="40" alt="@nnfrog" title="@nnfrog GHSA-r249-hpfx-x2w7 (security
+advisory)" style="border-radius: 50%; border: 2px solid #FF6B6B;" /></a>&nbsp;
+<a href="https://github.com/glmgbj233"><img
+src="https://avatars.githubusercontent.com/u/115564047?s=60" width="40"
+height="40" alt="@glmgbj233" title="@glmgbj233 GHSA-wqgw-crr5-cr2p (security
+advisory)" style="border-radius: 50%; border: 2px solid #FF6B6B;" /></a>&nbsp;
+<a href="https://github.com/EvoLinkAI"><img
+src="https://avatars.githubusercontent.com/u/253253881?s=60" width="40"
+height="40" alt="@EvoLinkAI" title="@EvoLinkAI Contributor (1 commit) - Evolink
+provider (#664)" style="border-radius: 50%; border: 2px solid #B19CD9;"
+/></a>&nbsp; <a href="https://github.com/diegosouzapw"><img
+src="https://avatars.githubusercontent.com/u/8016841?s=60" width="40"
+height="40" alt="@diegosouzapw" title="@diegosouzapw Contributor (1 commit)"
+style="border-radius: 50%; border: 2px solid #B19CD9;" /></a>&nbsp; <a
+href="https://github.com/ForrestThump"><img
+src="https://avatars.githubusercontent.com/u/44280834?s=60" width="40"
+height="40" alt="@ForrestThump" title="@ForrestThump Contributor (1 commit)"
+style="border-radius: 50%; border: 2px solid #B19CD9;" /></a>&nbsp; <a
+href="https://github.com/morler"><img
+src="https://avatars.githubusercontent.com/u/478444?s=60" width="40"
+height="40" alt="@morler" title="@morler Contributor (1 commit)"
+style="border-radius: 50%; border: 2px solid #B19CD9;" /></a>&nbsp; <a
+href="https://github.com/poelzi"><img
+src="https://avatars.githubusercontent.com/u/66107?s=60" width="40" height="40"
+alt="@poelzi" title="@poelzi Contributor (1 commit)" style="border-radius: 50%;
+border: 2px solid #B19CD9;" /></a>&nbsp; <a
+href="https://github.com/RobertBorg"><img
+src="https://avatars.githubusercontent.com/u/1288566?s=60" width="40"
+height="40" alt="@RobertBorg" title="@RobertBorg Contributor (1 commit)"
+style="border-radius: 50%; border: 2px solid #B19CD9;" /></a>&nbsp; <a
+href="https://github.com/Sanjays2402"><img
+src="https://avatars.githubusercontent.com/u/51058514?s=60" width="40"
+height="40" alt="@Sanjays2402" title="@Sanjays2402 Contributor (1 commit)"
+style="border-radius: 50%; border: 2px solid #B19CD9;" /></a>&nbsp; <a
+href="https://github.com/TuanLe-bk18"><img
+src="https://avatars.githubusercontent.com/u/222461688?s=60" width="40"
+height="40" alt="@TuanLe-bk18" title="@TuanLe-bk18 Contributor (1 commit)"
+style="border-radius: 50%; border: 2px solid #B19CD9;" /></a>&nbsp; <a
+href="https://github.com/uiYzzi"><img
+src="https://avatars.githubusercontent.com/u/40852301?s=60" width="40"
+height="40" alt="@uiYzzi" title="@uiYzzi Contributor (1 commit)"
+style="border-radius: 50%; border: 2px solid #B19CD9;" /></a> </div>
 
 </details>
 
@@ -255,27 +324,49 @@ VT Code is built and maintained in spare time. If it helped you ship or learn
 something, a [sponsorship](https://github.com/sponsors/vinhnx) keeps the
 project independent.
 
-<div align="center">
-  <a href="https://github.com/dnhn"><img src="https://avatars.githubusercontent.com/u/2561973" width="80" height="80" alt="@dnhn" style="border-radius: 50%" /></a>
-  <a href="https://github.com/codemod"><img src="https://avatars.githubusercontent.com/u/78830094" width="80" height="80" alt="@codemod" style="border-radius: 50%" /></a>
-  <a href="https://github.com/coderabbitai"><img src="https://avatars.githubusercontent.com/u/132028505" width="80" height="80" alt="@coderabbitai" style="border-radius: 50%" /></a>
-  <a href="https://github.com/KhaiRyth"><img src="https://avatars.githubusercontent.com/u/273723951" width="80" height="80" alt="@KhaiRyth" style="border-radius: 50%" /></a>
-</div>
+<div align="center"> <a href="https://github.com/dnhn"><img
+src="https://avatars.githubusercontent.com/u/2561973" width="80" height="80"
+alt="@dnhn" style="border-radius: 50%" /></a> <a
+href="https://github.com/codemod"><img
+src="https://avatars.githubusercontent.com/u/78830094" width="80" height="80"
+alt="@codemod" style="border-radius: 50%" /></a> <a
+href="https://github.com/coderabbitai"><img
+src="https://avatars.githubusercontent.com/u/132028505" width="80" height="80"
+alt="@coderabbitai" style="border-radius: 50%" /></a> <a
+href="https://github.com/KhaiRyth"><img
+src="https://avatars.githubusercontent.com/u/273723951" width="80" height="80"
+alt="@KhaiRyth" style="border-radius: 50%" /></a> </div>
 
 <div align="center">
 
-[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-30363D?style=for-the-badge&logo=github-sponsors&logoColor=%23EA4AAA)](https://github.com/sponsors/vinhnx)
-<a href="https://buymeacoffee.com/vinhnx"><img src="./resources/screenshots/qr_donate.png" alt="Buy Me a Coffee" width="100" /></a>
+[![GitHub Sponsors][sponsors-badge]][sponsors] <a
+href="https://buymeacoffee.com/vinhnx"><img
+src="./resources/screenshots/qr_donate.png" alt="Buy Me a Coffee" width="100"
+/></a>
 
 </div>
 
 ## License
 
-First-party code is **MIT OR Apache-2.0**. See [LICENSE](LICENSE).
-Third-party code keeps its original licenses: see [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES).
+First-party code is **MIT OR Apache-2.0**. See [LICENSE](LICENSE). Third-party
+code keeps its original licenses: see
+[THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES).
 
 <div align="right">
 
-[Back to top](#contents)
+[Back to top](#vt-code)
 
 </div>
+
+[agent-skills-badge]: https://img.shields.io/badge/Agent_Skills-BFB38F?style=flat-square
+[agent-skills]: https://agentskills.io/
+[agent-client-protocol-badge]: https://img.shields.io/badge/Agent_Client_Protocol-383B73?style=flat-square&logo=zedindustries&logoColor=white
+[agent-client-protocol]: ./docs/guides/zed-acp.md
+[model-context-protocol-badge]: https://img.shields.io/badge/Model_Context_Protocol-A63333?style=flat-square&logo=modelcontextprotocol&logoColor=white
+[model-context-protocol]: ./docs/guides/mcp-integration.md
+[agent-plugins-badge]: https://img.shields.io/badge/Agent_Plugins-5865F2?style=flat-square
+[agent-plugins]: ./docs/guides/agent-plugins.md
+[deepwiki-badge]: https://deepwiki.com/badge.svg
+[deepwiki]: https://deepwiki.com/vinhnx/VTCode
+[sponsors-badge]: https://img.shields.io/badge/Sponsor-30363D?style=for-the-badge&logo=github-sponsors&logoColor=%23EA4AAA
+[sponsors]: https://github.com/sponsors/vinhnx

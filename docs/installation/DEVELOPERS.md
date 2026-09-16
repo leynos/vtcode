@@ -5,6 +5,7 @@ Information for VT Code maintainers and contributors.
 ## Overview
 
 VT Code provides native installers for three platforms:
+
 - **Shell script** (macOS, Linux) - `scripts/install.sh`
 - **PowerShell script** (Windows) - `scripts/install.ps1`
 - **Homebrew formula** - `homebrew/vtcode.rb`
@@ -12,11 +13,13 @@ VT Code provides native installers for three platforms:
 ## Platform Detection
 
 ### Shell Script
+
 - Uses `uname -s` for OS (Darwin, Linux, etc.)
 - Uses `uname -m` for arch (x86_64, arm64, aarch64, armv7l)
 - Maps to release binary: `ARCH-PLATFORM` (e.g., `x86_64-apple-darwin`)
 
 ### PowerShell Script
+
 - Uses `[Environment]::Is64BitProcess` for 64-bit detection
 - Uses WMI `Get-WmiObject Win32_Processor` for ARM64 detection
 - Maps to: `x86_64-pc-windows-msvc`
@@ -31,6 +34,7 @@ vtcode-v{VERSION}-{PLATFORM}.zip     (Windows)
 ```
 
 ### Supported Platforms
+
 - `aarch64-apple-darwin` (macOS ARM64/M1/M2)
 - `x86_64-apple-darwin` (macOS Intel)
 - `aarch64-unknown-linux-gnu` (Linux ARM64)
@@ -41,6 +45,7 @@ vtcode-v{VERSION}-{PLATFORM}.zip     (Windows)
 ## GitHub Releases Setup
 
 Installers expect binaries at:
+
 ```
 https://github.com/vinhnx/vtcode/releases/download/v{VERSION}/{BINARY}
 ```
@@ -102,6 +107,7 @@ jobs:
 ### Shell Script
 
 #### On macOS
+
 ```bash
 bash scripts/install.sh
 # Verify
@@ -109,12 +115,14 @@ vtcode --version
 ```
 
 #### On Linux (local)
+
 ```bash
 bash scripts/install.sh
 vtcode --version
 ```
 
 #### In Docker
+
 ```bash
 # Test on Linux
 docker run -it --rm ubuntu:latest bash -c \
@@ -125,12 +133,14 @@ docker run -it --rm ubuntu:latest bash -c \
 ### PowerShell Script
 
 #### On Windows 10/11
+
 ```powershell
 .\scripts\install.ps1
 vtcode --version
 ```
 
 #### Via PowerShell Core (cross-platform)
+
 ```powershell
 pwsh -File scripts/install.ps1
 vtcode --version
@@ -186,6 +196,7 @@ end
 ```
 
 Get SHA256:
+
 ```bash
 shasum -a 256 vtcode-v*.tar.gz
 shasum -a 256 vtcode-v*.zip
@@ -226,6 +237,7 @@ vtcode --version
 ### Shell Script (`scripts/install.sh`)
 
 Key functions:
+
 - `detect_platform()` - Determine OS and architecture
 - `check_existing()` - Check if already installed
 - `get_latest_version()` - Query GitHub API
@@ -240,6 +252,7 @@ Error handling: `set -e` (exit on error)
 ### PowerShell Script (`scripts/install.ps1`)
 
 Key functions:
+
 - `Get-PlatformInfo` - Detect architecture
 - `Test-ExistingInstallation` - Check if already installed
 - `Get-LatestVersion` - Query GitHub API
@@ -258,6 +271,7 @@ Error handling: `$ErrorActionPreference = "Stop"`
 ### Download failures
 
 Check if GitHub API is accessible:
+
 ```bash
 curl https://api.github.com/repos/vinhnx/vtcode/releases/latest
 ```
@@ -265,6 +279,7 @@ curl https://api.github.com/repos/vinhnx/vtcode/releases/latest
 ### Platform detection issues
 
 Test detection logic:
+
 ```bash
 # Shell
 uname -s
@@ -278,6 +293,7 @@ Get-WmiObject Win32_Processor | Select Architecture
 ### Path configuration
 
 Verify PATH after installation:
+
 ```bash
 # Shell
 echo $PATH
@@ -289,11 +305,13 @@ $env:PATH
 ## Documentation
 
 User-facing docs:
+
 - `docs/installation/README.md` - Main installation guide
 - `docs/installation/QUICK_REFERENCE.md` - Quick commands
 - `docs/installation/NATIVE_INSTALLERS.md` - Technical details
 
 This file:
+
 - `docs/installation/DEVELOPERS.md` - Maintainer guide
 
 ## Common Issues
@@ -301,6 +319,7 @@ This file:
 ### Binary not found in release
 
 Ensure binaries are uploaded to GitHub Releases for all platforms. Check:
+
 ```bash
 curl https://api.github.com/repos/vinhnx/vtcode/releases/latest | jq '.assets'
 ```
@@ -308,6 +327,7 @@ curl https://api.github.com/repos/vinhnx/vtcode/releases/latest | jq '.assets'
 ### SHA256 mismatch
 
 Regenerate SHA256:
+
 ```bash
 shasum -a 256 vtcode-v*.tar.gz
 ```
@@ -317,6 +337,7 @@ Update formula with new hashes.
 ### Installer script permissions
 
 Make sure installers are executable:
+
 ```bash
 chmod +x scripts/install.sh scripts/install.ps1
 ```
@@ -324,6 +345,7 @@ chmod +x scripts/install.sh scripts/install.ps1
 ### PowerShell execution policy
 
 Users might need to set execution policy:
+
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 ```

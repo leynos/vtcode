@@ -1,10 +1,14 @@
 # VT Code Allowed Commands Reference
 
-This document outlines all commands that VT Code allows agents to execute, organized by category.
+This document outlines all commands that VT Code allows agents to execute,
+organized by category.
 
 ## Overview
 
-VT Code maintains a comprehensive allow-list of safe commands that the agent can execute. The list is defined in `crates/codegen/vtcode-config/src/constants.rs` and can be customized via `vtcode.toml`.
+VT Code maintains a comprehensive allow-list of safe commands that the agent
+can execute. The list is defined in
+`crates/codegen/vtcode-config/src/constants.rs` and can be customized via
+`vtcode.toml`.
 
 **Total Allowed Commands**: 380+ (as of v0.43.3)
 
@@ -20,14 +24,15 @@ pwd, ls, find, locate, grep, egrep, fgrep, zgrep, sort, uniq, cut, awk, sed,
 true, false, test, [, ], which, type, file, stat, du, df, ps, top, htop, tree
 ```
 
-**Key Point**: These are always available as they're core to the system. The PATH fix ensures they're properly accessible.
+**Key Point**: These are always available as they're core to the system. The
+PATH fix ensures they're properly accessible.
 
 ### Version Control (5+)
 
--   `git` - Most important for development workflows
--   `hg` - Mercurial
--   `svn` - Subversion
--   `git-lfs` - Git Large File Storage
+- `git` - Most important for development workflows
+- `hg` - Mercurial
+- `svn` - Subversion
+- `git-lfs` - Git Large File Storage
 
 ### Build Systems (8+)
 
@@ -42,7 +47,8 @@ cargo, rustc, rustfmt, rustup, clippy, cargo-clippy, cargo-fmt,
 cargo-build, cargo-test, cargo-run, cargo-check, cargo-doc
 ```
 
-**Critical Fix Applied**: These commands now properly resolve via `~/.cargo/bin` thanks to PATH inheritance.
+**Critical Fix Applied**: These commands now properly resolve via
+`~/.cargo/bin` thanks to PATH inheritance.
 
 ### Node.js/npm Ecosystem (20+)
 
@@ -245,18 +251,20 @@ wget, ftp, scp, rsync, ssh, telnet, nc, ncat, socat
 
 ## Environment Variables Preserved
 
-When executing commands, VT Code now preserves these critical environment variables from the parent shell:
+When executing commands, VT Code now preserves these critical environment
+variables from the parent shell:
 
--   `PATH` - Command search paths (enables finding custom installations)
--   `HOME` - User home directory
--   `SHELL` - Current shell program
--   `LANG`, `LC_*` - Locale settings
--   `USER`, `LOGNAME` - User identity
--   `PWD` - Current working directory
--   `EDITOR`, `VISUAL` - Default editors
--   Custom environment variables set by the user
+- `PATH` - Command search paths (enables finding custom installations)
+- `HOME` - User home directory
+- `SHELL` - Current shell program
+- `LANG`, `LC_*` - Locale settings
+- `USER`, `LOGNAME` - User identity
+- `PWD` - Current working directory
+- `EDITOR`, `VISUAL` - Default editors
+- Custom environment variables set by the user
 
-**Note**: VT Code overrides `PAGER`, `GIT_PAGER`, `LESS`, `TERM`, color-related vars for consistency.
+**Note**: VT Code overrides `PAGER`, `GIT_PAGER`, `LESS`, `TERM`, color-related
+vars for consistency.
 
 ## Configuration
 
@@ -337,7 +345,8 @@ type <command>
 command -v <command>
 ```
 
-If a command is in PATH but not in VT Code's allow-list, it will be blocked by policy enforcement.
+If a command is in PATH but not in VT Code's allow-list, it will be blocked by
+policy enforcement.
 
 ## Troubleshooting
 
@@ -366,7 +375,10 @@ If a command runs but shows permission errors:
 
 ## See Also
 
--   `docs/development/EXECUTION_POLICY.md` - Detailed execution policy documentation
--   `docs/guides/security.md` - Security best practices
--   `docs/environment/PATH_VISIBILITY_FIX.md` - Details on the PATH inheritance fix
--   `crates/codegen/vtcode-config/src/constants.rs` - Source of truth for command lists
+- `docs/development/EXECUTION_POLICY.md` - Detailed execution policy
+    documentation
+- `docs/guides/security.md` - Security best practices
+- `docs/environment/PATH_VISIBILITY_FIX.md` - Details on the PATH inheritance
+    fix
+- `crates/codegen/vtcode-config/src/constants.rs` - Source of truth for
+    command lists

@@ -1,6 +1,7 @@
 # Terminal Color Guidelines
 
-VT Code implements terminal color standards for accessibility, portability, and user preference compliance.
+VT Code implements terminal color standards for accessibility, portability, and
+user preference compliance.
 
 ## Standards Implemented
 
@@ -8,7 +9,8 @@ VT Code implements terminal color standards for accessibility, portability, and 
 
 VT Code respects the [NO_COLOR standard](https://no-color.org/):
 
-- When `NO_COLOR` environment variable is set (and not empty), ANSI color output is suppressed
+- When `NO_COLOR` environment variable is set (and not empty), ANSI color
+  output is suppressed
 - The `--no-color` CLI flag also disables colors
 - User configuration can override `NO_COLOR` per the standard
 
@@ -22,7 +24,9 @@ vtcode --no-color
 
 ### Minimum Contrast (Ghostty-inspired)
 
-Inspired by [Ghostty's minimum-contrast feature](https://ghostty.org/docs/config/reference#minimum-contrast), VT Code enforces WCAG contrast ratios:
+Inspired by
+[Ghostty's minimum-contrast feature](https://ghostty.org/docs/config/reference#minimum-contrast),
+VT Code enforces WCAG contrast ratios:
 
 | Level      | Ratio | Use Case                                   |
 | ---------- | ----- | ------------------------------------------ |
@@ -41,7 +45,10 @@ minimum_contrast = 4.5  # WCAG AA (default)
 
 ### Safe ANSI Color Palette
 
-Based on [terminal color portability research](https://blog.xoria.org/terminal-colors/), only **11 of 32** ANSI colors are safe across common terminal themes (Basic, Tango, Solarized).
+Based on
+[terminal color portability research](https://blog.xoria.org/terminal-colors/),
+only **11 of 32** ANSI colors are safe across common terminal themes (Basic,
+Tango, Solarized).
 
 #### Safe Colors (Portable)
 
@@ -113,7 +120,8 @@ color_scheme_mode = "auto"
 
 ## Bold-is-Bright Compatibility
 
-Some legacy terminals map bold text to bright colors. This can cause visibility issues when:
+Some legacy terminals map bold text to bright colors. This can cause visibility
+issues when:
 
 - Bold red becomes bright red (different shade)
 - Bold black becomes bright black (gray)
@@ -130,25 +138,26 @@ bold_is_bright = true
 
 VT Code includes light and dark themes:
 
-| Theme                | Mode  | Description              |
-| -------------------- | ----- | ------------------------ |
-| ciapre               | Dark  | Default warm amber theme |
+| Theme                | Mode  | Description                  |
+| -------------------- | ----- | ---------------------------- |
+| ciapre               | Dark  | Default warm amber theme     |
 | ciapre-dark          | Dark  | Alternative warm amber theme |
-| ciapre-blue          | Dark  | Blue variant of Ciapre   |
-| ansi-classic         | Dark  | Classic ANSI palette     |
-| vitesse-black        | Dark  | Pure black background    |
-| vitesse-dark         | Dark  | Dark gray background     |
-| vitesse-dark-soft    | Dark  | Softer dark background   |
-| vitesse-light        | Light | White background         |
-| vitesse-light-soft   | Light | Cream background         |
-| catppuccin-latte     | Light | Pastel light theme       |
-| catppuccin-frappe    | Dark  | Muted dark theme         |
-| catppuccin-macchiato | Dark  | Rich dark theme          |
-| catppuccin-mocha     | Dark  | Deep dark theme          |
+| ciapre-blue          | Dark  | Blue variant of Ciapre       |
+| ansi-classic         | Dark  | Classic ANSI palette         |
+| vitesse-black        | Dark  | Pure black background        |
+| vitesse-dark         | Dark  | Dark gray background         |
+| vitesse-dark-soft    | Dark  | Softer dark background       |
+| vitesse-light        | Light | White background             |
+| vitesse-light-soft   | Light | Cream background             |
+| catppuccin-latte     | Light | Pastel light theme           |
+| catppuccin-frappe    | Dark  | Muted dark theme             |
+| catppuccin-macchiato | Dark  | Rich dark theme              |
+| catppuccin-mocha     | Dark  | Deep dark theme              |
 
 ## Theme Validation
 
-VT Code validates theme contrast at startup and logs warnings for colors that don't meet the configured minimum contrast ratio.
+VT Code validates theme contrast at startup and logs warnings for colors that
+don't meet the configured minimum contrast ratio.
 
 ## API Reference
 

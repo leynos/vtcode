@@ -7,25 +7,30 @@ Fast lookup for `anstyle-git` and `anstyle-ls` syntax and usage.
 Parse Git color configuration strings.
 
 ### Supported Keywords
+
 ```
 bold, dim, italic, underline, reverse, strikethrough
 ```
 
 ### Supported Colors (Named)
+
 ```
 black, red, green, yellow, blue, magenta, cyan, white
 ```
 
 ### Supported Colors (Hex)
+
 ```
 #RRGGBB (e.g., #0000ee for blue)
 ```
 
 ### Syntax Rules
+
 - Whitespace-separated words
 - First color = foreground, second color = background
 - Effects can appear anywhere
-- Effect keywords: `bold`, `dim`, `italic`, `underline`, `reverse`, `strikethrough`
+- Effect keywords: `bold`, `dim`, `italic`, `underline`, `reverse`,
+  `strikethrough`
 
 ### Examples
 
@@ -50,7 +55,7 @@ parse("unknown-color").unwrap()         //  unknown-color not recognized
 parse("#gg0000").unwrap()               //  invalid hex
 ```
 
----
+______________________________________________________________________
 
 ## anstyle-ls Syntax
 
@@ -121,7 +126,7 @@ parse("99").unwrap()                    //  code 99 not valid
 parse("invalid").unwrap()               //  not numeric
 ```
 
----
+______________________________________________________________________
 
 ## Git Config Color Syntax
 
@@ -143,12 +148,13 @@ From `.git/config`:
 ```
 
 Supported style values:
+
 - `bold`, `dim`, `italic`, `underline`, `reverse`, `strikethrough` (modifiers)
 - `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` (colors)
 - `bright` prefix for bright colors
 - `default` for terminal default color
 
----
+______________________________________________________________________
 
 ## Vtcode Integration Points
 
@@ -194,7 +200,7 @@ let colorizer = FileColorizer::new();  // Reads LS_COLORS
 let style = colorizer.style_for_file(&path)?;
 ```
 
----
+______________________________________________________________________
 
 ## Cheat Sheet: Common Patterns
 
@@ -259,7 +265,7 @@ let removed_style = ThemeConfigParser::parse_git_style("red")?;
 let context_style = ThemeConfigParser::parse_git_style("default")?;
 ```
 
----
+______________________________________________________________________
 
 ## Debugging Tips
 
@@ -290,7 +296,7 @@ match anstyle_git::parse(test_input) {
 }
 ```
 
----
+______________________________________________________________________
 
 ## Performance Notes
 
@@ -300,16 +306,18 @@ match anstyle_git::parse(test_input) {
 - Git config parsing should be **cached** per session
 - LS_COLORS can be cached from environment var
 
----
+______________________________________________________________________
 
 ## Compatibility Notes
 
 ### Platforms
+
 - **Linux/macOS**: Full LS_COLORS support
 - **Windows**: LS_COLORS support optional (may not be set)
 - **Git**: Color config available on all platforms
 
 ### Terminal Support
+
 - **Bold**: Universal
 - **Italic**: Varies (TTY-dependent)
 - **Underline**: Most terminals
@@ -318,9 +326,11 @@ match anstyle_git::parse(test_input) {
 - **Dim**: Varies (may show as bright on some terminals)
 
 ### Graceful Degradation
-If a terminal doesn't support an effect, ratatui will safely ignore it (no error).
 
----
+If a terminal doesn't support an effect, ratatui will safely ignore it (no
+error).
+
+______________________________________________________________________
 
 ## Further Reading
 
