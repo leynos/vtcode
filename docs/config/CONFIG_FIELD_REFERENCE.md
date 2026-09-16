@@ -7,6 +7,7 @@ Regenerate:
 
 ```bash
 python3 scripts/generate_config_field_reference.py
+make fmt
 ```
 
 | Field                                                                 | Type                                                   | Required | Default                                                                                                                    | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |

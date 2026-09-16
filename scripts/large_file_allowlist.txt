@@ -22,3 +22,7 @@ patches/simdutf/cpp/simdutf.cpp=3_000_000
 # Project branding assets required by README/docs.
 resources/gif/vtcode.gif=2_000_000
 resources/logo/vtcode_logo.png=1_200_000
+
+# Generated field reference: `make fmt` (mdtablefix) pads its 900-row table
+# to the widest cell, which multiplies the file size; the content is unchanged.
+docs/config/CONFIG_FIELD_REFERENCE.md=1_000_000
