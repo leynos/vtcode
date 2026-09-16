@@ -8,8 +8,10 @@ Current fuzz targets focus on security parser surfaces in `vtcode-core`:
 
 - `shell_parser`: `command_safety::shell_parser` parsing paths
 - `exec_policy_parser`: `exec_policy::PolicyParser` (simple/TOML/JSON)
-- `exec_policy_command_validation`: `exec_policy::command_validation::validate_command`
-- `unified_path_validation`: `tools::validation::unified_path::validate_and_resolve_path`
+- `exec_policy_command_validation`:
+  `exec_policy::command_validation::validate_command`
+- `unified_path_validation`:
+  `tools::validation::unified_path::validate_and_resolve_path`
 
 ## Prerequisites
 
@@ -66,4 +68,5 @@ cargo +nightly fuzz run shell_parser fuzz/artifacts/shell_parser/crash-...
 cargo +nightly fuzz coverage shell_parser
 ```
 
-Then inspect `fuzz/coverage/shell_parser/coverage.profdata` with your preferred LLVM coverage tooling.
+Then inspect `fuzz/coverage/shell_parser/coverage.profdata` with your preferred
+LLVM coverage tooling.

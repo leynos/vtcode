@@ -1,14 +1,15 @@
 # VT Code Companion Extension Development Guide
 
-This guide provides instructions for setting up, developing, and running the VT Code Companion VSCode extension.
+This guide provides instructions for setting up, developing, and running the VT
+Code Companion VSCode extension.
 
 ## Prerequisites
 
 Before you begin, ensure you have the following installed:
 
--   [Node.js](https://nodejs.org/) (version 18 or higher)
--   [Visual Studio Code](https://code.visualstudio.com/)
--   [VSCode Extension Development tools](https://code.visualstudio.com/api/get-started/your-first-extension)
+- [Node.js](https://nodejs.org/) (version 18 or higher)
+- [Visual Studio Code](https://code.visualstudio.com/)
+- [VSCode Extension Development tools](https://code.visualstudio.com/api/get-started/your-first-extension)
 
 ## Getting Started
 
@@ -32,9 +33,9 @@ npm run compile
 
 This will:
 
--   Compile TypeScript files to JavaScript
--   Bundle the extension using esbuild
--   Output the compiled code to the `dist` directory
+- Compile TypeScript files to JavaScript
+- Bundle the extension using esbuild
+- Output the compiled code to the `dist` directory
 
 ## Running the Extension
 
@@ -52,7 +53,8 @@ This will:
 
 4. Click the green "Run" button or press `F5` again
 
-5. A new VSCode window titled "Extension Development Host" will open with your extension installed
+5. A new VSCode window titled "Extension Development Host" will open with your
+   extension installed
 
 ### Method 2: Manual Build and Install
 
@@ -71,7 +73,7 @@ This will:
 3. Install the packaged `.vsix` file in VSCode:
     - Open VSCode
     - Go to Extensions view (Ctrl+Shift+X or Cmd+Shift+X)
-    - Click the "..." menu button and select "Install from VSIX..."
+    - Click the "…" menu button and select "Install from VSIX…"
     - Select your packaged `.vsix` file
 
 ## Development Workflow
@@ -121,54 +123,69 @@ When using the "Run Extension" launch configuration:
 1. Set breakpoints in your TypeScript files in the original VSCode window
 2. Interact with the extension in the "Extension Development Host" window
 3. Debug output will appear in the Debug Console of the original window
-4. Extension logs can be viewed in the Output panel (select "VT Code" from the dropdown)
+4. Extension logs can be viewed in the Output panel (select "VT Code" from the
+   dropdown)
 
 ## Commands Available
 
 The extension contributes the following commands:
 
--   `vtcode.openQuickActions` - Open the quick actions panel
--   `vtcode.askAgent` - Send a question to the VT Code agent
--   `vtcode.askSelection` - Ask about the selected text
--   `vtcode.openConfig` - Open the vtcode.toml configuration file
--   `vtcode.launchAgentTerminal` - Launch an integrated VT Code terminal
--   And more...
+- `vtcode.openQuickActions` - Open the quick actions panel
+- `vtcode.askAgent` - Send a question to the VT Code agent
+- `vtcode.askSelection` - Ask about the selected text
+- `vtcode.openConfig` - Open the vtcode.toml configuration file
+- `vtcode.launchAgentTerminal` - Launch an integrated VT Code terminal
+- And more…
 
 Access these commands via the Command Palette (Ctrl+Shift+P or Cmd+Shift+P).
 
 ## Troubleshooting Terminal Activation
 
-If you're seeing activation commands like `source /path/to/venv/bin/activate` when launching the VT Code agent terminal, this might be due to VSCode's terminal profile settings automatically activating Python environments. The extension simply sends the `vtcode chat` command to the terminal; if you're seeing environment activation, it's likely due to your VSCode configuration.
+If you're seeing activation commands like `source /path/to/venv/bin/activate`
+when launching the VT Code agent terminal, this might be due to VSCode's
+terminal profile settings automatically activating Python environments. The
+extension simply sends the `vtcode chat` command to the terminal; if you're
+seeing environment activation, it's likely due to your VSCode configuration.
 
 To resolve this:
 
-1. Check your VSCode settings for any Python virtual environment auto-activation settings:
+1. Check your VSCode settings for any Python virtual environment
+   auto-activation settings:
 
     - Look for "python.terminal.activateEnvironment" in your settings
     - Check your terminal profile settings in VSCode preferences
 
-2. The extension itself does not activate Python environments - it launches a terminal with the appropriate working directory and sends the `vtcode chat` command.
+2. The extension itself does not activate Python environments - it launches a
+   terminal with the appropriate working directory and sends the `vtcode chat`
+   command.
 
 ## CLI Installation Requirements
 
-The VT Code extension requires the VT Code CLI to be installed separately on your system. The extension cannot install the CLI automatically for security and policy reasons.
+The VT Code extension requires the VT Code CLI to be installed separately on
+your system. The extension cannot install the CLI automatically for security
+and policy reasons.
 
 The CLI can be installed via:
 
--   Cargo: `cargo install vtcode` (if available)
--   Homebrew: `brew install vtcode` (if available)
--   npm: `npm install -g vtcode` (if available)
--   Or by following the manual installation instructions
+- Cargo: `cargo install vtcode` (if available)
+- Homebrew: `brew install vtcode` (if available)
+- npm: `npm install -g vtcode` (if available)
+- Or by following the manual installation instructions
 
-The extension checks for the CLI availability when activated and will show appropriate warnings if it's not found. Users can update the `vtcode.commandPath` setting in VSCode to specify a custom path if the CLI is installed in a non-standard location.
+The extension checks for the CLI availability when activated and will show
+appropriate warnings if it's not found. Users can update the
+`vtcode.commandPath` setting in VSCode to specify a custom path if the CLI is
+installed in a non-standard location.
 
 ## Adding a Status Bar Icon
 
-The extension already includes functionality to add a status bar icon that indicates VT Code status. In the `extension.ts` file, you'll find:
+The extension already includes functionality to add a status bar icon that
+indicates VT Code status. In the `extension.ts` file, you'll find:
 
 1. A status bar item is created in the `activate` function
 2. The status bar item has a tooltip and command associated with it
-3. The `vtcode.launchAgentTerminal` command already exists to open the agent terminal
+3. The `vtcode.launchAgentTerminal` command already exists to open the agent
+   terminal
 
 To customize the icon or add additional functionality to the status bar item:
 
@@ -178,21 +195,27 @@ To customize the icon or add additional functionality to the status bar item:
 
 ### Modifying Status Bar Click Behavior
 
-By default, the status bar item opens the quick actions when clicked if the CLI is available. If you want to change this behavior to launch the agent terminal instead:
+By default, the status bar item opens the quick actions when clicked if the CLI
+is available. If you want to change this behavior to launch the agent terminal
+instead:
 
 1. In `extension.ts`, locate the `updateStatusBarItem` function
 2. Find this line in the available (true) section:
+
     ```typescript
     statusBarItem.command = "vtcode.openQuickActions";
     ```
+
 3. Change it to:
+
     ```typescript
     statusBarItem.command = "vtcode.launchAgentTerminal";
     ```
 
 ### Customizing Status Bar Icon
 
-To show a dedicated VT Code icon in the status bar (similar to other extensions in VSCode):
+To show a dedicated VT Code icon in the status bar (similar to other extensions
+in VSCode):
 
 1. The status bar item is created in the `activate` function in `extension.ts`:
 
@@ -203,44 +226,58 @@ To show a dedicated VT Code icon in the status bar (similar to other extensions 
     );
     ```
 
-2. The current implementation uses the "$(hubot)" icon in the text, which displays a robot icon:
+2. The current implementation uses the "$(hubot)" icon in the text, which
+   displays a robot icon:
 
     ```typescript
     statusBarItem.text = `$(hubot) VT Code${suffix}`;
     ```
 
-    The `$(hubot)` part is a VSCode codicon that displays a robot icon, appropriate for an AI agent extension. You can use other VSCode codicons like:
+    The `$(hubot)` part is a VSCode codicon that displays a robot icon,
+    appropriate for an AI agent extension. You can use other VSCode codicons
+    like:
 
     - `$(comment-discussion)` for a discussion/chat icon
     - `$(terminal)` for a terminal icon (appropriate for VT Code chat)
     - `$(rocket)` for a rocket icon
     - `$(zap)` for a lightning bolt icon
     - `$(tools)` for a tools icon
-    - And many others - you can browse all available codicons at https://microsoft.github.io/vscode-codicons/dist/codicon.html
+    - And many others - you can browse all available codicons at <https://microsoft.github.io/vscode-codicons/dist/codicon.html>
 
-3. To change to a different icon, modify the text assignment in the `updateStatusBarItem` function:
+3. To change to a different icon, modify the text assignment in the
+   `updateStatusBarItem` function:
 
     ```typescript
     statusBarItem.text = `$(hubot) VT Code`; // Using a robot icon
     ```
 
-4. For the VT Code chat functionality specifically, you might consider using the `$(terminal)` icon since it launches a terminal with the VT Code chat interface.
+4. For the VT Code chat functionality specifically, you might consider using the
+   `$(terminal)` icon since it launches a terminal with the VT Code chat
+   interface.
 
-5. VSCode status bar items do not directly support custom SVG/PNG images. They use built-in codicons. However, the extension icon (shown in the Extensions view and marketplace) can be a custom SVG image stored in the media folder.
+5. VSCode status bar items do not directly support custom SVG/PNG images. They
+   use built-in codicons. However, the extension icon (shown in the Extensions
+   view and marketplace) can be a custom SVG image stored in the media folder.
 
-    - VSCode status bar items don't directly support custom images via `iconPath`. Instead, they use built-in codicons.
+    - VSCode status bar items don't directly support custom images via
+    `iconPath`. Instead, they use built-in codicons.
     - You can use any of the many available VSCode codicons in your status bar text:
         - `$(hubot)` - Robot icon (used in the current implementation)
         - `$(comment-discussion)` - Discussion/chat icon
         - `$(terminal)` - Terminal icon
         - `$(rocket)` - Rocket icon
         - `$(zap)` - Lightning bolt icon
-        - And many others - you can browse all available codicons at https://microsoft.github.io/vscode-codicons/dist/codicon.html
-    - To change the icon, modify the status bar text in the `updateStatusBarItem` function in `extension.ts`:
+        - And many others - you can browse all available codicons at <https://microsoft.github.io/vscode-codicons/dist/codicon.html>
+    - To change the icon, modify the status bar text in the
+    `updateStatusBarItem` function in `extension.ts`:
+
         ```typescript
         statusBarItem.text = `$(hubot) VT Code${suffix}`; // Using a robot icon
         ```
-    - The media folder and custom icon files are still useful for other extension elements like the extension icon in the VSCode marketplace:
+
+    - The media folder and custom icon files are still useful for other
+    extension elements like the extension icon in the VSCode marketplace:
+
         ```json
         {
             "icon": "media/vtcode-icon.svg",
@@ -254,15 +291,20 @@ To show a dedicated VT Code icon in the status bar (similar to other extensions 
         ```
 
 6. For a cleaner look with just an icon (no text), you can set:
+
     ```typescript
     statusBarItem.text = "$(hubot)"; // Just the icon
     ```
 
-This will make the status bar icon launch the VT Code agent terminal when clicked instead of opening the quick actions panel.
+This will make the status bar icon launch the VT Code agent terminal when
+clicked instead of opening the quick actions panel.
 
-You can also customize the appearance of the status bar, including text and tooltip, in the same `updateStatusBarItem` function.
+You can also customize the appearance of the status bar, including text and
+tooltip, in the same `updateStatusBarItem` function.
 
-The existing status bar item already has a command to open the agent terminal, and you can customize its appearance and behavior by modifying the code in `extension.ts`.
+The existing status bar item already has a command to open the agent terminal,
+and you can customize its appearance and behavior by modifying the code in
+`extension.ts`.
 
 ## Common Issues
 
@@ -270,7 +312,8 @@ The existing status bar item already has a command to open the agent terminal, a
 
 If you see messages about the VT Code CLI being missing:
 
-1. Install the VT Code CLI according to the [official installation guide](https://github.com/vinhnx/vtcode#installation)
+1. Install the VT Code CLI according to the
+   [official installation guide](https://github.com/vinhnx/vtcode#installation)
 2. Or update the `vtcode.commandPath` setting in VSCode preferences
 
 ### Extension Not Loading
@@ -278,12 +321,14 @@ If you see messages about the VT Code CLI being missing:
 If the extension doesn't appear to be loading:
 
 1. Check that you're running the "Run Extension" launch configuration
-2. Verify the extension appears in the Extensions view in the "Extension Development Host" window
+2. Verify the extension appears in the Extensions view in the "Extension
+   Development Host" window
 3. Check the Developer Tools console (Help > Toggle Developer Tools) for errors
 
 ### PreLaunchTask 'watch' Issue
 
-If you see the message "Waiting for preLaunchTask 'watch'...", this means VSCode is trying to run the watch task but it's not completing properly:
+If you see the message "Waiting for preLaunchTask 'watch'…", this means VSCode
+is trying to run the watch task but it's not completing properly:
 
 1. **Manual Solution**:
 
@@ -309,7 +354,8 @@ If you see the message "Waiting for preLaunchTask 'watch'...", this means VSCode
 
 3. **Task Configuration**:
     - Ensure the watch task is properly defined in `.vscode/tasks.json`
-    - The watch task should run `npm run watch` which executes the esbuild watch command
+    - The watch task should run `npm run watch` which executes the esbuild watch
+    command
 
 ## Building for Distribution
 
@@ -323,7 +369,9 @@ This will create a `.vsix` file that can be installed in VSCode.
 
 ## Releasing the Extension
 
-The extension includes an automated release script that handles version bumping, building, packaging, and publishing to both VSCode Marketplace and Open VSX Registry.
+The extension includes an automated release script that handles version
+bumping, building, packaging, and publishing to both VSCode Marketplace and
+Open VSX Registry.
 
 ### Quick Release
 
@@ -344,26 +392,32 @@ To release a new version, use the `release.sh` script:
 
 The automated release script performs the following steps:
 
-1. **Checks dependencies** - Verifies that all required tools are installed (node, npm, git, jq, vsce, ovsx)
+1. **Checks dependencies** - Verifies that all required tools are installed
+   (node, npm, git, jq, vsce, ovsx)
 2. **Bumps version** - Updates the version in `package.json` according to semver
 3. **Updates CHANGELOG** - Adds a new version entry with the current date
 4. **Builds extension** - Compiles and bundles the TypeScript code
 5. **Packages extension** - Creates a `.vsix` file
 6. **Commits changes** - Commits the version bump to git
-7. **Creates git tag** - Creates a tag with the format `vscode-v{version}` (e.g., `vscode-v0.1.2`)
+7. **Creates git tag** - Creates a tag with the format `vscode-v{version}`
+   (e.g., `vscode-v0.1.2`)
 8. **Pushes to GitHub** - Pushes commits and tags (with confirmation prompt)
-9. **Publishes to VSCode Marketplace** - Publishes to the official marketplace (with confirmation prompt)
-10. **Publishes to Open VSX** - Publishes to Open VSX Registry for VSCodium and alternatives (with confirmation prompt)
+9. **Publishes to VSCode Marketplace** - Publishes to the official marketplace
+   (with confirmation prompt)
+10. **Publishes to Open VSX** - Publishes to Open VSX Registry for VSCodium and
+    alternatives (with confirmation prompt)
 11. **Cleans up** - Removes old `.vsix` files
 
 ### Tag Naming Convention
 
-The extension uses a **different naming convention** from the main VT Code binary to avoid version conflicts:
+The extension uses a **different naming convention** from the main VT Code
+binary to avoid version conflicts:
 
--   **Main VT Code binary tags**: `v0.39.0`, `v0.39.1`, etc.
--   **VSCode extension tags**: `vscode-v0.1.0`, `vscode-v0.1.1`, etc.
+- **Main VT Code binary tags**: `v0.39.0`, `v0.39.1`, etc.
+- **VSCode extension tags**: `vscode-v0.1.0`, `vscode-v0.1.1`, etc.
 
-This ensures that extension releases don't conflict with the core VT Code CLI releases in the same repository.
+This ensures that extension releases don't conflict with the core VT Code CLI
+releases in the same repository.
 
 ### Manual Release Steps
 
@@ -419,7 +473,7 @@ If you prefer to release manually without the script:
     ```
 
 7. **Create GitHub Release**:
-    - Go to https://github.com/vinhnx/vtcode/releases/new
+    - Go to <https://github.com/vinhnx/vtcode/releases/new>
     - Select tag: `vscode-v0.1.2`
     - Add release notes from CHANGELOG
     - Attach the `.vsix` file
@@ -453,8 +507,8 @@ code --install-extension vtcode-companion-0.1.2.vsix
 
 ## Useful Links
 
--   [VSCode Extension API Documentation](https://code.visualstudio.com/api)
--   [Extension Development Tutorial](https://code.visualstudio.com/api/get-started/your-first-extension)
--   [VT Code Companion GitHub Repository](https://github.com/vinhnx/vtcode)
--   [Publishing Extensions](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)
--   [Open VSX Registry](https://open-vsx.org/)
+- [VSCode Extension API Documentation](https://code.visualstudio.com/api)
+- [Extension Development Tutorial](https://code.visualstudio.com/api/get-started/your-first-extension)
+- [VT Code Companion GitHub Repository](https://github.com/vinhnx/vtcode)
+- [Publishing Extensions](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)
+- [Open VSX Registry](https://open-vsx.org/)

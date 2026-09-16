@@ -1,10 +1,10 @@
+# vtcode-tools Policy Customization Guide (Historical)
+
 > **Deprecated:** The `vtcode-tools` crate has been deleted (2026-06-14).
 > All functionality has been merged into `vtcode-core`. The cache, middleware,
 > executor, patterns, optimizer, and adapter modules now live in
 > `vtcode_core::tools::*`. The examples below reference the old crate paths
 > and are kept for historical reference only.
-
-# vtcode-tools Policy Customization Guide (Historical)
 
 This guide originally described how to adopt the `vtcode-tools` crate for tool
 policy configuration. Since the crate has been deleted, use `vtcode-core`
@@ -35,5 +35,5 @@ let custom_manager = ToolPolicyManager::new_with_config_path(policy_path(&app_ro
 
 ## Next steps
 
-See `docs/project/crate-consolidation-plan.md` for the broader roadmap and remaining
-consolidation milestones.
+See `docs/project/crate-consolidation-plan.md` for the broader roadmap and
+remaining consolidation milestones.

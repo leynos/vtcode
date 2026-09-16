@@ -2,15 +2,17 @@
 
 ## Overview
 
-VT Code now supports Agent Communication Protocol (ACP) for inter-agent communication. This enables vtcode to act as an ACP client, discovering and communicating with other agents in a distributed system.
+VT Code now supports Agent Communication Protocol (ACP) for inter-agent
+communication. This enables vtcode to act as an ACP client, discovering and
+communicating with other agents in a distributed system.
 
 **Key Features:**
 
--   REST-based HTTP protocol (no special SDKs required)
--   Agent discovery (online and offline metadata)
--   Synchronous and asynchronous request handling
--   Health monitoring and agent registry management
--   Three MCP tools for main agent integration
+- REST-based HTTP protocol (no special SDKs required)
+- Agent discovery (online and offline metadata)
+- Synchronous and asynchronous request handling
+- Health monitoring and agent registry management
+- Three MCP tools for main agent integration
 
 ## Architecture
 
@@ -78,7 +80,8 @@ The ACP client library is located in `vtcode-acp/` and provides:
 
 ### Agent Tool Integration
 
-Three MCP tools expose ACP functionality to the main agent (now in `vtcode-core`):
+Three MCP tools expose ACP functionality to the main agent (now in
+`vtcode-core`):
 
 1. **`acp_call`** - Inter-agent RPC calls
 
@@ -227,7 +230,9 @@ async fn main() -> anyhow::Result<()> {
 
 ### Via MCP Tools (Recommended)
 
-The main agent simply uses the three MCP tools (`acp_call`, `acp_discover`, `acp_health`) when calling remote agents. The ACP client is initialized automatically during agent startup.
+The main agent simply uses the three MCP tools (`acp_call`, `acp_discover`,
+`acp_health`) when calling remote agents. The ACP client is initialized
+automatically during agent startup.
 
 ## Message Protocol
 
@@ -373,29 +378,29 @@ capabilities = ["tensorflow", "pytorch"]
 
 ### Synchronous Calls
 
--   Blocks main agent until response received
--   Best for short-running tasks (<5 seconds)
--   Recommended for control flow decisions
+- Blocks main agent until response received
+- Best for short-running tasks (<5 seconds)
+- Recommended for control flow decisions
 
 ### Asynchronous Calls
 
--   Returns immediately with `message_id`
--   Main agent continues processing
--   Best for long-running tasks (>5 seconds)
--   Main agent must poll or subscribe for updates
+- Returns immediately with `message_id`
+- Main agent continues processing
+- Best for long-running tasks (>5 seconds)
+- Main agent must poll or subscribe for updates
 
 ### Timeout Handling
 
--   Default timeout: 30 seconds
--   Configurable per request
--   Async calls may timeout gracefully
+- Default timeout: 30 seconds
+- Configurable per request
+- Async calls may timeout gracefully
 
 ### Registry Caching
 
--   Agent registry is in-memory
--   Agents stay registered until explicitly unregistered
--   Status updates via `update_status()` method
--   Health check marks agents online/offline
+- Agent registry is in-memory
+- Agents stay registered until explicitly unregistered
+- Status updates via `update_status()` method
+- Health check marks agents online/offline
 
 ## Error Handling
 
@@ -426,17 +431,17 @@ AcpError::SerializationError("Invalid JSON".to_string())
 
 Planned enhancements:
 
--   [ ] Agent authentication (JWT/mutual TLS)
--   [ ] Message encryption
--   [ ] Decentralized agent discovery
--   [ ] Agent service mesh integration
--   [ ] Distributed tracing with OpenTelemetry
--   [ ] Agent metrics collection
--   [ ] Message queuing for resilience
--   [ ] Retry policies and circuit breakers
+- [ ] Agent authentication (JWT/mutual TLS)
+- [ ] Message encryption
+- [ ] Decentralized agent discovery
+- [ ] Agent service mesh integration
+- [ ] Distributed tracing with OpenTelemetry
+- [ ] Agent metrics collection
+- [ ] Message queuing for resilience
+- [ ] Retry policies and circuit breakers
 
 ## See Also
 
--   [ACP Official Spec](https://agentcommunicationprotocol.dev/)
--   [MCP Integration Guide](../guides/mcp-integration.md)
--   [vtcode Configuration](../config/config.md)
+- [ACP Official Spec](https://agentcommunicationprotocol.dev/)
+- [MCP Integration Guide](../guides/mcp-integration.md)
+- [vtcode Configuration](../config/config.md)

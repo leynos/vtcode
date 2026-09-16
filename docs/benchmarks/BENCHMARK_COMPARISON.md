@@ -14,22 +14,25 @@
 
 ### Overview Table
 
-| Benchmark | Tasks | Avg Tokens/Task | What It Tests | Best For | Cost (Free Tier) |
-|-----------|-------|-----------------|---------------|----------|------------------|
-| **HumanEval** | 164 | 300-500 | Code generation | Quick validation, industry standard | $0.00 |
-| **MBPP** | 974 | 250-400 | Basic programming | Python fundamentals, larger dataset | $0.00 |
-| **SWE-bench** | 2,294 | 1,500-2,500 | Bug fixing | Real-world scenarios, production readiness | $0.00 |
+| Benchmark     | Tasks | Avg Tokens/Task | What It Tests     | Best For                                   | Cost (Free Tier) |
+| ------------- | ----- | --------------- | ----------------- | ------------------------------------------ | ---------------- |
+| **HumanEval** | 164   | 300-500         | Code generation   | Quick validation, industry standard        | $0.00            |
+| **MBPP**      | 974   | 250-400         | Basic programming | Python fundamentals, larger dataset        | $0.00            |
+| **SWE-bench** | 2,294 | 1,500-2,500     | Bug fixing        | Real-world scenarios, production readiness | $0.00            |
 
 ## HumanEval
 
 ### What It Tests
+
 - **Code generation from scratch**
 - Function implementation from docstrings
 - Algorithm correctness
 - Edge case handling
 
 ### Characteristics
+
   **Strengths:**
+
 - Industry standard benchmark
 - Well-established baseline scores
 - Fast to run (~2-3 minutes for 164 tasks)
@@ -38,6 +41,7 @@
 - Clean, focused problems
 
  **Limitations:**
+
 - Only 164 tasks (smaller dataset)
 - Synthetic problems (not real-world code)
 - Python only
@@ -45,6 +49,7 @@
 - Tests isolated functions, not systems
 
 ### Example Task
+
 ```python
 def has_close_elements(numbers: List[float], threshold: float) -> bool:
     """ Check if in given list of numbers, are any two numbers closer to each other than
@@ -57,7 +62,9 @@ def has_close_elements(numbers: List[float], threshold: float) -> bool:
 ```
 
 ### When to Use HumanEval
+
   **Use for:**
+
 - Quick model validation
 - Comparing with published benchmarks
 - Testing code generation capabilities
@@ -71,6 +78,7 @@ def has_close_elements(numbers: List[float], threshold: float) -> bool:
 - Production readiness assessment
 
 ### Typical Results
+
 - **Frontier models:** 85-96%
 - **High-performance:** 75-85%
 - **Mid-range:** 60-75%
@@ -78,11 +86,12 @@ def has_close_elements(numbers: List[float], threshold: float) -> bool:
 
 **VT Code:** 61.6% (mid-range)
 
----
+______________________________________________________________________
 
 ## MBPP (Mostly Basic Python Problems)
 
 ### What It Tests
+
 - **Basic Python programming**
 - String manipulation
 - List operations
@@ -90,7 +99,9 @@ def has_close_elements(numbers: List[float], threshold: float) -> bool:
 - Data structure usage
 
 ### Characteristics
+
   **Strengths:**
+
 - Larger dataset (974 tasks)
 - More diverse problems
 - Tests fundamental programming skills
@@ -99,6 +110,7 @@ def has_close_elements(numbers: List[float], threshold: float) -> bool:
 - Multiple test cases per problem
 
  **Limitations:**
+
 - Simpler than HumanEval
 - Still synthetic problems
 - Python only
@@ -106,13 +118,16 @@ def has_close_elements(numbers: List[float], threshold: float) -> bool:
 - Fewer published baseline scores
 
 ### Example Task
+
 ```
 Write a function to find the similar elements from the given two tuple lists.
 assert similar_elements((3, 4, 5, 6),(5, 7, 4, 10)) == (4, 5)
 ```
 
 ### When to Use MBPP
+
   **Use for:**
+
 - Testing basic programming competency
 - Educational assessments
 - Larger sample size for statistical significance
@@ -126,6 +141,7 @@ assert similar_elements((3, 4, 5, 6),(5, 7, 4, 10)) == (4, 5)
 - Industry comparisons (less common)
 
 ### Typical Results
+
 - Generally **5-10% higher** than HumanEval (easier problems)
 - **Frontier models:** 90-98%
 - **High-performance:** 80-90%
@@ -133,11 +149,12 @@ assert similar_elements((3, 4, 5, 6),(5, 7, 4, 10)) == (4, 5)
 
 **VT Code:** Not yet benchmarked (estimated ~68-72%)
 
----
+______________________________________________________________________
 
 ## SWE-bench (Software Engineering Benchmark)
 
 ### What It Tests
+
 - **Real-world bug fixing**
 - Code understanding in large codebases
 - Debugging skills
@@ -145,7 +162,9 @@ assert similar_elements((3, 4, 5, 6),(5, 7, 4, 10)) == (4, 5)
 - Context comprehension
 
 ### Characteristics
+
   **Strengths:**
+
 - Real-world problems from GitHub
 - Tests code understanding, not just generation
 - Large, realistic codebases
@@ -155,6 +174,7 @@ assert similar_elements((3, 4, 5, 6),(5, 7, 4, 10)) == (4, 5)
 - Includes full repository context
 
  **Limitations:**
+
 - Very expensive with paid models ($20-400 for full dataset)
 - Slow to run (hours for full dataset)
 - Complex evaluation (requires running tests)
@@ -163,6 +183,7 @@ assert similar_elements((3, 4, 5, 6),(5, 7, 4, 10)) == (4, 5)
 - Requires more context tokens
 
 ### Example Task
+
 ```
 Repository: django/django
 Issue: QuerySet.dates() crashes when used with DateTimeField
@@ -172,7 +193,9 @@ Task: Generate a unified diff to fix the bug
 ```
 
 ### When to Use SWE-bench
+
   **Use for:**
+
 - Testing real-world capabilities
 - Evaluating production readiness
 - Bug fixing assessment
@@ -186,6 +209,7 @@ Task: Generate a unified diff to fix the bug
 - Educational assessment
 
 ### Typical Results
+
 - **Much lower** than HumanEval (harder problems)
 - **Frontier models:** 30-50%
 - **High-performance:** 20-35%
@@ -194,7 +218,7 @@ Task: Generate a unified diff to fix the bug
 
 **VT Code:** Not yet benchmarked (estimated ~12-18%)
 
----
+______________________________________________________________________
 
 ## Benchmark Comparison Matrix
 
@@ -209,31 +233,33 @@ MBPP          HumanEval          SWE-bench
 
 ### What They Measure
 
-| Aspect | HumanEval | MBPP | SWE-bench |
-|--------|-----------|------|-----------|
-| **Code Generation** |  |  |  |
-| **Code Understanding** |  |  |  |
-| **Bug Fixing** |  |  |  |
-| **Real-world Relevance** |  |  |  |
-| **Algorithm Skills** |  |  |  |
-| **Production Readiness** |  |  |  |
+| Aspect                   | HumanEval | MBPP | SWE-bench |
+| ------------------------ | --------- | ---- | --------- |
+| **Code Generation**      |           |      |           |
+| **Code Understanding**   |           |      |           |
+| **Bug Fixing**           |           |      |           |
+| **Real-world Relevance** |           |      |           |
+| **Algorithm Skills**     |           |      |           |
+| **Production Readiness** |           |      |           |
 
 ### Practical Considerations
 
-| Factor | HumanEval | MBPP | SWE-bench |
-|--------|-----------|------|-----------|
-| **Runtime** | 2-3 min | 5-10 min | 30-120 min |
-| **Cost (free tier)** | $0.00 | $0.00 | $0.00 |
-| **Cost (GPT-5-mini)** | $0.50-0.80 | $0.15-0.25 | $19-44 |
-| **Dataset Size** | 164 | 974 | 2,294 |
-| **Industry Adoption** |  |  |  |
-| **Ease of Setup** |  |  |  |
-| **Result Interpretation** |  |  |  |
+| Factor                    | HumanEval  | MBPP       | SWE-bench  |
+| ------------------------- | ---------- | ---------- | ---------- |
+| **Runtime**               | 2-3 min    | 5-10 min   | 30-120 min |
+| **Cost (free tier)**      | $0.00      | $0.00      | $0.00      |
+| **Cost (GPT-5-mini)**     | $0.50-0.80 | $0.15-0.25 | $19-44     |
+| **Dataset Size**          | 164        | 974        | 2,294      |
+| **Industry Adoption**     |            |            |            |
+| **Ease of Setup**         |            |            |            |
+| **Result Interpretation** |            |            |            |
 
 ## Recommendations by Use Case
 
 ### 1. Quick Model Validation
+
 **Best Choice:** HumanEval
+
 - Fast (2-3 minutes)
 - Industry standard
 - Easy to compare
@@ -244,7 +270,9 @@ make bench-humaneval PROVIDER=gemini MODEL='gemini-3-flash-preview'
 ```
 
 ### 2. Comprehensive Evaluation
+
 **Best Choice:** All Three
+
 - HumanEval for code generation
 - MBPP for fundamentals
 - SWE-bench Lite for real-world skills
@@ -257,28 +285,36 @@ python3 scripts/bench_swe_lite_dry.py N_SWE=25
 ```
 
 ### 3. Educational Assessment
+
 **Best Choice:** MBPP
+
 - Tests fundamental skills
 - Larger dataset
 - Covers common patterns
 - Good for learning
 
 ### 4. Production Readiness
+
 **Best Choice:** SWE-bench
+
 - Real-world scenarios
 - Tests bug fixing
 - Evaluates code understanding
 - Most realistic
 
 ### 5. Research Paper
+
 **Best Choice:** All Three + Multiple Models
+
 - Comprehensive coverage
 - Industry-standard comparisons
 - Statistical significance
 - Multiple dimensions
 
 ### 6. Daily Development
+
 **Best Choice:** HumanEval
+
 - Fast feedback
 - Free with VT Code
 - Good enough signal
@@ -287,16 +323,19 @@ python3 scripts/bench_swe_lite_dry.py N_SWE=25
 ## Correlation Between Benchmarks
 
 **General Pattern:**
+
 ```
 MBPP Score ≈ HumanEval Score + 5-10%
 SWE-bench Score ≈ HumanEval Score × 0.2-0.3
 ```
 
 **Example:**
+
 - HumanEval: 70% → MBPP: ~75-80%, SWE-bench: ~14-21%
 - HumanEval: 85% → MBPP: ~90-95%, SWE-bench: ~17-26%
 
 **VT Code (61.6% HumanEval):**
+
 - Estimated MBPP: ~68-72%
 - Estimated SWE-bench: ~12-18%
 
@@ -305,21 +344,24 @@ SWE-bench Score ≈ HumanEval Score × 0.2-0.3
 ### For VT Code Users
 
 **Start with HumanEval:**
-1.   Fast and free
-2.   Industry standard
-3.   Easy to interpret
-4.   Good signal for code generation
+
+1. Fast and free
+2. Industry standard
+3. Easy to interpret
+4. Good signal for code generation
 
 **Add MBPP for confidence:**
-1.   Larger sample size
-2.   Tests fundamentals
-3.   Still fast and free
+
+1. Larger sample size
+2. Tests fundamentals
+3. Still fast and free
 
 **Use SWE-bench for production:**
-1.  Only if targeting production use
-2.  More expensive with paid models
-3.  Slower to run
-4.   Most realistic evaluation
+
+1. Only if targeting production use
+2. More expensive with paid models
+3. Slower to run
+4. Most realistic evaluation
 
 ### Recommended Workflow
 
@@ -348,6 +390,7 @@ python3 scripts/bench_swe_lite_dry.py N_SWE=100
 - **SWE-bench** = Real-world, bug fixing, production readiness
 
 **For most users, start with HumanEval** because it's:
+
 - Fast (2-3 minutes)
 - Free (with VT Code)
 - Industry standard
@@ -355,10 +398,11 @@ python3 scripts/bench_swe_lite_dry.py N_SWE=100
 - Good signal for code generation capabilities
 
 **Then add others based on your needs:**
+
 - Add MBPP for more confidence
 - Add SWE-bench for production validation
 
----
+______________________________________________________________________
 
 **Last Updated:** October 22, 2025  
 **VT Code Version:** 0.133.21

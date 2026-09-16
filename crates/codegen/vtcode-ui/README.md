@@ -7,8 +7,10 @@ Unified UI crate for VT Code: design system, theme registry, and TUI framework.
 This crate consolidates the UI layer for VT Code, providing:
 
 - **Design system** -- shared color tokens, typography, and spacing primitives
-- **Theme registry** -- runtime theme switching with built-in palettes (Catppuccin, custom)
-- **TUI framework** -- terminal rendering, input handling, and widget primitives built on [Ratatui](https://ratatui.rs)
+- **Theme registry** -- runtime theme switching with built-in palettes
+  (Catppuccin, custom)
+- **TUI framework** -- terminal rendering, input handling, and widget
+  primitives built on [Ratatui](https://ratatui.rs)
 
 <!-- cargo-rdme start -->
 
@@ -21,8 +23,8 @@ Unified UI crate for VT Code: design system, theme registry, and TUI framework.
 - `tui`   — Full TUI framework (session, widgets, runner, markdown, etc.)
 
 Items from `design` and `theme` are also re-exported at the crate root for
-backward-compatibility with callers that previously imported from the
-standalone `vtcode-design` / `vtcode-theme` crates (now consolidated into `vtcode-ui`).
+backward-compatibility with callers that previously imported from the standalone
+`vtcode-design` / `vtcode-theme` crates (now consolidated into `vtcode-ui`).
 
 <!-- cargo-rdme end -->
 

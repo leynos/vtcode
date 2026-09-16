@@ -1,8 +1,8 @@
 # Atlas Cloud Integration Guide
 
-Atlas Cloud exposes an OpenAI-compatible chat API, so VT Code can use it through
-the existing `[[custom_providers]]` support without adding a dedicated runtime
-provider.
+Atlas Cloud exposes an OpenAI-compatible chat API, so VT Code can use it
+through the existing `[[custom_providers]]` support without adding a dedicated
+runtime provider.
 
 ## Prerequisites
 
@@ -74,10 +74,11 @@ vtcode ask "Summarize this repository"
 
 - Atlas Cloud hosts 300+ models spanning LLM, image, video, audio, and 3D.
   The validated chat pool used in our rollout contains 50 cross-provider model
-  IDs that have already been smoke-tested through Atlas Cloud's OpenAI-compatible
-  route.
+  IDs that have already been smoke-tested through Atlas Cloud's
+  OpenAI-compatible route.
 - The recommended default is `deepseek-ai/deepseek-v4-flash`, because it is a
-  fast and stable model slug that is already verified across multiple Atlas integrations.
+  fast and stable model slug that is already verified across multiple Atlas
+  integrations.
 - Use the `models` field in `[[custom_providers]]` to populate the model picker
   with the exact slugs you have access to. Run `GET /v1/models` against your
   API key to see your full catalog.
@@ -89,16 +90,30 @@ vtcode ask "Summarize this repository"
 The following examples mirror the validated Atlas chat pool used across recent
 Atlas provider rollouts:
 
-- `deepseek-ai/DeepSeek-V3-0324`, `deepseek-ai/deepseek-r1-0528`, `moonshotai/Kimi-K2-Instruct`, `Qwen/Qwen3-Coder`, `Qwen/Qwen3-235B-A22B-Instruct-2507`
-- `deepseek-ai/DeepSeek-V3.1`, `moonshotai/kimi-k2.7-code`, `moonshotai/Kimi-K2-Instruct-0905`, `Qwen/Qwen3-Next-80B-A3B-Instruct`, `Qwen/Qwen3-Next-80B-A3B-Thinking`, `Qwen/Qwen3-30B-A3B-Instruct-2507`
-- `deepseek-ai/DeepSeek-V3.1-Terminus`, `deepseek-ai/DeepSeek-V3.2-Exp`, `zai-org/GLM-4.6`, `zai-org/glm-5.2`, `MiniMaxAI/MiniMax-M2`, `minimaxai/minimax-m3`, `Qwen/Qwen3-VL-235B-A22B-Instruct`
-- `moonshotai/Kimi-K2-Thinking`, `google/gemini-2.5-flash`, `google/gemini-2.5-flash-lite`, `openai/gpt-5.1`, `openai/gpt-5.1-chat`
-- `openai/gpt-4o`, `openai/gpt-4o-mini`, `openai/gpt-4.1`, `openai/gpt-4.1-mini`, `openai/gpt-4.1-nano`
-- `openai/o1`, `openai/o3`, `openai/o3-mini`, `openai/o4-mini`, `anthropic/claude-sonnet-4.5-20250929`
-- `deepseek-ai/deepseek-v3.2`, `openai/gpt-5`, `openai/gpt-5-chat`, `openai/gpt-5-mini`, `openai/gpt-5-nano`
-- `openai/gpt-5.2`, `openai/gpt-5.2-chat`, `google/gemini-2.5-pro`, `anthropic/claude-opus-4.5-20251101`, `google/gemini-3-flash-preview`
-- `zai-org/glm-4.7`, `minimaxai/minimax-m2.1`, `google/gemini-2.0-flash`, `qwen/qwen3-8b`, `qwen/qwen3-235b-a22b-thinking-2507`
-- `qwen/qwen3-vl-235b-a22b-thinking`, `qwen/qwen3-30b-a3b`, `qwen/qwen3-30b-a3b-thinking-2507`, `deepseek-ai/deepseek-ocr`, `xai/grok-4-0709`
+- `deepseek-ai/DeepSeek-V3-0324`, `deepseek-ai/deepseek-r1-0528`,
+  `moonshotai/Kimi-K2-Instruct`, `Qwen/Qwen3-Coder`,
+  `Qwen/Qwen3-235B-A22B-Instruct-2507`
+- `deepseek-ai/DeepSeek-V3.1`, `moonshotai/kimi-k2.7-code`,
+  `moonshotai/Kimi-K2-Instruct-0905`, `Qwen/Qwen3-Next-80B-A3B-Instruct`,
+  `Qwen/Qwen3-Next-80B-A3B-Thinking`, `Qwen/Qwen3-30B-A3B-Instruct-2507`
+- `deepseek-ai/DeepSeek-V3.1-Terminus`, `deepseek-ai/DeepSeek-V3.2-Exp`,
+  `zai-org/GLM-4.6`, `zai-org/glm-5.2`, `MiniMaxAI/MiniMax-M2`,
+  `minimaxai/minimax-m3`, `Qwen/Qwen3-VL-235B-A22B-Instruct`
+- `moonshotai/Kimi-K2-Thinking`, `google/gemini-2.5-flash`,
+  `google/gemini-2.5-flash-lite`, `openai/gpt-5.1`, `openai/gpt-5.1-chat`
+- `openai/gpt-4o`, `openai/gpt-4o-mini`, `openai/gpt-4.1`,
+  `openai/gpt-4.1-mini`, `openai/gpt-4.1-nano`
+- `openai/o1`, `openai/o3`, `openai/o3-mini`, `openai/o4-mini`,
+  `anthropic/claude-sonnet-4.5-20250929`
+- `deepseek-ai/deepseek-v3.2`, `openai/gpt-5`, `openai/gpt-5-chat`,
+  `openai/gpt-5-mini`, `openai/gpt-5-nano`
+- `openai/gpt-5.2`, `openai/gpt-5.2-chat`, `google/gemini-2.5-pro`,
+  `anthropic/claude-opus-4.5-20251101`, `google/gemini-3-flash-preview`
+- `zai-org/glm-4.7`, `minimaxai/minimax-m2.1`, `google/gemini-2.0-flash`,
+  `qwen/qwen3-8b`, `qwen/qwen3-235b-a22b-thinking-2507`
+- `qwen/qwen3-vl-235b-a22b-thinking`, `qwen/qwen3-30b-a3b`,
+  `qwen/qwen3-30b-a3b-thinking-2507`, `deepseek-ai/deepseek-ocr`,
+  `xai/grok-4-0709`
 
 ## CLI Examples
 
@@ -116,12 +131,12 @@ vtcode ask --model moonshotai/kimi-k2.6 "Review this patch at a high level"
 
 ## Troubleshooting
 
-| Symptom | Resolution |
-| --- | --- |
-| `Unknown provider: atlascloud` | Use a VT Code build that includes custom provider registration in CLI flows. |
+| Symptom                                              | Resolution                                                                                                                  |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `Unknown provider: atlascloud`                       | Use a VT Code build that includes custom provider registration in CLI flows.                                                |
 | `API key not found for custom provider 'atlascloud'` | Run `vtcode secret add atlascloud` to store a key in your OS keyring, or set the `ATLASCLOUD_API_KEY` environment variable. |
-| `403` from chat completions | Verify the model slug against `GET /v1/models` and confirm the Atlas account can access chat generation. |
-| Model not found | Replace the sample model with the exact model ID returned by Atlas Cloud for your account. |
+| `403` from chat completions                          | Verify the model slug against `GET /v1/models` and confirm the Atlas account can access chat generation.                    |
+| Model not found                                      | Replace the sample model with the exact model ID returned by Atlas Cloud for your account.                                  |
 
 ## References
 

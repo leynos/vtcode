@@ -1,29 +1,109 @@
 # vtcode-config
-[Root AGENTS.md](../AGENTS.md) | Config loading, schema, constants. `vtcode.toml` is the source of truth.
+
+[Root AGENTS.md](../AGENTS.md) | Config loading, schema, constants.
+`vtcode.toml` is the source of truth.
 
 ## Modules
 
-`loader/` ConfigManager + ConfigBuilder + layers | `constants/` models, env vars, URLs, tools, and shared tool limits | `core/` AgentConfig + all nested config structs | `models/` ModelId + Provider enums | `types/` ReasoningEffortLevel and related enums | `schema/` JSON Schema export (feature-gated) | `defaults/` ConfigDefaultsProvider | `auth/` auth config re-exports | `api_keys.rs` facade + `api_keys/credential_resolution.rs` source precedence | `mcp/` MCP config | `webmcp.rs` opt-in browser and remote MCP config | `acp/` ACP config | `hooks/` lifecycle hooks | `subagents/` subagent discovery | `core/network_allowlist.rs` | `core/provider_override.rs`
+`loader/` ConfigManager + ConfigBuilder + layers | `constants/` models, env
+vars, URLs, tools, and shared tool limits | `core/` AgentConfig + all nested
+config structs | `models/` ModelId + Provider enums | `types/`
+ReasoningEffortLevel and related enums | `schema/` JSON Schema export
+(feature-gated) | `defaults/` ConfigDefaultsProvider | `auth/` auth config
+re-exports | `api_keys.rs` facade + `api_keys/credential_resolution.rs` source
+precedence | `mcp/` MCP config | `webmcp.rs` opt-in browser and remote MCP
+config | `acp/` ACP config | `hooks/` lifecycle hooks | `subagents/` subagent
+discovery | `core/network_allowlist.rs` | `core/provider_override.rs`
 
 ## Rules
 
-- `ModelId` enum is the canonical model identifier — all model matching must go through it.
-- `constants/` is organized by domain: `models/`, `urls.rs`, `env_vars.rs`, `tools.rs`.
-- `ConfigLayerStack` handles layered config (defaults → file → env → CLI) — do not bypass.
-- `bootstrap` feature (default) scaffolds config dirs. Disable for parse-only consumers.
+- `ModelId` enum is the canonical model identifier — all model matching must go
+  through it.
+- `constants/` is organized by domain: `models/`, `urls.rs`, `env_vars.rs`,
+  `tools.rs`.
+- `ConfigLayerStack` handles layered config (defaults → file → env → CLI) — do
+  not bypass.
+- `bootstrap` feature (default) scaffolds config dirs. Disable for parse-only
+  consumers.
 - `schema` feature gates `vtcode_config_schema_json()` — used by `build.rs`.
-## Adding a Model — **OpenRouter** (code-generated): edit `ModelId`, `Provider::OpenRouter` match, and `docs/models.json`; the build script handles the rest. **Non-OpenRouter** (manual): add the constant, `ModelId` variant and match arms, defaults if needed, preset, optional resolver update, and `docs/models.json`; gateway providers may intentionally accept explicit catalog-missing route IDs. See `adding-llm-providers` skill for the checklist.
+
+## Adding a Model — **OpenRouter** (code-generated): edit `ModelId`, `Provider::OpenRouter` match, and `docs/models.json`; the build script handles the rest. **Non-OpenRouter** (manual): add the constant, `ModelId` variant and match arms, defaults if needed, preset, optional resolver update, and `docs/models.json`; gateway providers may intentionally accept explicit catalog-missing route IDs. See `adding-llm-providers` skill for the checklist
 
 ## Gotchas
 
-- `VTCodeConfig::load()` resolves layers — do not use `ConfigManager::load_from_workspace()` directly in production code. Global system paths are supplied low-to-high; `ConfigManager` snapshots the canonical write path during load and exposes loader component timings through `phase_timing()` for startup diagnostics. `ConfigManager::watched_config_paths()` is the complete live-reload polling set; reset/write callers must invalidate the workspace cache before reloading the stack.
-- `models/model_id/table.rs` (`model_id_table!`) is the single source for as_str/parse/display/description/provider per variant — add new models as one table row, never a new match arm in the wrapper files.
-- `parse.rs` keeps an order-sensitive hand-written preamble (opencode/evolink prefix routing, ZAI shadow guards, dated-haiku remap) before the table lookup — never move prefix rules into the table; NVIDIA's `z-ai/glm-5.2` picker variant intentionally has no bare parse entry because OpenRouter owns bare parsing.
-- Loop/harness config: `core/automation.rs` holds `LoopEngineConfig` (gated by `loop_engine_enabled()`, override `VTCODE_DISABLE_LOOP_ENGINE`) and `verify_mutations` on `FullAutoConfig` (**default off**); `AgentHarnessConfig.context_reset_mode` (`off`/`on_stall`/`on_compaction`) and `context_reset_stall_threshold` are distinct from compaction config. `event_log_path` is an explicit compatibility export; canonical events live in the workspace session store. Approved-plan execution's internal +50 loop allowance is a constant, not a config field.
-- `constants::tool_limits` is the source of truth: ordinary loops default to 40, the planning loop floor is 60, planning/approved-plan tool-call floors are 120, `0` remains unlimited, ordinary extensions cap at 120, and planning extensions cap at 240; `agent.max_conversation_turns` remains context retention only.
-- Token-efficiency defaults: `context.max_context_tokens` defaults to 160,000 and bounds automatic compaction below larger provider windows; `tool_result_clearing.enabled` defaults to `true` (old tool results stripped past `trigger_tokens`), `tools.client_tool_search` defaults to `true` (client-local deferral for providers without hosted tool search), and `agent.system_prompt_mode`/`tool_documentation_mode` stay `default`/`progressive`. When changing these, update `docs/config/CONFIG_FIELD_REFERENCE.md` and the guard-rail tests. `agent.ui_surface` defaults to `inline` so interactive plan/interview HITL overlays work without configuration; `auto` and `alternate` remain explicit overrides.
-- Use `api_keys::resolve_credential_with_mode` for provider/key resolution so environment, workspace `.env`, OAuth, secure storage, and legacy migration share one precedence path. Use `get_api_key_with_mode` only for legacy string-returning callers and `provider_credential_detail_with_mode` for discovery summaries. Compatibility wrappers use the platform default storage mode.
-- Custom provider profiles are exact model-ID overrides; keep `model`/`models` as the only allowlist and preserve explicit `false` capability values. Sampling fields (`temperature`, `top_p`, `top_k`, penalties, `max_tokens`, `reasoning_effort`) resolve profile > provider default; range validation lives in `CustomProviderProfileConfig::validate`.
-- Workspace/Project layers (workspace-root `vtcode.toml`, workspace `.vtcode/`) are repo-controlled: lifecycle hooks collected there land in the serde-skipped `VTCodeConfig.workspace_lifecycle_hooks` (built only by `ConfigManager::collect_workspace_lifecycle_hooks` at load) and gate the session's lifecycle engine behind per-workspace approval — never construct it outside load. UI presentation defaults and transcript-review controls belong under `ui`, and keybinding overrides stay in `ui.keybindings` so layered config remains authoritative.
-- Repository-controlled Workspace/Project layers cannot define non-empty `custom_providers` or override `provider_overrides.*.base_url`/`api_key_env`; origin checks run before provider validation and registration. Keep command-backed auth and endpoint/credential overrides in system, user, or explicitly selected config files, and use the repository-safe writer for any full-config persistence into those layers. Normal workspace startup and live reload remove only those protected fields from stale repository files written by older releases, then retry strict validation; malformed or symlinked files still fail closed, and explicit config files are never repaired.
-- Keep `ui.tool_display_mode` separate from `ui.tool_output_mode`; the former controls compact-vs-expanded per-call transition summaries, while the latter controls tool output rendering. `timeouts.long_running_command_ceiling_seconds` bounds explicit session waits; update config docs and field-reference tables with timeout changes. `webmcp` is separate from `mcp`, disabled by default, loopback-only, and explicit about origins and roots; remote MCP URLs must be HTTPS when enabled, and its proxy token field stores only an environment-variable name.
+- `VTCodeConfig::load()` resolves layers — do not use
+  `ConfigManager::load_from_workspace()` directly in production code. Global
+  system paths are supplied low-to-high; `ConfigManager` snapshots the
+  canonical write path during load and exposes loader component timings through
+  `phase_timing()` for startup diagnostics.
+  `ConfigManager::watched_config_paths()` is the complete live-reload polling
+  set; reset/write callers must invalidate the workspace cache before reloading
+  the stack.
+- `models/model_id/table.rs` (`model_id_table!`) is the single source for
+  as_str/parse/display/description/provider per variant — add new models as one
+  table row, never a new match arm in the wrapper files.
+- `parse.rs` keeps an order-sensitive hand-written preamble (opencode/evolink
+  prefix routing, ZAI shadow guards, dated-haiku remap) before the table lookup
+  — never move prefix rules into the table; NVIDIA's `z-ai/glm-5.2` picker
+  variant intentionally has no bare parse entry because OpenRouter owns bare
+  parsing.
+- Loop/harness config: `core/automation.rs` holds `LoopEngineConfig` (gated by
+  `loop_engine_enabled()`, override `VTCODE_DISABLE_LOOP_ENGINE`) and
+  `verify_mutations` on `FullAutoConfig` (**default off**);
+  `AgentHarnessConfig.context_reset_mode` (`off`/`on_stall`/`on_compaction`) and
+  `context_reset_stall_threshold` are distinct from compaction config.
+  `event_log_path` is an explicit compatibility export; canonical events live
+  in the workspace session store. Approved-plan execution's internal +50 loop
+  allowance is a constant, not a config field.
+- `constants::tool_limits` is the source of truth: ordinary loops default to
+  40, the planning loop floor is 60, planning/approved-plan tool-call floors
+  are 120, `0` remains unlimited, ordinary extensions cap at 120, and planning
+  extensions cap at 240; `agent.max_conversation_turns` remains context
+  retention only.
+- Token-efficiency defaults: `context.max_context_tokens` defaults to 160,000
+  and bounds automatic compaction below larger provider windows;
+  `tool_result_clearing.enabled` defaults to `true` (old tool results stripped
+  past `trigger_tokens`), `tools.client_tool_search` defaults to `true`
+  (client-local deferral for providers without hosted tool search), and
+  `agent.system_prompt_mode`/`tool_documentation_mode` stay `default`/
+  `progressive`. When changing these, update
+  `docs/config/CONFIG_FIELD_REFERENCE.md` and the guard-rail tests.
+  `agent.ui_surface` defaults to `inline` so interactive plan/interview HITL
+  overlays work without configuration; `auto` and `alternate` remain explicit
+  overrides.
+- Use `api_keys::resolve_credential_with_mode` for provider/key resolution so
+  environment, workspace `.env`, OAuth, secure storage, and legacy migration
+  share one precedence path. Use `get_api_key_with_mode` only for legacy
+  string-returning callers and `provider_credential_detail_with_mode` for
+  discovery summaries. Compatibility wrappers use the platform default storage
+  mode.
+- Custom provider profiles are exact model-ID overrides; keep `model`/`models`
+  as the only allowlist and preserve explicit `false` capability values.
+  Sampling fields (`temperature`, `top_p`, `top_k`, penalties, `max_tokens`,
+  `reasoning_effort`) resolve profile > provider default; range validation
+  lives in `CustomProviderProfileConfig::validate`.
+- Workspace/Project layers (workspace-root `vtcode.toml`, workspace `.vtcode/`)
+  are repo-controlled: lifecycle hooks collected there land in the serde-skipped
+  `VTCodeConfig.workspace_lifecycle_hooks` (built only by
+  `ConfigManager::collect_workspace_lifecycle_hooks` at load) and gate the
+  session's lifecycle engine behind per-workspace approval — never construct it
+  outside load. UI presentation defaults and transcript-review controls belong
+  under `ui`, and keybinding overrides stay in `ui.keybindings` so layered
+  config remains authoritative.
+- Repository-controlled Workspace/Project layers cannot define non-empty
+  `custom_providers` or override `provider_overrides.*.base_url`/`api_key_env`;
+  origin checks run before provider validation and registration. Keep
+  command-backed auth and endpoint/credential overrides in system, user, or
+  explicitly selected config files, and use the repository-safe writer for any
+  full-config persistence into those layers. Normal workspace startup and live
+  reload remove only those protected fields from stale repository files written
+  by older releases, then retry strict validation; malformed or symlinked files
+  still fail closed, and explicit config files are never repaired.
+- Keep `ui.tool_display_mode` separate from `ui.tool_output_mode`; the former
+  controls compact-vs-expanded per-call transition summaries, while the latter
+  controls tool output rendering.
+  `timeouts.long_running_command_ceiling_seconds` bounds explicit session
+  waits; update config docs and field-reference tables with timeout changes.
+  `webmcp` is separate from `mcp`, disabled by default, loopback-only, and
+  explicit about origins and roots; remote MCP URLs must be HTTPS when enabled,
+  and its proxy token field stores only an environment-variable name.

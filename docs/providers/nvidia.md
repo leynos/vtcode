@@ -1,10 +1,12 @@
 # NVIDIA NIM Provider Guide
 
-VT Code supports NVIDIA NIM through NVIDIA's OpenAI-compatible Chat Completions endpoint.
+VT Code supports NVIDIA NIM through NVIDIA's OpenAI-compatible Chat Completions
+endpoint.
 
 ## Setup
 
-Set an API key from the [NVIDIA Build platform](https://build.nvidia.com/) and select the provider:
+Set an API key from the [NVIDIA Build platform](https://build.nvidia.com/) and
+select the provider:
 
 ```bash
 export NVIDIA_API_KEY="nvapi-..."
@@ -26,12 +28,12 @@ default_model = "nvidia/nemotron-3-ultra-550b-a55b"
 
 These models appear in the NVIDIA section of the `/model` picker:
 
-| Model | Context | Notes |
-| --- | ---: | --- |
-| `nvidia/nemotron-3-ultra-550b-a55b` | 1,000,000 | Default flagship agentic model |
-| `nvidia/nemotron-3-super-120b-a12b` | 1,000,000 | Efficient long-context reasoning |
-| `nvidia/nemotron-3-nano-30b-a3b` | 1,000,000 | Lower-cost reasoning and tool use |
-| `z-ai/glm-5.2` | 1,000,000 | GLM-5.2 served by NVIDIA NIM |
+| Model                                | Context   | Notes                                  |
+| ------------------------------------ | --------: | -------------------------------------- |
+| `nvidia/nemotron-3-ultra-550b-a55b`  | 1,000,000 | Default flagship agentic model         |
+| `nvidia/nemotron-3-super-120b-a12b`  | 1,000,000 | Efficient long-context reasoning       |
+| `nvidia/nemotron-3-nano-30b-a3b`     | 1,000,000 | Lower-cost reasoning and tool use      |
+| `z-ai/glm-5.2`                       | 1,000,000 | GLM-5.2 served by NVIDIA NIM           |
 | `deepseek-ai/deepseek-v4-flash-0731` | 1,000,000 | DeepSeek V4 Flash served by NVIDIA NIM |
 
 NVIDIA's catalog is larger than this curated list. An explicitly configured

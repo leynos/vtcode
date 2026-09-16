@@ -2,15 +2,17 @@
 
 ## Overview
 
-ANSI escape sequences (color codes, text styling) in tool command output are automatically stripped to prevent rendering issues in the terminal UI. This feature is **enabled by default**.
+ANSI escape sequences (color codes, text styling) in tool command output are
+automatically stripped to prevent rendering issues in the terminal UI. This
+feature is **enabled by default**.
 
 ## Configuration
 
 ### Default Behavior
 
--   **Status**: Enabled
--   **Config Option**: `ui.allow_tool_ansi`
--   **Default Value**: `false` (ANSI codes are stripped)
+- **Status**: Enabled
+- **Config Option**: `ui.allow_tool_ansi`
+- **Default Value**: `false` (ANSI codes are stripped)
 
 ### How to Configure
 
@@ -31,24 +33,24 @@ When `allow_tool_ansi = false`, the following ANSI sequences are removed:
 
 ### CSI (Control Sequence Introducer)
 
--   Format: `ESC [ ... letter`
--   Examples: `\x1b[31m` (red), `\x1b[1;33m` (bold yellow), `\x1b[0m` (reset)
--   Used by: `cargo check`, `git`, `grep`, `ls`, most CLI tools
+- Format: `ESC [ ... letter`
+- Examples: `\x1b[31m` (red), `\x1b[1;33m` (bold yellow), `\x1b[0m` (reset)
+- Used by: `cargo check`, `git`, `grep`, `ls`, most CLI tools
 
 ### OSC (Operating System Command)
 
--   Format: `ESC ] ... ST` (where ST = ESC \ or BEL)
--   Examples: Hyperlinks, terminal title changes
+- Format: `ESC ] ... ST` (where ST = ESC \ or BEL)
+- Examples: Hyperlinks, terminal title changes
 
 ### Character Set Designations
 
--   Format: `ESC ( X`, `ESC ) X`, etc.
--   Used by: Legacy terminals for font selection
+- Format: `ESC ( X`, `ESC ) X`, etc.
+- Used by: Legacy terminals for font selection
 
 ### Single Character Sequences
 
--   Format: `ESC X`
--   Examples: Cursor save/restore, reset, VT52 mode
+- Format: `ESC X`
+- Examples: Cursor save/restore, reset, VT52 mode
 
 ## Examples
 
@@ -74,11 +76,11 @@ warning: function check_prompt_reference_trigger is never used
 
 ANSI stripping applies to:
 
--   `run_pty_cmd` - PTY terminal commands (cargo check, cargo build, etc.)
--   `read_pty_session` - Reading PTY session output
--   `list_pty_sessions` - PTY session management
--   `send_pty_input` - PTY input handling
--   All tools that output through PTY sessions
+- `run_pty_cmd` - PTY terminal commands (cargo check, cargo build, etc.)
+- `read_pty_session` - Reading PTY session output
+- `list_pty_sessions` - PTY session management
+- `send_pty_input` - PTY input handling
+- All tools that output through PTY sessions
 
 ## Implementation Details
 
@@ -95,16 +97,17 @@ The `strip_ansi_codes()` function:
 
 ### Performance
 
--   **Fast path**: If no `\x1b` found, returns borrowed input (zero-copy)
--   **Slow path**: If ANSI codes present, allocates new string with codes removed
+- **Fast path**: If no `\x1b` found, returns borrowed input (zero-copy)
+- **Slow path**: If ANSI codes present, allocates new string with codes
+    removed
 
 ### Token Budget
 
 After ANSI stripping, tool output is subject to token-based truncation:
 
--   Applies when rendering to LLM context
--   Controlled by `context.model_input_token_budget` (default: 25000 tokens)
--   Uses head+tail strategy to preserve important output sections
+- Applies when rendering to LLM context
+- Controlled by `context.model_input_token_budget` (default: 25000 tokens)
+- Uses head+tail strategy to preserve important output sections
 
 ## Troubleshooting
 
@@ -128,6 +131,7 @@ If colors are still visible despite `allow_tool_ansi = false`:
     ```
 
 3. Rebuild vtcode to ensure latest version:
+
     ```bash
     cargo build --release
     ```
@@ -143,41 +147,42 @@ allow_tool_ansi = true
 
 **Warning**: This may cause rendering issues in the inline UI, including:
 
--   Misaligned text
--   Layout artifacts
--   Color codes appearing in output
--   Broken terminal wrapping
+- Misaligned text
+- Layout artifacts
+- Color codes appearing in output
+- Broken terminal wrapping
 
 Only enable if using VT Code in a context that properly handles ANSI codes.
 
 ## Test Coverage
 
-The ANSI stripping function is comprehensively tested with 16 test cases covering:
+The ANSI stripping function is comprehensively tested with 16 test cases
+covering:
 
 **Basic Cases**
 
--   No ANSI codes (zero-copy fast path)
--   Simple color codes (most common)
--   Multiple sequential codes
+- No ANSI codes (zero-copy fast path)
+- Simple color codes (most common)
+- Multiple sequential codes
 
     **Real-World Scenarios**
 
--   `cargo check` output patterns
--   Rust compiler warnings/errors
--   Unicode + ANSI combination
--   Git/ls colored output
+- `cargo check` output patterns
+- Rust compiler warnings/errors
+- Unicode + ANSI combination
+- Git/ls colored output
 
     **Edge Cases**
 
--   256-color mode (38;5;N)
--   True color/24-bit RGB (38;2;R;G;B)
--   Cursor movement (CUU, CUD, etc.)
--   Clear screen commands
--   OSC hyperlinks
--   Incomplete sequences at end
--   Empty strings
--   Only ANSI codes (no text)
--   Newlines preservation
+- 256-color mode (38;5;N)
+- True color/24-bit RGB (38;2;R;G;B)
+- Cursor movement (CUU, CUD, etc.)
+- Clear screen commands
+- OSC hyperlinks
+- Incomplete sequences at end
+- Empty strings
+- Only ANSI codes (no text)
+- Newlines preservation
 
 Run tests:
 
@@ -189,6 +194,7 @@ All tests consistently pass, validating the robustness of the implementation.
 
 ## Related Settings
 
--   `ui.tool_output_mode`: "compact" or "full" (different output verbosity)
--   `ui.tool_output_max_lines`: Maximum lines to display (50 default)
--   `context.model_input_token_budget`: Token limit for tool outputs in LLM context
+- `ui.tool_output_mode`: "compact" or "full" (different output verbosity)
+- `ui.tool_output_max_lines`: Maximum lines to display (50 default)
+- `context.model_input_token_budget`: Token limit for tool outputs in LLM
+    context

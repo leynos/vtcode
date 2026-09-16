@@ -4,7 +4,8 @@ This file captures runtime invariants for automation-oriented usage of VT Code.
 
 ## Output Contracts
 
-- Use `vtcode ask --output-format json` when downstream tooling needs structured replies.
+- Use `vtcode ask --output-format json` when downstream tooling needs
+  structured replies.
 - Use `vtcode exec --json` for JSONL event streams.
 - Use `vtcode exec --events <path>` to persist machine-readable transcripts.
 

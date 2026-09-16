@@ -8,30 +8,30 @@ The benchmark chart includes four key visualizations:
 
 ### 1. Pass/Fail Pie Chart (Top Left)
 
--   Shows the overall pass rate as a percentage
--   Green: Passed tests
--   Red: Failed tests
--   Displays Pass@1 metric prominently
+- Shows the overall pass rate as a percentage
+- Green: Passed tests
+- Red: Failed tests
+- Displays Pass@1 metric prominently
 
 ### 2. Test Results Bar Chart (Top Right)
 
--   Absolute numbers of passed vs failed tests
--   Useful for understanding the scale of results
--   Shows exact counts above each bar
+- Absolute numbers of passed vs failed tests
+- Useful for understanding the scale of results
+- Shows exact counts above each bar
 
 ### 3. Latency Distribution (Bottom Left)
 
--   Histogram of response times across all tasks
--   Red dashed line: P50 (median) latency
--   Orange dashed line: P90 latency
--   Helps identify performance outliers
+- Histogram of response times across all tasks
+- Red dashed line: P50 (median) latency
+- Orange dashed line: P90 latency
+- Helps identify performance outliers
 
 ### 4. Configuration Table (Bottom Right)
 
--   Model and provider information
--   Key metrics summary
--   Configuration parameters used
--   Cost analysis
+- Model and provider information
+- Key metrics summary
+- Configuration parameters used
+- Cost analysis
 
 ## Generating Charts
 
@@ -61,9 +61,9 @@ python3 scripts/generate_benchmark_chart.py reports/HE_*.json --all
 
 The script generates:
 
--   **ASCII chart**: Displayed in terminal
--   **PNG chart**: `reports/HE_*_chart.png` (if matplotlib available)
--   **Markdown summary**: `reports/HE_*_summary.md`
+- **ASCII chart**: Displayed in terminal
+- **PNG chart**: `reports/HE_*_chart.png` (if matplotlib available)
+- **Markdown summary**: `reports/HE_*_summary.md`
 
 ## Chart Interpretation
 
@@ -103,7 +103,8 @@ The script generates:
 
 **Key Observations:**
 
-1. **Pass Rate**: gpt-5-nano achieves 94.5% (frontier-tier), gemini achieves 61.6% (mid-range)
+1. **Pass Rate**: gpt-5-nano achieves 94.5% (frontier-tier), gemini achieves
+   61.6% (mid-range)
 2. **Distribution**: gpt-5-nano passes 155/164 tests, gemini passes 101/164
 3. **Latency**: gemini is 10x faster (0.97s vs 10.4s)
 4. **Cost**: Both are $0.00 (completely free)
@@ -198,6 +199,6 @@ plt.savefig(output_path, dpi=600)  # Higher quality
 
 ## References
 
--   [matplotlib Documentation](https://matplotlib.org/stable/contents.html)
--   [Benchmark Methodology](README.md)
--   [Results Archive](SUMMARY.md)
+- [matplotlib Documentation](https://matplotlib.org/stable/contents.html)
+- [Benchmark Methodology](README.md)
+- [Results Archive](SUMMARY.md)

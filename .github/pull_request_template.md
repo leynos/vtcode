@@ -2,7 +2,9 @@
 
 ## Description
 
-Please include a summary of the changes and the issue that this PR addresses. Include relevant motivation and context. List any dependencies that are required for this change.
+Please include a summary of the changes and the issue that this PR addresses.
+Include relevant motivation and context. List any dependencies that are
+required for this change.
 
 Fixes # (issue number)
 
@@ -12,26 +14,31 @@ Please delete options that are not relevant.
 
 - [ ] Bug fix (non-breaking change which fixes an issue)
 - [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] Breaking change (fix or feature that would cause existing functionality
+      to not work as expected)
 - [ ] This change requires a documentation update
 
 ## How Has This Been Tested?
 
-Please describe the tests that you ran to verify your changes. Provide instructions so others can reproduce. Include any relevant details for your test configuration.
+Please describe the tests that you ran to verify your changes. Provide
+instructions so others can reproduce. Include any relevant details for your
+test configuration.
 
 - [ ] Rust tests: `cargo test`
-- [ ] Linting: `cargo clippy` 
+- [ ] Linting: `cargo clippy`
 - [ ] Formatting: `cargo fmt`
 - [ ] Build: `cargo build`
 
 **Test Configuration**:
-* Rust version:
-* Operating system:
-* Toolchain:
 
-## Checklist:
+- Rust version:
+- Operating system:
+- Toolchain:
 
-- [ ] My code follows the style guidelines of this project (Rust conventions, naming, etc.)
+## Checklist
+
+- [ ] My code follows the style guidelines of this project (Rust conventions,
+      naming, etc.)
 - [ ] I have performed a self-review of my code
 - [ ] I have commented my code, particularly in hard-to-understand areas
 - [ ] I have made corresponding changes to the documentation
@@ -41,7 +48,8 @@ Please describe the tests that you ran to verify your changes. Provide instructi
 - [ ] I have run `cargo clippy` and addressed any issues
 - [ ] I have run `cargo fmt` to ensure proper formatting
 - [ ] Any dependent changes have been merged and published in downstream modules
-- [ ] I have updated the `CHANGELOG.md` if this change affects the user-facing behavior
+- [ ] I have updated the `CHANGELOG.md` if this change affects the user-facing
+      behavior
 - [ ] I have checked my code and corrected any misspellings
 
 ## Additional Context

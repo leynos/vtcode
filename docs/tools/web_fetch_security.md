@@ -1,11 +1,13 @@
 # Web Fetch Tool Security Configuration
 
-The `web_fetch` tool provides flexible security modes for controlling which URLs can be accessed by VT Code agents.
+The `web_fetch` tool provides flexible security modes for controlling which
+URLs can be accessed by VT Code agents.
 
-`web_fetch` accepts remote `http://` or `https://` URLs only (subject to the HTTPS, SSRF,
-allowlist, and blocklist checks below). `file://` URLs, relative paths, and local workspace
-paths are rejected before either normal fetching or the `format = "markdown"` Defuddle route.
-Use `read_file` or `unified_file` to read local resources instead.
+`web_fetch` accepts remote `http://` or `https://` URLs only (subject to the
+HTTPS, SSRF, allowlist, and blocklist checks below). `file://` URLs, relative
+paths, and local workspace paths are rejected before either normal fetching or
+the `format = "markdown"` Defuddle route. Use `read_file` or `unified_file` to
+read local resources instead.
 
 ## Security Modes
 
@@ -16,26 +18,31 @@ Use `read_file` or `unified_file` to read local resources instead.
 mode = "restricted"
 ```
 
-In **restricted mode**, a blocklist is used to prevent access to sensitive domains while allowing most other sites. This is the default mode and suitable for general use.
+In **restricted mode**, a blocklist is used to prevent access to sensitive
+domains while allowing most other sites. This is the default mode and suitable
+for general use.
 
-Note: WebFetch will prefer Markdown content from documentation sites by sending an `Accept` header with `text/markdown` to encourage token-efficient responses from servers that serve docs in multiple formats.
+Note: WebFetch will prefer Markdown content from documentation sites by sending
+an `Accept` header with `text/markdown` to encourage token-efficient responses
+from servers that serve docs in multiple formats.
 
 **Built-in blocked domains include:**
 
--   Banking/Financial: PayPal, Stripe, Square, etc.
--   Authentication: Google Accounts, Microsoft Login, Okta, etc.
--   Email providers: Gmail, Outlook, iCloud Mail
--   Medical records: HealthVault, Epic, Cerner
--   Legal: DocuSign, Adobe Sign
--   VPN/Proxy services
+- Banking/Financial: PayPal, Stripe, Square, etc.
+- Authentication: Google Accounts, Microsoft Login, Okta, etc.
+- Email providers: Gmail, Outlook, iCloud Mail
+- Medical records: HealthVault, Epic, Cerner
+- Legal: DocuSign, Adobe Sign
+- VPN/Proxy services
 
 **Built-in blocked patterns include:**
 
--   Credentials in URLs: `password=`, `token=`, `api_key=`, `secret=`
--   Auth headers: `oauth`, `bearer`, `x-auth`, `authorization:`
--   Sensitive paths: `/admin`, `/private`, `/internal`, `/secret`
+- Credentials in URLs: `password=`, `token=`, `api_key=`, `secret=`
+- Auth headers: `oauth`, `bearer`, `x-auth`, `authorization:`
+- Sensitive paths: `/admin`, `/private`, `/internal`, `/secret`
 
-**Exemptions:** Use `allowed_domains` to exempt specific domains from the blocklist.
+**Exemptions:** Use `allowed_domains` to exempt specific domains from the
+blocklist.
 
 ### Whitelist Mode (Strict)
 
@@ -44,7 +51,8 @@ Note: WebFetch will prefer Markdown content from documentation sites by sending 
 mode = "whitelist"
 ```
 
-In **whitelist mode**, only explicitly allowed domains can be accessed. This is the strictest mode and recommended for highly sensitive environments.
+In **whitelist mode**, only explicitly allowed domains can be accessed. This is
+the strictest mode and recommended for highly sensitive environments.
 
 When using whitelist mode, you **must** configure `allowed_domains`:
 
@@ -80,9 +88,9 @@ Create `<config>/web_fetch_blocklist.json`:
 
 **Benefits:**
 
--   Reload configuration without restarting VT Code
--   Maintain organization-specific blocklists
--   Separate from main configuration file
+- Reload configuration without restarting VT Code
+- Maintain organization-specific blocklists
+- Separate from main configuration file
 
 ### Enable Dynamic Whitelist (Whitelist Mode)
 
@@ -163,12 +171,16 @@ strict_https_only = false  # Use with caution!
 
 ## Security Best Practices
 
-1. **Use restricted mode by default** - It blocks known sensitive domains while allowing general web access
-2. **Use whitelist mode for sensitive operations** - Only allow domains you explicitly trust
+1. **Use restricted mode by default** - It blocks known sensitive domains while
+   allowing general web access
+2. **Use whitelist mode for sensitive operations** - Only allow domains you
+   explicitly trust
 3. **Review built-in blocklists** - Understand what's protected by default
-4. **Keep dynamic files updated** - Regularly review and update JSON configuration files
+4. **Keep dynamic files updated** - Regularly review and update JSON
+   configuration files
 5. **Use HTTPS always** - Keep `strict_https_only = true` in production
-6. **Monitor URL access** - Enable audit logging to track what URLs are accessed:
+6. **Monitor URL access** - Enable audit logging to track what URLs are
+   accessed:
 
 ```toml
 [tools.web_fetch]
@@ -238,19 +250,19 @@ allowed_domains = ["github.com", "docs.rs"]
 
 ## Related Configuration
 
--   **Tool policies**: Control when web_fetch requires approval
+- **Tool policies**: Control when web_fetch requires approval
 
     ```toml
     [tools.policies]
     web_fetch = "prompt"  # Ask before fetching
     ```
 
--   **Content types**: Only text-based content is supported
+- **Content types**: Only text-based content is supported
 
-    -   `text/html`, `text/plain`, `text/markdown`
-    -   `application/json`, `application/xml`
-    -   Binaries (executables, archives, etc.) are rejected
+  - `text/html`, `text/plain`, `text/markdown`
+  - `application/json`, `application/xml`
+  - Binaries (executables, archives, etc.) are rejected
 
--   **Size limits**: Maximum 500KB content per fetch
-    -   Override with `max_bytes` parameter per request
-    -   Prevents downloading large files
+- **Size limits**: Maximum 500KB content per fetch
+  - Override with `max_bytes` parameter per request
+  - Prevents downloading large files

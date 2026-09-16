@@ -1,13 +1,13 @@
 # NVIDIA NIM Quick Reference
 
-| Setting | Value |
-| --- | --- |
-| Provider | `nvidia` |
-| API key | `NVIDIA_API_KEY` |
-| Default endpoint | `https://integrate.api.nvidia.com/v1` |
-| Endpoint override | `NVIDIA_BASE_URL` |
-| Default model | `nvidia/nemotron-3-ultra-550b-a55b` |
-| Context metadata | 1,000,000 tokens |
+| Setting           | Value                                 |
+| ----------------- | ------------------------------------- |
+| Provider          | `nvidia`                              |
+| API key           | `NVIDIA_API_KEY`                      |
+| Default endpoint  | `https://integrate.api.nvidia.com/v1` |
+| Endpoint override | `NVIDIA_BASE_URL`                     |
+| Default model     | `nvidia/nemotron-3-ultra-550b-a55b`   |
+| Context metadata  | 1,000,000 tokens                      |
 
 ```bash
 export NVIDIA_API_KEY="nvapi-..."

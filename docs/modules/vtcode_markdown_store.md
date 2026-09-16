@@ -10,13 +10,13 @@ projects can reuse the same markdown-backed patterns.
 The crate exposes three opt-in capabilities layered on top of the core
 `MarkdownStorage` type:
 
--   **Key-value storage (`kv` feature)** – `SimpleKVStorage` persists arbitrary
+- **Key-value storage (`kv` feature)** – `SimpleKVStorage` persists arbitrary
     serde data structures into individual markdown files, automatically creating
     the backing directory when needed.
--   **Project metadata (`projects` feature)** – `ProjectStorage` and
+- **Project metadata (`projects` feature)** – `ProjectStorage` and
     `SimpleProjectManager` manage a folder of project descriptors with helpers to
     create, list, update, and locate per-project assets.
--   **Filesystem cache (`cache` feature)** – `SimpleCache` wraps a configurable
+- **Filesystem cache (`cache` feature)** – `SimpleCache` wraps a configurable
     cache root with typed read/write helpers that emit contextual errors instead
     of silent overwrites.
 
@@ -42,18 +42,18 @@ modules they do not need:
 vtcode-markdown-store = { version = "0.30", default-features = false, features = ["kv"] }
 ```
 
--   `projects` – project metadata management (`SimpleProjectManager`,
+- `projects` – project metadata management (`SimpleProjectManager`,
     `ProjectStorage`).
--   `kv` – generic key/value helpers (`SimpleKVStorage`).
--   `cache` – filesystem caching (`SimpleCache`).
+- `kv` – generic key/value helpers (`SimpleKVStorage`).
+- `cache` – filesystem caching (`SimpleCache`).
 
 `MarkdownStorage` itself is always available because it is part of the crate's
 core API.
 
 ## Usage examples
 
-Initialize storage rooted at a workspace-specific directory and persist a custom
-record:
+Initialize storage rooted at a workspace-specific directory and persist a
+custom record:
 
 ```rust
 use serde::{Deserialize, Serialize};

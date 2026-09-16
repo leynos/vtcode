@@ -2,20 +2,25 @@
 
 ## Overview
 
-This guide explains how VT Code manages environment variables when executing commands, how the PATH visibility fix works, and how to ensure your tools are accessible to the agent.
+This guide explains how VT Code manages environment variables when executing
+commands, how the PATH visibility fix works, and how to ensure your tools are
+accessible to the agent.
 
 ## VT Code storage environment
 
 The path variables are inherited by sandboxed child processes so tools launched
 by VT Code resolve the same user directories as the parent process. The
-canonical list and precedence rules are in the [user data directories guide](../guides/user-data-directories.md).
+canonical list and precedence rules are in the
+[user data directories guide](../guides/user-data-directories.md).
 
 The most useful variables are:
 
-- `VTCODE_CONFIG` and `VTCODE_DATA` — absolute canonical config and data root overrides;
+- `VTCODE_CONFIG` and `VTCODE_DATA` — absolute canonical config and data root
+  overrides;
 - `VTCODE_CONFIG_PATH` — explicit config file override;
 - `VTCODE_HOME` — preserved legacy root used for migration and fallback reads;
-- `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `XDG_RUNTIME_DIR`, and `XDG_BIN_HOME` — Linux/BSD category roots;
+- `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`,
+  `XDG_RUNTIME_DIR`, and `XDG_BIN_HOME` — Linux/BSD category roots;
 - `XDG_CONFIG_DIRS` and `XDG_DATA_DIRS` — ordered system search roots.
 
 Empty or relative XDG values are ignored. Use `vtcode --version` to inspect the
@@ -23,10 +28,13 @@ resolved paths and the environment values visible to VT Code.
 
 ## Quick Start
 
-If you just installed VT Code and want your custom tools (cargo, npm, python, etc.) to work:
+If you just installed VT Code and want your custom tools (cargo, npm, python,
+etc.) to work:
 
-1. **Ensure PATH is set**: Run `echo $PATH` in your shell to verify your environment is configured
-2. **Rebuild VT Code**: Use `cargo build --release` to get the latest version with PATH inheritance
+1. **Ensure PATH is set**: Run `echo $PATH` in your shell to verify your
+   environment is configured
+2. **Rebuild VT Code**: Use `cargo build --release` to get the latest version
+   with PATH inheritance
 3. **Test availability**: Run `which cargo` to verify your tools are in PATH
 4. **Use the agent**: Custom tools should now be accessible
 
@@ -34,7 +42,8 @@ If you just installed VT Code and want your custom tools (cargo, npm, python, et
 
 ### Environment Inheritance Model
 
-VT Code now inherits the parent shell's environment variables and applies strategic overrides:
+VT Code now inherits the parent shell's environment variables and applies
+strategic overrides:
 
 ```
 
@@ -69,26 +78,27 @@ The following variables are inherited from the parent environment:
 
 **Critical for Command Discovery**:
 
--   `PATH` - Command search paths (enables finding tools in ~/.cargo/bin, ~/.local/bin, etc.)
--   `HOME` - User home directory
--   `SHELL` - Current shell program
+- `PATH` - Command search paths (enables finding tools in ~/.cargo/bin,
+    ~/.local/bin, etc.)
+- `HOME` - User home directory
+- `SHELL` - Current shell program
 
 **Important for Workflows**:
 
--   `USER`, `LOGNAME` - User identity
--   `PWD` - Current working directory
--   `EDITOR`, `VISUAL` - Default text editors
--   `LANG`, `LC_*` - Locale settings
--   `GOPATH`, `GOROOT` - Go environment
--   `RUSTUP_HOME`, `CARGO_HOME` - Rust environment
--   `PYTHON*` variables - Python environment
--   `NODE_*` variables - Node.js environment
--   Custom user-defined variables
+- `USER`, `LOGNAME` - User identity
+- `PWD` - Current working directory
+- `EDITOR`, `VISUAL` - Default text editors
+- `LANG`, `LC_*` - Locale settings
+- `GOPATH`, `GOROOT` - Go environment
+- `RUSTUP_HOME`, `CARGO_HOME` - Rust environment
+- `PYTHON*` variables - Python environment
+- `NODE_*` variables - Node.js environment
+- Custom user-defined variables
 
 **VT Code-Added Variables**:
 
--   `WORKSPACE_DIR` - Path to the workspace root
--   `VT_SANDBOX_*` - Sandbox-related variables (if configured)
+- `WORKSPACE_DIR` - Path to the workspace root
+- `VT_SANDBOX_*` - Sandbox-related variables (if configured)
 
 ### Environment Overrides (for Consistency)
 
@@ -183,7 +193,8 @@ stat --format="%A %n" ~/.cargo/bin/cargo  # Linux
 
 ### Default Behavior
 
-By default, VT Code allows a comprehensive set of safe commands. See `ALLOWED_COMMANDS_REFERENCE.md` for the full list.
+By default, VT Code allows a comprehensive set of safe commands. See
+`ALLOWED_COMMANDS_REFERENCE.md` for the full list.
 
 ### Custom Configuration (vtcode.toml)
 
@@ -234,7 +245,8 @@ code_search = "allow"      # Allow advanced bounded literal search without confi
 
 ### Issue: "command not found: cargo"
 
-**Symptoms**: Agent can't find cargo even though `which cargo` works in your shell
+**Symptoms**: Agent can't find cargo even though `which cargo` works in your
+shell
 
 **Solutions**:
 
@@ -258,6 +270,7 @@ code_search = "allow"      # Allow advanced bounded literal search without confi
     ```
 
 4. **Test environment inheritance**:
+
     ```bash
     # This should show cargo is available
     cargo --version
@@ -331,7 +344,8 @@ PATH includes $GOPATH/bin
 ## Best Practices
 
 1. **Keep PATH minimal** - Only include necessary directories
-2. **Use version managers** - rbenv, nvm, pyenv, rustup provide clean PATH management
+2. **Use version managers** - rbenv, nvm, pyenv, rustup provide clean PATH
+   management
 3. **Test in shell first** - Verify commands work before debugging in VT Code
 4. **Check allow-lists** - Ensure custom commands are in vtcode.toml if needed
 5. **Use absolute paths** - For debugging: `/full/path/to/command --version`
@@ -365,27 +379,29 @@ export NODE_OPTIONS="--max-old-space-size=4096"
 
 ## See Also
 
--   `docs/environment/PATH_VISIBILITY_FIX.md` - Technical details of the fix
--   `docs/environment/ALLOWED_COMMANDS_REFERENCE.md` - Complete list of allowed commands
--   `docs/development/EXECUTION_POLICY.md` - Detailed execution policy documentation
--   `docs/guides/security.md` - Security best practices
--   `vtcode.toml` - Configuration file reference
+- `docs/environment/PATH_VISIBILITY_FIX.md` - Technical details of the fix
+- `docs/environment/ALLOWED_COMMANDS_REFERENCE.md` - Complete list of allowed
+    commands
+- `docs/development/EXECUTION_POLICY.md` - Detailed execution policy
+    documentation
+- `docs/guides/security.md` - Security best practices
+- `vtcode.toml` - Configuration file reference
 
 ## Environment Inheritance Changelog
 
 ### v0.43.3+ (Latest)
 
--   PATH environment variable properly inherited
--   All parent environment variables preserved
--   User-installed tools (~/.cargo/bin, etc.) now accessible
--   Custom environment variables preserved
--   Security model maintained with strategic overrides
+- PATH environment variable properly inherited
+- All parent environment variables preserved
+- User-installed tools (~/.cargo/bin, etc.) now accessible
+- Custom environment variables preserved
+- Security model maintained with strategic overrides
 
 ### Earlier Versions
 
--   PATH not inherited - tools in custom locations not found
--   Environment was mostly empty - only key variables set
--   User-installed tools inaccessible
+- PATH not inherited - tools in custom locations not found
+- Environment was mostly empty - only key variables set
+- User-installed tools inaccessible
 
 ## Contributing Improvements
 
@@ -398,6 +414,7 @@ If you discover environment-related issues or improvements:
 
 ## Questions?
 
--   Check the examples in this directory
--   Review test cases in `tests/integration_path_env.rs`
--   Look at actual source in `crates/codegen/vtcode-core/src/tools/command.rs` and `crates/codegen/vtcode-core/src/tools/pty.rs`
+- Check the examples in this directory
+- Review test cases in `tests/integration_path_env.rs`
+- Look at actual source in `crates/codegen/vtcode-core/src/tools/command.rs`
+    and `crates/codegen/vtcode-core/src/tools/pty.rs`

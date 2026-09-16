@@ -1,6 +1,8 @@
 # Changelog Generation with git-cliff
 
-VT Code uses [git-cliff](https://git-cliff.org) for automated changelog generation from Git commit history. This provides consistent, well-formatted changelogs that follow conventional commit standards.
+VT Code uses [git-cliff](https://git-cliff.org) for automated changelog
+generation from Git commit history. This provides consistent, well-formatted
+changelogs that follow conventional commit standards.
 
 ## Installation
 
@@ -70,7 +72,8 @@ git-cliff --config cliff.toml --tag "0.82.4" --unreleased
 
 Note: Offline mode shows the full git author name as-is (e.g., `Vinh Nguyen`).
 
-The release script automatically detects and uses your GitHub token if available.
+The release script automatically detects and uses your GitHub token if
+available.
 
 ### Generate Changelog for a Release
 
@@ -114,12 +117,14 @@ git-cliff --config cliff.toml v0.80.0..HEAD
 
 ## Integration with Release Process
 
-The release script (`scripts/release.sh`) automatically uses git-cliff when available:
+The release script (`scripts/release.sh`) automatically uses git-cliff when
+available:
 
 1. **Check for git-cliff**: Script checks if `git-cliff` is installed
 2. **Generate changelog**: Creates formatted changelog entry for the new version
 3. **Generate release notes**: Creates GitHub Release body from changelog
-4. **Fallback**: If git-cliff is not available, uses built-in changelog generator
+4. **Fallback**: If git-cliff is not available, uses built-in changelog
+   generator
 
 ### Release Workflow
 

@@ -1,38 +1,50 @@
 # VT Code Execution Policy
 
-This document describes what commands and operations the VT Code agent can execute without prompting, and which require confirmation.
+This document describes what commands and operations the VT Code agent can
+execute without prompting, and which require confirmation.
 
 ## Summary
 
-The execution policy is designed to allow engineers typical software development workflows while maintaining safety boundaries. Common development tools work automatically, while dangerous operations require confirmation.
+The execution policy is designed to allow engineers typical software
+development workflows while maintaining safety boundaries. Common development
+tools work automatically, while dangerous operations require confirmation.
 
 ## Auto-Allowed Commands
 
 ### Version Control (Git)
-- **Read operations**: `status`, `log`, `show`, `diff`, `branch`, `tag`, `remote`
-- **Tree inspection**: `ls-tree`, `ls-files`, `cat-file`, `rev-parse`, `describe`
+
+- **Read operations**: `status`, `log`, `show`, `diff`, `branch`, `tag`,
+  `remote`
+- **Tree inspection**: `ls-tree`, `ls-files`, `cat-file`, `rev-parse`,
+  `describe`
 - **Additional inspection**: `blame`, `grep`, `shortlog`, `format-patch`
-- **Safe writes**: `add`, `commit`, `reset`, `checkout`, `switch`, `restore`, `merge`, `stash` (select ops)
+- **Safe writes**: `add`, `commit`, `reset`, `checkout`, `switch`, `restore`,
+  `merge`, `stash` (select ops)
 - **Blocked**: `push --force`, `clean`, `rebase`, `cherry-pick`, `filter-branch`
 
 ### Build Tools (Cargo)
-- **Safe operations**: `build`, `check`, `test`, `doc`, `clippy`, `fmt`, `run`, `bench`
+
+- **Safe operations**: `build`, `check`, `test`, `doc`, `clippy`, `fmt`, `run`,
+  `bench`
 - **Additional safe**: `tree`, `metadata`, `search`, `cache`, `expand`
 - **Blocked**: `clean`, `install`, `uninstall`, `publish`, `yank`
 
 ### Languages
+
 - **Python** (`python`, `python3`): Script execution, module runs with `-m`
 - **Node.js** (`node`): Script execution
 - **NPM** (`npm`): Install, test, build, run, start, list, view, search
 - **Blocked for NPM**: `publish`, `unpublish`
 
 ### File Operations
+
 - **Read**: `cat`, `head`, `tail`, `ls`, `grep`, `find`, `rg` (ripgrep)
 - **Write**: `sed` (with workspace validation)
 - **Copy**: `cp` (with workspace validation)
 - **Count**: `wc`
 
 ### System Info
+
 - `pwd`, `whoami`, `hostname`, `uname`, `date`, `echo`, `which`, `printenv`
 
 ## Tool Policies
@@ -42,13 +54,13 @@ Canonical public tool names in the default profile are `exec_command`,
 `code_search` for bounded code search. Plain text search and file inspection
 use shell commands inside `exec_command.cmd`.
 
-| Tool | Policy | Notes |
-|------|--------|-------|
-| `exec_command` | **Prompt** | Public shell command surface |
-| `write_stdin` | **Prompt** | Live-session continuation surface |
-| `apply_patch` | **Prompt** | Patch edits |
-| `code_search` | Allow | Advanced-profile bounded code search |
-| `request_user_input` | Allow | Interactive clarification surface |
+| Tool                 | Policy     | Notes                                |
+| -------------------- | ---------- | ------------------------------------ |
+| `exec_command`       | **Prompt** | Public shell command surface         |
+| `write_stdin`        | **Prompt** | Live-session continuation surface    |
+| `apply_patch`        | **Prompt** | Patch edits                          |
+| `code_search`        | Allow      | Advanced-profile bounded code search |
+| `request_user_input` | Allow      | Interactive clarification surface    |
 
 ### Recovery After Policy Denial
 
@@ -56,22 +68,31 @@ When `exec_command` is denied, treat that denial as a routing signal, not a
 retryable transient:
 
 1. Do not repeat the same shell inspection.
-2. If the task needs syntax-aware search and the advanced profile is available, use `code_search`.
-3. If the task still requires shell access, state that the change was **not applied** and recommend a user-approved mode change such as `/mode auto`.
+2. If the task needs syntax-aware search and the advanced profile is available,
+   use `code_search`.
+3. If the task still requires shell access, state that the change was **not
+   applied** and recommend a user-approved mode change such as `/mode auto`.
 
 Example pivot:
 
 - Denied: `exec_command` running `rg -n "foo" README.md`
-- Recovery for a focused code query: advanced `code_search` with `query` and narrower filters
-- Final fallback when shell access remains necessary: `Not applied; exec was denied by policy; next action: switch to /mode auto or approve the command.`
+- Recovery for a focused code query: advanced `code_search` with `query` and
+  narrower filters
+- Final fallback when shell access remains necessary:
+  `Not applied; exec was denied by policy; next action: switch to /mode
+  auto or approve the command.`
 
 ## Key Safety Features
 
-1. **Workspace Boundary**: All file operations are confined to `WORKSPACE_DIR`; cannot escape or touch system files
-2. **Command Whitelisting**: Only specific commands are allowed; unknown commands are blocked
-3. **Argument Validation**: Common flags are validated (e.g., git force-push is blocked)
-4. **Confirmation Required**: Destructive operations still require user confirmation
-5. **Two-Layer Control**: 
+1. **Workspace Boundary**: All file operations are confined to `WORKSPACE_DIR`;
+   cannot escape or touch system files
+2. **Command Whitelisting**: Only specific commands are allowed; unknown
+   commands are blocked
+3. **Argument Validation**: Common flags are validated (e.g., git force-push is
+   blocked)
+4. **Confirmation Required**: Destructive operations still require user
+   confirmation
+5. **Two-Layer Control**:
    - Tool-level: Which tools can be used
    - Command-level: Which specific commands and flags are permitted
 
@@ -90,6 +111,7 @@ Example pivot:
 ## Use Cases
 
 ### Typical Engineer Workflow
+
 ```
  git status, git diff, git log, git checkout
  cargo test, cargo build, cargo check
@@ -99,6 +121,7 @@ Example pivot:
 ```
 
 ### Blocked Without Confirmation
+
 ```
  Deleting files (requires confirmation)
  Applying complex patches (requires confirmation)
@@ -109,11 +132,16 @@ Example pivot:
 ## Configuration
 
 Policies are defined in:
-- **Core defaults**: `crates/codegen/vtcode-config/src/core/tools.rs` (tool policies)
-- **Command validation**: `crates/codegen/vtcode-core/src/exec_policy/mod.rs` (command whitelisting)
-- **User overrides**: `vtcode.toml` in project root or the canonical user config directory
+
+- **Core defaults**: `crates/codegen/vtcode-config/src/core/tools.rs` (tool
+  policies)
+- **Command validation**: `crates/codegen/vtcode-core/src/exec_policy/mod.rs`
+  (command whitelisting)
+- **User overrides**: `vtcode.toml` in project root or the canonical user
+  config directory
 
 Override examples in `vtcode.toml`:
+
 ```toml
 [tools.policies]
 apply_patch = "allow"  # Allow patches without prompt
@@ -124,29 +152,32 @@ code_search = "allow"   # Allow advanced bounded literal search
 
 ## Cache-Friendly Execution Guidance
 
-Token efficiency is a correctness concern, not just a cost concern: every token of
-harness payload is context the model cannot spend on the task. The defaults below
-are designed to keep the first-request overhead low and per-turn growth bounded.
+Token efficiency is a correctness concern, not just a cost concern: every token
+of harness payload is context the model cannot spend on the task. The defaults
+below are designed to keep the first-request overhead low and per-turn growth
+bounded.
 
 ### Defaults that keep the prefix small
 
 - **MCP tools defer by default.** Any MCP tool in the catalog is flagged
-  `defer_loading` rather than sent eagerly, regardless of tool count. MCP schemas
-  are the dominant source of token inflation; the model discovers them on demand.
-- **Client-local deferral is the default.** Providers without a hosted tool search
-  (e.g. Gemini) omit deferred schemas from the wire payload and append a compact,
-  cache-stable discoverability summary to the system prompt. Set
+  `defer_loading` rather than sent eagerly, regardless of tool count. MCP
+  schemas are the dominant source of token inflation; the model discovers them
+  on demand.
+- **Client-local deferral is the default.** Providers without a hosted tool
+  search (e.g. Gemini) omit deferred schemas from the wire payload and append a
+  compact, cache-stable discoverability summary to the system prompt. Set
   `tools.client_tool_search = false` to opt back into the eager catalog.
 - **Subagents use a lightweight profile.** A delegated child agent defaults to
-  `system_prompt_mode = minimal` and `tool_documentation_mode = minimal`, and does
-  not inherit the parent's MCP servers unless explicitly requested. This prevents
-  replaying the full parent bootstrap on every child turn.
+  `system_prompt_mode = minimal` and `tool_documentation_mode = minimal`, and
+  does not inherit the parent's MCP servers unless explicitly requested. This
+  prevents replaying the full parent bootstrap on every child turn.
 - **Tool-result clearing is on by default.** Old tool results are stripped from
-  context once it grows past `trigger_tokens` (default 100k), keeping only the most
-  recent `keep_tool_uses` (default 3) results.
-- **Builtin tool count is capped.** The number of LLM-exposed builtin tools stays
-  within a small cap; new tools must consolidate, defer, or deliberately raise the
-  cap. Builtin tool schemas in `progressive` mode fit in a ~3k-token envelope.
+  context once it grows past `trigger_tokens` (default 100k), keeping only the
+  most recent `keep_tool_uses` (default 3) results.
+- **Builtin tool count is capped.** The number of LLM-exposed builtin tools
+  stays within a small cap; new tools must consolidate, defer, or deliberately
+  raise the cap. Builtin tool schemas in `progressive` mode fit in a ~3k-token
+  envelope.
 - **Startup token-overhead warnings.** At session start (unless `--quiet`),
   VT Code logs non-fatal `tracing::warn!` messages when the config is likely to
   inflate per-request cost: more than 8 configured MCP servers,
@@ -155,18 +186,21 @@ are designed to keep the first-request overhead low and per-turn growth bounded.
   `tool_result_clearing` disabled, `auto_compaction_enabled` disabled, or
   `max_system_prompt_tokens` set very low (< 4000). The actual composed system
   prompt is also measured at startup and flagged if it exceeds the configured
-  budget. These surface the "what am I actually sending" question before you pay
-  for it.
+  budget. These surface the "what am I actually sending" question before you
+  pay for it.
 
 ### Authoring guidance
 
-- Keep instruction files (AGENTS.md / CLAUDE.md) focused; they ride on every request.
-- Put universal user-facing behavior in the compiled runtime-guidance section; keep authored instruction files for project-specific maps and maintainer workflows. Authored files are context, not a security boundary.
+- Keep instruction files (AGENTS.md / CLAUDE.md) focused; they ride on every
+  request.
+- Put universal user-facing behavior in the compiled runtime-guidance section;
+  keep authored instruction files for project-specific maps and maintainer
+  workflows. Authored files are context, not a security boundary.
 - Prefer delegating large searches to subagents with a narrow, explicit tool set
   rather than fanning out broad orchestration.
-- When adding a tool, keep its description between 40 and 1200 characters and include
-  a verb cue and any side-effect/constraint cue so the model selects it accurately
-  without padding the prompt.
+- When adding a tool, keep its description between 40 and 1200 characters and
+  include a verb cue and any side-effect/constraint cue so the model selects it
+  accurately without padding the prompt.
 - Pin the cache breakpoint: keep the system prefix stable across turns. Dynamic
   per-turn content (timestamps, volatile workspace state) belongs in trailing
   sections, not the cached prefix.
@@ -177,9 +211,9 @@ A first-request budget guard rail is enforced by tests:
 
 - `crates/codegen/vtcode-core/src/tools/registry/builtins.rs::emitted_model_tool_schema_fits_within_first_request_budget`
   asserts builtin tool schemas stay within the budget in `progressive` mode.
-- `crates/codegen/vtcode-core/src/tools/handlers/session_tool_catalog.rs` tests assert MCP tools
-  defer (small or large catalog) and that the client-local policy defers small MCP
-  catalogs.
+- `crates/codegen/vtcode-core/src/tools/handlers/session_tool_catalog.rs` tests
+  assert MCP tools defer (small or large catalog) and that the client-local
+  policy defers small MCP catalogs.
 
 Run them with:
 

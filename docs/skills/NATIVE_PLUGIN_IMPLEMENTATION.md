@@ -2,7 +2,10 @@
 
 ## Overview
 
-This document summarizes the implementation of the Native Plugin System for VT Code using the [`libloading`](https://docs.rs/libloading) crate. The system enables explicitly approved integrations to load and execute native code plugins, providing high-performance, pre-compiled capabilities.
+This document summarizes the implementation of the Native Plugin System for VT
+Code using the [`libloading`](https://docs.rs/libloading) crate. The system
+enables explicitly approved integrations to load and execute native code
+plugins, providing high-performance, pre-compiled capabilities.
 
 ## What Was Implemented
 
@@ -13,28 +16,28 @@ This document summarizes the implementation of the Native Plugin System for VT C
 **Key Components:**
 
 - **`NativePluginTrait`**: Type-erased trait for plugin operations
-    - `metadata()` - Get plugin metadata
-    - `path()` - Get plugin path
-    - `execute()` - Execute plugin with context
+  - `metadata()` - Get plugin metadata
+  - `path()` - Get plugin path
+  - `execute()` - Execute plugin with context
 
 - **`NativePlugin`**: Concrete plugin implementation
-    - Holds `Library` handle (prevents unloading)
-    - Stores metadata and path
-    - Executes plugin functions via FFI
+  - Holds `Library` handle (prevents unloading)
+  - Stores metadata and path
+  - Executes plugin functions via FFI
 
 - **`PluginLoader`**: Discovers and loads plugins
-    - Manages trusted directories
-    - Validates plugin structure
-    - Loads dynamic libraries only after the caller's trust and approval gate
-    - Platform-specific library naming
+  - Manages trusted directories
+  - Validates plugin structure
+  - Loads dynamic libraries only after the caller's trust and approval gate
+  - Platform-specific library naming
 
 - **Plugin ABI Functions**:
-    - `vtcode_plugin_version()` - Returns ABI version (u32)
-    - `vtcode_plugin_metadata()` - Returns JSON metadata string
-    - `vtcode_plugin_execute()` - Main execution entry point
-    - `vtcode_plugin_free_string()` - Memory cleanup (optional)
+  - `vtcode_plugin_version()` - Returns ABI version (u32)
+  - `vtcode_plugin_metadata()` - Returns JSON metadata string
+  - `vtcode_plugin_execute()` - Main execution entry point
+  - `vtcode_plugin_free_string()` - Memory cleanup (optional)
 
-#### Data Structures:
+#### Data Structures
 
 ```rust
 pub struct PluginMetadata {
@@ -96,7 +99,8 @@ Added plugin scanning to `skill_roots_with_home_dir()`:
 **Metadata discovery roots:**
 
 - canonical user data directory/`plugins/` - User plugins
-- repository plugin roots may be inspected as metadata, but are never native trust roots
+- repository plugin roots may be inspected as metadata, but are never native
+  trust roots
 
 **Discovery Logic:**
 
@@ -241,6 +245,7 @@ The implementation uses `unsafe` for:
     ```
 
 5. **Use:**
+
     ```bash
     vtcode skills list
     vtcode skills info my-plugin
@@ -317,7 +322,8 @@ cargo check
 
 ### New Files
 
-1. `crates/codegen/vtcode-core/src/skills/native_plugin.rs` - Core implementation
+1. `crates/codegen/vtcode-core/src/skills/native_plugin.rs` - Core
+   implementation
 2. `docs/skills/NATIVE_PLUGIN_GUIDE.md` - User documentation
 3. `examples/plugins/hello-world/Cargo.toml` - Example config
 4. `examples/plugins/hello-world/src/lib.rs` - Example implementation
@@ -329,8 +335,10 @@ cargo check
 
 1. `Cargo.toml` - Added libloading dependency
 2. `vtcode-core/Cargo.toml` - Added libloading dependency
-3. `crates/codegen/vtcode-core/src/skills/mod.rs` - Exported native_plugin module
-4. `crates/codegen/vtcode-core/src/skills/loader.rs` - Plugin discovery and loading
+3. `crates/codegen/vtcode-core/src/skills/mod.rs` - Exported native_plugin
+   module
+4. `crates/codegen/vtcode-core/src/skills/loader.rs` - Plugin discovery and
+   loading
 
 ## Architecture Decisions
 
@@ -459,7 +467,8 @@ cargo check
 4. **Single Threaded Execution**
     - One plugin call at a time
     - No concurrent execution per loaded plugin instance
-    - Public trait stays `Send + Sync`, but VT Code serializes ABI v1 FFI calls internally
+    - Public trait stays `Send + Sync`, but VT Code serializes ABI v1 FFI
+      calls internally
 
 ## Security Considerations
 
@@ -467,7 +476,8 @@ cargo check
 
 **Trust Model:**
 
-- Plugins are trusted code only after explicit provenance review and user approval
+- Plugins are trusted code only after explicit provenance review and user
+  approval
 - Execute with user privileges
 - No sandboxing by default
 
@@ -492,7 +502,8 @@ cargo check
 1. **Only install plugins from trusted sources**
 2. **Review plugin source code when possible**
 3. **Keep plugins updated**
-4. **Use application-managed user plugin locations; do not treat project files as trust roots**
+4. **Use application-managed user plugin locations; do not treat project files
+   as trust roots**
 5. **Monitor plugin behavior**
 
 ## Compatibility
@@ -522,10 +533,12 @@ cargo check
 
 ## Conclusion
 
-The Native Plugin System integrates libloading into VT Code's skill architecture, enabling high-performance native code extensions behind an explicit trust and approval boundary. Repository-controlled plugin roots remain metadata-only, and generic skill lookup does not open native libraries.
+The Native Plugin System integrates libloading into VT Code's skill
+architecture, enabling high-performance native code extensions behind an
+explicit trust and approval boundary. Repository-controlled plugin roots remain
+metadata-only, and generic skill lookup does not open native libraries.
 
----
+______________________________________________________________________
 
-**Implementation Date:** March 3, 2026
-**Implemented By:** VT Code Team
+**Implementation Date:** March 3, 2026 **Implemented By:** VT Code Team
 **Status:** v Complete and Functional

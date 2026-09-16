@@ -9,13 +9,13 @@ manipulation.
 
 <!-- cargo-rdme start -->
 
-Cross-platform command runner modeled after VT Code's original bash
-wrapper. The crate exposes a trait-based executor so downstream
-applications can swap the underlying process strategy (system shell,
-pure-Rust emulation, or dry-run logging) while reusing the higher-level
-helpers for workspace-safe filesystem manipulation.
+Cross-platform command runner modeled after VT Code's original bash wrapper.
+The crate exposes a trait-based executor so downstream applications can swap
+the underlying process strategy (system shell, pure-Rust emulation, or dry-run
+logging) while reusing the higher-level helpers for workspace-safe filesystem
+manipulation.
 
-#### Modules
+## Modules
 
 - `executor` - Command execution strategies (process, dry-run, pure-rust)
 - `runner` - High-level `BashRunner` for workspace-safe operations
@@ -27,7 +27,7 @@ helpers for workspace-safe filesystem manipulation.
 
 <!-- cargo-rdme end -->
 
-## Modules
+## Module layout
 
 - `executor` – Command execution strategies (process, dry-run, pure-rust)
 - `runner` – High-level `BashRunner` for workspace-safe operations
@@ -36,27 +36,28 @@ helpers for workspace-safe filesystem manipulation.
 - `process` – Process handle types for PTY and pipe backends
 - `process_group` – Process group management for reliable cleanup
 - `stream` – Stream utilities for reading output
-- `policy` – Command allow/deny policies (`AllowAllPolicy`, `WorkspaceGuardPolicy`)
+- `policy` – Command allow/deny policies (`AllowAllPolicy`,
+  `WorkspaceGuardPolicy`)
 
 ## Public entrypoints
 
-| Export | Description |
-|---|---|
-| `CommandExecutor` | Core trait for executing commands |
-| `ProcessCommandExecutor` | Default system-shell executor |
-| `CommandOutput`, `CommandStatus` | Result types returned by executors |
-| `CommandInvocation` | Describes a single command to run |
-| `ShellKind`, `CommandCategory` | Shell and command classification enums |
-| `BashRunner` | High-level runner wrapping an executor with workspace guards |
-| `BackgroundCommandManager`, `BackgroundTaskHandle` | Spawn and manage background tasks |
+| Export                                             | Description                                                  |
+| -------------------------------------------------- | ------------------------------------------------------------ |
+| `CommandExecutor`                                  | Core trait for executing commands                            |
+| `ProcessCommandExecutor`                           | Default system-shell executor                                |
+| `CommandOutput`, `CommandStatus`                   | Result types returned by executors                           |
+| `CommandInvocation`                                | Describes a single command to run                            |
+| `ShellKind`, `CommandCategory`                     | Shell and command classification enums                       |
+| `BashRunner`                                       | High-level runner wrapping an executor with workspace guards |
+| `BackgroundCommandManager`, `BackgroundTaskHandle` | Spawn and manage background tasks                            |
 
 ### Feature-gated exports
 
-| Export | Feature flag |
-|---|---|
-| `DryRunCommandExecutor` | `dry-run` |
-| `PureRustCommandExecutor` | `pure-rust` |
-| `EventfulExecutor` | `exec-events` |
+| Export                    | Feature flag  |
+| ------------------------- | ------------- |
+| `DryRunCommandExecutor`   | `dry-run`     |
+| `PureRustCommandExecutor` | `pure-rust`   |
+| `EventfulExecutor`        | `exec-events` |
 
 ## Usage
 

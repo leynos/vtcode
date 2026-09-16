@@ -7,7 +7,8 @@ OpenAI-compatible Chat Completions surface for explicitly configured legacy
 
 ## Setup
 
-1. Create a Merge API key in the [Merge dashboard](https://dashboard.merge.dev/).
+1. Create a Merge API key in the
+   [Merge dashboard](https://dashboard.merge.dev/).
 2. Export it before starting VT Code:
 
    ```bash
@@ -50,25 +51,25 @@ vtcode --provider merge-gateway --model anthropic/claude-opus-5
 
 ## Curated models
 
-| Model ID | Context | Vision metadata | Notes |
-| --- | ---: | :---: | --- |
-| `default_routing` | 128k baseline | No | Merge chooses the route |
-| `openai/gpt-5.5` | 1.1M | No | OpenAI route |
-| `anthropic/claude-opus-5` | 1M | Yes | Anthropic route |
-| `google/gemini-3.6-flash` | 1M | Yes | Google route |
-| `google/gemini-3.7-flash` | 1M | Yes | Google route |
-| `deepseek/deepseek-v4-pro-0813` | 1M | No | DeepSeek route |
-| `deepseek/deepseek-v4-flash-0731` | 1M | No | DeepSeek route |
-| `xai/grok-4.6` | 500k | No | xAI route |
-| `qwen/qwen3.8-max` | 1M | Yes | Qwen route |
-| `minimax/minimax-h3` | 131k | No | MiniMax route |
-| `moonshot/kimi-k3` | 1M | Yes | Moonshot route |
-| `thinkingmachines/inkling` | 1M | No | Thinking Machines route |
-| `meta/muse-spark-1.1` | 1M | Yes | Meta route |
-| `zai/glm-5.3-flash` | 1.31M | Yes | Z.AI route (320B/18B hybrid attention, native vision) |
-| `openai/gpt-5.6-luna` | 1.1M | Yes | OpenAI route |
-| `openai/gpt-5.6-sol` | 1.1M | Yes | OpenAI route |
-| `openai/gpt-5.6-terra` | 1.1M | Yes | OpenAI route |
+| Model ID                          | Context       | Vision metadata | Notes                                                 |
+| --------------------------------- | ------------: | :-------------: | ----------------------------------------------------- |
+| `default_routing`                 | 128k baseline | No              | Merge chooses the route                               |
+| `openai/gpt-5.5`                  | 1.1M          | No              | OpenAI route                                          |
+| `anthropic/claude-opus-5`         | 1M            | Yes             | Anthropic route                                       |
+| `google/gemini-3.6-flash`         | 1M            | Yes             | Google route                                          |
+| `google/gemini-3.7-flash`         | 1M            | Yes             | Google route                                          |
+| `deepseek/deepseek-v4-pro-0813`   | 1M            | No              | DeepSeek route                                        |
+| `deepseek/deepseek-v4-flash-0731` | 1M            | No              | DeepSeek route                                        |
+| `xai/grok-4.6`                    | 500k          | No              | xAI route                                             |
+| `qwen/qwen3.8-max`                | 1M            | Yes             | Qwen route                                            |
+| `minimax/minimax-h3`              | 131k          | No              | MiniMax route                                         |
+| `moonshot/kimi-k3`                | 1M            | Yes             | Moonshot route                                        |
+| `thinkingmachines/inkling`        | 1M            | No              | Thinking Machines route                               |
+| `meta/muse-spark-1.1`             | 1M            | Yes             | Meta route                                            |
+| `zai/glm-5.3-flash`               | 1.31M         | Yes             | Z.AI route (320B/18B hybrid attention, native vision) |
+| `openai/gpt-5.6-luna`             | 1.1M          | Yes             | OpenAI route                                          |
+| `openai/gpt-5.6-sol`              | 1.1M          | Yes             | OpenAI route                                          |
+| `openai/gpt-5.6-terra`            | 1.1M          | Yes             | OpenAI route                                          |
 
 These are the models shown in VT Code's picker. Merge model IDs are not a
 closed local allowlist: any valid explicit `provider/model` route can be used
@@ -87,9 +88,9 @@ env_key = "MERGE_GATEWAY_API_KEY"
 
 The environment variables are:
 
-| Variable | Purpose |
-| --- | --- |
-| `MERGE_GATEWAY_API_KEY` | Bearer token used for Merge Gateway requests |
+| Variable                 | Purpose                                                                                |
+| ------------------------ | -------------------------------------------------------------------------------------- |
+| `MERGE_GATEWAY_API_KEY`  | Bearer token used for Merge Gateway requests                                           |
 | `MERGE_GATEWAY_BASE_URL` | Optional native `/v1` override; ending in `/v1/openai` selects legacy Chat Completions |
 
 ## Responses and catalog behavior
@@ -114,8 +115,9 @@ response snapshot.
 
 The parser also accepts the frame kind from the JSON `object` field, which is
 the native Merge form, and resets the buffered snapshot when Merge emits a
-`fallback_restart` frame. See the [Merge streaming contract](https://docs.merge.dev/merge-gateway/streaming)
-for the upstream response and error behavior.
+`fallback_restart` frame. See the
+[Merge streaming contract](https://docs.merge.dev/merge-gateway/streaming) for
+the upstream response and error behavior.
 
 When the Merge provider is selected and `MERGE_GATEWAY_API_KEY` is available,
 VT Code fetches the authenticated `GET /v1/models` catalog with cursor
@@ -123,30 +125,31 @@ pagination. Catalog data is cached per provider and reused when refresh fails;
 unknown explicit `provider/model` route IDs remain valid and use conservative
 capabilities. Deprecated catalog routes are not added to the picker.
 
-The supplied [`models/catalog/llms.txt`](https://docs.merge.dev/merge-gateway/models/catalog/llms.txt)
+The supplied
+[`models/catalog/llms.txt`](https://docs.merge.dev/merge-gateway/models/catalog/llms.txt)
 file is a documentation index, not a runtime model dataset. Runtime discovery
 uses the authenticated `/v1/models` endpoint.
 
-Merge's reasoning behavior is vendor- and route-specific. VT Code discovers each
-route's reasoning capability from the authenticated `/v1/models` catalog and
-applies the configured reasoning effort using the route's advertised control:
-routes advertising a provider-native `reasoning_effort` (OpenAI, xAI, Moonshot,
-Meta, Z.AI prefixes) receive a `reasoning_effort` string, while routes advertising a
-Gateway-managed thinking budget (Anthropic, Gemini, DeepSeek, Qwen, MiniMax,
-Thinking Machines prefixes) receive a top-level `thinking` block with a
-`budget_tokens` value derived from the effort level and clamped below
-`max_tokens`. Unclassified routes such as `default_routing` and unknown explicit
-route IDs never receive reasoning controls. Merge routing metadata and billed
-cost remain provider-side metadata; VT Code reports normalized token usage
-through its existing response contract.
+Merge's reasoning behavior is vendor- and route-specific. VT Code discovers
+each route's reasoning capability from the authenticated `/v1/models` catalog
+and applies the configured reasoning effort using the route's advertised
+control: routes advertising a provider-native `reasoning_effort` (OpenAI, xAI,
+Moonshot, Meta, Z.AI prefixes) receive a `reasoning_effort` string, while
+routes advertising a Gateway-managed thinking budget (Anthropic, Gemini,
+DeepSeek, Qwen, MiniMax, Thinking Machines prefixes) receive a top-level
+`thinking` block with a `budget_tokens` value derived from the effort level and
+clamped below `max_tokens`. Unclassified routes such as `default_routing` and
+unknown explicit route IDs never receive reasoning controls. Merge routing
+metadata and billed cost remain provider-side metadata; VT Code reports
+normalized token usage through its existing response contract.
 
 ## Troubleshooting
 
 - `401` or authentication errors: confirm `MERGE_GATEWAY_API_KEY` is set and
   points to a key created in Merge.
 - `404` errors: verify the native base URL ends at `/v1`, or that an explicitly
-  configured legacy base URL ends at `/v1/openai`; do not include
-  `/responses` or `/chat/completions` in the configured base URL.
+  configured legacy base URL ends at `/v1/openai`; do not include `/responses`
+  or `/chat/completions` in the configured base URL.
 - No dynamic models appear: confirm the API key is available in
   `MERGE_GATEWAY_API_KEY`; VT Code keeps curated/static models available when
   catalog discovery is unavailable.

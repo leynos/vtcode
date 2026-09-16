@@ -1,7 +1,7 @@
 # Output Patterns Reference
 
-This reference provides patterns for structuring skill outputs. Use these patterns
-to make your skills produce consistent, useful results.
+This reference provides patterns for structuring skill outputs. Use these
+patterns to make your skills produce consistent, useful results.
 
 ## Core Principles
 
@@ -214,7 +214,7 @@ expected output
 
 [Explanation]
 
-...
+…
 
 ### Verification
 
@@ -222,7 +222,7 @@ expected output
 
 ### Troubleshooting
 
--   **Issue**: [Common problem]
+- **Issue**: [Common problem]
     **Solution**: [Fix]
 
 ````

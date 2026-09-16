@@ -5,6 +5,7 @@
 ### HeaderWidget
 
 **Current (struct initialization):**
+
 ```rust
 HeaderWidget {
     session: self.session,
@@ -13,6 +14,7 @@ HeaderWidget {
 ```
 
 **Improved (builder lite):**
+
 ```rust
 HeaderWidget::new(self.session)
     .lines(header_lines)
@@ -23,6 +25,7 @@ HeaderWidget::new(self.session)
 ### TranscriptWidget
 
 **Current:**
+
 ```rust
 TranscriptWidget {
     session: self.session,
@@ -30,6 +33,7 @@ TranscriptWidget {
 ```
 
 **Improved:**
+
 ```rust
 TranscriptWidget::new(self.session)
     .show_scrollbar(true)
@@ -90,7 +94,10 @@ impl<'a> Widget for MyWidget<'a> {
 
 ## Key Points
 
-1. **#[must_use]**: Prevents accidentally calling builder methods without using the result
-2. **Consume self**: Each builder method takes ownership and returns the modified struct
-3. **Sensible defaults**: Required params in `new()`, optional params as builder methods
+1. **#[must_use]**: Prevents accidentally calling builder methods without using
+   the result
+2. **Consume self**: Each builder method takes ownership and returns the
+   modified struct
+3. **Sensible defaults**: Required params in `new()`, optional params as
+   builder methods
 4. **Type conversions**: Use `Into<String>` or `Into<Style>` for flexibility

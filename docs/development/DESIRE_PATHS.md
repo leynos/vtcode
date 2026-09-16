@@ -1,12 +1,16 @@
 # Desire Paths in VT Code
 
-This document explains the design philosophy of paving "desire paths" in VT Code—optimizing the tool to work naturally with how agents think and work.
+This document explains the design philosophy of paving "desire paths" in VT
+Code—optimizing the tool to work naturally with how agents think and work.
 
 ## Philosophy
 
-A desire path is a common pattern that emerges from how users actually behave, rather than how designers intended them to behave. In software, this principle means:
+A desire path is a common pattern that emerges from how users actually behave,
+rather than how designers intended them to behave. In software, this principle
+means:
 
-**When an agent intuitively guesses wrong about a feature, we should improve the interface to make that guess right.**
+**When an agent intuitively guesses wrong about a feature, we should improve
+the interface to make that guess right.**
 
 Instead of:
 
@@ -19,7 +23,9 @@ We do:
 - Implement flags agents naturally expect
 - Design interfaces that align with agent mental models
 
-Over time, this compounds. Each small UX improvement reduces friction, and agents naturally stop making "mistakes" because the tool now works the way they naturally think.
+Over time, this compounds. Each small UX improvement reduces friction, and
+agents naturally stop making "mistakes" because the tool now works the way they
+naturally think.
 
 ## Current Paved Paths
 
@@ -35,7 +41,9 @@ Agents intuitively try short command names. We've paved these paths:
 
 **Location**: `.cargo/config.toml` → `[alias]` section
 
-**Why it works**: Agents coming from other CLI tools expect abbreviated commands. By providing these aliases, we eliminate the cognitive overhead of remembering full command names.
+**Why it works**: Agents coming from other CLI tools expect abbreviated
+commands. By providing these aliases, we eliminate the cognitive overhead of
+remembering full command names.
 
 ### Test Invocation Patterns
 
@@ -153,10 +161,10 @@ Did you mean one of these?
     check    Check compilation (`cargo c` for short)
 ```
 
-By making suggestions and noting aliases in help text, we guide agents toward good practices.
+By making suggestions and noting aliases in help text, we guide agents toward
+good practices.
 
----
+______________________________________________________________________
 
-**Last Updated**: Dec 30, 2025
-**Philosophy Introduced By**: Amp AI Agent
+**Last Updated**: Dec 30, 2025 **Philosophy Introduced By**: Amp AI Agent
 **Based On**: Wikipedia's "Desire Path" concept

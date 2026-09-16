@@ -1,18 +1,22 @@
 # vtcode-ui
 
-Unified UI framework for VT Code: design system, theme registry, and TUI framework.
+Unified UI framework for VT Code: design system, theme registry, and TUI
+framework.
 
 ## Overview
 
-`vtcode-ui` consolidates the design system, theme registry, and terminal UI framework into a single workspace crate. Its TUI module provides a publicly reachable UI-facing Rust path, while host-specific integrations remain in `vtcode-core`.
+`vtcode-ui` consolidates the design system, theme registry, and terminal UI
+framework into a single workspace crate. Its TUI module provides a publicly
+reachable UI-facing Rust path, while host-specific integrations remain in
+`vtcode-core`.
 
 ## Architecture
 
-| Area | Path | Description |
-|------|------|-------------|
-| Design system | `design/` | Color conversion, style bridging, layout, diff, panel primitives |
-| Theme registry | `theme/` | ThemeStyles, runtime state, syntax theme resolution |
-| TUI framework | `tui/` | Session, widgets, runner, markdown rendering, config |
+| Area           | Path      | Description                                                      |
+| -------------- | --------- | ---------------------------------------------------------------- |
+| Design system  | `design/` | Color conversion, style bridging, layout, diff, panel primitives |
+| Theme registry | `theme/`  | ThemeStyles, runtime state, syntax theme resolution              |
+| TUI framework  | `tui/`    | Session, widgets, runner, markdown rendering, config             |
 
 ## Key Components
 
@@ -49,8 +53,8 @@ pub use theme::*;
 
 ### Behaviour configuration API migration
 
-The native Rust type formerly named `BehaviorConfig` is intentionally renamed
-to `BehaviourConfig`; no alias for the old name is retained. Import it through
+The native Rust type formerly named `BehaviorConfig` is intentionally renamed to
+`BehaviourConfig`; no alias for the old name is retained. Import it through
 the public TUI module path:
 
 ```rust

@@ -5,7 +5,7 @@ Model-facing schemas preserve request intent (`sandbox_permissions`,
 approval policy or its current value. The execution gateway resolves those
 stable intent fields against the live sandbox and approval configuration.
 
-### Additional permission normalization
+## Additional permission normalization
 
 `additional_permissions` is an additive sandbox request. When it contains at
 least one filesystem permission, an omitted `sandbox_permissions` value or an
@@ -23,33 +23,42 @@ downgrading or broadening the request.
 
 ## Overview
 
-VT Code implements a comprehensive, defense-in-depth command security system that enables non-powered users to run safe commands by default while protecting against dangerous operations. This system helps the agent use system and build tools properly via environment PATH configuration.
+VT Code implements a comprehensive, defense-in-depth command security system
+that enables non-powered users to run safe commands by default while protecting
+against dangerous operations. This system helps the agent use system and build
+tools properly via environment PATH configuration.
 
 ### Native plugin boundary
 
 Opening a dynamic library can execute native initialization code before the
-library's metadata or ABI is validated. Repository-controlled `.agents/plugins/`
-and `.vtcode/plugins/` directories therefore remain metadata-only; the
-high-level skill loader does not add them to the native loader's trusted roots.
-The `load_skill` tool is approval-required because executable-backed skill
-implementations must never inherit the read-only policy used for ordinary
-skill instructions. Low-level native loading is reserved for callers that
-have already established plugin provenance and explicit user consent.
+library's metadata or ABI is validated. Repository-controlled
+`.agents/plugins/` and `.vtcode/plugins/` directories therefore remain
+metadata-only; the high-level skill loader does not add them to the native
+loader's trusted roots. The `load_skill` tool is approval-required because
+executable-backed skill implementations must never inherit the read-only policy
+used for ordinary skill instructions. Low-level native loading is reserved for
+callers that have already established plugin provenance and explicit user
+consent.
 
 ## Design Philosophy
 
-**Safe-by-default**: All known safe commands for development and system utilities are enabled without requiring user confirmation or configuration.
+**Safe-by-default**: All known safe commands for development and system
+utilities are enabled without requiring user confirmation or configuration.
 
-**Layered Defense**: Multiple validation layers (allow_list, allow_glob, deny_list, deny_glob, allow_regex, deny_regex) work together to prevent dangerous commands from executing.
+**Layered Defense**: Multiple validation layers (allow_list, allow_glob,
+deny_list, deny_glob, allow_regex, deny_regex) work together to prevent
+dangerous commands from executing.
 
-**Deny-rules-first**: If a command matches any deny pattern, it is blocked regardless of allow patterns.
+**Deny-rules-first**: If a command matches any deny pattern, it is blocked
+regardless of allow patterns.
 
 ## Architecture
 
 ### Configuration Sources (Precedence Order)
 
 1. **vtcode.toml** - User/project-level overrides (highest priority)
-2. **crates/codegen/vtcode-config/src/core/commands.rs** - Code defaults (runtime)
+2. **crates/codegen/vtcode-config/src/core/commands.rs** - Code defaults
+   (runtime)
 3. **crates/codegen/vtcode-config/src/constants.rs** - System constants (backup)
 
 ### Command Validation Layers
@@ -72,57 +81,61 @@ Input: command → Check deny_list → Check deny_glob → Check deny_regex
 
 Safely query and display file information without modification:
 
--   **Basic**: `ls`, `pwd`, `cat`, `head`, `tail`, `echo`, `printf`
--   **Search**: `grep`, `find`, `locate`
--   **Analysis**: `wc`, `sort`, `uniq`, `cut`, `awk`, `sed`
--   **Inspection**: `file`, `stat`, `diff`, `tree`, `du`, `df`
+- **Basic**: `ls`, `pwd`, `cat`, `head`, `tail`, `echo`, `printf`
+- **Search**: `grep`, `find`, `locate`
+- **Analysis**: `wc`, `sort`, `uniq`, `cut`, `awk`, `sed`
+- **Inspection**: `file`, `stat`, `diff`, `tree`, `du`, `df`
 
 #### 2. Version Control (Git/Hg/SVN)
 
 Inspect repository state and manage commits safely:
 
--   **Inspection**: `git status`, `git log`, `git show`, `git diff`, `git branch`
--   **Safe workflows**: `git fetch`, `git pull`, `git add`, `git commit`, `git stash`, `git tag`
--   **Other VCS**: `hg`, `svn`, `git-lfs`
+- **Inspection**: `git status`, `git log`, `git show`, `git diff`,
+    `git branch`
+- **Safe workflows**: `git fetch`, `git pull`, `git add`, `git commit`,
+    `git stash`, `git tag`
+- **Other VCS**: `hg`, `svn`, `git-lfs`
 
 #### 3. Build Systems
 
 Core compilation and build tool execution:
 
--   **Make-based**: `make`, `cmake`, `ninja`, `meson`, `bazel`
--   **Rust ecosystem**: `cargo`, `rustc`, `rustfmt`, `rustup`, `cargo test`
--   **All major subcommands**: `cargo build`, `cargo test`, `cargo check`, `cargo run`, etc.
+- **Make-based**: `make`, `cmake`, `ninja`, `meson`, `bazel`
+- **Rust ecosystem**: `cargo`, `rustc`, `rustfmt`, `rustup`, `cargo test`
+- **All major subcommands**: `cargo build`, `cargo test`, `cargo check`,
+    `cargo run`, etc.
 
 #### 4. Language Runtimes & Package Managers
 
 Execution and dependency management for all major languages:
 
--   **Python**: `python`, `python3`, `pip`, `pip3`, `virtualenv`, `pytest`, `black`, `flake8`, `mypy`, `ruff`
--   **Node.js**: `npm`, `node`, `yarn`, `pnpm`, `bun`, `npx`
--   **Go**: `go`, `gofmt`, `golint`
--   **Java**: `java`, `javac`, `mvn`, `gradle`
--   **C/C++**: `gcc`, `g++`, `clang`, `clang++`
+- **Python**: `python`, `python3`, `pip`, `pip3`, `virtualenv`, `pytest`,
+    `black`, `flake8`, `mypy`, `ruff`
+- **Node.js**: `npm`, `node`, `yarn`, `pnpm`, `bun`, `npx`
+- **Go**: `go`, `gofmt`, `golint`
+- **Java**: `java`, `javac`, `mvn`, `gradle`
+- **C/C++**: `gcc`, `g++`, `clang`, `clang++`
 
 #### 5. Compression & Archiving
 
 Safe data compression without system-level access:
 
--   `tar`, `zip`, `unzip`, `gzip`, `gunzip`, `bzip2`, `bunzip2`, `xz`, `unxz`
+- `tar`, `zip`, `unzip`, `gzip`, `gunzip`, `bzip2`, `bunzip2`, `xz`, `unxz`
 
 #### 6. Container Tools
 
 Docker and container platforms:
 
--   `docker`, `docker-compose` (with restrictions on `docker run`)
--   **Note**: `docker run *` is denied; containers require careful review
+- `docker`, `docker-compose` (with restrictions on `docker run`)
+- **Note**: `docker run *` is denied; containers require careful review
 
 #### 7. System Information
 
 Safe read-only system monitoring:
 
--   `ps`, `top`, `htop` - Process listing and monitoring
--   `df`, `du` - Disk usage
--   `whoami`, `hostname`, `uname` - System identity
+- `ps`, `top`, `htop` - Process listing and monitoring
+- `df`, `du` - Disk usage
+- `whoami`, `hostname`, `uname` - System identity
 
 ### Glob Patterns for Workflows
 
@@ -145,67 +158,68 @@ allow_glob = [
 
 #### 1. Destructive Filesystem Operations
 
--   **Root deletion**: `rm -rf /`, `rm -rf /*`, `rm -rf /home`, `rm -rf /usr`, `rm -rf /etc`
--   **Home deletion**: `rm -rf ~`
--   **Filesystem tools**: `mkfs`, `mkfs.ext4`, `fdisk`, `dd if=/dev/*`
+- **Root deletion**: `rm -rf /`, `rm -rf /*`, `rm -rf /home`, `rm -rf /usr`,
+    `rm -rf /etc`
+- **Home deletion**: `rm -rf ~`
+- **Filesystem tools**: `mkfs`, `mkfs.ext4`, `fdisk`, `dd if=/dev/*`
 
 #### 2. System Shutdown/Reboot
 
--   `shutdown`, `reboot`, `halt`, `poweroff`
--   `systemctl poweroff`, `systemctl reboot`, `systemctl halt`
--   `init 0`, `init 6`
+- `shutdown`, `reboot`, `halt`, `poweroff`
+- `systemctl poweroff`, `systemctl reboot`, `systemctl halt`
+- `init 0`, `init 6`
 
 #### 3. Privilege Escalation
 
--   Any `sudo` command: `sudo rm`, `sudo chmod`, `sudo bash`, etc.
--   Root switching: `su root`, `su -`
--   Admin shells: `sudo -i`, `nohup bash -i`, `exec bash -i`
+- Any `sudo` command: `sudo rm`, `sudo chmod`, `sudo bash`, etc.
+- Root switching: `su root`, `su -`
+- Admin shells: `sudo -i`, `nohup bash -i`, `exec bash -i`
 
 #### 4. Filesystem Mounting/Unmounting
 
--   `mount`, `umount` - Prevent unauthorized filesystem manipulation
+- `mount`, `umount` - Prevent unauthorized filesystem manipulation
 
 #### 5. Disk/Data Destruction
 
--   `format`, `fdisk`, `mkfs`, `shred`, `wipe`
--   `dd if=/dev/zero`, `dd if=/dev/random`, `dd if=/dev/urandom`
+- `format`, `fdisk`, `mkfs`, `shred`, `wipe`
+- `dd if=/dev/zero`, `dd if=/dev/random`, `dd if=/dev/urandom`
 
 #### 6. Permission/Ownership Changes
 
--   `chmod 777`, `chmod -R 777` - Make files world-writable (dangerous)
--   `chown -R`, `chgrp -R` - Recursive ownership changes
+- `chmod 777`, `chmod -R 777` - Make files world-writable (dangerous)
+- `chown -R`, `chgrp -R` - Recursive ownership changes
 
 #### 7. Shell Exploits
 
--   **Fork bomb**: `:(){ :|:& };:`
--   **Code evaluation**: `eval` - Prevents arbitrary code injection
--   **Config sourcing**: `source /etc/bashrc`, `source ~/.bashrc`
+- **Fork bomb**: `:(){ :|:& };:`
+- **Code evaluation**: `eval` - Prevents arbitrary code injection
+- **Config sourcing**: `source /etc/bashrc`, `source ~/.bashrc`
 
 #### 8. Sensitive Data Access
 
--   **User databases**: `cat /etc/passwd`, `cat /etc/shadow`
--   **SSH keys**: `cat ~/.ssh/id_*`, `rm ~/.ssh/*`, `rm -r ~/.ssh`
--   **System logs**: `tail -f /var/log`, direct log access
+- **User databases**: `cat /etc/passwd`, `cat /etc/shadow`
+- **SSH keys**: `cat ~/.ssh/id_*`, `rm ~/.ssh/*`, `rm -r ~/.ssh`
+- **System logs**: `tail -f /var/log`, direct log access
 
 #### 9. Process Control
 
--   `kill`, `pkill` - Process termination
--   **Note**: Allows monitoring (`ps`, `top`, `htop`) but not process killing
+- `kill`, `pkill` - Process termination
+- **Note**: Allows monitoring (`ps`, `top`, `htop`) but not process killing
 
 #### 10. Service Management
 
--   `systemctl *` - System service manipulation (denied at glob level)
--   `service *` - Legacy service management
--   `crontab`, `at` - Task scheduling (dangerous for automation)
+- `systemctl *` - System service manipulation (denied at glob level)
+- `service *` - Legacy service management
+- `crontab`, `at` - Task scheduling (dangerous for automation)
 
 VT Code supports automation through internal scheduling primitives instead:
 
--   `vtcode schedule` for durable local automation and reminders
+- `vtcode schedule` for durable local automation and reminders
 
 #### 11. Container/Orchestration
 
--   `kubectl *` - Kubernetes operations (admin access)
--   `docker run *` - Container creation (requires careful review)
+- `kubectl *` - Kubernetes operations (admin access)
+- `docker run *` - Container creation (requires careful review)
 
 ## Validation Rules (Configuration Reference)
 
@@ -299,11 +313,11 @@ extra_path_entries = [
 
 This allows the agent to access:
 
--   Rust tools: `cargo`, `rustc`, `rustfmt`, `rustup`
--   Python tools: `pytest`, `black`, `flake8`, `mypy`
--   Node tools: `npm`, `yarn`, `node`
--   Go tools: `go`, `gofmt`
--   And all other build/development tools installed via package managers
+- Rust tools: `cargo`, `rustc`, `rustfmt`, `rustup`
+- Python tools: `pytest`, `black`, `flake8`, `mypy`
+- Node tools: `npm`, `yarn`, `node`
+- Go tools: `go`, `gofmt`
+- And all other build/development tools installed via package managers
 
 ## Environment Variables
 
@@ -330,12 +344,12 @@ workers, and reconnects. `McpClient::new` remains a compatibility constructor
 for unsandboxed library callers. MCP stderr is capped and secret-redacted
 before logging.
 
-The platform contract is intentionally conservative. Linux restrictive
-policies require the configured helper. Windows restrictive policies return an
-explicit unsupported error because native restricted-token isolation is not
-implemented. macOS keeps full-network and blocked-network modes, but rejects
-hostname allowlists rather than widening them to port-wide access: Seatbelt is
-not a documented, reliable third-party domain-filtering contract.
+The platform contract is intentionally conservative. Linux restrictive policies
+require the configured helper. Windows restrictive policies return an explicit
+unsupported error because native restricted-token isolation is not implemented.
+macOS keeps full-network and blocked-network modes, but rejects hostname
+allowlists rather than widening them to port-wide access: Seatbelt is not a
+documented, reliable third-party domain-filtering contract.
 
 ### Provider diagnostics
 
@@ -362,12 +376,12 @@ it rejects non-empty `custom_providers` values from those sources before they
 can reach provider registration. This prevents repository configuration from
 introducing command-backed custom authentication (`auth.command`).
 
-It also rejects repository-controlled
-`provider_overrides.<name>.base_url` and `.api_key_env` values, which could
-redirect model requests or select credentials from an environment variable.
-Origin checks still apply when `workspace.use_root_config` discards lower
-layers. System/user config, explicitly selected config files, and explicit
-runtime overrides remain trusted opt-in paths.
+It also rejects repository-controlled `provider_overrides.<name>.base_url` and
+`.api_key_env` values, which could redirect model requests or select
+credentials from an environment variable. Origin checks still apply when
+`workspace.use_root_config` discards lower layers. System/user config,
+explicitly selected config files, and explicit runtime overrides remain trusted
+opt-in paths.
 
 Normal startup and live reload can repair legacy repository files produced by
 older full-config writes: only the protected provider fields are removed
@@ -390,10 +404,10 @@ cache_ttl_seconds = 300
 
 **Audit logs track:**
 
--   Allowed commands executed
--   Blocked/denied commands attempted
--   Permission decision cache hits
--   Command resolution paths
+- Allowed commands executed
+- Blocked/denied commands attempted
+- Permission decision cache hits
+- Command resolution paths
 
 ## Usage with the VT Code Agent
 
@@ -507,28 +521,29 @@ deny_glob = [
 
 ### What This Protects Against
 
-Accidental destructive commands
-Privilege escalation attempts
-Malicious shell exploits (forkbombs, eval injection)
-Sensitive data exposure (SSH keys, password files)
-System shutdown/corruption
-Filesystem manipulation
+Accidental destructive commands Privilege escalation attempts Malicious shell
+exploits (forkbombs, eval injection) Sensitive data exposure (SSH keys,
+password files) System shutdown/corruption Filesystem manipulation
 
 ### What This Does NOT Protect Against
 
-Compromised agent LLM (if it's compromised, it can craft allowed commands to cause harm)
-Commands that are allowed but have dangerous flags (e.g., `cargo build --offline` with missing dependencies)
-Zip bombs or other valid-but-malicious allowed file operations
-Side effects of running safe commands in a bad state
+Compromised agent LLM (if it's compromised, it can craft allowed commands to
+cause harm) Commands that are allowed but have dangerous flags (e.g.,
+`cargo build --offline` with missing dependencies) Zip bombs or other
+valid-but-malicious allowed file operations Side effects of running safe
+commands in a bad state
 
 ### Best Practices
 
 1. **Keep deny_list comprehensive** - Always block system-altering commands
 2. **Use allow_glob sparingly** - More specific allow_list entries are safer
-3. **Monitor audit logs** - Review the user state directory's `audit/` path regularly for suspicious patterns
+3. **Monitor audit logs** - Review the user state directory's `audit/` path
+   regularly for suspicious patterns
 4. **Test configurations** - Validate with `cargo test` before deploying
-5. **Avoid eval-like patterns** - Never allow `eval`, `source`, dynamic command construction
-6. **Isolate workspaces** - Consider separate configurations for different project types
+5. **Avoid eval-like patterns** - Never allow `eval`, `source`, dynamic command
+   construction
+6. **Isolate workspaces** - Consider separate configurations for different
+   project types
 
 ## Examples
 
@@ -619,5 +634,7 @@ RUST_LOG=debug cargo run
 
 ## See Also
 
--   [docs/development/EXECUTION_POLICY.md](./EXECUTION_POLICY.md) - Overall execution policy
--   [crates/codegen/vtcode-config/src/core/commands.rs](../../crates/codegen/vtcode-config/src/core/commands.rs) - Implementation
+- [docs/development/EXECUTION_POLICY.md](./EXECUTION_POLICY.md) - Overall
+    execution policy
+- [crates/codegen/vtcode-config/src/core/commands.rs](../../crates/codegen/vtcode-config/src/core/commands.rs)
+  - Implementation

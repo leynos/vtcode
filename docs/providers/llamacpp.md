@@ -1,6 +1,7 @@
 # llama.cpp Provider Guide
 
-VT Code includes a built-in `llamacpp` provider for local inference through [`llama-server`](https://llama.app/).
+VT Code includes a built-in `llamacpp` provider for local inference through
+[`llama-server`](https://llama.app/).
 
 ## What VT Code manages
 
@@ -25,7 +26,8 @@ export VTCODE_PROVIDER=llamacpp
 export LLAMACPP_MODEL_PATH=/absolute/path/to/model.gguf
 ```
 
-If `llama-server` is on `PATH`, VT Code can start it automatically on the first request.
+If `llama-server` is on `PATH`, VT Code can start it automatically on the first
+request.
 
 ## Manual server mode
 
@@ -45,13 +47,13 @@ export LLAMACPP_BASE_URL=http://localhost:8080/v1
 
 ### Environment variables
 
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `LLAMACPP_BASE_URL` | OpenAI-compatible llama.cpp endpoint | `http://localhost:8080/v1` |
-| `LLAMACPP_MODEL_PATH` | Local GGUF path for VT Code-managed startup | unset |
-| `LLAMACPP_BINARY_PATH` | Override path to `llama-server` | PATH lookup |
-| `LLAMACPP_EXTRA_ARGS` | Extra CLI flags appended to `llama-server` | unset |
-| `LLAMACPP_STARTUP_TIMEOUT_SECONDS` | Startup/readiness timeout | `60` |
+| Variable                           | Purpose                                     | Default                    |
+| ---------------------------------- | ------------------------------------------- | -------------------------- |
+| `LLAMACPP_BASE_URL`                | OpenAI-compatible llama.cpp endpoint        | `http://localhost:8080/v1` |
+| `LLAMACPP_MODEL_PATH`              | Local GGUF path for VT Code-managed startup | unset                      |
+| `LLAMACPP_BINARY_PATH`             | Override path to `llama-server`             | PATH lookup                |
+| `LLAMACPP_EXTRA_ARGS`              | Extra CLI flags appended to `llama-server`  | unset                      |
+| `LLAMACPP_STARTUP_TIMEOUT_SECONDS` | Startup/readiness timeout                   | `60`                       |
 
 ### TOML
 
@@ -64,10 +66,13 @@ base_url = "http://localhost:8080/v1"
 model = "gpt-oss-20b"
 ```
 
-If `model` points at a local `.gguf` path, VT Code also treats it as a managed-start hint.
+If `model` points at a local `.gguf` path, VT Code also treats it as a
+managed-start hint.
 
 ## Notes
 
 - Managed startup is intentionally limited to localhost endpoints.
-- In single-model mode, VT Code resolves the exact request model ID from `/v1/models` so the request matches what `llama-server` exposes.
-- Tool calling depends on the loaded model and chat template support in llama.cpp.
+- In single-model mode, VT Code resolves the exact request model ID from
+  `/v1/models` so the request matches what `llama-server` exposes.
+- Tool calling depends on the loaded model and chat template support in
+  llama.cpp.

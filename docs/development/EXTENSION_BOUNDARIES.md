@@ -8,9 +8,9 @@ Rust traits are a strong internal composition tool, but they are a poor default
 boundary for ecosystem-style extension. When a third party must add support for
 VT Code by implementing or waiting on a crate-local trait, we create the same
 kind of "got there first" pressure that shows up in broader Rust coherence and
-orphan-rule discussions. In practice, that pressure makes alternatives harder to
-ship: whichever compile-time trait surface lands first tends to become the one
-every integration must target.
+orphan-rule discussions. In practice, that pressure makes alternatives harder
+to ship: whichever compile-time trait surface lands first tends to become the
+one every integration must target.
 
 For VT Code, the practical rule is simple:
 

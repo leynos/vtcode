@@ -2,15 +2,19 @@
 
 ## Overview
 
-This document describes the refactoring of `prompt_user_for_tool()` to be TUI-only, removing all CLI-specific code and dependencies.
+This document describes the refactoring of `prompt_user_for_tool()` to be
+TUI-only, removing all CLI-specific code and dependencies.
 
 ## Problem Statement
 
-The original `prompt_user_for_tool()` function in `crates/codegen/vtcode-core/src/tool_policy.rs` contained CLI-specific code with a guard to prevent execution in TUI mode. This created several issues:
+The original `prompt_user_for_tool()` function in
+`crates/codegen/vtcode-core/src/tool_policy.rs` contained CLI-specific code
+with a guard to prevent execution in TUI mode. This created several issues:
 
 1. The function could corrupt the terminal if accidentally called in TUI mode
 2. It contained dialoguer (CLI) dependencies in the library crate
-3. The architecture was not clean - TUI mode had to use a completely different code path
+3. The architecture was not clean - TUI mode had to use a completely different
+   code path
 4. The library crate had mixed UI concerns
 
 ## Solution
@@ -25,7 +29,8 @@ pub trait PermissionPromptHandler: Send + Sync {
 }
 ```
 
-This trait allows different UI modes to provide their own implementation for prompting users about tool execution.
+This trait allows different UI modes to provide their own implementation for
+prompting users about tool execution.
 
 ### 2. ToolPolicyManager Updates
 
@@ -50,7 +55,8 @@ impl ToolPolicyManager {
 
 ### 3. Removed CLI-Specific Code
 
-The original `prompt_user_for_tool()` function (lines 874-952) was completely removed, including:
+The original `prompt_user_for_tool()` function (lines 874-952) was completely
+removed, including:
 
 - `VTCODE_TUI_MODE` environment variable check
 - Interactive terminal detection
@@ -63,7 +69,7 @@ The original `prompt_user_for_tool()` function (lines 874-952) was completely re
 
 ### For TUI Mode
 
-In the binary crate (src/agent/runloop/...), set up a TUI permission handler:
+In the binary crate (src/agent/runloop/…), set up a TUI permission handler:
 
 ```rust
 use vtcode_core::tool_policy::{ToolPolicyManager, PermissionPromptHandler};
@@ -143,8 +149,10 @@ policy_manager.set_permission_handler(Box::new(HeadlessPermissionHandler::new(
 
 The refactoring maintains backward compatibility:
 
-1. If no permission handler is set, `should_execute_tool()` returns `Allowed` for Prompt policies
-2. This maintains the existing behavior where TUI mode permissions are handled externally
+1. If no permission handler is set, `should_execute_tool()` returns `Allowed`
+   for Prompt policies
+2. This maintains the existing behavior where TUI mode permissions are handled
+   externally
 3. Existing code that doesn't set a handler continues to work
 
 ## Benefits
@@ -158,7 +166,8 @@ The refactoring maintains backward compatibility:
 ## Files Modified
 
 - `crates/codegen/vtcode-core/src/tool_policy.rs`: Main refactoring location
-- `crates/codegen/vtcode-core/src/tool_policy_handlers.rs`: New file with example implementations (optional)
+- `crates/codegen/vtcode-core/src/tool_policy_handlers.rs`: New file with
+  example implementations (optional)
 
 ## Migration Guide
 

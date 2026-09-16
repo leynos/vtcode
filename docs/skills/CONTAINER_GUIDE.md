@@ -5,6 +5,7 @@ Quick reference for using VT Code's skill container system (Claude API-aligned).
 ## Basic Usage
 
 ### Single Skill
+
 ```rust
 use vtcode_core::skills::{SkillContainer, SkillSpec};
 
@@ -18,6 +19,7 @@ executor.execute_container(container, "analyze this data").await?;
 ```
 
 ### Multiple Skills
+
 ```rust
 let mut container = SkillContainer::new();
 
@@ -33,6 +35,7 @@ executor.execute_container(container, input).await?;
 ## Advanced Usage
 
 ### Version Pinning
+
 ```rust
 use vtcode_core::skills::{SkillVersion, SkillSpec};
 
@@ -47,6 +50,7 @@ container.add_skill(spec)?;
 ```
 
 ### Container Reuse
+
 ```rust
 // Create container once
 let mut container = SkillContainer::new();
@@ -68,6 +72,7 @@ let result2 = executor.execute_container(&container,
 ```
 
 ### Skill Filtering
+
 ```rust
 let container = SkillContainer::single(SkillSpec::custom("test"));
 
@@ -140,6 +145,7 @@ let restored: SkillContainer = serde_json::from_str(&json)?;
 ```
 
 JSON Output:
+
 ```json
 {
   "skills": [
@@ -245,6 +251,7 @@ SkillType::Custom                             // User-uploaded
 ## Common Patterns
 
 ### Excel + PowerPoint Analysis
+
 ```rust
 let mut container = SkillContainer::new();
 container.add_anthropic("xlsx")?;   // Read Excel
@@ -255,6 +262,7 @@ executor.execute_container(container, input).await?;
 ```
 
 ### Custom Analysis Pipeline
+
 ```rust
 let mut container = SkillContainer::new();
 container.add_custom("data-cleaner")?;
@@ -266,6 +274,7 @@ executor.execute_container(container, input).await?;
 ```
 
 ### Progressive Enhancement
+
 ```rust
 // Start simple
 let mut container = SkillContainer::single(
@@ -316,11 +325,11 @@ fn build_container() -> Result<SkillContainer> {
 
 ## Compatibility
 
--  JSON serialization (serde)
--  Backward compatible with existing skills
--  Works with existing skill loader
--  Compatible with tool registry
--  No breaking changes
+- JSON serialization (serde)
+- Backward compatible with existing skills
+- Works with existing skill loader
+- Compatible with tool registry
+- No breaking changes
 
 ## See Also
 

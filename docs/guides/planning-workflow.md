@@ -1,6 +1,10 @@
 # Planning Workflow
 
-The planning workflow lets you iterate with the agent on what you want to build before implementation starts. It is driven by the built-in `plan` primary agent and the `/plan` slash command. Plan is discussion-first: it remains a distinct read-only workflow that investigates the repository, uses evidence and reasonable defaults, and asks only when a material choice remains.
+The planning workflow lets you iterate with the agent on what you want to build
+before implementation starts. It is driven by the built-in `plan` primary agent
+and the `/plan` slash command. Plan is discussion-first: it remains a distinct
+read-only workflow that investigates the repository, uses evidence and
+reasonable defaults, and asks only when a material choice remains.
 
 ## Overview
 
@@ -9,66 +13,111 @@ During planning, the agent can:
 - read files and inspect project structure
 - search code with grep, structural search, and other read-only tools
 - analyse patterns and constraints before proposing changes
-- run explicitly safe inspection or validation commands when the active permission policy allows them
+- run explicitly safe inspection or validation commands when the active
+  permission policy allows them
 - ask clarifying questions through `request_user_input`
 
-The planning agent does not implement changes, shell-write plan files, or use file-writing tools for plan persistence. It emits exactly one final `<proposed_plan>` block when the plan is ready. The runtime validates and persists that plan, then exposes approval controls. During an approved handoff, the runtime creates and persists the `task_tracker` before handing off to the write-capable `build` agent or configured `auto` workflow.
+The planning agent does not implement changes, shell-write plan files, or use
+file-writing tools for plan persistence. It emits exactly one final
+`<proposed_plan>` block when the plan is ready. The runtime validates and
+persists that plan, then exposes approval controls. During an approved handoff,
+the runtime creates and persists the `task_tracker` before handing off to the
+write-capable `build` agent or configured `auto` workflow.
 
-The built-in `plan` agent's permission rules allow `read`, `request_user_input`, and `bash` so its wire catalog keeps `exec_command`, `code_search`, `grep_file`, and the interview tool visible. Read-only enforcement is not delegated to those permissions: the planning dispatch gate hard-blocks every mutating tool call (and non-allow-listed shell command) before execution, so granting `bash` admits the tool without weakening plan-mode safety. The `plan` agent is also excluded by name from approved-plan execution routing — selecting it always re-enters planning, never implementation.
+The built-in `plan` agent's permission rules allow `read`,
+`request_user_input`, and `bash` so its wire catalog keeps `exec_command`,
+`code_search`, `grep_file`, and the interview tool visible. Read-only
+enforcement is not delegated to those permissions: the planning dispatch gate
+hard-blocks every mutating tool call (and non-allow-listed shell command)
+before execution, so granting `bash` admits the tool without weakening
+plan-mode safety. The `plan` agent is also excluded by name from approved-plan
+execution routing — selecting it always re-enters planning, never
+implementation.
 
 ## Bounded blocked-call recovery
 
-Blocked and denied tool calls are bounded per turn to prevent retry churn. The configured `tools.max_consecutive_blocked_tool_calls_per_turn` value remains the consecutive-call cap. The total fuse is two times that cap in normal mode, four times that cap in Plan Mode, and the consecutive cap in recovery mode. The fuse is strict: with a cap of `3`, Plan Mode permits 12 non-consecutive blocked calls and stops on call 13. A successful or otherwise allowed call resets the consecutive streak, but not the turn's total blocked-call count.
+Blocked and denied tool calls are bounded per turn to prevent retry churn. The
+configured `tools.max_consecutive_blocked_tool_calls_per_turn` value remains
+the consecutive-call cap. The total fuse is two times that cap in normal mode,
+four times that cap in Plan Mode, and the consecutive cap in recovery mode. The
+fuse is strict: with a cap of `3`, Plan Mode permits 12 non-consecutive blocked
+calls and stops on call 13. A successful or otherwise allowed call resets the
+consecutive streak, but not the turn's total blocked-call count.
 
-When a turn stops because of blocked behavior, VT Code forces a session-history checkpoint before writing the blocked handoff. The handoff advertises `vtcode --resume <archive-id>` only after that archive is successfully persisted and its identifier is verified. If history persistence is disabled or the checkpoint fails, the handoff explains that resume is unavailable and does not advertise a misleading command. Interactive sessions return to the next input after the handoff.
+When a turn stops because of blocked behavior, VT Code forces a session-history
+checkpoint before writing the blocked handoff. The handoff advertises
+`vtcode --resume <archive-id>` only after that archive is successfully
+persisted and its identifier is verified. If history persistence is disabled or
+the checkpoint fails, the handoff explains that resume is unavailable and does
+not advertise a misleading command. Interactive sessions return to the next
+input after the handoff.
 
-Runner paths that do not create session archives also omit the resume command and state that limitation in the handoff.
+Runner paths that do not create session archives also omit the resume command
+and state that limitation in the handoff.
 
-Shell commands in plan mode are validated against a read-only allow-list. Allowed patterns include:
+Shell commands in plan mode are validated against a read-only allow-list.
+Allowed patterns include:
 
-- inspection base commands: `rg`, `ls`, `cat`, `sed`, `grep`, `find`, `head`, `tail`, `fd`, `tree`, `stat`, `file`, `which`, `jq`, and similar
-- `cd` prefixes: `cd <dir> && <read-only command>` (changing directory mutates nothing)
-- read-only subcommands: `git status|log|diff|show|blame|ls-files|rev-parse|describe|shortlog|grep`, `cargo check|test|clippy|metadata|tree|nextest run`, `npm|pnpm|yarn test`
+- inspection base commands: `rg`, `ls`, `cat`, `sed`, `grep`, `find`, `head`,
+  `tail`, `fd`, `tree`, `stat`, `file`, `which`, `jq`, and similar
+- `cd` prefixes: `cd <dir> && <read-only command>` (changing directory mutates
+  nothing)
+- read-only subcommands:
+  `git status|log|diff|show|blame|ls-files|rev-parse|describe|shortlog|grep`,
+  `cargo check|test|clippy|metadata|tree|nextest run`, `npm|pnpm|yarn test`
 - `&&` chains and `|` pipelines where every segment is itself read-only
-- static `;` chains where every segment is independently read-only; literal-output `printf` is allowed as an inspection-output separator
+- static `;` chains where every segment is independently read-only;
+  literal-output `printf` is allowed as an inspection-output separator
 - `2>&1` stderr merges (no file is written)
 
-Rejected: file redirections (`>`, `>>`), command substitution (`$(...)`, backticks), dynamic `;` chains, in-place edits (`sed -i`), and any chain with a mutating or unknown segment (`rm`, `mv`, `cargo build`, `git push`, arbitrary scripts).
+Rejected: file redirections (`>`, `>>`), command substitution (`$(...)`,
+backticks), dynamic `;` chains, in-place edits (`sed -i`), and any chain with a
+mutating or unknown segment (`rm`, `mv`, `cargo build`, `git push`, arbitrary
+scripts).
 
-During planning, the dispatch gate denies mutating tools. Plan remains read-only; the runtime alone persists validated planning artifacts under `.vtcode/plans/`.
+During planning, the dispatch gate denies mutating tools. Plan remains
+read-only; the runtime alone persists validated planning artifacts under
+`.vtcode/plans/`.
 
-`task_tracker` is available for checklist state. Planning output should use `<proposed_plan>...</proposed_plan>` when the agent is ready for user review.
+`task_tracker` is available for checklist state. Planning output should use
+`<proposed_plan>...</proposed_plan>` when the agent is ready for user review.
 
 Tracker updates use action-aware indices. Standard checklist item indices are
 positive and 1-based; the compatibility form `index: 0` is reserved for
 checklist-level completion with `status: "completed"`. Planning workflow
 updates accept positive flat indices or positive hierarchical `index_path`
-values such as `2.1`. Use `items` for bulk synchronization rather than an
-item index.
+values such as `2.1`. Use `items` for bulk synchronization rather than an item
+index.
 
 Successful tracker updates render as one compact hierarchical tree in both the
 inline transcript and the TODO panel. Parent rows show their branch and
-description; leaf rows use `[-]`, `□`, `[x]`, or `[!]` for in-progress, pending,
-completed, and blocked work. Files, outcomes, and verification commands remain
-structured tracker metadata rather than extra visible rows.
+description; leaf rows use `[-]`, `□`, `[x]`, or `[!]` for in-progress,
+pending, completed, and blocked work. Files, outcomes, and verification
+commands remain structured tracker metadata rather than extra visible rows.
 
 ## Usage
 
 ### Start With The Planning Agent
 
-Set the default primary agent to `plan` when you want new sessions to start with the built-in planning agent:
+Set the default primary agent to `plan` when you want new sessions to start
+with the built-in planning agent:
 
 ```toml
 default_primary_agent = "plan"
 ```
 
-You can also press `Tab` on an empty idle composer to cycle to the `plan` primary agent.
+You can also press `Tab` on an empty idle composer to cycle to the `plan`
+primary agent.
 
 ### Use `/plan`
 
-`/plan` starts or continues the planning workflow. It is a workflow command, not a session state selector.
+`/plan` starts or continues the planning workflow. It is a workflow command,
+not a session state selector.
 
-While a turn is actively processing, `/plan` is dropped with a notice (mode switches are locked for the duration of a turn). The automatic in-turn planning intent detection still engages on its own; only explicit `/plan` entry while busy is deferred.
+While a turn is actively processing, `/plan` is dropped with a notice (mode
+switches are locked for the duration of a turn). The automatic in-turn planning
+intent detection still engages on its own; only explicit `/plan` entry while
+busy is deferred.
 
 ```text
 /plan
@@ -88,8 +137,8 @@ Enter Planning workflow?
 ```
 
 - **Enter Planning workflow** — starts planning; read-only research begins and
-  mutating tools stay disabled until you approve execution. The runtime persists
-  the validated plan after the final `<proposed_plan>` is emitted.
+  mutating tools stay disabled until you approve execution. The runtime
+  persists the validated plan after the final `<proposed_plan>` is emitted.
 - **Continue without Planning workflow** — the agent proceeds without planning
   (mutating tools remain enabled).
 
@@ -100,11 +149,11 @@ policies accept the suggestion directly, including in an interactive UI.
 Execution agents such as `build`, `auto`, and `duck` can invoke the
 `start_planning` tool when a request is demanding, ambiguous, or has multiple
 phases. The tool only presents the entry prompt; it does not silently change
-mode. Straightforward requests continue directly in the active execution
-agent. In a headless session without an automatic execution policy, the
-suggestion is reported as pending and the turn stops safely; use `/plan` on the
-next turn to confirm entry. Full-auto or skip-confirmations policies may accept
-the suggestion automatically.
+mode. Straightforward requests continue directly in the active execution agent.
+In a headless session without an automatic execution policy, the suggestion is
+reported as pending and the turn stops safely; use `/plan` on the next turn to
+confirm entry. Full-auto or skip-confirmations policies may accept the
+suggestion automatically.
 
 ### Intent Phrases
 
@@ -113,9 +162,8 @@ You can steer the workflow with short phrases instead of the review-gate UI:
 - To **exit planning and present the plan** for approval, type `implement`,
   `approve`, `lgtm`, `ship it`, `yes`/`continue`/`go`/`start`, or select
   **Execute** / **Auto-accept** in the review gate. The plan is shown in an
-  inline confirmation overlay (or a text prompt in non-interactive mode);
-  the agent will not self-approve by editing the plan file and staying in
-  plan mode.
+  inline confirmation overlay (or a text prompt in non-interactive mode); the
+  agent will not self-approve by editing the plan file and staying in plan mode.
 - To **stay in planning**, type `stay in planning` (or revise the
   `<proposed_plan>` block). This overrides any exit phrase.
 - To **cancel planning without implementation**, type `no`, `cancel`, or
@@ -129,7 +177,8 @@ You can steer the workflow with short phrases instead of the review-gate UI:
 2. Describe the goal and constraints.
 3. Iterate on repository facts, risks, and open decisions.
 4. Review the emitted `<proposed_plan>` block.
-5. Switch to a build-oriented primary agent such as `build` or `auto` when you are ready to implement.
+5. Switch to a build-oriented primary agent such as `build` or `auto` when you
+   are ready to implement.
 
 When planning was entered from another primary agent, approving the plan
 restores that agent automatically when it is write-capable. `build` resumes
@@ -137,8 +186,8 @@ with reviewable edits and `auto` resumes its configured automation policy.
 Read-only agents such as `duck` and `plan` are never selected to execute an
 approved plan; the handoff resolves to the configured write-capable agent or
 the built-in `build` agent. If the dedicated `plan` agent was already active
-when planning began, approval uses the configured default execution agent
-only when that agent can mutate the workspace.
+when planning began, approval uses the configured default execution agent only
+when that agent can mutate the workspace.
 
 The approval overlay shows a compact synopsis so its choices remain visible,
 while the complete plan markdown is appended to the scrollable TUI transcript
@@ -154,10 +203,10 @@ planning research does not leave the build phase with only the ordinary
 short-turn allowance.
 
 That implementation turn also receives one internal `+50` tool-loop allowance
-at initialization. The allowance is clamped by the ordinary loop hard cap
-(for example, the default `40` becomes `90`, while `100` remains capped at
-`120`), does not change the tool-call budget, and does not stack with manual
-loop extensions. A configured loop value of `0` remains unlimited. Current and
+at initialization. The allowance is clamped by the ordinary loop hard cap (for
+example, the default `40` becomes `90`, while `100` remains capped at `120`),
+does not change the tool-call budget, and does not stack with manual loop
+extensions. A configured loop value of `0` remains unlimited. Current and
 fresh-context approved-plan handoffs each initialize their own implementation
 turn, so each gets the same one-time allowance.
 
@@ -169,9 +218,26 @@ so an approved plan cannot switch to `build` and then wait for another
 
 ### Validated Approval Handoff
 
-Approval is accepted only for a persisted plan that passes the artifact validator and has a persisted task tracker. The canonical sections are `Summary`, `Implementation Steps`, `Test Cases and Validation`, and `Assumptions and Defaults`; the documented short aliases `Steps`, `Validation`, and `Assumptions` are accepted case-insensitively. Plans may also include optional `Expected Outcomes` and `Dependencies and Prerequisites` sections; the validator tolerates additional sections and enforces only the canonical four. Every numbered implementation step must name a concrete file, symbol, behavior, or other repository target and include a non-empty `verify:`/`verification:` command or check. Placeholder tokens and unresolved `Next open decision` or `Open question` entries block approval. Invalid candidates are rejected before persistence, so an existing valid draft is preserved. VT Code gives the model one bounded repair request; if the repaired artifact is still invalid, planning remains active with the validation reasons visible.
+Approval is accepted only for a persisted plan that passes the artifact
+validator and has a persisted task tracker. The canonical sections are
+`Summary`, `Implementation Steps`, `Test Cases and Validation`, and
+`Assumptions and Defaults`; the documented short aliases `Steps`, `Validation`,
+and `Assumptions` are accepted case-insensitively. Plans may also include
+optional `Expected Outcomes` and `Dependencies and Prerequisites` sections; the
+validator tolerates additional sections and enforces only the canonical four.
+Every numbered implementation step must name a concrete file, symbol, behavior,
+or other repository target and include a non-empty `verify:`/`verification:`
+command or check. Placeholder tokens and unresolved `Next open decision` or
+`Open question` entries block approval. Invalid candidates are rejected before
+persistence, so an existing valid draft is preserved. VT Code gives the model
+one bounded repair request; if the repaired artifact is still invalid, planning
+remains active with the validation reasons visible.
 
-Creating the `task_tracker` checklist is part of the approval gate. If the tracker tool is unavailable, fails, or does not persist its tracker file, the planning workflow remains active and no write-capable execution turn is started. All approval routes share the same typed handoff, including direct, queued, automatic, and fresh-context execution.
+Creating the `task_tracker` checklist is part of the approval gate. If the
+tracker tool is unavailable, fails, or does not persist its tracker file, the
+planning workflow remains active and no write-capable execution turn is
+started. All approval routes share the same typed handoff, including direct,
+queued, automatic, and fresh-context execution.
 
 ### Streaming-to-persistence handoff
 
@@ -203,8 +269,9 @@ approval popup is not shown until any required clarification has completed.
 A permanent denial is recorded for the planning session and suppresses repeated
 interview attempts. VT Code gives the model one bounded synthesis retry using
 the repository evidence already gathered. If that retry does not produce a
-validated persisted plan, the session stays in planning and shows a keep-planning
-message; it does not advertise implementation or emit approval events.
+validated persisted plan, the session stays in planning and shows a
+keep-planning message; it does not advertise implementation or emit approval
+events.
 
 ### Empty-response recovery
 
@@ -212,16 +279,15 @@ Two consecutive empty model responses in planning have one deterministic
 recovery path. The first empty response receives the ordinary tool-enabled
 retry. The second schedules exactly one tool-free synthesis using the latest
 request and bounded recent evidence; the synthesis must contain exactly one
-canonical `<proposed_plan>...</proposed_plan>` block and no tools, questions, or
-approval prose. The runtime validates and persists the block before exposing
+canonical `<proposed_plan>...</proposed_plan>` block and no tools, questions,
+or approval prose. The runtime validates and persists the block before exposing
 approval controls.
 
 If synthesis is empty, malformed, contains tool markup, fails validation, or
-cannot be persisted, the runtime preserves any rejected draft, emits a
-concise actionable blocked handoff, and keeps planning active. It does not
-inject another interactive question, claim completion, or emit
-`thread.completed`; the blocked turn is resumable and the session is finalized
-only during shutdown.
+cannot be persisted, the runtime preserves any rejected draft, emits a concise
+actionable blocked handoff, and keeps planning active. It does not inject
+another interactive question, claim completion, or emit `thread.completed`; the
+blocked turn is resumable and the session is finalized only during shutdown.
 
 ## Plan Output Format
 
@@ -232,8 +298,7 @@ overly verbose plan is truncated at the model's output-token limit (cut off
 mid-plan) and must then be condensed and re-emitted.
 
 File references must be plain text or inline code, never markdown links or
-editor/IDE URIs — plans are read in terminals and other non-hyperlink
-surfaces:
+editor/IDE URIs — plans are read in terminals and other non-hyperlink surfaces:
 
 ```markdown
 Correct: `src/main.rs:42` or src/main.rs:42
@@ -291,7 +356,9 @@ before implementation — and omit them when nothing material exists. The
 validator tolerates additional sections; only `Summary`, `Implementation Steps`,
 `Test Cases and Validation`, and `Assumptions and Defaults` are required.
 
-`Next open decision` and `Open question` entries are explicit reopen markers for follow-up planning; use a resolved statement such as `No remaining scope decisions` when none remain.
+`Next open decision` and `Open question` entries are explicit reopen markers
+for follow-up planning; use a resolved statement such as
+`No remaining scope decisions` when none remain.
 
 ### Reasoning and Evidence
 
@@ -304,8 +371,7 @@ show the reasoning chain, not just the conclusion:
   the root cause, constraint, or bottleneck it establishes is the insight.
   Record the insight — the raw output belongs in the transcript, not the plan.
 - Put load-bearing findings (a verified root cause, a hard constraint) in
-  `Repository facts checked` or, when they define the work itself, in
-  `Summary`.
+  `Repository facts checked` or, when they define the work itself, in `Summary`.
 - Make each step's `verify:` check the stated insight, so approval hands the
   implementation agent a falsifiable target instead of a description.
 
@@ -363,33 +429,33 @@ the numbers drive the plan, then verify the win without breaking correctness:
 - Insight: the bottleneck is that crate's feature set, not link time.
 - Steps shape: trim the unused feature → re-time the build against the
   recorded baseline → run the full test gate. Each `verify:` is either the
-  timing comparison or the correctness gate, so the optimization cannot ship
-  as an unmeasured claim.
+  timing comparison or the correctness gate, so the optimization cannot ship as
+  an unmeasured claim.
 
 **Root-cause bug fix.** For a behavioural bug — for example, a fullscreen TUI
 transcript leaking into the CLI scrollback after exit — the diagnosis-heavy
 plan maps onto the template section by section:
 
-| Diagnosis plan part | Template home |
-| ------------------- | ------------- |
-| Root cause (verified in code) | `Repository facts checked` — file:line evidence for the shutdown race |
-| Fix, in layers | `Implementation Steps`, each with its own `verify:` |
-| Verification and docs work | `Test Cases and Validation` |
-| Scope notes | `Assumptions and Defaults` (intentionally unchanged surface) |
-| — | `Expected Outcomes`: "CLI scrollback is clean after a plain exit" |
-| — | `Dependencies and Prerequisites`: PTY harness available for the regression check |
+| Diagnosis plan part           | Template home                                                                    |
+| ----------------------------- | -------------------------------------------------------------------------------- |
+| Root cause (verified in code) | `Repository facts checked` — file:line evidence for the shutdown race            |
+| Fix, in layers                | `Implementation Steps`, each with its own `verify:`                              |
+| Verification and docs work    | `Test Cases and Validation`                                                      |
+| Scope notes                   | `Assumptions and Defaults` (intentionally unchanged surface)                     |
+| —                             | `Expected Outcomes`: "CLI scrollback is clean after a plain exit"                |
+| —                             | `Dependencies and Prerequisites`: PTY harness available for the regression check |
 
 ### Research Scope
 
 Research effort should scale with the request. The runtime gives planning a
 minimum per-turn tool-call budget of 120 and a minimum loop budget of 60 when
 configured nonzero limits are lower; these floors are planning-specific and do
-not change the conversation-turn retention limit. For a narrow or simple ask,
-a handful of targeted reads/searches (roughly 5-10) is usually enough before
-drafting `<proposed_plan>` — exhaustively enumerating the whole repository
-for a simple request wastes the turn's tool-call and wall-clock budget and
-can exhaust it before a plan is produced. For a broad or ambiguous ask,
-research proportionally more, but stop and draft as soon as the
+not change the conversation-turn retention limit. For a narrow or simple ask, a
+handful of targeted reads/searches (roughly 5-10) is usually enough before
+drafting `<proposed_plan>` — exhaustively enumerating the whole repository for
+a simple request wastes the turn's tool-call and wall-clock budget and can
+exhaust it before a plan is produced. For a broad or ambiguous ask, research
+proportionally more, but stop and draft as soon as the
 scope/decomposition/verification decisions are closed.
 
 The 120-call ceiling remains available for complex work; it is not a target.
@@ -403,25 +469,34 @@ compile, test, build, and clippy commands count as verification progress.
 
 ## Review Gate
 
-After a plan is ready, an interactive human-in-the-loop (HITL) confirmation popup presents a bounded, decision-ready synopsis
-(summary plus numbered steps) and a decision gate. The complete markdown remains available in the persisted plan file and
-runtime plan events; long previews are elided with an explicit count rather than silently clipped.
+After a plan is ready, an interactive human-in-the-loop (HITL) confirmation
+popup presents a bounded, decision-ready synopsis (summary plus numbered steps)
+and a decision gate. The complete markdown remains available in the persisted
+plan file and runtime plan events; long previews are elided with an explicit
+count rather than silently clipped.
 
 Approval options:
 
-- **Yes, implement this plan** — execute in the current context while preserving the session's existing confirmation policy.
-- **Yes, clear context and implement** — preserve the approved plan and task tracker, then rebuild a fresh execution thread. The subtitle reports the pre-reset context usage (for example, `Fresh thread. Context: 7% used.`). This is recommended after long research sessions.
+- **Yes, implement this plan** — execute in the current context while
+  preserving the session's existing confirmation policy.
+- **Yes, clear context and implement** — preserve the approved plan and task
+  tracker, then rebuild a fresh execution thread. The subtitle reports the
+  pre-reset context usage (for example, `Fresh thread. Context: 7% used.`).
+  This is recommended after long research sessions.
 - **No, stay in Plan mode** — return to planning and revise the plan.
 
-The existing manual or auto-accept policy selected by the session remains attached to both
-approval paths. A fresh handoff clears only transient transcript, continuation, cache-lineage,
-recovery, and tool-budget state; the plan file, task tracker, working tree, configuration,
-provider, permissions, and aggregate usage remain intact. The UI shows `Preparing fresh execution
-thread...`, `Restoring approved plan...`, and `Starting build...` while the handoff is active and
-guards input and mode switches until it completes.
+The existing manual or auto-accept policy selected by the session remains
+attached to both approval paths. A fresh handoff clears only transient
+transcript, continuation, cache-lineage, recovery, and tool-budget state; the
+plan file, task tracker, working tree, configuration, provider, permissions,
+and aggregate usage remain intact. The UI shows
+`Preparing fresh execution thread…`, `Restoring approved plan…`, and
+`Starting build…` while the handoff is active and guards input and mode
+switches until it completes.
 
-The confirmation policy is explicit handoff state and is not inferred from the destination
-agent's name. Textual approvals use the same policy already selected by the session.
+The confirmation policy is explicit handoff state and is not inferred from the
+destination agent's name. Textual approvals use the same policy already
+selected by the session.
 
 The approved execution turn ends with a concise summary of the outcome, changed
 files, verification performed, and remaining blockers. In interactive sessions
@@ -434,12 +509,12 @@ interactive prompt.
 ### Runtime Events
 
 All clients can reconstruct the approval lifecycle from the authoritative
-`ThreadEvent` stream. A plan turn emits `plan.delta` and the completed plan item,
-then `plan.approval.requested` with the producing turn and plan file. The
-terminal decision is emitted as `plan.approval.resolved` with one of
-`execute`, `fresh_context`, `revise`, `cancel`, or a legacy handoff decision,
-plus an `automatic` flag. A successful fresh handoff then emits `context.reset`
-with the trigger, plan-preserved status, previous context usage, and tool-budget
+`ThreadEvent` stream. A plan turn emits `plan.delta` and the completed plan
+item, then `plan.approval.requested` with the producing turn and plan file. The
+terminal decision is emitted as `plan.approval.resolved` with one of `execute`,
+`fresh_context`, `revise`, `cancel`, or a legacy handoff decision, plus an
+`automatic` flag. A successful fresh handoff then emits `context.reset` with
+the trigger, plan-preserved status, previous context usage, and tool-budget
 reset status. The Open Responses bridge forwards this as `vtcode.context_reset`.
 
 ## Budget Exhaustion
@@ -463,21 +538,23 @@ missing results; the durable session history is not rewritten by this repair.
 
 The runtime-owned draft is the single source of truth and lives on disk under
 `.vtcode/plans/<plan>.md`, not only in chat history. The planning agent never
-writes this file itself. A candidate is validated
-before the plan file, sidecar tracker, global tracker, or approval events are
-created or updated. Invalid or partial inline plans from normal or tool-free
-recovery are discarded for approval and cannot overwrite an existing valid
-draft; the existing malformed file is preserved until a later valid synthesis
-repairs it. Only a validated `<proposed_plan>` is extracted and written during
-tool-free recovery. If no valid draft exists, the recovery message tells the
-user to keep planning rather than offering `implement`.
+writes this file itself. A candidate is validated before the plan file, sidecar
+tracker, global tracker, or approval events are created or updated. Invalid or
+partial inline plans from normal or tool-free recovery are discarded for
+approval and cannot overwrite an existing valid draft; the existing malformed
+file is preserved until a later valid synthesis repairs it. Only a validated
+`<proposed_plan>` is extracted and written during tool-free recovery. If no
+valid draft exists, the recovery message tells the user to keep planning rather
+than offering `implement`.
 
 ## Best Practices
 
 1. Be specific about files, functions, constraints, and desired behaviour.
 2. Ask the agent to state trade-offs before implementation begins.
-3. Ask the agent to record expected outcomes and any prerequisites when they affect implementation order or risk.
-4. Keep the planning agent read-oriented and switch to `build`, `auto`, or `review` for the next phase.
+3. Ask the agent to record expected outcomes and any prerequisites when they
+   affect implementation order or risk.
+4. Keep the planning agent read-oriented and switch to `build`, `auto`, or
+   `review` for the next phase.
 
 ## See Also
 

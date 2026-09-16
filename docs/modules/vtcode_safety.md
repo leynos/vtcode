@@ -4,19 +4,22 @@ Command safety detection, execution policies, and sandboxing for VT Code.
 
 ## Overview
 
-Layer 1 crate that provides the safety subsystem for command execution. Detects dangerous commands, manages execution policies, and enforces sandboxing constraints.
+Layer 1 crate that provides the safety subsystem for command execution. Detects
+dangerous commands, manages execution policies, and enforces sandboxing
+constraints.
 
 ## Module Groups
 
-| Area | Modules | Description |
-|------|---------|-------------|
-| Command Safety | `command_safety/` | Dangerous command detection, shell parsing |
-| Execution Policy | `exec_policy/` | Policy management, approval workflows, command validation |
-| Sandboxing | `sandboxing/` | Sandbox policy, permissions, execution environments |
+| Area             | Modules           | Description                                               |
+| ---------------- | ----------------- | --------------------------------------------------------- |
+| Command Safety   | `command_safety/` | Dangerous command detection, shell parsing                |
+| Execution Policy | `exec_policy/`    | Policy management, approval workflows, command validation |
+| Sandboxing       | `sandboxing/`     | Sandbox policy, permissions, execution environments       |
 
 ## Command Safety
 
-The `command_safety` module detects potentially dangerous commands before execution:
+The `command_safety` module detects potentially dangerous commands before
+execution:
 
 - Shell command parsing and analysis
 - Dangerous pattern detection (rm -rf, sudo, etc.)
@@ -52,8 +55,10 @@ exec_policy::manager
 
 ## Rules
 
-- Re-export facades in vtcode-core (`command_safety/mod.rs`, `exec_policy/mod.rs`, `sandboxing/mod.rs`) must stay in sync
-- The `BashParser` singleton (`once_cell::Lazy`) is safe across crates — read-after-init pattern
+- Re-export facades in vtcode-core (`command_safety/mod.rs`,
+  `exec_policy/mod.rs`, `sandboxing/mod.rs`) must stay in sync
+- The `BashParser` singleton (`once_cell::Lazy`) is safe across crates —
+  read-after-init pattern
 
 ## Dependencies
 
@@ -63,5 +68,7 @@ exec_policy::manager
 ## See Also
 
 - [Security Model](../security/SECURITY_MODEL.md) — security architecture
-- [Process Hardening](../development/PROCESS_HARDENING.md) — runtime hardening controls
-- [Command Security Model](../development/COMMAND_SECURITY_MODEL.md) — command security details
+- [Process Hardening](../development/PROCESS_HARDENING.md) — runtime hardening
+  controls
+- [Command Security Model](../development/COMMAND_SECURITY_MODEL.md) — command
+  security details

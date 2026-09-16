@@ -1,10 +1,14 @@
 # External Editor Configuration
 
-The `/edit` command uses the [`editor-command`](https://docs.rs/editor-command/latest/editor_command/) crate to automatically detect and launch your preferred text editor.
+The `/edit` command uses the
+[`editor-command`](https://docs.rs/editor-command/latest/editor_command/) crate
+to automatically detect and launch your preferred text editor.
 
 ## Overview
 
-The `editor-command` crate handles editor detection and invocation across all major platforms (macOS, Linux, Windows) and integrates seamlessly with VT Code's TUI environment.
+The `editor-command` crate handles editor detection and invocation across all
+major platforms (macOS, Linux, Windows) and integrates seamlessly with VT
+Code's TUI environment.
 
 ## Configuration
 
@@ -12,9 +16,12 @@ The guided setup is available from the TUI:
 
 - Run `/config`, then select `External Editor` from the root quick-access list.
 - Run `/config tools.editor` to jump straight into the same wizard.
-- The wizard configures `/edit`, `Ctrl+E` when the prompt is empty, and single-click file links in the TUI.
-- After saving editor settings, the flow can also take you to `/config file_opener` for ANSI hyperlink URI behavior.
-- In the custom-command step, pressing `Enter` on an empty inline input keeps the displayed default command.
+- The wizard configures `/edit`, `Ctrl+E` when the prompt is empty, and
+  single-click file links in the TUI.
+- After saving editor settings, the flow can also take you to
+  `/config file_opener` for ANSI hyperlink URI behavior.
+- In the custom-command step, pressing `Enter` on an empty inline input keeps
+  the displayed default command.
 
 Editor settings are configured in the `[tools.editor]` section of `vtcode.toml`:
 
@@ -34,7 +41,8 @@ suspend_tui = true
 
 ## Editor Detection Order
 
-When no `preferred_editor` is specified, VT Code uses a two-stage detection process:
+When no `preferred_editor` is specified, VT Code uses a two-stage detection
+process:
 
 ### Stage 1: Environment Variables (Primary)
 
@@ -47,17 +55,17 @@ If neither environment variable is set, VT Code tries common editors in PATH:
 
 **Unix/Linux/macOS:**
 
--   `nvim` (Neovim - preferred)
--   `vim`
--   `vi`
--   `nano`
--   `emacs`
+- `nvim` (Neovim - preferred)
+- `vim`
+- `vi`
+- `nano`
+- `emacs`
 
 **Windows:**
 
--   `code` (Visual Studio Code)
--   `notepad++`
--   `notepad`
+- `code` (Visual Studio Code)
+- `notepad++`
+- `notepad`
 
 ## Usage Examples
 
@@ -67,7 +75,8 @@ If neither environment variable is set, VT Code tries common editors in PATH:
 /edit
 ```
 
-This opens your default editor with a temporary file. The file contents are returned and inserted into your input when you save and close the editor.
+This opens your default editor with a temporary file. The file contents are
+returned and inserted into your input when you save and close the editor.
 
 ### Edit specific file
 
@@ -77,11 +86,21 @@ This opens your default editor with a temporary file. The file contents are retu
 
 Opens `src/main.rs` in your preferred editor.
 
-For real file opens, VT Code launches GUI editors immediately and returns without waiting, even while an agent turn is active. Single-click transcript and modal links use a bounded out-of-band request queue, so they do not become `/edit` prompts. VS Code opens use `--reuse-window` and preserve supported line/column targets. Duplicate clicks for the same target are coalesced while a launch is pending.
+For real file opens, VT Code launches GUI editors immediately and returns
+without waiting, even while an agent turn is active. Single-click transcript
+and modal links use a bounded out-of-band request queue, so they do not become
+`/edit` prompts. VS Code opens use `--reuse-window` and preserve supported
+line/column targets. Duplicate clicks for the same target are coalesced while a
+launch is pending.
 
-If your selected editor is terminal-based (for example `vim`/`nvim`) and `suspend_tui = true`, VT Code uses the serialized suspend-and-wait path and resumes the TUI after the editor closes. Temporary-file `/edit` flows still wait because VT Code has to read edited content back into the composer.
+If your selected editor is terminal-based (for example `vim`/`nvim`) and
+`suspend_tui = true`, VT Code uses the serialized suspend-and-wait path and
+resumes the TUI after the editor closes. Temporary-file `/edit` flows still
+wait because VT Code has to read edited content back into the composer.
 
-Single-clicking a file path in the transcript or a modal uses the same editor workflow and respects configured line and column targets when the selected editor supports them.
+Single-clicking a file path in the transcript or a modal uses the same editor
+workflow and respects configured line and column targets when the selected
+editor supports them.
 
 ### Edit relative paths
 
@@ -124,23 +143,23 @@ The crate automatically detects these editors:
 
 **CLI Editors:**
 
--   `vim`, `vi`
--   `nvim` (Neovim)
--   `nano`
--   `emacs`
--   `pico`
+- `vim`, `vi`
+- `nvim` (Neovim)
+- `nano`
+- `emacs`
+- `pico`
 
 **GUI Editors:**
 
--   `code` (Visual Studio Code)
--   `zed`
--   `gedit` (GNOME)
--   `geany`
--   `code-oss`
--   `subl` (Sublime Text)
--   `atom`
--   `mate` (TextMate)
--   `open -a TextEdit` (macOS)
+- `code` (Visual Studio Code)
+- `zed`
+- `gedit` (GNOME)
+- `geany`
+- `code-oss`
+- `subl` (Sublime Text)
+- `atom`
+- `mate` (TextMate)
+- `open -a TextEdit` (macOS)
 
 ## Terminal State Management
 
@@ -153,13 +172,15 @@ The `suspend_tui = true` setting (recommended) ensures:
 5. Terminal state is restored when the editor closes
 6. Screen is cleared to remove artifacts
 
-This prevents terminal corruption and input conflicts when switching between VT Code and external editors.
+This prevents terminal corruption and input conflicts when switching between VT
+Code and external editors.
 
 ## Troubleshooting
 
 ### "Failed to detect editor" error
 
-This error means no editor was found. VT Code checks both environment variables and fallback editors.
+This error means no editor was found. VT Code checks both environment variables
+and fallback editors.
 
 **Solution (choose one):**
 
@@ -185,6 +206,7 @@ This error means no editor was found. VT Code checks both environment variables 
     ```
 
 3. **Explicitly configure in vtcode.toml**:
+
     ```toml
     [tools.editor]
     preferred_editor = "vim"
@@ -208,9 +230,9 @@ export EDITOR=/usr/bin/nvim
 
 ### Editor behavior is unusual
 
--   Ensure `suspend_tui = true` to prevent terminal state issues
--   Check if your editor has special terminal requirements
--   Consider using a different editor if problems persist
+- Ensure `suspend_tui = true` to prevent terminal state issues
+- Check if your editor has special terminal requirements
+- Consider using a different editor if problems persist
 
 ### Changes not saved in temporary files
 
@@ -221,18 +243,21 @@ When using `/edit` without a file argument:
 3. When you save and close the editor, content is returned
 4. The temporary file is automatically deleted
 
-Ensure you actually save the file in your editor (e.g., `:w` in vim) before closing.
+Ensure you actually save the file in your editor (e.g., `:w` in vim) before
+closing.
 
 ## Integration with VT Code Features
 
 The `/edit` command works with:
 
--   **File browser** - Select files to edit using `@` symbol or `/files`
--   **Workspace context** - Editors open with workspace root as working directory
--   **Tool policies** - Controlled via `[tools.policies]` section (default: `"allow"`)
+- **File browser** - Select files to edit using `@` symbol or `/files`
+- **Workspace context** - Editors open with workspace root as working
+    directory
+- **Tool policies** - Controlled via `[tools.policies]` section (default:
+    `"allow"`)
 
 ## See Also
 
--   [editor-command crate documentation](https://docs.rs/editor-command/latest/editor_command/)
--   [VT Code configuration guide](../config/CONFIGURATION_PRECEDENCE.md)
--   [Tools overview](./TOOL_SPECS.md)
+- [editor-command crate documentation](https://docs.rs/editor-command/latest/editor_command/)
+- [VT Code configuration guide](../config/CONFIGURATION_PRECEDENCE.md)
+- [Tools overview](./TOOL_SPECS.md)

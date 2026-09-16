@@ -5,10 +5,10 @@ use the same browser tool surface and start in safe in-memory fallback mode;
 the ChatGPT Site is the primary hosted demonstration, while GitHub Pages is a
 static fallback and reference deployment.
 
-| Deployment | URL | Exact browser origin | Active pairing command |
-| --- | --- | --- | --- |
+| Deployment   | URL                                   | Exact browser origin                 | Active pairing command                            |
+| ------------ | ------------------------------------- | ------------------------------------ | ------------------------------------------------- |
 | ChatGPT Site | <https://vtcode.vinhnx.chatgpt.site/> | `https://vtcode.vinhnx.chatgpt.site` | `/webmcp pair https://vtcode.vinhnx.chatgpt.site` |
-| GitHub Pages | <https://vinhnx.github.io/VTCode/> | `https://vinhnx.github.io` | `/webmcp pair https://vinhnx.github.io` |
+| GitHub Pages | <https://vinhnx.github.io/VTCode/>    | `https://vinhnx.github.io`           | `/webmcp pair https://vinhnx.github.io`           |
 
 The page derives its origin from `window.location.origin`. The GitHub Pages
 `/VTCode/` path is a URL path, not part of the origin; do not include it in a
@@ -18,11 +18,11 @@ custom deployments.
 ## Select a deployment
 
 Use the [ChatGPT Site](https://vtcode.vinhnx.chatgpt.site/) when demonstrating
-the browser WebMCP experience. Use [GitHub Pages](https://vinhnx.github.io/VTCode/)
-when a stable static fallback or repository-hosted reference is more useful.
-Neither page hosts the Rust WebSocket bridge. Without an explicit bridge
-pairing, the editor remains page-local and cannot read or write a local
-workspace.
+the browser WebMCP experience. Use
+[GitHub Pages](https://vinhnx.github.io/VTCode/) when a stable static fallback
+or repository-hosted reference is more useful. Neither page hosts the Rust
+WebSocket bridge. Without an explicit bridge pairing, the editor remains
+page-local and cannot read or write a local workspace.
 
 Browser WebMCP and the VT Code bridge are separate interfaces:
 
@@ -56,9 +56,9 @@ Then run the command matching the open page:
 ```
 
 When a bridge is already running, pairing another configured origin issues a
-new one-time code and keeps existing authenticated sessions active. The
-pending code is still single-use. Use `--replace` only when intentionally
-revoking current browser sessions:
+new one-time code and keeps existing authenticated sessions active. The pending
+code is still single-use. Use `--replace` only when intentionally revoking
+current browser sessions:
 
 ```text
 /webmcp pair --replace https://vtcode.vinhnx.chatgpt.site
@@ -90,15 +90,15 @@ both public URLs, provide one token for each origin through
 legacy singular `VITE_WEBMCP_ORIGIN_TRIAL_TOKEN` remains supported for a
 single-origin build. The GitHub Pages workflow reads the corresponding
 `WEBMCP_ORIGIN_TRIAL_TOKENS` Actions variable and injects the tokens into the
-document head at build time; no token belongs in source control. If the
-ChatGPT Site is built or uploaded separately, pass the same build variables to
-that publisher as well; the Pages workflow does not deploy the ChatGPT Site.
+document head at build time; no token belongs in source control. If the ChatGPT
+Site is built or uploaded separately, pass the same build variables to that
+publisher as well; the Pages workflow does not deploy the ChatGPT Site.
 
 If no token is available, use a supported browser's WebMCP testing flag or the
 normal fallback. WebMCP availability also depends on the page's origin-isolated
 browsing context and `tools` Permissions Policy. A successful HTTP response or
-an active VT Code pairing does not, by itself, prove that native browser
-WebMCP is available.
+an active VT Code pairing does not, by itself, prove that native browser WebMCP
+is available.
 
 ## Verification checklist
 

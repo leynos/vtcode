@@ -1,6 +1,7 @@
 # Quality Score
 
-Quality grading for each VT Code domain. Grades are A (excellent), B (good), C (needs improvement), D (critical attention required).
+Quality grading for each VT Code domain. Grades are A (excellent), B (good), C
+(needs improvement), D (critical attention required).
 
 ## Snapshot
 
@@ -20,7 +21,7 @@ Quality grading for each VT Code domain. Grades are A (excellent), B (good), C (
 | Error Handling   | Whether failures are explicit, contextual, and remediation-oriented.                                   |
 | Documentation    | Whether docs are current, cross-linked, and aligned with code.                                         |
 
----
+______________________________________________________________________
 
 ## Scoring Method
 
@@ -33,13 +34,17 @@ Quality grading for each VT Code domain. Grades are A (excellent), B (good), C (
 
 ### Evidence Policy
 
-- Score updates require current repository evidence (tests, docs, tracker status, or code references).
+- Score updates require current repository evidence (tests, docs, tracker
+  status, or code references).
 - Priority actions must be verifiable by command or explicit artifact check.
-- If a prior priority action is resolved, replace it with the next highest-impact gap.
+- If a prior priority action is resolved, replace it with the next
+  highest-impact gap.
 
 ### Agent Legibility Rubric
 
-See [AGENT_LEGIBILITY_GUIDE.md](AGENT_LEGIBILITY_GUIDE.md) and [ARCHITECTURAL_INVARIANTS.md](ARCHITECTURAL_INVARIANTS.md) for the underlying harness rules.
+See [AGENT_LEGIBILITY_GUIDE.md](AGENT_LEGIBILITY_GUIDE.md) and
+[ARCHITECTURAL_INVARIANTS.md](ARCHITECTURAL_INVARIANTS.md) for the underlying
+harness rules.
 
 Score `Agent Legibility` against these four checks before choosing a grade.
 
@@ -68,7 +73,8 @@ Use these downgrade rules even if the prose note sounds optimistic.
 
 ### Agent Legibility Evidence Pattern
 
-When updating an `Agent Legibility` row, make all three signals explicit in the note.
+When updating an `Agent Legibility` row, make all three signals explicit in the
+note.
 
 | Include in note                 | Why                                       |
 | ------------------------------- | ----------------------------------------- |
@@ -76,12 +82,11 @@ When updating an `Agent Legibility` row, make all three signals explicit in the 
 | What still causes search thrash | Keeps the grade falsifiable.              |
 | Which artifact proves it        | Lets a reviewer verify the claim quickly. |
 
----
+______________________________________________________________________
 
 ## LLM System
 
-**Scope**: `crates/codegen/vtcode-core/src/llm/`
-**Related debt**: none open
+**Scope**: `crates/codegen/vtcode-core/src/llm/` **Related debt**: none open
 
 | Dimension        | Grade | Evidence / Notes                                                                                                                                       |
 | ---------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -91,16 +96,15 @@ When updating an `Agent Legibility` row, make all three signals explicit in the 
 | Error Handling   | A     | Uses `anyhow::Result` with context; provider error handling includes failover pathways.                                                                |
 | Documentation    | B     | `docs/providers/PROVIDER_GUIDES.md` exists and is maintained.                                                                                          |
 
-**Overall: B**
-**Priority action**: add integration tests that exercise multi-provider failover behavior under provider failure.
-**Verify**: `cargo nextest run --test integration_tests`
+**Overall: B** **Priority action**: add integration tests that exercise
+multi-provider failover behavior under provider failure. **Verify**:
+`cargo nextest run --test integration_tests`
 
----
+______________________________________________________________________
 
 ## Tool System
 
-**Scope**: `crates/codegen/vtcode-core/src/tools/`
-**Related debt**: none open
+**Scope**: `crates/codegen/vtcode-core/src/tools/` **Related debt**: none open
 
 | Dimension        | Grade | Evidence / Notes                                                                                                                 |
 | ---------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -110,16 +114,14 @@ When updating an `Agent Legibility` row, make all three signals explicit in the 
 | Error Handling   | A     | Unified error model with severity and retryability is in place.                                                                  |
 | Documentation    | B     | System-level docs exist; per-tool docs are uneven.                                                                               |
 
-**Overall: A-**
-**Priority action**: add tests for high-use handlers without dedicated coverage.
-**Verify**: `cargo nextest run`
+**Overall: A-** **Priority action**: add tests for high-use handlers without
+dedicated coverage. **Verify**: `cargo nextest run`
 
----
+______________________________________________________________________
 
 ## Configuration
 
-**Scope**: `vtcode-config/`
-**Related debt**: TD-010 (resolved)
+**Scope**: `vtcode-config/` **Related debt**: TD-010 (resolved)
 
 | Dimension        | Grade | Evidence / Notes                                                                                                                                          |
 | ---------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -129,16 +131,15 @@ When updating an `Agent Legibility` row, make all three signals explicit in the 
 | Error Handling   | B     | Load-time validation is present; some messages can still be more task-oriented.                                                                           |
 | Documentation    | A-    | `docs/config/CONFIG_FIELD_REFERENCE.md` now provides generated field-level reference.                                                                     |
 
-**Overall: B+**
-**Priority action**: extend tests for precedence edge cases and malformed overrides.
-**Verify**: `cargo nextest run -p vtcode-config`
+**Overall: B+** **Priority action**: extend tests for precedence edge cases and
+malformed overrides. **Verify**: `cargo nextest run -p vtcode-config`
 
----
+______________________________________________________________________
 
 ## Security
 
-**Scope**: `process_hardening` module, sandbox system, command safety
-**Related debt**: none open
+**Scope**: `process_hardening` module, sandbox system, command safety **Related
+debt**: none open
 
 | Dimension        | Grade | Evidence / Notes                                                                                                                                                                        |
 | ---------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -148,16 +149,16 @@ When updating an `Agent Legibility` row, make all three signals explicit in the 
 | Error Handling   | A     | Hardening paths expose explicit failure codes and policy outcomes.                                                                                                                      |
 | Documentation    | A     | Security docs are consolidated with index and quick reference.                                                                                                                          |
 
-**Overall: B+**
-**Priority action**: expand sandbox/policy integration tests across more allow/deny edge matrices and OS-specific hardening scenarios.
+**Overall: B+** **Priority action**: expand sandbox/policy integration tests
+across more allow/deny edge matrices and OS-specific hardening scenarios.
 **Verify**: `cargo nextest run -p vtcode process_hardening`
 
----
+______________________________________________________________________
 
 ## MCP Integration
 
-**Scope**: `crates/codegen/vtcode-core/src/mcp/`
-**Related debt**: TD-008 (in-progress)
+**Scope**: `crates/codegen/vtcode-core/src/mcp/` **Related debt**: TD-008
+(in-progress)
 
 | Dimension        | Grade | Evidence / Notes                                                                                                                                                                                                  |
 | ---------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -167,11 +168,11 @@ When updating an `Agent Legibility` row, make all three signals explicit in the 
 | Error Handling   | B     | Timeout and concurrency controls are present; diagnostics can be tightened on some error paths.                                                                                                                   |
 | Documentation    | A     | Dedicated guide plus `docs/mcp/00_START_HERE.md` provide strong integration guidance.                                                                                                                             |
 
-**Overall: B+**
-**Priority action**: add full OAuth callback-flow integration tests once callback implementation lands.
-**Verify**: `cargo nextest run --test integration_tests`
+**Overall: B+** **Priority action**: add full OAuth callback-flow integration
+tests once callback implementation lands. **Verify**:
+`cargo nextest run --test integration_tests`
 
----
+______________________________________________________________________
 
 ## PTY/Exec
 
@@ -182,34 +183,49 @@ When updating an `Agent Legibility` row, make all three signals explicit in the 
 | ---------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Test Coverage    | B+    | PTY command/session paths now include timeout and output-truncation regressions in `vtcode-core/tests/pty_tests.rs`, alongside existing session lifecycle and runner tests. |
 | API Stability    | B     | Standard/PTY/streaming execution modes are stable.                                                                                                                          |
-| Agent Legibility | B     | `exec_command` is the stable top-level entrypoint; PTY lifecycle and shell-init flows still force deeper traversal through lower-level plumbing.                              |
+| Agent Legibility | B     | `exec_command` is the stable top-level entrypoint; PTY lifecycle and shell-init flows still force deeper traversal through lower-level plumbing.                            |
 | Error Handling   | B     | Exit code and timeout handling are in place; shell-init edge paths can improve.                                                                                             |
 | Documentation    | B     | Runner docs and workflow docs exist and are current.                                                                                                                        |
 
-**Overall: B**
-**Priority action**: expand PTY regression coverage for additional shell-init and cross-platform behavior paths.
-**Verify**: `cargo test -p vtcode-core --test pty_tests && cargo test -p vtcode-bash-runner --test pipe_tests`
+**Overall: B** **Priority action**: expand PTY regression coverage for
+additional shell-init and cross-platform behavior paths. **Verify**:
 
----
+```sh
+cargo test -p vtcode-core --test pty_tests && cargo test -p vtcode-bash-runner --test pipe_tests
+```
+
+______________________________________________________________________
 
 ## TUI
 
-**Scope**: `src/` (Ratatui interface)
-**Related debt**: TD-005 (in-progress)
+**Scope**: `src/` (Ratatui interface) **Related debt**: TD-005 (in-progress)
 
-| Dimension        | Grade | Evidence / Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ---------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test Coverage    | B+    | Inline event-loop mapping still has focused regressions for key actions (`LaunchEditor`, primary-agent switching, planning confirmation, interrupt exit) in `src/agent/runloop/unified/inline_events/tests.rs`, and helper behavior now has focused coverage in both `src/agent/runloop/unified/turn/session/interaction_loop_runner/support.rs` and `src/agent/runloop/unified/turn/session_loop_runner/support.rs`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| API Stability    | B     | Event loop and keybinding behavior are stable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Dimension        | Grade | Evidence / Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Test Coverage    | B+    | Inline event-loop mapping still has focused regressions for key actions (`LaunchEditor`, primary-agent switching, planning confirmation, interrupt exit) in `src/agent/runloop/unified/inline_events/tests.rs`, and helper behavior now has focused coverage in both `src/agent/runloop/unified/turn/session/interaction_loop_runner/support.rs` and `src/agent/runloop/unified/turn/session_loop_runner/support.rs`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| API Stability    | B     | Event loop and keybinding behavior are stable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Agent Legibility | B     | The tracked TUI roots now advertise entrypoints, constraints, and verify commands in-code: `unified/session_setup/ui.rs` is 464 lines after extracting `ui/local_agents.rs`, `ui/persistent_memory.rs`, `ui/tests.rs`, `ui/resume_render.rs`, and `ui/header_context.rs`; `turn/context.rs` is 276 lines after extracting `context/continuation.rs`, `context/message_history.rs`, `context/tests.rs`, `context/runtime_context.rs`, and `context/response_handling.rs`; `turn/tool_outcomes/execution_result.rs` is 441 lines after extracting tool-output probe, failure-path, and test helpers; `slash_commands/diagnostics/memory.rs` is 499 lines after extracting config-persistence, prompt, presentation, and navigation helpers; and the planning turn-processing root is 334 lines after extracting interview helpers. `scripts/check_agent_legibility.py` still reports zero missing headers and zero delegation gaps across the tracked roots, so the tracked TD-005 hotspot set stays fully below 500 lines. After the latest compaction pass, `turn/compaction/mod.rs` is down to 840 lines after extracting `compaction/file_read_dedup.rs`, `compaction/memory_envelope.rs`, and `compaction/recovery_preview.rs`, with `compaction/memory_envelope/local_summary.rs` and `compaction/memory_envelope/persistence.rs` pulling the memory-envelope path into smaller units; common TUI work can still spill into remaining oversized roots led by `turn/turn_processing/llm_request/copilot_runtime.rs` (1921), `turn/compaction/tests.rs` (1847), `turn/session/slash_commands/agents_authoring.rs` (1773), `turn/session_loop_runner/mod.rs` (1299), `turn/session/slash_commands/oauth.rs` (1294), and `turn/session/slash_commands/agents/runtime.rs` (1210). |
-| Error Handling   | B     | Terminal restoration and cleanup behavior are robust.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| Documentation    | B     | TUI startup and testing guidance are available.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Error Handling   | B     | Terminal restoration and cleanup behavior are robust.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Documentation    | B     | TUI startup and testing guidance are available.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
-**Overall: B**
-**Priority action**: finish the compaction surface by splitting `turn/compaction/tests.rs` and pushing `turn/compaction/mod.rs` below the 500-line invariant, then continue the next TD-005 passes on `turn/turn_processing/llm_request/copilot_runtime.rs`, `turn/session/slash_commands/agents_authoring.rs`, and `turn/session_loop_runner/mod.rs`, while adding higher-level integration tests that exercise full inline loop interactions with modal flows and queue editing.
-**Verify**: `find src -name '*.rs' -type f -exec wc -l {} + | sort -nr | head -n 20 && find src/agent/runloop/unified/turn/compaction -name '*.rs' -type f -exec wc -l {} + | sort -nr && python3 scripts/check_agent_legibility.py --mode warn && cargo test -p vtcode --bin vtcode inline_events::tests`
+**Overall: B** **Priority action**: finish the compaction surface by splitting
+`turn/compaction/tests.rs` and pushing `turn/compaction/mod.rs` below the
+500-line invariant, then continue the next TD-005 passes on
+`turn/turn_processing/llm_request/copilot_runtime.rs`,
+`turn/session/slash_commands/agents_authoring.rs`, and
+`turn/session_loop_runner/mod.rs`, while adding higher-level integration tests
+that exercise full inline loop interactions with modal flows and queue editing.
+**Verify**:
 
----
+```sh
+find src -name '*.rs' -type f -exec wc -l {} + | sort -nr | head -n 20 && \
+  find src/agent/runloop/unified/turn/compaction -name '*.rs' -type f \
+  -exec wc -l {} + | sort -nr && \
+  python3 scripts/check_agent_legibility.py --mode warn && \
+  cargo test -p vtcode --bin vtcode inline_events::tests
+```
+
+______________________________________________________________________
 
 ## Optimized Code Understanding & Bash Safety
 
@@ -224,16 +240,16 @@ When updating an `Agent Legibility` row, make all three signals explicit in the 
 | Error Handling   | B+    | Robust fallbacks for unparseable shell commands; LLM handles syntax errors in general programming languages.                   |
 | Documentation    | B+    | `docs/protocols/LANGUAGE_SUPPORT.md` and `docs/user-guide/tree-sitter-integration.md` updated to reflect the new architecture. |
 
-**Overall: B+**
-**Priority action**: expand bash safety tests with more complex obfuscation patterns and edge-case shell syntax.
-**Verify**: `cargo nextest run -p vtcode-core --test shell_parser_tests`
+**Overall: B+** **Priority action**: expand bash safety tests with more complex
+obfuscation patterns and edge-case shell syntax. **Verify**:
+`cargo nextest run -p vtcode-core --test shell_parser_tests`
 
----
+______________________________________________________________________
 
 ## Documentation
 
-**Scope**: `docs/` (654 files at review time on 2026-02-16)
-**Related debt**: TD-001 (in-progress)
+**Scope**: `docs/` (654 files at review time on 2026-02-16) **Related debt**:
+TD-001 (in-progress)
 
 | Dimension        | Grade | Evidence / Notes                                                                                                                                                    |
 | ---------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -243,17 +259,29 @@ When updating an `Agent Legibility` row, make all three signals explicit in the 
 | Error Handling   | B     | Docs governance checks now emit remediation-oriented failures for broken links and placement violations (`check_docs_links.py`, `check_markdown_location.py`).      |
 | Documentation    | B     | Core entrypoint docs (`AGENTS.md`, `docs/INDEX.md`, harness index) are aligned; consolidation remains active but now bounded by CI guardrails.                      |
 
-**Overall: B**
-**Priority action**: reduce existing top-level allowlist by moving high-churn historical docs from `docs/*.md` into domain folders or archive paths.
-**Verify**: `python3 scripts/check_markdown_location.py && python3 scripts/check_docs_links.py && find docs -maxdepth 1 -type f -name "*.md" | wc -l`
+**Overall: B** **Priority action**: reduce existing top-level allowlist by
+moving high-churn historical docs from `docs/*.md` into domain folders or
+archive paths. **Verify**:
 
----
+```sh
+python3 scripts/check_markdown_location.py && \
+  python3 scripts/check_docs_links.py && \
+  find docs -maxdepth 1 -type f -name "*.md" | wc -l
+```
+
+______________________________________________________________________
 
 ## Summary Table
 
 ### Session runner revalidation
 
-The session-runner facade is now 13 lines; the implementation is isolated in `session_loop_runner/orchestration.rs`, with harness setup and lifecycle support in focused sibling modules. Planning approval has a validated artifact boundary and a required task-tracker gate. Error handling is observable through structured harness warnings with phase and path fields. The remaining orchestration body is still a large implementation hotspot, so the TUI domain remains capped at B until its internal phases are further decomposed.
+The session-runner facade is now 13 lines; the implementation is isolated in
+`session_loop_runner/orchestration.rs`, with harness setup and lifecycle
+support in focused sibling modules. Planning approval has a validated artifact
+boundary and a required task-tracker gate. Error handling is observable through
+structured harness warnings with phase and path fields. The remaining
+orchestration body is still a large implementation hotspot, so the TUI domain
+remains capped at B until its internal phases are further decomposed.
 
 | Domain               | Overall | Priority Action                                                                                                                                   | Status             |
 | -------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |

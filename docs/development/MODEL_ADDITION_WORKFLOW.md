@@ -1,10 +1,12 @@
 # Model Addition Workflow Summary
 
-This document provides a high-level overview of the model addition process and automation approach.
+This document provides a high-level overview of the model addition process and
+automation approach.
 
 ## Why This Workflow?
 
-Adding a new LLM model to VT Code requires updates across **three architectural layers**:
+Adding a new LLM model to VT Code requires updates across **three architectural
+layers**:
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -23,25 +25,28 @@ Adding a new LLM model to VT Code requires updates across **three architectural 
 └─────────────────────────────────────────────┘
 ```
 
-Each layer must be independently coherent AND logically connected. This is why a simple script can't fully automate the process—it must be intentional and verifiable at each step.
+Each layer must be independently coherent AND logically connected. This is why
+a simple script can't fully automate the process—it must be intentional and
+verifiable at each step.
 
 ## The 10-Step Process
 
 ### Layer 1: Constants (2 files)
 
-1. **Provider constants module** - Add to the provider's `SUPPORTED_MODELS` array + define convenience constants
+1. **Provider constants module** - Add to the provider's `SUPPORTED_MODELS`
+   array + define convenience constants
 2. **models.json** - Complete metadata entry (context, capabilities, modalities)
 
 ### Layer 2: Configuration (8 files)
 
-3. **model_id.rs** - Add enum variant with doc comment
-4. **as_str.rs** - Map enum to constant string
-5. **display.rs** - Map enum to display name
-6. **description.rs** - Map enum to description text
-7. **parse.rs** - Map string to enum (enables CLI parsing)
-8. **provider.rs** - Assign to provider (OpenAI, Anthropic, etc.)
-9. **collection.rs** - Add to all_models() discovery list
-10. **capabilities.rs** - Add to generation() and optional trait methods
+1. **model_id.rs** - Add enum variant with doc comment
+2. **as_str.rs** - Map enum to constant string
+3. **display.rs** - Map enum to display name
+4. **description.rs** - Map enum to description text
+5. **parse.rs** - Map string to enum (enables CLI parsing)
+6. **provider.rs** - Assign to provider (OpenAI, Anthropic, etc.)
+7. **collection.rs** - Add to all_models() discovery list
+8. **capabilities.rs** - Add to generation() and optional trait methods
 
 ## Automation Level: 60% (Guided, Not Fully Automated)
 
@@ -196,6 +201,7 @@ fn test_new_model() {
     ```
 
 4. **Run verification:**
+
     ```bash
     cargo check --package vtcode-config
     cargo clippy --workspace --all-targets -- -D warnings

@@ -1,0 +1,51 @@
+{
+  "config": {
+    "MD004": {
+      "style": "dash"
+    },
+    "MD010": {
+      "code_blocks": false
+    },
+    "MD013": {
+      "line_length": 80,
+      "code_block_line_length": 120,
+      "tables": false,
+      "headings": false
+    },
+    // The inherited documentation corpus reuses headings such as "Example"
+    // under distinct parents, so duplicates are only an error between siblings.
+    "MD024": {
+      "siblings_only": true
+    },
+    "MD029": {
+      "style": "ordered"
+    },
+    // The inherited documentation corpus uses HTML for details/summary blocks
+    // and badges, so inline HTML stays permitted.
+    "MD033": false,
+    // The inherited documentation corpus uses bold lead-ins as pseudo-headings,
+    // so emphasis-as-heading stays permitted.
+    "MD036": false,
+    // The inherited documentation corpus has many unlabelled fences, so a
+    // fenced block is not required to declare a language.
+    "MD040": false
+  },
+  "ignores": [
+    "**/.venv/**",
+    ".vtcode/**",
+    "**/node_modules/**",
+    "**/target/**",
+    ".terraform/**",
+    ".uv-cache/**",
+    "memories/**",
+    "CRUSH.md",
+    // Release-note archive: a generated historical record, not hand-authored
+    // documentation.
+    "CHANGELOG.md",
+    // Markdown-renderer test fixtures: inputs compared byte-for-byte against
+    // snapshots, not documentation.
+    "crates/codegen/vtcode-core/src/utils/fixtures/*.md",
+    // Model prompt templates compiled into the binary, not documentation.
+    "src/agent/runloop/unified/auto_permission/prompts/*.md"
+  ]
+}

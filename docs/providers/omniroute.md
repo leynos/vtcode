@@ -98,13 +98,13 @@ base_url = "http://omniroute-host:20128/v1"
 
 ## Troubleshooting
 
-| Symptom | Resolution |
-| --- | --- |
-| `Unknown provider: omniroute` | Confirm that the `[[custom_providers]]` block is in the active `vtcode.toml`. |
-| API key not found | Export `OMNIROUTE_API_KEY` or store it with `vtcode secret add omniroute --key-name OMNIROUTE_API_KEY`. |
-| HTTP 404 | Confirm that `base_url` ends in `/v1`, without `/chat/completions` or `/responses`. |
-| Model not found | Copy an exact ID from `GET /v1/models`, or use `auto`. |
-| VT Code cannot connect from a container | Use a hostname reachable from that container instead of `localhost`. |
+| Symptom                                 | Resolution                                                                                              |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `Unknown provider: omniroute`           | Confirm that the `[[custom_providers]]` block is in the active `vtcode.toml`.                           |
+| API key not found                       | Export `OMNIROUTE_API_KEY` or store it with `vtcode secret add omniroute --key-name OMNIROUTE_API_KEY`. |
+| HTTP 404                                | Confirm that `base_url` ends in `/v1`, without `/chat/completions` or `/responses`.                     |
+| Model not found                         | Copy an exact ID from `GET /v1/models`, or use `auto`.                                                  |
+| VT Code cannot connect from a container | Use a hostname reachable from that container instead of `localhost`.                                    |
 
 ## References
 

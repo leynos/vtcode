@@ -1,7 +1,7 @@
 # Agent Loop Contract
 
-VT Code keeps its existing harness-first runtime, but its external loop contract
-now lines up more closely with SDK-style agent runtimes.
+VT Code keeps its existing harness-first runtime, but its external loop
+contract now lines up more closely with SDK-style agent runtimes.
 
 This guide describes the public lifecycle semantics shared by interactive runs,
 `vtcode exec`, harness logs, and Open Responses extension events.
@@ -13,22 +13,22 @@ VT Code does not expose Claude-specific SDK structs. The canonical stream stays
 
 The closest concept mapping is:
 
-| Agent SDK concept | VT Code event |
-| --- | --- |
-| `SystemMessage(init)` | `thread.started` |
-| `AssistantMessage` | `item.*` with `agent_message`, `reasoning`, `tool_invocation` |
-| Tool-result `UserMessage` | `item.*` with `tool_output` or `command_execution` |
-| `StreamEvent` | `item.updated` plus Open Responses stream events |
-| `ResultMessage` | `thread.completed` |
-| `compact_boundary` | `thread.compact_boundary` |
-| Fresh plan execution handoff | `context.reset` |
+| Agent SDK concept            | VT Code event                                                 |
+| ---------------------------- | ------------------------------------------------------------- |
+| `SystemMessage(init)`        | `thread.started`                                              |
+| `AssistantMessage`           | `item.*` with `agent_message`, `reasoning`, `tool_invocation` |
+| Tool-result `UserMessage`    | `item.*` with `tool_output` or `command_execution`            |
+| `StreamEvent`                | `item.updated` plus Open Responses stream events              |
+| `ResultMessage`              | `thread.completed`                                            |
+| `compact_boundary`           | `thread.compact_boundary`                                     |
+| Fresh plan execution handoff | `context.reset`                                               |
 
-`turn.started`, `turn.completed`, `turn.failed`, and `turn.blocked` remain VT Code turn
-wrappers around the inner item lifecycle. `turn.blocked` is emitted alongside
-`turn.failed` for blocked turns with streak/total/caps/last-tool counters so UI
-layers get a first-class signal instead of inferring it. Harness `TurnBlocked`,
-`BlockedRecoveryStarted`, and `BlockedRecoveryFinished` item events cover the
-recovery lifecycle.
+`turn.started`, `turn.completed`, `turn.failed`, and `turn.blocked` remain VT
+Code turn wrappers around the inner item lifecycle. `turn.blocked` is emitted
+alongside `turn.failed` for blocked turns with streak/total/caps/last-tool
+counters so UI layers get a first-class signal instead of inferring it. Harness
+`TurnBlocked`, `BlockedRecoveryStarted`, and `BlockedRecoveryFinished` item
+events cover the recovery lifecycle.
 
 ### Tool-result ordering and bounded request repair
 
@@ -65,12 +65,12 @@ completed as failed. A timeout applies to the provider stream acquisition and
 is reported as a failure; it does not silently convert an empty or partial
 stream into success. Steering follow-ups remain queued for the next turn.
 
-Failure-like tool results include hard failures, timeouts, and successful process
-responses with a non-zero exit status. Non-zero results retain their stdout,
-stderr, exit status, partial output, and spool evidence, but count as failures
-for metrics, batch summaries, and recovery diagnosis; they do not create a
-successful read-only signature. Low-signal grep/no-match behavior remains
-unchanged. The existing model-facing tool response may include a bounded
+Failure-like tool results include hard failures, timeouts, and successful
+process responses with a non-zero exit status. Non-zero results retain their
+stdout, stderr, exit status, partial output, and spool evidence, but count as
+failures for metrics, batch summaries, and recovery diagnosis; they do not
+create a successful read-only signature. Low-signal grep/no-match behavior
+remains unchanged. The existing model-facing tool response may include a bounded
 `diagnosis` object:
 
 ```json
@@ -90,10 +90,11 @@ continues to follow its existing capability and display settings, and raw
 chain-of-thought is never exposed.
 
 When the product collapses or bounds a tool result, every provider/model
-receives the fixed disclosure after the tool-result user message: `Only you
+receives the fixed disclosure after the tool-result user message:
+`Only you
 see that command's output — the user's terminal shows at most a few lines of
-it. If the user needs to read any of it, put it in your reply.` Anthropic wire
-routes whose selected provider/model capability supports it use
+it. If the user needs to read any of it, put it in your reply.`
+Anthropic wire routes whose selected provider/model capability supports it use
 `clear_at: "next_user_message"` and the required beta; unsupported Anthropic
 models and gateways promote the same text to their top-level system prompt.
 Other providers map it to their native system, history, instructions, or
@@ -120,7 +121,8 @@ Fields:
 
 - `thread_id`: stable event-stream thread identifier
 - `session_id`: stable VT Code session identifier
-- `subtype`: `success`, `error_max_turns`, `error_max_budget_usd`, `error_during_execution`, or `cancelled`
+- `subtype`: `success`, `error_max_turns`, `error_max_budget_usd`,
+  `error_during_execution`, or `cancelled`
 - `outcome_code`: VT Code-specific terminal code
 - `result`: final assistant summary text on successful completion only
 - `stop_reason`: provider stop reason when available
@@ -135,22 +137,22 @@ sessions preserve the corresponding VT Code session end semantics.
 
 Interactive and exec runs share one authoritative persistence contract:
 
-| Concern | Contract |
-| --- | --- |
-| Event type | `vtcode_exec_events::ThreadEvent` is the only runtime event contract. |
-| Canonical path | `<workspace>/.vtcode/sessions/<session_id>/events.jsonl`, with `manifest.json` and derived artifacts beside it. |
-| Ordering | One dispatch gate feeds canonical persistence and optional exporters in the same order. |
-| Backpressure | Canonical events use bounded non-blocking handoffs to a blocking I/O drain; queue saturation fails closed, and accepted events are never silently dropped. |
-| Shutdown | The terminal `thread.completed` event is emitted first, then exporters finish and canonical persistence drains before success is reported. |
-| Lifecycle status | Sessions become `active` at `thread.started`/`turn.started`; only `thread.completed` makes the manifest terminal. |
-| Retention | Closed sessions use the 50-session/30-day defaults. Active sessions, the current session, symlinks, and unrelated files are preserved. |
+| Concern          | Contract                                                                                                                                                   |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Event type       | `vtcode_exec_events::ThreadEvent` is the only runtime event contract.                                                                                      |
+| Canonical path   | `<workspace>/.vtcode/sessions/<session_id>/events.jsonl`, with `manifest.json` and derived artifacts beside it.                                            |
+| Ordering         | One dispatch gate feeds canonical persistence and optional exporters in the same order.                                                                    |
+| Backpressure     | Canonical events use bounded non-blocking handoffs to a blocking I/O drain; queue saturation fails closed, and accepted events are never silently dropped. |
+| Shutdown         | The terminal `thread.completed` event is emitted first, then exporters finish and canonical persistence drains before success is reported.                 |
+| Lifecycle status | Sessions become `active` at `thread.started`/`turn.started`; only `thread.completed` makes the manifest terminal.                                          |
+| Retention        | Closed sessions use the 50-session/30-day defaults. Active sessions, the current session, symlinks, and unrelated files are preserved.                     |
 
 `agent.harness.event_log_path` and exec `--events` are explicit compatibility
-exports. They do not replace the canonical store, and no global
-The user state directory's `sessions` harness artifact is created by default. ATIF and Open
-Responses files, when enabled by the interactive harness, are derived under
-the canonical session's `derived/` directory. Historical global artifacts are
-left untouched.
+exports. They do not replace the canonical store, and no global The user state
+directory's `sessions` harness artifact is created by default. ATIF and Open
+Responses files, when enabled by the interactive harness, are derived under the
+canonical session's `derived/` directory. Historical global artifacts are left
+untouched.
 
 ## Compaction Boundary
 
@@ -166,8 +168,10 @@ Fields:
 - `compacted_message_count`
 - `history_artifact_path`: optional archived history path
 - `previous_segment_id` and `new_segment_id`: optional cache segment transition
-- `previous_prefix_hash` and `new_prefix_hash`: optional immutable prompt-prefix hashes
-- `previous_catalog_hash` and `new_catalog_hash`: optional ordered tool-catalog hashes
+- `previous_prefix_hash` and `new_prefix_hash`: optional immutable
+  prompt-prefix hashes
+- `previous_catalog_hash` and `new_catalog_hash`: optional ordered tool-catalog
+  hashes
 
 Each request segment freezes one system prompt, instruction digest, and
 deterministically ordered tool catalog. Ordinary turns only append messages.
@@ -178,20 +182,22 @@ continuity tail.
 
 This is emitted for manual `/compact` flows, for automatic compaction, and for
 automatic local fallback compaction. When Open Responses is enabled, VT Code
-surfaces these as VT Code custom extension events without changing the core Open
-Responses response model.
+surfaces these as VT Code custom extension events without changing the core
+Open Responses response model.
 
 ## Fresh Plan Execution Context
 
-Selecting “Yes, clear context and implement” is a plan-to-build handoff inside the same user
-session. The runtime preserves the approved plan, task tracker, working tree, configuration,
-permissions, authentication, and aggregate usage. It clears only the live transcript and other
-transient continuation, recovery, cache-lineage, request-segment, and tool-budget state, then
-starts a normal build turn with a compact handoff directive.
+Selecting “Yes, clear context and implement” is a plan-to-build handoff inside
+the same user session. The runtime preserves the approved plan, task tracker,
+working tree, configuration, permissions, authentication, and aggregate usage.
+It clears only the live transcript and other transient continuation, recovery,
+cache-lineage, request-segment, and tool-budget state, then starts a normal
+build turn with a compact handoff directive.
 
 The successful handoff emits `context.reset` with `trigger`, `plan_preserved`,
-`previous_context_usage_percent`, and `tool_budget_reset`. The event is also written to the normal
-JSONL/log stream and forwarded by the Open Responses bridge as `vtcode.context_reset`.
+`previous_context_usage_percent`, and `tool_budget_reset`. The event is also
+written to the normal JSONL/log stream and forwarded by the Open Responses
+bridge as `vtcode.context_reset`.
 
 ### Unified auto-compaction
 
@@ -203,11 +209,11 @@ maintaining separate compaction logic. It fires at the effective session
 ceiling: an explicit `agent.harness.auto_compaction_threshold_tokens` wins,
 otherwise VT Code applies the 90% ratio to the smaller of the provider's hard
 context capacity and `context.max_context_tokens` (160,000 by default).
-Explicit thresholds remain capped by the provider capacity.
-Disabling normal auto-compaction does not disable the single bounded recovery
-compaction used after a provider rejects a follow-up that follows successful
-tool output; that safety path preserves the current request and completed tool
-results, and blocks truthfully if it cannot reduce the context.
+Explicit thresholds remain capped by the provider capacity. Disabling normal
+auto-compaction does not disable the single bounded recovery compaction used
+after a provider rejects a follow-up that follows successful tool output; that
+safety path preserves the current request and completed tool results, and
+blocks truthfully if it cannot reduce the context.
 
 To preserve conversational continuity, every compacted history keeps:
 
@@ -240,18 +246,19 @@ through normal conversation history, the renderer, and
 The turn result remains `Blocked`; publishing the handoff does not convert it
 to success or emit `turn.completed`. The TUI surfaces the block via a `Blocked`
 header badge, `Blocked • continue to retry…` footer hint, transcript banner, and
-`ActionRequired` terminal title; `ActivityState::Blocked`/`Recovery` drive those
-states while input stays enabled. Blocked-turn spool outputs are pinned until
-the blocker resolves so `continue`/`--resume` can still read them.
+`ActionRequired` terminal title; `ActivityState::Blocked`/`Recovery` drive
+those states while input stays enabled. Blocked-turn spool outputs are pinned
+until the blocker resolves so `continue`/`--resume` can still read them.
 
 Blocked responses are reason-specific. A pending-verification response explains
-that inspection-only checks, link checks, and `git diff --check` do not clear the
-anti-blind checkpoint and directs the operator to run `cargo check --locked` or
-the relevant `cargo nextest run`. A context-capacity response explains that
-bounded compaction could not reduce the request, retains completed tool outputs,
-and directs the operator to resume after reducing context or switching models.
-Other blocked reasons use a generic retry handoff. Existing recovery text is
-reused when it was already published, so the assistant item is never duplicated.
+that inspection-only checks, link checks, and `git diff --check` do not clear
+the anti-blind checkpoint and directs the operator to run
+`cargo check --locked` or the relevant `cargo nextest run`. A context-capacity
+response explains that bounded compaction could not reduce the request, retains
+completed tool outputs, and directs the operator to resume after reducing
+context or switching models. Other blocked reasons use a generic retry handoff.
+Existing recovery text is reused when it was already published, so the
+assistant item is never duplicated.
 
 The fork/branch history builder (`build_summarized_fork_history`) deliberately
 omits the continuity tail and produces a minimal resume artifact (envelope +
@@ -286,8 +293,9 @@ authoritative without encouraging duplicate reads or checks. Blocker live
 pointers are cleared only by the session that created them; archived blocker
 files remain self-contained, append a durable resolution marker before pointer
 cleanup, and do not claim ownership of the workspace-global task tracker. An
-ordinary user exit after a completed non-fallback turn is reported as successful
-thread completion; an exit that terminates active work remains cancellation.
+ordinary user exit after a completed non-fallback turn is reported as
+successful thread completion; an exit that terminates active work remains
+cancellation.
 
 Workspace-aware tool responses and execution summaries render paths inside the
 active workspace relative to that workspace (for example,
@@ -307,12 +315,14 @@ history; the public `FollowUpInput(String)` message shape remains unchanged.
 `agent.harness.max_budget_usd` is the shared budget setting for interactive and
 exec sessions.
 
-- VT Code estimates cost from aggregate usage via `ModelResolver::estimate_cost`.
+- VT Code estimates cost from aggregate usage via
+  `ModelResolver::estimate_cost`.
 - If pricing metadata is unavailable for the active model, VT Code does not
   enforce the budget.
 - In that case `total_cost_usd` stays `null` and VT Code emits one warning.
 
-Turn limits still surface through `thread.completed.subtype = "error_max_turns"`.
+Turn limits still surface through
+`thread.completed.subtype = "error_max_turns"`.
 
 ## Hooks
 
@@ -336,24 +346,33 @@ includes:
 
 ## Orient Phase
 
-Every session should begin by gathering orientation context from external artifacts. This follows the long-running harness pattern: the agent reads the progress ledger, harness artifacts, loop memory, and git log to understand the current state before acting.
+Every session should begin by gathering orientation context from external
+artifacts. This follows the long-running harness pattern: the agent reads the
+progress ledger, harness artifacts, loop memory, and git log to understand the
+current state before acting.
 
-The orient phase produces an `OrientationContext` (see `crates/codegen/vtcode-core/src/core/agent/bootstrap.rs`) that includes:
+The orient phase produces an `OrientationContext` (see
+`crates/codegen/vtcode-core/src/core/agent/bootstrap.rs`) that includes:
 
 - Progress ledger summary (goal, completion ratio, confidence, stall status)
-- Harness artifact summaries (spec, contract, sprint contract, evaluation, outcome verification)
+- Harness artifact summaries (spec, contract, sprint contract, evaluation,
+  outcome verification)
 - Recent git log (last 5 commits)
 - Loop memory notes and decisions from previous iterations
 - Handoff context from a previous agent, if any
 
-This context is injected as a `[Orientation Context]` section in the system prompt, using summaries and references rather than full content to keep the context lean.
+This context is injected as a `[Orientation Context]` section in the system
+prompt, using summaries and references rather than full content to keep the
+context lean.
 
 ## Handoff Protocol
 
-When one agent hands off to another, it produces a `HandoffRequest` (see `crates/codegen/vtcode-core/src/core/agent/handoff.rs`) that includes:
+When one agent hands off to another, it produces a `HandoffRequest` (see
+`crates/codegen/vtcode-core/src/core/agent/handoff.rs`) that includes:
 
 - **State summary**: what was accomplished, what remains
-- **Boundary status**: explicit list of features/deliverables with Done/InProgress/NotStarted/Blocked status
+- **Boundary status**: explicit list of features/deliverables with
+  Done/InProgress/NotStarted/Blocked status
 - **Modified files**: files changed in this session
 - **Test results**: last test run outcome with actual output
 - **Open decisions**: unresolved questions for the next agent
@@ -361,17 +380,23 @@ When one agent hands off to another, it produces a `HandoffRequest` (see `crates
 - **Next actions**: recommended next steps
 - **Task context**: the original task description
 
-The handoff prompt is rendered as a structured markdown section that the next agent can parse without re-exploring the codebase. This prevents the "inheriting a collaborator's mess" problem: the boundary status makes explicit what is done vs. what was left incomplete.
+The handoff prompt is rendered as a structured markdown section that the next
+agent can parse without re-exploring the codebase. This prevents the
+"inheriting a collaborator's mess" problem: the boundary status makes explicit
+what is done vs. what was left incomplete.
 
 ## Related Controls
 
 These VT Code settings line up with common agent-loop controls:
 
-- Tool allow and deny rules: `[permissions].allow`, `[permissions].deny`, tool policy config
-- Permission policy: workspace trust, human-in-the-loop settings, granular agent rules, and full automation allow-lists
+- Tool allow and deny rules: `[permissions].allow`, `[permissions].deny`, tool
+  policy config
+- Permission policy: workspace trust, human-in-the-loop settings, granular
+  agent rules, and full automation allow-lists
 - Effort: provider/model reasoning settings
 - Tool discovery: MCP and tool catalog flows
-- Resume and fork continuity: session archives, thread bootstrap, and compaction envelopes
+- Resume and fork continuity: session archives, thread bootstrap, and
+  compaction envelopes
 
 ## Context Reset
 
@@ -384,22 +409,24 @@ reorient from durable artifacts only.
 
 Configured via `agent.harness.context_reset_mode`:
 
-| Mode | Trigger | Use Case |
-|------|---------|----------|
-| `off` (default) | Never | Normal operation |
-| `on_stall` | `context_reset_stall_threshold` consecutive stalled turns | Long-horizon tasks where the agent gets stuck |
-| `on_compaction` | After every auto-compaction | Clear noise accumulated before compaction |
+| Mode            | Trigger                                                   | Use Case                                      |
+| --------------- | --------------------------------------------------------- | --------------------------------------------- |
+| `off` (default) | Never                                                     | Normal operation                              |
+| `on_stall`      | `context_reset_stall_threshold` consecutive stalled turns | Long-horizon tasks where the agent gets stuck |
+| `on_compaction` | After every auto-compaction                               | Clear noise accumulated before compaction     |
 
 ### What Happens
 
 When a reset triggers:
 
-1. A `ContextResetManifest` is written to `.vtcode/tasks/current_context_reset.md`
-   recording the trigger reason, stall count, and timestamp.
+1. A `ContextResetManifest` is written to
+   `.vtcode/tasks/current_context_reset.md` recording the trigger reason, stall
+   count, and timestamp.
 2. The next session starts with **only** `OrientationContext` — no conversation
    history is carried forward.
-3. The orient phase reads the manifest and prepends a `### Context Reset` banner:
-   "This session starts from a clean context. Reorient from the artifacts below."
+3. The orient phase reads the manifest and prepends a `### Context Reset`
+   banner: "This session starts from a clean context. Reorient from the
+   artifacts below."
 
 ### Artifacts That Survive a Reset
 
@@ -417,10 +444,21 @@ The comparison with compaction is summarised in [Context Reset](#context-reset).
 
 The subagent layer now supports loop-engineering primitives:
 
-- **Worktree isolation**: set `isolation = "worktree"` on an agent spec to run the child in a git worktree under `.vtcode/worktrees/`. The child's file mutations stay in its own working tree until explicitly merged.
-- **Propose/verify separation**: `SubagentController::verify_proposed_change()` spawns a read-only verifier sub-agent that re-reads affected files and approves or rejects the change. The verifier has no shared context with the proposer.
-- **Loop run state**: `crates/codegen/vtcode-core/src/loop_state.rs` persists step index, cumulative cost, and status to `.vtcode/state/loop-<id>.json` so a scheduler can resume across invocations.
-- **Loop memory**: `crates/codegen/vtcode-core/src/loop_memory.rs` provides an append-only store for agent notes and decisions in `.vtcode/state/notes.md` and `decisions.md`.
-- **Cost guardrails**: `CostBudget` in `loop_state.rs` tracks token/cost/step limits and reports `BudgetStatus` (Ok/TokenLimitReached/CostLimitReached/StepLimitReached).
+- **Worktree isolation**: set `isolation = "worktree"` on an agent spec to run
+  the child in a git worktree under `.vtcode/worktrees/`. The child's file
+  mutations stay in its own working tree until explicitly merged.
+- **Propose/verify separation**: `SubagentController::verify_proposed_change()`
+  spawns a read-only verifier sub-agent that re-reads affected files and
+  approves or rejects the change. The verifier has no shared context with the
+  proposer.
+- **Loop run state**: `crates/codegen/vtcode-core/src/loop_state.rs` persists
+  step index, cumulative cost, and status to `.vtcode/state/loop-<id>.json` so
+  a scheduler can resume across invocations.
+- **Loop memory**: `crates/codegen/vtcode-core/src/loop_memory.rs` provides an
+  append-only store for agent notes and decisions in `.vtcode/state/notes.md`
+  and `decisions.md`.
+- **Cost guardrails**: `CostBudget` in `loop_state.rs` tracks token/cost/step
+  limits and reports `BudgetStatus`
+  (Ok/TokenLimitReached/CostLimitReached/StepLimitReached).
 
 See [Loop Engineering](../loop-engineering.md) for the full design.

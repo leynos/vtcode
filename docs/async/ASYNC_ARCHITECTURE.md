@@ -2,7 +2,8 @@
 
 ## Overview
 
-VT Code uses a **fully async architecture** for all I/O operations, providing non-blocking execution and excellent responsiveness.
+VT Code uses a **fully async architecture** for all I/O operations, providing
+non-blocking execution and excellent responsiveness.
 
 ## Architecture Diagram
 
@@ -89,10 +90,10 @@ impl PtyManager {
 
 **Key Features**:
 
--   Non-blocking from async runtime perspective
--   Proper timeout handling
--   Process cancellation support
--   Separate threads for reading and waiting
+- Non-blocking from async runtime perspective
+- Proper timeout handling
+- Process cancellation support
+- Separate threads for reading and waiting
 
 ### 2. Tool Registry (Async)
 
@@ -113,9 +114,9 @@ impl ToolRegistry {
 
 **Key Features**:
 
--   Fully async execution
--   Tool-specific implementations
--   Error handling and recovery
+- Fully async execution
+- Tool-specific implementations
+- Error handling and recovery
 
 ### 3. Tool Execution Pipeline (Async)
 
@@ -148,10 +149,10 @@ pub async fn execute_tool_with_timeout(
 
 **Key Features**:
 
--   Timeout support (5 minutes default)
--   Cancellation via Ctrl+C
--   Proper error handling
--   Status tracking
+- Timeout support (5 minutes default)
+- Cancellation via Ctrl+C
+- Proper error handling
+- Status tracking
 
 ### 4. File Operations (Async)
 
@@ -176,14 +177,14 @@ tokio::fs::create_dir_all(path).await?;
 
 **Files Using Async I/O**:
 
--   `tree_sitter/refactoring.rs`
--   `tree_sitter/analyzer.rs`
--   `srgn.rs`
--   `file_search.rs`
--   `curl_tool.rs`
--   `file_ops.rs`
--   `apply_patch.rs`
--   And more...
+- `tree_sitter/refactoring.rs`
+- `tree_sitter/analyzer.rs`
+- `srgn.rs`
+- `file_search.rs`
+- `curl_tool.rs`
+- `file_ops.rs`
+- `apply_patch.rs`
+- And more…
 
 ## Async Patterns Used
 
@@ -244,15 +245,15 @@ tokio::fs::write(path, data).await?;
 
 ### Blocking Operations
 
--   **Location**: Isolated to `spawn_blocking` thread pool
--   **Impact**: Zero impact on async runtime
--   **Scalability**: Thread pool auto-scales
+- **Location**: Isolated to `spawn_blocking` thread pool
+- **Impact**: Zero impact on async runtime
+- **Scalability**: Thread pool auto-scales
 
 ### Async Operations
 
--   **Concurrency**: Multiple operations can run simultaneously
--   **Responsiveness**: UI never blocks
--   **Resource Usage**: Efficient, minimal overhead
+- **Concurrency**: Multiple operations can run simultaneously
+- **Responsiveness**: UI never blocks
+- **Resource Usage**: Efficient, minimal overhead
 
 ### Benchmarks
 
@@ -323,6 +324,7 @@ tokio::select! {
     ```
 
 4. **Support cancellation**
+
     ```rust
     tokio::select! { ... }
     ```
@@ -428,11 +430,10 @@ async fn operation() -> Result<T> {
 
 ## References
 
--   [Tokio Documentation](https://tokio.rs/)
--   [Async Book](https://rust-lang.github.io/async-book/)
+- [Tokio Documentation](https://tokio.rs/)
+- [Async Book](https://rust-lang.github.io/async-book/)
 
----
+______________________________________________________________________
 
-**Last Updated**: December 2024
-**Status**: Production Ready
-**Coverage**: 100% Async I/O
+**Last Updated**: December 2024 **Status**: Production Ready **Coverage**: 100%
+Async I/O

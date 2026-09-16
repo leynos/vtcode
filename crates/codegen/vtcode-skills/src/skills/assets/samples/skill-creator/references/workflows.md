@@ -1,11 +1,12 @@
 # Skill Workflows Reference
 
-This reference provides workflow patterns for different types of skills. Use these as
-templates when designing your skill's structure.
+This reference provides workflow patterns for different types of skills. Use
+these as templates when designing your skill's structure.
 
 ## Workflow Decision Tree Pattern
 
-Best for: Skills with multiple modes of operation (read vs write, simple vs complex).
+Best for: Skills with multiple modes of operation (read vs write, simple vs
+complex).
 
 ```
 ## Workflow Decision Tree

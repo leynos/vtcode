@@ -177,29 +177,32 @@ log_level = "debug"
 
 - **Issue**: "Invalid API key" or authentication errors
 - **Solution**:
-    - Check your `vtcode.toml` provider configuration
-    - Verify API key is set: `echo $ANTHROPIC_API_KEY` (for Anthropic)
-    - Get a new API key from your provider's console
+  - Check your `vtcode.toml` provider configuration
+  - Verify API key is set: `echo $ANTHROPIC_API_KEY` (for Anthropic)
+  - Get a new API key from your provider's console
 
 ### Configuration Not Loading
 
 - **Issue**: Settings not being applied
 - **Solution**:
-    - Ensure `vtcode.toml` is in workspace root
-    - Check file syntax (should be valid TOML)
-    - Reload workspace (close/reopen folder in Zed)
+  - Ensure `vtcode.toml` is in workspace root
+  - Check file syntax (should be valid TOML)
+  - Reload workspace (close/reopen folder in Zed)
 
 ## Next Steps
 
-1. **Read Configuration Guide**: [Full configuration options](extension-features.md)
-2. **Check VT Code Documentation**: [Main VT Code repo](https://github.com/vinhnx/vtcode)
+1. **Read Configuration Guide**:
+   [Full configuration options](extension-features.md)
+2. **Check VT Code Documentation**:
+   [Main VT Code repo](https://github.com/vinhnx/vtcode)
 3. **Join Community**: Star the repo and share feedback
 4. **Contribute**: [Development guide](DEVELOPMENT.md)
 
 ## Support
 
 - **GitHub Issues**: [VT Code Issues](https://github.com/vinhnx/vtcode/issues)
-- **Documentation**: [VT Code Docs](https://github.com/vinhnx/vtcode#documentation)
+- **Documentation**:
+  [VT Code Docs](https://github.com/vinhnx/vtcode#documentation)
 - **Discord**: [Join our community](https://discord.com/invite/...)
 
 ## Tips & Tricks
@@ -219,6 +222,7 @@ log_level = "debug"
 - Set `analyze_on_startup = false` for faster startup
 - Use appropriate AI models (smaller for speed, larger for quality)
 
----
+______________________________________________________________________
 
-**Ready to start?** Open Zed, install the extension, create a `vtcode.toml`, and ask your first question!
+**Ready to start?** Open Zed, install the extension, create a `vtcode.toml`,
+and ask your first question!

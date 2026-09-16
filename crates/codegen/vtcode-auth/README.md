@@ -36,19 +36,20 @@ let server = vtcode_auth::start_auth_code_callback_server(OAuthProvider::OpenRou
 
 ## API Reference
 
-See [docs.rs/vtcode-auth](https://docs.rs/vtcode-auth) for full API documentation.
+See [docs.rs/vtcode-auth](https://docs.rs/vtcode-auth) for full API
+documentation.
 
-| Type | Purpose |
-|------|---------|
-| `AuthConfig` | Top-level authentication configuration |
-| `CopilotAuthConfig` | Copilot-specific auth settings |
-| `OpenAIAuthConfig` | OpenAI-specific auth settings |
-| `CredentialStorage` | Read/write credentials via OS keyring or file |
-| `CustomApiKeyStorage` | Store and retrieve user-provided API keys |
-| `McpOAuthService` | Drive the MCP OAuth login flow |
+| Type                     | Purpose                                         |
+| ------------------------ | ----------------------------------------------- |
+| `AuthConfig`             | Top-level authentication configuration          |
+| `CopilotAuthConfig`      | Copilot-specific auth settings                  |
+| `OpenAIAuthConfig`       | OpenAI-specific auth settings                   |
+| `CredentialStorage`      | Read/write credentials via OS keyring or file   |
+| `CustomApiKeyStorage`    | Store and retrieve user-provided API keys       |
+| `McpOAuthService`        | Drive the MCP OAuth login flow                  |
 | `AuthCodeCallbackServer` | Local HTTP server that captures OAuth callbacks |
-| `OAuthProvider` | Enum of supported OAuth providers |
-| `PkceChallenge` | PKCE code-verifier / code-challenge pair |
+| `OAuthProvider`          | Enum of supported OAuth providers               |
+| `PkceChallenge`          | PKCE code-verifier / code-challenge pair        |
 
 ## Public entrypoints
 

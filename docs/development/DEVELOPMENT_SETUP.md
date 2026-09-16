@@ -6,7 +6,11 @@ Canonical local setup for contributing to VT Code.
 
 - Rust toolchain (stable) via [rustup](https://rustup.rs/)
 - Git
-- An LLM provider credential: either (a) a shell/workspace env var like `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `ZAI_API_KEY`, `MOONSHOT_API_KEY`, `STEPFUN_API_KEY`, or `MINIMAX_API_KEY`, (b) an OAuth session for an auth-managed provider, or (c) a key stored via `vtcode secret add <provider>`.
+- An LLM provider credential: either (a) a shell/workspace env var like
+  `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`,
+  `ZAI_API_KEY`, `MOONSHOT_API_KEY`, `STEPFUN_API_KEY`, or `MINIMAX_API_KEY`,
+  (b) an OAuth session for an auth-managed provider, or (c) a key stored via
+  `vtcode secret add <provider>`.
 
 ## One-Time Setup
 
@@ -16,13 +20,14 @@ cd vtcode
 ./scripts/setup.sh --with-hooks
 ```
 
-`./scripts/setup.sh` verifies `rustfmt`/`clippy`, installs `cargo-nextest` when missing, and runs `cargo check`.
+`./scripts/setup.sh` verifies `rustfmt`/`clippy`, installs `cargo-nextest` when
+missing, and runs `cargo check`.
 
 ## Credential identities
 
-Secure API-key storage is scoped by `(provider, key name)`, where the key name is
-the environment variable used for that credential. This keeps multiple profiles
-for one provider independent:
+Secure API-key storage is scoped by `(provider, key name)`, where the key name
+is the environment variable used for that credential. This keeps multiple
+profiles for one provider independent:
 
 ```bash
 vtcode secret add mimo --key-name MIMO_API_KEY
@@ -62,7 +67,8 @@ cargo test --workspace
 ./scripts/check.sh
 ```
 
-This runs formatting checks, linting, governance checks, build, tests (nextest-first), and docs generation.
+This runs formatting checks, linting, governance checks, build, tests
+(nextest-first), and docs generation.
 
 ## Makefile Gate
 
@@ -74,24 +80,23 @@ available separately and is not part of the default `check` dependency list.
 
 These are the public targets:
 
-| Target | Runs |
-| --- | --- |
-| `check` | The complete sequential gate |
-| `check-fmt` | `cargo fmt --all -- --check` |
-| `lint` | Shell, policy, Clippy and documentation checks |
-| `lint-shell` | Shell syntax and truncated-command checks |
-| `lint-policies` | Workflow-security and structured-logging checks |
-| `lint-clippy` | Workspace Clippy with warnings denied |
-| `lint-docs` | Workspace documentation generation without dependencies |
-| `build` | Locked workspace build |
-| `typecheck` | Locked workspace check with all targets and features |
-| `test` | Locked workspace Nextest run |
-| `test-harness` | PTY, pipe and inline-event harness suites |
+| Target           | Runs                                                    |
+| ---------------- | ------------------------------------------------------- |
+| `check`          | The complete sequential gate                            |
+| `check-fmt`      | `cargo fmt --all -- --check`                            |
+| `lint`           | Shell, policy, Clippy and documentation checks          |
+| `lint-shell`     | Shell syntax and truncated-command checks               |
+| `lint-policies`  | Workflow-security and structured-logging checks         |
+| `lint-clippy`    | Workspace Clippy with warnings denied                   |
+| `lint-docs`      | Workspace documentation generation without dependencies |
+| `build`          | Locked workspace build                                  |
+| `typecheck`      | Locked workspace check with all targets and features    |
+| `test`           | Locked workspace Nextest run                            |
+| `test-harness`   | PTY, pipe and inline-event harness suites               |
 | `check-ast-grep` | The VT Code ast-grep check when `ast-grep` is installed |
-| `advisory` | Warn-mode source hygiene and legibility reports |
+| `advisory`       | Warn-mode source hygiene and legibility reports         |
 
-The gate accepts these variables for local toolchain and test-runner
-overrides:
+The gate accepts these variables for local toolchain and test-runner overrides:
 
 - `CARGO` selects the Cargo executable (default: `cargo`).
 - `BUILD_JOBS` passes the Cargo job setting (default: `--jobs 6`).
@@ -99,10 +104,10 @@ overrides:
 
 The gate requires `make`, Rust tooling (`cargo fmt`, Clippy and Cargo
 documentation), Python 3 for advisory checks, Bash for shell checks, and
-`cargo-nextest` for tests. The ast-grep scan is optional:
-`check-ast-grep` reports a skip when the `ast-grep` executable is unavailable.
-See [Structural Rule Checks](testing.md#structural-rule-checks) for
-installation and workspace setup instructions.
+`cargo-nextest` for tests. The ast-grep scan is optional: `check-ast-grep`
+reports a skip when the `ast-grep` executable is unavailable. See
+[Structural Rule Checks](testing.md#structural-rule-checks) for installation
+and workspace setup instructions.
 
 ## Common Commands
 
@@ -128,9 +133,13 @@ cargo doc --workspace --no-deps --document-private-items
 - `cargo nextest` missing:
   - Run `cargo install cargo-nextest --locked`
 - No provider credential found:
-  - Run `vtcode secret add <provider>` to store a key in your OS keyring (recommended), or
-  - Use `vtcode secret add <provider> --key-name <ENV_VAR>` for a non-default provider profile, or
-  - `export OPENAI_API_KEY="sk-..."` (or the equivalent env var for your provider) in your shell, or
-  - Run `vtcode login <provider>` for OAuth/managed-auth providers (copilot, openai, openrouter).
+  - Run `vtcode secret add <provider>` to store a key in your OS keyring
+    (recommended), or
+  - Use `vtcode secret add <provider> --key-name <ENV_VAR>` for a non-default
+    provider profile, or
+  - `export OPENAI_API_KEY="sk-..."` (or the equivalent env var for your
+    provider) in your shell, or
+  - Run `vtcode login <provider>` for OAuth/managed-auth providers (copilot,
+    openai, openrouter).
 - Script permissions:
   - Run `chmod +x scripts/*.sh`

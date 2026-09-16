@@ -1,16 +1,22 @@
 # Ollama Provider Guide
 
-Ollama can serve models locally on your machine or proxy larger releases through the Ollama Cloud service. VT Code integrates with both deployment modes so you can keep lightweight workflows offline while bursting to the cloud for heavier jobs.
+Ollama can serve models locally on your machine or proxy larger releases
+through the Ollama Cloud service. VT Code integrates with both deployment modes
+so you can keep lightweight workflows offline while bursting to the cloud for
+heavier jobs.
 
 ## Prerequisites
 
 - Ollama installed and running locally ([download](https://ollama.com/download))
-- Optional: Ollama Cloud account with an [API key](https://ollama.com/settings/keys) for remote models
-- At least one model pulled locally or in your cloud workspace (e.g., `ollama pull llama3:8b` or `ollama pull gpt-oss:120b-cloud`)
+- Optional: Ollama Cloud account with an
+  [API key](https://ollama.com/settings/keys) for remote models
+- At least one model pulled locally or in your cloud workspace (e.g.,
+  `ollama pull llama3:8b` or `ollama pull gpt-oss:120b-cloud`)
 
 ## Installation and Setup
 
-1. **Install Ollama**: Download from [ollama.com](https://ollama.com/download) and follow platform-specific instructions
+1. **Install Ollama**: Download from [ollama.com](https://ollama.com/download)
+   and follow platform-specific instructions
 2. **Start Ollama server**: Run `ollama serve` in a terminal
 3. **Pull a model**: Choose and download a model to use:
 
@@ -31,8 +37,14 @@ Ollama can serve models locally on your machine or proxy larger releases through
 
 ### Environment Variables
 
-- `OLLAMA_BASE_URL` (optional): Custom Ollama endpoint (defaults to `http://localhost:11434`). Set to `https://ollama.com` to send requests directly to Ollama Cloud, or to `http://localhost:17434` to use [llmman](https://github.com/llmmanorg/llmman), a local model runner that serves the same Ollama API (see [Using llmman](local-servers.md#using-llmman)).
-- `OLLAMA_API_KEY` (optional): Required when connecting to Ollama Cloud. Not needed for purely local workloads.
+- `OLLAMA_BASE_URL` (optional): Custom Ollama endpoint (defaults to
+  `http://localhost:11434`). Set to `https://ollama.com` to send requests
+  directly to Ollama Cloud, or to `http://localhost:17434` to use
+  [llmman](https://github.com/llmmanorg/llmman), a local model runner that
+  serves the same Ollama API (see
+  [Using llmman](local-servers.md#using-llmman)).
+- `OLLAMA_API_KEY` (optional): Required when connecting to Ollama Cloud. Not
+  needed for purely local workloads.
 
 ### VT Code Configuration
 
@@ -55,7 +67,8 @@ run_pty_cmd = "prompt"           # Prompt before commands
 
 ## Using Custom Ollama Models
 
-VT Code supports custom Ollama models through the interactive model picker or directly via CLI:
+VT Code supports custom Ollama models through the interactive model picker or
+directly via CLI:
 
 ```bash
 # Using the interactive model picker (select "custom-ollama")
@@ -68,7 +81,8 @@ vtcode --provider ollama --model gpt-oss:20b ask "Help with this implementation"
 vtcode --provider ollama --model gpt-oss:120b-cloud ask "Plan this large migration"
 ```
 
-The `/model` picker now lists the core Ollama catalog so you can choose them without typing IDs:
+The `/model` picker now lists the core Ollama catalog so you can choose them
+without typing IDs:
 
 - `gpt-oss:20b` (local)
 - `gemma4` (local)
@@ -80,11 +94,13 @@ The `/model` picker now lists the core Ollama catalog so you can choose them wit
 - `glm-5.2:cloud`
 - `gpt-oss:120b-cloud` (via the OpenAI OSS support below)
 
-These entries appear beneath the Ollama provider section alongside the "Custom Ollama model" option.
+These entries appear beneath the Ollama provider section alongside the "Custom
+Ollama model" option.
 
 ## OpenAI OSS Models Support
 
-VT Code includes support for OpenAI's open-source models that can be run via Ollama locally or through the cloud preview:
+VT Code includes support for OpenAI's open-source models that can be run via
+Ollama locally or through the cloud preview:
 
 - `gpt-oss:20b`: Open-source 20B parameter model from OpenAI (local)
 - `gpt-oss:120b-cloud`: Cloud-hosted 120B parameter model managed by Ollama
@@ -103,10 +119,14 @@ vtcode --provider ollama --model gpt-oss:120b-cloud ask "Assist with this archit
 
 ## Laguna XS.2 Model
 
-[Laguna XS.2](https://ollama.com/library/laguna-xs.2) is a 33B total parameter Mixture-of-Experts model with 3B activated parameters per token, designed for agentic coding and long-horizon work on a local machine.
+[Laguna XS.2](https://ollama.com/library/laguna-xs.2) is a 33B total parameter
+Mixture-of-Experts model with 3B activated parameters per token, designed for
+agentic coding and long-horizon work on a local machine.
 
 **Key features:**
-- Mixed Sliding Window Attention (SWA) and global attention in a 3:1 ratio across 40 layers
+
+- Mixed Sliding Window Attention (SWA) and global attention in a 3:1 ratio
+  across 40 layers
 - KV cache quantized to FP8 for reduced memory per token
 - Native reasoning support with interleaved thinking between tool calls
 - 128K context window
@@ -122,23 +142,45 @@ vtcode --provider ollama --model laguna-xs.2 ask "Review this code"
 
 ## Tool calling and web search integration
 
-Ollama's API exposes OpenAI-compatible [tool calling](https://docs.ollama.com/capabilities/tool-calling) as well as the [web search](https://docs.ollama.com/capabilities/web-search) helpers. VT Code now forwards tool definitions to Ollama and surfaces any `tool_calls` responses from the model. A typical workflow looks like this:
+Ollama's API exposes OpenAI-compatible
+[tool calling](https://docs.ollama.com/capabilities/tool-calling) as well as the
+[web search](https://docs.ollama.com/capabilities/web-search) helpers. VT Code
+now forwards tool definitions to Ollama and surfaces any `tool_calls` responses
+from the model. A typical workflow looks like this:
 
-1. Define tools in `vtcode.toml` (or via slash commands) with JSON schemas that match your functions. For example, expose `web_search` and `web_fetch` so the agent can call Ollama's hosted knowledge tools.
-2. The agent will stream back `tool_calls` with structured arguments. VT Code automatically routes each call to the configured tool runner and includes the results as `tool` messages in the follow-up request.
-3. Ollama's responses can include multiple tools per turn. VT Code enforces `tool_call_id` requirements for reliability while still letting the model decide when to call a tool.
+1. Define tools in `vtcode.toml` (or via slash commands) with JSON schemas that
+   match your functions. For example, expose `web_search` and `web_fetch` so
+   the agent can call Ollama's hosted knowledge tools.
+2. The agent will stream back `tool_calls` with structured arguments. VT Code
+   automatically routes each call to the configured tool runner and includes
+   the results as `tool` messages in the follow-up request.
+3. Ollama's responses can include multiple tools per turn. VT Code enforces
+   `tool_call_id` requirements for reliability while still letting the model
+   decide when to call a tool.
 
-Because the provider now understands these payloads you can mix Ollama's native utilities with your existing MCP toolchain.
+Because the provider now understands these payloads you can mix Ollama's native
+utilities with your existing MCP toolchain.
 
 ## Thinking traces and streaming
 
-Thinking-capable models such as `gpt-oss` and `qwen3` emit a dedicated `thinking` channel ([docs](https://docs.ollama.com/capabilities/thinking)). Set the reasoning effort to `medium` or `high` (e.g., `vtcode --reasoning high`) or configure `reasoning_effort = "high"` in `vtcode.toml` and VT Code forwards the appropriate `think` parameter (`low`/`medium`/`high` for GPT-OSS, boolean for Qwen). During streaming runs you will now see separate "Reasoning" lines followed by the final answer tokens so you can inspect or hide the trace as needed.
+Thinking-capable models such as `gpt-oss` and `qwen3` emit a dedicated
+`thinking` channel ([docs](https://docs.ollama.com/capabilities/thinking)). Set
+the reasoning effort to `medium` or `high` (e.g., `vtcode --reasoning high`) or
+configure `reasoning_effort = "high"` in `vtcode.toml` and VT Code forwards the
+appropriate `think` parameter (`low`/`medium`/`high` for GPT-OSS, boolean for
+Qwen). During streaming runs you will now see separate "Reasoning" lines
+followed by the final answer tokens so you can inspect or hide the trace as
+needed.
 
-Ollama continues to support incremental streaming ([docs](https://docs.ollama.com/capabilities/streaming)), and VT Code uses it by default. Combine reasoning with streaming to watch the model deliberate before it produces the final response.
+Ollama continues to support incremental streaming
+([docs](https://docs.ollama.com/capabilities/streaming)), and VT Code uses it
+by default. Combine reasoning with streaming to watch the model deliberate
+before it produces the final response.
 
 ## Using Ollama Cloud directly
 
-When you have an Ollama API key you can target the managed endpoint without running a local server:
+When you have an Ollama API key you can target the managed endpoint without
+running a local server:
 
 ```bash
 export OLLAMA_API_KEY="sk-..."
@@ -147,7 +189,8 @@ export OLLAMA_BASE_URL="https://ollama.com"
 vtcode --provider ollama --model gpt-oss:120b-cloud ask "Summarize this spec"
 ```
 
-VT Code automatically attaches the bearer token to requests when the API key is present.
+VT Code automatically attaches the bearer token to requests when the API key is
+present.
 
 ### Direct API Example
 
@@ -165,11 +208,15 @@ curl http://localhost:11434/api/chat \
 
 ### Common Issues
 
-1. **"Connection refused" errors**: Ensure Ollama server is running (`ollama serve`) or that `OLLAMA_BASE_URL` points to a reachable endpoint
-2. **Model not found**: Ensure the requested model has been pulled (`ollama pull MODEL_NAME`)
-3. **Unauthorized (401) errors**: Set `OLLAMA_API_KEY` when targeting Ollama Cloud
+1. **"Connection refused" errors**: Ensure Ollama server is running
+   (`ollama serve`) or that `OLLAMA_BASE_URL` points to a reachable endpoint
+2. **Model not found**: Ensure the requested model has been pulled
+   (`ollama pull MODEL_NAME`)
+3. **Unauthorized (401) errors**: Set `OLLAMA_API_KEY` when targeting Ollama
+   Cloud
 4. **Performance issues**: Consider model size - larger models require more RAM
-5. **Memory errors**: For large local models like gpt-oss-120b, ensure sufficient RAM (64GB+ recommended)
+5. **Memory errors**: For large local models like gpt-oss-120b, ensure
+   sufficient RAM (64GB+ recommended)
 
 ### Testing Ollama Connection
 
@@ -187,5 +234,6 @@ curl http://localhost:11434/api/tags
 
 - Local models don't require internet connection
 - Performance varies significantly based on model size and local hardware
-- Larger models (30B+) require substantial RAM (32GB+) for reasonable performance
+- Larger models (30B+) require substantial RAM (32GB+) for reasonable
+  performance
 - Smaller models (7B-13B) work well on consumer hardware with 16GB+ RAM

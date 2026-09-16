@@ -246,17 +246,20 @@ let client = AcpClientBuilder::new("local-agent".to_string())
 ## HTTP Endpoints (Remote Agent Must Implement)
 
 ### POST /messages
+
 ```
 Request: AcpMessage
 Response: AcpResponse
 ```
 
 ### GET /metadata
+
 ```
 Response: AgentInfo
 ```
 
 ### GET /health
+
 ```
 Response: "OK" or JSON status
 ```
@@ -355,6 +358,7 @@ cargo run --example acp_distributed_workflow
 ## Troubleshooting
 
 ### Agent Not Found
+
 ```
 Error: Agent not found: agent-id
 → Check if agent was registered
@@ -362,6 +366,7 @@ Error: Agent not found: agent-id
 ```
 
 ### Network Error
+
 ```
 Error: Network error: Connection refused
 → Check if remote agent is running
@@ -370,6 +375,7 @@ Error: Network error: Connection refused
 ```
 
 ### Timeout
+
 ```
 Error: Request exceeded 30s timeout
 → Increase timeout with AcpClientBuilder.with_timeout()
@@ -378,6 +384,7 @@ Error: Request exceeded 30s timeout
 ```
 
 ### Serialization Error
+
 ```
 Error: Failed to parse response
 → Check remote agent is returning valid JSON

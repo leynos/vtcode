@@ -15,11 +15,11 @@ inspect → edit a draft → review a diff → propose → apply → check → r
 
 It has three modes:
 
-| Mode | Start | Write boundary |
-| --- | --- | --- |
-| WebMCP app | Open the app without pairing | Page memory only |
-| Headless connected | Pair `vtcode webmcp serve` | Selected workspace; full-auto policy |
-| Active connected | `/webmcp pair <origin>` in `vtcode chat` | Session workspace; terminal policy |
+| Mode               | Start                                    | Write boundary                       |
+| ------------------ | ---------------------------------------- | ------------------------------------ |
+| WebMCP app         | Open the app without pairing             | Page memory only                     |
+| Headless connected | Pair `vtcode webmcp serve`               | Selected workspace; full-auto policy |
+| Active connected   | `/webmcp pair <origin>` in `vtcode chat` | Session workspace; terminal policy   |
 
 The browser never writes to the filesystem directly.
 
@@ -27,8 +27,8 @@ For a real agent turn, pairing has two sides:
 
 1. **VT Code TUI:** run `/webmcp pair <origin>`. VT Code starts the active
    bridge and prints the WebSocket URL and one-time pairing code.
-2. **Web app:** open **Settings → Connect or re-pair a VT Code bridge**, paste both values, and select
-   **Pair with VT Code**.
+2. **Web app:** open **Settings → Connect or re-pair a VT Code bridge**, paste
+   both values, and select **Pair with VT Code**.
 
 The browser cannot start or approve the bridge. Keep the TUI running while the
 browser is connected.
@@ -37,18 +37,18 @@ browser is connected.
 and port, without the page path. The maintained app has two published
 deployments:
 
-| Deployment | URL | Origin for pairing |
-| --- | --- | --- |
+| Deployment   | URL                                   | Origin for pairing                   |
+| ------------ | ------------------------------------- | ------------------------------------ |
 | ChatGPT Site | <https://vtcode.vinhnx.chatgpt.site/> | `https://vtcode.vinhnx.chatgpt.site` |
-| GitHub Pages | <https://vinhnx.github.io/VTCode/> | `https://vinhnx.github.io` |
+| GitHub Pages | <https://vinhnx.github.io/VTCode/>    | `https://vinhnx.github.io`           |
 
 Do not use the `/VTCode/` path or a trailing slash in the pair command. The
 browser app derives this value from `window.location.origin`, so local and
 custom deployments follow the same exact-origin rule.
 
-Browser WebMCP is available only while the WebMCP app is open in a supported browser
-tab or webview. Chrome gates the page API on origin isolation and the `tools`
-Permissions Policy; the WebMCP app reports the observed values in
+Browser WebMCP is available only while the WebMCP app is open in a supported
+browser tab or webview. Chrome gates the page API on origin isolation and the
+`tools` Permissions Policy; the WebMCP app reports the observed values in
 `get_editor_state.webmcp_context` and keeps its normal fallback active when the
 API is unavailable. The authenticated VT Code bridge is separate and can still
 be used for workspace operations when explicitly paired.
@@ -59,10 +59,10 @@ The browser client has two interfaces that are easy to confuse:
 
 - **Browser WebMCP:** When the browser provides `document.modelContext`, the
   page registers eight bounded tools for browser/in-page agents. They can list
-  and read visible files, search buffers, inspect editor state, open files, stage
-  one exact edit in a clean browser draft, review a draft, and switch panels.
-  Draft edits update browser memory only; they cannot approve or apply a
-  filesystem change.
+  and read visible files, search buffers, inspect editor state, open files,
+  stage one exact edit in a clean browser draft, review a draft, and switch
+  panels. Draft edits update browser memory only; they cannot approve or apply
+  a filesystem change.
 - **VT Code bridge:** The paired editor uses VT Code's authenticated custom
   WebSocket protocol. The browser sends workspace, patch, check, and turn
   requests; VT Code sends responses and runtime events back. This is the path
@@ -78,7 +78,8 @@ Keeping the interfaces separate preserves the terminal approval boundary.
 
 For a real browser-agent pass, use a supported WebMCP browser, enable
 `chrome://flags/#enable-webmcp-testing`, relaunch Chrome, and open the deployed
-editor. The [Chrome WebMCP documentation](https://developer.chrome.com/docs/ai/webmcp)
+editor. The
+[Chrome WebMCP documentation](https://developer.chrome.com/docs/ai/webmcp)
 links to the Model Context Tool Inspector for listing tools, executing JSON
 inputs, and inspecting structured output or errors.
 
@@ -96,32 +97,33 @@ a review journey:
 Check that long file/search results are explicitly truncated, untrusted file
 content is marked with `untrustedContentHint`, `get_editor_state` reports the
 workflow and `webmcp_context`, page-only actions update the editor, and no
-browser tool can approve, apply, or revert a filesystem change.
-The deterministic corpus and contract checks live in
-`apps/webmcp/evals/webmcp-evals.ts` and run with `bun run test`.
-Model tool selection remains probabilistic and needs the real browser-agent pass.
+browser tool can approve, apply, or revert a filesystem change. The
+deterministic corpus and contract checks live in
+`apps/webmcp/evals/webmcp-evals.ts` and run with `bun run test`. Model tool
+selection remains probabilistic and needs the real browser-agent pass.
 
 ### Capture real Chrome or ChatGPT evidence
 
-Open **Evidence** in the WebMCP app, select **Chrome WebMCP Tool
-Inspector** or **ChatGPT in-app browser**, and choose **Start new run** before
-the external client begins. Use Chrome with the WebMCP testing flag (or a
-valid origin-trial token), or open the deployed page in ChatGPT's in-app
-browser when that client exposes WebMCP. The recorder wraps the registered
-callbacks, so each actual discovery and tool invocation is captured with
-bounded metadata, errors, elapsed time, and a sanitized editor-state snapshot.
+Open **Evidence** in the WebMCP app, select **Chrome WebMCP Tool Inspector** or
+**ChatGPT in-app browser**, and choose **Start new run** before the external
+client begins. Use Chrome with the WebMCP testing flag (or a valid origin-trial
+token), or open the deployed page in ChatGPT's in-app browser when that client
+exposes WebMCP. The recorder wraps the registered callbacks, so each actual
+discovery and tool invocation is captured with bounded metadata, errors,
+elapsed time, and a sanitized editor-state snapshot.
 
 After the run, use **Copy JSON** or **Download JSON** and keep the export with
-the client tool-inspector screenshot or screen recording. The export omits
-file contents, diffs, prompts, pairing codes, session tokens, and sensitive
-fields. The selected client name is a human attestation; the JSON demonstrates
-that the page callbacks ran and should be reviewed together with the client
-capture. **Run self-check** is a deterministic fallback test and is not a
-substitute for this external-client evidence.
+the client tool-inspector screenshot or screen recording. The export omits file
+contents, diffs, prompts, pairing codes, session tokens, and sensitive fields.
+The selected client name is a human attestation; the JSON demonstrates that the
+page callbacks ran and should be reviewed together with the client capture.
+**Run self-check** is a deterministic fallback test and is not a substitute for
+this external-client evidence.
 
 ### Optional Chrome origin trial
 
-Chrome offers WebMCP through a [time-limited origin trial](https://developer.chrome.com/blog/ai-webmcp-origin-trial).
+Chrome offers WebMCP through a
+[time-limited origin trial](https://developer.chrome.com/blog/ai-webmcp-origin-trial).
 To test the deployed WebMCP app without the testing flag, request a token for
 each exact origin you will use: `https://vtcode.vinhnx.chatgpt.site` and/or
 `https://vinhnx.github.io`. For one artifact served at both sites, set the
@@ -132,14 +134,14 @@ document head before the application accesses `document.modelContext`.
 
 The legacy singular `WEBMCP_ORIGIN_TRIAL_TOKEN` and
 `VITE_WEBMCP_ORIGIN_TRIAL_TOKEN` variables remain supported for a single-origin
-build. Tokens are origin-specific; a production token does not enable the
-local Vite origin. The Pages workflow deploys only GitHub Pages; a separately
+build. Tokens are origin-specific; a production token does not enable the local
+Vite origin. The Pages workflow deploys only GitHub Pages; a separately
 published ChatGPT Site artifact needs the equivalent build variables from its
 own publisher.
 
 No token is committed to the repository. If the variable is unset, use
-`chrome://flags/#enable-webmcp-testing` in a supported Chrome version or use the
-normal WebMCP-unavailable fallback.
+`chrome://flags/#enable-webmcp-testing` in a supported Chrome version or use
+the normal WebMCP-unavailable fallback.
 
 ## Run the WebMCP app without a bridge
 
@@ -154,9 +156,8 @@ cd apps/webmcp
 ```
 
 The launcher installs browser dependencies if needed and starts the local
-server at `http://localhost:5173`. The header should show **Fallback mode**.
-If your terminal is already in `apps/webmcp`, skip the `cd`
-command.
+server at `http://localhost:5173`. The header should show **Fallback mode**. If
+your terminal is already in `apps/webmcp`, skip the `cd` command.
 
 The launcher can also start a connected workflow. Use `--headless` for a
 workspace-only bridge or `--active` for an interactive VT Code session:
@@ -170,16 +171,17 @@ In active mode, enter `/webmcp pair http://localhost:5173` when the TUI is
 ready, then paste the printed URL and pairing code into the browser. Use
 `--port 5174` consistently in the launcher, bridge origin, and pairing command
 if port `5173` is already occupied. See the WebMCP app's
-[GUIDE.md](../../apps/webmcp/GUIDE.md) for the complete
-one-command workflow.
+[GUIDE.md](../../apps/webmcp/GUIDE.md) for the complete one-command workflow.
 
 ### Complete the fallback walkthrough
 
 1. Select `src/config.js` in the workspace tree.
 2. Change `WebMCP` to another value, such as `browser`.
-3. Select **Review changes** or press `Cmd+S` on macOS / `Ctrl+S` on Windows and Linux.
+3. Select **Review changes** or press `Cmd+S` on macOS / `Ctrl+S` on Windows
+   and Linux.
 4. Inspect the unified diff. The edit is still only a draft.
-5. Select **Approve patch**, confirm the browser dialog, then select **Apply approved patch**.
+5. Select **Approve patch**, confirm the browser dialog, then select **Apply
+   approved patch**.
 6. Select **Run checks**. The fallback runs deterministic checks in the browser.
 7. Select **Revert last change** if you want to restore the original project.
 
@@ -198,13 +200,14 @@ Other useful controls:
   contents.
 - **Run self-check** performs an edit, review, approval, apply, check, and
   revert cycle. Start with a clean workspace and an open file.
-- **Request turn** explains that fallback mode has no VT Code runtime; it does not call an LLM.
+- **Request turn** explains that fallback mode has no VT Code runtime; it does
+  not call an LLM.
 
 ### Open a workspace from the web app
 
 Select **Settings** in the header, open **Choose a workspace and setup mode**,
-and enter the absolute path to the workspace. The settings dialog generates
-two safe, copyable choices:
+and enter the absolute path to the workspace. The settings dialog generates two
+safe, copyable choices:
 
 1. **Active session · VT CODE TURN** starts `vtcode chat` for that workspace.
    After it opens, run `/webmcp pair <origin>` in the VT Code TUI.
@@ -231,9 +234,9 @@ active VT Code TUI and its `[webmcp]` configuration remain authoritative. To
 change origins, roots, policy, or the active session, use the VT Code TUI and
 pair again with the newly printed values.
 
-The WebMCP app uses an IDE-style layout rather than a page of file previews. The
-explorer keeps directories collapsed, unopened files remain metadata-only, and
-the selected file is loaded into CodeMirror on demand. Open files appear as
+The WebMCP app uses an IDE-style layout rather than a page of file previews.
+The explorer keeps directories collapsed, unopened files remain metadata-only,
+and the selected file is loaded into CodeMirror on demand. Open files appear as
 tabs. The bottom panel keeps **TERMINAL**, **CHANGES**, and **VT CODE** output
 inside bounded scroll areas, so long files and command output do not overflow
 the page.
@@ -241,8 +244,8 @@ the page.
 ## Connect to a real workspace
 
 Use the local development server when pairing with a local bridge. This avoids
-the browser security restrictions that commonly apply to a deployed HTTPS
-page connecting to a plain `ws://` endpoint.
+the browser security restrictions that commonly apply to a deployed HTTPS page
+connecting to a plain `ws://` endpoint.
 
 ### 1. Start the browser editor
 
@@ -253,9 +256,9 @@ cd apps/webmcp
 ./start.sh
 ```
 
-Open `http://localhost:5173` and leave this terminal running. The WebMCP app uses
-a strict port so it fails clearly if `5173` is occupied instead of switching to
-an origin that does not match the bridge allowlist.
+Open `http://localhost:5173` and leave this terminal running. The WebMCP app
+uses a strict port so it fails clearly if `5173` is occupied instead of
+switching to an origin that does not match the bridge allowlist.
 
 ### 2. Start the bridge
 
@@ -296,9 +299,9 @@ terminal open while using the editor. Press `Ctrl+C` there to stop the server
 and revoke its in-memory sessions.
 
 Use the URL and code printed by the same, currently running bridge process.
-Every restart may choose a different port and creates a new one-time code.
-If the browser reports a WebSocket connection failure, it is usually using an
-old URL, a stopped bridge, or a code from an earlier restart.
+Every restart may choose a different port and creates a new one-time code. If
+the browser reports a WebSocket connection failure, it is usually using an old
+URL, a stopped bridge, or a code from an earlier restart.
 
 ### 3. Pair the browser
 
@@ -326,10 +329,10 @@ route, and citation URLs remain empty unless you configure a citation prefix.
 The listener still binds to loopback. Put a TLS-terminating proxy or identity
 provider in front of it. The proxy must validate the external OAuth bearer,
 remove it, and inject an internal `Authorization: Bearer ...` value matching
-the token stored in the environment variable configured by
-`proxy_token_env`. VT Code advertises the external authorization server from
-`/.well-known/oauth-protected-resource`, but does not implement OAuth,
-token, or JWKS endpoints.
+the token stored in the environment variable configured by `proxy_token_env`.
+VT Code advertises the external authorization server from
+`/.well-known/oauth-protected-resource`, but does not implement OAuth, token,
+or JWKS endpoints.
 
 For an MCP-only server, browser origins are not required and `/webmcp` remains
 inaccessible. Configure it in `vtcode.toml`:
@@ -368,8 +371,9 @@ vtcode webmcp serve --mcp \
 The public and authorization-server URLs must be HTTPS. `search` and `fetch`
 are bounded by 20 results, 256 scanned files, and 16 MiB of UTF-8 content by
 default. The canonical public URL is `/sse/` for OpenAI-compatible clients;
-`/mcp` is the modern alias. See the [OpenAI MCP documentation](https://developers.openai.com/api/docs/mcp)
-for the corresponding Responses API `allowed_tools` and approval settings.
+`/mcp` is the modern alias. See the
+[OpenAI MCP documentation](https://developers.openai.com/api/docs/mcp) for the
+corresponding Responses API `allowed_tools` and approval settings.
 
 ## Edit, review, and apply in headless mode
 
@@ -394,8 +398,8 @@ policy. It does not display an interactive terminal approval prompt or execute
 agent turns. The editor reports this explicitly in the prompt panel instead of
 showing a successful no-op.
 
-For fallback mode, the prompt composer includes the browser-reviewed diff within
-the bridge prompt limit. In active mode, the browser sends the staged
+For fallback mode, the prompt composer includes the browser-reviewed diff
+within the bridge prompt limit. In active mode, the browser sends the staged
 `proposal_id`; VT Code revalidates the files and supplies its own bounded,
 authoritative unified diff to the TUI. The handoff never applies the proposal
 automatically. The headless filesystem adapter rejects the request with an
@@ -403,9 +407,8 @@ automatically. The headless filesystem adapter rejects the request with an
 
 ## Send a draft to an active VT Code session
 
-Use this workflow for the **VT CODE TURN** button.
-The browser bridge and interactive TUI must be started by the same VT Code
-process.
+Use this workflow for the **VT CODE TURN** button. The browser bridge and
+interactive TUI must be started by the same VT Code process.
 
 After starting the browser as described above, start VT Code in the target
 workspace. Run this command from the VT Code repository checkout:
@@ -434,12 +437,13 @@ Active WebMCP bridge started.
 WebSocket: ws://127.0.0.1:<port>/webmcp
 Browser origin: <exact-browser-origin>
 Pairing code: <one-time-code> (expires in <seconds> seconds)
-In the WebMCP editor, open **Settings → Connect or re-pair a VT Code bridge** and paste the WebSocket URL and pairing code above.
+In the WebMCP editor, open **Settings → Connect or re-pair a VT Code
+bridge** and paste the WebSocket URL and pairing code above.
 ```
 
-In the browser, open **Settings → Connect or re-pair a VT Code bridge**, paste the
-WebSocket URL and pairing code into the two fields, and select **Pair with VT
-Code**. Do not use the URL or code from a separate `vtcode webmcp serve`
+In the browser, open **Settings → Connect or re-pair a VT Code bridge**, paste
+the WebSocket URL and pairing code into the two fields, and select **Pair with
+VT Code**. Do not use the URL or code from a separate `vtcode webmcp serve`
 process.
 
 In the browser, review the draft, select **Stage for VT Code turn**, write the
@@ -448,10 +452,10 @@ instruction, and select **Request VT Code turn**. From the prompt composer,
 proposal, the editor switches to **VT CODE** and focuses the prompt composer.
 The prompt and server-authoritative diff arrive in the active TUI as a normal
 agent turn. The browser diff remains a local review preview; the adapter
-revalidates the proposal ID before enqueueing the handoff.
-Terminal tool permissions remain authoritative.
-The active bridge keeps direct browser apply, check, and revert disabled; ask
-VT Code to perform those actions and reload the browser afterward.
+revalidates the proposal ID before enqueueing the handoff. Terminal tool
+permissions remain authoritative. The active bridge keeps direct browser apply,
+check, and revert disabled; ask VT Code to perform those actions and reload the
+browser afterward.
 
 ### Optional: enable apply and checks for a disposable workspace
 
@@ -481,8 +485,8 @@ vtcode --full-auto webmcp serve \
   --allowed-root /tmp/vtcode-webmcp-workspace
 ```
 
-For a source checkout, build or run the repository binary instead, for
-source checkout from the VT Code repository. Pass `--workspace-dir` so VT Code loads
+For a source checkout, build or run the repository binary instead, for source
+checkout from the VT Code repository. Pass `--workspace-dir` so VT Code loads
 the disposable workspace configuration:
 
 ```sh
@@ -504,8 +508,10 @@ Draft buffers are separate from backend snapshots:
 - **Reload** refreshes a clean buffer from the backend.
 - If a dirty file changed outside the editor, reload stops with an
   external-change conflict instead of overwriting the draft.
-- Use **Discard draft** when the external version should win, then reload if necessary.
-- A stale proposal is rejected when its base digest no longer matches the current file.
+- Use **Discard draft** when the external version should win, then reload if
+  necessary.
+- A stale proposal is rejected when its base digest no longer matches the
+  current file.
 - Revert is also fail-closed if a file changed after the bridge applied it.
 
 ## Published deployments
@@ -529,8 +535,8 @@ VT Code process, pair the active TUI with the matching origin:
 Configure both origins in `[webmcp].allowed_origins` if one listener should
 serve both pages. If a bridge is already listening for another configured
 origin, the second `/webmcp pair <origin>` issues a new one-time code without
-revoking the existing session. Use the replacement form only when you intend
-to revoke current sessions:
+revoking the existing session. Use the replacement form only when you intend to
+revoke current sessions:
 
 ```text
 /webmcp pair --replace https://vtcode.vinhnx.chatgpt.site
@@ -557,8 +563,8 @@ If the page is open in a remote or sandboxed in-app browser, it may not be able
 to reach `127.0.0.1` on the machine running VT Code. Use the local Vite page in
 the same browser, or put the loopback listener behind a TLS-terminating reverse
 proxy and enter its `wss://` URL. For the standalone bridge, enable remote
-proxy mode with `--allow-remote --public-url wss://<bridge-host>/webmcp`; direct
-non-loopback binding is rejected.
+proxy mode with `--allow-remote --public-url wss://<bridge-host>/webmcp`;
+direct non-loopback binding is rejected.
 
 ### Deployed-page origin mismatch
 
@@ -567,11 +573,10 @@ page does not work. The ChatGPT Site sends
 `https://vtcode.vinhnx.chatgpt.site`; GitHub Pages sends
 `https://vinhnx.github.io`. The bridge rejects `http://localhost:5173` as a
 different origin unless that is the page actually open. The browser may display
-this rejection as the generic
-**VT Code WebSocket connection failed** message, while the editor remains in
-fallback mode. Native browser WebMCP registration and the authenticated VT Code
-WebSocket bridge are separate; seeing browser tools registered does not mean
-the bridge is paired.
+this rejection as the generic **VT Code WebSocket connection failed** message,
+while the editor remains in fallback mode. Native browser WebMCP registration
+and the authenticated VT Code WebSocket bridge are separate; seeing browser
+tools registered does not mean the bridge is paired.
 
 ## Troubleshooting
 
@@ -582,8 +587,8 @@ WebSocket URL printed by VT Code, including its port and `/webmcp` path. For
 active-session mode, the URL must come from the TUI where you ran
 `/webmcp pair`; a standalone `webmcp serve` URL cannot receive agent turns.
 
-For the ChatGPT Site, use `/webmcp pair https://vtcode.vinhnx.chatgpt.site`;
-for `https://vinhnx.github.io/VTCode/`, use
+For the ChatGPT Site, use `/webmcp pair https://vtcode.vinhnx.chatgpt.site`; for
+`https://vinhnx.github.io/VTCode/`, use
 `/webmcp pair https://vinhnx.github.io`. Use `--replace` only when the active
 sessions should be revoked, then paste the newly printed URL and code. Do not
 pair either deployed page with a bridge allowlisted only for
@@ -595,9 +600,9 @@ endpoint instead.
 
 The browser lost its in-memory session token, the bridge was restarted, or the
 page was suspended longer than the session lease. For an active session, run
-`/webmcp pair <exact-browser-origin>` again in the TUI. For a standalone bridge,
-restart `vtcode webmcp serve`. Then paste the new URL and one-time code. An open
-page normally renews the lease automatically.
+`/webmcp pair <exact-browser-origin>` again in the TUI. For a standalone
+bridge, restart `vtcode webmcp serve`. Then paste the new URL and one-time
+code. An open page normally renews the lease automatically.
 
 ### “Enter the WebMCP WebSocket URL and the terminal pairing code”
 
@@ -651,4 +656,5 @@ bun run build
 ```
 
 The implementation details, protocol boundaries, configuration, and security
-model are documented in the [WebMCP bridge development guide](../development/webmcp.md).
+model are documented in the
+[WebMCP bridge development guide](../development/webmcp.md).

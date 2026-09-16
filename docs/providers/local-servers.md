@@ -5,9 +5,11 @@
 > load. See [Local Models guide](../guides/local-models.md) for trade-offs,
 > hardware sizing, and a "getting reliable results" checklist. VT Code now
 > detects a stopped server or an unloaded model *before* generating and prints
-> the exact recovery command (e.g. `ollama pull <model>` or `/local start <provider>`).
+> the exact recovery command (e.g. `ollama pull <model>` or
+> `/local start <provider>`).
 
-VT Code manages local LLM inference servers through the `/local` command. Control Ollama, LM Studio, and llama.cpp directly from the TUI.
+VT Code manages local LLM inference servers through the `/local` command.
+Control Ollama, LM Studio, and llama.cpp directly from the TUI.
 
 ## Quick Start
 
@@ -20,17 +22,17 @@ VT Code manages local LLM inference servers through the `/local` command. Contro
 
 ## Supported Providers
 
-| Provider | Default Endpoint | Binary | Install |
-|----------|-----------------|--------|---------|
-| **Ollama** | `http://localhost:11434` | `ollama` | `brew install ollama` |
-| **LM Studio** | `http://localhost:1234/v1` | `lms` | https://lmstudio.ai/download |
-| **llama.cpp** | `http://localhost:8080/v1` | `llama-server` | https://llama.app |
+| Provider      | Default Endpoint           | Binary         | Install                        |
+| ------------- | -------------------------- | -------------- | ------------------------------ |
+| **Ollama**    | `http://localhost:11434`   | `ollama`       | `brew install ollama`          |
+| **LM Studio** | `http://localhost:1234/v1` | `lms`          | <https://lmstudio.ai/download> |
+| **llama.cpp** | `http://localhost:8080/v1` | `llama-server` | <https://llama.app>            |
 
 [llmman](https://github.com/llmmanorg/llmman) serves the Ollama API on port
 `17434` and works through the `ollama` provider; see
 [Using llmman](#using-llmman) below.
 
----
+______________________________________________________________________
 
 ## Running Ollama
 
@@ -101,10 +103,10 @@ cat ~/.ollama/logs/server.log
 
 ### Environment variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OLLAMA_BASE_URL` | Server URL | `http://localhost:11434` |
-| `OLLAMA_HOST` | Listen address | `127.0.0.1:11434` |
+| Variable          | Description    | Default                  |
+| ----------------- | -------------- | ------------------------ |
+| `OLLAMA_BASE_URL` | Server URL     | `http://localhost:11434` |
+| `OLLAMA_HOST`     | Listen address | `127.0.0.1:11434`        |
 
 ### VT Code integration
 
@@ -146,13 +148,13 @@ llmman does not serve `/api/embed`; embeddings are only available via its
 OpenAI-compatible `/v1/embeddings` route. `/local start ollama` manages the
 `ollama` binary, not `llmman`, so start `llmman serve` yourself.
 
----
+______________________________________________________________________
 
 ## Running LM Studio
 
 ### Install
 
-Download from https://lmstudio.ai/download (macOS, Windows, Linux).
+Download from <https://lmstudio.ai/download> (macOS, Windows, Linux).
 
 The `lms` CLI ships with LM Studio. Verify:
 
@@ -238,9 +240,9 @@ lms unload --all
 
 ### Environment variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `LMSTUDIO_BASE_URL` | Server URL | `http://localhost:1234/v1` |
+| Variable            | Description | Default                    |
+| ------------------- | ----------- | -------------------------- |
+| `LMSTUDIO_BASE_URL` | Server URL  | `http://localhost:1234/v1` |
 
 ### VT Code integration
 
@@ -252,7 +254,7 @@ lms unload --all
 /local troubleshoot lmstudio Diagnose connection issues
 ```
 
----
+______________________________________________________________________
 
 ## Running llama.cpp
 
@@ -279,7 +281,8 @@ The server binary is `llama-server`.
 llama-server -m /path/to/model.gguf --port 8080
 ```
 
-Or use VT Code (auto-start): set `LLAMACPP_MODEL_PATH` and VT Code manages everything.
+Or use VT Code (auto-start): set `LLAMACPP_MODEL_PATH` and VT Code manages
+everything.
 
 ### Verify the server
 
@@ -295,12 +298,13 @@ curl http://localhost:8080/v1/models
 
 ### Download a model
 
-Download `.gguf` files from https://huggingface.co or https://llama.app/models:
+Download `.gguf` files from <https://huggingface.co> or
+<https://llama.app/models>:
 
-- https://llama.app/models/Qwen3.6-27B
-- https://llama.app/models/gemma-4-26B-A4B
-- https://llama.app/models/gpt-oss-20b
-- https://llama.app/models/Step-3.5-Flash
+- <https://llama.app/models/Qwen3.6-27B>
+- <https://llama.app/models/gemma-4-26B-A4B>
+- <https://llama.app/models/gpt-oss-20b>
+- <https://llama.app/models/Step-3.5-Flash>
 
 ### Auto-start with VT Code
 
@@ -325,13 +329,13 @@ export LLAMACPP_EXTRA_ARGS="--ctx-size 4096 --n-gpu-layers 99"
 
 ### Environment variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `LLAMACPP_BASE_URL` | Server URL | `http://localhost:8080/v1` |
-| `LLAMACPP_MODEL_PATH` | Model file for auto-start | (none) |
-| `LLAMACPP_BINARY_PATH` | Path to `llama-server` | search `PATH` |
-| `LLAMACPP_EXTRA_ARGS` | Extra server arguments | (none) |
-| `LLAMACPP_STARTUP_TIMEOUT_SECONDS` | Startup timeout | 60 |
+| Variable                           | Description               | Default                    |
+| ---------------------------------- | ------------------------- | -------------------------- |
+| `LLAMACPP_BASE_URL`                | Server URL                | `http://localhost:8080/v1` |
+| `LLAMACPP_MODEL_PATH`              | Model file for auto-start | (none)                     |
+| `LLAMACPP_BINARY_PATH`             | Path to `llama-server`    | search `PATH`              |
+| `LLAMACPP_EXTRA_ARGS`              | Extra server arguments    | (none)                     |
+| `LLAMACPP_STARTUP_TIMEOUT_SECONDS` | Startup timeout           | 60                         |
 
 ### VT Code integration
 
@@ -343,7 +347,7 @@ export LLAMACPP_EXTRA_ARGS="--ctx-size 4096 --n-gpu-layers 99"
 /local troubleshoot llamacpp Diagnose connection issues
 ```
 
----
+______________________________________________________________________
 
 ## Command Reference
 
@@ -353,7 +357,8 @@ export LLAMACPP_EXTRA_ARGS="--ctx-size 4096 --n-gpu-layers 99"
 /local
 ```
 
-Opens an inline modal showing all providers with status. Select a provider to see actions.
+Opens an inline modal showing all providers with status. Select a provider to
+see actions.
 
 ### Explicit Subcommands
 
@@ -384,7 +389,7 @@ Opens an inline modal showing all providers with status. Select a provider to se
 - `lm-studio`, `lm_studio` -> `lmstudio`
 - `llama.cpp`, `llama-cpp`, `llama_cpp` -> `llamacpp`
 
----
+______________________________________________________________________
 
 ## Troubleshooting
 
@@ -435,7 +440,8 @@ which llama-server
 
 ## See Also
 
-- [Local Models guide](../guides/local-models.md) — trade-offs, hardware, reliable-setup checklist
+- [Local Models guide](../guides/local-models.md) — trade-offs, hardware,
+  reliable-setup checklist
 - [Ollama Provider Guide](ollama.md)
 - [LM Studio Provider Guide](lmstudio.md)
 - [llama.cpp Provider Guide](llamacpp.md)

@@ -76,7 +76,7 @@ Visual diagrams and architectural details for the anstyle integration.
          
 ```
 
----
+______________________________________________________________________
 
 ## Data Flow: Style Parsing and Application
 
@@ -114,7 +114,7 @@ User sets LS_COLORS env var
                                         "bold blue text"
 ```
 
----
+______________________________________________________________________
 
 ## Module Dependencies
 
@@ -164,39 +164,40 @@ External Crates (Cargo.toml):
  catppuccin = "2.5"      (existing)
 ```
 
----
+______________________________________________________________________
 
 ## Effect Support Matrix
 
 ### Before Integration (Current)
 
-| Effect | Supported | Remark |
-|--------|-----------|--------|
-| **Bold** |   Yes | Explicit `bold: bool` field |
-| **Italic** |   Yes | Explicit `italic: bool` field |
-| **Dim** |   No | Not modeled |
-| **Underline** |   No | Not modeled |
-| **Strikethrough** |   No | Not modeled |
-| **Reverse** |   No | Not modeled |
-| **Background Color** |   No | InlineTextStyle has no `bg_color` |
+| Effect               | Supported | Remark                            |
+| -------------------- | --------- | --------------------------------- |
+| **Bold**             | Yes       | Explicit `bold: bool` field       |
+| **Italic**           | Yes       | Explicit `italic: bool` field     |
+| **Dim**              | No        | Not modeled                       |
+| **Underline**        | No        | Not modeled                       |
+| **Strikethrough**    | No        | Not modeled                       |
+| **Reverse**          | No        | Not modeled                       |
+| **Background Color** | No        | InlineTextStyle has no `bg_color` |
 
 ### After Integration (Phase 1)
 
-| Effect | Supported | Remark |
-|--------|-----------|--------|
-| **Bold** |   Yes | From `Effects::BOLD` bitmask |
-| **Italic** |   Yes | From `Effects::ITALIC` bitmask |
-| **Dim** |   Yes | From `Effects::DIMMED` bitmask |
-| **Underline** |   Yes | From `Effects::UNDERLINE` bitmask |
-| **Strikethrough** |   Yes | From `Effects::STRIKETHROUGH` bitmask |
-| **Reverse** |   Yes | From `Effects::REVERSE` bitmask |
-| **Background Color** |   Yes | New `bg_color: Option<AnsiColorEnum>` field |
+| Effect               | Supported | Remark                                      |
+| -------------------- | --------- | ------------------------------------------- |
+| **Bold**             | Yes       | From `Effects::BOLD` bitmask                |
+| **Italic**           | Yes       | From `Effects::ITALIC` bitmask              |
+| **Dim**              | Yes       | From `Effects::DIMMED` bitmask              |
+| **Underline**        | Yes       | From `Effects::UNDERLINE` bitmask           |
+| **Strikethrough**    | Yes       | From `Effects::STRIKETHROUGH` bitmask       |
+| **Reverse**          | Yes       | From `Effects::REVERSE` bitmask             |
+| **Background Color** | Yes       | New `bg_color: Option<AnsiColorEnum>` field |
 
----
+______________________________________________________________________
 
 ## InlineTextStyle Evolution
 
 ### Current (Pre-Integration)
+
 ```rust
 pub struct InlineTextStyle {
     pub color: Option<AnsiColorEnum>,
@@ -206,6 +207,7 @@ pub struct InlineTextStyle {
 ```
 
 ### After Phase 1
+
 ```rust
 pub struct InlineTextStyle {
     pub color: Option<AnsiColorEnum>,          // Foreground
@@ -215,45 +217,48 @@ pub struct InlineTextStyle {
 ```
 
 **Benefits**:
+
 - All ANSI effects supported
 - Aligns with upstream `anstyle` crate design
 - Composable effects: `Effects::BOLD | Effects::UNDERLINE`
 - One field (`effects`) vs. many bool fields (future-proof)
 
----
+______________________________________________________________________
 
 ## Parsing Flow Comparison
 
 ### Current (Manual Parsing)
+
 ```
 Hard-coded colors → ThemePalette → convert_ansi_color() → InlineTextStyle
                  (no parsing)    (limited)
 ```
 
 ### After Integration
+
 ```
 Git Config / LS_COLORS → anstyle-git/anstyle-ls → anstyle::Style → convert_style() → InlineTextStyle
   (user config)            (parse & interpret)    (standard)       (enhanced)
 ```
 
----
+______________________________________________________________________
 
 ## Call Site Impact Analysis
 
 ### Files with InlineTextStyle Creation
 
-| File | Lines | Change | Impact |
-|------|-------|--------|--------|
-| `session/input.rs` | 215-217 | Update style field access | Low - Simple field rename |
-| `session/header.rs` | 234, 261 | Add to style tuple | Low - Tuple context |
-| `session/navigation.rs` | 251, 286 | Update fallback logic | Low - Conditional changes |
-| `session/slash.rs` | 371, 380 | Update color merge | Low - Method calls |
-| `types.rs` | 82-97 | Core struct expansion | Medium - Must update default() |
+| File                    | Lines    | Change                    | Impact                         |
+| ----------------------- | -------- | ------------------------- | ------------------------------ |
+| `session/input.rs`      | 215-217  | Update style field access | Low - Simple field rename      |
+| `session/header.rs`     | 234, 261 | Add to style tuple        | Low - Tuple context            |
+| `session/navigation.rs` | 251, 286 | Update fallback logic     | Low - Conditional changes      |
+| `session/slash.rs`      | 371, 380 | Update color merge        | Low - Method calls             |
+| `types.rs`              | 82-97    | Core struct expansion     | Medium - Must update default() |
 
-**Total Call Sites**: ~15-20 across 5-6 files
-**Risk Level**: Low (mostly mechanical updates)
+**Total Call Sites**: ~15-20 across 5-6 files **Risk Level**: Low (mostly
+mechanical updates)
 
----
+______________________________________________________________________
 
 ## Configuration Resolution Priority (Future: Phase 2+)
 
@@ -271,13 +276,15 @@ When styling a file or element, resolve colors in this order:
 5. Terminal default color
 ```
 
-This allows layered customization: system colors → git colors → vtcode theme → fallback.
+This allows layered customization: system colors → git colors → vtcode theme →
+fallback.
 
----
+______________________________________________________________________
 
 ## Backward Compatibility Plan
 
 ### Safe Migration Path
+
 ```
 Step 1: Add new fields (bg_color, effects) to InlineTextStyle
 Step 2: Update constructor to use new fields
@@ -286,19 +293,22 @@ Step 4: Update all InlineTextStyle { ... } expressions
 Step 5: Remove deprecated bold: bool, italic: bool fields
 ```
 
-**Key**: Never break public API in step 1-4. Remove deprecated fields only after all internal code is updated.
+**Key**: Never break public API in step 1-4. Remove deprecated fields only
+after all internal code is updated.
 
 ### Testing Strategy
+
 - Unit tests for each conversion function
 - Integration tests for full pipeline (parse → convert → render)
 - Visual regression tests (compare TUI output before/after)
 - Terminal compatibility tests (different terminal emulators)
 
----
+______________________________________________________________________
 
 ## Performance Characteristics
 
 ### Parsing Performance
+
 ```
 anstyle-git::parse("bold red")     ~100 ns  (nanoseconds)
 anstyle-ls::parse("01;34")         ~80 ns
@@ -309,6 +319,7 @@ Total style pipeline:              ~260 ns per call
 ```
 
 ### Caching Strategy
+
 ```
 Immutable sources (cache forever):
  Git config colors      → Cache in lazy_static
@@ -320,7 +331,7 @@ Hot path (no caching needed):
  Dynamic style merging        → Rare operation
 ```
 
----
+______________________________________________________________________
 
 ## Error Handling Flow
 
@@ -340,9 +351,10 @@ User Input (config string)
     → Never panic, always render something
 ```
 
-**Design principle**: Styling should never crash the TUI. Invalid colors → fallback → continue.
+**Design principle**: Styling should never crash the TUI. Invalid colors →
+fallback → continue.
 
----
+______________________________________________________________________
 
 ## Testing Architecture
 
@@ -380,7 +392,7 @@ Visual Regression Tests (manual)
  Different terminal emulators (iTerm2, Terminal.app, Linux)
 ```
 
----
+______________________________________________________________________
 
 ## Implementation Sequence
 
@@ -412,7 +424,7 @@ Phase 3: Features (3-4 hours)
     Config file support (.vtcoderc)
 ```
 
----
+______________________________________________________________________
 
 ## Deployment Checklist
 
@@ -437,7 +449,7 @@ Post-Deployment
  Document any gotchas or quirks
 ```
 
----
+______________________________________________________________________
 
 ## Related Documentation
 
@@ -446,7 +458,7 @@ Post-Deployment
 - Quick reference: `quick-reference.md`
 - Executive summary: `EXECUTIVE_SUMMARY.md`
 
----
+______________________________________________________________________
 
 **Last Updated**: Nov 9, 2025  
 **Status**: Research & Design Complete, Ready for Phase 1 Implementation

@@ -1,16 +1,21 @@
 # VT Code Status Line Configuration
 
-This directory contains custom status line scripts for VT Code, inspired by the Claude Code status line configuration guide but adapted for VT Code's specific implementation.
+This directory contains custom status line scripts for VT Code, inspired by the
+Claude Code status line configuration guide but adapted for VT Code's specific
+implementation.
 
 ## Available Scripts
 
-1. **statusline.sh** - Basic bash implementation with ASCII characters and clean formatting
-2. **statusline-advanced.sh** - Advanced bash implementation with ANSI color codes
+1. **statusline.sh** - Basic bash implementation with ASCII characters and
+   clean formatting
+2. **statusline-advanced.sh** - Advanced bash implementation with ANSI color
+   codes
 3. **statusline.py** - Python implementation for those who prefer Python
 
 ## VT Code Integration
 
-VT Code supports custom status line commands through the `[ui.status_line]` configuration in `vtcode.toml`:
+VT Code supports custom status line commands through the `[ui.status_line]`
+configuration in `vtcode.toml`:
 
 ```toml
 [ui.status_line]
@@ -22,7 +27,8 @@ command_timeout_ms = 200
 
 ## JSON Input Structure
 
-VT Code passes the following JSON structure to the status line command via stdin:
+VT Code passes the following JSON structure to the status line command via
+stdin:
 
 ```json
 {

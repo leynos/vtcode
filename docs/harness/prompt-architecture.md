@@ -22,24 +22,25 @@ Architecture)* of the agentic-AI guide:
    contract, recovery mode, harness limits, tool catalog, and primary-agent
    state. Later runtime changes are appended as context messages.
 3. **Few-shot management** (18.3.3) — keyword-tagged examples loaded from
-   disk, token-budgeted via `vtcode_commons::tokens::estimate_tokens`,
-   and appended as a synthetic system context message when relevant; they do
-   not rewrite the immutable prompt prefix.
+   disk, token-budgeted via `vtcode_commons::tokens::estimate_tokens`, and
+   appended as a synthetic system context message when relevant; they do not
+   rewrite the immutable prompt prefix.
 4. **Tool descriptions** (18.3.4) — every LLM-visible tool must include
    when-to-use guidance, when-NOT-to-use guidance, and a constraints cue
    (rate-limit, max size, side-effect, permission). The
    `tool_descriptions_satisfy_documented_contract` test in
-   `crates/codegen/vtcode-core/src/tools/registry/builtins.rs::tests` enforces this
-   contract at `cargo test` time.
+   `crates/codegen/vtcode-core/src/tools/registry/builtins.rs::tests` enforces
+   this contract at `cargo test` time.
 
 ## Assembly order
 
 At segment creation, `request_builder::build_prompt_output` produces the
 immutable `system_prompt` in this order:
 
-1. **Base system prompt** — `vtcode_core::prompts::system::generate_system_instruction`
-   (with `Default / Minimal / Lightweight / Specialized` variants cached
-   via `OnceLock`). Each cached profile includes the deterministic compiled
+1. **Base system prompt** —
+   `vtcode_core::prompts::system::generate_system_instruction` (with
+   `Default / Minimal / Lightweight / Specialized` variants cached via
+   `OnceLock`). Each cached profile includes the deterministic compiled
    runtime-guidance section from `prompts/runtime_guidance.rs` exactly once.
 2. **INSTRUCTIONS** appendix — `AGENTS.md`, `CLAUDE.md`, and other
    project-scoped instruction files discovered by
@@ -67,10 +68,11 @@ immutable `system_prompt` in this order:
 Examples live as Markdown files under:
 
 - `<workspace>/.vtcode/prompts/examples/*.md`
-- `<canonical user config directory>/prompts/examples/*.md` (legacy user prompt files are migrated there)
+- `<canonical user config directory>/prompts/examples/*.md` (legacy user prompt
+  files are migrated there)
 
-The filename stem is the example id. The file body uses YAML frontmatter
-for metadata:
+The filename stem is the example id. The file body uses YAML frontmatter for
+metadata:
 
 ```markdown
 ---
@@ -85,10 +87,9 @@ summary: Inspect a large file in targeted shell slices before editing; use apply
 <the expected tool sequence and rationale>
 ```
 
-`tags` and `summary` are optional. `tags` drive the keyword selector;
-`summary` is appended to the prompt as a one-line caption above the
-body. Workspace examples take precedence over user-global examples on id
-collision.
+`tags` and `summary` are optional. `tags` drive the keyword selector; `summary`
+is appended to the prompt as a one-line caption above the body. Workspace
+examples take precedence over user-global examples on id collision.
 
 ### Selection
 
@@ -107,22 +108,22 @@ For each turn, the harness:
    to the system prompt before the tool catalog.
 
 The selection is keyword-based and runs in-process without an embedding
-provider. Embedding-based selection is the documented next step (see
-Section 18.3.3); layering it on top will not require API changes.
+provider. Embedding-based selection is the documented next step (see Section
+18.3.3); layering it on top will not require API changes.
 
 ### Guard rails
 
 - **Recovery mode skips few-shot.** When `tool_free_recovery` is active
-  the model is in "summarize from evidence" mode and adding examples
-  would distract. The few-shot block is omitted.
+  the model is in "summarize from evidence" mode and adding examples would
+  distract. The few-shot block is omitted.
 - **Empty stores are silent.** If no examples are present, no
-  `[Few-Shot Examples]` block is added — no overhead for users who don't
-  ship examples.
+  `[Few-Shot Examples]` block is added — no overhead for users who don't ship
+  examples.
 - **Token count is honest.** `FewShotExample::token_count` is computed
   via the `cl100k_base` BPE tokenizer in
-  `vtcode_commons::tokens::estimate_tokens`. Budget enforcement uses the
-  same tokenizer, so the budget is accurate for OpenAI models and
-  within ~10% for Anthropic / Gemini.
+  `vtcode_commons::tokens::estimate_tokens`. Budget enforcement uses the same
+  tokenizer, so the budget is accurate for OpenAI models and within ~10% for
+  Anthropic / Gemini.
 
 ### Adding a new example
 
@@ -135,23 +136,21 @@ Section 18.3.3); layering it on top will not require API changes.
 
 ## Tool description contract (Section 18.3.4)
 
-Every LLM-visible tool whose description is not in the allowlist must
-include:
+Every LLM-visible tool whose description is not in the allowlist must include:
 
-- A **verb cue** — `Use `, `Create `, `List `, `Fetch `, etc. — so the
+- A **verb cue** — `Use`, `Create`, `List`, `Fetch`, etc. — so the
   model recognizes the action the tool performs.
 - An **anti-pattern cue** OR a **constraint cue** — e.g. `Do NOT ...`,
-  `Avoid ...`, `sparely`, or `max ...`, `rate-limit`, `session`,
-  `Prompt`, `timeout`, `inherits` — so the model knows the limits and
-  side effects.
+  `Avoid ...`, `sparely`, or `max ...`, `rate-limit`, `session`, `Prompt`,
+  `timeout`, `inherits` — so the model knows the limits and side effects.
 
-Tools exempted from the anti-pattern/constraint requirement are
-single-action or read-only helpers (`cron` action=`list`/`delete`,
-`mcp` action=`list_servers`, etc.) where the model can safely call them without
-explicit guard-rails. See the test for the full allowlist and cue
-vocabularies.
+Tools exempted from the anti-pattern/constraint requirement are single-action
+or read-only helpers (`cron` action=`list`/`delete`, `mcp` action=
+`list_servers`, etc.) where the model can safely call them without explicit
+guard-rails. See the test for the full allowlist and cue vocabularies.
 
-Run `cargo test -p vtcode-core tools::registry::builtins::tests::tool_descriptions_satisfy_documented_contract`
+Run
+`cargo test -p vtcode-core tools::registry::builtins::tests::tool_descriptions_satisfy_documented_contract`
 to validate any description change before merging.
 
 [`DEFAULT_FEW_SHOT_BUDGET_TOKENS`]: ../crates/codegen/vtcode-core/src/prompts/few_shot.rs

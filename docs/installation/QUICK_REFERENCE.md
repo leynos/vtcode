@@ -52,7 +52,8 @@ vtcode --version
 
 ```bash
 # If install fails with "No such file or directory", use the GitHub API endpoint
-curl -fsSL "https://api.github.com/repos/vinhnx/vtcode/contents/scripts/install.sh?ref=main" | jq -r '.content' | base64 -d | bash
+curl -fsSL "https://api.github.com/repos/vinhnx/vtcode/contents/scripts/install.sh?ref=main" \
+  | jq -r '.content' | base64 -d | bash
 ```
 
 ## API Keys
@@ -75,7 +76,8 @@ VT Code supports three ways to authenticate with OpenAI:
 
 ### 1. In-process ChatGPT OAuth (unofficial Codex compatibility flow)
 
-No Codex CLI or app required — VT Code performs an in-process PKCE browser login:
+No Codex CLI or app required — VT Code performs an in-process PKCE browser
+login:
 
 ```bash
 vtcode login openai       # browser-based ChatGPT subscription login
@@ -89,7 +91,8 @@ Inside the TUI, use the equivalent slash commands:
 /login openai    /logout openai    /auth
 ```
 
-> **⚠️ Unofficial compatibility mechanism:** By default, VT Code reuses the Codex
+> **⚠️ Unofficial compatibility mechanism:** By default, VT Code reuses the
+> Codex
 > CLI's public PKCE client ID as an unofficial, unguaranteed compatibility
 > approach. OpenAI has not documented or guaranteed third-party reuse of this
 > client identity, and a public client ID is not authorization to reuse another
@@ -147,7 +150,7 @@ are separate — `/secret` manages API keys; `/login` manages OAuth.
 
 ## Resources
 
-- Docs: https://github.com/vinhnx/vtcode/docs
-- Issues: https://github.com/vinhnx/vtcode/issues
+- Docs: <https://github.com/vinhnx/vtcode/docs>
+- Issues: <https://github.com/vinhnx/vtcode/issues>
 - [Full Installation Guide](./README.md)
 - [Technical Details](./NATIVE_INSTALLERS.md)
