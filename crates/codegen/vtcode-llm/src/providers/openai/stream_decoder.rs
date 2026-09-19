@@ -440,7 +440,7 @@ pub(crate) fn create_responses_stream(
                         }
                         ResponsesStreamEventPolicy::DocumentedValueBearingRigGap => match event_type {
                             "response.custom_tool_call_input.delta" => {
-                                let identity = responses_item_identity(&payload, None);
+                                let identity = responses_item_identity(&payload);
                                 let call_id = identity
                                     .response_call_id()
                                     .map(ToOwned::to_owned)
@@ -455,7 +455,7 @@ pub(crate) fn create_responses_stream(
                                 }
                             }
                             "response.custom_tool_call_input.done" => {
-                                let identity = responses_item_identity(&payload, None);
+                                let identity = responses_item_identity(&payload);
                                 let call_id = identity
                                     .response_call_id()
                                     .map(ToOwned::to_owned)
@@ -522,12 +522,7 @@ pub(crate) fn create_responses_stream(
                             }
                             "response.reasoning_part.added" | "response.reasoning_part.done" => {
                                 let text = reasoning_part_text("OpenAI", &payload)?;
-                                let delta = reconciler
-                                    .reasoning_done(
-                                        responses_item_identity(&payload, Some(ReasoningChannel::Raw)),
-                                        text,
-                                    )
-                                    .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))?;
+                                let delta = reconcile_reasoning_done(&mut reconciler, &payload, event_type, text)?;
                                 if retain_reasoning
                                     && let Some(delta) = delta
                                     && !delta.is_empty()
@@ -693,8 +688,8 @@ fn reasoning_channel_for_event(event_type: &str) -> ReasoningChannel {
     }
 }
 
-fn responses_item_identity(payload: &Value, reasoning_channel: Option<ReasoningChannel>) -> ResponsesItemIdentity {
-    let identity = ResponsesItemIdentity::new(
+fn responses_item_identity(payload: &Value) -> ResponsesItemIdentity {
+    ResponsesItemIdentity::new(
         payload.get("item_id").and_then(Value::as_str).map(ToOwned::to_owned),
         payload.get("call_id").and_then(Value::as_str).map(ToOwned::to_owned),
         payload
@@ -708,11 +703,33 @@ fn responses_item_identity(payload: &Value, reasoning_channel: Option<ReasoningC
             .or_else(|| payload.get("summary_index"))
             .and_then(Value::as_u64)
             .and_then(|value| usize::try_from(value).ok()),
-    );
-    match reasoning_channel {
-        Some(channel) => identity.with_reasoning_channel(channel),
-        None => identity,
-    }
+    )
+}
+
+fn reasoning_item_identity(payload: &Value, event_type: &str) -> ResponsesItemIdentity {
+    responses_item_identity(payload).with_reasoning_channel(reasoning_channel_for_event(event_type))
+}
+
+fn reconcile_reasoning_delta(
+    reconciler: &mut ResponsesStreamReconciler,
+    payload: &Value,
+    event_type: &str,
+    delta: &str,
+) -> Result<String, provider::LLMError> {
+    reconciler
+        .reasoning_delta(reasoning_item_identity(payload, event_type), delta)
+        .map_err(|message| provider_error("OpenAI", message))
+}
+
+fn reconcile_reasoning_done(
+    reconciler: &mut ResponsesStreamReconciler,
+    payload: &Value,
+    event_type: &str,
+    text: &str,
+) -> Result<Option<String>, provider::LLMError> {
+    reconciler
+        .reasoning_done(reasoning_item_identity(payload, event_type), text)
+        .map_err(|message| provider_error("OpenAI", message))
 }
 
 fn merge_reconciled_custom_calls(
@@ -940,20 +957,10 @@ fn response_reasoning_event(
     let Some(reasoning) = reasoning else {
         return Ok(None);
     };
-    let channel = reasoning_channel_for_event(event_type);
-    let identity = responses_item_identity(payload, Some(channel));
     let delta = if matches!(event_type, "response.reasoning_text.done" | "response.reasoning_summary_text.done") {
-        context
-            .reconciler
-            .reasoning_done(identity, reasoning.as_ref())
-            .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))?
+        reconcile_reasoning_done(context.reconciler, payload, event_type, reasoning.as_ref())?
     } else {
-        Some(
-            context
-                .reconciler
-                .reasoning_delta(identity, reasoning.as_ref())
-                .map_err(|message| provider_error("OpenAI", message))?,
-        )
+        Some(reconcile_reasoning_delta(context.reconciler, payload, event_type, reasoning.as_ref())?)
     };
     if !context.retain_reasoning {
         return Ok(None);

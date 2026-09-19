@@ -7,7 +7,7 @@
 
 use crate::provider::LLMError;
 use crate::providers::shared::StreamAssemblyError;
-use crate::providers::shared::responses_reconciler::ReasoningChannel;
+use crate::providers::shared::responses_reconciler::{ReasoningChannel, ResponsesItemIdentity};
 use rig::providers::openai::responses_api::Output as RigResponsesOutput;
 use rig::providers::openai::responses_api::streaming::{
     ItemChunkKind as RigResponsesItemChunkKind, ResponseChunkKind as RigResponsesChunkKind,
@@ -109,6 +109,27 @@ pub(crate) enum ResponsesStreamEvent {
     Unknown {
         sequence_number: Option<u64>,
     },
+}
+
+struct ReasoningEventIdentity {
+    item_identity: ResponsesItemIdentity,
+    reasoning_channel: ReasoningChannel,
+}
+
+impl ReasoningEventIdentity {
+    fn new(
+        item_id: Option<String>,
+        output_index: Option<usize>,
+        sub_index: Option<usize>,
+        reasoning_channel: ReasoningChannel,
+    ) -> Self {
+        Self {
+            item_identity: ResponsesItemIdentity::new(item_id, None, output_index)
+                .with_sub_index(sub_index)
+                .with_reasoning_channel(reasoning_channel),
+            reasoning_channel,
+        }
+    }
 }
 
 impl ResponsesStreamEvent {
@@ -262,26 +283,32 @@ impl ResponsesStreamAdapter {
                     }),
                     RigResponsesItemChunkKind::ReasoningSummaryTextDelta(delta) => Ok(reasoning_delta_event(
                         delta.delta,
-                        item_id,
-                        output_index,
-                        usize::try_from(delta.summary_index).ok(),
-                        ReasoningChannel::Summary,
+                        reasoning_identity(
+                            item_id,
+                            output_index,
+                            usize::try_from(delta.summary_index).ok(),
+                            ReasoningChannel::Summary,
+                        ),
                         Some(delta.sequence_number),
                     )),
                     RigResponsesItemChunkKind::ReasoningSummaryTextDone(done) => Ok(reasoning_done_event(
                         done.delta,
-                        item_id,
-                        output_index,
-                        usize::try_from(done.summary_index).ok(),
-                        ReasoningChannel::Summary,
+                        reasoning_identity(
+                            item_id,
+                            output_index,
+                            usize::try_from(done.summary_index).ok(),
+                            ReasoningChannel::Summary,
+                        ),
                         Some(done.sequence_number),
                     )),
                     RigResponsesItemChunkKind::ReasoningTextDelta(delta) => Ok(reasoning_delta_event(
                         delta.delta,
-                        item_id,
-                        output_index,
-                        delta.content_index.and_then(|value| usize::try_from(value).ok()),
-                        ReasoningChannel::Raw,
+                        reasoning_identity(
+                            item_id,
+                            output_index,
+                            delta.content_index.and_then(|value| usize::try_from(value).ok()),
+                            ReasoningChannel::Raw,
+                        ),
                         Some(delta.sequence_number),
                     )),
                     RigResponsesItemChunkKind::OutputItemAdded(output) => adapt_output_item(
@@ -582,10 +609,12 @@ fn adapt_overlay_conversion(provider_name: &str, payload: &Value) -> Result<Resp
         // Rig does not model. `reasoning_text.delta` is retained defensively.
         Some("response.reasoning_text.delta") | Some("response.reasoning_content.delta") => Ok(reasoning_delta_event(
             required_string_field(provider_name, payload, "delta")?.to_string(),
-            optional_owned_string(payload, "item_id"),
-            optional_output_index(payload),
-            optional_sub_index(payload),
-            ReasoningChannel::Raw,
+            reasoning_identity(
+                optional_owned_string(payload, "item_id"),
+                optional_output_index(payload),
+                optional_sub_index(payload),
+                ReasoningChannel::Raw,
+            ),
             payload.get("sequence_number").and_then(Value::as_u64),
         )),
         Some("response.reasoning_text.done") => {
@@ -594,10 +623,12 @@ fn adapt_overlay_conversion(provider_name: &str, payload: &Value) -> Result<Resp
             if let Some(text) = text.or(delta) {
                 Ok(reasoning_done_event(
                     text,
-                    optional_owned_string(payload, "item_id"),
-                    optional_output_index(payload),
-                    optional_sub_index(payload),
-                    ReasoningChannel::Raw,
+                    reasoning_identity(
+                        optional_owned_string(payload, "item_id"),
+                        optional_output_index(payload),
+                        optional_sub_index(payload),
+                        ReasoningChannel::Raw,
+                    ),
                     payload.get("sequence_number").and_then(Value::as_u64),
                 ))
             } else {
@@ -610,10 +641,12 @@ fn adapt_overlay_conversion(provider_name: &str, payload: &Value) -> Result<Resp
             let text = reasoning_part_text(provider_name, payload)?;
             Ok(reasoning_done_event(
                 text.to_string(),
-                optional_owned_string(payload, "item_id"),
-                optional_output_index(payload),
-                optional_sub_index(payload),
-                ReasoningChannel::Raw,
+                reasoning_identity(
+                    optional_owned_string(payload, "item_id"),
+                    optional_output_index(payload),
+                    optional_sub_index(payload),
+                    ReasoningChannel::Raw,
+                ),
                 payload.get("sequence_number").and_then(Value::as_u64),
             ))
         }
@@ -624,38 +657,41 @@ fn adapt_overlay_conversion(provider_name: &str, payload: &Value) -> Result<Resp
 
 fn reasoning_delta_event(
     delta: String,
-    item_id: Option<String>,
-    output_index: Option<usize>,
-    sub_index: Option<usize>,
-    reasoning_channel: ReasoningChannel,
+    identity: ReasoningEventIdentity,
     sequence_number: Option<u64>,
 ) -> ResponsesStreamEvent {
     ResponsesStreamEvent::ReasoningDelta {
         delta,
-        item_id,
-        output_index,
-        sub_index,
-        reasoning_channel,
+        item_id: identity.item_identity.item_id,
+        output_index: identity.item_identity.output_index,
+        sub_index: identity.item_identity.sub_index,
+        reasoning_channel: identity.reasoning_channel,
         sequence_number,
     }
 }
 
 fn reasoning_done_event(
     text: String,
-    item_id: Option<String>,
-    output_index: Option<usize>,
-    sub_index: Option<usize>,
-    reasoning_channel: ReasoningChannel,
+    identity: ReasoningEventIdentity,
     sequence_number: Option<u64>,
 ) -> ResponsesStreamEvent {
     ResponsesStreamEvent::ReasoningDone {
         text,
-        item_id,
-        output_index,
-        sub_index,
-        reasoning_channel,
+        item_id: identity.item_identity.item_id,
+        output_index: identity.item_identity.output_index,
+        sub_index: identity.item_identity.sub_index,
+        reasoning_channel: identity.reasoning_channel,
         sequence_number,
     }
+}
+
+fn reasoning_identity(
+    item_id: Option<String>,
+    output_index: Option<usize>,
+    sub_index: Option<usize>,
+    reasoning_channel: ReasoningChannel,
+) -> ReasoningEventIdentity {
+    ReasoningEventIdentity::new(item_id, output_index, sub_index, reasoning_channel)
 }
 
 fn response_stream_event_policy(payload: &Value) -> Result<ResponsesStreamEventPolicy, StreamAssemblyError> {
