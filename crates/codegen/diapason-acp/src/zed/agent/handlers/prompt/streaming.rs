@@ -138,7 +138,7 @@ async fn handle_streaming_attempt(
                     turn.provider_runtime.provider_name(),
                     &error,
                     Some(delay),
-                    observed_at.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs(),
+                    observed_at,
                 )
                 .await;
             retry_stream_attempt(turn, output, delay, attempt_index).await
@@ -150,7 +150,7 @@ async fn handle_streaming_attempt(
                     turn.provider_runtime.provider_name(),
                     &error,
                     None,
-                    observed_at.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs(),
+                    observed_at,
                 )
                 .await;
             let response =
