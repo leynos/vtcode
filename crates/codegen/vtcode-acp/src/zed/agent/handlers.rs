@@ -50,7 +50,6 @@ use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::Instant;
 use tracing::{debug, info, warn};
-use vtcode_commons::ansi::strip_ansi_codes;
 use vtcode_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
 use vtcode_core::core::message_metadata::MessageMetadata;
 use vtcode_core::core::threads::ThreadRuntimeHandle;
@@ -59,6 +58,7 @@ use vtcode_core::llm::factory::create_provider_with_config;
 use vtcode_core::llm::provider::{LLMError, LLMProvider, LLMRequest, LLMResponse, LLMStreamEvent, Message};
 use vtcode_core::retry::{RetryBackoff, RetryDecision, RetryPolicyCoreExt};
 
+use super::provider_telemetry::SafeProviderProjection;
 use super::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderDeadlinePolicy, ProviderRequestRuntime};
 
@@ -131,14 +131,14 @@ impl Drop for TurnGuard {
 #[derive(Debug)]
 enum ProviderCallError {
     Cancelled,
-    Failed(String),
+    Failed(SafeProviderProjection),
 }
 
 impl From<ProviderAdmissionError> for ProviderCallError {
     fn from(error: ProviderAdmissionError) -> Self {
         match error {
             ProviderAdmissionError::Cancelled => Self::Cancelled,
-            other => Self::Failed(other.to_string()),
+            _ => Self::Failed(SafeProviderProjection::execution_error()),
         }
     }
 }
@@ -191,23 +191,16 @@ struct IncompleteProviderTurn {
 }
 
 impl IncompleteProviderTurn {
-    fn from_failure(content: &str, reasoning: &str, error: &str) -> Self {
-        let sanitized_error = strip_ansi_codes(error).trim().to_string();
-        let error_detail = if sanitized_error.is_empty() {
-            "The provider did not report any additional details."
-        } else {
-            sanitized_error.as_str()
-        };
-        let notice = format!(
-            "The provider could not complete this turn. You can retry the prompt.\n\nProvider error: {error_detail}"
-        );
+    fn from_failure(content: &str, reasoning: &str, error: SafeProviderProjection) -> Self {
+        let error_detail = error.client_message();
+        let notice = format!("The provider could not complete this turn. You can retry the prompt.\n\n{error_detail}");
         let visible_update = if content.is_empty() {
             notice
         } else {
             format!("\n\n{notice}")
         };
         let message_content = format!("{content}{visible_update}");
-        let message = incomplete_assistant_message(&message_content, reasoning, error_detail);
+        let message = incomplete_assistant_message(&message_content, reasoning, &error_detail);
         Self {
             message,
             visible_update,
@@ -221,11 +214,8 @@ fn incomplete_assistant_message(content: &str, reasoning: &str, error: &str) -> 
     if !reasoning.is_empty() {
         message.reasoning = Some(reasoning.to_string());
     }
-    message.metadata = Some(MessageMetadata::incomplete_llm_response(
-        unix_timestamp_millis(),
-        message.estimate_tokens(),
-        strip_ansi_codes(error).trim(),
-    ));
+    message.metadata =
+        Some(MessageMetadata::incomplete_llm_response(unix_timestamp_millis(), message.estimate_tokens(), error));
     message
 }
 
@@ -261,7 +251,7 @@ async fn finish_failed_provider_turn(
     session_id: &acp::SessionId,
     content: &str,
     reasoning: &str,
-    error: &str,
+    error: SafeProviderProjection,
 ) -> PromptResponse {
     let IncompleteProviderTurn { message, visible_update, response } =
         IncompleteProviderTurn::from_failure(content, reasoning, error);
@@ -273,7 +263,8 @@ async fn finish_failed_provider_turn(
     agent.push_message(session, message);
     persist_session_checkpoint(agent, session, "incomplete_provider_turn").await;
     warn!(
-        provider_error = %strip_ansi_codes(error),
+        error_category = error.category(),
+        error_status = ?error.status(),
         partial_text_bytes = content.len(),
         partial_reasoning_bytes = reasoning.len(),
         "ACP provider failed to complete the turn"
@@ -329,30 +320,6 @@ struct GenerationTelemetry {
     estimated_output_tokens: u64,
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
-struct ProviderErrorTelemetry<'a> {
-    code: Option<&'a str>,
-    status: Option<u16>,
-    detail: Option<&'a str>,
-}
-
-fn provider_error_telemetry(error: &LLMError) -> ProviderErrorTelemetry<'_> {
-    let metadata = match error {
-        LLMError::Authentication { metadata, .. }
-        | LLMError::RateLimit { metadata }
-        | LLMError::InvalidRequest { metadata, .. }
-        | LLMError::Network { metadata, .. }
-        | LLMError::Provider { metadata, .. } => metadata.as_deref(),
-    };
-    let Some(metadata) = metadata else {
-        return ProviderErrorTelemetry::default();
-    };
-    ProviderErrorTelemetry {
-        code: metadata.code.as_deref(),
-        status: metadata.status,
-        detail: metadata.message.as_deref(),
-    }
-}
 impl GenerationTelemetry {
     fn start() -> Self {
         Self {
@@ -423,7 +390,7 @@ impl GenerationTelemetry {
         error: &LLMError,
     ) {
         let snapshot = runtime.telemetry_snapshot();
-        let error_telemetry = provider_error_telemetry(error);
+        let error_projection = SafeProviderProjection::from_llm_error(error);
         warn!(
             provider = runtime.provider_name(),
             generation_elapsed_ms = duration_millis(self.started_at.elapsed()),
@@ -434,10 +401,8 @@ impl GenerationTelemetry {
             active_provider_permits = snapshot.active_permits,
             permit_limit = ?snapshot.permit_limit,
             circuit_breaker_state = snapshot.circuit_breaker_state,
-            provider_error_code = ?error_telemetry.code,
-            provider_error_status = ?error_telemetry.status,
-            provider_error_detail = ?error_telemetry.detail,
-            provider_error = %error,
+            error_category = error_projection.category(),
+            error_status = ?error_projection.status(),
             "ACP provider generation attempt failed"
         );
     }
@@ -560,7 +525,7 @@ async fn generate_with_retry_with_observer(
                         .await;
                 }
                 if !decision.retryable {
-                    return Err(ProviderCallError::Failed(error.to_string()));
+                    return Err(ProviderCallError::Failed(SafeProviderProjection::from_llm_error(&error)));
                 }
                 let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                 info!(
@@ -1187,7 +1152,7 @@ async fn run_prompt_with_retry_observer(
                             &args.session_id,
                             &assistant_message,
                             &assistant_reasoning,
-                            &error.to_string(),
+                            SafeProviderProjection::from_llm_error(&error),
                         )
                         .await);
                     }
@@ -1216,7 +1181,7 @@ async fn run_prompt_with_retry_observer(
                                 &args.session_id,
                                 &assistant_message,
                                 &assistant_reasoning,
-                                &error,
+                                error,
                             )
                             .await);
                         }
@@ -1253,7 +1218,7 @@ async fn run_prompt_with_retry_observer(
                             &args.session_id,
                             &assistant_message,
                             &assistant_reasoning,
-                            &error.to_string(),
+                            SafeProviderProjection::from_llm_error(&error),
                         )
                         .await);
                     }
@@ -1273,7 +1238,7 @@ async fn run_prompt_with_retry_observer(
                             &args.session_id,
                             &assistant_message,
                             &assistant_reasoning,
-                            &error.to_string(),
+                            SafeProviderProjection::from_llm_error(&error),
                         )
                         .await);
                     }
@@ -1302,7 +1267,7 @@ async fn run_prompt_with_retry_observer(
                                 &args.session_id,
                                 &assistant_message,
                                 &assistant_reasoning,
-                                &error,
+                                error,
                             )
                             .await);
                         }
@@ -1340,7 +1305,7 @@ async fn run_prompt_with_retry_observer(
                                 &args.session_id,
                                 &assistant_message,
                                 &assistant_reasoning,
-                                &error.to_string(),
+                                SafeProviderProjection::from_llm_error(&error),
                             )
                             .await);
                         }
@@ -1369,7 +1334,7 @@ async fn run_prompt_with_retry_observer(
                                     &args.session_id,
                                     &assistant_message,
                                     &assistant_reasoning,
-                                    &error,
+                                    error,
                                 )
                                 .await);
                             }
@@ -1386,7 +1351,7 @@ async fn run_prompt_with_retry_observer(
                             &args.session_id,
                             &assistant_message,
                             &assistant_reasoning,
-                            &error.to_string(),
+                            SafeProviderProjection::from_llm_error(&error),
                         )
                         .await);
                     }
@@ -1632,7 +1597,7 @@ async fn run_prompt_with_retry_observer(
                         &args.session_id,
                         &assistant_message,
                         &assistant_reasoning,
-                        &error,
+                        error,
                     )
                     .await);
                 }
@@ -2097,55 +2062,6 @@ Run the managed background fixture.
 
     use super::*;
 
-    #[test]
-    fn provider_error_telemetry_exposes_structured_network_diagnostics() {
-        let error = LLMError::Network {
-            message: "request failed".to_string(),
-            metadata: Some(LLMErrorMetadata::new(
-                "Arli AI",
-                Some(504),
-                Some("reqwest_timeout_error".to_string()),
-                None,
-                None,
-                None,
-                Some("operation timed out".to_string()),
-            )),
-        };
-
-        assert_eq!(
-            provider_error_telemetry(&error),
-            ProviderErrorTelemetry {
-                code: Some("reqwest_timeout_error"),
-                status: Some(504),
-                detail: Some("operation timed out"),
-            }
-        );
-    }
-
-    #[test]
-    fn provider_error_telemetry_exposes_rate_limit_diagnostics() {
-        let error = LLMError::RateLimit {
-            metadata: Some(LLMErrorMetadata::new(
-                "baseten",
-                Some(429),
-                Some("rate_limit_error".to_string()),
-                None,
-                None,
-                Some("17".to_string()),
-                Some("capacity temporarily exhausted".to_string()),
-            )),
-        };
-
-        assert_eq!(
-            provider_error_telemetry(&error),
-            ProviderErrorTelemetry {
-                code: Some("rate_limit_error"),
-                status: Some(429),
-                detail: Some("capacity temporarily exhausted"),
-            }
-        );
-    }
-
     proptest! {
         #[test]
         fn streaming_eligibility_depends_only_on_provider_support_and_stop_hooks(
@@ -2195,7 +2111,7 @@ Run the managed background fixture.
             let failed_turn = IncompleteProviderTurn::from_failure(
                 "context gathered from a file read",
                 "partial reasoning",
-                "\u{1b}[31m502 Bad Gateway\u{1b}[0m",
+                SafeProviderProjection::execution_error(),
             );
             assert_eq!(failed_turn.response.stop_reason, acp::StopReason::EndTurn);
             assert!(failed_turn.visible_update.starts_with("\n\n"));
@@ -2211,7 +2127,7 @@ Run the managed background fixture.
         assert_eq!(messages[1].reasoning.as_deref(), Some("partial reasoning"));
         let metadata = messages[1].metadata.as_ref().expect("incomplete response metadata");
         assert!(metadata.is_incomplete());
-        assert_eq!(metadata.incomplete_reason(), Some("502 Bad Gateway"));
+        assert_eq!(metadata.incomplete_reason(), Some("Provider failure category: Execution failed."));
         let next_turn = thread.begin_turn().expect("failed turn must release the in-flight marker");
         drop(next_turn);
         thread.finish_turn();
@@ -2389,6 +2305,21 @@ Run the managed background fixture.
 
         assert!(engine.has_stop_hooks());
         let first = engine.run_stop("blocked draft", false).await.expect("first stop hook");
+        assert_eq!(
+            first.block_reason.as_deref(),
+            Some("retry the draft"),
+            "first stop hook outcome before projection: messages={:?}, stop-count={:?}",
+            first
+                .messages
+                .iter()
+                .map(|message| {
+                    format!("{:?}: {}", message.level, message.text.chars().take(256).collect::<String>())
+                })
+                .collect::<Vec<_>>(),
+            std::fs::read_to_string(workspace.path().join("stop-count"))
+                .ok()
+                .map(|count| count.trim().chars().take(32).collect::<String>())
+        );
         let second = engine.run_stop("allowed draft", true).await.expect("second stop hook");
 
         let mut visible = Vec::new();
@@ -2434,8 +2365,11 @@ Run the managed background fixture.
 
     #[test]
     fn partial_stream_message_preserves_output_and_marks_it_incomplete() {
-        let failed_turn =
-            IncompleteProviderTurn::from_failure("partial answer", "partial reasoning", "stream disconnected");
+        let failed_turn = IncompleteProviderTurn::from_failure(
+            "partial answer",
+            "partial reasoning",
+            SafeProviderProjection::execution_error(),
+        );
         let message = failed_turn.message;
 
         assert!(message.content.as_text().starts_with("partial answer"));
@@ -2446,22 +2380,41 @@ Run the managed background fixture.
         assert!(
             metadata
                 .incomplete_reason()
-                .is_some_and(|reason| reason.contains("stream disconnected"))
+                .is_some_and(|reason| reason.contains("Execution failed"))
         );
     }
 
     #[test]
     fn provider_failure_without_output_becomes_a_normal_retryable_turn() {
-        let failed_turn = IncompleteProviderTurn::from_failure("", "", "\u{1b}[31m502 Bad Gateway\u{1b}[0m");
+        let failed_turn = IncompleteProviderTurn::from_failure(
+            "",
+            "",
+            SafeProviderProjection::from_llm_error(&LLMError::Provider {
+                message: "provider-marker".to_string(),
+                metadata: Some(LLMErrorMetadata::new(
+                    "provider-marker",
+                    Some(502),
+                    Some("provider-marker".to_string()),
+                    None,
+                    None,
+                    None,
+                    Some("provider-marker".to_string()),
+                )),
+            }),
+        );
 
         assert_eq!(failed_turn.response.stop_reason, acp::StopReason::EndTurn);
         assert_eq!(failed_turn.message.content.as_text(), failed_turn.visible_update);
         assert!(failed_turn.visible_update.contains("You can retry the prompt"));
-        assert!(failed_turn.visible_update.contains("502 Bad Gateway"));
-        assert!(!failed_turn.visible_update.contains('\u{1b}'));
+        assert!(failed_turn.visible_update.contains("Service temporarily unavailable"));
+        assert!(failed_turn.visible_update.contains("HTTP status 502"));
+        assert!(!failed_turn.visible_update.contains("provider-marker"));
         let metadata = failed_turn.message.metadata.as_ref().expect("incomplete response metadata");
         assert!(metadata.is_incomplete());
-        assert_eq!(metadata.incomplete_reason(), Some("502 Bad Gateway"));
+        assert_eq!(
+            metadata.incomplete_reason(),
+            Some("Provider failure category: Service temporarily unavailable (HTTP status 502).")
+        );
     }
 
     struct FailThenSucceedProvider {
@@ -2632,8 +2585,16 @@ Run the managed background fixture.
             Ok(Box::pin(futures::stream::iter(vec![
                 Ok(LLMStreamEvent::Token { delta: "partial answer".to_string() }),
                 Err(LLMError::Network {
-                    message: "fixture stream disconnected".to_string(),
-                    metadata: None,
+                    message: "provider-marker-body".to_string(),
+                    metadata: Some(LLMErrorMetadata::new(
+                        "provider-marker-body",
+                        Some(503),
+                        Some("provider-marker-body".to_string()),
+                        Some("provider-marker-body".to_string()),
+                        Some("provider-marker-body".to_string()),
+                        None,
+                        Some("provider-marker-body".to_string()),
+                    )),
                 }),
             ])))
         }
@@ -3623,6 +3584,9 @@ Run the managed background fixture.
             .collect::<String>();
         assert!(visible_text.contains("partial answer"));
         assert!(visible_text.contains("You can retry the prompt"));
+        assert!(visible_text.contains("Network error"));
+        assert!(visible_text.contains("HTTP status 503"));
+        assert!(!visible_text.contains("provider-marker-body"));
 
         let session = agent
             .sessions
@@ -3635,6 +3599,8 @@ Run the managed background fixture.
         let messages = session.data.lock().expect("wire session data").thread.messages();
         let incomplete = messages.last().expect("incomplete assistant message");
         assert!(incomplete.content.as_text().contains("partial answer"));
+        assert!(incomplete.content.as_text().contains("Network error"));
+        assert!(!incomplete.content.as_text().contains("provider-marker-body"));
         assert!(incomplete.metadata.as_ref().is_some_and(MessageMetadata::is_incomplete));
     }
 
@@ -3836,7 +3802,8 @@ Run the managed background fixture.
         let Err(ProviderCallError::Failed(error)) = result else {
             panic!("pending generation should fail at its total deadline");
         };
-        assert!(error.contains("total generation"));
+        assert_eq!(error.category(), "Network error");
+        assert_eq!(error.status(), None);
     }
 
     #[test]
@@ -3897,7 +3864,8 @@ Run the managed background fixture.
         let Err(ProviderCallError::Failed(error)) = result else {
             panic!("persistent 502 response should exhaust the retry budget");
         };
-        assert!(error.contains("502 Bad Gateway"));
+        assert_eq!(error.category(), "Service temporarily unavailable");
+        assert_eq!(error.status(), Some(502));
         assert_eq!(provider.attempts.load(Ordering::SeqCst), 3);
     }
 

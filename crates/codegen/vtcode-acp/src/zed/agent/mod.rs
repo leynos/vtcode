@@ -40,6 +40,7 @@ mod lody_rate_limits;
 mod lody_tests;
 mod lody_usage;
 mod prompt;
+mod provider_telemetry;
 mod session_state;
 mod task_lifecycle;
 mod task_progress;

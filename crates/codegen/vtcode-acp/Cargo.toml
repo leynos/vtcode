@@ -42,6 +42,7 @@ tokio = { workspace = true, features = ["test-util"] }
 toml = { workspace = true }
 wiremock = "0.6.5"
 vtcode-llm = { workspace = true }
+vtcode-core = { workspace = true, features = ["telemetry-test-support"] }
 
 [lib]
 doctest = false
