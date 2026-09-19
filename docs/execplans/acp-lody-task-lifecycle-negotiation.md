@@ -152,7 +152,7 @@ management requests return only tasks owned by the requested ACP session.
   Impact: the red test directly proves that the new standard ACP adapter is
   required; the existing private notification cannot satisfy it.
 - Observation: EP-M1 passed the complete repository release gate and was
-  committed as `16ba7b516`.
+  committed as `16ba7b5160a28aab2fcf1d47cb8d37bc9c28892f`.
   Evidence: `/tmp/check-VTCode-fix-acp-lody-task-lifecycle-negotiation-2.out`
   records rustfmt, policy checks, Clippy, build, 6,582 tests, harness
   regressions and rustdoc passing.
