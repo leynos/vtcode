@@ -68,6 +68,12 @@ contract, and `ThreadEvent` is untouched.
    nextest selectors, changed-crate Clippy, Markdown, spelling, immutable
    CodeScene, then CodeRabbit CLI. Commit only on green. Hosted/PR review and
    publication stay with the stack lead.
+5. **Isolate OpenAI metadata contracts.** Move only this milestone's OpenAI
+   header-metadata fixtures into a sibling test module. Parameterise the
+   legacy and normalized Responses stream forms through an explicit test-only
+   mode while retaining both public entrypoints and their request assertions.
+   Keep the five production error-helper inputs explicit: they describe the
+   provider error boundary and must not be wrapped solely for a metric.
 
 ## Verification plan
 
@@ -109,6 +115,15 @@ and OpenRouter selectors; `cargo clippy --locked -p vtcode-llm --all-targets --
   cannot take the optional Chat Completions fallback. The fixture asserts both
   the allowed state and the API-key backend fallback capability before mounting
   the Responses and Chat mocks.
+- 2026-09-19: Began the bounded P1 CodeScene follow-up. The header-metadata
+  fixtures now live in a sibling OpenAI test module, and one explicit mode
+  drives both legacy and normalized stream entrypoints. No validation has run
+  for this follow-up; the serial gate runner remains the exclusive verifier.
+
+- 2026-09-19: C1 extracted the complete custom-provider test module to
+  `providers/custom_provider/tests.rs`; split OpenAI Chat 429 coverage into
+  independent buffered and streaming transport cases with one shared fixture.
+  No validation was run; the frozen P1 files remain untouched.
 
 ## Decisions and risks
 
