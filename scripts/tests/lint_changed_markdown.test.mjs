@@ -19,6 +19,7 @@ import test from "node:test";
 
 const TEST_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const HELPER_PATH = join(TEST_DIRECTORY, "..", "lint_changed_markdown.mjs");
+const WORKFLOW_PATH = join(TEST_DIRECTORY, "..", "..", ".github", "workflows", "ci.yml");
 const CHANGED_FILES_ENV = "VTCODE_CHANGED_MARKDOWN_FILES_JSON";
 const COMMAND_ENV = "VTCODE_MARKDOWNLINT_COMMAND";
 const CAPTURE_ENV = "VTCODE_MARKDOWNLINT_CAPTURE";
@@ -167,6 +168,54 @@ test("rejects malformed selections before launching the child", () => {
         } finally {
             rmSync(directory, { force: true, recursive: true });
         }
+    }
+});
+
+test("passes only non-target Markdown paths from a mixed change set", () => {
+    const workflow = readFileSync(WORKFLOW_PATH, "utf8");
+    const lintMarkdownJob = workflow.match(
+        /  lint-markdown:\n(?<job>[\s\S]*?)(?=\n  [a-z0-9-]+:\n)/,
+    )?.groups.job;
+
+    assert.ok(lintMarkdownJob, "the Markdown workflow job must exist");
+    assert.match(lintMarkdownJob, /list-files:\s*json/);
+    assert.match(lintMarkdownJob, /predicate-quantifier:\s*['"]some-with-excludes['"]/);
+    assert.match(lintMarkdownJob, /- ['"]\*\*\/\*\.md['"]/);
+    assert.match(lintMarkdownJob, /- ['"]!target\/\*\*['"]/);
+
+    const changedFiles = [
+        ".config/nextest.toml",
+        "README.md",
+        "target/generated.md",
+        "docs/guide.md",
+    ];
+    const selectedMarkdownFiles = changedFiles.filter(
+        (file) => file.endsWith(".md") && !file.startsWith("target/"),
+    );
+    assert.deepEqual(selectedMarkdownFiles, ["README.md", "docs/guide.md"]);
+
+    assertRejectedBeforeChildLaunch({
+        rawChangedFiles: JSON.stringify(changedFiles),
+        message: /safe repository-relative \.md path/,
+    });
+
+    const directory = makeTemporaryDirectory();
+    try {
+        for (const selectedFile of selectedMarkdownFiles) {
+            createFixtureFile(directory, selectedFile);
+        }
+        const { result, capturePath } = runHelper(
+            directory,
+            JSON.stringify(selectedMarkdownFiles),
+        );
+
+        assert.equal(result.status, 0, result.stderr);
+        assert.deepEqual(
+            JSON.parse(readFileSync(capturePath, "utf8")).slice(-selectedMarkdownFiles.length),
+            selectedMarkdownFiles,
+        );
+    } finally {
+        rmSync(directory, { force: true, recursive: true });
     }
 });
 
