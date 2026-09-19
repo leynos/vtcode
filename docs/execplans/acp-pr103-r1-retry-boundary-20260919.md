@@ -150,5 +150,11 @@ would be a breaking change for downstream implementers.
 
 - Extracted wire support and physics tests; added a fixed-epoch ACP transport
   regression.
-- Pending serial gates: focused ACP tests, strict Clippy, full ACP suite,
-  required VidaiMock 0.1.3 physics, and documentation checks.
+- Initial serial gates passed: focused ACP tests, strict Clippy, full ACP
+  suite, required VidaiMock 0.1.3 physics, and documentation checks.
+- Accepted final review refinement: keep the shared `SystemTime` observation
+  through all ACP handlers and convert it once inside the private Lody notice
+  projection; the fixed-epoch transport regression now supplies
+  `UNIX_EPOCH + Duration`.
+- Pending final-nit gates: Rust formatting, the 11 focused rate-limit
+  selectors, strict ACP Clippy, and plan spelling and Markdown checks.
