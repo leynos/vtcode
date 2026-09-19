@@ -1,3 +1,5 @@
+//! Tests timestamp-aware retry decisions and retry execution behaviour.
+
 use super::*;
 use crate::config::constants::tools;
 use crate::error::{ErrorCode, VtCodeError};
@@ -232,7 +234,7 @@ async fn run_with_retry_returns_first_success() {
         |_: &RetryPolicy| VtCodeError::execution(ErrorCode::ToolExecutionFailed, "exhausted"),
     )
     .await;
-    assert_eq!(result.unwrap(), "ok");
+    assert_eq!(result.expect("retry should return the first successful result"), "ok");
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
 }
 

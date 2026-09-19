@@ -1,5 +1,14 @@
+//! Tests shared retry-policy arithmetic, classification, and backoff state.
+
 use super::*;
 use proptest::prelude::*;
+
+struct StatusCase {
+    name: &'static str,
+    status: u16,
+    category: ErrorCategory,
+    retryable: bool,
+}
 
 #[test]
 fn default_policy_allows_two_retries() {
@@ -10,27 +19,31 @@ fn default_policy_allows_two_retries() {
 }
 
 #[test]
-fn classify_status_rate_limit() {
-    let policy = RetryPolicy::default();
-    let decision = policy.classify_status(429);
-    assert!(decision.retryable);
-    assert_eq!(decision.category, ErrorCategory::RateLimit);
-}
-
-#[test]
-fn classify_status_server_error() {
-    let policy = RetryPolicy::default();
-    let decision = policy.classify_status(503);
-    assert!(decision.retryable);
-    assert_eq!(decision.category, ErrorCategory::ServiceUnavailable);
-}
-
-#[test]
-fn classify_status_auth_not_retryable() {
-    let policy = RetryPolicy::default();
-    let decision = policy.classify_status(401);
-    assert!(!decision.retryable);
-    assert_eq!(decision.category, ErrorCategory::Authentication);
+fn classify_status_cases() {
+    for StatusCase { name, status, category, retryable } in [
+        StatusCase {
+            name: "rate_limit",
+            status: 429,
+            category: ErrorCategory::RateLimit,
+            retryable: true,
+        },
+        StatusCase {
+            name: "server_error",
+            status: 503,
+            category: ErrorCategory::ServiceUnavailable,
+            retryable: true,
+        },
+        StatusCase {
+            name: "auth_not_retryable",
+            status: 401,
+            category: ErrorCategory::Authentication,
+            retryable: false,
+        },
+    ] {
+        let decision = RetryPolicy::default().classify_status(status);
+        assert_eq!(decision.category, category, "{name} category");
+        assert_eq!(decision.retryable, retryable, "{name} retryability");
+    }
 }
 
 #[test]
