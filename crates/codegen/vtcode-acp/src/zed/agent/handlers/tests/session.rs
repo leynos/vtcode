@@ -266,19 +266,7 @@ async fn blocked_stop_draft_is_not_visible_until_hook_allows_it() {
 
     assert!(engine.has_stop_hooks());
     let first = engine.run_stop("blocked draft", false).await.expect("first stop hook");
-    assert_eq!(
-        first.block_reason.as_deref(),
-        Some("retry the draft"),
-        "first stop hook outcome before projection: messages={:?}, stop-count={:?}",
-        first
-            .messages
-            .iter()
-            .map(|message| { format!("{:?}: {}", message.level, message.text.chars().take(256).collect::<String>()) })
-            .collect::<Vec<_>>(),
-        std::fs::read_to_string(workspace.path().join("stop-count"))
-            .ok()
-            .map(|count| count.trim().chars().take(32).collect::<String>())
-    );
+    assert_first_stop_hook_block(&first, workspace.path());
     let second = engine.run_stop("allowed draft", true).await.expect("second stop hook");
 
     let mut visible = Vec::new();
@@ -297,4 +285,21 @@ async fn blocked_stop_draft_is_not_visible_until_hook_allows_it() {
     assert_eq!(history.len(), 2, "blocked drafts belong in model history only");
     assert_eq!(history[0].content.as_text(), "blocked draft");
     assert_eq!(history[1].content.as_text(), "retry the draft");
+}
+
+fn assert_first_stop_hook_block(outcome: &vtcode_core::hooks::StopHookOutcome, project_dir: &std::path::Path) {
+    let messages = outcome
+        .messages
+        .iter()
+        .map(|message| format!("{:?}: {}", message.level, message.text.chars().take(256).collect::<String>()))
+        .collect::<Vec<_>>();
+    let stop_count = std::fs::read_to_string(project_dir.join("stop-count"))
+        .ok()
+        .map(|count| count.trim().chars().take(32).collect::<String>());
+
+    assert_eq!(
+        outcome.block_reason.as_deref(),
+        Some("retry the draft"),
+        "first stop hook outcome before projection: messages={messages:?}, stop-count={stop_count:?}",
+    );
 }
