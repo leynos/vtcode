@@ -11,7 +11,7 @@ use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
 use agent_client_protocol::{Agent, Channel, Client, ConnectionTo, on_receive_notification};
 use assert_fs::TempDir;
 use std::sync::{Arc, Mutex};
-use std::time::Duration as StdDuration;
+use std::time::{Duration as StdDuration, UNIX_EPOCH};
 use tokio::sync::Notify;
 use vtcode_commons::llm::RateLimitMetadata;
 use vtcode_core::llm::provider::{LLMError, LLMErrorMetadata};
@@ -276,7 +276,7 @@ async fn fixed_epoch_rate_limit_snapshot_uses_transport_observation() {
                         PROVIDER,
                         &error,
                         None,
-                        FIXED_OBSERVED_EPOCH_SECONDS,
+                        UNIX_EPOCH + StdDuration::from_secs(FIXED_OBSERVED_EPOCH_SECONDS),
                     )
                     .await;
                 tokio::time::timeout(StdDuration::from_secs(2), snapshot_received.notified())
