@@ -24,8 +24,7 @@ impl ZedAgent {
         error: &LLMError,
         retry_delay: Option<Duration>,
     ) {
-        let observed_epoch_seconds = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-        self.publish_rate_limit_notice_at(session_id, provider, error, retry_delay, observed_epoch_seconds)
+        self.publish_rate_limit_notice_at(session_id, provider, error, retry_delay, SystemTime::now())
             .await;
     }
 
@@ -35,8 +34,9 @@ impl ZedAgent {
         provider: &str,
         error: &LLMError,
         retry_delay: Option<Duration>,
-        observed_epoch_seconds: u64,
+        observed_at: SystemTime,
     ) {
+        let observed_epoch_seconds = observed_at.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
         if let Some(limits) = rate_limit_metadata(error)
             .flatten()
             .and_then(|metadata| metadata.rate_limit.as_ref())
@@ -293,5 +293,6 @@ mod tests {
         assert!(rate_limit_notice_update("baseten", &error, None).is_some());
     }
 }
+// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/lody_notice.rs' for per-hunk detail, 'weave check' to verify your resolution
 // weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/lody_notice.rs' for per-hunk detail, 'weave check' to verify your resolution
 // weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/lody_notice.rs' for per-hunk detail, 'weave check' to verify your resolution
