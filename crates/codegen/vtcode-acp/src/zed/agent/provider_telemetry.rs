@@ -1,3 +1,6 @@
+//! Projects provider failures into bounded, client-safe ACP telemetry fields
+//! without forwarding raw provider diagnostics.
+
 use vtcode_commons::ErrorCategory;
 use vtcode_core::llm::provider::{LLMError, LLMErrorMetadata};
 
