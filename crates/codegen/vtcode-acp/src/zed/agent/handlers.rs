@@ -70,6 +70,14 @@ type PromptProviderFactory = dyn Fn() -> Box<dyn LLMProvider> + Send + Sync;
 mod rate_limit_tests;
 
 #[cfg(test)]
+#[path = "rate_limit_test_support.rs"]
+mod rate_limit_test_support;
+
+#[cfg(test)]
+#[path = "rate_limit_physics_tests.rs"]
+mod rate_limit_physics_tests;
+
+#[cfg(test)]
 #[path = "rate_limit_timing_tests.rs"]
 mod rate_limit_timing_tests;
 #[cfg(test)]
@@ -532,12 +540,9 @@ async fn generate_with_retry_with_observer(
                 return Ok(response);
             }
             Err(error) => {
-                let decision = policy.decision_for_llm_error_with_backoff_at(
-                    &error,
-                    attempt_index,
-                    &mut backoff,
-                    retry_observed_at(),
-                );
+                let observed_at = retry_observed_at();
+                let decision =
+                    policy.decision_for_llm_error_with_backoff_at(&error, attempt_index, &mut backoff, observed_at);
                 telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
                 drop(permit);
                 let retry_delay = decision
@@ -545,7 +550,13 @@ async fn generate_with_retry_with_observer(
                     .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
                 if let Some((agent, session_id)) = notice_target {
                     agent
-                        .publish_rate_limit_notice(session_id, runtime.provider_name(), &error, retry_delay)
+                        .publish_rate_limit_notice_at(
+                            session_id,
+                            runtime.provider_name(),
+                            &error,
+                            retry_delay,
+                            observed_at.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs(),
+                        )
                         .await;
                 }
                 if !decision.retryable {
@@ -1152,23 +1163,21 @@ async fn run_prompt_with_retry_observer(
             let mut stream = match stream_result {
                 Ok(stream) => stream,
                 Err(error) => {
-                    let decision = policy.decision_for_llm_error_with_backoff_at(
-                        &error,
-                        attempt_index,
-                        &mut backoff,
-                        retry_observed_at(),
-                    );
+                    let observed_at = retry_observed_at();
+                    let decision =
+                        policy.decision_for_llm_error_with_backoff_at(&error, attempt_index, &mut backoff, observed_at);
                     telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                     drop(permit);
                     let retry_delay = decision
                         .retryable
                         .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
                     agent
-                        .publish_rate_limit_notice(
+                        .publish_rate_limit_notice_at(
                             &args.session_id,
                             provider_runtime.provider_name(),
                             &error,
                             retry_delay,
+                            observed_at.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs(),
                         )
                         .await;
                     if !decision.retryable {
@@ -1303,11 +1312,12 @@ async fn run_prompt_with_retry_observer(
                     Ok(event) => event,
                     Err(error) if !emitted_output => {
                         drop(stream);
+                        let observed_at = retry_observed_at();
                         let decision = policy.decision_for_llm_error_with_backoff_at(
                             &error,
                             attempt_index,
                             &mut backoff,
-                            retry_observed_at(),
+                            observed_at,
                         );
                         telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                         drop(permit);
@@ -1315,11 +1325,12 @@ async fn run_prompt_with_retry_observer(
                             .retryable
                             .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
                         agent
-                            .publish_rate_limit_notice(
+                            .publish_rate_limit_notice_at(
                                 &args.session_id,
                                 provider_runtime.provider_name(),
                                 &error,
                                 retry_delay,
+                                observed_at.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs(),
                             )
                             .await;
                         if !decision.retryable {

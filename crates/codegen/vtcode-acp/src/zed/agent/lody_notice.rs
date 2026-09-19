@@ -1,6 +1,6 @@
 use crate::acp;
 use serde_json::{Map, Value};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::warn;
 use vtcode_commons::llm::RateLimitMetadata;
 use vtcode_core::llm::provider::{LLMError, LLMErrorMetadata};
@@ -15,9 +15,22 @@ impl ZedAgent {
         error: &LLMError,
         retry_delay: Option<Duration>,
     ) {
+        let observed_epoch_seconds = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+        self.publish_rate_limit_notice_at(session_id, provider, error, retry_delay, observed_epoch_seconds)
+            .await;
+    }
+
+    pub(super) async fn publish_rate_limit_notice_at(
+        &self,
+        session_id: &acp::SessionId,
+        provider: &str,
+        error: &LLMError,
+        retry_delay: Option<Duration>,
+        observed_epoch_seconds: u64,
+    ) {
         if is_rate_limit(error) {
             if let Some(limits) = rate_limit_metadata(error).and_then(|metadata| metadata.rate_limit.as_ref()) {
-                self.publish_lody_rate_limits(session_id, provider, limits);
+                self.publish_lody_rate_limits_at(session_id, provider, limits, observed_epoch_seconds);
             }
         }
         let Some(update) = rate_limit_notice_update(provider, error, retry_delay) else {
