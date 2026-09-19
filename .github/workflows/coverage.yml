@@ -62,6 +62,18 @@ jobs:
         with:
           tool: nextest
 
+      - name: Record proptest seed
+        shell: bash
+        run: |
+          set -euo pipefail
+          proptest_rng_seed="$(od -An -N8 -tu8 /dev/urandom | tr -d '[:space:]')"
+          test -n "$proptest_rng_seed"
+          printf 'PROPTEST_RNG_SEED=%s\n' "$proptest_rng_seed" >> "$GITHUB_ENV"
+          {
+            printf '### Proptest reproduction seed\n\n'
+            printf '%s\n' "This coverage run used \`PROPTEST_RNG_SEED=$proptest_rng_seed\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Generate code coverage
         run: cargo llvm-cov nextest --locked --workspace --lcov --output-path lcov.info
 

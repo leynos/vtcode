@@ -74,17 +74,18 @@ CI runs `scripts/check_unmaintained_baseline.py`. It invokes the pinned
 shape, and compares every stable finding field with
 `scripts/cargo_unmaintained_baseline.json`.
 
-The baseline is tracked debt for [issue #108](https://github.com/leynos/vtcode/issues/108),
-not an ignore list. Every entry records its exact package version, repository
-status kind, stale dependency requirements, classification, and rationale.
-The checker deliberately ignores only the changing age count. A new package,
-version, status, requirement, malformed result, scanner error, or invalid
-baseline fails CI.
+The baseline is tracked debt for
+[issue #108](https://github.com/leynos/vtcode/issues/108), not an ignore list.
+Every entry records its exact package version, repository status kind, stale
+dependency requirements, classification, and rationale. The checker
+deliberately ignores only the changing age count. A new package, version,
+status, requirement, malformed result, scanner error, or invalid baseline fails
+CI.
 
 Do not add packages to `[package.metadata.unmaintained].ignore` to pass this
 check. Do not add `--no-exit-code`, `continue-on-error`, or an automated
-baseline refresh. A missing previous finding is reported as eligible for
-manual removal after it has been reviewed.
+baseline refresh. A missing previous finding is reported as eligible for manual
+removal after it has been reviewed.
 
 ### GitHub Token (Optional)
 
