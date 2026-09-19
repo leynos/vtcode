@@ -686,6 +686,13 @@ pub(crate) fn create_responses_stream(
     Box::pin(stream)
 }
 
+fn reasoning_channel_for_event(event_type: &str) -> ReasoningChannel {
+    match event_type {
+        "response.reasoning_summary_text.delta" | "response.reasoning_summary_text.done" => ReasoningChannel::Summary,
+        _ => ReasoningChannel::Raw,
+    }
+}
+
 fn responses_item_identity(payload: &Value, reasoning_channel: Option<ReasoningChannel>) -> ResponsesItemIdentity {
     let identity = ResponsesItemIdentity::new(
         payload.get("item_id").and_then(Value::as_str).map(ToOwned::to_owned),
@@ -933,12 +940,7 @@ fn response_reasoning_event(
     let Some(reasoning) = reasoning else {
         return Ok(None);
     };
-    let channel =
-        if matches!(event_type, "response.reasoning_summary_text.delta" | "response.reasoning_summary_text.done") {
-            ReasoningChannel::Summary
-        } else {
-            ReasoningChannel::Raw
-        };
+    let channel = reasoning_channel_for_event(event_type);
     let identity = responses_item_identity(payload, Some(channel));
     let delta = if matches!(event_type, "response.reasoning_text.done" | "response.reasoning_summary_text.done") {
         context
