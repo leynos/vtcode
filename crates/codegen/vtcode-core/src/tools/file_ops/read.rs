@@ -1,6 +1,7 @@
 use super::FileOpsTool;
 use super::is_image_path;
 use super::path_policy::PathSuggestionKind;
+use super::restore_exact_text_content;
 mod legacy;
 mod logging;
 mod segments;
