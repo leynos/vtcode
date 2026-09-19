@@ -262,13 +262,12 @@ async fn validate_request_content_hash(req: &ApplyPatchRequest, patch: &Patch) -
         return Ok(());
     };
     let source_paths = crate::tools::apply_patch::patch_precondition_source_paths(patch);
-    if source_paths.len() != 1 {
+    let [source_path] = source_paths.as_slice() else {
         return Err(ToolError::Rejected(
             "expected_content_hash requires exactly one pre-existing source file; split add-only or multi-source patches"
                 .to_string(),
         ));
-    }
-    let source_path = source_paths.first().expect("single source path");
+    };
     let disk_path = req.cwd.join(source_path);
     let bytes = tokio::fs::read(&disk_path)
         .await
