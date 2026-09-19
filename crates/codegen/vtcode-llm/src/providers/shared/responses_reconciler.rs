@@ -382,17 +382,21 @@ mod tests {
         ResponsesItemIdentity::new(Some(format!("item_{index}")), Some(format!("call_{index}")), Some(index))
     }
 
+    struct ReasoningReconciliationCase<'a> {
+        channel: ReasoningChannel,
+        delta: &'a str,
+        snapshot: &'a str,
+        expected_suffix: &'a str,
+    }
+
     fn assert_reasoning_channel_reconciles(
         reconciler: &mut ResponsesStreamReconciler,
         identity: &ResponsesItemIdentity,
-        channel: ReasoningChannel,
-        delta: &str,
-        snapshot: &str,
-        expected_suffix: &str,
+        case: ReasoningReconciliationCase<'_>,
     ) {
-        let identity = identity.clone().with_reasoning_channel(channel);
-        assert_eq!(reconciler.reasoning_delta(identity.clone(), delta), Ok(delta.to_string()));
-        assert_eq!(reconciler.reasoning_done(identity, snapshot), Ok(Some(expected_suffix.to_string())));
+        let identity = identity.clone().with_reasoning_channel(case.channel);
+        assert_eq!(reconciler.reasoning_delta(identity.clone(), case.delta), Ok(case.delta.to_string()));
+        assert_eq!(reconciler.reasoning_done(identity, case.snapshot), Ok(Some(case.expected_suffix.to_string())));
     }
 
     #[test]
@@ -474,14 +478,25 @@ mod tests {
         let mut reconciler = ResponsesStreamReconciler::default();
         let identity = item(0).with_sub_index(Some(0));
 
-        assert_reasoning_channel_reconciles(&mut reconciler, &identity, ReasoningChannel::Raw, "raw", "raw+", "+");
         assert_reasoning_channel_reconciles(
             &mut reconciler,
             &identity,
-            ReasoningChannel::Summary,
-            "summary",
-            "summary+",
-            "+",
+            ReasoningReconciliationCase {
+                channel: ReasoningChannel::Raw,
+                delta: "raw",
+                snapshot: "raw+",
+                expected_suffix: "+",
+            },
+        );
+        assert_reasoning_channel_reconciles(
+            &mut reconciler,
+            &identity,
+            ReasoningReconciliationCase {
+                channel: ReasoningChannel::Summary,
+                delta: "summary",
+                snapshot: "summary+",
+                expected_suffix: "+",
+            },
         );
     }
 
