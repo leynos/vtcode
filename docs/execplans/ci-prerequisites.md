@@ -784,7 +784,7 @@ helper already invokes markdownlint for its validated selected paths. It also
 uses target-scoped `expect(unused_variables)` annotations for the three actual
 platform-only parameters, adds the required model-test module documentation,
 and applies the project's configured Oxford spelling. The separate framework
-modernisation suggestion is tracked by
+modernization suggestion is tracked by
 [#124](https://github.com/leynos/vtcode/issues/124) rather than changing the
 established direct `unittest` CI contract inside this CI repair. Fresh
 deterministic and hosted validation remain required.
