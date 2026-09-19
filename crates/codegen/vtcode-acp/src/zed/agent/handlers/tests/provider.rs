@@ -58,7 +58,7 @@ fn provider_error_telemetry_exposes_stable_network_metadata() {
     assert_eq!(
         provider_error_telemetry(&error),
         ProviderErrorTelemetry {
-            code: Some("reqwest_timeout_error"),
+            category: "Network error",
             status: Some(504),
             timeout_phase: None,
         }
@@ -72,7 +72,7 @@ fn provider_error_telemetry_exposes_acp_timeout_phase_separately() {
     assert_eq!(
         provider_error_telemetry(&error),
         ProviderErrorTelemetry {
-            code: None,
+            category: "Network error",
             status: None,
             timeout_phase: Some("inter_token_idle"),
         }
@@ -133,7 +133,8 @@ async fn buffered_generation_obeys_total_generation_timeout() {
     let Err(ProviderCallError::Failed(error)) = result else {
         panic!("pending generation should fail at its total deadline");
     };
-    assert!(error.contains("total generation"));
+    assert_eq!(error.category(), "Network error");
+    assert_eq!(error.status(), None);
 }
 
 #[test]
@@ -184,7 +185,8 @@ async fn bad_gateway_retries_until_the_configured_budget_is_exhausted() {
     let Err(ProviderCallError::Failed(error)) = result else {
         panic!("persistent 502 response should exhaust the retry budget");
     };
-    assert!(error.contains("502 Bad Gateway"));
+    assert_eq!(error.category(), "Service temporarily unavailable");
+    assert_eq!(error.status(), Some(502));
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 3);
 }
 
@@ -221,7 +223,7 @@ fn provider_error_telemetry_exposes_rate_limit_diagnostics() {
     assert_eq!(
         provider_error_telemetry(&error),
         ProviderErrorTelemetry {
-            code: Some("rate_limit_error"),
+            category: "Rate limit exceeded",
             status: Some(429),
             timeout_phase: None,
         }

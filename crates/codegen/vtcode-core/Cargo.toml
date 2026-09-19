@@ -183,6 +183,7 @@ path = "examples/migration_test.rs"
 
 [features]
 default = ["tui"]
+telemetry-test-support = []
 tui = ["dep:crossterm"]
 mock = []
 policies = []

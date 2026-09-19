@@ -143,9 +143,12 @@ async fn handle_streaming_attempt(
                     observed_at,
                 )
                 .await;
-            let response =
-                finish_failed_output(turn, std::mem::replace(output, ProviderOutput::empty()), &error.to_string())
-                    .await?;
+            let response = finish_failed_output(
+                turn,
+                std::mem::replace(output, ProviderOutput::empty()),
+                SafeProviderProjection::from_llm_error(&error),
+            )
+            .await?;
             Ok(StreamingTurnOutcome::Finished(response))
         }
         StreamAttemptOutcome::Cancelled => {
@@ -176,7 +179,7 @@ async fn retry_stream_attempt(
         }
         Err(ProviderCallError::Failed(error)) => {
             let response =
-                finish_failed_output(turn, std::mem::replace(output, ProviderOutput::empty()), &error).await?;
+                finish_failed_output(turn, std::mem::replace(output, ProviderOutput::empty()), error).await?;
             Ok(StreamingTurnOutcome::Finished(response))
         }
     }

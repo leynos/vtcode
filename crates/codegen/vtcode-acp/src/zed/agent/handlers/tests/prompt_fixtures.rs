@@ -217,8 +217,16 @@ impl LLMProvider for PartialThenFailProvider {
         Ok(Box::pin(futures::stream::iter(vec![
             Ok(LLMStreamEvent::Token { delta: "partial answer".to_string() }),
             Err(LLMError::Network {
-                message: "fixture stream disconnected".to_string(),
-                metadata: None,
+                message: "provider-marker-body".to_string(),
+                metadata: Some(LLMErrorMetadata::new(
+                    "provider-marker-body",
+                    Some(503),
+                    Some("provider-marker-body".to_string()),
+                    Some("provider-marker-body".to_string()),
+                    Some("provider-marker-body".to_string()),
+                    None,
+                    Some("provider-marker-body".to_string()),
+                )),
             }),
         ])))
     }

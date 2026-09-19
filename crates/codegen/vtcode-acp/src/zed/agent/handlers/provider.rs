@@ -51,14 +51,14 @@ where
 #[derive(Debug)]
 pub(super) enum ProviderCallError {
     Cancelled,
-    Failed(String),
+    Failed(SafeProviderProjection),
 }
 
 impl From<ProviderAdmissionError> for ProviderCallError {
     fn from(error: ProviderAdmissionError) -> Self {
         match error {
             ProviderAdmissionError::Cancelled => Self::Cancelled,
-            other => Self::Failed(other.to_string()),
+            _error => Self::Failed(SafeProviderProjection::execution_error()),
         }
     }
 }
@@ -119,23 +119,16 @@ pub(super) struct IncompleteProviderTurn {
 }
 
 impl IncompleteProviderTurn {
-    pub(super) fn from_failure(content: &str, reasoning: &str, error: &str) -> Self {
-        let sanitized_error = strip_ansi_codes(error).trim().to_string();
-        let error_detail = if sanitized_error.is_empty() {
-            "The provider did not report any additional details."
-        } else {
-            sanitized_error.as_str()
-        };
-        let notice = format!(
-            "The provider could not complete this turn. You can retry the prompt.\n\nProvider error: {error_detail}"
-        );
+    pub(super) fn from_failure(content: &str, reasoning: &str, error: SafeProviderProjection) -> Self {
+        let error_detail = error.client_message();
+        let notice = format!("The provider could not complete this turn. You can retry the prompt.\n\n{error_detail}");
         let visible_update = if content.is_empty() {
             notice
         } else {
             format!("\n\n{notice}")
         };
         let message_content = format!("{content}{visible_update}");
-        let message = incomplete_assistant_message(&message_content, reasoning, error_detail);
+        let message = incomplete_assistant_message(&message_content, reasoning, &error_detail);
         Self {
             message,
             visible_update,
@@ -149,11 +142,8 @@ fn incomplete_assistant_message(content: &str, reasoning: &str, error: &str) -> 
     if !reasoning.is_empty() {
         message.reasoning = Some(reasoning.to_string());
     }
-    message.metadata = Some(MessageMetadata::incomplete_llm_response(
-        unix_timestamp_millis(),
-        message.estimate_tokens(),
-        strip_ansi_codes(error).trim(),
-    ));
+    message.metadata =
+        Some(MessageMetadata::incomplete_llm_response(unix_timestamp_millis(), message.estimate_tokens(), error));
     message
 }
 
@@ -325,7 +315,7 @@ pub(super) async fn generate_with_retry_with_observer(
                         .await;
                 }
                 if !decision.retryable {
-                    return Err(ProviderCallError::Failed(error.to_string()));
+                    return Err(ProviderCallError::Failed(SafeProviderProjection::from_llm_error(&error)));
                 }
                 let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                 info!(
