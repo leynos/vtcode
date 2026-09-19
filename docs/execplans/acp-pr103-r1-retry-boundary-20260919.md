@@ -10,11 +10,12 @@ for existing callers, while ACP uses explicit observation times.
 
 ## Status
 
-**IN PROGRESS** — implementation is authorised by the ACP hardening programme
+**IN PROGRESS** — implementation is authorized by the ACP hardening programme
 and root supervisory direction. The isolated branch is
 `review/acp-pr103-r1-retry-boundary-20260919`, based on
-`23f2f38ba0bc81cd8bd30f275bab6c02500eba2c`. No validation has run in this
-worktree; the shared serial gate runner owns all gates.
+`23f2f38ba0bc81cd8bd30f275bab6c02500eba2c`. Initial deterministic validation
+passed before commit `3886a272`; the shared serial gate runner owns validation
+of the current review repair.
 
 ## Conformance basis
 
@@ -69,10 +70,11 @@ The following invariants must hold:
 
 Add fixed-observation ACP fixtures to
 `crates/codegen/vtcode-acp/src/zed/agent/rate_limit_timing_tests.rs`. One
-fixture uses `generate_with_retry` through the buffered path; the other runs
-the real streaming prompt loop. Each emits an HTTP-date rate-limit error, then
-a headerless rate-limit error, then succeeds. With a fixed observation time,
-the first retry waits for the date and the second uses only local backoff.
+fixture uses `generate_with_retry_with_observer` through the buffered path;
+the other runs the real streaming prompt loop. Each emits an HTTP-date
+rate-limit error, then a headerless rate-limit error, then succeeds. With a
+fixed observation time, the first retry waits for the date and the second uses
+only local backoff.
 
 Before production changes, the focused tests should fail because the current
 production paths obtain wall-clock time internally. This Red result was not
@@ -118,7 +120,7 @@ local delay rather than retaining the date floor.
   buffered coverage. Root required actual buffered and streaming fixed-time
   regressions, so this plan records the approved private prompt-local seam.
 - 2026-09-19: Added additive explicit-time retry methods. The existing public
-  trait methods remain required compatibility methods so external trait
+  trait methods remain required compatibility methods, so external trait
   implementers are not broken; their explicit-time defaults defer to their
   existing implementation.
 - 2026-09-19: Routed ACP buffered and all three stream failure paths through a
@@ -127,7 +129,8 @@ local delay rather than retaining the date floor.
 - 2026-09-19: Added paused-time buffered and full streaming prompt regressions
   that observe an HTTP-date error, then a headerless error, then success.
   Extracted both retry test modules and added a fixed-time conversion test.
-  Deterministic gates have not yet run; the serial runner owns them.
+  Deterministic gates passed before commit `3886a272`; the serial runner owns
+  the review-repair gate rerun.
 
 ## Risks and escalation
 
