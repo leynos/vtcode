@@ -143,9 +143,11 @@ pub(super) fn classify_stream_failure(request: StreamFailureRequest<'_>) -> Stre
         attempt_index,
         error,
         backoff,
+        retry_observed_at,
     } = request;
     let policy = turn.provider_runtime.retry_policy();
-    let decision = policy.decision_for_llm_error_with_backoff_at(&error, attempt_index, backoff, retry_observed_at());
+    let observed_at = retry_observed_at();
+    let decision = policy.decision_for_llm_error_with_backoff_at(&error, attempt_index, backoff, observed_at);
     let disposition = if output.emitted_output {
         "partial_output_visible"
     } else {
@@ -153,10 +155,10 @@ pub(super) fn classify_stream_failure(request: StreamFailureRequest<'_>) -> Stre
     };
     telemetry.failed(&turn.provider_runtime, attempt_index, disposition, &error);
     if output.emitted_output || !decision.retryable {
-        StreamAttemptOutcome::Failed(error)
+        StreamAttemptOutcome::Failed { error, observed_at }
     } else {
         let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
-        StreamAttemptOutcome::Retry { delay, error }
+        StreamAttemptOutcome::Retry { delay, error, observed_at }
     }
 }
 

@@ -145,3 +145,10 @@ test-harness scope expansion rather than introducing global mutable time.
 Implementation is awaiting shared-runner evidence. The explicit-time trait
 methods are defaulted because a required method on the public extension trait
 would be a breaking change for downstream implementers.
+
+## A1 progress
+
+- Extracted wire support and physics tests; added a fixed-epoch ACP transport
+  regression.
+- Pending serial gates: focused ACP tests, strict Clippy, full ACP suite,
+  required VidaiMock 0.1.3 physics, and documentation checks.
