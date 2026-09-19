@@ -37,6 +37,11 @@ pub(crate) enum ResponsesStreamEventPolicy {
     Unsupported,
 }
 
+struct ReasoningFragment {
+    text: String,
+    identity: ResponsesItemIdentity,
+}
+
 pub(crate) fn response_stream_event_policy(payload: &Value) -> Result<ResponsesStreamEventPolicy, &'static str> {
     let Some(event_type) = payload.get("type") else {
         return Err("missing Responses stream event type");
@@ -200,9 +205,13 @@ where
                 sub_index,
                 reasoning_channel,
                 ..
-            } => {
-                self.handle_reasoning_delta(&mut events, delta, item_id, output_index, sub_index, reasoning_channel)?
-            }
+            } => self.handle_reasoning_delta(
+                &mut events,
+                ReasoningFragment {
+                    text: delta,
+                    identity: reasoning_identity(item_id, output_index, sub_index, reasoning_channel),
+                },
+            )?,
             ResponsesStreamEvent::ReasoningDone {
                 text,
                 item_id,
@@ -210,7 +219,13 @@ where
                 sub_index,
                 reasoning_channel,
                 ..
-            } => self.handle_reasoning_done(&mut events, text, item_id, output_index, sub_index, reasoning_channel)?,
+            } => self.handle_reasoning_done(
+                &mut events,
+                ReasoningFragment {
+                    text,
+                    identity: reasoning_identity(item_id, output_index, sub_index, reasoning_channel),
+                },
+            )?,
             ResponsesStreamEvent::FunctionCallNameDelta { call_id, item_id, name, output_index, .. } => {
                 self.record_tool_call_item_id(item_id.as_deref(), &call_id);
                 self.record_tool_call_name(&call_id, &name, output_index);
@@ -315,15 +330,11 @@ where
     fn handle_reasoning_delta(
         &mut self,
         events: &mut Vec<NormalizedStreamEvent>,
-        delta: String,
-        item_id: Option<String>,
-        output_index: Option<usize>,
-        sub_index: Option<usize>,
-        reasoning_channel: ReasoningChannel,
+        reasoning: ReasoningFragment,
     ) -> Result<(), LLMError> {
         let delta = self
             .reconciler
-            .reasoning_delta(reasoning_identity(item_id, output_index, sub_index, reasoning_channel), &delta)
+            .reasoning_delta(reasoning.identity, &reasoning.text)
             .map_err(|message| provider_error(self.options.provider_name, message))?;
         self.emit_reasoning_delta(events, delta);
         Ok(())
@@ -332,15 +343,11 @@ where
     fn handle_reasoning_done(
         &mut self,
         events: &mut Vec<NormalizedStreamEvent>,
-        text: String,
-        item_id: Option<String>,
-        output_index: Option<usize>,
-        sub_index: Option<usize>,
-        reasoning_channel: ReasoningChannel,
+        reasoning: ReasoningFragment,
     ) -> Result<(), LLMError> {
         let delta = self
             .reconciler
-            .reasoning_done(reasoning_identity(item_id, output_index, sub_index, reasoning_channel), &text)
+            .reasoning_done(reasoning.identity, &reasoning.text)
             .map_err(|message| provider_error(self.options.provider_name, message))?;
         if let Some(delta) = delta {
             self.emit_reasoning_delta(events, delta);
