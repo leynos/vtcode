@@ -248,7 +248,7 @@ impl StreamDeadlineTracker {
     }
 }
 
-pub(super) type RetryObservationClock = dyn Fn() -> SystemTime + Send + Sync;
+pub(super) type RetryObservationClock<'clock> = dyn Fn() -> SystemTime + Send + Sync + 'clock;
 
 #[cfg(test)]
 pub(super) async fn generate_with_retry(
@@ -267,7 +267,7 @@ pub(super) async fn generate_with_retry_with_observer(
     runtime: &ProviderRequestRuntime,
     cancellation: &SessionCancellation,
     notice_target: Option<(&ZedAgent, &acp::SessionId)>,
-    retry_observed_at: &RetryObservationClock,
+    retry_observed_at: &RetryObservationClock<'_>,
 ) -> Result<LLMResponse, ProviderCallError> {
     let policy = runtime.retry_policy();
     let mut attempt_index = 0;
@@ -305,12 +305,9 @@ pub(super) async fn generate_with_retry_with_observer(
                 return Ok(response);
             }
             Err(error) => {
-                let decision = policy.decision_for_llm_error_with_backoff_at(
-                    &error,
-                    attempt_index,
-                    &mut backoff,
-                    retry_observed_at(),
-                );
+                let observed_at = retry_observed_at();
+                let decision =
+                    policy.decision_for_llm_error_with_backoff_at(&error, attempt_index, &mut backoff, observed_at);
                 telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
                 drop(permit);
                 let retry_delay = decision
@@ -318,7 +315,13 @@ pub(super) async fn generate_with_retry_with_observer(
                     .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
                 if let Some((agent, session_id)) = notice_target {
                     agent
-                        .publish_rate_limit_notice(session_id, runtime.provider_name(), &error, retry_delay)
+                        .publish_rate_limit_notice_at(
+                            session_id,
+                            runtime.provider_name(),
+                            &error,
+                            retry_delay,
+                            observed_at.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs(),
+                        )
                         .await;
                 }
                 if !decision.retryable {
