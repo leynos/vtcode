@@ -865,5 +865,8 @@ impl OpenAIProvider {
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod error_metadata_tests;
+
 mod harmony_client;
 mod provider_impl;
