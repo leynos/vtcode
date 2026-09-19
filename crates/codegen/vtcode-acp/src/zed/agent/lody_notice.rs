@@ -2,10 +2,11 @@ use crate::acp;
 use serde_json::{Map, Value};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::warn;
-use vtcode_commons::llm::RateLimitMetadata;
+use vtcode_commons::{ErrorCategory, llm::RateLimitMetadata};
 use vtcode_core::llm::provider::{LLMError, LLMErrorMetadata};
 
-use super::ZedAgent;
+use super::{ZedAgent, provider_telemetry::ProviderMetricSink};
+use crate::zed::provider_runtime::ProviderClass;
 
 impl ZedAgent {
     pub(super) async fn publish_rate_limit_notice(
@@ -15,8 +16,16 @@ impl ZedAgent {
         error: &LLMError,
         retry_delay: Option<Duration>,
     ) {
-        self.publish_rate_limit_notice_at(session_id, provider, error, retry_delay, SystemTime::now())
-            .await;
+        self.publish_rate_limit_notice_at_with_metric_sink(
+            session_id,
+            provider,
+            error,
+            retry_delay,
+            SystemTime::now(),
+            &ProviderMetricSink::production(),
+            ProviderClass::Unknown,
+        )
+        .await;
     }
 
     pub(super) async fn publish_rate_limit_notice_at(
@@ -27,6 +36,28 @@ impl ZedAgent {
         retry_delay: Option<Duration>,
         observed_at: SystemTime,
     ) {
+        self.publish_rate_limit_notice_at_with_metric_sink(
+            session_id,
+            provider,
+            error,
+            retry_delay,
+            observed_at,
+            &ProviderMetricSink::production(),
+            ProviderClass::Unknown,
+        )
+        .await;
+    }
+
+    pub(super) async fn publish_rate_limit_notice_at_with_metric_sink(
+        &self,
+        session_id: &acp::SessionId,
+        provider: &str,
+        error: &LLMError,
+        retry_delay: Option<Duration>,
+        observed_at: SystemTime,
+        metric_sink: &ProviderMetricSink,
+        provider_class: ProviderClass,
+    ) {
         let observed_epoch_seconds = observed_at.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
         if is_rate_limit(error) {
             if let Some(limits) = rate_limit_metadata(error).and_then(|metadata| metadata.rate_limit.as_ref()) {
@@ -36,8 +67,14 @@ impl ZedAgent {
         let Some(update) = rate_limit_notice_update(provider, error, retry_delay) else {
             return;
         };
-        if let Err(error) = self.send_update(session_id, update).await {
-            warn!(%error, %session_id, "Failed to publish ACP provider rate-limit notice");
+        if self.send_update(session_id, update).await.is_err() {
+            metric_sink
+                .record_rate_limit_notification_failure(provider_class, ErrorCategory::ExecutionError)
+                .await;
+            warn!(
+                error_category = ErrorCategory::ExecutionError.as_str(),
+                "Failed to publish ACP provider rate-limit notice"
+            );
         }
     }
 }

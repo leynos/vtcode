@@ -123,24 +123,28 @@ async fn handle_streaming_attempt(
         }
         StreamAttemptOutcome::Retry { delay, error, observed_at } => {
             turn.agent
-                .publish_rate_limit_notice_at(
+                .publish_rate_limit_notice_at_with_metric_sink(
                     &turn.args.session_id,
                     turn.provider_runtime.provider_name(),
                     &error,
                     Some(delay),
                     observed_at,
+                    &turn.metric_sink,
+                    turn.provider_runtime.provider_class(),
                 )
                 .await;
             retry_stream_attempt(turn, output, delay, attempt_index).await
         }
         StreamAttemptOutcome::Failed { error, observed_at } => {
             turn.agent
-                .publish_rate_limit_notice_at(
+                .publish_rate_limit_notice_at_with_metric_sink(
                     &turn.args.session_id,
                     turn.provider_runtime.provider_name(),
                     &error,
                     None,
                     observed_at,
+                    &turn.metric_sink,
+                    turn.provider_runtime.provider_class(),
                 )
                 .await;
             let response = finish_failed_output(
@@ -165,7 +169,7 @@ async fn retry_stream_attempt(
 ) -> Result<StreamingTurnOutcome, SdkError> {
     let policy = turn.provider_runtime.retry_policy();
     info!(
-        provider = turn.provider_runtime.provider_name(),
+        provider_class = turn.provider_runtime.provider_class().as_str(),
         next_attempt = attempt_index + 2,
         retry_count = attempt_index + 1,
         max_retries = policy.max_attempts.saturating_sub(1),
@@ -212,7 +216,8 @@ async fn collect_streaming_attempt(
         Err(ProviderAdmissionError::Cancelled) => return Ok(StreamAttemptOutcome::Cancelled),
         Err(error) => return Err(SdkError::internal_error().data(error.to_string())),
     };
-    let mut telemetry = GenerationTelemetry::start(provider_runtime);
+    let mut telemetry = GenerationTelemetry::start(provider_runtime, turn.metric_sink.clone(), ProviderMode::Stream);
+    telemetry.record_attempt(provider_runtime).await;
     let mut deadlines = StreamDeadlineTracker::new(deadline_policy, Instant::now());
     let started_at = Instant::now();
     let span = tracing::info_span!(
@@ -249,7 +254,8 @@ async fn collect_streaming_attempt(
                 error,
                 backoff,
                 retry_observed_at,
-            }));
+            })
+            .await);
         }
     };
 

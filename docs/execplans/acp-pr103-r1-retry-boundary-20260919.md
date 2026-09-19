@@ -179,3 +179,21 @@ would be a breaking change for downstream implementers.
 - The A2 source is frozen pending the serial runner's feature-gated core test,
   focused ACP regressions, strict Clippy, and documentation gates. No A2 gate
   result is claimed in this plan yet.
+
+## A3 finite telemetry progress
+
+- 2026-09-20: A2's module-purpose documentation follow-up passed its scoped
+  formatter, spelling, and rustdoc gates and committed as `2a530078`.
+- 2026-09-20: Root approved the next bounded implementation plateau: six
+  finite ACP provider event contracts through the existing core perf recorder,
+  a request-local awaited test sink, and closed diagnostic tags. The packet is
+  `/tmp/acp-pr103-a3-finite-telemetry-milestone-packet.md`.
+- A3 may not add a global collector, public telemetry trait, `ZedAgent` field,
+  protocol field, raw provider-name label, or a second event bus. Buffered and
+  streaming handler paths must each be exercised with a distinct awaited test
+  recorder before review.
+- Implementation now has private finite descriptors and a request-local sink,
+  `ProviderRuntimeRegistry` classification, real buffered and streaming retry
+  consumers, and bounded rate-limit notice-failure recording. The source is
+  frozen pending manifest review and exclusive serial validation; no gate
+  result is claimed here.
