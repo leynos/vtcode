@@ -75,10 +75,6 @@ pub(crate) fn retry_after_is_http_date(metadata: &LLMErrorMetadata) -> bool {
     })
 }
 
-pub(crate) fn retry_after_from_llm_metadata(metadata: &LLMErrorMetadata) -> Option<Duration> {
-    retry_after_from_llm_metadata_at(metadata, SystemTime::now())
-}
-
 pub(crate) fn retry_after_from_llm_metadata_at(metadata: &LLMErrorMetadata, now: SystemTime) -> Option<Duration> {
     let retry_after = metadata
         .retry_after

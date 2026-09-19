@@ -199,3 +199,6 @@ mod rate_limit_tests;
 #[cfg(test)]
 #[path = "rate_limit_timing_tests.rs"]
 mod rate_limit_timing_tests;
+
+#[cfg(test)]
+use prompt::run_prompt_with_retry_observer;

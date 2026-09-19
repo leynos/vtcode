@@ -1,8 +1,8 @@
 use super::ApiResponseMetadata;
 use crate::providers::common::extract_header;
 use reqwest::header::{HeaderMap, HeaderName};
-use vtcode_commons::llm::RateLimitMetadata;
-use vtcode_config::core::RateLimitHeaderConfig;
+use diapason_commons::llm::RateLimitMetadata;
+use diapason_config::core::RateLimitHeaderConfig;
 
 const MAX_RESET_AFTER_MILLIS: u64 = 86_400_000;
 
