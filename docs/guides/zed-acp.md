@@ -101,7 +101,7 @@ separate.
 
 ### MCP providers in ACP sessions
 
-ACP sessions initialise the enabled providers from the effective session MCP
+ACP sessions initialize the enabled providers from the effective session MCP
 configuration before the first prompt. This makes the providers' direct MCP
 proxy tools available in the initial model tool catalogue rather than waiting
 for a later discovery step. Configure the providers and the global MCP switch
