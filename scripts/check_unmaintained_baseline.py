@@ -317,6 +317,19 @@ def _report_removable_baseline_entries(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the baseline ratchet for an optional scanner executable.
+
+    Parameters
+    ----------
+    argv
+        Optional command-line arguments; `None` reads the process arguments.
+
+    Returns
+    -------
+    int
+        Zero for an accepted baseline, one for unexpected findings, or two for
+        invalid input or scanner failures.
+    """
     scanner = _parse_arguments(argv)
     if scanner is None:
         print("usage: check_unmaintained_baseline.py [--scanner PATH]", file=sys.stderr)
