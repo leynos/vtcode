@@ -555,7 +555,7 @@ async fn generate_with_retry_with_observer(
                             runtime.provider_name(),
                             &error,
                             retry_delay,
-                            observed_at.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs(),
+                            observed_at,
                         )
                         .await;
                 }
@@ -1177,7 +1177,7 @@ async fn run_prompt_with_retry_observer(
                             provider_runtime.provider_name(),
                             &error,
                             retry_delay,
-                            observed_at.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs(),
+                            observed_at,
                         )
                         .await;
                     if !decision.retryable {
@@ -1330,7 +1330,7 @@ async fn run_prompt_with_retry_observer(
                                 provider_runtime.provider_name(),
                                 &error,
                                 retry_delay,
-                                observed_at.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs(),
+                                observed_at,
                             )
                             .await;
                         if !decision.retryable {
