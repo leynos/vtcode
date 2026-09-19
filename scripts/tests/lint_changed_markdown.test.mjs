@@ -180,22 +180,28 @@ test("passes only non-target Markdown paths from a mixed change set", () => {
     assert.ok(lintMarkdownJob, "the Markdown workflow job must exist");
     assert.match(lintMarkdownJob, /list-files:\s*json/);
     assert.match(lintMarkdownJob, /predicate-quantifier:\s*['"]some-with-excludes['"]/);
-    assert.match(lintMarkdownJob, /- ['"]\*\*\/\*\.md['"]/);
+    assert.match(lintMarkdownJob, /- added\|modified:\s*['"]\*\*\/\*\.md['"]/);
     assert.match(lintMarkdownJob, /- ['"]!target\/\*\*['"]/);
 
     const changedFiles = [
-        ".config/nextest.toml",
-        "README.md",
-        "target/generated.md",
-        "docs/guide.md",
+        { path: ".config/nextest.toml", status: "modified" },
+        { path: "README.md", status: "added" },
+        { path: "docs/removed.md", status: "deleted" },
+        { path: "target/generated.md", status: "modified" },
+        { path: "docs/guide.md", status: "modified" },
     ];
-    const selectedMarkdownFiles = changedFiles.filter(
-        (file) => file.endsWith(".md") && !file.startsWith("target/"),
-    );
+    const selectedMarkdownFiles = changedFiles
+        .filter(
+            ({ path, status }) =>
+                (status === "added" || status === "modified") &&
+                path.endsWith(".md") &&
+                !path.startsWith("target/"),
+        )
+        .map(({ path }) => path);
     assert.deepEqual(selectedMarkdownFiles, ["README.md", "docs/guide.md"]);
 
     assertRejectedBeforeChildLaunch({
-        rawChangedFiles: JSON.stringify(changedFiles),
+        rawChangedFiles: JSON.stringify(changedFiles.map(({ path }) => path)),
         message: /safe repository-relative \.md path/,
     });
 

@@ -272,7 +272,7 @@ jobs:
           predicate-quantifier: 'some-with-excludes'
           filters: |
             markdown:
-              - '**/*.md'
+              - added|modified: '**/*.md'
               - '!.github/workflows/*.yml'
               - '!target/**'
       - name: Precheck changed Markdown paths
