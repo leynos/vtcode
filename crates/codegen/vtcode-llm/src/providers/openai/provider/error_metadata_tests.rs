@@ -1,7 +1,10 @@
+//! Verifies OpenAI error metadata for buffered, streaming, and fallback paths.
+
 use super::super::types::ResponsesApiState;
 use super::tests::{start_mock_server_or_skip, test_provider};
 use super::*;
 use crate::provider::LLMProvider;
+use rstest::rstest;
 use serde_json::Value;
 use vtcode_config::core::CustomProviderApiFormat;
 use wiremock::matchers::{method, path};
@@ -147,14 +150,14 @@ async fn assert_responses_stream_error(error_path: ResponsesStreamErrorPath) {
     assert_header_metadata_without_provider_body(&error, error_path.request_id());
 }
 
+#[rstest]
+#[case::legacy(ResponsesStreamErrorPath::Legacy)]
+#[case::normalized(ResponsesStreamErrorPath::Normalized)]
 #[tokio::test]
-async fn responses_stream_error_keeps_header_metadata_without_provider_body() {
-    assert_responses_stream_error(ResponsesStreamErrorPath::Legacy).await;
-}
-
-#[tokio::test]
-async fn responses_normalized_stream_error_keeps_header_metadata_without_provider_body() {
-    assert_responses_stream_error(ResponsesStreamErrorPath::Normalized).await;
+async fn responses_stream_errors_keep_header_metadata_without_provider_body(
+    #[case] error_path: ResponsesStreamErrorPath,
+) {
+    assert_responses_stream_error(error_path).await;
 }
 
 #[tokio::test]
