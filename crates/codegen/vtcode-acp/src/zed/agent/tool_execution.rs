@@ -16,7 +16,7 @@ use std::time::Instant as StdInstant;
 use tokio::time::Instant;
 use vtcode_commons::fs::canonicalize_with_context_async;
 use vtcode_core::config::constants::tools;
-use vtcode_core::hooks::{PermissionDecisionBehavior, PreToolHookDecision};
+use vtcode_core::hooks::{PermissionDecisionBehaviour, PreToolHookDecision};
 use vtcode_core::llm::provider::ToolCall as ProviderToolCall;
 use vtcode_core::permissions::build_permission_request;
 use vtcode_core::tools::apply_patch::{Patch, PatchOperation, decode_apply_patch_input};
@@ -231,9 +231,9 @@ impl ZedAgent {
                     "Tool execution interrupted by PermissionRequest hook",
                 ))
             } else {
-                match decision.behavior {
-                    PermissionDecisionBehavior::Allow => None,
-                    PermissionDecisionBehavior::Deny => Some(ToolExecutionReport::blocked(
+                match decision.behaviour {
+                    PermissionDecisionBehaviour::Allow => None,
+                    PermissionDecisionBehaviour::Deny => Some(ToolExecutionReport::blocked(
                         &func_ref.name,
                         "Tool execution denied by PermissionRequest hook",
                     )),

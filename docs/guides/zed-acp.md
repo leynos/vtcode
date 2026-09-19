@@ -101,14 +101,16 @@ separate.
 
 ### MCP providers in ACP sessions
 
-ACP sessions initialise the enabled providers from the effective session MCP configuration before
-the first prompt. This makes the providers' direct MCP proxy tools available in the initial model
-tool catalogue rather than waiting for a later discovery step. Configure the providers and the
-global MCP switch in the [`[mcp]` configuration](mcp-integration.md).
+ACP sessions initialise the enabled providers from the effective session MCP
+configuration before the first prompt. This makes the providers' direct MCP
+proxy tools available in the initial model tool catalogue rather than waiting
+for a later discovery step. Configure the providers and the global MCP switch
+in the [`[mcp]` configuration](mcp-integration.md).
 
-Direct MCP proxy tools remain subject to the same MCP provider allowlists and security checks as
-interactive sessions. The selected ACP primary agent's tool permissions also apply, so a provider
-or tool blocked by either policy is not exposed to, or executable by, the ACP session.
+Direct MCP proxy tools remain subject to the same MCP provider allowlists and
+security checks as interactive sessions. The selected ACP primary agent's tool
+permissions also apply, so a provider or tool blocked by either policy is not
+exposed to, or executable by, the ACP session.
 
 ### Lifecycle hooks in ACP
 
@@ -133,8 +135,9 @@ ACP protocol messages; they run only for real VT Code notification events. The
 current ACP subagent controller does not expose child lifecycle callbacks, so
 ACP does not currently emit `SubagentStart` or `SubagentStop`.
 
-MCP connections are scoped to the session that declares them. A subagent does not implicitly inherit
-its parent's MCP connections; declare the required MCP servers in the subagent's own configuration.
+MCP connections are scoped to the session that declares them. A subagent does
+not implicitly inherit its parent's MCP connections; declare the required MCP
+servers in the subagent's own configuration.
 
 ## Manual smoke test
 
@@ -548,14 +551,14 @@ and `[history]` settings do not control ACP audit output.
 
 ## Debugging and verification
 
-| Symptom                                 | Resolution                                                                                                                               |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `Only the stdio transport is supported` | Ensure `transport = "stdio"` in `vtcode.toml`.                                                                                           |
-| Empty responses in Zed                  | Confirm ACP env vars are present in the `env` map and that ACP is enabled in `vtcode.toml`.                                              |
-| `read_file` returns placeholders        | Validate the referenced URI is accessible from Zed's workspace.                                                                          |
-| Tool calls report "Unsupported tool"    | Disable the tool bridge or switch to a model that supports function calling. VT Code emits a reasoning notice when the downgrade occurs. |
+| Symptom                                 | Resolution                                                                                                                                                                                                                                                                                                                                          |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------                                                                                                                                                                                                            |
+| `Only the stdio transport is supported` | Ensure `transport = "stdio"` in `vtcode.toml`.                                                                                                                                                                                                                                                                                                      |
+| Empty responses in Zed                  | Confirm ACP env vars are present in the `env` map and that ACP is enabled in `vtcode.toml`.                                                                                                                                                                                                                                                         |
+| `read_file` returns placeholders        | Validate the referenced URI is accessible from Zed's workspace.                                                                                                                                                                                                                                                                                     |
+| Tool calls report "Unsupported tool"    | Disable the tool bridge or switch to a model that supports function calling. VT Code emits a reasoning notice when the downgrade occurs.                                                                                                                                                                                                            |
 | Missing thought traces in Zed           | Enable debug logging and inspect whether VT Code reports `Sending provider reasoning to ACP client` or `Provider response did not include exposed reasoning for ACP`. The latter means the provider response exposed no reasoning; verify that the selected provider/model and API format return reasoning. Neither message logs reasoning content. |
-| Sessions cancel unexpectedly            | Inspect VT Code logs (and Zed's ACP logs) for cancellations triggered by the client.                                                     |
+| Sessions cancel unexpectedly            | Inspect VT Code logs (and Zed's ACP logs) for cancellations triggered by the client.                                                                                                                                                                                                                                                                |
 
 ## Next steps
 

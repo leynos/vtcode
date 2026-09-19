@@ -1764,34 +1764,3 @@ Research primary prompt."#,
         assert_eq!(config_options[0].id, acp::SessionConfigId::new("primary_agent"));
     }
 }
-
-async fn canonical_session_workspace(requested_workspace: &std::path::Path) -> Result<std::path::PathBuf, acp::Error> {
-    if !requested_workspace.is_absolute() {
-        return Err(acp::Error::invalid_params().data("ACP session cwd must be an absolute directory"));
-    }
-    let workspace = canonicalize_with_context_async(requested_workspace, "ACP session cwd")
-        .await
-        .map_err(|error| {
-            acp::Error::invalid_params()
-                .data(format!("Unable to resolve ACP session cwd '{}': {error}", requested_workspace.display()))
-        })?;
-    let metadata = tokio::fs::metadata(&workspace).await.map_err(|error| {
-        acp::Error::invalid_params()
-            .data(format!("Unable to inspect ACP session cwd '{}': {error}", requested_workspace.display()))
-    })?;
-    if !metadata.is_dir() {
-        return Err(acp::Error::invalid_params()
-            .data(format!("ACP session cwd '{}' is not a directory", requested_workspace.display())));
-    }
-    Ok(workspace)
-}
-
-fn repair_archived_tool_calls(listing: &mut SessionListing) -> RecoveryReport {
-    let mut messages = messages_from_session_listing(listing);
-    let report = repair_unresolved_tool_calls(&mut messages);
-    if report.repaired_calls > 0 {
-        listing.snapshot.total_messages = messages.len();
-        listing.snapshot.messages = messages.iter().map(SessionMessage::from).collect();
-    }
-    report
-}
