@@ -182,6 +182,8 @@ test("passes only non-target Markdown paths from a mixed change set", () => {
     assert.match(lintMarkdownJob, /predicate-quantifier:\s*['"]some-with-excludes['"]/);
     assert.match(lintMarkdownJob, /- added\|modified:\s*['"]\*\*\/\*\.md['"]/);
     assert.match(lintMarkdownJob, /- ['"]!target\/\*\*['"]/);
+    assert.match(lintMarkdownJob, /run:\s*node scripts\/lint_changed_markdown\.mjs/);
+    assert.doesNotMatch(lintMarkdownJob, /markdownlint-cli2-action/);
 
     const changedFiles = [
         { path: ".config/nextest.toml", status: "modified" },

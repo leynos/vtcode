@@ -1,3 +1,5 @@
+//! Regression tests for [`ModelId`] metadata accessors.
+
 use super::ModelId;
 
 #[test]

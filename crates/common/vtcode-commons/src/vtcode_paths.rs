@@ -32,8 +32,8 @@ struct NativeRoots {
 
 fn native_roots(
     #[cfg_attr(
-        not(target_os = "macos"),
-        allow(unused_variables, reason = "home_dir is only consumed by macOS root resolution")
+        target_os = "windows",
+        expect(unused_variables, reason = "Windows root resolution does not use home_dir")
     )]
     home_dir: &Path,
 ) -> Result<NativeRoots> {
@@ -943,7 +943,7 @@ fn remove_temporary_file(path: &Path) {
 fn set_private_permissions(
     #[cfg_attr(
         not(unix),
-        allow(unused_variables, reason = "non-Unix targets have no private-permissions operation")
+        expect(unused_variables, reason = "non-Unix targets have no private-permissions operation")
     )]
     path: &Path,
 ) -> io::Result<()> {

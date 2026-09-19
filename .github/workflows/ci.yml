@@ -253,7 +253,7 @@ jobs:
       - name: Audit locked dependencies against RustSec
         run: cargo audit --file Cargo.lock
 
-  # Precheck changed Markdown paths, then lint the full Markdown corpus.
+  # Lint validated added or modified Markdown paths.
   lint-markdown:
     name: Check Markdown
     runs-on: ubuntu-latest
@@ -275,15 +275,11 @@ jobs:
               - added|modified: '**/*.md'
               - '!.github/workflows/*.yml'
               - '!target/**'
-      - name: Precheck changed Markdown paths
+      - name: Lint changed Markdown paths
         if: steps.filter.outputs.markdown == 'true'
         env:
           VTCODE_CHANGED_MARKDOWN_FILES_JSON: ${{ steps.filter.outputs.markdown_files }}
         run: node scripts/lint_changed_markdown.mjs
-      - uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24.2.0
-        if: steps.filter.outputs.markdown == 'true'
-        with:
-          globs: '**/*.md'
 
   check-cross-platform:
     name: Cross-platform check ${{ matrix.os }}

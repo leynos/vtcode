@@ -126,7 +126,7 @@ fn read_file_with_policy(
     path: &Path,
     #[cfg_attr(
         not(unix),
-        allow(
+        expect(
             unused_variables,
             reason = "non-Unix targets cannot enforce Unix private permissions"
         )

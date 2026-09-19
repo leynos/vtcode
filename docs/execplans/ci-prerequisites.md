@@ -23,7 +23,7 @@ baseline `dddd1352`. The merged baseline contains the failures described below.
 The separate PR11 checkpoint fix belongs to its existing branch and must not be
 copied into this worktree.
 
-Preserve APIs, permission behavior, release invariants and MSRV. Use existing
+Preserve APIs, permission behaviour, release invariants and MSRV. Use existing
 source generators for generated output. Do not introduce independent Cargo
 registry caches. Do not use /tmp as a build target. Other agents own other
 worktrees; never revert their edits or stop their processes. No paid probes.
@@ -326,7 +326,7 @@ shared slot after ACP RED work.
 The initial local scan used markdownlint-cli2 0.22.1. The pinned hosted
 markdownlint-cli2 action resolves CLI 0.23.2 and passes each newline-separated
 workflow glob literally; the current YAML block includes quote characters. The
-next slot must run both faithful literal-glob 0.23.2 and normalised intended
+next slot must run both faithful literal-glob 0.23.2 and normalized intended
 glob checks, treating a zero-file literal scan as false green. No workflow
 change is authorized until that evidence distinguishes a baseline issue from a
 configuration defect.
@@ -466,7 +466,7 @@ and visible; this decision changes delivery ordering only.
 
 Root approved a narrow changed-Markdown CI ratchet after the exact pinned
 0.23.2 witness showed current quote-bearing workflow arguments select zero
-files and exit successfully, while normalised globs select 353 files and fail.
+files and exit successfully, while normalized globs select 353 files and fail.
 The replacement is JSON paths-filter output consumed by a static Node helper,
 which passes verified added/modified Markdown files as literal CLI arguments.
 Full-repository debt remains issue #107; no rule suppression is allowed.
@@ -661,7 +661,7 @@ LLM and TUI regression tests with the restored nextest `ci` profile and Cargo
 `ci` build profile. They must show that no input returns the prompt diagnostic
 without OpenRouter authentication, while an inline prompt reaches the existing
 missing-provider diagnostic. This is a local, no-network contract witness. The
-full CI nextest invocation must then recognise the `ci` profile and retain its
+full CI nextest invocation must then recognize the `ci` profile and retain its
 two-retry, no-fail-fast policy.
 
 Coverage's negative control is the archived hosted failure before any test
@@ -777,6 +777,17 @@ Read-only GitHub inspection confirms draft PR #110 still points at prior head
 limited to coverage, unwrap enforcement, licence notices, Windows, and nextest;
 all are from that old source and have scoped WIP repairs. No current job is
 running. Do not use those old results as validation for the WIP.
+
+Review follow-up at published head `933372f631c1c069bd57035444022581de95fa4b`
+removes the duplicate full-repository Markdown action because the fail-closed
+helper already invokes markdownlint for its validated selected paths. It also
+uses target-scoped `expect(unused_variables)` annotations for the three actual
+platform-only parameters, adds the required model-test module documentation,
+and applies the project's configured Oxford spelling. The separate framework
+modernisation suggestion is tracked by
+[#124](https://github.com/leynos/vtcode/issues/124) rather than changing the
+established direct `unittest` CI contract inside this CI repair. Fresh
+deterministic and hosted validation remain required.
 
 ## Recovery and residual boundaries
 
