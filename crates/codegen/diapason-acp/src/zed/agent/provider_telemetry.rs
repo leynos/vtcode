@@ -1,3 +1,6 @@
+//! Projects provider failures into bounded, client-safe ACP telemetry fields
+//! without forwarding raw provider diagnostics.
+
 use diapason_commons::ErrorCategory;
 use diapason_core::llm::provider::{LLMError, LLMErrorMetadata};
 
