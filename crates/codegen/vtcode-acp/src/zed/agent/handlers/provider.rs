@@ -100,7 +100,7 @@ pub(super) async fn cancellable_backoff(
 ) -> Result<(), ProviderCallError> {
     tokio::select! {
         () = cancellation.cancelled() => Err(ProviderCallError::Cancelled),
-        () = tokio::time::sleep(delay) => Ok(()),
+        () = sleep_until_optional(Instant::now().checked_add(delay)) => Ok(()),
     }
 }
 
@@ -294,13 +294,26 @@ impl StreamDeadlineTracker {
     }
 }
 
-/// Generate a response, retrying transient failures within the policy.
+pub(super) type RetryObservationClock = dyn Fn() -> SystemTime + Send + Sync;
+
+#[cfg(test)]
 pub(super) async fn generate_with_retry(
     provider: &dyn LLMProvider,
     request: LLMRequest,
     runtime: &ProviderRequestRuntime,
     cancellation: &SessionCancellation,
     failure_sink: Option<&dyn AttemptFailureSink>,
+) -> Result<LLMResponse, ProviderCallError> {
+    generate_with_retry_with_observer(provider, request, runtime, cancellation, failure_sink, &SystemTime::now).await
+}
+
+pub(super) async fn generate_with_retry_with_observer(
+    provider: &dyn LLMProvider,
+    request: LLMRequest,
+    runtime: &ProviderRequestRuntime,
+    cancellation: &SessionCancellation,
+    failure_sink: Option<&dyn AttemptFailureSink>,
+    retry_observed_at: &RetryObservationClock,
 ) -> Result<LLMResponse, ProviderCallError> {
     let policy = runtime.retry_policy();
     let mut attempt_index = 0;
@@ -338,7 +351,12 @@ pub(super) async fn generate_with_retry(
                 return Ok(response);
             }
             Err(error) => {
-                let decision = policy.decision_for_llm_error_with_backoff(&error, attempt_index, &mut backoff);
+                let decision = policy.decision_for_llm_error_with_backoff_at(
+                    &error,
+                    attempt_index,
+                    &mut backoff,
+                    retry_observed_at(),
+                );
                 telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
                 drop(permit);
                 let retry_delay = decision
@@ -365,3 +383,4 @@ pub(super) async fn generate_with_retry(
         }
     }
 }
+// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/provider.rs' for per-hunk detail, 'weave check' to verify your resolution

@@ -27,6 +27,7 @@ struct StreamCollectionRequest<'a> {
     telemetry: &'a mut GenerationTelemetry,
     output: &'a mut ProviderOutput,
     backoff: &'a mut RetryBackoff,
+    retry_observed_at: &'a RetryObservationClock,
 }
 
 struct StreamFailureRequest<'a> {
@@ -36,6 +37,7 @@ struct StreamFailureRequest<'a> {
     attempt_index: u32,
     error: LLMError,
     backoff: &'a mut RetryBackoff,
+    retry_observed_at: &'a RetryObservationClock,
 }
 
 struct StreamDeltaRequest<'a> {
@@ -59,7 +61,10 @@ enum StreamingTurnOutcome {
 /// The attempt counter resets after a tool round because a fresh provider call
 /// follows tool output. Output is only stored back on the turn when the turn
 /// ends, so a retried attempt cannot leak a partial answer into history.
-pub(super) async fn run_streaming_provider_turn(turn: &mut PromptExecution) -> Result<ProviderTurnOutcome, SdkError> {
+pub(super) async fn run_streaming_provider_turn(
+    turn: &mut PromptExecution,
+    retry_observed_at: &RetryObservationClock,
+) -> Result<ProviderTurnOutcome, SdkError> {
     let mut output = ProviderOutput::take_from(turn);
     let mut tool_loop_count = 0usize;
     let mut attempt_index = 0u32;
@@ -71,7 +76,9 @@ pub(super) async fn run_streaming_provider_turn(turn: &mut PromptExecution) -> R
             return Ok(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled));
         }
         let request = streaming_request(turn);
-        let attempt = collect_streaming_attempt(turn, &request, &mut output, attempt_index, &mut backoff).await?;
+        let attempt =
+            collect_streaming_attempt(turn, &request, &mut output, attempt_index, &mut backoff, retry_observed_at)
+                .await?;
         match handle_streaming_attempt(turn, &mut output, attempt, attempt_index, &mut tool_loop_count).await? {
             StreamingTurnOutcome::Retry => attempt_index = attempt_index.saturating_add(1),
             StreamingTurnOutcome::ContinueAfterTools => {
@@ -195,6 +202,7 @@ async fn collect_streaming_attempt(
     output: &mut ProviderOutput,
     attempt_index: u32,
     backoff: &mut RetryBackoff,
+    retry_observed_at: &RetryObservationClock,
 ) -> Result<StreamAttemptOutcome, SdkError> {
     let provider_runtime = &turn.provider_runtime;
     let deadline_policy = provider_runtime.deadline_policy();
@@ -239,6 +247,7 @@ async fn collect_streaming_attempt(
                 attempt_index,
                 error,
                 backoff,
+                retry_observed_at,
             }));
         }
     };
@@ -254,6 +263,7 @@ async fn collect_streaming_attempt(
             telemetry: &mut telemetry,
             output,
             backoff,
+            retry_observed_at,
         },
     )
     .await;
@@ -323,3 +333,4 @@ async fn refresh_stream_tool_state(turn: &mut PromptExecution) -> Result<(), Sdk
     }
     Ok(())
 }
+// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/prompt/streaming.rs' for per-hunk detail, 'weave check' to verify your resolution
