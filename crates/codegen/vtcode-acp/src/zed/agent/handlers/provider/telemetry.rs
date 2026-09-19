@@ -6,13 +6,13 @@ use tracing::{info, warn};
 use super::{GenerationTelemetry, LLMError, LLMResponse, ProviderRequestRuntime, RetryDecision};
 
 #[derive(Debug, Default, PartialEq, Eq)]
-pub(in crate::zed::agent::handlers) struct ProviderErrorTelemetry<'a> {
-    pub(in crate::zed::agent::handlers) code: Option<&'a str>,
+pub(in crate::zed::agent::handlers) struct ProviderErrorTelemetry {
+    pub(in crate::zed::agent::handlers) category: &'static str,
     pub(in crate::zed::agent::handlers) status: Option<u16>,
     pub(in crate::zed::agent::handlers) timeout_phase: Option<&'static str>,
 }
 
-pub(in crate::zed::agent::handlers) fn provider_error_telemetry(error: &LLMError) -> ProviderErrorTelemetry<'_> {
+pub(in crate::zed::agent::handlers) fn provider_error_telemetry(error: &LLMError) -> ProviderErrorTelemetry {
     let metadata = match error {
         LLMError::Authentication { metadata, .. }
         | LLMError::RateLimit { metadata }
@@ -21,7 +21,10 @@ pub(in crate::zed::agent::handlers) fn provider_error_telemetry(error: &LLMError
         | LLMError::Provider { metadata, .. } => metadata.as_deref(),
     };
     let Some(metadata) = metadata else {
-        return ProviderErrorTelemetry::default();
+        return ProviderErrorTelemetry {
+            category: super::SafeProviderProjection::from_llm_error(error).category(),
+            ..Default::default()
+        };
     };
     let code = metadata.code.as_deref();
     let timeout_phase = match code {
@@ -31,7 +34,7 @@ pub(in crate::zed::agent::handlers) fn provider_error_telemetry(error: &LLMError
         _ => None,
     };
     ProviderErrorTelemetry {
-        code: if timeout_phase.is_some() { None } else { code },
+        category: super::SafeProviderProjection::from_llm_error(error).category(),
         status: metadata.status,
         timeout_phase,
     }
@@ -145,8 +148,8 @@ impl GenerationTelemetry {
             active_acp_requests = snapshot.active_acp_requests,
             configured_provider_limit = ?snapshot.configured_provider_limit,
             circuit_breaker_state = snapshot.circuit_breaker_state,
-            provider_error_code = ?error_telemetry.code,
-            provider_error_status = ?error_telemetry.status,
+            error_category = error_telemetry.category,
+            error_status = ?error_telemetry.status,
             provider_timeout_phase = error_telemetry.timeout_phase,
             "ACP provider generation attempt failed"
         );
