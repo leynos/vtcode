@@ -289,7 +289,7 @@ async fn blocked_stop_draft_is_not_visible_until_hook_allows_it() {
     assert_eq!(history[1].content.as_text(), "retry the draft");
 }
 
-fn assert_first_stop_hook_block(outcome: &vtcode_core::hooks::StopHookOutcome, project_dir: &std::path::Path) {
+fn assert_first_stop_hook_block(outcome: &diapason_core::hooks::StopHookOutcome, project_dir: &std::path::Path) {
     let messages = outcome
         .messages
         .iter()
