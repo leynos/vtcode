@@ -91,12 +91,24 @@ impl LLMProvider for PartialThenFailProvider {
     }
 
     /// Emit one token and then a terminal network failure.
+    ///
+    /// The failure carries marker text in every diagnostic field so a
+    /// transport test can prove the ACP projection exposes only the category
+    /// and HTTP status.
     async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
         Ok(Box::pin(futures::stream::iter(vec![
             Ok(LLMStreamEvent::Token { delta: "partial answer".to_string() }),
             Err(LLMError::Network {
-                message: "fixture stream disconnected".to_string(),
-                metadata: None,
+                message: "provider-marker-body".to_string(),
+                metadata: Some(LLMErrorMetadata::new(
+                    "provider-marker-body",
+                    Some(503),
+                    Some("provider-marker-body".to_string()),
+                    Some("provider-marker-body".to_string()),
+                    Some("provider-marker-body".to_string()),
+                    None,
+                    Some("provider-marker-body".to_string()),
+                )),
             }),
         ])))
     }

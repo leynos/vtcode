@@ -161,7 +161,7 @@ fn failed_turn_releases_session_and_preserves_gathered_context() {
         let failed_turn = IncompleteProviderTurn::from_failure(
             "context gathered from a file read",
             "partial reasoning",
-            "\u{1b}[31m502 Bad Gateway\u{1b}[0m",
+            SafeProviderProjection::execution_error(),
         );
         assert_eq!(failed_turn.response.stop_reason, acp::StopReason::EndTurn);
         assert!(failed_turn.visible_update.starts_with("\n\n"));
@@ -177,7 +177,7 @@ fn failed_turn_releases_session_and_preserves_gathered_context() {
     assert_eq!(messages[1].reasoning.as_deref(), Some("partial reasoning"));
     let metadata = messages[1].metadata.as_ref().expect("incomplete response metadata");
     assert!(metadata.is_incomplete());
-    assert_eq!(metadata.incomplete_reason(), Some("502 Bad Gateway"));
+    assert_eq!(metadata.incomplete_reason(), Some("Provider failure category: Execution failed."));
     let next_turn = thread.begin_turn().expect("failed turn must release the in-flight marker");
     drop(next_turn);
     thread.finish_turn();
@@ -266,6 +266,19 @@ async fn blocked_stop_draft_is_not_visible_until_hook_allows_it() {
 
     assert!(engine.has_stop_hooks());
     let first = engine.run_stop("blocked draft", false).await.expect("first stop hook");
+    assert_eq!(
+        first.block_reason.as_deref(),
+        Some("retry the draft"),
+        "first stop hook outcome before projection: messages={:?}, stop-count={:?}",
+        first
+            .messages
+            .iter()
+            .map(|message| { format!("{:?}: {}", message.level, message.text.chars().take(256).collect::<String>()) })
+            .collect::<Vec<_>>(),
+        std::fs::read_to_string(workspace.path().join("stop-count"))
+            .ok()
+            .map(|count| count.trim().chars().take(32).collect::<String>())
+    );
     let second = engine.run_stop("allowed draft", true).await.expect("second stop hook");
 
     let mut visible = Vec::new();

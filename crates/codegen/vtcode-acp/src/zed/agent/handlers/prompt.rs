@@ -56,7 +56,7 @@ pub(super) async fn persist_session_checkpoint(agent: &ZedAgent, session: &Sessi
 /// Emit the partial answer and return an incomplete-turn response.
 pub(super) async fn finish_failed_provider_turn(
     turn: &PromptExecution,
-    error: &str,
+    error: SafeProviderProjection,
 ) -> Result<PromptResponse, SdkError> {
     let IncompleteProviderTurn { message, visible_update, response } =
         IncompleteProviderTurn::from_failure(&turn.assistant_message, &turn.assistant_reasoning, error);
@@ -68,6 +68,8 @@ pub(super) async fn finish_failed_provider_turn(
     push_session_message(&turn.agent, &turn.session, &turn.args.session_id, message)?;
     persist_session_checkpoint(&turn.agent, &turn.session, "incomplete_provider_turn").await;
     warn!(
+        error_category = error.category(),
+        error_status = ?error.status(),
         partial_text_bytes = turn.assistant_message.len(),
         partial_reasoning_bytes = turn.assistant_reasoning.len(),
         "ACP provider failed to complete the turn"
@@ -79,7 +81,7 @@ pub(super) async fn finish_failed_provider_turn(
 pub(super) async fn finish_failed_output(
     turn: &mut PromptExecution,
     output: ProviderOutput,
-    error: &str,
+    error: SafeProviderProjection,
 ) -> Result<ProviderTurnOutcome, SdkError> {
     output.store_in(turn);
     finish_failed_provider_turn(turn, error)
