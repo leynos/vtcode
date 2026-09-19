@@ -66,7 +66,7 @@ an archive with ambiguous terminal results is rejected before continuation.
   from `aa434f916`.
 - [x] (2026-09-08) Vetted review IDs `3791762676`, `3791762677`,
   `3944816962`, `3944816966`, and `3944816968` against the exact source.
-- [x] (2026-09-08) Stopped an unauthorised artisan focused-test command before
+- [x] (2026-09-08) Stopped an unauthorized artisan focused-test command before
   it executed tests; retained its partial compilation log as non-evidence.
 - [x] (2026-09-08) Added source-only red candidates for four review findings;
   no test result is recorded because the shared scrutineer is the sole runner.
@@ -76,7 +76,7 @@ an archive with ambiguous terminal results is rejected before continuation.
   coverage, plus the fail-closed checkpoint helper and delayed registration.
   Static diff inspection is clean; no test result is recorded.
 - [x] (2026-09-08) Added atomic session-lock mutation with explicit
-  synchronisation coverage, and conservative duplicate/non-contiguous recovery
+  synchronization coverage, and conservative duplicate/non-contiguous recovery
   coverage. Unique late results are relocated intact; duplicate evidence is
   retained. Static diff inspection is clean; no test result is recorded.
 - [x] (2026-09-08) Traced recovered ACP history into `LLMRequest` and provider
@@ -178,7 +178,7 @@ an archive with ambiguous terminal results is rejected before continuation.
   formatter wrapping; it does not authorize feature growth or scope expansion.
 - The approved bounded artisan and scribe assignments could not be dispatched:
   both attempts returned `agent thread limit reached`. No active agent was
-  interrupted. Root authorised direct journeyman implementation of the frozen
+  interrupted. Root authorized direct journeyman implementation of the frozen
   six-file packet, while preserving the independent shared-scrutineer review
   and gate requirement.
 
@@ -197,7 +197,7 @@ an archive with ambiguous terminal results is rejected before continuation.
   Date/Author: 2026-09-08 / ACP stack convergence journeyman.
 - Decision: treat all artisan test execution as out of bounds, including a Red
   test. Red/Green commands are exclusively scheduled through the shared
-  scrutineer unless a separate alchemist experiment is explicitly authorised.
+  scrutineer unless a separate alchemist experiment is explicitly authorized.
   Rationale: shared Cargo state and the project gate policy require one
   serial verifier; a source-only artisan cannot create validation evidence.
   Date/Author: 2026-09-08 / ACP stack convergence journeyman, directed by root.
@@ -208,7 +208,7 @@ an archive with ambiguous terminal results is rejected before continuation.
   Rationale: it retains the single state owner and existing API compatibility,
   prevents lost updates, and crosses the crate boundary without a second lock.
   Date/Author: 2026-09-08 / root-approved ACP stack convergence decision.
-- Decision: canonicalise a uniquely attributable late Tool result by moving it
+- Decision: canonicalize a uniquely attributable late Tool result by moving it
   beside its assistant call while preserving exact terminal payload and the
   relative order of unrelated messages. Do not replay, discard, or replace a
   known terminal effect. Treat duplicate, ambiguous, or conflicting identities
@@ -261,7 +261,7 @@ an archive with ambiguous terminal results is rejected before continuation.
   packets, complete the mechanical six-file change directly as journeyman;
   retain independent verification through the root-designated scrutineer.
   Rationale: no agent was available without disrupting concurrent ACP work.
-  Date/Author: 2026-09-08 / root authorised.
+  Date/Author: 2026-09-08 / root authorized.
 
 ## Outcomes & retrospective
 
@@ -322,7 +322,7 @@ all loads.
 
 `INV-HISTORY-ATOMIC`: one thread-history mutation observes and writes under one
 lock, so an append cannot be discarded between a snapshot and replacement. Use
-the approved `mutate_messages<T>` primitive and explicit synchronisation to
+the approved `mutate_messages<T>` primitive and explicit synchronization to
 hold the mutation while an append attempts to enter. The test must prove the
 append is retained after release; it must use no timing or sleep criterion.
 
@@ -367,7 +367,7 @@ and reads their crate-local instructions. Stage B adds the four failing tests
 without production changes and records the intended red result. Stage C adds a
 fallible required-checkpoint path at the tool admission boundary, defers
 session-map insertion until repair persistence succeeds, introduces the minimal
-atomic thread-history mutation operation, and normalises archive recovery.
+atomic thread-history mutation operation, and normalizes archive recovery.
 Stage D runs focused tests, formatter and the root-scheduled gate packet. The
 journeyman then prepares a semantic diff, commit proposal, and exact reply text
 for each review thread; root coordinates publication and review requests.
@@ -442,10 +442,10 @@ external dependency, wire interface, or archive-format interface is added.
 
 2026-09-08: created from the exact PR #13 review inventory and root-approved
 bounded repair packet. It deliberately excludes restacking, publication and all
-other ACP layers. Revised after an artisan started an unauthorised focused test:
+other ACP layers. Revised after an artisan started an unauthorized focused test:
 the plan now makes the shared scrutineer the sole executor of Red/Green commands
 as well as repository gates. Revised again to record the public-interface and
-archive-canonicalisation escalations, then root's approved narrow atomic
+archive-canonicalization escalations, then root's approved narrow atomic
 mutation and evidence-preserving relocation decisions. The final approved
 tolerance is 600 net non-plan lines in the existing four owned files,
 including the ambiguity guard and its load/continuation controls.
@@ -458,7 +458,7 @@ tests, Clippy and documentation checks before commit and review convergence.
 
 2026-09-08: added the root-approved six-path documentation and observability
 follow-up. Agent capacity prevented the planned bounded artisan/scribe split,
-so root authorised direct journeyman implementation without interrupting other
+so root authorized direct journeyman implementation without interrupting other
 ACP work. The independent shared scrutineer remains the only validation
 authority. Published review dispositions remain deferred until a verified,
-rebased SHA exists and use the `pandalump` token process when authorised.
+rebased SHA exists and use the `pandalump` token process when authorized.
