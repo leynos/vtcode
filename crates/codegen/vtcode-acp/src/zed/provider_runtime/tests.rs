@@ -4,6 +4,7 @@ use super::*;
 fn runtime(limit: usize, queue_timeout: Duration) -> ProviderRequestRuntime {
     ProviderRequestRuntime {
         provider_name: Arc::from("test"),
+        provider_class: ProviderClass::Unknown,
         limit: Some(limit),
         semaphore: Some(Arc::new(Semaphore::new(limit))),
         queue_timeout,
@@ -105,4 +106,25 @@ fn registry_maps_custom_retry_policy_to_provider() {
     assert_eq!(runtime.deadline_policy.first_token, Some(Duration::from_secs(180)));
     assert_eq!(runtime.deadline_policy.stream_idle, Some(Duration::from_secs(120)));
     assert_eq!(runtime.deadline_policy.total_generation, Some(Duration::from_secs(600)));
+}
+
+#[test]
+fn provider_runtime_classifies_custom_and_fallback_metrics_without_names() {
+    let provider_name = "custom-provider-marker";
+    let provider = CustomProviderConfig {
+        name: provider_name.to_string(),
+        ..CustomProviderConfig::default()
+    };
+    let registry =
+        ProviderRuntimeRegistry::new(&[provider], &TimeoutsConfig::default(), Arc::new(MetricsCollector::new()));
+    let custom = registry.for_provider(provider_name);
+    let fallback = registry.for_provider("default");
+
+    assert_eq!(custom.provider_class(), ProviderClass::Custom);
+    assert_eq!(custom.provider_class().as_str(), "custom");
+    assert_eq!(fallback.provider_class(), ProviderClass::Unknown);
+    assert_eq!(fallback.provider_class().as_str(), "unknown");
+    assert_eq!(ProviderClass::Builtin.as_str(), "builtin");
+    assert!(!custom.provider_class().as_str().contains(provider_name));
+    assert!(!fallback.provider_class().as_str().contains("default"));
 }

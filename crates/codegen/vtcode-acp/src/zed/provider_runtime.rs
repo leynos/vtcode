@@ -18,9 +18,27 @@ use vtcode_core::retry::RetryPolicy;
 
 use super::types::SessionCancellation;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ProviderClass {
+    Builtin,
+    Custom,
+    Unknown,
+}
+
+impl ProviderClass {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Builtin => "builtin",
+            Self::Custom => "custom",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct ProviderRequestRuntime {
     provider_name: Arc<str>,
+    provider_class: ProviderClass,
     limit: Option<usize>,
     semaphore: Option<Arc<Semaphore>>,
     queue_timeout: Duration,
@@ -79,6 +97,7 @@ fn optional_seconds(seconds: u64) -> Option<Duration> {
 impl ProviderRequestRuntime {
     fn new(
         provider_name: impl Into<Arc<str>>,
+        provider_class: ProviderClass,
         config: &CustomProviderRequestPolicyConfig,
         deadline_policy: ProviderDeadlinePolicy,
         metrics: Arc<MetricsCollector>,
@@ -101,6 +120,7 @@ impl ProviderRequestRuntime {
 
         Self {
             provider_name,
+            provider_class,
             limit: config.max_in_flight_requests,
             semaphore,
             queue_timeout: Duration::from_secs(config.queue_timeout_seconds),
@@ -117,6 +137,10 @@ impl ProviderRequestRuntime {
 
     pub(crate) fn provider_name(&self) -> &str {
         &self.provider_name
+    }
+
+    pub(crate) fn provider_class(&self) -> ProviderClass {
+        self.provider_class
     }
 
     pub(crate) fn deadline_policy(&self) -> ProviderDeadlinePolicy {
@@ -313,6 +337,7 @@ impl ProviderRuntimeRegistry {
                     provider.name.to_ascii_lowercase(),
                     ProviderRequestRuntime::new(
                         provider.name.clone(),
+                        ProviderClass::Custom,
                         &provider.request_policy,
                         ProviderDeadlinePolicy::from_config(&provider.request_policy),
                         Arc::clone(&metrics),
@@ -324,6 +349,7 @@ impl ProviderRuntimeRegistry {
         Self {
             default_runtime: ProviderRequestRuntime::new(
                 "default",
+                ProviderClass::Unknown,
                 &default_config,
                 ProviderDeadlinePolicy::from_timeouts(timeouts),
                 metrics,

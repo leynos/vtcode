@@ -32,7 +32,7 @@ use super::super::helpers::text_chunk;
 use super::super::types::{SessionHandle, ToolRuntime};
 use super::ZedAgent;
 use super::compaction::CompactionRequest;
-use super::provider_telemetry::SafeProviderProjection;
+use super::provider_telemetry::{ProviderMetricSink, ProviderMode, RetryDisposition, SafeProviderProjection};
 use crate::acp;
 use crate::acp::Error as SdkError;
 use crate::tooling::SupportedTool;
@@ -209,3 +209,6 @@ mod rate_limit_physics_tests;
 #[cfg(test)]
 #[path = "rate_limit_test_support.rs"]
 mod rate_limit_test_support;
+
+#[cfg(test)]
+use prompt::run_prompt_with_metric_sink;

@@ -198,6 +198,8 @@ pub(super) struct StreamDeadlineTracker {
 }
 
 pub(super) struct GenerationTelemetry {
+    metric_sink: ProviderMetricSink,
+    mode: ProviderMode,
     // Starts before calling the provider router, so first-token and total
     // latency include any wait at the router's shared admission gate.
     started_at: Instant,
@@ -259,13 +261,35 @@ pub(super) async fn generate_with_retry_with_observer(
     notice_target: Option<(&ZedAgent, &acp::SessionId)>,
     retry_observed_at: &RetryObservationClock<'_>,
 ) -> Result<LLMResponse, ProviderCallError> {
+    generate_with_retry_with_observer_and_metric_sink(
+        provider,
+        request,
+        runtime,
+        cancellation,
+        notice_target,
+        retry_observed_at,
+        &ProviderMetricSink::production(),
+    )
+    .await
+}
+
+pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
+    provider: &dyn LLMProvider,
+    request: LLMRequest,
+    runtime: &ProviderRequestRuntime,
+    cancellation: &SessionCancellation,
+    notice_target: Option<(&ZedAgent, &acp::SessionId)>,
+    retry_observed_at: &RetryObservationClock<'_>,
+    metric_sink: &ProviderMetricSink,
+) -> Result<LLMResponse, ProviderCallError> {
     let policy = runtime.retry_policy();
     let mut attempt_index = 0;
     let mut backoff = RetryBackoff::new();
 
     loop {
         let permit = runtime.acquire(cancellation).await?;
-        let mut telemetry = GenerationTelemetry::start(runtime);
+        let mut telemetry = GenerationTelemetry::start(runtime, metric_sink.clone(), ProviderMode::Buffered);
+        telemetry.record_attempt(runtime).await;
         let deadline_policy = runtime.deadline_policy();
         let total_deadline = deadline_after(deadline_policy.total_generation);
         let result = tokio::select! {
@@ -290,7 +314,7 @@ pub(super) async fn generate_with_retry_with_observer(
                 if let Some(reasoning) = response.reasoning.as_deref() {
                     telemetry.observe_output(runtime, reasoning, attempt_index);
                 }
-                telemetry.complete(runtime, &response, attempt_index, true);
+                telemetry.complete(runtime, &response, attempt_index, true).await;
                 drop(permit);
                 return Ok(response);
             }
@@ -298,19 +322,23 @@ pub(super) async fn generate_with_retry_with_observer(
                 let observed_at = retry_observed_at();
                 let decision =
                     policy.decision_for_llm_error_with_backoff_at(&error, attempt_index, &mut backoff, observed_at);
-                telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
-                drop(permit);
                 let retry_delay = decision
                     .retryable
                     .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
+                telemetry
+                    .failed(runtime, attempt_index, retry_disposition(&decision), retry_delay, &error)
+                    .await;
+                drop(permit);
                 if let Some((agent, session_id)) = notice_target {
                     agent
-                        .publish_rate_limit_notice_at(
+                        .publish_rate_limit_notice_at_with_metric_sink(
                             session_id,
                             runtime.provider_name(),
                             &error,
                             retry_delay,
                             observed_at,
+                            metric_sink,
+                            runtime.provider_class(),
                         )
                         .await;
                 }
@@ -319,7 +347,7 @@ pub(super) async fn generate_with_retry_with_observer(
                 }
                 let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                 info!(
-                    provider = runtime.provider_name(),
+                    provider_class = runtime.provider_class().as_str(),
                     next_attempt = attempt_index + 2,
                     retry_count = attempt_index + 1,
                     max_retries = policy.max_attempts.saturating_sub(1),

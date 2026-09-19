@@ -315,3 +315,162 @@ fn provider_error_telemetry_exposes_rate_limit_diagnostics() {
         }
     );
 }
+
+use agent_client_protocol::schema::v1::NewSessionRequest;
+use vtcode_core::telemetry::perf::TestPerfRecorder;
+
+struct RetryingStreamProvider {
+    calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl LLMProvider for RetryingStreamProvider {
+    fn name(&self) -> &str {
+        "wire-test"
+    }
+
+    fn supported_models(&self) -> Vec<String> {
+        vec!["wire-model".to_string()]
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+
+    fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+        Ok(())
+    }
+
+    async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Err(LLMError::RateLimit {
+                metadata: Some(LLMErrorMetadata::new(
+                    "provider-marker://model/request/session/error-code/body",
+                    Some(429),
+                    Some("provider-marker-code".to_string()),
+                    None,
+                    None,
+                    Some("0".to_string()),
+                    Some("provider-marker-body".to_string()),
+                )),
+            });
+        }
+
+        let response = LLMResponse::new("wire-model", "recovered stream");
+        Ok(Box::pin(futures::stream::iter([
+            Ok(LLMStreamEvent::Token { delta: "recovered stream".to_string() }),
+            Ok(LLMStreamEvent::Completed { response: Box::new(response) }),
+        ])))
+    }
+
+    async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+        panic!("retrying stream fixture must use streaming")
+    }
+}
+
+#[tokio::test]
+async fn buffered_retry_records_bounded_perf_metrics() {
+    let provider = FlakyProvider {
+        attempts: AtomicUsize::new(0),
+        network_failures: 1,
+        invalid_request: false,
+    };
+    let recorder = Arc::new(TestPerfRecorder::new());
+    let metric_sink = ProviderMetricSink::test(Arc::clone(&recorder));
+
+    let response = generate_with_retry_with_observer_and_metric_sink(
+        &provider,
+        LLMRequest::default(),
+        &retry_runtime(),
+        &SessionCancellation::default(),
+        None,
+        &SystemTime::now,
+        &metric_sink,
+    )
+    .await
+    .expect("transient request should recover");
+
+    assert_eq!(response.content.as_deref(), Some("recovered"));
+    let events = recorder.drain().await;
+    let names = events.iter().map(|event| event.name.as_str()).collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        vec![
+            "vtcode.acp.provider_attempt_total",
+            "vtcode.acp.provider_retry_total",
+            "vtcode.acp.provider_retry_delay_ms",
+            "vtcode.acp.provider_attempt_total",
+            "vtcode.acp.provider_generation_ms",
+        ]
+    );
+    assert!(
+        events
+            .iter()
+            .all(|event| event.tags.values().all(|value| value != "retry-test"))
+    );
+    assert_eq!(events[0].tags.get("mode").map(String::as_str), Some("buffered"));
+    assert_eq!(events[0].tags.get("provider_class").map(String::as_str), Some("custom"));
+    assert_eq!(events[1].tags.get("error_category").map(String::as_str), Some("Network error"));
+    assert_eq!(events[1].tags.get("retry_disposition").map(String::as_str), Some("retry_scheduled"));
+    assert!(recorder.drain().await.is_empty());
+}
+
+#[tokio::test]
+async fn streaming_retry_records_bounded_perf_metrics() {
+    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let provider_calls = Arc::clone(&calls);
+    let _factory_guard = PromptProviderFactoryGuard::install(
+        "wire-test",
+        Arc::new(move || Box::new(RetryingStreamProvider { calls: Arc::clone(&provider_calls) })),
+    );
+    let workspace = TempDir::new().expect("wire test workspace");
+    let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+    let session = agent
+        .new_session(NewSessionRequest::new(workspace.path()))
+        .await
+        .expect("create wire test session");
+    let recorder = Arc::new(TestPerfRecorder::new());
+
+    let response = run_prompt_with_metric_sink(
+        Arc::clone(&agent),
+        PromptRequest::new(
+            session.session_id,
+            vec![acp::ContentBlock::Text(acp::TextContent::new(
+                "exercise streaming retry metrics",
+            ))],
+        ),
+        ProviderMetricSink::test(Arc::clone(&recorder)),
+    )
+    .await
+    .expect("stream retry should recover");
+
+    assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    let events = recorder.drain().await;
+    let names = events.iter().map(|event| event.name.as_str()).collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        vec![
+            "vtcode.acp.provider_attempt_total",
+            "vtcode.acp.provider_rate_limited_total",
+            "vtcode.acp.provider_retry_total",
+            "vtcode.acp.provider_retry_delay_ms",
+            "vtcode.acp.rate_limit_notification_failure_total",
+            "vtcode.acp.provider_attempt_total",
+            "vtcode.acp.provider_generation_ms",
+        ]
+    );
+    let marker = "provider-marker";
+    assert!(events.iter().all(|event| {
+        event
+            .tags
+            .iter()
+            .all(|(key, value)| !key.contains(marker) && !value.contains(marker))
+    }));
+    assert_eq!(events[0].tags.get("mode").map(String::as_str), Some("stream"));
+    assert_eq!(events[0].tags.get("provider_class").map(String::as_str), Some("unknown"));
+    assert_eq!(events[1].tags.get("error_category").map(String::as_str), Some("Rate limit exceeded"));
+    assert_eq!(events[1].tags.get("retry_disposition").map(String::as_str), Some("retry_scheduled"));
+    assert!(recorder.drain().await.is_empty());
+}

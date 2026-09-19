@@ -181,6 +181,7 @@ pub(super) enum ProviderTurnOutcome {
 }
 
 pub(super) struct PromptExecution {
+    metric_sink: ProviderMetricSink,
     agent: Arc<ZedAgent>,
     args: PromptRequest,
     session: SessionHandle,
@@ -266,6 +267,7 @@ async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecuti
     let PromptInput { agent, args, session, _turn_guard, user_message: _ } = input;
 
     Ok(PromptExecution {
+        metric_sink: ProviderMetricSink::production(),
         agent,
         args,
         session,
@@ -302,6 +304,25 @@ pub(super) async fn run_prompt_with_retry_observer(
     args: PromptRequest,
     retry_observed_at: impl Fn() -> SystemTime + Send + Sync,
 ) -> Result<PromptResponse, SdkError> {
+    run_prompt_with_retry_observer_and_metric_sink(agent, args, retry_observed_at, ProviderMetricSink::production())
+        .await
+}
+
+#[cfg(test)]
+pub(super) async fn run_prompt_with_metric_sink(
+    agent: Arc<ZedAgent>,
+    args: PromptRequest,
+    metric_sink: ProviderMetricSink,
+) -> Result<PromptResponse, SdkError> {
+    run_prompt_with_retry_observer_and_metric_sink(agent, args, SystemTime::now, metric_sink).await
+}
+
+pub(super) async fn run_prompt_with_retry_observer_and_metric_sink(
+    agent: Arc<ZedAgent>,
+    args: PromptRequest,
+    retry_observed_at: impl Fn() -> SystemTime + Send + Sync,
+    metric_sink: ProviderMetricSink,
+) -> Result<PromptResponse, SdkError> {
     let input = match input::prepare_prompt_input(agent, args).await? {
         PromptInputOutcome::Response(response) => return Ok(response),
         PromptInputOutcome::Ready(input) => input,
@@ -309,7 +330,9 @@ pub(super) async fn run_prompt_with_retry_observer(
     if !input::accept_user_prompt(&input).await? {
         return Ok(PromptResponse::new(acp::StopReason::Refusal));
     }
-    initialize_prompt_execution(input).await?.run(&retry_observed_at).await
+    let mut execution = initialize_prompt_execution(input).await?;
+    execution.metric_sink = metric_sink;
+    execution.run(&retry_observed_at).await
 }
 
 impl PromptExecution {
