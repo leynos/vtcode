@@ -382,6 +382,19 @@ mod tests {
         ResponsesItemIdentity::new(Some(format!("item_{index}")), Some(format!("call_{index}")), Some(index))
     }
 
+    fn assert_reasoning_channel_reconciles(
+        reconciler: &mut ResponsesStreamReconciler,
+        identity: &ResponsesItemIdentity,
+        channel: ReasoningChannel,
+        delta: &str,
+        snapshot: &str,
+        expected_suffix: &str,
+    ) {
+        let identity = identity.clone().with_reasoning_channel(channel);
+        assert_eq!(reconciler.reasoning_delta(identity.clone(), delta), Ok(delta.to_string()));
+        assert_eq!(reconciler.reasoning_done(identity, snapshot), Ok(Some(expected_suffix.to_string())));
+    }
+
     #[test]
     fn repeated_reasoning_deltas_are_preserved_but_done_snapshot_is_not_replayed() {
         let mut reconciler = ResponsesStreamReconciler::default();
@@ -460,13 +473,16 @@ mod tests {
     fn reasoning_channels_reconcile_independently_with_shared_indexes() {
         let mut reconciler = ResponsesStreamReconciler::default();
         let identity = item(0).with_sub_index(Some(0));
-        let raw = identity.clone().with_reasoning_channel(ReasoningChannel::Raw);
-        let summary = identity.with_reasoning_channel(ReasoningChannel::Summary);
 
-        assert_eq!(reconciler.reasoning_delta(raw.clone(), "raw"), Ok("raw".to_string()));
-        assert_eq!(reconciler.reasoning_delta(summary.clone(), "summary"), Ok("summary".to_string()));
-        assert_eq!(reconciler.reasoning_done(raw, "raw+"), Ok(Some("+".to_string())));
-        assert_eq!(reconciler.reasoning_done(summary, "summary+"), Ok(Some("+".to_string())));
+        assert_reasoning_channel_reconciles(&mut reconciler, &identity, ReasoningChannel::Raw, "raw", "raw+", "+");
+        assert_reasoning_channel_reconciles(
+            &mut reconciler,
+            &identity,
+            ReasoningChannel::Summary,
+            "summary",
+            "summary+",
+            "+",
+        );
     }
 
     #[test]

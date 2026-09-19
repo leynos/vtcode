@@ -457,11 +457,7 @@ pub(crate) fn create_responses_stream(
                                         StreamAssemblyError::MissingField("delta")
                                             .into_llm_error("OpenAI")
                                     })?;
-                                let reasoning_channel = if event_type == "response.reasoning_summary_text.delta" {
-                                    ReasoningChannel::Summary
-                                } else {
-                                    ReasoningChannel::Raw
-                                };
+                                let reasoning_channel = reasoning_channel_for_event(event_type);
                                 let delta = reconciler
                                     .reasoning_delta(responses_item_identity(&payload, Some(reasoning_channel)), delta)
                                     .map_err(|message| provider_error("OpenAI", message))?;
@@ -495,11 +491,7 @@ pub(crate) fn create_responses_stream(
                                 let text = optional_string_field(&payload, "text")?;
                                 let delta = optional_string_field(&payload, "delta")?;
                                 if let Some(text) = text.or(delta) {
-                                    let reasoning_channel = if event_type == "response.reasoning_summary_text.done" {
-                                        ReasoningChannel::Summary
-                                    } else {
-                                        ReasoningChannel::Raw
-                                    };
+                                    let reasoning_channel = reasoning_channel_for_event(event_type);
                                     let delta = reconciler
                                         .reasoning_done(
                                             responses_item_identity(&payload, Some(reasoning_channel)),
@@ -680,6 +672,13 @@ pub(crate) fn create_responses_stream(
     };
 
     Box::pin(stream)
+}
+
+fn reasoning_channel_for_event(event_type: &str) -> ReasoningChannel {
+    match event_type {
+        "response.reasoning_summary_text.delta" | "response.reasoning_summary_text.done" => ReasoningChannel::Summary,
+        _ => ReasoningChannel::Raw,
+    }
 }
 
 fn responses_item_identity(payload: &Value, reasoning_channel: Option<ReasoningChannel>) -> ResponsesItemIdentity {
