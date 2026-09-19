@@ -69,11 +69,15 @@ contract, and `ThreadEvent` is untouched.
    CodeScene, then CodeRabbit CLI. Commit only on green. Hosted/PR review and
    publication stay with the stack lead.
 5. **Isolate OpenAI metadata contracts.** Move only this milestone's OpenAI
-   header-metadata fixtures into a sibling test module. Parameterise the
+   header-metadata fixtures into a sibling test module. Parameterize the
    legacy and normalized Responses stream forms through an explicit test-only
    mode while retaining both public entrypoints and their request assertions.
    Keep the five production error-helper inputs explicit: they describe the
    provider error boundary and must not be wrapped solely for a metric.
+6. **Keep custom-provider tests navigable.** Split the extracted test suite
+   into authentication, error-metadata, sampling, and streaming modules. The
+   repository warns at 500 Rust lines; it does not impose a 400-line rule.
+   Parameterized transport cases retain both buffered and streaming calls.
 
 ## Verification plan
 
@@ -120,10 +124,11 @@ and OpenRouter selectors; `cargo clippy --locked -p vtcode-llm --all-targets --
   drives both legacy and normalized stream entrypoints. No validation has run
   for this follow-up; the serial gate runner remains the exclusive verifier.
 
-- 2026-09-19: C1 extracted the complete custom-provider test module to
-  `providers/custom_provider/tests.rs`; split OpenAI Chat 429 coverage into
-  independent buffered and streaming transport cases with one shared fixture.
-  No validation was run; the frozen P1 files remain untouched.
+- 2026-09-19: C1 partitioned the extracted custom-provider suite into focused
+  authentication, error-metadata, sampling, and streaming modules. Named
+  `rstest` cases preserve both OpenAI Chat buffered and streaming 429 calls;
+  the analogous OpenAI Responses paths use named legacy and normalized cases.
+  No validation was run; the serial gate runner remains the exclusive verifier.
 
 ## Decisions and risks
 
@@ -135,6 +140,9 @@ and OpenRouter selectors; `cargo clippy --locked -p vtcode-llm --all-targets --
   an unrelated provider path, stop and obtain a new scope decision.
 - Do not hand-wave Anthropic execution coverage. Inspect a real native path; if
   absent, report the exact missing owner before changing additional files.
+- The custom-provider suite follows the repository's 500-line Rust warning
+  threshold. The four domain modules are smaller through cohesive ownership,
+  not an invented 400-line rule.
 
 ## Outcomes and retrospective
 
