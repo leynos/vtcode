@@ -469,10 +469,9 @@ and `[history]` settings do not control ACP audit output.
   `AgentThoughtChunk` as well. Debug logs distinguish `Sending provider
   reasoning to ACP client` from `Provider response did not include exposed
   reasoning for ACP`; they record metadata only and never the reasoning content.
-- **Plan tracking** – Every prompt emits an ACP plan describing analysis,
-  optional context gathering, and final response drafting. VT Code updates each
-  entry as it progresses so Zed can visualise the bridge's workflow in real
-  time.
+- **Plan tracking** – A model-managed `task_tracker` call creates or updates an
+  ACP plan. When a persisted plan and tracker exist, VT Code replays them into a
+  later prompt or resumed session so Zed can render the plan's actual progress.
 - **Tool execution** – The `read_file` tool forwards to Zed when enabled. The
   `list_files` tool uses VT Code's local workspace access, mirroring the CLI
   experience. When the model lacks function calling or the tool toggle is
@@ -538,8 +537,8 @@ and `[history]` settings do not control ACP audit output.
 
 ### Telemetry and auditing
 
-- Plan updates enumerate analysis, context gathering, and response drafting so
-  audit trails show exactly how a turn progressed.
+- Model-managed task-tracker updates record their actual steps in audit trails.
+  A persisted plan and tracker are replayed only when they exist.
 - Cancellation signals from Zed immediately cut off streaming, mark pending
   tool calls as cancelled, and end the turn with `StopReason::Cancelled`,
   providing a clean timeline in the transcript.
