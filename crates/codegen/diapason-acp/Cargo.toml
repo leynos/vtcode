@@ -45,6 +45,7 @@ tracing-subscriber = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 toml = { workspace = true }
 diapason-llm = { workspace = true }
+diapason-core = { workspace = true, features = ["telemetry-test-support"] }
 wiremock = "0.6.5"
 
 [lib]

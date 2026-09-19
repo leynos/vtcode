@@ -73,6 +73,9 @@ async fn visible_stream_failure_checkpoints_an_incomplete_turn_over_acp() {
         .collect::<String>();
     assert!(visible_text.contains("partial answer"));
     assert!(visible_text.contains("You can retry the prompt"));
+    assert!(visible_text.contains("Network error"));
+    assert!(visible_text.contains("HTTP status 503"));
+    assert!(!visible_text.contains("provider-marker-body"));
 
     let session = agent
         .sessions
@@ -85,5 +88,7 @@ async fn visible_stream_failure_checkpoints_an_incomplete_turn_over_acp() {
     let messages = session.data.lock().expect("wire session data").thread.messages();
     let incomplete = messages.last().expect("incomplete assistant message");
     assert!(incomplete.content.as_text().contains("partial answer"));
+    assert!(incomplete.content.as_text().contains("Network error"));
+    assert!(!incomplete.content.as_text().contains("provider-marker-body"));
     assert!(incomplete.metadata.as_ref().is_some_and(MessageMetadata::is_incomplete));
 }

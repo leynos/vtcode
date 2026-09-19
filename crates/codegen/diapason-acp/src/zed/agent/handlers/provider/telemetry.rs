@@ -51,6 +51,7 @@ fn bounded_error_code(code: &str) -> &'static str {
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(in crate::zed::agent::handlers) struct ProviderErrorTelemetry {
+    pub(in crate::zed::agent::handlers) category: &'static str,
     pub(in crate::zed::agent::handlers) code: Option<&'static str>,
     pub(in crate::zed::agent::handlers) status: Option<u16>,
     pub(in crate::zed::agent::handlers) timeout_phase: Option<&'static str>,
@@ -65,7 +66,10 @@ pub(in crate::zed::agent::handlers) fn provider_error_telemetry(error: &LLMError
         | LLMError::Provider { metadata, .. } => metadata.as_deref(),
     };
     let Some(metadata) = metadata else {
-        return ProviderErrorTelemetry::default();
+        return ProviderErrorTelemetry {
+            category: super::SafeProviderProjection::from_llm_error(error).category(),
+            ..Default::default()
+        };
     };
     let code = metadata.code.as_deref();
     let timeout_phase = match code {
@@ -80,6 +84,7 @@ pub(in crate::zed::agent::handlers) fn provider_error_telemetry(error: &LLMError
         } else {
             code.map(bounded_error_code)
         },
+        category: super::SafeProviderProjection::from_llm_error(error).category(),
         status: metadata.status,
         timeout_phase,
     }
@@ -193,8 +198,9 @@ impl GenerationTelemetry {
             active_acp_requests = snapshot.active_acp_requests,
             configured_provider_limit = ?snapshot.configured_provider_limit,
             circuit_breaker_state = snapshot.circuit_breaker_state,
+            error_category = error_telemetry.category,
             provider_error_code = ?error_telemetry.code,
-            provider_error_status = ?error_telemetry.status,
+            error_status = ?error_telemetry.status,
             provider_timeout_phase = error_telemetry.timeout_phase,
             "ACP provider generation attempt failed"
         );

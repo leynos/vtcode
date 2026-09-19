@@ -25,6 +25,7 @@ fn provider_error_telemetry_exposes_stable_network_metadata() {
     assert_eq!(
         provider_error_telemetry(&error),
         ProviderErrorTelemetry {
+            category: "Network error",
             code: Some("reqwest_timeout_error"),
             status: Some(504),
             timeout_phase: None,
@@ -40,6 +41,7 @@ fn provider_error_telemetry_exposes_acp_timeout_phase_separately() {
     assert_eq!(
         provider_error_telemetry(&error),
         ProviderErrorTelemetry {
+            category: "Network error",
             code: None,
             status: None,
             timeout_phase: Some("inter_token_idle"),
@@ -66,6 +68,7 @@ fn provider_error_telemetry_exposes_rate_limit_diagnostics() {
     assert_eq!(
         provider_error_telemetry(&error),
         ProviderErrorTelemetry {
+            category: "Rate limit exceeded",
             code: Some("rate_limit_error"),
             status: Some(429),
             timeout_phase: None,

@@ -32,6 +32,7 @@ use super::super::helpers::text_chunk;
 use super::super::types::{SessionHandle, ToolRuntime};
 use super::ZedAgent;
 use super::compaction::CompactionRequest;
+use super::provider_telemetry::SafeProviderProjection;
 use crate::acp;
 use crate::acp::Error as SdkError;
 use crate::tooling::SupportedTool;
@@ -43,7 +44,6 @@ use agent_client_protocol::{
 #[cfg(test)]
 use client::advertised_agent_capabilities;
 use client::register_client_handlers;
-use diapason_commons::ansi::strip_ansi_codes;
 use diapason_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
 use diapason_core::config::types::ReasoningEffortLevel;
 use diapason_core::core::message_metadata::MessageMetadata;

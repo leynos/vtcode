@@ -158,3 +158,24 @@ would be a breaking change for downstream implementers.
   `UNIX_EPOCH + Duration`.
 - Pending final-nit gates: Rust formatting, the 11 focused rate-limit
   selectors, strict ACP Clippy, and plan spelling and Markdown checks.
+
+## A2 progress
+
+- Added a feature-gated `TestPerfRecorder` to make awaited telemetry assertions
+  possible without changing production recorder behaviour.
+- Replaced ACP's raw provider diagnostic projection with a category and optional
+  HTTP-status projection for incomplete turns and structured failure logs.
+  Provider retry, rate-limit notice, and cancellation paths retain their
+  existing runtime behaviour.
+- Added marker-based unit and ACP wire coverage that keeps provider diagnostic
+  bodies out of client-visible incomplete turns while retaining a classified
+  category and status.
+- Strengthened `blocked_stop_draft_is_not_visible_until_hook_allows_it` to
+  assert the first stop-hook outcome before projection. A recurrence reports
+  only bounded, fixed-fixture diagnostics: hook-message levels and truncated
+  text, plus the trimmed and truncated `stop-count` fixture value. This does
+  not claim that the intermittent full-suite failure is fixed or that the
+  full suite has passed.
+- The A2 source is frozen pending the serial runner's feature-gated core test,
+  focused ACP regressions, strict Clippy, and documentation gates. No A2 gate
+  result is claimed in this plan yet.

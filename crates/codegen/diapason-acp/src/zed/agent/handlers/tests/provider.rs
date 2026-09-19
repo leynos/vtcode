@@ -45,6 +45,8 @@ fn stream_poll_runs_inside_safe_attempt_span() {
     assert!(!captured.contains("/home/"));
 }
 
+
+
 proptest! {
     /// Assert streaming depends only on provider support and Stop hooks.
     #[test]
@@ -101,7 +103,8 @@ async fn buffered_generation_obeys_total_generation_timeout() {
     let Err(ProviderCallError::Failed(error)) = result else {
         panic!("pending generation should fail at its total deadline");
     };
-    assert!(error.contains("total generation"));
+    assert_eq!(error.category(), "Network error");
+    assert_eq!(error.status(), None);
 }
 
 /// Assert the deadline moves from first token to idle without extending total.
@@ -155,7 +158,8 @@ async fn bad_gateway_retries_until_the_configured_budget_is_exhausted() {
     let Err(ProviderCallError::Failed(error)) = result else {
         panic!("persistent 502 response should exhaust the retry budget");
     };
-    assert!(error.contains("502 Bad Gateway"));
+    assert_eq!(error.category(), "Service temporarily unavailable");
+    assert_eq!(error.status(), Some(502));
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 3);
 }
 
@@ -265,3 +269,4 @@ async fn retryable_rate_limit_publishes_a_notice_over_the_acp_transport() {
     agent_task.abort();
     drop(agent_task.await);
 }
+
