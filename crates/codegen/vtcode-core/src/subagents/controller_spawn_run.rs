@@ -31,7 +31,11 @@ use self::discovery::discover_controller_subagents;
 use self::model::*;
 use vtcode_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
 
-use super::background::{load_background_state, persist_background_state};
+#[allow(
+    unused_imports,
+    reason = "Intentional compatibility, platform, or test-only suppression."
+)]
+use super::*;
 
 impl SubagentController {
     /// Spawns a new subagent child process from a [`SpawnAgentRequest`].

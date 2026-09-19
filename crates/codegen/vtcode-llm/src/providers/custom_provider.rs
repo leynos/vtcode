@@ -775,7 +775,7 @@ mod tests {
             .generate(LLMRequest {
                 model,
                 messages: vec![Message::user("hello".to_owned())].into(),
-                reasoning_effort: Some(vtcode_config::types::ReasoningEffortLevel::High),
+                reasoning_effort: Some(ReasoningEffortLevel::High),
                 ..Default::default()
             })
             .await

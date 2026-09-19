@@ -226,8 +226,6 @@ impl SubagentController {
             })
         })
     }
-        })
-    }
 
     /// Re-discovers subagent specs from the workspace.
     pub async fn reload(&self) -> Result<()> {
