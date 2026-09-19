@@ -12,7 +12,7 @@ use crate::tools::handlers::{
 };
 use crate::tools::registry::mcp_helpers::normalize_mcp_tool_identifier;
 use crate::tools::traits::Tool;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use futures::future::BoxFuture;
 use rstest::{fixture, rstest};
@@ -34,6 +34,7 @@ const REENTRANT_TOOL_NAME: &str = "reentrant_guard_test_tool";
 const MUTUAL_REENTRANT_TOOL_A: &str = "mutual_reentrant_tool_a";
 const MUTUAL_REENTRANT_TOOL_B: &str = "mutual_reentrant_tool_b";
 const REPLACE_DISPATCH_TOOL_NAME: &str = "replace_dispatch_test_tool";
+const HARNESS_COMPLETION_TIMEOUT: Duration = Duration::from_secs(2);
 
 fn command_session_fixture_commands_config() -> CommandsConfig {
     let mut config = CommandsConfig::default();
