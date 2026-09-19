@@ -7,7 +7,7 @@
       "version": "0.3.0",
       "repo_status": { "Age": 1097 },
       "outdated_deps": [
-        { "name": "console", "req": "^0.15.0", "version_used": "0.15.11", "version_latest": "0.16.4" }
+        { "name": "console", "req": "^0.15.0", "version_used": "0.15.11", "version_latest": "0.16.6" }
       ],
       "classification": "direct-stale-dependency-requirement",
       "rationale": "Direct VT Code dependency with a stale console requirement; tracked for focused review in #108.",
@@ -277,6 +277,28 @@
       "outdated_deps": [],
       "classification": "repository-layout-migration",
       "rationale": "The package was integrated into the current zbus repository layout; tracked in #108.",
+      "issue": 108
+    },
+    {
+      "name": "mac_address",
+      "version": "1.1.8",
+      "repo_status": { "Age": 365 },
+      "outdated_deps": [
+        { "name": "nix", "req": "^0.29", "version_used": "0.29.0", "version_latest": "0.31.3" }
+      ],
+      "classification": "inactive-locked-resolution-debt",
+      "rationale": "Inactive ratatui-termwiz lockfile family; preserve Cargo resolution until a focused dependency-resolution review in #108.",
+      "issue": 108
+    },
+    {
+      "name": "miow",
+      "version": "0.6.1",
+      "repo_status": { "Age": 373 },
+      "outdated_deps": [
+        { "name": "rand", "req": "^0.8.0", "version_used": "0.8.7", "version_latest": "0.10.2" }
+      ],
+      "classification": "windows-target-transitive-dependency",
+      "rationale": "Windows PTY dependency through rio-vt and teletypewriter; tracked for terminal-backend owner review in #108.",
       "issue": 108
     }
   ]
