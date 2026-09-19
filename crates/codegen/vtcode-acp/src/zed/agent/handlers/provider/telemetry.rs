@@ -3,7 +3,10 @@ use std::time::Duration;
 use tokio::time::Instant;
 use tracing::{info, warn};
 
-use super::{GenerationTelemetry, LLMError, LLMResponse, ProviderRequestRuntime, RetryDecision};
+use super::{
+    GenerationTelemetry, LLMError, LLMResponse, ProviderMetricSink, ProviderMode, ProviderRequestRuntime,
+    RetryDecision, RetryDisposition,
+};
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(in crate::zed::agent::handlers) struct ProviderErrorTelemetry {
@@ -40,14 +43,26 @@ pub(in crate::zed::agent::handlers) fn provider_error_telemetry(error: &LLMError
     }
 }
 impl GenerationTelemetry {
-    pub(in crate::zed::agent::handlers) fn start(runtime: &ProviderRequestRuntime) -> Self {
+    pub(in crate::zed::agent::handlers) fn start(
+        runtime: &ProviderRequestRuntime,
+        metric_sink: ProviderMetricSink,
+        mode: ProviderMode,
+    ) -> Self {
         Self {
+            metric_sink,
+            mode,
             started_at: Instant::now(),
             first_output_at: None,
             estimated_output_tokens: 0,
             runtime: runtime.clone(),
             finished: false,
         }
+    }
+
+    pub(in crate::zed::agent::handlers) async fn record_attempt(&self, runtime: &ProviderRequestRuntime) {
+        self.metric_sink
+            .record_provider_attempt(self.mode, runtime.provider_class())
+            .await;
     }
 
     pub(in crate::zed::agent::handlers) fn observe_output(
@@ -66,7 +81,7 @@ impl GenerationTelemetry {
         self.first_output_at = Some(now);
         let snapshot = runtime.telemetry_snapshot();
         info!(
-            provider = runtime.provider_name(),
+            provider_class = runtime.provider_class().as_str(),
             time_to_first_token_ms = duration_millis(now.duration_since(self.started_at)),
             retry_count,
             acp_local_queue_depth = snapshot.acp_local_queue_depth,
@@ -77,7 +92,7 @@ impl GenerationTelemetry {
         );
     }
 
-    pub(in crate::zed::agent::handlers) fn complete(
+    pub(in crate::zed::agent::handlers) async fn complete(
         &mut self,
         runtime: &ProviderRequestRuntime,
         response: &LLMResponse,
@@ -101,7 +116,7 @@ impl GenerationTelemetry {
         self.finished = true;
         let snapshot = runtime.telemetry_snapshot();
         info!(
-            provider = runtime.provider_name(),
+            provider_class = runtime.provider_class().as_str(),
             generation_elapsed_ms = elapsed_ms,
             time_to_first_token_ms = self
                 .first_output_at
@@ -118,13 +133,17 @@ impl GenerationTelemetry {
             circuit_breaker_state = snapshot.circuit_breaker_state,
             "ACP provider generation completed"
         );
+        self.metric_sink
+            .record_provider_generation(self.mode, runtime.provider_class(), elapsed)
+            .await;
     }
 
-    pub(in crate::zed::agent::handlers) fn failed(
+    pub(in crate::zed::agent::handlers) async fn failed(
         &mut self,
         runtime: &ProviderRequestRuntime,
         retry_count: u32,
-        retry_disposition: &'static str,
+        retry_disposition: RetryDisposition,
+        retry_delay: Option<Duration>,
         error: &LLMError,
     ) {
         let elapsed_ms = duration_millis(self.started_at.elapsed());
@@ -132,18 +151,18 @@ impl GenerationTelemetry {
             .first_output_at
             .map(|first| duration_millis(first.duration_since(self.started_at)));
         runtime.record_attempt_failed(elapsed_ms, first_output_ms);
-        if retry_disposition == "retry_scheduled" {
+        if retry_disposition == RetryDisposition::RetryScheduled {
             runtime.record_retry_scheduled();
         }
         self.finished = true;
         let snapshot = runtime.telemetry_snapshot();
         let error_telemetry = provider_error_telemetry(error);
         warn!(
-            provider = runtime.provider_name(),
+            provider_class = runtime.provider_class().as_str(),
             generation_elapsed_ms = duration_millis(self.started_at.elapsed()),
             retry_count,
             max_retries = runtime.retry_policy().max_attempts.saturating_sub(1),
-            retry_disposition,
+            retry_disposition = retry_disposition.as_str(),
             acp_local_queue_depth = snapshot.acp_local_queue_depth,
             active_acp_requests = snapshot.active_acp_requests,
             configured_provider_limit = ?snapshot.configured_provider_limit,
@@ -153,6 +172,22 @@ impl GenerationTelemetry {
             provider_timeout_phase = error_telemetry.timeout_phase,
             "ACP provider generation attempt failed"
         );
+        let error_category = vtcode_commons::ErrorCategory::from(error);
+        if error_category == vtcode_commons::ErrorCategory::RateLimit {
+            self.metric_sink
+                .record_provider_rate_limited(self.mode, runtime.provider_class(), error_category, retry_disposition)
+                .await;
+        }
+        if retry_disposition == RetryDisposition::RetryScheduled {
+            self.metric_sink
+                .record_provider_retry(self.mode, runtime.provider_class(), error_category)
+                .await;
+            if let Some(delay) = retry_delay {
+                self.metric_sink
+                    .record_provider_retry_delay(self.mode, runtime.provider_class(), error_category, delay)
+                    .await;
+            }
+        }
     }
 }
 
@@ -173,12 +208,12 @@ pub(in crate::zed::agent::handlers) fn duration_millis(duration: Duration) -> u6
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
-pub(in crate::zed::agent::handlers) fn retry_disposition(decision: &RetryDecision) -> &'static str {
+pub(in crate::zed::agent::handlers) fn retry_disposition(decision: &RetryDecision) -> RetryDisposition {
     if decision.retryable {
-        "retry_scheduled"
+        RetryDisposition::RetryScheduled
     } else if decision.category.is_retryable() {
-        "retry_exhausted"
+        RetryDisposition::RetryExhausted
     } else {
-        "non_retryable"
+        RetryDisposition::NonRetryable
     }
 }

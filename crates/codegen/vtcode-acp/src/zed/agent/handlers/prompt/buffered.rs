@@ -163,13 +163,14 @@ async fn generate_buffered_response(
 ) -> Result<BufferedGenerationOutcome, SdkError> {
     let request = prepare_buffered_request(turn).await?;
     let notice_sink = RateLimitNoticeSink::new(&turn.agent, &turn.args.session_id);
-    match generate_with_retry_with_observer(
+    match generate_with_retry_with_observer_and_metric_sink(
         turn.provider.as_ref(),
         request,
         &turn.provider_runtime,
         &turn.session.cancellation,
         Some(&notice_sink),
         retry_observed_at,
+        &turn.metric_sink,
     )
     .await
     {

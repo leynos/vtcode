@@ -22,16 +22,18 @@ impl<'a> RateLimitNoticeSink<'a> {
 
 impl AttemptFailureSink for RateLimitNoticeSink<'_> {
     /// Publish the failed attempt as a rate-limit notice for this session.
-    fn announce<'a>(
-        &'a self,
-        provider: &'a str,
-        error: &'a LLMError,
-        retry_delay: Option<Duration>,
-        observed_at: SystemTime,
-    ) -> AttemptFailureFuture<'a> {
+    fn announce<'a>(&'a self, failure: AttemptFailure<'a>) -> AttemptFailureFuture<'a> {
         Box::pin(async move {
             self.agent
-                .publish_rate_limit_notice_at(self.session_id, provider, error, retry_delay, observed_at)
+                .publish_rate_limit_notice_at_with_metric_sink(
+                    self.session_id,
+                    failure.provider,
+                    failure.error,
+                    failure.retry_delay,
+                    failure.observed_at,
+                    failure.metric_sink,
+                    failure.provider_class,
+                )
                 .await;
         })
     }
