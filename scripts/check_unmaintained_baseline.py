@@ -40,6 +40,7 @@ def _invalid_json_constant(value: str) -> NoReturn:
 
 
 def _load_json(text: str, source: str) -> object:
+    """Parse JSON text and label parse failures with the source name."""
     try:
         return json.loads(text, parse_constant=_invalid_json_constant)
     except (json.JSONDecodeError, ValidationError) as error:
@@ -47,6 +48,7 @@ def _load_json(text: str, source: str) -> object:
 
 
 def _require_string(value: object, field: str) -> str:
+    """Return a non-empty string or raise a labelled validation error."""
     if not isinstance(value, str) or not value.strip():
         raise ValidationError(f"{field} must be a non-empty string")
     return value
@@ -55,6 +57,7 @@ def _require_string(value: object, field: str) -> str:
 def _require_exact_keys(
     value: object, keys: frozenset[str], label: str
 ) -> dict[str, object]:
+    """Validate an object has exactly the expected keys and return it."""
     if not isinstance(value, dict):
         raise ValidationError(f"{label} must be an object")
     if frozenset(value) != keys:
@@ -243,7 +246,7 @@ def _validate_findings(
         if identity in seen:
             raise ValidationError(f"duplicate scanner finding identity at {label}")
         seen.add(identity)
-        validated.append((identity, cast(dict[str, object], finding)))
+        validated.append((identity, cast("dict[str, object]", finding)))
     return validated
 
 

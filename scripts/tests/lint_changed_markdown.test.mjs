@@ -1,3 +1,5 @@
+/** @file Contract tests for the changed-Markdown lint helper. */
+
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {

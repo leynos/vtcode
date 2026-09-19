@@ -187,7 +187,6 @@ jobs:
       - name: Check THIRD-PARTY-NOTICES is up to date
         run: |
           scripts/generate-notices.sh --check
-          scripts/generate-notices.sh --check
 
   # Run cargo clippy.
   lint-clippy:

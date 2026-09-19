@@ -81,13 +81,13 @@ The checker invokes cargo unmaintained --json --no-warnings. Exit 0 means no
 findings, 1 means findings, and 2 means an operational failure. Unknown exit
 codes and contradictory exit/output combinations fail closed. Display every
 accepted existing finding with its issue reference and category, and fail on
-unrecognised findings. Missing old findings may pass but should be reported as
+unrecognized findings. Missing old findings may pass but should be reported as
 baseline entries eligible for manual removal. Baseline entries must include
 exact semantic identity and an explicit classification/rationale linked to
 issue \#108. Do not label all repository-layout reports false positives: some
 are unverified.
 
-Prefer one small canonicalisation function driven by the observed schema. Tests
+Prefer one small canonicalization function driven by the observed schema. Tests
 must exercise actual wrapper behaviour with a fake scanner executable: known
 findings pass visibly; new package, version, repository, status or stale
 requirement fails; malformed/duplicate baseline or scanner JSON fails; exit2
@@ -141,7 +141,7 @@ deliberately excluding the volatile `Age` value. It requires repository, schema
 and issue metadata on every baseline entry. It reports missing baseline entries
 without accepting new scanner identities.
 
-The semantic identity lemma is that canonicalising the same supported scanner
+The semantic identity lemma is that canonicalizing the same supported scanner
 finding and baseline entry yields the same value exactly when their stable
 maintenance classification inputs agree. The implementation proves this over
 the finite serializer variants with `unittest` fixtures, including `Age` and
@@ -209,7 +209,7 @@ must fail closed and deliberately update both checker and baseline.
 - 2026-09-07: Keep the scanner's `Age` status kind but omit its numeric value
   from canonical identity because it is explicitly volatile; retain all other
   observed semantic fields.
-- 2026-09-07: Treat unrecognised JSON fields and enum variants as a scanner
+- 2026-09-07: Treat unrecognized JSON fields and enum variants as a scanner
   compatibility failure. This makes a future tool-schema change visible before
   CI accepts it.
 - 2026-09-07: Do not use Cargo metadata ignores or `--no-exit-code`; the

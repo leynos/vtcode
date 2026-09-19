@@ -57,7 +57,7 @@ create a merge-order cycle. There are no API changes, unrelated dependency
 updates or new production dependencies in this PR. Never add blanket
 cargo-unmaintained or unwrap/expect exemptions to obtain green checks.
 
-Root authorised one inherited gate-blocker repair after actionlint identified
+Root authorized one inherited gate-blocker repair after actionlint identified
 two unused retry-loop counters in `.github/workflows/build-linux-windows.yml`.
 Changing each `for i` to `for _` preserves the twelve-attempt loop behaviour
 without expanding the workflow's runtime policy. The historical combined source
@@ -328,7 +328,7 @@ markdownlint-cli2 action resolves CLI 0.23.2 and passes each newline-separated
 workflow glob literally; the current YAML block includes quote characters. The
 next slot must run both faithful literal-glob 0.23.2 and normalised intended
 glob checks, treating a zero-file literal scan as false green. No workflow
-change is authorised until that evidence distinguishes a baseline issue from a
+change is authorized until that evidence distinguishes a baseline issue from a
 configuration defect.
 
 The approved follow-up uses paths-filter JSON into a fixed Node helper, then
@@ -369,7 +369,7 @@ common-platform repair let Windows reach an unused
 notice generation placed `libmimalloc-sys` under a different MIT grouping than
 the separately verified local generator. The production unwrap enforcement
 fails identically on main with twelve unrelated paths and remains outside this
-PR; no allowlist expansion is authorised. The next packet verifies the two
+PR; no allowlist expansion is authorized. The next packet verifies the two
 approved repairs before another review.
 
 When the refreshed hosted Windows job reached `vtcode-core`, root approved the

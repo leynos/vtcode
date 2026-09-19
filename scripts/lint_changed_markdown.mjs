@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+/** @file Validate changed Markdown files with markdownlint-cli2. */
+
 import { spawnSync } from "node:child_process";
 import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
