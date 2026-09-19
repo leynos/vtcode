@@ -82,6 +82,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::Utc;
 use futures::future::select_all;
 use std::collections::VecDeque;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -163,38 +164,40 @@ pub struct SubagentController {
 
 impl SubagentController {
     /// Creates a new controller, discovering subagent specs and loading persisted background state.
-    pub async fn new(config: SubagentControllerConfig) -> Result<Self> {
-        let discovered = discover_controller_subagents(&config.workspace_root).await?;
-        let workspace_gated = config.workspace_gated;
-        let lifecycle_hooks = LifecycleHookEngine::new_with_session_gated(
-            config.workspace_root.clone(),
-            &config.vt_cfg.hooks,
-            SessionStartTrigger::Startup,
-            config.parent_session_id.clone(),
-            workspace_gated,
-        )?;
-        if let Some(engine) = lifecycle_hooks.as_ref() {
-            crate::hooks::lifecycle::restore_workspace_hook_approval(engine, &config.workspace_root).await;
-        }
-        let background_children = load_background_state(&config.workspace_root)
-            .await?
-            .records
-            .into_iter()
-            .map(|record| (record.id.clone(), BackgroundRecord::from_persisted(record)))
-            .collect();
-        Ok(Self {
-            parent_session_id: Arc::new(RwLock::new(config.parent_session_id.clone())),
-            lifecycle_hooks,
-            config: Arc::new(config),
-            state: Arc::new(RwLock::new(ControllerState {
-                discovered,
-                parent_messages: Vec::new(),
-                turn_hints: TurnDelegationHints::default(),
-                children: std::collections::BTreeMap::new(),
-                background_children,
-            })),
-            shutdown_requested: Arc::new(AtomicBool::new(false)),
-            closing: Arc::new(AtomicBool::new(false)),
+    pub fn new(config: SubagentControllerConfig) -> impl Future<Output = Result<Self>> + Send {
+        Box::pin(async move {
+            let discovered = discover_controller_subagents(&config.workspace_root).await?;
+            let workspace_gated = config.workspace_gated;
+            let lifecycle_hooks = LifecycleHookEngine::new_with_session_gated(
+                config.workspace_root.clone(),
+                &config.vt_cfg.hooks,
+                SessionStartTrigger::Startup,
+                config.parent_session_id.clone(),
+                workspace_gated,
+            )?;
+            if let Some(engine) = lifecycle_hooks.as_ref() {
+                crate::hooks::lifecycle::restore_workspace_hook_approval(engine, &config.workspace_root).await;
+            }
+            let background_children = load_background_state(&config.workspace_root)
+                .await?
+                .records
+                .into_iter()
+                .map(|record| (record.id.clone(), BackgroundRecord::from_persisted(record)))
+                .collect();
+            Ok(Self {
+                parent_session_id: Arc::new(RwLock::new(config.parent_session_id.clone())),
+                lifecycle_hooks,
+                config: Arc::new(config),
+                state: Arc::new(RwLock::new(ControllerState {
+                    discovered,
+                    parent_messages: Vec::new(),
+                    turn_hints: TurnDelegationHints::default(),
+                    children: std::collections::BTreeMap::new(),
+                    background_children,
+                })),
+                shutdown_requested: Arc::new(AtomicBool::new(false)),
+                closing: Arc::new(AtomicBool::new(false)),
+            })
         })
     }
 

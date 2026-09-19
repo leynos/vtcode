@@ -433,9 +433,7 @@ impl AgentSessionState {
     pub fn adjust_token_count(&mut self, delta: isize) {
         if delta >= 0 {
             // `delta >= 0` is checked above, so the conversion is infallible
-            self.cached_total_tokens = self
-                .cached_total_tokens
-                .saturating_add(usize::try_from(delta).expect("delta >= 0 checked above"));
+            self.cached_total_tokens = self.cached_total_tokens.saturating_add(delta.cast_unsigned());
         } else {
             self.cached_total_tokens = self.cached_total_tokens.saturating_sub(delta.unsigned_abs());
         }
@@ -557,7 +555,7 @@ impl AgentSessionState {
                 }],
             });
         }
-        let serialized = serde_json::to_string(value).expect("Value serialization is infallible");
+        let serialized = value.to_string();
         let msg = Message::tool_response(call_id, serialized);
         let tokens = msg.estimate_tokens();
         self.cached_total_tokens = self.cached_total_tokens.saturating_add(tokens);

@@ -230,7 +230,7 @@ fn bootstrap_main() -> Result<BootstrapOutcome> {
         anyhow::bail!("The --print/-p flag cannot be combined with subcommands. Use print mode without a subcommand.");
     }
 
-    let print_mode = args.print.clone();
+    let print_mode = args.print.clone().map(main_helpers::build_print_prompt).transpose()?;
     let color_policy = resolve_runtime_color_policy(&args);
     color_policy::set_color_output_policy(color_policy);
 

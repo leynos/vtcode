@@ -25,14 +25,12 @@ impl ModelId {
             ModelId::OpenRouterZaiGlm52 => {
                 Cow::Borrowed("Z.AI GLM-5.2 flagship model for long-horizon tasks with 1M context via OpenRouter")
             }
+            ModelId::OpenRouterZaiGlm53Flash => {
+                Cow::Borrowed("Z.AI GLM-5.3 Flash efficient multimodal model via OpenRouter")
+            }
             // Custom user-defined models
             ModelId::Custom(_, _) => Cow::Borrowed("User-defined model"),
-            model => Cow::Borrowed(
-                model
-                    .openrouter_metadata()
-                    .expect("generated OpenRouter model should have metadata")
-                    .description,
-            ),
+            _ => unreachable!("built-in model missing generated or table metadata"),
         }
     }
 }

@@ -32,11 +32,8 @@ struct NativeRoots {
 
 fn native_roots(
     #[cfg_attr(
-        not(any(target_os = "macos", target_os = "windows")),
-        allow(
-            unused_variables,
-            reason = "home_dir is only consumed by macOS/Windows root resolution"
-        )
+        target_os = "windows",
+        expect(unused_variables, reason = "Windows root resolution does not use home_dir")
     )]
     home_dir: &Path,
 ) -> Result<NativeRoots> {
@@ -943,7 +940,13 @@ fn remove_temporary_file(path: &Path) {
         tracing::debug!(path = %path.display(), %error, "failed to remove private temporary file");
     }
 }
-fn set_private_permissions(path: &Path) -> io::Result<()> {
+fn set_private_permissions(
+    #[cfg_attr(
+        not(unix),
+        expect(unused_variables, reason = "non-Unix targets have no private-permissions operation")
+    )]
+    path: &Path,
+) -> io::Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

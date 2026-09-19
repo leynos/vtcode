@@ -812,12 +812,13 @@ gap_warning_threshold_secs = 120
 
         let prompt_cache_guide = fs::read_to_string(workspace_root.join("docs/tools/PROMPT_CACHING_GUIDE.md"))
             .expect("prompt caching guide");
+        let normalized_prompt_cache_guide = prompt_cache_guide.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(
-            prompt_cache_guide
+            normalized_prompt_cache_guide
                 .contains("VT Code enables `prompt_cache.cache_friendly_prompt_shaping = true` by default.")
         );
         assert!(
-            prompt_cache_guide
+            normalized_prompt_cache_guide
                 .contains("Default: `None` (opt-in) - VT Code does not set prompt_cache_retention by default;")
         );
 
