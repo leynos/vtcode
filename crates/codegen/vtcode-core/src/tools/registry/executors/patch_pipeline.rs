@@ -137,7 +137,7 @@ impl ToolRegistry {
         captured_paths: &[CapturedPatchPath],
     ) -> Result<Option<Value>> {
         let source_paths = crate::tools::apply_patch::patch_precondition_source_paths(patch);
-        if source_paths.len() != 1 {
+        let [source_path] = source_paths.as_slice() else {
             let message = if source_paths.is_empty() {
                 "expected_content_hash is not valid for an add-only patch"
             } else {
@@ -151,9 +151,7 @@ impl ToolRegistry {
                     "next_action": "Split the patch by source file, reread each file, and retry with its content_hash."
                 }),
             )));
-        }
-
-        let source_path = source_paths.first().expect("single source path");
+        };
         let canonical_path = self.file_ops_tool().normalize_user_path(source_path).await?;
         let snapshot = captured_paths
             .iter()
