@@ -288,6 +288,14 @@ pub(super) struct PromptProviderContext {
 }
 
 pub(super) async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptResponse, SdkError> {
+    run_prompt_with_retry_observer(agent, args, SystemTime::now).await
+}
+
+pub(super) async fn run_prompt_with_retry_observer(
+    agent: Arc<ZedAgent>,
+    args: PromptRequest,
+    retry_observed_at: impl Fn() -> SystemTime + Send + Sync,
+) -> Result<PromptResponse, SdkError> {
     let input = match input::prepare_prompt_input(agent, args).await? {
         PromptInputOutcome::Response(response) => return Ok(response),
         PromptInputOutcome::Ready(input) => input,
@@ -295,15 +303,18 @@ pub(super) async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Res
     if !input::accept_user_prompt(&input).await? {
         return Ok(PromptResponse::new(acp::StopReason::Refusal));
     }
-    initialize_prompt_execution(input).await?.run().await
+    initialize_prompt_execution(input).await?.run(&retry_observed_at).await
 }
 
 impl PromptExecution {
-    async fn run(mut self) -> Result<PromptResponse, SdkError> {
+    async fn run(
+        mut self,
+        retry_observed_at: &super::provider::RetryObservationClock,
+    ) -> Result<PromptResponse, SdkError> {
         let outcome = if self.allow_streaming {
-            streaming::run_streaming_provider_turn(&mut self).await?
+            streaming::run_streaming_provider_turn(&mut self, retry_observed_at).await?
         } else {
-            buffered::run_buffered_provider_turn(&mut self).await?
+            buffered::run_buffered_provider_turn(&mut self, retry_observed_at).await?
         };
         match outcome {
             ProviderTurnOutcome::StopReason(stop_reason) => self.finish(stop_reason).await,

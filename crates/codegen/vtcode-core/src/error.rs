@@ -5,7 +5,9 @@
 //! classification system.
 
 use crate::llm::provider::LLMError;
-use crate::retry_after::retry_after_from_llm_metadata;
+use std::time::SystemTime;
+
+use crate::retry_after::retry_after_from_llm_metadata_at;
 use crate::tools::registry::{ToolErrorType, ToolExecutionError};
 use crate::tools::unified_error::{UnifiedErrorKind, UnifiedToolError};
 use serde::{Deserialize, Serialize};
@@ -279,50 +281,54 @@ impl From<anyhow::Error> for VtCodeError {
 
 impl From<LLMError> for VtCodeError {
     fn from(err: LLMError) -> Self {
-        let category = ErrorCategory::from(&err);
-        let code = match &err {
-            LLMError::Authentication { .. } => ErrorCode::AuthenticationFailed,
-            LLMError::RateLimit { .. } => {
-                if category == ErrorCategory::ResourceExhausted {
-                    ErrorCode::from_category(category)
-                } else {
-                    ErrorCode::RateLimited
-                }
-            }
-            LLMError::InvalidRequest { .. } => ErrorCode::ValidationFailed,
-            LLMError::Network { message, .. } => {
-                if vtcode_commons::classify_error_message(message) == ErrorCategory::Timeout {
-                    ErrorCode::Timeout
-                } else {
-                    ErrorCode::ConnectionFailed
-                }
-            }
-            LLMError::Provider { metadata, .. } => {
-                if category == ErrorCategory::ResourceExhausted {
-                    ErrorCode::from_category(category)
-                } else {
-                    metadata
-                        .as_ref()
-                        .and_then(|meta| meta.status)
-                        .map(|status| match status {
-                            408 => ErrorCode::Timeout,
-                            429 => ErrorCode::RateLimited,
-                            500 | 502 | 503 | 504 | 529 => ErrorCode::ServiceUnavailable,
-                            _ => ErrorCode::LLMProviderError,
-                        })
-                        .unwrap_or(ErrorCode::LLMProviderError)
-                }
-            }
-        };
-        let message = llm_error_message(&err);
-        let retry_after = llm_retry_after(&err);
+        from_llm_error_at(err, SystemTime::now())
+    }
+}
 
-        let error = VtCodeError::new(category, code, message).with_source(err);
-        if let Some(retry_after) = retry_after {
-            error.with_retry_after(retry_after)
-        } else {
-            error
+fn from_llm_error_at(err: LLMError, observed_at: SystemTime) -> VtCodeError {
+    let category = ErrorCategory::from(&err);
+    let code = match &err {
+        LLMError::Authentication { .. } => ErrorCode::AuthenticationFailed,
+        LLMError::RateLimit { .. } => {
+            if category == ErrorCategory::ResourceExhausted {
+                ErrorCode::from_category(category)
+            } else {
+                ErrorCode::RateLimited
+            }
         }
+        LLMError::InvalidRequest { .. } => ErrorCode::ValidationFailed,
+        LLMError::Network { message, .. } => {
+            if vtcode_commons::classify_error_message(message) == ErrorCategory::Timeout {
+                ErrorCode::Timeout
+            } else {
+                ErrorCode::ConnectionFailed
+            }
+        }
+        LLMError::Provider { metadata, .. } => {
+            if category == ErrorCategory::ResourceExhausted {
+                ErrorCode::from_category(category)
+            } else {
+                metadata
+                    .as_ref()
+                    .and_then(|meta| meta.status)
+                    .map(|status| match status {
+                        408 => ErrorCode::Timeout,
+                        429 => ErrorCode::RateLimited,
+                        500 | 502 | 503 | 504 | 529 => ErrorCode::ServiceUnavailable,
+                        _ => ErrorCode::LLMProviderError,
+                    })
+                    .unwrap_or(ErrorCode::LLMProviderError)
+            }
+        }
+    };
+    let message = llm_error_message(&err);
+    let retry_after = llm_retry_after(&err, observed_at);
+
+    let error = VtCodeError::new(category, code, message).with_source(err);
+    if let Some(retry_after) = retry_after {
+        error.with_retry_after(retry_after)
+    } else {
+        error
     }
 }
 
@@ -381,7 +387,7 @@ fn llm_error_message(error: &LLMError) -> String {
     }
 }
 
-fn llm_retry_after(error: &LLMError) -> Option<std::time::Duration> {
+fn llm_retry_after(error: &LLMError, observed_at: SystemTime) -> Option<std::time::Duration> {
     let metadata = match error {
         LLMError::Authentication { metadata, .. }
         | LLMError::RateLimit { metadata }
@@ -390,7 +396,7 @@ fn llm_retry_after(error: &LLMError) -> Option<std::time::Duration> {
         | LLMError::Provider { metadata, .. } => metadata.as_ref(),
     }?;
 
-    retry_after_from_llm_metadata(metadata)
+    retry_after_from_llm_metadata_at(metadata, observed_at)
 }
 
 #[cfg(test)]
@@ -485,6 +491,26 @@ mod tests {
 
         let converted = VtCodeError::from(err);
         assert_eq!(converted.retry_after(), Some(std::time::Duration::from_millis(500)));
+    }
+
+    #[test]
+    fn explicit_llm_conversion_interprets_http_date_at_its_observation_time() {
+        let observed_at = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_445_412_420);
+        let retry_at = httpdate::fmt_http_date(observed_at + std::time::Duration::from_secs(60));
+        let err = LLMError::RateLimit {
+            metadata: Some(LLMErrorMetadata::new(
+                "OpenAI",
+                Some(429),
+                Some("rate_limit".to_string()),
+                None,
+                None,
+                Some(retry_at),
+                Some("try again later".to_string()),
+            )),
+        };
+
+        let converted = from_llm_error_at(err, observed_at);
+        assert_eq!(converted.retry_after(), Some(std::time::Duration::from_secs(60)));
     }
 
     #[test]
