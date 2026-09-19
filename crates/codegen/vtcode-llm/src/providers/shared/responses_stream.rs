@@ -5,8 +5,8 @@ use crate::error_display;
 use crate::provider::{LLMError, LLMNormalizedStream, LLMResponse, NormalizedStreamEvent, ToolCall};
 use crate::providers::shared::responses_adapter::{ResponsesStreamAdapter, ResponsesStreamEvent};
 use crate::providers::shared::responses_reconciler::{
-    FinalInputPreference, ResponsesItemIdentity, ResponsesStreamReconciler, ResponsesTerminalState,
     reconcile_final_input,
+    FinalInputPreference, ReasoningChannel, ResponsesItemIdentity, ResponsesStreamReconciler, ResponsesTerminalState,
 };
 use crate::providers::shared::responses_usage;
 use crate::providers::shared::responses_validation;
@@ -18,6 +18,16 @@ use serde_json::{Value, json};
 
 use super::{StreamAggregator, generate_tool_call_id};
 
+// Retained shared Responses stream processor.
+// Rig 0.40 can consume SSE, but VTCode needs a provider-agnostic
+// NormalizedStreamEvent contract: text/refusal/reasoning deltas, tool-call
+// start and argument deltas, tolerant empty-final-response recovery, and
+// backend error text. Protected by this module's `responses_stream` tests.
+// Remove only when Rig exposes an event adapter with the same normalised
+// surface for all VTCode providers that use Responses-style streaming.
+
+//! including reasoning and cache-usage accounting.
+};
 // Retained shared Responses stream processor.
 // Rig 0.40 can consume SSE, but VTCode needs a provider-agnostic
 // NormalizedStreamEvent contract: text/refusal/reasoning deltas, tool-call
@@ -204,19 +214,7 @@ where
                 reasoning_channel,
                 ..
             } => {
-                let delta = self
-                    .reconciler
-                    .reasoning_delta(
-                        ResponsesItemIdentity::new(item_id, None, output_index)
-                            .with_sub_index(sub_index)
-                            .with_reasoning_channel(reasoning_channel),
-                        &delta,
-                    )
-                    .map_err(|message| provider_error(self.options.provider_name, message))?;
-                if self.options.emit_reasoning && !delta.is_empty() {
-                    self.aggregator.reasoning.push_str(&delta);
-                    events.push(NormalizedStreamEvent::ReasoningDelta { delta });
-                }
+                self.handle_reasoning_delta(&mut events, delta, item_id, output_index, sub_index, reasoning_channel)?
             }
             ResponsesStreamEvent::ReasoningDone {
                 text,
@@ -225,24 +223,7 @@ where
                 sub_index,
                 reasoning_channel,
                 ..
-            } => {
-                let delta = self
-                    .reconciler
-                    .reasoning_done(
-                        ResponsesItemIdentity::new(item_id, None, output_index)
-                            .with_sub_index(sub_index)
-                            .with_reasoning_channel(reasoning_channel),
-                        &text,
-                    )
-                    .map_err(|message| provider_error(self.options.provider_name, message))?;
-                if self.options.emit_reasoning
-                    && let Some(delta) = delta
-                    && !delta.is_empty()
-                {
-                    self.aggregator.reasoning.push_str(&delta);
-                    events.push(NormalizedStreamEvent::ReasoningDelta { delta });
-                }
-            }
+            } => self.handle_reasoning_done(&mut events, text, item_id, output_index, sub_index, reasoning_channel)?,
             ResponsesStreamEvent::FunctionCallNameDelta { call_id, item_id, name, output_index, .. } => {
                 self.record_tool_call_item_id(item_id.as_deref(), &call_id);
                 self.record_tool_call_name(&call_id, &name, output_index);
@@ -344,6 +325,49 @@ where
         Ok(events)
     }
 
+    fn handle_reasoning_delta(
+        &mut self,
+        events: &mut Vec<NormalizedStreamEvent>,
+        delta: String,
+        item_id: Option<String>,
+        output_index: Option<usize>,
+        sub_index: Option<usize>,
+        reasoning_channel: ReasoningChannel,
+    ) -> Result<(), LLMError> {
+        let delta = self
+            .reconciler
+            .reasoning_delta(reasoning_identity(item_id, output_index, sub_index, reasoning_channel), &delta)
+            .map_err(|message| provider_error(self.options.provider_name, message))?;
+        self.emit_reasoning_delta(events, delta);
+        Ok(())
+    }
+
+    fn handle_reasoning_done(
+        &mut self,
+        events: &mut Vec<NormalizedStreamEvent>,
+        text: String,
+        item_id: Option<String>,
+        output_index: Option<usize>,
+        sub_index: Option<usize>,
+        reasoning_channel: ReasoningChannel,
+    ) -> Result<(), LLMError> {
+        let delta = self
+            .reconciler
+            .reasoning_done(reasoning_identity(item_id, output_index, sub_index, reasoning_channel), &text)
+            .map_err(|message| provider_error(self.options.provider_name, message))?;
+        if let Some(delta) = delta {
+            self.emit_reasoning_delta(events, delta);
+        }
+        Ok(())
+    }
+
+    fn emit_reasoning_delta(&mut self, events: &mut Vec<NormalizedStreamEvent>, delta: String) {
+        if self.options.emit_reasoning && !delta.is_empty() {
+            self.aggregator.reasoning.push_str(&delta);
+            events.push(NormalizedStreamEvent::ReasoningDelta { delta });
+        }
+    }
+
     fn record_tool_call_name(&mut self, call_id: &str, name: &str, output_index: Option<usize>) -> usize {
         self.tool_call_names
             .entry(call_id.to_string())
@@ -428,6 +452,17 @@ where
         self.next_tool_call_index += 1;
         index
     }
+}
+
+fn reasoning_identity(
+    item_id: Option<String>,
+    output_index: Option<usize>,
+    sub_index: Option<usize>,
+    reasoning_channel: ReasoningChannel,
+) -> ResponsesItemIdentity {
+    ResponsesItemIdentity::new(item_id, None, output_index)
+        .with_sub_index(sub_index)
+        .with_reasoning_channel(reasoning_channel)
 }
 
 pub fn create_responses_normalized_stream<P>(
@@ -758,7 +793,7 @@ mod tests {
         assert!(matches!(
             finished.as_slice(),
             [NormalizedStreamEvent::Done { response }]
-                if response.content.as_deref() == Some("something")
+                if response.content.as_deref() == Some("hello")
         ));
     }
 
