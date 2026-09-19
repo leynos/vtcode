@@ -193,11 +193,20 @@ where
                     events.push(NormalizedStreamEvent::TextDelta { delta });
                 }
             }
-            ResponsesStreamEvent::ReasoningDelta { delta, item_id, output_index, sub_index, .. } => {
+            ResponsesStreamEvent::ReasoningDelta {
+                delta,
+                item_id,
+                output_index,
+                sub_index,
+                reasoning_channel,
+                ..
+            } => {
                 let delta = self
                     .reconciler
                     .reasoning_delta(
-                        ResponsesItemIdentity::new(item_id, None, output_index).with_sub_index(sub_index),
+                        ResponsesItemIdentity::new(item_id, None, output_index)
+                            .with_sub_index(sub_index)
+                            .with_reasoning_channel(reasoning_channel),
                         &delta,
                     )
                     .map_err(|message| provider_error(self.options.provider_name, message))?;
@@ -206,11 +215,20 @@ where
                     events.push(NormalizedStreamEvent::ReasoningDelta { delta });
                 }
             }
-            ResponsesStreamEvent::ReasoningDone { text, item_id, output_index, sub_index, .. } => {
+            ResponsesStreamEvent::ReasoningDone {
+                text,
+                item_id,
+                output_index,
+                sub_index,
+                reasoning_channel,
+                ..
+            } => {
                 let delta = self
                     .reconciler
                     .reasoning_done(
-                        ResponsesItemIdentity::new(item_id, None, output_index).with_sub_index(sub_index),
+                        ResponsesItemIdentity::new(item_id, None, output_index)
+                            .with_sub_index(sub_index)
+                            .with_reasoning_channel(reasoning_channel),
                         &text,
                     )
                     .map_err(|message| provider_error(self.options.provider_name, message))?;
@@ -737,7 +755,7 @@ mod tests {
         assert!(matches!(
             finished.as_slice(),
             [NormalizedStreamEvent::Done { response }]
-                if response.content.as_deref() == Some("hello")
+                if response.content.as_deref() == Some("something")
         ));
     }
 
@@ -1335,10 +1353,10 @@ mod tests {
     fn reasoning_part_snapshots_preserve_prefix_without_replaying_done_text() {
         let mut processor = ResponsesNormalizedStreamProcessor::new(options(), parse_response);
         let frames = [
-            json!({"type":"response.reasoning_part.added","sequence_number":0,"item_id":"r","output_index":0,"content_index":0,"part":{"type":"reasoning_text","text":"hel"}}),
-            json!({"type":"response.reasoning_text.delta","sequence_number":1,"item_id":"r","output_index":0,"content_index":0,"delta":"lo"}),
-            json!({"type":"response.reasoning_text.done","sequence_number":2,"item_id":"r","output_index":0,"content_index":0,"text":"hello"}),
-            json!({"type":"response.reasoning_part.done","sequence_number":3,"item_id":"r","output_index":0,"content_index":0,"part":{"type":"reasoning_text","text":"hello"}}),
+            json!({"type":"response.reasoning_part.added","sequence_number":0,"item_id":"r","output_index":0,"content_index":0,"part":{"type":"reasoning_text","text":"some"}}),
+            json!({"type":"response.reasoning_text.delta","sequence_number":1,"item_id":"r","output_index":0,"content_index":0,"delta":"thing"}),
+            json!({"type":"response.reasoning_text.done","sequence_number":2,"item_id":"r","output_index":0,"content_index":0,"text":"something"}),
+            json!({"type":"response.reasoning_part.done","sequence_number":3,"item_id":"r","output_index":0,"content_index":0,"part":{"type":"reasoning_text","text":"something"}}),
         ];
         let mut visible = String::new();
         for frame in frames {
@@ -1348,11 +1366,11 @@ mod tests {
                 }
             }
         }
-        assert_eq!(visible, "hello");
+        assert_eq!(visible, "something");
         processor.handle_payload(completion_event(4, json!([]))).expect("completion");
         let finished = processor.finish().expect("completed stream");
         assert!(matches!(finished.as_slice(), [NormalizedStreamEvent::Done { response }]
-            if response.reasoning.as_deref() == Some("hello")));
+            if response.reasoning.as_deref() == Some("something")));
     }
 
     #[test]
@@ -1398,6 +1416,71 @@ mod tests {
         ));
         assert!(matches!(
             second_done.as_slice(),
+            [NormalizedStreamEvent::ReasoningDelta { delta }] if delta == "+"
+        ));
+    }
+
+    #[test]
+    fn raw_and_summary_reasoning_tracks_reconcile_independently_at_zero_indexes() {
+        let mut processor = ResponsesNormalizedStreamProcessor::new(options(), parse_response);
+
+        let raw_delta = processor
+            .handle_payload(json!({
+                "type": "response.reasoning_text.delta",
+                "sequence_number": 1,
+                "item_id": "reasoning_1",
+                "output_index": 0,
+                "content_index": 0,
+                "delta": "raw"
+            }))
+            .expect("raw reasoning delta should parse");
+        assert!(matches!(
+            raw_delta.as_slice(),
+            [NormalizedStreamEvent::ReasoningDelta { delta }] if delta == "raw"
+        ));
+
+        let summary_delta = processor
+            .handle_payload(json!({
+                "type": "response.reasoning_summary_text.delta",
+                "sequence_number": 2,
+                "item_id": "reasoning_1",
+                "output_index": 0,
+                "summary_index": 0,
+                "delta": "summary"
+            }))
+            .expect("reasoning summary delta should parse");
+        assert!(matches!(
+            summary_delta.as_slice(),
+            [NormalizedStreamEvent::ReasoningDelta { delta }] if delta == "summary"
+        ));
+
+        let raw_done = processor
+            .handle_payload(json!({
+                "type": "response.reasoning_text.done",
+                "sequence_number": 3,
+                "item_id": "reasoning_1",
+                "output_index": 0,
+                "content_index": 0,
+                "text": "raw+"
+            }))
+            .expect("raw reasoning done should parse");
+        assert!(matches!(
+            raw_done.as_slice(),
+            [NormalizedStreamEvent::ReasoningDelta { delta }] if delta == "+"
+        ));
+
+        let summary_done = processor
+            .handle_payload(json!({
+                "type": "response.reasoning_summary_text.done",
+                "sequence_number": 4,
+                "item_id": "reasoning_1",
+                "output_index": 0,
+                "summary_index": 0,
+                "delta": "summary+"
+            }))
+            .expect("reasoning summary done should parse");
+        assert!(matches!(
+            summary_done.as_slice(),
             [NormalizedStreamEvent::ReasoningDelta { delta }] if delta == "+"
         ));
     }

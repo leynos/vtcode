@@ -14,7 +14,7 @@ use crate::error_display;
 use crate::provider;
 use crate::providers::shared::StreamTelemetry;
 use crate::providers::shared::responses_reconciler::{
-    FinalInputPreference, ResponsesItemIdentity, ResponsesStreamReconciler, ResponsesTerminalState,
+    FinalInputPreference, ReasoningChannel, ResponsesItemIdentity, ResponsesStreamReconciler, ResponsesTerminalState,
     reconcile_final_input,
 };
 use crate::providers::shared::responses_usage;
@@ -440,7 +440,7 @@ pub(crate) fn create_responses_stream(
                         }
                         ResponsesStreamEventPolicy::DocumentedValueBearingRigGap => match event_type {
                             "response.custom_tool_call_input.delta" => {
-                                let identity = responses_item_identity(&payload);
+                                let identity = responses_item_identity(&payload, None);
                                 let call_id = identity
                                     .response_call_id()
                                     .map(ToOwned::to_owned)
@@ -455,7 +455,7 @@ pub(crate) fn create_responses_stream(
                                 }
                             }
                             "response.custom_tool_call_input.done" => {
-                                let identity = responses_item_identity(&payload);
+                                let identity = responses_item_identity(&payload, None);
                                 let call_id = identity
                                     .response_call_id()
                                     .map(ToOwned::to_owned)
@@ -523,7 +523,10 @@ pub(crate) fn create_responses_stream(
                             "response.reasoning_part.added" | "response.reasoning_part.done" => {
                                 let text = reasoning_part_text("OpenAI", &payload)?;
                                 let delta = reconciler
-                                    .reasoning_done(responses_item_identity(&payload), text)
+                                    .reasoning_done(
+                                        responses_item_identity(&payload, Some(ReasoningChannel::Raw)),
+                                        text,
+                                    )
                                     .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))?;
                                 if retain_reasoning
                                     && let Some(delta) = delta
@@ -683,8 +686,8 @@ pub(crate) fn create_responses_stream(
     Box::pin(stream)
 }
 
-fn responses_item_identity(payload: &Value) -> ResponsesItemIdentity {
-    ResponsesItemIdentity::new(
+fn responses_item_identity(payload: &Value, reasoning_channel: Option<ReasoningChannel>) -> ResponsesItemIdentity {
+    let identity = ResponsesItemIdentity::new(
         payload.get("item_id").and_then(Value::as_str).map(ToOwned::to_owned),
         payload.get("call_id").and_then(Value::as_str).map(ToOwned::to_owned),
         payload
@@ -698,7 +701,11 @@ fn responses_item_identity(payload: &Value) -> ResponsesItemIdentity {
             .or_else(|| payload.get("summary_index"))
             .and_then(Value::as_u64)
             .and_then(|value| usize::try_from(value).ok()),
-    )
+    );
+    match reasoning_channel {
+        Some(channel) => identity.with_reasoning_channel(channel),
+        None => identity,
+    }
 }
 
 fn merge_reconciled_custom_calls(
@@ -926,7 +933,13 @@ fn response_reasoning_event(
     let Some(reasoning) = reasoning else {
         return Ok(None);
     };
-    let identity = responses_item_identity(payload);
+    let channel =
+        if matches!(event_type, "response.reasoning_summary_text.delta" | "response.reasoning_summary_text.done") {
+            ReasoningChannel::Summary
+        } else {
+            ReasoningChannel::Raw
+        };
+    let identity = responses_item_identity(payload, Some(channel));
     let delta = if matches!(event_type, "response.reasoning_text.done" | "response.reasoning_summary_text.done") {
         context
             .reconciler
