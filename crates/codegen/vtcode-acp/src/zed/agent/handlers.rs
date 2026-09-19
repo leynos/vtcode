@@ -2062,6 +2062,47 @@ Run the managed background fixture.
 
     use super::*;
 
+    fn assert_safe_provider_projection(text: &str, category: &str, status: &str, marker: &str) {
+        assert!(text.contains(category));
+        assert!(text.contains(status));
+        assert!(!text.contains(marker));
+    }
+
+    fn assert_checkpointed_incomplete_turn(agent: &ZedAgent) {
+        let session = agent
+            .sessions
+            .lock()
+            .expect("ACP session map")
+            .values()
+            .next()
+            .expect("wire session")
+            .clone();
+        let messages = session.data.lock().expect("wire session data").thread.messages();
+        let incomplete = messages.last().expect("incomplete assistant message");
+        let content = incomplete.content.as_text();
+
+        assert!(content.contains("partial answer"));
+        assert_safe_provider_projection(&content, "Network error", "HTTP status 503", "provider-marker-body");
+        assert!(incomplete.metadata.as_ref().is_some_and(MessageMetadata::is_incomplete));
+    }
+
+    fn assert_first_stop_hook_block(outcome: &vtcode_core::hooks::StopHookOutcome, project_dir: &std::path::Path) {
+        let messages = outcome
+            .messages
+            .iter()
+            .map(|message| format!("{:?}: {}", message.level, message.text.chars().take(256).collect::<String>()))
+            .collect::<Vec<_>>();
+        let stop_count = std::fs::read_to_string(project_dir.join("stop-count"))
+            .ok()
+            .map(|count| count.trim().chars().take(32).collect::<String>());
+
+        assert_eq!(
+            outcome.block_reason.as_deref(),
+            Some("retry the draft"),
+            "first stop hook outcome before projection: messages={messages:?}, stop-count={stop_count:?}",
+        );
+    }
+
     proptest! {
         #[test]
         fn streaming_eligibility_depends_only_on_provider_support_and_stop_hooks(
@@ -2305,21 +2346,7 @@ Run the managed background fixture.
 
         assert!(engine.has_stop_hooks());
         let first = engine.run_stop("blocked draft", false).await.expect("first stop hook");
-        assert_eq!(
-            first.block_reason.as_deref(),
-            Some("retry the draft"),
-            "first stop hook outcome before projection: messages={:?}, stop-count={:?}",
-            first
-                .messages
-                .iter()
-                .map(|message| {
-                    format!("{:?}: {}", message.level, message.text.chars().take(256).collect::<String>())
-                })
-                .collect::<Vec<_>>(),
-            std::fs::read_to_string(workspace.path().join("stop-count"))
-                .ok()
-                .map(|count| count.trim().chars().take(32).collect::<String>())
-        );
+        assert_first_stop_hook_block(&first, workspace.path());
         let second = engine.run_stop("allowed draft", true).await.expect("second stop hook");
 
         let mut visible = Vec::new();
@@ -3584,24 +3611,8 @@ Run the managed background fixture.
             .collect::<String>();
         assert!(visible_text.contains("partial answer"));
         assert!(visible_text.contains("You can retry the prompt"));
-        assert!(visible_text.contains("Network error"));
-        assert!(visible_text.contains("HTTP status 503"));
-        assert!(!visible_text.contains("provider-marker-body"));
-
-        let session = agent
-            .sessions
-            .lock()
-            .expect("ACP session map")
-            .values()
-            .next()
-            .expect("wire session")
-            .clone();
-        let messages = session.data.lock().expect("wire session data").thread.messages();
-        let incomplete = messages.last().expect("incomplete assistant message");
-        assert!(incomplete.content.as_text().contains("partial answer"));
-        assert!(incomplete.content.as_text().contains("Network error"));
-        assert!(!incomplete.content.as_text().contains("provider-marker-body"));
-        assert!(incomplete.metadata.as_ref().is_some_and(MessageMetadata::is_incomplete));
+        assert_safe_provider_projection(&visible_text, "Network error", "HTTP status 503", "provider-marker-body");
+        assert_checkpointed_incomplete_turn(&agent);
     }
 
     #[tokio::test]
