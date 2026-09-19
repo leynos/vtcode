@@ -180,7 +180,7 @@ impl LLMProvider for FixedObservationStreamProvider {
         })
     }
 
-    async fn stream(&self, _request: LLMRequest) -> Result<vtcode_core::llm::provider::LLMStream, LLMError> {
+    async fn stream(&self, _request: LLMRequest) -> Result<diapason_core::llm::provider::LLMStream, LLMError> {
         let attempt_index = self.next_attempt.fetch_add(1, Ordering::SeqCst);
         self.attempts
             .lock()
@@ -210,7 +210,7 @@ fn fixed_observation_provider_config() -> CustomProviderConfig {
 }
 
 fn fixed_observation_runtime() -> ProviderRequestRuntime {
-    ProviderRuntimeRegistry::new(&[fixed_observation_provider_config()], &vtcode_config::TimeoutsConfig::default())
+    ProviderRuntimeRegistry::new(&[fixed_observation_provider_config()], &diapason_config::TimeoutsConfig::default())
         .for_provider("wire-test")
 }
 
