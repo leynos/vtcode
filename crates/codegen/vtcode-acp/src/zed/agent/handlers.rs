@@ -58,7 +58,7 @@ use vtcode_core::llm::factory::create_provider_with_config;
 use vtcode_core::llm::provider::{LLMError, LLMProvider, LLMRequest, LLMResponse, LLMStreamEvent, Message};
 use vtcode_core::retry::{RetryBackoff, RetryDecision, RetryPolicyCoreExt};
 
-use super::provider_telemetry::SafeProviderProjection;
+use super::provider_telemetry::{ProviderMetricSink, ProviderMode, RetryDisposition, SafeProviderProjection};
 use super::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderDeadlinePolicy, ProviderRequestRuntime};
 
@@ -318,15 +318,25 @@ struct GenerationTelemetry {
     started_at: Instant,
     first_output_at: Option<Instant>,
     estimated_output_tokens: u64,
+    metric_sink: ProviderMetricSink,
+    mode: ProviderMode,
 }
 
 impl GenerationTelemetry {
-    fn start() -> Self {
+    fn start(metric_sink: ProviderMetricSink, mode: ProviderMode) -> Self {
         Self {
             started_at: Instant::now(),
             first_output_at: None,
             estimated_output_tokens: 0,
+            metric_sink,
+            mode,
         }
+    }
+
+    async fn record_attempt(&self, runtime: &ProviderRequestRuntime) {
+        self.metric_sink
+            .record_provider_attempt(self.mode, runtime.provider_class())
+            .await;
     }
 
     fn observe_output(&mut self, runtime: &ProviderRequestRuntime, delta: &str, retry_count: u32) {
@@ -340,7 +350,7 @@ impl GenerationTelemetry {
         self.first_output_at = Some(now);
         let snapshot = runtime.telemetry_snapshot();
         info!(
-            provider = runtime.provider_name(),
+            provider_class = runtime.provider_class().as_str(),
             time_to_first_token_ms = duration_millis(now.duration_since(self.started_at)),
             retry_count,
             queue_depth = snapshot.queue_depth,
@@ -351,7 +361,13 @@ impl GenerationTelemetry {
         );
     }
 
-    fn complete(&self, runtime: &ProviderRequestRuntime, response: &LLMResponse, retry_count: u32, buffered: bool) {
+    async fn complete(
+        &self,
+        runtime: &ProviderRequestRuntime,
+        response: &LLMResponse,
+        retry_count: u32,
+        buffered: bool,
+    ) {
         let elapsed = self.started_at.elapsed();
         let elapsed_ms = duration_millis(elapsed).max(1);
         let (output_tokens, token_count_source) = response
@@ -363,7 +379,7 @@ impl GenerationTelemetry {
         let tokens_per_second = output_tokens.saturating_mul(1_000) / elapsed_ms;
         let snapshot = runtime.telemetry_snapshot();
         info!(
-            provider = runtime.provider_name(),
+            provider_class = runtime.provider_class().as_str(),
             generation_elapsed_ms = elapsed_ms,
             time_to_first_token_ms = self
                 .first_output_at
@@ -380,23 +396,27 @@ impl GenerationTelemetry {
             circuit_breaker_state = snapshot.circuit_breaker_state,
             "ACP provider generation completed"
         );
+        self.metric_sink
+            .record_provider_generation(self.mode, runtime.provider_class(), elapsed)
+            .await;
     }
 
-    fn failed(
+    async fn failed(
         &self,
         runtime: &ProviderRequestRuntime,
         retry_count: u32,
-        retry_disposition: &'static str,
+        retry_disposition: RetryDisposition,
+        retry_delay: Option<Duration>,
         error: &LLMError,
     ) {
         let snapshot = runtime.telemetry_snapshot();
         let error_projection = SafeProviderProjection::from_llm_error(error);
+        let error_category = vtcode_commons::ErrorCategory::from(error);
         warn!(
-            provider = runtime.provider_name(),
             generation_elapsed_ms = duration_millis(self.started_at.elapsed()),
             retry_count,
             max_retries = runtime.retry_policy().max_attempts.saturating_sub(1),
-            retry_disposition,
+            retry_disposition = retry_disposition.as_str(),
             queue_depth = snapshot.queue_depth,
             active_provider_permits = snapshot.active_permits,
             permit_limit = ?snapshot.permit_limit,
@@ -405,6 +425,21 @@ impl GenerationTelemetry {
             error_status = ?error_projection.status(),
             "ACP provider generation attempt failed"
         );
+        if error_category == vtcode_commons::ErrorCategory::RateLimit {
+            self.metric_sink
+                .record_provider_rate_limited(self.mode, runtime.provider_class(), error_category, retry_disposition)
+                .await;
+        }
+        if retry_disposition == RetryDisposition::RetryScheduled {
+            self.metric_sink
+                .record_provider_retry(self.mode, runtime.provider_class(), error_category)
+                .await;
+            if let Some(delay) = retry_delay {
+                self.metric_sink
+                    .record_provider_retry_delay(self.mode, runtime.provider_class(), error_category, delay)
+                    .await;
+            }
+        }
     }
 }
 
@@ -412,13 +447,13 @@ fn duration_millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
-fn retry_disposition(decision: &RetryDecision) -> &'static str {
+fn retry_disposition(decision: &RetryDecision) -> RetryDisposition {
     if decision.retryable {
-        "retry_scheduled"
+        RetryDisposition::RetryScheduled
     } else if decision.category.is_retryable() {
-        "retry_exhausted"
+        RetryDisposition::RetryExhausted
     } else {
-        "non_retryable"
+        RetryDisposition::NonRetryable
     }
 }
 
@@ -472,13 +507,35 @@ async fn generate_with_retry_with_observer(
     notice_target: Option<(&ZedAgent, &acp::SessionId)>,
     retry_observed_at: &(impl Fn() -> SystemTime + Sync),
 ) -> Result<LLMResponse, ProviderCallError> {
+    generate_with_retry_with_observer_and_metric_sink(
+        provider,
+        request,
+        runtime,
+        cancellation,
+        notice_target,
+        retry_observed_at,
+        &ProviderMetricSink::production(),
+    )
+    .await
+}
+
+async fn generate_with_retry_with_observer_and_metric_sink(
+    provider: &dyn LLMProvider,
+    request: LLMRequest,
+    runtime: &ProviderRequestRuntime,
+    cancellation: &super::super::types::SessionCancellation,
+    notice_target: Option<(&ZedAgent, &acp::SessionId)>,
+    retry_observed_at: &(impl Fn() -> SystemTime + Sync),
+    metric_sink: &ProviderMetricSink,
+) -> Result<LLMResponse, ProviderCallError> {
     let policy = runtime.retry_policy();
     let mut attempt_index = 0;
     let mut backoff = RetryBackoff::new();
 
     loop {
         let permit = runtime.acquire(cancellation).await?;
-        let mut telemetry = GenerationTelemetry::start();
+        let mut telemetry = GenerationTelemetry::start(metric_sink.clone(), ProviderMode::Buffered);
+        telemetry.record_attempt(runtime).await;
         let deadline_policy = runtime.deadline_policy();
         let total_deadline = deadline_after(deadline_policy.total_generation);
         let result = tokio::select! {
@@ -500,7 +557,7 @@ async fn generate_with_retry_with_observer(
                 if let Some(reasoning) = response.reasoning.as_deref() {
                     telemetry.observe_output(runtime, reasoning, attempt_index);
                 }
-                telemetry.complete(runtime, &response, attempt_index, true);
+                telemetry.complete(runtime, &response, attempt_index, true).await;
                 drop(permit);
                 return Ok(response);
             }
@@ -508,19 +565,23 @@ async fn generate_with_retry_with_observer(
                 let observed_at = retry_observed_at();
                 let decision =
                     policy.decision_for_llm_error_with_backoff_at(&error, attempt_index, &mut backoff, observed_at);
-                telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
-                drop(permit);
                 let retry_delay = decision
                     .retryable
                     .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
+                telemetry
+                    .failed(runtime, attempt_index, retry_disposition(&decision), retry_delay, &error)
+                    .await;
+                drop(permit);
                 if let Some((agent, session_id)) = notice_target {
                     agent
-                        .publish_rate_limit_notice_at(
+                        .publish_rate_limit_notice_at_with_metric_sink(
                             session_id,
                             runtime.provider_name(),
                             &error,
                             retry_delay,
                             observed_at,
+                            metric_sink,
+                            runtime.provider_class(),
                         )
                         .await;
                 }
@@ -529,7 +590,7 @@ async fn generate_with_retry_with_observer(
                 }
                 let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                 info!(
-                    provider = runtime.provider_name(),
+                    provider_class = runtime.provider_class().as_str(),
                     next_attempt = attempt_index + 2,
                     retry_count = attempt_index + 1,
                     max_retries = policy.max_attempts.saturating_sub(1),
@@ -945,6 +1006,25 @@ async fn run_prompt_with_retry_observer(
     args: PromptRequest,
     retry_observed_at: impl Fn() -> SystemTime + Send + Sync,
 ) -> Result<PromptResponse, SdkError> {
+    run_prompt_with_retry_observer_and_metric_sink(agent, args, retry_observed_at, ProviderMetricSink::production())
+        .await
+}
+
+#[cfg(test)]
+async fn run_prompt_with_metric_sink(
+    agent: Arc<ZedAgent>,
+    args: PromptRequest,
+    metric_sink: ProviderMetricSink,
+) -> Result<PromptResponse, SdkError> {
+    run_prompt_with_retry_observer_and_metric_sink(agent, args, SystemTime::now, metric_sink).await
+}
+
+async fn run_prompt_with_retry_observer_and_metric_sink(
+    agent: Arc<ZedAgent>,
+    args: PromptRequest,
+    retry_observed_at: impl Fn() -> SystemTime + Send + Sync,
+    metric_sink: ProviderMetricSink,
+) -> Result<PromptResponse, SdkError> {
     let Some(session) = agent.session_handle(&args.session_id) else {
         return Err(SdkError::invalid_params().data(json!({ "reason": "unknown_session" })));
     };
@@ -1108,7 +1188,8 @@ async fn run_prompt_with_retry_observer(
                 }
                 Err(error) => return Err(SdkError::internal_error().data(error.to_string())),
             };
-            let mut telemetry = GenerationTelemetry::start();
+            let mut telemetry = GenerationTelemetry::start(metric_sink.clone(), ProviderMode::Stream);
+            telemetry.record_attempt(&provider_runtime).await;
             let mut stream_deadlines = StreamDeadlineTracker::new(deadline_policy, Instant::now());
             let next_deadline = stream_deadlines.next();
             let stream_result = tokio::select! {
@@ -1131,18 +1212,22 @@ async fn run_prompt_with_retry_observer(
                     let observed_at = retry_observed_at();
                     let decision =
                         policy.decision_for_llm_error_with_backoff_at(&error, attempt_index, &mut backoff, observed_at);
-                    telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
-                    drop(permit);
                     let retry_delay = decision
                         .retryable
                         .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
+                    telemetry
+                        .failed(&provider_runtime, attempt_index, retry_disposition(&decision), retry_delay, &error)
+                        .await;
+                    drop(permit);
                     agent
-                        .publish_rate_limit_notice_at(
+                        .publish_rate_limit_notice_at_with_metric_sink(
                             &args.session_id,
                             provider_runtime.provider_name(),
                             &error,
                             retry_delay,
                             observed_at,
+                            &metric_sink,
+                            provider_runtime.provider_class(),
                         )
                         .await;
                     if !decision.retryable {
@@ -1158,7 +1243,7 @@ async fn run_prompt_with_retry_observer(
                     }
                     let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                     info!(
-                        provider = provider_runtime.provider_name(),
+                        provider_class = provider_runtime.provider_class().as_str(),
                         next_attempt = attempt_index + 2,
                         retry_count = attempt_index + 1,
                         max_retries = policy.max_attempts.saturating_sub(1),
@@ -1211,7 +1296,15 @@ async fn run_prompt_with_retry_observer(
                         metadata: None,
                     };
                     if emitted_output {
-                        telemetry.failed(&provider_runtime, attempt_index, "partial_output_visible", &error);
+                        telemetry
+                            .failed(
+                                &provider_runtime,
+                                attempt_index,
+                                RetryDisposition::PartialOutputVisible,
+                                None,
+                                &error,
+                            )
+                            .await;
                         return Ok(finish_failed_provider_turn(
                             &agent,
                             &session,
@@ -1229,7 +1322,12 @@ async fn run_prompt_with_retry_observer(
                         &mut backoff,
                         retry_observed_at(),
                     );
-                    telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
+                    let retry_delay = decision
+                        .retryable
+                        .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
+                    telemetry
+                        .failed(&provider_runtime, attempt_index, retry_disposition(&decision), retry_delay, &error)
+                        .await;
                     drop(permit);
                     if !decision.retryable {
                         return Ok(finish_failed_provider_turn(
@@ -1242,9 +1340,9 @@ async fn run_prompt_with_retry_observer(
                         )
                         .await);
                     }
-                    let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
+                    let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                     info!(
-                        provider = provider_runtime.provider_name(),
+                        provider_class = provider_runtime.provider_class().as_str(),
                         next_attempt = attempt_index + 2,
                         retry_count = attempt_index + 1,
                         max_retries = policy.max_attempts.saturating_sub(1),
@@ -1284,18 +1382,22 @@ async fn run_prompt_with_retry_observer(
                             &mut backoff,
                             observed_at,
                         );
-                        telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
-                        drop(permit);
                         let retry_delay = decision
                             .retryable
                             .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
+                        telemetry
+                            .failed(&provider_runtime, attempt_index, retry_disposition(&decision), retry_delay, &error)
+                            .await;
+                        drop(permit);
                         agent
-                            .publish_rate_limit_notice_at(
+                            .publish_rate_limit_notice_at_with_metric_sink(
                                 &args.session_id,
                                 provider_runtime.provider_name(),
                                 &error,
                                 retry_delay,
                                 observed_at,
+                                &metric_sink,
+                                provider_runtime.provider_class(),
                             )
                             .await;
                         if !decision.retryable {
@@ -1311,7 +1413,7 @@ async fn run_prompt_with_retry_observer(
                         }
                         let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                         info!(
-                            provider = provider_runtime.provider_name(),
+                            provider_class = provider_runtime.provider_class().as_str(),
                             next_attempt = attempt_index + 2,
                             retry_count = attempt_index + 1,
                             max_retries = policy.max_attempts.saturating_sub(1),
@@ -1341,9 +1443,25 @@ async fn run_prompt_with_retry_observer(
                         }
                     }
                     Err(error) => {
-                        telemetry.failed(&provider_runtime, attempt_index, "partial_output_visible", &error);
+                        telemetry
+                            .failed(
+                                &provider_runtime,
+                                attempt_index,
+                                RetryDisposition::PartialOutputVisible,
+                                None,
+                                &error,
+                            )
+                            .await;
                         agent
-                            .publish_rate_limit_notice(&args.session_id, provider_runtime.provider_name(), &error, None)
+                            .publish_rate_limit_notice_at_with_metric_sink(
+                                &args.session_id,
+                                provider_runtime.provider_name(),
+                                &error,
+                                None,
+                                SystemTime::now(),
+                                &metric_sink,
+                                provider_runtime.provider_class(),
+                            )
                             .await;
                         return Ok(finish_failed_provider_turn(
                             &agent,
@@ -1398,7 +1516,7 @@ async fn run_prompt_with_retry_observer(
                                 telemetry.observe_output(&provider_runtime, reasoning, attempt_index);
                             }
                         }
-                        telemetry.complete(&provider_runtime, &response, attempt_index, false);
+                        telemetry.complete(&provider_runtime, &response, attempt_index, false).await;
                         agent.publish_lody_usage(&args.session_id, &session_provider_name, &session_model, &response);
                         if assistant_message.is_empty()
                             && let Some(content) = response.content
@@ -1806,6 +1924,7 @@ mod tests {
     use vtcode_core::core::threads::{ThreadBootstrap, ThreadManager};
     use vtcode_core::llm::Usage;
     use vtcode_core::subagents::SpawnBackgroundSubprocessRequest;
+    use vtcode_core::telemetry::perf::TestPerfRecorder;
 
     pub(super) static PROMPT_PROVIDER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
 
@@ -2473,6 +2592,10 @@ Run the managed background fixture.
         session_id: acp::SessionId,
     }
 
+    struct RetryingStreamProvider {
+        calls: Arc<AtomicUsize>,
+    }
+
     struct BlockingPromptProvider {
         started: Arc<Notify>,
         release: Arc<Notify>,
@@ -2746,6 +2869,51 @@ Run the managed background fixture.
             _factory_guard: factory_guard,
             agent,
             session_id,
+        }
+    }
+
+    #[async_trait]
+    impl LLMProvider for RetryingStreamProvider {
+        fn name(&self) -> &str {
+            "wire-test"
+        }
+
+        fn supported_models(&self) -> Vec<String> {
+            vec!["wire-model".to_string()]
+        }
+
+        fn supports_streaming(&self) -> bool {
+            true
+        }
+
+        fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+            Ok(())
+        }
+
+        async fn stream(&self, _request: LLMRequest) -> Result<vtcode_core::llm::provider::LLMStream, LLMError> {
+            if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                return Err(LLMError::RateLimit {
+                    metadata: Some(LLMErrorMetadata::new(
+                        "provider-marker://model/request/session/error-code/body",
+                        Some(429),
+                        Some("provider-marker-code".to_string()),
+                        None,
+                        None,
+                        Some("0".to_string()),
+                        Some("provider-marker-body".to_string()),
+                    )),
+                });
+            }
+
+            let response = LLMResponse::new("wire-model", "recovered stream");
+            Ok(Box::pin(futures::stream::iter([
+                Ok(LLMStreamEvent::Token { delta: "recovered stream".to_string() }),
+                Ok(LLMStreamEvent::Completed { response: Box::new(response) }),
+            ])))
+        }
+
+        async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+            panic!("retrying stream fixture must use streaming")
         }
     }
 
@@ -3857,6 +4025,113 @@ Run the managed background fixture.
 
         assert_eq!(response.content.as_deref(), Some("recovered"));
         assert_eq!(provider.attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn buffered_retry_records_bounded_perf_metrics() {
+        let provider = FlakyProvider {
+            attempts: AtomicUsize::new(0),
+            network_failures: 1,
+            invalid_request: false,
+        };
+        let recorder = Arc::new(TestPerfRecorder::new());
+        let metric_sink = ProviderMetricSink::test(Arc::clone(&recorder));
+
+        let response = generate_with_retry_with_observer_and_metric_sink(
+            &provider,
+            LLMRequest::default(),
+            &retry_runtime(),
+            &super::super::super::types::SessionCancellation::default(),
+            None,
+            &SystemTime::now,
+            &metric_sink,
+        )
+        .await
+        .expect("transient request should recover");
+
+        assert_eq!(response.content.as_deref(), Some("recovered"));
+        let events = recorder.drain().await;
+        let names = events.iter().map(|event| event.name.as_str()).collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec![
+                "vtcode.acp.provider_attempt_total",
+                "vtcode.acp.provider_retry_total",
+                "vtcode.acp.provider_retry_delay_ms",
+                "vtcode.acp.provider_attempt_total",
+                "vtcode.acp.provider_generation_ms",
+            ]
+        );
+        assert!(
+            events
+                .iter()
+                .all(|event| event.tags.values().all(|value| value != "retry-test"))
+        );
+        assert_eq!(events[0].tags.get("mode").map(String::as_str), Some("buffered"));
+        assert_eq!(events[0].tags.get("provider_class").map(String::as_str), Some("custom"));
+        assert_eq!(events[1].tags.get("error_category").map(String::as_str), Some("Network error"));
+        assert_eq!(events[1].tags.get("retry_disposition").map(String::as_str), Some("retry_scheduled"));
+        assert!(recorder.drain().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn streaming_retry_records_bounded_perf_metrics() {
+        let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider_calls = Arc::clone(&calls);
+        let _factory_guard = PromptProviderFactoryGuard::install(
+            "wire-test",
+            Arc::new(move || Box::new(RetryingStreamProvider { calls: Arc::clone(&provider_calls) })),
+        );
+        let workspace = TempDir::new().expect("wire test workspace");
+        let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+        let session = agent
+            .new_session(NewSessionRequest::new(workspace.path()))
+            .await
+            .expect("create wire test session");
+        let recorder = Arc::new(TestPerfRecorder::new());
+
+        let response = run_prompt_with_metric_sink(
+            Arc::clone(&agent),
+            PromptRequest::new(
+                session.session_id,
+                vec![acp::ContentBlock::Text(acp::TextContent::new(
+                    "exercise streaming retry metrics",
+                ))],
+            ),
+            ProviderMetricSink::test(Arc::clone(&recorder)),
+        )
+        .await
+        .expect("stream retry should recover");
+
+        assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        let events = recorder.drain().await;
+        let names = events.iter().map(|event| event.name.as_str()).collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec![
+                "vtcode.acp.provider_attempt_total",
+                "vtcode.acp.provider_rate_limited_total",
+                "vtcode.acp.provider_retry_total",
+                "vtcode.acp.provider_retry_delay_ms",
+                "vtcode.acp.rate_limit_notification_failure_total",
+                "vtcode.acp.provider_attempt_total",
+                "vtcode.acp.provider_generation_ms",
+            ]
+        );
+        let marker = "provider-marker";
+        assert!(events.iter().all(|event| {
+            event
+                .tags
+                .iter()
+                .all(|(key, value)| !key.contains(marker) && !value.contains(marker))
+        }));
+        assert_eq!(events[0].tags.get("mode").map(String::as_str), Some("stream"));
+        assert_eq!(events[0].tags.get("provider_class").map(String::as_str), Some("unknown"));
+        assert_eq!(events[1].tags.get("error_category").map(String::as_str), Some("Rate limit exceeded"));
+        assert_eq!(events[1].tags.get("retry_disposition").map(String::as_str), Some("retry_scheduled"));
+        assert!(recorder.drain().await.is_empty());
     }
 
     #[tokio::test]
