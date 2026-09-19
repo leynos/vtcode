@@ -480,12 +480,24 @@ impl StreamDeadlineTracker {
     }
 }
 
+#[cfg(test)]
 async fn generate_with_retry(
     provider: &dyn LLMProvider,
     request: LLMRequest,
     runtime: &ProviderRequestRuntime,
     cancellation: &super::super::types::SessionCancellation,
     notice_target: Option<(&ZedAgent, &acp::SessionId)>,
+) -> Result<LLMResponse, ProviderCallError> {
+    generate_with_retry_with_observer(provider, request, runtime, cancellation, notice_target, &SystemTime::now).await
+}
+
+async fn generate_with_retry_with_observer(
+    provider: &dyn LLMProvider,
+    request: LLMRequest,
+    runtime: &ProviderRequestRuntime,
+    cancellation: &super::super::types::SessionCancellation,
+    notice_target: Option<(&ZedAgent, &acp::SessionId)>,
+    retry_observed_at: &(impl Fn() -> SystemTime + Sync),
 ) -> Result<LLMResponse, ProviderCallError> {
     let policy = runtime.retry_policy();
     let mut attempt_index = 0;
@@ -520,7 +532,12 @@ async fn generate_with_retry(
                 return Ok(response);
             }
             Err(error) => {
-                let decision = policy.decision_for_llm_error_with_backoff(&error, attempt_index, &mut backoff);
+                let decision = policy.decision_for_llm_error_with_backoff_at(
+                    &error,
+                    attempt_index,
+                    &mut backoff,
+                    retry_observed_at(),
+                );
                 telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
                 drop(permit);
                 let retry_delay = decision
@@ -944,6 +961,14 @@ async fn handle_prompt(
 }
 
 async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptResponse, SdkError> {
+    run_prompt_with_retry_observer(agent, args, SystemTime::now).await
+}
+
+async fn run_prompt_with_retry_observer(
+    agent: Arc<ZedAgent>,
+    args: PromptRequest,
+    retry_observed_at: impl Fn() -> SystemTime + Send + Sync,
+) -> Result<PromptResponse, SdkError> {
     let Some(session) = agent.session_handle(&args.session_id) else {
         return Err(SdkError::invalid_params().data(json!({ "reason": "unknown_session" })));
     };
@@ -1127,7 +1152,12 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             let mut stream = match stream_result {
                 Ok(stream) => stream,
                 Err(error) => {
-                    let decision = policy.decision_for_llm_error_with_backoff(&error, attempt_index, &mut backoff);
+                    let decision = policy.decision_for_llm_error_with_backoff_at(
+                        &error,
+                        attempt_index,
+                        &mut backoff,
+                        retry_observed_at(),
+                    );
                     telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                     drop(permit);
                     let retry_delay = decision
@@ -1219,7 +1249,12 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         .await);
                     }
                     drop(stream);
-                    let decision = policy.decision_for_llm_error_with_backoff(&error, attempt_index, &mut backoff);
+                    let decision = policy.decision_for_llm_error_with_backoff_at(
+                        &error,
+                        attempt_index,
+                        &mut backoff,
+                        retry_observed_at(),
+                    );
                     telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                     drop(permit);
                     if !decision.retryable {
@@ -1268,7 +1303,12 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     Ok(event) => event,
                     Err(error) if !emitted_output => {
                         drop(stream);
-                        let decision = policy.decision_for_llm_error_with_backoff(&error, attempt_index, &mut backoff);
+                        let decision = policy.decision_for_llm_error_with_backoff_at(
+                            &error,
+                            attempt_index,
+                            &mut backoff,
+                            retry_observed_at(),
+                        );
                         telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                         drop(permit);
                         let retry_delay = decision
@@ -1559,12 +1599,13 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 ..Default::default()
             };
 
-            let response = match generate_with_retry(
+            let response = match generate_with_retry_with_observer(
                 provider.as_ref(),
                 request,
                 &provider_runtime,
                 &session.cancellation,
                 Some((&agent, &args.session_id)),
+                &retry_observed_at,
             )
             .await
             {
