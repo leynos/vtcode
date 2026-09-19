@@ -12,7 +12,7 @@ use crate::error_display;
 use crate::provider;
 use crate::providers::shared::StreamTelemetry;
 use crate::providers::shared::responses_reconciler::{
-    FinalInputPreference, ResponsesItemIdentity, ResponsesStreamReconciler, ResponsesTerminalState,
+    FinalInputPreference, ReasoningChannel, ResponsesItemIdentity, ResponsesStreamReconciler, ResponsesTerminalState,
     reconcile_final_input,
 };
 use crate::providers::shared::responses_usage;
@@ -382,7 +382,7 @@ pub(crate) fn create_responses_stream(
                         }
                         ResponsesStreamEventPolicy::DocumentedValueBearingRigGap => match event_type {
                             "response.custom_tool_call_input.delta" => {
-                                let identity = responses_item_identity(&payload);
+                                let identity = responses_item_identity(&payload, None);
                                 let call_id = identity
                                     .response_call_id()
                                     .map(ToOwned::to_owned)
@@ -397,7 +397,7 @@ pub(crate) fn create_responses_stream(
                                 }
                             }
                             "response.custom_tool_call_input.done" => {
-                                let identity = responses_item_identity(&payload);
+                                let identity = responses_item_identity(&payload, None);
                                 let call_id = identity
                                     .response_call_id()
                                     .map(ToOwned::to_owned)
@@ -457,8 +457,13 @@ pub(crate) fn create_responses_stream(
                                         StreamAssemblyError::MissingField("delta")
                                             .into_llm_error("OpenAI")
                                     })?;
+                                let reasoning_channel = if event_type == "response.reasoning_summary_text.delta" {
+                                    ReasoningChannel::Summary
+                                } else {
+                                    ReasoningChannel::Raw
+                                };
                                 let delta = reconciler
-                                    .reasoning_delta(responses_item_identity(&payload), delta)
+                                    .reasoning_delta(responses_item_identity(&payload, Some(reasoning_channel)), delta)
                                     .map_err(|message| provider_error("OpenAI", message))?;
                                 if retain_reasoning && !delta.is_empty() {
                                     aggregator.reasoning.push_str(&delta);
@@ -475,7 +480,10 @@ pub(crate) fn create_responses_stream(
                                             .into_llm_error("OpenAI")
                                     })?;
                                 let delta = reconciler
-                                    .reasoning_delta(responses_item_identity(&payload), delta)
+                                    .reasoning_delta(
+                                        responses_item_identity(&payload, Some(ReasoningChannel::Raw)),
+                                        delta,
+                                    )
                                     .map_err(|message| provider_error("OpenAI", message))?;
                                 if retain_reasoning && !delta.is_empty() {
                                     aggregator.reasoning.push_str(&delta);
@@ -487,8 +495,16 @@ pub(crate) fn create_responses_stream(
                                 let text = optional_string_field(&payload, "text")?;
                                 let delta = optional_string_field(&payload, "delta")?;
                                 if let Some(text) = text.or(delta) {
+                                    let reasoning_channel = if event_type == "response.reasoning_summary_text.done" {
+                                        ReasoningChannel::Summary
+                                    } else {
+                                        ReasoningChannel::Raw
+                                    };
                                     let delta = reconciler
-                                        .reasoning_done(responses_item_identity(&payload), &text)
+                                        .reasoning_done(
+                                            responses_item_identity(&payload, Some(reasoning_channel)),
+                                            &text,
+                                        )
                                         .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))?;
                                     if retain_reasoning
                                         && let Some(delta) = delta
@@ -503,7 +519,10 @@ pub(crate) fn create_responses_stream(
                             "response.reasoning_part.added" | "response.reasoning_part.done" => {
                                 let text = reasoning_part_text("OpenAI", &payload)?;
                                 let delta = reconciler
-                                    .reasoning_done(responses_item_identity(&payload), text)
+                                    .reasoning_done(
+                                        responses_item_identity(&payload, Some(ReasoningChannel::Raw)),
+                                        text,
+                                    )
                                     .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))?;
                                 if retain_reasoning
                                     && let Some(delta) = delta
@@ -663,8 +682,8 @@ pub(crate) fn create_responses_stream(
     Box::pin(stream)
 }
 
-fn responses_item_identity(payload: &Value) -> ResponsesItemIdentity {
-    ResponsesItemIdentity::new(
+fn responses_item_identity(payload: &Value, reasoning_channel: Option<ReasoningChannel>) -> ResponsesItemIdentity {
+    let identity = ResponsesItemIdentity::new(
         payload.get("item_id").and_then(Value::as_str).map(ToOwned::to_owned),
         payload.get("call_id").and_then(Value::as_str).map(ToOwned::to_owned),
         payload
@@ -678,7 +697,11 @@ fn responses_item_identity(payload: &Value) -> ResponsesItemIdentity {
             .or_else(|| payload.get("summary_index"))
             .and_then(Value::as_u64)
             .and_then(|value| usize::try_from(value).ok()),
-    )
+    );
+    match reasoning_channel {
+        Some(channel) => identity.with_reasoning_channel(channel),
+        None => identity,
+    }
 }
 
 fn merge_reconciled_custom_calls(

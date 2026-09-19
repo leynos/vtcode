@@ -7,6 +7,7 @@
 
 use crate::provider::LLMError;
 use crate::providers::shared::StreamAssemblyError;
+use crate::providers::shared::responses_reconciler::ReasoningChannel;
 use rig::providers::openai::responses_api::Output as RigResponsesOutput;
 use rig::providers::openai::responses_api::streaming::{
     ItemChunkKind as RigResponsesItemChunkKind, ResponseChunkKind as RigResponsesChunkKind,
@@ -34,6 +35,7 @@ pub(crate) enum ResponsesStreamEvent {
         item_id: Option<String>,
         output_index: Option<usize>,
         sub_index: Option<usize>,
+        reasoning_channel: ReasoningChannel,
         sequence_number: Option<u64>,
     },
     ReasoningDone {
@@ -41,6 +43,7 @@ pub(crate) enum ResponsesStreamEvent {
         item_id: Option<String>,
         output_index: Option<usize>,
         sub_index: Option<usize>,
+        reasoning_channel: ReasoningChannel,
         sequence_number: Option<u64>,
     },
     FunctionCallNameDelta {
@@ -263,6 +266,7 @@ impl ResponsesStreamAdapter {
                             item_id,
                             output_index,
                             sub_index: usize::try_from(delta.summary_index).ok(),
+                            reasoning_channel: ReasoningChannel::Summary,
                             sequence_number: Some(delta.sequence_number),
                         })
                     }
@@ -272,6 +276,7 @@ impl ResponsesStreamAdapter {
                             item_id,
                             output_index,
                             sub_index: usize::try_from(done.summary_index).ok(),
+                            reasoning_channel: ReasoningChannel::Summary,
                             sequence_number: Some(done.sequence_number),
                         })
                     }
@@ -280,6 +285,7 @@ impl ResponsesStreamAdapter {
                         item_id,
                         output_index,
                         sub_index: delta.content_index.and_then(|value| usize::try_from(value).ok()),
+                        reasoning_channel: ReasoningChannel::Raw,
                         sequence_number: Some(delta.sequence_number),
                     }),
                     RigResponsesItemChunkKind::OutputItemAdded(output) => adapt_output_item(
@@ -584,6 +590,7 @@ fn adapt_overlay_conversion(provider_name: &str, payload: &Value) -> Result<Resp
                 item_id: optional_owned_string(payload, "item_id"),
                 output_index: optional_output_index(payload),
                 sub_index: optional_sub_index(payload),
+                reasoning_channel: ReasoningChannel::Raw,
                 sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
             })
         }
@@ -596,6 +603,7 @@ fn adapt_overlay_conversion(provider_name: &str, payload: &Value) -> Result<Resp
                     item_id: optional_owned_string(payload, "item_id"),
                     output_index: optional_output_index(payload),
                     sub_index: optional_sub_index(payload),
+                    reasoning_channel: ReasoningChannel::Raw,
                     sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
                 })
             } else {
@@ -611,6 +619,7 @@ fn adapt_overlay_conversion(provider_name: &str, payload: &Value) -> Result<Resp
                 item_id: optional_owned_string(payload, "item_id"),
                 output_index: optional_output_index(payload),
                 sub_index: optional_sub_index(payload),
+                reasoning_channel: ReasoningChannel::Raw,
                 sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
             })
         }
@@ -728,7 +737,7 @@ fn response_error_message(payload: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ResponsesLifecycleEvent, ResponsesStreamAdapter, ResponsesStreamEvent};
+    use super::{ReasoningChannel, ResponsesLifecycleEvent, ResponsesStreamAdapter, ResponsesStreamEvent};
     use crate::provider::LLMError;
     use serde_json::{Value, json};
 
@@ -1359,6 +1368,7 @@ mod tests {
                 item_id: Some("rs_1".to_string()),
                 output_index: Some(0),
                 sub_index: None,
+                reasoning_channel: ReasoningChannel::Raw,
                 sequence_number: Some(1)
             }
         );
@@ -1377,6 +1387,7 @@ mod tests {
                 item_id: Some("rs_1".to_string()),
                 output_index: Some(0),
                 sub_index: None,
+                reasoning_channel: ReasoningChannel::Raw,
                 sequence_number: Some(2)
             }
         );
@@ -1406,6 +1417,7 @@ mod tests {
                 item_id: Some("rs_1".to_string()),
                 output_index: Some(0),
                 sub_index: None,
+                reasoning_channel: ReasoningChannel::Raw,
                 sequence_number: Some(4)
             }
         );
@@ -1428,6 +1440,7 @@ mod tests {
                 item_id: Some("reasoning_1".to_string()),
                 output_index: Some(2),
                 sub_index: Some(3),
+                reasoning_channel: ReasoningChannel::Raw,
                 sequence_number: Some(11),
             }
         );
@@ -1447,6 +1460,7 @@ mod tests {
                 item_id: Some("reasoning_2".to_string()),
                 output_index: Some(4),
                 sub_index: Some(5),
+                reasoning_channel: ReasoningChannel::Raw,
                 sequence_number: Some(12),
             }
         );
@@ -1466,6 +1480,7 @@ mod tests {
                     item_id: None,
                     output_index: None,
                     sub_index: None,
+                    reasoning_channel: ReasoningChannel::Raw,
                     sequence_number: None,
                 }
             );
@@ -1589,6 +1604,7 @@ mod tests {
                 item_id: Some("rs_1".to_string()),
                 output_index: Some(1),
                 sub_index: Some(0),
+                reasoning_channel: ReasoningChannel::Summary,
                 sequence_number: Some(3)
             }
         );

@@ -18,15 +18,33 @@ pub(crate) struct ResponsesItemIdentity {
     pub(crate) call_id: Option<String>,
     pub(crate) output_index: Option<usize>,
     pub(crate) sub_index: Option<usize>,
+    reasoning_channel: Option<ReasoningChannel>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ReasoningChannel {
+    Raw,
+    Summary,
 }
 
 impl ResponsesItemIdentity {
     pub(crate) fn new(item_id: Option<String>, call_id: Option<String>, output_index: Option<usize>) -> Self {
-        Self { item_id, call_id, output_index, sub_index: None }
+        Self {
+            item_id,
+            call_id,
+            output_index,
+            sub_index: None,
+            reasoning_channel: None,
+        }
     }
 
     pub(crate) fn with_sub_index(mut self, sub_index: Option<usize>) -> Self {
         self.sub_index = sub_index;
+        self
+    }
+
+    pub(crate) fn with_reasoning_channel(mut self, reasoning_channel: ReasoningChannel) -> Self {
+        self.reasoning_channel = Some(reasoning_channel);
         self
     }
 
@@ -35,9 +53,14 @@ impl ResponsesItemIdentity {
             || self.call_id.as_deref().is_some_and(|value| !value.is_empty())
             || self.output_index.is_some()
             || self.sub_index.is_some()
+            || self.reasoning_channel.is_some()
     }
 
     fn reasoning_matches(&self, other: &Self) -> bool {
+        if self.reasoning_channel != other.reasoning_channel {
+            return false;
+        }
+
         if let (Some(left), Some(right)) = (self.sub_index, other.sub_index) {
             return left == right
                 && optional_strings_compatible(self.item_id.as_deref(), other.item_id.as_deref())
@@ -350,8 +373,8 @@ fn reconcile_snapshot(accumulated: &mut String, snapshot: &str) -> Result<Option
 #[cfg(test)]
 mod tests {
     use super::{
-        FinalInputPreference, ResponsesItemIdentity, ResponsesStreamReconciler, ResponsesTerminalState,
-        reconcile_final_input,
+        FinalInputPreference, ReasoningChannel, ResponsesItemIdentity, ResponsesStreamReconciler,
+        ResponsesTerminalState, reconcile_final_input,
     };
     use proptest::prelude::*;
 
@@ -431,6 +454,19 @@ mod tests {
         assert_eq!(reconciler.reasoning_delta(second.clone(), "second"), Ok("second".to_string()));
         assert_eq!(reconciler.reasoning_done(first, "first"), Ok(None));
         assert_eq!(reconciler.reasoning_done(second, "second+"), Ok(Some("+".to_string())));
+    }
+
+    #[test]
+    fn reasoning_channels_reconcile_independently_with_shared_indexes() {
+        let mut reconciler = ResponsesStreamReconciler::default();
+        let identity = item(0).with_sub_index(Some(0));
+        let raw = identity.clone().with_reasoning_channel(ReasoningChannel::Raw);
+        let summary = identity.with_reasoning_channel(ReasoningChannel::Summary);
+
+        assert_eq!(reconciler.reasoning_delta(raw.clone(), "raw"), Ok("raw".to_string()));
+        assert_eq!(reconciler.reasoning_delta(summary.clone(), "summary"), Ok("summary".to_string()));
+        assert_eq!(reconciler.reasoning_done(raw, "raw+"), Ok(Some("+".to_string())));
+        assert_eq!(reconciler.reasoning_done(summary, "summary+"), Ok(Some("+".to_string())));
     }
 
     #[test]
