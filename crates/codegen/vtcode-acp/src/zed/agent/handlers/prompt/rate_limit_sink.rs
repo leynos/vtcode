@@ -27,10 +27,13 @@ impl AttemptFailureSink for RateLimitNoticeSink<'_> {
         provider: &'a str,
         error: &'a LLMError,
         retry_delay: Option<Duration>,
+        observed_at: SystemTime,
     ) -> AttemptFailureFuture<'a> {
         Box::pin(async move {
+            let observed_epoch_seconds =
+                observed_at.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs();
             self.agent
-                .publish_rate_limit_notice(self.session_id, provider, error, retry_delay)
+                .publish_rate_limit_notice_at(self.session_id, provider, error, retry_delay, observed_epoch_seconds)
                 .await;
         })
     }

@@ -22,12 +22,14 @@ pub(super) type AttemptFailureFuture<'a> = std::pin::Pin<Box<dyn Future<Output =
 pub(super) trait AttemptFailureSink: Send + Sync {
     /// Announce that `provider` failed with `error`.
     ///
-    /// `retry_delay` is `Some` when another attempt is scheduled.
+    /// `retry_delay` is `Some` when another attempt is scheduled, and
+    /// `observed_at` is the instant the failure was observed.
     fn announce<'a>(
         &'a self,
         provider: &'a str,
         error: &'a LLMError,
         retry_delay: Option<Duration>,
+        observed_at: SystemTime,
     ) -> AttemptFailureFuture<'a>;
 }
 
@@ -294,7 +296,7 @@ impl StreamDeadlineTracker {
     }
 }
 
-pub(super) type RetryObservationClock = dyn Fn() -> SystemTime + Send + Sync;
+pub(super) type RetryObservationClock<'clock> = dyn Fn() -> SystemTime + Send + Sync + 'clock;
 
 #[cfg(test)]
 pub(super) async fn generate_with_retry(
@@ -313,7 +315,7 @@ pub(super) async fn generate_with_retry_with_observer(
     runtime: &ProviderRequestRuntime,
     cancellation: &SessionCancellation,
     failure_sink: Option<&dyn AttemptFailureSink>,
-    retry_observed_at: &RetryObservationClock,
+    retry_observed_at: &RetryObservationClock<'_>,
 ) -> Result<LLMResponse, ProviderCallError> {
     let policy = runtime.retry_policy();
     let mut attempt_index = 0;
@@ -351,19 +353,17 @@ pub(super) async fn generate_with_retry_with_observer(
                 return Ok(response);
             }
             Err(error) => {
-                let decision = policy.decision_for_llm_error_with_backoff_at(
-                    &error,
-                    attempt_index,
-                    &mut backoff,
-                    retry_observed_at(),
-                );
+                let observed_at = retry_observed_at();
+                let decision =
+                    policy.decision_for_llm_error_with_backoff_at(&error, attempt_index, &mut backoff, observed_at);
                 telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
                 drop(permit);
                 let retry_delay = decision
                     .retryable
                     .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
                 if let Some(sink) = failure_sink {
-                    sink.announce(runtime.provider_name(), &error, retry_delay).await;
+                    sink.announce(runtime.provider_name(), &error, retry_delay, observed_at)
+                        .await;
                 }
                 if !decision.retryable {
                     return Err(ProviderCallError::Failed(error.to_string()));
@@ -383,4 +383,5 @@ pub(super) async fn generate_with_retry_with_observer(
         }
     }
 }
+// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/provider.rs' for per-hunk detail, 'weave check' to verify your resolution
 // weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/provider.rs' for per-hunk detail, 'weave check' to verify your resolution

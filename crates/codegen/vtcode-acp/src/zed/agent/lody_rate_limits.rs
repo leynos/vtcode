@@ -1,7 +1,6 @@
 //! Project observed provider headers into Lody's optional rate-limit contract.
 
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use vtcode_commons::llm::RateLimitMetadata;
@@ -160,11 +159,12 @@ fn percentage_used(limit: u64, remaining: u64) -> f64 {
 }
 
 impl ZedAgent {
-    pub(super) fn publish_lody_rate_limits(
+    pub(super) fn publish_lody_rate_limits_at(
         &self,
         session_id: &acp::SessionId,
         provider: &str,
         limits: &RateLimitMetadata,
+        observed_epoch_seconds: u64,
     ) {
         let Some(client) = self.client() else {
             return;
@@ -176,8 +176,7 @@ impl ZedAgent {
             Ok(data) => data.model.clone(),
             Err(_) => return,
         };
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-        let Some(snapshot) = rate_limit_snapshot(provider, &model, limits, now) else {
+        let Some(snapshot) = rate_limit_snapshot(provider, &model, limits, observed_epoch_seconds) else {
             return;
         };
         let params = match serde_json::value::to_raw_value(&snapshot) {
@@ -205,7 +204,8 @@ mod tests {
             requests_remaining_per_minute: Some(15),
             ..Default::default()
         };
-        let snapshot = serde_json::to_value(rate_limit_snapshot("baseten", "model", &limits, 100)).unwrap();
+        let snapshot = serde_json::to_value(rate_limit_snapshot("baseten", "model", &limits, 100))
+            .expect("Baseten Lody snapshot should serialize");
         let fixture: serde_json::Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../tests/fixtures/acp/lody_rate_limit_snapshot.json"
@@ -227,7 +227,8 @@ mod tests {
             prompt_tokens: Some(100),
             ..Default::default()
         };
-        let snapshot = serde_json::to_value(rate_limit_snapshot("fireworks", "model", &limits, 100)).unwrap();
+        let snapshot = serde_json::to_value(rate_limit_snapshot("fireworks", "model", &limits, 100))
+            .expect("Fireworks Lody snapshot should serialize");
         assert_eq!(snapshot["rateLimits"][0]["limitName"], "Prompt tokens/s (limit 500)");
         assert_eq!(snapshot["rateLimits"][0]["windows"], serde_json::json!([]));
     }
@@ -242,7 +243,9 @@ mod tests {
             reset_after_millis: Some(1_250),
             ..Default::default()
         };
-        let snapshot = rate_limit_snapshot("together", "model", &limits, 100).unwrap();
+        let snapshot = rate_limit_snapshot("together", "model", &limits, 100)
+            .expect("Together limits should produce a Lody snapshot");
+        assert_eq!(snapshot.fetched_at_epoch_seconds, 100);
         assert_eq!(snapshot.rate_limits[0].windows[0].resets_at_epoch_seconds, Some(102));
         assert_eq!(snapshot.rate_limits[1].windows[0].resets_at_epoch_seconds, None);
     }
@@ -259,7 +262,9 @@ mod tests {
         limits.requests_limit_per_minute = Some(5);
         limits.requests_remaining_per_minute = Some(6);
         assert!(
-            rate_limit_snapshot("provider", "model", &limits, 0).unwrap().rate_limits[0]
+            rate_limit_snapshot("provider", "model", &limits, 0)
+                .expect("inconsistent counts still produce a limit-only snapshot")
+                .rate_limits[0]
                 .windows
                 .is_empty()
         );
