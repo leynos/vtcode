@@ -230,10 +230,14 @@ impl ResponsesStreamReconciler {
 
     /// Record a real delta. Text equality is intentionally irrelevant: equal
     /// deltas at different sequence numbers are legitimate and both survive.
-    pub(crate) fn reasoning_delta(&mut self, identity: ResponsesItemIdentity, delta: &str) -> String {
-        let track = find_or_insert_text_track(&mut self.reasoning_tracks, identity);
+    pub(crate) fn reasoning_delta(
+        &mut self,
+        identity: ResponsesItemIdentity,
+        delta: &str,
+    ) -> Result<String, &'static str> {
+        let track = find_or_insert_text_track(&mut self.reasoning_tracks, identity)?;
         track.text.push_str(delta);
-        delta.to_string()
+        Ok(delta.to_string())
     }
 
     /// Reconcile a `*.done` snapshot with deltas already emitted for the item.
@@ -244,7 +248,7 @@ impl ResponsesStreamReconciler {
         identity: ResponsesItemIdentity,
         snapshot: &str,
     ) -> Result<Option<String>, &'static str> {
-        let track = find_or_insert_text_track(&mut self.reasoning_tracks, identity);
+        let track = find_or_insert_text_track(&mut self.reasoning_tracks, identity)?;
         reconcile_snapshot(&mut track.text, snapshot)
     }
 
@@ -308,24 +312,26 @@ impl ResponsesStreamReconciler {
 
         self.custom_call_tracks
             .push(CustomCallTrack { identity, name: None, input: String::new() });
-        Ok(self
-            .custom_call_tracks
+        self.custom_call_tracks
             .last_mut()
-            .expect("a custom call track was just inserted"))
+            .ok_or("custom call track insertion did not retain the new track")
     }
 }
 
-fn find_or_insert_text_track(tracks: &mut Vec<TextTrack>, identity: ResponsesItemIdentity) -> &mut TextTrack {
+fn find_or_insert_text_track(
+    tracks: &mut Vec<TextTrack>,
+    identity: ResponsesItemIdentity,
+) -> Result<&mut TextTrack, &'static str> {
     if let Some(position) = tracks.iter().position(|track| {
         track.identity.reasoning_matches(&identity) || (!track.identity.has_key() && !identity.has_key())
     }) {
         let track = &mut tracks[position];
         track.identity.merge_from(&identity);
-        return track;
+        return Ok(track);
     }
 
     tracks.push(TextTrack { identity, text: String::new() });
-    tracks.last_mut().expect("a text track was just inserted")
+    tracks.last_mut().ok_or("text track insertion did not retain the new track")
 }
 
 fn reconcile_snapshot(accumulated: &mut String, snapshot: &str) -> Result<Option<String>, &'static str> {
@@ -359,9 +365,9 @@ mod tests {
         let identity = item(0);
 
         assert!(reconciler.admit(Some(1)));
-        assert_eq!(reconciler.reasoning_delta(identity.clone(), "ha"), "ha");
+        assert_eq!(reconciler.reasoning_delta(identity.clone(), "ha"), Ok("ha".to_string()));
         assert!(reconciler.admit(Some(2)));
-        assert_eq!(reconciler.reasoning_delta(identity.clone(), "ha"), "ha");
+        assert_eq!(reconciler.reasoning_delta(identity.clone(), "ha"), Ok("ha".to_string()));
         assert!(reconciler.admit(Some(3)));
         assert_eq!(reconciler.reasoning_done(identity, "haha"), Ok(None));
     }
@@ -421,8 +427,8 @@ mod tests {
         let first = ResponsesItemIdentity::new(Some("reasoning_1".to_string()), None, Some(0)).with_sub_index(Some(0));
         let second = ResponsesItemIdentity::new(Some("reasoning_1".to_string()), None, Some(0)).with_sub_index(Some(1));
 
-        assert_eq!(reconciler.reasoning_delta(first.clone(), "first"), "first");
-        assert_eq!(reconciler.reasoning_delta(second.clone(), "second"), "second");
+        assert_eq!(reconciler.reasoning_delta(first.clone(), "first"), Ok("first".to_string()));
+        assert_eq!(reconciler.reasoning_delta(second.clone(), "second"), Ok("second".to_string()));
         assert_eq!(reconciler.reasoning_done(first, "first"), Ok(None));
         assert_eq!(reconciler.reasoning_done(second, "second+"), Ok(Some("+".to_string())));
     }
@@ -445,7 +451,7 @@ mod tests {
             let expected = deltas.concat();
             let mut emitted = String::new();
             for delta in &deltas {
-                emitted.push_str(&reconciler.reasoning_delta(identity.clone(), delta));
+                emitted.push_str(&reconciler.reasoning_delta(identity.clone(), delta).expect("reasoning track"));
             }
             prop_assert_eq!(&emitted, &expected);
             let snapshot = format!("{expected}{suffix}");
@@ -513,7 +519,7 @@ mod tests {
             let identity = item(0).with_sub_index(Some(0));
             let mut actual = String::new();
             for chunk in chunks {
-                actual.push_str(&reconciler.reasoning_delta(identity.clone(), &chunk));
+                actual.push_str(&reconciler.reasoning_delta(identity.clone(), &chunk).expect("reasoning track"));
             }
             prop_assert_eq!(&actual, &expected);
             prop_assert_eq!(reconciler.reasoning_done(identity, &expected), Ok(None));
@@ -542,7 +548,7 @@ mod tests {
             let divergent = format!("b{prefix}");
             let mut reconciler = ResponsesStreamReconciler::default();
             let identity = item(0).with_sub_index(Some(0));
-            let actual = reconciler.reasoning_delta(identity.clone(), &streamed);
+            let actual = reconciler.reasoning_delta(identity.clone(), &streamed).expect("reasoning track");
             prop_assert_eq!(&actual, &streamed);
 
             prop_assert!(reconciler.reasoning_done(identity.clone(), &divergent).is_err());
@@ -568,7 +574,7 @@ mod tests {
                 let admitted = reconciler.admit(Some(sequence_number));
                 prop_assert!(!admitted);
                 if admitted {
-                    let _ = reconciler.reasoning_delta(item(0), &delta);
+                    let _ = reconciler.reasoning_delta(item(0), &delta).expect("reasoning track");
                 }
             }
             prop_assert_eq!(reconciler.terminal_state(), terminal);
