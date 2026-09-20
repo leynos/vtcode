@@ -1,25 +1,22 @@
-#![expect(
-    clippy::string_slice,
-    unused_results,
-    reason = "Formatting uses ASCII delimiters and intentionally ignores infallible String mutation results."
-)]
-
 //! Unified formatting utilities for UI and logging
+
+use num_traits::ToPrimitive;
 
 /// Format file size in human-readable form (KB, MB, GB, etc.)
 pub fn format_size(size: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+    let size = size.to_f64().unwrap_or(f64::MAX);
 
     if size >= GB {
-        format!("{:.1}GB", size as f64 / GB as f64)
+        format!("{:.1}GB", size / GB)
     } else if size >= MB {
-        format!("{:.1}MB", size as f64 / MB as f64)
+        format!("{:.1}MB", size / MB)
     } else if size >= KB {
-        format!("{:.1}KB", size as f64 / KB as f64)
+        format!("{:.1}KB", size / KB)
     } else {
-        format!("{size}B")
+        format!("{size:.0}B")
     }
 }
 
@@ -293,7 +290,7 @@ pub fn truncate_byte_budget(text: &str, max_bytes: usize, suffix: &str) -> Strin
     while end > 0 && !text.is_char_boundary(end) {
         end -= 1;
     }
-    format!("{}{suffix}", &text[..end])
+    format!("{}{suffix}", text.get(..end).unwrap_or_default())
 }
 
 /// Collapse consecutive whitespace into single spaces, trimming leading/trailing.
@@ -370,10 +367,10 @@ pub fn compact_reasoning_text(text: &str) -> String {
         }
     }
     while out.first().is_some_and(|l| l.trim().is_empty()) {
-        out.remove(0);
+        let _removed = out.remove(0);
     }
     while out.last().is_some_and(|l| l.trim().is_empty()) {
-        out.pop();
+        let _removed = out.pop();
     }
     out.join("\n")
 }

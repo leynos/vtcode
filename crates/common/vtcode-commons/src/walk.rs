@@ -1,8 +1,3 @@
-#![expect(
-    unused_results,
-    reason = "WalkBuilder configuration uses fluent setters only for their mutation side effects."
-)]
-
 //! Shared directory walker helpers built on the `ignore` crate.
 //!
 //! All file traversal in vtcode should go through these builders so that
@@ -36,7 +31,7 @@ pub fn build_default_walker(root: &Path) -> WalkBuilder {
 /// that already run on a dedicated thread).
 pub fn build_walker_single_threaded(root: &Path) -> WalkBuilder {
     let mut builder = WalkBuilder::new(root);
-    builder.threads(1);
+    let _configured = builder.threads(1);
     apply_defaults(&mut builder);
     builder
 }
@@ -48,19 +43,19 @@ pub fn build_walker_single_threaded(root: &Path) -> WalkBuilder {
 /// symlink following) can call this then override specific settings.
 pub fn apply_defaults(builder: &mut WalkBuilder) {
     // Respect all standard ignore-file mechanisms.
-    builder.git_ignore(true);
-    builder.git_global(true);
-    builder.git_exclude(true);
-    builder.ignore(true);
-    builder.parents(true);
+    let _configured = builder.git_ignore(true);
+    let _configured = builder.git_global(true);
+    let _configured = builder.git_exclude(true);
+    let _configured = builder.ignore(true);
+    let _configured = builder.parents(true);
 
     // Do not follow symlinks by default.
-    builder.follow_links(false);
+    let _configured = builder.follow_links(false);
 
     // Do not skip hidden files by default.  The `ignore` crate skips them
     // by default, but the previous traversal code did not.  Callers that
     // want to hide dotfiles should filter them explicitly.
-    builder.hidden(false);
+    let _configured = builder.hidden(false);
 }
 
 /// Returns `true` if `entry` is a directory whose name appears in

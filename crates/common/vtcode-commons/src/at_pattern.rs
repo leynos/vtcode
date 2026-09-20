@@ -5,15 +5,9 @@ use std::sync::LazyLock;
 
 /// Regex to match @ followed by a potential file path or URL
 /// Handles both quoted paths (with spaces) and unquoted paths
-#[allow(
-    clippy::panic,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
-static AT_PATTERN_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| match Regex::new(r#"@(?:\"([^\"]+)\"|'([^']+)'|([^\s"'\[\](){}<>|\\^`]+))"#) {
-        Ok(regex) => regex,
-        Err(error) => panic!("Failed to compile @ pattern regex: {error}"),
-    });
+static AT_PATTERN_REGEX: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    Regex::new(r#"@(?:\"([^\"]+)\"|'([^']+)'|([^\s"'\[\](){}<>|\\^`]+))"#).ok()
+});
 
 /// A parsed match of an @ pattern
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,7 +24,10 @@ pub struct AtPatternMatch<'a> {
 
 /// Find all @ patterns in the given text
 pub fn find_at_patterns(text: &str) -> Vec<AtPatternMatch<'_>> {
-    AT_PATTERN_REGEX
+    let Some(regex) = AT_PATTERN_REGEX.as_ref() else {
+        return Vec::new();
+    };
+    regex
         .captures_iter(text)
         .filter_map(|cap| {
             let full_match = cap.get(0)?;

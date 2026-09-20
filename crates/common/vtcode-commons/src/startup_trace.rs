@@ -31,7 +31,7 @@ fn state() -> &'static StartupTraceState {
 
 /// Initialize startup timing before tracing is configured.
 pub fn initialize() {
-    let _ = state();
+    let _state = state();
 }
 
 /// Start a phase timer when startup tracing is enabled.

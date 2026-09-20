@@ -1,8 +1,3 @@
-#![expect(
-    clippy::let_underscore_must_use,
-    reason = "The category formatter intentionally ignores infallible formatting results."
-)]
-
 //! Unified error categorization system for consistent error classification across VT Code.
 //!
 //! This module provides a single canonical `ErrorCategory` enum that unifies the
@@ -708,7 +703,7 @@ fn classify_llm_metadata(metadata: Option<&crate::llm::LLMErrorMetadata>, fallba
         hint.push(' ');
     }
     if let Some(status) = metadata.status {
-        let _ = write!(&mut hint, "{status}");
+        let _write_result = write!(&mut hint, "{status}");
     }
 
     let classified = classify_error_message(&hint);

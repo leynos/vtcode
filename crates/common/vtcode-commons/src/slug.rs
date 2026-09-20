@@ -1,8 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    reason = "Random indices are generated from the exact lengths of the static slug tables."
-)]
-
 //! Human-readable slug generator for plan file names
 //!
 //! Generates memorable identifiers by combining random adjectives and nouns,
@@ -42,7 +37,9 @@ pub fn create() -> String {
     let adj_idx = rng.random_range(0..ADJECTIVES.len());
     let noun_idx = rng.random_range(0..NOUNS.len());
 
-    format!("{}-{}", ADJECTIVES[adj_idx], NOUNS[noun_idx])
+    let adjective = ADJECTIVES.get(adj_idx).copied().unwrap_or_default();
+    let noun = NOUNS.get(noun_idx).copied().unwrap_or_default();
+    format!("{adjective}-{noun}")
 }
 
 /// Create a timestamped slug with a human-readable suffix.

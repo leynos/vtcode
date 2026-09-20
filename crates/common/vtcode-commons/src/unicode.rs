@@ -1,8 +1,3 @@
-#![expect(
-    unused_results,
-    reason = "Atomic metric updates are performed for their side effects; the previous counters are not needed."
-)]
-
 //! Unicode monitoring and validation utilities
 
 use hashbrown::HashMap;
@@ -54,8 +49,10 @@ impl UnicodeMonitor {
 
     /// Record unicode processing statistics
     pub fn record_processing(&self, bytes: usize, unicode_bytes: usize, contains_unicode: bool) {
-        self.total_bytes_processed.fetch_add(bytes as u64, Ordering::Relaxed);
-        self.total_unicode_bytes.fetch_add(unicode_bytes as u64, Ordering::Relaxed);
+        self.total_bytes_processed
+            .fetch_add(u64::try_from(bytes).unwrap_or(u64::MAX), Ordering::Relaxed);
+        self.total_unicode_bytes
+            .fetch_add(u64::try_from(unicode_bytes).unwrap_or(u64::MAX), Ordering::Relaxed);
         self.total_sequences.fetch_add(1, Ordering::Relaxed);
 
         if contains_unicode {

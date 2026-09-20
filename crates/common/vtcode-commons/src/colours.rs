@@ -3,12 +3,9 @@
 //! This module provides colour manipulation capabilities using anstyle,
 //! which offers low-level ANSI styling with RGB and 256-colour support.
 
-#![expect(
-    clippy::cast_possible_truncation,
-    reason = "RGB interpolation is clamped to the byte range before conversion."
-)]
-
 use anstyle::{AnsiColor, Color, Effects, RgbColor, Style};
+
+use crate::utils::saturating_float_to_u8;
 
 /// Create an RGB colour from hex string
 pub fn colour_from_hex(hex: &str) -> Option<Color> {
@@ -26,17 +23,13 @@ pub fn colour_from_hex(hex: &str) -> Option<Color> {
 }
 
 /// Blend two RGB colours
-#[allow(
-    clippy::cast_sign_loss,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
 pub fn blend_colours(colour1: &Color, colour2: &Color, ratio: f32) -> Option<Color> {
     let rgb1 = colour_to_rgb(colour1)?;
     let rgb2 = colour_to_rgb(colour2)?;
 
-    let r = (rgb1.r() as f32 * (1.0 - ratio) + rgb2.r() as f32 * ratio) as u8;
-    let g = (rgb1.g() as f32 * (1.0 - ratio) + rgb2.g() as f32 * ratio) as u8;
-    let b = (rgb1.b() as f32 * (1.0 - ratio) + rgb2.b() as f32 * ratio) as u8;
+    let r = saturating_float_to_u8(f32::from(rgb1.r()) * (1.0 - ratio) + f32::from(rgb2.r()) * ratio);
+    let g = saturating_float_to_u8(f32::from(rgb1.g()) * (1.0 - ratio) + f32::from(rgb2.g()) * ratio);
+    let b = saturating_float_to_u8(f32::from(rgb1.b()) * (1.0 - ratio) + f32::from(rgb2.b()) * ratio);
 
     Some(Color::Rgb(RgbColor(r, g, b)))
 }
@@ -112,7 +105,8 @@ fn ansi256_to_rgb(ansi256_colour: anstyle::Ansi256Color) -> Option<RgbColor> {
 pub fn is_light_colour(colour: &Color) -> bool {
     let rgb = colour_to_rgb(colour);
     if let Some(RgbColor(r, g, b)) = rgb {
-        let luminance = (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32) / 255.0;
+        let luminance =
+            (0.299 * f32::from(r) + 0.587 * f32::from(g) + 0.114 * f32::from(b)) / 255.0;
         luminance > 0.5
     } else {
         false
@@ -129,20 +123,20 @@ pub fn contrasting_colour(colour: &Color) -> Color {
 }
 
 /// Create a desaturated version of a colour
-#[allow(
-    clippy::cast_sign_loss,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
 pub fn desaturate_colour(colour: &Color, amount: f32) -> Option<Color> {
     let rgb = colour_to_rgb(colour)?;
-    let r = rgb.r() as f32;
-    let g = rgb.g() as f32;
-    let b = rgb.b() as f32;
+    let r = f32::from(rgb.r());
+    let g = f32::from(rgb.g());
+    let b = f32::from(rgb.b());
     let gray = 0.299 * r + 0.587 * g + 0.114 * b;
     let r_new = r * (1.0 - amount) + gray * amount;
     let g_new = g * (1.0 - amount) + gray * amount;
     let b_new = b * (1.0 - amount) + gray * amount;
-    Some(Color::Rgb(RgbColor(r_new as u8, g_new as u8, b_new as u8)))
+    Some(Color::Rgb(RgbColor(
+        saturating_float_to_u8(r_new),
+        saturating_float_to_u8(g_new),
+        saturating_float_to_u8(b_new),
+    )))
 }
 
 fn styled(text: &str, style: Style) -> String {

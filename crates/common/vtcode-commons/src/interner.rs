@@ -1,9 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    clippy::cast_possible_truncation,
-    reason = "Arena offsets are bounded by the compact interner representation and IDs are range-checked by construction."
-)]
-
 //! Arena-based string interner for memory-efficient string deduplication.
 //!
 //! Stores all strings in a single contiguous buffer to minimize allocations
@@ -78,18 +72,18 @@ impl StringInterner {
     fn intern_bytes(&mut self, s: &[u8]) -> StringId {
         let hash = Self::hash_bytes(s);
 
-        if let Some(ids) = self.lookup.get(&hash) {
-            for &id in ids {
-                if self.get_bytes(id) == Some(s) {
-                    return id;
-                }
-            }
+        if let Some(id) = self
+            .lookup
+            .get(&hash)
+            .and_then(|ids| ids.iter().find(|&&id| self.get_bytes(id) == Some(s)).copied())
+        {
+            return id;
         }
 
-        let start = self.arena.len() as u32;
-        let len = s.len() as u32;
+        let start = u32::try_from(self.arena.len()).unwrap_or(u32::MAX);
+        let len = u32::try_from(s.len()).unwrap_or(u32::MAX);
         self.arena.extend_from_slice(s);
-        let id = StringId::new(self.offsets.len() as u32);
+        let id = StringId::new(u32::try_from(self.offsets.len()).unwrap_or(u32::MAX));
         self.offsets.push((start, len));
         self.lookup.entry(hash).or_default().push(id);
         id
@@ -104,14 +98,9 @@ impl StringInterner {
     /// Get the StringId for a byte string without interning it.
     fn get_bytes_id(&self, s: &[u8]) -> Option<StringId> {
         let hash = Self::hash_bytes(s);
-        if let Some(ids) = self.lookup.get(&hash) {
-            for &id in ids {
-                if self.get_bytes(id) == Some(s) {
-                    return Some(id);
-                }
-            }
-        }
-        None
+        self.lookup
+            .get(&hash)
+            .and_then(|ids| ids.iter().find(|&&id| self.get_bytes(id) == Some(s)).copied())
     }
 
     /// Get the StringId for a UTF-8 string without interning it.
@@ -122,8 +111,12 @@ impl StringInterner {
 
     /// Get the raw bytes for a StringId.
     fn get_bytes(&self, id: StringId) -> Option<&[u8]> {
-        let (start, len) = self.offsets[id.0 as usize];
-        self.arena.get(start as usize..(start as usize + len as usize))
+        let offset = usize::try_from(id.0).ok()?;
+        let (start, len) = *self.offsets.get(offset)?;
+        let start = usize::try_from(start).ok()?;
+        let len = usize::try_from(len).ok()?;
+        let end = start.checked_add(len)?;
+        self.arena.get(start..end)
     }
 
     /// Get the string for a StringId, if it's valid UTF-8.

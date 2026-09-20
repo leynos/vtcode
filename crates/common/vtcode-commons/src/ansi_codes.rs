@@ -1,8 +1,3 @@
-#![expect(
-    clippy::let_underscore_must_use,
-    reason = "ANSI output cleanup intentionally ignores the best-effort flush result."
-)]
-
 //! Shared ANSI escape sequence constants and small builders for VT Code.
 //!
 //! See `docs/reference/ansi-in-vtcode.md` for the cross-crate integration map.
@@ -87,7 +82,7 @@ fn is_bell_enabled(default_enabled: bool) -> bool {
 #[inline]
 fn emit_bell() {
     print!("{BEL}");
-    let _ = std::io::stdout().flush();
+    let _flush_result = std::io::stdout().flush();
 }
 
 #[inline]
@@ -170,14 +165,14 @@ fn send_osc777_notification(message: Option<&str>) {
     let title = sanitize_notification_text("VT Code");
     let payload = build_osc777_payload(&title, &body);
     print!("{payload}{BEL}");
-    let _ = std::io::stdout().flush();
+    let _flush_result = std::io::stdout().flush();
 }
 
 fn send_osc9_notification(message: Option<&str>) {
     let body = sanitize_notification_text(message.unwrap_or("Human approval required"));
     let payload = build_osc9_payload(&body);
     print!("{payload}{BEL}");
-    let _ = std::io::stdout().flush();
+    let _flush_result = std::io::stdout().flush();
 }
 
 fn sanitize_notification_text(raw: &str) -> String {

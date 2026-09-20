@@ -1,10 +1,3 @@
-#![allow(
-    missing_docs,
-    clippy::expect_used,
-    dead_code,
-    unused_imports,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
 //! Shared primitives and helper types reused across VT Code crates.
 //!
 //! This crate provides the foundational building blocks that both the core

@@ -1,9 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    clippy::string_slice,
-    reason = "Preview counts and UTF-8 offsets are computed from source lengths and boundary helpers."
-)]
-
 //! Shared preview formatting helpers.
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -40,7 +34,7 @@ pub fn truncate_to_display_width(text: &str, max_width: usize) -> &str {
     for (idx, ch) in text.char_indices() {
         let char_width = UnicodeWidthChar::width(ch).unwrap_or(0);
         if consumed_width + char_width > max_width {
-            return &text[..idx];
+            return text.get(..idx).unwrap_or_default();
         }
         consumed_width += char_width;
     }
@@ -94,7 +88,7 @@ pub fn suffix_for_display_width(value: &str, max_width: usize) -> &str {
         start_idx = idx;
     }
 
-    &value[start_idx..]
+    value.get(start_idx..).unwrap_or_default()
 }
 
 pub fn format_hidden_lines_summary(hidden: usize) -> String {
@@ -110,7 +104,7 @@ fn split_head_tail_preview<'a, T>(items: &'a [T], head: usize, tail: usize) -> H
     if total <= head.saturating_add(tail) {
         return HeadTailPreview {
             head: items,
-            tail: &items[total..],
+            tail: items.get(total..).unwrap_or_default(),
             hidden_count: 0,
             total,
         };
@@ -121,8 +115,8 @@ fn split_head_tail_preview<'a, T>(items: &'a [T], head: usize, tail: usize) -> H
     let hidden_count = total.saturating_sub(head_count + tail_count);
 
     HeadTailPreview {
-        head: &items[..head_count],
-        tail: &items[total - tail_count..],
+        head: items.get(..head_count).unwrap_or_default(),
+        tail: items.get(total - tail_count..).unwrap_or_default(),
         hidden_count,
         total,
     }
@@ -135,8 +129,8 @@ pub fn split_head_tail_preview_with_limit<'a, T>(
 ) -> HeadTailPreview<'a, T> {
     if limit == 0 {
         return HeadTailPreview {
-            head: &items[..0],
-            tail: &items[..0],
+            head: items.get(..0).unwrap_or_default(),
+            tail: items.get(..0).unwrap_or_default(),
             hidden_count: items.len(),
             total: items.len(),
         };
@@ -145,7 +139,7 @@ pub fn split_head_tail_preview_with_limit<'a, T>(
     if items.len() <= limit {
         return HeadTailPreview {
             head: items,
-            tail: &items[items.len()..],
+            tail: items.get(items.len()..).unwrap_or_default(),
             hidden_count: 0,
             total: items.len(),
         };
@@ -182,8 +176,8 @@ pub fn excerpt_text_lines<'a>(text: &'a str, head: usize, tail: usize) -> TextLi
     let hidden_count = total.saturating_sub(head_count + tail_count);
 
     TextLineExcerpt {
-        head: lines[..head_count].to_vec(),
-        tail: lines[total - tail_count..].to_vec(),
+        head: lines.get(..head_count).unwrap_or_default().to_vec(),
+        tail: lines.get(total - tail_count..).unwrap_or_default().to_vec(),
         hidden_count,
         total,
     }
@@ -218,7 +212,7 @@ pub fn condense_text_bytes(content: &str, head_bytes: usize, tail_bytes: usize) 
 
     let omitted = byte_len.saturating_sub(head_end).saturating_sub(byte_len - tail_start);
 
-    format!("{}\n\n{}\n\n{}", &content[..head_end], format_hidden_bytes_summary(omitted), &content[tail_start..])
+    format!("{}\n\n{}\n\n{}", content.get(..head_end).unwrap_or_default(), format_hidden_bytes_summary(omitted), content.get(tail_start..).unwrap_or_default())
 }
 
 pub fn tail_preview_text(content: &str, tail_bytes: usize, max_lines: usize) -> String {
@@ -227,23 +221,22 @@ pub fn tail_preview_text(content: &str, tail_bytes: usize, max_lines: usize) -> 
     }
 
     let tail_start = ceil_char_boundary(content, content.len().saturating_sub(tail_bytes));
-    let tail_slice = &content[tail_start..];
+    let tail_slice = content.get(tail_start..).unwrap_or_default();
 
-    let mut line_start = 0usize;
-    if max_lines > 0 {
-        let mut seen = 0usize;
-        for (idx, b) in tail_slice.as_bytes().iter().enumerate().rev() {
-            if *b == b'\n' {
-                seen += 1;
-                if seen >= max_lines {
-                    line_start = idx.saturating_add(1);
-                    break;
-                }
-            }
-        }
-    }
+    let line_start = if max_lines == 0 {
+        0
+    } else {
+        tail_slice
+            .as_bytes()
+            .iter()
+            .enumerate()
+            .rev()
+            .filter(|(_, byte)| **byte == b'\n')
+            .nth(max_lines - 1)
+            .map_or(0, |(index, _)| index.saturating_add(1))
+    };
 
-    let preview = &tail_slice[line_start..];
+    let preview = tail_slice.get(line_start..).unwrap_or_default();
     let omitted = tail_start.saturating_add(line_start);
     if omitted == 0 {
         return preview.to_string();

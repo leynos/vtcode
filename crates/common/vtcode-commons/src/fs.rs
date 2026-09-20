@@ -1,11 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    clippy::string_slice,
-    clippy::let_underscore_must_use,
-    unused_results,
-    reason = "Filesystem helpers validate path lengths and intentionally ignore local cleanup results."
-)]
-
 //! File utility functions for common operations
 
 use anyhow::{Context, Result};
@@ -34,11 +26,11 @@ pub async fn read_file_with_context(path: &Path, context: &str) -> Result<String
 }
 
 /// Write a file with contextual error message, ensuring parent directory exists
-pub async fn write_file_with_context(path: &Path, content: &str, context: &str) -> Result<()> {
+pub async fn write_file_with_context(path: &Path, payload: &str, context: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         ensure_dir_exists(parent).await?;
     }
-    fs::write(path, content)
+    fs::write(path, payload)
         .await
         .with_context(|| format!("Failed to write {}: {}", context, path.display()))
 }
@@ -54,19 +46,19 @@ pub async fn write_file_with_context(path: &Path, content: &str, context: &str) 
 ///
 /// On rename failure the temp file is best-effort removed before returning
 /// the error.
-pub async fn write_file_atomic_with_context(path: &Path, content: &str, context: &str) -> Result<()> {
+pub async fn write_file_atomic_with_context(path: &Path, payload: &str, context: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         ensure_dir_exists(parent).await?;
     }
 
     let temp_path = atomic_temp_path(path);
 
-    fs::write(&temp_path, content)
+    fs::write(&temp_path, payload)
         .await
         .with_context(|| format!("Failed to write {}: {}", context, temp_path.display()))?;
 
     if let Err(err) = fs::rename(&temp_path, path).await {
-        let _ = fs::remove_file(&temp_path).await;
+        let _cleanup_result = fs::remove_file(&temp_path).await;
         return Err(err).with_context(|| format!("Failed to write {}: {}", context, path.display()));
     }
 
@@ -172,8 +164,8 @@ pub async fn read_json_file<T: for<'de> Deserialize<'de>>(path: &Path) -> Result
 }
 
 /// Parse JSON with context for better error messages
-pub fn parse_json_with_context<T: for<'de> Deserialize<'de>>(content: &str, context: &str) -> Result<T> {
-    serde_json::from_str(content).with_context(|| format!("Failed to parse JSON from {context}"))
+pub fn parse_json_with_context<T: for<'de> Deserialize<'de>>(serialized: &str, context: &str) -> Result<T> {
+    serde_json::from_str(serialized).with_context(|| format!("Failed to parse JSON from {context}"))
 }
 
 /// Serialize JSON with context
@@ -292,11 +284,11 @@ pub fn read_file_with_context_sync(path: &Path, context: &str) -> Result<String>
 }
 
 /// Write a file with contextual error message (sync)
-pub fn write_file_with_context_sync(path: &Path, content: &str, context: &str) -> Result<()> {
+pub fn write_file_with_context_sync(path: &Path, payload: &str, context: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         ensure_dir_exists_sync(parent)?;
     }
-    std::fs::write(path, content).with_context(|| format!("Failed to write {}: {}", context, path.display()))
+    std::fs::write(path, payload).with_context(|| format!("Failed to write {}: {}", context, path.display()))
 }
 
 /// Write a JSON file (sync)
@@ -326,7 +318,10 @@ pub fn is_image_path(path: &Path) -> bool {
 /// Check whether a string is a Windows absolute path (e.g., `C:\...` or `C:/...`).
 pub fn is_windows_absolute_path(path: &str) -> bool {
     let bytes = path.as_bytes();
-    bytes.len() > 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && (bytes[2] == b'\\' || bytes[2] == b'/')
+    bytes.len() > 2
+        && bytes.first().is_some_and(u8::is_ascii_alphabetic)
+        && bytes.get(1) == Some(&b':')
+        && matches!(bytes.get(2), Some(b'\\' | b'/'))
 }
 
 /// Remove backslash-escaped whitespace from a token.
@@ -368,7 +363,7 @@ where
     }
     let mut candidate = raw.trim_end();
     while let Some(last_space) = candidate.rfind(' ') {
-        candidate = &candidate[..last_space];
+        candidate = candidate.get(..last_space).unwrap_or_default();
         if candidate_check(candidate) {
             return candidate;
         }

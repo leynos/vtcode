@@ -31,13 +31,6 @@ struct NativeRoots {
 }
 
 fn native_roots(
-    #[cfg_attr(
-        not(any(target_os = "macos", target_os = "windows")),
-        allow(
-            unused_variables,
-            reason = "home_dir is only consumed by macOS/Windows root resolution"
-        )
-    )]
     home_dir: &Path,
 ) -> Result<NativeRoots> {
     #[cfg(target_os = "macos")]
@@ -955,6 +948,23 @@ fn set_private_permissions(path: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Barrier, atomic::{AtomicUsize, Ordering}};
+
+    fn run_lock_probe(
+        destination: Arc<PathBuf>,
+        start: Arc<Barrier>,
+        active: Arc<AtomicUsize>,
+        max_active: Arc<AtomicUsize>,
+    ) -> anyhow::Result<()> {
+        start.wait();
+        VtCodePaths::with_private_file_lock(destination.as_ref(), || {
+            let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+            let _ = max_active.fetch_max(current, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(25));
+            let _ = active.fetch_sub(1, Ordering::SeqCst);
+            Ok::<_, anyhow::Error>(())
+        })
+    }
     use tempfile::tempdir;
 
     fn migration_paths(temp: &tempfile::TempDir) -> VtCodePaths {
@@ -1354,11 +1364,6 @@ mod tests {
 
     #[test]
     fn private_file_lock_serializes_concurrent_operations() {
-        use std::sync::{
-            Arc, Barrier,
-            atomic::{AtomicUsize, Ordering},
-        };
-
         let temp = tempdir().expect("tempdir");
         let destination = Arc::new(temp.path().join("cache/data"));
         let start = Arc::new(Barrier::new(4));
@@ -1370,16 +1375,7 @@ mod tests {
                 let start = Arc::clone(&start);
                 let active = Arc::clone(&active);
                 let max_active = Arc::clone(&max_active);
-                std::thread::spawn(move || {
-                    let _ = start.wait();
-                    VtCodePaths::with_private_file_lock(destination.as_ref(), || {
-                        let current = active.fetch_add(1, Ordering::SeqCst) + 1;
-                        let _ = max_active.fetch_max(current, Ordering::SeqCst);
-                        std::thread::sleep(Duration::from_millis(25));
-                        let _ = active.fetch_sub(1, Ordering::SeqCst);
-                        Ok::<_, anyhow::Error>(())
-                    })
-                })
+                std::thread::spawn(move || run_lock_probe(destination, start, active, max_active))
             })
             .collect::<Vec<_>>();
 

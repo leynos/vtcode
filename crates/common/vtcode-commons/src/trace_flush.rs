@@ -1,8 +1,3 @@
-#![expect(
-    clippy::let_underscore_must_use,
-    reason = "The trace flush hook is registered once and duplicate registration is intentionally ignored."
-)]
-
 //! Global trace log flush hook.
 //!
 //! Allows any crate (including `vtcode-ui`) to trigger a trace log flush
@@ -16,7 +11,7 @@ static FLUSH_HOOK: OnceLock<fn()> = OnceLock::new();
 
 /// Register a flush callback. Called once during tracing initialization.
 pub fn register_trace_flush_hook(f: fn()) {
-    let _ = FLUSH_HOOK.set(f);
+    let _registration_result = FLUSH_HOOK.set(f);
 }
 
 /// Flush the global trace log writer.
