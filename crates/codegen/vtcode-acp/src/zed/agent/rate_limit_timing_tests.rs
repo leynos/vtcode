@@ -261,6 +261,7 @@ async fn streaming_acp_retry_uses_fixed_http_date_observation_and_drops_it_after
         agent,
         PromptRequest::new(session_id, vec![acp::ContentBlock::Text(acp::TextContent::new("retry the stream"))]),
         fixed_observation_time,
+        ProviderMetricSink::production(),
     )
     .await
     .expect("streaming fixed-observation retry should recover");
