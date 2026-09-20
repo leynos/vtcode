@@ -1,3 +1,5 @@
+//! Exercises the ownership-selection boundary for Lody subagent management.
+
 use chrono::Utc;
 use proptest::prelude::*;
 use vtcode_core::subagents::{SubagentStatus, SubagentStatusEntry};

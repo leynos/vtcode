@@ -32,6 +32,7 @@ use super::types::SessionHandle;
 mod compaction;
 pub(crate) mod handlers;
 mod lody;
+mod lody_management;
 #[cfg(test)]
 mod lody_tests;
 mod lody_usage;

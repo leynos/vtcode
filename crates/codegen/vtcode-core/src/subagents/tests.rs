@@ -259,9 +259,11 @@ async fn owner_scoped_controller_loads_only_exact_owner_and_cli_remains_unscoped
             Some("updated by session-a".to_string());
     }
     scoped.save_background_state().await.expect("save scoped state");
-    let persisted: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(state_dir.join("background_subagents.json")).unwrap())
-            .expect("persisted state");
+    let persisted: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(state_dir.join("background_subagents.json"))
+            .expect("read persisted background_subagents state"),
+    )
+    .expect("persisted state");
     let records = persisted["records"].as_array().expect("records array");
     assert_eq!(records.len(), 3);
     let by_id = records

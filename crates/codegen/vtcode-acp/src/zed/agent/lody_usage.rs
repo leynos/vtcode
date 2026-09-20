@@ -1,3 +1,6 @@
+//! Publishes usage deltas and advertises the Lody usage capability, including
+//! the `_lody/session/usage_update` extension notification.
+
 use crate::acp;
 #[cfg(test)]
 use crate::zed::connection::ConnectionHandle;

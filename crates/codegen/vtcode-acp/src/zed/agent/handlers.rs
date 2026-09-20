@@ -674,7 +674,7 @@ impl HandleDispatchFrom<Client> for LodySubagentManagementHandler {
         let Dispatch::Request(request, responder) = message else {
             return Ok(Handled::No { message, retry: false });
         };
-        if !super::lody::is_lody_subagent_management_method(request.method()) {
+        if !super::lody_management::is_lody_subagent_management_method(request.method()) {
             return Ok(Handled::No {
                 message: Dispatch::Request(request, responder),
                 retry: false,
@@ -685,7 +685,7 @@ impl HandleDispatchFrom<Client> for LodySubagentManagementHandler {
         let agent = Arc::clone(&self.agent);
         connection
             .spawn(async move {
-                let result = super::lody::handle_lody_subagent_management(&agent, &method, params).await;
+                let result = super::lody_management::handle_lody_subagent_management(&agent, &method, params).await;
                 responder.respond_with_result(result)
             })
             .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
