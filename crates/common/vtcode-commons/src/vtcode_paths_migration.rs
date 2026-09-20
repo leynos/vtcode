@@ -113,29 +113,7 @@ impl LegacyMigrator {
         if legacy_root_is_safe {
             let mappings = legacy_mappings(&self.paths);
             for mapping in &mappings {
-                if mapping.source == mapping.destination {
-                    continue;
-                }
-                if mapping.skip {
-                    if fs::symlink_metadata(&mapping.source).is_ok() {
-                        report.skipped.push(MigrationSkip {
-                            path: mapping.source.clone(),
-                            reason: MigrationSkipReason::Excluded,
-                        });
-                    }
-                    continue;
-                }
-                if let Err(error) = copy_legacy_tree_with_exclusions(
-                    &mapping.source,
-                    &mapping.destination,
-                    &mut report,
-                    mapping.excluded_children,
-                ) {
-                    report.failures.push(MigrationFailure {
-                        path: mapping.source.clone(),
-                        error: error.to_string(),
-                    });
-                }
+                migrate_mapping(mapping, &mut report);
             }
             record_unmapped_entries(legacy_root, &mappings, &mut report);
         }
@@ -162,14 +140,7 @@ impl LegacyMigrator {
                 .downcast_ref::<io::Error>()
                 .is_some_and(|io_error| io_error.kind() == io::ErrorKind::AlreadyExists)
             {
-                if valid_migration_marker(&marker).unwrap_or(false) {
-                    report.already_completed = true;
-                } else {
-                    report.failures.push(MigrationFailure {
-                        path: marker,
-                        error: "migration marker appeared but is invalid".to_string(),
-                    });
-                }
+                handle_marker_collision(&marker, &mut report);
                 return Ok(report);
             }
             report
@@ -243,6 +214,43 @@ struct LegacyMapping {
     destination: PathBuf,
     skip: bool,
     excluded_children: &'static [&'static str],
+}
+
+fn migrate_mapping(mapping: &LegacyMapping, report: &mut MigrationReport) {
+    if mapping.source == mapping.destination {
+        return;
+    }
+    if mapping.skip {
+        if fs::symlink_metadata(&mapping.source).is_ok() {
+            report.skipped.push(MigrationSkip {
+                path: mapping.source.clone(),
+                reason: MigrationSkipReason::Excluded,
+            });
+        }
+        return;
+    }
+    if let Err(error) = copy_legacy_tree_with_exclusions(
+        &mapping.source,
+        &mapping.destination,
+        report,
+        mapping.excluded_children,
+    ) {
+        report.failures.push(MigrationFailure {
+            path: mapping.source.clone(),
+            error: error.to_string(),
+        });
+    }
+}
+
+fn handle_marker_collision(marker: &Path, report: &mut MigrationReport) {
+    if valid_migration_marker(marker).unwrap_or(false) {
+        report.already_completed = true;
+        return;
+    }
+    report.failures.push(MigrationFailure {
+        path: marker.to_path_buf(),
+        error: "migration marker appeared but is invalid".to_string(),
+    });
 }
 
 fn legacy_mappings(paths: &VtCodePaths) -> Vec<LegacyMapping> {

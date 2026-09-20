@@ -1,17 +1,12 @@
-#![expect(
-    clippy::string_slice,
-    reason = "The prompt formatter truncates at a validated character boundary."
-)]
-
 /// Truncation threshold, matching the shell's large-prompt limit.
 pub(crate) const LARGE_PROMPT_THRESHOLD: usize = 25_000;
 
 /// Wrap a user message in the canonical `<user_query>` envelope.
 pub(crate) fn user_query(user_message: &str) -> String {
     format!(
-        r#"<user_query>
+        r"<user_query>
 {user_message}
-</user_query>"#
+</user_query>"
     )
 }
 
@@ -26,7 +21,7 @@ pub(crate) fn format_interjection(text: String) -> String {
             .last()
             .map(|(i, c)| i + c.len_utf8())
             .unwrap_or(text.len());
-        format!("{}... [truncated]", &text[..end])
+        format!("{}... [truncated]", text.get(..end).unwrap_or_default())
     } else {
         text
     };

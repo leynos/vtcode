@@ -1,8 +1,3 @@
-#![expect(
-    unused_results,
-    reason = "The left-right writer API returns fluent handles and prior values that are intentionally not needed here."
-)]
-
 //! Lock-free concurrent map built on [`left_right`].
 //!
 //! [`LrMap`] keeps two copies of a `HashMap` — readers see one copy while the
@@ -25,7 +20,7 @@ impl<K: Eq + Hash + Clone, V: Clone> Absorb<MapOp<K, V>> for HashMap<K, V> {
     fn absorb_first(&mut self, operation: &mut MapOp<K, V>, _other: &Self) {
         match operation {
             MapOp::Insert(k, v) => {
-                self.insert(k.clone(), v.clone());
+                let _previous = self.insert(k.clone(), v.clone());
             }
             MapOp::Clear => self.clear(),
         }
@@ -74,8 +69,8 @@ where
     pub fn insert(&self, key: K, value: V) {
         match self.writer.lock() {
             Ok(mut w) => {
-                w.append(MapOp::Insert(key, value));
-                w.publish();
+                let _append_result = w.append(MapOp::Insert(key, value));
+                let _published = w.publish();
             }
             Err(e) => {
                 tracing::warn!("LrMap::insert failed due to poisoned mutex: {e}. Write dropped.");
@@ -86,8 +81,8 @@ where
     pub fn clear(&self) {
         match self.writer.lock() {
             Ok(mut w) => {
-                w.append(MapOp::Clear);
-                w.publish();
+                let _append_result = w.append(MapOp::Clear);
+                let _published = w.publish();
             }
             Err(e) => {
                 tracing::warn!("LrMap::clear failed due to poisoned mutex: {e}. Operation dropped.");
@@ -119,6 +114,15 @@ where
 mod tests {
     use super::*;
     use std::sync::Arc;
+
+    fn read_key_repeatedly(map: Arc<LrMap<String, i32>>) -> Result<(), &'static str> {
+        for _ in 0..100 {
+            if map.get("key") != Some(42) {
+                return Err("concurrent read returned an unexpected value");
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn insert_and_get() {
@@ -153,16 +157,14 @@ mod tests {
         let handles: Vec<_> = (0..4)
             .map(|_| {
                 let m = Arc::clone(&map);
-                std::thread::spawn(move || {
-                    for _ in 0..100 {
-                        assert_eq!(m.get("key"), Some(42));
-                    }
-                })
+                std::thread::spawn(move || read_key_repeatedly(m))
             })
             .collect();
 
         for h in handles {
-            h.join().expect("reader thread panicked");
+            h.join()
+                .expect("reader thread panicked")
+                .expect("reader returned an unexpected value");
         }
     }
 }

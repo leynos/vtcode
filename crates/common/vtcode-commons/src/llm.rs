@@ -72,8 +72,8 @@ impl Usage {
         if !self.has_any_cache_metrics() {
             return None;
         }
-        let read = self.cache_read_tokens_or_fallback() as f64;
-        let creation = self.cache_creation_tokens_or_zero() as f64;
+        let read = f64::from(self.cache_read_tokens_or_fallback());
+        let creation = f64::from(self.cache_creation_tokens_or_zero());
         let total = read + creation;
         if total > 0.0 {
             Some((read / total) * 100.0)
@@ -105,8 +105,8 @@ impl Usage {
         if !self.has_cache_read_metric() {
             return None;
         }
-        let read = self.cache_read_tokens_or_fallback() as f64;
-        let prompt = self.prompt_tokens as f64;
+        let read = f64::from(self.cache_read_tokens_or_fallback());
+        let prompt = f64::from(self.prompt_tokens);
         if prompt > 0.0 { Some(read / prompt) } else { None }
     }
 }
@@ -325,26 +325,23 @@ impl ToolCall {
 
         match self.call_type.as_str() {
             "function" => {
-                if let Some(func) = &self.function {
-                    if func.name.is_empty() {
-                        return Err("Function name cannot be empty".to_owned());
-                    }
-                    // Validate that arguments is valid JSON for function tools
-                    if let Err(e) = self.parsed_arguments() {
-                        return Err(format!("Invalid JSON in function arguments: {e}"));
-                    }
-                } else {
+                let Some(func) = &self.function else {
                     return Err("Function tool call missing function details".to_owned());
+                };
+                if func.name.is_empty() {
+                    return Err("Function name cannot be empty".to_owned());
                 }
+                // Validate that arguments is valid JSON for function tools
+                self.parsed_arguments()
+                    .map_err(|error| format!("Invalid JSON in function arguments: {error}"))?;
             }
             "custom" => {
                 // For custom tools, we allow raw text payload without JSON validation
-                if let Some(func) = &self.function {
-                    if func.name.is_empty() {
-                        return Err("Custom tool name cannot be empty".to_owned());
-                    }
-                } else {
+                let Some(func) = &self.function else {
                     return Err("Custom tool call missing function details".to_owned());
+                };
+                if func.name.is_empty() {
+                    return Err("Custom tool name cannot be empty".to_owned());
                 }
             }
             _ => return Err(format!("Unsupported tool call type: {}", self.call_type)),
@@ -410,8 +407,8 @@ fn extract_balanced_json(input: &str) -> Option<&str> {
 
         match ch {
             '"' => in_string = true,
-            _ if ch as u32 == opening as u32 => depth += 1,
-            _ if ch as u32 == closing as u32 => {
+            _ if u32::from(ch) == u32::from(opening) => depth += 1,
+            _ if u32::from(ch) == u32::from(closing) => {
                 depth = depth.saturating_sub(1);
                 if depth == 0 {
                     let end = start + offset + ch.len_utf8();

@@ -1,9 +1,3 @@
-#![expect(
-    clippy::string_slice,
-    clippy::cast_possible_truncation,
-    reason = "Preview offsets are derived from bounded diff lines and converted to the documented display width."
-)]
-
 //! Shared helpers for rendering diff previews.
 
 use crate::diff::{DiffHunk, DiffLineKind};
@@ -120,8 +114,8 @@ pub fn display_lines_from_unified_diff(diff_content: &str) -> Vec<DiffDisplayLin
 
     for line in diff_content.lines() {
         if let Some((old_start, new_start)) = parse_hunk_starts(line) {
-            old_line_no = old_start as u32;
-            new_line_no = new_start as u32;
+            old_line_no = u32::try_from(old_start).unwrap_or(u32::MAX);
+            new_line_no = u32::try_from(new_start).unwrap_or(u32::MAX);
             in_hunk = true;
             lines.push(DiffDisplayLine {
                 kind: DiffDisplayKind::HunkHeader,
@@ -144,7 +138,7 @@ pub fn display_lines_from_unified_diff(diff_content: &str) -> Vec<DiffDisplayLin
             lines.push(DiffDisplayLine {
                 kind: DiffDisplayKind::Addition,
                 line_number: Some(new_line_no),
-                text: line[1..].to_string(),
+                text: line.get(1..).unwrap_or_default().to_string(),
             });
             new_line_no = new_line_no.saturating_add(1);
             continue;
@@ -154,7 +148,7 @@ pub fn display_lines_from_unified_diff(diff_content: &str) -> Vec<DiffDisplayLin
             lines.push(DiffDisplayLine {
                 kind: DiffDisplayKind::Deletion,
                 line_number: Some(old_line_no),
-                text: line[1..].to_string(),
+                text: line.get(1..).unwrap_or_default().to_string(),
             });
             old_line_no = old_line_no.saturating_add(1);
             continue;
@@ -227,7 +221,7 @@ fn parse_omitted_line_count(line: &str) -> Option<u32> {
     if digits_end == 0 {
         return None;
     }
-    after[..digits_end].parse().ok()
+    after.get(..digits_end)?.parse().ok()
 }
 
 fn display_line_from_diff_line(line: &crate::diff::DiffLine) -> DiffDisplayLine {

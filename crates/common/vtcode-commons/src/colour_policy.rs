@@ -1,8 +1,3 @@
-#![expect(
-    unused_results,
-    reason = "Forcing the one-time environment initialization is intentionally used only for its side effect."
-)]
-
 //! Runtime colour output policy helpers.
 //!
 //! This module centralizes colour enable/disable decisions for CLI and
@@ -100,7 +95,7 @@ pub fn no_colour_env_active() -> bool {
 
 /// Read the current runtime colour policy.
 pub fn current_colour_output_policy() -> ColourOutputPolicy {
-    Lazy::force(&INIT_FROM_ENV);
+    let _initialized = Lazy::force(&INIT_FROM_ENV);
     ColourOutputPolicy {
         enabled: POLICY_ENABLED.load(Ordering::Relaxed),
         source: decode_source(POLICY_SOURCE.load(Ordering::Relaxed)),

@@ -1,9 +1,3 @@
-#![expect(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    reason = "Retry exponents and jitter are clamped to the supported retry range before conversion."
-)]
-
 //! Canonical retry policy shared across the workspace.
 //!
 //! This module owns the retry *policy math*: attempt budgets, exponential
@@ -19,7 +13,17 @@
 
 use std::time::Duration;
 
+use num_traits::ToPrimitive;
+
 use crate::error_category::{ErrorCategory, classify_anyhow_error};
+
+fn saturating_float_to_u64(value: f64) -> u64 {
+    if value.is_nan() || value <= 0.0 {
+        return 0;
+    }
+
+    value.to_u64().unwrap_or(u64::MAX)
+}
 
 /// Typed retry policy shared across runtime layers.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -58,8 +62,12 @@ impl RetryPolicy {
         Self::from_retries(max_retries, Duration::from_millis(base_delay_ms), Duration::from_millis(max_delay_ms), 2.0)
     }
 
+    #[expect(
+        clippy::float_arithmetic,
+        reason = "Retry delay policy intentionally uses f64 exponent and jitter math before duration conversion."
+    )]
     pub fn delay_for_attempt(&self, attempt_index: u32) -> Duration {
-        let multiplier = self.multiplier.powi(attempt_index as i32);
+        let multiplier = self.multiplier.powi(i32::try_from(attempt_index).unwrap_or(i32::MAX));
         let base_delay = Duration::try_from_secs_f64(self.initial_delay.as_secs_f64() * multiplier)
             .unwrap_or(self.max_delay)
             .min(self.max_delay);
@@ -68,13 +76,9 @@ impl RetryPolicy {
             return base_delay;
         }
 
-        #[allow(
-            clippy::cast_sign_loss,
-            reason = "Intentional compatibility, platform, or test-only suppression."
-        )]
-        let max_jitter_ms = (base_delay.as_millis() as f64 * self.jitter)
-            .round()
-            .clamp(0.0, u64::MAX as f64) as u64;
+        let base_delay_ms = base_delay.as_millis().to_f64().unwrap_or(f64::MAX);
+        let jitter_ms = (base_delay_ms * self.jitter).round();
+        let max_jitter_ms = saturating_float_to_u64(jitter_ms);
         if max_jitter_ms == 0 {
             return base_delay;
         }
@@ -238,7 +242,53 @@ mod tests {
         let mut policy = RetryPolicy::from_retries(3, Duration::from_secs(1), Duration::from_secs(8), 2.0);
         policy.jitter = f64::MAX;
 
-        assert!(policy.delay_for_attempt(1) >= Duration::from_secs(2));
+        assert_eq!(
+            policy.delay_for_attempt(1),
+            Duration::from_secs(2) + Duration::from_millis(31),
+            "maximum finite jitter saturates without changing the deterministic offset"
+        );
+    }
+
+    #[test]
+    fn delay_for_attempt_truncates_submillisecond_base_before_jitter() {
+        let mut policy = RetryPolicy::new(4, Duration::from_micros(1500), Duration::from_secs(1), 1.0);
+        policy.jitter = 1.0;
+
+        assert_eq!(
+            policy.delay_for_attempt(2),
+            Duration::from_micros(1500),
+            "jitter uses the original whole-millisecond base before multiplying"
+        );
+    }
+
+    #[test]
+    fn saturating_float_to_u64_handles_boundaries() {
+        assert_eq!(saturating_float_to_u64(-1.0), 0, "negative values saturate at zero");
+        assert_eq!(saturating_float_to_u64(f64::NAN), 0, "NaN values saturate at zero");
+        assert_eq!(saturating_float_to_u64(12.75), 12, "finite values truncate toward zero");
+        assert_eq!(saturating_float_to_u64(f64::MAX), u64::MAX, "maximum floats saturate at u64::MAX");
+    }
+
+    #[test]
+    fn saturating_float_to_u64_handles_large_representable_boundary() {
+        assert_eq!(
+            saturating_float_to_u64(18_446_744_073_709_549_568.0),
+            18_446_744_073_709_549_568_u64,
+            "largest representable f64 below 2^64 converts without premature saturation"
+        );
+        assert_eq!(
+            saturating_float_to_u64(18_446_744_073_709_551_616.0),
+            u64::MAX,
+            "2^64 saturates at u64::MAX"
+        );
+    }
+
+    #[test]
+    fn large_duration_milliseconds_convert_without_u64_narrowing() {
+        let milliseconds = Duration::new(u64::MAX, 999_999_999).as_millis();
+        let converted = milliseconds.to_f64().expect("u128 millisecond count converts to f64");
+
+        assert!(converted > 18_446_744_073_709_551_616.0, "full u128 millisecond range reaches beyond u64");
     }
 
     #[test]

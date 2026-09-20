@@ -1,12 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    clippy::string_slice,
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    unused_results,
-    reason = "Diff ranges and offsets use one character/byte mapping; discarded map updates are intentional."
-)]
-
 //! Diff utilities for generating structured diffs.
 
 use hashbrown::HashMap;
@@ -43,8 +34,8 @@ pub fn compute_diff_chunks<'a>(old: &'a str, new: &'a str) -> Vec<Chunk<'a>> {
         .sum();
 
     // Strip common suffix on the remaining text.
-    let old_rest = &old[prefix_byte_len..];
-    let new_rest = &new[prefix_byte_len..];
+    let old_rest = old.get(prefix_byte_len..).unwrap_or_default();
+    let new_rest = new.get(prefix_byte_len..).unwrap_or_default();
 
     let suffix_byte_len: usize = old_rest
         .chars()
@@ -57,101 +48,129 @@ pub fn compute_diff_chunks<'a>(old: &'a str, new: &'a str) -> Vec<Chunk<'a>> {
     let old_middle_end = old_rest.len() - suffix_byte_len;
     let new_middle_end = new_rest.len() - suffix_byte_len;
 
-    let old_middle = &old_rest[..old_middle_end];
-    let new_middle = &new_rest[..new_middle_end];
+    let old_middle = old_rest.get(..old_middle_end).unwrap_or_default();
+    let new_middle = new_rest.get(..new_middle_end).unwrap_or_default();
 
     let mut result = Vec::with_capacity(old_middle.len() + new_middle.len());
 
     // Add common prefix
     if prefix_byte_len > 0 {
-        result.push(Chunk::Equal(&old[..prefix_byte_len]));
+        result.push(Chunk::Equal(old.get(..prefix_byte_len).unwrap_or_default()));
     }
 
-    // Compute optimal diff for the middle section
-    if !old_middle.is_empty() || !new_middle.is_empty() {
-        let old_chars: Vec<char> = old_middle.chars().collect();
-        let new_chars: Vec<char> = new_middle.chars().collect();
-        let old_byte_starts: Vec<usize> = old_middle.char_indices().map(|(idx, _)| idx).collect();
-        let new_byte_starts: Vec<usize> = new_middle.char_indices().map(|(idx, _)| idx).collect();
-        let edits = myers_diff(&old_chars, &new_chars);
-
-        let mut old_pos = 0;
-        let mut new_pos = 0;
-        // Track the start of a consecutive Equal run so we can emit a single
-        // Chunk::Equal for the whole run (instead of one per character).
-        let mut equal_run_start: Option<usize> = None;
-
-        for edit in edits {
-            match edit {
-                Edit::Equal => {
-                    if equal_run_start.is_none() {
-                        equal_run_start = Some(old_pos);
-                    }
-                    old_pos += 1;
-                    new_pos += 1;
-                }
-                Edit::Delete => {
-                    // Flush any accumulated equal run before emitting a Delete
-                    if let Some(start) = equal_run_start.take() {
-                        let byte_start = old_byte_starts[start];
-                        let byte_end = old_byte_starts[old_pos];
-                        if byte_start < byte_end {
-                            result.push(Chunk::Equal(&old_middle[byte_start..byte_end]));
-                        }
-                    }
-                    let Some(ch) = old_chars.get(old_pos).copied() else {
-                        break;
-                    };
-                    let Some(byte_start) = old_byte_starts.get(old_pos).copied() else {
-                        break;
-                    };
-                    let byte_end = byte_start + ch.len_utf8();
-                    result.push(Chunk::Delete(&old_middle[byte_start..byte_end]));
-                    old_pos += 1;
-                }
-                Edit::Insert => {
-                    // Flush any accumulated equal run before emitting an Insert.
-                    // old_pos may equal old_byte_starts.len() when the equal run
-                    // reaches the end of old_middle, so use old_middle.len() as fallback.
-                    if let Some(start) = equal_run_start.take() {
-                        let byte_start = old_byte_starts[start];
-                        let byte_end = if old_pos < old_byte_starts.len() {
-                            old_byte_starts[old_pos]
-                        } else {
-                            old_middle.len()
-                        };
-                        if byte_start < byte_end {
-                            result.push(Chunk::Equal(&old_middle[byte_start..byte_end]));
-                        }
-                    }
-                    let Some(ch) = new_chars.get(new_pos).copied() else {
-                        break;
-                    };
-                    let Some(byte_start) = new_byte_starts.get(new_pos).copied() else {
-                        break;
-                    };
-                    let byte_end = byte_start + ch.len_utf8();
-                    result.push(Chunk::Insert(&new_middle[byte_start..byte_end]));
-                    new_pos += 1;
-                }
-            }
-        }
-        // Flush any trailing equal run
-        if let Some(start) = equal_run_start.take() {
-            let byte_start = old_byte_starts[start];
-            let byte_end = old_middle.len();
-            if byte_start < byte_end {
-                result.push(Chunk::Equal(&old_middle[byte_start..byte_end]));
-            }
-        }
-    }
+    // Compute optimal diff for the middle section.
+    append_middle_diff(old_middle, new_middle, &mut result);
 
     // Add common suffix
     if suffix_byte_len > 0 {
-        result.push(Chunk::Equal(&old[old.len() - suffix_byte_len..]));
+        result.push(Chunk::Equal(old.get(old.len() - suffix_byte_len..).unwrap_or_default()));
     }
 
     result
+}
+
+fn append_middle_diff<'a>(old_middle: &'a str, new_middle: &'a str, result: &mut Vec<Chunk<'a>>) {
+    if old_middle.is_empty() && new_middle.is_empty() {
+        return;
+    }
+    let old_chars: Vec<char> = old_middle.chars().collect();
+    let new_chars: Vec<char> = new_middle.chars().collect();
+    let edits = myers_diff(&old_chars, &new_chars);
+    let mut state = MiddleDiff::new(old_middle, new_middle, result);
+    for edit in edits {
+        if !state.apply(edit) {
+            break;
+        }
+    }
+    state.finish();
+}
+
+struct MiddleDiff<'a, 'b> {
+    old_middle: &'a str,
+    new_middle: &'a str,
+    old_chars: Vec<char>,
+    new_chars: Vec<char>,
+    old_byte_starts: Vec<usize>,
+    new_byte_starts: Vec<usize>,
+    old_pos: usize,
+    new_pos: usize,
+    equal_run_start: Option<usize>,
+    result: &'b mut Vec<Chunk<'a>>,
+}
+
+impl<'a, 'b> MiddleDiff<'a, 'b> {
+    fn new(old_middle: &'a str, new_middle: &'a str, result: &'b mut Vec<Chunk<'a>>) -> Self {
+        Self {
+            old_chars: old_middle.chars().collect(),
+            new_chars: new_middle.chars().collect(),
+            old_byte_starts: old_middle.char_indices().map(|(idx, _)| idx).collect(),
+            new_byte_starts: new_middle.char_indices().map(|(idx, _)| idx).collect(),
+            old_middle,
+            new_middle,
+            old_pos: 0,
+            new_pos: 0,
+            equal_run_start: None,
+            result,
+        }
+    }
+
+    fn apply(&mut self, edit: Edit) -> bool {
+        if edit == Edit::Equal {
+            self.equal_run_start.get_or_insert(self.old_pos);
+            self.old_pos += 1;
+            self.new_pos += 1;
+            return true;
+        }
+        if edit == Edit::Delete {
+            return self.append_delete();
+        }
+        self.append_insert()
+    }
+
+    fn append_delete(&mut self) -> bool {
+        self.flush_equal(self.old_pos);
+        let Some(ch) = self.old_chars.get(self.old_pos).copied() else {
+            return false;
+        };
+        let Some(byte_start) = self.old_byte_starts.get(self.old_pos).copied() else {
+            return false;
+        };
+        let byte_end = byte_start + ch.len_utf8();
+        self.result.push(Chunk::Delete(self.old_middle.get(byte_start..byte_end).unwrap_or_default()));
+        self.old_pos += 1;
+        true
+    }
+
+    fn append_insert(&mut self) -> bool {
+        self.flush_equal(self.old_pos.min(self.old_byte_starts.len()));
+        let Some(ch) = self.new_chars.get(self.new_pos).copied() else {
+            return false;
+        };
+        let Some(byte_start) = self.new_byte_starts.get(self.new_pos).copied() else {
+            return false;
+        };
+        let byte_end = byte_start + ch.len_utf8();
+        self.result.push(Chunk::Insert(self.new_middle.get(byte_start..byte_end).unwrap_or_default()));
+        self.new_pos += 1;
+        true
+    }
+
+    fn flush_equal(&mut self, end: usize) {
+        let Some(start) = self.equal_run_start.take() else {
+            return;
+        };
+        let Some(byte_start) = self.old_byte_starts.get(start).copied() else {
+            return;
+        };
+        let byte_end = self.old_byte_starts.get(end).copied().unwrap_or(self.old_middle.len());
+        if byte_start < byte_end {
+            self.result.push(Chunk::Equal(self.old_middle.get(byte_start..byte_end).unwrap_or_default()));
+        }
+    }
+
+    fn finish(&mut self) {
+        self.flush_equal(self.old_byte_starts.len());
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,7 +185,7 @@ enum Edit {
 /// register allocation and (in some cases) auto-vectorization heuristics.
 #[inline]
 fn advance_matching(old: &[char], new: &[char], mut x: usize, mut y: usize) -> (usize, usize) {
-    while x < old.len() && y < new.len() && old[x] == new[y] {
+    while x < old.len() && y < new.len() && old.get(x) == new.get(y) {
         x += 1;
         y += 1;
     }
@@ -193,51 +212,62 @@ fn backtrack_equal_run(
     (x, y)
 }
 
-#[allow(
-    clippy::cast_sign_loss,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
 fn myers_diff(old: &[char], new: &[char]) -> Vec<Edit> {
-    let n = old.len();
-    let m = new.len();
+    let old_len = old.len();
+    let new_len = new.len();
 
-    if n == 0 {
-        return vec![Edit::Insert; m];
+    if old_len == 0 {
+        return vec![Edit::Insert; new_len];
     }
-    if m == 0 {
-        return vec![Edit::Delete; n];
+    if new_len == 0 {
+        return vec![Edit::Delete; old_len];
     }
 
-    let max_d = n.saturating_add(m).min(i32::MAX as usize);
-    let max_d_i32 = max_d as i32;
-    let mut v = vec![0; 2 * max_d + 1];
-    let mut v_index = vec![0usize; (max_d + 1) * (2 * max_d + 1)];
-    let row_len = 2 * max_d + 1;
+    let max_distance = old_len
+        .saturating_add(new_len)
+        .min(usize::try_from(i32::MAX).unwrap_or(usize::MAX));
+    let max_distance_i32 = i32::try_from(max_distance).unwrap_or_default();
+    let mut furthest_x = vec![0; 2 * max_distance + 1];
+    let mut v_index = vec![0usize; (max_distance + 1) * (2 * max_distance + 1)];
+    let row_len = 2 * max_distance + 1;
 
-    v[max_d] = 0;
+    if let Some(value) = furthest_x.get_mut(max_distance) {
+        *value = 0;
+    }
 
-    for d in 0..=max_d {
-        let d_i32 = d as i32;
-        let row_start = d * row_len;
-        for k in (-d_i32..=d_i32).step_by(2) {
-            let k_idx = (k + max_d_i32) as usize;
+    for distance in 0..=max_distance {
+        let distance_i32 = i32::try_from(distance).unwrap_or_default();
+        let row_start = distance * row_len;
+        for diagonal in (-distance_i32..=distance_i32).step_by(2) {
+            let diagonal_idx = usize::try_from(diagonal + max_distance_i32).unwrap_or_default();
 
-            let x = if k == -d_i32 || (k != d_i32 && v[k_idx - 1] < v[k_idx + 1]) {
-                v[k_idx + 1]
+            let candidate_x = if diagonal == -distance_i32
+                || (diagonal != distance_i32
+                && furthest_x.get(diagonal_idx - 1).copied().unwrap_or_default()
+                    < furthest_x.get(diagonal_idx + 1).copied().unwrap_or_default())
+            {
+                furthest_x.get(diagonal_idx + 1).copied().unwrap_or_default()
             } else {
-                v[k_idx - 1] + 1
+                furthest_x.get(diagonal_idx - 1).copied().unwrap_or_default() + 1
             };
 
-            let mut x = x;
-            let mut y = (x as i32 - k) as usize;
+            let mut x_position = candidate_x;
+            let mut y_position = usize::try_from(
+                i64::try_from(candidate_x).unwrap_or(i64::MAX) - i64::from(diagonal),
+            )
+                .unwrap_or_default();
 
-            (x, y) = advance_matching(old, new, x, y);
+            (x_position, y_position) = advance_matching(old, new, x_position, y_position);
 
-            v[k_idx] = x;
-            v_index[row_start + k_idx] = x;
+            if let Some(value) = furthest_x.get_mut(diagonal_idx) {
+                *value = x_position;
+            }
+            if let Some(value) = v_index.get_mut(row_start + diagonal_idx) {
+                *value = x_position;
+            }
 
-            if x >= n && y >= m {
-                return backtrack_myers(old, new, &v_index, d, k, max_d);
+            if x_position >= old_len && y_position >= new_len {
+                return backtrack_myers(old, new, &v_index, distance, diagonal, max_distance);
             }
         }
     }
@@ -245,19 +275,22 @@ fn myers_diff(old: &[char], new: &[char]) -> Vec<Edit> {
     vec![]
 }
 
-#[allow(
-    clippy::cast_sign_loss,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
-fn backtrack_myers(old: &[char], new: &[char], v_index: &[usize], d: usize, mut k: i32, max_d: usize) -> Vec<Edit> {
+fn backtrack_myers(
+    old: &[char],
+    new: &[char],
+    v_index: &[usize],
+    distance: usize,
+    mut diagonal: i32,
+    max_distance: usize,
+) -> Vec<Edit> {
     let mut edits = Vec::with_capacity(old.len() + new.len());
     let mut x = old.len();
     let mut y = new.len();
-    let max_d_i32 = max_d as i32;
-    let row_len = 2 * max_d + 1;
+    let max_distance_i32 = i32::try_from(max_distance).unwrap_or_default();
+    let row_len = 2 * max_distance + 1;
 
-    for cur_d in (0..=d).rev() {
-        if cur_d == 0 {
+    for current_distance in (0..=distance).rev() {
+        if current_distance == 0 {
             while x > 0 && y > 0 {
                 edits.push(Edit::Equal);
                 x -= 1;
@@ -266,31 +299,46 @@ fn backtrack_myers(old: &[char], new: &[char], v_index: &[usize], d: usize, mut 
             break;
         }
 
-        let k_idx = (k + max_d_i32) as usize;
-        let prev_row_start = (cur_d - 1) * row_len;
+        let diagonal_idx = usize::try_from(diagonal + max_distance_i32).unwrap_or_default();
+        let prev_row_start = (current_distance - 1) * row_len;
 
-        let cur_d_i32 = cur_d as i32;
-        let prev_k = if k == cur_d_i32.wrapping_neg()
-            || (k != cur_d_i32 && v_index[prev_row_start + k_idx - 1] < v_index[prev_row_start + k_idx + 1])
+        let current_distance_i32 = i32::try_from(current_distance).unwrap_or_default();
+        let previous_diagonal = if diagonal == current_distance_i32.wrapping_neg()
+            || (diagonal != current_distance_i32
+                && v_index
+                    .get(prev_row_start + diagonal_idx - 1)
+                    .copied()
+                    .unwrap_or_default()
+                    < v_index
+                        .get(prev_row_start + diagonal_idx + 1)
+                        .copied()
+                        .unwrap_or_default())
         {
-            k + 1
+            diagonal + 1
         } else {
-            k - 1
+            diagonal - 1
         };
 
-        let prev_k_idx = (prev_k + max_d_i32) as usize;
-        let prev_x_val = v_index[prev_row_start + prev_k_idx];
-        let prev_y = (prev_x_val as i32 - prev_k) as usize;
+        let previous_diagonal_idx =
+            usize::try_from(previous_diagonal + max_distance_i32).unwrap_or_default();
+        let previous_x = v_index
+            .get(prev_row_start + previous_diagonal_idx)
+            .copied()
+            .unwrap_or_default();
+        let previous_y = usize::try_from(
+            i64::try_from(previous_x).unwrap_or(i64::MAX) - i64::from(previous_diagonal),
+        )
+            .unwrap_or_default();
 
-        let (move_x, move_y) = if prev_k == k + 1 {
-            (prev_x_val, prev_y + 1)
+        let (move_x, move_y) = if previous_diagonal == diagonal + 1 {
+            (previous_x, previous_y + 1)
         } else {
-            (prev_x_val + 1, prev_y)
+            (previous_x + 1, previous_y)
         };
 
         (x, y) = backtrack_equal_run(x, y, move_x, move_y, &mut edits);
 
-        if prev_k == k + 1 {
+        if previous_diagonal == diagonal + 1 {
             edits.push(Edit::Insert);
             y -= 1;
         } else {
@@ -298,7 +346,7 @@ fn backtrack_myers(old: &[char], new: &[char], v_index: &[usize], d: usize, mut 
             x -= 1;
         }
 
-        k = prev_k;
+        diagonal = previous_diagonal;
     }
 
     edits.reverse();
@@ -383,13 +431,13 @@ where
         Vec::new()
     };
 
-    let formatted = if hunks.is_empty() {
+    let rendered = if hunks.is_empty() {
         String::new()
     } else {
         formatter(&hunks, &options)
     };
 
-    DiffBundle { hunks, formatted, is_empty: !has_changes }
+    DiffBundle { hunks, formatted: rendered, is_empty: !has_changes }
 }
 
 fn split_lines_with_terminator(text: &str) -> Vec<String> {
@@ -402,7 +450,9 @@ fn split_lines_with_terminator(text: &str) -> Vec<String> {
     let mut line_start = 0;
     let mut index = 0;
     while index < bytes.len() {
-        let byte = bytes[index];
+        let Some(&byte) = bytes.get(index) else {
+            break;
+        };
         if byte != b'\n' && byte != b'\r' {
             index += 1;
             continue;
@@ -412,12 +462,12 @@ fn split_lines_with_terminator(text: &str) -> Vec<String> {
         } else {
             index + 1
         };
-        lines.push(text[line_start..line_end].to_string());
+        lines.push(text.get(line_start..line_end).unwrap_or_default().to_string());
         line_start = line_end;
         index = line_end;
     }
     if line_start < text.len() {
-        lines.push(text[line_start..].to_string());
+        lines.push(text.get(line_start..).unwrap_or_default().to_string());
     }
 
     lines
@@ -436,7 +486,10 @@ fn collect_line_records<'a>(old_lines: &'a [&'a str], new_lines: &'a [&'a str]) 
                 for _ in text.chars() {
                     let old_line = old_index + 1;
                     let new_line = new_index + 1;
-                    let line = old_lines[old_index as usize];
+                    let line = old_lines
+                        .get(usize::try_from(old_index).unwrap_or_default())
+                        .copied()
+                        .unwrap_or_default();
                     records.push(LineRecord {
                         kind: DiffLineKind::Context,
                         old_line: Some(old_line),
@@ -453,7 +506,10 @@ fn collect_line_records<'a>(old_lines: &'a [&'a str], new_lines: &'a [&'a str]) 
                 for _ in text.chars() {
                     let old_line = old_index + 1;
                     let anchor_new = new_index + 1;
-                    let line = old_lines[old_index as usize];
+                    let line = old_lines
+                        .get(usize::try_from(old_index).unwrap_or_default())
+                        .copied()
+                        .unwrap_or_default();
                     records.push(LineRecord {
                         kind: DiffLineKind::Deletion,
                         old_line: Some(old_line),
@@ -469,7 +525,10 @@ fn collect_line_records<'a>(old_lines: &'a [&'a str], new_lines: &'a [&'a str]) 
                 for _ in text.chars() {
                     let new_line = new_index + 1;
                     let anchor_old = old_index + 1;
-                    let line = new_lines[new_index as usize];
+                    let line = new_lines
+                        .get(usize::try_from(new_index).unwrap_or_default())
+                        .copied()
+                        .unwrap_or_default();
                     records.push(LineRecord {
                         kind: DiffLineKind::Addition,
                         old_line: None,
@@ -506,7 +565,7 @@ fn encode_line_list<'a>(lines: &'a [&'a str], map: &mut HashMap<&'a str, char>, 
             let Some(ch) = next_token_char(next_codepoint) else {
                 break;
             };
-            map.insert(line, ch);
+            let _previous = map.insert(line, ch);
             ch
         };
         encoded.push(token);
@@ -515,7 +574,7 @@ fn encode_line_list<'a>(lines: &'a [&'a str], map: &mut HashMap<&'a str, char>, 
 }
 
 fn next_token_char(counter: &mut u32) -> Option<char> {
-    while *counter <= 0x10FFFF {
+    while *counter <= 0x0010_FFFF {
         let candidate = *counter;
         *counter += 1;
         if (0xD800..=0xDFFF).contains(&candidate) {
@@ -547,11 +606,13 @@ fn build_hunks(records: &[LineRecord<'_>], context: usize) -> Vec<DiffHunk> {
     let mut hunks = Vec::with_capacity(ranges.len());
 
     for (start, end) in ranges {
-        let slice = &records[start..=end];
+        let slice = records.get(start..=end).unwrap_or_default();
 
-        let first = &slice[0];
-        let old_start = first.old_line.unwrap_or(first.anchor_old).max(1) as usize;
-        let new_start = first.new_line.unwrap_or(first.anchor_new).max(1) as usize;
+        let Some(first) = slice.first() else {
+            continue;
+        };
+        let old_start = usize::try_from(first.old_line.unwrap_or(first.anchor_old).max(1)).unwrap_or(usize::MAX);
+        let new_start = usize::try_from(first.new_line.unwrap_or(first.anchor_new).max(1)).unwrap_or(usize::MAX);
 
         let old_lines = slice
             .iter()
@@ -588,23 +649,21 @@ fn compute_hunk_ranges(records: &[LineRecord<'_>], context: usize) -> Vec<(usize
             let start = idx.saturating_sub(context);
             let end = min(idx + context, records.len().saturating_sub(1));
 
-            if let Some(existing_start) = current_start {
-                // Close the previous range if this change is beyond its context window
-                if idx > current_end {
+            match current_start.take() {
+                // Close the previous range if this change is beyond its context window.
+                Some(existing_start) if idx > current_end => {
                     ranges.push((existing_start, current_end));
                     current_start = Some(start);
                     current_end = end;
-                } else {
-                    if start < existing_start {
-                        current_start = Some(start);
-                    }
-                    if end > current_end {
-                        current_end = end;
-                    }
                 }
-            } else {
-                current_start = Some(start);
-                current_end = end;
+                Some(existing_start) => {
+                    current_start = Some(start.min(existing_start));
+                    current_end = end.max(current_end);
+                }
+                None => {
+                    current_start = Some(start);
+                    current_end = end;
+                }
             }
         } else if let Some(start) = current_start
             && idx > current_end

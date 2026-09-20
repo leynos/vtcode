@@ -1,9 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    clippy::string_slice,
-    reason = "The ANSI parser validates byte positions while walking escape-sequence boundaries."
-)]
-
 //! Shared ANSI escape parser and stripping utilities for VT Code.
 //!
 //! See `docs/reference/ansi-in-vtcode.md` for the workspace usage map.
@@ -60,7 +54,9 @@ fn parse_csi(bytes: &[u8], start: usize) -> Option<usize> {
     let mut consumed = 0usize;
 
     while index < bytes.len() {
-        let byte = bytes[index];
+        let Some(&byte) = bytes.get(index) else {
+            break;
+        };
         if byte == ESC {
             // VT100: ESC aborts current control sequence and starts a new one.
             return Some(index);
@@ -99,12 +95,13 @@ fn parse_csi(bytes: &[u8], start: usize) -> Option<usize> {
 #[inline]
 fn parse_string_sequence(bytes: &[u8], start: usize, terminator: StringSequenceTerminator) -> Option<usize> {
     let mut consumed = 0usize;
-    for index in start..bytes.len() {
-        if bytes[index] == ESC && !(index + 1 < bytes.len() && bytes[index + 1] == b'\\') {
+    let mut index = start;
+    while let Some(&byte) = bytes.get(index) {
+        if byte == ESC && bytes.get(index + 1) != Some(&b'\\') {
             // VT100: ESC aborts current sequence and begins a new one.
             return Some(index);
         }
-        if bytes[index] == CAN || bytes[index] == SUB {
+        if byte == CAN || byte == SUB {
             return Some(index + 1);
         }
 
@@ -114,9 +111,9 @@ fn parse_string_sequence(bytes: &[u8], start: usize, terminator: StringSequenceT
             return Some(index + len);
         }
 
-        match bytes[index] {
+        match byte {
             BEL if terminator.allows_bel() => return Some(index + 1),
-            ESC if index + 1 < bytes.len() && bytes[index + 1] == b'\\' => return Some(index + 2),
+            ESC if bytes.get(index + 1) == Some(&b'\\') => return Some(index + 2),
             _ => {}
         }
 
@@ -125,6 +122,7 @@ fn parse_string_sequence(bytes: &[u8], start: usize, terminator: StringSequenceT
             // Cap unbounded strings when terminator is missing.
             return Some(index + 1);
         }
+        index += 1;
     }
     None
 }
@@ -151,13 +149,12 @@ fn parse_ansi_sequence_bytes(bytes: &[u8]) -> Option<usize> {
         };
     }
 
-    match bytes[0] {
+    let first = bytes.first().copied()?;
+    match first {
         ESC => {
-            if bytes.len() < 2 {
-                return None;
-            }
+            let next = bytes.get(1).copied()?;
 
-            match bytes[1] {
+            match next {
                 b'[' => parse_csi(bytes, 2),
                 b']' => parse_string_sequence(bytes, 2, StringSequenceTerminator::BelOrSt),
                 b'P' | b'^' | b'_' | b'X' => parse_string_sequence(bytes, 2, StringSequenceTerminator::StOnly),
@@ -167,7 +164,7 @@ fn parse_ansi_sequence_bytes(bytes: &[u8]) -> Option<usize> {
                 // ESC % {@ ,G} — character set selection (ISO 2022)
                 // ESC ( C / ESC ) C / ESC * C / ESC + C — G0-G3 designation
                 b' ' | b'#' | b'%' | b'(' | b')' | b'*' | b'+' => {
-                    if bytes.len() > 2 {
+                    if bytes.get(2).is_some() {
                         Some(3)
                     } else {
                         None
@@ -198,10 +195,8 @@ pub fn strip_ansi(text: &str) -> String {
     let mut i = 0;
 
     while i < bytes.len() {
-        let next_esc = memchr(ESC, &bytes[i..]).map_or(bytes.len(), |offset| i + offset);
-        // Pre-slice to avoid bounds checks in the inner loop — the range
-        // i..next_esc is provably within bytes[..].
-        for &b in &bytes[i..next_esc] {
+        let next_esc = memchr(ESC, bytes.get(i..).unwrap_or_default()).map_or(bytes.len(), |offset| i + offset);
+        for &b in bytes.get(i..next_esc).unwrap_or_default() {
             push_visible_byte(&mut output, b);
         }
         i = next_esc;
@@ -210,13 +205,12 @@ pub fn strip_ansi(text: &str) -> String {
             break;
         }
 
-        if let Some(len) = parse_ansi_sequence_bytes(&bytes[i..]) {
-            i += len;
-            continue;
-        } else {
+        let Some(len) = parse_ansi_sequence_bytes(bytes.get(i..).unwrap_or_default()) else {
             // Incomplete/unterminated control sequence at end of available text.
             break;
-        }
+        };
+        i += len;
+        continue;
     }
 
     // The output is always valid UTF-8: `push_visible_byte` only filters ASCII
@@ -240,20 +234,25 @@ fn strip_ansi_bytes(input: &[u8]) -> Vec<u8> {
 
     while i < bytes.len() {
         // Pre-slice to the remaining portion so all indexing below shares one bounds edge.
-        let rest = &bytes[i..];
+        let Some(rest) = bytes.get(i..) else {
+            break;
+        };
+        let Some(&first) = rest.first() else {
+            break;
+        };
 
-        if (rest[0] == ESC || parse_c1_at(bytes, i).is_some())
+        if (first == ESC || parse_c1_at(bytes, i).is_some())
             && let Some(len) = parse_ansi_sequence_bytes(rest)
         {
             i += len;
             continue;
         }
-        if rest[0] == ESC || parse_c1_at(bytes, i).is_some() {
+        if first == ESC || parse_c1_at(bytes, i).is_some() {
             // Incomplete/unterminated control sequence at end of available text.
             break;
         }
 
-        push_visible_byte(&mut output, rest[0]);
+        push_visible_byte(&mut output, first);
         i += 1;
     }
     output
@@ -272,11 +271,13 @@ pub fn strip_ansi_ascii_only(text: &str) -> String {
     let mut search_start = 0;
     let mut copy_start = 0;
 
-    while let Some(offset) = memchr(ESC, &bytes[search_start..]) {
+    while let Some(offset) = memchr(ESC, bytes.get(search_start..).unwrap_or_default()) {
         let esc_index = search_start + offset;
-        if let Some(len) = parse_ansi_sequence_bytes(&bytes[esc_index..]) {
+        if let Some(len) = parse_ansi_sequence_bytes(bytes.get(esc_index..).unwrap_or_default()) {
             if copy_start < esc_index {
-                output.push_str(&text[copy_start..esc_index]);
+                if let Some(segment) = text.get(copy_start..esc_index) {
+                    output.push_str(segment);
+                }
             }
             copy_start = esc_index + len;
             search_start = copy_start;
@@ -286,7 +287,9 @@ pub fn strip_ansi_ascii_only(text: &str) -> String {
     }
 
     if copy_start < text.len() {
-        output.push_str(&text[copy_start..]);
+        if let Some(segment) = text.get(copy_start..) {
+            output.push_str(segment);
+        }
     }
 
     output

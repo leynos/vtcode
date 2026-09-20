@@ -1,8 +1,3 @@
-#![expect(
-    clippy::cast_possible_truncation,
-    reason = "Quality scores are normalized to the documented 0..=100 display range before narrowing."
-)]
-
 //! Shared runtime types for the VT Code tool system.
 //!
 //! This module provides types shared between the LLM and tools subsystems,
@@ -15,6 +10,8 @@
 //! - [`EnhancedToolResult`] - tool result with quality metadata
 //! - [`ResultMetadata`] - quality/confidence scoring for tool results
 //! - [`tool_names`] - tool name constants used across subsystems
+
+use crate::utils::saturating_float_to_u8;
 
 // ---------------------------------------------------------------------------
 // CompactStr type alias
@@ -250,6 +247,10 @@ impl ResultMetadata {
     }
 }
 
+fn quality_percentage(score: f32) -> u32 {
+    u32::from(saturating_float_to_u8((score * 100.0).round().max(0.0))).min(100)
+}
+
 /// Enhanced tool result with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnhancedToolResult {
@@ -310,12 +311,8 @@ impl EnhancedToolResult {
     }
 
     /// Convert to a message-friendly format
-    #[allow(
-        clippy::cast_sign_loss,
-        reason = "Intentional compatibility, platform, or test-only suppression."
-    )] // quality_score is always 0.0-1.0
     pub fn to_summary(&self) -> String {
-        let quality = ((self.metadata.quality_score() * 100.0).round().max(0.0) as u32).min(100);
+        let quality = quality_percentage(self.metadata.quality_score()).min(100);
         match self.metadata.completeness {
             ResultCompleteness::Complete => {
                 format!("{} found {} results (confidence: {}%)", self.tool_name, self.metadata.result_count, quality)
@@ -343,4 +340,15 @@ pub trait ResultScorer {
 
     /// Tool name this scorer handles
     fn tool_name(&self) -> &str;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::quality_percentage;
+
+    #[test]
+    fn quality_percentage_preserves_explicit_hundred_bound() {
+        assert_eq!(quality_percentage(2.55), 100, "display confidence must never exceed 100 percent");
+        assert_eq!(quality_percentage(f32::MAX), 100, "maximum scores remain bounded");
+    }
 }

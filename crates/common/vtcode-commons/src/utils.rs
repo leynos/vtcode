@@ -1,14 +1,17 @@
-#![expect(
-    clippy::string_slice,
-    reason = "Cargo manifest offsets come from ASCII markers and are therefore UTF-8 boundaries."
-)]
-
 //! Generic utility functions
 
 use anyhow::{Context, Result};
+use num_traits::ToPrimitive;
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+pub(crate) fn saturating_float_to_u8(value: f32) -> u8 {
+    if value.is_nan() || value <= 0.0 {
+        return 0;
+    }
+    value.to_u8().unwrap_or(u8::MAX)
+}
 
 /// Get current Unix timestamp in seconds
 #[inline]
@@ -45,32 +48,21 @@ pub fn calculate_sha256(content: &[u8]) -> String {
     output
 }
 
-#[allow(
-    clippy::unreachable,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
 fn nibble_to_hex(nibble: u8) -> char {
     match nibble {
         0..=9 => char::from(b'0' + nibble),
         10..=15 => char::from(b'a' + (nibble - 10)),
-        _ => unreachable!("nibble must be in 0..=15"),
+        _ => '?',
     }
 }
 
 /// Extract a string value from a simple TOML key assignment within the `[package]` section
 pub fn extract_toml_str(content: &str, key: &str) -> Option<String> {
     // Only consider the [package] section to avoid matching other tables
-    let pkg_section = if let Some(start) = content.find("[package]") {
-        let rest = &content[start + "[package]".len()..];
-        // Stop at next section header or end
-        if let Some(_next) = rest.find('\n') {
-            &content[start..]
-        } else {
-            &content[start..]
-        }
-    } else {
-        content
-    };
+    let pkg_section = content
+        .find("[package]")
+        .and_then(|start| content.get(start..))
+        .unwrap_or(content);
 
     // Example target: name = "vtcode"
     let pattern = format!(r#"(?m)^\s*{}\s*=\s*"([^"]+)"\s*$"#, regex::escape(key));
@@ -120,5 +112,13 @@ mod tests {
         let markdown = "你".repeat(700);
 
         assert_eq!(extract_readme_excerpt(&markdown, 1201), format!("{}...\n", "你".repeat(400)));
+    }
+
+    #[test]
+    fn saturating_float_to_u8_matches_float_cast_edges() {
+        assert_eq!(saturating_float_to_u8(-1.0), 0, "negative values saturate at zero");
+        assert_eq!(saturating_float_to_u8(f32::NAN), 0, "NaN casts to zero");
+        assert_eq!(saturating_float_to_u8(12.75), 12, "finite values truncate toward zero");
+        assert_eq!(saturating_float_to_u8(f32::MAX), u8::MAX, "large values saturate at u8::MAX");
     }
 }

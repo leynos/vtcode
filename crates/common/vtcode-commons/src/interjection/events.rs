@@ -1,8 +1,3 @@
-#![expect(
-    unused_results,
-    reason = "Queue maintenance intentionally discards fluent collection mutation results."
-)]
-
 use std::sync::{Arc, Mutex, MutexGuard};
 
 #[derive(Debug)]
@@ -36,7 +31,7 @@ impl<E> EventQueue<E> {
         q.push(event);
         if q.len() > max {
             let excess = q.len() - max;
-            q.drain(..excess);
+            let _drained = q.drain(..excess);
         }
     }
 

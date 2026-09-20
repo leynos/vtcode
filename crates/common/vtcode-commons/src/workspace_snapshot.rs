@@ -1,10 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    clippy::cast_possible_truncation,
-    unused_results,
-    reason = "Snapshot reads use bounded counts and serialize platform timestamps into the documented compact format."
-)]
-
 //! Cheap workspace environment-delta observability.
 //!
 //! Long-horizon agents operate in a *changing environment*: files are written,
@@ -104,10 +97,10 @@ fn collect(root: &Path, dir: &Path, max_file_bytes: u64, out: &mut BTreeMap<Stri
                         .modified()
                         .ok()
                         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                        .map(|d| d.as_nanos() as i64)
+                        .map(|d| i64::try_from(d.as_nanos()).unwrap_or(i64::MAX))
                         .unwrap_or(0);
-                    let head_hash = if size <= max_file_bytes { hash_head(&path) } else { 0 };
-                    out.insert(rel, FileStat { size, mtime_ns, head_hash });
+                    let head_hash = (size <= max_file_bytes).then(|| hash_head(&path)).unwrap_or_default();
+                    let _previous = out.insert(rel, FileStat { size, mtime_ns, head_hash });
                 }
                 Err(_) => continue,
             }
@@ -118,14 +111,14 @@ fn collect(root: &Path, dir: &Path, max_file_bytes: u64, out: &mut BTreeMap<Stri
 
 /// FNV-1a 64-bit hash of the first [`HASH_SAMPLE_BYTES`] bytes of `path`.
 fn hash_head(path: &Path) -> u64 {
-    const SEED: u64 = 0xcbf29ce484222325;
-    const PRIME: u64 = 0x100000001b3;
+    const SEED: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0100_0000_01b3;
     let mut hash = SEED;
     let mut buf = [0u8; HASH_SAMPLE_BYTES];
     if let Ok(mut f) = std::fs::File::open(path) {
         use std::io::Read;
         if let Ok(n) = f.read(&mut buf) {
-            for &b in &buf[..n] {
+            for &b in buf.get(..n).unwrap_or_default() {
                 hash ^= u64::from(b);
                 hash = hash.wrapping_mul(PRIME);
             }
