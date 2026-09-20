@@ -103,6 +103,13 @@ the stack lead owns publication and review replies.
   must run the focused generator tests, Ruff format and lint, fresh locked
   schema regeneration with byte comparison, documentation checks, and the
   candidate CodeScene analysis.
+- 2026-09-19: D1 adds the missing end-user provider rate-limit guide and its
+  `docs/INDEX.md` entry. The guide uses a safe
+  `custom_providers.rate_limit_headers` example, links to the existing developer
+  reference for provider tables, distinguishes `Retry-After` from configured
+  quota resets, and documents ACP/Lody notices without inferring utilisation or
+  account data from incomplete headers. Shared Markdown, link, and spelling
+  validation remains pending.
 
 ## Decisions and discoveries
 
@@ -122,6 +129,10 @@ the stack lead owns publication and review replies.
   required. Generator traversal now composes every parent requirement with
   the child schema requirement, so an optional object cannot have an
   absolutely required child path.
+- D1 is an end-user documentation follow-up only. It links to the developer
+  reference instead of duplicating provider mapping tables, and preserves the
+  published ACP wire names `_meta.lody.rateLimits` and
+  `_lody/rate_limits/update`.
 
 ## Risks and conformance
 
@@ -131,6 +142,7 @@ public API, dependency, persistent format, or architecture change.
 
 ## Outcome and retrospective
 
-Pending the one-pass focused generator and Python-format validation, fresh
-Cargo schema regeneration, documentation checks, and candidate CodeScene
-analysis, then commit integration already authorised by the user.
+The original documentation plateau remains pending its recorded shared
+validation and integration. D1 additionally awaits the shared Markdown, local
+link, and spelling checks; it has no code, configuration, or wire-contract
+change.
