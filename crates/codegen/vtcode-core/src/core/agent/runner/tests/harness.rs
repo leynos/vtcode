@@ -4,6 +4,67 @@
 )]
 
 use super::*;
+use crate::exec::events::{ThreadCompletionSubtype, ThreadItemDetails};
+
+fn assert_exact_terminal_setup_failure(events: &[ThreadEvent], error_fragment: &str) {
+    let failures = events
+        .iter()
+        .filter_map(|event| match event {
+            ThreadEvent::TurnFailed(failure) => Some(failure),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(failures.len(), 1, "setup failure must emit one TurnFailed");
+    assert!(failures[0].message.contains(error_fragment));
+
+    let completions = events
+        .iter()
+        .filter_map(|event| match event {
+            ThreadEvent::ThreadCompleted(completion) => Some(completion),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(completions.len(), 1, "setup failure must emit one ThreadCompleted");
+    assert_eq!(completions[0].subtype, ThreadCompletionSubtype::ErrorDuringExecution);
+    assert_eq!(completions[0].outcome_code, "error");
+    assert!(completions[0]
+        .stop_reason
+        .as_deref()
+        .is_some_and(|stop_reason| stop_reason.contains(error_fragment)));
+}
+
+fn persisted_thread_events(workspace: &std::path::Path, session_id: &str) -> Vec<ThreadEvent> {
+    let event_path = workspace.join(".vtcode/sessions").join(session_id).join("events.jsonl");
+    fs::read_to_string(event_path)
+        .expect("planner failure event log must be drained before return")
+        .lines()
+        .map(|line| {
+            serde_json::from_str::<vtcode_exec_events::VersionedThreadEvent>(line)
+                .expect("decode persisted planner event")
+                .into_event()
+        })
+        .collect()
+}
+
+fn assert_no_tool_activity(events: &[ThreadEvent]) {
+    assert!(!events.iter().any(|event| {
+        let details = match event {
+            ThreadEvent::ItemStarted(event) => &event.item.details,
+            ThreadEvent::ItemUpdated(event) => &event.item.details,
+            ThreadEvent::ItemCompleted(event) => &event.item.details,
+            _ => return false,
+        };
+        matches!(
+            details,
+            ThreadItemDetails::ToolInvocation(_)
+                | ThreadItemDetails::ToolOutput(_)
+                | ThreadItemDetails::CommandExecution(_)
+                | ThreadItemDetails::McpToolCall(_)
+                | ThreadItemDetails::FileChange(_)
+                | ThreadItemDetails::WebSearch(_)
+        )
+    }));
+}
 
 #[tokio::test]
 async fn exec_full_auto_continues_until_tracker_is_completed() {
@@ -437,8 +498,6 @@ async fn default_full_auto_exec_uses_plan_build_evaluate_harness() {
 
 #[tokio::test]
 async fn malformed_planner_response_records_safe_terminal_turn_failure_without_tools() {
-    use crate::exec::events::ThreadItemDetails;
-
     let temp = TempDir::new().expect("tempdir");
     let workspace = workspace_root(&temp);
     let mut vt_cfg = VTCodeConfig::default();
@@ -447,7 +506,9 @@ async fn malformed_planner_response_records_safe_terminal_turn_failure_without_t
     runner.enable_full_auto(&[tools::TASK_TRACKER.to_string()]).await;
     let mut malformed = text_response(r#"{"items":"PRIVATE_PLANNER_CONTENT"}"#);
     malformed.request_id = Some("req-safe-123".to_string());
-    runner.provider_client = Box::new(QueuedProvider::new(vec![malformed]));
+    let provider = RecordingQueuedProvider::new(vec![malformed]);
+    let recorded = provider.clone();
+    runner.provider_client = Box::new(provider);
     let thread_handle = runner.thread_handle();
 
     let error = Box::pin(runner.execute_task(&task("Malformed planner", "exec-task"), &[]))
@@ -470,60 +531,29 @@ async fn malformed_planner_response_records_safe_terminal_turn_failure_without_t
             .count(),
         1
     );
-    let failures = events
-        .iter()
-        .filter_map(|event| match event {
-            ThreadEvent::TurnFailed(failure) => Some(failure),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(failures.len(), 1);
-    assert!(failures[0].message.contains("parse_class=schema"));
-    assert!(!events.iter().any(|event| {
-        let details = match event {
-            ThreadEvent::ItemStarted(event) => &event.item.details,
-            ThreadEvent::ItemUpdated(event) => &event.item.details,
-            ThreadEvent::ItemCompleted(event) => &event.item.details,
-            _ => return false,
-        };
-        matches!(
-            details,
-            ThreadItemDetails::ToolInvocation(_)
-                | ThreadItemDetails::ToolOutput(_)
-                | ThreadItemDetails::CommandExecution(_)
-                | ThreadItemDetails::McpToolCall(_)
-                | ThreadItemDetails::FileChange(_)
-                | ThreadItemDetails::WebSearch(_)
-        )
-    }));
+    assert_exact_terminal_setup_failure(&events, "parse_class=schema");
+    assert_eq!(recorded.recorded_requests().len(), 1, "planner failure must not retry the provider request");
+    assert_no_tool_activity(&events);
     let _submission = thread_handle
         .begin_turn()
         .expect("planner failure must close the in-flight turn");
     thread_handle.finish_turn();
 
-    let event_path = workspace.join(".vtcode/sessions/thread-malformed-planner/events.jsonl");
-    let persisted = fs::read_to_string(event_path).expect("planner failure event log must be drained before return");
-    let persisted_events = persisted
-        .lines()
-        .map(|line| {
-            serde_json::from_str::<vtcode_exec_events::VersionedThreadEvent>(line)
-                .expect("decode persisted planner event")
-                .into_event()
-        })
-        .collect::<Vec<_>>();
-    assert!(persisted_events.iter().any(
-        |event| matches!(event, ThreadEvent::TurnFailed(failure) if failure.message.contains("parse_class=schema"))
-    ));
+    let persisted_events = persisted_thread_events(&workspace, "thread-malformed-planner");
+    assert_exact_terminal_setup_failure(&persisted_events, "parse_class=schema");
 }
 
 #[tokio::test]
 async fn planner_provider_failure_remains_distinct_from_parse_failure() {
     let temp = TempDir::new().expect("tempdir");
+    let workspace = workspace_root(&temp);
     let mut vt_cfg = VTCodeConfig::default();
     vt_cfg.agent.harness.orchestration_mode = vtcode_config::core::agent::HarnessOrchestrationMode::PlanBuildEvaluate;
     let mut runner = Box::pin(make_runner(&temp, vt_cfg, "thread-planner-provider-failure")).await;
     runner.enable_full_auto(&[tools::TASK_TRACKER.to_string()]).await;
-    runner.provider_client = Box::new(QueuedProvider::new(Vec::new()));
+    let provider = RecordingQueuedProvider::new(Vec::new());
+    let recorded = provider.clone();
+    runner.provider_client = Box::new(provider);
     let thread_handle = runner.thread_handle();
 
     let error = Box::pin(runner.execute_task(&task("Provider failure", "exec-task"), &[]))
@@ -533,10 +563,85 @@ async fn planner_provider_failure_remains_distinct_from_parse_failure() {
     let rendered = error.to_string();
     assert!(rendered.contains("planner request failed"));
     assert!(!rendered.contains("phase=parse planner response"));
-    assert!(thread_handle.recent_events().iter().any(
-        |event| matches!(event, ThreadEvent::TurnFailed(failure) if failure.message.contains("planner request failed"))
-    ));
+    let events = thread_handle.recent_events();
+    assert_exact_terminal_setup_failure(&events, "planner request failed");
+    assert_eq!(recorded.recorded_requests().len(), 1, "planner failure must not retry the provider request");
+    let _submission = thread_handle
+        .begin_turn()
+        .expect("planner provider failure must close the in-flight turn");
+    thread_handle.finish_turn();
+
+    let persisted_events = persisted_thread_events(&workspace, "thread-planner-provider-failure");
+    assert_exact_terminal_setup_failure(&persisted_events, "planner request failed");
 }
+
+#[tokio::test]
+async fn planner_artifact_failure_terminalizes_once() {
+    let temp = TempDir::new().expect("tempdir");
+    let workspace = workspace_root(&temp);
+    let mut vt_cfg = VTCodeConfig::default();
+    vt_cfg.agent.harness.orchestration_mode = vtcode_config::core::agent::HarnessOrchestrationMode::PlanBuildEvaluate;
+    let mut runner = Box::pin(make_runner(&temp, vt_cfg, "thread-planner-artifact-failure")).await;
+    runner.enable_full_auto(&[tools::TASK_TRACKER.to_string()]).await;
+    let provider = RecordingQueuedProvider::new(vec![json_response(planner_response_json("pwd"))]);
+    let recorded = provider.clone();
+    runner.provider_client = Box::new(provider);
+    fs::create_dir_all(workspace.join(".vtcode")).expect("fixture metadata directory");
+    fs::write(workspace.join(".vtcode/tasks"), "fixture blocks artifact directory").expect("artifact blocker");
+    let thread_handle = runner.thread_handle();
+
+    let error = Box::pin(runner.execute_task(&task("Artifact failure", "exec-task"), &[]))
+        .await
+        .expect_err("planner artifact write must fail");
+
+    assert!(error.to_string().contains("create current spec directory"));
+    let events = thread_handle.recent_events();
+    assert_exact_terminal_setup_failure(&events, "create current spec directory");
+    assert_eq!(recorded.recorded_requests().len(), 1, "planner artifact failure must not retry the provider request");
+    assert_no_tool_activity(&events);
+    let _submission = thread_handle
+        .begin_turn()
+        .expect("planner artifact failure must close the in-flight turn");
+    thread_handle.finish_turn();
+
+    let persisted_events = persisted_thread_events(&workspace, "thread-planner-artifact-failure");
+    assert_exact_terminal_setup_failure(&persisted_events, "create current spec directory");
+}
+
+#[tokio::test]
+async fn prompt_bundle_failure_retains_accepted_task() {
+    let temp = TempDir::new().expect("tempdir");
+    let workspace = workspace_root(&temp);
+    let mut runner = Box::pin(make_runner(&temp, VTCodeConfig::default(), "thread-prompt-bundle-failure")).await;
+    let accepted_task = task("Accepted prompt task", "retained-task");
+    let thread_handle = runner.thread_handle();
+
+    let error = match runner
+        .prepare_task_execution_with_prompt_bundle_builder(&accepted_task, &[], |_runner, _is_simple_task| {
+            Box::pin(async { Err(anyhow::anyhow!("injected prompt bundle failure")) })
+        })
+        .await
+    {
+        Ok(_) => panic!("injected prompt construction failure must propagate"),
+        Err(error) => error,
+    };
+
+    assert!(error.to_string().contains("injected prompt bundle failure"));
+    assert!(runner
+        .session_messages()
+        .iter()
+        .any(|message| message.content.as_text().contains("Task: Accepted prompt task")));
+    let events = thread_handle.recent_events();
+    assert_exact_terminal_setup_failure(&events, "injected prompt bundle failure");
+    let _submission = thread_handle
+        .begin_turn()
+        .expect("prompt construction failure must close the in-flight turn");
+    thread_handle.finish_turn();
+
+    let persisted_events = persisted_thread_events(&workspace, "thread-prompt-bundle-failure");
+    assert_exact_terminal_setup_failure(&persisted_events, "injected prompt bundle failure");
+}
+
 #[tokio::test]
 async fn evaluator_failure_forces_revision_before_success() {
     let temp = TempDir::new().expect("tempdir");
