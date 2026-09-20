@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
+use vtcode_config::core::agent::HarnessOrchestrationMode;
 use vtcode_config::core::permissions::AgentPermissionsConfig;
 use vtcode_config::core::tools::ToolPolicy;
 use vtcode_config::{
@@ -98,6 +99,10 @@ fn build_child_config_from_runtime(
 ) -> VTCodeConfig {
     let mut child = parent.clone();
     child.agent.default_model = model.to_string();
+    // A delegated child already receives a bounded, concrete task from its
+    // parent. It must execute that task directly instead of inheriting the
+    // parent's plan-build-evaluate preflight and recursively planning again.
+    child.agent.harness.orchestration_mode = HarnessOrchestrationMode::Single;
     child.runtime_agent_permissions = Some(runtime.permissions.clone());
     // Apply a lightweight default profile so a delegated child does not replay
     // the parent bootstrap cost on every turn. This is currently a fixed
@@ -697,6 +702,28 @@ mod tests {
         assert!(
             child.mcp.providers.is_empty(),
             "subagent should not inherit parent MCP providers unless explicitly requested"
+        );
+    }
+
+    #[test]
+    fn child_config_forces_single_orchestration_without_mutating_parent() {
+        let mut parent = VTCodeConfig::default();
+        parent.agent.harness.orchestration_mode = HarnessOrchestrationMode::PlanBuildEvaluate;
+
+        for spec in vtcode_config::builtin_subagents() {
+            let child = build_child_config(&parent, &spec, models::openai::GPT_5_6_SOL, None, false);
+            assert_eq!(
+                child.agent.harness.orchestration_mode,
+                HarnessOrchestrationMode::Single,
+                "child variant {} must bypass the parent planner",
+                spec.name
+            );
+        }
+
+        assert_eq!(
+            parent.agent.harness.orchestration_mode,
+            HarnessOrchestrationMode::PlanBuildEvaluate,
+            "building child configs must not alter the parent orchestration mode"
         );
     }
 
