@@ -1,0 +1,75 @@
+event: response.created
+data: {"response":{"id":"resp_da4d243f-c3af-460f-9e59-fd075cc1a5b5","created_at":1788606479,"incomplete_details":null,"instructions":null,"metadata":null,"model":"zai-org/GLM-5.3-Flash","object":"response","output":[],"parallel_tool_calls":true,"temperature":1.0,"tool_choice":"required","tools":[{"name":"fixture_echo","parameters":{"additionalProperties":false,"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function","allowed_callers":null,"defer_loading":null,"description":"Return a synthetic test string; no external effects.","output_schema":null}],"top_p":0.95,"background":false,"max_output_tokens":2048,"max_tool_calls":null,"previous_response_id":null,"prompt":null,"reasoning":null,"service_tier":"auto","status":"in_progress","text":null,"top_logprobs":null,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+event: response.in_progress
+data: {"response":{"id":"resp_da4d243f-c3af-460f-9e59-fd075cc1a5b5","created_at":1788606479,"incomplete_details":null,"instructions":null,"metadata":null,"model":"zai-org/GLM-5.3-Flash","object":"response","output":[],"parallel_tool_calls":true,"temperature":1.0,"tool_choice":"required","tools":[{"name":"fixture_echo","parameters":{"additionalProperties":false,"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function","allowed_callers":null,"defer_loading":null,"description":"Return a synthetic test string; no external effects.","output_schema":null}],"top_p":0.95,"background":false,"max_output_tokens":2048,"max_tool_calls":null,"previous_response_id":null,"prompt":null,"reasoning":null,"service_tier":"auto","status":"in_progress","text":null,"top_logprobs":null,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+event: response.output_item.added
+data: {"item":{"id":"94ad4eafd2f5c5a7","summary":[],"type":"reasoning","content":null,"encrypted_content":null,"status":"in_progress"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+event: response.reasoning_part.added
+data: {"content_index":0,"item_id":"94ad4eafd2f5c5a7","output_index":0,"part":{"text":"","type":"reasoning_text"},"sequence_number":3,"type":"response.reasoning_part.added"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"The","item_id":"94ad4eafd2f5c5a7","output_index":0,"sequence_number":4,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" user wants me to call fixture","item_id":"94ad4eafd2f5c5a7","output_index":0,"sequence_number":5,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"_echo once","item_id":"94ad4eafd2f5c5a7","output_index":0,"sequence_number":6,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" with text \"","item_id":"94ad4eafd2f5c5a7","output_index":0,"sequence_number":7,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"OK\" and not","item_id":"94ad4eafd2f5c5a7","output_index":0,"sequence_number":8,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" answer in prose. So","item_id":"94ad4eafd2f5c5a7","output_index":0,"sequence_number":9,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" I should just make","item_id":"94ad4eafd2f5c5a7","output_index":0,"sequence_number":10,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" the tool","item_id":"94ad4eafd2f5c5a7","output_index":0,"sequence_number":11,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" call without","item_id":"94ad4eafd2f5c5a7","output_index":0,"sequence_number":12,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" any","item_id":"94ad4eafd2f5c5a7","output_index":0,"sequence_number":13,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" prose explanation","item_id":"94ad4eafd2f5c5a7","output_index":0,"sequence_number":14,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":".","item_id":"94ad4eafd2f5c5a7","output_index":0,"sequence_number":15,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.done
+data: {"content_index":0,"item_id":"94ad4eafd2f5c5a7","output_index":0,"sequence_number":16,"text":"The user wants me to call fixture_echo once with text \"OK\" and not answer in prose. So I should just make the tool call without any prose explanation.","type":"response.reasoning_text.done"}
+
+event: response.reasoning_part.done
+data: {"content_index":0,"item_id":"94ad4eafd2f5c5a7","output_index":0,"part":{"text":"The user wants me to call fixture_echo once with text \"OK\" and not answer in prose. So I should just make the tool call without any prose explanation.","type":"reasoning_text"},"sequence_number":17,"type":"response.reasoning_part.done"}
+
+event: response.output_item.done
+data: {"item":{"id":"94ad4eafd2f5c5a7","summary":[],"type":"reasoning","content":[{"text":"The user wants me to call fixture_echo once with text \"OK\" and not answer in prose. So I should just make the tool call without any prose explanation.","type":"reasoning_text"}],"encrypted_content":null,"status":"completed"},"output_index":0,"sequence_number":18,"type":"response.output_item.done"}
+
+event: response.output_item.added
+data: {"item":{"arguments":"","call_id":"call_8b72964ed25d90d0","name":"fixture_echo","type":"function_call","id":"a70ca8d6ea25b6e0","caller":null,"namespace":null,"status":"in_progress"},"output_index":1,"sequence_number":19,"type":"response.output_item.added"}
+
+event: response.function_call_arguments.delta
+data: {"delta":"{\"text\": \"OK","item_id":"a70ca8d6ea25b6e0","output_index":1,"sequence_number":20,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.delta
+data: {"delta":"\"}","item_id":"a70ca8d6ea25b6e0","output_index":1,"sequence_number":21,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.done
+data: {"arguments":"{\"text\": \"OK\"}","item_id":"a70ca8d6ea25b6e0","name":"fixture_echo","output_index":1,"sequence_number":22,"type":"response.function_call_arguments.done"}
+
+event: response.output_item.done
+data: {"item":{"arguments":"{\"text\": \"OK\"}","call_id":"call_8b72964ed25d90d0","name":"fixture_echo","type":"function_call","id":"a70ca8d6ea25b6e0","caller":null,"namespace":null,"status":"completed"},"output_index":1,"sequence_number":23,"type":"response.output_item.done"}
+
+event: response.completed
+data: {"response":{"id":"resp_da4d243f-c3af-460f-9e59-fd075cc1a5b5","created_at":1788606479,"incomplete_details":null,"instructions":null,"metadata":null,"model":"zai-org/GLM-5.3-Flash","object":"response","output":[{"id":"rs_bb4070721268eedf","summary":[],"type":"reasoning","content":[{"text":"The user wants me to call fixture_echo once with text \"OK\" and not answer in prose. So I should just make the tool call without any prose explanation.","type":"reasoning_text"}],"encrypted_content":null,"status":null},{"arguments":"{\"text\": \"OK\"}","call_id":"chatcmpl-tool-aec11d97912311ee","name":"fixture_echo","type":"function_call","id":"fc_864421b4b3a78b57","caller":null,"namespace":null,"status":"completed"}],"parallel_tool_calls":true,"temperature":1.0,"tool_choice":"required","tools":[{"name":"fixture_echo","parameters":{"additionalProperties":false,"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function","allowed_callers":null,"defer_loading":null,"description":"Return a synthetic test string; no external effects.","output_schema":null}],"top_p":0.95,"background":false,"max_output_tokens":2048,"max_tool_calls":null,"previous_response_id":null,"prompt":null,"reasoning":null,"service_tier":"auto","status":"completed","text":null,"top_logprobs":null,"truncation":"disabled","usage":{"input_tokens":179,"input_tokens_details":{"cached_tokens":0,"input_tokens_per_turn":[],"cached_tokens_per_turn":[]},"output_tokens":45,"output_tokens_details":{"reasoning_tokens":0,"tool_output_tokens":0,"output_tokens_per_turn":[],"tool_output_tokens_per_turn":[]},"total_tokens":224},"user":null},"sequence_number":24,"type":"response.completed"}
+

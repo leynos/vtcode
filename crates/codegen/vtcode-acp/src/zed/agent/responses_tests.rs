@@ -267,6 +267,151 @@ fn responses_text_success(text: &str) -> ResponseTemplate {
     ResponseTemplate::new(200).set_body_raw(format!("data: {delta}\n\ndata: {completed}\n\n"), "text/event-stream")
 }
 
+fn issue35_function_capture() -> String {
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tests/fixtures/friendli/issue35/function-response.sse");
+    std::fs::read_to_string(path).expect("read sanitised issue 35 function-call capture")
+}
+
+fn issue35_safe_list_files_mutation() -> String {
+    issue35_function_capture()
+        .lines()
+        .map(|line| {
+            // Leave reasoning deltas and snapshots byte-identical: a global
+            // name replacement would change only the unsplit done snapshot.
+            let Some(payload) = line.strip_prefix("data: ") else {
+                return line.to_string();
+            };
+            let mut event: Value = serde_json::from_str(payload).expect("captured SSE JSON");
+            match event["type"].as_str() {
+                Some("response.function_call_arguments.delta") => {
+                    let delta = event["delta"].as_str().expect("argument delta");
+                    event["delta"] = json!(delta.replace(r#"{"text": "OK"#, r#"{"path": ""#));
+                }
+                Some("response.function_call_arguments.done") => {
+                    event["name"] = json!("list_files");
+                    event["arguments"] = json!(r#"{"path": ""}"#);
+                }
+                Some("response.output_item.added" | "response.output_item.done") => {
+                    mutate_issue35_function_item(&mut event["item"]);
+                }
+                Some("response.completed") => {
+                    for item in event["response"]["output"].as_array_mut().expect("terminal output") {
+                        mutate_issue35_function_item(item);
+                    }
+                }
+                _ => {}
+            }
+            format!("data: {event}")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n\n"
+}
+
+fn mutate_issue35_function_item(item: &mut Value) {
+    if item["type"] == "function_call" {
+        item["name"] = json!("list_files");
+        if item["arguments"].as_str().is_some_and(|arguments| !arguments.is_empty()) {
+            item["arguments"] = json!(r#"{"path": ""}"#);
+        }
+    }
+}
+
+fn replace_last(input: &str, from: &str, to: &str) -> String {
+    let (prefix, suffix) = input.rsplit_once(from).expect("issue 35 mutation source exists");
+    format!("{prefix}{to}{suffix}")
+}
+
+fn issue35_missing_streamed_call_mutation() -> String {
+    mutate_issue35_completed(issue35_safe_list_files_mutation(), |output| {
+        output.retain(|item| item.get("type").and_then(Value::as_str) != Some("function_call"));
+    })
+}
+
+fn issue35_ambiguous_streamed_call_mutation() -> String {
+    let capture = issue35_safe_list_files_mutation();
+    let duplicate = capture
+        .split("\n\n")
+        .filter(|event| {
+            event.contains(r#""output_index":1"#)
+                && (event.contains("response.output_item") || event.contains("response.function_call_arguments"))
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+        .replace("a70ca8d6ea25b6e0", "a70ca8d6ea25b6ff")
+        .replace("call_8b72964ed25d90d0", "call_8b72964ed25d9ff")
+        .replace(r#""output_index":1"#, r#""output_index":2"#);
+    let capture =
+        capture.replacen("event: response.completed", &format!("{duplicate}\n\nevent: response.completed"), 1);
+    let capture = mutate_issue35_completed(capture, |output| {
+        let mut duplicate = output
+            .iter()
+            .find(|item| item.get("type").and_then(Value::as_str) == Some("function_call"))
+            .expect("terminal function call")
+            .clone();
+        duplicate["id"] = json!("fc_864421b4b3a78bff");
+        duplicate["call_id"] = json!("chatcmpl-tool-aec11d9791231fff");
+        output.push(duplicate);
+    });
+    renumber_issue35_events(&capture)
+}
+
+fn mutate_issue35_completed(capture: String, mutate: impl FnOnce(&mut Vec<Value>)) -> String {
+    let data_prefix = "data: ";
+    let mut mutate = Some(mutate);
+    capture
+        .lines()
+        .map(|line| {
+            let Some(payload) = line.strip_prefix(data_prefix) else {
+                return line.to_string();
+            };
+            let mut event: Value = serde_json::from_str(payload).expect("captured SSE JSON");
+            if event.get("type").and_then(Value::as_str) != Some("response.completed") {
+                return line.to_string();
+            }
+            let output = event["response"]["output"].as_array_mut().expect("terminal output array");
+            mutate.take().expect("one completed event")(output);
+            format!("{data_prefix}{event}")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n\n"
+}
+
+fn renumber_issue35_events(capture: &str) -> String {
+    let mut sequence_number = 0_u64;
+    capture
+        .lines()
+        .map(|line| {
+            let Some(payload) = line.strip_prefix("data: ") else {
+                return line.to_string();
+            };
+            let mut event: Value = serde_json::from_str(payload).expect("captured SSE JSON");
+            event["sequence_number"] = json!(sequence_number);
+            sequence_number += 1;
+            format!("data: {event}")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n\n"
+}
+
+fn executable_tool_call_ids(notifications: &[acp::AgentNotification]) -> Vec<String> {
+    notifications
+        .iter()
+        .filter_map(|notification| match notification {
+            acp::AgentNotification::SessionNotification(notification) => match &notification.update {
+                acp::SessionUpdate::ToolCall(call) if !call.tool_call_id.0.starts_with("provider-input-preview:") => {
+                    Some(call.tool_call_id.0.to_string())
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
 fn rate_limited_response(headers: &[(&str, &str)]) -> ResponseTemplate {
     let mut response =
         ResponseTemplate::new(429).set_body_json(json!({"error":{"message":"Responses quota exhausted"}}));
@@ -537,6 +682,169 @@ async fn partial_custom_tool_input_is_never_executed_or_retried_and_next_prompt_
     assert!(preview_started, "raw custom-tool input must have a standard ACP pending preview");
     assert!(preview_delta_visible, "the pending preview must incrementally expose tool input");
     assert!(preview_failed, "an abandoned preview must terminate as failed before prompt completion");
+}
+
+#[tokio::test]
+async fn friendli_function_id_mismatch_is_strict_by_default_and_never_executes() {
+    let server = MockServer::start().await;
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(ScriptedResponder {
+            responses: vec![ResponseTemplate::new(200).set_body_raw(issue35_function_capture(), "text/event-stream")]
+                .into(),
+            request_times: Arc::new(Mutex::new(Vec::new())),
+            requests: Arc::clone(&requests),
+            next_response: Arc::new(AtomicUsize::new(0)),
+        })
+        .expect(1)
+        .mount(&server)
+        .await;
+    let mut config = provider_config(server.uri());
+    config.supports_tools = Some(true);
+
+    let run = run_acp_prompts(config, &["Call fixture_echo exactly once with text OK"], Duration::from_secs(3)).await;
+
+    assert_eq!(run.stop_reasons, [acp::StopReason::EndTurn]);
+    assert_responses_requests(&requests.lock().expect("strict capture requests"), 1);
+    assert!(executable_tool_call_ids(&run.notifications).is_empty());
+    assert!(
+        run.messages.iter().all(|message| !message.is_tool_response()),
+        "strict mismatch must not execute or persist a tool result"
+    );
+    assert!(visible_text(&run.notifications).contains("completed response omitted a streamed tool call"));
+}
+
+#[tokio::test]
+async fn friendli_function_id_remap_opt_in_executes_safe_tool_once_and_retains_final_id() {
+    const STREAMED_CALL_ID: &str = "call_8b72964ed25d90d0";
+    const FINAL_CALL_ID: &str = "chatcmpl-tool-aec11d97912311ee";
+
+    let server = MockServer::start().await;
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(ScriptedResponder {
+            responses: vec![
+                ResponseTemplate::new(200).set_body_raw(issue35_safe_list_files_mutation(), "text/event-stream"),
+                responses_text_success("safe tool completed"),
+            ]
+            .into(),
+            request_times: Arc::new(Mutex::new(Vec::new())),
+            requests: Arc::clone(&requests),
+            next_response: Arc::new(AtomicUsize::new(0)),
+        })
+        .expect(2)
+        .mount(&server)
+        .await;
+    let mut config = provider_config(server.uri());
+    config.supports_tools = Some(true);
+    config.responses_allow_function_call_id_remap = Some(true);
+
+    let run = run_acp_prompts(config, &["List the current workspace once"], Duration::from_secs(3)).await;
+
+    assert_eq!(run.stop_reasons, [acp::StopReason::EndTurn]);
+    let requests = requests.lock().expect("opt-in capture requests");
+    assert_eq!(requests.len(), 2, "ACP output: {}", visible_text(&run.notifications));
+    assert_responses_requests(&requests, 2);
+    let second_request = requests[1].body.to_string();
+    assert_eq!(second_request.matches("function_call_output").count(), 1);
+    assert!(second_request.contains(FINAL_CALL_ID));
+    assert!(!second_request.contains(STREAMED_CALL_ID));
+    assert_eq!(executable_tool_call_ids(&run.notifications), [FINAL_CALL_ID]);
+    let durable_history = serde_json::to_string(&run.messages).expect("serialize durable response history");
+    assert!(durable_history.contains(FINAL_CALL_ID));
+    assert!(!durable_history.contains(STREAMED_CALL_ID));
+}
+
+#[tokio::test]
+async fn friendli_function_id_remap_rejects_ambiguous_missing_and_changed_candidates() {
+    let safe_capture = issue35_safe_list_files_mutation();
+    let cases = [
+        ("ambiguous", issue35_ambiguous_streamed_call_mutation(), "remapping is ambiguous"),
+        ("missing", issue35_missing_streamed_call_mutation(), "do not map one-to-one to streamed calls"),
+        (
+            "changed_name",
+            replace_last(&safe_capture, r#""name":"list_files""#, r#""name":"read_file""#),
+            "contradict streamed calls",
+        ),
+        (
+            "changed_arguments",
+            replace_last(&safe_capture, r#"\"path\": \"\""#, r#"\"path\": \"different\""#),
+            "contradict streamed calls",
+        ),
+    ];
+
+    for (case, response, diagnostic) in cases {
+        let server = MockServer::start().await;
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        Mock::given(method("POST"))
+            .and(path("/responses"))
+            .respond_with(ScriptedResponder {
+                responses: vec![ResponseTemplate::new(200).set_body_raw(response, "text/event-stream")].into(),
+                request_times: Arc::new(Mutex::new(Vec::new())),
+                requests: Arc::clone(&requests),
+                next_response: Arc::new(AtomicUsize::new(0)),
+            })
+            .expect(1)
+            .mount(&server)
+            .await;
+        let mut config = provider_config(server.uri());
+        config.supports_tools = Some(true);
+        config.responses_allow_function_call_id_remap = Some(true);
+
+        let run = run_acp_prompts(config, &["List the current workspace once"], Duration::from_secs(3)).await;
+
+        assert_eq!(run.stop_reasons, [acp::StopReason::EndTurn], "{case}");
+        assert_responses_requests(&requests.lock().expect("rejected remap requests"), 1);
+        assert!(executable_tool_call_ids(&run.notifications).is_empty(), "{case}");
+        assert!(run.messages.iter().all(|message| !message.is_tool_response()), "{case}");
+        let visible = visible_text(&run.notifications);
+        assert!(visible.contains(diagnostic), "{case}: expected {diagnostic:?}, received {visible:?}");
+    }
+}
+
+#[tokio::test]
+async fn interrupted_friendli_function_stream_checkpoints_without_tool_execution() {
+    let server = MockServer::start().await;
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let interrupted = issue35_safe_list_files_mutation()
+        .split("event: response.completed")
+        .next()
+        .expect("captured pre-terminal prefix")
+        .to_string();
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(ScriptedResponder {
+            responses: vec![ResponseTemplate::new(200).set_body_raw(interrupted, "text/event-stream")].into(),
+            request_times: Arc::new(Mutex::new(Vec::new())),
+            requests: Arc::clone(&requests),
+            next_response: Arc::new(AtomicUsize::new(0)),
+        })
+        .expect(1)
+        .mount(&server)
+        .await;
+    let mut config = provider_config(server.uri());
+    config.supports_tools = Some(true);
+    config.responses_allow_function_call_id_remap = Some(true);
+
+    let run = run_acp_prompts(
+        config,
+        &["Begin one workspace listing but interrupt before the terminal response"],
+        Duration::from_secs(3),
+    )
+    .await;
+
+    assert_eq!(run.stop_reasons, [acp::StopReason::EndTurn]);
+    assert_responses_requests(&requests.lock().expect("interrupted capture requests"), 1);
+    assert!(executable_tool_call_ids(&run.notifications).is_empty());
+    assert!(run.messages.iter().all(|message| !message.is_tool_response()));
+    assert!(
+        run.checkpoint_json
+            .as_deref()
+            .is_some_and(|checkpoint| checkpoint.contains("provider could not complete this turn")),
+        "the interrupted stream must leave a durable incomplete checkpoint"
+    );
 }
 
 #[tokio::test]
@@ -1331,6 +1639,88 @@ async fn responses_gateway(State(state): State<ResponsesGatewayState>, body: Byt
             .body(Body::from(format!("VidaiMock Responses proxy failure: {error}")))
             .expect("VidaiMock Responses proxy error"),
     }
+}
+
+async fn function_remap_gateway(State(state): State<ResponsesGatewayState>, body: Bytes) -> Response<Body> {
+    state
+        .paths
+        .lock()
+        .expect("function remap gateway paths")
+        .push("/responses".to_string());
+    let attempt = state.attempts.fetch_add(1, Ordering::SeqCst);
+    if attempt > 0 {
+        let terminal = concat!(
+            "data: {\"type\":\"response.output_text.delta\",\"sequence_number\":0,\"output_index\":0,\"content_index\":0,\"delta\":\"safe tool completed\"}\n\n",
+            "data: {\"type\":\"response.completed\",\"sequence_number\":1,\"response\":{\"id\":\"resp-after-tool\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"responses-wire-model\",\"output\":[{\"id\":\"msg-after-tool\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"safe tool completed\",\"annotations\":[]}]}]}}\n\n",
+        );
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "text/event-stream")
+            .body(Body::from(terminal))
+            .expect("function remap terminal response");
+    }
+    match state
+        .client
+        .post(&state.upstream_responses_url)
+        .header(header::CONTENT_TYPE.as_str(), "application/json")
+        .body(body)
+        .send()
+        .await
+    {
+        Ok(upstream) => Response::builder()
+            .status(upstream.status())
+            .header(header::CONTENT_TYPE, "text/event-stream")
+            .body(Body::from_stream(upstream.bytes_stream()))
+            .expect("proxied function remap response"),
+        Err(error) => Response::builder()
+            .status(StatusCode::BAD_GATEWAY)
+            .body(Body::from(format!("VidaiMock function remap proxy failure: {error}")))
+            .expect("VidaiMock function remap proxy error"),
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires pinned VidaiMock 0.3.1 and validates function-call remap physics"]
+async fn vidaimock_function_id_remap_executes_only_after_terminal_completion() {
+    const FINAL_CALL_ID: &str = "chatcmpl-tool-aec11d97912311ee";
+
+    let vidaimock = RunningVidaiMock::start("trickled-stream.toml", "responses-function-remap")
+        .expect("start function remap VidaiMock fixture");
+    let paths = Arc::new(Mutex::new(Vec::new()));
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let gateway = Router::new()
+        .route("/responses", post(function_remap_gateway))
+        .with_state(ResponsesGatewayState {
+            upstream_responses_url: vidaimock.responses_url.clone(),
+            paths: Arc::clone(&paths),
+            attempts: Arc::clone(&attempts),
+            quota_failures: 0,
+            request_times: Arc::new(Mutex::new(Vec::new())),
+            client: reqwest::Client::new(),
+        });
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("bind function remap gateway");
+    let address = listener.local_addr().expect("function remap gateway address");
+    let gateway_task = tokio::spawn(async move {
+        axum::serve(listener, gateway).await.expect("serve function remap gateway");
+    });
+    let mut config = provider_config(format!("http://{address}"));
+    config.supports_tools = Some(true);
+    config.responses_allow_function_call_id_remap = Some(true);
+
+    let run = run_acp_prompts(config, &["List the workspace once"], Duration::from_secs(6)).await;
+    gateway_task.abort();
+    drop(gateway_task.await);
+
+    assert_eq!(attempts.load(Ordering::SeqCst), 2, "one tool response plus one final response");
+    assert_eq!(paths.lock().expect("function remap paths").len(), 2);
+    assert_eq!(run.stop_reasons, [acp::StopReason::EndTurn]);
+    assert_eq!(executable_tool_call_ids(&run.notifications), [FINAL_CALL_ID]);
+    assert_eq!(visible_text(&run.notifications).matches("safe tool completed").count(), 1);
+    let durable_history = serde_json::to_string(&run.messages).expect("serialize VidaiMock tool history");
+    assert!(durable_history.contains(FINAL_CALL_ID));
+    assert!(!durable_history.contains("call_8b72964ed25d90d0"));
 }
 
 #[tokio::test]
