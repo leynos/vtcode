@@ -255,6 +255,7 @@ pub fn parse_usage(usage_value: &Value) -> Usage {
     Usage {
         prompt_tokens: usage_value.get("input_tokens").and_then(|it| it.as_u64()).unwrap_or(0) as u32,
         completion_tokens: usage_value.get("output_tokens").and_then(|ot| ot.as_u64()).unwrap_or(0) as u32,
+        reasoning_output_tokens: None,
         total_tokens: (usage_value.get("input_tokens").and_then(|it| it.as_u64()).unwrap_or(0)
             + usage_value.get("output_tokens").and_then(|ot| ot.as_u64()).unwrap_or(0)) as u32,
         cached_prompt_tokens: cache_read_tokens,

@@ -65,6 +65,7 @@ pub(crate) fn parse_response_openai_format(
         usage: Some(crate::provider::Usage {
             prompt_tokens: u32::try_from(input_tokens).unwrap_or(u32::MAX),
             completion_tokens: u32::try_from(output_tokens).unwrap_or(u32::MAX),
+            reasoning_output_tokens: usage.and_then(crate::providers::common::parse_reasoning_tokens_from_usage),
             total_tokens: u32::try_from(input_tokens.saturating_add(output_tokens)).unwrap_or(u32::MAX),
             cached_prompt_tokens: if include_cache {
                 response.get("cache_hit").and_then(|c| c.as_bool()).map(|_| 0)

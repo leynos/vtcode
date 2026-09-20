@@ -76,6 +76,7 @@ mod tests {
                 usage: Some(Usage {
                     prompt_tokens: 10,
                     completion_tokens: 5,
+                    reasoning_output_tokens: None,
                     total_tokens: 15,
                     cached_prompt_tokens: None,
                     cache_creation_tokens: None,

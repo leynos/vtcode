@@ -41,7 +41,11 @@ notification `_lody/session/usage_update`. Its parameters contain:
   "usage": {
     "inputTokens": 123,
     "outputTokens": 45,
-    "cacheReadInputTokens": 0
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+    "reasoningOutputTokens": 12,
+    "contextWindow": 524288,
+    "costUSD": 0.0000123
   },
   "modelUsage": {
     "model-name": {
@@ -56,6 +60,21 @@ notification `_lody/session/usage_update`. Its parameters contain:
 `modelUsage` is keyed by the response model. The values are deltas for one
 provider response, and no notification is emitted when the provider supplies
 no usage data.
+
+`reasoningOutputTokens`, `contextWindow`, and `costUSD` are optional. The
+visible `outputTokens` value excludes reasoning tokens when the provider
+reports them; Baseten's nested
+`completion_tokens_details.reasoning_tokens` field is preserved during
+normalization. `costUSD` is emitted only when explicitly configured custom
+provider pricing supplies both input and output rates (USD per million
+tokens). Cache pricing is optional.
+
+Automatic context compaction is advertised as `_meta.lody.compaction` version
+1 and is emitted through standard `tool_call` and `tool_call_update` updates.
+The updates carry `_meta.lody.activity` for token counts, duration, and failure
+details. VT Code does not advertise `_meta.lody.rateLimits` without trustworthy
+quota state; HTTP 429 and `Retry-After` are instead reported in warning notices
+and provider telemetry.
 
 ## Legacy REST ACP client reference
 

@@ -33,6 +33,8 @@ mod compaction;
 pub(crate) mod handlers;
 mod lody;
 mod lody_management;
+mod lody_activity;
+mod lody_notice;
 #[cfg(test)]
 mod lody_tests;
 mod lody_usage;

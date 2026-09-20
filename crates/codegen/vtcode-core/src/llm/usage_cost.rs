@@ -174,6 +174,7 @@ mod tests {
         let usage = ProviderUsage {
             prompt_tokens: 100,
             completion_tokens: 20,
+            reasoning_output_tokens: None,
             total_tokens: 120,
             cached_prompt_tokens: None,
             cache_creation_tokens: Some(50),
@@ -193,6 +194,7 @@ mod tests {
         let usage = ProviderUsage {
             prompt_tokens: 100,
             completion_tokens: 20,
+            reasoning_output_tokens: None,
             total_tokens: 120,
             cached_prompt_tokens: None,
             cache_creation_tokens: Some(50),
@@ -212,6 +214,7 @@ mod tests {
         let usage = ProviderUsage {
             prompt_tokens: 500,
             completion_tokens: 30,
+            reasoning_output_tokens: None,
             total_tokens: 530,
             cached_prompt_tokens: Some(400),
             cache_creation_tokens: None,
