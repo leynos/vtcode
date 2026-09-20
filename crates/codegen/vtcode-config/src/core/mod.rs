@@ -11,6 +11,7 @@ pub mod plugins;
 pub mod prompt_cache;
 pub mod provider;
 pub mod provider_override;
+mod rate_limit_headers;
 pub mod sandbox;
 pub mod security;
 pub mod skills;
@@ -26,7 +27,8 @@ pub use automation::{AutomationConfig, FullAutoConfig, ScheduledTasksConfig};
 pub use commands::CommandsConfig;
 pub use custom_provider::{
     CustomProviderApiFormat, CustomProviderCommandAuthConfig, CustomProviderConfig, CustomProviderPricingConfig,
-    CustomProviderProfileConfig, CustomProviderRequestPolicyConfig, ResolvedCustomProviderProfile,
+    CustomProviderProfileConfig, CustomProviderRequestPolicyConfig, RateLimitHeaderConfig,
+    ResolvedCustomProviderProfile,
 };
 pub use dotfile_protection::DotfileProtectionConfig;
 pub use model::ModelConfig;

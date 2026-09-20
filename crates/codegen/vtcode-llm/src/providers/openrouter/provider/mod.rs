@@ -8,7 +8,7 @@ use tracing::warn;
 use crate::error_display;
 use crate::provider::{LLMError, LLMRequest, Message, MessageRole, ToolChoice};
 use crate::providers::common::{chat_completions_url, extract_prompt_cache_settings, override_base_url, resolve_model};
-use crate::providers::error_handling::format_network_error;
+use crate::providers::error_handling::{format_network_error, parse_api_error_with_headers};
 use reqwest::{Client as HttpClient, Response, StatusCode};
 use serde_json::Value;
 use std::borrow::Cow;
@@ -16,12 +16,19 @@ use std::str::FromStr;
 use vtcode_commons::sanitizer::sanitize_provider_diagnostic;
 use vtcode_config::TimeoutsConfig;
 use vtcode_config::constants::{env_vars, models, urls};
-use vtcode_config::core::{AnthropicConfig, ModelConfig, OpenRouterPromptCacheSettings, PromptCachingConfig};
+use vtcode_config::core::{
+    AnthropicConfig, ModelConfig, OpenRouterPromptCacheSettings, PromptCachingConfig, RateLimitHeaderConfig,
+};
 use vtcode_config::models::ModelId;
 
 const OPENROUTER_REFERER: &str = "https://github.com/vinhnx/vtcode";
 const OPENROUTER_TITLE: &str = "VT Code";
 const OPENROUTER_CATEGORIES: &str = "agents,coding";
+const OPENROUTER_PROVIDER_NAME: &str = "OpenRouter";
+
+fn openrouter_rate_limit_headers() -> RateLimitHeaderConfig {
+    RateLimitHeaderConfig::for_provider_name(OPENROUTER_PROVIDER_NAME)
+}
 
 mod client_impl;
 mod parsing;
@@ -227,10 +234,17 @@ impl OpenRouterProvider {
         }
 
         let fallback_status = fallback_response.status();
+        let fallback_headers = fallback_response.headers().clone();
         let fallback_text = crate::providers::common::read_provider_error_body(fallback_response).await;
 
         if fallback_status.as_u16() == 429 || fallback_text.contains("quota") {
-            return Err(LLMError::RateLimit { metadata: None });
+            return Err(parse_api_error_with_headers(
+                OPENROUTER_PROVIDER_NAME,
+                fallback_status,
+                &fallback_text,
+                &fallback_headers,
+                &openrouter_rate_limit_headers(),
+            ));
         }
 
         let combined_error = format!(
@@ -309,10 +323,17 @@ impl OpenRouterProvider {
         }
 
         let status = response.status();
+        let headers = response.headers().clone();
         let error_text = crate::providers::common::read_provider_error_body(response).await;
 
         if status.as_u16() == 429 || error_text.contains("quota") {
-            return Err(LLMError::RateLimit { metadata: None });
+            return Err(parse_api_error_with_headers(
+                OPENROUTER_PROVIDER_NAME,
+                status,
+                &error_text,
+                &headers,
+                &openrouter_rate_limit_headers(),
+            ));
         }
 
         if let Some(resp) = self
@@ -350,7 +371,12 @@ impl OpenRouterProvider {
         }
 
         // Use unified error parsing for consistent error categorization
-        use crate::providers::error_handling::parse_api_error;
-        Err(parse_api_error("OpenRouter", status, &error_text))
+        Err(parse_api_error_with_headers(
+            OPENROUTER_PROVIDER_NAME,
+            status,
+            &error_text,
+            &headers,
+            &openrouter_rate_limit_headers(),
+        ))
     }
 }

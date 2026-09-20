@@ -9,16 +9,16 @@
 
 use std::future::Future;
 use std::result::Result as StdResult;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use crate::error::{ErrorCategory, VtCodeError};
-use crate::retry_after::retry_after_from_llm_metadata;
+use crate::retry_after::{retry_after_from_llm_metadata_at, retry_after_is_http_date};
 use crate::tools::registry::ToolExecutionError;
 use crate::tools::tool_intent::is_command_tool;
 use crate::tools::unified_error::UnifiedToolError;
 use vtcode_commons::llm::{LLMError, LLMErrorMetadata};
 
-pub use vtcode_commons::retry::{RetryDecision, RetryPolicy};
+pub use vtcode_commons::retry::{RetryBackoff, RetryDecision, RetryPolicy};
 
 /// Domain-aware retry decisions layered over the shared [`RetryPolicy`].
 ///
@@ -34,7 +34,50 @@ pub trait RetryPolicyCoreExt {
 
     fn decision_for_anyhow(&self, error: &anyhow::Error, attempt_index: u32, tool_name: Option<&str>) -> RetryDecision;
 
+    /// Classify an LLM error using the compatibility wall-clock observation.
     fn decision_for_llm_error(&self, error: &LLMError, attempt_index: u32) -> RetryDecision;
+
+    /// Classify an LLM error against the time at which it was observed.
+    ///
+    /// Existing implementers inherit a compatibility fallback that delegates
+    /// to [`Self::decision_for_llm_error`] and ignores `observed_at`.
+    /// [`RetryPolicy`] overrides this method to honour the supplied time.
+    fn decision_for_llm_error_at(
+        &self,
+        error: &LLMError,
+        attempt_index: u32,
+        observed_at: SystemTime,
+    ) -> RetryDecision {
+        let _ = observed_at;
+        self.decision_for_llm_error(error, attempt_index)
+    }
+
+    /// Classify an LLM error while retaining a provider retry floor across
+    /// attempts in the current logical segment, using the compatibility
+    /// wall-clock observation.
+    fn decision_for_llm_error_with_backoff(
+        &self,
+        error: &LLMError,
+        attempt_index: u32,
+        backoff: &mut RetryBackoff,
+    ) -> RetryDecision;
+
+    /// Classify an LLM error with a retry floor against its observation time.
+    ///
+    /// Existing implementers inherit a compatibility fallback that delegates
+    /// to [`Self::decision_for_llm_error_with_backoff`] and ignores
+    /// `observed_at`. [`RetryPolicy`] overrides this method to honour the
+    /// supplied time.
+    fn decision_for_llm_error_with_backoff_at(
+        &self,
+        error: &LLMError,
+        attempt_index: u32,
+        backoff: &mut RetryBackoff,
+        observed_at: SystemTime,
+    ) -> RetryDecision {
+        let _ = observed_at;
+        self.decision_for_llm_error_with_backoff(error, attempt_index, backoff)
+    }
 
     fn decision_for_tool_error(&self, error: &UnifiedToolError, attempt_index: u32) -> RetryDecision;
 
@@ -89,8 +132,37 @@ impl RetryPolicyCoreExt for RetryPolicy {
     }
 
     fn decision_for_llm_error(&self, error: &LLMError, attempt_index: u32) -> RetryDecision {
-        let retry_after = llm_metadata(error).and_then(retry_after_from_llm_metadata);
+        self.decision_for_llm_error_at(error, attempt_index, SystemTime::now())
+    }
+
+    fn decision_for_llm_error_at(
+        &self,
+        error: &LLMError,
+        attempt_index: u32,
+        observed_at: SystemTime,
+    ) -> RetryDecision {
+        let retry_after =
+            llm_metadata(error).and_then(|metadata| retry_after_from_llm_metadata_at(metadata, observed_at));
         decision_for_category_with_tool(self, ErrorCategory::from(error), attempt_index, retry_after, None)
+    }
+
+    fn decision_for_llm_error_with_backoff(
+        &self,
+        error: &LLMError,
+        attempt_index: u32,
+        backoff: &mut RetryBackoff,
+    ) -> RetryDecision {
+        self.decision_for_llm_error_with_backoff_at(error, attempt_index, backoff, SystemTime::now())
+    }
+
+    fn decision_for_llm_error_with_backoff_at(
+        &self,
+        error: &LLMError,
+        attempt_index: u32,
+        backoff: &mut RetryBackoff,
+        observed_at: SystemTime,
+    ) -> RetryDecision {
+        decision_for_llm_error_with_backoff_at_impl(self, error, attempt_index, backoff, observed_at)
     }
 
     fn decision_for_tool_error(&self, error: &UnifiedToolError, attempt_index: u32) -> RetryDecision {
@@ -137,6 +209,43 @@ impl RetryPolicyCoreExt for RetryPolicy {
         );
         error.with_retry_decision(decision)
     }
+}
+
+fn decision_for_llm_error_with_backoff_at_impl(
+    policy: &RetryPolicy,
+    error: &LLMError,
+    attempt_index: u32,
+    backoff: &mut RetryBackoff,
+    now: SystemTime,
+) -> RetryDecision {
+    let Some(metadata) = llm_metadata(error) else {
+        return policy.decision_for_category_with_backoff(ErrorCategory::from(error), attempt_index, None, backoff);
+    };
+    let retry_after = retry_after_from_llm_metadata_at(metadata, now);
+    if !retry_after_is_http_date(metadata) {
+        return policy.decision_for_category_with_backoff(
+            ErrorCategory::from(error),
+            attempt_index,
+            retry_after,
+            backoff,
+        );
+    }
+
+    let reset_floor = metadata
+        .rate_limit
+        .as_ref()
+        .and_then(|rate_limit| rate_limit.reset_after_millis)
+        .map(Duration::from_millis);
+    let mut decision =
+        policy.decision_for_category_with_backoff(ErrorCategory::from(error), attempt_index, reset_floor, backoff);
+    if let Some(retry_after) = retry_after
+        && decision.retryable
+    {
+        let local_delay = decision.delay.unwrap_or(Duration::ZERO);
+        decision.delay = Some(local_delay.max(retry_after));
+        decision.retry_after = Some(retry_after);
+    }
+    decision
 }
 
 fn decision_for_category_with_tool(
@@ -336,194 +445,4 @@ pub fn decision_for_anyhow_error(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::constants::tools;
-    use crate::error::{ErrorCode, VtCodeError};
-
-    #[test]
-    fn non_retryable_categories_stop_immediately() {
-        let policy = RetryPolicy::from_retries(2, Duration::from_secs(1), Duration::from_secs(8), 2.0);
-        let err = VtCodeError::security(ErrorCode::PermissionDenied, "blocked by policy");
-
-        let decision = policy.decision_for_vtcode_error(&err, 0, None);
-        assert_eq!(decision.category, ErrorCategory::PolicyViolation);
-        assert!(!decision.retryable);
-        assert!(decision.delay.is_none());
-    }
-
-    #[test]
-    fn retry_after_header_overrides_backoff_delay() {
-        let policy = RetryPolicy::from_retries(3, Duration::from_secs(1), Duration::from_secs(8), 2.0);
-        let err = LLMError::RateLimit {
-            metadata: Some(LLMErrorMetadata::new(
-                "Anthropic",
-                Some(429),
-                Some("rate_limit_error".to_string()),
-                None,
-                None,
-                Some("7".to_string()),
-                Some("too many requests".to_string()),
-            )),
-        };
-
-        let decision = policy.decision_for_llm_error(&err, 0);
-        assert!(decision.retryable);
-        assert_eq!(decision.retry_after, Some(Duration::from_secs(7)));
-        assert_eq!(decision.delay, Some(Duration::from_secs(7)));
-    }
-
-    #[test]
-    fn quota_exhaustion_is_not_retryable() {
-        let policy = RetryPolicy::from_retries(3, Duration::from_secs(1), Duration::from_secs(8), 2.0);
-        let err = LLMError::RateLimit {
-            metadata: Some(LLMErrorMetadata::new(
-                "OpenAI",
-                Some(429),
-                Some("insufficient_quota".to_string()),
-                None,
-                None,
-                None,
-                Some("quota exceeded".to_string()),
-            )),
-        };
-
-        let decision = policy.decision_for_llm_error(&err, 0);
-        assert_eq!(decision.category, ErrorCategory::ResourceExhausted);
-        assert!(!decision.retryable);
-    }
-
-    #[test]
-    fn anyhow_fallback_uses_shared_classifier() {
-        let policy = RetryPolicy::from_retries(1, Duration::from_secs(1), Duration::from_secs(8), 2.0);
-
-        let decision = policy.decision_for_anyhow(&anyhow::anyhow!("HTTP 503 Service Unavailable"), 0, None);
-        assert_eq!(decision.category, ErrorCategory::ServiceUnavailable);
-        assert!(decision.retryable);
-        assert_eq!(decision.delay, Some(Duration::from_secs(1)));
-    }
-
-    #[test]
-    fn anyhow_prefers_typed_llm_errors() {
-        let policy = RetryPolicy::from_retries(3, Duration::from_secs(1), Duration::from_secs(8), 2.0);
-        let err = anyhow::Error::new(LLMError::RateLimit {
-            metadata: Some(LLMErrorMetadata::new(
-                "Anthropic",
-                Some(429),
-                Some("rate_limit_error".to_string()),
-                None,
-                None,
-                Some("9".to_string()),
-                Some("too many requests".to_string()),
-            )),
-        });
-
-        let decision = policy.decision_for_anyhow(&err, 0, None);
-        assert!(decision.retryable);
-        assert_eq!(decision.retry_after, Some(Duration::from_secs(9)));
-        assert_eq!(decision.delay, Some(Duration::from_secs(9)));
-    }
-
-    #[test]
-    fn canonical_exec_aliases_are_command_tools() {
-        for alias in [
-            tools::RUN_PTY_CMD,
-            tools::EXEC_COMMAND,
-            tools::WRITE_STDIN,
-            tools::UNIFIED_EXEC,
-            "shell",
-            "bash",
-            "container.exec",
-        ] {
-            assert!(is_command_tool(alias), "expected {alias} to be a command tool");
-        }
-    }
-
-    #[test]
-    fn typed_tool_timeout_for_command_tools_is_not_retryable() {
-        let policy = RetryPolicy::from_retries(2, Duration::from_secs(1), Duration::from_secs(8), 2.0);
-        let err = UnifiedToolError::new(crate::tools::unified_error::UnifiedErrorKind::Timeout, "timed out")
-            .with_tool_name(tools::RUN_PTY_CMD);
-
-        let decision = policy.decision_for_tool_error(&err, 0);
-        assert_eq!(decision.category, ErrorCategory::Timeout);
-        assert!(!decision.retryable);
-    }
-
-    #[test]
-    fn anyhow_typed_tool_timeout_uses_fallback_tool_name() {
-        let policy = RetryPolicy::from_retries(2, Duration::from_secs(1), Duration::from_secs(8), 2.0);
-        let err = anyhow::Error::new(UnifiedToolError::new(
-            crate::tools::unified_error::UnifiedErrorKind::Timeout,
-            "timed out",
-        ));
-
-        let decision = policy.decision_for_anyhow(&err, 0, Some(tools::RUN_PTY_CMD));
-        assert_eq!(decision.category, ErrorCategory::Timeout);
-        assert!(!decision.retryable);
-    }
-
-    #[test]
-    fn command_timeouts_do_not_retry() {
-        let policy = RetryPolicy::from_retries(2, Duration::from_secs(1), Duration::from_secs(8), 2.0);
-        let err = VtCodeError::new(ErrorCategory::Timeout, ErrorCode::Timeout, "timed out");
-
-        let decision = policy.decision_for_vtcode_error(&err, 0, Some(tools::RUN_PTY_CMD));
-        assert_eq!(decision.category, ErrorCategory::Timeout);
-        assert!(!decision.retryable);
-    }
-
-    #[tokio::test]
-    async fn run_with_retry_returns_first_success() {
-        use std::sync::Arc;
-        use std::sync::atomic::{AtomicU32, Ordering};
-        let policy = RetryPolicy::from_retries(3, Duration::from_millis(0), Duration::from_millis(1), 2.0);
-        let attempts = Arc::new(AtomicU32::new(0));
-        let attempts_for_op = attempts.clone();
-        let result: crate::error::Result<String> = run_with_retry(
-            &policy,
-            &mut (),
-            |_: &mut (), _| {},
-            |_| {
-                let attempts = attempts_for_op.clone();
-                Box::pin(async move {
-                    let n = attempts.fetch_add(1, Ordering::SeqCst) + 1;
-                    if n < 2 {
-                        Err(VtCodeError::network(ErrorCode::ConnectionFailed, "transient"))
-                    } else {
-                        Ok("ok".to_string())
-                    }
-                })
-            },
-            |_: &RetryPolicy| VtCodeError::execution(ErrorCode::ToolExecutionFailed, "exhausted"),
-        )
-        .await;
-        assert_eq!(result.unwrap(), "ok");
-        assert_eq!(attempts.load(Ordering::SeqCst), 2);
-    }
-
-    #[tokio::test]
-    async fn run_with_retry_surfaces_give_up_immediately() {
-        use std::sync::Arc;
-        use std::sync::atomic::{AtomicU32, Ordering};
-        let policy = RetryPolicy::from_retries(5, Duration::from_millis(0), Duration::from_millis(1), 2.0);
-        let attempts = Arc::new(AtomicU32::new(0));
-        let attempts_for_op = attempts.clone();
-        let result: crate::error::Result<String> = run_with_retry(
-            &policy,
-            &mut (),
-            |_: &mut (), _| {},
-            |_| {
-                let attempts = attempts_for_op.clone();
-                Box::pin(async move {
-                    attempts.fetch_add(1, Ordering::SeqCst);
-                    Err::<String, _>(VtCodeError::input(ErrorCode::InvalidArgument, "bad input"))
-                })
-            },
-            |_: &RetryPolicy| VtCodeError::execution(ErrorCode::ToolExecutionFailed, "exhausted"),
-        )
-        .await;
-        assert!(result.is_err());
-        assert_eq!(attempts.load(Ordering::SeqCst), 1, "GiveUp should short-circuit retries");
-    }
-}
+mod tests;

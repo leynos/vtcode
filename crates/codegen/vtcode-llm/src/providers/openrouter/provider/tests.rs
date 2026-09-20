@@ -71,6 +71,25 @@ fn test_provider(base_url: &str, model: &str) -> OpenRouterProvider {
     )
 }
 
+fn assert_openrouter_rate_limit_metadata(error: &LLMError, request_id: &str) {
+    let LLMError::RateLimit { metadata: Some(metadata) } = error else {
+        panic!("expected an OpenRouter rate-limit error with metadata: {error:?}");
+    };
+    assert_eq!(metadata.status, Some(429));
+    assert_eq!(metadata.retry_after.as_deref(), Some("15"));
+    assert_eq!(
+        metadata
+            .rate_limit
+            .as_ref()
+            .and_then(|rate_limit| rate_limit.requests_limit_per_minute),
+        Some(60)
+    );
+
+    let serialized = serde_json::to_value(metadata).expect("metadata should serialize");
+    assert_eq!(serialized.get("provider").and_then(Value::as_str), Some("OpenRouter"));
+    assert_eq!(serialized.get("request_id").and_then(Value::as_str), Some(request_id));
+}
+
 #[test]
 fn enforce_tool_capabilities_disables_tools_for_restricted_models() {
     let model_id = "moonshotai/kimi-latest";
@@ -270,6 +289,77 @@ async fn generate_retries_without_tools_when_openrouter_rejects_tool_endpoints()
         .expect("fallback request should succeed");
 
     assert_eq!(response.content.as_deref(), Some("fallback answer"));
+}
+
+#[tokio::test]
+async fn generate_preserves_openrouter_rate_limit_metadata() {
+    let model_id = models::openrouter::OPENAI_GPT_5;
+    let Some(server) = start_mock_server_or_skip().await else {
+        return;
+    };
+    let provider = test_provider(&server.uri(), model_id);
+
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("x-request-id", "router_req_123")
+                .insert_header("retry-after", "15")
+                .insert_header("x-ratelimit-limit-requests", "60")
+                .set_body_string("rate limit reached"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let error = LLMProvider::generate(
+        &provider,
+        LLMRequest {
+            model: model_id.to_string(),
+            messages: vec![Message::user("hello".to_string())].into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect_err("429 should surface as a rate-limit error");
+
+    assert_openrouter_rate_limit_metadata(&error, "router_req_123");
+}
+
+#[tokio::test]
+async fn tool_fallback_preserves_terminal_openrouter_rate_limit_metadata() {
+    let model_id = "moonshotai/kimi-latest";
+    let Some(server) = start_mock_server_or_skip().await else {
+        return;
+    };
+    let provider = test_provider(&server.uri(), model_id);
+
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .and(body_partial_json(json!({"model": model_id, "tool_choice": "required"})))
+        .respond_with(ResponseTemplate::new(404).set_body_string("No endpoints found that support tool use"))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .and(body_partial_json(json!({"model": model_id, "tool_choice": "none"})))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("x-request-id", "router_fallback_req_123")
+                .insert_header("retry-after", "15")
+                .insert_header("x-ratelimit-limit-requests", "60")
+                .set_body_string("rate limit reached"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let error = LLMProvider::generate(&provider, request_with_tools(model_id))
+        .await
+        .expect_err("terminal fallback 429 should surface as a rate-limit error");
+
+    assert_openrouter_rate_limit_metadata(&error, "router_fallback_req_123");
 }
 
 #[tokio::test]

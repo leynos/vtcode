@@ -38,9 +38,10 @@ logic — pure infrastructure.
   Preserve pre-XDG DotManager cache/state mappings, installer backoff cache
   names, canonical-over-legacy precedence, and `with_private_file_lock` for
   cross-process cache read-modify-write operations when extending migration.
-- `retry` owns the canonical `RetryPolicy` (delay math, jitter, `RetryDecision`/
-  `RetryStep`, `simple()` constructor). vtcode-core only layers domain adapters
-  on top.
+- `retry` owns the canonical `RetryPolicy` and per-generation `RetryBackoff`
+  (delay math, additive jitter, remembered provider floor). Reset backoff state
+  at generation boundaries; provider minima must not be shortened by the local
+  cap. vtcode-core layers domain adapters on top.
 - `error_category/` classifies LLM errors for retry —
   `is_retryable_llm_error_message()` is the key function;
   `classify_anyhow_error` → `ErrorCategory` is the single classifier for tool

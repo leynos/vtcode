@@ -112,7 +112,7 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
-async fn start_mock_server_or_skip() -> Option<MockServer> {
+pub(super) async fn start_mock_server_or_skip() -> Option<MockServer> {
     match tokio::spawn(async { MockServer::start().await }).await {
         Ok(s) => Some(s),
         Err(e) if e.is_panic() => {
@@ -165,7 +165,7 @@ fn shell_request(model: &str) -> provider::LLMRequest {
     }
 }
 
-fn test_provider(base_url: &str, model: &str) -> OpenAIProvider {
+pub(super) fn test_provider(base_url: &str, model: &str) -> OpenAIProvider {
     let http_client = reqwest::Client::builder().no_proxy().build().expect("test client should build");
     OpenAIProvider::new_with_client(
         "test-key".to_string(),
@@ -3190,41 +3190,6 @@ async fn responses_request_retries_without_flex_service_tier() {
         .expect("retry without flex should succeed");
     assert_eq!(response.content.as_deref(), Some("retry without flex succeeded"));
     assert_eq!(seen.lock().expect("not poisoned").as_slice(), &[Some("flex".to_string()), None]);
-}
-
-// ─── Request Metadata & Content Type ─────────────────────────────────────────
-
-#[tokio::test]
-async fn responses_requests_include_client_request_id_and_debug_metadata() {
-    let Some(server) = start_mock_server_or_skip().await else {
-        return;
-    };
-    let provider = test_provider(&server.uri(), models::openai::GPT_5);
-    Mock::given(method("POST")).and(path("/responses"))
-        .respond_with(|req: &wiremock::Request| {
-            let req_id = req.headers.get("x-client-request-id").and_then(|v| v.to_str().ok())
-                .expect("x-client-request-id required");
-            assert!(req_id.starts_with("vtcode-"));
-            ResponseTemplate::new(400)
-                .insert_header("x-request-id", "req_123")
-                .insert_header("retry-after", "15")
-                .set_body_string(r#"{"error":{"message":"Bad request","type":"invalid_request_error","param":"text.verbosity","code":"unsupported_parameter"}}"#)
-        }).expect(1).mount(&server).await;
-    let err = provider
-        .generate(provider::LLMRequest {
-            messages: vec![provider::Message::user("Hello".to_string())].into(),
-            model: models::openai::GPT_5.to_string(),
-            ..Default::default()
-        })
-        .await
-        .expect_err("should surface error");
-    let text = err.to_string();
-    assert!(
-        text.contains("request_id=req_123")
-            && text.contains("client_request_id=vtcode-")
-            && text.contains("retry_after=15")
-            && text.contains("type=invalid_request_error")
-    );
 }
 
 // ─── Manual Compaction ───────────────────────────────────────────────────────

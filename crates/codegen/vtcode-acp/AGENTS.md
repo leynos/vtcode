@@ -57,3 +57,7 @@ snapshotting model tools.
   deny, cancel, unknown-option, and request-failure coverage. Stdio EOF,
   timeout, and cancellation paths must clear pending calls; frames and stderr
   remain bounded and sanitized.
+- Provider quota observations use Lody's push-only rate-limit snapshots plus
+  warning notices; never infer utilization without valid limit/remaining pairs,
+  or treat `Retry-After` as a quota reset. See
+  `docs/development/provider-rate-limit-headers.md`.

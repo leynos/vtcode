@@ -3,10 +3,17 @@
 
 use crate::error_display;
 use crate::provider::{LLMError, LLMErrorMetadata};
-use crate::providers::common::{extract_header, read_provider_error_body};
+use crate::providers::common::read_provider_error_body;
 use reqwest::Response;
+use reqwest::header::HeaderMap;
 use serde_json::Value;
+use vtcode_commons::llm::RateLimitMetadata;
 use vtcode_commons::sanitizer::sanitize_provider_diagnostic;
+use vtcode_config::core::RateLimitHeaderConfig;
+
+mod rate_limit_headers;
+
+use self::rate_limit_headers::extract_response_metadata;
 
 /// Stable classification for failures reported by reqwest.
 ///
@@ -95,6 +102,7 @@ struct ApiResponseMetadata {
     request_id: Option<String>,
     organization_id: Option<String>,
     retry_after: Option<String>,
+    rate_limit: Option<RateLimitMetadata>,
 }
 
 /// HTTP status codes for common error types
@@ -102,6 +110,26 @@ const STATUS_UNAUTHORIZED: u16 = 401;
 const STATUS_FORBIDDEN: u16 = 403;
 const STATUS_BAD_REQUEST: u16 = 400;
 const STATUS_TOO_MANY_REQUESTS: u16 = 429;
+
+// Gemini does not expose the OpenAI-compatible quota headers. Keep the
+// mapping explicit so a future default mapping cannot project another
+// provider's headers as Gemini quota metadata.
+const GEMINI_RATE_LIMIT_HEADERS: RateLimitHeaderConfig = RateLimitHeaderConfig {
+    requests_limit_per_minute: None,
+    requests_remaining_per_minute: None,
+    tokens_limit_per_minute: None,
+    tokens_remaining_per_minute: None,
+    requests_limit_per_second: None,
+    requests_remaining_per_second: None,
+    tokens_limit_per_second: None,
+    tokens_remaining_per_second: None,
+    prompt_tokens_limit_per_second: None,
+    cache_adjusted_prompt_tokens_limit_per_second: None,
+    generated_tokens_limit_per_second: None,
+    prompt_tokens: None,
+    cached_prompt_tokens: None,
+    reset_after_seconds: None,
+};
 
 /// Common rate limit error patterns (pre-lowercased for efficient matching)
 const RATE_LIMIT_PATTERNS: &[&str] = &[
@@ -128,20 +156,23 @@ pub async fn handle_gemini_http_error(response: Response) -> Result<Response, LL
     }
 
     let status = response.status();
-    let metadata = extract_response_metadata(&response);
+    let metadata = extract_response_metadata(response.headers(), &GEMINI_RATE_LIMIT_HEADERS);
     let error_text = read_provider_error_body(response).await;
     Err(parse_api_error_with_metadata("Gemini", status, &error_text, metadata))
 }
 
 /// Handle HTTP response errors for Anthropic provider
 #[cold]
-pub(crate) async fn handle_anthropic_http_error(response: Response) -> Result<Response, LLMError> {
+pub(crate) async fn handle_anthropic_http_error(
+    response: Response,
+    rate_limit_headers: &RateLimitHeaderConfig,
+) -> Result<Response, LLMError> {
     if response.status().is_success() {
         return Ok(response);
     }
 
     let status = response.status();
-    let metadata = extract_response_metadata(&response);
+    let metadata = extract_response_metadata(response.headers(), rate_limit_headers);
     let error_text = read_provider_error_body(response).await;
     Err(parse_api_error_with_metadata("Anthropic", status, &error_text, metadata))
 }
@@ -158,7 +189,8 @@ pub(crate) async fn handle_openai_http_error(
     }
 
     let status = response.status();
-    let metadata = extract_response_metadata(&response);
+    let metadata =
+        extract_response_metadata(response.headers(), &RateLimitHeaderConfig::for_provider_name(provider_name));
     let error_text = read_provider_error_body(response).await;
 
     // Universal diagnostic logging — helps debug post-tool follow-up failures
@@ -264,13 +296,27 @@ pub fn format_http_error(provider: &str, status: reqwest::StatusCode, error_text
 ///
 /// Falls back to raw body if JSON parsing fails.
 #[cold]
-pub(crate) fn parse_api_error(provider_name: &'static str, status: reqwest::StatusCode, body: &str) -> LLMError {
+pub(crate) fn parse_api_error(provider_name: &str, status: reqwest::StatusCode, body: &str) -> LLMError {
     parse_api_error_with_metadata(provider_name, status, body, ApiResponseMetadata::default())
+}
+
+/// Parse an API error while retaining the standard `Retry-After` value and
+/// only the explicitly mapped, numeric rate-limit headers.
+#[cold]
+pub(crate) fn parse_api_error_with_headers(
+    provider_name: &str,
+    status: reqwest::StatusCode,
+    body: &str,
+    headers: &HeaderMap,
+    rate_limit_headers: &RateLimitHeaderConfig,
+) -> LLMError {
+    let metadata = extract_response_metadata(headers, rate_limit_headers);
+    parse_api_error_with_metadata(provider_name, status, body, metadata)
 }
 
 #[cold]
 fn parse_api_error_with_metadata(
-    provider_name: &'static str,
+    provider_name: &str,
     status: reqwest::StatusCode,
     body: &str,
     response_metadata: ApiResponseMetadata,
@@ -288,85 +334,106 @@ fn parse_api_error_with_metadata(
                 provider_name,
                 &authentication_error_message(provider_name, &error_message),
             ),
-            metadata: Some(LLMErrorMetadata::new(
-                provider_name,
-                Some(status_code),
-                Some("authentication_error".to_string()),
-                response_metadata.request_id.clone(),
-                response_metadata.organization_id.clone(),
-                response_metadata.retry_after.clone(),
-                Some(diagnostic.clone()),
-            )),
+            metadata: Some(
+                LLMErrorMetadata::new(
+                    provider_name,
+                    Some(status_code),
+                    Some("authentication_error".to_string()),
+                    response_metadata.request_id.clone(),
+                    response_metadata.organization_id.clone(),
+                    response_metadata.retry_after.clone(),
+                    Some(diagnostic.clone()),
+                )
+                .with_rate_limit(response_metadata.rate_limit.clone()),
+            ),
         },
         402 => LLMError::InvalidRequest {
             message: error_display::format_llm_error(provider_name, &format!("insufficient balance: {error_message}")),
-            metadata: Some(LLMErrorMetadata::new(
-                provider_name,
-                Some(status_code),
-                Some("insufficient_balance".to_string()),
-                response_metadata.request_id.clone(),
-                response_metadata.organization_id.clone(),
-                response_metadata.retry_after.clone(),
-                Some(diagnostic.clone()),
-            )),
+            metadata: Some(
+                LLMErrorMetadata::new(
+                    provider_name,
+                    Some(status_code),
+                    Some("insufficient_balance".to_string()),
+                    response_metadata.request_id.clone(),
+                    response_metadata.organization_id.clone(),
+                    response_metadata.retry_after.clone(),
+                    Some(diagnostic.clone()),
+                )
+                .with_rate_limit(response_metadata.rate_limit.clone()),
+            ),
         },
         422 => LLMError::InvalidRequest {
             message: error_display::format_llm_error(provider_name, &format!("invalid parameters: {error_message}")),
-            metadata: Some(LLMErrorMetadata::new(
-                provider_name,
-                Some(status_code),
-                Some("invalid_parameters".to_string()),
-                response_metadata.request_id.clone(),
-                response_metadata.organization_id.clone(),
-                response_metadata.retry_after.clone(),
-                Some(diagnostic.clone()),
-            )),
+            metadata: Some(
+                LLMErrorMetadata::new(
+                    provider_name,
+                    Some(status_code),
+                    Some("invalid_parameters".to_string()),
+                    response_metadata.request_id.clone(),
+                    response_metadata.organization_id.clone(),
+                    response_metadata.retry_after.clone(),
+                    Some(diagnostic.clone()),
+                )
+                .with_rate_limit(response_metadata.rate_limit.clone()),
+            ),
         },
         429 => LLMError::RateLimit {
-            metadata: Some(LLMErrorMetadata::new(
-                provider_name,
-                Some(status_code),
-                Some("rate_limit_error".to_string()),
-                response_metadata.request_id.clone(),
-                response_metadata.organization_id.clone(),
-                response_metadata.retry_after.clone(),
-                Some(error_message.clone()),
-            )),
+            metadata: Some(
+                LLMErrorMetadata::new(
+                    provider_name,
+                    Some(status_code),
+                    Some("rate_limit_error".to_string()),
+                    response_metadata.request_id.clone(),
+                    response_metadata.organization_id.clone(),
+                    response_metadata.retry_after.clone(),
+                    Some(error_message.clone()),
+                )
+                .with_rate_limit(response_metadata.rate_limit.clone()),
+            ),
         },
         400 if is_rate_limit_error(status_code, body) => LLMError::RateLimit {
-            metadata: Some(LLMErrorMetadata::new(
-                provider_name,
-                Some(status_code),
-                Some("quota_exceeded".to_string()),
-                response_metadata.request_id.clone(),
-                response_metadata.organization_id.clone(),
-                response_metadata.retry_after.clone(),
-                Some(error_message.clone()),
-            )),
+            metadata: Some(
+                LLMErrorMetadata::new(
+                    provider_name,
+                    Some(status_code),
+                    Some("quota_exceeded".to_string()),
+                    response_metadata.request_id.clone(),
+                    response_metadata.organization_id.clone(),
+                    response_metadata.retry_after.clone(),
+                    Some(error_message.clone()),
+                )
+                .with_rate_limit(response_metadata.rate_limit.clone()),
+            ),
         },
         400 => LLMError::InvalidRequest {
             message: error_display::format_llm_error(provider_name, &format!("invalid request: {error_message}")),
-            metadata: Some(LLMErrorMetadata::new(
-                provider_name,
-                Some(status_code),
-                Some("invalid_request".to_string()),
-                response_metadata.request_id.clone(),
-                response_metadata.organization_id.clone(),
-                response_metadata.retry_after.clone(),
-                Some(diagnostic.clone()),
-            )),
+            metadata: Some(
+                LLMErrorMetadata::new(
+                    provider_name,
+                    Some(status_code),
+                    Some("invalid_request".to_string()),
+                    response_metadata.request_id.clone(),
+                    response_metadata.organization_id.clone(),
+                    response_metadata.retry_after.clone(),
+                    Some(diagnostic.clone()),
+                )
+                .with_rate_limit(response_metadata.rate_limit.clone()),
+            ),
         },
         _ => LLMError::Provider {
             message: error_display::format_llm_error(provider_name, &format!("http {status}: {error_message}")),
-            metadata: Some(LLMErrorMetadata::new(
-                provider_name,
-                Some(status_code),
-                None,
-                response_metadata.request_id,
-                response_metadata.organization_id,
-                response_metadata.retry_after,
-                Some(diagnostic),
-            )),
+            metadata: Some(
+                LLMErrorMetadata::new(
+                    provider_name,
+                    Some(status_code),
+                    None,
+                    response_metadata.request_id,
+                    response_metadata.organization_id,
+                    response_metadata.retry_after,
+                    Some(diagnostic),
+                )
+                .with_rate_limit(response_metadata.rate_limit),
+            ),
         },
     }
 }
@@ -447,16 +514,24 @@ pub fn extract_human_error_message(body: &str) -> String {
     body.to_string()
 }
 
-fn extract_response_metadata(response: &Response) -> ApiResponseMetadata {
-    let headers = response.headers();
-    ApiResponseMetadata {
-        request_id: extract_header(headers, &["request-id", "x-request-id", "openai-request-id"]),
-        organization_id: extract_header(
-            headers,
-            &["anthropic-organization-id", "openai-organization", "x-organization-id"],
-        ),
-        retry_after: extract_header(headers, &["retry-after"]),
-    }
+pub(crate) fn error_metadata_from_headers(
+    provider_name: &str,
+    status: reqwest::StatusCode,
+    _body: &str,
+    headers: &HeaderMap,
+    rate_limit_headers: &RateLimitHeaderConfig,
+) -> Box<LLMErrorMetadata> {
+    let metadata = extract_response_metadata(headers, rate_limit_headers);
+    LLMErrorMetadata::new(
+        provider_name,
+        Some(status.as_u16()),
+        None,
+        metadata.request_id,
+        metadata.organization_id,
+        metadata.retry_after,
+        None,
+    )
+    .with_rate_limit(metadata.rate_limit)
 }
 
 #[cfg(test)]
@@ -579,6 +654,85 @@ mod tests {
             }
             other => panic!("expected rate limit error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn error_metadata_from_headers_does_not_retain_provider_body() {
+        let provider_body = r#"{"error":{"message":"customer-record=confidential-123"}}"#;
+        let metadata = error_metadata_from_headers(
+            "OpenAI",
+            reqwest::StatusCode::BAD_GATEWAY,
+            provider_body,
+            &HeaderMap::new(),
+            &RateLimitHeaderConfig::default(),
+        );
+
+        assert_eq!(metadata.message, None);
+        let serialized = serde_json::to_string(&metadata).expect("metadata should serialize");
+        assert!(!serialized.contains("customer-record=confidential-123"));
+    }
+
+    #[tokio::test]
+    async fn gemini_http_errors_keep_retry_after_without_baseten_quota_metadata() {
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
+
+        let server = MockServer::start().await;
+        Mock::given(path("/gemini-error"))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("retry-after", "7")
+                    .insert_header("x-ratelimit-limit-requests", "120")
+                    .insert_header("x-ratelimit-remaining-requests", "3")
+                    .set_body_json(serde_json::json!({"error": {"message": "quota exhausted"}})),
+            )
+            .mount(&server)
+            .await;
+
+        let response = reqwest::Client::new()
+            .get(format!("{}/gemini-error", server.uri()))
+            .send()
+            .await
+            .expect("offline Gemini response should be available");
+        let error = handle_gemini_http_error(response)
+            .await
+            .expect_err("Gemini 429 response should become an LLM error");
+
+        let LLMError::RateLimit { metadata: Some(metadata) } = error else {
+            panic!("expected Gemini rate-limit metadata");
+        };
+        assert_eq!(metadata.retry_after.as_deref(), Some("7"));
+        assert_eq!(metadata.rate_limit, None);
+    }
+
+    #[test]
+    fn mapped_baseten_headers_and_retry_after_are_retained_without_raw_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert("retry-after", "7".parse().expect("static retry-after"));
+        headers.insert("x-ratelimit-limit-requests", "120".parse().expect("numeric header"));
+        headers.insert("x-ratelimit-remaining-requests", "3".parse().expect("numeric header"));
+        headers.insert("x-ratelimit-limit-tokens", "50000".parse().expect("numeric header"));
+        headers.insert("x-ratelimit-remaining-tokens", "400".parse().expect("numeric header"));
+        headers.insert("x-secret-provider-note", "do-not-retain".parse().expect("static header"));
+
+        let error = parse_api_error_with_headers(
+            "Baseten",
+            reqwest::StatusCode::TOO_MANY_REQUESTS,
+            r#"{"error":{"message":"slow down"}}"#,
+            &headers,
+            &RateLimitHeaderConfig::default(),
+        );
+        let LLMError::RateLimit { metadata: Some(metadata) } = error else {
+            panic!("expected rate-limit metadata");
+        };
+        assert_eq!(metadata.retry_after.as_deref(), Some("7"));
+        let rate_limit = metadata.rate_limit.as_ref().expect("mapped rate-limit headers");
+        assert_eq!(rate_limit.requests_limit_per_minute, Some(120));
+        assert_eq!(rate_limit.requests_remaining_per_minute, Some(3));
+        assert_eq!(rate_limit.tokens_limit_per_minute, Some(50_000));
+        assert_eq!(rate_limit.tokens_remaining_per_minute, Some(400));
+        let serialized = serde_json::to_string(&metadata).expect("metadata serialization");
+        assert!(!serialized.contains("x-secret-provider-note"));
+        assert!(!serialized.contains("do-not-retain"));
     }
 
     #[test]
