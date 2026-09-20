@@ -162,11 +162,14 @@ impl ZedAgent {
         let controller = session
             .data
             .lock()
-            .map_err(|error| lock_poison_error("taking session subagent controller for shutdown", error))?
-            .subagent_controller
-            .take();
-        if let Some(controller) = controller {
-            controller.signal_shutdown().await;
+            .map_err(|error| lock_poison_error("taking session subagent controller for shutdown", error))
+            .map(|mut data| data.subagent_controller.take());
+        match controller {
+            Ok(Some(controller)) => controller.signal_shutdown().await,
+            Ok(None) => {}
+            Err(error) => {
+                let _ = first_error.get_or_insert(error);
+            }
         }
         if let Err(error) = session.release_workspace_lease().await {
             let _ = first_error.get_or_insert(error);
