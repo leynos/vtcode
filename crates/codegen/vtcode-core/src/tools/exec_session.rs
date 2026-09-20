@@ -21,6 +21,23 @@ use crate::zsh_exec_bridge::ZshExecBridgeSession;
 const PIPE_OUTPUT_HEAD_BYTES: usize = 8 * 1024;
 const PIPE_OUTPUT_TAIL_BYTES: usize = 8 * 1024;
 
+/// A continuation referenced an exec session that is no longer active.
+#[derive(Debug, thiserror::Error)]
+#[error("exec session '{session_id}' not found")]
+pub(crate) struct ExecSessionNotFound {
+    pub(crate) session_id: String,
+}
+
+impl ExecSessionNotFound {
+    fn new(session_id: &str) -> Self {
+        Self { session_id: session_id.to_string() }
+    }
+}
+
+fn missing_session(session_id: &str) -> anyhow::Error {
+    anyhow::Error::new(ExecSessionNotFound::new(session_id))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PipeOutputStats {
     pub total_bytes: u64,
@@ -372,9 +389,7 @@ impl PipeSessionManager {
     async fn close_session(&self, session_id: &str) -> Result<VTCodeExecSession> {
         let record = {
             let mut sessions = self.sessions.write().await;
-            sessions
-                .remove(session_id)
-                .ok_or_else(|| anyhow!("exec session '{session_id}' not found"))?
+            sessions.remove(session_id).ok_or_else(|| missing_session(session_id))?
         };
 
         record.handle.terminate();
@@ -418,10 +433,7 @@ impl PipeSessionManager {
 
     async fn session_record(&self, session_id: &str) -> Result<Arc<PipeSessionRecord>> {
         let sessions = self.sessions.read().await;
-        sessions
-            .get(session_id)
-            .cloned()
-            .ok_or_else(|| anyhow!("exec session '{session_id}' not found"))
+        sessions.get(session_id).cloned().ok_or_else(|| missing_session(session_id))
     }
 
     fn ensure_within_workspace(&self, candidate: &Path) -> Result<()> {
@@ -653,9 +665,7 @@ impl ExecSessionManager {
     pub(crate) async fn close_session(&self, session_id: &str) -> Result<VTCodeExecSession> {
         let record = {
             let mut sessions = self.sessions.write().await;
-            sessions
-                .remove(session_id)
-                .ok_or_else(|| anyhow!("exec session '{session_id}' not found"))?
+            sessions.remove(session_id).ok_or_else(|| missing_session(session_id))?
         };
 
         let metadata = match record.backend {
@@ -728,10 +738,7 @@ impl ExecSessionManager {
 
     async fn session_record(&self, session_id: &str) -> Result<Arc<ExecSessionRecord>> {
         let sessions = self.sessions.read().await;
-        sessions
-            .get(session_id)
-            .cloned()
-            .ok_or_else(|| anyhow!("exec session '{session_id}' not found"))
+        sessions.get(session_id).cloned().ok_or_else(|| missing_session(session_id))
     }
 }
 
@@ -742,7 +749,7 @@ mod tests {
     use tokio::sync::watch;
     use tokio::time::{Duration, timeout};
 
-    use super::ExecSessionManager;
+    use super::{ExecSessionManager, ExecSessionNotFound};
     use crate::config::PtyConfig;
     use crate::tools::pty::PtySize;
     use crate::tools::registry::PtySessionManager;
@@ -762,6 +769,26 @@ mod tests {
             }
         })
         .await?
+    }
+
+    #[tokio::test]
+    async fn missing_session_preserves_typed_identity() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let workspace_root = canonicalize_workspace(temp_dir.path());
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), PtyConfig::default());
+        let manager = ExecSessionManager::new(workspace_root, pty_sessions);
+
+        let error = manager
+            .read_session_output("run-stale", true)
+            .await
+            .expect_err("unknown session should fail");
+        let missing = error
+            .downcast_ref::<ExecSessionNotFound>()
+            .expect("missing session should retain its typed cause");
+
+        assert_eq!(missing.session_id, "run-stale");
+        assert_eq!(error.to_string(), "exec session 'run-stale' not found");
+        Ok(())
     }
 
     #[tokio::test]

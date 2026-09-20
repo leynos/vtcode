@@ -101,14 +101,16 @@ separate.
 
 ### MCP providers in ACP sessions
 
-ACP sessions initialise the enabled providers from the effective session MCP configuration before
-the first prompt. This makes the providers' direct MCP proxy tools available in the initial model
-tool catalogue rather than waiting for a later discovery step. Configure the providers and the
-global MCP switch in the [`[mcp]` configuration](mcp-integration.md).
+ACP sessions initialize the enabled providers from the effective session MCP
+configuration before the first prompt. This makes the providers' direct MCP
+proxy tools available in the initial model tool catalogue rather than waiting
+for a later discovery step. Configure the providers and the global MCP switch
+in the [`[mcp]` configuration](mcp-integration.md).
 
-Direct MCP proxy tools remain subject to the same MCP provider allowlists and security checks as
-interactive sessions. The selected ACP primary agent's tool permissions also apply, so a provider
-or tool blocked by either policy is not exposed to, or executable by, the ACP session.
+Direct MCP proxy tools remain subject to the same MCP provider allowlists and
+security checks as interactive sessions. The selected ACP primary agent's tool
+permissions also apply, so a provider or tool blocked by either policy is not
+exposed to, or executable by, the ACP session.
 
 ### Lifecycle hooks in ACP
 
@@ -133,8 +135,9 @@ ACP protocol messages; they run only for real VT Code notification events. The
 current ACP subagent controller does not expose child lifecycle callbacks, so
 ACP does not currently emit `SubagentStart` or `SubagentStop`.
 
-MCP connections are scoped to the session that declares them. A subagent does not implicitly inherit
-its parent's MCP connections; declare the required MCP servers in the subagent's own configuration.
+MCP connections are scoped to the session that declares them. A subagent does
+not implicitly inherit its parent's MCP connections; declare the required MCP
+servers in the subagent's own configuration.
 
 ## Manual smoke test
 
@@ -405,6 +408,23 @@ and `[history]` settings do not control ACP audit output.
   `session/resume`; both restore that archive by exact session ID, including
   after a VT Code process or editor restart. Set `history.persistence = "none"`
   to disable durable archives and discovery; sessions then remain process-local.
+- **Interrupted tool recovery** – Before executing model-requested tools, ACP
+  checkpoints the assistant request with one incomplete Tool result per call.
+  Normal completion replaces those placeholders with real results before the
+  provider continuation. Loading a legacy archive repairs any unresolved call
+  in the same form, marks its side effects as uncertain, and tells the model to
+  verify workspace state and resubmit only if needed. A uniquely attributable
+  late terminal result is moved beside its assistant request. Duplicate,
+  conflicting, or orphaned terminal evidence leaves the archive untouched;
+  `session/load` and `session/resume` reject it rather than registering the
+  session. Inspect the workspace and archive, then resubmit only work that is
+  still needed. VT Code never replays a recovered tool call automatically
+  because it may already have mutated state.
+
+  Maintainers preserve this order: stage placeholders, require the durable
+  write-ahead checkpoint, execute, replace terminal results, then make the
+  ordinary best-effort checkpoint. Archive repairs also checkpoint before
+  session registration, so an uncertain history cannot become resumable.
 - **Sub-agent delegation** – When ACP sub-agents are enabled, the session
   exposes the canonical `agent` tool. Its actions are `spawn`,
   `spawn_subprocess`, `send_input`, `wait`, `resume`, and `close`. Before
@@ -452,10 +472,9 @@ and `[history]` settings do not control ACP audit output.
   `AgentThoughtChunk` as well. Debug logs distinguish `Sending provider
   reasoning to ACP client` from `Provider response did not include exposed
   reasoning for ACP`; they record metadata only and never the reasoning content.
-- **Plan tracking** – Every prompt emits an ACP plan describing analysis,
-  optional context gathering, and final response drafting. VT Code updates each
-  entry as it progresses so Zed can visualise the bridge's workflow in real
-  time.
+- **Plan tracking** – A model-managed `task_tracker` call creates or updates an
+  ACP plan. When a persisted plan and tracker exist, VT Code replays them into a
+  later prompt or resumed session so Zed can render the plan's actual progress.
 - **Tool execution** – The `read_file` tool forwards to Zed when enabled. The
   `list_files` tool uses VT Code's local workspace access, mirroring the CLI
   experience. When the model lacks function calling or the tool toggle is
@@ -521,8 +540,8 @@ and `[history]` settings do not control ACP audit output.
 
 ### Telemetry and auditing
 
-- Plan updates enumerate analysis, context gathering, and response drafting so
-  audit trails show exactly how a turn progressed.
+- Model-managed task-tracker updates record their actual steps in audit trails.
+  A persisted plan and tracker are replayed only when they exist.
 - Cancellation signals from Zed immediately cut off streaming, mark pending
   tool calls as cancelled, and end the turn with `StopReason::Cancelled`,
   providing a clean timeline in the transcript.
@@ -532,14 +551,14 @@ and `[history]` settings do not control ACP audit output.
 
 ## Debugging and verification
 
-| Symptom                                 | Resolution                                                                                                                               |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `Only the stdio transport is supported` | Ensure `transport = "stdio"` in `vtcode.toml`.                                                                                           |
-| Empty responses in Zed                  | Confirm ACP env vars are present in the `env` map and that ACP is enabled in `vtcode.toml`.                                              |
-| `read_file` returns placeholders        | Validate the referenced URI is accessible from Zed's workspace.                                                                          |
-| Tool calls report "Unsupported tool"    | Disable the tool bridge or switch to a model that supports function calling. VT Code emits a reasoning notice when the downgrade occurs. |
+| Symptom                                 | Resolution                                                                                                                                                                                                                                                                                                                                          |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------                                                                                                                                                                                                            |
+| `Only the stdio transport is supported` | Ensure `transport = "stdio"` in `vtcode.toml`.                                                                                                                                                                                                                                                                                                      |
+| Empty responses in Zed                  | Confirm ACP env vars are present in the `env` map and that ACP is enabled in `vtcode.toml`.                                                                                                                                                                                                                                                         |
+| `read_file` returns placeholders        | Validate the referenced URI is accessible from Zed's workspace.                                                                                                                                                                                                                                                                                     |
+| Tool calls report "Unsupported tool"    | Disable the tool bridge or switch to a model that supports function calling. VT Code emits a reasoning notice when the downgrade occurs.                                                                                                                                                                                                            |
 | Missing thought traces in Zed           | Enable debug logging and inspect whether VT Code reports `Sending provider reasoning to ACP client` or `Provider response did not include exposed reasoning for ACP`. The latter means the provider response exposed no reasoning; verify that the selected provider/model and API format return reasoning. Neither message logs reasoning content. |
-| Sessions cancel unexpectedly            | Inspect VT Code logs (and Zed's ACP logs) for cancellations triggered by the client.                                                     |
+| Sessions cancel unexpectedly            | Inspect VT Code logs (and Zed's ACP logs) for cancellations triggered by the client.                                                                                                                                                                                                                                                                |
 
 ## Next steps
 

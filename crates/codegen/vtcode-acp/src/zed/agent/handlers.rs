@@ -59,6 +59,7 @@ use vtcode_core::llm::factory::create_provider_with_config;
 use vtcode_core::llm::provider::{LLMError, LLMProvider, LLMRequest, LLMResponse, LLMStreamEvent, Message};
 use vtcode_core::retry::{RetryDecision, RetryPolicyCoreExt};
 
+use super::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderDeadlinePolicy, ProviderRequestRuntime};
 
 #[cfg(test)]
@@ -95,6 +96,11 @@ struct TurnGuard {
 impl TurnGuard {
     fn begin(thread: ThreadRuntimeHandle) -> Result<Self, SdkError> {
         let _submission_id = thread.begin_turn().map_err(|error| {
+            warn!(
+                thread_id = %thread.thread_id(),
+                prompt_outcome = "turn_in_progress_rejected",
+                "Rejected concurrent ACP prompt"
+            );
             SdkError::internal_error().data(json!({ "reason": "turn_in_progress", "detail": error.to_string() }))
         })?;
         Ok(Self { thread })
@@ -213,6 +219,25 @@ async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, b
         warn!(%error, boundary, "Failed to persist ACP session checkpoint");
     }
     session.update_transcript_path().await;
+}
+
+/// Persists the strict write-ahead checkpoint required before tool execution.
+///
+/// Ordinary transcript checkpoints remain best-effort through
+/// [`persist_session_checkpoint`].
+async fn require_session_checkpoint(
+    agent: &ZedAgent,
+    session: &SessionHandle,
+    boundary: &'static str,
+) -> Result<(), SdkError> {
+    if let Err(error) = agent.checkpoint_session(session).await {
+        warn!(%error, boundary, "Failed to persist ACP session checkpoint");
+        return Err(
+            SdkError::internal_error().data(format!("Failed to persist ACP session checkpoint at {boundary}: {error}"))
+        );
+    }
+    session.update_transcript_path().await;
+    Ok(())
 }
 
 async fn finish_failed_provider_turn(
@@ -851,12 +876,12 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         return Err(SdkError::invalid_params().data(json!({ "reason": "unknown_session" })));
     };
 
+    let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
+    let _turn_guard = TurnGuard::begin(thread.clone())?;
+
     if let Err(error) = agent.replay_persisted_task_plan(&session, &args.session_id).await {
         warn!(%error, session_id = %args.session_id, "Failed to replay persisted ACP task plan");
     }
-
-    let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
-    let _turn_guard = TurnGuard::begin(thread)?;
     if let Some(runtime) = session.workspace_runtime() {
         runtime.local_tool_registry.safety_gateway().start_turn();
     } else {
@@ -1304,8 +1329,16 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             if !assistant_reasoning.is_empty() {
                                 assistant_tool_message.reasoning = Some(assistant_reasoning.clone());
                             }
-                            agent.push_message(&session, assistant_tool_message);
-                            persist_session_checkpoint(&agent, &session, "assistant_tool_calls").await;
+                            drop(stage_thread_tool_calls(&thread, assistant_tool_message));
+                            let tool_call_count = tool_calls.len();
+                            info!(
+                                session_id = %args.session_id,
+                                tool_call_count,
+                                tool_loop_count,
+                                tool_recovery_outcome = "placeholders_staged",
+                                "ACP tool recovery placeholders staged"
+                            );
+                            require_session_checkpoint(&agent, &session, "assistant_tool_calls_write_ahead").await?;
                             if let Some(controller) = agent.session_subagent_controller(&session) {
                                 controller.set_parent_session_id(args.session_id.to_string()).await;
                                 controller.set_parent_messages(&agent.resolved_messages(&session)).await;
@@ -1314,26 +1347,26 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 match agent.execute_tool_calls(&session, &args.session_id, &tool_calls).await {
                                     Ok(results) => results,
                                     Err(error) => {
-                                        warn!(%error, "Tool execution failed");
-                                        for call in &tool_calls {
-                                            agent.push_message(
-                                                &session,
-                                                Message::tool_response(
-                                                    call.id.clone(),
-                                                    format!("Tool execution was interrupted: {error}"),
-                                                ),
-                                            );
-                                        }
+                                        warn!(
+                                            %error,
+                                            session_id = %args.session_id,
+                                            tool_call_count,
+                                            tool_recovery_outcome = "execution_interrupted",
+                                            "Tool execution failed"
+                                        );
                                         persist_session_checkpoint(&agent, &session, "interrupted_tool_results").await;
                                         return Err(error);
                                     }
                                 };
-                            for result in tool_results {
-                                agent.push_message(
-                                    &session,
-                                    Message::tool_response(result.tool_call_id, result.llm_response),
-                                );
-                            }
+                            let finalized_tool_count = replace_thread_tool_results(&thread, &tool_results);
+                            info!(
+                                session_id = %args.session_id,
+                                tool_call_count,
+                                tool_loop_count,
+                                finalized_tool_count,
+                                tool_recovery_outcome = "results_replaced",
+                                "ACP tool recovery results replaced"
+                            );
                             persist_session_checkpoint(&agent, &session, "tool_results").await;
                             if session.cancellation.is_cancelled() {
                                 stop_reason = acp::StopReason::Cancelled;
@@ -1465,11 +1498,19 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     break;
                 }
                 tool_loop_count = tool_loop_count.saturating_add(1);
-                agent.push_message(
-                    &session,
+                drop(stage_thread_tool_calls(
+                    &thread,
                     Message::assistant_with_tools(response.content.clone().unwrap_or_default(), tool_calls.clone()),
+                ));
+                let tool_call_count = tool_calls.len();
+                info!(
+                    session_id = %args.session_id,
+                    tool_call_count,
+                    tool_loop_count,
+                    tool_recovery_outcome = "placeholders_staged",
+                    "ACP tool recovery placeholders staged"
                 );
-                persist_session_checkpoint(&agent, &session, "assistant_tool_calls").await;
+                require_session_checkpoint(&agent, &session, "assistant_tool_calls_write_ahead").await?;
                 if let Some(controller) = agent.session_subagent_controller(&session) {
                     controller.set_parent_session_id(args.session_id.to_string()).await;
                     controller.set_parent_messages(&agent.resolved_messages(&session)).await;
@@ -1477,23 +1518,26 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 let tool_results = match agent.execute_tool_calls(&session, &args.session_id, &tool_calls).await {
                     Ok(results) => results,
                     Err(error) => {
-                        warn!(%error, "Tool execution failed");
-                        for call in &tool_calls {
-                            agent.push_message(
-                                &session,
-                                Message::tool_response(
-                                    call.id.clone(),
-                                    format!("Tool execution was interrupted: {error}"),
-                                ),
-                            );
-                        }
+                        warn!(
+                            %error,
+                            session_id = %args.session_id,
+                            tool_call_count,
+                            tool_recovery_outcome = "execution_interrupted",
+                            "Tool execution failed"
+                        );
                         persist_session_checkpoint(&agent, &session, "interrupted_tool_results").await;
                         return Err(error);
                     }
                 };
-                for result in tool_results {
-                    agent.push_message(&session, Message::tool_response(result.tool_call_id, result.llm_response));
-                }
+                let finalized_tool_count = replace_thread_tool_results(&thread, &tool_results);
+                info!(
+                    session_id = %args.session_id,
+                    tool_call_count,
+                    tool_loop_count,
+                    finalized_tool_count,
+                    tool_recovery_outcome = "results_replaced",
+                    "ACP tool recovery results replaced"
+                );
                 persist_session_checkpoint(&agent, &session, "tool_results").await;
                 if session.cancellation.is_cancelled() {
                     stop_reason = acp::StopReason::Cancelled;
@@ -1622,7 +1666,7 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use tokio::sync::{Mutex as AsyncMutex, mpsc};
+    use tokio::sync::{Mutex as AsyncMutex, Notify, mpsc};
     use vtcode_config::SubagentDiscoveryInput;
     use vtcode_config::auth::AuthCredentialsStoreMode;
     use vtcode_config::core::{CustomProviderConfig, CustomProviderRequestPolicyConfig};
@@ -1769,6 +1813,95 @@ mod tests {
 
         assert!(TurnGuard::begin(thread.clone()).is_err());
         assert!(thread.messages().is_empty());
+    }
+
+    #[tokio::test]
+    async fn concurrent_prompt_is_rejected_over_official_acp_transport() {
+        let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let provider_started = Arc::clone(&started);
+        let provider_release = Arc::clone(&release);
+        let _factory_guard = PromptProviderFactoryGuard::install(
+            "wire-test",
+            Arc::new(move || {
+                Box::new(BlockingPromptProvider {
+                    started: Arc::clone(&provider_started),
+                    release: Arc::clone(&provider_release),
+                })
+            }),
+        );
+        let workspace = TempDir::new().expect("wire test workspace");
+        let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+        let inspected_agent = Arc::clone(&agent);
+        let (agent_channel, client_channel) = Channel::duplex();
+
+        let agent_connection = install_handlers(Agent.builder().name("vtcode-prompt-race-test"), Arc::clone(&agent))
+            .connect_with(agent_channel, {
+                let agent = Arc::clone(&agent);
+                async move |cx: ConnectionTo<Client>| {
+                    agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                    std::future::pending::<agent_client_protocol::Result<()>>().await
+                }
+            });
+        let agent_task = tokio::spawn(agent_connection);
+        let wait_for_provider = Arc::clone(&started);
+        let unblock_provider = Arc::clone(&release);
+        let client_connection = Client
+            .builder()
+            .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+                drop(
+                    cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                        .block_task()
+                        .await?,
+                );
+                let session = cx
+                    .send_request(NewSessionRequest::new(workspace.path().to_path_buf()))
+                    .block_task()
+                    .await?;
+                let first = cx
+                    .send_request(PromptRequest::new(
+                        session.session_id.clone(),
+                        vec![acp::ContentBlock::Text(acp::TextContent::new("first prompt"))],
+                    ))
+                    .block_task();
+                tokio::pin!(first);
+                tokio::select! {
+                    () = wait_for_provider.notified() => {}
+                    response = &mut first => panic!("first prompt completed before provider blockage: {response:?}"),
+                }
+
+                let second = cx
+                    .send_request(PromptRequest::new(
+                        session.session_id.clone(),
+                        vec![acp::ContentBlock::Text(acp::TextContent::new("second prompt"))],
+                    ))
+                    .block_task()
+                    .await
+                    .expect_err("a concurrent prompt must be rejected");
+                assert!(format!("{second:?}").contains("turn_in_progress"));
+
+                unblock_provider.notify_one();
+                let response = first.await?;
+                assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+                Ok(())
+            });
+
+        tokio::time::timeout(Duration::from_secs(5), client_connection)
+            .await
+            .expect("client connection should finish")
+            .expect("prompt race protocol flow should succeed");
+        agent_task.abort();
+        drop(agent_task.await);
+
+        let sessions = inspected_agent.sessions.lock().unwrap_or_else(|error| error.into_inner());
+        let session = sessions.values().next().expect("wire session should remain attached");
+        let messages = session.data.lock().expect("wire session data").thread.messages();
+        let user_messages = messages
+            .into_iter()
+            .filter(|message| message.role == vtcode_core::llm::provider::MessageRole::User)
+            .count();
+        assert_eq!(user_messages, 1, "the rejected prompt must not mutate durable history");
     }
 
     #[tokio::test]
@@ -1933,6 +2066,56 @@ mod tests {
 
     struct PartialThenFailProvider;
 
+    struct InvalidateArchiveBeforeToolProvider {
+        calls: Arc<AtomicUsize>,
+        archive_path: PathBuf,
+        patch_arguments: String,
+    }
+
+    struct FailedWriteAheadCheckpointFixture {
+        _workspace: TempDir,
+        patch_path: PathBuf,
+        calls: Arc<AtomicUsize>,
+        _factory_guard: PromptProviderFactoryGuard,
+        agent: Arc<ZedAgent>,
+        session_id: acp::SessionId,
+    }
+
+    struct BlockingPromptProvider {
+        started: Arc<Notify>,
+        release: Arc<Notify>,
+    }
+
+    #[async_trait]
+    impl LLMProvider for BlockingPromptProvider {
+        fn name(&self) -> &str {
+            "wire-test"
+        }
+
+        fn supported_models(&self) -> Vec<String> {
+            vec!["wire-model".to_string()]
+        }
+
+        fn supports_streaming(&self) -> bool {
+            true
+        }
+
+        fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+            Ok(())
+        }
+
+        async fn stream(&self, _request: LLMRequest) -> Result<vtcode_core::llm::provider::LLMStream, LLMError> {
+            self.started.notify_one();
+            self.release.notified().await;
+            let response = LLMResponse::new("wire-model", "first prompt complete");
+            Ok(Box::pin(futures::stream::iter([Ok(LLMStreamEvent::Completed { response: Box::new(response) })])))
+        }
+
+        async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+            panic!("blocking prompt test must use streaming")
+        }
+    }
+
     #[async_trait]
     impl LLMProvider for StreamToolThenAnswerProvider {
         fn name(&self) -> &str {
@@ -2035,6 +2218,124 @@ mod tests {
 
         async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
             panic!("partial-stream test must not use buffered generation")
+        }
+    }
+
+    #[async_trait]
+    impl LLMProvider for InvalidateArchiveBeforeToolProvider {
+        fn name(&self) -> &str {
+            "wire-test"
+        }
+
+        fn supported_models(&self) -> Vec<String> {
+            vec!["wire-model".to_string()]
+        }
+
+        fn supports_streaming(&self) -> bool {
+            true
+        }
+
+        fn supports_tools(&self, _model: &str) -> bool {
+            true
+        }
+
+        fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+            Ok(())
+        }
+
+        async fn stream(&self, _request: LLMRequest) -> Result<vtcode_core::llm::provider::LLMStream, LLMError> {
+            let response_index = self.calls.fetch_add(1, Ordering::SeqCst);
+            let events = if response_index == 0 {
+                std::fs::remove_file(&self.archive_path)
+                    .map_err(|error| LLMError::Provider { message: error.to_string(), metadata: None })?;
+                std::fs::create_dir(&self.archive_path)
+                    .map_err(|error| LLMError::Provider { message: error.to_string(), metadata: None })?;
+                let response = LLMResponse {
+                    content: Some("I need to edit the fixture.".to_string()),
+                    tool_calls: Some(vec![vtcode_core::llm::provider::ToolCall::function(
+                        "write-ahead-checkpoint-tool".to_string(),
+                        "apply_patch".to_string(),
+                        self.patch_arguments.clone(),
+                    )]),
+                    finish_reason: vtcode_core::llm::provider::FinishReason::ToolCalls,
+                    model: "wire-model".to_string(),
+                    ..LLMResponse::default()
+                };
+                vec![Ok(LLMStreamEvent::Completed { response: Box::new(response) })]
+            } else {
+                let response = LLMResponse {
+                    content: Some("Tool complete.".to_string()),
+                    finish_reason: vtcode_core::llm::provider::FinishReason::Stop,
+                    model: "wire-model".to_string(),
+                    ..LLMResponse::default()
+                };
+                vec![Ok(LLMStreamEvent::Completed { response: Box::new(response) })]
+            };
+            Ok(Box::pin(futures::stream::iter(events)))
+        }
+
+        async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+            panic!("write-ahead checkpoint test must use streaming")
+        }
+    }
+
+    async fn failed_write_ahead_checkpoint_fixture() -> FailedWriteAheadCheckpointFixture {
+        let workspace = TempDir::new().expect("wire test workspace");
+        let archive_path = workspace.path().join("checkpoint.json");
+        let patch_path = workspace.path().join("must-not-change.txt");
+        std::fs::write(&patch_path, "original\n").expect("write patch target");
+        let patch = format!(
+            "*** Begin Patch\n*** Update File: {}\n@@\n-original\n+changed\n*** End Patch\n",
+            patch_path.display()
+        );
+        let calls = Arc::new(AtomicUsize::new(0));
+        let factory_calls = Arc::clone(&calls);
+        let patch_arguments = serde_json::json!({"patch": patch}).to_string();
+        let archive_for_provider = archive_path.clone();
+        let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+        let session_id = agent.register_session();
+        let session = agent.session_handle(&session_id).expect("registered session");
+        let metadata = session
+            .data
+            .lock()
+            .expect("session data")
+            .thread
+            .metadata()
+            .expect("session metadata");
+        let listing = vtcode_core::utils::session_archive::SessionListing {
+            path: archive_path,
+            snapshot: vtcode_core::utils::session_archive::SessionSnapshot {
+                metadata: metadata.clone(),
+                started_at: chrono::Utc::now(),
+                ended_at: chrono::Utc::now(),
+                total_messages: 0,
+                distinct_tools: Vec::new(),
+                transcript: Vec::new(),
+                messages: Vec::new(),
+                progress: None,
+                error_logs: Vec::new(),
+            },
+        };
+        session.data.lock().expect("session data").archive =
+            Some(vtcode_core::utils::session_archive::SessionArchive::resume_from_listing(&listing, metadata));
+        let factory_guard = PromptProviderFactoryGuard::install(
+            "wire-test",
+            Arc::new(move || {
+                Box::new(InvalidateArchiveBeforeToolProvider {
+                    calls: Arc::clone(&factory_calls),
+                    archive_path: archive_for_provider.clone(),
+                    patch_arguments: patch_arguments.clone(),
+                })
+            }),
+        );
+
+        FailedWriteAheadCheckpointFixture {
+            _workspace: workspace,
+            patch_path,
+            calls,
+            _factory_guard: factory_guard,
+            agent,
+            session_id,
         }
     }
 
@@ -2498,6 +2799,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn failed_write_ahead_checkpoint_prevents_acp_tool_execution() {
+        // Review 3791762676: a tool call cannot cross the execution boundary
+        // when its write-ahead checkpoint did not become durable.
+        let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+        let fixture = failed_write_ahead_checkpoint_fixture().await;
+        let session_id = fixture.session_id.clone();
+
+        let (agent_channel, client_channel) = Channel::duplex();
+        let agent_connection =
+            install_handlers(Agent.builder().name("vtcode-write-ahead-checkpoint-test"), Arc::clone(&fixture.agent))
+                .connect_with(agent_channel, {
+                    let agent = Arc::clone(&fixture.agent);
+                    async move |cx: ConnectionTo<Client>| {
+                        agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                        std::future::pending::<agent_client_protocol::Result<()>>().await
+                    }
+                });
+        let agent_task = tokio::spawn(agent_connection);
+
+        let client_connection = Client
+            .builder()
+            .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+                drop(
+                    cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                        .block_task()
+                        .await?,
+                );
+                let error = cx
+                    .send_request(PromptRequest::new(
+                        session_id,
+                        vec![acp::ContentBlock::Text(acp::TextContent::new("Change the fixture"))],
+                    ))
+                    .block_task()
+                    .await
+                    .expect_err("failed write-ahead checkpoint must fail the prompt before execution");
+                assert!(
+                    format!("{error:?}").contains("Failed to persist ACP session checkpoint"),
+                    "checkpoint failure must be visible to the ACP caller: {error:?}"
+                );
+                Ok(())
+            });
+
+        tokio::time::timeout(Duration::from_secs(5), client_connection)
+            .await
+            .expect("client connection should finish")
+            .expect("write-ahead checkpoint protocol flow should finish");
+        agent_task.abort();
+        drop(agent_task.await);
+
+        assert_eq!(
+            fixture.calls.load(Ordering::SeqCst),
+            1,
+            "the provider should not be called again after checkpoint failure"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&fixture.patch_path).expect("read patch target"),
+            "original\n",
+            "a failed write-ahead checkpoint must prevent tool side effects"
+        );
+    }
+
+    #[tokio::test]
     async fn approved_apply_patch_executes_and_emits_preview_and_diff_over_acp() {
         let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
         let calls = Arc::new(AtomicUsize::new(0));
@@ -2572,6 +2935,19 @@ mod tests {
             "created over ACP\n"
         );
         assert_eq!(calls.load(Ordering::SeqCst), 2, "the tool result must return to the provider");
+        let requests = requests.lock().expect("stream requests");
+        let tool_response = requests[1]
+            .messages
+            .iter()
+            .find(|message| message.is_tool_response())
+            .map(|message| message.content.as_text())
+            .expect("apply_patch tool response");
+        assert!(tool_response.contains("\"success\":true"));
+        assert!(
+            !tool_response.contains("\"status\":\"incomplete\""),
+            "write-ahead placeholders must be replaced before provider continuation"
+        );
+        drop(requests);
 
         let updates = std::iter::from_fn(|| updates_rx.try_recv().ok()).collect::<Vec<_>>();
         let preview_visible = updates.iter().any(|notification| {

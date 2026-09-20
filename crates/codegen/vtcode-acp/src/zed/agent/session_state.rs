@@ -1,3 +1,9 @@
+//! ACP durable-session loading and lifecycle state.
+//!
+//! Archive recovery records unresolved tool effects as uncertain before a
+//! session becomes active. Ambiguous terminal-result history is rejected
+//! without replaying calls or registering a resumable session.
+
 use super::ZedAgent;
 use crate::acp;
 use crate::workspace::{DefaultWorkspaceTrustSynchronizer, WorkspaceTrustSynchronizer};
@@ -11,7 +17,8 @@ use vtcode_commons::fs::canonicalize_with_context_async;
 use vtcode_config::auth::AuthCredentialsStoreMode;
 use vtcode_core::config::models::{ModelId, Provider};
 use vtcode_core::config::types::ReasoningEffortLevel;
-use vtcode_core::core::threads::{ThreadBootstrap, build_thread_archive_metadata};
+use vtcode_core::core::agent::snapshots::SnapshotTurnDiagnostics;
+use vtcode_core::core::threads::{ThreadBootstrap, build_thread_archive_metadata, messages_from_session_listing};
 use vtcode_core::hooks::{LifecycleHookEngine, SessionEndReason, SessionStartTrigger};
 use vtcode_core::llm::ModelResolver;
 use vtcode_core::llm::factory::get_factory;
@@ -24,6 +31,41 @@ use vtcode_core::utils::session_archive::{
 use super::super::constants::SESSION_PREFIX;
 use super::super::helpers::session_config_options;
 use super::super::types::{SessionData, SessionHandle};
+use super::tool_recovery::{RecoveryReport, repair_unresolved_tool_calls};
+
+/// Repairs unresolved archived calls into uncertain-effect placeholders for checkpointing.
+fn repair_archived_tool_calls(
+    listing: &mut SessionListing,
+) -> Result<RecoveryReport, super::tool_recovery::AmbiguousToolResultHistory> {
+    let mut messages = messages_from_session_listing(listing);
+    let report = repair_unresolved_tool_calls(&mut messages)?;
+    if report.repaired_calls > 0 {
+        listing.snapshot.total_messages = messages.len();
+        listing.snapshot.messages = messages.iter().map(SessionMessage::from).collect();
+    }
+    Ok(report)
+}
+
+async fn canonical_session_workspace(requested_workspace: &std::path::Path) -> Result<std::path::PathBuf, acp::Error> {
+    if !requested_workspace.is_absolute() {
+        return Err(acp::Error::invalid_params().data("ACP session cwd must be an absolute directory"));
+    }
+    let workspace = canonicalize_with_context_async(requested_workspace, "ACP session cwd")
+        .await
+        .map_err(|error| {
+            acp::Error::invalid_params()
+                .data(format!("Unable to resolve ACP session cwd '{}': {error}", requested_workspace.display()))
+        })?;
+    let metadata = tokio::fs::metadata(&workspace).await.map_err(|error| {
+        acp::Error::invalid_params()
+            .data(format!("Unable to inspect ACP session cwd '{}': {error}", requested_workspace.display()))
+    })?;
+    if !metadata.is_dir() {
+        return Err(acp::Error::invalid_params()
+            .data(format!("ACP session cwd '{}' is not a directory", requested_workspace.display())));
+    }
+    Ok(workspace)
+}
 
 impl ZedAgent {
     const SESSION_LIST_PAGE_SIZE: usize = 100;
@@ -302,6 +344,14 @@ impl ZedAgent {
     }
 
     pub(super) async fn checkpoint_session(&self, session: &SessionHandle) -> anyhow::Result<()> {
+        self.checkpoint_session_with_turn_diagnostics(session, None).await
+    }
+
+    async fn checkpoint_session_with_turn_diagnostics(
+        &self,
+        session: &SessionHandle,
+        turn_diagnostics: Option<SnapshotTurnDiagnostics>,
+    ) -> anyhow::Result<()> {
         if !history_persistence_enabled() {
             debug!("Skipped ACP session checkpoint because history persistence is disabled");
             return Ok(());
@@ -352,6 +402,7 @@ impl ZedAgent {
                 token_usage: None,
                 max_context_tokens: None,
                 loaded_skills: Some(snapshot.loaded_skills),
+                turn_diagnostics,
             })
             .await?;
         debug!(path = %status.path().display(), ?status, "Processed ACP session checkpoint");
@@ -571,10 +622,36 @@ impl ZedAgent {
         let listing = find_session_by_identifier(identifier)
             .await?
             .ok_or_else(|| anyhow::anyhow!("unknown archived session '{identifier}'"))?;
+        self.attach_thread_from_listing(session_id, identifier, workspace, listing)
+            .await
+    }
+
+    async fn attach_thread_from_listing(
+        &self,
+        session_id: &acp::SessionId,
+        identifier: &str,
+        workspace: &std::path::Path,
+        mut listing: SessionListing,
+    ) -> anyhow::Result<SessionHandle> {
         anyhow::ensure!(
             session_listing_matches_workspace(&listing, workspace),
             "archived session '{identifier}' belongs to a different workspace"
         );
+        let preserved_turn_diagnostics = listing
+            .snapshot
+            .progress
+            .as_ref()
+            .and_then(|progress| progress.turn_diagnostics.clone());
+        let recovery = repair_archived_tool_calls(&mut listing).map_err(|error| {
+            warn!(
+                session_id = %session_id,
+                tool_recovery_outcome = "ambiguous_history_rejected",
+                "Rejected archived ACP session with ambiguous tool-result history"
+            );
+            anyhow::anyhow!(
+                "Archived ACP session has ambiguous tool-result history and was not resumed; inspect the archive before continuing: {error}"
+            )
+        })?;
         let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
         let thread = self
             .thread_manager
@@ -596,6 +673,16 @@ impl ZedAgent {
             SessionStartTrigger::Resume,
             Some(runtime),
         );
+        if recovery.repaired_calls > 0 {
+            self.checkpoint_session_with_turn_diagnostics(&handle, preserved_turn_diagnostics)
+                .await
+                .context("Failed to persist repaired ACP tool-call history")?;
+            warn!(
+                session_id = %session_id,
+                repaired_calls = recovery.repaired_calls,
+                "Repaired unresolved tool calls while loading durable ACP session"
+            );
+        }
         if let Ok(mut guard) = self.sessions.lock() {
             drop(guard.insert(session_id.clone(), handle.clone()));
         }
@@ -948,6 +1035,7 @@ mod tests {
     use vtcode_core::core::agent::snapshots::{
         DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
     };
+    use vtcode_core::llm::provider::ToolCall;
     use vtcode_core::utils::session_archive::{SessionArchiveMetadata, SessionListing, SessionSnapshot};
 
     static HISTORY_TEST_LOCK: LazyLock<AsyncMutex<()>> = LazyLock::new(|| AsyncMutex::new(()));
@@ -1082,6 +1170,167 @@ mod tests {
         assert_eq!(model(&handle), "gpt-5.6-sol");
     }
 
+    #[test]
+    fn legacy_archive_repair_closes_tool_call_before_later_user_message() {
+        let temp = TempDir::new().unwrap();
+        let mut listing = archived_listing("legacy-unresolved", temp.path(), "continue");
+        let unresolved = Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                "legacy-call".to_string(),
+                "apply_patch".to_string(),
+                "{}".to_string(),
+            )],
+        );
+        listing.snapshot.messages = vec![
+            SessionMessage::from(&unresolved),
+            SessionMessage::from(&Message::user("continue".to_string())),
+        ];
+
+        let report = repair_archived_tool_calls(&mut listing).expect("unambiguous archive should repair");
+        let repaired = messages_from_session_listing(&listing);
+
+        assert_eq!(report.repaired_calls, 1);
+        assert_eq!(repaired.len(), 3);
+        assert_eq!(repaired[0].role, MessageRole::Assistant);
+        assert_eq!(repaired[1].role, MessageRole::Tool);
+        assert_eq!(repaired[1].tool_call_id.as_deref(), Some("legacy-call"));
+        assert!(repaired[1].content.as_text().contains("\"replayed\":false"));
+        assert_eq!(repaired[2].role, MessageRole::User);
+    }
+
+    #[tokio::test]
+    async fn repaired_archive_is_not_registered_when_repair_checkpoint_fails() {
+        // Reviews 3791762677 and 3944816962: a resumed session is visible to
+        // callers only after its repaired history has been durably written.
+        let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+        let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+        let temp = TempDir::new().unwrap();
+        let agent = build_agent(temp.path()).await;
+        let mut listing = archived_listing("repair-checkpoint-failure", temp.path(), "continue");
+        let unresolved = Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                "repair-call".to_string(),
+                "apply_patch".to_string(),
+                "{}".to_string(),
+            )],
+        );
+        listing.snapshot.messages = vec![SessionMessage::from(&unresolved)];
+        listing.snapshot.total_messages = 1;
+        fs::create_dir(&listing.path).unwrap();
+
+        let session_id = acp::SessionId::new("repair-checkpoint-failure-session");
+        let error = match agent
+            .attach_thread_from_listing(&session_id, "repair-checkpoint-failure", temp.path(), listing)
+            .await
+        {
+            Ok(_) => panic!("a directory at the archive path must make the repair checkpoint fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("Failed to persist repaired ACP tool-call history"));
+        assert!(
+            agent.session_handle(&session_id).is_none(),
+            "failed repair checkpoints must not leave a partially registered session"
+        );
+    }
+
+    #[tokio::test]
+    async fn ambiguous_archive_is_not_resumed_or_replayed_and_preserves_the_archive() {
+        // A duplicate result has a known external-effect record, but no safe
+        // canonical provider continuation. Reject before the archive can be
+        // rewritten or the session becomes eligible for a prompt/tool call.
+        let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+        let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+        let temp = TempDir::new().unwrap();
+        let target = temp.path().join("must-not-change.txt");
+        fs::write(&target, "original\n").unwrap();
+        let patch = format!(
+            "*** Begin Patch\n*** Update File: {}\n@@\n-original\n+replayed\n*** End Patch\n",
+            target.display()
+        );
+        let call = ToolCall::function(
+            "ambiguous-apply-patch".to_string(),
+            "apply_patch".to_string(),
+            serde_json::json!({"patch": patch}).to_string(),
+        );
+        let mut listing = archived_listing("ambiguous-legacy", temp.path(), "resume the edit");
+        listing.snapshot.messages = vec![
+            SessionMessage::from(&Message::assistant_with_tools(String::new(), vec![call])),
+            SessionMessage::from(&Message::tool_response(
+                "ambiguous-apply-patch".to_string(),
+                "first terminal result".to_string(),
+            )),
+            SessionMessage::from(&Message::tool_response(
+                "ambiguous-apply-patch".to_string(),
+                "conflicting terminal result".to_string(),
+            )),
+        ];
+        listing.snapshot.total_messages = listing.snapshot.messages.len();
+        let archive_path = listing.path.clone();
+        let original_archive = serde_json::to_vec(&listing.snapshot).unwrap();
+        fs::write(&archive_path, &original_archive).unwrap();
+        let agent = build_agent(temp.path()).await;
+        let session_id = acp::SessionId::new("ambiguous-legacy-session");
+
+        let error = match agent
+            .attach_thread_from_listing(&session_id, "ambiguous-legacy", temp.path(), listing)
+            .await
+        {
+            Ok(_) => panic!("ambiguous tool results must not resume an ACP session"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("ambiguous tool-result history"));
+        assert!(
+            agent.session_handle(&session_id).is_none(),
+            "an ambiguous archive must not become a provider/tool continuation session"
+        );
+        assert_eq!(fs::read(&archive_path).unwrap(), original_archive);
+        assert_eq!(fs::read_to_string(&target).unwrap(), "original\n");
+    }
+
+    #[tokio::test]
+    async fn repeated_call_ids_in_separate_completed_batches_remain_resumable() {
+        let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+        let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+        let temp = TempDir::new().unwrap();
+        let mut listing = archived_listing("reused-call-id", temp.path(), "continue");
+        listing.snapshot.messages = vec![
+            SessionMessage::from(&Message::assistant_with_tools(
+                String::new(),
+                vec![ToolCall::function(
+                    "reused-call".to_string(),
+                    "read_file".to_string(),
+                    "{}".to_string(),
+                )],
+            )),
+            SessionMessage::from(&Message::tool_response("reused-call".to_string(), "first result".to_string())),
+            SessionMessage::from(&Message::user("continue".to_string())),
+            SessionMessage::from(&Message::assistant_with_tools(
+                String::new(),
+                vec![ToolCall::function(
+                    "reused-call".to_string(),
+                    "read_file".to_string(),
+                    "{}".to_string(),
+                )],
+            )),
+            SessionMessage::from(&Message::tool_response("reused-call".to_string(), "second result".to_string())),
+        ];
+        listing.snapshot.total_messages = listing.snapshot.messages.len();
+        let agent = build_agent(temp.path()).await;
+        let session_id = acp::SessionId::new("reused-call-id-session");
+
+        let handle = agent
+            .attach_thread_from_listing(&session_id, "reused-call-id", temp.path(), listing)
+            .await
+            .expect("separate completed batches must remain resumable");
+
+        assert!(agent.session_handle(&session_id).is_some());
+        assert_eq!(handle.data.lock().unwrap().thread.messages().len(), 5);
+    }
+
     #[tokio::test]
     async fn checkpoint_session_persists_messages_for_a_fresh_runtime() {
         let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
@@ -1131,6 +1380,56 @@ mod tests {
         assert_eq!(fresh_thread.messages().len(), 2);
         assert_eq!(fresh_thread.messages()[0].content.as_text(), "continue");
         assert_eq!(fresh_thread.messages()[1].content.as_text(), "resumed response");
+    }
+
+    #[tokio::test]
+    async fn attaching_legacy_archive_repairs_without_replaying_mutating_call() {
+        let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+        let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+        let temp = TempDir::new().unwrap();
+        let target = temp.path().join("must-not-change.txt");
+        fs::write(&target, "original\n").unwrap();
+        let patch = format!(
+            "*** Begin Patch\n*** Update File: {}\n@@\n-original\n+replayed\n*** End Patch\n",
+            target.display()
+        );
+        let unresolved = Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                "legacy-apply-patch".to_string(),
+                "apply_patch".to_string(),
+                serde_json::json!({"patch": patch}).to_string(),
+            )],
+        );
+        let mut listing = archived_listing("legacy-mutating", temp.path(), "edit the file");
+        listing.snapshot.messages = vec![SessionMessage::from(&unresolved)];
+        listing.snapshot.total_messages = 1;
+        let archive_path = listing.path.clone();
+        let agent = build_agent(temp.path()).await;
+
+        let handle = agent
+            .attach_thread_from_listing(
+                &acp::SessionId::new("loaded-legacy-mutating"),
+                "legacy-mutating",
+                temp.path(),
+                listing,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(fs::read_to_string(&target).unwrap(), "original\n");
+        let messages = handle.data.lock().unwrap().thread.messages();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].role, MessageRole::Assistant);
+        assert_eq!(messages[1].role, MessageRole::Tool);
+        let recovery = messages[1].content.as_text();
+        assert!(recovery.contains("\"replayed\":false"));
+        assert!(recovery.contains("Verify the current workspace state"));
+        assert!(recovery.contains("resubmit the tool call only if"));
+
+        let persisted: SessionSnapshot = serde_json::from_str(&fs::read_to_string(archive_path).unwrap()).unwrap();
+        assert_eq!(persisted.messages.len(), 2);
+        assert_eq!(persisted.messages[1].role, MessageRole::Tool);
     }
 
     fn archived_listing(identifier: &str, workspace: &Path, prompt: &str) -> SessionListing {
@@ -1464,25 +1763,4 @@ Research primary prompt."#,
         assert_eq!(config_options.len(), 3);
         assert_eq!(config_options[0].id, acp::SessionConfigId::new("primary_agent"));
     }
-}
-
-async fn canonical_session_workspace(requested_workspace: &std::path::Path) -> Result<std::path::PathBuf, acp::Error> {
-    if !requested_workspace.is_absolute() {
-        return Err(acp::Error::invalid_params().data("ACP session cwd must be an absolute directory"));
-    }
-    let workspace = canonicalize_with_context_async(requested_workspace, "ACP session cwd")
-        .await
-        .map_err(|error| {
-            acp::Error::invalid_params()
-                .data(format!("Unable to resolve ACP session cwd '{}': {error}", requested_workspace.display()))
-        })?;
-    let metadata = tokio::fs::metadata(&workspace).await.map_err(|error| {
-        acp::Error::invalid_params()
-            .data(format!("Unable to inspect ACP session cwd '{}': {error}", requested_workspace.display()))
-    })?;
-    if !metadata.is_dir() {
-        return Err(acp::Error::invalid_params()
-            .data(format!("ACP session cwd '{}' is not a directory", requested_workspace.display())));
-    }
-    Ok(workspace)
 }
