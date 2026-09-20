@@ -194,10 +194,13 @@ where
                 }
             }
             ResponsesStreamEvent::ReasoningDelta { delta, item_id, output_index, sub_index, .. } => {
-                let delta = self.reconciler.reasoning_delta(
-                    ResponsesItemIdentity::new(item_id, None, output_index).with_sub_index(sub_index),
-                    &delta,
-                );
+                let delta = self
+                    .reconciler
+                    .reasoning_delta(
+                        ResponsesItemIdentity::new(item_id, None, output_index).with_sub_index(sub_index),
+                        &delta,
+                    )
+                    .map_err(|message| provider_error(self.options.provider_name, message))?;
                 if self.options.emit_reasoning && !delta.is_empty() {
                     self.aggregator.reasoning.push_str(&delta);
                     events.push(NormalizedStreamEvent::ReasoningDelta { delta });

@@ -457,7 +457,9 @@ pub(crate) fn create_responses_stream(
                                         StreamAssemblyError::MissingField("delta")
                                             .into_llm_error("OpenAI")
                                     })?;
-                                let delta = reconciler.reasoning_delta(responses_item_identity(&payload), delta);
+                                let delta = reconciler
+                                    .reasoning_delta(responses_item_identity(&payload), delta)
+                                    .map_err(|message| provider_error("OpenAI", message))?;
                                 if retain_reasoning && !delta.is_empty() {
                                     aggregator.reasoning.push_str(&delta);
                                     telemetry.on_reasoning_delta(&delta);
@@ -472,7 +474,9 @@ pub(crate) fn create_responses_stream(
                                         StreamAssemblyError::MissingField("delta")
                                             .into_llm_error("OpenAI")
                                     })?;
-                                let delta = reconciler.reasoning_delta(responses_item_identity(&payload), delta);
+                                let delta = reconciler
+                                    .reasoning_delta(responses_item_identity(&payload), delta)
+                                    .map_err(|message| provider_error("OpenAI", message))?;
                                 if retain_reasoning && !delta.is_empty() {
                                     aggregator.reasoning.push_str(&delta);
                                     telemetry.on_reasoning_delta(&delta);
