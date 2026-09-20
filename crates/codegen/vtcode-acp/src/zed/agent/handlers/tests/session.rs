@@ -441,25 +441,22 @@ fn advertised_capabilities_include_background_tasks_only_when_enabled() {
 async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex() {
     let workspace = TempDir::new().expect("Lody management workspace");
     write_lody_background_fixture(workspace.path());
-    let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+    let mut agent = build_wire_test_agent(workspace.path()).await;
     let mut vt_config = vtcode_core::config::VTCodeConfig::default();
     vt_config.subagents.enabled = true;
     vt_config.subagents.background.enabled = true;
-    Box::pin(super::super::attach_acp_subagent_controller(
-        &agent.local_tool_registry,
-        &agent.config,
-        &[],
-        Some(&vt_config),
-        None,
-        false,
-    ))
+    agent.vt_config = Some(Box::new(vt_config.clone()));
+    crate::zed::agent::optional_setup::attach_acp_subagent_controller(crate::zed::agent::AcpSubagentControllerSetup {
+        registry: &agent.local_tool_registry,
+        agent_config: &agent.config,
+        custom_providers: &[],
+        vt_config: Some(&vt_config),
+        owner_session_id: None,
+        workspace_gated: false,
+    })
     .await;
+    let agent = Arc::new(agent);
     assert!(agent.local_tool_registry.has_subagent_controller());
-    let controller = agent
-        .local_tool_registry
-        .subagent_controller()
-        .expect("Lody management controller");
-
     let (agent_channel, client_channel) = Channel::duplex();
     let agent_connection = install_handlers(Agent.builder().name("vtcode-lody-management-test"), Arc::clone(&agent))
         .connect_with(agent_channel, {
@@ -472,6 +469,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
     let agent_task = tokio::spawn(agent_connection);
 
     let workspace_path = workspace.path().to_path_buf();
+    let inspected_agent = Arc::clone(&agent);
     let client_connection = Client
         .builder()
         .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
@@ -487,7 +485,8 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 .send_request(NewSessionRequest::new(workspace_path.clone()))
                 .block_task()
                 .await?;
-            controller.set_parent_session_id(session.session_id.to_string()).await;
+            let owned_session = inspected_agent.session_handle(&session.session_id).unwrap().unwrap();
+            let controller = inspected_agent.session_subagent_controller(&owned_session).unwrap().unwrap();
             let background = controller
                 .spawn_background_subprocess(SpawnBackgroundSubprocessRequest {
                     agent_type: Some("background-demo".to_string()),
@@ -501,7 +500,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             }))?;
             let response = cx
                 .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
-                    super::super::lody::LODY_SUBAGENTS_LIST_METHOD,
+                    crate::zed::agent::lody::LODY_SUBAGENTS_LIST_METHOD,
                     params.into(),
                 )))
                 .block_task()
@@ -517,7 +516,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 }))?;
                 output = cx
                     .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
-                        super::super::lody::LODY_SUBAGENTS_OUTPUT_METHOD,
+                        crate::zed::agent::lody::LODY_SUBAGENTS_OUTPUT_METHOD,
                         params.into(),
                     )))
                     .block_task()
@@ -539,7 +538,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             }))?;
             let foreign_list = cx
                 .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
-                    super::super::lody::LODY_SUBAGENTS_LIST_METHOD,
+                    crate::zed::agent::lody::LODY_SUBAGENTS_LIST_METHOD,
                     params.into(),
                 )))
                 .block_task()
@@ -558,7 +557,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             }))?;
             let cancelled = cx
                 .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
-                    super::super::lody::LODY_SUBAGENTS_CANCEL_METHOD,
+                    crate::zed::agent::lody::LODY_SUBAGENTS_CANCEL_METHOD,
                     params.into(),
                 )))
                 .block_task()
@@ -583,7 +582,7 @@ async fn lody_output_error(connection: &ConnectionTo<Agent>, session_id: &acp::S
     .expect("serialize Lody output request");
     connection
         .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
-            super::super::lody::LODY_SUBAGENTS_OUTPUT_METHOD,
+            crate::zed::agent::lody::LODY_SUBAGENTS_OUTPUT_METHOD,
             params.into(),
         )))
         .block_task()
