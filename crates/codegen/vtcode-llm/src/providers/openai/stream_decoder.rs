@@ -510,7 +510,7 @@ pub(crate) fn create_responses_stream(
                             "response.reasoning_text.delta"
                             | "response.reasoning_summary_text.delta"
                             | "response.reasoning_content.delta"
-                            | "response.reasoning_text.done" => {
+                            | "response.reasoning_text.done" | "response.reasoning_summary_text.done" => {
                                 if let Some(event) = response_reasoning_event(event_type, &payload, ResponsesReasoningContext {
                                     retain_reasoning,
                                     aggregator: &mut aggregator,
@@ -916,26 +916,33 @@ fn response_reasoning_event(
                 .and_then(Value::as_str)
                 .ok_or_else(|| StreamAssemblyError::MissingField("delta").into_llm_error("OpenAI"))?,
         )),
-        "response.reasoning_text.done" => optional_string_field(payload, "text")?
-            .or(optional_string_field(payload, "delta")?)
-            .map(Cow::Owned),
+        "response.reasoning_text.done" | "response.reasoning_summary_text.done" => {
+            optional_string_field(payload, "text")?
+                .or(optional_string_field(payload, "delta")?)
+                .map(Cow::Owned)
+        }
         _ => return Ok(None),
     };
-    if !context.retain_reasoning {
-        return Ok(None);
-    }
     let Some(reasoning) = reasoning else {
         return Ok(None);
     };
     let identity = responses_item_identity(payload);
-    let delta = if event_type == "response.reasoning_text.done" {
+    let delta = if matches!(event_type, "response.reasoning_text.done" | "response.reasoning_summary_text.done") {
         context
             .reconciler
             .reasoning_done(identity, reasoning.as_ref())
             .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))?
     } else {
-        Some(context.reconciler.reasoning_delta(identity, reasoning.as_ref()))
+        Some(
+            context
+                .reconciler
+                .reasoning_delta(identity, reasoning.as_ref())
+                .map_err(|message| provider_error("OpenAI", message))?,
+        )
     };
+    if !context.retain_reasoning {
+        return Ok(None);
+    }
     let Some(delta) = delta.filter(|delta| !delta.is_empty()) else {
         return Ok(None);
     };
