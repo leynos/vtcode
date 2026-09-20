@@ -74,25 +74,43 @@ impl ProviderMetric {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct ProviderMetricTags {
+pub(super) struct ProviderMetricContext {
     mode: Option<ProviderMode>,
     provider_class: ProviderClass,
     error_category: Option<ErrorCategory>,
     retry_disposition: Option<RetryDisposition>,
 }
 
-impl ProviderMetricTags {
-    const fn new(
-        mode: Option<ProviderMode>,
+impl ProviderMetricContext {
+    pub(super) const fn request(mode: ProviderMode, provider_class: ProviderClass) -> Self {
+        Self {
+            mode: Some(mode),
+            provider_class,
+            error_category: None,
+            retry_disposition: None,
+        }
+    }
+
+    pub(super) const fn failure(
+        mode: ProviderMode,
         provider_class: ProviderClass,
-        error_category: Option<ErrorCategory>,
-        retry_disposition: Option<RetryDisposition>,
+        error_category: ErrorCategory,
+        retry_disposition: RetryDisposition,
     ) -> Self {
         Self {
-            mode,
+            mode: Some(mode),
             provider_class,
-            error_category,
-            retry_disposition,
+            error_category: Some(error_category),
+            retry_disposition: Some(retry_disposition),
+        }
+    }
+
+    pub(super) const fn rate_limit_notification_failure(provider_class: ProviderClass) -> Self {
+        Self {
+            mode: None,
+            provider_class,
+            error_category: Some(ErrorCategory::ExecutionError),
+            retry_disposition: None,
         }
     }
 
@@ -111,6 +129,70 @@ impl ProviderMetricTags {
                 tags.insert("retry_disposition".to_owned(), retry_disposition.as_str().to_owned());
         }
         tags
+    }
+}
+
+/// Closed observations emitted by the ACP provider retry paths.
+///
+/// Each variant owns the metric name, value semantics, and bounded context,
+/// which keeps callers from constructing arbitrary provider metric labels.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum ProviderMetricObservation {
+    Attempt(ProviderMetricContext),
+    Retry(ProviderMetricContext),
+    RetryDelay {
+        context: ProviderMetricContext,
+        delay: Duration,
+    },
+    Generation {
+        context: ProviderMetricContext,
+        duration: Duration,
+    },
+    RateLimited(ProviderMetricContext),
+    RateLimitNotificationFailure(ProviderMetricContext),
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ProviderMetricRecord {
+    metric: ProviderMetric,
+    value: f64,
+    context: ProviderMetricContext,
+}
+
+impl ProviderMetricObservation {
+    fn into_record(self) -> ProviderMetricRecord {
+        match self {
+            Self::Attempt(context) => ProviderMetricRecord {
+                metric: ProviderMetric::ProviderAttemptTotal,
+                value: 1.0,
+                context,
+            },
+            Self::Retry(context) => ProviderMetricRecord {
+                metric: ProviderMetric::ProviderRetryTotal,
+                value: 1.0,
+                context,
+            },
+            Self::RetryDelay { context, delay } => ProviderMetricRecord {
+                metric: ProviderMetric::ProviderRetryDelayMs,
+                value: delay.as_secs_f64() * 1000.0,
+                context,
+            },
+            Self::Generation { context, duration } => ProviderMetricRecord {
+                metric: ProviderMetric::ProviderGenerationMs,
+                value: duration.as_secs_f64() * 1000.0,
+                context,
+            },
+            Self::RateLimited(context) => ProviderMetricRecord {
+                metric: ProviderMetric::ProviderRateLimitedTotal,
+                value: 1.0,
+                context,
+            },
+            Self::RateLimitNotificationFailure(context) => ProviderMetricRecord {
+                metric: ProviderMetric::RateLimitNotificationFailureTotal,
+                value: 1.0,
+                context,
+            },
+        }
     }
 }
 
@@ -136,120 +218,16 @@ impl ProviderMetricSink {
         Self::Test(recorder)
     }
 
-    pub(super) async fn record_provider_attempt(&self, mode: ProviderMode, provider_class: ProviderClass) {
-        self.record_value(
-            ProviderMetric::ProviderAttemptTotal,
-            1.0,
-            ProviderMetricTags::new(Some(mode), provider_class, None, None),
-        )
-        .await;
-    }
-
-    pub(super) async fn record_provider_retry(
-        &self,
-        mode: ProviderMode,
-        provider_class: ProviderClass,
-        error_category: ErrorCategory,
-    ) {
-        self.record_value(
-            ProviderMetric::ProviderRetryTotal,
-            1.0,
-            ProviderMetricTags::new(
-                Some(mode),
-                provider_class,
-                Some(error_category),
-                Some(RetryDisposition::RetryScheduled),
-            ),
-        )
-        .await;
-    }
-
-    pub(super) async fn record_provider_retry_delay(
-        &self,
-        mode: ProviderMode,
-        provider_class: ProviderClass,
-        error_category: ErrorCategory,
-        delay: Duration,
-    ) {
-        self.record_value(
-            ProviderMetric::ProviderRetryDelayMs,
-            delay.as_secs_f64() * 1000.0,
-            ProviderMetricTags::new(
-                Some(mode),
-                provider_class,
-                Some(error_category),
-                Some(RetryDisposition::RetryScheduled),
-            ),
-        )
-        .await;
-    }
-
-    pub(super) async fn record_provider_generation(
-        &self,
-        mode: ProviderMode,
-        provider_class: ProviderClass,
-        duration: Duration,
-    ) {
-        self.record_duration(
-            ProviderMetric::ProviderGenerationMs,
-            duration,
-            ProviderMetricTags::new(Some(mode), provider_class, None, None),
-        )
-        .await;
-    }
-
-    pub(super) async fn record_provider_rate_limited(
-        &self,
-        mode: ProviderMode,
-        provider_class: ProviderClass,
-        error_category: ErrorCategory,
-        retry_disposition: RetryDisposition,
-    ) {
-        self.record_value(
-            ProviderMetric::ProviderRateLimitedTotal,
-            1.0,
-            ProviderMetricTags::new(Some(mode), provider_class, Some(error_category), Some(retry_disposition)),
-        )
-        .await;
-    }
-
-    pub(super) async fn record_rate_limit_notification_failure(
-        &self,
-        provider_class: ProviderClass,
-        error_category: ErrorCategory,
-    ) {
-        self.record_value(
-            ProviderMetric::RateLimitNotificationFailureTotal,
-            1.0,
-            ProviderMetricTags::new(None, provider_class, Some(error_category), None),
-        )
-        .await;
-    }
-
-    async fn record_value(&self, metric: ProviderMetric, value: f64, tags: ProviderMetricTags) {
+    pub(super) async fn record(&self, observation: ProviderMetricObservation) {
+        let ProviderMetricRecord { metric, value, context } = observation.into_record();
         let name = metric.name();
-        let tags = tags.into_map();
+        let tags = context.into_map();
         match self {
             Self::Process => vtcode_core::telemetry::perf::record_value(name, value, tags),
             #[cfg(test)]
             Self::Test(recorder) => {
                 recorder
                     .record_value(name, value, tags)
-                    .await
-                    .expect("record test provider metric");
-            }
-        }
-    }
-
-    async fn record_duration(&self, metric: ProviderMetric, duration: Duration, tags: ProviderMetricTags) {
-        let name = metric.name();
-        let tags = tags.into_map();
-        match self {
-            Self::Process => vtcode_core::telemetry::perf::record_duration(name, duration, tags),
-            #[cfg(test)]
-            Self::Test(recorder) => {
-                recorder
-                    .record_value(name, duration.as_secs_f64() * 1000.0, tags)
                     .await
                     .expect("record test provider metric");
             }
@@ -308,7 +286,7 @@ fn error_metadata(error: &LLMError) -> Option<&LLMErrorMetadata> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ProviderMetric, ProviderMetricTags, ProviderMode, RetryDisposition, SafeProviderProjection};
+    use super::{ProviderMetric, ProviderMetricContext, ProviderMode, RetryDisposition, SafeProviderProjection};
     use crate::zed::provider_runtime::ProviderClass;
     use vtcode_commons::ErrorCategory;
     use vtcode_core::llm::provider::{LLMError, LLMErrorMetadata};
@@ -364,11 +342,11 @@ mod tests {
     #[test]
     fn provider_metric_tags_exclude_raw_diagnostics() {
         let marker = "provider-marker://model/request/session/error-code/body";
-        let tags = ProviderMetricTags::new(
-            Some(ProviderMode::Stream),
+        let tags = ProviderMetricContext::failure(
+            ProviderMode::Stream,
             ProviderClass::Custom,
-            Some(ErrorCategory::RateLimit),
-            Some(RetryDisposition::PartialOutputVisible),
+            ErrorCategory::RateLimit,
+            RetryDisposition::PartialOutputVisible,
         )
         .into_map();
 

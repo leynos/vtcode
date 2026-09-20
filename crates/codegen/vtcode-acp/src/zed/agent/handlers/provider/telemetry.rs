@@ -4,8 +4,8 @@ use tokio::time::Instant;
 use tracing::{info, warn};
 
 use super::{
-    GenerationTelemetry, LLMError, LLMResponse, ProviderMetricSink, ProviderMode, ProviderRequestRuntime,
-    RetryDecision, RetryDisposition,
+    GenerationFailure, GenerationTelemetry, LLMError, LLMResponse, ProviderMetricContext, ProviderMetricObservation,
+    ProviderMetricSink, ProviderMode, ProviderRequestRuntime, RetryDecision, RetryDisposition,
 };
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -61,7 +61,10 @@ impl GenerationTelemetry {
 
     pub(in crate::zed::agent::handlers) async fn record_attempt(&self, runtime: &ProviderRequestRuntime) {
         self.metric_sink
-            .record_provider_attempt(self.mode, runtime.provider_class())
+            .record(ProviderMetricObservation::Attempt(ProviderMetricContext::request(
+                self.mode,
+                runtime.provider_class(),
+            )))
             .await;
     }
 
@@ -134,18 +137,21 @@ impl GenerationTelemetry {
             "ACP provider generation completed"
         );
         self.metric_sink
-            .record_provider_generation(self.mode, runtime.provider_class(), elapsed)
+            .record(ProviderMetricObservation::Generation {
+                context: ProviderMetricContext::request(self.mode, runtime.provider_class()),
+                duration: elapsed,
+            })
             .await;
     }
 
-    pub(in crate::zed::agent::handlers) async fn failed(
-        &mut self,
-        runtime: &ProviderRequestRuntime,
-        retry_count: u32,
-        retry_disposition: RetryDisposition,
-        retry_delay: Option<Duration>,
-        error: &LLMError,
-    ) {
+    pub(in crate::zed::agent::handlers) async fn failed(&mut self, failure: GenerationFailure<'_>) {
+        let GenerationFailure {
+            runtime,
+            retry_count,
+            retry_disposition,
+            retry_delay,
+            error,
+        } = failure;
         let elapsed_ms = duration_millis(self.started_at.elapsed());
         let first_output_ms = self
             .first_output_at
@@ -175,16 +181,34 @@ impl GenerationTelemetry {
         let error_category = vtcode_commons::ErrorCategory::from(error);
         if error_category == vtcode_commons::ErrorCategory::RateLimit {
             self.metric_sink
-                .record_provider_rate_limited(self.mode, runtime.provider_class(), error_category, retry_disposition)
+                .record(ProviderMetricObservation::RateLimited(ProviderMetricContext::failure(
+                    self.mode,
+                    runtime.provider_class(),
+                    error_category,
+                    retry_disposition,
+                )))
                 .await;
         }
         if retry_disposition == RetryDisposition::RetryScheduled {
             self.metric_sink
-                .record_provider_retry(self.mode, runtime.provider_class(), error_category)
+                .record(ProviderMetricObservation::Retry(ProviderMetricContext::failure(
+                    self.mode,
+                    runtime.provider_class(),
+                    error_category,
+                    RetryDisposition::RetryScheduled,
+                )))
                 .await;
             if let Some(delay) = retry_delay {
                 self.metric_sink
-                    .record_provider_retry_delay(self.mode, runtime.provider_class(), error_category, delay)
+                    .record(ProviderMetricObservation::RetryDelay {
+                        context: ProviderMetricContext::failure(
+                            self.mode,
+                            runtime.provider_class(),
+                            error_category,
+                            RetryDisposition::RetryScheduled,
+                        ),
+                        delay,
+                    })
                     .await;
             }
         }

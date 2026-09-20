@@ -32,6 +32,8 @@ use super::super::helpers::text_chunk;
 use super::super::types::{SessionHandle, ToolRuntime};
 use super::ZedAgent;
 use super::compaction::CompactionRequest;
+use super::lody_notice::RateLimitNotice;
+use super::provider_telemetry::{ProviderMetricContext, ProviderMetricObservation};
 use super::provider_telemetry::{ProviderMetricSink, ProviderMode, RetryDisposition, SafeProviderProjection};
 use crate::acp;
 use crate::acp::Error as SdkError;
