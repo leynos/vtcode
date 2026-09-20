@@ -24,8 +24,12 @@ baseline `86ced9a6ce851c3e49f7aac5124d1d9285e8ba42` and capability
 `d49d44ad5070e53c6c8e11a55bb520c6b67438b4`; neither is a combined integration.
 The initial programme and ACP-stack work started from
 `1aa90f196dacfb40ac96beb6e5aeafb7784a7d10`. Following the latest merged
-Stack #37 layer, local `main` and `origin/main` now point to
-`dddd1352fcdf41e86abe380423221f4b41f171e0`.
+Stack #37 layer, local `main` and `origin/main` pointed to
+`dddd1352fcdf41e86abe380423221f4b41f171e0`. On 20 September 2026 this
+planning branch was rebased onto `origin/main` at
+`bc3d767c01a0fcb35f4f0f581382f5709394db84`, which includes the merged CI
+prerequisite work from PR #110. Earlier commit identities and observations in
+this plan remain dated evidence, not statements about the current tree.
 
 ## Constraints
 
@@ -83,6 +87,8 @@ and use the known-path/Leta fallback; Context Pack MCP handles handoffs.
   #53.
 - [x] (2026-09-07) Approve and dispatch detailed #40 and #41 plans to
   journeymen.
+- [x] (2026-09-20) Rebase the planning history onto current `origin/main`,
+  preserving all 15 documentation patches and incorporating merged PR #110.
 - [ ] P1: Land #40 and #41 independently; complete #21 diagnostic/recovery
   criteria.
 - [ ] P2: Seed #42 boundary, then canonical contracts #43, admission #44
@@ -132,6 +138,14 @@ User authorization overrides ExecPlans' per-plan approval gate. Repository
 Conventional Commits override the commit-message skill's prefix preference;
 file-based messages remain required. The user explicitly authorizes comments,
 issue creation, readiness transitions and merges after the stated gates.
+
+On 20 September the planning branch moved from its original
+`1aa90f196dacfb40ac96beb6e5aeafb7784a7d10` boundary to current `origin/main`
+at `bc3d767c01a0fcb35f4f0f581382f5709394db84`. The rebase preserved the
+documentation series unchanged. Because PR #110 now supplies the CI
+prerequisites that this plan previously treated as pending, future issue work
+must validate against the current helpers and workflows instead of reviving
+the older CI repair proposals.
 
 ## Context and orientation
 
