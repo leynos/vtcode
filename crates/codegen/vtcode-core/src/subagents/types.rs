@@ -141,6 +141,39 @@ pub struct BackgroundSubprocessSnapshot {
     pub preview: String,
 }
 
+/// Lifecycle snapshot emitted when a delegated child or managed background
+/// process changes state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "task_type", content = "task", rename_all = "snake_case")]
+pub enum SubagentProgressEvent {
+    /// A normal delegated child agent changed state.
+    Subagent {
+        /// Parent ACP or terminal session that owns this task.
+        parent_session_id: String,
+        /// Current child-agent snapshot.
+        task: SubagentStatusEntry,
+    },
+    /// A managed background subprocess changed state.
+    BackgroundProcess {
+        /// Parent ACP or terminal session that owns this process.
+        parent_session_id: String,
+        /// Current background-process snapshot.
+        task: BackgroundSubprocessEntry,
+    },
+}
+
+impl SubagentProgressEvent {
+    /// Returns the parent session that owns this lifecycle event.
+    #[must_use]
+    pub fn parent_session_id(&self) -> &str {
+        match self {
+            Self::Subagent { parent_session_id, .. } | Self::BackgroundProcess { parent_session_id, .. } => {
+                parent_session_id
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SubagentThreadSnapshot {
     pub id: String,

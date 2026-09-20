@@ -45,6 +45,26 @@ pub struct MessageMetadata {
     /// messages remain wire-compatible.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     intent_id: Option<String>,
+
+    /// Whether delivery of the message completed normally.
+    #[serde(default, skip_serializing_if = "MessageDeliveryState::is_complete")]
+    delivery_state: MessageDeliveryState,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case", tag = "status")]
+enum MessageDeliveryState {
+    #[default]
+    Complete,
+    Incomplete {
+        reason: String,
+    },
+}
+
+impl MessageDeliveryState {
+    fn is_complete(&self) -> bool {
+        matches!(self, Self::Complete)
+    }
 }
 
 impl MessageMetadata {
@@ -57,6 +77,7 @@ impl MessageMetadata {
             estimated_tokens,
             source: Some("user_input".into()),
             intent_id: None,
+            delivery_state: MessageDeliveryState::Complete,
         }
     }
 
@@ -69,6 +90,7 @@ impl MessageMetadata {
             estimated_tokens,
             source: Some("llm_response".into()),
             intent_id: None,
+            delivery_state: MessageDeliveryState::Complete,
         }
     }
 
@@ -81,6 +103,7 @@ impl MessageMetadata {
             estimated_tokens,
             source: Some("tool_result".into()),
             intent_id: None,
+            delivery_state: MessageDeliveryState::Complete,
         }
     }
 
@@ -93,6 +116,7 @@ impl MessageMetadata {
             estimated_tokens,
             source: Some("system".into()),
             intent_id: None,
+            delivery_state: MessageDeliveryState::Complete,
         }
     }
 
@@ -105,6 +129,28 @@ impl MessageMetadata {
             estimated_tokens,
             source: Some("synthetic".into()),
             intent_id: None,
+            delivery_state: MessageDeliveryState::Complete,
+        }
+    }
+
+    /// Create metadata for a partially delivered LLM response.
+    pub fn incomplete_llm_response(timestamp: u64, estimated_tokens: usize, reason: impl Into<String>) -> Self {
+        Self {
+            delivery_state: MessageDeliveryState::Incomplete { reason: reason.into() },
+            ..Self::llm_response(timestamp, estimated_tokens)
+        }
+    }
+
+    /// Whether the message ended before the provider completed its response.
+    pub fn is_incomplete(&self) -> bool {
+        !self.delivery_state.is_complete()
+    }
+
+    /// Return the recorded reason for an incomplete response.
+    pub fn incomplete_reason(&self) -> Option<&str> {
+        match &self.delivery_state {
+            MessageDeliveryState::Complete => None,
+            MessageDeliveryState::Incomplete { reason } => Some(reason),
         }
     }
 
@@ -278,5 +324,32 @@ mod tests {
         let restored: MessageMetadata =
             serde_json::from_str(legacy).expect("legacy metadata fixture must remain readable");
         assert_eq!(restored.intent_id(), None);
+    }
+
+    #[test]
+    fn incomplete_llm_response_roundtrips_its_delivery_state() {
+        let metadata = MessageMetadata::incomplete_llm_response(2_000, 150, "provider stream disconnected");
+
+        let json = serde_json::to_string(&metadata).unwrap();
+        let restored: MessageMetadata = serde_json::from_str(&json).unwrap();
+
+        assert!(restored.is_incomplete());
+        assert_eq!(restored.incomplete_reason(), Some("provider stream disconnected"));
+    }
+
+    #[test]
+    fn legacy_metadata_without_delivery_state_defaults_to_complete() {
+        let json = r#"{
+            "timestamp": 2000,
+            "importance_score": 0.6,
+            "compression_status": "uncompressed",
+            "estimated_tokens": 150,
+            "source": "llm_response"
+        }"#;
+
+        let restored: MessageMetadata = serde_json::from_str(json).unwrap();
+
+        assert!(!restored.is_incomplete());
+        assert_eq!(restored.incomplete_reason(), None);
     }
 }

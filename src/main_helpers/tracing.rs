@@ -16,7 +16,7 @@ fn maybe_tui_log_layer() -> Option<vtcode_ui::tui::log::TuiLogLayer> {
     }
 }
 
-/// Build the common tracing stack: buffered file writer + TUI layer + error collector.
+/// Build the common tracing stack: line-buffered file writer + TUI layer + error collector.
 ///
 /// Returns `Ok(())` on success, or an error if subscriber init fails.
 fn install_tracing_stack(log_file: &Path, env_filter: tracing_subscriber::EnvFilter) -> Result<()> {
@@ -77,12 +77,12 @@ pub(crate) fn initialize_default_error_tracing() -> Result<()> {
 pub(crate) fn initialize_tracing_from_config(config: &vtcode_core::config::loader::VTCodeConfig) -> Result<()> {
     let debug_cfg = &config.debug;
     let targets = if debug_cfg.trace_targets.is_empty() {
-        "vtcode_core,vtcode".to_string()
+        vec!["vtcode_core", "vtcode"]
     } else {
-        debug_cfg.trace_targets.join(",")
+        debug_cfg.trace_targets.iter().map(String::as_str).collect()
     };
-
-    let filter_str = format!("{}={}", targets, debug_cfg.trace_level.as_str());
+    let targets_display = targets.join(",");
+    let filter_str = trace_filter_directives(&targets, debug_cfg.trace_level.as_str());
 
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&filter_str));
@@ -104,7 +104,7 @@ pub(crate) fn initialize_tracing_from_config(config: &vtcode_core::config::loade
         Ok(()) => {
             tracing::info!(
                 "Debug tracing enabled: targets={}, level={}, log_file={}",
-                targets,
+                targets_display,
                 debug_cfg.trace_level,
                 log_file.display()
             );
@@ -118,4 +118,25 @@ pub(crate) fn initialize_tracing_from_config(config: &vtcode_core::config::loade
     }
 
     Ok(())
+}
+
+fn trace_filter_directives(targets: &[&str], level: &str) -> String {
+    targets
+        .iter()
+        .map(|target| format!("{target}={level}"))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::trace_filter_directives;
+
+    #[test]
+    fn trace_level_applies_to_every_configured_target() {
+        assert_eq!(
+            trace_filter_directives(&["vtcode", "vtcode_core", "vtcode_acp"], "debug"),
+            "vtcode=debug,vtcode_core=debug,vtcode_acp=debug"
+        );
+    }
 }

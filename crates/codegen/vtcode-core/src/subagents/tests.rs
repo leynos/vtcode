@@ -2367,3 +2367,34 @@ async fn wait_returns_first_terminal_child() {
     assert_eq!(result.id, "second");
     assert_eq!(result.status, SubagentStatus::Completed);
 }
+
+#[tokio::test]
+async fn progress_subscribers_receive_child_shutdown_transitions() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller =
+        SubagentController::new(test_controller_config(temp.path().to_path_buf(), VTCodeConfig::default()))
+            .await
+            .expect("controller");
+    let spec = read_only_test_spec("progress-child");
+    let mut progress = controller.subscribe_progress();
+    {
+        let mut state = controller.state.write().await;
+        let _ = state.children.insert(
+            "child-1".to_string(),
+            test_child_record("child-1", "child-1-session", "parent-session", &spec, SubagentStatus::Running, 1, None),
+        );
+    }
+
+    controller.signal_shutdown().await;
+
+    let event = tokio::time::timeout(Duration::from_secs(1), progress.recv())
+        .await
+        .expect("progress event deadline")
+        .expect("progress channel");
+    let SubagentProgressEvent::Subagent { parent_session_id, task: entry } = event else {
+        panic!("expected delegated child progress");
+    };
+    assert_eq!(parent_session_id, "parent-session");
+    assert_eq!(entry.id, "child-1");
+    assert_eq!(entry.status, SubagentStatus::Closed);
+}

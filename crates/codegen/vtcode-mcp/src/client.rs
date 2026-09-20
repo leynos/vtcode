@@ -74,7 +74,8 @@ impl McpClient {
         info!("Initializing MCP client with {} configured providers", self.config.providers.len());
 
         let max_connections = self.config.max_concurrent_connections.max(1);
-        let pool = McpConnectionPool::new(max_connections, self.config.request_timeout_seconds);
+        let pool = McpConnectionPool::new(max_connections, self.config.request_timeout_seconds)
+            .with_startup_timeout(self.startup_timeout());
         let tool_timeout = Some(Duration::from_secs(self.config.request_timeout_seconds));
         let allowlist_snapshot = self.state.read().allowlist.clone();
 

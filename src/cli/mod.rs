@@ -64,7 +64,7 @@ pub async fn dispatch(args: &Cli, startup: &StartupContext, print_mode: Option<S
         && args.command.is_none()
         && let Some(ide_target) = crate::main_helpers::detect_available_ide()?
     {
-        acp::handle_acp_command(core_cfg, cfg, ide_target).await?;
+        acp::handle_acp_command(core_cfg, cfg, ide_target, startup.skip_confirmations).await?;
         return Ok(());
     }
 

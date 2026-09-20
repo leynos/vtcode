@@ -1,6 +1,7 @@
 //! Top-level glue: wire the [`ZedAgent`] into an SACP `AgentToClient`
 //! connection over stdio.
 
+use crate::audit::AcpAuditLogger;
 use crate::register_acp_connection;
 use crate::workspace::{DefaultWorkspaceTrustSynchronizer, WorkspaceTrustSyncOutcome, WorkspaceTrustSynchronizer};
 use crate::zed::agent::ZedAgent;
@@ -14,6 +15,8 @@ use tracing::{error, info, warn};
 use vtcode_config::{SubagentDiscoveryInput, discover_subagents};
 use vtcode_core::config::VTCodeConfig;
 use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
+use vtcode_core::hooks::SessionEndReason;
+use vtcode_core::llm::factory::register_custom_providers;
 use vtcode_core::prompts::system::generate_system_instruction_with_config;
 
 use super::constants::{
@@ -21,7 +24,19 @@ use super::constants::{
 };
 use super::helpers::PrimaryAgentCatalog;
 
-pub async fn run_acp_agent(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig, title: Option<String>) -> Result<()> {
+pub async fn run_acp_agent(
+    config: &CoreAgentConfig,
+    vt_cfg: &VTCodeConfig,
+    title: Option<String>,
+    skip_confirmations: bool,
+) -> Result<()> {
+    register_acp_custom_providers(vt_cfg);
+    let audit_logger = AcpAuditLogger::from_config(&vt_cfg.acp.audit)
+        .await
+        .context("Failed to initialise ACP audit logger")?
+        .map(Arc::new);
+    vtcode_core::utils::session_archive::apply_session_history_config_from_vtcode(vt_cfg);
+
     let zed_config = &vt_cfg.acp.zed;
     let desired_trust_level = zed_config.workspace_trust.to_workspace_trust_level();
     let trust_synchronizer = DefaultWorkspaceTrustSynchronizer::new();
@@ -54,6 +69,9 @@ pub async fn run_acp_agent(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig, titl
     };
     let tools_config = vt_cfg.tools.clone();
     let commands_config = vt_cfg.commands.clone();
+    let custom_providers = vt_cfg.custom_providers.clone();
+    let provider_timeouts = vt_cfg.timeouts.clone();
+    let vt_cfg_clone = vt_cfg.clone();
     let credential_storage_mode = vt_cfg.agent.credential_storage_mode;
     let discovered = discover_subagents(&SubagentDiscoveryInput::new(config.workspace.clone()))
         .context("Failed to discover primary agents for ACP bridge")?;
@@ -69,16 +87,21 @@ pub async fn run_acp_agent(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig, titl
         .run_until(Box::pin(async move {
             let tools_config_clone = tools_config.clone();
             let commands_config_clone = commands_config.clone();
-            let agent = ZedAgent::new(
+            let agent = Box::pin(ZedAgent::new(
                 config_clone,
                 credential_storage_mode,
                 zed_config_clone,
                 tools_config_clone,
                 commands_config_clone,
+                &custom_providers,
+                provider_timeouts,
                 system_prompt,
                 title_clone,
                 primary_agents,
-            )
+                skip_confirmations,
+                Some(&vt_cfg_clone),
+                audit_logger.clone(),
+            ))
             .await;
             let agent: Arc<ZedAgent> = Arc::new(agent);
 
@@ -92,7 +115,7 @@ pub async fn run_acp_agent(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig, titl
             // lives for the entire connection lifetime (and is cancelled
             // automatically when the connection closes).
             let attach_agent = Arc::clone(&agent);
-            builder
+            let connection_result = builder
                 .connect_with(Stdio::new(), async move |cx: ConnectionTo<Client>| {
                     let handle = ConnectionHandle::new(cx);
                     if let Err(existing) = register_acp_connection(Arc::clone(&handle)) {
@@ -105,7 +128,22 @@ pub async fn run_acp_agent(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig, titl
                     Ok(())
                 })
                 .await
-                .map_err(|error| anyhow::anyhow!("ACP stdio connection failed: {error}"))?;
+                .map_err(|error| anyhow::anyhow!("ACP stdio connection failed: {error}"));
+
+            let end_reason = if connection_result.is_ok() {
+                SessionEndReason::Exit
+            } else {
+                SessionEndReason::Error
+            };
+            let end_result =
+                tokio::time::timeout(std::time::Duration::from_secs(3), agent.run_session_end_hooks(end_reason))
+                    .await
+                    .map_err(|timeout_error| {
+                        anyhow::anyhow!("ACP SessionEnd hooks exceeded shutdown timeout: {timeout_error}")
+                    });
+
+            connection_result?;
+            end_result?;
 
             Ok::<(), anyhow::Error>(())
         }))
@@ -116,4 +154,51 @@ pub async fn run_acp_agent(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig, titl
         return Err(error);
     }
     Ok(())
+}
+
+fn register_acp_custom_providers(vt_cfg: &VTCodeConfig) {
+    register_custom_providers(&vt_cfg.custom_providers);
+}
+
+#[cfg(test)]
+mod tests {
+    use vtcode_config::core::CustomProviderConfig;
+    use vtcode_core::llm::factory::{ProviderConfig, create_provider_with_config};
+
+    use super::*;
+
+    #[test]
+    fn acp_launch_registers_runtime_custom_providers() {
+        let mut vt_cfg = VTCodeConfig::default();
+        vt_cfg.custom_providers.push(CustomProviderConfig {
+            name: "acp-test-provider".to_string(),
+            display_name: "ACP Test Provider".to_string(),
+            base_url: "https://example.invalid/v1".to_string(),
+            api_key_env: "ACP_TEST_API_KEY".to_string(),
+            model: "test-model".to_string(),
+            ..CustomProviderConfig::default()
+        });
+
+        register_acp_custom_providers(&vt_cfg);
+
+        let _provider = create_provider_with_config(
+            "acp-test-provider",
+            ProviderConfig {
+                api_key: Some("dummy-key".to_string()),
+                openai_chatgpt_auth: None,
+                copilot_auth: None,
+                base_url: None,
+                model: Some("test-model".to_string()),
+                prompt_cache: None,
+                timeouts: None,
+                openai: None,
+                anthropic: None,
+                model_behavior: None,
+                workspace_root: None,
+            },
+        )
+        .expect("ACP launch must register custom providers from runtime config");
+
+        register_custom_providers(&[]);
+    }
 }

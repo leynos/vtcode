@@ -176,6 +176,60 @@ async fn test_partial_provider_failures_still_keep_healthy_provider() {
     );
 }
 
+#[tokio::test]
+async fn test_global_startup_deadline_keeps_healthy_provider_when_peer_stalls() {
+    if !is_python_available().await {
+        eprintln!("python3 not available, skipping stalled provider startup test");
+        return;
+    }
+
+    let script_path = mock_mcp_server_path();
+    let stalled_script_path = stalled_mcp_server_path();
+    if !script_path.exists() || !stalled_script_path.exists() {
+        eprintln!("mock MCP server fixtures unavailable, skipping stalled provider startup test");
+        return;
+    }
+
+    let provider = |name: &str, script: &std::path::Path| McpProviderConfig {
+        name: name.to_string(),
+        transport: McpTransportConfig::Stdio(McpStdioServerConfig {
+            command: "python3".to_string(),
+            args: vec![script.to_string_lossy().to_string()],
+            working_directory: None,
+        }),
+        env: HashMap::new(),
+        enabled: true,
+        max_concurrent_requests: 1,
+        startup_timeout_ms: None,
+    };
+    let config = vtcode_config::mcp::McpClientConfig {
+        enabled: true,
+        providers: vec![
+            provider("mock", &script_path),
+            provider("stalled", &stalled_script_path),
+        ],
+        startup_timeout_seconds: Some(1),
+        tool_timeout_seconds: Some(2),
+        ..Default::default()
+    };
+
+    let mut client = McpClient::new(config);
+    tokio::time::timeout(std::time::Duration::from_secs(5), client.initialize())
+        .await
+        .expect("global provider startup deadline should bound initialization")
+        .expect("partial provider initialization should succeed");
+
+    let status = client.get_status();
+    assert_eq!(status.configured_providers, vec!["mock".to_string()]);
+    assert_eq!(status.active_connections, 1);
+    let tools = client
+        .list_tools()
+        .await
+        .expect("healthy provider tools should remain registered");
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0].name, "echo");
+}
+
 async fn is_python_available() -> bool {
     match Command::new("python3").arg("--version").output().await {
         Ok(output) => output.status.success(),
@@ -188,4 +242,11 @@ fn mock_mcp_server_path() -> PathBuf {
         .join("tests")
         .join("fixtures")
         .join("mock_mcp_server.py")
+}
+
+fn stalled_mcp_server_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("stalled_mcp_server.py")
 }
