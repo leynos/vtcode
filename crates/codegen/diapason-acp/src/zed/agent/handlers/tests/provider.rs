@@ -296,6 +296,61 @@ fn provider_error_telemetry_preserves_allowlisted_codes() {
             assert_eq!(telemetry.code, Some(*code), "{code} must be recognised");
         }
     }
+use diapason_core::telemetry::TelemetryEvent;
+use diapason_core::telemetry::perf::TestPerfRecorder;
+struct RetryMetricWitness<'a> {
+    expected_names: &'a [&'a str],
+    forbidden_marker: &'a str,
+    forbid_marker_in_tag_keys: bool,
+    mode: &'a str,
+    provider_class: &'a str,
+    error_category: &'a str,
+    retry_disposition: &'a str,
+}
+
+impl<'a> RetryMetricWitness<'a> {
+    fn assert_events(&self, events: &[TelemetryEvent]) {
+        let names = events.iter().map(|event| event.name.as_str()).collect::<Vec<_>>();
+        assert_eq!(names.as_slice(), self.expected_names);
+        assert!(events.iter().all(|event| {
+            event.tags.iter().all(|(key, value)| {
+                (!self.forbid_marker_in_tag_keys || !key.contains(self.forbidden_marker))
+                    && !value.contains(self.forbidden_marker)
+            })
+        }));
+        assert_eq!(events[0].tags.get("mode").map(String::as_str), Some(self.mode));
+        assert_eq!(events[0].tags.get("provider_class").map(String::as_str), Some(self.provider_class));
+        assert_eq!(events[1].tags.get("error_category").map(String::as_str), Some(self.error_category));
+        assert_eq!(events[1].tags.get("retry_disposition").map(String::as_str), Some(self.retry_disposition));
+    }
+}
+
+/// Assert every allowlisted code survives unchanged.
+#[test]
+fn provider_error_telemetry_preserves_allowlisted_codes() {
+    for code in KNOWN_ERROR_CODES {
+        let error = LLMError::Network {
+            message: "request failed".to_string(),
+            metadata: Some(LLMErrorMetadata::new(
+                "Arli AI",
+                Some(503),
+                Some((*code).to_string()),
+                None,
+                None,
+                None,
+                None,
+            )),
+        };
+
+        let telemetry = provider_error_telemetry(&error);
+        if code.starts_with("acp_timeout_") {
+            assert!(telemetry.timeout_phase.is_some(), "{code} must be reported as its timeout phase");
+            assert_eq!(telemetry.code, None, "a timeout code must not also be reported as a code");
+        } else {
+            assert_eq!(telemetry.code, Some(*code), "{code} must be recognised");
+        }
+    }
+
 
 struct RetryingStreamProvider {
     calls: Arc<AtomicUsize>,
@@ -360,7 +415,7 @@ async fn buffered_retry_records_bounded_perf_metrics() {
         &provider,
         LLMRequest::default(),
         &retry_runtime(),
-        &SessionCancellation::default(),
+        &super::super::super::types::SessionCancellation::default(),
         None,
         &SystemTime::now,
         &metric_sink,
@@ -370,26 +425,22 @@ async fn buffered_retry_records_bounded_perf_metrics() {
 
     assert_eq!(response.content.as_deref(), Some("recovered"));
     let events = recorder.drain().await;
-    let names = events.iter().map(|event| event.name.as_str()).collect::<Vec<_>>();
-    assert_eq!(
-        names,
-        vec![
+    RetryMetricWitness {
+        expected_names: &[
             "diapason.acp.provider_attempt_total",
             "diapason.acp.provider_retry_total",
             "diapason.acp.provider_retry_delay_ms",
             "diapason.acp.provider_attempt_total",
             "diapason.acp.provider_generation_ms",
-        ]
-    );
-    assert!(
-        events
-            .iter()
-            .all(|event| event.tags.values().all(|value| value != "retry-test"))
-    );
-    assert_eq!(events[0].tags.get("mode").map(String::as_str), Some("buffered"));
-    assert_eq!(events[0].tags.get("provider_class").map(String::as_str), Some("custom"));
-    assert_eq!(events[1].tags.get("error_category").map(String::as_str), Some("Network error"));
-    assert_eq!(events[1].tags.get("retry_disposition").map(String::as_str), Some("retry_scheduled"));
+        ],
+        forbidden_marker: "retry-test",
+        forbid_marker_in_tag_keys: false,
+        mode: "buffered",
+        provider_class: "custom",
+        error_category: "Network error",
+        retry_disposition: "retry_scheduled",
+    }
+    .assert_events(&events);
     assert!(recorder.drain().await.is_empty());
 }
 
@@ -426,10 +477,8 @@ async fn streaming_retry_records_bounded_perf_metrics() {
     assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
     assert_eq!(calls.load(Ordering::SeqCst), 2);
     let events = recorder.drain().await;
-    let names = events.iter().map(|event| event.name.as_str()).collect::<Vec<_>>();
-    assert_eq!(
-        names,
-        vec![
+    RetryMetricWitness {
+        expected_names: &[
             "diapason.acp.provider_attempt_total",
             "diapason.acp.provider_rate_limited_total",
             "diapason.acp.provider_retry_total",
@@ -437,19 +486,15 @@ async fn streaming_retry_records_bounded_perf_metrics() {
             "diapason.acp.rate_limit_notification_failure_total",
             "diapason.acp.provider_attempt_total",
             "diapason.acp.provider_generation_ms",
-        ]
-    );
-    let marker = "provider-marker";
-    assert!(events.iter().all(|event| {
-        event
-            .tags
-            .iter()
-            .all(|(key, value)| !key.contains(marker) && !value.contains(marker))
-    }));
-    assert_eq!(events[0].tags.get("mode").map(String::as_str), Some("stream"));
-    assert_eq!(events[0].tags.get("provider_class").map(String::as_str), Some("unknown"));
-    assert_eq!(events[1].tags.get("error_category").map(String::as_str), Some("Rate limit exceeded"));
-    assert_eq!(events[1].tags.get("retry_disposition").map(String::as_str), Some("retry_scheduled"));
+        ],
+        forbidden_marker: "provider-marker",
+        forbid_marker_in_tag_keys: true,
+        mode: "stream",
+        provider_class: "unknown",
+        error_category: "Rate limit exceeded",
+        retry_disposition: "retry_scheduled",
+    }
+    .assert_events(&events);
     assert!(recorder.drain().await.is_empty());
 }
 

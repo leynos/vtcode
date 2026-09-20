@@ -197,3 +197,15 @@ would be a breaking change for downstream implementers.
   consumers, and bounded rate-limit notice-failure recording. The source is
   frozen pending manifest review and exclusive serial validation; no gate
   result is claimed here.
+- CodeScene review repair keeps the inherited
+  `run_prompt_with_retry_observer` identity for the existing high-complexity
+  prompt loop. Its reported complexity remains an additive telemetry delta,
+  not a claim that a broad loop extraction fixed it. A request-local sink is
+  now an explicit fourth argument; the existing fixed-observation contract
+  test supplies the same process sink that the former three-argument helper
+  used by default.
+- The telemetry repair groups failed attempts and rate-limit notifications
+  into private named inputs, and records the closed six-event vocabulary via a
+  single observation path. The buffered and streaming tests keep named metric
+  witnesses for event order, bounded tags, privacy markers, and retry context.
+  Exclusive serial validation remains required after this repair.

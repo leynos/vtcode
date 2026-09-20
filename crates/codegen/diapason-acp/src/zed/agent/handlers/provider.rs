@@ -262,6 +262,14 @@ pub(super) struct GenerationTelemetry {
     finished: bool,
 }
 
+struct GenerationFailure<'a> {
+    runtime: &'a ProviderRequestRuntime,
+    retry_count: u32,
+    retry_disposition: RetryDisposition,
+    retry_delay: Option<Duration>,
+    error: &'a LLMError,
+}
+
 impl StreamDeadlineTracker {
     /// Create deadline state from a policy and start instant.
     pub(super) fn new(policy: ProviderDeadlinePolicy, started_at: Instant) -> Self {
@@ -383,7 +391,13 @@ pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
                     .retryable
                     .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
                 telemetry
-                    .failed(runtime, attempt_index, retry_disposition(&decision), retry_delay, &error)
+                    .failed(GenerationFailure {
+                        runtime,
+                        retry_count: attempt_index,
+                        retry_disposition: retry_disposition(&decision),
+                        retry_delay,
+                        error: &error,
+                    })
                     .await;
                 drop(permit);
                 if let Some(sink) = failure_sink {

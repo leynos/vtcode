@@ -10,10 +10,21 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::{Instrument, field, info_span};
 
 use super::ZedAgent;
-use super::provider_telemetry::ProviderMetricSink;
+use super::provider_telemetry::{ProviderMetricContext, ProviderMetricObservation, ProviderMetricSink};
 use super::redaction::{elapsed_millis, log_notice_publish_failure, session_correlation};
 use crate::zed::provider_runtime::ProviderClass;
 use diapason_commons::ErrorCategory;
+
+/// Request-local inputs for a bounded ACP rate-limit notification.
+pub(super) struct RateLimitNotice<'a> {
+    pub(super) session_id: &'a acp::SessionId,
+    pub(super) provider: &'a str,
+    pub(super) error: &'a LLMError,
+    pub(super) retry_delay: Option<Duration>,
+    pub(super) observed_at: SystemTime,
+    pub(super) metric_sink: &'a ProviderMetricSink,
+    pub(super) provider_class: ProviderClass,
+}
 
 impl ZedAgent {
     /// Publish a warning notice when `error` reports a provider rate limit.
@@ -30,16 +41,8 @@ impl ZedAgent {
     ) {
         // An error that reports no rate limit publishes nothing, so it is not
         // an attempt and must not move the failure ratio.
-        self.publish_rate_limit_notice_at_with_metric_sink(
-            session_id,
-            provider,
-            error,
-            retry_delay,
-            SystemTime::now(),
-            &ProviderMetricSink::production(),
-            ProviderClass::Unknown,
-        )
-        .await;
+        self.publish_rate_limit_notice_at(session_id, provider, error, retry_delay, SystemTime::now())
+            .await;
     }
 
     pub(super) async fn publish_rate_limit_notice_at(
@@ -50,28 +53,28 @@ impl ZedAgent {
         retry_delay: Option<Duration>,
         observed_at: SystemTime,
     ) {
-        self.publish_rate_limit_notice_at_with_metric_sink(
+        self.publish_rate_limit_notice_with_context(RateLimitNotice {
             session_id,
             provider,
             error,
             retry_delay,
             observed_at,
-            &ProviderMetricSink::production(),
-            ProviderClass::Unknown,
-        )
+            metric_sink: &ProviderMetricSink::production(),
+            provider_class: ProviderClass::Unknown,
+        })
         .await;
     }
 
-    pub(super) async fn publish_rate_limit_notice_at_with_metric_sink(
-        &self,
-        session_id: &acp::SessionId,
-        provider: &str,
-        error: &LLMError,
-        retry_delay: Option<Duration>,
-        observed_at: SystemTime,
-        metric_sink: &ProviderMetricSink,
-        provider_class: ProviderClass,
-    ) {
+    pub(super) async fn publish_rate_limit_notice_with_context(&self, notice: RateLimitNotice<'_>) {
+        let RateLimitNotice {
+            session_id,
+            provider,
+            error,
+            retry_delay,
+            observed_at,
+            metric_sink,
+            provider_class,
+        } = notice;
         let observed_epoch_seconds = observed_at.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
         if let Some(limits) = rate_limit_metadata(error)
             .flatten()
@@ -102,7 +105,9 @@ impl ZedAgent {
             self.notice_recorder.record(sent);
             if let Err(error) = &result {
                 metric_sink
-                    .record_rate_limit_notification_failure(provider_class, ErrorCategory::ExecutionError)
+                    .record(ProviderMetricObservation::RateLimitNotificationFailure(
+                        ProviderMetricContext::rate_limit_notification_failure(provider_class),
+                    ))
                     .await;
                 // The transport error and the raw session id are both
                 // operator-sensitive, so only fixed fields and a bounded
