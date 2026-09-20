@@ -6,56 +6,38 @@
 //! fallback on macOS), this returns a real value on every supported platform.
 use std::time::Duration;
 
+use num_traits::ToPrimitive;
+
 /// Returns the current process Resident Set Size in **megabytes**, or `None` if
 /// it cannot be determined on the current platform.
 #[cfg(target_os = "macos")]
 #[expect(
-    clippy::cast_possible_truncation,
-    reason = "The macOS Mach message count is defined as the platform ABI's bounded integer type."
+    clippy::float_arithmetic,
+    reason = "RSS bytes are converted to the existing megabyte f64 API."
 )]
-#[allow(
-    deprecated,
-    unsafe_code,
-    unused_qualifications,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)] // libc::mach_task_self is deprecated; qualification is required here
 fn resident_set_size_mb() -> Option<f64> {
-    // SAFETY: `mach_task_basic_info` is a plain old data struct; zeroing it
-    // produces a valid (all-zero) starting value before `task_info` fills it.
-    let mut info: libc::mach_task_basic_info = unsafe { std::mem::zeroed() };
-    let mut count = (std::mem::size_of::<libc::mach_task_basic_info>() / std::mem::size_of::<libc::integer_t>())
-        as libc::mach_msg_type_number_t;
-    // SAFETY: `mach_task_self()` returns a send-right to the current task with
-    // no preconditions; it cannot fail to produce a valid port name.
-    let task = unsafe { libc::mach_task_self() };
-    // SAFETY: `task` is our own task port; `info` and `count` are valid
-    // out-pointers of the expected size, and `task_info` only writes them on
-    // success.
-    let ret = unsafe {
-        libc::task_info(task, libc::MACH_TASK_BASIC_INFO, &mut info as *mut _ as *mut libc::integer_t, &mut count)
-    };
-    if ret != libc::KERN_SUCCESS {
-        return None;
-    }
-    Some(info.resident_size as f64 / (1024.0 * 1024.0))
+    let pid = sysinfo::get_current_pid().ok()?;
+    let mut system = sysinfo::System::new();
+    system.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::Some(&[pid]),
+        true,
+        sysinfo::ProcessRefreshKind::nothing().with_memory(),
+    );
+    let bytes = system.process(pid)?.memory().to_f64()?;
+    Some(bytes / (1024.0 * 1024.0))
 }
 
 /// Returns the current process Resident Set Size in **megabytes**, or `None` if
 /// it cannot be determined on the current platform.
 #[cfg(target_os = "linux")]
-#[allow(
-    unsafe_code,
-    reason = "Intentional compatibility, platform, or test-only suppression."
+#[expect(
+    clippy::float_arithmetic,
+    reason = "RSS is reported in megabytes by converting the kernel's page value."
 )]
 pub fn resident_set_size_mb() -> Option<f64> {
     let contents = std::fs::read_to_string("/proc/self/statm").ok()?;
-    let field = contents.split_whitespace().nth(1)?;
-    let pages: f64 = field.parse().ok()?;
-    // SAFETY: `_SC_PAGESIZE` is a compile-time constant selector passed by value.
-    // `sysconf` only reads the selector and returns a `c_long`; it performs no
-    // mutable aliasing against process memory and has no preconditions on this
-    // input. The result is a stable system constant for the process lifetime.
-    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as f64;
+    let pages = contents.split_whitespace().nth(1)?.parse::<f64>().ok()?;
+    let page_size = page_size::get().to_f64()?;
     Some(pages * page_size / (1024.0 * 1024.0))
 }
 

@@ -1,8 +1,3 @@
-#![expect(
-    clippy::cast_possible_truncation,
-    reason = "Progress percentages are clamped to the documented byte-sized display range."
-)]
-
 //! Pure data types with no dependencies beyond `std`.
 
 /// Message kind tag for inline transcript lines.

@@ -1,8 +1,3 @@
-#![expect(
-    clippy::cast_possible_truncation,
-    reason = "The 256-colour conversion clamps channel values to the palette range before narrowing."
-)]
-
 //! Theme-aware 256-colour helpers.
 //!
 //! The terminal 256-colour palette can be "non-harmonious" on light themes when
@@ -58,22 +53,18 @@ fn gray_index(level: u8) -> u8 {
 }
 
 /// Reflected cube index (maps `r,g,b` in `0..=5` onto `16..=231`).
-#[allow(
-    clippy::cast_sign_loss,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
 fn cube_index(r: u8, g: u8, b: u8) -> u8 {
     let r = r.min(5);
     let g = g.min(5);
     let b = b.min(5);
 
-    let max = r.max(g).max(b) as i16;
-    let min = r.min(g).min(b) as i16;
+    let max = i16::from(r.max(g).max(b));
+    let min = i16::from(r.min(g).min(b));
     let offset = 5 - max - min;
 
-    let r = ((r as i16 + offset).clamp(0, 5)) as u8;
-    let g = ((g as i16 + offset).clamp(0, 5)) as u8;
-    let b = ((b as i16 + offset).clamp(0, 5)) as u8;
+    let r = u8::try_from((i16::from(r) + offset).clamp(0, 5)).unwrap_or_default();
+    let g = u8::try_from((i16::from(g) + offset).clamp(0, 5)).unwrap_or_default();
+    let b = u8::try_from((i16::from(b) + offset).clamp(0, 5)).unwrap_or_default();
 
     16 + 36 * r + 6 * g + b
 }
@@ -114,12 +105,12 @@ pub fn rgb_to_ansi256_for_theme(r: u8, g: u8, b: u8, is_light_theme: bool) -> u8
         } else if r > 248 {
             231
         } else {
-            ((r as u16 - 8) / 10) as u8 + 232
+            u8::try_from((u16::from(r) - 8) / 10).unwrap_or(u8::MAX).saturating_add(232)
         }
     } else {
-        let r_index = ((r as u16 * 5) / 255) as u8;
-        let g_index = ((g as u16 * 5) / 255) as u8;
-        let b_index = ((b as u16 * 5) / 255) as u8;
+        let r_index = u8::try_from((u16::from(r) * 5) / 255).unwrap_or(u8::MAX);
+        let g_index = u8::try_from((u16::from(g) * 5) / 255).unwrap_or(u8::MAX);
+        let b_index = u8::try_from((u16::from(b) * 5) / 255).unwrap_or(u8::MAX);
         16 + 36 * r_index + 6 * g_index + b_index
     };
 

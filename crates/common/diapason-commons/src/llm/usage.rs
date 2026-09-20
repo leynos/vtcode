@@ -73,8 +73,8 @@ impl Usage {
         if !self.has_any_cache_metrics() {
             return None;
         }
-        let read = self.cache_read_tokens_or_fallback() as f64;
-        let creation = self.cache_creation_tokens_or_zero() as f64;
+        let read = f64::from(self.cache_read_tokens_or_fallback());
+        let creation = f64::from(self.cache_creation_tokens_or_zero());
         let total = read + creation;
         if total > 0.0 {
             Some((read / total) * 100.0)
@@ -110,8 +110,8 @@ impl Usage {
         if !self.has_cache_read_metric() {
             return None;
         }
-        let read = self.cache_read_tokens_or_fallback() as f64;
-        let prompt = self.prompt_tokens as f64;
+        let read = f64::from(self.cache_read_tokens_or_fallback());
+        let prompt = f64::from(self.prompt_tokens);
         if prompt > 0.0 { Some(read / prompt) } else { None }
     }
 }

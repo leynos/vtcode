@@ -22,11 +22,11 @@ pub fn read_file_with_context_sync(path: &Path, context: &str) -> Result<String>
 }
 
 /// Write a file with contextual error message (sync)
-pub fn write_file_with_context_sync(path: &Path, content: &str, context: &str) -> Result<()> {
+pub fn write_file_with_context_sync(path: &Path, payload: &str, context: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         ensure_dir_exists_sync(parent)?;
     }
-    std::fs::write(path, content).with_context(|| format!("Failed to write {}: {}", context, path.display()))
+    std::fs::write(path, payload).with_context(|| format!("Failed to write {}: {}", context, path.display()))
 }
 
 /// Write a JSON file (sync)
@@ -56,7 +56,10 @@ pub fn is_image_path(path: &Path) -> bool {
 /// Check whether a string is a Windows absolute path (e.g., `C:\...` or `C:/...`).
 pub fn is_windows_absolute_path(path: &str) -> bool {
     let bytes = path.as_bytes();
-    bytes.len() > 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && (bytes[2] == b'\\' || bytes[2] == b'/')
+    bytes.len() > 2
+        && bytes.first().is_some_and(u8::is_ascii_alphabetic)
+        && bytes.get(1) == Some(&b':')
+        && matches!(bytes.get(2), Some(b'\\' | b'/'))
 }
 
 /// Remove backslash-escaped whitespace from a token.
@@ -98,7 +101,7 @@ where
     }
     let mut candidate = raw.trim_end();
     while let Some(last_space) = candidate.rfind(' ') {
-        candidate = &candidate[..last_space];
+        candidate = candidate.get(..last_space).unwrap_or_default();
         if candidate_check(candidate) {
             return candidate;
         }

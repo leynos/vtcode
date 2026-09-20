@@ -13,20 +13,22 @@ use regex::Regex;
 use std::sync::LazyLock;
 
 /// OpenAI API key pattern: sk- followed by alphanumeric characters
-static OPENAI_KEY_REGEX: LazyLock<Regex> = LazyLock::new(|| compile_regex(r"sk-[A-Za-z0-9_-]{16,}"));
+static OPENAI_KEY_REGEX: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"sk-[A-Za-z0-9_-]{16,}").ok());
 
 /// AWS Access Key ID pattern: AKIA followed by 16 alphanumeric characters
-static AWS_ACCESS_KEY_ID_REGEX: LazyLock<Regex> = LazyLock::new(|| compile_regex(r"\bAKIA[0-9A-Z]{16}\b"));
+static AWS_ACCESS_KEY_ID_REGEX: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"\bAKIA[0-9A-Z]{16}\b").ok());
 
 /// Bearer token pattern: "Bearer " followed by token characters
-static BEARER_TOKEN_REGEX: LazyLock<Regex> = LazyLock::new(|| compile_regex(r"(?i)\bBearer\s+[A-Za-z0-9.\-_]{16,}\b"));
+static BEARER_TOKEN_REGEX: LazyLock<Option<Regex>> =
+    LazyLock::new(|| Regex::new(r"(?i)\bBearer\s+[A-Za-z0-9.\-_]{16,}\b").ok());
 
 /// Generic secret assignment pattern: key=value or key: value format
 /// Matches common secret key names like api_key, token, secret, password
-static SECRET_ASSIGNMENT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    compile_regex(
+static SECRET_ASSIGNMENT_REGEX: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    Regex::new(
         r#"(?i)\b((?:[a-z0-9][a-z0-9_-]*?)?(?:api[\-_]?key|access[\-_]?key|client[\-_]?secret|credential|private[\-_]?key|token|secret|password|auth)[a-z0-9_-]*)\b(\s*[:=]\s*)(["']?)[^\s"']{8,}"#,
     )
+    .ok()
 });
 
 /// Maximum serialized size of a provider diagnostic after redaction.
@@ -48,10 +50,18 @@ const PROVIDER_DIAGNOSTIC_TRUNCATION_MARKER: &str = "… [diagnostic truncated]"
 /// assert_eq!(output, "Found key: [REDACTED_SECRET]");
 /// ```
 pub fn redact_secrets(input: String) -> String {
-    let r1 = OPENAI_KEY_REGEX.replace_all(&input, "[REDACTED_SECRET]");
-    let r2 = AWS_ACCESS_KEY_ID_REGEX.replace_all(&r1, "[REDACTED_SECRET]");
-    let r3 = BEARER_TOKEN_REGEX.replace_all(&r2, "Bearer [REDACTED_SECRET]");
-    let r4 = SECRET_ASSIGNMENT_REGEX.replace_all(&r3, "$1$2$3[REDACTED_SECRET]");
+    let r1 = OPENAI_KEY_REGEX
+        .as_ref()
+        .map_or_else(|| input.clone().into(), |regex| regex.replace_all(&input, "[REDACTED_SECRET]"));
+    let r2 = AWS_ACCESS_KEY_ID_REGEX
+        .as_ref()
+        .map_or_else(|| r1.clone().into(), |regex| regex.replace_all(&r1, "[REDACTED_SECRET]"));
+    let r3 = BEARER_TOKEN_REGEX
+        .as_ref()
+        .map_or_else(|| r2.clone().into(), |regex| regex.replace_all(&r2, "Bearer [REDACTED_SECRET]"));
+    let r4 = SECRET_ASSIGNMENT_REGEX
+        .as_ref()
+        .map_or_else(|| r3.clone().into(), |regex| regex.replace_all(&r3, "$1$2$3[REDACTED_SECRET]"));
     // `into_owned` clones only when the final result is `Borrowed` (no regex
     // matched at all); when any redaction occurred it moves the owned string
     // without an extra allocation. Do NOT short-circuit on `Cow::Borrowed` —
@@ -113,18 +123,6 @@ impl StreamingSecretRedactor {
     /// Redact and return the final carried suffix.
     pub fn finish(self) -> String {
         redact_secrets(self.pending)
-    }
-}
-
-#[allow(
-    clippy::panic,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
-fn compile_regex(pattern: &str) -> Regex {
-    match Regex::new(pattern) {
-        Ok(regex) => regex,
-        // Panic is acceptable thanks to the `load_regex` test
-        Err(err) => panic!("invalid regex pattern `{pattern}`: {err}"),
     }
 }
 

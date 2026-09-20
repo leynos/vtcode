@@ -56,7 +56,7 @@ fn classify_llm_metadata(metadata: Option<&crate::llm::LLMErrorMetadata>, fallba
         hint.push(' ');
     }
     if let Some(status) = metadata.status {
-        let _ = write!(&mut hint, "{status}");
+        let _write_result = write!(&mut hint, "{status}");
     }
 
     let classified = classify_error_message(&hint);
