@@ -48,6 +48,7 @@ fn write_capture(directory: &Path, case: ProbeCase, response: &CapturedResponse,
             "status": response.status,
             "safe_headers": &response.safe_headers,
             "usage": reported_usage(response),
+            "capture_truncated": response.capture_truncated,
             "transport_error": &response.transport_error,
         }))?,
     )?;
