@@ -58,7 +58,9 @@ hot SSE fields borrowed and update the wire fields and mapping together when
 adding events.
 
 - Custom provider profiles match exact model IDs; explicit API formats select
-  the wire backend without protocol fallback.
+  the wire backend without protocol fallback. Responses decoders share lifecycle
+  reconciliation and checked usage; partial tool input is progress, never
+  executable completion. See [hardening contracts](../../../docs/development/responses-hardening.md).
 - Provider tool formatters return `Result<Option<Value>, LLMError>`; never hide
   serialization failures. Flattened provider extension maps must reject
   collisions with reserved wire fields before serialization.
