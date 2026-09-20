@@ -42,6 +42,8 @@ Last reviewed: 2026-08-28
   rule grammar.
 - [Provider Guides](providers/PROVIDER_GUIDES.md) - LLM provider setup and
   behavior.
+- [Provider Rate Limits](user-guide/provider-rate-limits.md) - Configure
+  response-header mappings and understand retry and ACP rate-limit updates.
 - [Security Model](security/SECURITY_MODEL.md) - Security architecture.
 - [Process Hardening](development/PROCESS_HARDENING.md) - Runtime hardening
   controls.
