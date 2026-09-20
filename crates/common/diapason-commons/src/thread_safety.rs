@@ -1,8 +1,3 @@
-#![expect(
-    clippy::let_underscore_must_use,
-    reason = "The one-time thread ID registration is intentionally best effort during initialization."
-)]
-
 //! # Thread Safety Primitives
 //!
 //! Based on "Formal methods for the unsafe side of the Force" (Antithesis, 2026).
@@ -304,7 +299,7 @@ static MAIN_THREAD_ID: OnceLock<ThreadId> = OnceLock::new();
 /// Should be invoked once, early in `main`, before spawning any worker threads
 /// that may try to obtain a [`MainThreadToken`]. Subsequent calls have no effect.
 fn designate_main_thread() {
-    let _ = MAIN_THREAD_ID.set(thread::current().id());
+    let _registration_result = MAIN_THREAD_ID.set(thread::current().id());
 }
 
 /// Returns the `ThreadId` previously designated as the main thread, if any.

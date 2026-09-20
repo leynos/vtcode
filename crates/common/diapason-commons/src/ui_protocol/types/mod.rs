@@ -1,3 +1,4 @@
+// refused_by: merge_ladder_exhausted · collision: `#![expect(` +4 more
 //! Data types shared by the UI protocol.
 //!
 //! Several types derive `serde` support and, when the `schema` feature is
@@ -148,3 +149,4 @@ pub enum WizardModalMode {
 mod plan;
 
 pub use plan::{PlanContent, PlanPhase, PlanStep};
+// weave: run 'weave explain crates/common/diapason-commons/src/ui_protocol/types/mod.rs' for per-hunk detail, 'weave check' to verify your resolution

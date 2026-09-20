@@ -213,10 +213,11 @@ impl MessageMetadata {
 }
 
 /// Tracks the compression state of a single message in conversation history.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CompressionStatus {
     /// Message is in its original uncompressed form.
+    #[default]
     Uncompressed,
     /// Message has been compressed with token-level preservation of information.
     Compressed {
@@ -231,16 +232,6 @@ pub enum CompressionStatus {
     /// Message has been dropped from the active context but may be in long-term
     /// memory.
     Dropped,
-}
-
-#[allow(
-    clippy::derivable_impls,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
-impl Default for CompressionStatus {
-    fn default() -> Self {
-        Self::Uncompressed
-    }
 }
 
 #[cfg(test)]

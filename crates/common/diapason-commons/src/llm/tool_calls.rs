@@ -126,14 +126,30 @@ impl ToolCall {
         }
 
         match self.call_type.as_str() {
-            "function" => self.validate_function(),
-            // For custom tools, we allow raw text payload without JSON validation
-            "custom" => self.validate_named_function(
-                "Custom tool call missing function details",
-                "Custom tool name cannot be empty",
-            ),
-            _ => Err(format!("Unsupported tool call type: {}", self.call_type)),
+            "function" => {
+                let Some(func) = &self.function else {
+                    return Err("Function tool call missing function details".to_owned());
+                };
+                if func.name.is_empty() {
+                    return Err("Function name cannot be empty".to_owned());
+                }
+                // Validate that arguments is valid JSON for function tools
+                self.parsed_arguments()
+                    .map_err(|error| format!("Invalid JSON in function arguments: {error}"))?;
+            }
+            "custom" => {
+                // For custom tools, we allow raw text payload without JSON validation
+                let Some(func) = &self.function else {
+                    return Err("Custom tool call missing function details".to_owned());
+                };
+                if func.name.is_empty() {
+                    return Err("Custom tool name cannot be empty".to_owned());
+                }
+            }
+            _ => return Err(format!("Unsupported tool call type: {}", self.call_type)),
         }
+
+        Ok(())
     }
 
     /// Validates that function details are present and carry a non-empty name.
@@ -210,8 +226,8 @@ fn extract_balanced_json(input: &str) -> Option<&str> {
 
         match ch {
             '"' => in_string = true,
-            _ if ch as u32 == opening as u32 => depth += 1,
-            _ if ch as u32 == closing as u32 => {
+            _ if u32::from(ch) == u32::from(opening) => depth += 1,
+            _ if u32::from(ch) == u32::from(closing) => {
                 depth = depth.saturating_sub(1);
                 if depth == 0 {
                     let end = start + offset + ch.len_utf8();
@@ -301,3 +317,4 @@ fn close_incomplete_json_prefix(prefix: &str) -> Option<String> {
 
     Some(repaired)
 }
+// weave: run 'weave explain crates/common/diapason-commons/src/llm/tool_calls.rs' for per-hunk detail, 'weave check' to verify your resolution

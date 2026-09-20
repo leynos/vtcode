@@ -1,8 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    reason = "Image signatures are checked for minimum length before fixed-format byte access."
-)]
-
 //! Image processing utilities
 
 use anyhow::{Context, Result};
@@ -50,7 +45,7 @@ pub fn detect_mime_type_from_content_type(content_type: &str) -> Option<String> 
 /// Detects MIME type from file data (magic bytes)
 pub fn detect_mime_type_from_data(data: &[u8]) -> String {
     // JPEG magic bytes: starts with FF D8
-    if data.len() >= 2 && data[0] == 0xFF && data[1] == 0xD8 {
+    if data.first() == Some(&0xFF) && data.get(1) == Some(&0xD8) {
         return "image/jpeg".to_string();
     }
 
@@ -59,17 +54,17 @@ pub fn detect_mime_type_from_data(data: &[u8]) -> String {
         return "image/png".to_string();
     }
 
-    match &data[..8] {
+    match data.get(..8).unwrap_or_default() {
         [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] => "image/png".to_string(),
         [0x47, 0x49, 0x46, 0x38, _, _, _, _] => {
-            if data.len() >= 12 && &data[8..12] == b"WEBP" {
+            if data.get(8..12) == Some(b"WEBP".as_slice()) {
                 "image/webp".to_string()
             } else {
                 "image/gif".to_string()
             }
         }
         [0x52, 0x49, 0x46, 0x46, _, _, _, _] => {
-            if data.len() >= 12 && &data[8..12] == b"WEBP" {
+            if data.get(8..12) == Some(b"WEBP".as_slice()) {
                 "image/webp".to_string()
             } else {
                 "image/png".to_string()
@@ -143,7 +138,7 @@ pub async fn read_image_file<P: AsRef<Path>>(file_path: P) -> Result<ImageData> 
         base64_data,
         mime_type,
         file_path: path.display().to_string(),
-        size: file_contents.len() as u64,
+        size: u64::try_from(file_contents.len()).unwrap_or(u64::MAX),
     })
 }
 
@@ -174,6 +169,6 @@ pub async fn read_image_file_any_path<P: AsRef<Path>>(file_path: P) -> Result<Im
         base64_data,
         mime_type,
         file_path: path.display().to_string(),
-        size: file_contents.len() as u64,
+        size: u64::try_from(file_contents.len()).unwrap_or(u64::MAX),
     })
 }

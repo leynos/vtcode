@@ -1,9 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    clippy::string_slice,
-    reason = "Token and UTF-8 boundaries come from tokenizer output and the byte truncation helper."
-)]
-
 //! Token counting via tiktoken BPE tokenizer.
 //!
 //! All token estimation goes through [`tiktoken`]'s `cl100k_base` encoding
@@ -62,7 +56,7 @@ pub fn truncate_to_tokens(text: &str, max_tokens: usize) -> String {
         while end > 0 && !text.is_char_boundary(end) {
             end -= 1;
         }
-        let mut result = text[..end].to_string();
+        let mut result = text.get(..end).unwrap_or_default().to_string();
         result.push_str("...");
         result
     };
@@ -73,7 +67,8 @@ pub fn truncate_to_tokens(text: &str, max_tokens: usize) -> String {
     if tokens.len() <= max_tokens {
         return text.to_string();
     }
-    bpe.decode_to_string(&tokens[..max_tokens]).unwrap_or_else(|_| byte_truncate())
+    bpe.decode_to_string(tokens.get(..max_tokens).unwrap_or_default())
+        .unwrap_or_else(|_| byte_truncate())
 }
 
 #[cfg(test)]
