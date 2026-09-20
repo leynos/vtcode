@@ -39,6 +39,7 @@ mod optimization_facade;
 mod output_processing;
 mod pack;
 mod pack_impls;
+mod patch_guard;
 mod planning_workflow_checks;
 mod planning_workflow_facade;
 mod policy;
@@ -146,6 +147,7 @@ pub struct ToolRegistry {
     persistent_memory_config: Arc<crate::config::PersistentMemoryConfig>,
     persistent_memory_enabled: bool,
     edited_file_monitor: Arc<EditedFileMonitor>,
+    no_op_patch_guard: Arc<Mutex<patch_guard::NoOpPatchGuard>>,
     policy_gateway: Arc<ToolPolicyGateway>,
     pty_sessions: PtySessionManager,
     exec_sessions: ExecSessionManager,
