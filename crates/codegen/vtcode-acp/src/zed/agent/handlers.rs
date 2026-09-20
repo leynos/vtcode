@@ -1791,14 +1791,14 @@ mod tests {
         let mut vt_config = vtcode_core::config::VTCodeConfig::default();
         vt_config.subagents.enabled = true;
         vt_config.subagents.background.enabled = true;
-        Box::pin(super::super::attach_acp_subagent_controller(
-            &agent.local_tool_registry,
-            &agent.config,
-            &[],
-            Some(&vt_config),
-            None,
-            false,
-        ))
+        Box::pin(super::super::attach_acp_subagent_controller(super::super::AcpSubagentControllerInputs {
+            registry: &agent.local_tool_registry,
+            config: &agent.config,
+            custom_providers: &[],
+            vt_config: Some(&vt_config),
+            owner_session_id: None,
+            workspace_hooks_gated: false,
+        }))
         .await;
         assert!(agent.local_tool_registry.has_subagent_controller());
         let controller = agent

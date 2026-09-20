@@ -37,6 +37,43 @@ use vtcode_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
 )]
 use super::*;
 
+/// State inherited when a background record is restarted.
+///
+/// An existing ownerless record is deliberately distinct from a new record:
+/// migration must retain that legacy ownership scope rather than assigning the
+/// controller's current session retroactively.
+struct PreviousBackgroundRecord {
+    created_at: chrono::DateTime<Utc>,
+    owner_session_id: Option<String>,
+    prompt: String,
+    max_turns: Option<usize>,
+    model_override: Option<String>,
+    reasoning_override: Option<String>,
+}
+
+impl From<&BackgroundRecord> for PreviousBackgroundRecord {
+    fn from(record: &BackgroundRecord) -> Self {
+        Self {
+            created_at: record.created_at,
+            owner_session_id: record.owner_session_id.clone(),
+            prompt: record.prompt.clone(),
+            max_turns: record.max_turns,
+            model_override: record.model_override.clone(),
+            reasoning_override: record.reasoning_override.clone(),
+        }
+    }
+}
+
+fn background_record_owner(
+    previous_record: Option<&PreviousBackgroundRecord>,
+    parent_session_id: &str,
+) -> Option<String> {
+    match previous_record {
+        Some(record) => record.owner_session_id.clone(),
+        None => Some(parent_session_id.to_string()),
+    }
+}
+
 impl SubagentController {
     /// Spawns a new subagent child process from a [`SpawnAgentRequest`].
     pub async fn spawn(&self, request: SpawnAgentRequest) -> Result<SubagentStatusEntry> {
@@ -557,18 +594,8 @@ impl SubagentController {
             .unwrap_or_else(|| background_record_id(agent_name));
         let previous_record = {
             let state = self.state.read().await;
-            state.background_children.get(&record_id).map(|record| {
-                (
-                    record.created_at,
-                    record.owner_session_id.clone(),
-                    record.prompt.clone(),
-                    record.max_turns,
-                    record.model_override.clone(),
-                    record.reasoning_override.clone(),
-                )
-            })
+            state.background_children.get(&record_id).map(PreviousBackgroundRecord::from)
         };
-        let is_new_record = previous_record.is_none();
         let parent_session_id = self.parent_session_id.read().await.clone();
         let session_id = format!(
             "{}-{}-{}",
@@ -577,15 +604,23 @@ impl SubagentController {
             Utc::now().format("%Y%m%dT%H%M%S%3fZ")
         );
         let exec_session_id = format!("exec-{session_id}");
-        let (
+        let owner_session_id = background_record_owner(previous_record.as_ref(), parent_session_id.as_str());
+        let previous_record = previous_record.unwrap_or_else(|| PreviousBackgroundRecord {
+            created_at: Utc::now(),
+            owner_session_id: None,
+            prompt: String::new(),
+            max_turns: None,
+            model_override: None,
+            reasoning_override: None,
+        });
+        let PreviousBackgroundRecord {
             created_at,
-            previous_owner_session_id,
-            previous_prompt,
-            previous_max_turns,
-            previous_model_override,
-            previous_reasoning_override,
-        ) = previous_record.unwrap_or((Utc::now(), None, String::new(), None, None, None));
-        let owner_session_id = previous_owner_session_id.or_else(|| is_new_record.then(|| parent_session_id.clone()));
+            prompt: previous_prompt,
+            max_turns: previous_max_turns,
+            model_override: previous_model_override,
+            reasoning_override: previous_reasoning_override,
+            ..
+        } = previous_record;
         let prompt = overrides
             .as_ref()
             .and_then(|overrides| overrides.prompt.clone())

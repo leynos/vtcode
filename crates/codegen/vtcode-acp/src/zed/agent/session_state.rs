@@ -657,13 +657,13 @@ impl ZedAgent {
             .thread_manager
             .start_thread_with_identifier(listing.identifier(), ThreadBootstrap::from_listing(listing));
         let runtime = Arc::new(
-            super::SessionWorkspaceRuntime::build(
-                &self.config,
-                workspace.to_path_buf(),
-                &self.workspace_runtime_config,
-                self.vt_config.as_deref(),
-                session_id.0.as_ref(),
-            )
+            super::SessionWorkspaceRuntime::build(super::SessionWorkspaceRuntimeBuildInputs {
+                base_config: &self.config,
+                workspace_root: workspace.to_path_buf(),
+                runtime_config: &self.workspace_runtime_config,
+                vt_config: self.vt_config.as_deref(),
+                session_id: session_id.0.as_ref(),
+            })
             .await
             .context("Failed to initialise archived ACP session workspace")?,
         );
@@ -800,13 +800,13 @@ impl ZedAgent {
             .map_err(|error| acp::Error::internal_error().data(format!("Failed to trust ACP session cwd: {error}")))?;
         let session_id = acp::SessionId::new(Arc::from(format!("{SESSION_PREFIX}-{}", Uuid::new_v4())));
         let workspace_runtime = Arc::new(
-            super::SessionWorkspaceRuntime::build(
-                &self.config,
-                workspace,
-                &self.workspace_runtime_config,
-                self.vt_config.as_deref(),
-                session_id.0.as_ref(),
-            )
+            super::SessionWorkspaceRuntime::build(super::SessionWorkspaceRuntimeBuildInputs {
+                base_config: &self.config,
+                workspace_root: workspace,
+                runtime_config: &self.workspace_runtime_config,
+                vt_config: self.vt_config.as_deref(),
+                session_id: session_id.0.as_ref(),
+            })
             .await
             .map_err(|error| acp::Error::internal_error().data(error.to_string()))?,
         );
