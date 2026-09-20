@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 
 pub(crate) const MODEL: &str = "zai-org/GLM-5.3-Flash";
 pub(crate) const OUTPUT_CAP: u32 = 2_048;
+pub(crate) const MAX_CAPTURE_BYTES: usize = 16 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ProbeCase {
@@ -157,6 +158,7 @@ pub(crate) struct CapturedResponse {
     pub(crate) status: Option<u16>,
     pub(crate) safe_headers: BTreeMap<String, String>,
     pub(crate) body: Vec<u8>,
+    pub(crate) capture_truncated: bool,
     pub(crate) transport_error: Option<String>,
 }
 
@@ -197,6 +199,7 @@ pub(crate) async fn send_case_to(
                 status: None,
                 safe_headers: BTreeMap::new(),
                 body: Vec::new(),
+                capture_truncated: false,
                 transport_error: Some(format!("send {} probe: {error}", case.label())),
             });
         }
@@ -219,14 +222,21 @@ pub(crate) async fn send_case_to(
         }))
         .collect();
     let mut body = Vec::new();
+    let mut capture_truncated = false;
     let mut transport_error = None;
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
         match chunk {
             Ok(chunk) => {
-                response_file.write_all(&chunk)?;
+                let prefix_end = chunk.len().min(MAX_CAPTURE_BYTES.saturating_sub(body.len()));
+                let prefix = &chunk[..prefix_end];
+                response_file.write_all(prefix)?;
                 response_file.flush()?;
-                body.extend_from_slice(&chunk);
+                body.extend_from_slice(prefix);
+                if prefix_end < chunk.len() {
+                    capture_truncated = true;
+                    break;
+                }
             }
             Err(error) => {
                 transport_error = Some(format!("read {} response stream: {error}", case.label()));
@@ -234,12 +244,17 @@ pub(crate) async fn send_case_to(
             }
         }
     }
-    Ok(CapturedResponse { status, safe_headers, body, transport_error })
+    Ok(CapturedResponse { status, safe_headers, body, capture_truncated, transport_error })
 }
 
 pub(crate) fn classify(case: ProbeCase, response: &CapturedResponse) -> ProbeOutcome {
     if let Some(error) = &response.transport_error {
         return ProbeOutcome::TransportFailure { error: error.clone() };
+    }
+    if response.capture_truncated {
+        return ProbeOutcome::DecodeFailure {
+            error: format!("response capture exceeded {MAX_CAPTURE_BYTES} bytes and was truncated"),
+        };
     }
     let Some(status) = response.status else {
         return ProbeOutcome::TransportFailure { error: "request ended without HTTP status".into() };
@@ -298,7 +313,9 @@ fn classify_terminal(case: ProbeCase, terminal: Value) -> ProbeOutcome {
             error: format!("terminal response status was {status:?}"),
         };
     }
-    let outputs = response["output"].as_array().cloned().unwrap_or_default();
+    let Some(outputs) = response.get("output").and_then(Value::as_array) else {
+        return ProbeOutcome::DecodeFailure { error: "terminal response output was missing or not an array".into() };
+    };
     if let Some((expected_type, expected_name)) = case.expected_tool() {
         let calls = outputs
             .iter()

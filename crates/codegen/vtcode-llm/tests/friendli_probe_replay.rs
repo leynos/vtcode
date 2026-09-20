@@ -8,8 +8,8 @@ use anyhow::Context;
 use proptest::prelude::*;
 use serde_json::Value;
 use support::friendli_probe::{
-    CapturedResponse, OUTPUT_CAP, ProbeCase, ProbeOutcome, classify, compatibility_failure, parse_selected_cases,
-    reported_usage, send_case_to,
+    CapturedResponse, MAX_CAPTURE_BYTES, OUTPUT_CAP, ProbeCase, ProbeOutcome, classify, compatibility_failure,
+    parse_selected_cases, reported_usage, send_case_to,
 };
 
 const FIXTURES: &str = "../../../tests/fixtures/friendli/issue36";
@@ -20,6 +20,7 @@ fn captured_response(stem: &str, status: u16, extension: &str) -> anyhow::Result
         status: Some(status),
         safe_headers: BTreeMap::new(),
         body: std::fs::read(&path).with_context(|| format!("read sanitized Friendli response fixture {path}"))?,
+        capture_truncated: false,
         transport_error: None,
     })
 }
@@ -37,6 +38,7 @@ fn response_with_status(status: &str, output: Value) -> CapturedResponse {
             serde_json::json!({"type":"response.completed","response":{"status":status,"output":output}})
         )
         .into_bytes(),
+        capture_truncated: false,
         transport_error: None,
     }
 }
@@ -70,6 +72,7 @@ fn changed_function_identity_or_input_is_rejected() {
                 serde_json::json!({"type":"response.completed","response":{"status":"completed","output":[call]}})
             )
             .into_bytes(),
+            capture_truncated: false,
             transport_error: None,
         };
         assert!(matches!(classify(ProbeCase::Function, &response), ProbeOutcome::DecodeFailure { .. }));
@@ -95,6 +98,29 @@ fn text_probe_requires_exact_trimmed_ok() {
 
     assert!(classify(ProbeCase::StreamedText, &accepted).is_success());
     assert!(matches!(classify(ProbeCase::StreamedText, &rejected), ProbeOutcome::DecodeFailure { .. }));
+}
+
+#[test]
+fn malformed_completed_output_is_not_a_no_call() {
+    for output in [None, Some(serde_json::json!({"unexpected": "object"}))] {
+        let mut terminal_response = serde_json::json!({"status": "completed"});
+        if let Some(output) = output {
+            terminal_response["output"] = output;
+        }
+        let response = CapturedResponse {
+            status: Some(200),
+            safe_headers: BTreeMap::new(),
+            body: format!(
+                "data: {}\n\n",
+                serde_json::json!({"type": "response.completed", "response": terminal_response})
+            )
+            .into_bytes(),
+            capture_truncated: false,
+            transport_error: None,
+        };
+
+        assert!(matches!(classify(ProbeCase::CustomNamed, &response), ProbeOutcome::DecodeFailure { .. }));
+    }
 }
 
 proptest! {
@@ -282,6 +308,54 @@ async fn partial_response_is_captured_before_read_failure_is_reported() {
     assert_eq!(
         std::fs::read(capture.path().join("streamed-text/response.body")).expect("read partial raw capture"),
         b"data: partial"
+    );
+}
+
+#[tokio::test]
+async fn oversized_response_is_captured_as_a_bounded_prefix_and_rejected() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("bind oversized response fixture");
+    let address = listener.local_addr().expect("oversized response address");
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("accept probe request");
+        let mut request = vec![0_u8; 8_192];
+        let _bytes_read = socket.read(&mut request).await.expect("read probe request");
+        let body = vec![b'x'; MAX_CAPTURE_BYTES + 1];
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\n\r\n",
+            body.len()
+        );
+        socket.write_all(header.as_bytes()).await.expect("write oversized response header");
+        socket.write_all(&body).await.expect("write oversized response body");
+    });
+    let capture = tempfile::tempdir().expect("oversized capture directory");
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("oversized response client");
+    let response = send_case_to(
+        &client,
+        "synthetic-key",
+        ProbeCase::StreamedText,
+        0,
+        capture.path(),
+        &format!("http://{address}/responses"),
+    )
+    .await
+    .expect("capture oversized response");
+    server.await.expect("oversized response server");
+
+    assert!(response.capture_truncated);
+    assert_eq!(response.body.len(), MAX_CAPTURE_BYTES);
+    assert!(matches!(classify(ProbeCase::StreamedText, &response), ProbeOutcome::DecodeFailure { .. }));
+    assert_eq!(
+        std::fs::read(capture.path().join("streamed-text/response.body"))
+            .expect("read bounded raw capture")
+            .len(),
+        MAX_CAPTURE_BYTES
     );
 }
 
