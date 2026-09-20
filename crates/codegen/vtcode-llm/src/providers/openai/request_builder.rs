@@ -845,6 +845,8 @@ mod tests {
             supports_tools: false,
             supports_parallel_tool_config: false,
             supports_temperature: true,
+            include_reasoning: false,
+            supports_reasoning_effort: false,
             prompt_cache_key: None,
             default_service_tier: None,
         }

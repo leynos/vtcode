@@ -31,6 +31,11 @@ use super::types::SessionHandle;
 
 mod compaction;
 pub(crate) mod handlers;
+mod lody;
+mod lody_management;
+#[cfg(test)]
+mod lody_tests;
+mod lody_usage;
 mod prompt;
 mod session_state;
 mod task_lifecycle;
@@ -90,6 +95,33 @@ struct WorkspaceRuntimeConfig {
     skip_confirmations: bool,
 }
 
+/// Inputs used to attach the controller that owns ACP-local child agents.
+///
+/// The owner is absent for the process-wide ACP registry, while each session
+/// runtime supplies its own identifier. Keeping this distinction at the
+/// construction boundary prevents ownerless legacy state from being treated as
+/// session-owned during recovery.
+struct AcpSubagentControllerInputs<'a> {
+    registry: &'a CoreToolRegistry,
+    config: &'a CoreAgentConfig,
+    custom_providers: &'a [CustomProviderConfig],
+    vt_config: Option<&'a VTCodeConfig>,
+    owner_session_id: Option<&'a str>,
+    workspace_hooks_gated: bool,
+}
+
+/// Inputs needed to build the runtime isolated to one ACP workspace session.
+///
+/// The workspace path and session identifier form one construction boundary:
+/// callers must not mix a durable session with another session's runtime.
+struct SessionWorkspaceRuntimeBuildInputs<'a> {
+    base_config: &'a CoreAgentConfig,
+    workspace_root: std::path::PathBuf,
+    runtime_config: &'a WorkspaceRuntimeConfig,
+    vt_config: Option<&'a VTCodeConfig>,
+    session_id: &'a str,
+}
+
 fn effective_acp_subagent_concurrency(configured: usize, max_in_flight: Option<usize>) -> Option<usize> {
     match max_in_flight {
         Some(0 | 1) => None,
@@ -98,26 +130,21 @@ fn effective_acp_subagent_concurrency(configured: usize, max_in_flight: Option<u
     }
 }
 
-async fn attach_acp_subagent_controller(
-    registry: &CoreToolRegistry,
-    config: &CoreAgentConfig,
-    custom_providers: &[CustomProviderConfig],
-    vt_cfg: Option<&VTCodeConfig>,
-    workspace_gated: bool,
-) {
-    let Some(mut controller_vt_cfg) = vt_cfg.filter(|config| config.subagents.enabled).cloned() else {
+async fn attach_acp_subagent_controller(inputs: AcpSubagentControllerInputs<'_>) {
+    let Some(mut controller_vt_cfg) = inputs.vt_config.filter(|config| config.subagents.enabled).cloned() else {
         return;
     };
 
-    if let Some(max_in_flight) = custom_providers
+    if let Some(max_in_flight) = inputs
+        .custom_providers
         .iter()
-        .find(|provider| provider.name.eq_ignore_ascii_case(&config.provider))
+        .find(|provider| provider.name.eq_ignore_ascii_case(&inputs.config.provider))
         .and_then(|provider| provider.request_policy.max_in_flight_requests)
     {
         match effective_acp_subagent_concurrency(controller_vt_cfg.subagents.max_concurrent, Some(max_in_flight)) {
             None => {
                 warn!(
-                    provider = %config.provider,
+                    provider = %inputs.config.provider,
                     max_in_flight,
                     "ACP subagents disabled because the provider request limit reserves no child capacity"
                 );
@@ -125,7 +152,7 @@ async fn attach_acp_subagent_controller(
             }
             Some(max_subagents) if controller_vt_cfg.subagents.max_concurrent > max_subagents => {
                 debug!(
-                    provider = %config.provider,
+                    provider = %inputs.config.provider,
                     max_in_flight,
                     configured_subagents = controller_vt_cfg.subagents.max_concurrent,
                     effective_subagents = max_subagents,
@@ -138,32 +165,41 @@ async fn attach_acp_subagent_controller(
     }
 
     let controller_config = SubagentControllerConfig {
-        workspace_root: config.workspace.clone(),
-        parent_session_id: "vtcode-acp".to_string(),
-        parent_model: config.model.clone(),
-        parent_provider: config.provider.clone(),
-        parent_reasoning_effort: config.reasoning_effort,
-        api_key: config.api_key.clone(),
+        workspace_root: inputs.config.workspace.clone(),
+        parent_session_id: inputs.owner_session_id.unwrap_or("vtcode-acp").to_string(),
+        parent_model: inputs.config.model.clone(),
+        parent_provider: inputs.config.provider.clone(),
+        parent_reasoning_effort: inputs.config.reasoning_effort,
+        api_key: inputs.config.api_key.clone(),
         vt_cfg: controller_vt_cfg.clone(),
-        openai_chatgpt_auth: config.openai_chatgpt_auth.clone(),
+        openai_chatgpt_auth: inputs.config.openai_chatgpt_auth.clone(),
         depth: 0,
-        workspace_gated,
-        exec_sessions: registry.exec_session_manager(),
-        pty_manager: registry.pty_manager().clone(),
+        workspace_gated: inputs.workspace_hooks_gated,
+        exec_sessions: inputs.registry.exec_session_manager(),
+        pty_manager: inputs.registry.pty_manager().clone(),
         managed_background_runtime: false,
     };
-    match SubagentController::new(controller_config).await {
-        Ok(controller) => {
-            let controller = Arc::new(controller);
-            if controller_vt_cfg.subagents.background.auto_restore
-                && let Err(error) = controller.restore_background_subagents().await
-            {
+    let controller =
+        match SubagentController::new_with_background_owner(controller_config, inputs.owner_session_id).await {
+            Ok(controller) => controller,
+            Err(error) => {
+                warn!(%error, "Failed to initialize ACP subagent controller");
+                return;
+            }
+        };
+    {
+        let controller = Arc::new(controller);
+        if should_restore_acp_background_subagents(inputs.owner_session_id, &controller_vt_cfg) {
+            if let Err(error) = controller.restore_background_subagents().await {
                 warn!(%error, "Failed to restore ACP background subagents");
             }
-            registry.set_subagent_controller(controller);
         }
-        Err(error) => warn!(%error, "Failed to initialize ACP subagent controller"),
+        inputs.registry.set_subagent_controller(controller);
     }
+}
+
+fn should_restore_acp_background_subagents(owner_session_id: Option<&str>, vt_config: &VTCodeConfig) -> bool {
+    owner_session_id.is_some() && vt_config.subagents.background.auto_restore
 }
 
 /// Attach the parent session's MCP client and eagerly discover its tools.
@@ -249,24 +285,22 @@ fn configure_acp_tool_call_limits(registry: &CoreToolRegistry, vt_cfg: Option<&V
 }
 
 impl SessionWorkspaceRuntime {
-    async fn build(
-        base_config: &CoreAgentConfig,
-        workspace_root: std::path::PathBuf,
-        runtime_config: &WorkspaceRuntimeConfig,
-        vt_cfg: Option<&VTCodeConfig>,
-    ) -> anyhow::Result<Self> {
-        let mut session_config = base_config.clone();
-        session_config.workspace = workspace_root.clone();
-        let content = generate_system_instruction_with_config(&Default::default(), &workspace_root, vt_cfg).await;
+    async fn build(inputs: SessionWorkspaceRuntimeBuildInputs<'_>) -> anyhow::Result<Self> {
+        let mut session_config = inputs.base_config.clone();
+        session_config.workspace = inputs.workspace_root.clone();
+        let content =
+            generate_system_instruction_with_config(&Default::default(), &inputs.workspace_root, inputs.vt_config)
+                .await;
         let system_prompt = content
             .parts
             .first()
             .and_then(|part| part.as_text())
             .map_or_else(String::new, ToString::to_string);
-        let discovered = discover_subagents(&SubagentDiscoveryInput::new(workspace_root.clone()))?;
-        let default_primary_agent = vt_cfg.map_or("duck", |config| config.default_primary_agent.as_str());
+        let discovered = discover_subagents(&SubagentDiscoveryInput::new(inputs.workspace_root.clone()))?;
+        let default_primary_agent = inputs.vt_config.map_or("duck", |config| config.default_primary_agent.as_str());
         let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, default_primary_agent);
-        let workspace_hooks_gated = vt_cfg
+        let workspace_hooks_gated = inputs
+            .vt_config
             .and_then(|config| config.workspace_lifecycle_hooks.as_ref())
             .is_some_and(|hooks| !hooks.is_empty())
             || vtcode_core::ActivePrimaryAgentState::from_specs_with_default(
@@ -275,27 +309,28 @@ impl SessionWorkspaceRuntime {
             )
             .active()
             .contributes_workspace_controlled_hooks();
-        let file_ops_tool = if runtime_config.zed_config.tools.list_files {
-            let search_root = workspace_root.clone();
-            Some(FileOpsTool::new(workspace_root.clone(), Arc::new(GrepSearchManager::new(search_root))))
+        let file_ops_tool = if inputs.runtime_config.zed_config.tools.list_files {
+            let search_root = inputs.workspace_root.clone();
+            Some(FileOpsTool::new(inputs.workspace_root.clone(), Arc::new(GrepSearchManager::new(search_root))))
         } else {
             None
         };
         let list_files_enabled = file_ops_tool.is_some();
-        let local_tool_registry = CoreToolRegistry::new(workspace_root.clone()).await;
-        configure_acp_tool_call_limits(&local_tool_registry, vt_cfg);
+        let local_tool_registry = CoreToolRegistry::new(inputs.workspace_root.clone()).await;
+        configure_acp_tool_call_limits(&local_tool_registry, inputs.vt_config);
         local_tool_registry
-            .apply_tool_runtime_config(&runtime_config.commands_config, &runtime_config.tools_config)
+            .apply_tool_runtime_config(&inputs.runtime_config.commands_config, &inputs.runtime_config.tools_config)
             .await?;
-        Box::pin(attach_acp_subagent_controller(
-            &local_tool_registry,
-            &session_config,
-            &runtime_config.custom_providers,
-            vt_cfg,
+        Box::pin(attach_acp_subagent_controller(AcpSubagentControllerInputs {
+            registry: &local_tool_registry,
+            config: &session_config,
+            custom_providers: &inputs.runtime_config.custom_providers,
+            vt_config: inputs.vt_config,
+            owner_session_id: Some(inputs.session_id),
             workspace_hooks_gated,
-        ))
+        }))
         .await;
-        attach_acp_mcp_client(&local_tool_registry, vt_cfg, &workspace_root).await;
+        attach_acp_mcp_client(&local_tool_registry, inputs.vt_config, &inputs.workspace_root).await;
         let local_definitions = local_tool_registry
             .model_tools(
                 SessionToolsConfig::full_public(
@@ -304,23 +339,23 @@ impl SessionWorkspaceRuntime {
                     ToolDocumentationMode::default(),
                     ToolModelCapabilities::default(),
                 )
-                .with_tool_profile(runtime_config.tools_config.profile),
+                .with_tool_profile(inputs.runtime_config.tools_config.profile),
             )
             .await;
         let acp_tool_registry = Arc::new(AcpToolRegistry::new(
-            &workspace_root,
-            runtime_config.zed_config.tools.read_file,
+            &inputs.workspace_root,
+            inputs.runtime_config.zed_config.tools.read_file,
             list_files_enabled,
             local_definitions,
         ));
         let permission_prompter: Arc<dyn AcpPermissionPrompter + Send + Sync> =
             Arc::new(DefaultPermissionPrompter::with_skip_confirmations(
                 Arc::clone(&acp_tool_registry) as Arc<_>,
-                runtime_config.skip_confirmations,
+                inputs.runtime_config.skip_confirmations,
             ));
 
         Ok(Self {
-            workspace_root,
+            workspace_root: inputs.workspace_root,
             workspace_hooks_gated,
             system_prompt,
             primary_agents,
@@ -374,13 +409,14 @@ impl ZedAgent {
         let workspace_hooks_gated = vt_cfg
             .and_then(|config| config.workspace_lifecycle_hooks.as_ref())
             .is_some_and(|hooks| !hooks.is_empty());
-        Box::pin(attach_acp_subagent_controller(
-            &core_tool_registry,
-            &config,
+        Box::pin(attach_acp_subagent_controller(AcpSubagentControllerInputs {
+            registry: &core_tool_registry,
+            config: &config,
             custom_providers,
-            vt_cfg,
+            vt_config: vt_cfg,
+            owner_session_id: None,
             workspace_hooks_gated,
-        ))
+        }))
         .await;
         attach_acp_mcp_client(&core_tool_registry, vt_cfg, workspace_root.as_path()).await;
         let local_definitions = core_tool_registry

@@ -1,8 +1,8 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
-use super::constants::SUBAGENT_PREVIEW_LINES;
+use super::constants::{DEFAULT_SUBAGENT_OUTPUT_TAIL_LINES, MAX_SUBAGENT_OUTPUT_TAIL_LINES, SUBAGENT_PREVIEW_LINES};
 use super::types::{PersistedBackgroundRecord, PersistedBackgroundState};
 use crate::utils::file_utils::write_file_atomic_with_context;
 use crate::utils::session_archive::{SessionListing, SessionSnapshot};
@@ -176,9 +176,23 @@ pub fn extract_tail_lines(content: &str, max_lines: usize) -> String {
     lines[start..].join("\n")
 }
 
+/// Resolves a requested output-tail size, rejecting values beyond the ACP-safe
+/// hard maximum. `None` selects the documented 200-line default.
+pub fn normalize_output_tail_lines(max_lines: Option<usize>) -> Result<usize> {
+    let max_lines = max_lines.unwrap_or(DEFAULT_SUBAGENT_OUTPUT_TAIL_LINES);
+    if max_lines > MAX_SUBAGENT_OUTPUT_TAIL_LINES {
+        bail!("background output tail exceeds the hard maximum of {MAX_SUBAGENT_OUTPUT_TAIL_LINES} lines");
+    }
+    Ok(max_lines)
+}
+
 pub async fn load_archive_preview(path: &Path) -> Result<String> {
+    load_archive_output_tail(path, SUBAGENT_PREVIEW_LINES).await
+}
+
+pub(crate) async fn load_archive_output_tail(path: &Path, max_lines: usize) -> Result<String> {
     let listing = load_session_listing(path).await?;
-    Ok(extract_tail_lines(&listing.snapshot.transcript.join("\n"), SUBAGENT_PREVIEW_LINES))
+    Ok(extract_tail_lines(&listing.snapshot.transcript.join("\n"), max_lines))
 }
 
 async fn load_session_listing(path: &Path) -> Result<SessionListing> {
