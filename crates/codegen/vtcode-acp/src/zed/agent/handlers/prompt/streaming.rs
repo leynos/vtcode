@@ -123,29 +123,29 @@ async fn handle_streaming_attempt(
         }
         StreamAttemptOutcome::Retry { delay, error, observed_at } => {
             turn.agent
-                .publish_rate_limit_notice_at_with_metric_sink(
-                    &turn.args.session_id,
-                    turn.provider_runtime.provider_name(),
-                    &error,
-                    Some(delay),
+                .publish_rate_limit_notice_with_context(RateLimitNotice {
+                    session_id: &turn.args.session_id,
+                    provider: turn.provider_runtime.provider_name(),
+                    error: &error,
+                    retry_delay: Some(delay),
                     observed_at,
-                    &turn.metric_sink,
-                    turn.provider_runtime.provider_class(),
-                )
+                    metric_sink: &turn.metric_sink,
+                    provider_class: turn.provider_runtime.provider_class(),
+                })
                 .await;
             retry_stream_attempt(turn, output, delay, attempt_index).await
         }
         StreamAttemptOutcome::Failed { error, observed_at } => {
             turn.agent
-                .publish_rate_limit_notice_at_with_metric_sink(
-                    &turn.args.session_id,
-                    turn.provider_runtime.provider_name(),
-                    &error,
-                    None,
+                .publish_rate_limit_notice_with_context(RateLimitNotice {
+                    session_id: &turn.args.session_id,
+                    provider: turn.provider_runtime.provider_name(),
+                    error: &error,
+                    retry_delay: None,
                     observed_at,
-                    &turn.metric_sink,
-                    turn.provider_runtime.provider_class(),
-                )
+                    metric_sink: &turn.metric_sink,
+                    provider_class: turn.provider_runtime.provider_class(),
+                })
                 .await;
             let response = finish_failed_output(
                 turn,
