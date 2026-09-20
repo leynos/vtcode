@@ -764,7 +764,7 @@ use vtcode_core::subagents::SpawnAgentRequest;
 fn acp_subagent_child_uses_single_orchestration_without_losing_tool_permissions() {
     use vtcode_config::core::agent::HarnessOrchestrationMode;
 
-    let mut parent = vtcode_core::config::VTCodeConfig::default();
+    let mut parent = VTCodeConfig::default();
     parent.agent.harness.orchestration_mode = HarnessOrchestrationMode::PlanBuildEvaluate;
     parent.permissions.allow = vec!["read".to_string()];
     let spec = vtcode_config::builtin_subagents()
@@ -840,7 +840,7 @@ async fn failed_child_is_distinct_from_successful_polling_and_keeps_a_durable_ar
         },
         ..CustomProviderConfig::default()
     };
-    let mut vt_config = vtcode_core::config::VTCodeConfig::default();
+    let mut vt_config = VTCodeConfig::default();
     vt_config.subagents.enabled = true;
     vt_config.agent.provider = "wire-test".to_string();
     vt_config.agent.default_model = "wire-model".to_string();
@@ -1071,7 +1071,7 @@ async fn vidaimock_child_completes_without_an_optional_planner_phase() {
         },
         ..CustomProviderConfig::default()
     };
-    let mut config = vtcode_core::config::VTCodeConfig::default();
+    let mut config = VTCodeConfig::default();
     config.subagents.enabled = true;
     config.agent.provider = "wire-test".to_string();
     config.agent.default_model = "wire-model".to_string();

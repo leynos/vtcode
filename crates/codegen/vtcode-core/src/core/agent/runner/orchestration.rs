@@ -71,17 +71,7 @@ impl AgentRunner {
             None,
         );
 
-        let planner_response = match self.request_planner_response(task).await {
-            Ok(response) => response,
-            Err(error) => {
-                // Setup exits before the main execute loop can record its
-                // normal terminal event. Close this already-started turn on
-                // the canonical event path so the failure is durable in the
-                // unified session store and the thread is not left in flight.
-                event_recorder.turn_failed(&error.to_string(), None);
-                return Err(error);
-            }
-        };
+        let planner_response = self.request_planner_response(task).await?;
         let spec_markdown = planner_response
             .spec_markdown
             .filter(|value| !value.trim().is_empty())
