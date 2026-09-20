@@ -1,8 +1,3 @@
-#![expect(
-    clippy::let_underscore_must_use,
-    reason = "Project rendering intentionally ignores infallible writes into String buffers."
-)]
-
 //! Project-related utilities and structures
 
 use crate::utils::{extract_readme_excerpt, extract_toml_str};
@@ -23,13 +18,13 @@ impl ProjectOverview {
     pub fn short_for_display(&self) -> String {
         let mut out = String::new();
         if let Some(name) = &self.name {
-            let _ = write!(out, "Project: {name}");
+            let _write_result = write!(out, "Project: {name}");
         }
         if let Some(ver) = &self.version {
             if !out.is_empty() {
                 out.push(' ');
             }
-            let _ = write!(out, "v{ver}");
+            let _write_result = write!(out, "v{ver}");
         }
         if !out.is_empty() {
             out.push('\n');
@@ -38,22 +33,22 @@ impl ProjectOverview {
             out.push_str(desc);
             out.push('\n');
         }
-        let _ = write!(out, "Root: {}", self.root.display());
+        let _write_result = write!(out, "Root: {}", self.root.display());
         out
     }
 
     pub fn as_prompt_block(&self) -> String {
         let mut s = String::new();
         if let Some(name) = &self.name {
-            let _ = writeln!(s, "- Name: {name}");
+            let _write_result = writeln!(s, "- Name: {name}");
         }
         if let Some(ver) = &self.version {
-            let _ = writeln!(s, "- Version: {ver}");
+            let _write_result = writeln!(s, "- Version: {ver}");
         }
         if let Some(desc) = &self.description {
-            let _ = writeln!(s, "- Description: {desc}");
+            let _write_result = writeln!(s, "- Description: {desc}");
         }
-        let _ = writeln!(s, "- Workspace Root: {}", self.root.display());
+        let _write_result = writeln!(s, "- Workspace Root: {}", self.root.display());
         if let Some(excerpt) = &self.readme_excerpt {
             s.push_str("- README Excerpt: \n");
             s.push_str(excerpt);

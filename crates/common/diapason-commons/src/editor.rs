@@ -1,10 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    clippy::string_slice,
-    unused_results,
-    reason = "Editor URI parsing uses validated delimiters and intentionally ignores String mutation results."
-)]
-
 use std::borrow::Cow;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -111,8 +104,8 @@ pub fn parse_editor_target(raw: &str) -> Option<EditorTarget> {
     }
 
     if let Some(paren_start) = location_paren_suffix_start(raw) {
-        let location_suffix = parse_paren_location_suffix(&raw[paren_start..])?;
-        let path_str = &raw[..paren_start];
+        let location_suffix = parse_paren_location_suffix(raw.get(paren_start..).unwrap_or_default())?;
+        let path_str = raw.get(..paren_start).unwrap_or_default();
         if path_str.is_empty() {
             return None;
         }
@@ -126,7 +119,7 @@ pub fn parse_editor_target(raw: &str) -> Option<EditorTarget> {
 
     let location_suffix = extract_trailing_location(raw);
     let path_str = match location_suffix.as_deref() {
-        Some(suffix) => &raw[..raw.len().saturating_sub(suffix.len())],
+        Some(suffix) => raw.get(..raw.len().saturating_sub(suffix.len())).unwrap_or_default(),
         None => raw,
     };
     if path_str.is_empty() {
@@ -156,7 +149,7 @@ pub fn resolve_editor_path(path: &Path, base: &Path) -> PathBuf {
         match component {
             std::path::Component::CurDir => {}
             std::path::Component::ParentDir => {
-                joined.pop();
+                let _removed = joined.pop();
             }
             other => joined.push(other.as_os_str()),
         }
@@ -177,21 +170,25 @@ fn decode_bare_local_path(path: &str) -> Cow<'_, str> {
 fn extract_trailing_location(raw: &str) -> Option<String> {
     let bytes = raw.as_bytes();
     let mut idx = bytes.len();
-    while idx > 0 && (bytes[idx - 1].is_ascii_digit() || matches!(bytes[idx - 1], b':' | b'-')) {
+    while idx > 0
+        && bytes
+            .get(idx - 1)
+            .is_some_and(|byte| byte.is_ascii_digit() || matches!(byte, b':' | b'-'))
+    {
         idx -= 1;
     }
     if idx >= bytes.len() || bytes.get(idx).copied() != Some(b':') {
         return None;
     }
 
-    let suffix = &raw[idx..];
+    let suffix = raw.get(idx..).unwrap_or_default();
     let digits = suffix.chars().filter(|ch| ch.is_ascii_digit()).count();
     (digits > 0).then(|| suffix.to_string())
 }
 
 fn location_paren_suffix_start(token: &str) -> Option<usize> {
     let paren_start = token.rfind('(')?;
-    let inner = token[paren_start + 1..].strip_suffix(')')?;
+    let inner = token.get(paren_start + 1..)?.strip_suffix(')')?;
     let valid = !inner.is_empty()
         && !inner.starts_with(',')
         && !inner.ends_with(',')

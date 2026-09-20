@@ -84,13 +84,13 @@ where
         Vec::new()
     };
 
-    let formatted = if hunks.is_empty() {
+    let rendered = if hunks.is_empty() {
         String::new()
     } else {
         formatter(&hunks, &options)
     };
 
-    DiffBundle { hunks, formatted, is_empty: !has_changes }
+    DiffBundle { hunks, formatted: rendered, is_empty: !has_changes }
 }
 
 fn split_lines_with_terminator(text: &str) -> Vec<String> {
@@ -103,7 +103,9 @@ fn split_lines_with_terminator(text: &str) -> Vec<String> {
     let mut line_start = 0;
     let mut index = 0;
     while index < bytes.len() {
-        let byte = bytes[index];
+        let Some(&byte) = bytes.get(index) else {
+            break;
+        };
         if byte != b'\n' && byte != b'\r' {
             index += 1;
             continue;
@@ -113,12 +115,12 @@ fn split_lines_with_terminator(text: &str) -> Vec<String> {
         } else {
             index + 1
         };
-        lines.push(text[line_start..line_end].to_string());
+        lines.push(text.get(line_start..line_end).unwrap_or_default().to_string());
         line_start = line_end;
         index = line_end;
     }
     if line_start < text.len() {
-        lines.push(text[line_start..].to_string());
+        lines.push(text.get(line_start..).unwrap_or_default().to_string());
     }
 
     lines
@@ -137,7 +139,10 @@ fn collect_line_records<'a>(old_lines: &'a [&'a str], new_lines: &'a [&'a str]) 
                 for _ in text.chars() {
                     let old_line = old_index + 1;
                     let new_line = new_index + 1;
-                    let line = old_lines[old_index as usize];
+                    let line = old_lines
+                        .get(usize::try_from(old_index).unwrap_or_default())
+                        .copied()
+                        .unwrap_or_default();
                     records.push(LineRecord {
                         kind: DiffLineKind::Context,
                         old_line: Some(old_line),
@@ -154,7 +159,10 @@ fn collect_line_records<'a>(old_lines: &'a [&'a str], new_lines: &'a [&'a str]) 
                 for _ in text.chars() {
                     let old_line = old_index + 1;
                     let anchor_new = new_index + 1;
-                    let line = old_lines[old_index as usize];
+                    let line = old_lines
+                        .get(usize::try_from(old_index).unwrap_or_default())
+                        .copied()
+                        .unwrap_or_default();
                     records.push(LineRecord {
                         kind: DiffLineKind::Deletion,
                         old_line: Some(old_line),
@@ -170,7 +178,10 @@ fn collect_line_records<'a>(old_lines: &'a [&'a str], new_lines: &'a [&'a str]) 
                 for _ in text.chars() {
                     let new_line = new_index + 1;
                     let anchor_old = old_index + 1;
-                    let line = new_lines[new_index as usize];
+                    let line = new_lines
+                        .get(usize::try_from(new_index).unwrap_or_default())
+                        .copied()
+                        .unwrap_or_default();
                     records.push(LineRecord {
                         kind: DiffLineKind::Addition,
                         old_line: None,
@@ -207,7 +218,7 @@ fn encode_line_list<'a>(lines: &'a [&'a str], map: &mut HashMap<&'a str, char>, 
             let Some(ch) = next_token_char(next_codepoint) else {
                 break;
             };
-            map.insert(line, ch);
+            let _previous = map.insert(line, ch);
             ch
         };
         encoded.push(token);
@@ -216,7 +227,7 @@ fn encode_line_list<'a>(lines: &'a [&'a str], map: &mut HashMap<&'a str, char>, 
 }
 
 fn next_token_char(counter: &mut u32) -> Option<char> {
-    while *counter <= 0x10FFFF {
+    while *counter <= 0x0010_FFFF {
         let candidate = *counter;
         *counter += 1;
         if (0xD800..=0xDFFF).contains(&candidate) {
@@ -248,11 +259,13 @@ fn build_hunks(records: &[LineRecord<'_>], context: usize) -> Vec<DiffHunk> {
     let mut hunks = Vec::with_capacity(ranges.len());
 
     for (start, end) in ranges {
-        let slice = &records[start..=end];
+        let slice = records.get(start..=end).unwrap_or_default();
 
-        let first = &slice[0];
-        let old_start = first.old_line.unwrap_or(first.anchor_old).max(1) as usize;
-        let new_start = first.new_line.unwrap_or(first.anchor_new).max(1) as usize;
+        let Some(first) = slice.first() else {
+            continue;
+        };
+        let old_start = usize::try_from(first.old_line.unwrap_or(first.anchor_old).max(1)).unwrap_or(usize::MAX);
+        let new_start = usize::try_from(first.new_line.unwrap_or(first.anchor_new).max(1)).unwrap_or(usize::MAX);
 
         let old_lines = slice
             .iter()
@@ -289,23 +302,21 @@ fn compute_hunk_ranges(records: &[LineRecord<'_>], context: usize) -> Vec<(usize
             let start = idx.saturating_sub(context);
             let end = min(idx + context, records.len().saturating_sub(1));
 
-            if let Some(existing_start) = current_start {
-                // Close the previous range if this change is beyond its context window
-                if idx > current_end {
+            match current_start.take() {
+                // Close the previous range if this change is beyond its context window.
+                Some(existing_start) if idx > current_end => {
                     ranges.push((existing_start, current_end));
                     current_start = Some(start);
                     current_end = end;
-                } else {
-                    if start < existing_start {
-                        current_start = Some(start);
-                    }
-                    if end > current_end {
-                        current_end = end;
-                    }
                 }
-            } else {
-                current_start = Some(start);
-                current_end = end;
+                Some(existing_start) => {
+                    current_start = Some(start.min(existing_start));
+                    current_end = end.max(current_end);
+                }
+                None => {
+                    current_start = Some(start);
+                    current_end = end;
+                }
             }
         } else if let Some(start) = current_start
             && idx > current_end

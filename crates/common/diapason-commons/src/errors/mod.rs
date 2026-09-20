@@ -1,8 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    reason = "Error rendering indexes only validated structured diagnostic entries."
-)]
-
 //! Error reporting primitives, standard error text, and error aggregation.
 
 mod constants;
