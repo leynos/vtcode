@@ -292,16 +292,7 @@ pub(super) struct PromptProviderContext {
 }
 
 pub(super) async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptResponse, SdkError> {
-    run_prompt_with_retry_observer(agent, args, SystemTime::now).await
-}
-
-pub(super) async fn run_prompt_with_retry_observer(
-    agent: Arc<ZedAgent>,
-    args: PromptRequest,
-    retry_observed_at: impl Fn() -> SystemTime + Send + Sync,
-) -> Result<PromptResponse, SdkError> {
-    run_prompt_with_retry_observer_and_metric_sink(agent, args, retry_observed_at, ProviderMetricSink::production())
-        .await
+    run_prompt_with_retry_observer(agent, args, SystemTime::now, ProviderMetricSink::production()).await
 }
 
 #[cfg(test)]
@@ -310,10 +301,10 @@ pub(super) async fn run_prompt_with_metric_sink(
     args: PromptRequest,
     metric_sink: ProviderMetricSink,
 ) -> Result<PromptResponse, SdkError> {
-    run_prompt_with_retry_observer_and_metric_sink(agent, args, SystemTime::now, metric_sink).await
+    run_prompt_with_retry_observer(agent, args, SystemTime::now, metric_sink).await
 }
 
-pub(super) async fn run_prompt_with_retry_observer_and_metric_sink(
+pub(super) async fn run_prompt_with_retry_observer(
     agent: Arc<ZedAgent>,
     args: PromptRequest,
     retry_observed_at: impl Fn() -> SystemTime + Send + Sync,

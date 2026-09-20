@@ -209,6 +209,14 @@ pub(super) struct GenerationTelemetry {
     finished: bool,
 }
 
+struct GenerationFailure<'a> {
+    runtime: &'a ProviderRequestRuntime,
+    retry_count: u32,
+    retry_disposition: RetryDisposition,
+    retry_delay: Option<Duration>,
+    error: &'a LLMError,
+}
+
 impl StreamDeadlineTracker {
     pub(super) fn new(policy: ProviderDeadlinePolicy, started_at: Instant) -> Self {
         Self {
@@ -326,20 +334,26 @@ pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
                     .retryable
                     .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
                 telemetry
-                    .failed(runtime, attempt_index, retry_disposition(&decision), retry_delay, &error)
+                    .failed(GenerationFailure {
+                        runtime,
+                        retry_count: attempt_index,
+                        retry_disposition: retry_disposition(&decision),
+                        retry_delay,
+                        error: &error,
+                    })
                     .await;
                 drop(permit);
                 if let Some((agent, session_id)) = notice_target {
                     agent
-                        .publish_rate_limit_notice_at_with_metric_sink(
+                        .publish_rate_limit_notice_with_context(RateLimitNotice {
                             session_id,
-                            runtime.provider_name(),
-                            &error,
+                            provider: runtime.provider_name(),
+                            error: &error,
                             retry_delay,
                             observed_at,
                             metric_sink,
-                            runtime.provider_class(),
-                        )
+                            provider_class: runtime.provider_class(),
+                        })
                         .await;
                 }
                 if !decision.retryable {

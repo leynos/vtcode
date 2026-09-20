@@ -161,7 +161,13 @@ pub(super) async fn classify_stream_failure(request: StreamFailureRequest<'_>) -
     let retry_delay = (!output.emitted_output && decision.retryable)
         .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
     telemetry
-        .failed(&turn.provider_runtime, attempt_index, disposition, retry_delay, &error)
+        .failed(GenerationFailure {
+            runtime: &turn.provider_runtime,
+            retry_count: attempt_index,
+            retry_disposition: disposition,
+            retry_delay,
+            error: &error,
+        })
         .await;
     if output.emitted_output || !decision.retryable {
         StreamAttemptOutcome::Failed { error, observed_at }
