@@ -143,7 +143,7 @@ jobs:
           toolchain: stable
           components: rustfmt
       - name: Install mdtablefix
-        uses: leynos/shared-actions/.github/actions/install-mdtablefix@c5a54701c8603a0fa756a6b34c49bc2af75a6c11
+        uses: leynos/shared-actions/.github/actions/install-mdtablefix@013346ccfd37bd1e02eb430525233f1a4cd942b8
         with:
           version: "0.6.0"
       - run: make check-fmt
