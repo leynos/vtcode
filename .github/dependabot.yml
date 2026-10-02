@@ -2,26 +2,45 @@ version: 2
 updates:
   # Maintain dependencies for GitHub Actions
   - package-ecosystem: "github-actions"
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/*"
+    groups:
+      minor-and-patch:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
     schedule:
-      interval: "monthly"
+      interval: "daily"
     open-pull-requests-limit: 10
 
   # Maintain dependencies for Rust/Cargo
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
-      interval: "monthly"
+      interval: "daily"
     open-pull-requests-limit: 10
     groups:
       # Group all Rust dependencies together
       all-rust-deps:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # Maintain dependencies for Node.js/npm (for scripts/utils that might exist)
   - package-ecosystem: "npm"
     directory: "/"
+    groups:
+      minor-and-patch:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
     schedule:
-      interval: "monthly"
+      interval: "daily"
     open-pull-requests-limit: 5
