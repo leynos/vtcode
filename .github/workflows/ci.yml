@@ -206,7 +206,7 @@ jobs:
       - name: Set up Rust with the compiler cache
         uses: leynos/shared-actions/.github/actions/setup-rust@6cec89bac47a21cf756d68d638a9a510998e57f8
         with:
-          rustflags: ""
+          rustflags: "-W warnings"
       - run: cargo clippy --locked --jobs 4
 
   # Check for unmaintained dependencies.
@@ -301,7 +301,7 @@ jobs:
       - name: Set up Rust with the compiler cache
         uses: leynos/shared-actions/.github/actions/setup-rust@6cec89bac47a21cf756d68d638a9a510998e57f8
         with:
-          rustflags: ""
+          rustflags: "-W warnings"
           toolchain: ${{ matrix.toolchain }}
       - run: cargo check --locked --jobs 4
 
@@ -356,7 +356,7 @@ jobs:
       - name: Set up Rust with the compiler cache
         uses: leynos/shared-actions/.github/actions/setup-rust@6cec89bac47a21cf756d68d638a9a510998e57f8
         with:
-          rustflags: ""
+          rustflags: "-W warnings"
           toolchain: stable
 
       - name: Install cargo-nextest
