@@ -205,8 +205,6 @@ jobs:
           persist-credentials: false
       - name: Set up Rust with the compiler cache
         uses: leynos/shared-actions/.github/actions/setup-rust@6cec89bac47a21cf756d68d638a9a510998e57f8
-        with:
-          rustflags: "-W warnings"
       - run: cargo clippy --locked --jobs 4
 
   # Check for unmaintained dependencies.
@@ -285,7 +283,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
-        toolchain: ["stable"]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     permissions:
@@ -300,9 +297,6 @@ jobs:
           persist-credentials: false
       - name: Set up Rust with the compiler cache
         uses: leynos/shared-actions/.github/actions/setup-rust@6cec89bac47a21cf756d68d638a9a510998e57f8
-        with:
-          rustflags: "-W warnings"
-          toolchain: ${{ matrix.toolchain }}
       - run: cargo check --locked --jobs 4
 
   check-windows:
@@ -355,9 +349,6 @@ jobs:
 
       - name: Set up Rust with the compiler cache
         uses: leynos/shared-actions/.github/actions/setup-rust@6cec89bac47a21cf756d68d638a9a510998e57f8
-        with:
-          rustflags: "-W warnings"
-          toolchain: stable
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190 # nextest

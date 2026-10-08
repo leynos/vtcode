@@ -50,8 +50,6 @@ jobs:
 
       - name: Set up Rust with the compiler cache
         uses: leynos/shared-actions/.github/actions/setup-rust@6cec89bac47a21cf756d68d638a9a510998e57f8
-        with:
-          rustflags: "-W warnings"
 
       - name: Build
         run: cargo build --locked --workspace --quiet
