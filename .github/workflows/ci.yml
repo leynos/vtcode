@@ -74,6 +74,10 @@ jobs:
           persist-credentials: false
       - name: Enforce workflow security invariants
         run: bash scripts/check_workflow_security.sh
+      - name: Enforce the compiler-cache wiring
+        run: |
+          python3 scripts/check_compiler_cache_wiring.py
+          python3 -m unittest scripts/tests/test_check_compiler_cache_wiring.py
 
   large-files:
     name: Check Custom Invariants
