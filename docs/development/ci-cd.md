@@ -57,6 +57,11 @@ installing the toolchain, `Swatinem/rust-cache` and
   job and `make lint-policies`, with behavioural tests in
   `scripts/tests/test_check_compiler_cache_wiring.py`) fails when a listed job
   does.
+- **Test job timeout:** the action does not archive `target`, so a cold
+  `Cargo nextest` job compiles the workspace from scratch (about 10 minutes for
+  the nextest build plus another for the focused harness tests). Its
+  `timeout-minutes` is 40 for that reason; the old 20 minutes relied on
+  `Swatinem/rust-cache` restoring `target`.
 - **Pin:** bump the `setup-rust@<sha>` reference in all four jobs together.
 
 ### 2. Tool Eval Workflow (`tool-eval.yml`)
