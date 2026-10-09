@@ -147,7 +147,7 @@ jobs:
           toolchain: stable
           components: rustfmt
       - name: Install mdtablefix
-        uses: leynos/shared-actions/.github/actions/install-mdtablefix@0606ca899ce2995a0c4bc78e660e80832e6e8855
+        uses: leynos/shared-actions/.github/actions/install-mdtablefix@b59d7d13d29636cc9f0c33a81ba17a9a2bde9bb8
         with:
           version: "0.6.1"
       - run: make check-fmt
@@ -208,7 +208,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - name: Set up Rust with the compiler cache
-        uses: leynos/shared-actions/.github/actions/setup-rust@6cec89bac47a21cf756d68d638a9a510998e57f8
+        uses: leynos/shared-actions/.github/actions/setup-rust@b59d7d13d29636cc9f0c33a81ba17a9a2bde9bb8
       - run: cargo clippy --locked --jobs 4
 
   # Check for unmaintained dependencies.
@@ -300,7 +300,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - name: Set up Rust with the compiler cache
-        uses: leynos/shared-actions/.github/actions/setup-rust@6cec89bac47a21cf756d68d638a9a510998e57f8
+        uses: leynos/shared-actions/.github/actions/setup-rust@b59d7d13d29636cc9f0c33a81ba17a9a2bde9bb8
       - run: cargo check --locked --jobs 4
 
   check-windows:
@@ -352,7 +352,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ripgrep
 
       - name: Set up Rust with the compiler cache
-        uses: leynos/shared-actions/.github/actions/setup-rust@6cec89bac47a21cf756d68d638a9a510998e57f8
+        uses: leynos/shared-actions/.github/actions/setup-rust@b59d7d13d29636cc9f0c33a81ba17a9a2bde9bb8
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190 # nextest
