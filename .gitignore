@@ -867,3 +867,7 @@ plans/
 
 .codegraph
 .superpowers
+
+# Tracked agent documents that markdownlint-cli2 must keep linting
+!/AGENTS.md
+!.github/copilot-instructions.md
