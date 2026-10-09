@@ -33,26 +33,30 @@ The Rust jobs that compile with a shared compiler cache (`lint-clippy`,
 `check-cross-platform` and `test` in `ci.yml`, and `eval` in `tool-eval.yml`)
 get it from one step, the pinned
 `leynos/shared-actions/.github/actions/setup-rust` action, instead of
-installing the toolchain, `Swatinem/rust-cache` and `mozilla-actions/sccache-action`
-by hand.
+installing the toolchain, `Swatinem/rust-cache` and
+`mozilla-actions/sccache-action` by hand.
 
 - **Toolchain:** `rust-toolchain.toml` (1.93.0) decides. Do not pass a
   `toolchain` input: it sets a rustup override that beats the file.
-- **Backend:** chosen by runner. These jobs run on GitHub-hosted runners, so
-  the native GitHub cache backend is used. The `metric
-  setup-rust.sccache.backend=` log line names the choice.
-- **Startup:** the action starts the sccache server with a 60 s timeout and
-  exports `RUSTC_WRAPPER` only once the server is up. If the server still
-  cannot start, the job compiles without the cache and shows a
-  `sccache-fallback` warning annotation, a "FALLBACK" line on the run summary,
-  and `metric setup-rust.sccache.server=start-failed` in the log. A healthy
-  start logs `metric setup-rust.sccache.server=started`. Search for the
-  annotation title to count fallbacks.
+- **Cargo cache:** the action restores `~/.cargo/registry` and `~/.cargo/git`
+  with `actions/cache`. It does not use `Swatinem/rust-cache`.
+- **Backend:** chosen by runner. These jobs run on GitHub-hosted runners, where
+  the action uses local-disk sccache, with the directory saved and restored
+  through GitHub Actions cache storage. The
+  `metric setup-rust.sccache.backend=` log line names the choice.
+- **Startup:** the action exports `RUSTC_WRAPPER` before it starts the sccache
+  server, with a 60 s startup timeout. If the server still cannot start, the
+  action clears the wrapper before any later step, so the job compiles without
+  the cache and shows a `sccache-fallback` warning annotation, a "FALLBACK"
+  line on the run summary, and `metric setup-rust.sccache.server=start-failed`
+  in the log. A healthy start logs `metric setup-rust.sccache.server=started`.
+  Search for the annotation title to count fallbacks.
 - **Do not** set `RUSTC_WRAPPER` or `SCCACHE_*` in a workflow or job `env`, or
-  add the three hand-rolled steps back. `scripts/check_compiler_cache_wiring.py`
-  (run by the Workflow Security Policy job and `make lint-policies`, with
-  behavioural tests in `scripts/tests/test_check_compiler_cache_wiring.py`)
-  fails when a listed job does.
+  add the three hand-rolled steps back.
+  `scripts/check_compiler_cache_wiring.py` (run by the Workflow Security Policy
+  job and `make lint-policies`, with behavioural tests in
+  `scripts/tests/test_check_compiler_cache_wiring.py`) fails when a listed job
+  does.
 - **Pin:** bump the `setup-rust@<sha>` reference in all four jobs together.
 
 ### 2. Tool Eval Workflow (`tool-eval.yml`)

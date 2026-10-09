@@ -2,15 +2,16 @@
 """Check that the Rust CI jobs get their compiler cache from setup-rust.
 
 Four jobs compile Rust with a shared compiler cache. They used to start sccache
-inline, which set `RUSTC_WRAPPER` for the whole job before any server existed,
+inline, with `RUSTC_WRAPPER` set for the whole job before any server existed,
 so a slow or unreachable cache failed the build. They now run the shared
-`setup-rust` action, which picks the backend for the runner, starts the server
-with a 60 s timeout and, if the server still cannot start, builds uncached with
-a `sccache-fallback` warning. This check keeps the jobs that way:
+`setup-rust` action, which picks the backend for the runner, exports the
+wrapper, starts the server with a 60 s timeout and, if the server still cannot
+start, clears the wrapper so the build runs uncached with a `sccache-fallback`
+warning. This check keeps the jobs that way:
 
 * each listed job has a `setup-rust` step pinned to a full commit SHA;
 * no listed job, and no workflow, sets `RUSTC_WRAPPER` or `SCCACHE_*` itself,
-  because the action exports them once the server is up;
+  because the action exports them and clears the wrapper on a failed start;
 * no listed job also installs the toolchain, the Cargo cache or sccache by
   hand, because the action does all three;
 * the `setup-rust` step passes no `toolchain`, so `rust-toolchain.toml` decides
@@ -44,7 +45,7 @@ def _env_violations(where: str, env: Any) -> list[str]:
     if not isinstance(env, dict):
         return []
     return [
-        f"{where}: sets {name}, which setup-rust exports once the server is up"
+        f"{where}: sets {name}, which setup-rust exports itself"
         for name in env
         if name == "RUSTC_WRAPPER" or str(name).startswith("SCCACHE_")
     ]
