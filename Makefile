@@ -47,6 +47,7 @@ lint-shell:
 
 lint-policies:
 	./scripts/check_workflow_security.sh
+	python3 scripts/check_compiler_cache_wiring.py
 	./scripts/lint_structured_logging.sh
 
 # Keep the existing warn-mode reports available without making them part of
