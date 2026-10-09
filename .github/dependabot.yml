@@ -6,6 +6,9 @@ updates:
       - "/"
       - "/.github/actions/*"
     groups:
+      shared-actions:
+        patterns:
+          - 'leynos/shared-actions*'
       minor-and-patch:
         patterns:
           - '*'
