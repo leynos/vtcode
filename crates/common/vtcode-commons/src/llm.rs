@@ -36,6 +36,9 @@ pub enum BackendKind {
 pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
+    /// Number of completion tokens spent on provider-side reasoning/thinking.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_output_tokens: Option<u32>,
     pub total_tokens: u32,
     pub cached_prompt_tokens: Option<u32>,
     pub cache_creation_tokens: Option<u32>,
@@ -164,6 +167,7 @@ mod usage_tests {
         let usage = Usage {
             prompt_tokens: 1_000,
             completion_tokens: 200,
+            reasoning_output_tokens: None,
             total_tokens: 1_200,
             cached_prompt_tokens: Some(600),
             cache_creation_tokens: Some(150),
@@ -185,6 +189,7 @@ mod usage_tests {
         let usage = Usage {
             prompt_tokens: 1_000,
             completion_tokens: 200,
+            reasoning_output_tokens: None,
             total_tokens: 1_200,
             cached_prompt_tokens: None,
             cache_creation_tokens: None,

@@ -70,6 +70,7 @@ fn merge_final_response_metadata(
                 .and_then(Value::as_u64)
                 .and_then(|value| u32::try_from(value).ok())
                 .unwrap_or(0),
+            reasoning_output_tokens: crate::providers::common::parse_reasoning_tokens_from_usage(usage_value),
             total_tokens: usage_value
                 .get("total_tokens")
                 .and_then(Value::as_u64)
@@ -261,15 +262,16 @@ pub(crate) fn create_chat_stream(
                         continue;
                     }
 
-                    let mut payload: Value = serde_json::from_str(trimmed_payload).map_err(|err| {
+                    let payload: Value = serde_json::from_str(trimmed_payload).map_err(|err| {
                         StreamAssemblyError::InvalidPayload(err.to_string())
                             .into_llm_error("OpenAI")
                     })?;
 
-                    if let Some(usage_val) = payload.get_mut("usage")
-                        && let Ok(u) = serde_json::from_value::<provider::Usage>(std::mem::take(usage_val)) {
-                            aggregator.set_usage(u);
-                        }
+                    if payload.get("usage").is_some()
+                        && let Some(usage) = crate::providers::common::parse_usage_openai_format(&payload, false)
+                    {
+                        aggregator.set_usage(usage);
+                    }
 
                     if let Some(choices) = payload.get("choices").and_then(|v| v.as_array())
                         && let Some(choice) = choices.first() {
@@ -647,6 +649,25 @@ mod tests {
         assert_eq!(usage.completion_tokens, 5);
         assert_eq!(usage.total_tokens, 17);
         assert_eq!(usage.cached_prompt_tokens, Some(9));
+    }
+
+    #[test]
+    fn responses_final_metadata_preserves_reasoning_tokens() {
+        let mut response = LLMResponse::default();
+        merge_final_response_metadata(
+            &mut response,
+            &json!({
+                "usage": {
+                    "input_tokens": 12,
+                    "output_tokens": 5,
+                    "total_tokens": 17,
+                    "output_tokens_details": {"reasoning_tokens": 4}
+                }
+            }),
+            false,
+        );
+
+        assert_eq!(response.usage.and_then(|usage| usage.reasoning_output_tokens), Some(4));
     }
 
     #[test]

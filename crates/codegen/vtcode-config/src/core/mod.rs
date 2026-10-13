@@ -25,8 +25,8 @@ pub use auth::{AuthConfig, CopilotAuthConfig, OpenAIAuthConfig, OpenAIPreferredM
 pub use automation::{AutomationConfig, FullAutoConfig, ScheduledTasksConfig};
 pub use commands::CommandsConfig;
 pub use custom_provider::{
-    CustomProviderApiFormat, CustomProviderCommandAuthConfig, CustomProviderConfig, CustomProviderProfileConfig,
-    CustomProviderRequestPolicyConfig, ResolvedCustomProviderProfile,
+    CustomProviderApiFormat, CustomProviderCommandAuthConfig, CustomProviderConfig, CustomProviderPricingConfig,
+    CustomProviderProfileConfig, CustomProviderRequestPolicyConfig, ResolvedCustomProviderProfile,
 };
 pub use dotfile_protection::DotfileProtectionConfig;
 pub use model::ModelConfig;
