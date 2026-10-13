@@ -134,6 +134,20 @@ fn get_bash_parser() -> Result<&'static Mutex<tree_sitter::Parser>, String> {
         .map_err(Clone::clone)
 }
 
+/// Detects the input shape documented in tree-sitter-bash issue #337, where a
+/// brace before a later four-byte UTF-8 character can crash the native parser.
+fn matches_tree_sitter_bash_issue_337_shape(script: &str) -> bool {
+    let mut saw_open_brace = false;
+
+    script.bytes().any(|byte| {
+        if byte == b'{' {
+            saw_open_brace = true;
+        }
+
+        saw_open_brace && (0xF0..=0xF4).contains(&byte)
+    })
+}
+
 /// Ensures the bash tree-sitter parser is initialized.
 pub fn prewarm_bash_parser() -> Result<(), String> {
     let _ = get_bash_parser()?;
@@ -175,6 +189,9 @@ pub fn parse_shell_commands_tree_sitter(script: &str) -> Result<Vec<Vec<String>>
 /// command output. Input, heredoc, and descriptor-closing redirections remain
 /// unsupported so progress classification can fail closed.
 pub fn has_only_output_redirections(script: &str) -> bool {
+    if matches_tree_sitter_bash_issue_337_shape(script) {
+        return false;
+    }
     if contains_dynamic_shell_syntax(script) {
         return false;
     }
@@ -281,6 +298,10 @@ fn is_output_redirection(text: &str) -> bool {
 
 /// Parses shell script using tree-sitter bash grammar.
 fn parse_with_tree_sitter(script: &str, reject_syntax_errors: bool) -> Result<Vec<Vec<String>>, String> {
+    if matches_tree_sitter_bash_issue_337_shape(script) {
+        return Err("Shell script matches the tree-sitter-bash issue #337 crash pattern".to_string());
+    }
+
     let parser_guard = get_bash_parser()?;
     let mut parser = parser_guard.lock().map_err(|e| format!("Failed to lock parser: {e}"))?;
 
@@ -640,6 +661,27 @@ mod tests {
     fn strict_tree_sitter_parser_rejects_incomplete_shell_syntax() {
         assert!(parse_shell_commands_tree_sitter("cargo check &&").is_err());
         assert!(parse_shell_commands_tree_sitter("echo '").is_err());
+    }
+
+    #[test]
+    fn tree_sitter_issue_337_inputs_are_rejected_before_native_parsing() {
+        for script in ["{𱡀", "{echo; printf '💩'}"] {
+            assert_eq!(
+                parse_shell_commands_tree_sitter(script),
+                Err("Shell script matches the tree-sitter-bash issue #337 crash pattern".to_string())
+            );
+            assert_eq!(parse_shell_commands(script), parse_with_basic_tokenization(script));
+            assert!(!has_only_output_redirections(script));
+        }
+
+        // Quoting would normally let the output-redirection check reach the
+        // native parser, so this verifies its issue-pattern preflight directly.
+        assert!(!has_only_output_redirections("echo '{' '💩' > build.log"));
+    }
+
+    #[test]
+    fn tree_sitter_issue_337_guard_requires_brace_before_four_byte_character() {
+        assert!(!matches_tree_sitter_bash_issue_337_shape("𱡀{"));
     }
 
     #[test]
