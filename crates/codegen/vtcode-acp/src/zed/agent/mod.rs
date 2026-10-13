@@ -5,9 +5,11 @@ use crate::tooling::AcpToolRegistry;
 use crate::zed::connection::ConnectionHandle;
 use crate::zed::provider_runtime::ProviderRuntimeRegistry;
 use hashbrown::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::sync::OnceCell;
 use tracing::{debug, warn};
 use vtcode_config::auth::AuthCredentialsStoreMode;
 use vtcode_config::core::CustomProviderConfig;
@@ -67,10 +69,12 @@ pub(crate) struct ZedAgent {
     vt_config: Option<Box<VTCodeConfig>>,
     audit_logger: Option<Arc<AcpAuditLogger>>,
     workspace_runtime_config: WorkspaceRuntimeConfig,
+    workspace_runtimes: tokio::sync::Mutex<HashMap<PathBuf, Arc<OnceCell<Arc<SessionWorkspaceRuntime>>>>>,
+    workspace_trust_synchronizer: Arc<dyn crate::workspace::WorkspaceTrustSynchronizer + Send + Sync>,
 }
 
 pub(crate) struct SessionWorkspaceRuntime {
-    workspace_root: std::path::PathBuf,
+    workspace_root: PathBuf,
     workspace_hooks_gated: bool,
     system_prompt: String,
     primary_agents: PrimaryAgentCatalog,
@@ -250,7 +254,7 @@ fn configure_acp_tool_call_limits(registry: &CoreToolRegistry, vt_cfg: Option<&V
 impl SessionWorkspaceRuntime {
     async fn build(
         base_config: &CoreAgentConfig,
-        workspace_root: std::path::PathBuf,
+        workspace_root: PathBuf,
         runtime_config: &WorkspaceRuntimeConfig,
         vt_cfg: Option<&VTCodeConfig>,
     ) -> anyhow::Result<Self> {
@@ -332,12 +336,40 @@ impl SessionWorkspaceRuntime {
 }
 
 impl ZedAgent {
-    #[allow(
+    async fn workspace_runtime_for(&self, workspace_root: PathBuf) -> anyhow::Result<Arc<SessionWorkspaceRuntime>> {
+        let workspace_root =
+            vtcode_commons::fs::canonicalize_with_context_async(&workspace_root, "ACP session workspace").await?;
+        let runtime_cell = {
+            let mut runtimes = self.workspace_runtimes.lock().await;
+            Arc::clone(
+                runtimes
+                    .entry(workspace_root.clone())
+                    .or_insert_with(|| Arc::new(OnceCell::new())),
+            )
+        };
+        let runtime = runtime_cell
+            .get_or_try_init(|| async {
+                SessionWorkspaceRuntime::build(
+                    &self.config,
+                    workspace_root,
+                    &self.workspace_runtime_config,
+                    self.vt_config.as_deref(),
+                )
+                .await
+                .map(Arc::new)
+            })
+            .await?;
+        Ok(Arc::clone(runtime))
+    }
+}
+
+impl ZedAgent {
+    #[expect(
         clippy::too_many_arguments,
         reason = "ACP startup composes independent protocol, provider, tool, credential, and UI configuration roots."
     )]
     pub(crate) async fn new(
-        config: CoreAgentConfig,
+        mut config: CoreAgentConfig,
         credential_storage_mode: AuthCredentialsStoreMode,
         zed_config: AgentClientProtocolZedConfig,
         tools_config: ToolsConfig,
@@ -351,6 +383,9 @@ impl ZedAgent {
         vt_cfg: Option<&VTCodeConfig>,
         audit_logger: Option<Arc<AcpAuditLogger>>,
     ) -> Self {
+        if let Ok(workspace_root) = vtcode_commons::canonicalize(&config.workspace) {
+            config.workspace = workspace_root;
+        }
         let read_file_enabled = zed_config.tools.read_file;
         let workspace_root = config.workspace.clone();
         let tool_loop_limit = tools_config.max_tool_loops;
@@ -412,6 +447,24 @@ impl ZedAgent {
             skip_confirmations,
         };
 
+        let launch_runtime = Arc::new(SessionWorkspaceRuntime {
+            workspace_root: workspace_root.clone(),
+            workspace_hooks_gated,
+            system_prompt: system_prompt.clone(),
+            primary_agents: primary_agents.clone(),
+            acp_tool_registry: Arc::clone(&acp_tool_registry),
+            permission_prompter: Arc::clone(&permission_prompter),
+            local_tool_registry: core_tool_registry.clone(),
+            file_ops_tool: file_ops_tool.clone(),
+        });
+        let mut workspace_runtimes = HashMap::new();
+        if let Ok(canonical_workspace) = vtcode_commons::canonicalize(&workspace_root) {
+            let runtime_cell = Arc::new(OnceCell::new());
+            if runtime_cell.set(launch_runtime).is_ok() {
+                drop(workspace_runtimes.insert(canonical_workspace, runtime_cell));
+            }
+        }
+
         Self {
             config,
             credential_storage_mode,
@@ -434,6 +487,8 @@ impl ZedAgent {
             vt_config: vt_cfg.cloned().map(Box::new),
             audit_logger,
             workspace_runtime_config,
+            workspace_runtimes: tokio::sync::Mutex::new(workspace_runtimes),
+            workspace_trust_synchronizer: Arc::new(crate::workspace::DefaultWorkspaceTrustSynchronizer::new()),
         }
     }
 

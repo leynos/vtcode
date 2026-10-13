@@ -157,7 +157,7 @@ cargo nextest run --run-ignored ignored-only \
 
 The physics tests bind only to an ephemeral localhost port. Their fixtures are
 under `tests/fixtures/vidaimock/`; never put API keys, request bodies, or
-unsanitised provider captures there.
+unsanitized provider captures there.
 
 ### Structural Rule Checks
 
@@ -230,7 +230,7 @@ style rewrites such as `rewriters`, `transform.rewrite`, `joinBy`, and
 one-to-many rewrites like splitting barrel imports. It also covers
 transformation-object details such as `replace`, `substring`, `convert`,
 `toCase`, `separatedBy`, `CaseChange`, string-form transforms, and the
-experimental matching-order behavior of `transform.rewrite`. It also covers
+experimental matching-order behaviour of `transform.rewrite`. It also covers
 rewriter-specific rules such as required `id` / `rule` / `fix`, rewriter-local
 capture scope, rewriter-local `utils` / `transform`, and using sibling
 rewriters from the same list. It also covers `sgconfig.yml` itself in more
@@ -243,16 +243,16 @@ parser inspection with `tree-sitter parse`. It also covers multi-language
 documents and language injection, including built-in HTML `<script>` /
 `<style>` extraction, `languageInjections`, `hostLanguage`, `injected`,
 `$CONTENT` captures, styled-components CSS, and GraphQL template literals. It
-also covers ast-grep’s built-in language catalog, alias selection for `--lang`
-/ YAML `language`, built-in extension mapping, and when VT Code’s local
-inference subset differs from ast-grep’s full built-in list. It also covers the
-programmatic API surface in more concrete terms: Node NAPI `parse` / `kind` /
-`pattern`, `Lang`, `SgRoot`, `SgNode`, `NapiConfig`, Python `SgRoot` /
+also covers ast-grep’s built-in language catalogue, alias selection for
+`--lang` / YAML `language`, built-in extension mapping, and when VT Code’s
+local inference subset differs from ast-grep’s full built-in list. It also
+covers the programmatic API surface in more concrete terms: Node NAPI `parse` /
+`kind` / `pattern`, `Lang`, `SgRoot`, `SgNode`, `NapiConfig`, Python `SgRoot` /
 `SgNode`, edit objects, and the deprecation of language-specific JS objects like
 `js.parse(...)`. Quick-start guidance there also covers shell quoting for
 metavariables, Linux `ast-grep` vs `sg`, and the optional-chaining rewrite
-example. Catalog-style example discovery and adaptation are also routed there,
-especially when examples depend on `constraints`, `utils`, `transform`,
+example. Catalogue-style example discovery and adaptation are also routed
+there, especially when examples depend on `constraints`, `utils`, `transform`,
 `rewriters`, or built-in fixes.
 
 ### Integration Tests

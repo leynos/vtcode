@@ -3,18 +3,22 @@
 These fixtures drive the Arli ACP probe with VidaiMock 0.1.3. The baseline
 stream in [`arli_chat_stream.json`](arli_chat_stream.json) and
 [`templates/arli/captured_stream.j2`](templates/arli/captured_stream.j2) comes
-from a sanitised mitmproxy reverse-proxy capture. It retains response timing
+from a sanitized mitmproxy reverse-proxy capture. It retains response timing
 and SSE frames; request headers and the request body were removed.
 
 ## Run the probe
 
-Use the official ACP Rust SDK as the client harness. Start the mock from the
-fixture repository with the scenario you want and the provider/template
-directory in this directory:
+Use the official ACP Rust SDK as the client harness. These instructions require
+a separate checkout of `vtcode-arli-toolcall-fixture` and VidaiMock 0.1.3 on
+`PATH`. Set `VT_FIXTURE_REPO` to that checkout and `VT_FIXTURES` to this
+repository's fixture directory, adjusting both example paths to match your
+checkouts. Start the mock from the fixture repository with the scenario you
+want and the provider/template directory in this directory:
 
 ```bash
-cd /home/leynos/Projects/vtcode-arli-toolcall-fixture
-VT_FIXTURES=/home/leynos/Projects/VTCode/tests/fixtures/vidaimock
+VT_FIXTURE_REPO=/path/to/vtcode-arli-toolcall-fixture
+VT_FIXTURES=/path/to/vtcode/tests/fixtures/vidaimock
+cd "$VT_FIXTURE_REPO"
 VIDAIMOCK_ISOLATED=true vidaimock \
   --config "$VT_FIXTURES/scenarios/success.toml" \
   --config-dir "$VT_FIXTURES"

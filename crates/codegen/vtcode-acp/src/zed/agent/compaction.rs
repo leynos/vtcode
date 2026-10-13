@@ -1,3 +1,8 @@
+//! Compact ACP session history to fit provider context limits.
+//!
+//! The agent checks prompt size before provider requests and coordinates
+//! automatic, provider-native, and hook-assisted compaction.
+
 use super::super::types::SessionHandle;
 use super::ZedAgent;
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderRequestRuntime};

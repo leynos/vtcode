@@ -88,6 +88,7 @@ pub trait AcpPermissionPrompter: Send + Sync {
 struct PermissionDecisionKey {
     session_id: acp::SessionId,
     tool_name: String,
+    action_label: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -118,10 +119,11 @@ where
         }
     }
 
-    fn permission_key(session_id: &acp::SessionId, tool_name: &str) -> PermissionDecisionKey {
+    fn permission_key(session_id: &acp::SessionId, tool_name: &str, action_label: &str) -> PermissionDecisionKey {
         PermissionDecisionKey {
             session_id: session_id.clone(),
             tool_name: tool_name.to_string(),
+            action_label: action_label.to_string(),
         }
     }
 
@@ -129,11 +131,12 @@ where
         &self,
         session_id: &acp::SessionId,
         tool_name: &str,
+        action_label: &str,
     ) -> Option<PersistentPermissionDecision> {
         self.persistent_decisions
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .get(&Self::permission_key(session_id, tool_name))
+            .get(&Self::permission_key(session_id, tool_name, action_label))
             .copied()
     }
 
@@ -141,13 +144,14 @@ where
         &self,
         session_id: &acp::SessionId,
         tool_name: &str,
+        action_label: &str,
         decision: PersistentPermissionDecision,
     ) {
         let _previous = self
             .persistent_decisions
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .insert(Self::permission_key(session_id, tool_name), decision);
+            .insert(Self::permission_key(session_id, tool_name, action_label), decision);
     }
 
     fn render_action_label(&self, tool: SupportedTool, args: Option<&Value>) -> String {
@@ -286,7 +290,7 @@ where
         }
 
         if !force_prompt {
-            match self.persistent_decision(session_id, tool.name) {
+            match self.persistent_decision(session_id, tool.name, tool.action_label) {
                 Some(PersistentPermissionDecision::Allow) => {
                     debug!(session_id = %session_id, tool = tool.name, "ACP permission allowed by session decision");
                     return Ok(None);
@@ -321,12 +325,22 @@ where
                     if option_id_str == TOOL_PERMISSION_ALLOW_OPTION_ID {
                         Ok(None)
                     } else if option_id_str == TOOL_PERMISSION_ALLOW_ALWAYS_OPTION_ID {
-                        self.remember_persistent_decision(session_id, tool.name, PersistentPermissionDecision::Allow);
+                        self.remember_persistent_decision(
+                            session_id,
+                            tool.name,
+                            tool.action_label,
+                            PersistentPermissionDecision::Allow,
+                        );
                         Ok(None)
                     } else if option_id_str == TOOL_PERMISSION_DENY_OPTION_ID {
                         Ok(Some(ToolExecutionReport::blocked(tool.name, TOOL_PERMISSION_DENIED_MESSAGE)))
                     } else if option_id_str == TOOL_PERMISSION_DENY_ALWAYS_OPTION_ID {
-                        self.remember_persistent_decision(session_id, tool.name, PersistentPermissionDecision::Reject);
+                        self.remember_persistent_decision(
+                            session_id,
+                            tool.name,
+                            tool.action_label,
+                            PersistentPermissionDecision::Reject,
+                        );
                         Ok(Some(ToolExecutionReport::blocked(tool.name, TOOL_PERMISSION_DENIED_MESSAGE)))
                     } else {
                         warn!("{}", TOOL_PERMISSION_UNKNOWN_OPTION_LOG);
@@ -443,6 +457,7 @@ mod tests {
         decision: ClientDecision,
         skip_confirmations: bool,
         force_prompt: bool,
+        second_args: Option<Value>,
     ) -> (Vec<Option<ToolExecutionReport>>, usize) {
         let (agent_channel, client_channel) = Channel::duplex();
         let (result_tx, result_rx) = oneshot::channel();
@@ -461,14 +476,19 @@ mod tests {
                     skip_confirmations,
                 );
                 let mut results = Vec::with_capacity(2);
-                for _ in 0..2 {
+                for index in 0..2 {
+                    let args = if index == 1 {
+                        second_args.as_ref().unwrap_or(&args)
+                    } else {
+                        &args
+                    };
                     results.push(if force_prompt {
                         prompter
-                            .request_tool_permission_forced(&handle, &session_id, &call, SupportedTool::ReadFile, &args)
+                            .request_tool_permission_forced(&handle, &session_id, &call, SupportedTool::ReadFile, args)
                             .await
                     } else {
                         prompter
-                            .request_tool_permission(&handle, &session_id, &call, SupportedTool::ReadFile, &args)
+                            .request_tool_permission(&handle, &session_id, &call, SupportedTool::ReadFile, args)
                             .await
                     });
                 }
@@ -555,7 +575,7 @@ mod tests {
 
     #[tokio::test]
     async fn skip_confirmations_bypasses_acp_permission_requests() {
-        let (results, request_count) = run_repeated_permission_flow(ClientDecision::Allow, true, false).await;
+        let (results, request_count) = run_repeated_permission_flow(ClientDecision::Allow, true, false, None).await;
 
         assert!(results.iter().all(Option::is_none));
         assert_eq!(request_count, 0);
@@ -563,7 +583,8 @@ mod tests {
 
     #[tokio::test]
     async fn allow_always_is_reused_for_the_session_tool() {
-        let (results, request_count) = run_repeated_permission_flow(ClientDecision::AllowAlways, false, false).await;
+        let (results, request_count) =
+            run_repeated_permission_flow(ClientDecision::AllowAlways, false, false, None).await;
 
         assert!(results.iter().all(Option::is_none));
         assert_eq!(request_count, 1);
@@ -571,7 +592,8 @@ mod tests {
 
     #[tokio::test]
     async fn reject_always_is_reused_for_the_session_tool() {
-        let (results, request_count) = run_repeated_permission_flow(ClientDecision::DenyAlways, false, false).await;
+        let (results, request_count) =
+            run_repeated_permission_flow(ClientDecision::DenyAlways, false, false, None).await;
 
         assert!(results.iter().all(|report| {
             report
@@ -583,7 +605,21 @@ mod tests {
 
     #[tokio::test]
     async fn forced_permission_prompt_overrides_skip_confirmations() {
-        let (results, request_count) = run_repeated_permission_flow(ClientDecision::Allow, true, true).await;
+        let (results, request_count) = run_repeated_permission_flow(ClientDecision::Allow, true, true, None).await;
+
+        assert!(results.iter().all(Option::is_none));
+        assert_eq!(request_count, 2);
+    }
+
+    #[tokio::test]
+    async fn allow_always_does_not_cover_a_different_action_for_the_same_tool() {
+        let (results, request_count) = run_repeated_permission_flow(
+            ClientDecision::AllowAlways,
+            false,
+            false,
+            Some(json!({ "path": "secrets.env" })),
+        )
+        .await;
 
         assert!(results.iter().all(Option::is_none));
         assert_eq!(request_count, 2);

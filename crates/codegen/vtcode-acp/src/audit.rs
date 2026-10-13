@@ -1,3 +1,8 @@
+//! Write opt-in ACP tool-audit entries without blocking async handlers.
+//!
+//! The configured audit logger is shared across sessions, with file creation,
+//! writes, and flushes dispatched to Tokio's blocking pool.
+
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};

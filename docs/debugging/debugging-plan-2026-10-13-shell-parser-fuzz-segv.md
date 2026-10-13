@@ -158,5 +158,5 @@ Run only the supplied focused experiment, one Cargo command at a time, using
 the shared Cargo cache and normal compiler admission. Do not run full
 repository gates, edit tracked files, change global test settings, or suppress
 the test. The planning agent is not the execution agent; return a verdict of
-falsified, not-falsified, or inconclusive with the exact seed, profile, command
-and result.
+falsified, not-falsified, or inconclusive with the exact seed, profile,
+command, and result.

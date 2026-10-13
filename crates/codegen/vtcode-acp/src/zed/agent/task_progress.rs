@@ -1,3 +1,8 @@
+//! Project task-tracker results and persisted checklists into ACP plan updates.
+//!
+//! The conversions preserve tracker metadata while mapping checklist status to
+//! the plan entries understood by ACP clients.
+
 use super::super::types::SessionHandle;
 use super::ZedAgent;
 use crate::acp;

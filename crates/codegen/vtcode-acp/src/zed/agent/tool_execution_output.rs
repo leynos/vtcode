@@ -1,3 +1,8 @@
+//! Render tool execution results as ACP tool-call content blocks.
+//!
+//! This module formats command summaries, output, and additional details for
+//! client display while applying the agent's display truncation rules.
+
 use super::ZedAgent;
 use crate::acp;
 use serde_json::{Map, Value};

@@ -1,3 +1,8 @@
+//! Forward sub-agent and background-process lifecycle events to ACP clients.
+//!
+//! A session-scoped forwarder filters progress events by parent session and
+//! sends the matching events as VTCode task-lifecycle notifications.
+
 use super::super::types::SessionHandle;
 use super::ZedAgent;
 use crate::acp;
