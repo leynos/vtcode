@@ -10,6 +10,7 @@
 use crate::error_display;
 use crate::provider;
 use crate::provider::LLMProvider;
+use crate::providers::error_handling::error_metadata_from_headers;
 use hashbrown::{HashMap, HashSet};
 use reqwest::Client as HttpClient;
 use reqwest::StatusCode;
@@ -30,7 +31,7 @@ use vtcode_config::auth::{OpenAIChatGptAuthHandle, OpenAIChatGptSession};
 use vtcode_config::constants::models;
 use vtcode_config::core::{
     AnthropicConfig, CustomProviderConfig, ModelConfig, OpenAIConfig, OpenAIHostedShellConfig,
-    OpenAIPromptCacheSettings, OpenAIServiceTier, PromptCachingConfig,
+    OpenAIPromptCacheSettings, OpenAIServiceTier, PromptCachingConfig, RateLimitHeaderConfig,
 };
 
 // Import from extracted modules
@@ -95,6 +96,36 @@ pub struct OpenAIProvider {
 }
 
 impl OpenAIProvider {
+    fn error_provider_name(&self) -> &str {
+        self.provider_display_override.as_deref().unwrap_or("OpenAI")
+    }
+
+    fn rate_limit_headers(&self) -> RateLimitHeaderConfig {
+        self.custom_provider_config.as_ref().map_or_else(
+            || RateLimitHeaderConfig::for_provider_name(self.error_provider_name()),
+            |config| config.effective_rate_limit_headers(),
+        )
+    }
+
+    fn provider_error_with_headers(
+        &self,
+        message: String,
+        status: StatusCode,
+        body: &str,
+        headers: &HeaderMap,
+    ) -> provider::LLMError {
+        provider::LLMError::Provider {
+            message,
+            metadata: Some(error_metadata_from_headers(
+                self.error_provider_name(),
+                status,
+                body,
+                headers,
+                &self.rate_limit_headers(),
+            )),
+        }
+    }
+
     fn requires_streaming_responses(model: &str) -> bool {
         matches!(model, models::openai::GPT | models::openai::GPT_5_6_SOL)
     }
@@ -788,6 +819,9 @@ impl OpenAIProvider {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod error_metadata_tests;
 
 mod harmony_client;
 mod provider_impl;
