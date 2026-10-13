@@ -14,8 +14,8 @@ AcpError
 
 `zed/agent/handlers.rs` is the canonical SACP handler wiring;
 `zed/connection.rs` wraps the SACP `ConnectionTo<Client>` handle;
-`ZedAgent::new` attaches and refreshes parent MCP providers before
-snapshotting model tools.
+`ZedAgent::new` attaches and refreshes parent MCP providers before snapshotting
+model tools.
 
 ## Rules
 

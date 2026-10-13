@@ -352,6 +352,7 @@ impl ZedAgent {
                 token_usage: None,
                 max_context_tokens: None,
                 loaded_skills: Some(snapshot.loaded_skills),
+                turn_diagnostics: None,
             })
             .await?;
         debug!(path = %status.path().display(), ?status, "Processed ACP session checkpoint");
@@ -929,6 +930,27 @@ impl ZedAgent {
     }
 }
 
+async fn canonical_session_workspace(requested_workspace: &std::path::Path) -> Result<std::path::PathBuf, acp::Error> {
+    if !requested_workspace.is_absolute() {
+        return Err(acp::Error::invalid_params().data("ACP session cwd must be an absolute directory"));
+    }
+    let workspace = canonicalize_with_context_async(requested_workspace, "ACP session cwd")
+        .await
+        .map_err(|error| {
+            acp::Error::invalid_params()
+                .data(format!("Unable to resolve ACP session cwd '{}': {error}", requested_workspace.display()))
+        })?;
+    let metadata = tokio::fs::metadata(&workspace).await.map_err(|error| {
+        acp::Error::invalid_params()
+            .data(format!("Unable to inspect ACP session cwd '{}': {error}", requested_workspace.display()))
+    })?;
+    if !metadata.is_dir() {
+        return Err(acp::Error::invalid_params()
+            .data(format!("ACP session cwd '{}' is not a directory", requested_workspace.display())));
+    }
+    Ok(workspace)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1464,25 +1486,4 @@ Research primary prompt."#,
         assert_eq!(config_options.len(), 3);
         assert_eq!(config_options[0].id, acp::SessionConfigId::new("primary_agent"));
     }
-}
-
-async fn canonical_session_workspace(requested_workspace: &std::path::Path) -> Result<std::path::PathBuf, acp::Error> {
-    if !requested_workspace.is_absolute() {
-        return Err(acp::Error::invalid_params().data("ACP session cwd must be an absolute directory"));
-    }
-    let workspace = canonicalize_with_context_async(requested_workspace, "ACP session cwd")
-        .await
-        .map_err(|error| {
-            acp::Error::invalid_params()
-                .data(format!("Unable to resolve ACP session cwd '{}': {error}", requested_workspace.display()))
-        })?;
-    let metadata = tokio::fs::metadata(&workspace).await.map_err(|error| {
-        acp::Error::invalid_params()
-            .data(format!("Unable to inspect ACP session cwd '{}': {error}", requested_workspace.display()))
-    })?;
-    if !metadata.is_dir() {
-        return Err(acp::Error::invalid_params()
-            .data(format!("ACP session cwd '{}' is not a directory", requested_workspace.display())));
-    }
-    Ok(workspace)
 }

@@ -76,9 +76,9 @@ Harness primitives in VT Code map to the runtime like this:
   thread events, Open Responses emission, ATIF trajectory export, and optional
   harness event logs capture what happened for resume and downstream tooling.
   The [ATIF](https://www.harborframework.com/docs/agents/trajectory-format)
-  exporter (`vtcode-exec-events::atif`) converts live `ThreadEvent` streams into
-  the standardized Agent Trajectory Interchange Format for SFT/RL pipelines,
-  debugging, and visualization.
+  exporter (`vtcode-exec-events::atif`) converts live `ThreadEvent` streams
+  into the standardized Agent Trajectory Interchange Format for SFT/RL
+  pipelines, debugging, and visualization.
 - **Security auditing**: the opt-in ACP audit JSONL is a separate security
   record. It stores tool-invocation metadata, status, timing, and hashes, not
   conversation bodies, and is not a source for resume or compaction.
