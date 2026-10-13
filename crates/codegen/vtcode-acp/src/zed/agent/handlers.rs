@@ -233,7 +233,6 @@ async fn finish_failed_provider_turn(
     agent.push_message(session, message);
     persist_session_checkpoint(agent, session, "incomplete_provider_turn").await;
     warn!(
-        provider_error = %strip_ansi_codes(error),
         partial_text_bytes = content.len(),
         partial_reasoning_bytes = reasoning.len(),
         "ACP provider failed to complete the turn"
@@ -295,7 +294,6 @@ struct GenerationTelemetry {
 struct ProviderErrorTelemetry<'a> {
     code: Option<&'a str>,
     status: Option<u16>,
-    detail: Option<&'a str>,
 }
 
 fn provider_error_telemetry(error: &LLMError) -> ProviderErrorTelemetry<'_> {
@@ -305,7 +303,6 @@ fn provider_error_telemetry(error: &LLMError) -> ProviderErrorTelemetry<'_> {
     ProviderErrorTelemetry {
         code: metadata.code.as_deref(),
         status: metadata.status,
-        detail: metadata.message.as_deref(),
     }
 }
 impl GenerationTelemetry {
@@ -391,8 +388,6 @@ impl GenerationTelemetry {
             circuit_breaker_state = snapshot.circuit_breaker_state,
             provider_error_code = ?error_telemetry.code,
             provider_error_status = ?error_telemetry.status,
-            provider_error_detail = ?error_telemetry.detail,
-            provider_error = %error,
             "ACP provider generation attempt failed"
         );
     }
@@ -1723,7 +1718,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn provider_error_telemetry_exposes_structured_network_diagnostics() {
+    fn provider_error_telemetry_exposes_stable_network_metadata() {
         let error = LLMError::Network {
             message: "request failed".to_string(),
             metadata: Some(LLMErrorMetadata::new(
@@ -1742,7 +1737,6 @@ mod tests {
             ProviderErrorTelemetry {
                 code: Some("reqwest_timeout_error"),
                 status: Some(504),
-                detail: Some("operation timed out"),
             }
         );
     }

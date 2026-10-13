@@ -161,12 +161,11 @@ pub(crate) async fn handle_openai_http_error(
     let metadata = extract_response_metadata(&response);
     let error_text = read_provider_error_body(response).await;
 
-    // Universal diagnostic logging — helps debug post-tool follow-up failures
-    // and transient API issues across all OpenAI-compatible providers.
+    // Keep response bodies out of logs: providers may include customer prompts
+    // or other sensitive content in their error messages.
     tracing::warn!(
         provider = provider_name,
         status = %status,
-        body = %sanitize_provider_diagnostic(error_text.as_bytes()),
         "{} HTTP error",
         provider_name
     );
@@ -462,6 +461,52 @@ fn extract_response_metadata(response: &Response) -> ApiResponseMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Write as _;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{Arc, Mutex};
+    use tracing::field::{Field, Visit};
+    use tracing::span::{Attributes, Id, Record};
+    use tracing::{Event, Metadata, Subscriber};
+
+    struct CapturedEvents {
+        events: Arc<Mutex<Vec<String>>>,
+        next_span_id: AtomicU64,
+    }
+
+    impl Subscriber for CapturedEvents {
+        fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
+            true
+        }
+
+        fn new_span(&self, _attributes: &Attributes<'_>) -> Id {
+            Id::from_u64(self.next_span_id.fetch_add(1, Ordering::Relaxed) + 1)
+        }
+
+        fn record(&self, _span: &Id, _values: &Record<'_>) {}
+
+        fn record_follows_from(&self, _span: &Id, _follows: &Id) {}
+
+        fn event(&self, event: &Event<'_>) {
+            let mut fields = String::new();
+            event.record(&mut CapturedFields(&mut fields));
+            self.events
+                .lock()
+                .expect("captured event lock should be available")
+                .push(fields);
+        }
+
+        fn enter(&self, _span: &Id) {}
+
+        fn exit(&self, _span: &Id) {}
+    }
+
+    struct CapturedFields<'a>(&'a mut String);
+
+    impl Visit for CapturedFields<'_> {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            let _ = writeln!(self.0, "{}={value:?}", field.name());
+        }
+    }
 
     #[test]
     fn reqwest_error_classification_covers_transport_categories() {
@@ -542,6 +587,51 @@ mod tests {
             }
             other => panic!("expected a network error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn openai_http_error_logs_metadata_without_provider_response_text() {
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
+
+        const RESPONSE_MARKER: &str = "CUSTOMER_RESPONSE_MARKER_63aebd88";
+        let captured_events = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing::Dispatch::new(CapturedEvents {
+            events: Arc::clone(&captured_events),
+            next_span_id: AtomicU64::default(),
+        });
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("current-thread runtime should build");
+
+        let error = tracing::dispatcher::with_default(&subscriber, || {
+            runtime.block_on(async {
+                let server = MockServer::start().await;
+                Mock::given(path("/error"))
+                    .respond_with(
+                        ResponseTemplate::new(500)
+                            .set_body_string(format!(r#"{{"error":{{"message":"{RESPONSE_MARKER}"}}}}"#)),
+                    )
+                    .mount(&server)
+                    .await;
+                let response = reqwest::Client::new()
+                    .post(format!("{}/error", server.uri()))
+                    .send()
+                    .await
+                    .expect("mock provider response should be received");
+
+                handle_openai_http_error(response, "Test Provider", "TEST_API_KEY")
+                    .await
+                    .expect_err("HTTP error response should be returned as an LLM error")
+            })
+        });
+
+        assert!(error.to_string().contains(RESPONSE_MARKER), "returned error should retain provider detail");
+        let captured_events = captured_events.lock().expect("captured event lock should be available");
+        let logs = captured_events.join("\n");
+        assert!(logs.contains("Test Provider"), "provider metadata should remain in logs: {logs}");
+        assert!(logs.contains("500"), "HTTP status should remain in logs: {logs}");
+        assert!(!logs.contains(RESPONSE_MARKER), "provider response detail leaked into logs: {logs}");
     }
 
     #[test]
