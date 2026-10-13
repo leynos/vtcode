@@ -2774,28 +2774,32 @@ mod tests {
         let agent = build_wire_test_agent(workspace.path()).await;
         let heredoc = "cat <<'EOF'\nACP heredoc output\nEOF";
 
-        let report = agent
-            .execute_local_tool(
-                vtcode_core::config::constants::tools::EXEC_COMMAND,
-                &serde_json::json!({"cmd": heredoc}),
-                "call-heredoc",
-            )
-            .await;
+        for args in [
+            serde_json::json!({"cmd": heredoc}),
+            serde_json::json!({
+                "cmd": heredoc,
+                "justification": "exercise ACP heredoc argument routing"
+            }),
+        ] {
+            let report = agent
+                .execute_local_tool(vtcode_core::config::constants::tools::EXEC_COMMAND, &args, "call-heredoc")
+                .await;
 
-        assert_eq!(
-            report.status,
-            acp::ToolCallStatus::Completed,
-            "heredoc public command failed: {}",
-            report.llm_response
-        );
-        let payload: serde_json::Value =
-            serde_json::from_str(&report.llm_response).expect("successful command response must be JSON");
-        let output = payload["result"]
-            .get("output")
-            .or_else(|| payload["result"].get("stdout"))
-            .and_then(serde_json::Value::as_str)
-            .expect("successful command response must contain text output");
-        assert_eq!(output, "ACP heredoc output\n");
+            assert_eq!(
+                report.status,
+                acp::ToolCallStatus::Completed,
+                "heredoc public command failed: {}",
+                report.llm_response
+            );
+            let payload: serde_json::Value =
+                serde_json::from_str(&report.llm_response).expect("successful command response must be JSON");
+            let output = payload["result"]
+                .get("output")
+                .or_else(|| payload["result"].get("stdout"))
+                .and_then(serde_json::Value::as_str)
+                .expect("successful command response must contain text output");
+            assert_eq!(output, "ACP heredoc output\n");
+        }
     }
 
     #[tokio::test]
