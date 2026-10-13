@@ -1,0 +1,7 @@
+{
+  "id": "chatcmpl-synthetic-planner-empty",
+  "object": "chat.completion",
+  "created": 1788606498,
+  "model": "synthetic/planner-model",
+  "choices": [{ "index": 0, "message": { "role": "assistant", "content": "" }, "finish_reason": "stop" }]
+}

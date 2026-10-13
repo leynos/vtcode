@@ -468,7 +468,7 @@ impl ChildRecord {
             Err(error) => {
                 self.status = SubagentStatus::Failed;
                 self.summary = None;
-                self.error = Some(error.to_string());
+                self.error = Some(bounded_child_error(&error));
             }
         }
         let has_more_work = !self.queued_prompts.is_empty();
@@ -494,6 +494,22 @@ impl ChildRecord {
             self.transcript_path.clone().or_else(|| self.archive_path.clone()),
         )
     }
+}
+
+const CHILD_ERROR_MAX_CHARS: usize = 2_048;
+
+fn bounded_child_error(error: &anyhow::Error) -> String {
+    let rendered = vtcode_commons::sanitizer::sanitize_provider_diagnostic(format!("{error:#}").as_bytes())
+        .chars()
+        .map(|character| {
+            if character.is_control() && !matches!(character, '\n' | '\t') {
+                '\u{fffd}'
+            } else {
+                character
+            }
+        })
+        .collect::<String>();
+    vtcode_commons::formatting::truncate_within(&rendered, CHILD_ERROR_MAX_CHARS, "…")
 }
 
 impl BackgroundRecord {

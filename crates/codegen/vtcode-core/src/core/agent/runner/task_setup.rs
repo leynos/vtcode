@@ -5,12 +5,14 @@
 //! creation, and orchestration planning.
 
 use anyhow::{Error, Result};
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::task::spawn_blocking;
 
 use crate::core::agent::events::{ExecEventRecorder, SessionStoreSinkHandle};
-use crate::core::agent::harness_artefacts;
+use crate::core::agent::harness_artifacts;
 use crate::core::agent::progress_monitor::ProgressMonitor;
 use crate::core::agent::runner::continuation::ContinuationController;
 use crate::core::agent::runtime::AgentRuntime;
@@ -18,6 +20,9 @@ use crate::core::agent::session::AgentSessionState;
 use crate::core::agent::task::{ContextItem, Task};
 
 use super::AgentRunner;
+
+type PromptBundleFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<super::execute::RuntimePromptBundle>> + 'a>>;
 
 /// Result of the task execution setup phase.
 ///
@@ -61,6 +66,28 @@ impl AgentRunner {
     ///
     /// This extracts the setup phase from `execute_task` into a testable unit.
     pub(super) async fn prepare_task_execution(&mut self, task: &Task, contexts: &[ContextItem]) -> Result<TaskSetup> {
+        self.prepare_task_execution_with_prompt_bundle_builder(task, contexts, |runner, is_simple_task| {
+            Box::pin(runner.build_validated_runtime_prompt_bundle(is_simple_task))
+        })
+        .await
+    }
+
+    /// Prepare task execution with the prompt-bundle construction supplied by
+    /// the caller.
+    ///
+    /// The ordinary execution path supplies the validated builder above. The
+    /// shared setup flow keeps task publication and failure terminalisation
+    /// around that single construction point, so focused tests can exercise a
+    /// prompt-build error without reproducing setup state.
+    pub(super) async fn prepare_task_execution_with_prompt_bundle_builder<F>(
+        &mut self,
+        task: &Task,
+        contexts: &[ContextItem],
+        prompt_bundle_builder: F,
+    ) -> Result<TaskSetup>
+    where
+        F: for<'a> Fn(&'a AgentRunner, bool) -> PromptBundleFuture<'a>,
+    {
         // Align harness context with runner session/task for structured telemetry
         self.tool_registry.set_harness_session(self.session_id.clone());
         self.tool_registry.set_harness_task(Some(task.id.clone()));
@@ -110,7 +137,16 @@ impl AgentRunner {
 
         let run_started_at = Instant::now();
         let is_simple_task = Self::is_simple_task(task, contexts);
-        let prompt_bundle = match self.build_validated_runtime_prompt_bundle(is_simple_task).await {
+        let mut conversation = crate::core::agent::conversation::conversation_from_messages(&self.bootstrap_messages);
+        conversation.extend(crate::core::agent::conversation::build_conversation(task, contexts));
+
+        let conversation_messages = crate::core::agent::conversation::build_messages_from_conversation(&conversation);
+        // Publish the accepted task before prompt/catalog construction. If
+        // setup fails, the child controller archives session_messages() and
+        // must retain the real delegated user task, not only bootstrap history.
+        self.thread_handle.replace_messages(conversation_messages.clone());
+
+        let prompt_bundle = match prompt_bundle_builder(self, is_simple_task).await {
             Ok(bundle) => bundle,
             Err(error) => {
                 finish_failed_setup(&mut event_recorder, &self.session_id, &error, session_store_handle).await;
@@ -120,11 +156,6 @@ impl AgentRunner {
 
         let review_like = super::continuation::is_review_like_task(task);
         let full_auto_active = self.tool_registry.current_full_auto_allowlist().await.is_some();
-
-        let mut conversation = crate::core::agent::conversation::conversation_from_messages(&self.bootstrap_messages);
-        conversation.extend(crate::core::agent::conversation::build_conversation(task, contexts));
-
-        let conversation_messages = crate::core::agent::conversation::build_messages_from_conversation(&conversation);
 
         let max_tool_loops = self.config().tools.max_tool_loops;
         let preserve_recent_turns = self.config().context.preserve_recent_turns;
@@ -144,7 +175,7 @@ impl AgentRunner {
         // Context reset: if a reset manifest exists from a previous session
         // (written by `maybe_write_reset_after_compaction` or
         // `maybe_write_reset_on_stall`), clear the conversation history so
-        // this session starts fresh from external artefacts only. The orient
+        // this session starts fresh from external artifacts only. The orient
         // context in the system prompt already includes the reset banner.
         self.apply_context_reset_if_pending(&mut session_state).await;
 
@@ -168,21 +199,27 @@ impl AgentRunner {
 
         let orchestration_enabled = self.harness_plan_build_evaluate_enabled(full_auto_active, review_like);
 
-        let planner_artefacts = if orchestration_enabled {
-            Some(match self.run_planner_phase(task, &mut event_recorder).await {
-                Ok(artefacts) => artefacts,
-                Err(error) => {
-                    finish_failed_setup(&mut event_recorder, &self.session_id, &error, session_store_handle).await;
-                    return Err(error);
+        let planner_artifacts = if orchestration_enabled {
+            match self.run_planner_phase(task, &mut event_recorder).await {
+                Ok(artifacts) => Some(artifacts),
+                Err(planner_error) => {
+                    finish_failed_setup(
+                        &mut event_recorder,
+                        &self.session_id,
+                        &planner_error,
+                        session_store_handle,
+                    )
+                    .await;
+                    return Err(planner_error);
                 }
-            })
+            }
         } else {
             None
         };
 
-        let effective_task = planner_artefacts
+        let effective_task = planner_artifacts
             .as_ref()
-            .map(|artefacts| self.augment_generator_task(task, artefacts))
+            .map(|artifacts| self.augment_generator_task(task, artifacts))
             .unwrap_or_else(|| task.clone());
 
         let mut continuation_controller = ContinuationController::new(
@@ -203,6 +240,9 @@ impl AgentRunner {
             )
             .await,
         );
+        if self.is_subagent() {
+            continuation_controller = continuation_controller.without_internal_scaffold();
+        }
         if let Err(error) = continuation_controller.prepare(&effective_task).await {
             finish_failed_setup(&mut event_recorder, &self.session_id, &error, session_store_handle).await;
             return Err(error);
@@ -240,7 +280,7 @@ impl AgentRunner {
     /// fresh from external artifacts only. The manifest is consumed (deleted)
     /// so it only triggers once.
     async fn apply_context_reset_if_pending(&self, session_state: &mut AgentSessionState) {
-        let manifest_path = harness_artefacts::current_context_reset_path(&self._workspace);
+        let manifest_path = harness_artifacts::current_context_reset_path(&self._workspace);
 
         if !tokio::fs::try_exists(&manifest_path).await.unwrap_or(false) {
             return;

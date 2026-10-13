@@ -27,6 +27,20 @@ four distinct content chunks at `/v1/physics/chat/completions`; it exists so
 VidaiMock applies latency, trickle, and disconnect behaviour to actual model
 frames rather than to an already-rendered capture.
 
+Issue 21 child-planner recovery fixtures keep two contracts explicit:
+
+- [`planner-response-sanitized.json`](planner-response-sanitized.json) is a
+  sanitised, structurally valid success response derived from the supplied
+  capture. It is not the historical failing response.
+- [`planner-response-empty.json`](planner-response-empty.json), the malformed
+  scenario, and the provider-drop scenario deliberately exercise empty
+  content, invalid transport JSON, and provider failure.
+- [`providers/child-single-physics.yaml`](providers/child-single-physics.yaml)
+  serves one minimal buffered child response at
+  `/v1/child-single/chat/completions`. Its request count can prove that a
+  delegated child does not issue an optional planner request before executing
+  its single task.
+
 The [`providers/responses-physics.yaml`](providers/responses-physics.yaml)
 route uses VidaiMock 0.3.1 to apply the same deterministic scenarios to OpenAI
 Responses SSE frames at `/v1/responses-physics/responses`. VidaiMock extracts
