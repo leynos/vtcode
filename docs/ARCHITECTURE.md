@@ -19,6 +19,41 @@ the provider once, and blanket consumer traits delegate through that explicit
 selection. See `crates/codegen/vtcode-core/src/components.rs` and
 `crates/codegen/vtcode-core/src/llm/cgp.rs`.
 
+## Internal crate boundaries
+
+Workspace crates separate the main runtime responsibilities:
+
+- `vtcode-core` owns agent orchestration, tools, prompts, and runtime
+  integration.
+- `vtcode-llm` owns provider abstractions, clients, and streaming;
+  `vtcode-config` owns configuration loading and schema.
+- `vtcode-skills` owns skill discovery, loading, and validation;
+  `vtcode-memory` owns per-session event storage and derived queries.
+- `vtcode-exec-events` defines the shared `ThreadEvent` contract and ATIF
+  export; `vtcode-safety` owns command safety and sandboxing.
+
+Keep reusable logic in a narrow existing crate where it fits, and keep the
+runtime event contract in `vtcode-exec-events` rather than defining a parallel
+event type in a consumer crate.
+
+### ACP runtime boundary
+
+- `vtcode-core` defines the `AcpClientAdapter::serve` launch interface;
+  `vtcode-acp` implements the standard and Zed adapters. Its agent handlers map
+  ACP requests such as session creation, resume, and prompt, plus cancel
+  notifications, to runtime operations and send session updates to the client.
+- `SessionHandle` holds per-session state, cancellation, the thread handle, and
+  its archive. `SessionWorkspaceRuntime` groups the prompt, agent catalog, tool
+  registries, and permission prompter for a canonical workspace; the ACP agent
+  caches these runtimes by workspace.
+- ACP handlers drive protocol sequencing and checkpoint session snapshots at
+  lifecycle boundaries. Tool handlers request client permission before
+  dispatching local calls through the core tool registry, which applies its
+  execution policy and safety checks.
+- Core publishes `SubagentProgressEvent` snapshots without ACP-specific
+  payloads. The ACP task-lifecycle forwarder filters events by parent session
+  and projects them into client extension notifications.
+
 ## Model + Harness
 
 VT Code treats the model as the reasoning engine and the harness as the runtime
