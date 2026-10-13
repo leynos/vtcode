@@ -1232,7 +1232,43 @@ fn apply_tool_call_delta_with_index(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use serde_json::json;
+
+    proptest! {
+        #[test]
+        fn streamed_tool_arguments_are_reconstructed_across_arbitrary_fragment_boundaries(
+            arguments in "[ -~]{1,128}",
+            raw_cuts in prop::collection::vec(any::<usize>(), 0..32),
+        ) {
+            let mut cuts = raw_cuts
+                .into_iter()
+                .map(|cut| cut % (arguments.len() + 1))
+                .collect::<Vec<_>>();
+            cuts.extend([0, arguments.len()]);
+            cuts.sort_unstable();
+            cuts.dedup();
+
+            let mut builders = Vec::new();
+            for (fragment_index, bounds) in cuts.windows(2).enumerate() {
+                let fragment = &arguments[bounds[0]..bounds[1]];
+                let delta = if fragment_index == 0 {
+                    json!({
+                        "index": 0,
+                        "id": "call_property",
+                        "function": {"name": "list_files", "arguments": fragment},
+                    })
+                } else {
+                    json!({"index": 0, "function": {"arguments": fragment}})
+                };
+                update_tool_calls(&mut builders, &[delta]);
+            }
+
+            let calls = finalize_tool_calls(builders).expect("property call expected");
+            let function = calls[0].function.as_ref().expect("property function expected");
+            prop_assert_eq!(&function.arguments, &arguments);
+        }
+    }
 
     #[test]
     fn finalize_tool_calls_drops_empty_builders() {

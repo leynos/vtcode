@@ -30,6 +30,10 @@ pub const SESSION_DIR_ENV: &str = "VT_SESSION_DIR";
 pub const SESSION_MAX_FILES_ENV: &str = "VT_SESSION_MAX_FILES";
 pub const SESSION_MAX_AGE_DAYS_ENV: &str = "VT_SESSION_MAX_AGE_DAYS";
 pub const SESSION_MAX_SIZE_MB_ENV: &str = "VT_SESSION_MAX_SIZE_MB";
+/// Maximum number of opaque ACP metadata entries retained in a session archive.
+pub const MAX_ACP_META_ENTRIES: usize = 64;
+/// Maximum serialized JSON size of opaque ACP metadata retained in an archive.
+pub const MAX_ACP_META_BYTES: usize = 16 * 1024;
 const DEFAULT_SESSION_MAX_FILES: usize = 100;
 const DEFAULT_SESSION_MAX_AGE_DAYS: u64 = 14;
 const DEFAULT_SESSION_MAX_SIZE_MB: u64 = 100;
@@ -146,6 +150,13 @@ pub struct SessionArchiveMetadata {
     pub provider: String,
     pub theme: String,
     pub reasoning_effort: String,
+    /// Opaque metadata received from ACP session and prompt requests.
+    ///
+    /// VT Code preserves these values for correlation and diagnostics without
+    /// interpreting their keys or contents. Persisted values are bounded by
+    /// [`MAX_ACP_META_ENTRIES`] and [`MAX_ACP_META_BYTES`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acp_meta: Option<serde_json::Map<String, serde_json::Value>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub debug_log_path: Option<String>,
     /// Names of skills loaded in this session
@@ -255,6 +266,7 @@ impl SessionArchiveMetadata {
             provider: provider.into(),
             theme: theme.into(),
             reasoning_effort: reasoning_effort.into(),
+            acp_meta: None,
             debug_log_path: None,
             loaded_skills: Vec::new(),
             prompt_cache_lineage_id: None,
@@ -329,6 +341,7 @@ impl SessionArchiveMetadata {
             provider: self.provider.clone(),
             theme: self.theme.clone(),
             reasoning_effort: self.reasoning_effort.clone(),
+            acp_meta: self.acp_meta.clone(),
             debug_log_path: self.debug_log_path.clone(),
             loaded_skills: self.loaded_skills.clone(),
             prompt_cache_lineage_id: self.prompt_cache_lineage_id.clone(),
@@ -1128,6 +1141,18 @@ impl SessionArchive {
         self.persist_progress_async_with_status_inner(args, true).await
     }
 
+    /// Persist a durable checkpoint without applying the progress throttle.
+    ///
+    /// Callers use this at state boundaries where losing the most recent
+    /// message would make a resumed session inconsistent. History persistence
+    /// and payload-size policy still apply.
+    pub async fn persist_checkpoint_async(
+        &self,
+        args: SessionProgressArgs,
+    ) -> Result<SessionProgressPersistenceStatus> {
+        self.persist_progress_async_with_status_forced(args).await
+    }
+
     pub async fn persist_progress_async(&self, args: SessionProgressArgs) -> Result<PathBuf> {
         Ok(self.persist_progress_async_with_status(args).await?.path().to_path_buf())
     }
@@ -1174,6 +1199,11 @@ impl SessionArchive {
     /// Update loaded skills in the archive metadata
     pub fn set_loaded_skills(&mut self, skills: Vec<String>) {
         self.metadata.loaded_skills = skills;
+    }
+
+    /// Replace the metadata captured in subsequent snapshots.
+    pub fn replace_metadata(&mut self, metadata: SessionArchiveMetadata) {
+        self.metadata = metadata;
     }
 
     /// Update continuation metadata in the archive metadata.
@@ -1651,11 +1681,20 @@ fn truncate_preview(input: &str, max_chars: usize) -> String {
 }
 
 fn compact_snapshot_to_max_bytes(mut snapshot: SessionSnapshot, max_bytes: usize) -> Result<SessionSnapshot> {
+    bound_acp_meta(&mut snapshot.metadata.acp_meta);
     if max_bytes == 0 {
+        let discarded_entries = snapshot.metadata.acp_meta.take().map_or(0, |metadata| metadata.len());
+        if discarded_entries > 0 {
+            tracing::warn!(
+                discarded_entries,
+                "Dropped ACP metadata because the session archive snapshot budget is zero"
+            );
+        }
         minimize_snapshot_payload(&mut snapshot);
         return Ok(snapshot);
     }
 
+    let acp_meta_before_compaction = snapshot.metadata.acp_meta.clone();
     while serde_json::to_vec(&snapshot)?.len() > max_bytes {
         if trim_oldest_snapshot_entries(&mut snapshot) {
             continue;
@@ -1671,7 +1710,37 @@ fn compact_snapshot_to_max_bytes(mut snapshot: SessionSnapshot, max_bytes: usize
 
     if serde_json::to_vec(&snapshot)?.len() > max_bytes {
         minimize_snapshot_payload(&mut snapshot);
-        let _ = shrink_snapshot_strings(&mut snapshot);
+        while serde_json::to_vec(&snapshot)?.len() > max_bytes {
+            if !shrink_snapshot_strings(&mut snapshot) {
+                break;
+            }
+        }
+    }
+
+    let compacted_size = serde_json::to_vec(&snapshot)?.len();
+    if compacted_size > max_bytes {
+        anyhow::bail!(
+            "session archive snapshot cannot fit the configured size limit after compaction: {compacted_size} > {max_bytes} bytes"
+        );
+    }
+
+    if snapshot.metadata.acp_meta != acp_meta_before_compaction {
+        let original_entries = acp_meta_before_compaction.as_ref().map_or(0, serde_json::Map::len);
+        let retained_entries = snapshot.metadata.acp_meta.as_ref().map_or(0, serde_json::Map::len);
+        let retained_bytes = snapshot
+            .metadata
+            .acp_meta
+            .as_ref()
+            .and_then(|metadata| serialized_json_size_at_most(metadata, MAX_ACP_META_BYTES))
+            .unwrap_or(0);
+        tracing::warn!(
+            original_entries,
+            retained_entries,
+            discarded_entries = original_entries.saturating_sub(retained_entries),
+            serialized_bytes = retained_bytes,
+            max_snapshot_bytes = max_bytes,
+            "Reduced ACP metadata to fit the session archive snapshot size limit"
+        );
     }
 
     Ok(snapshot)
@@ -1685,13 +1754,18 @@ fn prepare_snapshot_for_write(snapshot: SessionSnapshot) -> Result<Option<Sessio
     let max_bytes = session_history_settings().max_bytes;
     let snapshot = match max_bytes {
         Some(max_bytes) => compact_snapshot_to_max_bytes(snapshot, max_bytes)?,
-        None => snapshot,
+        None => {
+            let mut snapshot = snapshot;
+            bound_acp_meta(&mut snapshot.metadata.acp_meta);
+            snapshot
+        }
     };
 
     Ok(Some(snapshot))
 }
 
 fn minimize_snapshot_payload(snapshot: &mut SessionSnapshot) {
+    snapshot.metadata.acp_meta = None;
     snapshot.messages.clear();
     snapshot.transcript.clear();
     snapshot.distinct_tools.clear();
@@ -1830,6 +1904,7 @@ fn shrink_session_message(message: &mut SessionMessage) -> bool {
 fn shrink_snapshot_metadata(metadata: &mut SessionArchiveMetadata) -> bool {
     let mut changed = false;
 
+    changed |= shrink_acp_meta(&mut metadata.acp_meta);
     changed |= shrink_string(&mut metadata.workspace_label);
     changed |= shrink_string(&mut metadata.workspace_path);
     changed |= shrink_string(&mut metadata.model);
@@ -1864,6 +1939,98 @@ fn shrink_snapshot_metadata(metadata: &mut SessionArchiveMetadata) -> bool {
     }
 
     changed
+}
+
+fn bound_acp_meta(metadata: &mut Option<serde_json::Map<String, serde_json::Value>>) -> bool {
+    let Some(original) = metadata.take() else {
+        return false;
+    };
+
+    let original_entries = original.len();
+    let mut bounded = serde_json::Map::new();
+    let mut changed = original_entries > MAX_ACP_META_ENTRIES;
+
+    for (index, (key, value)) in original.into_iter().enumerate() {
+        if index >= MAX_ACP_META_ENTRIES {
+            changed = true;
+            break;
+        }
+
+        bounded.insert(key.clone(), value);
+        if serialized_json_size_at_most(&bounded, MAX_ACP_META_BYTES).is_none() {
+            bounded.remove(&key);
+            changed = true;
+        }
+    }
+
+    let retained_entries = bounded.len();
+    let serialized_bytes = serialized_json_size_at_most(&bounded, MAX_ACP_META_BYTES).unwrap_or(0);
+    if bounded.is_empty() {
+        *metadata = (original_entries == 0).then_some(bounded);
+    } else {
+        *metadata = Some(bounded);
+    }
+
+    if changed && original_entries > retained_entries {
+        tracing::warn!(
+            original_entries,
+            retained_entries,
+            discarded_entries = original_entries.saturating_sub(retained_entries),
+            serialized_bytes,
+            max_entries = MAX_ACP_META_ENTRIES,
+            max_bytes = MAX_ACP_META_BYTES,
+            "Truncated ACP metadata to session archive limits"
+        );
+    }
+
+    changed
+}
+
+fn shrink_acp_meta(metadata: &mut Option<serde_json::Map<String, serde_json::Value>>) -> bool {
+    let Some(entries) = metadata.as_mut() else {
+        return false;
+    };
+    let Some(last_key) = entries.keys().next_back().cloned() else {
+        *metadata = None;
+        return true;
+    };
+
+    entries.remove(&last_key);
+    if entries.is_empty() {
+        *metadata = None;
+    }
+    true
+}
+
+fn serialized_json_size_at_most<T: Serialize>(value: &T, max_bytes: usize) -> Option<usize> {
+    struct LimitedWriter {
+        bytes_written: usize,
+        max_bytes: usize,
+    }
+
+    impl std::io::Write for LimitedWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            let Some(new_size) = self.bytes_written.checked_add(bytes.len()) else {
+                return Err(std::io::Error::other("serialized JSON size overflowed"));
+            };
+            if new_size > self.max_bytes {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "serialized JSON exceeded its size limit",
+                ));
+            }
+            self.bytes_written = new_size;
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let mut writer = LimitedWriter { bytes_written: 0, max_bytes };
+    serde_json::to_writer(&mut writer, value).ok()?;
+    Some(writer.bytes_written)
 }
 
 fn shrink_message_content(content: &mut MessageContent) -> bool {

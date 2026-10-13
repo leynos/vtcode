@@ -63,9 +63,10 @@ async fn session_archive_persists_snapshot() -> Result<()> {
     let temp_dir = tempfile::tempdir().context("failed to create temp dir")?;
     let _guard = EnvGuard::set(SESSION_DIR_ENV, temp_dir.path());
 
-    let metadata =
+    let mut metadata =
         SessionArchiveMetadata::new("ExampleWorkspace", "/tmp/example", "model-x", "provider-y", "dark", "medium")
             .with_external_thread_id("thread-123");
+    metadata.acp_meta = Some(serde_json::Map::new());
     let archive = SessionArchive::new(metadata.clone(), None).await?;
     let transcript = vec!["line one".to_owned(), "line two".to_owned()];
     let messages = vec![
@@ -159,6 +160,11 @@ fn session_message_converts_back_and_forth() {
     let mut original = Message::assistant("Test response".to_owned());
     original.reasoning = Some("Model thoughts".to_owned());
     original.phase = Some(AssistantPhase::FinalAnswer);
+    original.metadata = Some(crate::core::message_metadata::MessageMetadata::incomplete_llm_response(
+        2_000,
+        12,
+        "stream disconnected",
+    ));
     let stored = SessionMessage::from(&original);
     let restored = Message::from(&stored);
 
@@ -169,6 +175,18 @@ fn session_message_converts_back_and_forth() {
     assert_eq!(original.tool_call_id, restored.tool_call_id);
     assert_eq!(original.phase, stored.phase);
     assert_eq!(original.phase, restored.phase);
+    assert!(
+        stored
+            .metadata
+            .as_deref()
+            .is_some_and(crate::core::message_metadata::MessageMetadata::is_incomplete)
+    );
+    assert!(
+        restored
+            .metadata
+            .as_ref()
+            .is_some_and(crate::core::message_metadata::MessageMetadata::is_incomplete)
+    );
 }
 
 #[test]
@@ -969,6 +987,56 @@ async fn forced_async_progress_persists_latest_message_after_throttle() -> Resul
 
 #[serial_test::serial(session_dir_override)]
 #[tokio::test]
+async fn durable_checkpoint_rewrites_history_within_the_same_turn() -> Result<()> {
+    let _settings_lock = lock_history_test_guard().await;
+    let _history_guard = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let temp_dir = tempfile::tempdir().context("failed to create temp dir")?;
+    let _guard = EnvGuard::set(SESSION_DIR_ENV, temp_dir.path());
+
+    let metadata = SessionArchiveMetadata::new("ACP", "/tmp/acp", "model", "provider", "dark", "medium");
+    let archive = SessionArchive::new(metadata, None).await?;
+    let initial_messages = vec![SessionMessage::new(MessageRole::User, "continue")];
+    archive
+        .persist_checkpoint_async(SessionProgressArgs {
+            total_messages: initial_messages.len(),
+            distinct_tools: Vec::new(),
+            messages: initial_messages.clone(),
+            recent_messages: initial_messages,
+            turn_number: 1,
+            token_usage: None,
+            max_context_tokens: None,
+            loaded_skills: None,
+            turn_diagnostics: None,
+        })
+        .await?;
+
+    let completed_messages = vec![
+        SessionMessage::new(MessageRole::User, "continue"),
+        SessionMessage::new(MessageRole::Assistant, "resumed response"),
+    ];
+    let status = archive
+        .persist_checkpoint_async(SessionProgressArgs {
+            total_messages: completed_messages.len(),
+            distinct_tools: Vec::new(),
+            messages: completed_messages.clone(),
+            recent_messages: completed_messages.clone(),
+            turn_number: 1,
+            token_usage: None,
+            max_context_tokens: None,
+            loaded_skills: None,
+            turn_diagnostics: None,
+        })
+        .await?;
+
+    assert!(status.is_persisted());
+    let stored = fs::read_to_string(archive.path()).context("read durable ACP checkpoint")?;
+    let snapshot: SessionSnapshot = serde_json::from_str(&stored).context("parse durable ACP checkpoint")?;
+    assert_eq!(snapshot.messages, completed_messages);
+    Ok(())
+}
+
+#[serial_test::serial(session_dir_override)]
+#[tokio::test]
 async fn session_archive_skips_writes_when_history_persistence_is_disabled() -> Result<()> {
     let _settings_lock = lock_history_test_guard().await;
     let _history_guard = HistorySettingsGuard::set(HistoryPersistence::None, None);
@@ -1055,5 +1123,72 @@ fn snapshot_compaction_shrinks_large_single_message_payloads() -> Result<()> {
 
     assert!(serde_json::to_vec(&compacted)?.len() <= 2_048);
     assert_eq!(compacted.messages.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn acp_meta_is_bounded_by_entry_count_and_serialized_size() {
+    let mut entries = serde_json::Map::new();
+    for index in 0..MAX_ACP_META_ENTRIES + 4 {
+        entries.insert(format!("key-{index:02}"), serde_json::json!("value"));
+    }
+    let mut metadata = Some(entries);
+
+    assert!(bound_acp_meta(&mut metadata));
+    let bounded = metadata.expect("nonempty ACP metadata should be retained");
+    assert_eq!(bounded.len(), MAX_ACP_META_ENTRIES);
+    assert!(bounded.contains_key("key-00"));
+    assert!(!bounded.contains_key(&format!("key-{:02}", MAX_ACP_META_ENTRIES)));
+    assert!(serialized_json_size_at_most(&bounded, MAX_ACP_META_BYTES).is_some());
+
+    let mut entries = serde_json::Map::new();
+    entries.insert("k".to_owned(), serde_json::Value::String("x".repeat(MAX_ACP_META_BYTES - 8)));
+    let mut metadata = Some(entries);
+
+    assert!(!bound_acp_meta(&mut metadata));
+    let bounded = metadata.expect("metadata at the byte limit should be retained");
+    assert_eq!(serialized_json_size_at_most(&bounded, MAX_ACP_META_BYTES), Some(MAX_ACP_META_BYTES));
+
+    let mut entries = serde_json::Map::new();
+    entries.insert("a-oversized".to_owned(), serde_json::Value::String("x".repeat(MAX_ACP_META_BYTES * 2)));
+    entries.insert("z-small".to_owned(), serde_json::json!("retained"));
+    let mut metadata = Some(entries);
+
+    assert!(bound_acp_meta(&mut metadata));
+    let bounded = metadata.expect("metadata after dropping an oversized value should remain");
+    assert_eq!(bounded.len(), 1);
+    assert!(bounded.contains_key("z-small"));
+    assert!(serialized_json_size_at_most(&bounded, MAX_ACP_META_BYTES).is_some());
+}
+
+#[test]
+fn snapshot_compaction_reduces_acp_meta_to_fit_the_total_size_limit() -> Result<()> {
+    let mut metadata =
+        SessionArchiveMetadata::new("Workspace", "/tmp/workspace", "model", "provider", "dark", "medium");
+    metadata.acp_meta = Some(
+        (0..MAX_ACP_META_ENTRIES)
+            .map(|index| (format!("key-{index:02}"), serde_json::json!("value".repeat(40))))
+            .collect(),
+    );
+    let snapshot = SessionSnapshot {
+        metadata,
+        started_at: Utc::now(),
+        ended_at: Utc::now(),
+        total_messages: 0,
+        distinct_tools: Vec::new(),
+        transcript: Vec::new(),
+        messages: Vec::new(),
+        progress: None,
+        error_logs: Vec::new(),
+    };
+
+    let compacted = compact_snapshot_to_max_bytes(snapshot, 1_024)?;
+    assert!(serde_json::to_vec(&compacted)?.len() <= 1_024);
+    assert!(
+        compacted
+            .metadata
+            .acp_meta
+            .is_none_or(|metadata| metadata.len() < MAX_ACP_META_ENTRIES)
+    );
     Ok(())
 }

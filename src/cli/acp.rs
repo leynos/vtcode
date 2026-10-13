@@ -9,6 +9,7 @@ pub async fn handle_acp_command(
     config: &CoreAgentConfig,
     vt_cfg: &VTCodeConfig,
     target: AgentClientProtocolTarget,
+    skip_confirmations: bool,
 ) -> Result<()> {
     if !vt_cfg.acp.enabled {
         bail!(
@@ -29,12 +30,12 @@ pub async fn handle_acp_command(
             }
 
             let adapter = ZedAcpAdapter;
-            let params = AcpLaunchParams::new(config, vt_cfg);
+            let params = AcpLaunchParams::new(config, vt_cfg).with_skip_confirmations(skip_confirmations);
             adapter.serve(params).await?
         }
         AgentClientProtocolTarget::Standard => {
             let adapter = StandardAcpAdapter;
-            let params = AcpLaunchParams::new(config, vt_cfg);
+            let params = AcpLaunchParams::new(config, vt_cfg).with_skip_confirmations(skip_confirmations);
             adapter.serve(params).await?
         }
     }

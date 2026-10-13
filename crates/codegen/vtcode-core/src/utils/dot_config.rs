@@ -3,8 +3,10 @@
 pub use crate::config::WorkspaceTrustLevel;
 use crate::config::constants::defaults;
 use crate::utils::path::canonicalize_workspace;
+use fs2::FileExt;
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use tokio::fs;
@@ -290,14 +292,24 @@ impl DotManager {
             return Ok(DotConfig::default());
         }
 
-        let content = String::from_utf8(
-            vtcode_commons::fs::read_private_file_no_follow(&self.config_file)
-                .await
-                .map_err(|error| DotError::Io(std::io::Error::other(error.to_string())))?,
-        )
-        .map_err(|error| DotError::Io(std::io::Error::other(error.to_string())))?;
-
-        toml::from_str(&content).map_err(DotError::TomlDe)
+        const MAX_PARSE_ATTEMPTS: usize = 5;
+        for attempt in 1..=MAX_PARSE_ATTEMPTS {
+            let content = String::from_utf8(
+                vtcode_commons::fs::read_private_file_no_follow(&self.config_file)
+                    .await
+                    .map_err(|error| DotError::Io(std::io::Error::other(error.to_string())))?,
+            )
+            .map_err(|error| DotError::Io(std::io::Error::other(error.to_string())))?;
+            match toml::from_str(&content) {
+                Ok(config) => return Ok(config),
+                Err(error) if attempt < MAX_PARSE_ATTEMPTS => {
+                    tracing::debug!(attempt, %error, "Retrying transient VT Code configuration parse failure");
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+                Err(error) => return Err(DotError::TomlDe(error)),
+            }
+        }
+        unreachable!("configuration parse attempts always return")
     }
 
     /// Save configuration to disk.
@@ -321,10 +333,52 @@ impl DotManager {
     where
         F: FnOnce(&mut DotConfig),
     {
+        self.update_config_with_saver(updater, |path, content| {
+            VtCodePaths::write_private_file_atomic(path, content)
+                .map_err(|error| DotError::Io(std::io::Error::other(error.to_string())))
+        })
+        .await
+    }
+
+    async fn update_config_with_saver<F, S>(&self, updater: F, save: S) -> Result<(), DotError>
+    where
+        F: FnOnce(&mut DotConfig),
+        S: FnOnce(&Path, &[u8]) -> Result<(), DotError> + Send + 'static,
+    {
+        let lock_path = self.config_dir.join("config.lock");
+        let lock_file = tokio::task::spawn_blocking(move || {
+            let file = OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .read(true)
+                .write(true)
+                .open(lock_path)?;
+            file.lock_exclusive()?;
+            Ok::<_, std::io::Error>(file)
+        })
+        .await
+        .map_err(|error| DotError::LockJoin(error.to_string()))??;
         let mut config = self.load_config().await?;
         updater(&mut config);
         config.last_updated = unix_timestamp_secs()?;
-        self.save_config(&config).await
+        let content = toml::to_string_pretty(&config).map_err(DotError::Toml)?;
+        let path = self.config_file.clone();
+
+        // Transfer the lock to the blocking writer before starting the atomic
+        // save. If this async caller is cancelled while the write is pending,
+        // Tokio detaches the blocking task and it retains the lock until the
+        // write completes, preventing a later update from reading stale data.
+        tokio::task::spawn_blocking(move || {
+            let save_result = save(&path, content.as_bytes());
+            let unlock_result = FileExt::unlock(&lock_file).map_err(DotError::Io);
+            save_result?;
+            unlock_result?;
+            Ok::<(), DotError>(())
+        })
+        .await
+        .map_err(|error| DotError::LockJoin(error.to_string()))??;
+
+        Ok(())
     }
 
     /// Load the trust level recorded for a workspace, if any.
@@ -627,6 +681,10 @@ pub enum DotError {
     /// The dot manager mutex was poisoned.
     #[error("Dot manager lock poisoned: {0}")]
     LockPoisoned(String),
+
+    /// A blocking configuration-lock task failed to join.
+    #[error("Configuration lock task failed: {0}")]
+    LockJoin(String),
 }
 
 fn unix_timestamp_secs() -> Result<u64, DotError> {
@@ -833,5 +891,105 @@ mod tests {
         let other_workspace = temp_dir.path().join("other");
         std::fs::create_dir_all(&other_workspace).unwrap();
         assert!(manager.lifecycle_hook_approval(&other_workspace).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn concurrent_config_updates_preserve_both_changes() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_dir = temp_dir.path().join(".vtcode");
+        let manager = DotManager {
+            config_dir: config_dir.clone(),
+            cache_dir: config_dir.join("cache"),
+            state_dir: config_dir.join("state"),
+            config_file: config_dir.join("config.toml"),
+        };
+        manager.initialize().await.unwrap();
+
+        let first = manager.clone();
+        let second = manager.clone();
+        let (first_result, second_result) = tokio::join!(
+            first.update_config(|config| config.preferences.default_model = "first".to_string()),
+            second.update_config(|config| config.preferences.default_provider = "second".to_string())
+        );
+        first_result.unwrap();
+        second_result.unwrap();
+
+        let config = manager.load_config().await.unwrap();
+        assert_eq!(config.preferences.default_model, "first");
+        assert_eq!(config.preferences.default_provider, "second");
+    }
+
+    #[tokio::test]
+    async fn cancelled_config_update_keeps_its_lock_until_atomic_save_finishes() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_dir = temp_dir.path().join(".vtcode");
+        let manager = DotManager {
+            config_dir: config_dir.clone(),
+            cache_dir: config_dir.join("cache"),
+            state_dir: config_dir.join("state"),
+            config_file: config_dir.join("config.toml"),
+        };
+        manager.initialize().await.unwrap();
+
+        let (save_started_tx, save_started_rx) = tokio::sync::oneshot::channel();
+        let (release_save_tx, release_save_rx) = std::sync::mpsc::channel();
+        let first_manager = manager.clone();
+        let first_update = tokio::spawn(async move {
+            first_manager
+                .update_config_with_saver(
+                    |config| config.preferences.default_model = "first".to_owned(),
+                    move |path, content| {
+                        let _ = save_started_tx.send(());
+                        release_save_rx.recv().expect("the test must release the blocked atomic save");
+                        VtCodePaths::write_private_file_atomic(path, content)
+                            .map_err(|error| DotError::Io(std::io::Error::other(error.to_string())))
+                    },
+                )
+                .await
+        });
+
+        tokio::time::timeout(std::time::Duration::from_secs(5), save_started_rx)
+            .await
+            .expect("the first update must reach its save")
+            .expect("the first save worker must signal the test");
+        first_update.abort();
+        assert!(
+            first_update
+                .await
+                .expect_err("the first update caller must be cancelled")
+                .is_cancelled()
+        );
+
+        let (second_update_ran_tx, second_update_ran_rx) = tokio::sync::oneshot::channel();
+        let second_manager = manager.clone();
+        let second_update = tokio::spawn(async move {
+            second_manager
+                .update_config(move |config| {
+                    let _ = second_update_ran_tx.send(());
+                    config.preferences.default_provider = "second".to_owned();
+                })
+                .await
+        });
+
+        let second_update_ran_before_first_save_finished = matches!(
+            tokio::time::timeout(std::time::Duration::from_millis(250), second_update_ran_rx).await,
+            Ok(Ok(()))
+        );
+        release_save_tx.send(()).expect("the first save worker must still be waiting");
+
+        tokio::time::timeout(std::time::Duration::from_secs(5), second_update)
+            .await
+            .expect("the second update must proceed after the first save finishes")
+            .expect("the second update task must not panic")
+            .expect("the second update must save successfully");
+
+        assert!(
+            !second_update_ran_before_first_save_finished,
+            "a concurrent update must wait until a cancelled update's atomic save releases the lock"
+        );
+
+        let config = manager.load_config().await.unwrap();
+        assert_eq!(config.preferences.default_model, "first");
+        assert_eq!(config.preferences.default_provider, "second");
     }
 }

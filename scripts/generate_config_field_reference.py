@@ -55,7 +55,7 @@ def load_schema_from_cargo() -> dict[str, Any]:
     result = subprocess.run(
         CARGO_SCHEMA_CMD,
         cwd=REPO_ROOT,
-        env={**os.environ, "RUSTC_WRAPPER": ""},
+        env=os.environ.copy(),
         capture_output=True,
         text=True,
         check=False,
@@ -353,6 +353,24 @@ def collect_fields(root_schema: dict[str, Any]) -> list[FieldEntry]:
     return entries
 
 
+def apply_reference_overrides(entries: list[FieldEntry]) -> None:
+    """Keep environment-resolved runtime defaults portable in the reference."""
+    descriptions = {
+        "acp.audit.enabled": "Persist ACP tool invocation metadata as hash-only JSONL audit entries",
+        "acp.audit.max_files": "Maximum number of ACP audit files to retain",
+        "acp.audit.max_size_bytes": "Maximum active ACP audit file size before rotation",
+        "acp.audit.path": (
+            "JSONL path for the opt-in ACP tool audit. The default resolves "
+            'through `VtCodePaths::state_path("audit/tools.jsonl")`.'
+        ),
+    }
+    for entry in entries:
+        if entry.path in descriptions:
+            entry.description = descriptions[entry.path]
+        if entry.path == "acp.audit.path":
+            entry.default = "<state>/audit/tools.jsonl"
+
+
 def escape_cell(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", " ").strip()
 
@@ -394,6 +412,7 @@ def main() -> int:
     try:
         schema = load_schema_from_cargo()
         entries = collect_fields(schema)
+        apply_reference_overrides(entries)
         markdown = render_markdown(entries)
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
