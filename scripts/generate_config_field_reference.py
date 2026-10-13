@@ -156,8 +156,6 @@ def format_default(value: Any, float_format: str | None = None) -> str:
             text = json.dumps(value, ensure_ascii=True)
     else:
         text = json.dumps(value, ensure_ascii=True)
-    if len(text) > 120:
-        return f"{text[:117]}..."
     return text
 
 
@@ -357,6 +355,19 @@ def escape_cell(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", " ").strip()
 
 
+def format_code_span(value: str) -> str:
+    longest_backtick_run = 0
+    current_backtick_run = 0
+    for character in value:
+        if character == "`":
+            current_backtick_run += 1
+            longest_backtick_run = max(longest_backtick_run, current_backtick_run)
+        else:
+            current_backtick_run = 0
+    delimiter = "`" * (longest_backtick_run + 1)
+    return f"{delimiter}{value}{delimiter}"
+
+
 def render_markdown(entries: list[FieldEntry]) -> str:
     lines = [
         "# Config Field Reference",
@@ -378,8 +389,10 @@ def render_markdown(entries: list[FieldEntry]) -> str:
         default = entry.default or "-"
         description = entry.description or "-"
         lines.append(
-            f"| `{escape_cell(entry.path)}` | `{escape_cell(entry.type_name)}` | "
-            f"{required} | `{escape_cell(default)}` | {escape_cell(description)} |"
+            f"| {format_code_span(escape_cell(entry.path))} | "
+            f"{format_code_span(escape_cell(entry.type_name))} | "
+            f"{required} | {format_code_span(escape_cell(default))} | "
+            f"{escape_cell(description)} |"
         )
     lines.append("")
     return "\n".join(lines)
