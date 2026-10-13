@@ -1,0 +1,9 @@
+HTTP/2 500 
+date: Sat, 05 Sep 2026 11:13:36 GMT
+content-type: text/plain; charset=utf-8
+content-length: 50
+x-content-type-options: nosniff
+x-ratelimit-limit-requests: 100
+x-ratelimit-remaining-requests: 99
+x-ratelimit-reset-requests: 60
+
