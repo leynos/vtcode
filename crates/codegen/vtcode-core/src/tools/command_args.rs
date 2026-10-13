@@ -175,6 +175,13 @@ pub fn interactive_input_text(args: &Value) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
+fn has_explicit_write_chars(args: &Value) -> bool {
+    args.get("action")
+        .and_then(Value::as_str)
+        .is_some_and(|action| action.eq_ignore_ascii_case("write"))
+        && args.get("chars").and_then(Value::as_str).is_some()
+}
+
 pub fn session_id_text_from_payload(payload: &serde_json::Map<String, Value>) -> Option<&str> {
     payload
         .get("session_id")
@@ -202,7 +209,7 @@ pub fn command_session_missing_required_args(args: &Value) -> Vec<&'static str> 
         if session_id_text(args).is_none() {
             missing.push("session_id");
         }
-        if interactive_input_text(args).is_none() {
+        if interactive_input_text(args).is_none() && !has_explicit_write_chars(args) {
             missing.push("input or chars or text");
         }
     } else if command_session_action_in(args, &["poll", "wait", "continue", "close"]) {
@@ -948,6 +955,18 @@ mod tests {
     fn write_stdin_dispatch_distinguishes_write_from_poll() {
         assert_eq!(write_stdin_dispatch(&json!({"chars": ""})), Ok(WriteStdinDispatch::Poll));
         assert_eq!(write_stdin_dispatch(&json!({"chars": "  status\n"})), Ok(WriteStdinDispatch::Write));
+    }
+
+    #[test]
+    fn explicit_empty_write_passes_required_validation_while_legacy_empty_chars_poll() {
+        let explicit_write = json!({"action": "write", "session_id": "run-1", "chars": ""});
+        assert_eq!(write_stdin_dispatch(&explicit_write), Ok(WriteStdinDispatch::Write));
+        assert!(command_session_missing_required_args(&explicit_write).is_empty());
+
+        let legacy_empty_chars = json!({"session_id": "run-1", "chars": ""});
+        let dispatch = write_stdin_dispatch(&legacy_empty_chars).expect("legacy empty chars should dispatch as a poll");
+        assert_eq!(dispatch, WriteStdinDispatch::Poll);
+        assert_eq!(dispatch.command_session_action(), "poll");
     }
 
     #[test]
