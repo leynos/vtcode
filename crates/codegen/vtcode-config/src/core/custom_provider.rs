@@ -1495,6 +1495,65 @@ model = "gpt-5-mini"
     }
 
     #[test]
+    fn responses_function_call_id_remap_is_explicit_and_profile_false_overrides_provider_true() {
+        let parsed: CustomProviderConfig = toml::from_str(
+            r#"
+name = "friendli"
+display_name = "Friendli"
+base_url = "https://api.friendli.ai/serverless/v1"
+model = "friendli-model"
+responses_allow_function_call_id_remap = true
+
+[profiles.friendli-model]
+responses_allow_function_call_id_remap = false
+"#,
+        )
+        .expect("function-call ID remap capability should parse");
+
+        let encoded = serde_json::to_value(&parsed).expect("custom provider config should serialize");
+        assert_eq!(
+            encoded.get("responses_allow_function_call_id_remap"),
+            Some(&serde_json::Value::Bool(true)),
+            "the provider opt-in must not be dropped"
+        );
+        assert_eq!(
+            encoded
+                .get("profiles")
+                .and_then(|profiles| profiles.get("friendli-model"))
+                .and_then(|profile| profile.get("responses_allow_function_call_id_remap")),
+            Some(&serde_json::Value::Bool(false)),
+            "an explicit model-profile false must survive and override the provider opt-in"
+        );
+        assert_eq!(parsed.resolved_profile("friendli-model").responses_allow_function_call_id_remap, Some(false));
+        assert_eq!(
+            parsed
+                .resolved_profile("unprofiled-model")
+                .responses_allow_function_call_id_remap,
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn responses_function_call_id_remap_defaults_to_absent_and_disabled() {
+        let parsed: CustomProviderConfig = toml::from_str(
+            r#"
+name = "strict"
+display_name = "Strict"
+base_url = "https://llm.example/v1"
+model = "strict-model"
+"#,
+        )
+        .expect("legacy custom provider config should parse");
+
+        let encoded = serde_json::to_value(&parsed).expect("custom provider config should serialize");
+        assert!(
+            encoded.get("responses_allow_function_call_id_remap").is_none(),
+            "the compatibility capability must remain an explicit opt-in"
+        );
+        assert_eq!(parsed.resolved_profile("strict-model").responses_allow_function_call_id_remap, None);
+    }
+
+    #[test]
     fn explicit_header_mapping_wins_over_provider_defaults() {
         let config = CustomProviderConfig {
             name: "together-proxy".to_string(),

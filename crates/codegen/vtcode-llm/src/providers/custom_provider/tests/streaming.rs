@@ -65,12 +65,14 @@ async fn openai_chat_stream_usage_obeys_profile_precedence_and_decodes_terminal_
         base_url: server.uri(),
         api_format: CustomProviderApiFormat::OpenAIChat,
         supports_stream_usage: Some(true),
+        responses_allow_function_call_id_remap: None,
         model: OPTED_IN_MODEL.to_string(),
         models: vec![OPTED_IN_MODEL.to_string(), OPTED_OUT_MODEL.to_string()],
         profiles: std::collections::BTreeMap::from([(
             OPTED_OUT_MODEL.to_string(),
             CustomProviderProfileConfig {
                 supports_stream_usage: Some(false),
+                responses_allow_function_call_id_remap: None,
                 ..Default::default()
             },
         )]),

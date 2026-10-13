@@ -139,6 +139,7 @@ async fn anthropic_command_auth_refreshes_and_uses_protocol_headers() {
         supports_context_caching: None,
         supports_responses_compaction: None,
         supports_stream_usage: None,
+        responses_allow_function_call_id_remap: None,
         supports_context_edits: Some(true),
         api_key_env: "ANTHROPIC_CUSTOM_API_KEY".to_string(),
         auth: None,

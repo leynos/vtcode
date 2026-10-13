@@ -7,6 +7,7 @@ use crate::providers::common::{extract_reasoning_text_from_serialized_details, m
 mod responses_adapter;
 pub(crate) mod responses_reconciler;
 mod responses_stream;
+mod responses_tool_call_remap;
 pub(crate) mod responses_usage;
 pub(crate) mod responses_validation;
 pub(crate) mod responses_wire;
@@ -15,6 +16,7 @@ use crate::providers::split_reasoning_from_text;
 pub(crate) use responses_adapter::reasoning_part_text;
 pub(crate) use responses_stream::{ResponsesNormalizedStreamOptions, create_responses_normalized_stream};
 pub(crate) use responses_stream::{ResponsesStreamEventPolicy, response_stream_event_policy};
+pub(crate) use responses_tool_call_remap::{ToolCallCorrelation, correlate_streamed_function_calls};
 use serde_json::{Map, Value};
 use std::borrow::Cow;
 pub use tag_sanitizer::TagStreamSanitizer;
