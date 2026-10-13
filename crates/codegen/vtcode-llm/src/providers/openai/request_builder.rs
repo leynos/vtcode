@@ -81,6 +81,8 @@ pub(crate) struct ChatRequestContext<'a> {
     pub supports_tools: bool,
     pub supports_parallel_tool_config: bool,
     pub supports_temperature: bool,
+    pub include_reasoning: bool,
+    pub supports_reasoning_effort: bool,
     pub prompt_cache_key: Option<&'a str>,
     pub default_service_tier: Option<&'a str>,
 }
@@ -386,6 +388,17 @@ pub(crate) fn build_chat_request(
 
     if let Some(max_tokens) = request.max_tokens {
         openai_request[max_tokens_field] = json!(max_tokens);
+    }
+
+    if ctx.include_reasoning {
+        openai_request["include_reasoning"] = Value::Bool(true);
+    }
+
+    if ctx.supports_reasoning_effort
+        && let Some(effort) = effective_reasoning_effort
+        && !matches!(effort, ReasoningEffortLevel::None | ReasoningEffortLevel::Unknown)
+    {
+        openai_request["reasoning_effort"] = json!(effort.as_str());
     }
 
     if let Some(temperature) = request.temperature
@@ -784,6 +797,7 @@ mod tests {
     use crate::provider;
     use serde_json::{Value, json};
     use vtcode_config::constants::models;
+    use vtcode_config::types::ReasoningEffortLevel;
 
     fn base_context<'a>(default_responses_include: Option<&'a [String]>) -> ResponsesRequestContext<'a> {
         ResponsesRequestContext {
@@ -855,6 +869,34 @@ mod tests {
         );
         assert_eq!(payload.get("presence_penalty").and_then(Value::as_f64), Some(0.1));
         assert_eq!(payload.get("frequency_penalty").and_then(Value::as_f64), Some(-0.5));
+    }
+
+    #[test]
+    fn custom_chat_request_serialises_reasoning_controls() {
+        let request = provider::LLMRequest {
+            model: "DeepSeek-V4-Flash-0731".to_owned(),
+            messages: vec![provider::Message::user("Hello".to_owned())].into(),
+            reasoning_effort: Some(ReasoningEffortLevel::High),
+            ..Default::default()
+        };
+        let payload = build_chat_request(
+            &request,
+            &ChatRequestContext {
+                model: &request.model,
+                is_native_openai: false,
+                supports_tools: false,
+                supports_parallel_tool_config: false,
+                supports_temperature: true,
+                include_reasoning: true,
+                supports_reasoning_effort: true,
+                prompt_cache_key: None,
+                default_service_tier: None,
+            },
+        )
+        .expect("chat request should build");
+
+        assert_eq!(payload["include_reasoning"], true);
+        assert_eq!(payload["reasoning_effort"], "high");
     }
 
     #[test]

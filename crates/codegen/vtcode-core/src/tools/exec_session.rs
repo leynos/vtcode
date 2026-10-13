@@ -739,6 +739,7 @@ impl ExecSessionManager {
 mod tests {
     use hashbrown::HashMap;
     use tempfile::tempdir;
+    use tokio::sync::watch;
     use tokio::time::{Duration, timeout};
 
     use super::ExecSessionManager;
@@ -746,6 +747,22 @@ mod tests {
     use crate::tools::pty::PtySize;
     use crate::tools::registry::PtySessionManager;
     use crate::utils::path::canonicalize_workspace;
+
+    async fn wait_for_pipe_output(
+        manager: &ExecSessionManager,
+        session_id: &str,
+        activity_rx: &mut watch::Receiver<u64>,
+    ) -> anyhow::Result<String> {
+        timeout(Duration::from_secs(2), async {
+            loop {
+                if let Some(output) = manager.read_session_output(session_id, true).await? {
+                    return Ok::<String, anyhow::Error>(output);
+                }
+                activity_rx.changed().await?;
+            }
+        })
+        .await?
+    }
 
     #[tokio::test]
     #[cfg(all(unix, feature = "tui"))]
@@ -824,15 +841,7 @@ mod tests {
             .await?
             .expect("pipe sessions should expose activity receiver");
 
-        let output = timeout(Duration::from_secs(2), async {
-            loop {
-                if let Some(output) = manager.read_session_output("run-1", true).await? {
-                    return Ok::<String, anyhow::Error>(output);
-                }
-                activity_rx.changed().await?;
-            }
-        })
-        .await??;
+        let output = wait_for_pipe_output(&manager, "run-1", &mut activity_rx).await?;
         assert!(output.contains("hello"));
 
         manager.close_session("run-1").await?;
@@ -892,15 +901,7 @@ mod tests {
             .await?
             .ok_or_else(|| anyhow::anyhow!("pipe session drain-clear should expose an activity receiver"))?;
 
-        let drained = timeout(Duration::from_secs(2), async {
-            loop {
-                if let Some(output) = manager.read_session_output("drain-clear", true).await? {
-                    return Ok::<String, anyhow::Error>(output);
-                }
-                activity_rx.changed().await?;
-            }
-        })
-        .await??;
+        let drained = wait_for_pipe_output(&manager, "drain-clear", &mut activity_rx).await?;
         anyhow::ensure!(drained.contains("hello"), "drained pipe output should contain hello; observed {drained:?}");
 
         let stale = manager.read_session_output("drain-clear", true).await?;
@@ -936,14 +937,9 @@ mod tests {
             .await?
             .expect("pipe sessions should expose activity receiver");
 
-        timeout(Duration::from_secs(2), activity_rx.changed()).await??;
-        let _first = manager.read_session_output("drain-resume", true).await?;
+        let _first = wait_for_pipe_output(&manager, "drain-resume", &mut activity_rx).await?;
 
-        timeout(Duration::from_secs(3), activity_rx.changed()).await??;
-        let second = manager
-            .read_session_output("drain-resume", true)
-            .await?
-            .expect("should drain post-drain output");
+        let second = wait_for_pipe_output(&manager, "drain-resume", &mut activity_rx).await?;
         assert!(second.contains("two"), "output produced after a drain must still be returned: {second:?}");
 
         manager.close_session("drain-resume").await?;

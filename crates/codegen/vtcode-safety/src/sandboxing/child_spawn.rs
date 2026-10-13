@@ -245,7 +245,8 @@ pub fn setup_parent_death_signal_with_check(expected_parent_pid: nix::unistd::Pi
         reason = "best-effort self-signal during pdeathsig race"
     )]
     if nix::unistd::getppid() != expected_parent_pid {
-        let _ = raise(Signal::SIGTERM);
+        raise(Signal::SIGTERM)
+            .map_err(|error| Error::other(format!("failed to self-terminate orphaned child: {error}")))?;
     }
 
     Ok(())

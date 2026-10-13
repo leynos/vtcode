@@ -32,7 +32,7 @@ pub(crate) async fn dispatch_command(args: &Cli, startup: &StartupContext, comma
 
     match command {
         Commands::AgentClientProtocol { target } => {
-            handle_acp_command(core_cfg, cfg, target).await?;
+            handle_acp_command(core_cfg, cfg, target, skip_confirmations).await?;
         }
         Commands::ToolPolicy { command } => {
             vtcode_core::cli::tool_policy_commands::handle_tool_policy_command(command).await?;

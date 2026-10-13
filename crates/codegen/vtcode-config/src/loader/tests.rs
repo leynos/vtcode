@@ -821,6 +821,7 @@ fn custom_providers_fields_round_trip_through_toml() {
                 supports_context_edits: None,
             },
         )]),
+        request_policy: Default::default(),
     });
 
     let serialized = toml::to_string(&config).expect("serialize config");

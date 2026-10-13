@@ -25,12 +25,13 @@
 //! registry, so the deadlock constraint is enforced at the call site.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use agent_client_protocol::{
     Client, ConnectionTo, Error,
     schema::v1::{
-        CreateTerminalRequest, CreateTerminalResponse, ReadTextFileRequest, ReadTextFileResponse,
-        RequestPermissionRequest, RequestPermissionResponse, SessionNotification,
+        AgentNotification, CreateTerminalRequest, CreateTerminalResponse, ExtNotification, ReadTextFileRequest,
+        ReadTextFileResponse, RequestPermissionRequest, RequestPermissionResponse, SessionNotification,
     },
 };
 
@@ -64,6 +65,11 @@ impl ConnectionHandle {
         self.cx.send_notification(notification)
     }
 
+    /// Send a namespaced ACP extension notification.
+    pub fn send_ext_notification(&self, notification: ExtNotification) -> Result<(), Error> {
+        self.cx.send_notification(AgentNotification::ExtNotification(notification))
+    }
+
     /// Send a `session/request_permission` request and await the response.
     ///
     /// **Only call from a `cx.spawn` task** — calling from a request
@@ -72,7 +78,16 @@ impl ConnectionHandle {
         &self,
         request: RequestPermissionRequest,
     ) -> Result<RequestPermissionResponse, Error> {
-        self.cx.send_request(request).block_task().await
+        let started_at = Instant::now();
+        tracing::debug!(rpc = "session/request_permission", "Sending ACP client request");
+        let result = self.cx.send_request(request).block_task().await;
+        tracing::debug!(
+            rpc = "session/request_permission",
+            elapsed_ms = elapsed_millis(started_at),
+            success = result.is_ok(),
+            "ACP client request completed"
+        );
+        result
     }
 
     /// Send an `fs/read_text_file` request and await the response.
@@ -80,7 +95,16 @@ impl ConnectionHandle {
     /// **Only call from a `cx.spawn` task** — see
     /// [`ConnectionHandle::request_permission`].
     pub async fn read_text_file(&self, request: ReadTextFileRequest) -> Result<ReadTextFileResponse, Error> {
-        self.cx.send_request(request).block_task().await
+        let started_at = Instant::now();
+        tracing::debug!(rpc = "fs/read_text_file", "Sending ACP client request");
+        let result = self.cx.send_request(request).block_task().await;
+        tracing::debug!(
+            rpc = "fs/read_text_file",
+            elapsed_ms = elapsed_millis(started_at),
+            success = result.is_ok(),
+            "ACP client request completed"
+        );
+        result
     }
 
     /// Send a `terminal/create` request and await the response.
@@ -88,7 +112,16 @@ impl ConnectionHandle {
     /// **Only call from a `cx.spawn` task** — see
     /// [`ConnectionHandle::request_permission`].
     pub async fn create_terminal(&self, request: CreateTerminalRequest) -> Result<CreateTerminalResponse, Error> {
-        self.cx.send_request(request).block_task().await
+        let started_at = Instant::now();
+        tracing::debug!(rpc = "terminal/create", "Sending ACP client request");
+        let result = self.cx.send_request(request).block_task().await;
+        tracing::debug!(
+            rpc = "terminal/create",
+            elapsed_ms = elapsed_millis(started_at),
+            success = result.is_ok(),
+            "ACP client request completed"
+        );
+        result
     }
 }
 
@@ -96,4 +129,7 @@ impl std::fmt::Debug for ConnectionHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConnectionHandle").finish_non_exhaustive()
     }
+}
+fn elapsed_millis(started_at: Instant) -> u64 {
+    u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
