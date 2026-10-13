@@ -849,7 +849,9 @@ async fn api_key_responses_stream_sends_metadata_and_preserves_usage() {
             }
             provider::LLMStreamEvent::Reasoning { .. }
             | provider::LLMStreamEvent::ReasoningSignature { .. }
-            | provider::LLMStreamEvent::ReasoningStage { .. } => {}
+            | provider::LLMStreamEvent::ReasoningStage { .. }
+            | provider::LLMStreamEvent::ToolCallStart { .. }
+            | provider::LLMStreamEvent::ToolCallDelta { .. } => {}
         }
     }
 
@@ -943,7 +945,9 @@ async fn chatgpt_responses_stream_accepts_empty_final_output_after_text_delta() 
             }
             provider::LLMStreamEvent::Reasoning { .. }
             | provider::LLMStreamEvent::ReasoningSignature { .. }
-            | provider::LLMStreamEvent::ReasoningStage { .. } => {}
+            | provider::LLMStreamEvent::ReasoningStage { .. }
+            | provider::LLMStreamEvent::ToolCallStart { .. }
+            | provider::LLMStreamEvent::ToolCallDelta { .. } => {}
         }
     }
 

@@ -7,6 +7,7 @@
 
 use crate::provider::LLMError;
 use crate::providers::shared::StreamAssemblyError;
+use crate::providers::shared::responses_reconciler::{ReasoningChannel, ResponsesItemIdentity};
 use rig::providers::openai::responses_api::Output as RigResponsesOutput;
 use rig::providers::openai::responses_api::streaming::{
     ItemChunkKind as RigResponsesItemChunkKind, ResponseChunkKind as RigResponsesChunkKind,
@@ -19,27 +20,45 @@ use serde_json::Value;
 pub(crate) enum ResponsesStreamEvent {
     Lifecycle {
         kind: ResponsesLifecycleEvent,
+        sequence_number: Option<u64>,
     },
     TextDelta {
         delta: String,
+        sequence_number: Option<u64>,
     },
     RefusalDelta {
         delta: String,
+        sequence_number: Option<u64>,
     },
     ReasoningDelta {
         delta: String,
+        item_id: Option<String>,
+        output_index: Option<usize>,
+        sub_index: Option<usize>,
+        reasoning_channel: ReasoningChannel,
+        sequence_number: Option<u64>,
+    },
+    ReasoningDone {
+        text: String,
+        item_id: Option<String>,
+        output_index: Option<usize>,
+        sub_index: Option<usize>,
+        reasoning_channel: ReasoningChannel,
+        sequence_number: Option<u64>,
     },
     FunctionCallNameDelta {
         call_id: String,
         item_id: Option<String>,
         name: String,
         output_index: Option<usize>,
+        sequence_number: Option<u64>,
     },
     FunctionCallArgumentsDelta {
         call_id: String,
         item_id: Option<String>,
         delta: String,
         output_index: Option<usize>,
+        sequence_number: Option<u64>,
     },
     CompletedToolCall {
         call_id: String,
@@ -47,9 +66,33 @@ pub(crate) enum ResponsesStreamEvent {
         name: String,
         arguments: String,
         output_index: Option<usize>,
+        sequence_number: Option<u64>,
+    },
+    CustomToolCall {
+        item_id: Option<String>,
+        call_id: Option<String>,
+        name: Option<String>,
+        input: Option<String>,
+        output_index: Option<usize>,
+        sequence_number: Option<u64>,
+    },
+    CustomToolCallInputDelta {
+        item_id: Option<String>,
+        call_id: Option<String>,
+        delta: String,
+        output_index: Option<usize>,
+        sequence_number: Option<u64>,
+    },
+    CustomToolCallInputDone {
+        item_id: Option<String>,
+        call_id: Option<String>,
+        input: String,
+        output_index: Option<usize>,
+        sequence_number: Option<u64>,
     },
     CompletedResponse {
         response: Value,
+        sequence_number: Option<u64>,
     },
     ProviderValueBearingRigGap {
         event_type: String,
@@ -61,8 +104,54 @@ pub(crate) enum ResponsesStreamEvent {
     },
     Error {
         message: String,
+        sequence_number: Option<u64>,
     },
-    Unknown,
+    Unknown {
+        sequence_number: Option<u64>,
+    },
+}
+
+struct ReasoningEventIdentity {
+    item_identity: ResponsesItemIdentity,
+    reasoning_channel: ReasoningChannel,
+}
+
+impl ReasoningEventIdentity {
+    fn new(
+        item_id: Option<String>,
+        output_index: Option<usize>,
+        sub_index: Option<usize>,
+        reasoning_channel: ReasoningChannel,
+    ) -> Self {
+        Self {
+            item_identity: ResponsesItemIdentity::new(item_id, None, output_index)
+                .with_sub_index(sub_index)
+                .with_reasoning_channel(reasoning_channel),
+            reasoning_channel,
+        }
+    }
+}
+
+impl ResponsesStreamEvent {
+    pub(crate) fn sequence_number(&self) -> Option<u64> {
+        match self {
+            Self::Lifecycle { sequence_number, .. }
+            | Self::TextDelta { sequence_number, .. }
+            | Self::RefusalDelta { sequence_number, .. }
+            | Self::ReasoningDelta { sequence_number, .. }
+            | Self::ReasoningDone { sequence_number, .. }
+            | Self::FunctionCallNameDelta { sequence_number, .. }
+            | Self::FunctionCallArgumentsDelta { sequence_number, .. }
+            | Self::CompletedToolCall { sequence_number, .. }
+            | Self::CustomToolCall { sequence_number, .. }
+            | Self::CustomToolCallInputDelta { sequence_number, .. }
+            | Self::CustomToolCallInputDone { sequence_number, .. }
+            | Self::CompletedResponse { sequence_number, .. }
+            | Self::ProviderValueBearingRigGap { sequence_number, .. }
+            | Self::Error { sequence_number, .. }
+            | Self::Unknown { sequence_number } => *sequence_number,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -102,7 +191,7 @@ impl ResponsesStreamAdapter {
     ) -> Result<ResponsesStreamEvent, LLMError> {
         let trimmed = data.trim();
         if trimmed.is_empty() || trimmed == "[DONE]" {
-            return Ok(ResponsesStreamEvent::Unknown);
+            return Ok(ResponsesStreamEvent::Unknown { sequence_number: None });
         }
 
         let header: ResponsesEventHeader<'_> = serde_json::from_str(trimmed)
@@ -117,12 +206,16 @@ impl ResponsesStreamAdapter {
             return Ok(ResponsesStreamEvent::Error {
                 message: response_error_message(&raw_payload)
                     .unwrap_or_else(|| "Unknown error from Responses API".to_string()),
+                sequence_number: raw_payload.get("sequence_number").and_then(Value::as_u64),
             });
         }
 
         let policy = response_stream_event_policy_for_type(event_type);
         if policy == ResponsesStreamEventPolicy::DocumentedStatusMarkerNoop {
-            return Ok(ResponsesStreamEvent::Unknown);
+            let raw_payload = parse_raw_payload(provider_name, trimmed)?;
+            return Ok(ResponsesStreamEvent::Unknown {
+                sequence_number: raw_payload.get("sequence_number").and_then(Value::as_u64),
+            });
         }
 
         let parsed = match serde_json::from_str::<RigResponsesStreamingChunk>(trimmed) {
@@ -149,17 +242,21 @@ impl ResponsesStreamAdapter {
         match chunk {
             RigResponsesStreamingChunk::Response(response_chunk) => {
                 let kind = response_chunk.kind;
+                let sequence_number = Some(response_chunk.sequence_number);
                 match kind {
-                    RigResponsesChunkKind::ResponseCreated => {
-                        Ok(ResponsesStreamEvent::Lifecycle { kind: ResponsesLifecycleEvent::Created })
-                    }
-                    RigResponsesChunkKind::ResponseInProgress => {
-                        Ok(ResponsesStreamEvent::Lifecycle { kind: ResponsesLifecycleEvent::InProgress })
-                    }
+                    RigResponsesChunkKind::ResponseCreated => Ok(ResponsesStreamEvent::Lifecycle {
+                        kind: ResponsesLifecycleEvent::Created,
+                        sequence_number,
+                    }),
+                    RigResponsesChunkKind::ResponseInProgress => Ok(ResponsesStreamEvent::Lifecycle {
+                        kind: ResponsesLifecycleEvent::InProgress,
+                        sequence_number,
+                    }),
                     RigResponsesChunkKind::ResponseCompleted => {
                         let raw_payload = parse_raw_payload(provider_name, raw_data)?;
                         Ok(ResponsesStreamEvent::CompletedResponse {
                             response: raw_payload.get("response").cloned().unwrap_or(Value::Null),
+                            sequence_number,
                         })
                     }
                     RigResponsesChunkKind::ResponseFailed | RigResponsesChunkKind::ResponseIncomplete => {
@@ -167,6 +264,7 @@ impl ResponsesStreamAdapter {
                         Ok(ResponsesStreamEvent::Error {
                             message: response_error_message(&raw_payload)
                                 .unwrap_or_else(|| "Unknown error from Responses API".to_string()),
+                            sequence_number,
                         })
                     }
                 }
@@ -175,24 +273,60 @@ impl ResponsesStreamAdapter {
                 let output_index = usize::try_from(item_chunk.output_index).ok();
                 let item_id = item_chunk.item_id;
                 match item_chunk.data {
-                    RigResponsesItemChunkKind::OutputTextDelta(delta) => {
-                        Ok(ResponsesStreamEvent::TextDelta { delta: delta.delta })
-                    }
-                    RigResponsesItemChunkKind::RefusalDelta(delta) => {
-                        Ok(ResponsesStreamEvent::RefusalDelta { delta: delta.delta })
-                    }
-                    RigResponsesItemChunkKind::ReasoningSummaryTextDelta(delta) => {
-                        Ok(ResponsesStreamEvent::ReasoningDelta { delta: delta.delta })
-                    }
-                    RigResponsesItemChunkKind::ReasoningTextDelta(delta) => {
-                        Ok(ResponsesStreamEvent::ReasoningDelta { delta: delta.delta })
-                    }
-                    RigResponsesItemChunkKind::OutputItemAdded(output) => {
-                        adapt_output_item(provider_name, output.item, output_index, true, raw_data)
-                    }
-                    RigResponsesItemChunkKind::OutputItemDone(output) => {
-                        adapt_output_item(provider_name, output.item, output_index, false, raw_data)
-                    }
+                    RigResponsesItemChunkKind::OutputTextDelta(delta) => Ok(ResponsesStreamEvent::TextDelta {
+                        delta: delta.delta,
+                        sequence_number: Some(delta.sequence_number),
+                    }),
+                    RigResponsesItemChunkKind::RefusalDelta(delta) => Ok(ResponsesStreamEvent::RefusalDelta {
+                        delta: delta.delta,
+                        sequence_number: Some(delta.sequence_number),
+                    }),
+                    RigResponsesItemChunkKind::ReasoningSummaryTextDelta(delta) => Ok(reasoning_delta_event(
+                        delta.delta,
+                        reasoning_identity(
+                            item_id,
+                            output_index,
+                            usize::try_from(delta.summary_index).ok(),
+                            ReasoningChannel::Summary,
+                        ),
+                        Some(delta.sequence_number),
+                    )),
+                    RigResponsesItemChunkKind::ReasoningSummaryTextDone(done) => Ok(reasoning_done_event(
+                        done.delta,
+                        reasoning_identity(
+                            item_id,
+                            output_index,
+                            usize::try_from(done.summary_index).ok(),
+                            ReasoningChannel::Summary,
+                        ),
+                        Some(done.sequence_number),
+                    )),
+                    RigResponsesItemChunkKind::ReasoningTextDelta(delta) => Ok(reasoning_delta_event(
+                        delta.delta,
+                        reasoning_identity(
+                            item_id,
+                            output_index,
+                            delta.content_index.and_then(|value| usize::try_from(value).ok()),
+                            ReasoningChannel::Raw,
+                        ),
+                        Some(delta.sequence_number),
+                    )),
+                    RigResponsesItemChunkKind::OutputItemAdded(output) => adapt_output_item(
+                        provider_name,
+                        output.item,
+                        output_index,
+                        Some(output.sequence_number),
+                        true,
+                        raw_data,
+                    ),
+                    RigResponsesItemChunkKind::OutputItemDone(output) => adapt_output_item(
+                        provider_name,
+                        output.item,
+                        output_index,
+                        Some(output.sequence_number),
+                        false,
+                        raw_data,
+                    ),
                     RigResponsesItemChunkKind::FunctionCallArgsDelta(delta) => {
                         let call_id = call_id.map(ToOwned::to_owned).or_else(|| item_id.clone()).unwrap_or_default();
 
@@ -201,6 +335,7 @@ impl ResponsesStreamAdapter {
                             item_id,
                             delta: delta.delta,
                             output_index,
+                            sequence_number: Some(delta.sequence_number),
                         })
                     }
                     _ => adapt_policy_payload(provider_name, parse_raw_payload(provider_name, raw_data)?),
@@ -219,6 +354,7 @@ fn adapt_output_item(
     provider_name: &str,
     item: RigResponsesOutput,
     output_index: Option<usize>,
+    sequence_number: Option<u64>,
     emit_completed_arguments: bool,
     raw_data: &str,
 ) -> Result<ResponsesStreamEvent, LLMError> {
@@ -241,6 +377,7 @@ fn adapt_output_item(
                     name: function_call.name,
                     arguments,
                     output_index,
+                    sequence_number,
                 })
             } else {
                 Ok(ResponsesStreamEvent::FunctionCallNameDelta {
@@ -248,6 +385,7 @@ fn adapt_output_item(
                     item_id,
                     name: function_call.name,
                     output_index,
+                    sequence_number,
                 })
             }
         }
@@ -260,7 +398,7 @@ fn adapt_output_item(
                 .into_llm_error(provider_name)
             })
         }
-        _ => Ok(ResponsesStreamEvent::Unknown),
+        _ => Ok(ResponsesStreamEvent::Unknown { sequence_number }),
     }
 }
 
@@ -269,8 +407,10 @@ fn adapt_policy_payload(provider_name: &str, payload: Value) -> Result<Responses
 
     match policy {
         ResponsesStreamEventPolicy::VtcodeOverlayConversion => adapt_overlay_conversion(provider_name, &payload),
-        ResponsesStreamEventPolicy::DocumentedStatusMarkerNoop => Ok(ResponsesStreamEvent::Unknown),
-        ResponsesStreamEventPolicy::DocumentedValueBearingRigGap => adapt_value_bearing_rig_gap(payload),
+        ResponsesStreamEventPolicy::DocumentedStatusMarkerNoop => Ok(ResponsesStreamEvent::Unknown {
+            sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
+        }),
+        ResponsesStreamEventPolicy::DocumentedValueBearingRigGap => adapt_value_bearing_rig_gap(provider_name, payload),
         ResponsesStreamEventPolicy::Unsupported => Err(StreamAssemblyError::InvalidPayload(format!(
             "unsupported Responses stream event type `{}`",
             payload.get("type").and_then(Value::as_str).unwrap_or("<missing>")
@@ -284,17 +424,31 @@ fn adapt_policy_payload(provider_name: &str, payload: Value) -> Result<Responses
     }
 }
 
-fn adapt_value_bearing_rig_gap(payload: Value) -> Result<ResponsesStreamEvent, LLMError> {
+fn adapt_value_bearing_rig_gap(provider_name: &str, payload: Value) -> Result<ResponsesStreamEvent, LLMError> {
     let event_type = payload.get("type").and_then(Value::as_str).unwrap_or_default();
 
     match event_type {
+        "response.custom_tool_call_input.delta" => Ok(ResponsesStreamEvent::CustomToolCallInputDelta {
+            item_id: optional_owned_string(&payload, "item_id"),
+            call_id: optional_owned_string(&payload, "call_id"),
+            delta: required_string_field(provider_name, &payload, "delta")?,
+            output_index: optional_output_index(&payload),
+            sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
+        }),
+        "response.custom_tool_call_input.done" => Ok(ResponsesStreamEvent::CustomToolCallInputDone {
+            item_id: optional_owned_string(&payload, "item_id"),
+            call_id: optional_owned_string(&payload, "call_id"),
+            input: optional_string_field(provider_name, &payload, "input")?
+                .or(optional_string_field(provider_name, &payload, "delta")?)
+                .ok_or_else(|| StreamAssemblyError::MissingField("input").into_llm_error(provider_name))?,
+            output_index: optional_output_index(&payload),
+            sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
+        }),
         "response.code_interpreter_call_code.delta"
         | "response.code_interpreter_call_code.done"
         | "response.mcp_call_arguments.delta"
         | "response.mcp_call_arguments.done"
         | "response.image_generation_call.partial_image"
-        | "response.custom_tool_call_input.delta"
-        | "response.custom_tool_call_input.done"
         | "response.output_text.annotation.added" => {
             // VTCode has no runtime surface for provider-hosted code execution,
             // provider-side MCP dispatch, partial image rendering, streamed
@@ -317,7 +471,9 @@ fn adapt_value_bearing_rig_gap(payload: Value) -> Result<ResponsesStreamEvent, L
                 payload,
             })
         }
-        _ => Ok(ResponsesStreamEvent::Unknown),
+        _ => Ok(ResponsesStreamEvent::Unknown {
+            sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
+        }),
     }
 }
 
@@ -327,16 +483,26 @@ fn adapt_rig_supported_envelope_fallback(payload: &Value) -> Option<ResponsesStr
     match event_type {
         "response.failed" | "response.incomplete" => Some(ResponsesStreamEvent::Error {
             message: response_error_message(payload).unwrap_or_else(|| "Unknown error from Responses API".to_string()),
+            sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
         }),
-        "response.created" => Some(ResponsesStreamEvent::Lifecycle { kind: ResponsesLifecycleEvent::Created }),
-        "response.in_progress" => Some(ResponsesStreamEvent::Lifecycle { kind: ResponsesLifecycleEvent::InProgress }),
+        "response.created" => Some(ResponsesStreamEvent::Lifecycle {
+            kind: ResponsesLifecycleEvent::Created,
+            sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
+        }),
+        "response.in_progress" => Some(ResponsesStreamEvent::Lifecycle {
+            kind: ResponsesLifecycleEvent::InProgress,
+            sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
+        }),
         "response.completed" => {
             let response = payload.get("response")?;
             // Accept any response.completed where Rig deserialization failed,
             // not just those with Rig-unknown output item types. Rig can fail
             // for missing required fields (sequence_number, object, model, etc.)
             // and the raw response is always preferable to a hard error.
-            Some(ResponsesStreamEvent::CompletedResponse { response: response.clone() })
+            Some(ResponsesStreamEvent::CompletedResponse {
+                response: response.clone(),
+                sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
+            })
         }
         "response.output_item.added" | "response.output_item.done" => adapt_rig_gap_output_item_envelope(payload),
         _ => None,
@@ -346,6 +512,16 @@ fn adapt_rig_supported_envelope_fallback(payload: &Value) -> Option<ResponsesStr
 fn adapt_rig_gap_output_item_envelope(payload: &Value) -> Option<ResponsesStreamEvent> {
     let event_type = payload.get("type").and_then(Value::as_str)?;
     let item = payload.get("item")?;
+    if item.get("type").and_then(Value::as_str) == Some("custom_tool_call") {
+        return Some(ResponsesStreamEvent::CustomToolCall {
+            item_id: optional_owned_string(payload, "item_id").or_else(|| optional_owned_string(item, "id")),
+            call_id: optional_owned_string(payload, "call_id").or_else(|| optional_owned_string(item, "call_id")),
+            name: optional_owned_string(item, "name"),
+            input: optional_owned_string(item, "input"),
+            output_index: optional_output_index(payload),
+            sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
+        });
+    }
     if !raw_output_item_is_rig_unknown(item) {
         return None;
     }
@@ -377,6 +553,25 @@ fn adapt_rig_gap_output_item_envelope(payload: &Value) -> Option<ResponsesStream
     })
 }
 
+fn optional_owned_string(payload: &Value, field: &str) -> Option<String> {
+    payload.get(field).and_then(Value::as_str).map(ToOwned::to_owned)
+}
+
+fn optional_output_index(payload: &Value) -> Option<usize> {
+    payload
+        .get("output_index")
+        .and_then(Value::as_u64)
+        .and_then(|value| usize::try_from(value).ok())
+}
+
+fn optional_sub_index(payload: &Value) -> Option<usize> {
+    payload
+        .get("content_index")
+        .or_else(|| payload.get("summary_index"))
+        .and_then(Value::as_u64)
+        .and_then(|value| usize::try_from(value).ok())
+}
+
 fn raw_output_item_is_rig_unknown(item: &Value) -> bool {
     let Some(item_type) = item.get("type").and_then(Value::as_str) else {
         return false;
@@ -389,29 +584,114 @@ fn is_rig_modelled_output_item_type(item_type: &str) -> bool {
     matches!(item_type, "message" | "function_call" | "reasoning")
 }
 
+pub(crate) fn reasoning_part_text<'a>(provider_name: &str, payload: &'a Value) -> Result<&'a str, LLMError> {
+    let part = payload.get("part").and_then(Value::as_object).ok_or_else(|| {
+        StreamAssemblyError::InvalidPayload("Responses reasoning part event must contain an object `part`".to_string())
+            .into_llm_error(provider_name)
+    })?;
+    if part.get("type").and_then(Value::as_str) != Some("reasoning_text") {
+        return Err(StreamAssemblyError::InvalidPayload(
+            "Responses reasoning part type must be `reasoning_text`".to_string(),
+        )
+        .into_llm_error(provider_name));
+    }
+    part.get("text").and_then(Value::as_str).ok_or_else(|| {
+        StreamAssemblyError::InvalidPayload("Responses reasoning part must contain string `text`".to_string())
+            .into_llm_error(provider_name)
+    })
+}
+
 fn adapt_overlay_conversion(provider_name: &str, payload: &Value) -> Result<ResponsesStreamEvent, LLMError> {
     match payload.get("type").and_then(Value::as_str) {
         // VTCode overlay: Rig 0.40 models `reasoning_summary_text.delta` and
         // `reasoning_text.delta` natively (routed through the typed path), but
         // some OpenAI-compatible endpoints emit `reasoning_content.delta`, which
         // Rig does not model. `reasoning_text.delta` is retained defensively.
-        Some("response.reasoning_text.delta") | Some("response.reasoning_content.delta") => {
-            Ok(ResponsesStreamEvent::ReasoningDelta {
-                delta: required_string_field(provider_name, payload, "delta")?,
-            })
-        }
+        Some("response.reasoning_text.delta") | Some("response.reasoning_content.delta") => Ok(reasoning_delta_event(
+            required_string_field(provider_name, payload, "delta")?.to_string(),
+            reasoning_identity(
+                optional_owned_string(payload, "item_id"),
+                optional_output_index(payload),
+                optional_sub_index(payload),
+                ReasoningChannel::Raw,
+            ),
+            payload.get("sequence_number").and_then(Value::as_u64),
+        )),
         Some("response.reasoning_text.done") => {
             let text = optional_string_field(provider_name, payload, "text")?;
             let delta = optional_string_field(provider_name, payload, "delta")?;
             if let Some(text) = text.or(delta) {
-                Ok(ResponsesStreamEvent::ReasoningDelta { delta: text })
+                Ok(reasoning_done_event(
+                    text,
+                    reasoning_identity(
+                        optional_owned_string(payload, "item_id"),
+                        optional_output_index(payload),
+                        optional_sub_index(payload),
+                        ReasoningChannel::Raw,
+                    ),
+                    payload.get("sequence_number").and_then(Value::as_u64),
+                ))
             } else {
-                Ok(ResponsesStreamEvent::Unknown)
+                Ok(ResponsesStreamEvent::Unknown {
+                    sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
+                })
             }
+        }
+        Some("response.reasoning_part.added") | Some("response.reasoning_part.done") => {
+            let text = reasoning_part_text(provider_name, payload)?;
+            Ok(reasoning_done_event(
+                text.to_string(),
+                reasoning_identity(
+                    optional_owned_string(payload, "item_id"),
+                    optional_output_index(payload),
+                    optional_sub_index(payload),
+                    ReasoningChannel::Raw,
+                ),
+                payload.get("sequence_number").and_then(Value::as_u64),
+            ))
         }
         _ => Err(StreamAssemblyError::InvalidPayload("unsupported overlay conversion".to_string())
             .into_llm_error(provider_name)),
     }
+}
+
+fn reasoning_delta_event(
+    delta: String,
+    identity: ReasoningEventIdentity,
+    sequence_number: Option<u64>,
+) -> ResponsesStreamEvent {
+    ResponsesStreamEvent::ReasoningDelta {
+        delta,
+        item_id: identity.item_identity.item_id,
+        output_index: identity.item_identity.output_index,
+        sub_index: identity.item_identity.sub_index,
+        reasoning_channel: identity.reasoning_channel,
+        sequence_number,
+    }
+}
+
+fn reasoning_done_event(
+    text: String,
+    identity: ReasoningEventIdentity,
+    sequence_number: Option<u64>,
+) -> ResponsesStreamEvent {
+    ResponsesStreamEvent::ReasoningDone {
+        text,
+        item_id: identity.item_identity.item_id,
+        output_index: identity.item_identity.output_index,
+        sub_index: identity.item_identity.sub_index,
+        reasoning_channel: identity.reasoning_channel,
+        sequence_number,
+    }
+}
+
+fn reasoning_identity(
+    item_id: Option<String>,
+    output_index: Option<usize>,
+    sub_index: Option<usize>,
+    reasoning_channel: ReasoningChannel,
+) -> ReasoningEventIdentity {
+    ReasoningEventIdentity::new(item_id, output_index, sub_index, reasoning_channel)
 }
 
 fn response_stream_event_policy(payload: &Value) -> Result<ResponsesStreamEventPolicy, StreamAssemblyError> {
@@ -438,10 +718,12 @@ fn response_stream_event_policy_for_type(event_type: &str) -> ResponsesStreamEve
         | "response.refusal.delta"
         | "response.function_call_arguments.delta"
         | "response.reasoning_summary_text.delta"
+        | "response.reasoning_summary_text.done"
         | "response.reasoning_text.delta" => ResponsesStreamEventPolicy::RigSupportedTyped,
-        "response.reasoning_text.done" | "response.reasoning_content.delta" => {
-            ResponsesStreamEventPolicy::VtcodeOverlayConversion
-        }
+        "response.reasoning_text.done"
+        | "response.reasoning_content.delta"
+        | "response.reasoning_part.added"
+        | "response.reasoning_part.done" => ResponsesStreamEventPolicy::VtcodeOverlayConversion,
         "response.queued"
         | "keepalive"
         | "response.content_part.added"
@@ -451,7 +733,6 @@ fn response_stream_event_policy_for_type(event_type: &str) -> ResponsesStreamEve
         | "response.function_call_arguments.done"
         | "response.reasoning_summary_part.added"
         | "response.reasoning_summary_part.done"
-        | "response.reasoning_summary_text.done"
         | "response.file_search_call.in_progress"
         | "response.file_search_call.searching"
         | "response.file_search_call.completed"
@@ -522,7 +803,7 @@ fn response_error_message(payload: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ResponsesLifecycleEvent, ResponsesStreamAdapter, ResponsesStreamEvent};
+    use super::{ReasoningChannel, ResponsesLifecycleEvent, ResponsesStreamAdapter, ResponsesStreamEvent};
     use crate::provider::LLMError;
     use serde_json::{Value, json};
 
@@ -662,7 +943,7 @@ mod tests {
         }))
         .expect("completed response fixture should parse");
 
-        let ResponsesStreamEvent::CompletedResponse { response } = event else {
+        let ResponsesStreamEvent::CompletedResponse { response, .. } = event else {
             panic!("expected completed response fallback");
         };
         assert_eq!(response, raw_response);
@@ -986,9 +1267,10 @@ mod tests {
                 }),
             ),
         ] {
+            let sequence_number = payload["sequence_number"].as_u64().expect("sequence");
             assert_eq!(
                 event_fixture(payload).expect("documented status marker fixture should parse"),
-                ResponsesStreamEvent::Unknown,
+                ResponsesStreamEvent::Unknown { sequence_number: Some(sequence_number) },
                 "{event_type} should be an explicit status/marker no-op"
             );
         }
@@ -1102,8 +1384,8 @@ mod tests {
     }
 
     #[test]
-    fn custom_tool_input_events_preserve_payload_identity_without_runtime_dispatch() {
-        let delta_fixture = provider_value_bearing_rig_gap(json!({
+    fn custom_tool_input_events_have_typed_reconciliation_fields() {
+        let delta = event_fixture(json!({
             "type": "response.custom_tool_call_input.delta",
             "sequence_number": 10,
             "item_id": "item_1",
@@ -1111,17 +1393,15 @@ mod tests {
             "output_index": 2,
             "delta": "*** Begin"
         }))
-        .expect("custom tool input delta fixture should parse")
-        .expect("custom tool input delta fixture should produce a Rig-gap event");
-        assert_provider_value_bearing_rig_gap(
-            &delta_fixture,
-            "response.custom_tool_call_input.delta",
-            Some("call_custom_1"),
-        );
-        let delta_payload = delta_fixture.payload;
-        assert_eq!(delta_payload["delta"], "*** Begin");
+        .expect("custom tool input delta fixture should parse");
+        assert!(matches!(
+            delta,
+            ResponsesStreamEvent::CustomToolCallInputDelta {
+                item_id: Some(item_id), call_id: Some(call_id), delta, output_index: Some(2), sequence_number: Some(10)
+            } if item_id == "item_1" && call_id == "call_custom_1" && delta == "*** Begin"
+        ));
 
-        let done_fixture = provider_value_bearing_rig_gap(json!({
+        let done = event_fixture(json!({
             "type": "response.custom_tool_call_input.done",
             "sequence_number": 10,
             "item_id": "item_1",
@@ -1129,15 +1409,13 @@ mod tests {
             "output_index": 2,
             "input": "*** Begin Patch\n*** End Patch\n"
         }))
-        .expect("custom tool input done fixture should parse")
-        .expect("custom tool input done fixture should produce a Rig-gap event");
-        assert_provider_value_bearing_rig_gap(
-            &done_fixture,
-            "response.custom_tool_call_input.done",
-            Some("call_custom_1"),
-        );
-        let done_payload = done_fixture.payload;
-        assert_eq!(done_payload["input"], "*** Begin Patch\n*** End Patch\n");
+        .expect("custom tool input done fixture should parse");
+        assert!(matches!(
+            done,
+            ResponsesStreamEvent::CustomToolCallInputDone {
+                item_id: Some(item_id), call_id: Some(call_id), input, output_index: Some(2), sequence_number: Some(10)
+            } if item_id == "item_1" && call_id == "call_custom_1" && input == "*** Begin Patch\n*** End Patch\n"
+        ));
     }
 
     #[test]
@@ -1151,7 +1429,14 @@ mod tests {
                 "delta": "private chain summary"
             }))
             .expect("reasoning text delta fixture should parse"),
-            ResponsesStreamEvent::ReasoningDelta { delta: "private chain summary".to_string() }
+            ResponsesStreamEvent::ReasoningDelta {
+                delta: "private chain summary".to_string(),
+                item_id: Some("rs_1".to_string()),
+                output_index: Some(0),
+                sub_index: None,
+                reasoning_channel: ReasoningChannel::Raw,
+                sequence_number: Some(1)
+            }
         );
 
         assert_eq!(
@@ -1163,7 +1448,14 @@ mod tests {
                 "delta": "provider reasoning content"
             }))
             .expect("reasoning content delta fixture should parse"),
-            ResponsesStreamEvent::ReasoningDelta { delta: "provider reasoning content".to_string() }
+            ResponsesStreamEvent::ReasoningDelta {
+                delta: "provider reasoning content".to_string(),
+                item_id: Some("rs_1".to_string()),
+                output_index: Some(0),
+                sub_index: None,
+                reasoning_channel: ReasoningChannel::Raw,
+                sequence_number: Some(2)
+            }
         );
 
         assert_eq!(
@@ -1174,7 +1466,7 @@ mod tests {
                 "output_index": 0
             }))
             .expect("reasoning text done marker fixture should parse"),
-            ResponsesStreamEvent::Unknown
+            ResponsesStreamEvent::Unknown { sequence_number: Some(3) }
         );
 
         assert_eq!(
@@ -1186,8 +1478,98 @@ mod tests {
                 "text": "final reasoning text"
             }))
             .expect("reasoning text completion fixture should parse"),
-            ResponsesStreamEvent::ReasoningDelta { delta: "final reasoning text".to_string() }
+            ResponsesStreamEvent::ReasoningDone {
+                text: "final reasoning text".to_string(),
+                item_id: Some("rs_1".to_string()),
+                output_index: Some(0),
+                sub_index: None,
+                reasoning_channel: ReasoningChannel::Raw,
+                sequence_number: Some(4)
+            }
         );
+    }
+
+    #[test]
+    fn reasoning_part_added_and_done_preserve_text_and_reconciliation_metadata() {
+        assert_eq!(
+            event_fixture(json!({
+                "type": "response.reasoning_part.added",
+                "sequence_number": 11,
+                "item_id": "reasoning_1",
+                "output_index": 2,
+                "content_index": 3,
+                "part": {"type": "reasoning_text", "text": "bounded reasoning"}
+            }))
+            .expect("reasoning part added fixture should parse"),
+            ResponsesStreamEvent::ReasoningDone {
+                text: "bounded reasoning".to_string(),
+                item_id: Some("reasoning_1".to_string()),
+                output_index: Some(2),
+                sub_index: Some(3),
+                reasoning_channel: ReasoningChannel::Raw,
+                sequence_number: Some(11),
+            }
+        );
+
+        assert_eq!(
+            event_fixture(json!({
+                "type": "response.reasoning_part.done",
+                "sequence_number": 12,
+                "item_id": "reasoning_2",
+                "output_index": 4,
+                "content_index": 5,
+                "part": {"type": "reasoning_text", "text": ""}
+            }))
+            .expect("reasoning part done fixture should parse"),
+            ResponsesStreamEvent::ReasoningDone {
+                text: String::new(),
+                item_id: Some("reasoning_2".to_string()),
+                output_index: Some(4),
+                sub_index: Some(5),
+                reasoning_channel: ReasoningChannel::Raw,
+                sequence_number: Some(12),
+            }
+        );
+
+        for (event_type, text) in [
+            ("response.reasoning_part.added", ""),
+            ("response.reasoning_part.done", "completed reasoning"),
+        ] {
+            assert_eq!(
+                event_fixture(json!({
+                    "type": event_type,
+                    "part": {"type": "reasoning_text", "text": text}
+                }))
+                .expect("reasoning part fixture without reconciliation metadata should parse"),
+                ResponsesStreamEvent::ReasoningDone {
+                    text: text.to_string(),
+                    item_id: None,
+                    output_index: None,
+                    sub_index: None,
+                    reasoning_channel: ReasoningChannel::Raw,
+                    sequence_number: None,
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_reasoning_part_events_are_rejected() {
+        for payload in [
+            json!({"type": "response.reasoning_part.added"}),
+            json!({"type": "response.reasoning_part.added", "part": null}),
+            json!({"type": "response.reasoning_part.added", "part": {"type": "reasoning_text"}}),
+            json!({
+                "type": "response.reasoning_part.done",
+                "part": {"type": "reasoning_text", "text": 42}
+            }),
+            json!({
+                "type": "response.reasoning_part.done",
+                "part": {"type": "output_text", "text": "not reasoning"}
+            }),
+        ] {
+            assert!(ResponsesStreamAdapter::parse_sse_data(&payload.to_string()).is_err());
+        }
     }
 
     #[test]
@@ -1216,71 +1598,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn stream_adapter_parses_lifecycle_text_refusal_reasoning_and_usage_fixtures() {
-        assert_eq!(
-            event_fixture(json!({
-                "type": "response.created",
-                "sequence_number": 0,
-                "response": {
-                    "id": "resp_1",
-                    "object": "response",
-                    "created_at": 1,
-                    "status": "in_progress",
-                    "error": null,
-                    "incomplete_details": null,
-                    "instructions": null,
-                    "max_output_tokens": null,
-                    "model": "gpt-5",
-                    "usage": null,
-                    "output": [],
-                    "tools": []
-                }
-            }))
-            .expect("response created fixture should parse"),
-            ResponsesStreamEvent::Lifecycle { kind: ResponsesLifecycleEvent::Created }
-        );
-
-        assert_eq!(
-            event_fixture(json!({
-                "type": "response.output_text.delta",
-                "item_id": "msg_1",
-                "output_index": 0,
-                "content_index": 0,
-                "sequence_number": 1,
-                "delta": "hello"
-            }))
-            .expect("output text delta fixture should parse"),
-            ResponsesStreamEvent::TextDelta { delta: "hello".to_string() }
-        );
-
-        assert_eq!(
-            event_fixture(json!({
-                "type": "response.refusal.delta",
-                "item_id": "msg_1",
-                "output_index": 0,
-                "content_index": 0,
-                "sequence_number": 2,
-                "delta": "no"
-            }))
-            .expect("refusal delta fixture should parse"),
-            ResponsesStreamEvent::RefusalDelta { delta: "no".to_string() }
-        );
-
-        assert_eq!(
-            event_fixture(json!({
-                "type": "response.reasoning_summary_text.delta",
-                "item_id": "rs_1",
-                "output_index": 1,
-                "summary_index": 0,
-                "sequence_number": 3,
-                "delta": "thinking"
-            }))
-            .expect("reasoning summary delta fixture should parse"),
-            ResponsesStreamEvent::ReasoningDelta { delta: "thinking".to_string() }
-        );
-
-        let completed = event_fixture(json!({
+    fn completed_response_event_fixture() -> ResponsesStreamEvent {
+        event_fixture(json!({
             "type": "response.completed",
             "sequence_number": 4,
             "response": {
@@ -1303,9 +1622,89 @@ mod tests {
                 "vtcode_overlay": "preserved"
             }
         }))
-        .expect("completed response fixture should parse");
+        .expect("completed response fixture should parse")
+    }
 
-        let ResponsesStreamEvent::CompletedResponse { response } = completed else {
+    #[test]
+    fn stream_adapter_parses_lifecycle_text_refusal_reasoning_and_usage_fixtures() {
+        assert_eq!(
+            event_fixture(json!({
+                "type": "response.created",
+                "sequence_number": 0,
+                "response": {
+                    "id": "resp_1",
+                    "object": "response",
+                    "created_at": 1,
+                    "status": "in_progress",
+                    "error": null,
+                    "incomplete_details": null,
+                    "instructions": null,
+                    "max_output_tokens": null,
+                    "model": "gpt-5",
+                    "usage": null,
+                    "output": [],
+                    "tools": []
+                }
+            }))
+            .expect("response created fixture should parse"),
+            ResponsesStreamEvent::Lifecycle {
+                kind: ResponsesLifecycleEvent::Created,
+                sequence_number: Some(0)
+            }
+        );
+
+        assert_eq!(
+            event_fixture(json!({
+                "type": "response.output_text.delta",
+                "item_id": "msg_1",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 1,
+                "delta": "hello"
+            }))
+            .expect("output text delta fixture should parse"),
+            ResponsesStreamEvent::TextDelta {
+                delta: "hello".to_string(),
+                sequence_number: Some(1)
+            }
+        );
+
+        assert_eq!(
+            event_fixture(json!({
+                "type": "response.refusal.delta",
+                "item_id": "msg_1",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 2,
+                "delta": "no"
+            }))
+            .expect("refusal delta fixture should parse"),
+            ResponsesStreamEvent::RefusalDelta { delta: "no".to_string(), sequence_number: Some(2) }
+        );
+
+        assert_eq!(
+            event_fixture(json!({
+                "type": "response.reasoning_summary_text.delta",
+                "item_id": "rs_1",
+                "output_index": 1,
+                "summary_index": 0,
+                "sequence_number": 3,
+                "delta": "thinking"
+            }))
+            .expect("reasoning summary delta fixture should parse"),
+            ResponsesStreamEvent::ReasoningDelta {
+                delta: "thinking".to_string(),
+                item_id: Some("rs_1".to_string()),
+                output_index: Some(1),
+                sub_index: Some(0),
+                reasoning_channel: ReasoningChannel::Summary,
+                sequence_number: Some(3)
+            }
+        );
+
+        let completed = completed_response_event_fixture();
+
+        let ResponsesStreamEvent::CompletedResponse { response, .. } = completed else {
             panic!("expected completed response event");
         };
         assert_eq!(response["id"], "resp_1");
@@ -1341,7 +1740,10 @@ mod tests {
                 }
             }))
             .expect("provider failed event fixture should parse"),
-            ResponsesStreamEvent::Error { message: "backend failed".to_string() }
+            ResponsesStreamEvent::Error {
+                message: "backend failed".to_string(),
+                sequence_number: Some(1)
+            }
         );
 
         assert_eq!(
@@ -1367,7 +1769,10 @@ mod tests {
                 }
             }))
             .expect("provider incomplete event fixture should parse"),
-            ResponsesStreamEvent::Error { message: "max output tokens reached".to_string() }
+            ResponsesStreamEvent::Error {
+                message: "max output tokens reached".to_string(),
+                sequence_number: Some(2)
+            }
         );
 
         assert_eq!(
@@ -1376,7 +1781,10 @@ mod tests {
                 "error": {"message": "rate limited"}
             }))
             .expect("provider error event fixture should parse"),
-            ResponsesStreamEvent::Error { message: "rate limited".to_string() }
+            ResponsesStreamEvent::Error {
+                message: "rate limited".to_string(),
+                sequence_number: None
+            }
         );
     }
 
@@ -1399,7 +1807,8 @@ mod tests {
             }))
             .expect("minimal failed response fixture should parse"),
             ResponsesStreamEvent::Error {
-                message: "Concurrency limit exceeded for account, please retry later".to_string()
+                message: "Concurrency limit exceeded for account, please retry later".to_string(),
+                sequence_number: None,
             }
         );
     }
@@ -1422,7 +1831,10 @@ mod tests {
                 }
             }))
             .expect("minimal incomplete response fixture should parse"),
-            ResponsesStreamEvent::Error { message: "max output tokens reached".to_string() }
+            ResponsesStreamEvent::Error {
+                message: "max output tokens reached".to_string(),
+                sequence_number: None,
+            }
         );
     }
 
@@ -1440,7 +1852,10 @@ mod tests {
                 }
             }))
             .expect("minimal created response fixture should parse"),
-            ResponsesStreamEvent::Lifecycle { kind: ResponsesLifecycleEvent::Created }
+            ResponsesStreamEvent::Lifecycle {
+                kind: ResponsesLifecycleEvent::Created,
+                sequence_number: None,
+            }
         );
 
         assert_eq!(
@@ -1455,7 +1870,10 @@ mod tests {
                 }
             }))
             .expect("minimal in-progress response fixture should parse"),
-            ResponsesStreamEvent::Lifecycle { kind: ResponsesLifecycleEvent::InProgress }
+            ResponsesStreamEvent::Lifecycle {
+                kind: ResponsesLifecycleEvent::InProgress,
+                sequence_number: None,
+            }
         );
     }
 
@@ -1474,7 +1892,8 @@ mod tests {
             }))
             .expect("minimal failed response without error fixture should parse"),
             ResponsesStreamEvent::Error {
-                message: "Unknown error from Responses API".to_string()
+                message: "Unknown error from Responses API".to_string(),
+                sequence_number: None,
             }
         );
     }
@@ -1501,7 +1920,8 @@ mod tests {
                 call_id: "call_1".to_string(),
                 item_id: Some("fc_1".to_string()),
                 name: "search_workspace".to_string(),
-                output_index: Some(0)
+                output_index: Some(0),
+                sequence_number: Some(1)
             }
         );
 
@@ -1520,7 +1940,8 @@ mod tests {
                 call_id: "call_1".to_string(),
                 item_id: Some("fc_1".to_string()),
                 delta: "{\"query\":\"vtcode\"}".to_string(),
-                output_index: Some(0)
+                output_index: Some(0),
+                sequence_number: Some(2)
             }
         );
 
@@ -1545,7 +1966,8 @@ mod tests {
                 item_id: Some("fc_1".to_string()),
                 name: "search_workspace".to_string(),
                 arguments: String::new(),
-                output_index: Some(0)
+                output_index: Some(0),
+                sequence_number: Some(3)
             }
         );
     }

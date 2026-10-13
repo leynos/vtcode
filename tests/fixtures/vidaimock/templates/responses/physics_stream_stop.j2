@@ -1,0 +1,11 @@
+event: response.output_text.done
+data: {"type":"response.output_text.done","sequence_number":5,"output_index":0,"content_index":0,"text":"one two three four"}
+
+event: response.content_part.done
+data: {"type":"response.content_part.done","sequence_number":6,"output_index":0,"content_index":0,"part":{"type":"output_text","text":"one two three four","annotations":[]}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":7,"output_index":0,"item":{"id":"msg-physics","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"one two three four","annotations":[]}]}}
+
+event: response.completed
+data: {"type":"response.completed","sequence_number":8,"response":{"id":"resp-physics","object":"response","status":"completed","model":"responses-wire-model","output":[{"id":"rs-physics","type":"reasoning","summary":[{"type":"summary_text","text":"fixture reasoning"}]},{"id":"msg-physics","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"one two three four","annotations":[]}]}],"usage":{"input_tokens":13,"output_tokens":7,"total_tokens":20,"output_tokens_details":{"reasoning_tokens":2}}}}

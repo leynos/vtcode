@@ -129,7 +129,7 @@ impl provider::LLMProvider for OpenAIProvider {
     }
 
     async fn generate(&self, request: provider::LLMRequest) -> Result<provider::LLMResponse, provider::LLMError> {
-        self.generate_request(request).await
+        Box::pin(self.generate_request(request)).await
     }
 
     async fn compact_history(
