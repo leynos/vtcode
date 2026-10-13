@@ -36,7 +36,7 @@
       "version": "0.5.1",
       "repo_status": { "Age": 902 },
       "outdated_deps": [
-        { "name": "sha2", "req": "^0.10", "version_used": "0.10.9", "version_latest": "0.11.0" }
+        { "name": "sha2", "req": "^0.10", "version_used": "0.10.9", "version_latest": "0.11.1" }
       ],
       "classification": "transitive-stale-dependency-requirement",
       "rationale": "Transitive dependency with a stale sha2 requirement; tracked for dependency-owner review in #108.",
@@ -47,7 +47,7 @@
       "version": "0.6.9",
       "repo_status": { "Age": 461 },
       "outdated_deps": [
-        { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.2" }
+        { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.3" }
       ],
       "classification": "transitive-stale-dependency-requirement",
       "rationale": "Transitive dependency with a stale rand requirement; tracked for dependency-owner review in #108.",
@@ -62,7 +62,7 @@
         { "name": "block-padding", "req": "^0.3", "version_used": "0.3.3", "version_latest": "0.4.2" },
         { "name": "cbc", "req": "^0.1", "version_used": "0.1.2", "version_latest": "0.2.1" },
         { "name": "hkdf", "req": "^0.12", "version_used": "0.12.4", "version_latest": "0.13.0" },
-        { "name": "sha2", "req": "^0.10", "version_used": "0.10.9", "version_latest": "0.11.0" }
+        { "name": "sha2", "req": "^0.10", "version_used": "0.10.9", "version_latest": "0.11.1" }
       ],
       "classification": "transitive-stale-dependency-requirement",
       "rationale": "Transitive dependency with stale cryptographic requirements; tracked for dependency-owner review in #108.",
@@ -84,7 +84,7 @@
       "version": "0.11.0",
       "repo_status": { "Age": 1864 },
       "outdated_deps": [
-        { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.2" }
+        { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.3" }
       ],
       "classification": "transitive-stale-dependency-requirement",
       "rationale": "Transitive dependency with a stale rand requirement; tracked for dependency-owner review in #108.",
@@ -104,7 +104,7 @@
       "version": "0.4.1",
       "repo_status": { "Age": 406 },
       "outdated_deps": [
-        { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.2" }
+        { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.3" }
       ],
       "classification": "transitive-stale-dependency-requirement",
       "rationale": "Transitive dependency with a stale rand requirement; tracked for dependency-owner review in #108.",
@@ -131,11 +131,22 @@
       "issue": 108
     },
     {
+      "name": "rusty-fork",
+      "version": "0.3.1",
+      "repo_status": { "Age": 374 },
+      "outdated_deps": [
+        { "name": "quick-error", "req": "^1.2", "version_used": "1.2.3", "version_latest": "2.0.1" }
+      ],
+      "classification": "test-only-stale-dependency-requirement",
+      "rationale": "Proptest's process-isolation helper is test-only; its quick-error 1.x constraint is tracked for dependency-owner review in #108.",
+      "issue": 108
+    },
+    {
       "name": "subtle",
       "version": "2.6.1",
       "repo_status": { "Age": 809 },
       "outdated_deps": [
-        { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.2" }
+        { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.3" }
       ],
       "classification": "transitive-stale-dependency-requirement",
       "rationale": "Transitive dependency with a stale rand requirement; tracked for dependency-owner review in #108.",
@@ -156,7 +167,7 @@
       "repo_status": { "Age": 626 },
       "outdated_deps": [
         { "name": "getrandom", "req": "^0.2", "version_used": "0.2.17", "version_latest": "0.4.3" },
-        { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.2" }
+        { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.3" }
       ],
       "classification": "transitive-stale-dependency-requirement",
       "rationale": "Transitive dependency with stale upstream requirements; tracked for dependency-owner review in #108.",
@@ -295,7 +306,7 @@
       "version": "0.6.1",
       "repo_status": { "Age": 373 },
       "outdated_deps": [
-        { "name": "rand", "req": "^0.8.0", "version_used": "0.8.7", "version_latest": "0.10.2" }
+        { "name": "rand", "req": "^0.8.0", "version_used": "0.8.7", "version_latest": "0.10.3" }
       ],
       "classification": "windows-target-transitive-dependency",
       "rationale": "Windows PTY dependency through rio-vt and teletypewriter; tracked for terminal-backend owner review in #108.",
