@@ -1275,33 +1275,39 @@ async fn create_fork_archive(
 }
 
 pub async fn list_recent_sessions(limit: usize) -> Result<Vec<SessionListing>> {
-    let sessions_dir = match resolve_sessions_dir().await {
-        Ok(dir) => dir,
-        Err(_) => return Ok(Vec::new()),
-    };
-
-    if !sessions_dir.exists() {
-        return Ok(Vec::new());
-    }
+    let sessions_dir = resolve_sessions_dir()
+        .await
+        .context("failed to resolve session directory for listing")?;
 
     // `std::fs::read_dir` is a blocking directory scan; run it off the async
     // executor and collect paths before spawning parallel read tasks. See `# Blocking`
     // docs in `src/agent/runloop/git.rs`.
-    let session_paths: Vec<PathBuf> = tokio::task::spawn_blocking(move || -> Result<Vec<PathBuf>> {
+    let scan_path = sessions_dir.clone();
+    let session_paths = tokio::task::spawn_blocking(move || -> Result<Option<Vec<PathBuf>>> {
+        let entries = match fs::read_dir(&sessions_dir) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("failed to read session directory: {}", sessions_dir.display()));
+            }
+        };
+
         let mut paths = Vec::new();
-        for entry in fs::read_dir(&sessions_dir)
-            .with_context(|| format!("failed to read session directory: {}", sessions_dir.display()))?
-        {
+        for entry in entries {
             let entry = entry.with_context(|| format!("failed to read session entry in {}", sessions_dir.display()))?;
             let path = entry.path();
             if is_session_file(&path) {
                 paths.push(path);
             }
         }
-        Ok(paths)
+        Ok(Some(paths))
     })
     .await
-    .context("session directory scan task panicked")??;
+    .with_context(|| format!("session directory scan task failed for {}", scan_path.display()))??;
+    let Some(session_paths) = session_paths else {
+        return Ok(Vec::new());
+    };
 
     // Process session files in parallel for better performance with large archives
     // Batch processing to avoid overwhelming the system with too many concurrent tasks
@@ -1313,20 +1319,22 @@ pub async fn list_recent_sessions(limit: usize) -> Result<Vec<SessionListing>> {
 
         for path in batch {
             let path = path.clone();
+            let task_path = path.clone();
             let task = tokio::task::spawn(async move {
-                read_private_json_file::<SessionSnapshot>(&path)
+                let snapshot = read_private_json_file::<SessionSnapshot>(&path)
                     .await
-                    .ok()
-                    .map(|snapshot| SessionListing { path, snapshot })
+                    .with_context(|| format!("failed to load session archive {}", path.display()))?;
+                Ok::<_, anyhow::Error>(SessionListing { path, snapshot })
             });
-            tasks.push(task);
+            tasks.push((task_path, task));
         }
 
         // Collect results from this batch
-        for task in tasks {
-            if let Ok(Some(listing)) = task.await {
-                all_listings.push(listing);
-            }
+        for (path, task) in tasks {
+            let listing = task
+                .await
+                .with_context(|| format!("failed to join session archive read task for {}", path.display()))??;
+            all_listings.push(listing);
         }
     }
 

@@ -467,8 +467,11 @@ mod tests {
     use crate::providers::openai::CustomProviderAuthHandle;
     use futures::StreamExt;
     use serde_json::{Value, json};
+    use std::future::Future;
     use std::path::Path;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
+    use std::task::Poll;
     use std::time::Duration;
     use tempfile::TempDir;
     use vtcode_config::constants::models;
@@ -539,6 +542,20 @@ mod tests {
         )
     }
 
+    fn admission_for_capacity(provider_name: &str, capacity: usize) -> CustomProviderAdmission {
+        let config = CustomProviderConfig {
+            name: provider_name.to_string(),
+            request_policy: CustomProviderRequestPolicyConfig {
+                max_in_flight_requests: Some(capacity),
+                queue_timeout_seconds: 30,
+                ..CustomProviderRequestPolicyConfig::default()
+            },
+            ..CustomProviderConfig::default()
+        };
+
+        CustomProviderAdmission::new(&config, &format!("https://{provider_name}.example/v1"))
+    }
+
     #[tokio::test]
     async fn router_instances_share_admission_for_the_same_endpoint_and_isolate_other_endpoints() {
         let first_router = admission_router("https://same.example/v1");
@@ -589,6 +606,139 @@ mod tests {
             crate::provider::LLMError::Provider { message, .. }
                 if message.contains("configured request limit")
         ));
+    }
+
+    #[tokio::test]
+    async fn request_admission_respects_configured_capacities_and_releases_on_completion() {
+        for capacity in [1, 2, 4] {
+            let admission = Arc::new(admission_for_capacity(&format!("capacity-{capacity}"), capacity));
+            let request_count = capacity * 3;
+            let active_requests = Arc::new(AtomicUsize::new(0));
+            let peak_active_requests = Arc::new(AtomicUsize::new(0));
+            let start_gate = Arc::new(tokio::sync::Barrier::new(request_count + 1));
+            let (started_sender, mut started_receiver) = tokio::sync::mpsc::channel(request_count);
+            let (admitted_sender, mut admitted_receiver) = tokio::sync::mpsc::channel(request_count);
+            let (release_sender, release_receiver) = tokio::sync::watch::channel(false);
+            let mut requests = tokio::task::JoinSet::new();
+
+            for request_id in 0..request_count {
+                let admission = Arc::clone(&admission);
+                let active_requests = Arc::clone(&active_requests);
+                let peak_active_requests = Arc::clone(&peak_active_requests);
+                let start_gate = Arc::clone(&start_gate);
+                let started_sender = started_sender.clone();
+                let admitted_sender = admitted_sender.clone();
+                let mut release_receiver = release_receiver.clone();
+
+                requests.spawn(async move {
+                    start_gate.wait().await;
+                    started_sender
+                        .send(request_id)
+                        .await
+                        .expect("test should receive every started request");
+
+                    let permit = admission
+                        .acquire()
+                        .await
+                        .expect("request should be admitted")
+                        .expect("configured capacity should return a permit");
+                    let active = active_requests.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak_active_requests.fetch_max(active, Ordering::SeqCst);
+                    admitted_sender
+                        .send(request_id)
+                        .await
+                        .expect("test should receive every admitted request");
+
+                    release_receiver
+                        .wait_for(|released| *released)
+                        .await
+                        .expect("test should release every admitted request");
+                    active_requests.fetch_sub(1, Ordering::SeqCst);
+                    drop(permit);
+                });
+            }
+
+            start_gate.wait().await;
+            for _ in 0..request_count {
+                tokio::time::timeout(Duration::from_secs(1), started_receiver.recv())
+                    .await
+                    .expect("all concurrent requests should start")
+                    .expect("started request channel should remain open");
+            }
+
+            let mut admitted_request_ids = Vec::with_capacity(capacity);
+            for _ in 0..capacity {
+                admitted_request_ids.push(
+                    tokio::time::timeout(Duration::from_secs(2), admitted_receiver.recv())
+                        .await
+                        .expect("configured capacity should be admitted")
+                        .expect("admitted request channel should remain open"),
+                );
+            }
+            admitted_request_ids.sort_unstable();
+            admitted_request_ids.dedup();
+            assert_eq!(admitted_request_ids.len(), capacity, "each permit admits one request");
+            assert_eq!(active_requests.load(Ordering::SeqCst), capacity);
+            assert_eq!(peak_active_requests.load(Ordering::SeqCst), capacity);
+            assert!(
+                tokio::time::timeout(Duration::from_millis(50), admitted_receiver.recv())
+                    .await
+                    .is_err(),
+                "no request may be admitted while all configured permits are held"
+            );
+
+            release_sender.send(true).expect("request workers are still listening");
+            while let Some(result) = requests.join_next().await {
+                result.expect("admission worker should complete without panicking");
+            }
+
+            assert_eq!(active_requests.load(Ordering::SeqCst), 0);
+            assert_eq!(peak_active_requests.load(Ordering::SeqCst), capacity);
+            assert_eq!(
+                admission.semaphore.as_ref().expect("configured semaphore").available_permits(),
+                capacity,
+                "completed requests should return every permit"
+            );
+
+            let mut reused_permits = Vec::with_capacity(capacity);
+            for _ in 0..capacity {
+                reused_permits.push(
+                    tokio::time::timeout(Duration::from_secs(1), admission.acquire())
+                        .await
+                        .expect("released permit should be reusable")
+                        .expect("reused request should be admitted")
+                        .expect("configured capacity should return a permit"),
+                );
+            }
+            assert_eq!(admission.semaphore.as_ref().expect("configured semaphore").available_permits(), 0);
+            drop(reused_permits);
+        }
+    }
+
+    #[tokio::test]
+    async fn dropping_a_queued_admission_future_does_not_leak_a_permit() {
+        let admission = admission_for_capacity("cancelled-queued-request", 1);
+        let held_permit = admission
+            .acquire()
+            .await
+            .expect("first request should be admitted")
+            .expect("configured capacity should return a permit");
+        let mut queued_acquisition = Box::pin(admission.acquire());
+        let poll_result =
+            futures::future::poll_fn(|context| Poll::Ready(queued_acquisition.as_mut().poll(context))).await;
+
+        assert!(poll_result.is_pending(), "acquisition should queue behind the held permit");
+        drop(queued_acquisition);
+        drop(held_permit);
+
+        let reacquired = tokio::time::timeout(Duration::from_secs(1), admission.acquire())
+            .await
+            .expect("cancelled waiter should not retain the released permit")
+            .expect("permit should remain available after cancellation")
+            .expect("configured capacity should return a permit");
+        assert_eq!(admission.semaphore.as_ref().expect("configured semaphore").available_permits(), 0);
+        drop(reacquired);
+        assert_eq!(admission.semaphore.as_ref().expect("configured semaphore").available_permits(), 1);
     }
 
     #[test]

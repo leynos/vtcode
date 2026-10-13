@@ -1979,6 +1979,11 @@ mod tests {
         requests: Arc<Mutex<Vec<LLMRequest>>>,
         tool_name: &'static str,
         tool_arguments: String,
+        additional_tool_calls: Vec<vtcode_core::llm::provider::ToolCall>,
+    }
+
+    struct CompactThenAnswerProvider {
+        requests: Arc<Mutex<Vec<LLMRequest>>>,
     }
 
     struct PartialThenFailProvider;
@@ -2009,14 +2014,16 @@ mod tests {
             self.requests.lock().expect("stream requests").push(request);
             let response_index = self.calls.fetch_add(1, Ordering::SeqCst);
             let events = if response_index == 0 {
+                let mut tool_calls = vec![vtcode_core::llm::provider::ToolCall::function(
+                    "call-tool".to_string(),
+                    self.tool_name.to_string(),
+                    self.tool_arguments.clone(),
+                )];
+                tool_calls.extend(self.additional_tool_calls.clone());
                 let response = LLMResponse {
                     content: Some("Checking files.".to_string()),
                     reasoning: Some("I need the workspace listing.".to_string()),
-                    tool_calls: Some(vec![vtcode_core::llm::provider::ToolCall::function(
-                        "call-tool".to_string(),
-                        self.tool_name.to_string(),
-                        self.tool_arguments.clone(),
-                    )]),
+                    tool_calls: Some(tool_calls),
                     finish_reason: vtcode_core::llm::provider::FinishReason::ToolCalls,
                     model: "wire-model".to_string(),
                     ..LLMResponse::default()
@@ -2046,6 +2053,44 @@ mod tests {
                 message: "tool-enabled ACP turn used buffered generation".to_string(),
                 metadata: None,
             })
+        }
+    }
+
+    #[async_trait]
+    impl LLMProvider for CompactThenAnswerProvider {
+        fn name(&self) -> &str {
+            "wire-test"
+        }
+
+        fn supported_models(&self) -> Vec<String> {
+            vec!["wire-model".to_string()]
+        }
+
+        fn supports_streaming(&self) -> bool {
+            true
+        }
+
+        fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+            Ok(())
+        }
+
+        async fn stream(&self, request: LLMRequest) -> Result<vtcode_core::llm::provider::LLMStream, LLMError> {
+            self.requests.lock().expect("compaction provider requests").push(request);
+            let response = LLMResponse {
+                content: Some("Answer after compaction.".to_string()),
+                finish_reason: vtcode_core::llm::provider::FinishReason::Stop,
+                model: "wire-model".to_string(),
+                ..LLMResponse::default()
+            };
+            Ok(Box::pin(futures::stream::iter(vec![
+                Ok(LLMStreamEvent::Token { delta: "Answer after compaction.".to_string() }),
+                Ok(LLMStreamEvent::Completed { response: Box::new(response) }),
+            ])))
+        }
+
+        async fn generate(&self, request: LLMRequest) -> Result<LLMResponse, LLMError> {
+            self.requests.lock().expect("compaction provider requests").push(request);
+            Ok(LLMResponse::new("wire-model", "ACP compaction summary marker"))
         }
     }
 
@@ -2117,6 +2162,14 @@ mod tests {
     }
 
     async fn build_wire_test_agent(workspace: &std::path::Path) -> ZedAgent {
+        build_wire_test_agent_with_options(workspace, None, None).await
+    }
+
+    async fn build_wire_test_agent_with_options(
+        workspace: &std::path::Path,
+        vt_config: Option<&vtcode_config::VTCodeConfig>,
+        audit_logger: Option<Arc<crate::audit::AcpAuditLogger>>,
+    ) -> ZedAgent {
         let core_config = CoreAgentConfig {
             model: "wire-model".to_string(),
             api_key: "test-key".to_string(),
@@ -2157,8 +2210,8 @@ mod tests {
             Some("Wire test".to_string()),
             primary_agents,
             true,
-            None,
-            None,
+            vt_config,
+            audit_logger,
         ))
         .await
     }
@@ -2286,7 +2339,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn streamed_tool_call_runs_tool_loop_before_streamed_final_answer() {
+    async fn streamed_tool_calls_audit_success_and_failure_before_streamed_final_answer() {
         let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
         let calls = Arc::new(AtomicUsize::new(0));
         let requests = Arc::new(Mutex::new(Vec::new()));
@@ -2300,15 +2353,30 @@ mod tests {
                     requests: Arc::clone(&factory_requests),
                     tool_name: "list_files",
                     tool_arguments: r#"{"path":""}"#.to_string(),
+                    additional_tool_calls: vec![vtcode_core::llm::provider::ToolCall::function(
+                        "call-unsupported".to_string(),
+                        "unsupported_tool".to_string(),
+                        r#"{"probe":"failure"}"#.to_string(),
+                    )],
                 })
             }),
         );
         let launch_workspace = TempDir::new().expect("wire test launch workspace");
         let workspace = TempDir::new().expect("wire test requested workspace");
+        let audit_path = launch_workspace.path().join("tool-audit.jsonl");
+        let audit_config: vtcode_config::safety::ToolAuditConfig =
+            toml::from_str(&format!("enabled = true\npath = {:?}\nmax_size_bytes = 4096\nmax_files = 2", audit_path))
+                .expect("ACP tool audit configuration");
+        let audit_logger = crate::audit::AcpAuditLogger::from_config(&audit_config)
+            .await
+            .expect("ACP tool audit logger startup")
+            .expect("enabled ACP tool audit logger");
         std::fs::write(workspace.path().join("visible.txt"), "fixture").expect("write workspace fixture");
         std::fs::write(launch_workspace.path().join("wrong-root.txt"), "fixture")
             .expect("write launch workspace fixture");
-        let agent = Arc::new(build_wire_test_agent(launch_workspace.path()).await);
+        let agent = Arc::new(
+            build_wire_test_agent_with_options(launch_workspace.path(), None, Some(Arc::new(audit_logger))).await,
+        );
         let (agent_channel, client_channel) = Channel::duplex();
         let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
 
@@ -2394,6 +2462,11 @@ mod tests {
             requests[1].messages.iter().any(Message::is_tool_response),
             "the second stream must include the executed tool result"
         );
+        assert_eq!(
+            requests[1].messages.iter().filter(|message| message.is_tool_response()).count(),
+            2,
+            "the provider must receive both the successful and failed streamed tool outcomes"
+        );
         let tool_response = requests[1]
             .messages
             .iter()
@@ -2409,6 +2482,177 @@ mod tests {
                 .any(|message| message.reasoning.as_deref() == Some("I need the workspace listing.")),
             "the assistant tool-call checkpoint must retain streamed reasoning"
         );
+
+        let audit_entries = std::fs::read_to_string(&audit_path)
+            .expect("read ACP tool audit JSONL")
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("parse ACP tool audit entry"))
+            .collect::<Vec<_>>();
+        assert_eq!(audit_entries.len(), 2, "each streamed ACP tool execution must be audited");
+        assert!(
+            audit_entries
+                .iter()
+                .any(|entry| entry["tool_name"] == "list_files" && entry["status"] == "success")
+        );
+        assert!(
+            audit_entries
+                .iter()
+                .any(|entry| entry["tool_name"] == "unsupported_tool" && entry["status"] == "failure")
+        );
+    }
+
+    #[tokio::test]
+    async fn streamed_acp_prompt_compacts_and_checkpoints_session_history() {
+        const OLDEST_CONTEXT_MARKER: &str = "acp-oldest-context-marker";
+        const SUMMARY_MARKER: &str = "ACP compaction summary marker";
+
+        let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let factory_requests = Arc::clone(&requests);
+        let _factory_guard = PromptProviderFactoryGuard::install(
+            "wire-test",
+            Arc::new(move || Box::new(CompactThenAnswerProvider { requests: Arc::clone(&factory_requests) })),
+        );
+        let workspace = TempDir::new().expect("wire test compaction workspace");
+        let mut vt_config = vtcode_config::VTCodeConfig::default();
+        vt_config.agent.harness.auto_compaction_enabled = true;
+        vt_config.agent.harness.auto_compaction_threshold_tokens = Some(1);
+        let agent = Arc::new(build_wire_test_agent_with_options(workspace.path(), Some(&vt_config), None).await);
+        let (agent_channel, client_channel) = Channel::duplex();
+
+        let agent_connection = install_handlers(
+            Agent.builder().name("vtcode-stream-compaction-test"),
+            Arc::clone(&agent),
+        )
+        .connect_with(agent_channel, {
+            let agent = Arc::clone(&agent);
+            async move |cx: ConnectionTo<Client>| {
+                agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                std::future::pending::<agent_client_protocol::Result<()>>().await
+            }
+        });
+        let agent_task = tokio::spawn(agent_connection);
+
+        let history_agent = Arc::clone(&agent);
+        let client_connection = Client
+            .builder()
+            .on_receive_notification(
+                async move |_notification: acp::SessionNotification, _cx| Ok(()),
+                on_receive_notification!(),
+            )
+            .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+                drop(
+                    cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                        .block_task()
+                        .await?,
+                );
+                let session = cx
+                    .send_request(NewSessionRequest::new(workspace.path().to_path_buf()))
+                    .block_task()
+                    .await?;
+                let session_handle = history_agent
+                    .session_handle(&session.session_id)
+                    .expect("new ACP session handle");
+                for index in 0..12 {
+                    let user_context = if index == 0 {
+                        format!("old user turn {index} {}", "older context ".repeat(12_000))
+                    } else {
+                        format!("older user turn {index}")
+                    };
+                    history_agent.push_message(&session_handle, Message::user(user_context));
+                    let assistant_context = if index == 0 {
+                        format!("{OLDEST_CONTEXT_MARKER} old assistant turn {index}")
+                    } else {
+                        format!("older assistant turn {index}")
+                    };
+                    history_agent.push_message(&session_handle, Message::assistant(assistant_context));
+                }
+
+                let response = cx
+                    .send_request(PromptRequest::new(
+                        session.session_id,
+                        vec![acp::ContentBlock::Text(acp::TextContent::new(
+                            "Prompt after accumulated history",
+                        ))],
+                    ))
+                    .block_task()
+                    .await?;
+                assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+                Ok(())
+            });
+
+        tokio::time::timeout(Duration::from_secs(5), client_connection)
+            .await
+            .expect("ACP compaction prompt should finish")
+            .expect("ACP compaction protocol flow should succeed");
+        agent_task.abort();
+        drop(agent_task.await);
+
+        let requests = requests.lock().expect("compaction provider requests");
+        assert_eq!(requests.len(), 2, "the turn must summarize history and then stream its answer");
+        assert!(!requests[0].stream, "local compaction must use provider generation for its summary");
+        let compaction_request_text = requests[0]
+            .messages
+            .iter()
+            .map(|message| message.content.as_text())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            compaction_request_text.contains(OLDEST_CONTEXT_MARKER),
+            "the compaction request must receive the oldest pre-compaction assistant message"
+        );
+        assert!(requests[1].stream, "the ACP prompt response must remain streamed after compaction");
+        assert!(
+            requests[1]
+                .messages
+                .iter()
+                .any(|message| message.content.as_text().contains(SUMMARY_MARKER)),
+            "the streamed prompt request must use the generated compaction summary"
+        );
+        assert!(
+            !requests[1]
+                .messages
+                .iter()
+                .any(|message| message.content.as_text().contains(OLDEST_CONTEXT_MARKER)),
+            "the oldest raw context must be replaced before the provider answer request"
+        );
+        drop(requests);
+
+        let session = agent
+            .sessions
+            .lock()
+            .expect("ACP session map")
+            .values()
+            .next()
+            .expect("compacted ACP session")
+            .clone();
+        let (history, archive_path) = {
+            let data = session.data.lock().expect("compacted ACP session data");
+            let archive_path = data
+                .archive
+                .as_ref()
+                .expect("compaction checkpoint archive")
+                .path()
+                .to_path_buf();
+            (data.thread.messages(), archive_path)
+        };
+        assert!(history.iter().any(|message| message.content.as_text().contains(SUMMARY_MARKER)));
+        assert!(
+            !history
+                .iter()
+                .any(|message| message.content.as_text().contains(OLDEST_CONTEXT_MARKER))
+        );
+
+        let persisted: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&archive_path).expect("read ACP archive after automatic compaction"))
+                .expect("parse ACP archive after automatic compaction");
+        let persisted_text = persisted.to_string();
+        assert!(persisted_text.contains(SUMMARY_MARKER), "the session checkpoint must persist the summary");
+        assert!(
+            !persisted_text.contains(OLDEST_CONTEXT_MARKER),
+            "the session checkpoint must persist compacted history instead of the raw oldest message"
+        );
+        std::fs::remove_file(archive_path).expect("remove persisted ACP compaction archive");
     }
 
     #[tokio::test]
@@ -2444,6 +2688,7 @@ mod tests {
                     requests: Arc::clone(&factory_requests),
                     tool_name: "task_tracker",
                     tool_arguments: task_arguments.clone(),
+                    additional_tool_calls: Vec::new(),
                 })
             }),
         );
@@ -2558,6 +2803,7 @@ mod tests {
                     requests: Arc::clone(&factory_requests),
                     tool_name: "apply_patch",
                     tool_arguments: patch_arguments.clone(),
+                    additional_tool_calls: Vec::new(),
                 })
             }),
         );

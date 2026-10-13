@@ -748,6 +748,46 @@ async fn list_recent_sessions_orders_entries() -> Result<()> {
     Ok(())
 }
 
+#[serial_test::serial(session_dir_override)]
+#[tokio::test]
+async fn list_recent_sessions_propagates_directory_resolution_errors() -> Result<()> {
+    let _settings_lock = lock_history_test_guard().await;
+    let temp_dir = tempfile::tempdir().context("failed to create temp dir")?;
+    let blocked_path = temp_dir.path().join("sessions-is-a-file");
+    fs::write(&blocked_path, "not a directory")
+        .with_context(|| format!("failed to create blocking file {}", blocked_path.display()))?;
+    let _guard = EnvGuard::set(SESSION_DIR_ENV, &blocked_path);
+
+    let error = list_recent_sessions(10)
+        .await
+        .expect_err("a session path blocked by a regular file must fail");
+    let error = format!("{error:#}");
+    assert!(error.contains("failed to resolve session directory for listing"));
+    assert!(error.contains(&blocked_path.display().to_string()));
+
+    Ok(())
+}
+
+#[serial_test::serial(session_dir_override)]
+#[tokio::test]
+async fn list_recent_sessions_propagates_malformed_archives() -> Result<()> {
+    let _settings_lock = lock_history_test_guard().await;
+    let temp_dir = tempfile::tempdir().context("failed to create temp dir")?;
+    let _guard = EnvGuard::set(SESSION_DIR_ENV, temp_dir.path());
+    let archive_path = temp_dir.path().join("session-malformed.json");
+    fs::write(&archive_path, "{ malformed json")
+        .with_context(|| format!("failed to write malformed archive {}", archive_path.display()))?;
+
+    let error = list_recent_sessions(10)
+        .await
+        .expect_err("a malformed session archive must fail listing");
+    let error = format!("{error:#}");
+    assert!(error.contains("failed to load session archive"));
+    assert!(error.contains(&archive_path.display().to_string()));
+
+    Ok(())
+}
+
 #[test]
 fn session_archive_retention_prunes_oldest_by_count() -> Result<()> {
     let temp_dir = tempfile::tempdir().context("failed to create temp dir")?;

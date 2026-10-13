@@ -23,6 +23,8 @@ Last reviewed: 2026-08-28
   config loading order.
 - [User Data Directories](guides/user-data-directories.md) - XDG/native paths,
   environment overrides, permissions, and legacy migration.
+- [Zed ACP Guide](guides/zed-acp.md) - Zed Agent Client Protocol setup and
+  session behaviour.
 - [Config Field Reference](config/CONFIG_FIELD_REFERENCE.md) - Field-level
   schema reference.
 - [Tool Specifications](tools/TOOL_SPECS.md) - Canonical tool surface reference.

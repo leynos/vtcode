@@ -174,6 +174,8 @@ New to VT Code? Start with installation and basic usage:
   options
 - **[User Data Directories](./guides/user-data-directories.md)** - XDG/native
   storage paths, migration, permissions, and troubleshooting
+- **[Zed ACP Guide](./guides/zed-acp.md)** - Set up Zed's Agent Client Protocol
+  integration and understand ACP session behaviour
 - **[Status Line Configuration](./guides/status-line.md)** - Customize the
   inline prompt footer
 - **[Responses API & Reasoning Models](./guides/responses-api-reasoning.md)** -
