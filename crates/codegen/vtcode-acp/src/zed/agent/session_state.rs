@@ -19,28 +19,33 @@ use vtcode_core::llm::ModelResolver;
 use vtcode_core::llm::factory::get_factory;
 use vtcode_core::llm::provider::{FinishReason, Message, MessageRole};
 use vtcode_core::utils::session_archive::{
-    MAX_ACP_META_BYTES, MAX_ACP_META_ENTRIES, SessionArchive, SessionListing, SessionMessage, SessionProgressArgs,
-    find_session_by_identifier, history_persistence_enabled, list_recent_sessions, session_workspace_path,
+    MAX_CLIENT_METADATA_BYTES, MAX_CLIENT_METADATA_ENTRIES, SessionArchive, SessionListing, SessionMessage,
+    SessionProgressArgs, find_session_by_identifier, history_persistence_enabled, list_recent_sessions,
+    session_workspace_path,
 };
 
 use super::super::constants::SESSION_PREFIX;
 use super::super::helpers::session_config_options;
-use super::super::types::{SessionData, SessionHandle};
+use super::super::types::{SessionData, SessionHandle, lock_poison_error};
 
 impl ZedAgent {
     const SESSION_LIST_PAGE_SIZE: usize = 100;
 
     pub(crate) async fn run_session_start_hooks(&self, session: &SessionHandle) -> anyhow::Result<()> {
-        if !session.mark_session_started() {
+        if !session.mark_session_started().context("checking ACP session start state")? {
             return Ok(());
         }
 
-        session.update_transcript_path().await;
-        let Some(hooks) = session.lifecycle_hooks() else {
+        session
+            .update_transcript_path()
+            .await
+            .context("updating ACP session transcript path")?;
+        let Some(hooks) = session.lifecycle_hooks().context("reading ACP session lifecycle hooks")? else {
             return Ok(());
         };
         let workspace = session
             .workspace_runtime()
+            .context("reading ACP session workspace runtime for SessionStart hooks")?
             .map_or_else(|| self.config.workspace.clone(), |runtime| runtime.workspace_root.clone());
         vtcode_core::hooks::restore_workspace_hook_approval(&hooks, &workspace).await;
         let outcome = hooks.run_session_start().await?;
@@ -49,30 +54,54 @@ impl ZedAgent {
         }
         for context in outcome.additional_context {
             if !context.trim().is_empty() {
-                self.push_message(session, Message::system(context));
+                self.push_message(session, Message::system(context))
+                    .context("appending SessionStart hook context to the ACP session")?;
             }
         }
         Ok(())
     }
 
-    pub(crate) async fn run_session_end_hooks(&self, reason: SessionEndReason) {
+    pub(crate) async fn run_session_end_hooks(&self, reason: SessionEndReason) -> anyhow::Result<()> {
         let sessions = self
             .sessions
             .lock()
-            .map(|sessions| sessions.values().cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
+            .map_err(|error| lock_poison_error("listing ACP sessions for SessionEnd hooks", error))?
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut first_error = None;
         for session in sessions {
-            if !session.mark_session_ended() {
-                continue;
+            match session.mark_session_ended() {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(error) => {
+                    warn!(%error, "Failed to read ACP session end state; attempting lifecycle hooks anyway");
+                    if first_error.is_none() {
+                        first_error = Some(error.context("checking ACP session end state"));
+                    }
+                }
             }
-            let Some(hooks) = session.lifecycle_hooks() else {
-                continue;
+            let hooks = match session.lifecycle_hooks() {
+                Ok(Some(hooks)) => hooks,
+                Ok(None) => continue,
+                Err(error) => {
+                    warn!(%error, "Failed to read ACP session lifecycle hooks at shutdown");
+                    if first_error.is_none() {
+                        first_error = Some(error.context("reading ACP session lifecycle hooks at shutdown"));
+                    }
+                    continue;
+                }
             };
-            let turn_id = session
-                .data
-                .lock()
-                .map(|data| data.session_id.to_string())
-                .unwrap_or_else(|_| "acp-session".to_string());
+            let turn_id = match session.data.lock() {
+                Ok(data) => data.session_id.to_string(),
+                Err(error) => {
+                    warn!(%error, "Failed to read ACP session ID for SessionEnd hook");
+                    if first_error.is_none() {
+                        first_error = Some(lock_poison_error("reading ACP session ID for SessionEnd hook", error));
+                    }
+                    "acp-session".to_string()
+                }
+            };
             match hooks.run_session_end(&turn_id, reason).await {
                 Ok(messages) => {
                     for message in messages {
@@ -81,6 +110,11 @@ impl ZedAgent {
                 }
                 Err(error) => warn!(%error, "ACP SessionEnd hooks failed"),
             }
+        }
+        if let Some(error) = first_error {
+            Err(error)
+        } else {
+            Ok(())
         }
     }
 
@@ -105,15 +139,20 @@ impl ZedAgent {
         }
     }
 
-    pub(super) fn merge_session_acp_meta(&self, session: &SessionHandle, acp_meta: Option<acp::Meta>) {
+    pub(super) fn merge_session_acp_meta(
+        &self,
+        session: &SessionHandle,
+        acp_meta: Option<acp::Meta>,
+    ) -> anyhow::Result<()> {
         debug!(acp_meta_key_count = acp_meta.as_ref().map_or(0, acp::Meta::len), "Received ACP request metadata");
-        let Ok(data) = session.data.lock() else {
-            return;
-        };
+        let data = session
+            .data
+            .lock()
+            .map_err(|error| lock_poison_error("merging ACP client metadata into the session archive", error))?;
         if let Some(mut metadata) = data.thread.metadata() {
-            let preserve_metadata_presence = metadata.acp_meta.is_some() || acp_meta.is_some();
+            let preserve_metadata_presence = metadata.client_metadata.is_some() || acp_meta.is_some();
             let mut merged = metadata
-                .acp_meta
+                .client_metadata
                 .take()
                 .unwrap_or_default()
                 .into_iter()
@@ -125,7 +164,7 @@ impl ZedAgent {
             let mut bounded = serde_json::Map::new();
             let mut discarded_entries = 0usize;
             for (key, value) in merged {
-                if bounded.len() >= MAX_ACP_META_ENTRIES {
+                if bounded.len() >= MAX_CLIENT_METADATA_ENTRIES {
                     discarded_entries = discarded_entries.saturating_add(1);
                     continue;
                 }
@@ -135,17 +174,18 @@ impl ZedAgent {
                     discarded_entries = discarded_entries.saturating_add(1);
                 }
             }
-            metadata.acp_meta = preserve_metadata_presence.then_some(bounded);
+            metadata.client_metadata = preserve_metadata_presence.then_some(bounded);
             data.thread.replace_metadata(Some(metadata));
             if discarded_entries > 0 {
                 warn!(
                     discarded_entries,
-                    max_entries = MAX_ACP_META_ENTRIES,
-                    max_serialized_bytes = MAX_ACP_META_BYTES,
+                    max_entries = MAX_CLIENT_METADATA_ENTRIES,
+                    max_serialized_bytes = MAX_CLIENT_METADATA_BYTES,
                     "Discarded ACP metadata entries beyond the archive budget"
                 );
             }
         }
+        Ok(())
     }
 
     fn session_provider_for_thread(&self, thread: &vtcode_core::core::threads::ThreadRuntimeHandle) -> String {
@@ -269,12 +309,13 @@ impl ZedAgent {
                 session_started: false,
                 session_ended: false,
                 task_lifecycle_forwarder: None,
+                task_lifecycle_registration: None,
             })),
             cancellation: super::super::types::SessionCancellation::default(),
         }
     }
 
-    pub(crate) fn register_session(&self) -> acp::SessionId {
+    pub(crate) fn register_session(&self) -> anyhow::Result<acp::SessionId> {
         let raw_id = self.next_session_id.fetch_add(1, Ordering::Relaxed);
         let session_id = acp::SessionId::new(Arc::from(format!("{SESSION_PREFIX}-{raw_id}")));
         let metadata = build_thread_archive_metadata(
@@ -288,17 +329,20 @@ impl ZedAgent {
             .thread_manager
             .start_thread_with_identifier(session_id.0.to_string(), ThreadBootstrap::new(Some(metadata)));
         let handle = self.build_session_handle(session_id.clone(), thread, SessionStartTrigger::NewSession);
-        if let Ok(mut guard) = self.sessions.lock() {
-            drop(guard.insert(session_id.clone(), handle));
-        }
-        session_id
+        drop(
+            self.sessions
+                .lock()
+                .map_err(|error| lock_poison_error("registering ACP session", error))?
+                .insert(session_id.clone(), handle),
+        );
+        Ok(session_id)
     }
 
     fn register_durable_session(
         &self,
         workspace_runtime: Arc<super::SessionWorkspaceRuntime>,
         acp_meta: Option<acp::Meta>,
-    ) -> acp::SessionId {
+    ) -> anyhow::Result<acp::SessionId> {
         let session_id = acp::SessionId::new(Arc::from(format!("{SESSION_PREFIX}-{}", Uuid::new_v4())));
         let mut metadata = build_thread_archive_metadata(
             workspace_runtime.workspace_root.as_path(),
@@ -308,7 +352,7 @@ impl ZedAgent {
             self.config.reasoning_effort.as_str(),
         )
         .with_primary_agent(workspace_runtime.primary_agents.default_id());
-        metadata.acp_meta = Some(serde_json::Map::new());
+        metadata.client_metadata = Some(serde_json::Map::new());
         let thread = self
             .thread_manager
             .start_thread_with_identifier(session_id.0.to_string(), ThreadBootstrap::new(Some(metadata)));
@@ -319,21 +363,32 @@ impl ZedAgent {
             SessionStartTrigger::NewSession,
             Some(workspace_runtime),
         );
-        self.merge_session_acp_meta(&handle, acp_meta);
-        if let Ok(mut guard) = self.sessions.lock() {
-            drop(guard.insert(session_id.clone(), handle));
-        }
-        session_id
+        self.merge_session_acp_meta(&handle, acp_meta)?;
+        drop(
+            self.sessions
+                .lock()
+                .map_err(|error| lock_poison_error("registering durable ACP session", error))?
+                .insert(session_id.clone(), handle),
+        );
+        Ok(session_id)
     }
 
-    pub(crate) fn session_handle(&self, session_id: &acp::SessionId) -> Option<SessionHandle> {
-        self.sessions.lock().unwrap_or_else(|e| e.into_inner()).get(session_id).cloned()
+    pub(crate) fn session_handle(&self, session_id: &acp::SessionId) -> anyhow::Result<Option<SessionHandle>> {
+        Ok(self
+            .sessions
+            .lock()
+            .map_err(|error| lock_poison_error("looking up ACP session", error))?
+            .get(session_id)
+            .cloned())
     }
 
-    pub(super) fn push_message(&self, session: &SessionHandle, message: Message) {
-        if let Ok(data) = session.data.lock() {
-            data.thread.append_message(message);
-        }
+    pub(super) fn push_message(&self, session: &SessionHandle, message: Message) -> anyhow::Result<()> {
+        let data = session
+            .data
+            .lock()
+            .map_err(|error| lock_poison_error("appending a message to the ACP session", error))?;
+        data.thread.append_message(message);
+        Ok(())
     }
 
     pub(super) async fn checkpoint_session(&self, session: &SessionHandle) -> anyhow::Result<()> {
@@ -395,66 +450,84 @@ impl ZedAgent {
     }
 
     #[allow(dead_code, reason = "Intentional compatibility, platform, or test-only suppression.")]
-    pub(super) fn should_send_tool_notice(&self, session: &SessionHandle) -> bool {
+    pub(super) fn should_send_tool_notice(&self, session: &SessionHandle) -> anyhow::Result<bool> {
         session
             .data
             .lock()
+            .map_err(|error| lock_poison_error("checking whether to send the ACP tool notice", error))
             .map(|data| !data.tool_notice_sent.load(Ordering::Relaxed))
-            .unwrap_or(false)
     }
 
     #[allow(dead_code, reason = "Intentional compatibility, platform, or test-only suppression.")]
-    pub(super) fn mark_tool_notice_sent(&self, session: &SessionHandle) {
-        if let Ok(data) = session.data.lock() {
-            data.tool_notice_sent.store(true, Ordering::Relaxed);
-        }
+    pub(super) fn mark_tool_notice_sent(&self, session: &SessionHandle) -> anyhow::Result<()> {
+        let data = session
+            .data
+            .lock()
+            .map_err(|error| lock_poison_error("marking the ACP tool notice as sent", error))?;
+        data.tool_notice_sent.store(true, Ordering::Relaxed);
+        Ok(())
     }
 
-    pub(super) fn update_session_primary_agent(&self, session: &SessionHandle, primary_agent: String) -> bool {
-        let workspace_runtime = session.workspace_runtime();
+    pub(super) fn update_session_primary_agent(
+        &self,
+        session: &SessionHandle,
+        primary_agent: String,
+    ) -> anyhow::Result<bool> {
+        let workspace_runtime = session
+            .workspace_runtime()
+            .context("reading ACP session workspace runtime to update primary agent")?;
         let primary_agents = workspace_runtime
             .as_ref()
             .map_or(&self.primary_agents, |runtime| &runtime.primary_agents);
         let Some(primary_agent) = primary_agents.resolve_id(&primary_agent) else {
-            return false;
+            return Ok(false);
         };
-        let mut data = match session.data.lock() {
-            Ok(guard) => guard,
-            Err(_) => return false,
-        };
+        let mut data = session
+            .data
+            .lock()
+            .map_err(|error| lock_poison_error("updating ACP session primary agent", error))?;
         if data.primary_agent.eq_ignore_ascii_case(primary_agent) {
-            return false;
+            return Ok(false);
         }
         data.primary_agent = primary_agent.to_string();
         self.sync_thread_primary_agent(&data.thread, &data.primary_agent);
-        true
+        Ok(true)
     }
 
-    fn update_session_reasoning_effort(&self, session: &SessionHandle, reasoning_effort: ReasoningEffortLevel) -> bool {
-        let mut data = match session.data.lock() {
-            Ok(guard) => guard,
-            Err(_) => return false,
-        };
+    fn update_session_reasoning_effort(
+        &self,
+        session: &SessionHandle,
+        reasoning_effort: ReasoningEffortLevel,
+    ) -> anyhow::Result<bool> {
+        let mut data = session
+            .data
+            .lock()
+            .map_err(|error| lock_poison_error("updating ACP session reasoning effort", error))?;
         if data.reasoning_effort == reasoning_effort {
-            return false;
+            return Ok(false);
         }
         data.reasoning_effort = reasoning_effort;
         self.sync_thread_reasoning_effort(&data.thread, reasoning_effort);
-        true
+        Ok(true)
     }
 
-    fn update_session_provider_and_model(&self, session: &SessionHandle, provider: String, model: String) -> bool {
-        let mut data = match session.data.lock() {
-            Ok(guard) => guard,
-            Err(_) => return false,
-        };
+    fn update_session_provider_and_model(
+        &self,
+        session: &SessionHandle,
+        provider: String,
+        model: String,
+    ) -> anyhow::Result<bool> {
+        let mut data = session
+            .data
+            .lock()
+            .map_err(|error| lock_poison_error("updating ACP session provider and model", error))?;
         if data.provider == provider && data.model == model {
-            return false;
+            return Ok(false);
         }
         data.provider = provider;
         data.model = model;
         self.sync_thread_provider_and_model(&data.thread, &data.provider, &data.model);
-        true
+        Ok(true)
     }
 
     fn provider_default_model(&self, provider: &str) -> Option<String> {
@@ -542,11 +615,11 @@ impl ZedAgent {
             .any(|option| option.value.0.as_ref() == provider)
     }
 
-    fn current_session_config_options(&self, session: &SessionHandle) -> Vec<acp::SessionConfigOption> {
-        let data = match session.data.lock() {
-            Ok(guard) => guard,
-            Err(_) => return Vec::new(),
-        };
+    fn current_session_config_options(&self, session: &SessionHandle) -> anyhow::Result<Vec<acp::SessionConfigOption>> {
+        let data = session
+            .data
+            .lock()
+            .map_err(|error| lock_poison_error("building ACP session config options", error))?;
         let provider_options = self.provider_select_options(&data.provider);
         let model_options = self.model_select_options(&data.provider, &data.model);
         let primary_agents = data
@@ -572,11 +645,13 @@ impl ZedAgent {
             "Built session config options for ACP"
         );
 
-        config_options
+        Ok(config_options)
     }
 
-    pub(super) fn resolved_messages(&self, session: &SessionHandle) -> Vec<Message> {
-        let workspace_runtime = session.workspace_runtime();
+    pub(super) fn resolved_messages(&self, session: &SessionHandle) -> anyhow::Result<Vec<Message>> {
+        let workspace_runtime = session
+            .workspace_runtime()
+            .context("reading ACP session workspace runtime while resolving messages")?;
         let system_prompt = workspace_runtime
             .as_ref()
             .map_or(self.system_prompt.as_str(), |runtime| runtime.system_prompt.as_str());
@@ -585,9 +660,10 @@ impl ZedAgent {
             messages.push(Message::system(system_prompt.to_string()));
         }
 
-        let Ok(history) = session.data.lock() else {
-            return messages;
-        };
+        let history = session
+            .data
+            .lock()
+            .map_err(|error| lock_poison_error("reading ACP session messages", error))?;
         let primary_agents = workspace_runtime
             .as_ref()
             .map_or(&self.primary_agents, |runtime| &runtime.primary_agents);
@@ -595,7 +671,7 @@ impl ZedAgent {
             messages.push(Message::system(prompt.to_string()));
         }
         messages.extend(history.thread.messages());
-        messages
+        Ok(messages)
     }
 
     async fn attach_thread_from_archive(
@@ -626,9 +702,12 @@ impl ZedAgent {
             SessionStartTrigger::Resume,
             Some(runtime),
         );
-        if let Ok(mut guard) = self.sessions.lock() {
-            drop(guard.insert(session_id.clone(), handle.clone()));
-        }
+        drop(
+            self.sessions
+                .lock()
+                .map_err(|error| lock_poison_error("registering resumed ACP session", error))?
+                .insert(session_id.clone(), handle.clone()),
+        );
         Ok(handle)
     }
 
@@ -637,12 +716,13 @@ impl ZedAgent {
         session_id: &acp::SessionId,
         workspace: &std::path::Path,
     ) -> anyhow::Result<SessionHandle> {
-        if let Some(session) = self.session_handle(session_id) {
+        if let Some(session) = self.session_handle(session_id)? {
             let matches_workspace = session
                 .data
                 .lock()
-                .ok()
-                .and_then(|data| data.thread.metadata())
+                .map_err(|error| lock_poison_error("checking workspace ownership of active ACP session", error))?
+                .thread
+                .metadata()
                 .and_then(|metadata| vtcode_commons::canonicalize(&metadata.workspace_path).ok())
                 .is_some_and(|stored_workspace| stored_workspace == workspace);
             anyhow::ensure!(matches_workspace, "active session belongs to a different workspace");
@@ -748,18 +828,21 @@ impl ZedAgent {
             .workspace_runtime_for(workspace)
             .await
             .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
-        let session_id = self.register_durable_session(workspace_runtime, req.meta);
-        let session = self.session_handle(&session_id);
-        if let Some(session) = &session {
-            self.ensure_task_lifecycle_forwarder(session);
-            self.run_session_start_hooks(session)
-                .await
-                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
-        }
-        let config_options = session
-            .as_ref()
-            .map(|session| self.current_session_config_options(session))
-            .unwrap_or_default();
+        let session_id = self
+            .register_durable_session(workspace_runtime, req.meta)
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+        let session = self
+            .session_handle(&session_id)
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?
+            .ok_or_else(|| acp::Error::internal_error().data("newly registered ACP session is missing"))?;
+        self.ensure_task_lifecycle_forwarder(&session)
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+        self.run_session_start_hooks(&session)
+            .await
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+        let config_options = self
+            .current_session_config_options(&session)
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
 
         if let Err(error) = self.send_available_commands_update(&session_id).await {
             warn!(%error, "Failed to advertise initial slash commands");
@@ -780,7 +863,8 @@ impl ZedAgent {
             .attach_or_get_session(&args.session_id, &workspace)
             .await
             .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
-        self.ensure_task_lifecycle_forwarder(&session);
+        self.ensure_task_lifecycle_forwarder(&session)
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
 
         if let Err(error) = self.replay_persisted_task_plan(&session, &args.session_id).await {
             warn!(%error, session_id = %args.session_id, "Failed to replay persisted ACP task plan on session load");
@@ -790,7 +874,9 @@ impl ZedAgent {
             warn!(%error, "Failed to advertise slash commands on session load");
         }
 
-        let config_options = self.current_session_config_options(&session);
+        let config_options = self
+            .current_session_config_options(&session)
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
         self.run_session_start_hooks(&session)
             .await
             .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
@@ -808,7 +894,8 @@ impl ZedAgent {
             .attach_or_get_session(&args.session_id, &workspace)
             .await
             .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
-        self.ensure_task_lifecycle_forwarder(&session);
+        self.ensure_task_lifecycle_forwarder(&session)
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
 
         if let Err(error) = self.replay_persisted_task_plan(&session, &args.session_id).await {
             warn!(%error, session_id = %args.session_id, "Failed to replay persisted ACP task plan on session resume");
@@ -818,7 +905,9 @@ impl ZedAgent {
             warn!(%error, "Failed to advertise slash commands on session resume");
         }
 
-        let config_options = self.current_session_config_options(&session);
+        let config_options = self
+            .current_session_config_options(&session)
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
         self.run_session_start_hooks(&session)
             .await
             .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
@@ -837,7 +926,10 @@ impl ZedAgent {
         use crate::zed::helpers::SESSION_CONFIG_PROVIDER_ID;
         use crate::zed::helpers::SESSION_CONFIG_THOUGHT_LEVEL_ID;
 
-        let Some(session) = self.session_handle(&args.session_id) else {
+        let Some(session) = self
+            .session_handle(&args.session_id)
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?
+        else {
             return Err(acp::Error::invalid_params().data(serde_json::json!({
                 "reason": "unknown_session"
             })));
@@ -855,7 +947,12 @@ impl ZedAgent {
         };
         let updated = match config_id.as_str() {
             SESSION_CONFIG_PRIMARY_AGENT_ID => {
-                let workspace_runtime = session.workspace_runtime();
+                let workspace_runtime = session.workspace_runtime().map_err(|error| {
+                    acp::Error::internal_error().data(format!(
+                        "Failed to read workspace runtime for ACP session {}: {error:#}",
+                        args.session_id
+                    ))
+                })?;
                 let primary_agents = workspace_runtime
                     .as_ref()
                     .map_or(&self.primary_agents, |runtime| &runtime.primary_agents);
@@ -866,10 +963,13 @@ impl ZedAgent {
                     })));
                 };
                 self.update_session_primary_agent(&session, primary_agent.to_string())
+                    .map_err(|error| acp::Error::internal_error().data(error.to_string()))?
             }
             SESSION_CONFIG_THOUGHT_LEVEL_ID => {
                 let (session_provider, session_model) = {
-                    let data = session.data.lock().map_err(|_err| acp::Error::internal_error())?;
+                    let data = session.data.lock().map_err(|error| {
+                        acp::Error::internal_error().data(format!("Failed to read ACP session config: {error}"))
+                    })?;
                     (data.provider.clone(), data.model.clone())
                 };
                 if !self.model_supports_thought_level(&session_provider, &session_model) {
@@ -885,11 +985,14 @@ impl ZedAgent {
                     })));
                 };
                 self.update_session_reasoning_effort(&session, reasoning_effort)
+                    .map_err(|error| acp::Error::internal_error().data(error.to_string()))?
             }
             SESSION_CONFIG_PROVIDER_ID => {
                 let provider = value.trim().to_lowercase();
                 let current_provider = {
-                    let data = session.data.lock().map_err(|_err| acp::Error::internal_error())?;
+                    let data = session.data.lock().map_err(|error| {
+                        acp::Error::internal_error().data(format!("Failed to read ACP session config: {error}"))
+                    })?;
                     data.provider.clone()
                 };
                 if provider.is_empty() || !self.supports_provider(&provider, &current_provider) {
@@ -899,7 +1002,9 @@ impl ZedAgent {
                     })));
                 }
                 let current_model = {
-                    let data = session.data.lock().map_err(|_err| acp::Error::internal_error())?;
+                    let data = session.data.lock().map_err(|error| {
+                        acp::Error::internal_error().data(format!("Failed to read ACP session config: {error}"))
+                    })?;
                     data.model.clone()
                 };
                 let resolved_model = if self.provider_supports_model(&provider, &current_model) {
@@ -913,6 +1018,7 @@ impl ZedAgent {
                     })?
                 };
                 self.update_session_provider_and_model(&session, provider, resolved_model)
+                    .map_err(|error| acp::Error::internal_error().data(error.to_string()))?
             }
             SESSION_CONFIG_MODEL_ID => {
                 let model = value.trim();
@@ -923,7 +1029,9 @@ impl ZedAgent {
                     })));
                 }
                 let provider = {
-                    let data = session.data.lock().map_err(|_err| acp::Error::internal_error())?;
+                    let data = session.data.lock().map_err(|error| {
+                        acp::Error::internal_error().data(format!("Failed to read ACP session config: {error}"))
+                    })?;
                     data.provider.clone()
                 };
                 if !self.provider_supports_model(&provider, model) {
@@ -934,6 +1042,7 @@ impl ZedAgent {
                     })));
                 }
                 self.update_session_provider_and_model(&session, provider, model.to_string())
+                    .map_err(|error| acp::Error::internal_error().data(error.to_string()))?
             }
             _ => {
                 return Err(acp::Error::invalid_params().data(serde_json::json!({
@@ -944,7 +1053,9 @@ impl ZedAgent {
         };
 
         if updated {
-            let config_options = self.current_session_config_options(&session);
+            let config_options = self
+                .current_session_config_options(&session)
+                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
             let update = acp::ConfigOptionUpdate::new(config_options);
             drop(
                 self.send_update(&args.session_id, acp::SessionUpdate::ConfigOptionUpdate(update))
@@ -952,7 +1063,9 @@ impl ZedAgent {
             );
         }
 
-        let config_options = self.current_session_config_options(&session);
+        let config_options = self
+            .current_session_config_options(&session)
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
         Ok(acp::SetSessionConfigOptionResponse::new(config_options))
     }
 }
@@ -1003,7 +1116,7 @@ impl Write for BoundedMetadataSizeWriter {
         let Some(new_size) = self.bytes_written.checked_add(bytes.len()) else {
             return Err(io::Error::other("serialized ACP metadata size overflowed"));
         };
-        if new_size > MAX_ACP_META_BYTES {
+        if new_size > MAX_CLIENT_METADATA_BYTES {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "serialized ACP metadata exceeded its size limit"));
         }
         self.bytes_written = new_size;
@@ -1226,8 +1339,10 @@ mod tests {
             SessionStartTrigger::Resume,
             None,
         );
-        agent.push_message(&handle, Message::user("continue".to_string()));
-        agent.push_message(&handle, Message::assistant("resumed response".to_string()));
+        agent.push_message(&handle, Message::user("continue".to_string())).unwrap();
+        agent
+            .push_message(&handle, Message::assistant("resumed response".to_string()))
+            .unwrap();
 
         agent.checkpoint_session(&handle).await.unwrap();
 
@@ -1326,20 +1441,22 @@ mod tests {
             .new_session(acp::NewSessionRequest::new(temp.path()).meta(creation_meta))
             .await
             .unwrap();
-        let session = agent.session_handle(&response.session_id).unwrap();
-        agent.merge_session_acp_meta(
-            &session,
-            Some(acp::Meta::from_iter([
-                ("requestId".to_string(), serde_json::json!("prompt-1")),
-                ("traceparent".to_string(), serde_json::json!("00-test-trace")),
-            ])),
-        );
+        let session = agent.session_handle(&response.session_id).unwrap().unwrap();
+        agent
+            .merge_session_acp_meta(
+                &session,
+                Some(acp::Meta::from_iter([
+                    ("requestId".to_string(), serde_json::json!("prompt-1")),
+                    ("traceparent".to_string(), serde_json::json!("00-test-trace")),
+                ])),
+            )
+            .unwrap();
 
         let metadata = session.data.lock().unwrap().thread.metadata().unwrap();
         let serialized = serde_json::to_value(metadata).unwrap();
-        assert_eq!(serialized["acp_meta"]["client"], "zed");
-        assert_eq!(serialized["acp_meta"]["requestId"], "prompt-1");
-        assert_eq!(serialized["acp_meta"]["traceparent"], "00-test-trace");
+        assert_eq!(serialized["client_metadata"]["client"], "zed");
+        assert_eq!(serialized["client_metadata"]["requestId"], "prompt-1");
+        assert_eq!(serialized["client_metadata"]["traceparent"], "00-test-trace");
     }
 
     #[tokio::test]
@@ -1348,11 +1465,11 @@ mod tests {
         let agent = build_agent(temp.path()).await;
 
         let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
-        let session = agent.session_handle(&response.session_id).unwrap();
+        let session = agent.session_handle(&response.session_id).unwrap().unwrap();
         let metadata = session.data.lock().unwrap().thread.metadata().unwrap();
         let serialized = serde_json::to_value(metadata).unwrap();
 
-        assert_eq!(serialized["acp_meta"], serde_json::json!({}));
+        assert_eq!(serialized["client_metadata"], serde_json::json!({}));
     }
 
     #[tokio::test]
@@ -1360,18 +1477,18 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
         let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
-        let session = agent.session_handle(&response.session_id).unwrap();
+        let session = agent.session_handle(&response.session_id).unwrap().unwrap();
         {
             let data = session.data.lock().unwrap();
             let mut metadata = data.thread.metadata().unwrap();
-            metadata.acp_meta = None;
+            metadata.client_metadata = None;
             data.thread.replace_metadata(Some(metadata));
         }
 
-        agent.merge_session_acp_meta(&session, None);
+        agent.merge_session_acp_meta(&session, None).unwrap();
 
         let metadata = session.data.lock().unwrap().thread.metadata().unwrap();
-        assert!(metadata.acp_meta.is_none());
+        assert!(metadata.client_metadata.is_none());
     }
 
     #[tokio::test]
@@ -1379,18 +1496,20 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
         let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
-        let session = agent.session_handle(&response.session_id).unwrap();
+        let session = agent.session_handle(&response.session_id).unwrap().unwrap();
         {
             let data = session.data.lock().unwrap();
             let mut metadata = data.thread.metadata().unwrap();
-            metadata.acp_meta = None;
+            metadata.client_metadata = None;
             data.thread.replace_metadata(Some(metadata));
         }
 
-        agent.merge_session_acp_meta(&session, Some(acp::Meta::from_iter(Vec::<(String, serde_json::Value)>::new())));
+        agent
+            .merge_session_acp_meta(&session, Some(acp::Meta::from_iter(Vec::<(String, serde_json::Value)>::new())))
+            .unwrap();
 
         let metadata = session.data.lock().unwrap().thread.metadata().unwrap();
-        assert_eq!(metadata.acp_meta, Some(serde_json::Map::new()));
+        assert_eq!(metadata.client_metadata, Some(serde_json::Map::new()));
     }
 
     #[tokio::test]
@@ -1407,7 +1526,7 @@ mod tests {
         let mut agent = build_agent(temp.path()).await;
         agent.audit_logger = Some(Arc::new(logger));
         let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
-        let session = agent.session_handle(&response.session_id).unwrap();
+        let session = agent.session_handle(&response.session_id).unwrap().unwrap();
         session.data.lock().unwrap().model = "session-selected-model".to_string();
 
         let original = r#"{"path":"original.txt"}"#;
@@ -1442,20 +1561,20 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
         let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
-        let session = agent.session_handle(&response.session_id).unwrap();
+        let session = agent.session_handle(&response.session_id).unwrap().unwrap();
         let incoming = acp::Meta::from_iter(
-            (0..=MAX_ACP_META_ENTRIES).map(|index| (format!("key-{index:03}"), serde_json::json!(index))),
+            (0..=MAX_CLIENT_METADATA_ENTRIES).map(|index| (format!("key-{index:03}"), serde_json::json!(index))),
         );
 
-        agent.merge_session_acp_meta(&session, Some(incoming));
+        agent.merge_session_acp_meta(&session, Some(incoming)).unwrap();
 
         let data = session.data.lock().unwrap();
         let metadata = data.thread.metadata().unwrap();
-        let metadata = metadata.acp_meta.expect("bounded ACP metadata");
-        assert_eq!(metadata.len(), MAX_ACP_META_ENTRIES);
+        let metadata = metadata.client_metadata.expect("bounded ACP metadata");
+        assert_eq!(metadata.len(), MAX_CLIENT_METADATA_ENTRIES);
         assert!(metadata.contains_key("key-000"));
-        assert!(!metadata.contains_key(&format!("key-{:03}", MAX_ACP_META_ENTRIES)));
-        assert!(serde_json::to_vec(&metadata).unwrap().len() <= MAX_ACP_META_BYTES);
+        assert!(!metadata.contains_key(&format!("key-{:03}", MAX_CLIENT_METADATA_ENTRIES)));
+        assert!(serde_json::to_vec(&metadata).unwrap().len() <= MAX_CLIENT_METADATA_BYTES);
     }
 
     #[tokio::test]
@@ -1463,31 +1582,34 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
         let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
-        let session = agent.session_handle(&response.session_id).unwrap();
+        let session = agent.session_handle(&response.session_id).unwrap().unwrap();
         let incoming = acp::Meta::from_iter([
-            ("a-oversized".to_string(), serde_json::json!("x".repeat(MAX_ACP_META_BYTES.saturating_mul(64)))),
+            (
+                "a-oversized".to_string(),
+                serde_json::json!("x".repeat(MAX_CLIENT_METADATA_BYTES.saturating_mul(64))),
+            ),
             ("z-small".to_string(), serde_json::json!("retained")),
         ]);
 
-        agent.merge_session_acp_meta(&session, Some(incoming));
+        agent.merge_session_acp_meta(&session, Some(incoming)).unwrap();
 
         let data = session.data.lock().unwrap();
         let metadata = data.thread.metadata().unwrap();
-        let metadata = metadata.acp_meta.expect("bounded ACP metadata");
+        let metadata = metadata.client_metadata.expect("bounded ACP metadata");
         assert!(!metadata.contains_key("a-oversized"));
         assert_eq!(metadata.get("z-small"), Some(&serde_json::json!("retained")));
-        assert!(serde_json::to_vec(&metadata).unwrap().len() <= MAX_ACP_META_BYTES);
+        assert!(serde_json::to_vec(&metadata).unwrap().len() <= MAX_CLIENT_METADATA_BYTES);
     }
 
     #[test]
     fn oversized_metadata_size_probe_stops_at_the_configured_budget() {
-        let metadata = serde_json::json!({"oversized": "x".repeat(MAX_ACP_META_BYTES.saturating_mul(64))});
+        let metadata = serde_json::json!({"oversized": "x".repeat(MAX_CLIENT_METADATA_BYTES.saturating_mul(64))});
         let mut writer = BoundedMetadataSizeWriter { bytes_written: 0 };
 
         let result = serde_json::to_writer(&mut writer, &metadata);
 
         assert!(result.is_err(), "oversized metadata must stop serialization at the writer boundary");
-        assert!(writer.bytes_written <= MAX_ACP_META_BYTES);
+        assert!(writer.bytes_written <= MAX_CLIENT_METADATA_BYTES);
     }
 
     #[tokio::test]
@@ -1504,10 +1626,10 @@ mod tests {
         let first = first.unwrap();
         let second = second.unwrap();
 
-        let first_session = agent.session_handle(&first.session_id).unwrap();
-        let second_session = agent.session_handle(&second.session_id).unwrap();
-        let first_runtime = first_session.workspace_runtime().unwrap();
-        let second_runtime = second_session.workspace_runtime().unwrap();
+        let first_session = agent.session_handle(&first.session_id).unwrap().unwrap();
+        let second_session = agent.session_handle(&second.session_id).unwrap().unwrap();
+        let first_runtime = first_session.workspace_runtime().unwrap().unwrap();
+        let second_runtime = second_session.workspace_runtime().unwrap().unwrap();
         let first_root = first_runtime.workspace_root.clone();
         let second_root = second_runtime.workspace_root.clone();
         assert!(!Arc::ptr_eq(&first_runtime, &second_runtime));
@@ -1529,8 +1651,20 @@ mod tests {
 
         let first = agent.new_session(acp::NewSessionRequest::new(workspace.path())).await.unwrap();
         let second = agent.new_session(acp::NewSessionRequest::new(workspace.path())).await.unwrap();
-        let first_runtime = agent.session_handle(&first.session_id).unwrap().workspace_runtime().unwrap();
-        let second_runtime = agent.session_handle(&second.session_id).unwrap().workspace_runtime().unwrap();
+        let first_runtime = agent
+            .session_handle(&first.session_id)
+            .unwrap()
+            .unwrap()
+            .workspace_runtime()
+            .unwrap()
+            .unwrap();
+        let second_runtime = agent
+            .session_handle(&second.session_id)
+            .unwrap()
+            .unwrap()
+            .workspace_runtime()
+            .unwrap()
+            .unwrap();
 
         assert!(Arc::ptr_eq(&first_runtime, &second_runtime));
     }
@@ -1619,8 +1753,10 @@ mod tests {
                 .await
                 .unwrap()
                 .session_id;
-            let session = agent.session_handle(&session_id).unwrap();
-            agent.push_message(&session, Message::user("do not persist".to_string()));
+            let session = agent.session_handle(&session_id).unwrap().unwrap();
+            agent
+                .push_message(&session, Message::user("do not persist".to_string()))
+                .unwrap();
 
             agent.checkpoint_session(&session).await.unwrap();
 
@@ -1683,8 +1819,8 @@ mod tests {
     async fn register_session_falls_back_for_unknown_default_primary_agent() {
         let temp = TempDir::new().unwrap();
         let agent = build_agent_with_default_primary_agent(temp.path(), "research").await;
-        let session_id = agent.register_session();
-        let session = agent.session_handle(&session_id).unwrap();
+        let session_id = agent.register_session().unwrap();
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
 
         // "research" is not in the discovered specs, so the resolver falls
         // back to the built-in "build" agent.
@@ -1696,8 +1832,8 @@ mod tests {
         for primary_agent in ["duck", "plan", "build", "auto"] {
             let temp = TempDir::new().unwrap();
             let agent = build_agent_with_default_primary_agent(temp.path(), primary_agent).await;
-            let session_id = agent.register_session();
-            let session = agent.session_handle(&session_id).unwrap();
+            let session_id = agent.register_session().unwrap();
+            let session = agent.session_handle(&session_id).unwrap().unwrap();
 
             assert_eq!(self::primary_agent(&session), primary_agent);
         }
@@ -1721,8 +1857,8 @@ Research primary prompt."#,
         .unwrap();
 
         let agent = build_agent_with_default_primary_agent(temp.path(), "research").await;
-        let session_id = agent.register_session();
-        let session = agent.session_handle(&session_id).unwrap();
+        let session_id = agent.register_session().unwrap();
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
 
         assert_eq!(primary_agent(&session), "research");
     }
@@ -1731,10 +1867,10 @@ Research primary prompt."#,
     async fn update_session_primary_agent_updates_session_data() {
         let temp = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
-        let session_id = agent.register_session();
-        let session = agent.session_handle(&session_id).unwrap();
+        let session_id = agent.register_session().unwrap();
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
 
-        assert!(agent.update_session_primary_agent(&session, "build".to_string()));
+        assert!(agent.update_session_primary_agent(&session, "build".to_string()).unwrap());
         assert_eq!(primary_agent(&session), "build");
         assert_eq!(
             session
@@ -1749,13 +1885,93 @@ Research primary prompt."#,
     }
 
     #[tokio::test]
+    async fn session_registry_reports_poisoned_lock() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        let temp = TempDir::new().unwrap();
+        let agent = build_agent(temp.path()).await;
+        let session_id = agent.register_session().unwrap();
+
+        assert!(
+            catch_unwind(AssertUnwindSafe(|| {
+                let _guard = agent.sessions.lock().unwrap();
+                panic!("poison ACP session registry for regression test");
+            }))
+            .is_err()
+        );
+
+        assert!(agent.session_handle(&session_id).is_err());
+    }
+
+    #[tokio::test]
+    async fn session_optional_state_accessors_preserve_absent_state() {
+        let temp = TempDir::new().unwrap();
+        let agent = build_agent(temp.path()).await;
+        let session_id = agent.register_session().unwrap();
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
+
+        assert!(session.workspace_runtime().unwrap().is_none());
+        assert!(session.lifecycle_hooks().unwrap().is_none());
+        assert!(!session.has_stop_hooks().unwrap());
+    }
+
+    #[tokio::test]
+    async fn session_optional_state_accessors_report_poisoned_lock() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        let temp = TempDir::new().unwrap();
+        let agent = build_agent(temp.path()).await;
+        let session_id = agent.register_session().unwrap();
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
+
+        assert!(
+            catch_unwind(AssertUnwindSafe(|| {
+                let _guard = session.data.lock().unwrap();
+                panic!("poison ACP session state for regression test");
+            }))
+            .is_err()
+        );
+
+        assert!(session.workspace_runtime().is_err());
+        assert!(session.lifecycle_hooks().is_err());
+        assert!(session.has_stop_hooks().is_err());
+        assert!(agent.current_session_config_options(&session).is_err());
+        assert!(
+            agent
+                .update_session_reasoning_effort(&session, ReasoningEffortLevel::High)
+                .is_err()
+        );
+        assert!(
+            agent
+                .update_session_provider_and_model(&session, "openai".to_string(), "gpt-4o".to_string())
+                .is_err()
+        );
+        assert!(
+            agent
+                .push_message(&session, Message::user("must not be dropped".to_string()))
+                .is_err()
+        );
+        assert!(session.update_transcript_path().await.is_err());
+        assert!(agent.run_session_start_hooks(&session).await.is_err());
+        assert!(agent.session_subagent_controller(&session).is_err());
+        assert!(agent.update_session_primary_agent(&session, "build".to_string()).is_err());
+        assert!(agent.resolved_messages(&session).is_err());
+        assert!(agent.ensure_task_lifecycle_forwarder(&session).is_err());
+        assert!(agent.run_session_end_hooks(SessionEndReason::Exit).await.is_err());
+    }
+
+    #[tokio::test]
     async fn update_session_reasoning_effort_syncs_thread_metadata() {
         let temp = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
-        let session_id = agent.register_session();
-        let session = agent.session_handle(&session_id).unwrap();
+        let session_id = agent.register_session().unwrap();
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
 
-        assert!(agent.update_session_reasoning_effort(&session, ReasoningEffortLevel::High));
+        assert!(
+            agent
+                .update_session_reasoning_effort(&session, ReasoningEffortLevel::High)
+                .unwrap()
+        );
         assert_eq!(
             session
                 .data
@@ -1774,10 +1990,10 @@ Research primary prompt."#,
         let mut agent = build_agent(temp.path()).await;
         agent.config.model = "claude-haiku-3".to_string();
         agent.config.provider = "anthropic".to_string();
-        let session_id = agent.register_session();
-        let session = agent.session_handle(&session_id).unwrap();
+        let session_id = agent.register_session().unwrap();
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
 
-        let config_options = agent.current_session_config_options(&session);
+        let config_options = agent.current_session_config_options(&session).unwrap();
 
         assert_eq!(config_options.len(), 3);
         assert_eq!(config_options[0].id, acp::SessionConfigId::new("primary_agent"));

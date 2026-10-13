@@ -66,7 +66,7 @@ async fn session_archive_persists_snapshot() -> Result<()> {
     let mut metadata =
         SessionArchiveMetadata::new("ExampleWorkspace", "/tmp/example", "model-x", "provider-y", "dark", "medium")
             .with_external_thread_id("thread-123");
-    metadata.acp_meta = Some(serde_json::Map::new());
+    metadata.client_metadata = Some(serde_json::Map::new());
     let archive = SessionArchive::new(metadata.clone(), None).await?;
     let transcript = vec!["line one".to_owned(), "line two".to_owned()];
     let messages = vec![
@@ -1167,46 +1167,46 @@ fn snapshot_compaction_shrinks_large_single_message_payloads() -> Result<()> {
 }
 
 #[test]
-fn acp_meta_is_bounded_by_entry_count_and_serialized_size() {
+fn client_metadata_is_bounded_by_entry_count_and_serialized_size() {
     let mut entries = serde_json::Map::new();
-    for index in 0..MAX_ACP_META_ENTRIES + 4 {
+    for index in 0..MAX_CLIENT_METADATA_ENTRIES + 4 {
         entries.insert(format!("key-{index:02}"), serde_json::json!("value"));
     }
     let mut metadata = Some(entries);
 
-    assert!(bound_acp_meta(&mut metadata));
-    let bounded = metadata.expect("nonempty ACP metadata should be retained");
-    assert_eq!(bounded.len(), MAX_ACP_META_ENTRIES);
+    assert!(bound_client_metadata(&mut metadata));
+    let bounded = metadata.expect("nonempty client metadata should be retained");
+    assert_eq!(bounded.len(), MAX_CLIENT_METADATA_ENTRIES);
     assert!(bounded.contains_key("key-00"));
-    assert!(!bounded.contains_key(&format!("key-{:02}", MAX_ACP_META_ENTRIES)));
-    assert!(serialized_json_size_at_most(&bounded, MAX_ACP_META_BYTES).is_some());
+    assert!(!bounded.contains_key(&format!("key-{:02}", MAX_CLIENT_METADATA_ENTRIES)));
+    assert!(serialized_json_size_at_most(&bounded, MAX_CLIENT_METADATA_BYTES).is_some());
 
     let mut entries = serde_json::Map::new();
-    entries.insert("k".to_owned(), serde_json::Value::String("x".repeat(MAX_ACP_META_BYTES - 8)));
+    entries.insert("k".to_owned(), serde_json::Value::String("x".repeat(MAX_CLIENT_METADATA_BYTES - 8)));
     let mut metadata = Some(entries);
 
-    assert!(!bound_acp_meta(&mut metadata));
+    assert!(!bound_client_metadata(&mut metadata));
     let bounded = metadata.expect("metadata at the byte limit should be retained");
-    assert_eq!(serialized_json_size_at_most(&bounded, MAX_ACP_META_BYTES), Some(MAX_ACP_META_BYTES));
+    assert_eq!(serialized_json_size_at_most(&bounded, MAX_CLIENT_METADATA_BYTES), Some(MAX_CLIENT_METADATA_BYTES));
 
     let mut entries = serde_json::Map::new();
-    entries.insert("a-oversized".to_owned(), serde_json::Value::String("x".repeat(MAX_ACP_META_BYTES * 2)));
+    entries.insert("a-oversized".to_owned(), serde_json::Value::String("x".repeat(MAX_CLIENT_METADATA_BYTES * 2)));
     entries.insert("z-small".to_owned(), serde_json::json!("retained"));
     let mut metadata = Some(entries);
 
-    assert!(bound_acp_meta(&mut metadata));
+    assert!(bound_client_metadata(&mut metadata));
     let bounded = metadata.expect("metadata after dropping an oversized value should remain");
     assert_eq!(bounded.len(), 1);
     assert!(bounded.contains_key("z-small"));
-    assert!(serialized_json_size_at_most(&bounded, MAX_ACP_META_BYTES).is_some());
+    assert!(serialized_json_size_at_most(&bounded, MAX_CLIENT_METADATA_BYTES).is_some());
 }
 
 #[test]
-fn snapshot_compaction_reduces_acp_meta_to_fit_the_total_size_limit() -> Result<()> {
+fn snapshot_compaction_reduces_client_metadata_to_fit_the_total_size_limit() -> Result<()> {
     let mut metadata =
         SessionArchiveMetadata::new("Workspace", "/tmp/workspace", "model", "provider", "dark", "medium");
-    metadata.acp_meta = Some(
-        (0..MAX_ACP_META_ENTRIES)
+    metadata.client_metadata = Some(
+        (0..MAX_CLIENT_METADATA_ENTRIES)
             .map(|index| (format!("key-{index:02}"), serde_json::json!("value".repeat(40))))
             .collect(),
     );
@@ -1227,8 +1227,8 @@ fn snapshot_compaction_reduces_acp_meta_to_fit_the_total_size_limit() -> Result<
     assert!(
         compacted
             .metadata
-            .acp_meta
-            .is_none_or(|metadata| metadata.len() < MAX_ACP_META_ENTRIES)
+            .client_metadata
+            .is_none_or(|metadata| metadata.len() < MAX_CLIENT_METADATA_ENTRIES)
     );
     Ok(())
 }

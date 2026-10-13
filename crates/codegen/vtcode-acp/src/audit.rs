@@ -34,6 +34,7 @@ impl AcpAuditLogger {
         Ok(Some(Self { logger: Arc::new(logger) }))
     }
 
+    #[tracing::instrument(skip_all, fields(operation = "record"))]
     pub(crate) async fn record(&self, entry: ToolAuditEntry) -> Result<()> {
         let logger = Arc::clone(&self.logger);
         tokio::task::spawn_blocking(move || {

@@ -3,13 +3,14 @@ use crate::config::constants::models;
 use crate::config::constants::tools;
 use crate::config::models::{ModelId, Provider};
 use crate::llm::provider::ToolDefinition;
+use crate::llm::provider::{Message, MessageContent, MessageRole};
 use crate::tools::exec_session::ExecSessionManager;
 use crate::tools::registry::PtySessionManager;
 use anyhow::{Result, anyhow};
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::sync::Notify;
@@ -84,6 +85,89 @@ fn test_child_record(
         worktree_path: None,
         child_controller,
     }
+}
+
+#[tokio::test]
+async fn shared_controller_scopes_parent_context_and_child_visibility_per_invocation() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller =
+        SubagentController::new(test_controller_config(temp.path().to_path_buf(), VTCodeConfig::default()))
+            .await
+            .expect("controller");
+    let spec = read_only_test_spec("shared-context-child");
+    {
+        let mut state = controller.state.write().await;
+        state.children.insert(
+            "child-alpha".to_string(),
+            test_child_record(
+                "child-alpha",
+                "child-alpha-session",
+                "session-alpha",
+                &spec,
+                SubagentStatus::Running,
+                1,
+                None,
+            ),
+        );
+        state.children.insert(
+            "child-beta".to_string(),
+            test_child_record(
+                "child-beta",
+                "child-beta-session",
+                "session-beta",
+                &spec,
+                SubagentStatus::Running,
+                1,
+                None,
+            ),
+        );
+    }
+
+    let rendezvous = Arc::new(tokio::sync::Barrier::new(2));
+    let run_session = |owner: &'static str, input: &'static str, expected_child: &'static str| {
+        let controller = controller.clone();
+        let rendezvous = rendezvous.clone();
+        async move {
+            let message = Message {
+                role: MessageRole::User,
+                content: MessageContent::text(format!("history-{owner}")),
+                ..Message::default()
+            };
+            let context = SubagentInvocationContext::new(owner.to_string(), vec![message], input.to_string());
+            with_subagent_invocation_context(context, async move {
+                rendezvous.wait().await;
+                tokio::task::yield_now().await;
+                let mut items = Vec::new();
+                let mut model = None;
+                let prepared = controller
+                    .prepare_delegation_context(None, &mut items, &mut model, "spawn_agent")
+                    .await
+                    .expect("prepare session context");
+                assert_eq!(prepared.parent_session_id, owner);
+                assert_eq!(prepared.parent_messages[0].content.as_text(), format!("history-{owner}"));
+                assert!(prepared.explicit_request);
+                let visible_children = controller.status_entries().await;
+                assert_eq!(visible_children.len(), 1);
+                assert_eq!(visible_children[0].id, expected_child);
+                let other_child = if expected_child == "child-alpha" {
+                    "child-beta"
+                } else {
+                    "child-alpha"
+                };
+                assert!(controller.status_for(other_child).await.is_err());
+                assert!(controller.close(other_child).await.is_err());
+                assert!(controller.wait(&[other_child.to_string()], Some(0)).await.is_err());
+            })
+            .await;
+        }
+    };
+
+    tokio::join!(
+        run_session("session-alpha", "delegate task alpha", "child-alpha"),
+        run_session("session-beta", "delegate task beta", "child-beta"),
+    );
+    assert_eq!(controller.status_for("child-alpha").await.expect("alpha status").status, SubagentStatus::Running);
+    assert_eq!(controller.status_for("child-beta").await.expect("beta status").status, SubagentStatus::Running);
 }
 
 fn write_test_background_subagent(workspace_root: &std::path::Path) {
@@ -1394,6 +1478,7 @@ async fn spawn_background_subprocess_returns_active_record_when_settings_match()
                 source: spec.source.label(),
                 color: spec.color.clone(),
                 session_id: "session-background-demo".to_string(),
+                parent_session_id: "parent-session".to_string(),
                 exec_session_id: "exec-session-background-demo".to_string(),
                 desired_enabled: true,
                 status: BackgroundSubprocessStatus::Running,
@@ -1455,6 +1540,7 @@ async fn spawn_background_subprocess_rejects_conflicting_active_record_settings(
                 source: spec.source.label(),
                 color: spec.color.clone(),
                 session_id: "session-background-demo".to_string(),
+                parent_session_id: "parent-session".to_string(),
                 exec_session_id: "exec-session-background-demo".to_string(),
                 desired_enabled: true,
                 status: BackgroundSubprocessStatus::Running,
@@ -2369,32 +2455,120 @@ async fn wait_returns_first_terminal_child() {
 }
 
 #[tokio::test]
-async fn progress_subscribers_receive_child_shutdown_transitions() {
+async fn progress_observers_receive_domain_status_and_are_session_bound() {
+    #[derive(Default)]
+    struct RecordingObserver {
+        children: Mutex<Vec<SubagentStatusEntry>>,
+        background: Mutex<Vec<BackgroundSubprocessEntry>>,
+    }
+
+    impl SubagentProgressObserver for RecordingObserver {
+        fn subagent_status_changed(&self, entry: SubagentStatusEntry) {
+            self.children.lock().expect("children lock").push(entry);
+        }
+
+        fn background_status_changed(&self, entry: BackgroundSubprocessEntry) {
+            self.background.lock().expect("background lock").push(entry);
+        }
+    }
+
     let temp = TempDir::new().expect("tempdir");
     let controller =
         SubagentController::new(test_controller_config(temp.path().to_path_buf(), VTCodeConfig::default()))
             .await
             .expect("controller");
     let spec = read_only_test_spec("progress-child");
-    let mut progress = controller.subscribe_progress();
+    let parent_observer = Arc::new(RecordingObserver::default());
+    let other_observer = Arc::new(RecordingObserver::default());
+    let _parent_registration = controller.register_progress_observer("parent-session", parent_observer.clone());
+    let _other_registration = controller.register_progress_observer("other-session", other_observer.clone());
     {
         let mut state = controller.state.write().await;
         let _ = state.children.insert(
             "child-1".to_string(),
             test_child_record("child-1", "child-1-session", "parent-session", &spec, SubagentStatus::Running, 1, None),
         );
+        let _ = state.children.insert(
+            "child-2".to_string(),
+            test_child_record("child-2", "child-2-session", "other-session", &spec, SubagentStatus::Running, 1, None),
+        );
     }
 
     controller.signal_shutdown().await;
-
-    let event = tokio::time::timeout(Duration::from_secs(1), progress.recv())
-        .await
-        .expect("progress event deadline")
-        .expect("progress channel");
-    let SubagentProgressEvent::Subagent { parent_session_id, task: entry } = event else {
-        panic!("expected delegated child progress");
-    };
-    assert_eq!(parent_session_id, "parent-session");
+    let entry = parent_observer
+        .children
+        .lock()
+        .expect("children lock")
+        .last()
+        .cloned()
+        .expect("child update");
     assert_eq!(entry.id, "child-1");
     assert_eq!(entry.status, SubagentStatus::Closed);
+    assert_eq!(
+        other_observer
+            .children
+            .lock()
+            .expect("children lock")
+            .last()
+            .map(|entry| entry.id.as_str()),
+        Some("child-2")
+    );
+
+    let timestamp = Utc::now();
+    {
+        let mut state = controller.state.write().await;
+        let mut first_record = BackgroundRecord {
+            id: "background-1".to_string(),
+            agent_name: "watcher".to_string(),
+            display_label: "Watcher".to_string(),
+            description: "Watch the workspace".to_string(),
+            source: "workspace".to_string(),
+            color: None,
+            session_id: "background-session".to_string(),
+            parent_session_id: "parent-session".to_string(),
+            exec_session_id: "exec-1".to_string(),
+            desired_enabled: true,
+            status: BackgroundSubprocessStatus::Running,
+            created_at: timestamp,
+            updated_at: timestamp,
+            started_at: Some(timestamp),
+            ended_at: None,
+            pid: Some(42),
+            prompt: "Watch the workspace".to_string(),
+            summary: Some("running".to_string()),
+            error: None,
+            archive_path: None,
+            transcript_path: None,
+            max_turns: None,
+            model_override: None,
+            reasoning_override: None,
+            restart_attempts: 0,
+        };
+        state
+            .background_children
+            .insert("background-1".to_string(), first_record.clone());
+        first_record.id = "background-2".to_string();
+        first_record.parent_session_id = "other-session".to_string();
+        state.background_children.insert("background-2".to_string(), first_record);
+    }
+    controller.publish_background_status("background-1").await;
+    controller.publish_background_status("background-2").await;
+    let background = parent_observer
+        .background
+        .lock()
+        .expect("background lock")
+        .last()
+        .cloned()
+        .expect("background update");
+    assert_eq!(background.id, "background-1");
+    assert_eq!(background.status, BackgroundSubprocessStatus::Running);
+    assert_eq!(
+        other_observer
+            .background
+            .lock()
+            .expect("background lock")
+            .last()
+            .map(|entry| entry.id.as_str()),
+        Some("background-2")
+    );
 }

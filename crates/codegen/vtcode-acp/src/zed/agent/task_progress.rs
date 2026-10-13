@@ -7,6 +7,7 @@ use super::super::types::SessionHandle;
 use super::ZedAgent;
 use crate::acp;
 use crate::reports::ToolExecutionReport;
+use anyhow::Context;
 use serde_json::{Map, Value, json};
 use vtcode_core::config::constants::tools;
 
@@ -47,6 +48,7 @@ impl ZedAgent {
     ) -> anyhow::Result<()> {
         let tracker = session
             .workspace_runtime()
+            .context("reading ACP session workspace runtime for persisted task-plan replay")?
             .and_then(|runtime| runtime.local_tool_registry.get_tool(tools::TASK_TRACKER))
             .or_else(|| self.local_tool_registry.get_tool(tools::TASK_TRACKER));
         let Some(tracker) = tracker else {

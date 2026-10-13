@@ -347,7 +347,8 @@ mod tests {
             "source": "llm_response"
         }"#;
 
-        let restored: MessageMetadata = serde_json::from_str(json).unwrap();
+        let restored: MessageMetadata =
+            serde_json::from_str(json).expect("legacy metadata fixture must remain readable");
 
         assert!(!restored.is_incomplete());
         assert_eq!(restored.incomplete_reason(), None);

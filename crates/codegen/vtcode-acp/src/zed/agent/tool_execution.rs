@@ -60,11 +60,8 @@ impl ZedAgent {
         let mut results = Vec::with_capacity(calls.len());
 
         for call in calls {
-            self.pace_tool_call(session).await;
-            results.push(
-                self.execute_tool_call(session, session_id, &turn_id, call, client.as_ref())
-                    .await?,
-            );
+            self.pace_tool_call(session).await?;
+            results.push(Box::pin(self.execute_tool_call(session, session_id, &turn_id, call, client.as_ref())).await?);
         }
 
         Ok(results)
@@ -114,11 +111,13 @@ impl ZedAgent {
             return;
         };
         let tool_name = Self::tool_name_from_call(call);
-        let model_id = session
-            .data
-            .lock()
-            .map(|data| data.model.clone())
-            .unwrap_or_else(|_| self.config.model.clone());
+        let model_id = match session.data.lock() {
+            Ok(data) => data.model.clone(),
+            Err(error) => {
+                tracing::warn!(%error, tool = tool_name, "Failed to read ACP session model for audit entry");
+                self.config.model.clone()
+            }
+        };
         let (status, reason, result_bytes) = match result {
             Ok((output, status)) => {
                 let reason = match status {
@@ -157,7 +156,10 @@ impl ZedAgent {
         client: &ConnectionHandle,
         audit_arguments: &mut Vec<u8>,
     ) -> Result<ToolCallResult, SdkError> {
-        let workspace_runtime = session.workspace_runtime();
+        let workspace_runtime = session.workspace_runtime().map_err(|error| {
+            SdkError::internal_error()
+                .data(format!("Failed to read workspace runtime for ACP session {session_id}: {error:#}"))
+        })?;
         let acp_tool_registry = workspace_runtime
             .as_ref()
             .map_or(self.acp_tool_registry.as_ref(), |runtime| runtime.acp_tool_registry.as_ref());
@@ -198,7 +200,10 @@ impl ZedAgent {
             .content(Self::initial_tool_content(&func_ref.name, args_value_for_input.as_ref()))
             .raw_input(args_value_for_input.clone());
 
-        let pre_tool_decision = if let Some(hooks) = session.lifecycle_hooks() {
+        let pre_tool_decision = if let Some(hooks) = session.lifecycle_hooks().map_err(|error| {
+            SdkError::internal_error()
+                .data(format!("Failed to read lifecycle hooks for ACP session {session_id}: {error:#}"))
+        })? {
             let outcome = hooks
                 .run_pre_tool_use(&func_ref.name, args_value_for_input.as_ref(), Some(call.id.as_str()))
                 .await
@@ -322,7 +327,7 @@ impl ZedAgent {
 
         let apply_patch_snapshot =
             if permission_override.is_none() && !cancel_after_permission && func_ref.name == tools::APPLY_PATCH {
-                self.capture_apply_patch_snapshot(session, effective_args.as_ref()).await
+                self.capture_apply_patch_snapshot(session, effective_args.as_ref()).await?
             } else {
                 None
             };
@@ -364,7 +369,10 @@ impl ZedAgent {
         attach_apply_patch_diff_content(&mut report, apply_patch_snapshot.as_ref()).await;
 
         if should_run_post_tool_hook(&report.status)
-            && let Some(hooks) = session.lifecycle_hooks()
+            && let Some(hooks) = session.lifecycle_hooks().map_err(|error| {
+                SdkError::internal_error()
+                    .data(format!("Failed to read lifecycle hooks for ACP session {session_id}: {error:#}"))
+            })?
         {
             let output = report
                 .raw_output
@@ -410,11 +418,19 @@ impl ZedAgent {
         descriptor: ToolDescriptor,
         args: &Value,
     ) -> Result<Option<vtcode_core::hooks::PermissionRequestHookDecision>, SdkError> {
-        let Some(hooks) = session.lifecycle_hooks() else {
+        let Some(hooks) = session.lifecycle_hooks().map_err(|error| {
+            SdkError::internal_error()
+                .data(format!("Failed to read lifecycle hooks for ACP permission hook: {error:#}"))
+        })?
+        else {
             return Ok(None);
         };
         let workspace = session
             .workspace_runtime()
+            .map_err(|error| {
+                SdkError::internal_error()
+                    .data(format!("Failed to read workspace runtime for ACP permission hook: {error:#}"))
+            })?
             .map_or_else(|| self.config.workspace.clone(), |runtime| runtime.workspace_root.clone());
         let request = build_permission_request(&workspace, &workspace, tool_name, Some(args));
         let suggestions = match descriptor {
@@ -436,15 +452,15 @@ impl ZedAgent {
         Ok(outcome.decision)
     }
 
-    async fn pace_tool_call(&self, session: &SessionHandle) {
+    async fn pace_tool_call(&self, session: &SessionHandle) -> Result<(), SdkError> {
         let Some(delay) = self.tool_call_delay else {
-            return;
+            return Ok(());
         };
 
         let sleep_for = {
-            let Ok(data) = session.data.lock() else {
-                return;
-            };
+            let data = session.data.lock().map_err(|error| {
+                SdkError::internal_error().data(format!("Failed to read ACP session pacing state: {error}"))
+            })?;
             data.last_tool_call_at.and_then(|last_call| {
                 let elapsed = last_call.elapsed();
                 delay.checked_sub(elapsed)
@@ -455,9 +471,11 @@ impl ZedAgent {
             tokio::time::sleep(duration).await;
         }
 
-        if let Ok(mut data) = session.data.lock() {
-            data.last_tool_call_at = Some(Instant::now());
-        }
+        let mut data = session.data.lock().map_err(|error| {
+            SdkError::internal_error().data(format!("Failed to update ACP session pacing state: {error}"))
+        })?;
+        data.last_tool_call_at = Some(Instant::now());
+        Ok(())
     }
 
     fn tool_name_from_call(call: &ProviderToolCall) -> &str {
@@ -481,22 +499,33 @@ impl ZedAgent {
         &self,
         session: &SessionHandle,
         args: Option<&Value>,
-    ) -> Option<ApplyPatchSnapshot> {
-        let args = args?;
-        let decoded = decode_apply_patch_input(args).ok().flatten()?;
-        let patch = Patch::parse(&decoded.text).ok()?;
-        let workspace = self.absolute_workspace_root(session).await?;
-        capture_apply_patch_snapshot_for_workspace(&workspace, &patch).await
+    ) -> Result<Option<ApplyPatchSnapshot>, SdkError> {
+        let Some(args) = args else {
+            return Ok(None);
+        };
+        let Some(decoded) = decode_apply_patch_input(args).ok().flatten() else {
+            return Ok(None);
+        };
+        let Ok(patch) = Patch::parse(&decoded.text) else {
+            return Ok(None);
+        };
+        let Some(workspace) = self.absolute_workspace_root(session).await? else {
+            return Ok(None);
+        };
+        Ok(capture_apply_patch_snapshot_for_workspace(&workspace, &patch).await)
     }
 
-    async fn absolute_workspace_root(&self, session: &SessionHandle) -> Option<PathBuf> {
+    async fn absolute_workspace_root(&self, session: &SessionHandle) -> Result<Option<PathBuf>, SdkError> {
         let workspace = session
             .workspace_runtime()
+            .map_err(|error| {
+                SdkError::internal_error().data(format!("Failed to read ACP session workspace runtime: {error:#}"))
+            })?
             .map_or_else(|| self.workspace_root().to_path_buf(), |runtime| runtime.workspace_root.clone());
         if workspace.is_absolute() {
-            Some(workspace)
+            Ok(Some(workspace))
         } else {
-            canonicalize_with_context_async(&workspace, "ACP workspace").await.ok()
+            Ok(canonicalize_with_context_async(&workspace, "ACP workspace").await.ok())
         }
     }
 
@@ -584,8 +613,15 @@ impl ZedAgent {
         session_id: &acp::SessionId,
         args: &Value,
     ) -> Option<ToolExecutionReport> {
-        if !self.client_supports_terminal() {
-            return None;
+        match self.client_supports_terminal() {
+            Ok(true) => {}
+            Ok(false) => return None,
+            Err(error) => {
+                return Some(ToolExecutionReport::failure(
+                    tool_name,
+                    &format!("Failed to read ACP client terminal capabilities: {error:#}"),
+                ));
+            }
         }
 
         match Self::requested_terminal_mode(args) {
@@ -614,7 +650,7 @@ impl ZedAgent {
             .ok_or_else(|| "command array cannot be empty".to_string())?;
 
         let working_dir = self.resolve_session_terminal_working_dir(session, args)?;
-        let location_display = self.describe_session_terminal_location(session, working_dir.as_ref());
+        let location_display = self.describe_session_terminal_location(session, working_dir.as_ref())?;
         let command_display = command_parts.join(" ");
 
         let request = acp::CreateTerminalRequest::new(session_id.clone(), program.to_string())

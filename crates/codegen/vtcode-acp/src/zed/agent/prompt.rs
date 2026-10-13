@@ -52,7 +52,10 @@ impl ZedAgent {
         candidate: PathBuf,
         argument: &str,
     ) -> Result<PathBuf, String> {
-        let Some(runtime) = session.workspace_runtime() else {
+        let Some(runtime) = session
+            .workspace_runtime()
+            .map_err(|error| format!("Failed to read ACP session workspace runtime: {error:#}"))?
+        else {
             return self.resolve_workspace_path(candidate, argument);
         };
         let resolved = if candidate.is_absolute() {
@@ -161,7 +164,10 @@ impl ZedAgent {
             return Ok(Self::render_context_block(&link.name, &link.uri, None));
         };
 
-        if !self.client_supports_read_text_file() {
+        if !self.client_supports_read_text_file().map_err(|error| {
+            acp::Error::internal_error()
+                .data(format!("Failed to read ACP client filesystem capabilities for session {session_id}: {error:#}"))
+        })? {
             return Ok(Self::render_context_block(&link.name, &link.uri, None));
         }
 

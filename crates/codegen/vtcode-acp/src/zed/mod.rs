@@ -240,10 +240,10 @@ mod tests {
     async fn load_session_returns_existing_session_state() {
         let temp = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
-        let session_id = agent.register_session();
+        let session_id = agent.register_session().unwrap();
 
         {
-            let session = agent.session_handle(&session_id).unwrap();
+            let session = agent.session_handle(&session_id).unwrap().unwrap();
             let mut data = session.data.lock().unwrap();
             data.primary_agent = "build".to_string();
             data.reasoning_effort = ReasoningEffortLevel::High;
@@ -297,8 +297,8 @@ mod tests {
     async fn resume_session_returns_existing_session_state() {
         let temp = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
-        let session_id = agent.register_session();
-        let session = agent.session_handle(&session_id).unwrap();
+        let session_id = agent.register_session().unwrap();
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
         session
             .data
             .lock()
@@ -330,7 +330,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let other = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
-        let session_id = agent.register_session();
+        let session_id = agent.register_session().unwrap();
 
         let result = agent.resume_session(ResumeSessionRequest::new(session_id, other.path())).await;
 
@@ -358,12 +358,18 @@ mod tests {
         let agent = build_agent_with_vt_config(temp.path(), Some(&vt_cfg)).await;
         let response = agent.new_session(NewSessionRequest::new(temp.path())).await.unwrap();
         let session_id = response.session_id;
-        let session = agent.session_handle(&session_id).unwrap();
-        assert!(session.lifecycle_hooks().is_some(), "new ACP session should have its own lifecycle engine");
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
+        assert!(session.lifecycle_hooks().unwrap().is_some(), "new ACP session should have its own lifecycle engine");
         assert_eq!(fs::read_to_string(&marker).await.unwrap().lines().count(), 1);
 
-        agent.run_session_end_hooks(vtcode_core::hooks::SessionEndReason::Exit).await;
-        agent.run_session_end_hooks(vtcode_core::hooks::SessionEndReason::Exit).await;
+        agent
+            .run_session_end_hooks(vtcode_core::hooks::SessionEndReason::Exit)
+            .await
+            .unwrap();
+        agent
+            .run_session_end_hooks(vtcode_core::hooks::SessionEndReason::Exit)
+            .await
+            .unwrap();
         let events = fs::read_to_string(&marker).await.unwrap();
         assert_eq!(events.lines().count(), 2);
         assert!(events.lines().all(|line| line.contains(&session_id.to_string())));
@@ -421,7 +427,7 @@ mod tests {
     async fn set_session_config_option_updates_primary_agent() {
         let temp = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
-        let session_id = agent.register_session();
+        let session_id = agent.register_session().unwrap();
 
         let response = agent
             .set_session_config_option(SetSessionConfigOptionRequest::new(
@@ -432,7 +438,7 @@ mod tests {
             .await
             .unwrap();
 
-        let session = agent.session_handle(&session_id).unwrap();
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
         assert_eq!(session.data.lock().unwrap().primary_agent, "build");
         assert!(response.config_options.iter().any(|option| {
             option.id == crate::acp::SessionConfigId::new(SESSION_CONFIG_PRIMARY_AGENT_ID)
@@ -449,7 +455,7 @@ mod tests {
     async fn set_session_config_option_accepts_only_known_primary_agent_ids() {
         let temp = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
-        let session_id = agent.register_session();
+        let session_id = agent.register_session().unwrap();
 
         for primary_agent in ["duck", "plan", "build", "auto"] {
             let response = agent
@@ -461,7 +467,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let session = agent.session_handle(&session_id).unwrap();
+            let session = agent.session_handle(&session_id).unwrap().unwrap();
             assert_eq!(session.data.lock().unwrap().primary_agent, primary_agent);
             assert_eq!(primary_agent_current_value(&response.config_options), Some(primary_agent.to_string()));
         }
@@ -471,8 +477,8 @@ mod tests {
     async fn set_session_config_option_rejects_unknown_primary_agent() {
         let temp = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
-        let session_id = agent.register_session();
-        let session = agent.session_handle(&session_id).unwrap();
+        let session_id = agent.register_session().unwrap();
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
         session.data.lock().unwrap().primary_agent = "build".to_string();
 
         let result = agent
@@ -508,8 +514,8 @@ Research primary prompt."#,
         .await
         .unwrap();
         let agent = build_agent(temp.path()).await;
-        let session_id = agent.register_session();
-        let session = agent.session_handle(&session_id).unwrap();
+        let session_id = agent.register_session().unwrap();
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
         session.data.lock().unwrap().primary_agent = "research".to_string();
 
         let response = agent
@@ -546,8 +552,8 @@ Project build prompt."#,
         .await
         .unwrap();
         let agent = build_agent(temp.path()).await;
-        let session_id = agent.register_session();
-        let session = agent.session_handle(&session_id).unwrap();
+        let session_id = agent.register_session().unwrap();
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
 
         let response = agent
             .set_session_config_option(SetSessionConfigOptionRequest::new(
@@ -566,7 +572,7 @@ Project build prompt."#,
     async fn set_session_config_option_updates_reasoning_effort() {
         let temp = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
-        let session_id = agent.register_session();
+        let session_id = agent.register_session().unwrap();
 
         let response = agent
             .set_session_config_option(SetSessionConfigOptionRequest::new(
@@ -577,7 +583,7 @@ Project build prompt."#,
             .await
             .unwrap();
 
-        let session = agent.session_handle(&session_id).unwrap();
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
         assert_eq!(session.data.lock().unwrap().reasoning_effort, ReasoningEffortLevel::XHigh);
         assert!(response.config_options.iter().any(|option| {
             option.id == crate::acp::SessionConfigId::new(SESSION_CONFIG_THOUGHT_LEVEL_ID)
@@ -594,7 +600,7 @@ Project build prompt."#,
     async fn set_session_config_option_updates_provider_and_auto_switches_model() {
         let temp = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
-        let session_id = agent.register_session();
+        let session_id = agent.register_session().unwrap();
         let anthropic_default = ModelId::default_single_for_provider(Provider::Anthropic).as_str().into_owned();
 
         let response = agent
@@ -606,7 +612,7 @@ Project build prompt."#,
             .await
             .unwrap();
 
-        let session = agent.session_handle(&session_id).unwrap();
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
         assert_eq!(session.data.lock().unwrap().provider, "anthropic");
         assert_eq!(session.data.lock().unwrap().model, anthropic_default);
         assert!(response.config_options.iter().any(|option| {
@@ -633,7 +639,7 @@ Project build prompt."#,
     async fn set_session_config_option_updates_model_for_provider() {
         let temp = TempDir::new().unwrap();
         let agent = build_agent(temp.path()).await;
-        let session_id = agent.register_session();
+        let session_id = agent.register_session().unwrap();
 
         let response = agent
             .set_session_config_option(SetSessionConfigOptionRequest::new(
@@ -644,7 +650,7 @@ Project build prompt."#,
             .await
             .unwrap();
 
-        let session = agent.session_handle(&session_id).unwrap();
+        let session = agent.session_handle(&session_id).unwrap().unwrap();
         assert_eq!(session.data.lock().unwrap().provider, "openai");
         assert_eq!(session.data.lock().unwrap().model, "gpt-5.6-luna");
         assert!(response.config_options.iter().any(|option| {

@@ -84,6 +84,11 @@ pub(crate) struct SessionData {
     pub(crate) session_started: bool,
     pub(crate) session_ended: bool,
     pub(crate) task_lifecycle_forwarder: Option<tokio::task::JoinHandle<()>>,
+    pub(crate) task_lifecycle_registration: Option<vtcode_core::subagents::SubagentProgressObserverRegistration>,
+}
+
+pub(crate) fn lock_poison_error(context: &str, error: impl std::fmt::Display) -> anyhow::Error {
+    anyhow::anyhow!("{context}: {error}")
 }
 
 impl Drop for SessionData {
@@ -95,58 +100,62 @@ impl Drop for SessionData {
 }
 
 impl SessionHandle {
-    pub(crate) fn workspace_runtime(&self) -> Option<Arc<super::agent::SessionWorkspaceRuntime>> {
-        self.data.lock().ok().and_then(|data| data.workspace_runtime.clone())
-    }
-
-    pub(crate) fn lifecycle_hooks(&self) -> Option<LifecycleHookEngine> {
-        self.data.lock().ok().and_then(|data| data.lifecycle_hooks.clone())
-    }
-
-    pub(crate) fn has_stop_hooks(&self) -> bool {
-        self.lifecycle_hooks().is_some_and(|hooks| hooks.has_stop_hooks())
-    }
-
-    pub(crate) fn mark_session_started(&self) -> bool {
+    pub(crate) fn workspace_runtime(&self) -> anyhow::Result<Option<Arc<super::agent::SessionWorkspaceRuntime>>> {
         self.data
             .lock()
-            .map(|mut data| {
-                if data.session_started {
-                    false
-                } else {
-                    data.session_started = true;
-                    true
-                }
-            })
-            .unwrap_or(false)
+            .map_err(|error| lock_poison_error("reading ACP session workspace runtime", error))
+            .map(|data| data.workspace_runtime.clone())
     }
 
-    pub(crate) fn mark_session_ended(&self) -> bool {
+    pub(crate) fn lifecycle_hooks(&self) -> anyhow::Result<Option<LifecycleHookEngine>> {
         self.data
             .lock()
-            .map(|mut data| {
-                if data.session_ended {
-                    false
-                } else {
-                    data.session_ended = true;
-                    true
-                }
-            })
-            .unwrap_or(false)
+            .map_err(|error| lock_poison_error("reading ACP session lifecycle hooks", error))
+            .map(|data| data.lifecycle_hooks.clone())
     }
 
-    pub(crate) async fn update_transcript_path(&self) {
+    pub(crate) fn has_stop_hooks(&self) -> anyhow::Result<bool> {
+        Ok(self.lifecycle_hooks()?.is_some_and(|hooks| hooks.has_stop_hooks()))
+    }
+
+    pub(crate) fn mark_session_started(&self) -> anyhow::Result<bool> {
+        let mut data = self
+            .data
+            .lock()
+            .map_err(|error| lock_poison_error("marking ACP session started", error))?;
+        if data.session_started {
+            Ok(false)
+        } else {
+            data.session_started = true;
+            Ok(true)
+        }
+    }
+
+    pub(crate) fn mark_session_ended(&self) -> anyhow::Result<bool> {
+        let mut data = self
+            .data
+            .lock()
+            .map_err(|error| lock_poison_error("marking ACP session ended", error))?;
+        if data.session_ended {
+            Ok(false)
+        } else {
+            data.session_ended = true;
+            Ok(true)
+        }
+    }
+
+    pub(crate) async fn update_transcript_path(&self) -> anyhow::Result<()> {
         let (hooks, path) = self
             .data
             .lock()
-            .ok()
+            .map_err(|error| lock_poison_error("reading ACP session state to update transcript path", error))
             .map(|data| {
                 (data.lifecycle_hooks.clone(), data.archive.as_ref().map(|archive| archive.path().to_path_buf()))
-            })
-            .unwrap_or((None, None));
+            })?;
         if let Some(hooks) = hooks {
             hooks.update_transcript_path(path).await;
         }
+        Ok(())
     }
 }
 

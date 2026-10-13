@@ -1,7 +1,7 @@
 use super::ZedAgent;
 use crate::reports::TOOL_FAILURE_PREFIX;
 use crate::tooling::{SupportedTool, TOOL_READ_FILE_PATH_ARG, TOOL_READ_FILE_URI_ARG};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use vtcode_core::config::constants::tools;
@@ -56,16 +56,19 @@ impl ZedAgent {
         }
     }
 
-    pub(super) fn session_local_tools_available(&self, session: &SessionHandle, primary_agent: &str) -> bool {
-        let Some(runtime) = session.workspace_runtime() else {
-            return self.local_tools_available(primary_agent);
+    pub(super) fn session_local_tools_available(&self, session: &SessionHandle, primary_agent: &str) -> Result<bool> {
+        let Some(runtime) = session
+            .workspace_runtime()
+            .context("reading ACP session workspace runtime for local tool availability")?
+        else {
+            return Ok(self.local_tools_available(primary_agent));
         };
-        runtime.acp_tool_registry.definitions_for(&[], true).iter().any(|definition| {
+        Ok(runtime.acp_tool_registry.definitions_for(&[], true).iter().any(|definition| {
             is_acp_session_tool(definition.function_name())
                 || runtime
                     .primary_agents
                     .allows_local_tool(primary_agent, definition.function_name())
-        })
+        }))
     }
 
     pub(super) fn session_tool_definitions(
@@ -74,27 +77,30 @@ impl ZedAgent {
         provider_supports_tools: bool,
         enabled_tools: &[SupportedTool],
         primary_agent: &str,
-    ) -> Option<Vec<ToolDefinition>> {
-        let Some(runtime) = session.workspace_runtime() else {
-            return self.tool_definitions(provider_supports_tools, enabled_tools, primary_agent);
+    ) -> Result<Option<Vec<ToolDefinition>>> {
+        let Some(runtime) = session
+            .workspace_runtime()
+            .context("reading ACP session workspace runtime for tool definitions")?
+        else {
+            return Ok(self.tool_definitions(provider_supports_tools, enabled_tools, primary_agent));
         };
         if !provider_supports_tools {
-            return None;
+            return Ok(None);
         }
-        let include_local = self.session_local_tools_available(session, primary_agent);
+        let include_local = self.session_local_tools_available(session, primary_agent)?;
         if enabled_tools.is_empty() && !include_local {
-            return None;
+            return Ok(None);
         }
-        Some(
-            runtime
-                .acp_tool_registry
-                .definitions_for_filtered(enabled_tools, include_local, |tool_name| {
-                    is_acp_session_tool(tool_name)
-                        || runtime
-                            .primary_agents
-                            .allows_tool(primary_agent, tool_name, &runtime.workspace_root)
-                }),
-        )
+        Ok(Some(runtime.acp_tool_registry.definitions_for_filtered(
+            enabled_tools,
+            include_local,
+            |tool_name| {
+                is_acp_session_tool(tool_name)
+                    || runtime
+                        .primary_agents
+                        .allows_tool(primary_agent, tool_name, &runtime.workspace_root)
+            },
+        )))
     }
 
     pub(super) fn tool_choice(&self, tools_available: bool) -> Option<ToolChoice> {
@@ -116,20 +122,18 @@ impl ZedAgent {
         )
     }
 
-    pub(super) fn client_supports_read_text_file(&self) -> bool {
+    pub(super) fn client_supports_read_text_file(&self) -> Result<bool> {
         self.client_capabilities
             .lock()
-            .ok()
-            .and_then(|guard| guard.as_ref().map(|capabilities| capabilities.fs.read_text_file))
-            .unwrap_or(false)
+            .map(|guard| guard.as_ref().is_some_and(|capabilities| capabilities.fs.read_text_file))
+            .map_err(|error| anyhow::anyhow!("reading ACP client filesystem capabilities: {error}"))
     }
 
-    pub(super) fn client_supports_terminal(&self) -> bool {
+    pub(super) fn client_supports_terminal(&self) -> Result<bool> {
         self.client_capabilities
             .lock()
-            .ok()
-            .and_then(|guard| guard.as_ref().map(|capabilities| capabilities.terminal))
-            .unwrap_or(false)
+            .map(|guard| guard.as_ref().is_some_and(|capabilities| capabilities.terminal))
+            .map_err(|error| anyhow::anyhow!("reading ACP client terminal capabilities: {error}"))
     }
 
     pub(super) fn tool_availability(
@@ -224,7 +228,10 @@ impl ZedAgent {
         session: &SessionHandle,
         args: &Value,
     ) -> Result<Option<PathBuf>, String> {
-        let Some(runtime) = session.workspace_runtime() else {
+        let Some(runtime) = session
+            .workspace_runtime()
+            .map_err(|error| format!("Failed to read ACP session workspace runtime: {error:#}"))?
+        else {
             return self.resolve_terminal_working_dir(args);
         };
         let Some(raw_dir) = command_args::working_dir_text(args) else {
@@ -258,11 +265,14 @@ impl ZedAgent {
         &self,
         session: &SessionHandle,
         working_dir: Option<&PathBuf>,
-    ) -> Option<String> {
-        let Some(runtime) = session.workspace_runtime() else {
-            return self.describe_terminal_location(working_dir);
+    ) -> Result<Option<String>, String> {
+        let Some(runtime) = session
+            .workspace_runtime()
+            .map_err(|error| format!("Failed to read ACP session workspace runtime: {error:#}"))?
+        else {
+            return Ok(self.describe_terminal_location(working_dir));
         };
-        working_dir.and_then(|path| {
+        Ok(working_dir.and_then(|path| {
             path.strip_prefix(&runtime.workspace_root).ok().map(|relative| {
                 if relative.as_os_str().is_empty() {
                     ".".to_string()
@@ -270,7 +280,7 @@ impl ZedAgent {
                     format!("./{}", relative.to_string_lossy())
                 }
             })
-        })
+        }))
     }
 
     pub(super) fn truncate_text(&self, input: &str) -> (String, bool) {

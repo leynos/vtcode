@@ -13,6 +13,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tracing::debug;
 use vtcode_config::TimeoutsConfig;
 use vtcode_config::core::{CustomProviderConfig, CustomProviderRequestPolicyConfig};
+use vtcode_core::metrics::MetricsCollector;
 use vtcode_core::retry::RetryPolicy;
 
 use super::types::SessionCancellation;
@@ -26,6 +27,7 @@ pub(crate) struct ProviderRequestRuntime {
     retry_policy: RetryPolicy,
     deadline_policy: ProviderDeadlinePolicy,
     counters: Arc<ProviderRequestCounters>,
+    metrics: Arc<MetricsCollector>,
 }
 
 #[derive(Debug, Default)]
@@ -79,6 +81,7 @@ impl ProviderRequestRuntime {
         provider_name: impl Into<Arc<str>>,
         config: &CustomProviderRequestPolicyConfig,
         deadline_policy: ProviderDeadlinePolicy,
+        metrics: Arc<MetricsCollector>,
     ) -> Self {
         let provider_name = provider_name.into();
         // Request concurrency is enforced once, at the custom-provider router,
@@ -104,6 +107,7 @@ impl ProviderRequestRuntime {
             retry_policy,
             deadline_policy,
             counters: Arc::new(ProviderRequestCounters::default()),
+            metrics,
         }
     }
 
@@ -117,6 +121,26 @@ impl ProviderRequestRuntime {
 
     pub(crate) fn deadline_policy(&self) -> ProviderDeadlinePolicy {
         self.deadline_policy
+    }
+
+    pub(crate) fn metrics_collector(&self) -> Arc<MetricsCollector> {
+        Arc::clone(&self.metrics)
+    }
+
+    pub(crate) fn record_attempt_succeeded(&self, duration_ms: u64, first_output_ms: Option<u64>) {
+        self.metrics.record_provider_attempt_succeeded(duration_ms, first_output_ms);
+    }
+
+    pub(crate) fn record_attempt_failed(&self, duration_ms: u64, first_output_ms: Option<u64>) {
+        self.metrics.record_provider_attempt_failed(duration_ms, false, first_output_ms);
+    }
+
+    pub(crate) fn record_attempt_cancelled(&self, duration_ms: u64, first_output_ms: Option<u64>) {
+        self.metrics.record_provider_attempt_failed(duration_ms, true, first_output_ms);
+    }
+
+    pub(crate) fn record_retry_scheduled(&self) {
+        self.metrics.record_provider_retry_scheduled();
     }
 
     pub(crate) fn apply_http_timeouts(&self, timeouts: &mut TimeoutsConfig) {
@@ -137,6 +161,7 @@ impl ProviderRequestRuntime {
 
     fn provider_permit(&self, permit: Option<OwnedSemaphorePermit>) -> ProviderPermit {
         let active_acp_requests = self.counters.active.fetch_add(1, Ordering::Relaxed).saturating_add(1);
+        self.metrics.record_provider_attempt_started();
         let snapshot = self.telemetry_snapshot();
         debug!(
             provider = self.provider_name(),
@@ -151,6 +176,7 @@ impl ProviderRequestRuntime {
             provider_name: Arc::clone(&self.provider_name),
             counters: Arc::clone(&self.counters),
             limit: self.limit,
+            metrics: Arc::clone(&self.metrics),
         }
     }
 
@@ -206,11 +232,13 @@ pub(crate) struct ProviderPermit {
     provider_name: Arc<str>,
     counters: Arc<ProviderRequestCounters>,
     limit: Option<usize>,
+    metrics: Arc<MetricsCollector>,
 }
 
 impl Drop for ProviderPermit {
     fn drop(&mut self) {
         let active_acp_requests = self.counters.active.fetch_sub(1, Ordering::Relaxed).saturating_sub(1);
+        self.metrics.record_provider_attempt_finished();
         debug!(
             provider = self.provider_name.as_ref(),
             acp_local_queue_depth = self.counters.queued.load(Ordering::Relaxed),
@@ -262,7 +290,11 @@ pub(crate) struct ProviderRuntimeRegistry {
 }
 
 impl ProviderRuntimeRegistry {
-    pub(crate) fn new(custom_providers: &[CustomProviderConfig], timeouts: &TimeoutsConfig) -> Self {
+    pub(crate) fn new(
+        custom_providers: &[CustomProviderConfig],
+        timeouts: &TimeoutsConfig,
+        metrics: Arc<MetricsCollector>,
+    ) -> Self {
         let default_config = CustomProviderRequestPolicyConfig::default();
         let custom_runtimes = custom_providers
             .iter()
@@ -273,6 +305,7 @@ impl ProviderRuntimeRegistry {
                         provider.name.clone(),
                         &provider.request_policy,
                         ProviderDeadlinePolicy::from_config(&provider.request_policy),
+                        Arc::clone(&metrics),
                     ),
                 )
             })
@@ -283,6 +316,7 @@ impl ProviderRuntimeRegistry {
                 "default",
                 &default_config,
                 ProviderDeadlinePolicy::from_timeouts(timeouts),
+                metrics,
             ),
             custom_runtimes,
         }
@@ -309,6 +343,7 @@ mod tests {
             retry_policy: RetryPolicy::default(),
             deadline_policy: ProviderDeadlinePolicy::from_config(&CustomProviderRequestPolicyConfig::default()),
             counters: Arc::new(ProviderRequestCounters::default()),
+            metrics: Arc::new(MetricsCollector::new()),
         }
     }
 
@@ -389,7 +424,9 @@ mod tests {
             },
             ..CustomProviderConfig::default()
         };
-        let runtime = ProviderRuntimeRegistry::new(&[provider], &TimeoutsConfig::default()).for_provider("arli");
+        let runtime =
+            ProviderRuntimeRegistry::new(&[provider], &TimeoutsConfig::default(), Arc::new(MetricsCollector::new()))
+                .for_provider("arli");
 
         assert_eq!(runtime.limit, Some(3));
         assert!(runtime.semaphore.is_none(), "custom-provider capacity is enforced at the shared router boundary");

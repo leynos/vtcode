@@ -75,7 +75,7 @@ impl ZedAgent {
             return Ok(false);
         };
 
-        let resolved_messages = self.resolved_messages(session);
+        let resolved_messages = self.resolved_messages(session)?;
         let prompt_tokens = estimated_prompt_tokens(&resolved_messages, tools);
         let configured_threshold = effective_compaction_threshold(Some(vt_config), provider, model);
         let admission_budget = admission_prompt_budget(provider, model);
@@ -100,7 +100,10 @@ impl ZedAgent {
         let force_compaction = admission_budget.is_some_and(|budget| prompt_tokens >= budget)
             && configured_threshold.is_none_or(|threshold| prompt_tokens < threshold);
 
-        if let Some(hooks) = session.lifecycle_hooks() {
+        if let Some(hooks) = session
+            .lifecycle_hooks()
+            .context("reading ACP session lifecycle hooks for compaction")?
+        {
             let compaction_mode = lifecycle_compaction_mode(manual_compaction_strategy(provider, model));
             let outcome = hooks
                 .run_pre_compact(CompactionTrigger::Auto, compaction_mode, original_len, 0, None)
@@ -120,7 +123,9 @@ impl ZedAgent {
             .total_generation
             .map(|timeout| Instant::now() + timeout);
         let outcome_result = {
-            let workspace_runtime = session.workspace_runtime();
+            let workspace_runtime = session
+                .workspace_runtime()
+                .context("reading ACP session workspace runtime for compaction")?;
             let workspace_root = workspace_runtime
                 .as_ref()
                 .map_or(self.config.workspace.as_path(), |runtime| runtime.workspace_root.as_path());
@@ -190,7 +195,7 @@ impl ZedAgent {
         if let Err(error) = self.checkpoint_session(session).await {
             warn!(%error, "Failed to persist compacted ACP session checkpoint");
         }
-        let compacted_prompt_tokens = estimated_prompt_tokens(&self.resolved_messages(session), tools);
+        let compacted_prompt_tokens = estimated_prompt_tokens(&self.resolved_messages(session)?, tools);
         if admission_budget.is_some_and(|budget| compacted_prompt_tokens >= budget) {
             anyhow::bail!(
                 "ACP compaction reduced the prompt from an estimated {prompt_tokens} to {compacted_prompt_tokens} tokens, which still exceeds its safe provider admission budget"

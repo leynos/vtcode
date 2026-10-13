@@ -66,6 +66,7 @@ impl SubagentController {
             request.max_turns,
             request.model,
             request.reasoning_effort,
+            delegation,
         )
         .await
     }
@@ -121,6 +122,11 @@ impl SubagentController {
                 && record.desired_enabled
                 && record.status.is_active()
             {
+                if current_subagent_invocation_context()
+                    .is_some_and(|context| context.parent_session_id != record.parent_session_id)
+                {
+                    bail!("A background subprocess with this agent name is already active");
+                }
                 let conflicts = Self::active_background_launch_conflicts(
                     record,
                     prompt.as_str(),
@@ -148,6 +154,7 @@ impl SubagentController {
                 max_turns: request.max_turns,
                 model_override: request.model,
                 reasoning_override: request.reasoning_effort,
+                parent_session_id: Some(delegation.parent_session_id.clone()),
             }),
         )
         .await
@@ -181,6 +188,11 @@ impl SubagentController {
             );
         }
 
+        let mut custom_items = Vec::new();
+        let mut custom_model = None;
+        let delegation = self
+            .prepare_delegation_context(None, &mut custom_items, &mut custom_model, "spawn_custom")
+            .await?;
         self.spawn_with_spec(
             spec,
             prompt,
@@ -189,12 +201,14 @@ impl SubagentController {
             request.max_turns,
             request.model,
             request.reasoning_effort,
+            delegation,
         )
         .await
     }
 
     /// Sends additional input to a running or queued subagent.
     pub async fn send_input(&self, request: SendInputRequest) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned_by_invocation(&request.target).await?;
         let prompt = request_prompt(&request.message, &request.items)
             .ok_or_else(|| anyhow!("send_input requires a message or items"))?;
 
@@ -235,7 +249,7 @@ impl SubagentController {
             self.restart_child(&request.target).await?;
         }
 
-        let status = self.status_for(&request.target).await?;
+        let status = self.status_for_unchecked(&request.target).await?;
         if !maybe_restart {
             self.publish_subagent_progress(status.clone()).await;
         }
@@ -247,6 +261,7 @@ impl SubagentController {
     /// grandchildren closed by `close_tree` are resumed too, not merely
     /// un-gated.
     pub async fn resume(&self, target: &str) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned_by_invocation(target).await?;
         self.resume_tree(target).await
     }
 
@@ -289,12 +304,13 @@ impl SubagentController {
             for restart_id in restart_ids {
                 self_owned.restart_child(&restart_id).await?;
             }
-            self_owned.status_for(&target_owned).await
+            self_owned.status_for_unchecked(&target_owned).await
         })
     }
 
     /// Closes a subagent and all its descendants, aborting any in-flight work.
     pub async fn close(&self, target: &str) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned_by_invocation(target).await?;
         // `close_tree` walks the full nesting tree (including grandchildren
         // spawned through child-scoped controllers) and closes bottom-up.
         self.close_tree(target).await
@@ -356,14 +372,17 @@ impl SubagentController {
                     }
                 }
             }
-            self_owned.status_for(&target_owned).await
+            self_owned.status_for_unchecked(&target_owned).await
         })
     }
 
     /// Blocks until one of the target subagents reaches a terminal state or the timeout expires.
     pub async fn wait(&self, targets: &[String], timeout_ms: Option<u64>) -> Result<Option<SubagentStatusEntry>> {
         for target in targets {
-            if let Ok(entry) = self.status_for(target).await
+            self.ensure_child_owned_by_invocation(target).await?;
+        }
+        for target in targets {
+            if let Ok(entry) = self.status_for_unchecked(target).await
                 && entry.status.is_terminal()
             {
                 return Ok(Some(entry));
@@ -406,7 +425,7 @@ impl SubagentController {
 
             // Now check if any target is already terminal.
             for target in targets {
-                if let Ok(entry) = self.status_for(target).await
+                if let Ok(entry) = self.status_for_unchecked(target).await
                     && entry.status.is_terminal()
                 {
                     return Ok(Some(entry));
@@ -425,6 +444,11 @@ impl SubagentController {
 
     /// Returns the current status of a tracked subagent by its target id.
     pub async fn status_for(&self, target: &str) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned_by_invocation(target).await?;
+        self.status_for_unchecked(target).await
+    }
+
+    async fn status_for_unchecked(&self, target: &str) -> Result<SubagentStatusEntry> {
         let state = self.state.read().await;
         let record = state
             .children
@@ -557,17 +581,15 @@ impl SubagentController {
             .unwrap_or_else(|| background_record_id(agent_name));
         let previous_record = {
             let state = self.state.read().await;
-            state.background_children.get(&record_id).map(|record| {
-                (
-                    record.created_at,
-                    record.prompt.clone(),
-                    record.max_turns,
-                    record.model_override.clone(),
-                    record.reasoning_override.clone(),
-                )
-            })
+            state.background_children.get(&record_id).cloned()
         };
-        let parent_session_id = self.parent_session_id.read().await.clone();
+        let previous_parent_session_id = previous_record.as_ref().map(|record| record.parent_session_id.clone());
+        let current_parent_session_id = self.parent_session_id.read().await.clone();
+        let parent_session_id = overrides
+            .as_ref()
+            .and_then(|overrides| overrides.parent_session_id.clone())
+            .or(previous_parent_session_id)
+            .unwrap_or(current_parent_session_id);
         let session_id = format!(
             "{}-{}-{}",
             sanitize_component(parent_session_id.as_str()),
@@ -575,8 +597,13 @@ impl SubagentController {
             Utc::now().format("%Y%m%dT%H%M%S%3fZ")
         );
         let exec_session_id = format!("exec-{session_id}");
-        let (created_at, previous_prompt, previous_max_turns, previous_model_override, previous_reasoning_override) =
-            previous_record.unwrap_or((Utc::now(), String::new(), None, None, None));
+        let created_at = previous_record.as_ref().map_or_else(Utc::now, |record| record.created_at);
+        let previous_prompt = previous_record
+            .as_ref()
+            .map_or_else(String::new, |record| record.prompt.clone());
+        let previous_max_turns = previous_record.as_ref().and_then(|record| record.max_turns);
+        let previous_model_override = previous_record.as_ref().and_then(|record| record.model_override.clone());
+        let previous_reasoning_override = previous_record.as_ref().and_then(|record| record.reasoning_override.clone());
         let prompt = overrides
             .as_ref()
             .and_then(|overrides| overrides.prompt.clone())
@@ -621,6 +648,7 @@ impl SubagentController {
                     source: spec.source.label(),
                     color: spec.color.clone(),
                     session_id: session_id.clone(),
+                    parent_session_id: parent_session_id.clone(),
                     exec_session_id: exec_session_id.clone(),
                     desired_enabled: true,
                     status: BackgroundSubprocessStatus::Starting,
@@ -828,7 +856,7 @@ impl SubagentController {
             .ok_or_else(|| anyhow!("Unknown subagent type {requested}"))
     }
 
-    async fn prepare_delegation_context(
+    pub(super) async fn prepare_delegation_context(
         &self,
         requested_agent: Option<String>,
         items: &mut Vec<SubagentInputItem>,
@@ -837,11 +865,22 @@ impl SubagentController {
     ) -> Result<PreparedDelegationContext> {
         let state = self.state.read().await;
         sanitize_subagent_input_items(items);
-        *model = normalize_requested_model_override(model.take(), &state.turn_hints.current_input);
+        let invocation = current_subagent_invocation_context();
+        let current_input = invocation
+            .as_ref()
+            .map_or(state.turn_hints.current_input.as_str(), |context| context.current_input.as_str());
+        let explicit_mentions = invocation.as_ref().map_or_else(
+            || state.turn_hints.explicit_mentions.clone(),
+            |_| extract_explicit_agent_mentions(current_input, state.discovered.effective.as_slice()),
+        );
+        let explicit_request = invocation.as_ref().map_or(state.turn_hints.explicit_request, |_| {
+            contains_explicit_delegation_request(current_input, explicit_mentions.as_slice())
+        });
+        *model = normalize_requested_model_override(model.take(), current_input);
         let requested_agent = if let Some(agent_type) = requested_agent {
             Some(agent_type)
         } else {
-            match state.turn_hints.explicit_mentions.as_slice() {
+            match explicit_mentions.as_slice() {
                 [] => None,
                 [single] => Some(single.clone()),
                 mentions => {
@@ -853,10 +892,21 @@ impl SubagentController {
                 }
             }
         };
+        let parent_messages = invocation
+            .as_ref()
+            .map(|context| context.parent_messages.clone())
+            .unwrap_or_else(|| state.parent_messages.clone());
+        drop(state);
+        let parent_session_id = match invocation {
+            Some(context) => context.parent_session_id,
+            None => self.parent_session_id.read().await.clone(),
+        };
         Ok(PreparedDelegationContext {
             requested_agent,
-            explicit_mentions: state.turn_hints.explicit_mentions.clone(),
-            explicit_request: state.turn_hints.explicit_request,
+            explicit_mentions,
+            explicit_request,
+            parent_session_id,
+            parent_messages,
         })
     }
 
@@ -943,6 +993,7 @@ impl SubagentController {
         max_turns: Option<usize>,
         model_override: Option<String>,
         reasoning_override: Option<String>,
+        delegation: PreparedDelegationContext,
     ) -> Result<SubagentStatusEntry> {
         if !self.config.vt_cfg.subagents.enabled {
             bail!("Subagents are disabled by configuration");
@@ -1010,7 +1061,7 @@ impl SubagentController {
         )?;
 
         let id = format!("agent-{}-{}", sanitize_component(spec.name.as_str()), Utc::now().format("%Y%m%dT%H%M%S%3fZ"));
-        let parent_session_id = self.parent_session_id.read().await.clone();
+        let parent_session_id = delegation.parent_session_id.clone();
         let session_id =
             format!("{}-{}", sanitize_component(parent_session_id.as_str()), sanitize_component(id.as_str()));
         let display_label = subagent_display_label(&spec);
@@ -1024,7 +1075,7 @@ impl SubagentController {
             bail!("Subagent controller is shutting down; cannot spawn new subagents");
         }
         let initial_messages = if fork_context {
-            state.parent_messages.clone()
+            delegation.parent_messages
         } else {
             Vec::new()
         };

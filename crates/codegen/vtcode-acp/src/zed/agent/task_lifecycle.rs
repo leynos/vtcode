@@ -1,80 +1,112 @@
 //! Forward sub-agent and background-process lifecycle events to ACP clients.
 //!
-//! A session-scoped forwarder filters progress events by parent session and
-//! sends the matching events as VTCode task-lifecycle notifications.
+//! A session-scoped observer receives domain status snapshots and sends them
+//! as VTCode task-lifecycle notifications.
 
-use super::super::types::SessionHandle;
+use super::super::types::{SessionHandle, lock_poison_error};
 use super::ZedAgent;
 use crate::acp;
 use crate::zed::connection::ConnectionHandle;
 use serde_json::{Value, json};
 use std::sync::Arc;
-use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tracing::warn;
 use vtcode_core::subagents::{
-    BackgroundSubprocessEntry, BackgroundSubprocessStatus, SubagentProgressEvent, SubagentStatus, SubagentStatusEntry,
+    BackgroundSubprocessEntry, BackgroundSubprocessStatus, SubagentProgressObserver, SubagentStatus,
+    SubagentStatusEntry,
 };
 
 pub(super) const TASK_LIFECYCLE_METHOD: &str = "_vtcode/taskLifecycle";
 
 impl ZedAgent {
-    pub(super) fn ensure_task_lifecycle_forwarder(&self, session: &SessionHandle) {
+    pub(super) fn ensure_task_lifecycle_forwarder(&self, session: &SessionHandle) -> anyhow::Result<()> {
         let already_running = session
             .data
             .lock()
-            .map(|data| data.task_lifecycle_forwarder.as_ref().is_some_and(|task| !task.is_finished()))
-            .unwrap_or(true);
+            .map_err(|error| lock_poison_error("checking ACP task lifecycle forwarder state", error))?
+            .task_lifecycle_forwarder
+            .as_ref()
+            .is_some_and(|task| !task.is_finished());
         if already_running {
-            return;
+            return Ok(());
         }
 
-        let Some(controller) = self.session_subagent_controller(session) else {
-            return;
+        let Some(controller) = self.session_subagent_controller(session)? else {
+            return Ok(());
         };
         let Some(client) = self.client() else {
-            return;
+            return Ok(());
         };
         let session_id = session
             .data
             .lock()
-            .map(|data| data.session_id.clone())
-            .unwrap_or_else(|error| error.into_inner().session_id.clone());
-        let receiver = controller.subscribe_progress();
+            .map_err(|error| lock_poison_error("reading ACP session ID for task lifecycle forwarding", error))?
+            .session_id
+            .clone();
+        let (sender, receiver) = mpsc::channel(128);
+        let observer = Arc::new(AcpTaskLifecycleObserver { sender, session_id: session_id.clone() });
+        let registration = controller.register_progress_observer(session_id.0.to_string(), observer);
         let forwarder = spawn_task_lifecycle_forwarder(receiver, session_id, client);
 
-        if let Ok(mut data) = session.data.lock() {
-            if data.task_lifecycle_forwarder.as_ref().is_some_and(|task| !task.is_finished()) {
+        let mut data = match session
+            .data
+            .lock()
+            .map_err(|error| lock_poison_error("registering ACP task lifecycle forwarder", error))
+        {
+            Ok(data) => data,
+            Err(error) => {
                 forwarder.abort();
-            } else {
-                data.task_lifecycle_forwarder = Some(forwarder);
+                return Err(error);
             }
-        } else {
+        };
+        if data.task_lifecycle_forwarder.as_ref().is_some_and(|task| !task.is_finished()) {
             forwarder.abort();
+        } else {
+            data.task_lifecycle_forwarder = Some(forwarder);
+            data.task_lifecycle_registration = Some(registration);
+        }
+        Ok(())
+    }
+}
+
+enum LifecycleUpdate {
+    Subagent(SubagentStatusEntry),
+    BackgroundProcess(BackgroundSubprocessEntry),
+}
+
+struct AcpTaskLifecycleObserver {
+    sender: mpsc::Sender<LifecycleUpdate>,
+    session_id: acp::SessionId,
+}
+
+impl SubagentProgressObserver for AcpTaskLifecycleObserver {
+    fn subagent_status_changed(&self, entry: SubagentStatusEntry) {
+        self.try_send(LifecycleUpdate::Subagent(entry));
+    }
+
+    fn background_status_changed(&self, entry: BackgroundSubprocessEntry) {
+        self.try_send(LifecycleUpdate::BackgroundProcess(entry));
+    }
+}
+
+impl AcpTaskLifecycleObserver {
+    fn try_send(&self, update: LifecycleUpdate) {
+        if let Err(error) = self.sender.try_send(update) {
+            warn!(%error, session_id = %self.session_id, "ACP task lifecycle update could not be queued");
         }
     }
 }
 
 fn spawn_task_lifecycle_forwarder(
-    mut receiver: broadcast::Receiver<SubagentProgressEvent>,
+    mut receiver: mpsc::Receiver<LifecycleUpdate>,
     session_id: acp::SessionId,
     client: Arc<ConnectionHandle>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        loop {
-            match receiver.recv().await {
-                Ok(event) => {
-                    if event.parent_session_id() != session_id.0.as_ref() {
-                        continue;
-                    }
-                    if let Err(error) = send_task_lifecycle(&client, &session_id, event) {
-                        warn!(%error, %session_id, "Failed to forward ACP task lifecycle notification");
-                    }
-                }
-                Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    warn!(%session_id, skipped, "ACP task lifecycle receiver lagged; continuing from latest state");
-                }
-                Err(broadcast::error::RecvError::Closed) => break,
+        while let Some(update) = receiver.recv().await {
+            if let Err(error) = send_task_lifecycle(&client, &session_id, update) {
+                warn!(%error, %session_id, "Failed to forward ACP task lifecycle notification");
             }
         }
     })
@@ -83,9 +115,9 @@ fn spawn_task_lifecycle_forwarder(
 fn send_task_lifecycle(
     client: &ConnectionHandle,
     session_id: &acp::SessionId,
-    event: SubagentProgressEvent,
+    update: LifecycleUpdate,
 ) -> anyhow::Result<()> {
-    let message = lifecycle_message(event)?;
+    let message = lifecycle_message(update)?;
     let payload = json!({
         "sessionId": session_id.to_string(),
         "acpSessionId": session_id.to_string(),
@@ -97,10 +129,10 @@ fn send_task_lifecycle(
         .map_err(|error| anyhow::anyhow!(error.to_string()))
 }
 
-fn lifecycle_message(event: SubagentProgressEvent) -> anyhow::Result<Value> {
-    match event {
-        SubagentProgressEvent::Subagent { task, .. } => subagent_lifecycle_message(task),
-        SubagentProgressEvent::BackgroundProcess { task, .. } => background_lifecycle_message(task),
+fn lifecycle_message(update: LifecycleUpdate) -> anyhow::Result<Value> {
+    match update {
+        LifecycleUpdate::Subagent(entry) => subagent_lifecycle_message(entry),
+        LifecycleUpdate::BackgroundProcess(entry) => background_lifecycle_message(entry),
     }
 }
 
@@ -185,63 +217,60 @@ mod tests {
     use serde_json::json;
     use tokio::sync::mpsc;
 
-    fn subagent_event(status: &str) -> SubagentProgressEvent {
-        subagent_event_for("parent-session", status)
+    fn subagent_entry(status: &str) -> SubagentStatusEntry {
+        serde_json::from_value(json!({
+            "id": "child-1",
+            "session_id": "child-session",
+            "parent_thread_id": "parent-session",
+            "agent_name": "worker",
+            "display_label": "Worker",
+            "description": "Implement one bounded task",
+            "source": "builtin",
+            "status": status,
+            "background": false,
+            "depth": 1,
+            "created_at": "2026-08-14T12:00:00Z",
+            "updated_at": "2026-08-14T12:01:00Z",
+            "summary": "Progress summary"
+        }))
+        .expect("valid subagent status fixture")
     }
 
-    fn subagent_event_for(parent_session_id: &str, status: &str) -> SubagentProgressEvent {
-        SubagentProgressEvent::Subagent {
-            parent_session_id: parent_session_id.to_string(),
-            task: serde_json::from_value(json!({
-                "id": "child-1",
-                "session_id": "child-session",
-                "parent_thread_id": "parent-session",
-                "agent_name": "worker",
-                "display_label": "Worker",
-                "description": "Implement one bounded task",
-                "source": "builtin",
-                "status": status,
-                "background": false,
-                "depth": 1,
-                "created_at": "2026-08-14T12:00:00Z",
-                "updated_at": "2026-08-14T12:01:00Z",
-                "summary": "Progress summary"
-            }))
-            .expect("valid subagent status fixture"),
-        }
-    }
-
-    fn background_event(status: &str) -> SubagentProgressEvent {
-        SubagentProgressEvent::BackgroundProcess {
-            parent_session_id: "parent-session".to_string(),
-            task: serde_json::from_value(json!({
-                "id": "background-1",
-                "session_id": "background-session",
-                "exec_session_id": "exec-background-1",
-                "agent_name": "watcher",
-                "display_label": "Watcher",
-                "description": "Watch the workspace",
-                "source": "workspace",
-                "status": status,
-                "desired_enabled": true,
-                "created_at": "2026-08-14T12:00:00Z",
-                "updated_at": "2026-08-14T12:01:00Z",
-                "pid": 1234,
-                "summary": "Watching"
-            }))
-            .expect("valid background status fixture"),
-        }
+    fn background_entry(status: &str) -> BackgroundSubprocessEntry {
+        serde_json::from_value(json!({
+            "id": "background-1",
+            "session_id": "background-session",
+            "exec_session_id": "exec-background-1",
+            "agent_name": "watcher",
+            "display_label": "Watcher",
+            "description": "Watch the workspace",
+            "source": "workspace",
+            "status": status,
+            "desired_enabled": true,
+            "created_at": "2026-08-14T12:00:00Z",
+            "updated_at": "2026-08-14T12:01:00Z",
+            "pid": 1234,
+            "summary": "Watching"
+        }))
+        .expect("valid background status fixture")
     }
 
     #[test]
     fn maps_worker_and_background_states_to_claude_style_lifecycle_messages() {
-        assert_eq!(lifecycle_message(subagent_event("queued")).expect("queued message")["type"], "task_started");
-        assert_eq!(lifecycle_message(subagent_event("running")).expect("running message")["type"], "task_progress");
-        let failed = lifecycle_message(subagent_event("failed")).expect("failed message");
+        assert_eq!(
+            lifecycle_message(LifecycleUpdate::Subagent(subagent_entry("queued"))).expect("queued message")["type"],
+            "task_started"
+        );
+        assert_eq!(
+            lifecycle_message(LifecycleUpdate::Subagent(subagent_entry("running"))).expect("running message")["type"],
+            "task_progress"
+        );
+        let failed = lifecycle_message(LifecycleUpdate::Subagent(subagent_entry("failed"))).expect("failed message");
         assert_eq!(failed["type"], "task_updated");
         assert_eq!(failed["patch"]["status"], "failed");
 
-        let background = lifecycle_message(background_event("running")).expect("background message");
+        let background = lifecycle_message(LifecycleUpdate::BackgroundProcess(background_entry("running")))
+            .expect("background message");
         assert_eq!(background["type"], "task_progress");
         assert_eq!(background["task_type"], "background_process");
         assert_eq!(background["details"]["exec_session_id"], "exec-background-1");
@@ -250,7 +279,7 @@ mod tests {
     #[tokio::test]
     async fn forwards_lifecycle_events_through_the_official_acp_duplex() {
         let (agent_channel, client_channel) = agent_client_protocol::Channel::duplex();
-        let (progress_tx, progress_rx) = broadcast::channel(8);
+        let (progress_tx, progress_rx) = mpsc::channel(8);
         let (received_tx, mut received_rx) = mpsc::unbounded_channel();
 
         let agent_connection = Agent.builder().name("vtcode-task-lifecycle-test").connect_with(
@@ -262,8 +291,14 @@ mod tests {
                     acp::SessionId::new(Arc::from("parent-session")),
                     client,
                 );
-                drop(progress_tx.send(subagent_event_for("other-session", "running")));
-                drop(progress_tx.send(subagent_event("running")));
+                progress_tx
+                    .send(LifecycleUpdate::Subagent(subagent_entry("running")))
+                    .await
+                    .expect("queue subagent update");
+                progress_tx
+                    .send(LifecycleUpdate::BackgroundProcess(background_entry("running")))
+                    .await
+                    .expect("queue background update");
                 drop(progress_tx);
                 forwarder.await.expect("lifecycle forwarder");
                 Ok(())
@@ -296,6 +331,13 @@ mod tests {
                 assert_eq!(payload["acpSessionId"], "parent-session");
                 assert_eq!(payload["message"]["type"], "task_progress");
                 assert_eq!(payload["message"]["task_id"], "child-1");
+                let notification = tokio::time::timeout(std::time::Duration::from_secs(2), received_rx.recv())
+                    .await
+                    .expect("background extension notification deadline")
+                    .expect("background extension notification");
+                let payload: Value = serde_json::from_str(notification.params.get()).expect("extension payload");
+                assert_eq!(payload["message"]["task_type"], "background_process");
+                assert_eq!(payload["message"]["task_id"], "background-1");
                 Ok(())
             });
 

@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 use tracing::warn;
 use vtcode_core::config::constants::tools;
+use vtcode_core::llm::provider::MessageRole;
 use vtcode_core::tools::file_ops::FileOpsTool;
 use vtcode_core::tools::registry::{ExecutionPolicySnapshot, ToolExecutionRequest};
 use vtcode_core::tools::traits::Tool;
@@ -35,11 +36,50 @@ impl ZedAgent {
         args: &Value,
         call_id: &str,
     ) -> ToolExecutionReport {
-        let Some(runtime) = session.workspace_runtime() else {
-            return self.execute_local_tool(tool_name, args, call_id).await;
+        let runtime = match session.workspace_runtime() {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                return ToolExecutionReport::failure(
+                    tool_name,
+                    &format!("Failed to read ACP session workspace runtime: {error:#}"),
+                );
+            }
         };
-        self.execute_local_tool_with_registry(&runtime.local_tool_registry, tool_name, args, call_id)
-            .await
+        let registry = runtime
+            .as_ref()
+            .map_or(&self.local_tool_registry, |runtime| &runtime.local_tool_registry);
+        let execution = self.execute_local_tool_with_registry(registry, tool_name, args, call_id);
+        if !vtcode_core::subagents::is_subagent_tool(tool_name) {
+            return execution.await;
+        }
+
+        let parent_session_id = match session.data.lock() {
+            Ok(data) => data.session_id.to_string(),
+            Err(error) => {
+                return ToolExecutionReport::failure(
+                    tool_name,
+                    &format!("Failed to read ACP session identifier for subagent invocation: {error}"),
+                );
+            }
+        };
+        let parent_messages = match self.resolved_messages(session) {
+            Ok(messages) => messages,
+            Err(error) => {
+                return ToolExecutionReport::failure(
+                    tool_name,
+                    &format!("Failed to read ACP session messages for subagent invocation: {error:#}"),
+                );
+            }
+        };
+        let current_input = parent_messages
+            .iter()
+            .rev()
+            .find(|message| message.role == MessageRole::User)
+            .map(|message| message.content.as_text().into_owned())
+            .unwrap_or_default();
+        let context =
+            vtcode_core::subagents::SubagentInvocationContext::new(parent_session_id, parent_messages, current_input);
+        vtcode_core::subagents::with_subagent_invocation_context(context, execution).await
     }
 
     async fn execute_local_tool_with_registry(
@@ -205,8 +245,10 @@ impl ZedAgent {
         session: &super::super::types::SessionHandle,
         args: &Value,
     ) -> Result<ToolExecutionReport, String> {
-        let Some(runtime) = session.workspace_runtime() else {
-            return self.run_list_files(args).await;
+        let runtime = match session.workspace_runtime() {
+            Ok(Some(runtime)) => runtime,
+            Ok(None) => return self.run_list_files(args).await,
+            Err(error) => return Err(format!("Failed to read ACP session workspace runtime: {error:#}")),
         };
         self.run_list_files_for_tool(runtime.file_ops_tool.as_ref(), Some(session), args)
             .await
@@ -272,7 +314,12 @@ impl ZedAgent {
                 let candidate = Self::decode_resource_uri(uri)?;
                 self.resolve_workspace_path(candidate, TOOL_LIST_FILES_URI_ARG)?
             };
-            let workspace_runtime = session.and_then(super::super::types::SessionHandle::workspace_runtime);
+            let workspace_runtime = match session {
+                Some(session) => session
+                    .workspace_runtime()
+                    .map_err(|error| format!("Failed to read ACP session workspace runtime: {error:#}"))?,
+                None => None,
+            };
             let workspace_root = workspace_runtime
                 .as_ref()
                 .map_or_else(|| self.workspace_root(), |runtime| runtime.workspace_root.as_path());

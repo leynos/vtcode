@@ -143,7 +143,7 @@ pub async fn run_acp_agent(
                     });
 
             connection_result?;
-            end_result?;
+            end_result??;
 
             Ok::<(), anyhow::Error>(())
         }))

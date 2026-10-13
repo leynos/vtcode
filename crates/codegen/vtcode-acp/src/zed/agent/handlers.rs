@@ -45,11 +45,12 @@ use agent_client_protocol::{
 };
 use futures::StreamExt;
 use serde_json::json;
+use std::fmt::Display;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::Instant;
-use tracing::{debug, info, warn};
+use tracing::{Instrument, debug, info, warn};
 use vtcode_commons::ansi::strip_ansi_codes;
 use vtcode_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
 use vtcode_core::core::message_metadata::MessageMetadata;
@@ -208,11 +209,14 @@ fn incomplete_assistant_message(content: &str, reasoning: &str, error: &str) -> 
     message
 }
 
+#[tracing::instrument(skip_all, fields(boundary = boundary))]
 async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, boundary: &'static str) {
     if let Err(error) = agent.checkpoint_session(session).await {
         warn!(%error, boundary, "Failed to persist ACP session checkpoint");
     }
-    session.update_transcript_path().await;
+    if let Err(error) = session.update_transcript_path().await {
+        warn!(%error, boundary, "Failed to update ACP session transcript path");
+    }
 }
 
 async fn finish_failed_provider_turn(
@@ -222,7 +226,7 @@ async fn finish_failed_provider_turn(
     content: &str,
     reasoning: &str,
     error: &str,
-) -> PromptResponse {
+) -> Result<PromptResponse, SdkError> {
     let IncompleteProviderTurn { message, visible_update, response } =
         IncompleteProviderTurn::from_failure(content, reasoning, error);
     drop(
@@ -230,14 +234,14 @@ async fn finish_failed_provider_turn(
             .send_update(session_id, acp::SessionUpdate::AgentMessageChunk(text_chunk(visible_update)))
             .await,
     );
-    agent.push_message(session, message);
+    push_session_message(agent, session, session_id, message)?;
     persist_session_checkpoint(agent, session, "incomplete_provider_turn").await;
     warn!(
         partial_text_bytes = content.len(),
         partial_reasoning_bytes = reasoning.len(),
         "ACP provider failed to complete the turn"
     );
-    response
+    Ok(response)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -288,6 +292,8 @@ struct GenerationTelemetry {
     started_at: Instant,
     first_output_at: Option<Instant>,
     estimated_output_tokens: u64,
+    runtime: ProviderRequestRuntime,
+    finished: bool,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -306,11 +312,13 @@ fn provider_error_telemetry(error: &LLMError) -> ProviderErrorTelemetry<'_> {
     }
 }
 impl GenerationTelemetry {
-    fn start() -> Self {
+    fn start(runtime: &ProviderRequestRuntime) -> Self {
         Self {
             started_at: Instant::now(),
             first_output_at: None,
             estimated_output_tokens: 0,
+            runtime: runtime.clone(),
+            finished: false,
         }
     }
 
@@ -336,7 +344,7 @@ impl GenerationTelemetry {
         );
     }
 
-    fn complete(&self, runtime: &ProviderRequestRuntime, response: &LLMResponse, retry_count: u32, buffered: bool) {
+    fn complete(&mut self, runtime: &ProviderRequestRuntime, response: &LLMResponse, retry_count: u32, buffered: bool) {
         let elapsed = self.started_at.elapsed();
         let elapsed_ms = duration_millis(elapsed).max(1);
         let (output_tokens, token_count_source) = response
@@ -346,6 +354,12 @@ impl GenerationTelemetry {
             .map(|usage| (u64::from(usage.completion_tokens), "provider"))
             .unwrap_or((self.estimated_output_tokens, "estimated"));
         let tokens_per_second = output_tokens.saturating_mul(1_000) / elapsed_ms;
+        runtime.record_attempt_succeeded(
+            elapsed_ms,
+            self.first_output_at
+                .map(|first| duration_millis(first.duration_since(self.started_at))),
+        );
+        self.finished = true;
         let snapshot = runtime.telemetry_snapshot();
         info!(
             provider = runtime.provider_name(),
@@ -368,12 +382,21 @@ impl GenerationTelemetry {
     }
 
     fn failed(
-        &self,
+        &mut self,
         runtime: &ProviderRequestRuntime,
         retry_count: u32,
         retry_disposition: &'static str,
         error: &LLMError,
     ) {
+        let elapsed_ms = duration_millis(self.started_at.elapsed());
+        let first_output_ms = self
+            .first_output_at
+            .map(|first| duration_millis(first.duration_since(self.started_at)));
+        runtime.record_attempt_failed(elapsed_ms, first_output_ms);
+        if retry_disposition == "retry_scheduled" {
+            runtime.record_retry_scheduled();
+        }
+        self.finished = true;
         let snapshot = runtime.telemetry_snapshot();
         let error_telemetry = provider_error_telemetry(error);
         warn!(
@@ -390,6 +413,19 @@ impl GenerationTelemetry {
             provider_error_status = ?error_telemetry.status,
             "ACP provider generation attempt failed"
         );
+    }
+}
+
+impl Drop for GenerationTelemetry {
+    fn drop(&mut self) {
+        if !self.finished {
+            let first_output_ms = self
+                .first_output_at
+                .map(|first| duration_millis(first.duration_since(self.started_at)));
+            self.runtime
+                .record_attempt_cancelled(duration_millis(self.started_at.elapsed()), first_output_ms);
+            self.finished = true;
+        }
     }
 }
 
@@ -449,7 +485,7 @@ async fn generate_with_retry(
 
     loop {
         let permit = runtime.acquire(cancellation).await?;
-        let mut telemetry = GenerationTelemetry::start();
+        let mut telemetry = GenerationTelemetry::start(runtime);
         let deadline_policy = runtime.deadline_policy();
         let total_deadline = deadline_after(deadline_policy.total_generation);
         let result = tokio::select! {
@@ -461,7 +497,10 @@ async fn generate_with_retry(
                     deadline_policy.total_generation,
                 ))
             }
-            result = provider.generate(request.clone()) => result,
+            result = provider.generate(request.clone()).instrument(tracing::info_span!(
+                "acp_provider_generate",
+                provider = runtime.provider_name()
+            )) => result,
         };
         match result {
             Ok(response) => {
@@ -638,9 +677,9 @@ async fn handle_initialize(
     request_cx: Responder<InitializeResponse>,
 ) -> Result<(), SdkError> {
     let caps = args.client_capabilities.clone();
-    if let Ok(mut guard) = agent.client_capabilities.lock() {
-        *guard = Some(caps);
-    }
+    *agent.client_capabilities.lock().map_err(|error| {
+        SdkError::internal_error().data(format!("Failed to store ACP client capabilities: {error}"))
+    })? = Some(caps);
     if args.protocol_version != acp::ProtocolVersion::V1 {
         warn!(
             requested = %args.protocol_version,
@@ -806,8 +845,10 @@ async fn handle_set_session_config_option(
 }
 
 async fn handle_cancel(agent: Arc<ZedAgent>, notif: CancelNotification) -> Result<(), SdkError> {
-    if let Some(session) = agent.session_handle(&notif.session_id) {
-        session.cancellation.cancel();
+    match agent.session_handle(&notif.session_id) {
+        Ok(Some(session)) => session.cancellation.cancel(),
+        Ok(None) => {}
+        Err(error) => warn!(%error, session_id = %notif.session_id, "Failed to look up ACP session for cancellation"),
     }
     Ok(())
 }
@@ -829,7 +870,7 @@ async fn handle_prompt(
     cx.spawn({
         let agent = Arc::clone(&agent);
         async move {
-            let result = run_prompt(agent, req).await;
+            let result = Box::pin(run_prompt(agent, req)).await;
             if let Err(error) = &result {
                 warn!(%error, "ACP prompt failed");
             }
@@ -844,7 +885,10 @@ async fn handle_prompt(
 }
 
 async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptResponse, SdkError> {
-    let Some(session) = agent.session_handle(&args.session_id) else {
+    let Some(session) = agent
+        .session_handle(&args.session_id)
+        .map_err(|error| session_access_error(&args.session_id, "looking up session", error))?
+    else {
         return Err(SdkError::invalid_params().data(json!({ "reason": "unknown_session" })));
     };
 
@@ -854,7 +898,10 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
 
     let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
     let _turn_guard = TurnGuard::begin(thread)?;
-    if let Some(runtime) = session.workspace_runtime() {
+    if let Some(runtime) = session
+        .workspace_runtime()
+        .map_err(|error| session_access_error(&args.session_id, "reading workspace runtime", error))?
+    {
         runtime.local_tool_registry.safety_gateway().start_turn();
     } else {
         agent.local_tool_registry.safety_gateway().start_turn();
@@ -866,7 +913,10 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         result = agent.resolve_prompt(&session, &args.session_id, &args.prompt) => result?,
     };
 
-    if let Some(hooks) = session.lifecycle_hooks() {
+    if let Some(hooks) = session
+        .lifecycle_hooks()
+        .map_err(|error| session_access_error(&args.session_id, "reading lifecycle hooks", error))?
+    {
         let outcome = hooks
             .run_user_prompt_submit(&args.session_id.to_string(), &user_message)
             .await
@@ -876,7 +926,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         }
         for context in outcome.additional_context {
             if !context.trim().is_empty() {
-                agent.push_message(&session, Message::system(context));
+                push_session_message(&agent, &session, &args.session_id, Message::system(context))?;
             }
         }
         if !outcome.allow_prompt {
@@ -888,8 +938,10 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         }
     }
 
-    agent.push_message(&session, Message::user(user_message.clone()));
-    agent.merge_session_acp_meta(&session, args.meta.clone());
+    push_session_message(&agent, &session, &args.session_id, Message::user(user_message.clone()))?;
+    agent
+        .merge_session_acp_meta(&session, args.meta.clone())
+        .map_err(|error| session_access_error(&args.session_id, "merging client metadata", error))?;
     persist_session_checkpoint(&agent, &session, "user_message").await;
 
     let (session_provider_name, session_model, session_reasoning_effort) = {
@@ -921,6 +973,13 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             workspace_root: Some(
                 session
                     .workspace_runtime()
+                    .map_err(|error| {
+                        session_access_error(
+                            &args.session_id,
+                            "reading workspace runtime for provider configuration",
+                            error,
+                        )
+                    })?
                     .map_or_else(|| agent.config.workspace.clone(), |runtime| runtime.workspace_root.clone()),
             ),
         },
@@ -939,7 +998,9 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
     let mut assistant_reasoning = String::with_capacity(2048);
     let mut stop_hook_active = false;
     let mut stop_hook_checked = false;
-    let client_supports_read_text_file = agent.client_supports_read_text_file();
+    let client_supports_read_text_file = agent
+        .client_supports_read_text_file()
+        .map_err(|error| session_access_error(&args.session_id, "reading client filesystem capabilities", error))?;
     let provider_supports_tools = provider.supports_tools(&session_model);
     let mut primary_agent = {
         let data = session.data.lock().map_err(|_err| SdkError::internal_error())?;
@@ -953,12 +1014,17 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         }
     }
 
-    let mut has_local_tools = agent.session_local_tools_available(&session, &primary_agent);
+    let mut has_local_tools = agent
+        .session_local_tools_available(&session, &primary_agent)
+        .map_err(|error| session_access_error(&args.session_id, "checking local tool availability", error))?;
     let mut tools_allowed = provider_supports_tools && (!enabled_tools.is_empty() || has_local_tools);
     let mut tool_definitions = agent
         .session_tool_definitions(&session, provider_supports_tools, &enabled_tools, &primary_agent)
+        .map_err(|error| session_access_error(&args.session_id, "resolving tool definitions", error))?
         .map(Arc::new);
-    let mut messages = agent.resolved_messages(&session);
+    let mut messages = agent
+        .resolved_messages(&session)
+        .map_err(|error| session_access_error(&args.session_id, "resolving session messages", error))?;
     if agent
         .maybe_compact_session(
             &session,
@@ -970,16 +1036,19 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         .await
         .map_err(|error| SdkError::internal_error().data(error.to_string()))?
     {
-        messages = agent.resolved_messages(&session);
-    }
-    if let Some(controller) = agent.session_subagent_controller(&session) {
-        controller.set_parent_session_id(args.session_id.to_string()).await;
-        controller.set_parent_messages(&messages).await;
-        drop(controller.set_turn_delegation_hints_from_input(&user_message).await);
+        messages = agent
+            .resolved_messages(&session)
+            .map_err(|error| session_access_error(&args.session_id, "resolving compacted session messages", error))?;
     }
     // Stop hooks need a complete draft before a blocking reason can feed back
     // into the same turn. Other lifecycle hooks do not disable streaming.
-    let allow_streaming = should_allow_streaming(supports_streaming, tools_allowed, session.has_stop_hooks());
+    let allow_streaming = should_allow_streaming(
+        supports_streaming,
+        tools_allowed,
+        session
+            .has_stop_hooks()
+            .map_err(|error| session_access_error(&args.session_id, "checking Stop hooks", error))?,
+    );
     if allow_streaming {
         let mut tool_loop_count = 0usize;
         let mut request = LLMRequest {
@@ -1006,7 +1075,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 }
                 Err(error) => return Err(SdkError::internal_error().data(error.to_string())),
             };
-            let mut telemetry = GenerationTelemetry::start();
+            let mut telemetry = GenerationTelemetry::start(&provider_runtime);
             let mut stream_deadlines = StreamDeadlineTracker::new(deadline_policy, Instant::now());
             let next_deadline = stream_deadlines.next();
             let stream_result = tokio::select! {
@@ -1021,7 +1090,10 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         phase.timeout(deadline_policy),
                     ))
                 }
-                result = provider.stream(request.clone()) => result,
+                result = provider.stream(request.clone()).instrument(tracing::info_span!(
+                    "acp_provider_stream_start",
+                    provider = provider_runtime.provider_name()
+                )) => result,
             };
             let mut stream = match stream_result {
                 Ok(stream) => stream,
@@ -1030,7 +1102,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                     drop(permit);
                     if !decision.retryable {
-                        return Ok(finish_failed_provider_turn(
+                        return finish_failed_provider_turn(
                             &agent,
                             &session,
                             &args.session_id,
@@ -1038,7 +1110,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             &assistant_reasoning,
                             &error.to_string(),
                         )
-                        .await);
+                        .await;
                     }
                     let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                     info!(
@@ -1059,7 +1131,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             break 'stream_attempts;
                         }
                         Err(ProviderCallError::Failed(error)) => {
-                            return Ok(finish_failed_provider_turn(
+                            return finish_failed_provider_turn(
                                 &agent,
                                 &session,
                                 &args.session_id,
@@ -1067,7 +1139,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 &assistant_reasoning,
                                 &error,
                             )
-                            .await);
+                            .await;
                         }
                     }
                 }
@@ -1096,7 +1168,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     };
                     if emitted_output {
                         telemetry.failed(&provider_runtime, attempt_index, "partial_output_visible", &error);
-                        return Ok(finish_failed_provider_turn(
+                        return finish_failed_provider_turn(
                             &agent,
                             &session,
                             &args.session_id,
@@ -1104,14 +1176,14 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             &assistant_reasoning,
                             &error.to_string(),
                         )
-                        .await);
+                        .await;
                     }
                     drop(stream);
                     let decision = policy.decision_for_llm_error(&error, attempt_index);
                     telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                     drop(permit);
                     if !decision.retryable {
-                        return Ok(finish_failed_provider_turn(
+                        return finish_failed_provider_turn(
                             &agent,
                             &session,
                             &args.session_id,
@@ -1119,7 +1191,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             &assistant_reasoning,
                             &error.to_string(),
                         )
-                        .await);
+                        .await;
                     }
                     let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                     info!(
@@ -1140,7 +1212,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             break 'stream_attempts;
                         }
                         Err(ProviderCallError::Failed(error)) => {
-                            return Ok(finish_failed_provider_turn(
+                            return finish_failed_provider_turn(
                                 &agent,
                                 &session,
                                 &args.session_id,
@@ -1148,7 +1220,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 &assistant_reasoning,
                                 &error,
                             )
-                            .await);
+                            .await;
                         }
                     }
                 };
@@ -1160,7 +1232,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                         drop(permit);
                         if !decision.retryable {
-                            return Ok(finish_failed_provider_turn(
+                            return finish_failed_provider_turn(
                                 &agent,
                                 &session,
                                 &args.session_id,
@@ -1168,7 +1240,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 &assistant_reasoning,
                                 &error.to_string(),
                             )
-                            .await);
+                            .await;
                         }
                         let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                         info!(
@@ -1189,7 +1261,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 break 'stream_attempts;
                             }
                             Err(ProviderCallError::Failed(error)) => {
-                                return Ok(finish_failed_provider_turn(
+                                return finish_failed_provider_turn(
                                     &agent,
                                     &session,
                                     &args.session_id,
@@ -1197,13 +1269,13 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                     &assistant_reasoning,
                                     &error,
                                 )
-                                .await);
+                                .await;
                             }
                         }
                     }
                     Err(error) => {
                         telemetry.failed(&provider_runtime, attempt_index, "partial_output_visible", &error);
-                        return Ok(finish_failed_provider_turn(
+                        return finish_failed_provider_turn(
                             &agent,
                             &session,
                             &args.session_id,
@@ -1211,7 +1283,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             &assistant_reasoning,
                             &error.to_string(),
                         )
-                        .await);
+                        .await;
                     }
                 };
 
@@ -1302,47 +1374,53 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 &assistant_reasoning,
                                 response.reasoning_details.clone(),
                             );
-                            agent.push_message(&session, assistant_tool_message);
+                            push_session_message(&agent, &session, &args.session_id, assistant_tool_message)?;
                             persist_session_checkpoint(&agent, &session, "assistant_tool_calls").await;
-                            if let Some(controller) = agent.session_subagent_controller(&session) {
-                                controller.set_parent_session_id(args.session_id.to_string()).await;
-                                controller.set_parent_messages(&agent.resolved_messages(&session)).await;
-                            }
-                            let tool_results =
-                                match agent.execute_tool_calls(&session, &args.session_id, &tool_calls).await {
-                                    Ok(results) => results,
-                                    Err(error) => {
-                                        warn!(%error, "Tool execution failed");
-                                        for call in &tool_calls {
-                                            agent.push_message(
-                                                &session,
-                                                Message::tool_response(
-                                                    call.id.clone(),
-                                                    format!("Tool execution was interrupted: {error}"),
-                                                ),
-                                            );
-                                        }
-                                        persist_session_checkpoint(&agent, &session, "interrupted_tool_results").await;
-                                        return Err(error);
+                            let tool_execution =
+                                Box::pin(agent.execute_tool_calls(&session, &args.session_id, &tool_calls));
+                            let tool_results = match tool_execution.await {
+                                Ok(results) => results,
+                                Err(error) => {
+                                    warn!(%error, "Tool execution failed");
+                                    for call in &tool_calls {
+                                        push_session_message(
+                                            &agent,
+                                            &session,
+                                            &args.session_id,
+                                            Message::tool_response(
+                                                call.id.clone(),
+                                                format!("Tool execution was interrupted: {error}"),
+                                            ),
+                                        )?;
                                     }
-                                };
+                                    persist_session_checkpoint(&agent, &session, "interrupted_tool_results").await;
+                                    return Err(error);
+                                }
+                            };
                             for result in tool_results {
-                                agent.push_message(
+                                push_session_message(
+                                    &agent,
                                     &session,
+                                    &args.session_id,
                                     Message::tool_response(result.tool_call_id, result.llm_response),
-                                );
+                                )?;
                             }
                             persist_session_checkpoint(&agent, &session, "tool_results").await;
                             if session.cancellation.is_cancelled() {
                                 stop_reason = acp::StopReason::Cancelled;
                                 break 'stream_attempts;
                             }
-                            messages = agent.resolved_messages(&session);
+                            messages = agent.resolved_messages(&session).map_err(|error| {
+                                session_access_error(&args.session_id, "resolving session messages", error)
+                            })?;
                             primary_agent = {
                                 let data = session.data.lock().map_err(|_err| SdkError::internal_error())?;
                                 data.primary_agent.clone()
                             };
-                            has_local_tools = agent.session_local_tools_available(&session, &primary_agent);
+                            has_local_tools =
+                                agent.session_local_tools_available(&session, &primary_agent).map_err(|error| {
+                                    session_access_error(&args.session_id, "checking local tool availability", error)
+                                })?;
                             tools_allowed = provider_supports_tools && (!enabled_tools.is_empty() || has_local_tools);
                             tool_definitions = agent
                                 .session_tool_definitions(
@@ -1351,6 +1429,9 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                     &enabled_tools,
                                     &primary_agent,
                                 )
+                                .map_err(|error| {
+                                    session_access_error(&args.session_id, "resolving tool definitions", error)
+                                })?
                                 .map(Arc::new);
                             if agent
                                 .maybe_compact_session(
@@ -1363,10 +1444,13 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 .await
                                 .map_err(|error| SdkError::internal_error().data(error.to_string()))?
                             {
-                                messages = agent.resolved_messages(&session);
-                                if let Some(controller) = agent.session_subagent_controller(&session) {
-                                    controller.set_parent_messages(&messages).await;
-                                }
+                                messages = agent.resolved_messages(&session).map_err(|error| {
+                                    session_access_error(
+                                        &args.session_id,
+                                        "resolving compacted session messages",
+                                        error,
+                                    )
+                                })?;
                             }
                             request = LLMRequest {
                                 messages: Arc::new(messages.clone()),
@@ -1409,10 +1493,9 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 .await
                 .map_err(|error| SdkError::internal_error().data(error.to_string()))?
             {
-                messages = agent.resolved_messages(&session);
-                if let Some(controller) = agent.session_subagent_controller(&session) {
-                    controller.set_parent_messages(&messages).await;
-                }
+                messages = agent.resolved_messages(&session).map_err(|error| {
+                    session_access_error(&args.session_id, "resolving compacted session messages", error)
+                })?;
             }
 
             let request = LLMRequest {
@@ -1432,7 +1515,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         break;
                     }
                     Err(ProviderCallError::Failed(error)) => {
-                        return Ok(finish_failed_provider_turn(
+                        return finish_failed_provider_turn(
                             &agent,
                             &session,
                             &args.session_id,
@@ -1440,7 +1523,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             &assistant_reasoning,
                             &error,
                         )
-                        .await);
+                        .await;
                     }
                 };
 
@@ -1463,49 +1546,60 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     break;
                 }
                 tool_loop_count = tool_loop_count.saturating_add(1);
-                agent.push_message(
+                push_session_message(
+                    &agent,
                     &session,
+                    &args.session_id,
                     Message::assistant_with_tools(response.content.clone().unwrap_or_default(), tool_calls.clone()),
-                );
+                )?;
                 persist_session_checkpoint(&agent, &session, "assistant_tool_calls").await;
-                if let Some(controller) = agent.session_subagent_controller(&session) {
-                    controller.set_parent_session_id(args.session_id.to_string()).await;
-                    controller.set_parent_messages(&agent.resolved_messages(&session)).await;
-                }
-                let tool_results = match agent.execute_tool_calls(&session, &args.session_id, &tool_calls).await {
+                let tool_execution = Box::pin(agent.execute_tool_calls(&session, &args.session_id, &tool_calls));
+                let tool_results = match tool_execution.await {
                     Ok(results) => results,
                     Err(error) => {
                         warn!(%error, "Tool execution failed");
                         for call in &tool_calls {
-                            agent.push_message(
+                            push_session_message(
+                                &agent,
                                 &session,
+                                &args.session_id,
                                 Message::tool_response(
                                     call.id.clone(),
                                     format!("Tool execution was interrupted: {error}"),
                                 ),
-                            );
+                            )?;
                         }
                         persist_session_checkpoint(&agent, &session, "interrupted_tool_results").await;
                         return Err(error);
                     }
                 };
                 for result in tool_results {
-                    agent.push_message(&session, Message::tool_response(result.tool_call_id, result.llm_response));
+                    push_session_message(
+                        &agent,
+                        &session,
+                        &args.session_id,
+                        Message::tool_response(result.tool_call_id, result.llm_response),
+                    )?;
                 }
                 persist_session_checkpoint(&agent, &session, "tool_results").await;
                 if session.cancellation.is_cancelled() {
                     stop_reason = acp::StopReason::Cancelled;
                     break;
                 }
-                messages = agent.resolved_messages(&session);
+                messages = agent
+                    .resolved_messages(&session)
+                    .map_err(|error| session_access_error(&args.session_id, "resolving session messages", error))?;
                 primary_agent = {
                     let data = session.data.lock().map_err(|_err| SdkError::internal_error())?;
                     data.primary_agent.clone()
                 };
-                has_local_tools = agent.session_local_tools_available(&session, &primary_agent);
+                has_local_tools = agent.session_local_tools_available(&session, &primary_agent).map_err(|error| {
+                    session_access_error(&args.session_id, "checking local tool availability", error)
+                })?;
                 tools_allowed = provider_supports_tools && (!enabled_tools.is_empty() || has_local_tools);
                 tool_definitions = agent
                     .session_tool_definitions(&session, provider_supports_tools, &enabled_tools, &primary_agent)
+                    .map_err(|error| session_access_error(&args.session_id, "resolving tool definitions", error))?
                     .map(Arc::new);
                 continue;
             }
@@ -1525,9 +1619,16 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 && let Some(reason) = agent.run_stop_hook(&session, &assistant_message, stop_hook_active).await?
             {
                 stop_hook_active = true;
-                agent.push_message(&session, Message::assistant(assistant_message.clone()));
-                agent.push_message(&session, Message::system(reason));
-                messages = agent.resolved_messages(&session);
+                push_session_message(
+                    &agent,
+                    &session,
+                    &args.session_id,
+                    Message::assistant(assistant_message.clone()),
+                )?;
+                push_session_message(&agent, &session, &args.session_id, Message::system(reason))?;
+                messages = agent
+                    .resolved_messages(&session)
+                    .map_err(|error| session_access_error(&args.session_id, "resolving session messages", error))?;
                 assistant_message.clear();
                 assistant_reasoning.clear();
                 stop_hook_checked = false;
@@ -1544,7 +1645,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             && let Some(reason) = agent.run_stop_hook(&session, &assistant_message, stop_hook_active).await?
         {
             warn!(%reason, "ACP Stop hook blocked final turn");
-            agent.push_message(&session, Message::system(reason));
+            push_session_message(&agent, &session, &args.session_id, Message::system(reason))?;
             persist_session_checkpoint(&agent, &session, "stop_hook_blocked").await;
             return Ok(PromptResponse::new(acp::StopReason::Refusal));
         }
@@ -1563,7 +1664,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             if !assistant_reasoning.is_empty() {
                 completed_message.reasoning = Some(assistant_reasoning);
             }
-            agent.push_message(&session, completed_message);
+            push_session_message(&agent, &session, &args.session_id, completed_message)?;
             persist_session_checkpoint(&agent, &session, "assistant_response").await;
         }
     }
@@ -1578,7 +1679,10 @@ impl ZedAgent {
         assistant_message: &str,
         stop_hook_active: bool,
     ) -> Result<Option<String>, SdkError> {
-        let Some(hooks) = session.lifecycle_hooks() else {
+        let Some(hooks) = session.lifecycle_hooks().map_err(|error| {
+            SdkError::internal_error().data(format!("Failed to read lifecycle hooks for ACP Stop hook: {error:#}"))
+        })?
+        else {
             return Ok(None);
         };
         let outcome = hooks
@@ -1590,6 +1694,21 @@ impl ZedAgent {
         }
         Ok(outcome.block_reason)
     }
+}
+
+fn session_access_error(session_id: &acp::SessionId, operation: &str, error: impl Display) -> SdkError {
+    SdkError::internal_error().data(format!("Failed to {operation} for ACP session {session_id}: {error}"))
+}
+
+fn push_session_message(
+    agent: &ZedAgent,
+    session: &SessionHandle,
+    session_id: &acp::SessionId,
+    message: Message,
+) -> Result<(), SdkError> {
+    agent
+        .push_message(session, message)
+        .map_err(|error| session_access_error(session_id, "appending a session message", error))
 }
 
 fn resolve_api_key_for_provider(agent: &ZedAgent, provider: &str) -> String {
@@ -2323,18 +2442,18 @@ mod tests {
             (metadata, archive_path)
         };
         assert_eq!(
-            metadata.acp_meta.as_ref().and_then(|meta| meta.get("client")),
+            metadata.client_metadata.as_ref().and_then(|meta| meta.get("client")),
             Some(&serde_json::json!("wire-test"))
         );
         assert_eq!(
-            metadata.acp_meta.as_ref().and_then(|meta| meta.get("requestId")),
+            metadata.client_metadata.as_ref().and_then(|meta| meta.get("requestId")),
             Some(&serde_json::json!("prompt-1"))
         );
         let persisted: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&archive_path).expect("read persisted wire ACP session archive"))
                 .expect("parse persisted wire ACP session archive");
-        assert_eq!(persisted["metadata"]["acp_meta"]["client"], "wire-test");
-        assert_eq!(persisted["metadata"]["acp_meta"]["requestId"], "prompt-1");
+        assert_eq!(persisted["metadata"]["client_metadata"]["client"], "wire-test");
+        assert_eq!(persisted["metadata"]["client_metadata"]["requestId"], "prompt-1");
         std::fs::remove_file(archive_path).expect("remove persisted wire ACP session archive");
     }
 
@@ -2552,6 +2671,7 @@ mod tests {
                     .await?;
                 let session_handle = history_agent
                     .session_handle(&session.session_id)
+                    .expect("ACP session lookup")
                     .expect("new ACP session handle");
                 for index in 0..12 {
                     let user_context = if index == 0 {
@@ -2559,13 +2679,17 @@ mod tests {
                     } else {
                         format!("older user turn {index}")
                     };
-                    history_agent.push_message(&session_handle, Message::user(user_context));
+                    history_agent
+                        .push_message(&session_handle, Message::user(user_context))
+                        .expect("append user history");
                     let assistant_context = if index == 0 {
                         format!("{OLDEST_CONTEXT_MARKER} old assistant turn {index}")
                     } else {
                         format!("older assistant turn {index}")
                     };
-                    history_agent.push_message(&session_handle, Message::assistant(assistant_context));
+                    history_agent
+                        .push_message(&session_handle, Message::assistant(assistant_context))
+                        .expect("append assistant history");
                 }
 
                 let response = cx
@@ -3173,6 +3297,7 @@ mod tests {
         super::super::super::provider_runtime::ProviderRuntimeRegistry::new(
             &[provider],
             &vtcode_config::TimeoutsConfig::default(),
+            Arc::new(vtcode_core::metrics::MetricsCollector::new()),
         )
         .for_provider("retry-test")
     }
@@ -3190,6 +3315,7 @@ mod tests {
         super::super::super::provider_runtime::ProviderRuntimeRegistry::new(
             &[provider],
             &vtcode_config::TimeoutsConfig::default(),
+            Arc::new(vtcode_core::metrics::MetricsCollector::new()),
         )
         .for_provider("timeout-test")
     }

@@ -41,9 +41,11 @@ impl SubagentController {
     /// Returns status entries for all tracked background subprocesses.
     pub async fn background_status_entries(&self) -> Vec<BackgroundSubprocessEntry> {
         let state = self.state.read().await;
+        let invocation_owner = current_subagent_invocation_context().map(|context| context.parent_session_id);
         state
             .background_children
             .values()
+            .filter(|record| invocation_owner.as_ref().is_none_or(|owner| &record.parent_session_id == owner))
             .map(BackgroundRecord::build_status_entry)
             .collect()
     }
@@ -54,11 +56,16 @@ impl SubagentController {
 
         let entry = {
             let state = self.state.read().await;
-            state
+            let record = state
                 .background_children
                 .get(target)
-                .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?
-                .build_status_entry()
+                .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?;
+            if current_subagent_invocation_context()
+                .is_some_and(|context| context.parent_session_id != record.parent_session_id)
+            {
+                bail!("Unknown background subprocess {target}");
+            }
+            record.build_status_entry()
         };
 
         let preview = if entry.exec_session_id.is_empty() {
@@ -339,6 +346,11 @@ impl SubagentController {
                 .background_children
                 .get_mut(target)
                 .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?;
+            if current_subagent_invocation_context()
+                .is_some_and(|context| context.parent_session_id != record.parent_session_id)
+            {
+                bail!("Unknown background subprocess {target}");
+            }
             record.desired_enabled = false;
             record.status = BackgroundSubprocessStatus::Stopped;
             record.updated_at = Utc::now();
@@ -373,6 +385,11 @@ impl SubagentController {
                 .background_children
                 .get_mut(target)
                 .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?;
+            if current_subagent_invocation_context()
+                .is_some_and(|context| context.parent_session_id != record.parent_session_id)
+            {
+                bail!("Unknown background subprocess {target}");
+            }
             record.desired_enabled = false;
             record.status = BackgroundSubprocessStatus::Stopped;
             record.updated_at = Utc::now();
@@ -400,6 +417,7 @@ impl SubagentController {
 
     /// Returns a thread snapshot for a tracked child subagent by its target id.
     pub async fn snapshot_for_thread(&self, target: &str) -> Result<SubagentThreadSnapshot> {
+        self.ensure_child_owned_by_invocation(target).await?;
         let (
             id,
             session_id,

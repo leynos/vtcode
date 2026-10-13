@@ -389,8 +389,8 @@ ACP continuity uses three independent stores:
    `session/load` and checkpoint user messages, assistant tool requests, tool
    results, completed responses, and incomplete turns. The archive metadata
    also preserves opaque ACP `_meta` values received on `session/new` and
-   `session/prompt` as `acp_meta`; prompt values merge into the session map and
-   replace earlier values with the same key.
+   `session/prompt` as `client_metadata`; prompt values merge into the session
+   map and replace earlier values with the same key.
 3. **ACP security tool audit** – Written to `[acp.audit].path` only when
    `[acp.audit].enabled = true`. This append-only JSONL contains invocation
    metadata, status, timing, and hashes. It does not contain conversation,

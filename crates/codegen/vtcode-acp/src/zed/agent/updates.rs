@@ -22,9 +22,20 @@ impl ZedAgent {
 
     pub(super) async fn send_available_commands_update(&self, session_id: &acp::SessionId) -> Result<(), SdkError> {
         let slash_commands = visible_commands();
-        let workspace = self
+        let workspace_runtime = self
             .session_handle(session_id)
-            .and_then(|session| session.workspace_runtime())
+            .map_err(|error| {
+                SdkError::internal_error().data(format!("Failed to look up ACP session {session_id}: {error:#}"))
+            })?
+            .map(|session| {
+                session.workspace_runtime().map_err(|error| {
+                    SdkError::internal_error()
+                        .data(format!("Failed to read workspace runtime for ACP session {session_id}: {error:#}"))
+                })
+            })
+            .transpose()?;
+        let workspace = workspace_runtime
+            .flatten()
             .map_or_else(|| self.config.workspace.clone(), |runtime| runtime.workspace_root.clone());
         let prompt_templates = discover_prompt_templates(&workspace).await;
         let available_commands = build_available_commands(&slash_commands, &prompt_templates);

@@ -30,10 +30,10 @@ pub const SESSION_DIR_ENV: &str = "VT_SESSION_DIR";
 pub const SESSION_MAX_FILES_ENV: &str = "VT_SESSION_MAX_FILES";
 pub const SESSION_MAX_AGE_DAYS_ENV: &str = "VT_SESSION_MAX_AGE_DAYS";
 pub const SESSION_MAX_SIZE_MB_ENV: &str = "VT_SESSION_MAX_SIZE_MB";
-/// Maximum number of opaque ACP metadata entries retained in a session archive.
-pub const MAX_ACP_META_ENTRIES: usize = 64;
-/// Maximum serialized JSON size of opaque ACP metadata retained in an archive.
-pub const MAX_ACP_META_BYTES: usize = 16 * 1024;
+/// Maximum number of opaque client metadata entries retained in a session archive.
+pub const MAX_CLIENT_METADATA_ENTRIES: usize = 64;
+/// Maximum serialized JSON size of opaque client metadata retained in an archive.
+pub const MAX_CLIENT_METADATA_BYTES: usize = 16 * 1024;
 const DEFAULT_SESSION_MAX_FILES: usize = 100;
 const DEFAULT_SESSION_MAX_AGE_DAYS: u64 = 14;
 const DEFAULT_SESSION_MAX_SIZE_MB: u64 = 100;
@@ -150,13 +150,13 @@ pub struct SessionArchiveMetadata {
     pub provider: String,
     pub theme: String,
     pub reasoning_effort: String,
-    /// Opaque metadata received from ACP session and prompt requests.
+    /// Opaque metadata attached by the client to a session or request.
     ///
-    /// VT Code preserves these values for correlation and diagnostics without
-    /// interpreting their keys or contents. Persisted values are bounded by
-    /// [`MAX_ACP_META_ENTRIES`] and [`MAX_ACP_META_BYTES`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub acp_meta: Option<serde_json::Map<String, serde_json::Value>>,
+    /// VT Code preserves these values for correlation without interpreting
+    /// their keys or contents. Persisted values are bounded by
+    /// [`MAX_CLIENT_METADATA_ENTRIES`] and [`MAX_CLIENT_METADATA_BYTES`].
+    #[serde(default, alias = "acp_meta", skip_serializing_if = "Option::is_none")]
+    pub client_metadata: Option<serde_json::Map<String, serde_json::Value>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub debug_log_path: Option<String>,
     /// Names of skills loaded in this session
@@ -266,7 +266,7 @@ impl SessionArchiveMetadata {
             provider: provider.into(),
             theme: theme.into(),
             reasoning_effort: reasoning_effort.into(),
-            acp_meta: None,
+            client_metadata: None,
             debug_log_path: None,
             loaded_skills: Vec::new(),
             prompt_cache_lineage_id: None,
@@ -341,7 +341,7 @@ impl SessionArchiveMetadata {
             provider: self.provider.clone(),
             theme: self.theme.clone(),
             reasoning_effort: self.reasoning_effort.clone(),
-            acp_meta: self.acp_meta.clone(),
+            client_metadata: self.client_metadata.clone(),
             debug_log_path: self.debug_log_path.clone(),
             loaded_skills: self.loaded_skills.clone(),
             prompt_cache_lineage_id: self.prompt_cache_lineage_id.clone(),
@@ -1689,20 +1689,20 @@ fn truncate_preview(input: &str, max_chars: usize) -> String {
 }
 
 fn compact_snapshot_to_max_bytes(mut snapshot: SessionSnapshot, max_bytes: usize) -> Result<SessionSnapshot> {
-    bound_acp_meta(&mut snapshot.metadata.acp_meta);
+    bound_client_metadata(&mut snapshot.metadata.client_metadata);
     if max_bytes == 0 {
-        let discarded_entries = snapshot.metadata.acp_meta.take().map_or(0, |metadata| metadata.len());
+        let discarded_entries = snapshot.metadata.client_metadata.take().map_or(0, |metadata| metadata.len());
         if discarded_entries > 0 {
             tracing::warn!(
                 discarded_entries,
-                "Dropped ACP metadata because the session archive snapshot budget is zero"
+                "Dropped client metadata because the session archive snapshot budget is zero"
             );
         }
         minimize_snapshot_payload(&mut snapshot);
         return Ok(snapshot);
     }
 
-    let acp_meta_before_compaction = snapshot.metadata.acp_meta.clone();
+    let client_metadata_before_compaction = snapshot.metadata.client_metadata.clone();
     while serde_json::to_vec(&snapshot)?.len() > max_bytes {
         if trim_oldest_snapshot_entries(&mut snapshot) {
             continue;
@@ -1732,14 +1732,14 @@ fn compact_snapshot_to_max_bytes(mut snapshot: SessionSnapshot, max_bytes: usize
         );
     }
 
-    if snapshot.metadata.acp_meta != acp_meta_before_compaction {
-        let original_entries = acp_meta_before_compaction.as_ref().map_or(0, serde_json::Map::len);
-        let retained_entries = snapshot.metadata.acp_meta.as_ref().map_or(0, serde_json::Map::len);
+    if snapshot.metadata.client_metadata != client_metadata_before_compaction {
+        let original_entries = client_metadata_before_compaction.as_ref().map_or(0, serde_json::Map::len);
+        let retained_entries = snapshot.metadata.client_metadata.as_ref().map_or(0, serde_json::Map::len);
         let retained_bytes = snapshot
             .metadata
-            .acp_meta
+            .client_metadata
             .as_ref()
-            .and_then(|metadata| serialized_json_size_at_most(metadata, MAX_ACP_META_BYTES))
+            .and_then(|metadata| serialized_json_size_at_most(metadata, MAX_CLIENT_METADATA_BYTES))
             .unwrap_or(0);
         tracing::warn!(
             original_entries,
@@ -1747,7 +1747,7 @@ fn compact_snapshot_to_max_bytes(mut snapshot: SessionSnapshot, max_bytes: usize
             discarded_entries = original_entries.saturating_sub(retained_entries),
             serialized_bytes = retained_bytes,
             max_snapshot_bytes = max_bytes,
-            "Reduced ACP metadata to fit the session archive snapshot size limit"
+            "Reduced client metadata to fit the session archive snapshot size limit"
         );
     }
 
@@ -1764,7 +1764,7 @@ fn prepare_snapshot_for_write(snapshot: SessionSnapshot) -> Result<Option<Sessio
         Some(max_bytes) => compact_snapshot_to_max_bytes(snapshot, max_bytes)?,
         None => {
             let mut snapshot = snapshot;
-            bound_acp_meta(&mut snapshot.metadata.acp_meta);
+            bound_client_metadata(&mut snapshot.metadata.client_metadata);
             snapshot
         }
     };
@@ -1773,7 +1773,7 @@ fn prepare_snapshot_for_write(snapshot: SessionSnapshot) -> Result<Option<Sessio
 }
 
 fn minimize_snapshot_payload(snapshot: &mut SessionSnapshot) {
-    snapshot.metadata.acp_meta = None;
+    snapshot.metadata.client_metadata = None;
     snapshot.messages.clear();
     snapshot.transcript.clear();
     snapshot.distinct_tools.clear();
@@ -1912,7 +1912,7 @@ fn shrink_session_message(message: &mut SessionMessage) -> bool {
 fn shrink_snapshot_metadata(metadata: &mut SessionArchiveMetadata) -> bool {
     let mut changed = false;
 
-    changed |= shrink_acp_meta(&mut metadata.acp_meta);
+    changed |= shrink_client_metadata(&mut metadata.client_metadata);
     changed |= shrink_string(&mut metadata.workspace_label);
     changed |= shrink_string(&mut metadata.workspace_path);
     changed |= shrink_string(&mut metadata.model);
@@ -1949,30 +1949,30 @@ fn shrink_snapshot_metadata(metadata: &mut SessionArchiveMetadata) -> bool {
     changed
 }
 
-fn bound_acp_meta(metadata: &mut Option<serde_json::Map<String, serde_json::Value>>) -> bool {
+fn bound_client_metadata(metadata: &mut Option<serde_json::Map<String, serde_json::Value>>) -> bool {
     let Some(original) = metadata.take() else {
         return false;
     };
 
     let original_entries = original.len();
     let mut bounded = serde_json::Map::new();
-    let mut changed = original_entries > MAX_ACP_META_ENTRIES;
+    let mut changed = original_entries > MAX_CLIENT_METADATA_ENTRIES;
 
     for (index, (key, value)) in original.into_iter().enumerate() {
-        if index >= MAX_ACP_META_ENTRIES {
+        if index >= MAX_CLIENT_METADATA_ENTRIES {
             changed = true;
             break;
         }
 
         bounded.insert(key.clone(), value);
-        if serialized_json_size_at_most(&bounded, MAX_ACP_META_BYTES).is_none() {
+        if serialized_json_size_at_most(&bounded, MAX_CLIENT_METADATA_BYTES).is_none() {
             bounded.remove(&key);
             changed = true;
         }
     }
 
     let retained_entries = bounded.len();
-    let serialized_bytes = serialized_json_size_at_most(&bounded, MAX_ACP_META_BYTES).unwrap_or(0);
+    let serialized_bytes = serialized_json_size_at_most(&bounded, MAX_CLIENT_METADATA_BYTES).unwrap_or(0);
     if bounded.is_empty() {
         *metadata = (original_entries == 0).then_some(bounded);
     } else {
@@ -1985,16 +1985,16 @@ fn bound_acp_meta(metadata: &mut Option<serde_json::Map<String, serde_json::Valu
             retained_entries,
             discarded_entries = original_entries.saturating_sub(retained_entries),
             serialized_bytes,
-            max_entries = MAX_ACP_META_ENTRIES,
-            max_bytes = MAX_ACP_META_BYTES,
-            "Truncated ACP metadata to session archive limits"
+            max_entries = MAX_CLIENT_METADATA_ENTRIES,
+            max_bytes = MAX_CLIENT_METADATA_BYTES,
+            "Truncated client metadata to session archive limits"
         );
     }
 
     changed
 }
 
-fn shrink_acp_meta(metadata: &mut Option<serde_json::Map<String, serde_json::Value>>) -> bool {
+fn shrink_client_metadata(metadata: &mut Option<serde_json::Map<String, serde_json::Value>>) -> bool {
     let Some(entries) = metadata.as_mut() else {
         return false;
     };
@@ -2140,6 +2140,26 @@ mod metadata_compat_tests {
 
         let value = serde_json::to_value(&metadata).expect("serialize metadata");
         assert!(value.get("primary_agent").is_none());
+    }
+
+    #[test]
+    fn client_metadata_reads_legacy_acp_archive_field() {
+        let metadata = serde_json::from_value::<SessionArchiveMetadata>(serde_json::json!({
+            "workspace_label": "ws",
+            "workspace_path": "/tmp/ws",
+            "model": "gpt-5.6-sol",
+            "provider": "openai",
+            "theme": "test",
+            "reasoning_effort": "low",
+            "acp_meta": {"requestId": "legacy-request"}
+        }))
+        .expect("deserialize archive with legacy ACP metadata field");
+
+        assert_eq!(metadata.client_metadata.as_ref().unwrap()["requestId"], "legacy-request");
+
+        let value = serde_json::to_value(metadata).expect("serialize generic client metadata");
+        assert_eq!(value["client_metadata"]["requestId"], "legacy-request");
+        assert!(value.get("acp_meta").is_none());
     }
 
     #[test]

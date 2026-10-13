@@ -4,6 +4,7 @@ use crate::permissions::{AcpPermissionPrompter, DefaultPermissionPrompter};
 use crate::tooling::AcpToolRegistry;
 use crate::zed::connection::ConnectionHandle;
 use crate::zed::provider_runtime::ProviderRuntimeRegistry;
+use anyhow::Context;
 use hashbrown::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
@@ -175,6 +176,7 @@ async fn attach_acp_subagent_controller(
 /// initialized before the local registry is projected into ACP definitions.
 /// The client is owned exclusively by this parent registry; subagent
 /// controllers construct their own clients from their resolved child config.
+#[tracing::instrument(skip_all, fields(mcp_enabled = vt_cfg.is_some_and(|config| config.mcp.enabled)))]
 async fn attach_acp_mcp_client(
     registry: &CoreToolRegistry,
     vt_cfg: Option<&VTCodeConfig>,
@@ -464,6 +466,7 @@ impl ZedAgent {
                 drop(workspace_runtimes.insert(canonical_workspace, runtime_cell));
             }
         }
+        let provider_metrics = core_tool_registry.metrics_collector();
 
         Self {
             config,
@@ -482,7 +485,7 @@ impl ZedAgent {
             primary_agents,
             tool_loop_limit,
             tool_call_delay,
-            provider_runtime: ProviderRuntimeRegistry::new(custom_providers, &provider_timeouts),
+            provider_runtime: ProviderRuntimeRegistry::new(custom_providers, &provider_timeouts, provider_metrics),
             provider_timeouts,
             vt_config: vt_cfg.cloned().map(Box::new),
             audit_logger,
@@ -492,11 +495,12 @@ impl ZedAgent {
         }
     }
 
-    fn session_subagent_controller(&self, session: &SessionHandle) -> Option<Arc<SubagentController>> {
-        session
+    fn session_subagent_controller(&self, session: &SessionHandle) -> anyhow::Result<Option<Arc<SubagentController>>> {
+        Ok(session
             .workspace_runtime()
+            .context("reading ACP session workspace runtime for subagent controller")?
             .and_then(|runtime| runtime.local_tool_registry.subagent_controller())
-            .or_else(|| self.local_tool_registry.subagent_controller())
+            .or_else(|| self.local_tool_registry.subagent_controller()))
     }
 
     /// Attach the live SACP `cx` handle. Called once after the SACP

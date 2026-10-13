@@ -31,6 +31,23 @@ pub use sdk_metrics::SdkMetrics;
 pub use security_metrics::SecurityMetrics;
 pub use skill_metrics::SkillMetrics;
 
+/// Bounded aggregate metrics for model-provider request attempts.
+///
+/// Provider names are deliberately not labels here: user-defined provider
+/// names would create unbounded Prometheus series cardinality.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProviderRequestMetrics {
+    pub attempts_started: u64,
+    pub attempts_succeeded: u64,
+    pub attempts_failed: u64,
+    pub attempts_cancelled: u64,
+    pub retries_scheduled: u64,
+    pub attempts_in_flight: u64,
+    pub total_duration_ms: u64,
+    pub first_output_samples: u64,
+    pub total_time_to_first_output_ms: u64,
+}
+
 /// Central metrics collector for all MCP execution activities
 #[derive(Debug, Clone)]
 pub struct MetricsCollector {
@@ -41,6 +58,7 @@ pub struct MetricsCollector {
     planning: Arc<Mutex<PlanningValidationMetrics>>,
     skills: Arc<Mutex<SkillMetrics>>,
     security: Arc<Mutex<SecurityMetrics>>,
+    provider_requests: Arc<Mutex<ProviderRequestMetrics>>,
     start_time: Instant,
 }
 
@@ -55,6 +73,7 @@ pub struct MetricsSummary {
     pub planning: PlanningValidationMetrics,
     pub skills: SkillMetrics,
     pub security: SecurityMetrics,
+    pub provider_requests: ProviderRequestMetrics,
 }
 
 impl MetricsCollector {
@@ -68,8 +87,61 @@ impl MetricsCollector {
             planning: Arc::new(Mutex::new(PlanningValidationMetrics::default())),
             skills: Arc::new(Mutex::new(SkillMetrics::new())),
             security: Arc::new(Mutex::new(SecurityMetrics::new())),
+            provider_requests: Arc::new(Mutex::new(ProviderRequestMetrics::default())),
             start_time: Instant::now(),
         }
+    }
+
+    /// Record a provider request attempt and update its active gauge.
+    pub fn record_provider_attempt_started(&self) {
+        let mut metrics = self.provider_requests.lock();
+        metrics.attempts_started = metrics.attempts_started.saturating_add(1);
+        metrics.attempts_in_flight = metrics.attempts_in_flight.saturating_add(1);
+    }
+
+    /// Record a completed provider request attempt and its bounded timing totals.
+    pub fn record_provider_attempt_succeeded(&self, duration_ms: u64, first_output_ms: Option<u64>) {
+        let mut metrics = self.provider_requests.lock();
+        metrics.attempts_succeeded = metrics.attempts_succeeded.saturating_add(1);
+        metrics.total_duration_ms = metrics.total_duration_ms.saturating_add(duration_ms);
+        if let Some(first_output_ms) = first_output_ms {
+            metrics.first_output_samples = metrics.first_output_samples.saturating_add(1);
+            metrics.total_time_to_first_output_ms =
+                metrics.total_time_to_first_output_ms.saturating_add(first_output_ms);
+        }
+    }
+
+    /// Record a failed or cancelled provider request attempt and its timing total.
+    pub fn record_provider_attempt_failed(&self, duration_ms: u64, cancelled: bool, first_output_ms: Option<u64>) {
+        let mut metrics = self.provider_requests.lock();
+        if cancelled {
+            metrics.attempts_cancelled = metrics.attempts_cancelled.saturating_add(1);
+        } else {
+            metrics.attempts_failed = metrics.attempts_failed.saturating_add(1);
+        }
+        metrics.total_duration_ms = metrics.total_duration_ms.saturating_add(duration_ms);
+        if let Some(first_output_ms) = first_output_ms {
+            metrics.first_output_samples = metrics.first_output_samples.saturating_add(1);
+            metrics.total_time_to_first_output_ms =
+                metrics.total_time_to_first_output_ms.saturating_add(first_output_ms);
+        }
+    }
+
+    /// Record a provider retry scheduled after a retryable failure.
+    pub fn record_provider_retry_scheduled(&self) {
+        let mut metrics = self.provider_requests.lock();
+        metrics.retries_scheduled = metrics.retries_scheduled.saturating_add(1);
+    }
+
+    /// Mark a provider request attempt as no longer active.
+    pub fn record_provider_attempt_finished(&self) {
+        let mut metrics = self.provider_requests.lock();
+        metrics.attempts_in_flight = metrics.attempts_in_flight.saturating_sub(1);
+    }
+
+    /// Get the bounded aggregate provider-request metrics snapshot.
+    pub fn get_provider_request_metrics(&self) -> ProviderRequestMetrics {
+        self.provider_requests.lock().clone()
     }
 
     // ========== Discovery Metrics ==========
@@ -314,6 +386,7 @@ impl MetricsCollector {
             planning: self.get_planning_metrics(),
             skills: self.get_skill_metrics(),
             security: self.get_security_metrics(),
+            provider_requests: self.get_provider_request_metrics(),
         }
     }
 
@@ -333,6 +406,7 @@ impl MetricsCollector {
         let planning = self.get_planning_metrics();
         let skills = self.get_skill_metrics();
         let security = self.get_security_metrics();
+        let provider_requests = self.get_provider_request_metrics();
 
         let mut output = String::new();
 
@@ -469,6 +543,47 @@ impl MetricsCollector {
             security.pii_detections
         );
 
+        // Aggregate provider metrics deliberately omit provider-name labels.
+        let _ = write!(
+            output,
+            "# HELP vtcode_provider_attempts_started_total Provider request attempts started\n\
+             # TYPE vtcode_provider_attempts_started_total counter\n\
+             vtcode_provider_attempts_started_total {}\n\n\
+             # HELP vtcode_provider_attempts_succeeded_total Successful provider request attempts\n\
+             # TYPE vtcode_provider_attempts_succeeded_total counter\n\
+             vtcode_provider_attempts_succeeded_total {}\n\n\
+             # HELP vtcode_provider_attempts_failed_total Failed provider request attempts\n\
+             # TYPE vtcode_provider_attempts_failed_total counter\n\
+             vtcode_provider_attempts_failed_total {}\n\n\
+             # HELP vtcode_provider_attempts_cancelled_total Cancelled provider request attempts\n\
+             # TYPE vtcode_provider_attempts_cancelled_total counter\n\
+             vtcode_provider_attempts_cancelled_total {}\n\n\
+             # HELP vtcode_provider_retries_scheduled_total Retryable provider failures followed by a retry\n\
+             # TYPE vtcode_provider_retries_scheduled_total counter\n\
+             vtcode_provider_retries_scheduled_total {}\n\n\
+             # HELP vtcode_provider_attempts_in_flight Provider requests in progress, including router admission wait\n\
+             # TYPE vtcode_provider_attempts_in_flight gauge\n\
+             vtcode_provider_attempts_in_flight {}\n\n\
+             # HELP vtcode_provider_attempt_duration_ms_total Cumulative provider request attempt duration in milliseconds\n\
+             # TYPE vtcode_provider_attempt_duration_ms_total counter\n\
+             vtcode_provider_attempt_duration_ms_total {}\n\n\
+             # HELP vtcode_provider_time_to_first_output_ms_total Cumulative observed provider time to first output in milliseconds\n\
+             # TYPE vtcode_provider_time_to_first_output_ms_total counter\n\
+             vtcode_provider_time_to_first_output_ms_total {}\n\n\
+             # HELP vtcode_provider_time_to_first_output_observations_total Provider attempts with a first-output observation\n\
+             # TYPE vtcode_provider_time_to_first_output_observations_total counter\n\
+             vtcode_provider_time_to_first_output_observations_total {}\n\n",
+            provider_requests.attempts_started,
+            provider_requests.attempts_succeeded,
+            provider_requests.attempts_failed,
+            provider_requests.attempts_cancelled,
+            provider_requests.retries_scheduled,
+            provider_requests.attempts_in_flight,
+            provider_requests.total_duration_ms,
+            provider_requests.total_time_to_first_output_ms,
+            provider_requests.first_output_samples,
+        );
+
         let _ = write!(
             output,
             "# HELP vtcode_tokens_created_total Total PII tokens created\n\
@@ -558,6 +673,34 @@ mod tests {
         assert!(prometheus.contains("vtcode_execution_total"));
         assert!(prometheus.contains("vtcode_execution_duration_ms"));
         assert!(prometheus.contains("vtcode_retry_attempts_total"));
+    }
+
+    #[test]
+    fn provider_request_metrics_export_bounded_aggregate_counts_and_timings() {
+        let collector = MetricsCollector::new();
+        collector.record_provider_attempt_started();
+        collector.record_provider_attempt_failed(12, false, Some(3));
+        collector.record_provider_retry_scheduled();
+        collector.record_provider_attempt_finished();
+        collector.record_provider_attempt_started();
+        collector.record_provider_attempt_succeeded(34, Some(7));
+        collector.record_provider_attempt_finished();
+
+        let metrics = collector.get_provider_request_metrics();
+        assert_eq!(metrics.attempts_started, 2);
+        assert_eq!(metrics.attempts_failed, 1);
+        assert_eq!(metrics.attempts_succeeded, 1);
+        assert_eq!(metrics.retries_scheduled, 1);
+        assert_eq!(metrics.attempts_in_flight, 0);
+        assert_eq!(metrics.total_duration_ms, 46);
+        assert_eq!(metrics.first_output_samples, 2);
+        assert_eq!(metrics.total_time_to_first_output_ms, 10);
+
+        let prometheus = collector.export_prometheus();
+        assert!(prometheus.contains("vtcode_provider_attempts_started_total 2"));
+        assert!(prometheus.contains("vtcode_provider_attempts_in_flight 0"));
+        assert!(prometheus.contains("vtcode_provider_time_to_first_output_ms_total 10"));
+        assert!(!prometheus.contains("provider=\""));
     }
 
     #[test]
