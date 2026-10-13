@@ -284,6 +284,8 @@ struct StreamDeadlineTracker {
 }
 
 struct GenerationTelemetry {
+    // Starts before calling the provider router, so first-token and total
+    // latency include any wait at the router's shared admission gate.
     started_at: Instant,
     first_output_at: Option<Instant>,
     estimated_output_tokens: u64,
@@ -329,9 +331,9 @@ impl GenerationTelemetry {
             provider = runtime.provider_name(),
             time_to_first_token_ms = duration_millis(now.duration_since(self.started_at)),
             retry_count,
-            queue_depth = snapshot.queue_depth,
-            active_provider_permits = snapshot.active_permits,
-            permit_limit = ?snapshot.permit_limit,
+            acp_local_queue_depth = snapshot.acp_local_queue_depth,
+            active_acp_requests = snapshot.active_acp_requests,
+            configured_provider_limit = ?snapshot.configured_provider_limit,
             circuit_breaker_state = snapshot.circuit_breaker_state,
             "ACP provider produced its first output"
         );
@@ -360,9 +362,9 @@ impl GenerationTelemetry {
             token_count_source,
             tokens_per_second,
             retry_count,
-            queue_depth = snapshot.queue_depth,
-            active_provider_permits = snapshot.active_permits,
-            permit_limit = ?snapshot.permit_limit,
+            acp_local_queue_depth = snapshot.acp_local_queue_depth,
+            active_acp_requests = snapshot.active_acp_requests,
+            configured_provider_limit = ?snapshot.configured_provider_limit,
             circuit_breaker_state = snapshot.circuit_breaker_state,
             "ACP provider generation completed"
         );
@@ -383,9 +385,9 @@ impl GenerationTelemetry {
             retry_count,
             max_retries = runtime.retry_policy().max_attempts.saturating_sub(1),
             retry_disposition,
-            queue_depth = snapshot.queue_depth,
-            active_provider_permits = snapshot.active_permits,
-            permit_limit = ?snapshot.permit_limit,
+            acp_local_queue_depth = snapshot.acp_local_queue_depth,
+            active_acp_requests = snapshot.active_acp_requests,
+            configured_provider_limit = ?snapshot.configured_provider_limit,
             circuit_breaker_state = snapshot.circuit_breaker_state,
             provider_error_code = ?error_telemetry.code,
             provider_error_status = ?error_telemetry.status,
@@ -1299,11 +1301,12 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                                 break 'stream_attempts;
                             }
                             tool_loop_count = tool_loop_count.saturating_add(1);
-                            let mut assistant_tool_message =
-                                Message::assistant_with_tools(assistant_message.clone(), tool_calls.clone());
-                            if !assistant_reasoning.is_empty() {
-                                assistant_tool_message.reasoning = Some(assistant_reasoning.clone());
-                            }
+                            let assistant_tool_message = assistant_tool_call_message(
+                                assistant_message.clone(),
+                                tool_calls.clone(),
+                                &assistant_reasoning,
+                                response.reasoning_details.clone(),
+                            );
                             agent.push_message(&session, assistant_tool_message);
                             persist_session_checkpoint(&agent, &session, "assistant_tool_calls").await;
                             if let Some(controller) = agent.session_subagent_controller(&session) {
@@ -1612,6 +1615,28 @@ fn should_emit_buffered_final_chunk(allow_streaming: bool) -> bool {
     !allow_streaming
 }
 
+fn assistant_tool_call_message(
+    content: String,
+    tool_calls: Vec<vtcode_core::llm::provider::ToolCall>,
+    reasoning: &str,
+    reasoning_details: Option<Vec<String>>,
+) -> Message {
+    let reasoning_details = reasoning_details.map(|details| {
+        details
+            .into_iter()
+            .map(|detail| match serde_json::from_str::<serde_json::Value>(&detail) {
+                Ok(value) if value.is_object() || value.is_array() => value,
+                _ => serde_json::Value::String(detail),
+            })
+            .collect()
+    });
+    let mut message = Message::assistant_with_tools_and_reasoning(content, tool_calls, reasoning_details);
+    if !reasoning.is_empty() {
+        message.reasoning = Some(reasoning.to_owned());
+    }
+    message
+}
+
 #[cfg(test)]
 mod tests {
     use agent_client_protocol::{Channel, on_receive_notification};
@@ -1660,6 +1685,38 @@ mod tests {
         assert!(capabilities.load_session);
         assert!(capabilities.session_capabilities.list.is_some());
         assert!(capabilities.session_capabilities.resume.is_some());
+    }
+
+    #[test]
+    fn assistant_tool_call_continuation_preserves_signed_reasoning_details() {
+        let signed_reasoning = serde_json::json!({
+            "type": "reasoning.encrypted",
+            "data": "opaque-reasoning-payload",
+            "signature": "provider-signature",
+        });
+        let array_reasoning = serde_json::json!(["reasoning.encrypted", {"data": "opaque-array-payload"}]);
+        let raw_reasoning = "provider-native reasoning detail";
+        let message = assistant_tool_call_message(
+            "continue with the requested tool".to_string(),
+            vec![vtcode_core::llm::provider::ToolCall::function_with_namespace(
+                "call-1".to_string(),
+                None,
+                "read_file".to_string(),
+                "{\"path\":\"src/lib.rs\"}".to_string(),
+            )],
+            "private reasoning",
+            Some(vec![
+                signed_reasoning.to_string(),
+                array_reasoning.to_string(),
+                raw_reasoning.to_string(),
+            ]),
+        );
+
+        assert_eq!(message.reasoning.as_deref(), Some("private reasoning"));
+        let archived = serde_json::to_value(message).expect("assistant continuation should serialize");
+        assert_eq!(archived["reasoning_details"][0], signed_reasoning);
+        assert_eq!(archived["reasoning_details"][1], array_reasoning);
+        assert_eq!(archived["reasoning_details"][2], serde_json::json!(raw_reasoning));
     }
     use vtcode_core::llm::provider::{LLMError, LLMErrorMetadata};
 

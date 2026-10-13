@@ -22,6 +22,7 @@ pub(crate) struct ToolCallResult {
     pub(crate) tool_call_id: String,
     pub(crate) llm_response: String,
     pub(crate) audit_status: vtcode_safety::audit_log::ToolAuditStatus,
+    pub(crate) audit_arguments: Vec<u8>,
 }
 
 /// Cancellation signal that can be checked synchronously or awaited.

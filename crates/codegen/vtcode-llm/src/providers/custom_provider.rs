@@ -1,15 +1,89 @@
 use async_trait::async_trait;
+use futures::StreamExt;
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex, Weak};
+use std::time::Duration;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use vtcode_commons::llm::BackendKind;
 use vtcode_config::core::AnthropicConfig;
 use vtcode_config::core::{CustomProviderApiFormat, CustomProviderConfig, ResolvedCustomProviderProfile};
 use vtcode_config::{ModelConfig, OpenAIConfig, PromptCachingConfig, TimeoutsConfig};
 
 use crate::provider::{
-    LLMError, LLMProvider, LLMRequest, LLMResponse, LLMStream, Message, ResponsesCompactionOptions, SamplingOverrides,
+    LLMError, LLMNormalizedStream, LLMProvider, LLMRequest, LLMResponse, LLMStream, Message,
+    ResponsesCompactionOptions, SamplingOverrides,
 };
 use crate::providers::anthropic::{self, AnthropicProvider};
 use crate::providers::common::{resolve_model, validate_request_common};
 use crate::providers::openai::{CustomProviderAuthHandle, OpenAIProvider};
+
+static SHARED_PROVIDER_SEMAPHORES: LazyLock<Mutex<HashMap<String, Weak<Semaphore>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+#[derive(Clone)]
+struct CustomProviderAdmission {
+    provider_name: Arc<str>,
+    semaphore: Option<Arc<Semaphore>>,
+    queue_timeout: Duration,
+}
+
+impl CustomProviderAdmission {
+    fn new(config: &CustomProviderConfig, effective_base_url: &str) -> Self {
+        let provider_name: Arc<str> = Arc::from(config.name.as_str());
+        let semaphore = config.request_policy.max_in_flight_requests.map(|limit| {
+            let identity = serde_json::to_vec(&(config, effective_base_url)).ok();
+            match identity {
+                Some(identity) => {
+                    let key = vtcode_commons::utils::calculate_sha256(&identity);
+                    let mut shared = SHARED_PROVIDER_SEMAPHORES
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    shared.retain(|_, semaphore| semaphore.strong_count() > 0);
+                    if let Some(semaphore) = shared.get(&key).and_then(Weak::upgrade) {
+                        semaphore
+                    } else {
+                        let semaphore = Arc::new(Semaphore::new(limit));
+                        shared.insert(key, Arc::downgrade(&semaphore));
+                        semaphore
+                    }
+                }
+                None => {
+                    tracing::warn!(
+                        provider = %provider_name,
+                        "Unable to identify custom provider configuration for shared request admission; using an isolated gate"
+                    );
+                    Arc::new(Semaphore::new(limit))
+                }
+            }
+        });
+
+        Self {
+            provider_name,
+            semaphore,
+            queue_timeout: Duration::from_secs(config.request_policy.queue_timeout_seconds),
+        }
+    }
+
+    async fn acquire(&self) -> Result<Option<OwnedSemaphorePermit>, LLMError> {
+        let Some(semaphore) = &self.semaphore else {
+            return Ok(None);
+        };
+        match tokio::time::timeout(self.queue_timeout, Arc::clone(semaphore).acquire_owned()).await {
+            Ok(Ok(permit)) => Ok(Some(permit)),
+            Ok(Err(_closed)) => Err(LLMError::Provider {
+                message: format!("custom provider '{}' request admission is closed", self.provider_name),
+                metadata: None,
+            }),
+            Err(_elapsed) => Err(LLMError::Provider {
+                message: format!(
+                    "custom provider '{}' remained at its configured request limit for {:?}",
+                    self.provider_name, self.queue_timeout,
+                ),
+                metadata: None,
+            }),
+        }
+    }
+}
 
 /// Profile-aware backend router for custom providers.
 pub struct CustomProviderBackendRouter {
@@ -18,6 +92,7 @@ pub struct CustomProviderBackendRouter {
     default_model: String,
     supported_models: Vec<String>,
     custom_config: CustomProviderConfig,
+    request_admission: CustomProviderAdmission,
     anthropic_config: AnthropicConfig,
     openai_auto: OpenAIProvider,
     openai_chat: OpenAIProvider,
@@ -43,6 +118,7 @@ impl CustomProviderBackendRouter {
         custom_provider_auth: Option<CustomProviderAuthHandle>,
     ) -> Self {
         let provider_key = custom_config.name.clone();
+        let request_admission = CustomProviderAdmission::new(&custom_config, &base_url);
         let display_name = custom_config.display_name.clone();
         let supported_models = custom_config.effective_models();
         let configured_default = resolve_model(model, &custom_config.model);
@@ -114,6 +190,7 @@ impl CustomProviderBackendRouter {
             default_model,
             supported_models,
             custom_config,
+            request_admission,
             anthropic_config,
             openai_auto,
             openai_chat,
@@ -308,6 +385,7 @@ impl LLMProvider for CustomProviderBackendRouter {
     }
 
     async fn compact_history(&self, model: &str, history: &[Message]) -> Result<Vec<Message>, LLMError> {
+        let _permit = self.request_admission.acquire().await?;
         self.backend_for_model(model)
             .compact_history(self.resolved_model(model), history)
             .await
@@ -319,20 +397,36 @@ impl LLMProvider for CustomProviderBackendRouter {
         history: &[Message],
         options: &ResponsesCompactionOptions,
     ) -> Result<Vec<Message>, LLMError> {
+        let _permit = self.request_admission.acquire().await?;
         self.backend_for_model(model)
             .compact_history_with_options(self.resolved_model(model), history, options)
             .await
     }
 
     async fn stream(&self, request: LLMRequest) -> Result<LLMStream, LLMError> {
-        self.backend_for_model(&request.model).stream(request).await
+        let permit = self.request_admission.acquire().await?;
+        let mut stream = self.backend_for_model(&request.model).stream(request).await?;
+        Ok(Box::pin(async_stream::stream! {
+            let _permit = permit;
+            while let Some(event) = stream.next().await {
+                yield event;
+            }
+        }))
     }
 
-    async fn stream_normalized(&self, request: LLMRequest) -> Result<crate::provider::LLMNormalizedStream, LLMError> {
-        self.backend_for_model(&request.model).stream_normalized(request).await
+    async fn stream_normalized(&self, request: LLMRequest) -> Result<LLMNormalizedStream, LLMError> {
+        let permit = self.request_admission.acquire().await?;
+        let mut stream = self.backend_for_model(&request.model).stream_normalized(request).await?;
+        Ok(Box::pin(async_stream::stream! {
+            let _permit = permit;
+            while let Some(event) = stream.next().await {
+                yield event;
+            }
+        }))
     }
 
     async fn generate(&self, request: LLMRequest) -> Result<LLMResponse, LLMError> {
+        let _permit = self.request_admission.acquire().await?;
         self.backend_for_model(&request.model).generate(request).await
     }
 
@@ -366,7 +460,7 @@ impl LLMProvider for CustomProviderBackendRouter {
 
 #[cfg(test)]
 mod tests {
-    use super::CustomProviderBackendRouter;
+    use super::{CustomProviderAdmission, CustomProviderBackendRouter};
     use crate::provider::{
         LLMProvider, LLMRequest, LLMStreamEvent, Message, SamplingOverrides, ToolCall, ToolDefinition,
     };
@@ -375,11 +469,12 @@ mod tests {
     use serde_json::{Value, json};
     use std::path::Path;
     use std::sync::{Arc, Mutex};
+    use std::time::Duration;
     use tempfile::TempDir;
     use vtcode_config::constants::models;
     use vtcode_config::core::{
         AnthropicConfig, CustomProviderApiFormat, CustomProviderCommandAuthConfig, CustomProviderConfig,
-        CustomProviderProfileConfig,
+        CustomProviderProfileConfig, CustomProviderRequestPolicyConfig,
     };
     use vtcode_config::types::ReasoningEffortLevel;
     use wiremock::matchers::{method, path};
@@ -417,6 +512,83 @@ mod tests {
             None,
             None,
         )
+    }
+
+    fn admission_router(base_url: &str) -> CustomProviderBackendRouter {
+        CustomProviderBackendRouter::from_config(
+            CustomProviderConfig {
+                name: "shared-admission-regression".to_string(),
+                display_name: "Shared Admission Regression".to_string(),
+                base_url: base_url.to_string(),
+                request_policy: CustomProviderRequestPolicyConfig {
+                    max_in_flight_requests: Some(1),
+                    queue_timeout_seconds: 5,
+                    ..CustomProviderRequestPolicyConfig::default()
+                },
+                ..CustomProviderConfig::default()
+            },
+            None,
+            None,
+            base_url.to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+    }
+
+    #[tokio::test]
+    async fn router_instances_share_admission_for_the_same_endpoint_and_isolate_other_endpoints() {
+        let first_router = admission_router("https://same.example/v1");
+        let second_router = admission_router("https://same.example/v1");
+        let other_endpoint = admission_router("https://other.example/v1");
+        let first_permit = first_router
+            .request_admission
+            .acquire()
+            .await
+            .expect("first router should acquire the configured permit");
+
+        let second_admission = second_router.request_admission.clone();
+        let queued = tokio::spawn(async move { second_admission.acquire().await });
+        tokio::task::yield_now().await;
+        assert!(!queued.is_finished(), "the second router must share the first router's limit");
+
+        let separate_permit =
+            tokio::time::timeout(Duration::from_millis(100), other_endpoint.request_admission.acquire())
+                .await
+                .expect("a different endpoint should have an independent limit")
+                .expect("different endpoint permit");
+
+        drop(first_permit);
+        let second_permit = tokio::time::timeout(Duration::from_secs(1), queued)
+            .await
+            .expect("shared permit should be released")
+            .expect("queued task")
+            .expect("second router should acquire the released permit");
+        drop((second_permit, separate_permit));
+    }
+
+    #[tokio::test]
+    async fn request_admission_reports_queue_timeout_after_the_configured_wait() {
+        let admission = CustomProviderAdmission {
+            provider_name: Arc::from("queue-timeout-regression"),
+            semaphore: Some(Arc::new(tokio::sync::Semaphore::new(1))),
+            queue_timeout: Duration::from_millis(5),
+        };
+        let _held = admission.acquire().await.expect("first request permit");
+
+        let error = admission
+            .acquire()
+            .await
+            .expect_err("second request should time out in the queue");
+
+        assert!(matches!(
+            error,
+            crate::provider::LLMError::Provider { message, .. }
+                if message.contains("configured request limit")
+        ));
     }
 
     #[test]

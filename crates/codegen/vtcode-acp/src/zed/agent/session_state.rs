@@ -1,7 +1,9 @@
 use super::ZedAgent;
 use crate::acp;
-use crate::workspace::{DefaultWorkspaceTrustSynchronizer, WorkspaceTrustSynchronizer};
+use crate::workspace::{WorkspaceTrustSyncOutcome, WorkspaceTrustSynchronizer};
 use anyhow::Context;
+use std::collections::BTreeMap;
+use std::io::{self, Write};
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -17,8 +19,8 @@ use vtcode_core::llm::ModelResolver;
 use vtcode_core::llm::factory::get_factory;
 use vtcode_core::llm::provider::{FinishReason, Message, MessageRole};
 use vtcode_core::utils::session_archive::{
-    SessionArchive, SessionListing, SessionMessage, SessionProgressArgs, find_session_by_identifier,
-    history_persistence_enabled, list_recent_sessions, session_listing_matches_workspace, session_workspace_path,
+    MAX_ACP_META_BYTES, MAX_ACP_META_ENTRIES, SessionArchive, SessionListing, SessionMessage, SessionProgressArgs,
+    find_session_by_identifier, history_persistence_enabled, list_recent_sessions, session_workspace_path,
 };
 
 use super::super::constants::SESSION_PREFIX;
@@ -37,6 +39,10 @@ impl ZedAgent {
         let Some(hooks) = session.lifecycle_hooks() else {
             return Ok(());
         };
+        let workspace = session
+            .workspace_runtime()
+            .map_or_else(|| self.config.workspace.clone(), |runtime| runtime.workspace_root.clone());
+        vtcode_core::hooks::restore_workspace_hook_approval(&hooks, &workspace).await;
         let outcome = hooks.run_session_start().await?;
         for message in outcome.messages {
             warn!(level = ?message.level, message = %message.text, "ACP SessionStart hook");
@@ -101,15 +107,44 @@ impl ZedAgent {
 
     pub(super) fn merge_session_acp_meta(&self, session: &SessionHandle, acp_meta: Option<acp::Meta>) {
         debug!(acp_meta_key_count = acp_meta.as_ref().map_or(0, acp::Meta::len), "Received ACP request metadata");
-        let Some(acp_meta) = acp_meta.filter(|meta| !meta.is_empty()) else {
-            return;
-        };
         let Ok(data) = session.data.lock() else {
             return;
         };
         if let Some(mut metadata) = data.thread.metadata() {
-            metadata.acp_meta.get_or_insert_default().extend(acp_meta);
+            let preserve_metadata_presence = metadata.acp_meta.is_some() || acp_meta.is_some();
+            let mut merged = metadata
+                .acp_meta
+                .take()
+                .unwrap_or_default()
+                .into_iter()
+                .collect::<BTreeMap<_, _>>();
+            if let Some(acp_meta) = acp_meta {
+                merged.extend(acp_meta);
+            }
+
+            let mut bounded = serde_json::Map::new();
+            let mut discarded_entries = 0usize;
+            for (key, value) in merged {
+                if bounded.len() >= MAX_ACP_META_ENTRIES {
+                    discarded_entries = discarded_entries.saturating_add(1);
+                    continue;
+                }
+                drop(bounded.insert(key.clone(), value));
+                if serialized_acp_meta_size_at_most(&bounded).is_none() {
+                    drop(bounded.remove(&key));
+                    discarded_entries = discarded_entries.saturating_add(1);
+                }
+            }
+            metadata.acp_meta = preserve_metadata_presence.then_some(bounded);
             data.thread.replace_metadata(Some(metadata));
+            if discarded_entries > 0 {
+                warn!(
+                    discarded_entries,
+                    max_entries = MAX_ACP_META_ENTRIES,
+                    max_serialized_bytes = MAX_ACP_META_BYTES,
+                    "Discarded ACP metadata entries beyond the archive budget"
+                );
+            }
         }
     }
 
@@ -573,23 +608,17 @@ impl ZedAgent {
             .await?
             .ok_or_else(|| anyhow::anyhow!("unknown archived session '{identifier}'"))?;
         anyhow::ensure!(
-            session_listing_matches_workspace(&listing, workspace),
+            session_listing_matches_canonical_workspace(&listing, workspace),
             "archived session '{identifier}' belongs to a different workspace"
         );
         let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
         let thread = self
             .thread_manager
             .start_thread_with_identifier(listing.identifier(), ThreadBootstrap::from_listing(listing));
-        let runtime = Arc::new(
-            super::SessionWorkspaceRuntime::build(
-                &self.config,
-                workspace.to_path_buf(),
-                &self.workspace_runtime_config,
-                self.vt_config.as_deref(),
-            )
+        let runtime = self
+            .workspace_runtime_for(workspace.to_path_buf())
             .await
-            .context("Failed to initialise archived ACP session workspace")?,
-        );
+            .context("Failed to initialise archived ACP session workspace")?;
         let handle = self.build_session_handle_with_archive(
             session_id.clone(),
             thread,
@@ -614,7 +643,8 @@ impl ZedAgent {
                 .lock()
                 .ok()
                 .and_then(|data| data.thread.metadata())
-                .is_some_and(|metadata| std::path::Path::new(&metadata.workspace_path) == workspace);
+                .and_then(|metadata| vtcode_commons::canonicalize(&metadata.workspace_path).ok())
+                .is_some_and(|stored_workspace| stored_workspace == workspace);
             anyhow::ensure!(matches_workspace, "active session belongs to a different workspace");
             return Ok(session);
         }
@@ -640,12 +670,14 @@ impl ZedAgent {
         listings: Vec<SessionListing>,
     ) -> Result<acp::ListSessionsResponse, acp::Error> {
         let offset = Self::session_list_offset(args.cursor.as_deref())?;
+        let requested_workspace = args.cwd.as_deref().map(vtcode_commons::canonicalize).transpose().ok().flatten();
         let mut sessions = listings
             .into_iter()
             .filter(|listing| {
-                args.cwd
-                    .as_deref()
-                    .is_none_or(|workspace| session_listing_matches_workspace(listing, workspace))
+                args.cwd.is_none()
+                    || requested_workspace
+                        .as_deref()
+                        .is_some_and(|workspace| session_listing_matches_canonical_workspace(listing, workspace))
             })
             .filter_map(|listing| {
                 let cwd = session_workspace_path(&listing)?;
@@ -707,20 +739,15 @@ impl ZedAgent {
             .zed_config
             .workspace_trust
             .to_workspace_trust_level();
-        let _trust_outcome = DefaultWorkspaceTrustSynchronizer::new()
+        let _trust_outcome = self
+            .workspace_trust_synchronizer
             .synchronize(&workspace, desired_trust)
             .await
             .map_err(|error| acp::Error::internal_error().data(format!("Failed to trust ACP session cwd: {error}")))?;
-        let workspace_runtime = Arc::new(
-            super::SessionWorkspaceRuntime::build(
-                &self.config,
-                workspace,
-                &self.workspace_runtime_config,
-                self.vt_config.as_deref(),
-            )
+        let workspace_runtime = self
+            .workspace_runtime_for(workspace)
             .await
-            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?,
-        );
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
         let session_id = self.register_durable_session(workspace_runtime, req.meta);
         let session = self.session_handle(&session_id);
         if let Some(session) = &session {
@@ -930,6 +957,16 @@ impl ZedAgent {
     }
 }
 
+fn session_listing_matches_canonical_workspace(
+    listing: &SessionListing,
+    requested_workspace: &std::path::Path,
+) -> bool {
+    let Some(stored_workspace) = session_workspace_path(listing) else {
+        return false;
+    };
+    vtcode_commons::canonicalize(stored_workspace).is_ok_and(|stored_workspace| stored_workspace == requested_workspace)
+}
+
 async fn canonical_session_workspace(requested_workspace: &std::path::Path) -> Result<std::path::PathBuf, acp::Error> {
     if !requested_workspace.is_absolute() {
         return Err(acp::Error::invalid_params().data("ACP session cwd must be an absolute directory"));
@@ -951,6 +988,33 @@ async fn canonical_session_workspace(requested_workspace: &std::path::Path) -> R
     Ok(workspace)
 }
 
+fn serialized_acp_meta_size_at_most(metadata: &serde_json::Map<String, serde_json::Value>) -> Option<usize> {
+    let mut writer = BoundedMetadataSizeWriter { bytes_written: 0 };
+    serde_json::to_writer(&mut writer, metadata).ok()?;
+    Some(writer.bytes_written)
+}
+
+struct BoundedMetadataSizeWriter {
+    bytes_written: usize,
+}
+
+impl Write for BoundedMetadataSizeWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let Some(new_size) = self.bytes_written.checked_add(bytes.len()) else {
+            return Err(io::Error::other("serialized ACP metadata size overflowed"));
+        };
+        if new_size > MAX_ACP_META_BYTES {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "serialized ACP metadata exceeded its size limit"));
+        }
+        self.bytes_written = new_size;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -963,6 +1027,19 @@ mod tests {
     use std::sync::LazyLock;
     use tokio::sync::Mutex as AsyncMutex;
     use vtcode_config::codex::HistoryPersistence;
+
+    struct NoOpWorkspaceTrustSynchronizer;
+
+    #[async_trait::async_trait]
+    impl WorkspaceTrustSynchronizer for NoOpWorkspaceTrustSynchronizer {
+        async fn synchronize(
+            &self,
+            _workspace: &Path,
+            desired_level: vtcode_core::config::WorkspaceTrustLevel,
+        ) -> anyhow::Result<WorkspaceTrustSyncOutcome> {
+            Ok(WorkspaceTrustSyncOutcome::AlreadyMatches(desired_level))
+        }
+    }
     use vtcode_config::{SubagentDiscoveryInput, discover_subagents};
     use vtcode_core::config::core::PromptCachingConfig;
     use vtcode_core::config::types::{AgentConfig as CoreAgentConfig, ModelSelectionSource, UiSurfacePreference};
@@ -999,6 +1076,14 @@ mod tests {
     }
 
     async fn build_agent_with_default_primary_agent(workspace: &Path, default_primary_agent: &str) -> ZedAgent {
+        build_agent_with_vt_config(workspace, default_primary_agent, None).await
+    }
+
+    async fn build_agent_with_vt_config(
+        workspace: &Path,
+        default_primary_agent: &str,
+        vt_config: Option<&vtcode_core::config::VTCodeConfig>,
+    ) -> ZedAgent {
         let core_config = CoreAgentConfig {
             model: "gpt-5.6-sol".to_string(),
             api_key: String::new(),
@@ -1027,7 +1112,7 @@ mod tests {
         let discovered = discover_subagents(&discovery_input).expect("discover primary agents");
         let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, default_primary_agent);
 
-        Box::pin(ZedAgent::new(
+        let mut agent = Box::pin(ZedAgent::new(
             core_config,
             AuthCredentialsStoreMode::default(),
             AgentClientProtocolZedConfig::default(),
@@ -1039,10 +1124,12 @@ mod tests {
             Some("Zed".to_string()),
             primary_agents,
             false,
-            None,
+            vt_config,
             None,
         ))
-        .await
+        .await;
+        agent.workspace_trust_synchronizer = Arc::new(NoOpWorkspaceTrustSynchronizer);
+        agent
     }
 
     fn primary_agent(session: &SessionHandle) -> String {
@@ -1182,22 +1269,23 @@ mod tests {
 
     #[test]
     fn session_list_filters_archives_by_workspace() {
-        let first_workspace = Path::new("/workspace/first");
-        let second_workspace = Path::new("/workspace/second");
-        let request = acp::ListSessionsRequest::new().cwd(first_workspace);
+        let first_workspace = TempDir::new().unwrap();
+        let second_workspace = TempDir::new().unwrap();
+        let workspace_alias = first_workspace.path().join(".");
+        let request = acp::ListSessionsRequest::new().cwd(&workspace_alias);
 
         let response = ZedAgent::session_list_response(
             &request,
             vec![
-                archived_listing("session-first", first_workspace, "First task"),
-                archived_listing("session-second", second_workspace, "Second task"),
+                archived_listing("session-first", first_workspace.path(), "First task"),
+                archived_listing("session-second", second_workspace.path(), "Second task"),
             ],
         )
         .unwrap();
 
         assert_eq!(response.sessions.len(), 1);
         assert_eq!(response.sessions[0].session_id, acp::SessionId::new("session-first"));
-        assert_eq!(response.sessions[0].cwd, first_workspace);
+        assert_eq!(response.sessions[0].cwd, first_workspace.path());
         assert_eq!(response.sessions[0].title.as_deref(), Some("First task"));
         assert!(response.next_cursor.is_none());
     }
@@ -1268,6 +1356,141 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn session_metadata_merge_keeps_absent_acp_meta_absent() {
+        let temp = TempDir::new().unwrap();
+        let agent = build_agent(temp.path()).await;
+        let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
+        let session = agent.session_handle(&response.session_id).unwrap();
+        {
+            let data = session.data.lock().unwrap();
+            let mut metadata = data.thread.metadata().unwrap();
+            metadata.acp_meta = None;
+            data.thread.replace_metadata(Some(metadata));
+        }
+
+        agent.merge_session_acp_meta(&session, None);
+
+        let metadata = session.data.lock().unwrap().thread.metadata().unwrap();
+        assert!(metadata.acp_meta.is_none());
+    }
+
+    #[tokio::test]
+    async fn session_metadata_merge_keeps_explicitly_empty_acp_meta_present() {
+        let temp = TempDir::new().unwrap();
+        let agent = build_agent(temp.path()).await;
+        let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
+        let session = agent.session_handle(&response.session_id).unwrap();
+        {
+            let data = session.data.lock().unwrap();
+            let mut metadata = data.thread.metadata().unwrap();
+            metadata.acp_meta = None;
+            data.thread.replace_metadata(Some(metadata));
+        }
+
+        agent.merge_session_acp_meta(&session, Some(acp::Meta::from_iter(Vec::<(String, serde_json::Value)>::new())));
+
+        let metadata = session.data.lock().unwrap().thread.metadata().unwrap();
+        assert_eq!(metadata.acp_meta, Some(serde_json::Map::new()));
+    }
+
+    #[tokio::test]
+    async fn tool_audit_uses_effective_arguments_and_the_session_selected_model() {
+        let temp = TempDir::new().unwrap();
+        let audit_path = temp.path().join("audit.jsonl");
+        let audit_config: vtcode_config::safety::ToolAuditConfig =
+            toml::from_str(&format!("enabled = true\npath = {:?}\nmax_size_bytes = 4096\nmax_files = 2", audit_path))
+                .expect("audit configuration");
+        let logger = crate::audit::AcpAuditLogger::from_config(&audit_config)
+            .await
+            .expect("audit logger startup")
+            .expect("enabled audit logger");
+        let mut agent = build_agent(temp.path()).await;
+        agent.audit_logger = Some(Arc::new(logger));
+        let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
+        let session = agent.session_handle(&response.session_id).unwrap();
+        session.data.lock().unwrap().model = "session-selected-model".to_string();
+
+        let original = r#"{"path":"original.txt"}"#;
+        let effective = serde_json::to_vec(&serde_json::json!({ "path": "approved.txt" })).unwrap();
+        let call = vtcode_core::llm::provider::ToolCall::function_with_namespace(
+            "call-1".to_string(),
+            None,
+            "read_file".to_string(),
+            original.to_string(),
+        );
+        agent
+            .record_tool_audit(
+                &session,
+                &response.session_id,
+                "turn-1",
+                &call,
+                &effective,
+                Ok(("read", vtcode_safety::audit_log::ToolAuditStatus::Success)),
+                1,
+            )
+            .await;
+
+        let line = fs::read_to_string(audit_path).unwrap();
+        let entry: serde_json::Value = serde_json::from_str(line.trim()).unwrap();
+        assert_eq!(entry["arguments_hash"], vtcode_commons::utils::calculate_sha256(&effective));
+        assert_ne!(entry["arguments_hash"], vtcode_commons::utils::calculate_sha256(original.as_bytes()));
+        assert_eq!(entry["model_id"], "session-selected-model");
+    }
+
+    #[tokio::test]
+    async fn session_metadata_merge_bounds_entry_count_deterministically() {
+        let temp = TempDir::new().unwrap();
+        let agent = build_agent(temp.path()).await;
+        let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
+        let session = agent.session_handle(&response.session_id).unwrap();
+        let incoming = acp::Meta::from_iter(
+            (0..=MAX_ACP_META_ENTRIES).map(|index| (format!("key-{index:03}"), serde_json::json!(index))),
+        );
+
+        agent.merge_session_acp_meta(&session, Some(incoming));
+
+        let data = session.data.lock().unwrap();
+        let metadata = data.thread.metadata().unwrap();
+        let metadata = metadata.acp_meta.expect("bounded ACP metadata");
+        assert_eq!(metadata.len(), MAX_ACP_META_ENTRIES);
+        assert!(metadata.contains_key("key-000"));
+        assert!(!metadata.contains_key(&format!("key-{:03}", MAX_ACP_META_ENTRIES)));
+        assert!(serde_json::to_vec(&metadata).unwrap().len() <= MAX_ACP_META_BYTES);
+    }
+
+    #[tokio::test]
+    async fn session_metadata_merge_drops_oversized_entry_and_keeps_later_small_entry() {
+        let temp = TempDir::new().unwrap();
+        let agent = build_agent(temp.path()).await;
+        let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
+        let session = agent.session_handle(&response.session_id).unwrap();
+        let incoming = acp::Meta::from_iter([
+            ("a-oversized".to_string(), serde_json::json!("x".repeat(MAX_ACP_META_BYTES.saturating_mul(64)))),
+            ("z-small".to_string(), serde_json::json!("retained")),
+        ]);
+
+        agent.merge_session_acp_meta(&session, Some(incoming));
+
+        let data = session.data.lock().unwrap();
+        let metadata = data.thread.metadata().unwrap();
+        let metadata = metadata.acp_meta.expect("bounded ACP metadata");
+        assert!(!metadata.contains_key("a-oversized"));
+        assert_eq!(metadata.get("z-small"), Some(&serde_json::json!("retained")));
+        assert!(serde_json::to_vec(&metadata).unwrap().len() <= MAX_ACP_META_BYTES);
+    }
+
+    #[test]
+    fn oversized_metadata_size_probe_stops_at_the_configured_budget() {
+        let metadata = serde_json::json!({"oversized": "x".repeat(MAX_ACP_META_BYTES.saturating_mul(64))});
+        let mut writer = BoundedMetadataSizeWriter { bytes_written: 0 };
+
+        let result = serde_json::to_writer(&mut writer, &metadata);
+
+        assert!(result.is_err(), "oversized metadata must stop serialization at the writer boundary");
+        assert!(writer.bytes_written <= MAX_ACP_META_BYTES);
+    }
+
+    #[tokio::test]
     async fn new_session_canonicalizes_and_isolates_requested_workspaces() {
         let launch_workspace = TempDir::new().unwrap();
         let first_workspace = TempDir::new().unwrap();
@@ -1283,8 +1506,11 @@ mod tests {
 
         let first_session = agent.session_handle(&first.session_id).unwrap();
         let second_session = agent.session_handle(&second.session_id).unwrap();
-        let first_root = first_session.workspace_runtime().unwrap().workspace_root.clone();
-        let second_root = second_session.workspace_runtime().unwrap().workspace_root.clone();
+        let first_runtime = first_session.workspace_runtime().unwrap();
+        let second_runtime = second_session.workspace_runtime().unwrap();
+        let first_root = first_runtime.workspace_root.clone();
+        let second_root = second_runtime.workspace_root.clone();
+        assert!(!Arc::ptr_eq(&first_runtime, &second_runtime));
         assert_eq!(first_root, vtcode_commons::canonicalize(first_workspace.path()).unwrap());
         assert_eq!(second_root, vtcode_commons::canonicalize(second_workspace.path()).unwrap());
         assert_ne!(first_root, second_root);
@@ -1294,6 +1520,76 @@ mod tests {
         let second_metadata = second_session.data.lock().unwrap().thread.metadata().unwrap();
         assert_eq!(Path::new(&first_metadata.workspace_path), first_root);
         assert_eq!(Path::new(&second_metadata.workspace_path), second_root);
+    }
+
+    #[tokio::test]
+    async fn sessions_in_the_same_workspace_share_the_workspace_runtime() {
+        let workspace = TempDir::new().unwrap();
+        let agent = build_agent(workspace.path()).await;
+
+        let first = agent.new_session(acp::NewSessionRequest::new(workspace.path())).await.unwrap();
+        let second = agent.new_session(acp::NewSessionRequest::new(workspace.path())).await.unwrap();
+        let first_runtime = agent.session_handle(&first.session_id).unwrap().workspace_runtime().unwrap();
+        let second_runtime = agent.session_handle(&second.session_id).unwrap().workspace_runtime().unwrap();
+
+        assert!(Arc::ptr_eq(&first_runtime, &second_runtime));
+    }
+
+    #[tokio::test]
+    async fn new_session_restores_matching_workspace_hook_approval_before_session_start() {
+        let workspace = TempDir::new().unwrap();
+        let dot_config = TempDir::new().unwrap();
+        let marker = workspace.path().join("approved-session-start");
+        let command = format!("touch {}", marker.display());
+        let env_guard = vtcode_commons::env_lock::lock();
+        let previous = std::env::var_os("VTCODE_CONFIG");
+        env_guard.set_var("VTCODE_CONFIG", dot_config.path().join("config").to_string_lossy().into_owned());
+        vtcode_core::utils::dot_config::initialize_dot_folder().await.unwrap();
+
+        let mut vt_config = vtcode_core::config::VTCodeConfig::default();
+        vt_config
+            .hooks
+            .lifecycle
+            .session_start
+            .push(vtcode_core::config::HookGroupConfig {
+                matcher: None,
+                hooks: vec![vtcode_core::config::HookCommandConfig {
+                    kind: Default::default(),
+                    command: command.clone(),
+                    timeout_seconds: None,
+                }],
+            });
+        vt_config.workspace_lifecycle_hooks = Some(vtcode_config::hooks::WorkspaceLifecycleHooks {
+            commands: vec![vtcode_config::hooks::WorkspaceHookCommand {
+                event: "session_start".to_string(),
+                matcher: None,
+                command: command.clone(),
+                timeout_seconds: None,
+            }],
+        });
+        let preview = LifecycleHookEngine::new_with_session_gated(
+            workspace.path().to_path_buf(),
+            &vt_config.hooks,
+            SessionStartTrigger::NewSession,
+            "approval-preview",
+            true,
+        )
+        .unwrap()
+        .unwrap();
+        vtcode_core::utils::dot_config::update_lifecycle_hook_approval(
+            workspace.path(),
+            preview.command_digest().to_string(),
+        )
+        .await
+        .unwrap();
+
+        let agent = build_agent_with_vt_config(workspace.path(), "duck", Some(&vt_config)).await;
+        let result = agent.new_session(acp::NewSessionRequest::new(workspace.path())).await;
+        let marker_was_created = marker.exists();
+        env_guard.restore_var("VTCODE_CONFIG", previous);
+
+        assert!(result.is_ok(), "session should start after restoring its matching hook approval");
+        assert!(marker_was_created, "matching persisted approval must be restored before SessionStart runs");
     }
 
     #[tokio::test]

@@ -13,7 +13,7 @@ ecosystem-style project.
 
 For internal composition, prefer explicit provider selection over "clever"
 trait resolution when a boundary starts depending on many overlapping impls,
-associated types, or context-specific behavior. In practice, VT Code treats
+associated types, or context-specific behaviour. In practice, VT Code treats
 `HasComponent<Name>::Provider` as an elaborated dictionary: the context chooses
 the provider once, and blanket consumer traits delegate through that explicit
 selection. See `crates/codegen/vtcode-core/src/components.rs` and
@@ -53,7 +53,7 @@ Harness primitives in VT Code map to the runtime like this:
   summarizes objective, constraints, touched files, grounded facts,
   verification status, verification TODOs, and delegated findings for resume
   and summarized-fork handoff. Compaction artifacts under `.vtcode/history/`
-  support summarisation and working-memory recovery; they are not complete
+  support summarization and working-memory recovery; they are not complete
   resumable sessions.
 - **Compaction / offloading**: split tool results, spool files, and
   provider-aware auto-compaction reduce context rot while preserving compaction
@@ -92,16 +92,16 @@ one-at-a-time only after a turn reaches an idle boundary.
 
 ### Prompt guidance boundaries
 
-VT Code separates universal runtime behavior from project-specific developer
+VT Code separates universal runtime behaviour from project-specific developer
 instructions:
 
 - The compiled, cache-stable guidance in
   `crates/codegen/vtcode-core/src/prompts/runtime_guidance.rs` applies to every
   user and every static prompt profile. It contains only concise user-facing
-  behavior and is capped before prompt assembly.
+  behaviour and is capped before prompt assembly.
 - `AGENTS.md`, `CLAUDE.md`, and `.vtcode/rules/` remain dynamically loaded
   project/user instruction maps. Their precedence, path scoping, exclusions,
-  and active-directory behavior are preserved by the instruction loader.
+  and active-directory behaviour are preserved by the instruction loader.
 - Workspace instruction content is user-controlled context, not a security
   boundary. It cannot replace command policy, sandbox checks, approvals, or
   correctness-critical validation implemented in code, schemas, tests, and
@@ -184,7 +184,7 @@ interoperability:
 1. **Strict Output Separation**: Data goes to `stdout`, diagnostics/logs go to
     `stderr`. This enables clean piping of machine-readable output.
 2. **Standard Argument Parsing**: Uses `clap` for POSIX/GNU compliance,
-    supporting standard flags and behavior.
+    supporting standard flags and behaviour.
 3. **Command Isolation**: Each sub-command (`ask`, `exec`, `chat`) is handled
     by a dedicated module in `src/cli/`, sharing core logic via `vtcode-core`.
 4. **Signal Handling**: Graceful handling of `SIGINT`/`SIGTERM` to ensure
@@ -287,7 +287,7 @@ pub trait CacheableTool: Tool {
 
 - Advanced-profile public tool with one required literal `query` and optional
   `path`, `file_types`, `result_types`, and `max_results`.
-- Combines recognised definitions, exact syntactic usages, literal text, and
+- Combines recognized definitions, exact syntactic usages, literal text, and
   matching paths behind typed internal components.
 - Usage classification is syntactic and does not resolve references.
 - Each component is bounded. Results merge deterministically, truncate once,
@@ -302,7 +302,7 @@ pub trait CacheableTool: Tool {
    extension points so external integrations do not depend on compile-time impl
    slots in VT Code
 2. **Prefer Explicit Provider Dictionaries** - When internal Rust abstractions
-   become coherence-sensitive, move behavior behind context-selected providers
+   become coherence-sensitive, move behaviour behind context-selected providers
    instead of adding more blanket impl magic
 3. **Mode-based Execution** - Single tools support multiple execution modes
 4. **Simplicity First** - Prefer simple algorithms and control flow until real

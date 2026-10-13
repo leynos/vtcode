@@ -42,8 +42,16 @@ impl ZedAgent {
                 let report =
                     ToolExecutionReport::failure(Self::tool_name_from_call(call), "Client connection unavailable");
                 let result = Self::tool_call_result_from_report(call, report);
-                self.record_tool_audit(session_id, &turn_id, call, Ok((&result.llm_response, result.audit_status)), 0)
-                    .await;
+                self.record_tool_audit(
+                    session,
+                    session_id,
+                    &turn_id,
+                    call,
+                    &result.audit_arguments,
+                    Ok((&result.llm_response, result.audit_status)),
+                    0,
+                )
+                .await;
                 results.push(result);
             }
             return Ok(results);
@@ -71,12 +79,17 @@ impl ZedAgent {
         client: &ConnectionHandle,
     ) -> Result<ToolCallResult, SdkError> {
         let started = StdInstant::now();
-        let result = self.execute_tool_call_inner(session, session_id, call, client).await;
+        let mut audit_arguments = Self::raw_tool_arguments(call);
+        let result = self
+            .execute_tool_call_inner(session, session_id, call, client, &mut audit_arguments)
+            .await;
         let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         self.record_tool_audit(
+            session,
             session_id,
             turn_id,
             call,
+            &audit_arguments,
             match &result {
                 Ok(result) => Ok((&result.llm_response, result.audit_status)),
                 Err(_) => Err("ACP tool execution failed"),
@@ -87,11 +100,13 @@ impl ZedAgent {
         result
     }
 
-    async fn record_tool_audit(
+    pub(super) async fn record_tool_audit(
         &self,
+        session: &SessionHandle,
         session_id: &acp::SessionId,
         turn_id: &str,
         call: &ProviderToolCall,
+        effective_arguments: &[u8],
         result: Result<(&str, vtcode_safety::audit_log::ToolAuditStatus), &str>,
         duration_ms: u64,
     ) {
@@ -99,10 +114,11 @@ impl ZedAgent {
             return;
         };
         let tool_name = Self::tool_name_from_call(call);
-        let original_args = call
-            .function
-            .as_ref()
-            .map_or_else(|| b"".to_vec(), |function| function.arguments.as_bytes().to_vec());
+        let model_id = session
+            .data
+            .lock()
+            .map(|data| data.model.clone())
+            .unwrap_or_else(|_| self.config.model.clone());
         let (status, reason, result_bytes) = match result {
             Ok((output, status)) => {
                 let reason = match status {
@@ -121,11 +137,11 @@ impl ZedAgent {
                 turn_id,
                 tool_call_id: &call.id,
                 tool_name,
-                arguments: &original_args,
+                arguments: effective_arguments,
                 result: &result_bytes,
                 duration_ms,
                 status,
-                model_id: Some(&self.config.model),
+                model_id: Some(&model_id),
                 reason: reason.as_deref(),
             });
         if let Err(error) = logger.record(entry).await {
@@ -139,6 +155,7 @@ impl ZedAgent {
         session_id: &acp::SessionId,
         call: &ProviderToolCall,
         client: &ConnectionHandle,
+        audit_arguments: &mut Vec<u8>,
     ) -> Result<ToolCallResult, SdkError> {
         let workspace_runtime = session.workspace_runtime();
         let acp_tool_registry = workspace_runtime
@@ -214,9 +231,11 @@ impl ZedAgent {
             None
         };
         let mut effective_args = args_value_for_input.clone();
+        *audit_arguments = effective_tool_arguments(&func_ref.arguments, effective_args.as_ref());
         let permission_override = if let Some(decision) = permission_hook_decision {
             if let Some(updated_input) = decision.updated_input.clone() {
                 effective_args = Some(updated_input);
+                *audit_arguments = effective_tool_arguments(&func_ref.arguments, effective_args.as_ref());
             }
             if decision.scope != vtcode_core::hooks::PermissionDecisionScope::Once {
                 tracing::warn!(tool = %func_ref.name, scope = ?decision.scope, "ACP PermissionRequest hook scope is not persisted");
@@ -379,7 +398,9 @@ impl ZedAgent {
             self.send_update(session_id, acp::SessionUpdate::Plan(plan)).await?;
         }
 
-        Ok(Self::tool_call_result_from_report(call, report))
+        let mut result = Self::tool_call_result_from_report(call, report);
+        result.audit_arguments = effective_tool_arguments(&func_ref.arguments, effective_args.as_ref());
+        Ok(result)
     }
 
     async fn run_permission_hook(
@@ -484,7 +505,14 @@ impl ZedAgent {
             tool_call_id: call.id.clone(),
             llm_response: report.llm_response,
             audit_status: report.audit_status,
+            audit_arguments: Self::raw_tool_arguments(call),
         }
+    }
+
+    fn raw_tool_arguments(call: &ProviderToolCall) -> Vec<u8> {
+        call.function
+            .as_ref()
+            .map_or_else(Vec::new, |function| function.arguments.as_bytes().to_vec())
     }
 
     fn update_fields_from_report(report: &ToolExecutionReport) -> acp::ToolCallUpdateFields {
@@ -644,6 +672,12 @@ impl ZedAgent {
     }
 }
 
+fn effective_tool_arguments(raw_arguments: &str, effective_args: Option<&Value>) -> Vec<u8> {
+    effective_args
+        .and_then(|arguments| serde_json::to_vec(arguments).ok())
+        .unwrap_or_else(|| raw_arguments.as_bytes().to_vec())
+}
+
 struct ApplyPatchSnapshot {
     files: Vec<ApplyPatchFileSnapshot>,
 }
@@ -772,6 +806,20 @@ mod tests {
         assert!(!should_run_post_tool_hook(&acp::ToolCallStatus::Failed));
         assert!(!should_run_post_tool_hook(&acp::ToolCallStatus::InProgress));
         assert!(!should_run_post_tool_hook(&acp::ToolCallStatus::Pending));
+    }
+
+    #[test]
+    fn audit_arguments_use_permission_hook_updated_input() {
+        let raw_arguments = r#"{"path":"original.txt"}"#;
+        let updated_arguments = json!({ "path": "approved.txt" });
+
+        let audit_arguments = effective_tool_arguments(raw_arguments, Some(&updated_arguments));
+
+        assert_eq!(
+            serde_json::from_slice::<Value>(&audit_arguments).expect("effective audit arguments"),
+            updated_arguments
+        );
+        assert_ne!(audit_arguments, raw_arguments.as_bytes());
     }
 
     #[tokio::test]

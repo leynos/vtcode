@@ -330,8 +330,8 @@ mod tests {
     fn incomplete_llm_response_roundtrips_its_delivery_state() {
         let metadata = MessageMetadata::incomplete_llm_response(2_000, 150, "provider stream disconnected");
 
-        let json = serde_json::to_string(&metadata).unwrap();
-        let restored: MessageMetadata = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&metadata).expect("incomplete metadata should serialize");
+        let restored: MessageMetadata = serde_json::from_str(&json).expect("serialized metadata should deserialize");
 
         assert!(restored.is_incomplete());
         assert_eq!(restored.incomplete_reason(), Some("provider stream disconnected"));

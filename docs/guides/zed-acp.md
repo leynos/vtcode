@@ -101,7 +101,7 @@ separate.
 
 ### MCP providers in ACP sessions
 
-ACP sessions initialise the enabled providers from the effective session MCP
+ACP sessions initialize the enabled providers from the effective session MCP
 configuration before the first prompt. This makes the providers' direct MCP
 proxy tools available in the initial model tool catalogue rather than waiting
 for a later discovery step. Configure the providers and the global MCP switch
@@ -411,7 +411,7 @@ and `[history]` settings do not control ACP audit output.
 - **Sub-agent delegation** – When ACP sub-agents are enabled, the session
   exposes the canonical `agent` tool. Its actions are `spawn`,
   `spawn_subprocess`, `send_input`, `wait`, `resume`, and `close`. Before
-  delegation, VT Code synchronises the current parent ACP session identity and
+  delegation, VT Code synchronizes the current parent ACP session identity and
   parent context with the sub-agent controller. The active primary agent's tool
   permissions still apply; delegation does not bypass its allowed or disallowed
   tools.
@@ -459,7 +459,7 @@ and `[history]` settings do not control ACP audit output.
   metadata only and never the reasoning content.
 - **Plan tracking** – Every prompt emits an ACP plan describing analysis,
   optional context gathering, and final response drafting. VT Code updates each
-  entry as it progresses so Zed can visualise the bridge's workflow in real
+  entry as it progresses so Zed can visualize the bridge's workflow in real
   time.
 - **Tool execution** – The `read_file` tool forwards to Zed when enabled. The
   `list_files` tool uses VT Code's local workspace access, mirroring the CLI
@@ -467,7 +467,7 @@ and `[history]` settings do not control ACP audit output.
   disabled, VT Code surfaces a reasoning notice and skips the invocation.
   Pending `apply_patch` calls include the decoded patch text as ACP tool-call
   content so the client can show the proposed edit before execution. Paths
-  supplied by tools are normalised against the trusted workspace so relative
+  supplied by tools are normalized against the trusted workspace so relative
   segments stay inside the project before the request reaches the client.
 - **Tool policy compatibility** – VT Code advertises the current core tool suite
   through ACP when the model supports function calling, including

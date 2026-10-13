@@ -1,3 +1,9 @@
+//! Admission, retry, deadline, and telemetry policy for ACP provider requests.
+//!
+//! This module carries ACP cancellation, retry, deadline, and telemetry policy
+//! for provider calls. Custom-provider concurrency is enforced by the shared
+//! router gate in `vtcode-llm` so child and ACP requests use one permit pool.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -30,9 +36,9 @@ struct ProviderRequestCounters {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ProviderTelemetrySnapshot {
-    pub(crate) queue_depth: usize,
-    pub(crate) active_permits: usize,
-    pub(crate) permit_limit: Option<usize>,
+    pub(crate) acp_local_queue_depth: usize,
+    pub(crate) active_acp_requests: usize,
+    pub(crate) configured_provider_limit: Option<usize>,
     pub(crate) circuit_breaker_state: &'static str,
 }
 
@@ -75,7 +81,11 @@ impl ProviderRequestRuntime {
         deadline_policy: ProviderDeadlinePolicy,
     ) -> Self {
         let provider_name = provider_name.into();
-        let semaphore = config.max_in_flight_requests.map(|limit| Arc::new(Semaphore::new(limit)));
+        // Request concurrency is enforced once, at the custom-provider router,
+        // so child/core and ACP requests consume the same process-wide permits.
+        // This runtime still owns ACP cancellation, retry, timeout, and telemetry
+        // policy; it must not acquire a second permit around provider calls.
+        let semaphore = None;
         let mut retry_policy = RetryPolicy::from_retries(
             config.max_retries,
             Duration::from_millis(config.retry_initial_backoff_ms),
@@ -118,23 +128,23 @@ impl ProviderRequestRuntime {
 
     pub(crate) fn telemetry_snapshot(&self) -> ProviderTelemetrySnapshot {
         ProviderTelemetrySnapshot {
-            queue_depth: self.counters.queued.load(Ordering::Relaxed),
-            active_permits: self.counters.active.load(Ordering::Relaxed),
-            permit_limit: self.limit,
+            acp_local_queue_depth: self.counters.queued.load(Ordering::Relaxed),
+            active_acp_requests: self.counters.active.load(Ordering::Relaxed),
+            configured_provider_limit: self.limit,
             circuit_breaker_state: "not_configured",
         }
     }
 
     fn provider_permit(&self, permit: Option<OwnedSemaphorePermit>) -> ProviderPermit {
-        let active_permits = self.counters.active.fetch_add(1, Ordering::Relaxed).saturating_add(1);
+        let active_acp_requests = self.counters.active.fetch_add(1, Ordering::Relaxed).saturating_add(1);
         let snapshot = self.telemetry_snapshot();
         debug!(
             provider = self.provider_name(),
-            snapshot.queue_depth,
-            active_permits,
-            permit_limit = ?snapshot.permit_limit,
+            acp_local_queue_depth = snapshot.acp_local_queue_depth,
+            active_acp_requests,
+            configured_provider_limit = ?snapshot.configured_provider_limit,
             circuit_breaker_state = snapshot.circuit_breaker_state,
-            "Provider request admitted"
+            "ACP provider request attempt started"
         );
         ProviderPermit {
             _permit: permit,
@@ -161,11 +171,11 @@ impl ProviderRequestRuntime {
         let snapshot = self.telemetry_snapshot();
         debug!(
             provider = self.provider_name(),
-            queue_depth,
-            active_permits = snapshot.active_permits,
-            permit_limit = ?snapshot.permit_limit,
+            acp_local_queue_depth = queue_depth,
+            active_acp_requests = snapshot.active_acp_requests,
+            configured_provider_limit = ?snapshot.configured_provider_limit,
             circuit_breaker_state = snapshot.circuit_breaker_state,
-            "Provider request queued"
+            "ACP provider request waiting for local admission"
         );
         let acquire = semaphore.clone().acquire_owned();
         tokio::select! {
@@ -200,14 +210,14 @@ pub(crate) struct ProviderPermit {
 
 impl Drop for ProviderPermit {
     fn drop(&mut self) {
-        let active_permits = self.counters.active.fetch_sub(1, Ordering::Relaxed).saturating_sub(1);
+        let active_acp_requests = self.counters.active.fetch_sub(1, Ordering::Relaxed).saturating_sub(1);
         debug!(
             provider = self.provider_name.as_ref(),
-            queue_depth = self.counters.queued.load(Ordering::Relaxed),
-            active_permits,
-            permit_limit = ?self.limit,
+            acp_local_queue_depth = self.counters.queued.load(Ordering::Relaxed),
+            active_acp_requests,
+            configured_provider_limit = ?self.limit,
             circuit_breaker_state = "not_configured",
-            "Provider request permit released"
+            "ACP provider request attempt finished"
         );
     }
 }
@@ -223,11 +233,11 @@ impl Drop for ProviderQueueGuard {
         let queue_depth = self.counters.queued.fetch_sub(1, Ordering::Relaxed).saturating_sub(1);
         debug!(
             provider = self.provider_name.as_ref(),
-            queue_depth,
-            active_permits = self.counters.active.load(Ordering::Relaxed),
-            permit_limit = ?self.limit,
+            acp_local_queue_depth = queue_depth,
+            active_acp_requests = self.counters.active.load(Ordering::Relaxed),
+            configured_provider_limit = ?self.limit,
             circuit_breaker_state = "not_configured",
-            "Provider request left queue"
+            "ACP provider request left local admission queue"
         );
     }
 }
@@ -303,17 +313,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn permit_limit_blocks_until_the_active_request_finishes() {
+    async fn local_limit_blocks_until_the_active_request_finishes() {
         let runtime = runtime(1, Duration::from_secs(1));
         let cancellation = SessionCancellation::default();
         let first = runtime.acquire(&cancellation).await.expect("first permit");
-        assert_eq!(runtime.telemetry_snapshot().active_permits, 1);
+        assert_eq!(runtime.telemetry_snapshot().active_acp_requests, 1);
         let second = tokio::time::timeout(Duration::from_millis(20), runtime.acquire(&cancellation)).await;
         assert!(second.is_err(), "second request must remain queued");
-        assert_eq!(runtime.telemetry_snapshot().queue_depth, 0, "cancelled wait must leave the queue");
+        assert_eq!(runtime.telemetry_snapshot().acp_local_queue_depth, 0, "cancelled wait must leave the queue");
 
         drop(first);
-        assert_eq!(runtime.telemetry_snapshot().active_permits, 0);
+        assert_eq!(runtime.telemetry_snapshot().active_acp_requests, 0);
         let _released = runtime.acquire(&cancellation).await.expect("released permit");
     }
 
@@ -328,15 +338,15 @@ mod tests {
         tokio::task::yield_now().await;
 
         let snapshot = runtime.telemetry_snapshot();
-        assert_eq!(snapshot.queue_depth, 1);
-        assert_eq!(snapshot.active_permits, 1);
-        assert_eq!(snapshot.permit_limit, Some(1));
+        assert_eq!(snapshot.acp_local_queue_depth, 1);
+        assert_eq!(snapshot.active_acp_requests, 1);
+        assert_eq!(snapshot.configured_provider_limit, Some(1));
         assert_eq!(snapshot.circuit_breaker_state, "not_configured");
 
         cancellation.cancel();
         let error = queued.await.expect("queued task").expect_err("queue should be cancelled");
         assert!(matches!(error, ProviderAdmissionError::Cancelled));
-        assert_eq!(runtime.telemetry_snapshot().queue_depth, 0);
+        assert_eq!(runtime.telemetry_snapshot().acp_local_queue_depth, 0);
     }
 
     #[tokio::test]
@@ -382,6 +392,7 @@ mod tests {
         let runtime = ProviderRuntimeRegistry::new(&[provider], &TimeoutsConfig::default()).for_provider("arli");
 
         assert_eq!(runtime.limit, Some(3));
+        assert!(runtime.semaphore.is_none(), "custom-provider capacity is enforced at the shared router boundary");
         assert_eq!(runtime.retry_policy.max_attempts, 5);
         assert_eq!(runtime.retry_policy.initial_delay, Duration::from_millis(250));
         assert_eq!(runtime.retry_policy.max_delay, Duration::from_secs(5));
