@@ -29,7 +29,8 @@ impl WriteStdinDispatch {
 
 pub(crate) fn write_stdin_dispatch(args: &Value) -> Result<WriteStdinDispatch, &'static str> {
     let payload = args.as_object().ok_or("write_stdin requires a JSON object")?;
-    if let Some(action) = payload.get("action").and_then(Value::as_str) {
+    if let Some(action_value) = payload.get("action") {
+        let action = action_value.as_str().ok_or("write_stdin action must be a string")?;
         if action.eq_ignore_ascii_case("poll") {
             return Ok(WriteStdinDispatch::Poll);
         }
@@ -962,6 +963,14 @@ mod tests {
         assert_eq!(
             write_stdin_dispatch(&json!({"action": "poll", "session_id": "run-1"})),
             Ok(WriteStdinDispatch::Poll)
+        );
+    }
+
+    #[test]
+    fn write_stdin_dispatch_rejects_non_string_action_even_with_string_chars() {
+        assert_eq!(
+            write_stdin_dispatch(&json!({"action": 1, "chars": "status\n"})),
+            Err("write_stdin action must be a string")
         );
     }
 

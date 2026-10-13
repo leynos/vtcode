@@ -2,8 +2,9 @@
 
 Custom-provider request policy keeps ACP turns from overloading an
 OpenAI-compatible endpoint. Configure it under the matching
-`[[custom_providers]]` entry; see the [configuration guide](../config/config.md#custom_providers)
-and [field reference](../config/CONFIG_FIELD_REFERENCE.md).
+`[[custom_providers]]` entry; see the
+[configuration guide](../config/config.md#custom_providers) and
+[field reference](../config/CONFIG_FIELD_REFERENCE.md).
 
 ## Admission scope
 
@@ -52,12 +53,12 @@ disabled with `retry_jitter = false`. A stream is retried only before it has
 published text or reasoning. Once output is visible, VT Code surfaces a later
 failure instead of risking duplicate output. The visible partial text and
 reasoning are checkpointed as an assistant message whose serialized metadata
-marks delivery as incomplete and records the provider error. A later
-`continue` therefore retains the partial response without pretending that the
-provider completed it.
+marks delivery as incomplete and records the provider error. A later `continue`
+therefore retains the partial response without pretending that the provider
+completed it.
 
-The defaults start at 10 seconds and cap at 160 seconds. With five retries,
-the unjittered delays are therefore 10, 20, 40, 80, and 160 seconds.
+The defaults start at 10 seconds and cap at 160 seconds. With five retries, the
+unjittered delays are therefore 10, 20, 40, 80, and 160 seconds.
 
 OpenAI-compatible transport failures retain reqwest's structured category in
 the error metadata code (`reqwest_connect_error`, `reqwest_timeout_error`,

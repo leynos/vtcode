@@ -101,14 +101,16 @@ separate.
 
 ### MCP providers in ACP sessions
 
-ACP sessions initialise the enabled providers from the effective session MCP configuration before
-the first prompt. This makes the providers' direct MCP proxy tools available in the initial model
-tool catalogue rather than waiting for a later discovery step. Configure the providers and the
-global MCP switch in the [`[mcp]` configuration](mcp-integration.md).
+ACP sessions initialise the enabled providers from the effective session MCP
+configuration before the first prompt. This makes the providers' direct MCP
+proxy tools available in the initial model tool catalogue rather than waiting
+for a later discovery step. Configure the providers and the global MCP switch
+in the [`[mcp]` configuration](mcp-integration.md).
 
-Direct MCP proxy tools remain subject to the same MCP provider allowlists and security checks as
-interactive sessions. The selected ACP primary agent's tool permissions also apply, so a provider
-or tool blocked by either policy is not exposed to, or executable by, the ACP session.
+Direct MCP proxy tools remain subject to the same MCP provider allowlists and
+security checks as interactive sessions. The selected ACP primary agent's tool
+permissions also apply, so a provider or tool blocked by either policy is not
+exposed to, or executable by, the ACP session.
 
 ### Lifecycle hooks in ACP
 
@@ -119,8 +121,8 @@ sessions, `UserPromptSubmit` before provider work, `PreToolUse` and
 `PermissionRequest` before a tool runs, `PostToolUse` after its result,
 `PreCompact` before automatic compaction, and `Stop` before ACP reports a final
 turn. A blocking prompt is refused; a blocking stop hook feeds its reason back
-into the same turn and continues until the hook allows the draft or the turn
-is cancelled.
+into the same turn and continues until the hook allows the draft or the turn is
+cancelled.
 
 For `PermissionRequest`, hook `updatedInput` is applied to the tool call. ACP
 does not persist hook permission scopes or apply `permission_updates`; it logs
@@ -133,8 +135,9 @@ ACP protocol messages; they run only for real VT Code notification events. The
 current ACP subagent controller does not expose child lifecycle callbacks, so
 ACP does not currently emit `SubagentStart` or `SubagentStop`.
 
-MCP connections are scoped to the session that declares them. A subagent does not implicitly inherit
-its parent's MCP connections; declare the required MCP servers in the subagent's own configuration.
+MCP connections are scoped to the session that declares them. A subagent does
+not implicitly inherit its parent's MCP connections; declare the required MCP
+servers in the subagent's own configuration.
 
 ## Manual smoke test
 
@@ -382,12 +385,12 @@ ACP continuity uses three independent stores:
    a complete resumable session and are not read by ACP `session/load`.
 2. **Durable session archive** – Stored under `$VT_SESSION_DIR`, or the
    resolved VT Code configuration directory's `sessions/`, and controlled by
-   `[history].persistence` and `max_bytes`. These JSON snapshots are used by
-   ACP `session/load` and checkpoint user messages, assistant tool requests,
-   tool results, completed responses, and incomplete turns.
-   The archive metadata also preserves opaque ACP `_meta` values received on
-   `session/new` and `session/prompt` as `acp_meta`; prompt values merge into
-   the session map and replace earlier values with the same key.
+   `[history].persistence` and `max_bytes`. These JSON snapshots are used by ACP
+   `session/load` and checkpoint user messages, assistant tool requests, tool
+   results, completed responses, and incomplete turns. The archive metadata
+   also preserves opaque ACP `_meta` values received on `session/new` and
+   `session/prompt` as `acp_meta`; prompt values merge into the session map and
+   replace earlier values with the same key.
 3. **ACP security tool audit** – Written to `[acp.audit].path` only when
    `[acp.audit].enabled = true`. This append-only JSONL contains invocation
    metadata, status, timing, and hashes. It does not contain conversation,
@@ -419,11 +422,11 @@ and `[history]` settings do not control ACP audit output.
 - **Provider diagnostics** – Debug logs record queue depth, active and
   maximum provider permits, retry count and disposition, time to first output,
   generation duration, output tokens, and tokens per second. Providers that
-  support streaming report first-output latency from before stream establishment,
-  so response-header delay counts toward the first-output timeout. Buffered
-  responses label their time-to-first-token observation as the full buffered
-  response latency. VT Code does not currently gate provider requests with a
-  circuit breaker, so provider events report
+  support streaming report first-output latency from before stream
+  establishment, so response-header delay counts toward the first-output
+  timeout. Buffered responses label their time-to-first-token observation as
+  the full buffered response latency. VT Code does not currently gate provider
+  requests with a circuit breaker, so provider events report
   `circuit_breaker_state = "not_configured"`; the tool and MCP circuit breakers
   are separate. HTTP 408, 429, 500, 502, 503, and 504 failures are eligible for
   the configured bounded retry policy before output becomes visible.
@@ -439,19 +442,21 @@ and `[history]` settings do not control ACP audit output.
   model can separate supporting material from primary instructions. Binary data
   is acknowledged but omitted from the prompt payload.
 - **Streaming updates** – Token deltas and reasoning updates arrive via
-  `session/update` notifications, keeping Zed's UI responsive during generation.
-  Tool-enabled turns remain streamed: VT Code waits for the provider's completed
-  tool-call arguments, executes the tool, appends its result, and opens the next
-  provider stream. A configured `Stop` lifecycle hook is the deliberate
-  exception; VT Code buffers that draft so the hook can accept or block it
-  before any text becomes visible. A stream failure after visible output is
-  never replayed and checkpoints an incomplete assistant response instead.
+  `session/update` notifications, keeping Zed's UI responsive during
+  generation. Tool-enabled turns remain streamed: VT Code waits for the
+  provider's completed tool-call arguments, executes the tool, appends its
+  result, and opens the next provider stream. A configured `Stop` lifecycle
+  hook is the deliberate exception; VT Code buffers that draft so the hook can
+  accept or block it before any text becomes visible. A stream failure after
+  visible output is never replayed and checkpoints an incomplete assistant
+  response instead.
 - **Provider reasoning** – When a provider response exposes reasoning alongside
-  tool calls, VT Code sends it to ACP as an `AgentThoughtChunk` before executing
-  those tools. Exposed reasoning on the final provider response is sent as an
-  `AgentThoughtChunk` as well. Debug logs distinguish `Sending provider
-  reasoning to ACP client` from `Provider response did not include exposed
-  reasoning for ACP`; they record metadata only and never the reasoning content.
+  tool calls, VT Code sends it to ACP as an `AgentThoughtChunk` before
+  executing those tools. Exposed reasoning on the final provider response is
+  sent as an `AgentThoughtChunk` as well. Debug logs distinguish
+  `Sending provider reasoning to ACP client` from
+  `Provider response did not include exposed reasoning for ACP`; they record
+  metadata only and never the reasoning content.
 - **Plan tracking** – Every prompt emits an ACP plan describing analysis,
   optional context gathering, and final response drafting. VT Code updates each
   entry as it progresses so Zed can visualise the bridge's workflow in real
@@ -515,14 +520,14 @@ and `[history]` settings do not control ACP audit output.
 
 ## Debugging and verification
 
-| Symptom                                 | Resolution                                                                                                                               |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `Only the stdio transport is supported` | Ensure `transport = "stdio"` in `vtcode.toml`.                                                                                           |
-| Empty responses in Zed                  | Confirm ACP env vars are present in the `env` map and that ACP is enabled in `vtcode.toml`.                                              |
-| `read_file` returns placeholders        | Validate the referenced URI is accessible from Zed's workspace.                                                                          |
-| Tool calls report "Unsupported tool"    | Disable the tool bridge or switch to a model that supports function calling. VT Code emits a reasoning notice when the downgrade occurs. |
+| Symptom                                 | Resolution                                                                                                                                                                                                                                                                                                                                          |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Only the stdio transport is supported` | Ensure `transport = "stdio"` in `vtcode.toml`.                                                                                                                                                                                                                                                                                                      |
+| Empty responses in Zed                  | Confirm ACP env vars are present in the `env` map and that ACP is enabled in `vtcode.toml`.                                                                                                                                                                                                                                                         |
+| `read_file` returns placeholders        | Validate the referenced URI is accessible from Zed's workspace.                                                                                                                                                                                                                                                                                     |
+| Tool calls report "Unsupported tool"    | Disable the tool bridge or switch to a model that supports function calling. VT Code emits a reasoning notice when the downgrade occurs.                                                                                                                                                                                                            |
 | Missing thought traces in Zed           | Enable debug logging and inspect whether VT Code reports `Sending provider reasoning to ACP client` or `Provider response did not include exposed reasoning for ACP`. The latter means the provider response exposed no reasoning; verify that the selected provider/model and API format return reasoning. Neither message logs reasoning content. |
-| Sessions cancel unexpectedly            | Inspect VT Code logs (and Zed's ACP logs) for cancellations triggered by the client.                                                     |
+| Sessions cancel unexpectedly            | Inspect VT Code logs (and Zed's ACP logs) for cancellations triggered by the client.                                                                                                                                                                                                                                                                |
 
 ## Next steps
 

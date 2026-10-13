@@ -34,8 +34,7 @@ pub use types::{
     BackgroundRecord, BackgroundSubprocessEntry, BackgroundSubprocessSnapshot, BackgroundSubprocessStatus, ChildRecord,
     ChildRunResult, ControllerState, PersistedBackgroundRecord, PersistedBackgroundState, SendInputRequest,
     SpawnAgentRequest, SpawnBackgroundSubprocessRequest, StatusEntryBuilder, SubagentInputItem, SubagentProgressEvent,
-    SubagentStatus,
-    SubagentStatusEntry, SubagentThreadSnapshot, TurnDelegationHints,
+    SubagentStatus, SubagentStatusEntry, SubagentThreadSnapshot, TurnDelegationHints,
 };
 
 // VerificationResult is defined in this module (below) and re-exported at the
@@ -87,7 +86,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::{broadcast, Notify, RwLock};
+use tokio::sync::{Notify, RwLock, broadcast};
 
 use crate::config::VTCodeConfig;
 use crate::config::types::ReasoningEffortLevel;
