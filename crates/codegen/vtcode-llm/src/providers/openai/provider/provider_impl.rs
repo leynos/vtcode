@@ -1,3 +1,4 @@
+//! Implements the LLM provider interface for the OpenAI provider and delegates request execution.
 use super::OpenAIProvider;
 use crate::client::LLMClient;
 use crate::provider::{self, LLMNormalizedStream};

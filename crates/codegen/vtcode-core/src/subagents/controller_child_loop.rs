@@ -1,3 +1,4 @@
+//! Runs and supervises the child-agent loop used by the subagent controller.
 #![allow(
     unused_imports,
     reason = "Intentional compatibility, platform, or test-only suppression."

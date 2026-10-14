@@ -1,3 +1,4 @@
+//! Tests layered configuration loading, workspace resolution, defaults, and persistence behavior.
 use super::*;
 
 use crate::constants::tool_limits;

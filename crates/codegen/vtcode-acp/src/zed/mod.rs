@@ -1,3 +1,4 @@
+//! Adapts the core ACP launch interface to the Zed protocol connection and agent implementation.
 use anyhow::Result;
 use async_trait::async_trait;
 use vtcode_core::core::interfaces::acp::{AcpClientAdapter, AcpLaunchParams};

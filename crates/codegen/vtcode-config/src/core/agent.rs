@@ -1,3 +1,4 @@
+//! Defines agent-wide configuration, including model, prompt, execution, and checkpoint settings.
 use crate::constants::{defaults, execution, llm_generation, prompt_budget, tool_limits};
 use crate::types::{
     ReasoningEffortLevel, ShellPromptProfile, SystemPromptMode, ToolDocumentationMode, UiSurfacePreference,

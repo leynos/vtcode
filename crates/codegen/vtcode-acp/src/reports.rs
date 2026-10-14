@@ -1,3 +1,4 @@
+//! Defines ACP tool execution reports, response fields, and shared permission and failure messages.
 use crate::acp;
 use serde_json::{Value, json};
 use std::path::PathBuf;

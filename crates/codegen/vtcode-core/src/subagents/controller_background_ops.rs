@@ -1,3 +1,4 @@
+//! Manages background subagent work, including task completion, cancellation, and archived results.
 #![allow(
     unused_imports,
     reason = "Intentional compatibility, platform, or test-only suppression."

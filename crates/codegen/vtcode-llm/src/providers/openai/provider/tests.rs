@@ -1,3 +1,4 @@
+//! Tests OpenAI provider request construction, authentication, streaming, and error handling.
 use super::super::CustomProviderAuthHandle;
 use super::super::backend_setup::{
     CHATGPT_CODEX_BASE, ChatGptSubscriptionAuthSource, OpenAIBackendKind, OpenAIBackendRefreshBehaviour,

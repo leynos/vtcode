@@ -1,3 +1,4 @@
+//! Runs non-local ACP tools, including permission checks and protocol-facing result reporting.
 use super::ZedAgent;
 use crate::acp;
 use crate::acp::Error as SdkError;

@@ -1,3 +1,7 @@
+//! ACP session state and durable archive lifecycle. ACP handlers delegate
+//! workspace-aware list/load/resume operations here, then provider runtime
+//! uses the resulting session handles for model execution.
+
 use super::ZedAgent;
 use crate::acp;
 use crate::workspace::{WorkspaceTrustSyncOutcome, WorkspaceTrustSynchronizer};
@@ -707,8 +711,10 @@ impl ZedAgent {
             let listing = find_session_by_identifier(identifier)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("unknown archived session '{identifier}'"))?;
+            let workspace_match = session_listing_workspace_match(&listing, workspace)
+                .with_context(|| format!("resolving workspace ownership for archived session '{identifier}'"))?;
             anyhow::ensure!(
-                session_listing_matches_canonical_workspace(&listing, workspace),
+                workspace_match == WorkspaceMatch::Matches,
                 "archived session '{identifier}' belongs to a different workspace"
             );
             let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
@@ -743,15 +749,20 @@ impl ZedAgent {
         workspace: &std::path::Path,
     ) -> anyhow::Result<SessionHandle> {
         if let Some(session) = self.session_handle(session_id)? {
-            let matches_workspace = session
+            let stored_workspace = session
                 .data
                 .lock()
                 .map_err(|error| lock_poison_error("checking workspace ownership of active ACP session", error))?
                 .thread
                 .metadata()
-                .and_then(|metadata| vtcode_commons::canonicalize(&metadata.workspace_path).ok())
-                .is_some_and(|stored_workspace| stored_workspace == workspace);
-            anyhow::ensure!(matches_workspace, "active session belongs to a different workspace");
+                .map(|metadata| metadata.workspace_path)
+                .ok_or_else(|| anyhow::anyhow!("active session has no stored workspace path"))?;
+            let workspace_match = canonical_workspace_match(std::path::Path::new(&stored_workspace), workspace)
+                .with_context(|| format!("resolving workspace ownership for active session '{session_id}'"))?;
+            anyhow::ensure!(
+                workspace_match == WorkspaceMatch::Matches,
+                "active session belongs to a different workspace"
+            );
             return Ok(session);
         }
 
@@ -782,22 +793,36 @@ impl ZedAgent {
             .map(vtcode_commons::canonicalize)
             .transpose()
             .map_err(|error| acp::Error::invalid_params().data(format!("invalid session list workspace: {error}")))?;
-        let mut sessions = listings
-            .into_iter()
-            .filter(|listing| {
-                args.cwd.is_none()
-                    || requested_workspace
-                        .as_deref()
-                        .is_some_and(|workspace| session_listing_matches_canonical_workspace(listing, workspace))
-            })
-            .filter_map(|listing| {
-                let cwd = session_workspace_path(&listing)?;
-                cwd.is_absolute().then(|| {
+        let mut sessions = Vec::new();
+        for listing in listings {
+            if let Some(workspace) = requested_workspace.as_deref() {
+                match session_listing_workspace_match(&listing, workspace) {
+                    Ok(WorkspaceMatch::Matches) => {}
+                    Ok(WorkspaceMatch::Differs) => continue,
+                    Err(error) => {
+                        warn!(
+                            session_id = %listing.identifier(),
+                            %error,
+                            "Excluding ACP archive with an unresolved stored workspace from filtered listing"
+                        );
+                        continue;
+                    }
+                }
+            }
+
+            let Some(cwd) = session_workspace_path(&listing) else {
+                continue;
+            };
+            if cwd.is_absolute() {
+                sessions.push(
                     acp::SessionInfo::new(listing.identifier(), cwd)
                         .title(listing.first_prompt_preview().or_else(|| listing.first_reply_preview()))
-                        .updated_at(listing.snapshot.ended_at.to_rfc3339())
-                })
-            })
+                        .updated_at(listing.snapshot.ended_at.to_rfc3339()),
+                );
+            }
+        }
+        let mut sessions = sessions
+            .into_iter()
             .skip(offset)
             .take(Self::SESSION_LIST_PAGE_SIZE + 1)
             .collect::<Vec<_>>();
@@ -1108,14 +1133,32 @@ impl ZedAgent {
     }
 }
 
-fn session_listing_matches_canonical_workspace(
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WorkspaceMatch {
+    Matches,
+    Differs,
+}
+
+fn canonical_workspace_match(
+    stored_workspace: &std::path::Path,
+    requested_workspace: &std::path::Path,
+) -> anyhow::Result<WorkspaceMatch> {
+    let canonical_stored_workspace = vtcode_commons::canonicalize(stored_workspace)
+        .with_context(|| format!("resolving stored ACP session workspace '{}'", stored_workspace.display()))?;
+    Ok(if canonical_stored_workspace == requested_workspace {
+        WorkspaceMatch::Matches
+    } else {
+        WorkspaceMatch::Differs
+    })
+}
+
+fn session_listing_workspace_match(
     listing: &SessionListing,
     requested_workspace: &std::path::Path,
-) -> bool {
-    let Some(stored_workspace) = session_workspace_path(listing) else {
-        return false;
-    };
-    vtcode_commons::canonicalize(stored_workspace).is_ok_and(|stored_workspace| stored_workspace == requested_workspace)
+) -> anyhow::Result<WorkspaceMatch> {
+    let stored_workspace = session_workspace_path(listing)
+        .ok_or_else(|| anyhow::anyhow!("archived session '{}' has no stored workspace path", listing.identifier()))?;
+    canonical_workspace_match(&stored_workspace, requested_workspace)
 }
 
 async fn canonical_session_workspace(requested_workspace: &std::path::Path) -> Result<std::path::PathBuf, acp::Error> {
@@ -1519,6 +1562,64 @@ mod tests {
     }
 
     #[test]
+    fn archived_workspace_matching_distinguishes_resolution_mismatch_and_match() {
+        let matching_workspace = TempDir::new().unwrap();
+        let different_workspace = TempDir::new().unwrap();
+        let missing_workspace = matching_workspace.path().join("missing");
+        let requested_workspace = vtcode_commons::canonicalize(matching_workspace.path()).unwrap();
+
+        let matching = archived_listing("session-matching", matching_workspace.path(), "matching task");
+        let different = archived_listing("session-different", different_workspace.path(), "different task");
+        let unavailable = archived_listing("session-unavailable", &missing_workspace, "unavailable task");
+
+        assert_eq!(session_listing_workspace_match(&matching, &requested_workspace).unwrap(), WorkspaceMatch::Matches);
+        assert_eq!(session_listing_workspace_match(&different, &requested_workspace).unwrap(), WorkspaceMatch::Differs);
+        let error = session_listing_workspace_match(&unavailable, &requested_workspace).unwrap_err();
+        assert!(format!("{error:#}").contains("resolving stored ACP session workspace"));
+    }
+
+    #[tokio::test]
+    async fn active_session_attachment_distinguishes_resolution_mismatch_and_match() {
+        let workspace = TempDir::new().unwrap();
+        let different_workspace = TempDir::new().unwrap();
+        let agent = build_agent(workspace.path()).await;
+        let response = agent.new_session(acp::NewSessionRequest::new(workspace.path())).await.unwrap();
+        let canonical_workspace = vtcode_commons::canonicalize(workspace.path()).unwrap();
+
+        assert!(
+            agent
+                .attach_or_get_session(&response.session_id, &canonical_workspace)
+                .await
+                .is_ok()
+        );
+        let mismatch = match agent
+            .attach_or_get_session(
+                &response.session_id,
+                &vtcode_commons::canonicalize(different_workspace.path()).unwrap(),
+            )
+            .await
+        {
+            Ok(_) => panic!("active session must reject a different workspace"),
+            Err(error) => error,
+        };
+        assert!(mismatch.to_string().contains("different workspace"));
+
+        let session = agent.session_handle(&response.session_id).unwrap().unwrap();
+        {
+            let data = session.data.lock().unwrap();
+            let mut metadata = data.thread.metadata().unwrap();
+            metadata.workspace_path = workspace.path().join("missing").to_string_lossy().into_owned();
+            data.thread.replace_metadata(Some(metadata));
+        }
+
+        let unresolved = match agent.attach_or_get_session(&response.session_id, &canonical_workspace).await {
+            Ok(_) => panic!("active session must reject an unresolved stored workspace"),
+            Err(error) => error,
+        };
+        assert!(format!("{unresolved:#}").contains("resolving stored ACP session workspace"));
+    }
+
+    #[test]
     fn session_list_filters_archives_by_workspace() {
         let first_workspace = TempDir::new().unwrap();
         let second_workspace = TempDir::new().unwrap();
@@ -1539,6 +1640,25 @@ mod tests {
         assert_eq!(response.sessions[0].cwd, first_workspace.path());
         assert_eq!(response.sessions[0].title.as_deref(), Some("First task"));
         assert!(response.next_cursor.is_none());
+    }
+
+    #[test]
+    fn session_list_excludes_an_unresolvable_archive_from_workspace_filtered_results() {
+        let workspace = TempDir::new().unwrap();
+        let missing_workspace = workspace.path().join("missing");
+        let request = acp::ListSessionsRequest::new().cwd(workspace.path());
+
+        let response = ZedAgent::session_list_response(
+            &request,
+            vec![
+                archived_listing("session-unavailable", &missing_workspace, "unavailable task"),
+                archived_listing("session-matching", workspace.path(), "matching task"),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(response.sessions.len(), 1);
+        assert_eq!(response.sessions[0].session_id, acp::SessionId::new("session-matching"));
     }
 
     #[test]

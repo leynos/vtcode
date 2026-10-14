@@ -1,3 +1,4 @@
+//! Creates and starts subagent runs from controller requests and their configured execution context.
 #![allow(
     unused_imports,
     reason = "Intentional compatibility, platform, or test-only suppression."

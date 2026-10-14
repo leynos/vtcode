@@ -1,3 +1,4 @@
+//! Serializes and restores durable session history, metadata, and transcript summaries.
 use crate::config::constants::defaults;
 use crate::config::{HistoryPersistence, VTCodeConfig};
 use crate::core::agent::snapshots::SnapshotTurnDiagnostics;

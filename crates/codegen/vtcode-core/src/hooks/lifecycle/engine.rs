@@ -1,3 +1,4 @@
+//! Executes configured lifecycle hook commands and exchanges structured input and output with them.
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;

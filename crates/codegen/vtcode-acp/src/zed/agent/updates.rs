@@ -1,3 +1,4 @@
+//! Sends session updates and derives ACP command and prompt-template listings for the client.
 use super::super::helpers::build_available_commands;
 use super::ZedAgent;
 use crate::acp;

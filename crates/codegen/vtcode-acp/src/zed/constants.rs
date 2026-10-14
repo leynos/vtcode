@@ -1,3 +1,4 @@
+//! Collects protocol labels, limits, and message templates shared by the Zed ACP adapter.
 pub(crate) const SESSION_PREFIX: &str = "vtcode-zed-session";
 pub(crate) const RESOURCE_FALLBACK_LABEL: &str = "Resource";
 pub(crate) const RESOURCE_FAILURE_LABEL: &str = "Resource unavailable";

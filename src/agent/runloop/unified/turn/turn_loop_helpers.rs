@@ -1,3 +1,4 @@
+//! Provides helpers for turn limits, planning intent, and repeated tool-call handling in the unified loop.
 use anyhow::Result;
 use serde_json::json;
 

@@ -1,3 +1,4 @@
+//! Declares provider adapters and shared helpers used to build LLM backends.
 #![expect(
     unused_results,
     reason = "Provider adapters intentionally discard map replacement, stream-drain, builder, and background-task results after applying wire state."

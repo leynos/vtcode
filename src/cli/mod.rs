@@ -1,3 +1,4 @@
+//! Defines CLI startup dispatch and groups command handlers and their supporting modules.
 use anyhow::Result;
 
 use crate::startup::StartupContext;

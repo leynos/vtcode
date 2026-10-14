@@ -1,3 +1,4 @@
+//! Coordinates the agent session loop, routing turn outcomes and lifecycle events between runtime components.
 use std::collections::VecDeque;
 use std::time::Instant;
 

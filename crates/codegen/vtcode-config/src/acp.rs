@@ -1,3 +1,4 @@
+//! Defines ACP configuration fields and their environment-aware defaults.
 use crate::constants::env::acp::AgentClientProtocolEnvKey;
 use crate::safety::ToolAuditConfig;
 use serde::{Deserialize, Serialize};

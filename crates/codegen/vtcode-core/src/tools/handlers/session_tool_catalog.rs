@@ -1,3 +1,4 @@
+//! Builds the model-facing tool catalog for a session from provider capabilities and tool policy.
 use crate::config::ModelId;
 use crate::config::ToolDocumentationMode;
 use crate::config::constants::tools;

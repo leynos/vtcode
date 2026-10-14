@@ -1,3 +1,4 @@
+//! Dispatches parsed CLI subcommands to their command-specific handlers.
 use crate::startup::StartupContext;
 use anyhow::Result;
 use vtcode_core::cli::args::{Cli, Commands};

@@ -1,3 +1,4 @@
+//! Implements the OpenAI-compatible provider adapter and assembles its request and response modules.
 #![allow(
     clippy::collapsible_if,
     clippy::manual_contains,

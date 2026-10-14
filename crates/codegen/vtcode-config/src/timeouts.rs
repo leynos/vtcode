@@ -1,3 +1,4 @@
+//! Defines configurable deadlines for provider requests, streaming, and tool execution.
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 

@@ -1,3 +1,4 @@
+//! Builds runtime tracing layers and prepares session-scoped log destinations.
 use anyhow::{Context, Result};
 use std::path::Path;
 use vtcode_core::utils::error_log_collector::ErrorLogCollectorLayer;

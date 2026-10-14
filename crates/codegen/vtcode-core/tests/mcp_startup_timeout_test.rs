@@ -1,3 +1,4 @@
+//! Exercises MCP provider startup timeout configuration and its effect on client startup.
 #![allow(
     missing_docs,
     reason = "Intentional compatibility, platform, or test-only suppression."

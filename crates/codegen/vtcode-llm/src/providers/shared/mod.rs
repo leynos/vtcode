@@ -1,3 +1,4 @@
+//! Provides shared normalized Responses API stream adapters and parsing helpers for provider backends.
 use crate::error_display;
 use crate::provider::{
     AssistantPhase, ContentPart, LLMError, LLMResponse, LLMStreamEvent, Message, MessageContent, MessageRole, ToolCall,

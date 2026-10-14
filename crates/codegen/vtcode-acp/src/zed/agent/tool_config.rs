@@ -1,3 +1,4 @@
+//! Prepares the tool definitions and per-session tool settings exposed by the Zed ACP agent.
 use super::ZedAgent;
 use crate::reports::TOOL_FAILURE_PREFIX;
 use crate::tooling::{SupportedTool, TOOL_READ_FILE_PATH_ARG, TOOL_READ_FILE_URI_ARG};

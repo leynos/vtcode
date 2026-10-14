@@ -1,3 +1,4 @@
+//! Tests ACP tool setup, optional provider attachment, and the tools exposed to Zed sessions.
 use super::{OptionalSetupOutcome, ZedAgent, attach_acp_mcp_client, attach_acp_subagent_controller};
 use crate::tooling::ToolDescriptor;
 use crate::zed::helpers::PrimaryAgentCatalog;

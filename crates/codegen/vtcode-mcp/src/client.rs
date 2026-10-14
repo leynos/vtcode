@@ -1,3 +1,4 @@
+//! Implements MCP client connections, provider lifecycle, and tool, prompt, and resource operations.
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
 use chrono::Utc;

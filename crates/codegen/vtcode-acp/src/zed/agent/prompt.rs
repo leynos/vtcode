@@ -1,3 +1,4 @@
+//! Handles incoming ACP prompts and routes their content and resource references into agent turns.
 use super::ZedAgent;
 use crate::acp;
 use crate::acp::Error as SdkError;

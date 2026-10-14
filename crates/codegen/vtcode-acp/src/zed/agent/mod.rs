@@ -1,3 +1,4 @@
+//! Builds the Zed ACP agent state and shared session services used by request handlers.
 use crate::acp;
 use crate::audit::AcpAuditLogger;
 use crate::permissions::{AcpPermissionPrompter, DefaultPermissionPrompter};

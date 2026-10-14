@@ -1,3 +1,4 @@
+//! Defines subagent run state, outcomes, and the data shared by controller components.
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

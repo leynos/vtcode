@@ -1,3 +1,4 @@
+//! Builds normalized OpenAI response streams and handles provider-specific stream fallbacks.
 use super::super::errors::{
     fallback_model_if_not_found, format_openai_error, is_model_not_found, is_responses_api_unsupported,
 };

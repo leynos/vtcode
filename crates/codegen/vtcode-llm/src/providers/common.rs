@@ -1,3 +1,4 @@
+//! Provides request validation, model resolution, and response mapping shared by provider adapters.
 use crate::error_display;
 use crate::provider::{
     ContentPart, FinishReason, LLMError, LLMRequest, LLMStream, LLMStreamEvent, Message, MessageContent, MessageRole,

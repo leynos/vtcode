@@ -1,3 +1,4 @@
+//! Implements workspace-local ACP file tools and converts their results for the Zed client.
 use super::ZedAgent;
 use crate::acp;
 use crate::reports::{

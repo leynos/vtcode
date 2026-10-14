@@ -1,3 +1,4 @@
+//! Checks the discovered public tool surface and its audit-related behavior.
 #![allow(
     missing_docs,
     reason = "Intentional compatibility, platform, test, or API-shape suppression."

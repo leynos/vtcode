@@ -1,3 +1,4 @@
+//! Coordinates ACP client permission prompts and translates their responses into tool authorization decisions.
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 

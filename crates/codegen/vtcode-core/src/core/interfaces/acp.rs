@@ -1,3 +1,4 @@
+//! Defines the launch parameters and adapter port used by hosts to start an ACP client.
 use anyhow::Result;
 use async_trait::async_trait;
 

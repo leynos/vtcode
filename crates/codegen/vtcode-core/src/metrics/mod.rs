@@ -1,3 +1,4 @@
+//! Collects execution and tool metrics and exposes the metric record types used by core.
 // Metrics collection and observability for MCP execution system
 //
 // Tracks performance, effectiveness, and security across all execution steps:

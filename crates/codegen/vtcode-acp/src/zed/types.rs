@@ -1,3 +1,4 @@
+//! Defines the shared Zed ACP session, tool, and run-state types used across adapter modules.
 use crate::acp;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};

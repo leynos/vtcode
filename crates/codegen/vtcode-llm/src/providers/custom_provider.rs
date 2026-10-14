@@ -1,3 +1,4 @@
+//! Routes configured custom-provider requests and enforces their concurrency, retry, and stream policies.
 use async_trait::async_trait;
 use futures::StreamExt;
 use std::collections::HashMap;

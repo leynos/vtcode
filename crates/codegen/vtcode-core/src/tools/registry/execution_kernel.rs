@@ -1,3 +1,4 @@
+//! Validates and dispatches tool executions through the shared tool registry boundary.
 use anyhow::{Result, anyhow};
 use serde_json::Map;
 use serde_json::Value;

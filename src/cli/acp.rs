@@ -1,3 +1,4 @@
+//! Validates ACP command configuration and launches the selected protocol adapter.
 use anyhow::{Result, bail};
 use vtcode::acp::{StandardAcpAdapter, ZedAcpAdapter};
 use vtcode_core::cli::args::AgentClientProtocolTarget;

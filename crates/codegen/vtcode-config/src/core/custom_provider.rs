@@ -1,3 +1,4 @@
+//! Defines custom provider profiles, request policies, and their serialized configuration.
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 

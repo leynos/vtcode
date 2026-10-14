@@ -1,3 +1,4 @@
+//! Groups the configuration types that describe the agent and its runtime capabilities.
 pub mod advisor;
 pub mod agent;
 pub mod auth;

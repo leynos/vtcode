@@ -1,3 +1,4 @@
+//! Caches and applies macOS Gatekeeper quarantine checks used when handling executable paths.
 use lru::LruCache;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};

@@ -1,3 +1,4 @@
+//! Tests session archive serialization, restoration, normalization, and history retention behavior.
 use super::*;
 use crate::config::constants::tools as tool_names;
 use crate::core::agent::snapshots::SnapshotTurnDiagnostics;

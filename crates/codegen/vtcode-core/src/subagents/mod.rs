@@ -1,3 +1,4 @@
+//! Coordinates subagent discovery, execution, background work, and the public controller API.
 #![allow(
     unused_imports,
     reason = "Intentional compatibility, platform, or test-only suppression."
