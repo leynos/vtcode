@@ -1,3 +1,4 @@
+//! Handles complete provider responses, including reasoning updates and buffered tool calls.
 pub(in crate::zed::agent::handlers) fn response_reasoning_update(response: &LLMResponse) -> Option<acp::SessionUpdate> {
     response
         .reasoning

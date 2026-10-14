@@ -1,3 +1,4 @@
+//! Covers provider attempt telemetry, deadline phases, retry policy, and failure classification.
 use super::*;
 use crate::zed::types::SessionCancellation;
 

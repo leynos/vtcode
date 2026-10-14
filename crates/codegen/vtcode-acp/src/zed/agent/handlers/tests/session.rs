@@ -1,3 +1,4 @@
+//! Checks ACP session capabilities, turn exclusion, recovery, and lifecycle-hook effects.
 use super::*;
 
 #[test]

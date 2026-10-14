@@ -1,3 +1,4 @@
+//! Verifies conversion and serialization of archived message content, reasoning, tool calls, and metadata.
 use super::*;
 
 #[test]

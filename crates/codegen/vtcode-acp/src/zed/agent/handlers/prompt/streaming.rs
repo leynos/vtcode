@@ -1,3 +1,4 @@
+//! Collects provider stream events and projects text, tool, timeout, and retry outcomes into ACP turns.
 use super::super::provider::*;
 use super::buffered::refresh_resolved_tool_state;
 use super::*;

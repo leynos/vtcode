@@ -1,8 +1,11 @@
+//! Verifies archive metadata compatibility and bounded extension storage across serialization changes.
 use super::*;
 
 #[cfg(test)]
 mod metadata_compat_tests {
-    use super::{SessionArchive, SessionArchiveMetadata};
+    use super::{
+        SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE, SessionArchive, SessionArchiveExtensions, SessionArchiveMetadata,
+    };
 
     #[test]
     fn primary_agent_metadata_is_backward_compatible() {
@@ -23,7 +26,21 @@ mod metadata_compat_tests {
     }
 
     #[test]
-    fn client_metadata_reads_legacy_acp_archive_field() {
+    fn namespaced_extensions_round_trip_as_opaque_values() {
+        let mut metadata = SessionArchiveMetadata::new("ws", "/tmp/ws", "model", "provider", "test", "low");
+        let mut extensions = SessionArchiveExtensions::new();
+        drop(extensions.insert("org.example.client", serde_json::json!({"requestId": "request-1"})));
+        metadata.extensions = Some(extensions);
+
+        let value = serde_json::to_value(&metadata).expect("serialize namespaced extensions");
+        assert_eq!(value["extensions"]["org.example.client"]["requestId"], "request-1");
+
+        let restored = serde_json::from_value::<SessionArchiveMetadata>(value).expect("deserialize extensions");
+        assert_eq!(restored, metadata);
+    }
+
+    #[test]
+    fn unknown_archive_fields_are_preserved_in_a_generic_legacy_namespace() {
         let metadata = serde_json::from_value::<SessionArchiveMetadata>(serde_json::json!({
             "workspace_label": "ws",
             "workspace_path": "/tmp/ws",
@@ -31,15 +48,19 @@ mod metadata_compat_tests {
             "provider": "openai",
             "theme": "test",
             "reasoning_effort": "low",
-            "acp_meta": {"requestId": "legacy-request"}
+            "vendor_archive_data": {"requestId": "legacy-request"}
         }))
-        .expect("deserialize archive with legacy ACP metadata field");
+        .expect("deserialize archive with an unrecognized field");
 
-        assert_eq!(metadata.client_metadata.as_ref().unwrap()["requestId"], "legacy-request");
-
-        let value = serde_json::to_value(metadata).expect("serialize generic client metadata");
-        assert_eq!(value["client_metadata"]["requestId"], "legacy-request");
-        assert!(value.get("acp_meta").is_none());
+        assert_eq!(
+            metadata.extension(SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE).unwrap()["vendor_archive_data"]["requestId"],
+            "legacy-request"
+        );
+        let value = serde_json::to_value(metadata).expect("serialize generic archive extensions");
+        assert_eq!(
+            value["extensions"][SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE]["vendor_archive_data"]["requestId"],
+            "legacy-request"
+        );
     }
 
     #[test]

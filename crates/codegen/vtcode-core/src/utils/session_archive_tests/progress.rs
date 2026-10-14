@@ -1,3 +1,4 @@
+//! Covers durable progress snapshots, recent-message summaries, throttling, and checkpoint refreshes.
 use super::*;
 
 #[serial_test::serial(session_dir_override)]

@@ -1,3 +1,4 @@
+//! Exercises ACP permission decisions, including cached per-session choices and forced prompts.
 use super::*;
 use crate::acp;
 use crate::acp::Error as SdkError;

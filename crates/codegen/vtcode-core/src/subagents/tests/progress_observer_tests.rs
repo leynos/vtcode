@@ -1,3 +1,4 @@
+//! Checks that subagent and background-process progress notifications stay scoped to their parent session.
 use super::*;
 
 use super::*;

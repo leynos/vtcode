@@ -210,14 +210,7 @@ impl ZedAgent {
                 match session_listing_workspace_match(&listing, workspace) {
                     Ok(WorkspaceMatch::Matches) => {}
                     Ok(WorkspaceMatch::Differs) => continue,
-                    Err(error) => {
-                        warn!(
-                            session_id = %listing.identifier(),
-                            %error,
-                            "Excluding ACP archive with an unresolved stored workspace from filtered listing"
-                        );
-                        continue;
-                    }
+                    Err(error) => return Err(acp::Error::internal_error().data(error.to_string())),
                 }
             }
 

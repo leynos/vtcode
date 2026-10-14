@@ -1,3 +1,4 @@
+//! Coordinates ACP prompt preparation, hooks, compaction, and provider-turn execution.
 use super::super::tool_config::SessionToolDefinitionRequest;
 use super::provider::{
     GenerationTelemetry, IncompleteProviderTurn, ProviderCallError, StreamDeadlineTracker, StreamTimeoutPhase,

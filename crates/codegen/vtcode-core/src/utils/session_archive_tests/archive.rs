@@ -1,3 +1,4 @@
+//! Covers archive creation, snapshot persistence, identifier reuse, and history-persistence settings.
 use super::*;
 
 async fn persisted_snapshot_fixture()
@@ -11,7 +12,7 @@ async fn persisted_snapshot_fixture()
         SessionArchiveMetadata::new("ExampleWorkspace", "/tmp/example", "model-x", "provider-y", "dark", "medium")
             .with_external_thread_id("thread-123");
     let mut archive_metadata = metadata.clone();
-    archive_metadata.client_metadata = Some(serde_json::Map::new());
+    archive_metadata.extensions = Some(Default::default());
     let archive = SessionArchive::new(archive_metadata.clone(), None).await?;
     let transcript = vec!["line one".to_owned(), "line two".to_owned()];
     let messages = vec![

@@ -1,3 +1,4 @@
+//! Tests archive lookup, ordering, search, previews, and handling of unreadable entries.
 use super::*;
 
 #[serial_test::serial(session_dir_override)]

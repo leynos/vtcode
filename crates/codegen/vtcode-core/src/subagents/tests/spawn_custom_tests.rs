@@ -1,3 +1,4 @@
+//! Verifies custom subagent spawning preserves the selected specification despite other agent mentions.
 use super::*;
 
 #[tokio::test]

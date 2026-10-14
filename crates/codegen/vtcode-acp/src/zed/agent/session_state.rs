@@ -16,7 +16,10 @@ use vtcode_config::auth::AuthCredentialsStoreMode;
 use vtcode_core::core::threads::{ThreadBootstrap, build_thread_archive_metadata};
 use vtcode_core::hooks::{LifecycleHookEngine, SessionEndReason, SessionStartTrigger};
 use vtcode_core::llm::provider::{FinishReason, Message};
-use vtcode_core::utils::session_archive::{MAX_CLIENT_METADATA_BYTES, MAX_CLIENT_METADATA_ENTRIES, SessionArchive};
+use vtcode_core::utils::session_archive::{
+    MAX_SESSION_ARCHIVE_EXTENSION_BYTES, SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE, SessionArchive,
+    SessionArchiveMetadata,
+};
 
 use super::super::constants::SESSION_PREFIX;
 use super::super::session::AcpSessionWorkspace;
@@ -33,15 +36,18 @@ struct SessionHandleBootstrap {
     workspace_runtime: Option<Arc<SessionWorkspaceRuntime>>,
 }
 
-struct BoundedClientMetadata {
+struct BoundedAcpMeta {
     value: Option<serde_json::Map<String, serde_json::Value>>,
     discarded_entries: usize,
 }
 
-fn merge_bounded_client_metadata(
+const ACP_SESSION_METADATA_NAMESPACE: &str = "dev.vtcode.acp";
+const MAX_ACP_METADATA_ENTRIES: usize = 64;
+
+fn merge_bounded_acp_meta(
     existing: Option<serde_json::Map<String, serde_json::Value>>,
     incoming: Option<acp::Meta>,
-) -> BoundedClientMetadata {
+) -> BoundedAcpMeta {
     let preserve_presence = existing.is_some() || incoming.is_some();
     let mut merged = existing.unwrap_or_default().into_iter().collect::<BTreeMap<_, _>>();
     merged.extend(incoming.unwrap_or_default());
@@ -49,21 +55,72 @@ fn merge_bounded_client_metadata(
     let mut bounded = serde_json::Map::new();
     let mut discarded_entries = 0usize;
     for (key, value) in merged {
-        if bounded.len() >= MAX_CLIENT_METADATA_ENTRIES {
+        if bounded.len() >= MAX_ACP_METADATA_ENTRIES {
             discarded_entries = discarded_entries.saturating_add(1);
             continue;
         }
         drop(bounded.insert(key.clone(), value));
-        if serialized_acp_meta_size_at_most(&bounded).is_none() {
+        if serialized_acp_meta_size_at_most(&bounded, MAX_SESSION_ARCHIVE_EXTENSION_BYTES).is_none() {
             drop(bounded.remove(&key));
             discarded_entries = discarded_entries.saturating_add(1);
         }
     }
 
-    BoundedClientMetadata {
+    BoundedAcpMeta {
         value: preserve_presence.then_some(bounded),
         discarded_entries,
     }
+}
+
+fn migrate_legacy_acp_meta(metadata: &mut SessionArchiveMetadata) -> bool {
+    // Older ACP archives used protocol-named top-level metadata fields. Core
+    // preserves them generically; this boundary migrates only ACP-owned keys.
+    let Some(mut legacy_fields) = metadata
+        .extension(SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE)
+        .and_then(serde_json::Value::as_object)
+        .cloned()
+    else {
+        return false;
+    };
+
+    let mut legacy_acp_meta = serde_json::Map::new();
+    let mut had_legacy_acp_meta = false;
+    for legacy_key in ["acp_meta", "client_metadata"] {
+        let Some(value) = legacy_fields.get(legacy_key).and_then(serde_json::Value::as_object).cloned() else {
+            continue;
+        };
+        had_legacy_acp_meta = true;
+        drop(legacy_fields.remove(legacy_key));
+        legacy_acp_meta.extend(value);
+    }
+
+    if !had_legacy_acp_meta {
+        return false;
+    }
+
+    if legacy_fields.is_empty() {
+        drop(metadata.remove_extension(SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE));
+    } else {
+        metadata.set_extension(SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE, serde_json::Value::Object(legacy_fields));
+    }
+
+    let current_acp_meta = metadata
+        .extension(ACP_SESSION_METADATA_NAMESPACE)
+        .and_then(|value| value.as_object());
+    let incoming = current_acp_meta.cloned().map(acp::Meta::from_iter);
+    let merged = merge_bounded_acp_meta(Some(legacy_acp_meta), incoming);
+    if let Some(value) = merged.value {
+        metadata.set_extension(ACP_SESSION_METADATA_NAMESPACE, serde_json::Value::Object(value));
+    }
+    if merged.discarded_entries > 0 {
+        warn!(
+            discarded_entries = merged.discarded_entries,
+            max_entries = MAX_ACP_METADATA_ENTRIES,
+            max_serialized_bytes = MAX_SESSION_ARCHIVE_EXTENSION_BYTES,
+            "Discarded legacy ACP metadata entries beyond the archive budget"
+        );
+    }
+    true
 }
 
 impl ZedAgent {
@@ -158,14 +215,20 @@ impl ZedAgent {
         let Some(mut metadata) = data.thread.metadata() else {
             return Ok(());
         };
-        let merged = merge_bounded_client_metadata(metadata.client_metadata.take(), acp_meta);
-        metadata.client_metadata = merged.value;
+        let existing = metadata
+            .extension(ACP_SESSION_METADATA_NAMESPACE)
+            .and_then(serde_json::Value::as_object)
+            .cloned();
+        let merged = merge_bounded_acp_meta(existing, acp_meta);
+        if let Some(value) = merged.value {
+            metadata.set_extension(ACP_SESSION_METADATA_NAMESPACE, serde_json::Value::Object(value));
+        }
         data.thread.replace_metadata(Some(metadata));
         if merged.discarded_entries > 0 {
             warn!(
                 discarded_entries = merged.discarded_entries,
-                max_entries = MAX_CLIENT_METADATA_ENTRIES,
-                max_serialized_bytes = MAX_CLIENT_METADATA_BYTES,
+                max_entries = MAX_ACP_METADATA_ENTRIES,
+                max_serialized_bytes = MAX_SESSION_ARCHIVE_EXTENSION_BYTES,
                 "Discarded ACP metadata entries beyond the archive budget"
             );
         }
@@ -177,7 +240,22 @@ impl ZedAgent {
         thread: vtcode_core::core::threads::ThreadRuntimeHandle,
         bootstrap: SessionHandleBootstrap,
     ) -> SessionHandle {
-        let SessionHandleBootstrap { session_id, archive, trigger, workspace_runtime } = bootstrap;
+        let SessionHandleBootstrap {
+            session_id,
+            mut archive,
+            trigger,
+            workspace_runtime,
+        } = bootstrap;
+        // Archive metadata is protocol-neutral in core; restore the old ACP
+        // fields before the client adapter exposes this session.
+        if let Some(mut metadata) = thread.metadata()
+            && migrate_legacy_acp_meta(&mut metadata)
+        {
+            if let Some(archive) = archive.as_mut() {
+                archive.replace_metadata(metadata.clone());
+            }
+            thread.replace_metadata(Some(metadata));
+        }
         let reasoning_effort = self.session_reasoning_effort_for_thread(&thread);
         let provider = self.session_provider_for_thread(&thread);
         let model = self.session_model_for_thread(&thread);
@@ -280,7 +358,7 @@ impl ZedAgent {
             self.config.reasoning_effort.as_str(),
         )
         .with_primary_agent(workspace_runtime.primary_agents.default_id());
-        metadata.client_metadata = Some(serde_json::Map::new());
+        metadata.set_extension(ACP_SESSION_METADATA_NAMESPACE, serde_json::json!({}));
         let thread = self
             .thread_manager
             .start_thread_with_identifier(session_id.0.to_string(), ThreadBootstrap::new(Some(metadata)));
@@ -419,14 +497,18 @@ impl ZedAgent {
     }
 }
 
-fn serialized_acp_meta_size_at_most(metadata: &serde_json::Map<String, serde_json::Value>) -> Option<usize> {
-    let mut writer = BoundedMetadataSizeWriter { bytes_written: 0 };
+fn serialized_acp_meta_size_at_most(
+    metadata: &serde_json::Map<String, serde_json::Value>,
+    max_bytes: usize,
+) -> Option<usize> {
+    let mut writer = BoundedMetadataSizeWriter { bytes_written: 0, max_bytes };
     serde_json::to_writer(&mut writer, metadata).ok()?;
     Some(writer.bytes_written)
 }
 
 struct BoundedMetadataSizeWriter {
     bytes_written: usize,
+    max_bytes: usize,
 }
 
 impl Write for BoundedMetadataSizeWriter {
@@ -434,7 +516,7 @@ impl Write for BoundedMetadataSizeWriter {
         let Some(new_size) = self.bytes_written.checked_add(bytes.len()) else {
             return Err(io::Error::other("serialized ACP metadata size overflowed"));
         };
-        if new_size > MAX_CLIENT_METADATA_BYTES {
+        if new_size > self.max_bytes {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "serialized ACP metadata exceeded its size limit"));
         }
         self.bytes_written = new_size;

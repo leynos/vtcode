@@ -1,3 +1,4 @@
+//! Exercises streamed ACP tool execution, permission handling, output projection, and audit recording.
 use super::*;
 
 #[tokio::test]
@@ -32,7 +33,33 @@ async fn streamed_tool_calls_audit_success_and_failure_before_streamed_final_ans
             .expect("ACP tool audit configuration");
     std::fs::write(workspace.path().join("visible.txt"), "fixture").expect("write workspace fixture");
     std::fs::write(launch_workspace.path().join("wrong-root.txt"), "fixture").expect("write launch workspace fixture");
-    let agent = Arc::new(build_wire_test_agent_with_options(launch_workspace.path(), Some(&vt_config), None).await);
+    let launch_config = CoreAgentConfig {
+        model: "wire-model".to_string(),
+        api_key: "test-key".to_string(),
+        provider: "wire-test".to_string(),
+        api_key_env: "WIRE_TEST_API_KEY".to_string(),
+        workspace: launch_workspace.path().to_path_buf(),
+        verbose: false,
+        quiet: false,
+        theme: "test".to_string(),
+        reasoning_effort: ReasoningEffortLevel::Low,
+        ui_surface: UiSurfacePreference::default(),
+        prompt_cache: PromptCachingConfig::default(),
+        model_source: ModelSelectionSource::WorkspaceConfig,
+        custom_api_keys: BTreeMap::new(),
+        checkpointing_enabled: DEFAULT_CHECKPOINTS_ENABLED,
+        checkpointing_storage_dir: None,
+        checkpointing_max_snapshots: DEFAULT_MAX_SNAPSHOTS,
+        checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
+        max_conversation_turns: 1000,
+        model_behaviour: None,
+        openai_chatgpt_auth: None,
+    };
+    let startup = crate::zed::session::prepare_acp_agent_startup(&launch_config, &vt_config, None, true)
+        .await
+        .expect("prepare ACP launch with configured audit logger");
+    assert!(startup.audit_logger.is_some(), "enabled ACP audit config must create the launch logger");
+    let agent = Arc::new(crate::zed::session::create_acp_agent(startup).await);
     let (agent_channel, client_channel) = Channel::duplex();
     let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
 
@@ -109,40 +136,42 @@ async fn streamed_tool_calls_audit_success_and_failure_before_streamed_final_ans
     assert!(visible_text.contains(&"Tool complete."));
     assert_eq!(calls.load(Ordering::SeqCst), 2, "one stream before and one stream after the tool");
 
-    let requests = requests.lock().expect("stream requests");
-    assert_eq!(requests.len(), 2);
-    assert!(requests.iter().all(|request| request.stream));
-    assert!(
-        requests[0]
-            .tools
-            .as_deref()
-            .is_some_and(|definitions| definitions.iter().any(|tool| tool.function_name() == "task_tracker")),
-        "ACP provider requests must expose task_tracker to the model"
-    );
-    assert!(
-        requests[1].messages.iter().any(Message::is_tool_response),
-        "the second stream must include the executed tool result"
-    );
-    assert_eq!(
-        requests[1].messages.iter().filter(|message| message.is_tool_response()).count(),
-        2,
-        "the provider must receive both the successful and failed streamed tool outcomes"
-    );
-    let tool_response = requests[1]
-        .messages
-        .iter()
-        .find(|message| message.is_tool_response())
-        .map(|message| message.content.as_text())
-        .expect("list_files tool response");
-    assert!(tool_response.contains("visible.txt"), "tool must use session/new cwd: {tool_response}");
-    assert!(!tool_response.contains("wrong-root.txt"), "tool must not use the ACP launch cwd: {tool_response}");
-    assert!(
-        requests[1]
+    {
+        let requests = requests.lock().expect("stream requests");
+        assert_eq!(requests.len(), 2);
+        assert!(requests.iter().all(|request| request.stream));
+        assert!(
+            requests[0]
+                .tools
+                .as_deref()
+                .is_some_and(|definitions| definitions.iter().any(|tool| tool.function_name() == "task_tracker")),
+            "ACP provider requests must expose task_tracker to the model"
+        );
+        assert!(
+            requests[1].messages.iter().any(Message::is_tool_response),
+            "the second stream must include the executed tool result"
+        );
+        assert_eq!(
+            requests[1].messages.iter().filter(|message| message.is_tool_response()).count(),
+            2,
+            "the provider must receive both the successful and failed streamed tool outcomes"
+        );
+        let tool_response = requests[1]
             .messages
             .iter()
-            .any(|message| message.reasoning.as_deref() == Some("I need the workspace listing.")),
-        "the assistant tool-call checkpoint must retain streamed reasoning"
-    );
+            .find(|message| message.is_tool_response())
+            .map(|message| message.content.as_text())
+            .expect("list_files tool response");
+        assert!(tool_response.contains("visible.txt"), "tool must use session/new cwd: {tool_response}");
+        assert!(!tool_response.contains("wrong-root.txt"), "tool must not use the ACP launch cwd: {tool_response}");
+        assert!(
+            requests[1]
+                .messages
+                .iter()
+                .any(|message| message.reasoning.as_deref() == Some("I need the workspace listing.")),
+            "the assistant tool-call checkpoint must retain streamed reasoning"
+        );
+    }
 
     let audit_entries = std::fs::read_to_string(&audit_path)
         .expect("read ACP tool audit JSONL")
@@ -191,6 +220,21 @@ async fn streamed_tool_calls_audit_success_and_failure_before_streamed_final_ans
     for sensitive_value in [r#""path":"""#, r#""probe":"failure""#, "visible.txt", "wrong-root.txt"] {
         assert!(!audit_json.contains(sensitive_value), "audit output leaked {sensitive_value}");
     }
+
+    let disabled_audit_path = launch_workspace.path().join("disabled-tool-audit.jsonl");
+    let mut disabled_vt_config = vt_config.clone();
+    disabled_vt_config.acp.audit = toml::from_str(&format!("enabled = false\npath = {:?}", disabled_audit_path))
+        .expect("disabled ACP tool audit configuration");
+    let disabled_startup =
+        crate::zed::session::prepare_acp_agent_startup(&launch_config, &disabled_vt_config, None, true)
+            .await
+            .expect("prepare ACP launch with disabled audit logging");
+    assert!(
+        disabled_startup.audit_logger.is_none(),
+        "disabled ACP audit config must not create the launch logger"
+    );
+    let _disabled_agent = crate::zed::session::create_acp_agent(disabled_startup).await;
+    assert!(!disabled_audit_path.exists(), "disabled ACP audit config must not create an audit file");
 }
 
 #[tokio::test]

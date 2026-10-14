@@ -1,3 +1,4 @@
+//! Verifies ACP prompt streaming, partial-turn recovery, compaction, and reasoning projection.
 use super::*;
 
 #[test]
@@ -100,6 +101,7 @@ async fn provider_failure_is_normal_end_turn_and_same_session_accepts_a_second_p
         Arc::new(move || Box::new(FailThenSucceedProvider { calls: Arc::clone(&factory_calls) })),
     );
     let workspace = TempDir::new().expect("wire test workspace");
+    let client_workspace = workspace.path().to_path_buf();
     let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
     let (agent_channel, client_channel) = Channel::duplex();
     let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
@@ -129,7 +131,7 @@ async fn provider_failure_is_normal_end_turn_and_same_session_accepts_a_second_p
                 .block_task()
                 .await?;
             let session = cx
-                .send_request(NewSessionRequest::new(workspace.path().to_path_buf()).meta(acp::Meta::from_iter([
+                .send_request(NewSessionRequest::new(client_workspace).meta(acp::Meta::from_iter([
                     ("client".to_string(), serde_json::json!("wire-test")),
                     ("requestId".to_string(), serde_json::json!("create-1")),
                 ])))
@@ -196,19 +198,47 @@ async fn provider_failure_is_normal_end_turn_and_same_session_accepts_a_second_p
         let archive_path = data.archive.as_ref().expect("wire ACP session archive").path().to_path_buf();
         (metadata, archive_path)
     };
-    assert_eq!(
-        metadata.client_metadata.as_ref().and_then(|meta| meta.get("client")),
-        Some(&serde_json::json!("wire-test"))
-    );
-    assert_eq!(
-        metadata.client_metadata.as_ref().and_then(|meta| meta.get("requestId")),
-        Some(&serde_json::json!("prompt-1"))
-    );
+    let acp_metadata = metadata.extension("dev.vtcode.acp").and_then(serde_json::Value::as_object);
+    assert_eq!(acp_metadata.and_then(|meta| meta.get("client")), Some(&serde_json::json!("wire-test")));
+    assert_eq!(acp_metadata.and_then(|meta| meta.get("requestId")), Some(&serde_json::json!("prompt-1")));
     let persisted: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&archive_path).expect("read persisted wire ACP session archive"))
             .expect("parse persisted wire ACP session archive");
-    assert_eq!(persisted["metadata"]["client_metadata"]["client"], "wire-test");
-    assert_eq!(persisted["metadata"]["client_metadata"]["requestId"], "prompt-1");
+    assert_eq!(persisted["metadata"]["extensions"]["dev.vtcode.acp"]["client"], "wire-test");
+    assert_eq!(persisted["metadata"]["extensions"]["dev.vtcode.acp"]["requestId"], "prompt-1");
+
+    let session_id = session.data.lock().expect("wire ACP session data").session_id.clone();
+    let restored_agent = build_wire_test_agent(workspace.path()).await;
+    let load_response = restored_agent
+        .load_session(LoadSessionRequest::new(session_id.clone(), workspace.path()))
+        .await
+        .expect("load persisted ACP metadata into a fresh runtime");
+    assert!(load_response.config_options.is_some(), "session load must return configuration options");
+    let restored_session = restored_agent
+        .session_handle(&session_id)
+        .expect("look up restored ACP session")
+        .expect("restored ACP session handle");
+    let restored_metadata = restored_session
+        .data
+        .lock()
+        .expect("restored ACP session data")
+        .thread
+        .metadata()
+        .unwrap();
+    assert_eq!(
+        restored_metadata
+            .extension("dev.vtcode.acp")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|meta| meta.get("client")),
+        Some(&serde_json::json!("wire-test"))
+    );
+    assert_eq!(
+        restored_metadata
+            .extension("dev.vtcode.acp")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|meta| meta.get("requestId")),
+        Some(&serde_json::json!("prompt-1"))
+    );
     std::fs::remove_file(archive_path).expect("remove persisted wire ACP session archive");
 }
 

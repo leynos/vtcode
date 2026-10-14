@@ -1061,7 +1061,7 @@ Apache License 2.0 — SPDX: Apache-2.0
   rustls-native-certs 0.8.4
     Source: https://github.com/rustls/rustls-native-certs
     License: Apache-2.0 OR ISC OR MIT
-  rustls 0.23.45
+  rustls 0.23.46
     Source: https://github.com/rustls/rustls
     License: Apache-2.0 OR ISC OR MIT
   rusty-fork 0.3.1

@@ -326,22 +326,28 @@ fn session_list_filters_archives_by_workspace() {
 }
 
 #[test]
-fn session_list_excludes_an_unresolvable_archive_from_workspace_filtered_results() {
+fn session_list_reports_an_unresolvable_archive_in_workspace_filtered_results() {
     let workspace = TempDir::new().unwrap();
     let missing_workspace = workspace.path().join("missing");
     let request = acp::ListSessionsRequest::new().cwd(workspace.path());
 
-    let response = ZedAgent::session_list_response(
+    let error = ZedAgent::session_list_response(
         &request,
-        vec![
-            archived_listing("session-unavailable", &missing_workspace, "unavailable task"),
-            archived_listing("session-matching", workspace.path(), "matching task"),
-        ],
+        vec![archived_listing(
+            "session-unavailable",
+            &missing_workspace,
+            "unavailable task",
+        )],
     )
-    .unwrap();
+    .expect_err("an unresolved stored workspace must fail a filtered listing");
 
-    assert_eq!(response.sessions.len(), 1);
-    assert_eq!(response.sessions[0].session_id, acp::SessionId::new("session-matching"));
+    assert_eq!(error.code, acp::ErrorCode::InternalError);
+    assert!(
+        error
+            .data
+            .and_then(|data| data.as_str().map(str::to_owned))
+            .is_some_and(|detail| detail.contains("resolving stored ACP session workspace"))
+    );
 }
 
 #[test]

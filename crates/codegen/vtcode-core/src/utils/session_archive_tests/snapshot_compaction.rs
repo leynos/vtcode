@@ -1,3 +1,4 @@
+//! Checks snapshot size reduction and bounded persistence of namespaced extensions.
 use super::*;
 
 #[test]
@@ -53,49 +54,57 @@ fn snapshot_compaction_shrinks_large_single_message_payloads() -> Result<()> {
 }
 
 #[test]
-fn client_metadata_is_bounded_by_entry_count_and_serialized_size() {
-    let mut entries = serde_json::Map::new();
-    for index in 0..MAX_CLIENT_METADATA_ENTRIES + 4 {
-        entries.insert(format!("key-{index:02}"), serde_json::json!("value"));
+fn archive_extensions_are_bounded_by_namespace_count_and_serialized_size() {
+    let mut extensions = SessionArchiveExtensions::new();
+    for index in 0..MAX_SESSION_ARCHIVE_EXTENSION_NAMESPACES + 4 {
+        drop(extensions.insert(format!("org.example.namespace-{index:02}"), serde_json::json!("value")));
     }
-    let mut metadata = Some(entries);
+    let mut extensions = Some(extensions);
 
-    assert!(bound_client_metadata(&mut metadata));
-    let bounded = metadata.expect("nonempty client metadata should be retained");
-    assert_eq!(bounded.len(), MAX_CLIENT_METADATA_ENTRIES);
-    assert!(bounded.contains_key("key-00"));
-    assert!(!bounded.contains_key(&format!("key-{:02}", MAX_CLIENT_METADATA_ENTRIES)));
-    assert!(serialized_json_size_at_most(&bounded, MAX_CLIENT_METADATA_BYTES).is_some());
+    assert!(bound_session_archive_extensions(&mut extensions));
+    let bounded = extensions.expect("nonempty extensions should be retained");
+    assert_eq!(bounded.len(), MAX_SESSION_ARCHIVE_EXTENSION_NAMESPACES);
+    assert!(bounded.get("org.example.namespace-00").is_some());
+    assert!(
+        bounded
+            .get(&format!("org.example.namespace-{:02}", MAX_SESSION_ARCHIVE_EXTENSION_NAMESPACES))
+            .is_none()
+    );
+    assert!(serialized_json_size_at_most(&bounded, MAX_SESSION_ARCHIVE_EXTENSION_BYTES).is_some());
 
-    let mut entries = serde_json::Map::new();
-    entries.insert("k".to_owned(), serde_json::Value::String("x".repeat(MAX_CLIENT_METADATA_BYTES - 8)));
-    let mut metadata = Some(entries);
+    let mut at_limit = SessionArchiveExtensions::new();
+    drop(at_limit.insert("x", serde_json::Value::String("x".repeat(MAX_SESSION_ARCHIVE_EXTENSION_BYTES - 8))));
+    let mut extensions = Some(at_limit);
 
-    assert!(!bound_client_metadata(&mut metadata));
-    let bounded = metadata.expect("metadata at the byte limit should be retained");
-    assert_eq!(serialized_json_size_at_most(&bounded, MAX_CLIENT_METADATA_BYTES), Some(MAX_CLIENT_METADATA_BYTES));
+    assert!(!bound_session_archive_extensions(&mut extensions));
+    let bounded = extensions.expect("extension at the byte limit should be retained");
+    assert_eq!(
+        serialized_json_size_at_most(&bounded, MAX_SESSION_ARCHIVE_EXTENSION_BYTES),
+        Some(MAX_SESSION_ARCHIVE_EXTENSION_BYTES)
+    );
 
-    let mut entries = serde_json::Map::new();
-    entries.insert("a-oversized".to_owned(), serde_json::Value::String("x".repeat(MAX_CLIENT_METADATA_BYTES * 2)));
-    entries.insert("z-small".to_owned(), serde_json::json!("retained"));
-    let mut metadata = Some(entries);
+    let mut oversized = SessionArchiveExtensions::new();
+    let _ =
+        oversized.insert("a-oversized", serde_json::Value::String("x".repeat(MAX_SESSION_ARCHIVE_EXTENSION_BYTES * 2)));
+    drop(oversized.insert("z-small", serde_json::json!("retained")));
+    let mut extensions = Some(oversized);
 
-    assert!(bound_client_metadata(&mut metadata));
-    let bounded = metadata.expect("metadata after dropping an oversized value should remain");
+    assert!(bound_session_archive_extensions(&mut extensions));
+    let bounded = extensions.expect("metadata after dropping an oversized value should remain");
     assert_eq!(bounded.len(), 1);
-    assert!(bounded.contains_key("z-small"));
-    assert!(serialized_json_size_at_most(&bounded, MAX_CLIENT_METADATA_BYTES).is_some());
+    assert!(bounded.get("z-small").is_some());
+    assert!(serialized_json_size_at_most(&bounded, MAX_SESSION_ARCHIVE_EXTENSION_BYTES).is_some());
 }
 
 #[test]
-fn snapshot_compaction_reduces_client_metadata_to_fit_the_total_size_limit() -> Result<()> {
+fn snapshot_compaction_reduces_extensions_to_fit_the_total_size_limit() -> Result<()> {
     let mut metadata =
         SessionArchiveMetadata::new("Workspace", "/tmp/workspace", "model", "provider", "dark", "medium");
-    metadata.client_metadata = Some(
-        (0..MAX_CLIENT_METADATA_ENTRIES)
-            .map(|index| (format!("key-{index:02}"), serde_json::json!("value".repeat(40))))
-            .collect(),
-    );
+    let mut extensions = SessionArchiveExtensions::new();
+    for index in 0..MAX_SESSION_ARCHIVE_EXTENSION_NAMESPACES {
+        drop(extensions.insert(format!("org.example.namespace-{index:02}"), serde_json::json!("value".repeat(40))));
+    }
+    metadata.extensions = Some(extensions);
     let snapshot = SessionSnapshot {
         metadata,
         started_at: Utc::now(),
@@ -113,8 +122,8 @@ fn snapshot_compaction_reduces_client_metadata_to_fit_the_total_size_limit() -> 
     assert!(
         compacted
             .metadata
-            .client_metadata
-            .is_none_or(|metadata| metadata.len() < MAX_CLIENT_METADATA_ENTRIES)
+            .extensions
+            .is_none_or(|extensions| extensions.len() < MAX_SESSION_ARCHIVE_EXTENSION_NAMESPACES)
     );
     Ok(())
 }

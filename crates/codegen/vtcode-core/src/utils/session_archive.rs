@@ -29,7 +29,9 @@ use retention::{BYTES_PER_MB, SessionRetentionLimits, apply_session_retention_wi
 use serde::{Deserialize, Deserializer, Serialize};
 pub(super) use snapshot_compaction::prepare_snapshot_for_write;
 #[cfg(test)]
-use snapshot_compaction::{bound_client_metadata, compact_snapshot_to_max_bytes, serialized_json_size_at_most};
+use snapshot_compaction::{
+    bound_session_archive_extensions, compact_snapshot_to_max_bytes, serialized_json_size_at_most,
+};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -41,10 +43,12 @@ pub const SESSION_DIR_ENV: &str = "VT_SESSION_DIR";
 pub const SESSION_MAX_FILES_ENV: &str = "VT_SESSION_MAX_FILES";
 pub const SESSION_MAX_AGE_DAYS_ENV: &str = "VT_SESSION_MAX_AGE_DAYS";
 pub const SESSION_MAX_SIZE_MB_ENV: &str = "VT_SESSION_MAX_SIZE_MB";
-/// Maximum number of opaque client metadata entries retained in a session archive.
-pub const MAX_CLIENT_METADATA_ENTRIES: usize = 64;
-/// Maximum serialized JSON size of opaque client metadata retained in an archive.
-pub const MAX_CLIENT_METADATA_BYTES: usize = 16 * 1024;
+/// Maximum number of namespaced extension values retained in a session archive.
+pub const MAX_SESSION_ARCHIVE_EXTENSION_NAMESPACES: usize = 64;
+/// Maximum serialized JSON size of extension values retained in a session archive.
+pub const MAX_SESSION_ARCHIVE_EXTENSION_BYTES: usize = 16 * 1024;
+/// Namespace used to preserve unrecognized fields from older archive formats.
+pub const SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE: &str = "dev.vtcode.archive.legacy_fields";
 
 #[derive(Debug, Clone, Copy)]
 struct SessionHistorySettings {
@@ -148,7 +152,7 @@ pub(crate) fn clear_sessions_dir_override_for_tests() {
     clear_test_env_override(SESSION_DIR_ENV);
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct SessionArchiveMetadata {
     pub workspace_label: String,
     pub workspace_path: String,
@@ -156,13 +160,14 @@ pub struct SessionArchiveMetadata {
     pub provider: String,
     pub theme: String,
     pub reasoning_effort: String,
-    /// Opaque metadata attached by the client to a session or request.
+    /// Opaque values owned by protocol adapters and keyed by stable namespace.
     ///
-    /// VT Code preserves these values for correlation without interpreting
-    /// their keys or contents. Persisted values are bounded by
-    /// [`MAX_CLIENT_METADATA_ENTRIES`] and [`MAX_CLIENT_METADATA_BYTES`].
-    #[serde(default, alias = "acp_meta", skip_serializing_if = "Option::is_none")]
-    pub client_metadata: Option<serde_json::Map<String, serde_json::Value>>,
+    /// Core preserves these values without interpreting their contents. The
+    /// number of namespaces and their serialized size are bounded by
+    /// [`MAX_SESSION_ARCHIVE_EXTENSION_NAMESPACES`] and
+    /// [`MAX_SESSION_ARCHIVE_EXTENSION_BYTES`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extensions: Option<SessionArchiveExtensions>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub debug_log_path: Option<String>,
     /// Names of skills loaded in this session
@@ -180,6 +185,122 @@ pub struct SessionArchiveMetadata {
     pub fork_mode: Option<SessionForkMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub continuation_metadata: Option<SessionContinuationMetadata>,
+}
+
+/// Namespaced, opaque values persisted with a session archive.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct SessionArchiveExtensions(serde_json::Map<String, serde_json::Value>);
+
+impl SessionArchiveExtensions {
+    /// Create an empty extension set.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Return an extension value for `namespace`.
+    pub fn get(&self, namespace: &str) -> Option<&serde_json::Value> {
+        self.0.get(namespace)
+    }
+
+    /// Return a mutable extension value for `namespace`.
+    pub fn get_mut(&mut self, namespace: &str) -> Option<&mut serde_json::Value> {
+        self.0.get_mut(namespace)
+    }
+
+    /// Insert an opaque extension value, replacing the value in that namespace.
+    pub fn insert(&mut self, namespace: impl Into<String>, value: serde_json::Value) -> Option<serde_json::Value> {
+        self.0.insert(namespace.into(), value)
+    }
+
+    /// Remove and return the extension value for `namespace`.
+    pub fn remove(&mut self, namespace: &str) -> Option<serde_json::Value> {
+        self.0.remove(namespace)
+    }
+
+    /// Iterate over namespaces and their opaque values.
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &serde_json::Value)> {
+        self.0.iter()
+    }
+
+    /// Return the number of namespaces.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Return whether no namespaces are present.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+#[derive(Deserialize)]
+struct SessionArchiveMetadataWire {
+    workspace_label: String,
+    workspace_path: String,
+    model: String,
+    provider: String,
+    theme: String,
+    reasoning_effort: String,
+    #[serde(default)]
+    extensions: Option<SessionArchiveExtensions>,
+    #[serde(default)]
+    debug_log_path: Option<String>,
+    #[serde(default)]
+    loaded_skills: Vec<String>,
+    #[serde(default)]
+    prompt_cache_lineage_id: Option<String>,
+    #[serde(default)]
+    external_thread_id: Option<String>,
+    #[serde(default)]
+    parent_session_id: Option<String>,
+    #[serde(default)]
+    primary_agent: Option<String>,
+    #[serde(default)]
+    fork_mode: Option<SessionForkMode>,
+    #[serde(default)]
+    continuation_metadata: Option<SessionContinuationMetadata>,
+    // Unknown top-level values from older writers stay opaque to the core
+    // archive contract and are preserved under the generic legacy namespace.
+    #[serde(flatten)]
+    legacy_fields: serde_json::Map<String, serde_json::Value>,
+}
+
+impl<'de> Deserialize<'de> for SessionArchiveMetadata {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = SessionArchiveMetadataWire::deserialize(deserializer)?;
+        let had_extensions = wire.extensions.is_some() || !wire.legacy_fields.is_empty();
+        let mut extensions = wire.extensions.unwrap_or_default();
+        if !wire.legacy_fields.is_empty() {
+            let mut legacy_fields = extensions
+                .remove(SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE)
+                .and_then(|value| value.as_object().cloned())
+                .unwrap_or_default();
+            legacy_fields.extend(wire.legacy_fields);
+            drop(extensions.insert(SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE, serde_json::Value::Object(legacy_fields)));
+        }
+
+        Ok(Self {
+            workspace_label: wire.workspace_label,
+            workspace_path: wire.workspace_path,
+            model: wire.model,
+            provider: wire.provider,
+            theme: wire.theme,
+            reasoning_effort: wire.reasoning_effort,
+            extensions: had_extensions.then_some(extensions),
+            debug_log_path: wire.debug_log_path,
+            loaded_skills: wire.loaded_skills,
+            prompt_cache_lineage_id: wire.prompt_cache_lineage_id,
+            external_thread_id: wire.external_thread_id,
+            parent_session_id: wire.parent_session_id,
+            primary_agent: wire.primary_agent,
+            fork_mode: wire.fork_mode,
+            continuation_metadata: wire.continuation_metadata,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -272,7 +393,7 @@ impl SessionArchiveMetadata {
             provider: provider.into(),
             theme: theme.into(),
             reasoning_effort: reasoning_effort.into(),
-            client_metadata: None,
+            extensions: None,
             debug_log_path: None,
             loaded_skills: Vec::new(),
             prompt_cache_lineage_id: None,
@@ -339,6 +460,26 @@ impl SessionArchiveMetadata {
             .filter(|continuation| continuation.is_budget_limit())
     }
 
+    /// Return an opaque value associated with `namespace`.
+    pub fn extension(&self, namespace: &str) -> Option<&serde_json::Value> {
+        self.extensions.as_ref()?.get(namespace)
+    }
+
+    pub fn set_extension(&mut self, namespace: impl Into<String>, value: serde_json::Value) {
+        let extensions = self.extensions.get_or_insert_with(SessionArchiveExtensions::new);
+        drop(extensions.insert(namespace, value));
+    }
+
+    /// Remove and return an opaque value associated with `namespace`.
+    pub fn remove_extension(&mut self, namespace: &str) -> Option<serde_json::Value> {
+        let extensions = self.extensions.as_mut()?;
+        let removed = extensions.remove(namespace);
+        if extensions.is_empty() {
+            self.extensions = None;
+        }
+        removed
+    }
+
     fn fork_seed(&self) -> Self {
         Self {
             workspace_label: self.workspace_label.clone(),
@@ -347,7 +488,7 @@ impl SessionArchiveMetadata {
             provider: self.provider.clone(),
             theme: self.theme.clone(),
             reasoning_effort: self.reasoning_effort.clone(),
-            client_metadata: self.client_metadata.clone(),
+            extensions: self.extensions.clone(),
             debug_log_path: self.debug_log_path.clone(),
             loaded_skills: self.loaded_skills.clone(),
             prompt_cache_lineage_id: self.prompt_cache_lineage_id.clone(),

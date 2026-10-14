@@ -1,3 +1,4 @@
+//! Verifies that shared subagent controllers isolate parent context and child visibility per invocation.
 use super::*;
 
 use super::*;

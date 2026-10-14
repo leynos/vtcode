@@ -1,3 +1,4 @@
+//! Builds ACP agent fixtures and groups tests for session state, configuration, metadata, and workspaces.
 use super::super::ZedAgentSetup;
 use super::*;
 use crate::zed::helpers::PrimaryAgentCatalog;

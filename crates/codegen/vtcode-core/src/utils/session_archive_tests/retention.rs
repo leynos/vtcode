@@ -1,3 +1,4 @@
+//! Verifies archive retention removes oldest files when count or total-size limits are exceeded.
 use super::*;
 
 #[test]

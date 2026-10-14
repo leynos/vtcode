@@ -1,3 +1,4 @@
+//! Shared fixtures and protocol harness for ACP prompt, provider, session, and tool tests.
 use super::super::ZedAgentSetup;
 use super::prompt::*;
 use super::provider::*;

@@ -1,3 +1,4 @@
+//! Tests transcript extraction and cleanup of duplicate, recovery, and structured-tool output.
 use super::*;
 
 #[serial_test::serial(session_dir_override)]

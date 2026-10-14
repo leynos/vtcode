@@ -1,9 +1,9 @@
 //! Bounded snapshot serialization for durable session history.
 
 use super::{
-    MAX_CLIENT_METADATA_BYTES, MAX_CLIENT_METADATA_ENTRIES, MessageContent, SessionArchiveMetadata,
-    SessionContinuationRecommendedAction, SessionMessage, SessionProgress, SessionSnapshot,
-    history_persistence_enabled, session_history_settings,
+    MAX_SESSION_ARCHIVE_EXTENSION_BYTES, MAX_SESSION_ARCHIVE_EXTENSION_NAMESPACES, MessageContent,
+    SessionArchiveExtensions, SessionArchiveMetadata, SessionContinuationRecommendedAction, SessionMessage,
+    SessionProgress, SessionSnapshot, history_persistence_enabled, session_history_settings,
 };
 use anyhow::Result;
 use serde::Serialize;
@@ -12,36 +12,26 @@ pub(in crate::utils) fn compact_snapshot_to_max_bytes(
     mut snapshot: SessionSnapshot,
     max_bytes: usize,
 ) -> Result<SessionSnapshot> {
-    let client_metadata_before_compaction = prepare_snapshot_client_metadata(&mut snapshot, max_bytes);
+    let extensions_before_compaction = prepare_snapshot_extensions(&mut snapshot, max_bytes);
     if max_bytes == 0 {
         return Ok(snapshot);
     }
 
     compact_snapshot_payload_to_fit(&mut snapshot, max_bytes)?;
-    report_client_metadata_compaction(
-        &snapshot.metadata.client_metadata,
-        &client_metadata_before_compaction,
-        max_bytes,
-    );
+    report_extensions_compaction(&snapshot.metadata.extensions, &extensions_before_compaction, max_bytes);
 
     Ok(snapshot)
 }
 
-fn prepare_snapshot_client_metadata(
-    snapshot: &mut SessionSnapshot,
-    max_bytes: usize,
-) -> Option<serde_json::Map<String, serde_json::Value>> {
-    bound_client_metadata(&mut snapshot.metadata.client_metadata);
+fn prepare_snapshot_extensions(snapshot: &mut SessionSnapshot, max_bytes: usize) -> Option<SessionArchiveExtensions> {
+    bound_session_archive_extensions(&mut snapshot.metadata.extensions);
     if max_bytes > 0 {
-        return snapshot.metadata.client_metadata.clone();
+        return snapshot.metadata.extensions.clone();
     }
 
-    let discarded_entries = snapshot.metadata.client_metadata.take().map_or(0, |metadata| metadata.len());
-    if discarded_entries > 0 {
-        tracing::warn!(
-            discarded_entries,
-            "Dropped client metadata because the session archive snapshot budget is zero"
-        );
+    let discarded_namespaces = snapshot.metadata.extensions.take().map_or(0, |extensions| extensions.len());
+    if discarded_namespaces > 0 {
+        tracing::warn!(discarded_namespaces, "Dropped session archive extensions because the snapshot budget is zero");
     }
     minimize_snapshot_payload(snapshot);
     None
@@ -85,25 +75,25 @@ fn snapshot_serialized_size(snapshot: &SessionSnapshot) -> Result<usize> {
     Ok(serde_json::to_vec(snapshot)?.len())
 }
 
-fn report_client_metadata_compaction(
-    client_metadata: &Option<serde_json::Map<String, serde_json::Value>>,
-    original_metadata: &Option<serde_json::Map<String, serde_json::Value>>,
+fn report_extensions_compaction(
+    extensions: &Option<SessionArchiveExtensions>,
+    original_extensions: &Option<SessionArchiveExtensions>,
     max_bytes: usize,
 ) {
-    if client_metadata != original_metadata {
-        let original_entries = original_metadata.as_ref().map_or(0, serde_json::Map::len);
-        let retained_entries = client_metadata.as_ref().map_or(0, serde_json::Map::len);
-        let retained_bytes = client_metadata
+    if extensions != original_extensions {
+        let original_namespaces = original_extensions.as_ref().map_or(0, SessionArchiveExtensions::len);
+        let retained_namespaces = extensions.as_ref().map_or(0, SessionArchiveExtensions::len);
+        let retained_bytes = extensions
             .as_ref()
-            .and_then(|metadata| serialized_json_size_at_most(metadata, MAX_CLIENT_METADATA_BYTES))
+            .and_then(|extensions| serialized_json_size_at_most(extensions, MAX_SESSION_ARCHIVE_EXTENSION_BYTES))
             .unwrap_or(0);
         tracing::warn!(
-            original_entries,
-            retained_entries,
-            discarded_entries = original_entries.saturating_sub(retained_entries),
+            original_namespaces,
+            retained_namespaces,
+            discarded_namespaces = original_namespaces.saturating_sub(retained_namespaces),
             serialized_bytes = retained_bytes,
             max_snapshot_bytes = max_bytes,
-            "Reduced client metadata to fit the session archive snapshot size limit"
+            "Reduced session archive extensions to fit the snapshot size limit"
         );
     }
 }
@@ -118,7 +108,7 @@ pub(in crate::utils) fn prepare_snapshot_for_write(snapshot: SessionSnapshot) ->
         Some(max_bytes) => compact_snapshot_to_max_bytes(snapshot, max_bytes)?,
         None => {
             let mut snapshot = snapshot;
-            bound_client_metadata(&mut snapshot.metadata.client_metadata);
+            bound_session_archive_extensions(&mut snapshot.metadata.extensions);
             snapshot
         }
     };
@@ -127,7 +117,7 @@ pub(in crate::utils) fn prepare_snapshot_for_write(snapshot: SessionSnapshot) ->
 }
 
 fn minimize_snapshot_payload(snapshot: &mut SessionSnapshot) {
-    snapshot.metadata.client_metadata = None;
+    snapshot.metadata.extensions = None;
     snapshot.messages.clear();
     snapshot.transcript.clear();
     snapshot.distinct_tools.clear();
@@ -289,7 +279,7 @@ fn shrink_tool_call_fields(message: &mut SessionMessage) -> bool {
 fn shrink_snapshot_metadata(metadata: &mut SessionArchiveMetadata) -> bool {
     let mut changed = false;
 
-    changed |= shrink_client_metadata(&mut metadata.client_metadata);
+    changed |= shrink_session_archive_extensions(&mut metadata.extensions);
     changed |= shrink_string(&mut metadata.workspace_label);
     changed |= shrink_string(&mut metadata.workspace_path);
     changed |= shrink_string(&mut metadata.model);
@@ -326,65 +316,63 @@ fn shrink_snapshot_metadata(metadata: &mut SessionArchiveMetadata) -> bool {
     changed
 }
 
-pub(in crate::utils) fn bound_client_metadata(
-    metadata: &mut Option<serde_json::Map<String, serde_json::Value>>,
-) -> bool {
-    let Some(original) = metadata.take() else {
+pub(in crate::utils) fn bound_session_archive_extensions(extensions: &mut Option<SessionArchiveExtensions>) -> bool {
+    let Some(original) = extensions.take() else {
         return false;
     };
 
-    let original_entries = original.len();
-    let mut bounded = serde_json::Map::new();
-    let mut changed = original_entries > MAX_CLIENT_METADATA_ENTRIES;
+    let original_namespaces = original.len();
+    let mut bounded = SessionArchiveExtensions::new();
+    let mut changed = original_namespaces > MAX_SESSION_ARCHIVE_EXTENSION_NAMESPACES;
 
-    for (index, (key, value)) in original.into_iter().enumerate() {
-        if index >= MAX_CLIENT_METADATA_ENTRIES {
+    for (index, (namespace, value)) in original.iter().enumerate() {
+        if index >= MAX_SESSION_ARCHIVE_EXTENSION_NAMESPACES {
             changed = true;
             break;
         }
 
-        bounded.insert(key.clone(), value);
-        if serialized_json_size_at_most(&bounded, MAX_CLIENT_METADATA_BYTES).is_none() {
-            bounded.remove(&key);
+        drop(bounded.insert(namespace.clone(), value.clone()));
+        if serialized_json_size_at_most(&bounded, MAX_SESSION_ARCHIVE_EXTENSION_BYTES).is_none() {
+            drop(bounded.remove(namespace));
             changed = true;
         }
     }
 
-    let retained_entries = bounded.len();
-    let serialized_bytes = serialized_json_size_at_most(&bounded, MAX_CLIENT_METADATA_BYTES).unwrap_or(0);
+    let retained_namespaces = bounded.len();
+    let serialized_bytes = serialized_json_size_at_most(&bounded, MAX_SESSION_ARCHIVE_EXTENSION_BYTES).unwrap_or(0);
     if bounded.is_empty() {
-        *metadata = (original_entries == 0).then_some(bounded);
+        *extensions = (original_namespaces == 0).then_some(bounded);
     } else {
-        *metadata = Some(bounded);
+        *extensions = Some(bounded);
     }
 
-    if changed && original_entries > retained_entries {
+    if changed && original_namespaces > retained_namespaces {
         tracing::warn!(
-            original_entries,
-            retained_entries,
-            discarded_entries = original_entries.saturating_sub(retained_entries),
+            original_namespaces,
+            retained_namespaces,
+            discarded_namespaces = original_namespaces.saturating_sub(retained_namespaces),
             serialized_bytes,
-            max_entries = MAX_CLIENT_METADATA_ENTRIES,
-            max_bytes = MAX_CLIENT_METADATA_BYTES,
-            "Truncated client metadata to session archive limits"
+            max_namespaces = MAX_SESSION_ARCHIVE_EXTENSION_NAMESPACES,
+            max_bytes = MAX_SESSION_ARCHIVE_EXTENSION_BYTES,
+            "Truncated session archive extensions to configured limits"
         );
     }
 
     changed
 }
 
-fn shrink_client_metadata(metadata: &mut Option<serde_json::Map<String, serde_json::Value>>) -> bool {
-    let Some(entries) = metadata.as_mut() else {
+fn shrink_session_archive_extensions(extensions: &mut Option<SessionArchiveExtensions>) -> bool {
+    let Some(namespaces) = extensions.as_mut() else {
         return false;
     };
-    let Some(last_key) = entries.keys().next_back().cloned() else {
-        *metadata = None;
+    let Some(last_namespace) = namespaces.iter().last().map(|(namespace, _)| namespace.clone()) else {
+        *extensions = None;
         return true;
     };
 
-    entries.remove(&last_key);
-    if entries.is_empty() {
-        *metadata = None;
+    drop(namespaces.remove(&last_namespace));
+    if namespaces.is_empty() {
+        *extensions = None;
     }
     true
 }

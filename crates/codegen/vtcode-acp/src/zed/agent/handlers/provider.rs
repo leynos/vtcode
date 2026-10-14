@@ -1,3 +1,4 @@
+//! Supplies ACP prompt provider calls, stream deadlines, retry telemetry, and incomplete-turn helpers.
 use super::*;
 use crate::zed::types::SessionCancellation;
 
