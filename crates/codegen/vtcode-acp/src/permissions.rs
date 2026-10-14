@@ -143,6 +143,10 @@ where
         Self::with_skip_confirmations(registry, false)
     }
 
+    /// Builds a prompter that can bypass ordinary permission confirmations.
+    ///
+    /// When `skip_confirmations` is `true`, standard permission requests are
+    /// bypassed. Forced permission requests still prompt the client.
     pub fn with_skip_confirmations(registry: P, skip_confirmations: bool) -> Self {
         Self {
             registry,
