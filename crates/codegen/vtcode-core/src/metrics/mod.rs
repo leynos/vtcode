@@ -145,6 +145,10 @@ impl MetricsCollector {
     }
 
     /// Get the bounded aggregate provider-request metrics snapshot.
+    ///
+    /// The `custom_provider_*` fields are sampled from process-wide admission
+    /// counters shared across collectors, not scoped to this instance. Each
+    /// counter is loaded independently with relaxed ordering.
     pub fn get_provider_request_metrics(&self) -> ProviderRequestMetrics {
         let admission = vtcode_llm::providers::custom_provider_admission_metrics();
         let mut metrics = self.provider_requests.lock().clone();
@@ -596,29 +600,7 @@ impl MetricsCollector {
             provider_requests.first_output_samples,
         );
 
-        let _ = write!(
-            output,
-            "# HELP vtcode_custom_provider_admission_queue_depth Requests waiting at shared custom-provider admission gates\n\
-             # TYPE vtcode_custom_provider_admission_queue_depth gauge\n\
-             vtcode_custom_provider_admission_queue_depth {}\n\n\
-             # HELP vtcode_custom_provider_admission_in_flight Requests holding shared custom-provider admission permits\n\
-             # TYPE vtcode_custom_provider_admission_in_flight gauge\n\
-             vtcode_custom_provider_admission_in_flight {}\n\n\
-             # HELP vtcode_custom_provider_admission_queue_waits_total Custom-provider admission queue wait observations\n\
-             # TYPE vtcode_custom_provider_admission_queue_waits_total counter\n\
-             vtcode_custom_provider_admission_queue_waits_total {}\n\n\
-             # HELP vtcode_custom_provider_admission_queue_wait_ms_total Cumulative custom-provider admission queue wait time in milliseconds\n\
-             # TYPE vtcode_custom_provider_admission_queue_wait_ms_total counter\n\
-             vtcode_custom_provider_admission_queue_wait_ms_total {}\n\n\
-             # HELP vtcode_custom_provider_admission_queue_timeouts_total Custom-provider requests that timed out while queued\n\
-             # TYPE vtcode_custom_provider_admission_queue_timeouts_total counter\n\
-             vtcode_custom_provider_admission_queue_timeouts_total {}\n\n",
-            provider_requests.custom_provider_queue_depth,
-            provider_requests.custom_provider_in_flight,
-            provider_requests.custom_provider_queue_waits,
-            provider_requests.custom_provider_queue_wait_ms,
-            provider_requests.custom_provider_queue_timeouts,
-        );
+        append_custom_provider_admission_prometheus(&mut output, &provider_requests);
 
         let _ = write!(
             output,
@@ -630,6 +612,32 @@ impl MetricsCollector {
 
         output
     }
+}
+
+fn append_custom_provider_admission_prometheus(output: &mut String, provider_requests: &ProviderRequestMetrics) {
+    let _ = write!(
+        output,
+        "# HELP vtcode_custom_provider_admission_queue_depth Requests waiting at shared custom-provider admission gates\n\
+         # TYPE vtcode_custom_provider_admission_queue_depth gauge\n\
+         vtcode_custom_provider_admission_queue_depth {}\n\n\
+         # HELP vtcode_custom_provider_admission_in_flight Requests holding shared custom-provider admission permits\n\
+         # TYPE vtcode_custom_provider_admission_in_flight gauge\n\
+         vtcode_custom_provider_admission_in_flight {}\n\n\
+         # HELP vtcode_custom_provider_admission_queue_waits_total Custom-provider admission queue wait observations\n\
+         # TYPE vtcode_custom_provider_admission_queue_waits_total counter\n\
+         vtcode_custom_provider_admission_queue_waits_total {}\n\n\
+         # HELP vtcode_custom_provider_admission_queue_wait_ms_total Cumulative custom-provider admission queue wait time in milliseconds\n\
+         # TYPE vtcode_custom_provider_admission_queue_wait_ms_total counter\n\
+         vtcode_custom_provider_admission_queue_wait_ms_total {}\n\n\
+         # HELP vtcode_custom_provider_admission_queue_timeouts_total Custom-provider requests that timed out while queued\n\
+         # TYPE vtcode_custom_provider_admission_queue_timeouts_total counter\n\
+         vtcode_custom_provider_admission_queue_timeouts_total {}\n\n",
+        provider_requests.custom_provider_queue_depth,
+        provider_requests.custom_provider_in_flight,
+        provider_requests.custom_provider_queue_waits,
+        provider_requests.custom_provider_queue_wait_ms,
+        provider_requests.custom_provider_queue_timeouts,
+    );
 }
 
 impl Default for MetricsCollector {
@@ -740,6 +748,27 @@ mod tests {
         assert!(prometheus.contains("vtcode_custom_provider_admission_queue_waits_total"));
         assert!(prometheus.contains("vtcode_custom_provider_admission_queue_timeouts_total"));
         assert!(!prometheus.contains("provider=\""));
+    }
+
+    #[test]
+    fn custom_provider_admission_prometheus_uses_supplied_snapshot_values() {
+        let metrics = ProviderRequestMetrics {
+            custom_provider_queue_depth: 2,
+            custom_provider_in_flight: 3,
+            custom_provider_queue_waits: 5,
+            custom_provider_queue_wait_ms: 7,
+            custom_provider_queue_timeouts: 11,
+            ..ProviderRequestMetrics::default()
+        };
+        let mut prometheus = String::new();
+
+        append_custom_provider_admission_prometheus(&mut prometheus, &metrics);
+
+        assert!(prometheus.contains("vtcode_custom_provider_admission_queue_depth 2\n"));
+        assert!(prometheus.contains("vtcode_custom_provider_admission_in_flight 3\n"));
+        assert!(prometheus.contains("vtcode_custom_provider_admission_queue_waits_total 5\n"));
+        assert!(prometheus.contains("vtcode_custom_provider_admission_queue_wait_ms_total 7\n"));
+        assert!(prometheus.contains("vtcode_custom_provider_admission_queue_timeouts_total 11\n"));
     }
 
     #[test]
