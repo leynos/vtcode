@@ -2763,7 +2763,7 @@ mod tests {
         let workspace = TempDir::new().expect("wire test compaction workspace");
         let mut vt_config = vtcode_config::VTCodeConfig::default();
         vt_config.agent.harness.auto_compaction_enabled = true;
-        vt_config.agent.harness.auto_compaction_threshold_tokens = Some(1);
+        vt_config.agent.harness.auto_compaction_threshold_tokens = Some(16_384);
         let agent = Arc::new(build_wire_test_agent_with_options(workspace.path(), Some(&vt_config), None).await);
         let client_workspace = workspace.path().to_path_buf();
         let (agent_channel, client_channel) = Channel::duplex();
@@ -2782,6 +2782,7 @@ mod tests {
         let agent_task = tokio::spawn(agent_connection);
 
         let history_agent = Arc::clone(&agent);
+        let client_requests = Arc::clone(&requests);
         let client_connection = Client
             .builder()
             .on_receive_notification(
@@ -2799,6 +2800,21 @@ mod tests {
                     .session_handle(&session.session_id)
                     .expect("ACP session lookup")
                     .expect("new ACP session handle");
+                let response = cx
+                    .send_request(PromptRequest::new(
+                        session.session_id.clone(),
+                        vec![acp::ContentBlock::Text(acp::TextContent::new(
+                            "Prompt below the compaction threshold",
+                        ))],
+                    ))
+                    .block_task()
+                    .await?;
+                assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+                {
+                    let requests = client_requests.lock().expect("compaction provider requests");
+                    assert_eq!(requests.len(), 1, "a below-threshold ACP prompt must not request compaction");
+                    assert!(requests[0].stream, "a below-threshold ACP prompt should stream its answer directly");
+                }
                 for index in 0..12 {
                     let user_context = if index == 0 {
                         format!("old user turn {index} {}", "older context ".repeat(12_000))
@@ -2840,9 +2856,10 @@ mod tests {
 
         {
             let requests = requests.lock().expect("compaction provider requests");
-            assert_eq!(requests.len(), 2, "the turn must summarize history and then stream its answer");
-            assert!(!requests[0].stream, "local compaction must use provider generation for its summary");
-            let compaction_request_text = requests[0]
+            assert_eq!(requests.len(), 3, "the turn must skip small-prompt compaction, then summarize and answer");
+            assert!(requests[0].stream, "the below-threshold turn must stream without a summary request");
+            assert!(!requests[1].stream, "local compaction must use provider generation for its summary");
+            let compaction_request_text = requests[1]
                 .messages
                 .iter()
                 .map(|message| message.content.as_text())
@@ -2852,16 +2869,16 @@ mod tests {
                 compaction_request_text.contains(OLDEST_CONTEXT_MARKER),
                 "the compaction request must receive the oldest pre-compaction assistant message"
             );
-            assert!(requests[1].stream, "the ACP prompt response must remain streamed after compaction");
+            assert!(requests[2].stream, "the ACP prompt response must remain streamed after compaction");
             assert!(
-                requests[1]
+                requests[2]
                     .messages
                     .iter()
                     .any(|message| message.content.as_text().contains(SUMMARY_MARKER)),
                 "the streamed prompt request must use the generated compaction summary"
             );
             assert!(
-                !requests[1]
+                !requests[2]
                     .messages
                     .iter()
                     .any(|message| message.content.as_text().contains(OLDEST_CONTEXT_MARKER)),
