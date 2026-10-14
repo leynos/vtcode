@@ -102,15 +102,44 @@ fn effective_acp_subagent_concurrency(configured: usize, max_in_flight: Option<u
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum OptionalSetupOutcome {
+    DisabledByConfiguration,
+    DisabledByPolicy,
+    Attached,
+    AttachedWithDegradation(Vec<String>),
+    Failed(String),
+}
+
+fn report_optional_setup_outcome(component: &'static str, outcome: OptionalSetupOutcome) {
+    match outcome {
+        OptionalSetupOutcome::DisabledByConfiguration => {
+            debug!(component, "Optional ACP component is disabled by configuration");
+        }
+        OptionalSetupOutcome::DisabledByPolicy => {
+            debug!(component, "Optional ACP component is disabled by runtime policy");
+        }
+        OptionalSetupOutcome::Attached => {
+            debug!(component, "Optional ACP component attached successfully");
+        }
+        OptionalSetupOutcome::AttachedWithDegradation(failures) => {
+            warn!(component, failures = %failures.join("; "), "Optional ACP component attached with degraded setup");
+        }
+        OptionalSetupOutcome::Failed(reason) => {
+            warn!(component, %reason, "Optional ACP component setup failed; continuing without it");
+        }
+    }
+}
+
 async fn attach_acp_subagent_controller(
     registry: &CoreToolRegistry,
     config: &CoreAgentConfig,
     custom_providers: &[CustomProviderConfig],
     vt_cfg: Option<&VTCodeConfig>,
     workspace_gated: bool,
-) {
+) -> OptionalSetupOutcome {
     let Some(mut controller_vt_cfg) = vt_cfg.filter(|config| config.subagents.enabled).cloned() else {
-        return;
+        return OptionalSetupOutcome::DisabledByConfiguration;
     };
 
     if let Some(max_in_flight) = custom_providers
@@ -120,12 +149,7 @@ async fn attach_acp_subagent_controller(
     {
         match effective_acp_subagent_concurrency(controller_vt_cfg.subagents.max_concurrent, Some(max_in_flight)) {
             None => {
-                warn!(
-                    provider = %config.provider,
-                    max_in_flight,
-                    "ACP subagents disabled because the provider request limit reserves no child capacity"
-                );
-                return;
+                return OptionalSetupOutcome::DisabledByPolicy;
             }
             Some(max_subagents) if controller_vt_cfg.subagents.max_concurrent > max_subagents => {
                 debug!(
@@ -159,14 +183,20 @@ async fn attach_acp_subagent_controller(
     match SubagentController::new(controller_config).await {
         Ok(controller) => {
             let controller = Arc::new(controller);
+            let mut failures = Vec::new();
             if controller_vt_cfg.subagents.background.auto_restore
                 && let Err(error) = controller.restore_background_subagents().await
             {
-                warn!(%error, "Failed to restore ACP background subagents");
+                failures.push(format!("failed to restore background subagents: {error}"));
             }
             registry.set_subagent_controller(controller);
+            if failures.is_empty() {
+                OptionalSetupOutcome::Attached
+            } else {
+                OptionalSetupOutcome::AttachedWithDegradation(failures)
+            }
         }
-        Err(error) => warn!(%error, "Failed to initialize ACP subagent controller"),
+        Err(error) => OptionalSetupOutcome::Failed(error.to_string()),
     }
 }
 
@@ -181,24 +211,25 @@ async fn attach_acp_mcp_client(
     registry: &CoreToolRegistry,
     vt_cfg: Option<&VTCodeConfig>,
     workspace_root: &std::path::Path,
-) {
+) -> OptionalSetupOutcome {
     let Some(config) = vt_cfg.filter(|config| config.mcp.enabled) else {
-        return;
+        return OptionalSetupOutcome::DisabledByConfiguration;
     };
 
+    let mut failures = Vec::new();
     let plugin_workspace = workspace_root.to_path_buf();
     let plugin_providers =
         match tokio::task::spawn_blocking(move || discover_plugin_mcp_providers(&plugin_workspace)).await {
             Ok(providers) => providers,
             Err(error) => {
-                warn!(%error, "Failed to discover Agent Plugin MCP providers during ACP startup");
+                failures.push(format!("failed to discover Agent Plugin MCP providers: {error}"));
                 Vec::new()
             }
         };
     let mcp_config = effective_acp_mcp_config(config, plugin_providers);
 
     if let Err(error) = validate_mcp_config(&mcp_config) {
-        warn!(%error, "MCP configuration validation error during ACP startup");
+        failures.push(format!("MCP configuration validation failed: {error}"));
     }
 
     let sandbox_context = if config.sandbox.enabled
@@ -207,29 +238,40 @@ async fn attach_acp_mcp_client(
         match sandbox_policy_from_runtime_config(&config.sandbox, workspace_root) {
             Ok(policy) => Some(McpSandboxContext::new(policy, workspace_root)),
             Err(error) => {
-                warn!(%error, "Unable to construct the ACP MCP sandbox policy");
                 // Never fall back to an unsandboxed stdio launch when the
                 // configured sandbox cannot be constructed.
-                return;
+                return OptionalSetupOutcome::Failed(format!("unable to construct MCP sandbox policy: {error}"));
             }
         }
     } else {
         None
     };
 
+    let enabled_provider_count = mcp_config.providers.iter().filter(|provider| provider.enabled).count();
     let mut client = McpClient::with_sandbox_context(mcp_config, sandbox_context);
     match client.initialize().await {
-        Ok(()) => debug!("ACP MCP client initialized successfully"),
+        Ok(()) => {}
         Err(error) => {
-            warn!(%error, "ACP MCP client initialization failed; continuing without MCP tools");
-            return;
+            return OptionalSetupOutcome::Failed(format!("MCP client initialization failed: {error}"));
         }
+    }
+
+    let initialized_provider_count = client.get_status().provider_count;
+    if initialized_provider_count < enabled_provider_count {
+        failures.push(format!(
+            "initialized {initialized_provider_count} of {enabled_provider_count} configured MCP providers"
+        ));
     }
 
     let client = Arc::new(client);
     registry.set_mcp_client(client).await;
     if let Err(error) = registry.refresh_mcp_tools().await {
-        warn!(%error, "Failed to register ACP MCP proxy tools after initialization");
+        failures.push(format!("failed to register MCP proxy tools: {error}"));
+    }
+    if failures.is_empty() {
+        OptionalSetupOutcome::Attached
+    } else {
+        OptionalSetupOutcome::AttachedWithDegradation(failures)
     }
 }
 
@@ -292,7 +334,7 @@ impl SessionWorkspaceRuntime {
         local_tool_registry
             .apply_tool_runtime_config(&runtime_config.commands_config, &runtime_config.tools_config)
             .await?;
-        Box::pin(attach_acp_subagent_controller(
+        let subagent_outcome = Box::pin(attach_acp_subagent_controller(
             &local_tool_registry,
             &session_config,
             &runtime_config.custom_providers,
@@ -300,7 +342,9 @@ impl SessionWorkspaceRuntime {
             workspace_hooks_gated,
         ))
         .await;
-        attach_acp_mcp_client(&local_tool_registry, vt_cfg, &workspace_root).await;
+        report_optional_setup_outcome("subagent controller", subagent_outcome);
+        let mcp_outcome = attach_acp_mcp_client(&local_tool_registry, vt_cfg, &workspace_root).await;
+        report_optional_setup_outcome("MCP client", mcp_outcome);
         let local_definitions = local_tool_registry
             .model_tools(
                 SessionToolsConfig::full_public(
@@ -410,7 +454,7 @@ impl ZedAgent {
         let workspace_hooks_gated = vt_cfg
             .and_then(|config| config.workspace_lifecycle_hooks.as_ref())
             .is_some_and(|hooks| !hooks.is_empty());
-        Box::pin(attach_acp_subagent_controller(
+        let subagent_outcome = Box::pin(attach_acp_subagent_controller(
             &core_tool_registry,
             &config,
             custom_providers,
@@ -418,7 +462,9 @@ impl ZedAgent {
             workspace_hooks_gated,
         ))
         .await;
-        attach_acp_mcp_client(&core_tool_registry, vt_cfg, workspace_root.as_path()).await;
+        report_optional_setup_outcome("subagent controller", subagent_outcome);
+        let mcp_outcome = attach_acp_mcp_client(&core_tool_registry, vt_cfg, workspace_root.as_path()).await;
+        report_optional_setup_outcome("MCP client", mcp_outcome);
         let local_definitions = core_tool_registry
             .model_tools(
                 SessionToolsConfig::full_public(

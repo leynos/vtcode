@@ -48,6 +48,13 @@ fn saturating_sub_one(counter: &AtomicU64) {
     let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| Some(value.saturating_sub(1)));
 }
 
+/// Samples the process-wide aggregate custom-provider admission counters.
+///
+/// `queue_depth` and `in_flight` are current counts; the remaining fields are
+/// cumulative queue waits, wait time in milliseconds and queue timeouts. Each
+/// field is loaded independently with relaxed ordering, so concurrent updates
+/// can make the values reflect slightly different instants. Reading the
+/// snapshot does not mutate or reset the counters.
 pub fn custom_provider_admission_metrics() -> CustomProviderAdmissionMetrics {
     CustomProviderAdmissionMetrics {
         queue_depth: ADMISSION_METRICS.queue_depth.load(Ordering::Relaxed),

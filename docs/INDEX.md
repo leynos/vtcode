@@ -10,6 +10,11 @@ Last reviewed: 2026-08-28
   configuration, providers, local models, skills, MCP, automation, security,
   and FAQ.
 - [Documentation Hub](README.md) - Main user/developer overview.
+- [User Guide](users-guide.md) - Links to canonical user setup and usage docs.
+- [Developer Guide](developers-guide.md) - Links to canonical architecture and
+  contributor docs.
+- [0.157.0 release notes](releases/0.157.0.md) - Migration and ACP behavior
+  notes.
 - [Harness Index](harness/INDEX.md) - Agent operating model, quality scoring,
   and debt tracking.
 - [Zen Alignment](harness/ZEN_ALIGNMENT.md) - Full all-19 principle mapping and

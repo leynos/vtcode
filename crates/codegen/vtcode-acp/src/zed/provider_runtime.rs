@@ -180,6 +180,16 @@ impl ProviderRequestRuntime {
         }
     }
 
+    /// Acquires an ACP request permit and updates the runtime's active counters.
+    ///
+    /// If a local semaphore is present, the request waits up to `queue_timeout`;
+    /// cancellation, a closed semaphore or expiry returns the corresponding
+    /// [`ProviderAdmissionError`]. The queue-depth guard is released on every
+    /// exit, and a successful [`ProviderPermit`] releases active accounting and
+    /// its semaphore permit when dropped. With no local semaphore, admission
+    /// succeeds immediately without observing cancellation. Custom-provider
+    /// concurrency is currently enforced by the shared router, so the ACP
+    /// runtime does not acquire a second semaphore permit.
     pub(crate) async fn acquire(
         &self,
         cancellation: &SessionCancellation,

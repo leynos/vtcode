@@ -1,4 +1,4 @@
-use super::ZedAgent;
+use super::{OptionalSetupOutcome, ZedAgent, attach_acp_mcp_client, attach_acp_subagent_controller};
 use crate::tooling::ToolDescriptor;
 use crate::zed::helpers::PrimaryAgentCatalog;
 use crate::zed::types::ToolRuntime;
@@ -10,6 +10,7 @@ use std::path::Path;
 use std::time::Duration;
 use vtcode_config::auth::AuthCredentialsStoreMode;
 use vtcode_config::constants::tool_limits;
+use vtcode_config::core::CustomProviderConfig;
 use vtcode_config::{SubagentDiscoveryInput, discover_subagents};
 use vtcode_core::config::constants::tools;
 use vtcode_core::config::core::PromptCachingConfig;
@@ -20,6 +21,7 @@ use vtcode_core::config::types::{
 use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolProfile, ToolsConfig, VTCodeConfig};
 use vtcode_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS};
 use vtcode_core::llm::provider::{MessageRole, ToolDefinition};
+use vtcode_core::tools::registry::ToolRegistry as CoreToolRegistry;
 
 async fn build_agent(workspace: &Path) -> ZedAgent {
     build_agent_with_tools_config(workspace, ToolsConfig::default()).await
@@ -34,28 +36,7 @@ async fn build_agent_with_config(
     tools_config: ToolsConfig,
     vt_cfg: Option<&VTCodeConfig>,
 ) -> ZedAgent {
-    let core_config = CoreAgentConfig {
-        model: "test-model".to_string(),
-        api_key: String::new(),
-        provider: "test-provider".to_string(),
-        api_key_env: "TEST_API_KEY".to_string(),
-        workspace: workspace.to_path_buf(),
-        verbose: false,
-        quiet: false,
-        theme: "test".to_string(),
-        reasoning_effort: ReasoningEffortLevel::Low,
-        ui_surface: UiSurfacePreference::default(),
-        prompt_cache: PromptCachingConfig::default(),
-        model_source: ModelSelectionSource::WorkspaceConfig,
-        custom_api_keys: BTreeMap::new(),
-        checkpointing_enabled: DEFAULT_CHECKPOINTS_ENABLED,
-        checkpointing_storage_dir: None,
-        checkpointing_max_snapshots: DEFAULT_MAX_SNAPSHOTS,
-        checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
-        max_conversation_turns: 1000,
-        model_behaviour: None,
-        openai_chatgpt_auth: None,
-    };
+    let core_config = core_agent_config(workspace);
 
     let mut zed_config = AgentClientProtocolZedConfig::default();
     zed_config.tools.list_files = true;
@@ -82,6 +63,31 @@ async fn build_agent_with_config(
         None,
     ))
     .await
+}
+
+fn core_agent_config(workspace: &Path) -> CoreAgentConfig {
+    CoreAgentConfig {
+        model: "test-model".to_string(),
+        api_key: String::new(),
+        provider: "test-provider".to_string(),
+        api_key_env: "TEST_API_KEY".to_string(),
+        workspace: workspace.to_path_buf(),
+        verbose: false,
+        quiet: false,
+        theme: "test".to_string(),
+        reasoning_effort: ReasoningEffortLevel::Low,
+        ui_surface: UiSurfacePreference::default(),
+        prompt_cache: PromptCachingConfig::default(),
+        model_source: ModelSelectionSource::WorkspaceConfig,
+        custom_api_keys: BTreeMap::new(),
+        checkpointing_enabled: DEFAULT_CHECKPOINTS_ENABLED,
+        checkpointing_storage_dir: None,
+        checkpointing_max_snapshots: DEFAULT_MAX_SNAPSHOTS,
+        checkpointing_max_age_days: Some(DEFAULT_MAX_AGE_DAYS),
+        max_conversation_turns: 1000,
+        model_behaviour: None,
+        openai_chatgpt_auth: None,
+    }
 }
 
 #[test]
@@ -123,6 +129,109 @@ async fn enabled_subagents_are_exposed_to_acp_build_agents() {
     assert!(agent.local_tool_registry.has_subagent_controller());
     let names = definition_names(agent.tool_definitions(true, &[], "build").expect("build agent tools"));
     assert!(names.iter().any(|name| name == tools::AGENT));
+}
+
+#[tokio::test]
+async fn optional_setup_reports_configuration_disabled_components() {
+    let temp = TempDir::new().unwrap();
+    let registry = CoreToolRegistry::new(temp.path().to_path_buf()).await;
+    let core_config = core_agent_config(temp.path());
+    let mut vt_cfg = VTCodeConfig::default();
+    vt_cfg.subagents.enabled = false;
+    vt_cfg.mcp.enabled = false;
+
+    let subagent_outcome = attach_acp_subagent_controller(&registry, &core_config, &[], Some(&vt_cfg), false).await;
+    let mcp_outcome = attach_acp_mcp_client(&registry, Some(&vt_cfg), temp.path()).await;
+
+    assert_eq!(subagent_outcome, OptionalSetupOutcome::DisabledByConfiguration);
+    assert_eq!(mcp_outcome, OptionalSetupOutcome::DisabledByConfiguration);
+    assert!(!registry.has_subagent_controller());
+    assert!(registry.mcp_client().is_none());
+}
+
+#[tokio::test]
+async fn optional_setup_reports_subagents_disabled_by_provider_concurrency_policy() {
+    let temp = TempDir::new().unwrap();
+    let registry = CoreToolRegistry::new(temp.path().to_path_buf()).await;
+    let mut vt_cfg = VTCodeConfig::default();
+    vt_cfg.subagents.enabled = true;
+    let core_config = core_agent_config(temp.path());
+    let provider: CustomProviderConfig = serde_json::from_value(json!({
+        "name": "test-provider",
+        "display_name": "Test provider",
+        "base_url": "https://example.invalid/v1",
+        "model": "test-model",
+        "request_policy": { "max_in_flight_requests": 1 }
+    }))
+    .expect("valid custom provider configuration");
+
+    let outcome = attach_acp_subagent_controller(&registry, &core_config, &[provider], Some(&vt_cfg), false).await;
+
+    assert_eq!(outcome, OptionalSetupOutcome::DisabledByPolicy);
+    assert!(!registry.has_subagent_controller());
+}
+
+#[tokio::test]
+async fn optional_setup_reports_subagent_initialization_failure() {
+    let temp = TempDir::new().unwrap();
+    let registry = CoreToolRegistry::new(temp.path().to_path_buf()).await;
+    let mut vt_cfg = VTCodeConfig::default();
+    vt_cfg.subagents.enabled = true;
+    vt_cfg.subagents.background.auto_restore = false;
+    vt_cfg.hooks.lifecycle.session_start = serde_json::from_value(json!([
+        { "matcher": "[", "hooks": [] }
+    ]))
+    .expect("lifecycle hook configuration shape");
+    let core_config = core_agent_config(temp.path());
+
+    let outcome = attach_acp_subagent_controller(&registry, &core_config, &[], Some(&vt_cfg), false).await;
+
+    assert!(matches!(outcome, OptionalSetupOutcome::Failed(_)));
+    assert!(!registry.has_subagent_controller());
+}
+
+#[tokio::test]
+async fn optional_setup_reports_successfully_attached_components() {
+    let temp = TempDir::new().unwrap();
+    let registry = CoreToolRegistry::new(temp.path().to_path_buf()).await;
+    let mut vt_cfg = VTCodeConfig::default();
+    vt_cfg.subagents.enabled = true;
+    vt_cfg.subagents.background.auto_restore = false;
+    vt_cfg.mcp.enabled = true;
+    let core_config = core_agent_config(temp.path());
+
+    let subagent_outcome = attach_acp_subagent_controller(&registry, &core_config, &[], Some(&vt_cfg), false).await;
+    let mcp_outcome = attach_acp_mcp_client(&registry, Some(&vt_cfg), temp.path()).await;
+
+    assert_eq!(subagent_outcome, OptionalSetupOutcome::Attached);
+    assert!(matches!(
+        mcp_outcome,
+        OptionalSetupOutcome::Attached | OptionalSetupOutcome::AttachedWithDegradation(_)
+    ));
+    assert!(registry.has_subagent_controller());
+    assert!(registry.mcp_client().is_some());
+}
+
+#[tokio::test]
+async fn optional_mcp_setup_reports_provider_startup_failure_and_keeps_client_attached() {
+    let temp = TempDir::new().unwrap();
+    let registry = CoreToolRegistry::new(temp.path().to_path_buf()).await;
+    let mut vt_cfg = VTCodeConfig::default();
+    vt_cfg.mcp.enabled = true;
+    vt_cfg.mcp.providers = vec![
+        serde_json::from_value(json!({
+            "name": "unavailable-provider",
+            "command": "/path/that/does/not/exist/vtcode-mcp-test",
+            "args": [],
+            "startup_timeout_ms": 100
+        }))
+        .expect("valid stdio provider configuration"),
+    ];
+
+    let outcome = attach_acp_mcp_client(&registry, Some(&vt_cfg), temp.path()).await;
+
+    assert!(matches!(outcome, OptionalSetupOutcome::AttachedWithDegradation(_)));
+    assert!(registry.mcp_client().is_some());
 }
 
 #[tokio::test]

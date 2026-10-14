@@ -50,7 +50,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::Instant;
-use tracing::{Instrument, debug, info, warn};
+use tracing::{Instrument, Span, debug, info, warn};
 use vtcode_commons::ansi::strip_ansi_codes;
 use vtcode_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
 use vtcode_core::core::message_metadata::MessageMetadata;
@@ -89,6 +89,19 @@ fn create_prompt_provider(provider_name: &str, config: ProviderConfig) -> Result
     }
 
     create_provider_with_config(provider_name, config)
+}
+
+fn record_stream_attempt(span: &Span, started_at: Instant, outcome: &'static str) {
+    let _ = span.record("outcome", outcome);
+    let elapsed_ms = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let _ = span.record("elapsed_ms", elapsed_ms);
+}
+
+fn poll_provider_stream<S>(stream: &mut S, span: Span) -> impl Future<Output = Option<S::Item>> + '_
+where
+    S: futures::Stream + Unpin,
+{
+    stream.next().instrument(span)
 }
 
 struct TurnGuard {
@@ -1105,9 +1118,18 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
             };
             let mut telemetry = GenerationTelemetry::start(&provider_runtime);
             let mut stream_deadlines = StreamDeadlineTracker::new(deadline_policy, Instant::now());
+            let stream_attempt_started = Instant::now();
+            let stream_span = tracing::info_span!(
+                "acp_provider_stream_attempt",
+                operation = "provider_stream_attempt",
+                provider = provider_runtime.provider_name(),
+                outcome = tracing::field::Empty,
+                elapsed_ms = tracing::field::Empty,
+            );
             let next_deadline = stream_deadlines.next();
             let stream_result = tokio::select! {
                 () = session.cancellation.cancelled() => {
+                    record_stream_attempt(&stream_span, stream_attempt_started, "cancelled");
                     stop_reason = acp::StopReason::Cancelled;
                     break 'stream_attempts;
                 }
@@ -1118,14 +1140,12 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         phase.timeout(deadline_policy),
                     ))
                 }
-                result = provider.stream(request.clone()).instrument(tracing::info_span!(
-                    "acp_provider_stream_start",
-                    provider = provider_runtime.provider_name()
-                )) => result,
+                result = provider.stream(request.clone()).instrument(stream_span.clone()) => result,
             };
             let mut stream = match stream_result {
                 Ok(stream) => stream,
                 Err(error) => {
+                    record_stream_attempt(&stream_span, stream_attempt_started, "failure");
                     let decision = policy.decision_for_llm_error(&error, attempt_index);
                     telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
                     drop(permit);
@@ -1177,6 +1197,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 let next_deadline = stream_deadlines.next();
                 let event = tokio::select! {
                     () = session.cancellation.cancelled() => {
+                        record_stream_attempt(&stream_span, stream_attempt_started, "cancelled");
                         stop_reason = acp::StopReason::Cancelled;
                         break 'stream_attempts;
                     }
@@ -1187,9 +1208,10 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                             phase.timeout(deadline_policy),
                         )))
                     }
-                    event = stream.next() => event,
+                    event = poll_provider_stream(&mut stream, stream_span.clone()) => event,
                 };
                 let Some(event) = event else {
+                    record_stream_attempt(&stream_span, stream_attempt_started, "failure");
                     let error = LLMError::Network {
                         message: "provider stream ended before a completion event".to_string(),
                         metadata: None,
@@ -1255,6 +1277,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 let event = match event {
                     Ok(event) => event,
                     Err(error) if !emitted_output => {
+                        record_stream_attempt(&stream_span, stream_attempt_started, "failure");
                         drop(stream);
                         let decision = policy.decision_for_llm_error(&error, attempt_index);
                         telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
@@ -1302,6 +1325,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                         }
                     }
                     Err(error) => {
+                        record_stream_attempt(&stream_span, stream_attempt_started, "failure");
                         telemetry.failed(&provider_runtime, attempt_index, "partial_output_visible", &error);
                         return finish_failed_provider_turn(
                             &agent,
@@ -1347,6 +1371,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     LLMStreamEvent::ReasoningStage { .. } => {}
                     LLMStreamEvent::ReasoningSignature { .. } => {}
                     LLMStreamEvent::Completed { response } => {
+                        record_stream_attempt(&stream_span, stream_attempt_started, "completion");
                         let response = *response;
                         if telemetry.first_output_at.is_none() {
                             if let Some(content) = response.content.as_deref() {
@@ -1786,9 +1811,13 @@ mod tests {
     use async_trait::async_trait;
     use proptest::prelude::*;
     use std::collections::BTreeMap;
-    use std::sync::Mutex;
+    use std::fmt::Write as FmtWrite;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
     use tokio::sync::{Mutex as AsyncMutex, mpsc};
+    use tracing::field::{Field, Visit};
+    use tracing_subscriber::layer::{Context, SubscriberExt};
+    use tracing_subscriber::{Layer, Registry};
     use vtcode_config::SubagentDiscoveryInput;
     use vtcode_config::auth::AuthCredentialsStoreMode;
     use vtcode_config::core::{CustomProviderConfig, CustomProviderRequestPolicyConfig};
@@ -1863,6 +1892,88 @@ mod tests {
     use vtcode_core::llm::provider::LLMError;
 
     use super::*;
+
+    #[derive(Clone, Default)]
+    struct TraceCapture(Arc<Mutex<Vec<String>>>);
+
+    impl<S> Layer<S> for TraceCapture
+    where
+        S: tracing::Subscriber + for<'lookup> tracing_subscriber::registry::LookupSpan<'lookup>,
+    {
+        fn on_event(&self, event: &tracing::Event<'_>, context: Context<'_, S>) {
+            let current = context.lookup_current().map(|span| span.name().to_owned());
+            let mut fields = CapturedFields::default();
+            event.record(&mut fields);
+            let mut line = format!("span={current:?} event={}", event.metadata().name());
+            line.push_str(&fields.0);
+            self.0.lock().expect("trace capture lock").push(line);
+        }
+
+        fn on_new_span(&self, attrs: &tracing::span::Attributes<'_>, _id: &tracing::Id, _context: Context<'_, S>) {
+            let mut fields = CapturedFields::default();
+            attrs.record(&mut fields);
+            let mut line = format!("span={}", attrs.metadata().name());
+            line.push_str(&fields.0);
+            self.0.lock().expect("trace capture lock").push(line);
+        }
+
+        fn on_record(&self, _id: &tracing::Id, values: &tracing::span::Record<'_>, _context: Context<'_, S>) {
+            let mut fields = CapturedFields::default();
+            values.record(&mut fields);
+            self.0.lock().expect("trace capture lock").push(fields.0);
+        }
+    }
+
+    #[derive(Default)]
+    struct CapturedFields(String);
+
+    impl Visit for CapturedFields {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            write!(&mut self.0, " {}={value:?}", field.name()).expect("write trace field");
+        }
+
+        fn record_str(&mut self, field: &Field, value: &str) {
+            write!(&mut self.0, " {}={value:?}", field.name()).expect("write trace field");
+        }
+    }
+
+    #[test]
+    fn stream_poll_runs_inside_safe_attempt_span() {
+        let capture = TraceCapture::default();
+        let subscriber = Registry::default().with(capture.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("test runtime should build")
+                .block_on(async {
+                    let span = tracing::info_span!(
+                        "acp_provider_stream_attempt",
+                        operation = "provider_stream_attempt",
+                        provider = "test-provider",
+                        outcome = tracing::field::Empty,
+                        elapsed_ms = tracing::field::Empty,
+                    );
+                    let mut stream = futures::stream::poll_fn(|_context| {
+                        tracing::info!(marker = "stream_poll", "polled provider stream");
+                        std::task::Poll::Ready(Some(()))
+                    });
+                    let started_at = Instant::now();
+                    assert_eq!(poll_provider_stream(&mut stream, span.clone()).await, Some(()));
+                    record_stream_attempt(&span, started_at, "completion");
+                });
+        });
+
+        let captured = capture.0.lock().expect("trace capture lock").join("\n");
+        assert!(captured.contains("span=acp_provider_stream_attempt"));
+        assert!(captured.contains("span=Some(\"acp_provider_stream_attempt\")"));
+        assert!(captured.contains("marker=\"stream_poll\""));
+        assert!(captured.contains("outcome=\"completion\""));
+        assert!(captured.contains("elapsed_ms="));
+        assert!(!captured.contains("prompt"));
+        assert!(!captured.contains("api_key"));
+        assert!(!captured.contains("/home/"));
+    }
 
     #[test]
     fn provider_error_telemetry_exposes_stable_network_metadata() {

@@ -155,6 +155,9 @@ See [CHANGELOG](../CHANGELOG.md) for complete details on these improvements.
 
 New to VT Code? Start with installation and basic usage:
 
+- [User Guide](./users-guide.md) - Quick links to canonical setup, ACP,
+  configuration, permissions, MCP, and storage guides.
+
 - **[Getting Started](./user-guide/getting-started.md)** - Installation,
   configuration, and first steps
 - **[Subagents](./user-guide/subagents.md)** - Create, configure, invoke, and
@@ -186,6 +189,9 @@ New to VT Code? Start with installation and basic usage:
 ### For Developers
 
 Contributing to VT Code? Understand the architecture and development processes:
+
+- [Developer Guide](./developers-guide.md) - Quick links to architecture,
+  development workflows, ACP runtime, provider policy, and testing.
 
 - **[Architecture Overview](./ARCHITECTURE.md)** - System design and core
   components

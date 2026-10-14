@@ -2,12 +2,15 @@ use super::ZedAgent;
 use crate::acp;
 use crate::workspace::{WorkspaceTrustSyncOutcome, WorkspaceTrustSynchronizer};
 use anyhow::Context;
+use futures::future::BoxFuture;
 use std::collections::BTreeMap;
+use std::future::Future;
 use std::io::{self, Write};
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use tracing::{debug, warn};
+use std::time::Instant;
+use tracing::{Instrument, debug, warn};
 use uuid::Uuid;
 use vtcode_commons::fs::canonicalize_with_context_async;
 use vtcode_config::auth::AuthCredentialsStoreMode;
@@ -20,13 +23,33 @@ use vtcode_core::llm::factory::get_factory;
 use vtcode_core::llm::provider::{FinishReason, Message, MessageRole};
 use vtcode_core::utils::session_archive::{
     MAX_CLIENT_METADATA_BYTES, MAX_CLIENT_METADATA_ENTRIES, SessionArchive, SessionListing, SessionMessage,
-    SessionProgressArgs, find_session_by_identifier, history_persistence_enabled, list_recent_sessions,
-    session_workspace_path,
+    SessionProgressArgs, SessionProgressPersistenceStatus, find_session_by_identifier, history_persistence_enabled,
+    list_recent_sessions, session_workspace_path,
 };
 
 use super::super::constants::SESSION_PREFIX;
 use super::super::helpers::session_config_options;
 use super::super::types::{SessionData, SessionHandle, lock_poison_error};
+
+fn trace_storage_operation<'a, T: 'a, E: 'a, F>(operation: &'static str, future: F) -> BoxFuture<'a, Result<T, E>>
+where
+    F: Future<Output = Result<T, E>> + Send + 'a,
+{
+    let span = tracing::info_span!(
+        "acp_session_storage",
+        operation,
+        outcome = tracing::field::Empty,
+        elapsed_ms = tracing::field::Empty,
+    );
+    let started_at = Instant::now();
+    Box::pin(async move {
+        let result = future.instrument(span.clone()).await;
+        let _ = span.record("outcome", if result.is_ok() { "success" } else { "failure" });
+        let elapsed_ms = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let _ = span.record("elapsed_ms", elapsed_ms);
+        result
+    })
+}
 
 impl ZedAgent {
     const SESSION_LIST_PAGE_SIZE: usize = 100;
@@ -383,6 +406,10 @@ impl ZedAgent {
     }
 
     pub(super) async fn checkpoint_session(&self, session: &SessionHandle) -> anyhow::Result<()> {
+        trace_storage_operation("checkpoint", self.checkpoint_session_inner(session)).await
+    }
+
+    async fn checkpoint_session_inner(&self, session: &SessionHandle) -> anyhow::Result<()> {
         if !history_persistence_enabled() {
             debug!("Skipped ACP session checkpoint because history persistence is disabled");
             return Ok(());
@@ -423,7 +450,7 @@ impl ZedAgent {
             .iter()
             .filter(|message| message.role == MessageRole::User)
             .count();
-        let status = archive
+        let persistence_status = archive
             .persist_checkpoint_async(SessionProgressArgs {
                 total_messages: messages.len(),
                 distinct_tools: Vec::new(),
@@ -436,7 +463,12 @@ impl ZedAgent {
                 turn_diagnostics: None,
             })
             .await?;
-        debug!(path = %status.path().display(), ?status, "Processed ACP session checkpoint");
+        let persistence_outcome = match persistence_status {
+            SessionProgressPersistenceStatus::Persisted(_) => "persisted",
+            SessionProgressPersistenceStatus::Throttled(_) => "throttled",
+            SessionProgressPersistenceStatus::Disabled(_) => "disabled",
+        };
+        debug!(persistence_outcome, "Processed ACP session checkpoint");
         Ok(())
     }
 
@@ -671,35 +703,38 @@ impl ZedAgent {
         identifier: &str,
         workspace: &std::path::Path,
     ) -> anyhow::Result<SessionHandle> {
-        let listing = find_session_by_identifier(identifier)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("unknown archived session '{identifier}'"))?;
-        anyhow::ensure!(
-            session_listing_matches_canonical_workspace(&listing, workspace),
-            "archived session '{identifier}' belongs to a different workspace"
-        );
-        let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
-        let thread = self
-            .thread_manager
-            .start_thread_with_identifier(listing.identifier(), ThreadBootstrap::from_listing(listing));
-        let runtime = self
-            .workspace_runtime_for(workspace.to_path_buf())
-            .await
-            .context("Failed to initialise archived ACP session workspace")?;
-        let handle = self.build_session_handle_with_archive(
-            session_id.clone(),
-            thread,
-            Some(archive),
-            SessionStartTrigger::Resume,
-            Some(runtime),
-        );
-        drop(
-            self.sessions
-                .lock()
-                .map_err(|error| lock_poison_error("registering resumed ACP session", error))?
-                .insert(session_id.clone(), handle.clone()),
-        );
-        Ok(handle)
+        trace_storage_operation("archive_attach", async {
+            let listing = find_session_by_identifier(identifier)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("unknown archived session '{identifier}'"))?;
+            anyhow::ensure!(
+                session_listing_matches_canonical_workspace(&listing, workspace),
+                "archived session '{identifier}' belongs to a different workspace"
+            );
+            let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
+            let thread = self
+                .thread_manager
+                .start_thread_with_identifier(listing.identifier(), ThreadBootstrap::from_listing(listing));
+            let runtime = self
+                .workspace_runtime_for(workspace.to_path_buf())
+                .await
+                .context("Failed to initialise archived ACP session workspace")?;
+            let handle = self.build_session_handle_with_archive(
+                session_id.clone(),
+                thread,
+                Some(archive),
+                SessionStartTrigger::Resume,
+                Some(runtime),
+            );
+            drop(
+                self.sessions
+                    .lock()
+                    .map_err(|error| lock_poison_error("registering resumed ACP session", error))?
+                    .insert(session_id.clone(), handle.clone()),
+            );
+            Ok(handle)
+        })
+        .await
     }
 
     async fn attach_or_get_session(
@@ -778,22 +813,23 @@ impl ZedAgent {
         &self,
         args: acp::ListSessionsRequest,
     ) -> Result<acp::ListSessionsResponse, acp::Error> {
-        if !history_persistence_enabled() {
-            return Ok(acp::ListSessionsResponse::new(Vec::new()));
-        }
+        trace_storage_operation("archive_list", async {
+            if !history_persistence_enabled() {
+                return Ok(acp::ListSessionsResponse::new(Vec::new()));
+            }
 
-        let listings = list_recent_sessions(0)
-            .await
-            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
-        let response = Self::session_list_response(&args, listings)?;
-        debug!(
-            session_count = response.sessions.len(),
-            workspace = ?args.cwd,
-            cursor = ?args.cursor,
-            has_more = response.next_cursor.is_some(),
-            "Listed durable ACP sessions"
-        );
-        Ok(response)
+            let listings = list_recent_sessions(0)
+                .await
+                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+            let response = Self::session_list_response(&args, listings)?;
+            debug!(
+                session_count = response.sessions.len(),
+                has_more = response.next_cursor.is_some(),
+                "Listed durable ACP sessions"
+            );
+            Ok(response)
+        })
+        .await
     }
 
     pub(super) fn stop_reason_from_finish(finish: FinishReason) -> acp::StopReason {
@@ -854,30 +890,33 @@ impl ZedAgent {
         &self,
         args: acp::LoadSessionRequest,
     ) -> Result<acp::LoadSessionResponse, acp::Error> {
-        let workspace = canonical_session_workspace(&args.cwd).await?;
-        let session = self
-            .attach_or_get_session(&args.session_id, &workspace)
-            .await
-            .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
-        self.ensure_task_lifecycle_forwarder(&session)
-            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+        trace_storage_operation("session_load", async {
+            let workspace = canonical_session_workspace(&args.cwd).await?;
+            let session = self
+                .attach_or_get_session(&args.session_id, &workspace)
+                .await
+                .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
+            self.ensure_task_lifecycle_forwarder(&session)
+                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
 
-        if let Err(error) = self.replay_persisted_task_plan(&session, &args.session_id).await {
-            warn!(%error, session_id = %args.session_id, "Failed to replay persisted ACP task plan on session load");
-        }
+            if let Err(error) = self.replay_persisted_task_plan(&session, &args.session_id).await {
+                warn!(%error, "Failed to replay persisted ACP task plan on session load");
+            }
 
-        if let Err(error) = self.send_available_commands_update(&args.session_id).await {
-            warn!(%error, "Failed to advertise slash commands on session load");
-        }
+            if let Err(error) = self.send_available_commands_update(&args.session_id).await {
+                warn!(%error, "Failed to advertise slash commands on session load");
+            }
 
-        let config_options = self
-            .current_session_config_options(&session)
-            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
-        self.run_session_start_hooks(&session)
-            .await
-            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
-        debug!(session_id = %args.session_id, "Loaded durable ACP session through legacy session/load");
-        Ok(acp::LoadSessionResponse::new().config_options(config_options))
+            let config_options = self
+                .current_session_config_options(&session)
+                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+            self.run_session_start_hooks(&session)
+                .await
+                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+            debug!("Loaded durable ACP session through legacy session/load");
+            Ok(acp::LoadSessionResponse::new().config_options(config_options))
+        })
+        .await
     }
 
     /// Programmatic equivalent of the SACP `session/resume` handler.
@@ -885,30 +924,33 @@ impl ZedAgent {
         &self,
         args: acp::ResumeSessionRequest,
     ) -> Result<acp::ResumeSessionResponse, acp::Error> {
-        let workspace = canonical_session_workspace(&args.cwd).await?;
-        let session = self
-            .attach_or_get_session(&args.session_id, &workspace)
-            .await
-            .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
-        self.ensure_task_lifecycle_forwarder(&session)
-            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+        trace_storage_operation("session_resume", async {
+            let workspace = canonical_session_workspace(&args.cwd).await?;
+            let session = self
+                .attach_or_get_session(&args.session_id, &workspace)
+                .await
+                .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
+            self.ensure_task_lifecycle_forwarder(&session)
+                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
 
-        if let Err(error) = self.replay_persisted_task_plan(&session, &args.session_id).await {
-            warn!(%error, session_id = %args.session_id, "Failed to replay persisted ACP task plan on session resume");
-        }
+            if let Err(error) = self.replay_persisted_task_plan(&session, &args.session_id).await {
+                warn!(%error, "Failed to replay persisted ACP task plan on session resume");
+            }
 
-        if let Err(error) = self.send_available_commands_update(&args.session_id).await {
-            warn!(%error, "Failed to advertise slash commands on session resume");
-        }
+            if let Err(error) = self.send_available_commands_update(&args.session_id).await {
+                warn!(%error, "Failed to advertise slash commands on session resume");
+            }
 
-        let config_options = self
-            .current_session_config_options(&session)
-            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
-        self.run_session_start_hooks(&session)
-            .await
-            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
-        debug!(session_id = %args.session_id, "Resumed durable ACP session");
-        Ok(acp::ResumeSessionResponse::new().config_options(config_options))
+            let config_options = self
+                .current_session_config_options(&session)
+                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+            self.run_session_start_hooks(&session)
+                .await
+                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+            debug!("Resumed durable ACP session");
+            Ok(acp::ResumeSessionResponse::new().config_options(config_options))
+        })
+        .await
     }
 
     /// Programmatic equivalent of the SACP `session/set_config_option`
@@ -1131,10 +1173,14 @@ mod tests {
     use assert_fs::TempDir;
     use chrono::Utc;
     use std::collections::BTreeMap;
+    use std::fmt::Write as FmtWrite;
     use std::fs;
     use std::path::Path;
     use std::sync::LazyLock;
     use tokio::sync::Mutex as AsyncMutex;
+    use tracing::field::{Field, Visit};
+    use tracing_subscriber::layer::{Context, SubscriberExt};
+    use tracing_subscriber::{Layer, Registry};
     use vtcode_config::codex::HistoryPersistence;
 
     struct NoOpWorkspaceTrustSynchronizer;
@@ -1159,6 +1205,88 @@ mod tests {
     use vtcode_core::utils::session_archive::{SessionArchiveMetadata, SessionListing, SessionSnapshot};
 
     static HISTORY_TEST_LOCK: LazyLock<AsyncMutex<()>> = LazyLock::new(|| AsyncMutex::new(()));
+
+    #[derive(Clone, Default)]
+    struct TraceCapture(Arc<Mutex<Vec<String>>>);
+
+    impl<S> Layer<S> for TraceCapture
+    where
+        S: tracing::Subscriber + for<'lookup> tracing_subscriber::registry::LookupSpan<'lookup>,
+    {
+        fn on_new_span(&self, attrs: &tracing::span::Attributes<'_>, _id: &tracing::Id, _context: Context<'_, S>) {
+            if attrs.metadata().name() != "acp_session_storage" {
+                return;
+            }
+            let mut fields = CapturedFields::default();
+            attrs.record(&mut fields);
+            self.0
+                .lock()
+                .expect("trace capture lock")
+                .push(format!("span={}{}", attrs.metadata().name(), fields.0));
+        }
+
+        fn on_record(&self, id: &tracing::Id, values: &tracing::span::Record<'_>, context: Context<'_, S>) {
+            let Some(span) = context.span(id) else { return };
+            if span.name() != "acp_session_storage" {
+                return;
+            }
+            let mut fields = CapturedFields::default();
+            values.record(&mut fields);
+            self.0
+                .lock()
+                .expect("trace capture lock")
+                .push(format!("span={}{}", span.name(), fields.0));
+        }
+
+        fn on_event(&self, event: &tracing::Event<'_>, context: Context<'_, S>) {
+            let Some(span) = context.lookup_current() else { return };
+            if span.name() != "acp_session_storage" {
+                return;
+            }
+            let mut fields = CapturedFields::default();
+            event.record(&mut fields);
+            self.0.lock().expect("trace capture lock").push(format!(
+                "span={} event={}{}",
+                span.name(),
+                event.metadata().name(),
+                fields.0
+            ));
+        }
+    }
+
+    #[derive(Default)]
+    struct CapturedFields(String);
+
+    impl Visit for CapturedFields {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            write!(&mut self.0, " {}={value:?}", field.name()).expect("write trace field");
+        }
+
+        fn record_str(&mut self, field: &Field, value: &str) {
+            write!(&mut self.0, " {}={value:?}", field.name()).expect("write trace field");
+        }
+    }
+
+    #[tokio::test]
+    async fn storage_operation_records_failure_without_error_details() {
+        let capture = TraceCapture::default();
+        let subscriber = Registry::default().with(capture.clone());
+        let _subscriber_guard = tracing::subscriber::set_default(subscriber);
+
+        let result = trace_storage_operation("archive_attach", async {
+            Err::<(), _>(anyhow::anyhow!("sensitive path and token"))
+        })
+        .await;
+
+        assert!(result.is_err());
+        let captured = capture.0.lock().expect("trace capture lock").join("\n");
+        assert!(captured.contains("span=acp_session_storage"));
+        assert!(captured.contains("operation=\"archive_attach\""));
+        assert!(captured.contains("outcome=\"failure\""));
+        assert!(captured.contains("elapsed_ms="));
+        assert!(!captured.contains("sensitive path"));
+        assert!(!captured.contains("token"));
+    }
 
     struct HistorySettingsGuard;
 
@@ -1302,6 +1430,9 @@ mod tests {
 
     #[tokio::test]
     async fn checkpoint_session_persists_messages_for_a_fresh_runtime() {
+        let capture = TraceCapture::default();
+        let subscriber = Registry::default().with(capture.clone());
+        let _subscriber_guard = tracing::subscriber::set_default(subscriber);
         let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
         let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
         let temp = TempDir::new().unwrap();
@@ -1341,6 +1472,15 @@ mod tests {
             .unwrap();
 
         agent.checkpoint_session(&handle).await.unwrap();
+
+        let captured = capture.0.lock().expect("trace capture lock").join("\n");
+        assert!(captured.contains("span=acp_session_storage"));
+        assert!(captured.contains("operation=\"checkpoint\""));
+        assert!(captured.contains("outcome=\"success\""));
+        assert!(captured.contains("elapsed_ms="));
+        assert!(!captured.contains("vtcode-zed-session-resume.json"));
+        assert!(!captured.contains("continue"));
+        assert!(!captured.contains("api_key"));
 
         let raw = fs::read_to_string(&path).unwrap();
         let snapshot: SessionSnapshot = serde_json::from_str(&raw).unwrap();

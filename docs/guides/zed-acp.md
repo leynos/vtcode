@@ -460,16 +460,14 @@ and `[history]` settings do not control ACP audit output.
   `Sending provider reasoning to ACP client` from
   `Provider response did not include exposed reasoning for ACP`; they record
   metadata only and never the reasoning content.
-- **Plan tracking** – Every prompt emits an ACP plan describing analysis,
-  optional context gathering, and final response drafting. The model can also
-  use the `task_tracker` tool to create or update a workspace checklist; each
-  successful tracker result is projected into an ACP plan update. Plan entries
-  retain tracker data under the namespaced `_meta.vtcode.taskTracker` field,
-  while checklist statuses map to ACP pending, in-progress, and completed
-  states (blocked items remain pending and are labelled `[blocked]`). The
-  latest persisted checklist is replayed as a plan update when a session is
-  loaded or resumed and at the start of a later prompt, so the client can
-  restore its plan view without replaying a model tool call.
+- **Plan tracking** – VT Code emits ACP plans from successful `task_tracker`
+  results and replays the persisted checklist when a session is loaded or
+  resumed and at the start of a later prompt. It does not synthesize a plan
+  merely because a prompt begins. Plan entries retain tracker data under the
+  namespaced `_meta.vtcode.taskTracker` field, while checklist statuses map to
+  ACP pending, in-progress, and completed states (blocked items remain pending
+  and are labelled `[blocked]`). Replay restores the plan view without
+  repeating a model tool call.
 - **Tool execution** – The `read_file` tool forwards to Zed when enabled. The
   `list_files` tool uses VT Code's local workspace access, mirroring the CLI
   experience. When the model lacks function calling or the tool toggle is
@@ -518,8 +516,8 @@ and `[history]` settings do not control ACP audit output.
 
 ### Telemetry and auditing
 
-- Plan updates enumerate analysis, context gathering, and response drafting so
-  audit trails show exactly how a turn progressed.
+- Plan updates reflect model-managed task checklists and their persisted
+  replay; they do not describe a synthetic per-prompt workflow.
 - Cancellation signals from Zed immediately cut off streaming, mark pending
   tool calls as cancelled, and end the turn with `StopReason::Cancelled`,
   providing a clean timeline in the transcript.

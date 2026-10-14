@@ -29,9 +29,10 @@ Provider failure detection uses four independent deadlines:
 
 - `connect_timeout_seconds` limits HTTP connection establishment (30 seconds
   by default).
-- `first_token_timeout_seconds` starts after the streaming response is
-  established and limits the wait for the first text or reasoning event (180
-  seconds by default).
+- `first_token_timeout_seconds` starts before VT Code calls the provider's
+  `stream` method and limits the wait for the first text or reasoning event
+  (180 seconds by default). Provider stream setup, response-header delay, and
+  the first event all count against this deadline.
 - `stream_idle_timeout_seconds` resets whenever text or reasoning arrives and
   detects a stream that stops making progress (120 seconds by default).
 - `total_generation_timeout_seconds` limits one complete generation attempt

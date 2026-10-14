@@ -24,6 +24,20 @@ use super::constants::{
 };
 use super::helpers::PrimaryAgentCatalog;
 
+/// Runs the ACP agent over stdio using the supplied core and VT Code config.
+///
+/// This registers configured custom providers, applies session-history settings,
+/// synchronizes workspace trust, initializes the audit logger and creates the
+/// `ZedAgent` that owns the request handlers for the connection. When the
+/// connection ends, SessionEnd hooks run with the matching exit or error reason;
+/// shutdown hook execution is limited to three seconds. The local agent and
+/// stdio connection are owned by this call for the connection lifetime.
+///
+/// Returns setup, connection or shutdown errors. In particular, audit logger
+/// initialization, workspace trust synchronization and primary-agent discovery
+/// can fail before the connection starts. A connection failure is returned;
+/// after a successful connection, a SessionEnd hook failure or timeout is
+/// returned instead.
 pub async fn run_acp_agent(
     config: &CoreAgentConfig,
     vt_cfg: &VTCodeConfig,
