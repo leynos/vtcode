@@ -418,7 +418,10 @@ and `[history]` settings do not control ACP audit output.
 - **Provider request capacity** – For a custom provider with
   `max_in_flight_requests` configured, one request slot is reserved for the
   parent ACP request and child concurrency is capped at the remaining slots. A
-  limit of `1` therefore disables ACP sub-agents so the parent retains its slot.
+  limit of `1` therefore disables ACP sub-agents so the parent retains its
+  slot. See
+  [custom provider request policy](../development/CUSTOM_PROVIDER_REQUEST_POLICY.md)
+  for the related timeout, retry, and admission settings.
 - **Provider diagnostics** – Debug logs record queue depth, active and
   maximum provider permits, retry count and disposition, time to first output,
   generation duration, output tokens, and tokens per second. Providers that

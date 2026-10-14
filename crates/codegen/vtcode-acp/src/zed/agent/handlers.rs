@@ -57,7 +57,9 @@ use vtcode_core::core::message_metadata::MessageMetadata;
 use vtcode_core::core::threads::ThreadRuntimeHandle;
 use vtcode_core::llm::factory::ProviderConfig;
 use vtcode_core::llm::factory::create_provider_with_config;
-use vtcode_core::llm::provider::{LLMError, LLMProvider, LLMRequest, LLMResponse, LLMStreamEvent, Message};
+use vtcode_core::llm::provider::{
+    LLMError, LLMErrorMetadata, LLMProvider, LLMRequest, LLMResponse, LLMStreamEvent, Message,
+};
 use vtcode_core::retry::{RetryDecision, RetryPolicyCoreExt};
 
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderDeadlinePolicy, ProviderRequestRuntime};
@@ -148,11 +150,19 @@ fn deadline_from(started_at: Instant, timeout: Option<Duration>) -> Option<Insta
     timeout.map(|timeout| started_at + timeout)
 }
 
-fn provider_timeout_error(provider: &str, phase: &str, timeout: Option<Duration>) -> LLMError {
+fn provider_timeout_error(provider: &str, phase: StreamTimeoutPhase, timeout: Option<Duration>) -> LLMError {
     let duration = timeout.map_or_else(|| "configured deadline".to_string(), |timeout| format!("{timeout:?}"));
     LLMError::Network {
-        message: format!("provider '{provider}' exceeded its {phase} timeout ({duration})"),
-        metadata: None,
+        message: format!("provider '{provider}' exceeded its {} timeout ({duration})", phase.label()),
+        metadata: Some(LLMErrorMetadata::new(
+            "ACP",
+            None,
+            Some(phase.error_code().to_string()),
+            None,
+            None,
+            None,
+            None,
+        )),
     }
 }
 
@@ -270,6 +280,14 @@ impl StreamTimeoutPhase {
         }
     }
 
+    const fn error_code(self) -> &'static str {
+        match self {
+            Self::FirstToken => "acp_timeout_first_token",
+            Self::InterTokenIdle => "acp_timeout_inter_token_idle",
+            Self::TotalGeneration => "acp_timeout_total_generation",
+        }
+    }
+
     const fn timeout(self, policy: ProviderDeadlinePolicy) -> Option<Duration> {
         match self {
             Self::FirstToken => policy.first_token,
@@ -300,15 +318,24 @@ struct GenerationTelemetry {
 struct ProviderErrorTelemetry<'a> {
     code: Option<&'a str>,
     status: Option<u16>,
+    timeout_phase: Option<&'static str>,
 }
 
 fn provider_error_telemetry(error: &LLMError) -> ProviderErrorTelemetry<'_> {
     let LLMError::Network { metadata: Some(metadata), .. } = error else {
         return ProviderErrorTelemetry::default();
     };
+    let code = metadata.code.as_deref();
+    let timeout_phase = match code {
+        Some("acp_timeout_first_token") => Some("first_token"),
+        Some("acp_timeout_inter_token_idle") => Some("inter_token_idle"),
+        Some("acp_timeout_total_generation") => Some("total_generation"),
+        _ => None,
+    };
     ProviderErrorTelemetry {
-        code: metadata.code.as_deref(),
+        code: if timeout_phase.is_some() { None } else { code },
         status: metadata.status,
+        timeout_phase,
     }
 }
 impl GenerationTelemetry {
@@ -411,6 +438,7 @@ impl GenerationTelemetry {
             circuit_breaker_state = snapshot.circuit_breaker_state,
             provider_error_code = ?error_telemetry.code,
             provider_error_status = ?error_telemetry.status,
+            provider_timeout_phase = error_telemetry.timeout_phase,
             "ACP provider generation attempt failed"
         );
     }
@@ -493,7 +521,7 @@ async fn generate_with_retry(
             () = sleep_until_optional(total_deadline) => {
                 Err(provider_timeout_error(
                     runtime.provider_name(),
-                    "total generation",
+                    StreamTimeoutPhase::TotalGeneration,
                     deadline_policy.total_generation,
                 ))
             }
@@ -1086,7 +1114,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 phase = sleep_until_stream_deadline(next_deadline) => {
                     Err(provider_timeout_error(
                         provider_runtime.provider_name(),
-                        phase.label(),
+                        phase,
                         phase.timeout(deadline_policy),
                     ))
                 }
@@ -1155,7 +1183,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                     phase = sleep_until_stream_deadline(next_deadline) => {
                         Some(Err(provider_timeout_error(
                             provider_runtime.provider_name(),
-                            phase.label(),
+                            phase,
                             phase.timeout(deadline_policy),
                         )))
                     }
@@ -1832,7 +1860,7 @@ mod tests {
         assert_eq!(archived["reasoning_details"][1], array_reasoning);
         assert_eq!(archived["reasoning_details"][2], serde_json::json!(raw_reasoning));
     }
-    use vtcode_core::llm::provider::{LLMError, LLMErrorMetadata};
+    use vtcode_core::llm::provider::LLMError;
 
     use super::*;
 
@@ -1856,8 +1884,25 @@ mod tests {
             ProviderErrorTelemetry {
                 code: Some("reqwest_timeout_error"),
                 status: Some(504),
+                timeout_phase: None,
             }
         );
+    }
+
+    #[test]
+    fn provider_error_telemetry_exposes_acp_timeout_phase_separately() {
+        let error =
+            provider_timeout_error("wire-test", StreamTimeoutPhase::InterTokenIdle, Some(Duration::from_secs(30)));
+
+        assert_eq!(
+            provider_error_telemetry(&error),
+            ProviderErrorTelemetry {
+                code: None,
+                status: None,
+                timeout_phase: Some("inter_token_idle"),
+            }
+        );
+        assert!(error.to_string().contains("inter-token idle timeout"));
     }
 
     proptest! {
@@ -2103,6 +2148,18 @@ mod tests {
 
     struct CompactThenAnswerProvider {
         requests: Arc<Mutex<Vec<LLMRequest>>>,
+        context_size: usize,
+        summary: String,
+    }
+
+    struct PendingCompactionProvider {
+        started: Arc<tokio::sync::Notify>,
+    }
+
+    impl PendingCompactionProvider {
+        fn new(started: Arc<tokio::sync::Notify>) -> Self {
+            Self { started }
+        }
     }
 
     struct PartialThenFailProvider;
@@ -2181,6 +2238,10 @@ mod tests {
             "wire-test"
         }
 
+        fn effective_context_size(&self, _model: &str) -> usize {
+            self.context_size
+        }
+
         fn supported_models(&self) -> Vec<String> {
             vec!["wire-model".to_string()]
         }
@@ -2209,7 +2270,31 @@ mod tests {
 
         async fn generate(&self, request: LLMRequest) -> Result<LLMResponse, LLMError> {
             self.requests.lock().expect("compaction provider requests").push(request);
-            Ok(LLMResponse::new("wire-model", "ACP compaction summary marker"))
+            Ok(LLMResponse::new("wire-model", self.summary.clone()))
+        }
+    }
+
+    #[async_trait]
+    impl LLMProvider for PendingCompactionProvider {
+        fn name(&self) -> &str {
+            "wire-test"
+        }
+
+        fn effective_context_size(&self, _model: &str) -> usize {
+            8_192
+        }
+
+        fn supported_models(&self) -> Vec<String> {
+            vec!["wire-model".to_string()]
+        }
+
+        fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+            Ok(())
+        }
+
+        async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+            self.started.notify_one();
+            std::future::pending().await
         }
     }
 
@@ -2667,7 +2752,13 @@ mod tests {
         let factory_requests = Arc::clone(&requests);
         let _factory_guard = PromptProviderFactoryGuard::install(
             "wire-test",
-            Arc::new(move || Box::new(CompactThenAnswerProvider { requests: Arc::clone(&factory_requests) })),
+            Arc::new(move || {
+                Box::new(CompactThenAnswerProvider {
+                    requests: Arc::clone(&factory_requests),
+                    context_size: 0,
+                    summary: "ACP compaction summary marker".to_string(),
+                })
+            }),
         );
         let workspace = TempDir::new().expect("wire test compaction workspace");
         let mut vt_config = vtcode_config::VTCodeConfig::default();
@@ -2841,6 +2932,123 @@ mod tests {
             "restored session history must not bring back compacted source context"
         );
         std::fs::remove_file(archive_path).expect("remove persisted ACP compaction archive");
+    }
+
+    async fn large_compaction_session(agent: &ZedAgent, workspace: &std::path::Path) -> SessionHandle {
+        let response = agent
+            .new_session(NewSessionRequest::new(workspace))
+            .await
+            .expect("create ACP compaction session");
+        let session = agent
+            .session_handle(&response.session_id)
+            .expect("ACP session lookup")
+            .expect("new ACP session handle");
+        for index in 0..12 {
+            agent
+                .push_message(
+                    &session,
+                    Message::user(format!("large user turn {index} {}", "older context ".repeat(12_000))),
+                )
+                .expect("append large user history");
+            agent
+                .push_message(&session, Message::assistant(format!("large assistant turn {index}")))
+                .expect("append large assistant history");
+        }
+        session
+    }
+
+    fn compaction_config(enabled: bool) -> vtcode_config::VTCodeConfig {
+        let mut config = vtcode_config::VTCodeConfig::default();
+        config.agent.harness.auto_compaction_enabled = enabled;
+        config.agent.harness.auto_compaction_threshold_tokens = Some(1);
+        config
+    }
+
+    #[tokio::test]
+    async fn prompt_over_budget_fails_closed_when_compaction_makes_no_change() {
+        use assert_fs::TempDir;
+
+        let workspace = TempDir::new().expect("temporary compaction workspace");
+        let config = compaction_config(false);
+        let agent = build_wire_test_agent_with_options(workspace.path(), Some(&config), None).await;
+        let session = large_compaction_session(&agent, workspace.path()).await;
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let provider = CompactThenAnswerProvider {
+            requests: Arc::clone(&requests),
+            context_size: 8_192,
+            summary: "unused summary".to_string(),
+        };
+        let runtime = agent.provider_runtime.for_provider("wire-test");
+
+        let error = agent
+            .maybe_compact_session(&session, &provider, &runtime, "wire-model", None)
+            .await
+            .expect_err("over-budget prompt must not continue when compaction is disabled");
+
+        assert!(error.to_string().contains("automatic compaction made no change"));
+        assert!(requests.lock().expect("compaction requests").is_empty());
+    }
+
+    #[tokio::test]
+    async fn prompt_over_budget_fails_closed_when_compaction_stays_over_budget() {
+        use assert_fs::TempDir;
+
+        let workspace = TempDir::new().expect("temporary compaction workspace");
+        let config = compaction_config(true);
+        let agent = build_wire_test_agent_with_options(workspace.path(), Some(&config), None).await;
+        let session = large_compaction_session(&agent, workspace.path()).await;
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let provider = CompactThenAnswerProvider {
+            requests: Arc::clone(&requests),
+            context_size: 8_192,
+            summary: "oversized summary ".repeat(12_000),
+        };
+        let runtime = agent.provider_runtime.for_provider("wire-test");
+
+        let error = agent
+            .maybe_compact_session(&session, &provider, &runtime, "wire-model", None)
+            .await
+            .expect_err("over-budget compacted prompt must not continue to the provider answer");
+
+        assert!(error.to_string().contains("still exceeds its safe provider admission budget"));
+        let requests = requests.lock().expect("compaction requests");
+        assert_eq!(requests.len(), 1, "only the compaction request may reach the provider");
+        assert!(!requests[0].stream, "the provider request must be compaction, not an answer turn");
+    }
+
+    #[tokio::test]
+    async fn cancelled_acp_compaction_aborts_the_pending_provider_request() {
+        use assert_fs::TempDir;
+
+        let workspace = TempDir::new().expect("temporary compaction workspace");
+        let config = compaction_config(true);
+        let agent = Arc::new(build_wire_test_agent_with_options(workspace.path(), Some(&config), None).await);
+        let session = large_compaction_session(&agent, workspace.path()).await;
+        let started = Arc::new(tokio::sync::Notify::new());
+        let provider = Arc::new(PendingCompactionProvider::new(Arc::clone(&started)));
+        let runtime = agent.provider_runtime.for_provider("wire-test");
+        let task = {
+            let agent = Arc::clone(&agent);
+            let session = session.clone();
+            let provider = Arc::clone(&provider);
+            tokio::spawn(async move {
+                agent
+                    .maybe_compact_session(&session, provider.as_ref(), &runtime, "wire-model", None)
+                    .await
+            })
+        };
+
+        tokio::time::timeout(Duration::from_secs(5), started.notified())
+            .await
+            .expect("provider compaction request should start");
+        session.cancellation.cancel();
+        let error = tokio::time::timeout(Duration::from_secs(5), task)
+            .await
+            .expect("cancellation should stop the compaction task")
+            .expect("compaction task should not panic")
+            .expect_err("cancelled compaction must not report success");
+
+        assert!(error.to_string().contains("ACP compaction cancelled"));
     }
 
     #[tokio::test]
