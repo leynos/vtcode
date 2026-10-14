@@ -71,16 +71,17 @@ impl ZedAgent {
             .collect::<Vec<_>>();
         let mut first_error = None;
         for session in sessions {
-            match session.mark_session_ended() {
-                Ok(true) => {}
-                Ok(false) => continue,
+            let turn_id = match session.mark_session_ended() {
+                Ok(Some(turn_id)) => turn_id,
+                Ok(None) => continue,
                 Err(error) => {
-                    warn!(%error, "Failed to read ACP session end state; attempting lifecycle hooks anyway");
+                    warn!(%error, "Failed to read ACP session end state; skipping lifecycle hooks");
                     if first_error.is_none() {
                         first_error = Some(error.context("checking ACP session end state"));
                     }
+                    continue;
                 }
-            }
+            };
             let hooks = match session.lifecycle_hooks() {
                 Ok(Some(hooks)) => hooks,
                 Ok(None) => continue,
@@ -90,16 +91,6 @@ impl ZedAgent {
                         first_error = Some(error.context("reading ACP session lifecycle hooks at shutdown"));
                     }
                     continue;
-                }
-            };
-            let turn_id = match session.data.lock() {
-                Ok(data) => data.session_id.to_string(),
-                Err(error) => {
-                    warn!(%error, "Failed to read ACP session ID for SessionEnd hook");
-                    if first_error.is_none() {
-                        first_error = Some(lock_poison_error("reading ACP session ID for SessionEnd hook", error));
-                    }
-                    "acp-session".to_string()
                 }
             };
             match hooks.run_session_end(&turn_id, reason).await {
@@ -750,7 +741,12 @@ impl ZedAgent {
         listings: Vec<SessionListing>,
     ) -> Result<acp::ListSessionsResponse, acp::Error> {
         let offset = Self::session_list_offset(args.cursor.as_deref())?;
-        let requested_workspace = args.cwd.as_deref().map(vtcode_commons::canonicalize).transpose().ok().flatten();
+        let requested_workspace = args
+            .cwd
+            .as_deref()
+            .map(vtcode_commons::canonicalize)
+            .transpose()
+            .map_err(|error| acp::Error::invalid_params().data(format!("invalid session list workspace: {error}")))?;
         let mut sessions = listings
             .into_iter()
             .filter(|listing| {
@@ -1409,6 +1405,16 @@ mod tests {
     fn session_list_rejects_unknown_cursor() {
         let request = acp::ListSessionsRequest::new().cursor("not-a-vtcode-cursor");
         assert!(ZedAgent::session_list_response(&request, Vec::new()).is_err());
+    }
+
+    #[test]
+    fn session_list_reports_an_invalid_requested_workspace() {
+        let workspace = TempDir::new().unwrap();
+        let missing_workspace = workspace.path().join("missing");
+        let request = acp::ListSessionsRequest::new().cwd(&missing_workspace);
+        let listings = vec![archived_listing("session-first", workspace.path(), "First task")];
+
+        assert!(ZedAgent::session_list_response(&request, listings).is_err());
     }
 
     #[test]

@@ -1650,7 +1650,7 @@ async fn spawn_captures_runtime_config_before_first_child_turn() {
 }
 
 #[tokio::test]
-async fn spawn_custom_uses_explicit_spec_without_delegation_hints() {
+async fn spawn_custom_preserves_explicit_spec_when_input_mentions_multiple_agents() {
     let temp = TempDir::new().expect("tempdir");
     let controller =
         SubagentController::new(test_controller_config(temp.path().to_path_buf(), VTCodeConfig::default()))
@@ -1664,6 +1664,11 @@ async fn spawn_custom_uses_explicit_spec_without_delegation_hints() {
     spec.name = "init-grounding-explorer".to_string();
     spec.description = "VT Code /init grounding explorer.".to_string();
     spec.source = SubagentSource::ProjectVtcode;
+
+    let mentions = controller
+        .set_turn_delegation_hints_from_input("@agent-explorer and @agent-worker inspect the repository")
+        .await;
+    assert_eq!(mentions, ["explorer", "worker"]);
 
     let spawned = controller
         .spawn_custom(

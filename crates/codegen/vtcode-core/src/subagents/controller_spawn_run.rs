@@ -37,6 +37,10 @@ use vtcode_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
 )]
 use super::*;
 
+fn usable_background_parent_session_id(owner: Option<String>) -> Option<String> {
+    owner.filter(|owner| !owner.is_empty())
+}
+
 impl SubagentController {
     /// Spawns a new subagent child process from a [`SpawnAgentRequest`].
     pub async fn spawn(&self, request: SpawnAgentRequest) -> Result<SubagentStatusEntry> {
@@ -191,7 +195,7 @@ impl SubagentController {
         let mut custom_items = Vec::new();
         let mut custom_model = None;
         let delegation = self
-            .prepare_delegation_context(None, &mut custom_items, &mut custom_model, "spawn_custom")
+            .prepare_delegation_context(Some(spec.name.clone()), &mut custom_items, &mut custom_model, "spawn_custom")
             .await?;
         self.spawn_with_spec(
             spec,
@@ -583,11 +587,14 @@ impl SubagentController {
             let state = self.state.read().await;
             state.background_children.get(&record_id).cloned()
         };
-        let previous_parent_session_id = previous_record.as_ref().map(|record| record.parent_session_id.clone());
+        let previous_parent_session_id = usable_background_parent_session_id(
+            previous_record.as_ref().map(|record| record.parent_session_id.clone()),
+        );
         let current_parent_session_id = self.parent_session_id.read().await.clone();
-        let parent_session_id = overrides
-            .as_ref()
-            .and_then(|overrides| overrides.parent_session_id.clone())
+        let requested_parent_session_id = usable_background_parent_session_id(
+            overrides.as_ref().and_then(|overrides| overrides.parent_session_id.clone()),
+        );
+        let parent_session_id = requested_parent_session_id
             .or(previous_parent_session_id)
             .unwrap_or(current_parent_session_id);
         let session_id = format!(
@@ -1134,5 +1141,18 @@ impl SubagentController {
             bail!("Subagent {target} has no queued input");
         }
         self.launch_child(target).await
+    }
+}
+
+#[cfg(test)]
+mod background_owner_tests {
+    use super::usable_background_parent_session_id;
+
+    #[test]
+    fn empty_legacy_parent_owner_falls_back_to_the_current_session() {
+        let previous_owner = usable_background_parent_session_id(Some(String::new()));
+        let current_owner = "current-session".to_owned();
+
+        assert_eq!(previous_owner.unwrap_or(current_owner), "current-session");
     }
 }

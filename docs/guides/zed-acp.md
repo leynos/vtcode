@@ -458,9 +458,15 @@ and `[history]` settings do not control ACP audit output.
   `Provider response did not include exposed reasoning for ACP`; they record
   metadata only and never the reasoning content.
 - **Plan tracking** – Every prompt emits an ACP plan describing analysis,
-  optional context gathering, and final response drafting. VT Code updates each
-  entry as it progresses so Zed can visualize the bridge's workflow in real
-  time.
+  optional context gathering, and final response drafting. The model can also
+  use the `task_tracker` tool to create or update a workspace checklist; each
+  successful tracker result is projected into an ACP plan update. Plan entries
+  retain tracker data under the namespaced `_meta.vtcode.taskTracker` field,
+  while checklist statuses map to ACP pending, in-progress, and completed
+  states (blocked items remain pending and are labelled `[blocked]`). The
+  latest persisted checklist is replayed as a plan update when a session is
+  loaded or resumed and at the start of a later prompt, so the client can
+  restore its plan view without replaying a model tool call.
 - **Tool execution** – The `read_file` tool forwards to Zed when enabled. The
   `list_files` tool uses VT Code's local workspace access, mirroring the CLI
   experience. When the model lacks function calling or the tool toggle is

@@ -47,6 +47,8 @@ Entry point for VT Code contributor workflows.
 - [Custom Provider Request Policy](./CUSTOM_PROVIDER_REQUEST_POLICY.md) -
   Per-process admission, retries, cancellation, and turn safety for custom
   providers.
+- [ACP Runtime](./acp-runtime.md) - Adapter, session, provider, tool, lifecycle,
+  and focused verification boundaries for the Zed ACP runtime.
 
 ## Model Management
 

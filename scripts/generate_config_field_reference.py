@@ -356,7 +356,7 @@ def collect_fields(root_schema: dict[str, Any]) -> list[FieldEntry]:
 def apply_reference_overrides(entries: list[FieldEntry]) -> None:
     """Keep environment-resolved runtime defaults portable in the reference."""
     descriptions = {
-        "acp.audit.enabled": "Persist ACP tool invocation metadata as hash-only JSONL audit entries",
+        "acp.audit.enabled": "Persist ACP tool invocation metadata and hashes as JSONL audit entries",
         "acp.audit.max_files": "Maximum number of ACP audit files to retain",
         "acp.audit.max_size_bytes": "Maximum active ACP audit file size before rotation",
         "acp.audit.path": (

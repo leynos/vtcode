@@ -2509,6 +2509,7 @@ mod tests {
             });
         let agent_task = tokio::spawn(agent_connection);
 
+        let audit_session_id = Arc::new(Mutex::new(None::<String>));
         let client_connection = Client
             .builder()
             .on_receive_notification(
@@ -2518,25 +2519,30 @@ mod tests {
                 },
                 on_receive_notification!(),
             )
-            .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
-                drop(
-                    cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+            .connect_with(client_channel, {
+                let audit_session_id = Arc::clone(&audit_session_id);
+                async move |cx: ConnectionTo<Agent>| {
+                    drop(
+                        cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                            .block_task()
+                            .await?,
+                    );
+                    let session = cx
+                        .send_request(NewSessionRequest::new(workspace.path().to_path_buf()))
                         .block_task()
-                        .await?,
-                );
-                let session = cx
-                    .send_request(NewSessionRequest::new(workspace.path().to_path_buf()))
-                    .block_task()
-                    .await?;
-                let response = cx
-                    .send_request(PromptRequest::new(
-                        session.session_id,
-                        vec![acp::ContentBlock::Text(acp::TextContent::new("Inspect the workspace"))],
-                    ))
-                    .block_task()
-                    .await?;
-                assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
-                Ok(())
+                        .await?;
+                    *audit_session_id.lock().expect("record ACP audit session ID") =
+                        Some(session.session_id.to_string());
+                    let response = cx
+                        .send_request(PromptRequest::new(
+                            session.session_id,
+                            vec![acp::ContentBlock::Text(acp::TextContent::new("Inspect the workspace"))],
+                        ))
+                        .block_task()
+                        .await?;
+                    assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+                    Ok(())
+                }
             });
 
         tokio::time::timeout(Duration::from_secs(5), client_connection)
@@ -2618,6 +2624,37 @@ mod tests {
                 .iter()
                 .any(|entry| entry["tool_name"] == "unsupported_tool" && entry["status"] == "failure")
         );
+        let session_id = audit_session_id
+            .lock()
+            .expect("read ACP audit session ID")
+            .clone()
+            .expect("ACP session ID recorded by the duplex client");
+        assert!(audit_entries.iter().all(|entry| entry["session_id"] == session_id));
+        assert!(audit_entries.iter().all(|entry| {
+            entry["turn_id"].as_str().is_some_and(|turn_id| !turn_id.is_empty())
+                && entry["tool_call_id"].as_str().is_some_and(|call_id| !call_id.is_empty())
+                && ["arguments_hash", "result_hash"].iter().all(|field| {
+                    entry[*field]
+                        .as_str()
+                        .is_some_and(|hash| hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit()))
+                })
+        }));
+        assert!(
+            audit_entries
+                .iter()
+                .any(|entry| entry["tool_name"] == "list_files" && entry["tool_call_id"] == "call-tool")
+        );
+        assert!(
+            audit_entries.iter().any(|entry| {
+                entry["tool_name"] == "unsupported_tool" && entry["tool_call_id"] == "call-unsupported"
+            })
+        );
+        let turn_id = audit_entries[0]["turn_id"].as_str().expect("audit turn identifier");
+        assert!(audit_entries.iter().all(|entry| entry["turn_id"] == turn_id));
+        let audit_json = serde_json::to_string(&audit_entries).expect("serialize audited metadata");
+        for sensitive_value in [r#""path":"""#, r#""probe":"failure""#, "visible.txt", "wrong-root.txt"] {
+            assert!(!audit_json.contains(sensitive_value), "audit output leaked {sensitive_value}");
+        }
     }
 
     #[tokio::test]
@@ -2637,6 +2674,7 @@ mod tests {
         vt_config.agent.harness.auto_compaction_enabled = true;
         vt_config.agent.harness.auto_compaction_threshold_tokens = Some(1);
         let agent = Arc::new(build_wire_test_agent_with_options(workspace.path(), Some(&vt_config), None).await);
+        let client_workspace = workspace.path().to_path_buf();
         let (agent_channel, client_channel) = Channel::duplex();
 
         let agent_connection = install_handlers(
@@ -2665,10 +2703,7 @@ mod tests {
                         .block_task()
                         .await?,
                 );
-                let session = cx
-                    .send_request(NewSessionRequest::new(workspace.path().to_path_buf()))
-                    .block_task()
-                    .await?;
+                let session = cx.send_request(NewSessionRequest::new(client_workspace)).block_task().await?;
                 let session_handle = history_agent
                     .session_handle(&session.session_id)
                     .expect("ACP session lookup")
@@ -2712,35 +2747,36 @@ mod tests {
         agent_task.abort();
         drop(agent_task.await);
 
-        let requests = requests.lock().expect("compaction provider requests");
-        assert_eq!(requests.len(), 2, "the turn must summarize history and then stream its answer");
-        assert!(!requests[0].stream, "local compaction must use provider generation for its summary");
-        let compaction_request_text = requests[0]
-            .messages
-            .iter()
-            .map(|message| message.content.as_text())
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(
-            compaction_request_text.contains(OLDEST_CONTEXT_MARKER),
-            "the compaction request must receive the oldest pre-compaction assistant message"
-        );
-        assert!(requests[1].stream, "the ACP prompt response must remain streamed after compaction");
-        assert!(
-            requests[1]
+        {
+            let requests = requests.lock().expect("compaction provider requests");
+            assert_eq!(requests.len(), 2, "the turn must summarize history and then stream its answer");
+            assert!(!requests[0].stream, "local compaction must use provider generation for its summary");
+            let compaction_request_text = requests[0]
                 .messages
                 .iter()
-                .any(|message| message.content.as_text().contains(SUMMARY_MARKER)),
-            "the streamed prompt request must use the generated compaction summary"
-        );
-        assert!(
-            !requests[1]
-                .messages
-                .iter()
-                .any(|message| message.content.as_text().contains(OLDEST_CONTEXT_MARKER)),
-            "the oldest raw context must be replaced before the provider answer request"
-        );
-        drop(requests);
+                .map(|message| message.content.as_text())
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert!(
+                compaction_request_text.contains(OLDEST_CONTEXT_MARKER),
+                "the compaction request must receive the oldest pre-compaction assistant message"
+            );
+            assert!(requests[1].stream, "the ACP prompt response must remain streamed after compaction");
+            assert!(
+                requests[1]
+                    .messages
+                    .iter()
+                    .any(|message| message.content.as_text().contains(SUMMARY_MARKER)),
+                "the streamed prompt request must use the generated compaction summary"
+            );
+            assert!(
+                !requests[1]
+                    .messages
+                    .iter()
+                    .any(|message| message.content.as_text().contains(OLDEST_CONTEXT_MARKER)),
+                "the oldest raw context must be replaced before the provider answer request"
+            );
+        }
 
         let session = agent
             .sessions
@@ -2750,7 +2786,7 @@ mod tests {
             .next()
             .expect("compacted ACP session")
             .clone();
-        let (history, archive_path) = {
+        let (history, archive_path, session_id) = {
             let data = session.data.lock().expect("compacted ACP session data");
             let archive_path = data
                 .archive
@@ -2758,7 +2794,7 @@ mod tests {
                 .expect("compaction checkpoint archive")
                 .path()
                 .to_path_buf();
-            (data.thread.messages(), archive_path)
+            (data.thread.messages(), archive_path, data.session_id.clone())
         };
         assert!(history.iter().any(|message| message.content.as_text().contains(SUMMARY_MARKER)));
         assert!(
@@ -2775,6 +2811,34 @@ mod tests {
         assert!(
             !persisted_text.contains(OLDEST_CONTEXT_MARKER),
             "the session checkpoint must persist compacted history instead of the raw oldest message"
+        );
+
+        let restored_agent = build_wire_test_agent_with_options(workspace.path(), Some(&vt_config), None).await;
+        let _load_response = restored_agent
+            .load_session(LoadSessionRequest::new(session_id.clone(), workspace.path()))
+            .await
+            .expect("load compacted ACP session into a fresh runtime");
+        let restored_session = restored_agent
+            .session_handle(&session_id)
+            .expect("look up restored ACP session")
+            .expect("loaded ACP session handle");
+        let restored_history = restored_session
+            .data
+            .lock()
+            .expect("restored ACP session data")
+            .thread
+            .messages();
+        assert!(
+            restored_history
+                .iter()
+                .any(|message| message.content.as_text().contains(SUMMARY_MARKER)),
+            "restored session history must retain the compaction summary"
+        );
+        assert!(
+            !restored_history
+                .iter()
+                .any(|message| message.content.as_text().contains(OLDEST_CONTEXT_MARKER)),
+            "restored session history must not bring back compacted source context"
         );
         std::fs::remove_file(archive_path).expect("remove persisted ACP compaction archive");
     }

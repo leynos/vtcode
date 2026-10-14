@@ -25,6 +25,8 @@ Last reviewed: 2026-08-28
   environment overrides, permissions, and legacy migration.
 - [Zed ACP Guide](guides/zed-acp.md) - Zed Agent Client Protocol setup and
   session behaviour.
+- [ACP Runtime Developer Guide](development/acp-runtime.md) - Runtime
+  boundaries, persistence, provider policy, tools, and protocol updates.
 - [Config Field Reference](config/CONFIG_FIELD_REFERENCE.md) - Field-level
   schema reference.
 - [Tool Specifications](tools/TOOL_SPECS.md) - Canonical tool surface reference.

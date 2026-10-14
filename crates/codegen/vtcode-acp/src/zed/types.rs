@@ -131,16 +131,16 @@ impl SessionHandle {
         }
     }
 
-    pub(crate) fn mark_session_ended(&self) -> anyhow::Result<bool> {
+    pub(crate) fn mark_session_ended(&self) -> anyhow::Result<Option<String>> {
         let mut data = self
             .data
             .lock()
             .map_err(|error| lock_poison_error("marking ACP session ended", error))?;
         if data.session_ended {
-            Ok(false)
+            Ok(None)
         } else {
             data.session_ended = true;
-            Ok(true)
+            Ok(Some(data.session_id.to_string()))
         }
     }
 

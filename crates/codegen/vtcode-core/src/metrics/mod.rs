@@ -46,6 +46,11 @@ pub struct ProviderRequestMetrics {
     pub total_duration_ms: u64,
     pub first_output_samples: u64,
     pub total_time_to_first_output_ms: u64,
+    pub custom_provider_queue_depth: u64,
+    pub custom_provider_in_flight: u64,
+    pub custom_provider_queue_waits: u64,
+    pub custom_provider_queue_wait_ms: u64,
+    pub custom_provider_queue_timeouts: u64,
 }
 
 /// Central metrics collector for all MCP execution activities
@@ -141,7 +146,14 @@ impl MetricsCollector {
 
     /// Get the bounded aggregate provider-request metrics snapshot.
     pub fn get_provider_request_metrics(&self) -> ProviderRequestMetrics {
-        self.provider_requests.lock().clone()
+        let admission = vtcode_llm::providers::custom_provider_admission_metrics();
+        let mut metrics = self.provider_requests.lock().clone();
+        metrics.custom_provider_queue_depth = admission.queue_depth;
+        metrics.custom_provider_in_flight = admission.in_flight;
+        metrics.custom_provider_queue_waits = admission.queue_waits;
+        metrics.custom_provider_queue_wait_ms = admission.queue_wait_ms;
+        metrics.custom_provider_queue_timeouts = admission.queue_timeouts;
+        metrics
     }
 
     // ========== Discovery Metrics ==========
@@ -586,6 +598,30 @@ impl MetricsCollector {
 
         let _ = write!(
             output,
+            "# HELP vtcode_custom_provider_admission_queue_depth Requests waiting at shared custom-provider admission gates\n\
+             # TYPE vtcode_custom_provider_admission_queue_depth gauge\n\
+             vtcode_custom_provider_admission_queue_depth {}\n\n\
+             # HELP vtcode_custom_provider_admission_in_flight Requests holding shared custom-provider admission permits\n\
+             # TYPE vtcode_custom_provider_admission_in_flight gauge\n\
+             vtcode_custom_provider_admission_in_flight {}\n\n\
+             # HELP vtcode_custom_provider_admission_queue_waits_total Custom-provider admission queue wait observations\n\
+             # TYPE vtcode_custom_provider_admission_queue_waits_total counter\n\
+             vtcode_custom_provider_admission_queue_waits_total {}\n\n\
+             # HELP vtcode_custom_provider_admission_queue_wait_ms_total Cumulative custom-provider admission queue wait time in milliseconds\n\
+             # TYPE vtcode_custom_provider_admission_queue_wait_ms_total counter\n\
+             vtcode_custom_provider_admission_queue_wait_ms_total {}\n\n\
+             # HELP vtcode_custom_provider_admission_queue_timeouts_total Custom-provider requests that timed out while queued\n\
+             # TYPE vtcode_custom_provider_admission_queue_timeouts_total counter\n\
+             vtcode_custom_provider_admission_queue_timeouts_total {}\n\n",
+            provider_requests.custom_provider_queue_depth,
+            provider_requests.custom_provider_in_flight,
+            provider_requests.custom_provider_queue_waits,
+            provider_requests.custom_provider_queue_wait_ms,
+            provider_requests.custom_provider_queue_timeouts,
+        );
+
+        let _ = write!(
+            output,
             "# HELP vtcode_tokens_created_total Total PII tokens created\n\
              # TYPE vtcode_tokens_created_total counter\n\
              vtcode_tokens_created_total {}\n\n",
@@ -700,6 +736,9 @@ mod tests {
         assert!(prometheus.contains("vtcode_provider_attempts_started_total 2"));
         assert!(prometheus.contains("vtcode_provider_attempts_in_flight 0"));
         assert!(prometheus.contains("vtcode_provider_time_to_first_output_ms_total 10"));
+        assert!(prometheus.contains("vtcode_custom_provider_admission_queue_depth"));
+        assert!(prometheus.contains("vtcode_custom_provider_admission_queue_waits_total"));
+        assert!(prometheus.contains("vtcode_custom_provider_admission_queue_timeouts_total"));
         assert!(!prometheus.contains("provider=\""));
     }
 

@@ -770,20 +770,29 @@ async fn list_recent_sessions_propagates_directory_resolution_errors() -> Result
 
 #[serial_test::serial(session_dir_override)]
 #[tokio::test]
-async fn list_recent_sessions_propagates_malformed_archives() -> Result<()> {
+async fn list_recent_sessions_skips_unreadable_archive_files() -> Result<()> {
     let _settings_lock = lock_history_test_guard().await;
+    let _history_guard = HistorySettingsGuard::set(HistoryPersistence::File, None);
     let temp_dir = tempfile::tempdir().context("failed to create temp dir")?;
     let _guard = EnvGuard::set(SESSION_DIR_ENV, temp_dir.path());
+    let valid_metadata = SessionArchiveMetadata::new("Valid", "/tmp/valid", "model-a", "provider-a", "light", "medium");
+    let valid_archive = SessionArchive::new(valid_metadata.clone(), None).await?;
+    valid_archive.finalize(
+        vec!["valid".to_owned()],
+        1,
+        Vec::new(),
+        vec![SessionMessage::new(MessageRole::User, "Valid")],
+    )?;
+
     let archive_path = temp_dir.path().join("session-malformed.json");
     fs::write(&archive_path, "{ malformed json")
         .with_context(|| format!("failed to write malformed archive {}", archive_path.display()))?;
+    fs::write(temp_dir.path().join("debug-old-session.log"), "debug output")
+        .context("failed to write unrelated session debug log")?;
 
-    let error = list_recent_sessions(10)
-        .await
-        .expect_err("a malformed session archive must fail listing");
-    let error = format!("{error:#}");
-    assert!(error.contains("failed to load session archive"));
-    assert!(error.contains(&archive_path.display().to_string()));
+    let listings = list_recent_sessions(10).await?;
+    assert_eq!(listings.len(), 1);
+    assert_eq!(listings[0].snapshot.metadata, valid_metadata);
 
     Ok(())
 }

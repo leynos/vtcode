@@ -59,7 +59,9 @@ pub use reasoning::{ReasoningBuffer, ReasoningSegment, extract_reasoning_trace, 
 pub use anthropic::AnthropicProvider;
 #[cfg(feature = "copilot")]
 pub use copilot::CopilotProvider;
-pub use custom_provider::CustomProviderBackendRouter;
+pub use custom_provider::{
+    CustomProviderAdmissionMetrics, CustomProviderBackendRouter, custom_provider_admission_metrics,
+};
 pub use deepseek::DeepSeekProvider;
 pub use evolink::EvolinkProvider;
 pub use gemini::GeminiProvider;

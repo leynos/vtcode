@@ -1331,10 +1331,17 @@ pub async fn list_recent_sessions(limit: usize) -> Result<Vec<SessionListing>> {
 
         // Collect results from this batch
         for (path, task) in tasks {
-            let listing = task
+            let result = task
                 .await
-                .with_context(|| format!("failed to join session archive read task for {}", path.display()))??;
-            all_listings.push(listing);
+                .with_context(|| format!("failed to join session archive read task for {}", path.display()))?;
+            match result {
+                Ok(listing) => all_listings.push(listing),
+                Err(error) => tracing::warn!(
+                    archive = %path.display(),
+                    %error,
+                    "Skipping unreadable session archive during listing"
+                ),
+            }
         }
     }
 
@@ -2113,10 +2120,7 @@ fn sanitize_component(value: &str) -> String {
 fn is_session_file(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|ext| ext.to_str()),
-        Some(ext)
-            if ext.eq_ignore_ascii_case(SESSION_FILE_EXTENSION)
-                || ext.eq_ignore_ascii_case("jsonl")
-                || ext.eq_ignore_ascii_case("log")
+        Some(ext) if ext.eq_ignore_ascii_case(SESSION_FILE_EXTENSION) || ext.eq_ignore_ascii_case("jsonl")
     )
 }
 

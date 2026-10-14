@@ -42,13 +42,9 @@ fn admission_prompt_budget(provider: &dyn LLMProvider, model: &str) -> Option<us
         return None;
     }
 
-    let output_reserve = DEFAULT_OUTPUT_RESERVE_TOKENS.max(context_size / 10);
-    Some(
-        context_size
-            .saturating_sub(output_reserve)
-            .saturating_sub(ADMISSION_SAFETY_MARGIN_TOKENS)
-            .max(1),
-    )
+    let output_reserve = DEFAULT_OUTPUT_RESERVE_TOKENS.max(context_size / 10).min(context_size / 2);
+    let safety_margin = ADMISSION_SAFETY_MARGIN_TOKENS.min(context_size / 10);
+    Some(context_size.saturating_sub(output_reserve).saturating_sub(safety_margin).max(1))
 }
 
 #[cfg(test)]
@@ -275,10 +271,25 @@ mod tests {
     }
 
     #[test]
-    fn small_context_reserves_at_least_default_output_and_margin() {
+    fn small_context_reserves_output_and_margin_without_exhausting_the_prompt_budget() {
         let provider = ContextProvider { context_size: 32_768 };
 
         assert_eq!(admission_prompt_budget(&provider, "test"), Some(15_360));
+    }
+
+    #[test]
+    fn admission_budget_scales_reservations_for_small_context_windows() {
+        let provider = ContextProvider { context_size: 8_192 };
+
+        assert_eq!(admission_prompt_budget(&provider, "test"), Some(3_277));
+        assert!(!should_compact(&provider, "test", 3_276));
+        assert!(should_compact(&provider, "test", 3_277));
+
+        let smaller_provider = ContextProvider { context_size: 4_096 };
+        assert_eq!(admission_prompt_budget(&smaller_provider, "test"), Some(1_639));
+
+        let unknown_context_provider = ContextProvider { context_size: 0 };
+        assert_eq!(admission_prompt_budget(&unknown_context_provider, "test"), None);
     }
 
     #[test]
