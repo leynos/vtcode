@@ -65,6 +65,7 @@ def is_test_path(path: Path) -> bool:
         or rel.startswith("target/")
         or rel.startswith("tests/")
         or "/tests/" in rel
+        or any(part.endswith("_tests") for part in Path(rel).parts[:-1])
         or "/benches/" in rel
         or "/examples/" in rel
         or rel.endswith("/tests.rs")
