@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, Weak};
 use std::time::{Duration, Instant};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
-use vtcode_commons::llm::BackendKind;
+use vtcode_commons::llm::{BackendKind, LLMErrorMetadata};
 use vtcode_config::core::AnthropicConfig;
 use vtcode_config::core::{CustomProviderApiFormat, CustomProviderConfig, ResolvedCustomProviderProfile};
 use vtcode_config::{ModelConfig, OpenAIConfig, PromptCachingConfig, TimeoutsConfig};
@@ -173,7 +173,15 @@ impl CustomProviderAdmission {
             }
             Ok(Err(_closed)) => Err(LLMError::Provider {
                 message: format!("custom provider '{}' request admission is closed", self.provider_name),
-                metadata: None,
+                metadata: Some(LLMErrorMetadata::new(
+                    self.provider_name.as_ref(),
+                    None,
+                    Some("custom_provider_admission_closed".to_owned()),
+                    None,
+                    None,
+                    None,
+                    None,
+                )),
             }),
             Err(_elapsed) => {
                 queue_wait.timed_out = true;
@@ -182,7 +190,15 @@ impl CustomProviderAdmission {
                         "custom provider '{}' remained at its configured request limit for {:?}",
                         self.provider_name, self.queue_timeout,
                     ),
-                    metadata: None,
+                    metadata: Some(LLMErrorMetadata::new(
+                        self.provider_name.as_ref(),
+                        None,
+                        Some("custom_provider_admission_timeout".to_owned()),
+                        None,
+                        None,
+                        None,
+                        None,
+                    )),
                 })
             }
         }
@@ -578,6 +594,7 @@ mod tests {
     use std::task::Poll;
     use std::time::Duration;
     use tempfile::TempDir;
+    use tokio::sync::Semaphore;
     use vtcode_config::constants::models;
     use vtcode_config::core::{
         AnthropicConfig, CustomProviderApiFormat, CustomProviderCommandAuthConfig, CustomProviderConfig,
@@ -696,7 +713,7 @@ mod tests {
         let metrics_before = custom_provider_admission_metrics();
         let admission = CustomProviderAdmission {
             provider_name: Arc::from("queue-timeout-regression"),
-            semaphore: Some(Arc::new(tokio::sync::Semaphore::new(1))),
+            semaphore: Some(Arc::new(Semaphore::new(1))),
             queue_timeout: Duration::from_millis(5),
         };
         let _held = admission.acquire().await.expect("first request permit");
@@ -706,16 +723,40 @@ mod tests {
             .await
             .expect_err("second request should time out in the queue");
 
-        assert!(matches!(
-            error,
-            crate::provider::LLMError::Provider { message, .. }
-                if message.contains("configured request limit")
-        ));
+        let crate::provider::LLMError::Provider { message, metadata } = error else {
+            panic!("queue timeout should return a provider error");
+        };
+        assert!(message.contains("configured request limit"));
+        assert_eq!(
+            metadata.as_deref().and_then(|metadata| metadata.code.as_deref()),
+            Some("custom_provider_admission_timeout"),
+        );
         let metrics_after = custom_provider_admission_metrics();
         assert!(metrics_after.queue_waits > metrics_before.queue_waits);
         assert!(metrics_after.queue_wait_ms > metrics_before.queue_wait_ms);
         assert!(metrics_after.queue_timeouts > metrics_before.queue_timeouts);
         assert!(metrics_after.in_flight >= 1, "the held permit must be included in shared admission metrics");
+    }
+
+    #[tokio::test]
+    async fn closed_request_admission_has_stable_error_metadata() {
+        let semaphore = Arc::new(Semaphore::new(1));
+        semaphore.close();
+        let admission = CustomProviderAdmission {
+            provider_name: Arc::from("closed-gate-regression"),
+            semaphore: Some(semaphore),
+            queue_timeout: Duration::from_millis(5),
+        };
+
+        let error = admission.acquire().await.expect_err("closed gate should reject admission");
+
+        let crate::provider::LLMError::Provider { metadata, .. } = error else {
+            panic!("closed gate should return a provider error");
+        };
+        assert_eq!(
+            metadata.as_deref().and_then(|metadata| metadata.code.as_deref()),
+            Some("custom_provider_admission_closed"),
+        );
     }
 
     #[tokio::test]

@@ -67,6 +67,11 @@ the error metadata code (`reqwest_connect_error`, `reqwest_timeout_error`,
 source chain is retained in metadata for diagnostics without making display
 text a parsing contract.
 
+Request-admission failures also carry stable metadata codes:
+`custom_provider_admission_timeout` when the configured queue wait expires and
+`custom_provider_admission_closed` if the in-process admission gate is closed.
+These are provider errors with no HTTP status because no request was sent.
+
 ## Cancellation and turn safety
 
 Cancellation is observed while a request waits for admission, sleeps between
