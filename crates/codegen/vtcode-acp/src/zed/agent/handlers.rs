@@ -1825,7 +1825,7 @@ mod tests {
     use vtcode_core::config::types::{
         AgentConfig as CoreAgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference,
     };
-    use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig};
+    use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig, VTCodeConfig};
     use vtcode_core::core::agent::snapshots::{
         DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
     };
@@ -2482,9 +2482,16 @@ mod tests {
 
     async fn build_wire_test_agent_with_options(
         workspace: &std::path::Path,
-        vt_config: Option<&vtcode_config::VTCodeConfig>,
+        vt_config: Option<&VTCodeConfig>,
         audit_logger: Option<Arc<crate::audit::AcpAuditLogger>>,
     ) -> ZedAgent {
+        let audit_logger = match (audit_logger, vt_config) {
+            (Some(audit_logger), _) => Some(audit_logger),
+            (None, Some(vt_config)) => crate::audit::initialize_acp_audit_logger(vt_config)
+                .await
+                .expect("initialize ACP audit logger from runtime config"),
+            (None, None) => None,
+        };
         let core_config = CoreAgentConfig {
             model: "wire-model".to_string(),
             api_key: "test-key".to_string(),
@@ -2679,19 +2686,14 @@ mod tests {
         let launch_workspace = TempDir::new().expect("wire test launch workspace");
         let workspace = TempDir::new().expect("wire test requested workspace");
         let audit_path = launch_workspace.path().join("tool-audit.jsonl");
-        let audit_config: vtcode_config::safety::ToolAuditConfig =
+        let mut vt_config = VTCodeConfig::default();
+        vt_config.acp.audit =
             toml::from_str(&format!("enabled = true\npath = {:?}\nmax_size_bytes = 4096\nmax_files = 2", audit_path))
                 .expect("ACP tool audit configuration");
-        let audit_logger = crate::audit::AcpAuditLogger::from_config(&audit_config)
-            .await
-            .expect("ACP tool audit logger startup")
-            .expect("enabled ACP tool audit logger");
         std::fs::write(workspace.path().join("visible.txt"), "fixture").expect("write workspace fixture");
         std::fs::write(launch_workspace.path().join("wrong-root.txt"), "fixture")
             .expect("write launch workspace fixture");
-        let agent = Arc::new(
-            build_wire_test_agent_with_options(launch_workspace.path(), None, Some(Arc::new(audit_logger))).await,
-        );
+        let agent = Arc::new(build_wire_test_agent_with_options(launch_workspace.path(), Some(&vt_config), None).await);
         let (agent_channel, client_channel) = Channel::duplex();
         let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
 
@@ -2872,7 +2874,7 @@ mod tests {
             }),
         );
         let workspace = TempDir::new().expect("wire test compaction workspace");
-        let mut vt_config = vtcode_config::VTCodeConfig::default();
+        let mut vt_config = VTCodeConfig::default();
         vt_config.agent.harness.auto_compaction_enabled = true;
         vt_config.agent.harness.auto_compaction_threshold_tokens = Some(16_384);
         let agent = Arc::new(build_wire_test_agent_with_options(workspace.path(), Some(&vt_config), None).await);
@@ -3085,8 +3087,8 @@ mod tests {
         session
     }
 
-    fn compaction_config(enabled: bool) -> vtcode_config::VTCodeConfig {
-        let mut config = vtcode_config::VTCodeConfig::default();
+    fn compaction_config(enabled: bool) -> VTCodeConfig {
+        let mut config = VTCodeConfig::default();
         config.agent.harness.auto_compaction_enabled = enabled;
         config.agent.harness.auto_compaction_threshold_tokens = Some(1);
         config

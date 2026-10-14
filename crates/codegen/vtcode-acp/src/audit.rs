@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use vtcode_config::safety::ToolAuditConfig;
+use vtcode_core::config::VTCodeConfig;
 use vtcode_safety::audit_log::{ToolAuditEntry, ToolAuditInvocation, ToolAuditLogger, ToolAuditStatus};
 
 /// ACP's opt-in audit boundary. The logger is created once at startup; every
@@ -47,6 +48,13 @@ impl AcpAuditLogger {
     }
 }
 
+pub(crate) async fn initialize_acp_audit_logger(vt_cfg: &VTCodeConfig) -> Result<Option<Arc<AcpAuditLogger>>> {
+    AcpAuditLogger::from_config(&vt_cfg.acp.audit)
+        .await
+        .context("Failed to initialise ACP audit logger")
+        .map(|logger| logger.map(Arc::new))
+}
+
 pub(crate) fn timestamp_unix_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -68,7 +76,14 @@ mod tests {
         // path while retaining the private-field API.
         let config: ToolAuditConfig =
             toml::from_str(&format!("enabled = false\npath = {:?}", path)).expect("audit config");
-        assert!(AcpAuditLogger::from_config(&config).await.expect("startup").is_none());
+        let mut vt_config = VTCodeConfig::default();
+        vt_config.acp.audit = config;
+        assert!(
+            initialize_acp_audit_logger(&vt_config)
+                .await
+                .expect("ACP launch audit setup")
+                .is_none()
+        );
         assert!(!path.exists());
     }
 
