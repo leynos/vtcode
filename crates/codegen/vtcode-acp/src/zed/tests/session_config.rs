@@ -1,3 +1,5 @@
+//! Tests for ACP session configuration options and model-facing settings.
+
 use super::*;
 
 fn primary_agent_select_values(config_options: &[crate::acp::SessionConfigOption]) -> Vec<String> {

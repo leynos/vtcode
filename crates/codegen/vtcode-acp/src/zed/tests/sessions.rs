@@ -1,3 +1,5 @@
+//! Tests for ACP session loading, resuming, workspace isolation, and lifecycle callbacks.
+
 use super::*;
 
 #[tokio::test]

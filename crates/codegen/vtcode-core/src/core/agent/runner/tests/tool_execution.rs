@@ -1,3 +1,5 @@
+//! Regression tests for runner tool admission, authorization, and execution.
+
 #![allow(
     missing_docs,
     reason = "Intentional compatibility, platform, or test-only suppression."

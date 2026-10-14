@@ -1,3 +1,5 @@
+//! Tests for ACP file discovery and local tool behavior.
+
 use super::*;
 
 fn list_items_from_payload(payload: &Value) -> Vec<Value> {

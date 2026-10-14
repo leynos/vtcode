@@ -1,3 +1,5 @@
+//! Shared fixtures and helpers for the ACP Zed agent test modules.
+
 use super::agent::ZedAgent;
 use super::*;
 use crate::tooling::{TOOL_LIST_FILES_ITEMS_KEY, TOOL_LIST_FILES_RESULT_KEY, TOOL_LIST_FILES_URI_ARG};
