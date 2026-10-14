@@ -62,12 +62,12 @@ impl AcpSessionWorkspace {
     }
 }
 
-struct AcpAgentStartup {
+pub(super) struct AcpAgentStartup {
     config: CoreAgentConfig,
     vt_config: VTCodeConfig,
     title: Option<String>,
     skip_confirmations: bool,
-    audit_logger: Option<Arc<AcpAuditLogger>>,
+    pub(super) audit_logger: Option<Arc<AcpAuditLogger>>,
     system_prompt: String,
     primary_agents: PrimaryAgentCatalog,
 }
@@ -96,7 +96,7 @@ pub async fn run_acp_agent(
     run_acp_agent_runtime(startup).await
 }
 
-async fn prepare_acp_agent_startup(
+pub(super) async fn prepare_acp_agent_startup(
     config: &CoreAgentConfig,
     vt_cfg: &VTCodeConfig,
     title: Option<String>,
@@ -171,6 +171,12 @@ async fn run_acp_agent_runtime(startup: AcpAgentStartup) -> Result<()> {
 }
 
 async fn run_local_acp_agent(startup: AcpAgentStartup) -> Result<()> {
+    let agent = Arc::new(create_acp_agent(startup).await);
+
+    run_acp_connection(agent).await
+}
+
+pub(super) async fn create_acp_agent(startup: AcpAgentStartup) -> ZedAgent {
     let AcpAgentStartup {
         config,
         vt_config,
@@ -180,7 +186,7 @@ async fn run_local_acp_agent(startup: AcpAgentStartup) -> Result<()> {
         system_prompt,
         primary_agents,
     } = startup;
-    let agent = Box::pin(ZedAgent::new(ZedAgentSetup {
+    Box::pin(ZedAgent::new(ZedAgentSetup {
         config,
         credential_storage_mode: vt_config.agent.credential_storage_mode,
         zed_config: vt_config.acp.zed.clone(),
@@ -195,9 +201,7 @@ async fn run_local_acp_agent(startup: AcpAgentStartup) -> Result<()> {
         vt_config: Some(&vt_config),
         audit_logger,
     }))
-    .await;
-
-    run_acp_connection(Arc::new(agent)).await
+    .await
 }
 
 async fn run_acp_connection(agent: Arc<ZedAgent>) -> Result<()> {
