@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::tools::tool_intent::{command_session_action, command_session_action_in, command_session_action_is};
+use crate::tools::tool_intent::{command_session_action, command_session_action_is};
 
 const INDEXED_COMMAND_TYPE_ERROR: &str = "command array must contain only strings";
 const COMMAND_VALUE_TYPE_ERROR: &str = "command must be a string or array of strings";
@@ -196,40 +196,57 @@ pub fn session_id_text(args: &Value) -> Option<&str> {
 }
 
 pub fn command_session_missing_required_args(args: &Value) -> Vec<&'static str> {
-    if command_session_action(args).is_none() {
+    let Some(action) = command_session_action(args) else {
         return Vec::new();
-    }
+    };
 
-    let mut missing = Vec::new();
-    if command_session_action_is(args, "run") {
-        if command_text(args).ok().flatten().is_none() {
-            missing.push("command");
-        }
-    } else if command_session_action_is(args, "write") {
-        if session_id_text(args).is_none() {
-            missing.push("session_id");
-        }
-        if interactive_input_text(args).is_none() && !has_explicit_write_chars(args) {
-            missing.push("input or chars or text");
-        }
-    } else if command_session_action_in(args, &["poll", "wait", "continue", "close"]) {
-        if session_id_text(args).is_none() {
-            missing.push("session_id");
-        }
-    } else if command_session_action_is(args, "inspect") {
-        let has_session_id = session_id_text(args).is_some();
-        let has_spool_path = has_nonempty_string_field(args, "spool_path");
-        if !has_session_id && !has_spool_path {
-            missing.push("session_id or spool_path");
-        }
-    } else if command_session_action_is(args, "code") {
-        let has_code = has_nonempty_string_field(args, "code") || has_nonempty_string_field(args, "command");
-        if !has_code {
-            missing.push("code or command");
-        }
+    match action.to_ascii_lowercase().as_str() {
+        "run" => missing_command_session_run_args(args),
+        "write" => missing_command_session_write_args(args),
+        "poll" | "wait" | "continue" | "close" => missing_session_id_args(args),
+        "inspect" => missing_inspect_args(args),
+        "code" => missing_code_args(args),
+        _ => Vec::new(),
     }
+}
 
+fn missing_command_session_run_args(args: &Value) -> Vec<&'static str> {
+    if command_text(args).ok().flatten().is_none() {
+        vec!["command"]
+    } else {
+        Vec::new()
+    }
+}
+
+fn missing_command_session_write_args(args: &Value) -> Vec<&'static str> {
+    let mut missing = missing_session_id_args(args);
+    if interactive_input_text(args).is_none() && !has_explicit_write_chars(args) {
+        missing.push("input or chars or text");
+    }
     missing
+}
+
+fn missing_session_id_args(args: &Value) -> Vec<&'static str> {
+    if session_id_text(args).is_none() {
+        vec!["session_id"]
+    } else {
+        Vec::new()
+    }
+}
+
+fn missing_inspect_args(args: &Value) -> Vec<&'static str> {
+    let has_session_id = session_id_text(args).is_some();
+    let has_spool_path = has_nonempty_string_field(args, "spool_path");
+    if !has_session_id && !has_spool_path {
+        vec!["session_id or spool_path"]
+    } else {
+        Vec::new()
+    }
+}
+
+fn missing_code_args(args: &Value) -> Vec<&'static str> {
+    let has_code = has_nonempty_string_field(args, "code") || has_nonempty_string_field(args, "command");
+    if has_code { Vec::new() } else { vec!["code or command"] }
 }
 
 pub fn command_session_requires_command_safety(args: &Value) -> bool {

@@ -98,6 +98,37 @@ enum PersistentPermissionDecision {
     Reject,
 }
 
+#[derive(Clone, Copy)]
+enum PermissionPromptMode {
+    Standard,
+    Forced,
+}
+
+#[derive(Clone, Copy)]
+struct NamedToolPermissionRequest<'a> {
+    session_id: &'a acp::SessionId,
+    call: &'a acp::ToolCall,
+    tool: PermissionToolContext<'a>,
+    args: &'a Value,
+    mode: PermissionPromptMode,
+}
+
+#[derive(Clone, Copy)]
+struct SupportedToolPermissionRequest<'a> {
+    session_id: &'a acp::SessionId,
+    call: &'a acp::ToolCall,
+    tool: SupportedTool,
+    args: &'a Value,
+    mode: PermissionPromptMode,
+}
+
+#[derive(Clone, Copy)]
+enum PermissionRequestDisposition {
+    Bypassed,
+    Reuse(PersistentPermissionDecision),
+    Prompt,
+}
+
 pub struct DefaultPermissionPrompter<P> {
     registry: P,
     skip_confirmations: bool,
@@ -216,13 +247,15 @@ where
         tool: SupportedTool,
         args: &Value,
     ) -> Result<Option<ToolExecutionReport>, SdkError> {
-        let action_label = self.render_action_label(tool, Some(args));
-        self.request_named_tool_permission(
+        self.request_supported_tool_permission(
             client,
-            session_id,
-            call,
-            PermissionToolContext::new(tool.function_name(), tool.kind(), &action_label),
-            args,
+            SupportedToolPermissionRequest {
+                session_id,
+                call,
+                tool,
+                args,
+                mode: PermissionPromptMode::Standard,
+            },
         )
         .await
     }
@@ -235,14 +268,15 @@ where
         tool: SupportedTool,
         args: &Value,
     ) -> Result<Option<ToolExecutionReport>, SdkError> {
-        let action_label = self.render_action_label(tool, Some(args));
-        self.request_named_tool_permission_impl(
+        self.request_supported_tool_permission(
             client,
-            session_id,
-            call,
-            PermissionToolContext::new(tool.function_name(), tool.kind(), &action_label),
-            args,
-            true,
+            SupportedToolPermissionRequest {
+                session_id,
+                call,
+                tool,
+                args,
+                mode: PermissionPromptMode::Forced,
+            },
         )
         .await
     }
@@ -255,8 +289,17 @@ where
         tool: PermissionToolContext<'_>,
         args: &Value,
     ) -> Result<Option<ToolExecutionReport>, SdkError> {
-        self.request_named_tool_permission_impl(client, session_id, call, tool, args, false)
-            .await
+        self.request_named_tool_permission_impl(
+            client,
+            NamedToolPermissionRequest {
+                session_id,
+                call,
+                tool,
+                args,
+                mode: PermissionPromptMode::Standard,
+            },
+        )
+        .await
     }
 
     async fn request_named_tool_permission_forced(
@@ -267,8 +310,17 @@ where
         tool: PermissionToolContext<'_>,
         args: &Value,
     ) -> Result<Option<ToolExecutionReport>, SdkError> {
-        self.request_named_tool_permission_impl(client, session_id, call, tool, args, true)
-            .await
+        self.request_named_tool_permission_impl(
+            client,
+            NamedToolPermissionRequest {
+                session_id,
+                call,
+                tool,
+                args,
+                mode: PermissionPromptMode::Forced,
+            },
+        )
+        .await
     }
 }
 
@@ -276,83 +328,158 @@ impl<P> DefaultPermissionPrompter<P>
 where
     P: ToolRegistryProvider + Send + Sync,
 {
-    async fn request_named_tool_permission_impl(
+    async fn request_supported_tool_permission(
         &self,
         client: &ConnectionHandle,
-        session_id: &acp::SessionId,
-        call: &acp::ToolCall,
-        tool: PermissionToolContext<'_>,
-        args: &Value,
-        force_prompt: bool,
+        request: SupportedToolPermissionRequest<'_>,
     ) -> Result<Option<ToolExecutionReport>, SdkError> {
-        if self.skip_confirmations && !force_prompt {
-            debug!(session_id = %session_id, tool = tool.name, "ACP permission prompt bypassed");
-            return Ok(None);
-        }
+        let action_label = self.render_action_label(request.tool, Some(request.args));
+        self.request_named_tool_permission_impl(
+            client,
+            NamedToolPermissionRequest {
+                session_id: request.session_id,
+                call: request.call,
+                tool: PermissionToolContext::new(request.tool.function_name(), request.tool.kind(), &action_label),
+                args: request.args,
+                mode: request.mode,
+            },
+        )
+        .await
+    }
 
-        if !force_prompt {
-            match self.persistent_decision(session_id, tool.name, tool.action_label) {
-                Some(PersistentPermissionDecision::Allow) => {
-                    debug!(session_id = %session_id, tool = tool.name, "ACP permission allowed by session decision");
-                    return Ok(None);
-                }
-                Some(PersistentPermissionDecision::Reject) => {
-                    debug!(session_id = %session_id, tool = tool.name, "ACP permission rejected by session decision");
-                    return Ok(Some(ToolExecutionReport::blocked(tool.name, TOOL_PERMISSION_DENIED_MESSAGE)));
-                }
-                None => {}
+    fn request_disposition(&self, request: NamedToolPermissionRequest<'_>) -> PermissionRequestDisposition {
+        if matches!(request.mode, PermissionPromptMode::Standard) {
+            if self.skip_confirmations {
+                return PermissionRequestDisposition::Bypassed;
+            }
+
+            if let Some(decision) =
+                self.persistent_decision(request.session_id, request.tool.name, request.tool.action_label)
+            {
+                return PermissionRequestDisposition::Reuse(decision);
             }
         }
 
-        let fields = acp::ToolCallUpdateFields::default()
-            .title(call.title.clone())
-            .kind(tool.kind)
-            .status(acp::ToolCallStatus::Pending)
-            .raw_input(args.clone());
+        PermissionRequestDisposition::Prompt
+    }
 
-        let request = acp::RequestPermissionRequest::new(
-            session_id.clone(),
-            acp::ToolCallUpdate::new(call.tool_call_id.clone(), fields),
-            self.permission_options_for_action(tool.action_label),
+    fn reused_decision_report(
+        &self,
+        request: NamedToolPermissionRequest<'_>,
+        decision: PersistentPermissionDecision,
+    ) -> Option<ToolExecutionReport> {
+        match decision {
+            PersistentPermissionDecision::Allow => {
+                debug!(
+                    session_id = %request.session_id,
+                    tool = request.tool.name,
+                    "ACP permission allowed by session decision"
+                );
+                None
+            }
+            PersistentPermissionDecision::Reject => {
+                debug!(
+                    session_id = %request.session_id,
+                    tool = request.tool.name,
+                    "ACP permission rejected by session decision"
+                );
+                Some(ToolExecutionReport::blocked(request.tool.name, TOOL_PERMISSION_DENIED_MESSAGE))
+            }
+        }
+    }
+
+    async fn request_named_tool_permission_impl(
+        &self,
+        client: &ConnectionHandle,
+        request: NamedToolPermissionRequest<'_>,
+    ) -> Result<Option<ToolExecutionReport>, SdkError> {
+        match self.request_disposition(request) {
+            PermissionRequestDisposition::Bypassed => {
+                debug!(
+                    session_id = %request.session_id,
+                    tool = request.tool.name,
+                    "ACP permission prompt bypassed"
+                );
+                Ok(None)
+            }
+            PermissionRequestDisposition::Reuse(decision) => Ok(self.reused_decision_report(request, decision)),
+            PermissionRequestDisposition::Prompt => self.prompt_for_permission(client, request).await,
+        }
+    }
+
+    async fn prompt_for_permission(
+        &self,
+        client: &ConnectionHandle,
+        request: NamedToolPermissionRequest<'_>,
+    ) -> Result<Option<ToolExecutionReport>, SdkError> {
+        let fields = acp::ToolCallUpdateFields::default()
+            .title(request.call.title.clone())
+            .kind(request.tool.kind)
+            .status(acp::ToolCallStatus::Pending)
+            .raw_input(request.args.clone());
+
+        let acp_request = acp::RequestPermissionRequest::new(
+            request.session_id.clone(),
+            acp::ToolCallUpdate::new(request.call.tool_call_id.clone(), fields),
+            self.permission_options_for_action(request.tool.action_label),
         );
 
-        match client.request_permission(request).await {
-            Ok(response) => match response.outcome {
-                acp::RequestPermissionOutcome::Cancelled => {
-                    Ok(Some(ToolExecutionReport::cancelled_with_message(tool.name, TOOL_PERMISSION_CANCELLED_MESSAGE)))
-                }
-                acp::RequestPermissionOutcome::Selected(outcome) => {
-                    let option_id_str = outcome.option_id.0.as_ref();
-                    if option_id_str == TOOL_PERMISSION_ALLOW_OPTION_ID {
-                        Ok(None)
-                    } else if option_id_str == TOOL_PERMISSION_ALLOW_ALWAYS_OPTION_ID {
-                        self.remember_persistent_decision(
-                            session_id,
-                            tool.name,
-                            tool.action_label,
-                            PersistentPermissionDecision::Allow,
-                        );
-                        Ok(None)
-                    } else if option_id_str == TOOL_PERMISSION_DENY_OPTION_ID {
-                        Ok(Some(ToolExecutionReport::blocked(tool.name, TOOL_PERMISSION_DENIED_MESSAGE)))
-                    } else if option_id_str == TOOL_PERMISSION_DENY_ALWAYS_OPTION_ID {
-                        self.remember_persistent_decision(
-                            session_id,
-                            tool.name,
-                            tool.action_label,
-                            PersistentPermissionDecision::Reject,
-                        );
-                        Ok(Some(ToolExecutionReport::blocked(tool.name, TOOL_PERMISSION_DENIED_MESSAGE)))
-                    } else {
-                        warn!("{}", TOOL_PERMISSION_UNKNOWN_OPTION_LOG);
-                        Ok(Some(ToolExecutionReport::blocked(tool.name, TOOL_PERMISSION_DENIED_MESSAGE)))
-                    }
-                }
-                _ => Ok(Some(ToolExecutionReport::blocked(tool.name, TOOL_PERMISSION_DENIED_MESSAGE))),
-            },
+        match client.request_permission(acp_request).await {
+            Ok(response) => Ok(self.map_permission_response(request, response.outcome)),
             Err(error) => {
                 error!(%error, "{}", TOOL_PERMISSION_REQUEST_FAILURE_LOG);
-                Ok(Some(ToolExecutionReport::failure(tool.name, TOOL_PERMISSION_REQUEST_FAILURE_MESSAGE)))
+                Ok(Some(ToolExecutionReport::failure(request.tool.name, TOOL_PERMISSION_REQUEST_FAILURE_MESSAGE)))
+            }
+        }
+    }
+
+    fn map_permission_response(
+        &self,
+        request: NamedToolPermissionRequest<'_>,
+        outcome: acp::RequestPermissionOutcome,
+    ) -> Option<ToolExecutionReport> {
+        match outcome {
+            acp::RequestPermissionOutcome::Cancelled => {
+                Some(ToolExecutionReport::cancelled_with_message(request.tool.name, TOOL_PERMISSION_CANCELLED_MESSAGE))
+            }
+            acp::RequestPermissionOutcome::Selected(outcome) => {
+                self.map_permission_option(request, outcome.option_id.0.as_ref())
+            }
+            _ => Some(ToolExecutionReport::blocked(request.tool.name, TOOL_PERMISSION_DENIED_MESSAGE)),
+        }
+    }
+
+    fn map_permission_option(
+        &self,
+        request: NamedToolPermissionRequest<'_>,
+        option_id: &str,
+    ) -> Option<ToolExecutionReport> {
+        match option_id {
+            TOOL_PERMISSION_ALLOW_OPTION_ID => None,
+            TOOL_PERMISSION_ALLOW_ALWAYS_OPTION_ID => {
+                self.remember_persistent_decision(
+                    request.session_id,
+                    request.tool.name,
+                    request.tool.action_label,
+                    PersistentPermissionDecision::Allow,
+                );
+                None
+            }
+            TOOL_PERMISSION_DENY_OPTION_ID => {
+                Some(ToolExecutionReport::blocked(request.tool.name, TOOL_PERMISSION_DENIED_MESSAGE))
+            }
+            TOOL_PERMISSION_DENY_ALWAYS_OPTION_ID => {
+                self.remember_persistent_decision(
+                    request.session_id,
+                    request.tool.name,
+                    request.tool.action_label,
+                    PersistentPermissionDecision::Reject,
+                );
+                Some(ToolExecutionReport::blocked(request.tool.name, TOOL_PERMISSION_DENIED_MESSAGE))
+            }
+            _ => {
+                warn!("{}", TOOL_PERMISSION_UNKNOWN_OPTION_LOG);
+                Some(ToolExecutionReport::blocked(request.tool.name, TOOL_PERMISSION_DENIED_MESSAGE))
             }
         }
     }
@@ -607,6 +734,15 @@ mod tests {
     #[tokio::test]
     async fn forced_permission_prompt_overrides_skip_confirmations() {
         let (results, request_count) = run_repeated_permission_flow(ClientDecision::Allow, true, true, None).await;
+
+        assert!(results.iter().all(Option::is_none));
+        assert_eq!(request_count, 2);
+    }
+
+    #[tokio::test]
+    async fn forced_permission_prompt_overrides_cached_session_decisions() {
+        let (results, request_count) =
+            run_repeated_permission_flow(ClientDecision::AllowAlways, false, true, None).await;
 
         assert!(results.iter().all(Option::is_none));
         assert_eq!(request_count, 2);

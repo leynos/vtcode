@@ -128,6 +128,12 @@ impl TimeoutsConfig {
     }
 
     pub(crate) fn validate(&self) -> Result<()> {
+        self.validate_adaptive_settings()?;
+        self.validate_provider_request_timeouts()?;
+        self.validate_tool_execution_ceilings()
+    }
+
+    fn validate_adaptive_settings(&self) -> Result<()> {
         ensure!(
             self.warning_threshold_percent > 0 && self.warning_threshold_percent < 100,
             "timeouts.warning_threshold_percent must be between 1 and 99",
@@ -140,6 +146,10 @@ impl TimeoutsConfig {
         ensure!(self.adaptive_success_streak > 0, "timeouts.adaptive_success_streak must be at least 1");
         ensure!(self.adaptive_min_floor_ms >= 100, "timeouts.adaptive_min_floor_ms must be at least 100ms");
 
+        Ok(())
+    }
+
+    fn validate_provider_request_timeouts(&self) -> Result<()> {
         ensure!(
             self.connect_timeout_seconds == 0 || self.connect_timeout_seconds >= Self::MIN_CEILING_SECONDS,
             "timeouts.connect_timeout_seconds must be at least {} seconds (or 0 to disable)",
@@ -158,6 +168,10 @@ impl TimeoutsConfig {
             Self::MIN_CEILING_SECONDS
         );
 
+        Ok(())
+    }
+
+    fn validate_tool_execution_ceilings(&self) -> Result<()> {
         ensure!(
             self.default_ceiling_seconds == 0 || self.default_ceiling_seconds >= Self::MIN_CEILING_SECONDS,
             "timeouts.default_ceiling_seconds must be at least {} seconds (or 0 to disable)",

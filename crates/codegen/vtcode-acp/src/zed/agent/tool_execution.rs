@@ -3,7 +3,7 @@ use super::ZedAgent;
 use crate::acp;
 use crate::acp::Error as SdkError;
 use crate::audit::timestamp_unix_ms;
-use crate::permissions::PermissionToolContext;
+use crate::permissions::{AcpPermissionPrompter, PermissionToolContext};
 use crate::reports::{
     TOOL_RESPONSE_KEY_STATUS, TOOL_RESPONSE_KEY_TOOL, TOOL_SUCCESS_LABEL, ToolExecutionReport, create_diff_content,
 };
@@ -21,6 +21,7 @@ use vtcode_core::hooks::{PermissionDecisionBehaviour, PreToolHookDecision};
 use vtcode_core::llm::provider::ToolCall as ProviderToolCall;
 use vtcode_core::permissions::build_permission_request;
 use vtcode_core::tools::apply_patch::{Patch, PatchOperation, decode_apply_patch_input};
+use vtcode_core::tools::registry::ToolRegistry as CoreToolRegistry;
 
 use super::super::types::{RunTerminalMode, SessionHandle, ToolCallResult};
 use super::task_progress::task_plan_from_report;
@@ -78,9 +79,8 @@ impl ZedAgent {
     ) -> Result<ToolCallResult, SdkError> {
         let started = StdInstant::now();
         let mut audit_arguments = Self::raw_tool_arguments(call);
-        let result = self
-            .execute_tool_call_inner(session, session_id, call, client, &mut audit_arguments)
-            .await;
+        let result =
+            Box::pin(self.execute_tool_call_inner(session, session_id, call, client, &mut audit_arguments)).await;
         let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         self.record_tool_audit(
             session,
@@ -176,37 +176,81 @@ impl ZedAgent {
                 ToolExecutionReport::failure("unknown", "Malformed tool call: missing function payload"),
             ));
         };
-        let tool_descriptor = acp_tool_registry.lookup(&func_ref.name);
-        let args_value_result: Result<Value, _> = serde_json::from_str(&func_ref.arguments);
-        let args_value_for_input = args_value_result.as_ref().ok().cloned();
-        let title = match (tool_descriptor, args_value_for_input.as_ref()) {
-            (Some(descriptor), Some(args)) => acp_tool_registry.render_title(descriptor, &func_ref.name, args),
-            (Some(descriptor), None) => {
-                let null_args = Value::Null;
-                acp_tool_registry.render_title(descriptor, &func_ref.name, &null_args)
-            }
-            (None, _) => format!("{} (unsupported)", func_ref.name),
+        let resolved = Self::resolve_tool_call(call.id.as_str(), func_ref, acp_tool_registry);
+        let environment = ToolExecutionEnvironment {
+            session_id,
+            client,
+            permission_prompter,
+            local_tool_registry,
         };
+        let pre_tool_decision = self
+            .run_pre_tool_stage(session, &environment, &resolved, call.id.as_str())
+            .await?;
 
-        let call_id = acp::ToolCallId::new(Arc::from(call.id.clone()));
-        let kind = match tool_descriptor {
-            Some(ToolDescriptor::Acp(tool)) => tool.kind(),
-            Some(ToolDescriptor::Local) | None => {
-                acp_tool_registry.tool_kind_for_call(&func_ref.name, args_value_for_input.as_ref())
-            }
+        if matches!(pre_tool_decision, PreToolHookDecision::Deny) {
+            let report = ToolExecutionReport::blocked(resolved.tool_name, "Tool execution denied by PreToolUse hook");
+            let update = acp::ToolCallUpdate::new(resolved.call_id.clone(), Self::update_fields_from_report(&report));
+            self.send_update(session_id, acp::SessionUpdate::ToolCallUpdate(update)).await?;
+            return Ok(Self::tool_call_result_from_report(call, report));
+        }
+
+        let authorization = self
+            .authorize_tool_call(session, &environment, &resolved, pre_tool_decision, audit_arguments)
+            .await?;
+        let execution = self
+            .execute_authorized_tool(session, call, &resolved, authorization, &environment)
+            .await?;
+        self.finish_tool_call(session, call, &resolved, execution, &environment).await
+    }
+
+    fn resolve_tool_call<'a>(
+        call_id: &str,
+        function: &'a vtcode_commons::llm::FunctionCall,
+        registry: &crate::tooling::AcpToolRegistry,
+    ) -> ResolvedToolCall<'a> {
+        let descriptor = registry.lookup(&function.name);
+        let args_parse_result: Result<Value, _> = serde_json::from_str(&function.arguments);
+        let parsed_args = args_parse_result.as_ref().ok().cloned();
+        let title = match (descriptor, parsed_args.as_ref()) {
+            (Some(descriptor), Some(args)) => registry.render_title(descriptor, &function.name, args),
+            (Some(descriptor), None) => registry.render_title(descriptor, &function.name, &Value::Null),
+            (None, _) => format!("{} (unsupported)", function.name),
         };
-        let initial_call = acp::ToolCall::new(call_id.clone(), title)
+        let acp_call_id = acp::ToolCallId::new(Arc::from(call_id.to_owned()));
+        let kind = match descriptor {
+            Some(ToolDescriptor::Acp(tool)) => tool.kind(),
+            Some(ToolDescriptor::Local) | None => registry.tool_kind_for_call(&function.name, parsed_args.as_ref()),
+        };
+        let initial_call = acp::ToolCall::new(acp_call_id.clone(), title)
             .kind(kind)
             .status(acp::ToolCallStatus::Pending)
-            .content(Self::initial_tool_content(&func_ref.name, args_value_for_input.as_ref()))
-            .raw_input(args_value_for_input.clone());
+            .content(Self::initial_tool_content(&function.name, parsed_args.as_ref()))
+            .raw_input(parsed_args.clone());
+        ResolvedToolCall {
+            tool_name: &function.name,
+            raw_arguments: &function.arguments,
+            descriptor,
+            parsed_args,
+            args_parse_error: args_parse_result.err().map(|error| error.to_string()),
+            call_id: acp_call_id,
+            kind,
+            initial_call,
+        }
+    }
 
-        let pre_tool_decision = if let Some(hooks) = session.lifecycle_hooks().map_err(|error| {
+    async fn run_pre_tool_stage(
+        &self,
+        session: &SessionHandle,
+        environment: &ToolExecutionEnvironment<'_>,
+        resolved: &ResolvedToolCall<'_>,
+        call_id: &str,
+    ) -> Result<PreToolHookDecision, SdkError> {
+        let decision = if let Some(hooks) = session.lifecycle_hooks().map_err(|error| {
             SdkError::internal_error()
-                .data(format!("Failed to read lifecycle hooks for ACP session {session_id}: {error:#}"))
+                .data(format!("Failed to read lifecycle hooks for ACP session {}: {error:#}", environment.session_id))
         })? {
             let outcome = hooks
-                .run_pre_tool_use(&func_ref.name, args_value_for_input.as_ref(), Some(call.id.as_str()))
+                .run_pre_tool_use(resolved.tool_name, resolved.parsed_args.as_ref(), Some(call_id))
                 .await
                 .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
             for message in outcome.messages {
@@ -216,100 +260,57 @@ impl ZedAgent {
         } else {
             PreToolHookDecision::Continue
         };
-
-        self.send_update(session_id, acp::SessionUpdate::ToolCall(initial_call.clone()))
+        self.send_update(environment.session_id, acp::SessionUpdate::ToolCall(resolved.initial_call.clone()))
             .await?;
+        Ok(decision)
+    }
 
-        if matches!(pre_tool_decision, PreToolHookDecision::Deny) {
-            let report = ToolExecutionReport::blocked(&func_ref.name, "Tool execution denied by PreToolUse hook");
-            let update = acp::ToolCallUpdate::new(call_id, Self::update_fields_from_report(&report));
-            self.send_update(session_id, acp::SessionUpdate::ToolCallUpdate(update)).await?;
-            return Ok(Self::tool_call_result_from_report(call, report));
-        }
-
+    async fn authorize_tool_call(
+        &self,
+        session: &SessionHandle,
+        environment: &ToolExecutionEnvironment<'_>,
+        resolved: &ResolvedToolCall<'_>,
+        pre_tool_decision: PreToolHookDecision,
+        audit_arguments: &mut Vec<u8>,
+    ) -> Result<ToolAuthorization, SdkError> {
         let cancel_active = session.cancellation.is_cancelled();
-        let permission_hook_decision = if let (false, Some(descriptor), Some(args_value)) =
-            (cancel_active, tool_descriptor, args_value_for_input.as_ref())
+        let permission_hook_decision = if let (false, Some(descriptor), Some(args)) =
+            (cancel_active, resolved.descriptor, resolved.parsed_args.as_ref())
         {
-            self.run_permission_hook(session, &func_ref.name, descriptor, args_value)
-                .await?
+            self.run_permission_hook(session, resolved.tool_name, descriptor, args).await?
         } else {
             None
         };
-        let mut effective_args = args_value_for_input.clone();
-        *audit_arguments = effective_tool_arguments(&func_ref.arguments, effective_args.as_ref());
+
+        let mut effective_args = resolved.parsed_args.clone();
+        *audit_arguments = effective_tool_arguments(resolved.raw_arguments, effective_args.as_ref());
         let permission_override = if let Some(decision) = permission_hook_decision {
-            if let Some(updated_input) = decision.updated_input.clone() {
-                effective_args = Some(updated_input);
-                *audit_arguments = effective_tool_arguments(&func_ref.arguments, effective_args.as_ref());
-            }
-            if decision.scope != vtcode_core::hooks::PermissionDecisionScope::Once {
-                tracing::warn!(tool = %func_ref.name, scope = ?decision.scope, "ACP PermissionRequest hook scope is not persisted");
-            }
-            if !decision.permission_updates.is_empty() {
-                tracing::warn!(tool = %func_ref.name, "ACP PermissionRequest hook permission updates are unsupported");
-            }
-            if decision.interrupt {
-                tracing::warn!(tool = %func_ref.name, "ACP PermissionRequest hook interrupted tool execution");
-                Some(ToolExecutionReport::failure(
-                    &func_ref.name,
-                    "Tool execution interrupted by PermissionRequest hook",
-                ))
-            } else {
-                match decision.behaviour {
-                    PermissionDecisionBehaviour::Allow => None,
-                    PermissionDecisionBehaviour::Deny => Some(ToolExecutionReport::blocked(
-                        &func_ref.name,
-                        "Tool execution denied by PermissionRequest hook",
-                    )),
-                }
-            }
+            Self::permission_hook_override(
+                resolved.tool_name,
+                decision,
+                &mut effective_args,
+                audit_arguments,
+                resolved.raw_arguments,
+            )
         } else if matches!(pre_tool_decision, PreToolHookDecision::Allow) {
             None
-        } else if let (false, Some(descriptor), Some(args_value)) =
-            (cancel_active, tool_descriptor, effective_args.as_ref())
+        } else if let (false, Some(descriptor), Some(args)) =
+            (cancel_active, resolved.descriptor, effective_args.as_ref())
         {
-            let force_prompt = matches!(pre_tool_decision, PreToolHookDecision::Ask);
-            match descriptor {
-                ToolDescriptor::Acp(tool) if force_prompt => {
-                    permission_prompter
-                        .request_tool_permission_forced(client, session_id, &initial_call, tool, args_value)
-                        .await?
-                }
-                ToolDescriptor::Acp(tool) => {
-                    permission_prompter
-                        .request_tool_permission(client, session_id, &initial_call, tool, args_value)
-                        .await?
-                }
-                ToolDescriptor::Local if force_prompt => {
-                    permission_prompter
-                        .request_named_tool_permission_forced(
-                            client,
-                            session_id,
-                            &initial_call,
-                            PermissionToolContext::new(&func_ref.name, kind, initial_call.title.as_str()),
-                            args_value,
-                        )
-                        .await?
-                }
-                ToolDescriptor::Local => {
-                    permission_prompter
-                        .request_named_tool_permission(
-                            client,
-                            session_id,
-                            &initial_call,
-                            PermissionToolContext::new(&func_ref.name, kind, initial_call.title.as_str()),
-                            args_value,
-                        )
-                        .await?
-                }
-            }
+            self.request_tool_permission_for_call(
+                environment,
+                resolved,
+                descriptor,
+                args,
+                matches!(pre_tool_decision, PreToolHookDecision::Ask),
+            )
+            .await?
         } else {
             None
         };
 
         let cancel_after_permission = session.cancellation.is_cancelled();
-        if matches!(tool_descriptor, Some(ToolDescriptor::Local))
+        if matches!(resolved.descriptor, Some(ToolDescriptor::Local))
             && effective_args.is_some()
             && permission_override.is_none()
             && !cancel_after_permission
@@ -317,17 +318,137 @@ impl ZedAgent {
             // ACP has already completed (or explicitly bypassed) its permission
             // flow. Authorize exactly this execution in the core registry so a
             // local `prompt` policy does not fail closed a second time.
-            local_tool_registry.mark_tool_preapproved(&func_ref.name).await;
+            environment.local_tool_registry.mark_tool_preapproved(resolved.tool_name).await;
         }
-        if tool_descriptor.is_some() && permission_override.is_none() && !cancel_after_permission {
-            let in_progress_fields = acp::ToolCallUpdateFields::default().status(acp::ToolCallStatus::InProgress);
-            let progress_update = acp::ToolCallUpdate::new(call_id.clone(), in_progress_fields);
-            self.send_update(session_id, acp::SessionUpdate::ToolCallUpdate(progress_update))
+        if resolved.descriptor.is_some() && permission_override.is_none() && !cancel_after_permission {
+            let fields = acp::ToolCallUpdateFields::default().status(acp::ToolCallStatus::InProgress);
+            let update = acp::ToolCallUpdate::new(resolved.call_id.clone(), fields);
+            self.send_update(environment.session_id, acp::SessionUpdate::ToolCallUpdate(update))
                 .await?;
         }
 
+        Ok(ToolAuthorization {
+            effective_args,
+            permission_override,
+            cancel_after_permission,
+        })
+    }
+
+    fn permission_hook_override(
+        tool_name: &str,
+        decision: vtcode_core::hooks::PermissionRequestHookDecision,
+        effective_args: &mut Option<Value>,
+        audit_arguments: &mut Vec<u8>,
+        raw_arguments: &str,
+    ) -> Option<ToolExecutionReport> {
+        if let Some(updated_input) = decision.updated_input {
+            *effective_args = Some(updated_input);
+            *audit_arguments = effective_tool_arguments(raw_arguments, effective_args.as_ref());
+        }
+        if decision.scope != vtcode_core::hooks::PermissionDecisionScope::Once {
+            tracing::warn!(tool = %tool_name, scope = ?decision.scope, "ACP PermissionRequest hook scope is not persisted");
+        }
+        if !decision.permission_updates.is_empty() {
+            tracing::warn!(tool = %tool_name, "ACP PermissionRequest hook permission updates are unsupported");
+        }
+        if decision.interrupt {
+            tracing::warn!(tool = %tool_name, "ACP PermissionRequest hook interrupted tool execution");
+            return Some(ToolExecutionReport::failure(
+                tool_name,
+                "Tool execution interrupted by PermissionRequest hook",
+            ));
+        }
+        match decision.behaviour {
+            PermissionDecisionBehaviour::Allow => None,
+            PermissionDecisionBehaviour::Deny => {
+                Some(ToolExecutionReport::blocked(tool_name, "Tool execution denied by PermissionRequest hook"))
+            }
+        }
+    }
+
+    async fn request_tool_permission_for_call(
+        &self,
+        environment: &ToolExecutionEnvironment<'_>,
+        resolved: &ResolvedToolCall<'_>,
+        descriptor: ToolDescriptor,
+        args: &Value,
+        force_prompt: bool,
+    ) -> Result<Option<ToolExecutionReport>, SdkError> {
+        match (descriptor, force_prompt) {
+            (ToolDescriptor::Acp(tool), true) => {
+                environment
+                    .permission_prompter
+                    .request_tool_permission_forced(
+                        environment.client,
+                        environment.session_id,
+                        &resolved.initial_call,
+                        tool,
+                        args,
+                    )
+                    .await
+            }
+            (ToolDescriptor::Acp(tool), false) => {
+                environment
+                    .permission_prompter
+                    .request_tool_permission(
+                        environment.client,
+                        environment.session_id,
+                        &resolved.initial_call,
+                        tool,
+                        args,
+                    )
+                    .await
+            }
+            (ToolDescriptor::Local, true) => {
+                environment
+                    .permission_prompter
+                    .request_named_tool_permission_forced(
+                        environment.client,
+                        environment.session_id,
+                        &resolved.initial_call,
+                        PermissionToolContext::new(
+                            resolved.tool_name,
+                            resolved.kind,
+                            resolved.initial_call.title.as_str(),
+                        ),
+                        args,
+                    )
+                    .await
+            }
+            (ToolDescriptor::Local, false) => {
+                environment
+                    .permission_prompter
+                    .request_named_tool_permission(
+                        environment.client,
+                        environment.session_id,
+                        &resolved.initial_call,
+                        PermissionToolContext::new(
+                            resolved.tool_name,
+                            resolved.kind,
+                            resolved.initial_call.title.as_str(),
+                        ),
+                        args,
+                    )
+                    .await
+            }
+        }
+    }
+
+    async fn execute_authorized_tool(
+        &self,
+        session: &SessionHandle,
+        call: &ProviderToolCall,
+        resolved: &ResolvedToolCall<'_>,
+        authorization: ToolAuthorization,
+        environment: &ToolExecutionEnvironment<'_>,
+    ) -> Result<AuthorizedToolExecution, SdkError> {
+        let ToolAuthorization {
+            effective_args,
+            permission_override,
+            cancel_after_permission,
+        } = authorization;
         let apply_patch_snapshot =
-            if permission_override.is_none() && !cancel_after_permission && func_ref.name == tools::APPLY_PATCH {
+            if permission_override.is_none() && !cancel_after_permission && resolved.tool_name == tools::APPLY_PATCH {
                 self.capture_apply_patch_snapshot(session, effective_args.as_ref()).await?
             } else {
                 None
@@ -336,80 +457,126 @@ impl ZedAgent {
         let mut report = if let Some(report) = permission_override {
             report
         } else if cancel_after_permission {
-            ToolExecutionReport::cancelled(&func_ref.name)
+            ToolExecutionReport::cancelled(resolved.tool_name)
         } else {
-            match (tool_descriptor, effective_args.as_ref()) {
-                (Some(descriptor), Some(args_value)) => {
-                    self.execute_descriptor(
-                        session,
-                        descriptor,
-                        &func_ref.name,
-                        client,
-                        session_id,
-                        call.id.as_str(),
-                        args_value,
-                    )
-                    .await
-                }
-                (None, Some(_)) => ToolExecutionReport::failure(&func_ref.name, "Unsupported tool"),
-                (Some(_), None) => {
-                    let error = match args_value_result.as_ref() {
-                        Ok(_) => "Invalid JSON arguments".to_string(),
-                        Err(error) => format!("Invalid JSON arguments: {error}"),
-                    };
-                    ToolExecutionReport::failure(&func_ref.name, &error)
-                }
-                (None, None) => ToolExecutionReport::failure(&func_ref.name, "Invalid JSON arguments"),
-            }
-        };
-
-        if session.cancellation.is_cancelled() && matches!(report.status, acp::ToolCallStatus::Completed) {
-            report = ToolExecutionReport::cancelled(&func_ref.name);
-        }
-
-        attach_apply_patch_diff_content(&mut report, apply_patch_snapshot.as_ref()).await;
-
-        if should_run_post_tool_hook(&report.status)
-            && let Some(hooks) = session.lifecycle_hooks().map_err(|error| {
-                SdkError::internal_error()
-                    .data(format!("Failed to read lifecycle hooks for ACP session {session_id}: {error:#}"))
-            })?
-        {
-            let output = report
-                .raw_output
-                .as_ref()
-                .cloned()
-                .unwrap_or_else(|| Value::String(report.llm_response.clone()));
-            let outcome = hooks
-                .run_post_tool_use(&func_ref.name, effective_args.as_ref(), &output, Some(call.id.as_str()))
+            self.execute_resolved_tool(session, call, resolved, effective_args.as_ref(), environment)
                 .await
-                .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
-            for message in outcome.messages {
-                tracing::warn!(level = ?message.level, message = %message.text, "ACP PostToolUse hook");
-            }
-            for context in outcome.additional_context {
-                if !context.trim().is_empty() {
-                    report.llm_response.push_str("\nHook context: ");
-                    report.llm_response.push_str(&context);
-                }
-            }
-            if let Some(reason) = outcome.block_reason {
-                report.llm_response.push_str("\nHook feedback: ");
-                report.llm_response.push_str(&reason);
-            }
+        };
+        if session.cancellation.is_cancelled() && matches!(report.status, acp::ToolCallStatus::Completed) {
+            report = ToolExecutionReport::cancelled(resolved.tool_name);
         }
+        attach_apply_patch_diff_content(&mut report, apply_patch_snapshot.as_ref()).await;
+        Ok(AuthorizedToolExecution { report, effective_args })
+    }
 
-        let update = acp::ToolCallUpdate::new(call_id, Self::update_fields_from_report(&report));
-        self.send_update(session_id, acp::SessionUpdate::ToolCallUpdate(update)).await?;
-        if func_ref.name == tools::TASK_TRACKER
+    async fn execute_resolved_tool(
+        &self,
+        session: &SessionHandle,
+        call: &ProviderToolCall,
+        resolved: &ResolvedToolCall<'_>,
+        args: Option<&Value>,
+        environment: &ToolExecutionEnvironment<'_>,
+    ) -> ToolExecutionReport {
+        match (resolved.descriptor, args) {
+            (Some(descriptor), Some(args)) => {
+                self.execute_descriptor(
+                    session,
+                    descriptor,
+                    resolved.tool_name,
+                    environment.client,
+                    environment.session_id,
+                    call.id.as_str(),
+                    args,
+                )
+                .await
+            }
+            (None, Some(_)) => ToolExecutionReport::failure(resolved.tool_name, "Unsupported tool"),
+            (Some(_), None) => {
+                let error = resolved.args_parse_error.as_ref().map_or_else(
+                    || "Invalid JSON arguments".to_owned(),
+                    |error| format!("Invalid JSON arguments: {error}"),
+                );
+                ToolExecutionReport::failure(resolved.tool_name, &error)
+            }
+            (None, None) => ToolExecutionReport::failure(resolved.tool_name, "Invalid JSON arguments"),
+        }
+    }
+
+    async fn finish_tool_call(
+        &self,
+        session: &SessionHandle,
+        call: &ProviderToolCall,
+        resolved: &ResolvedToolCall<'_>,
+        execution: AuthorizedToolExecution,
+        environment: &ToolExecutionEnvironment<'_>,
+    ) -> Result<ToolCallResult, SdkError> {
+        let AuthorizedToolExecution { mut report, effective_args } = execution;
+        self.run_post_tool_stage(
+            session,
+            environment.session_id,
+            resolved,
+            call.id.as_str(),
+            effective_args.as_ref(),
+            &mut report,
+        )
+        .await?;
+
+        let update = acp::ToolCallUpdate::new(resolved.call_id.clone(), Self::update_fields_from_report(&report));
+        self.send_update(environment.session_id, acp::SessionUpdate::ToolCallUpdate(update))
+            .await?;
+        if resolved.tool_name == tools::TASK_TRACKER
             && let Some(plan) = task_plan_from_report(&report)
         {
-            self.send_update(session_id, acp::SessionUpdate::Plan(plan)).await?;
+            self.send_update(environment.session_id, acp::SessionUpdate::Plan(plan)).await?;
         }
 
         let mut result = Self::tool_call_result_from_report(call, report);
-        result.audit_arguments = effective_tool_arguments(&func_ref.arguments, effective_args.as_ref());
+        result.audit_arguments = effective_tool_arguments(resolved.raw_arguments, effective_args.as_ref());
         Ok(result)
+    }
+
+    async fn run_post_tool_stage(
+        &self,
+        session: &SessionHandle,
+        session_id: &acp::SessionId,
+        resolved: &ResolvedToolCall<'_>,
+        call_id: &str,
+        effective_args: Option<&Value>,
+        report: &mut ToolExecutionReport,
+    ) -> Result<(), SdkError> {
+        if !should_run_post_tool_hook(&report.status) {
+            return Ok(());
+        }
+        let Some(hooks) = session.lifecycle_hooks().map_err(|error| {
+            SdkError::internal_error()
+                .data(format!("Failed to read lifecycle hooks for ACP session {session_id}: {error:#}"))
+        })?
+        else {
+            return Ok(());
+        };
+        let output = report
+            .raw_output
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| Value::String(report.llm_response.clone()));
+        let outcome = hooks
+            .run_post_tool_use(resolved.tool_name, effective_args, &output, Some(call_id))
+            .await
+            .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
+        for message in outcome.messages {
+            tracing::warn!(level = ?message.level, message = %message.text, "ACP PostToolUse hook");
+        }
+        for context in outcome.additional_context {
+            if !context.trim().is_empty() {
+                report.llm_response.push_str("\nHook context: ");
+                report.llm_response.push_str(&context);
+            }
+        }
+        if let Some(reason) = outcome.block_reason {
+            report.llm_response.push_str("\nHook feedback: ");
+            report.llm_response.push_str(&reason);
+        }
+        Ok(())
     }
 
     async fn run_permission_hook(
@@ -707,6 +874,35 @@ impl ZedAgent {
                 .unwrap_or_else(|message| ToolExecutionReport::failure(tools::LIST_FILES, &message)),
         }
     }
+}
+
+struct ToolExecutionEnvironment<'a> {
+    session_id: &'a acp::SessionId,
+    client: &'a ConnectionHandle,
+    permission_prompter: &'a dyn AcpPermissionPrompter,
+    local_tool_registry: &'a CoreToolRegistry,
+}
+
+struct ResolvedToolCall<'a> {
+    tool_name: &'a str,
+    raw_arguments: &'a str,
+    descriptor: Option<ToolDescriptor>,
+    parsed_args: Option<Value>,
+    args_parse_error: Option<String>,
+    call_id: acp::ToolCallId,
+    kind: acp::ToolKind,
+    initial_call: acp::ToolCall,
+}
+
+struct ToolAuthorization {
+    effective_args: Option<Value>,
+    permission_override: Option<ToolExecutionReport>,
+    cancel_after_permission: bool,
+}
+
+struct AuthorizedToolExecution {
+    report: ToolExecutionReport,
+    effective_args: Option<Value>,
 }
 
 fn effective_tool_arguments(raw_arguments: &str, effective_args: Option<&Value>) -> Vec<u8> {

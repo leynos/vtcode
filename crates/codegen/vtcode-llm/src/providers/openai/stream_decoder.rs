@@ -233,7 +233,7 @@ pub(crate) fn create_chat_stream(
         let mut buf: Vec<u8> = Vec::new();
         let mut offset = 0usize;
         let mut aggregator = crate::providers::shared::StreamAggregator::new(model.clone());
-        let mut saw_terminal_frame = false;
+        let mut termination = ChatStreamTermination::default();
         let telemetry = OpenAIStreamTelemetry;
 
         while let Some(chunk_result) = body_stream.next().await {
@@ -257,7 +257,7 @@ pub(crate) fn create_chat_stream(
                         continue;
                     }
                     if trimmed_payload == "[DONE]" {
-                        saw_terminal_frame = true;
+                        termination.observe_done_frame();
                         continue;
                     }
 
@@ -295,14 +295,7 @@ pub(crate) fn create_chat_stream(
                             }
 
                             if let Some(reason) = choice.get("finish_reason").and_then(|v| v.as_str()) {
-                                saw_terminal_frame = true;
-                                aggregator.set_finish_reason(match reason {
-                                    "stop" => provider::FinishReason::Stop,
-                                    "length" => provider::FinishReason::Length,
-                                    "tool_calls" => provider::FinishReason::ToolCalls,
-                                    "content_filter" => provider::FinishReason::ContentFilter,
-                                    _ => provider::FinishReason::Stop,
-                                });
+                                aggregator.set_finish_reason(termination.observe_finish_reason(reason));
                             }
                         }
                 }
@@ -316,13 +309,7 @@ pub(crate) fn create_chat_stream(
             }
         }
 
-        if !saw_terminal_frame {
-            let formatted_error = error_display::format_llm_error(
-                "OpenAI",
-                "Streaming error: response ended before a terminal frame",
-            );
-            Err(provider::LLMError::Network { message: formatted_error, metadata: None })?;
-        }
+        termination.ensure_terminal_frame()?;
 
         let response = aggregator.finalize();
         let response = strip_reasoning(retain_reasoning, response);
@@ -330,6 +317,67 @@ pub(crate) fn create_chat_stream(
     };
 
     Box::pin(stream)
+}
+
+#[derive(Default)]
+struct ChatStreamTermination {
+    terminal_frame_seen: bool,
+}
+
+impl ChatStreamTermination {
+    fn observe_done_frame(&mut self) {
+        self.terminal_frame_seen = true;
+    }
+
+    fn observe_finish_reason(&mut self, reason: &str) -> provider::FinishReason {
+        self.terminal_frame_seen = true;
+        match reason {
+            "stop" => provider::FinishReason::Stop,
+            "length" => provider::FinishReason::Length,
+            "tool_calls" => provider::FinishReason::ToolCalls,
+            "content_filter" => provider::FinishReason::ContentFilter,
+            _ => provider::FinishReason::Stop,
+        }
+    }
+
+    fn ensure_terminal_frame(&self) -> Result<(), provider::LLMError> {
+        if self.terminal_frame_seen {
+            return Ok(());
+        }
+
+        let formatted_error =
+            error_display::format_llm_error("OpenAI", "Streaming error: response ended before a terminal frame");
+        Err(provider::LLMError::Network { message: formatted_error, metadata: None })
+    }
+}
+
+#[cfg(test)]
+mod chat_stream_termination_tests {
+    use super::ChatStreamTermination;
+    use crate::provider;
+
+    #[test]
+    fn done_frame_completes_chat_stream() {
+        let mut termination = ChatStreamTermination::default();
+        termination.observe_done_frame();
+
+        assert!(termination.ensure_terminal_frame().is_ok());
+    }
+
+    #[test]
+    fn finish_reason_completes_chat_stream_and_preserves_mapping() {
+        let mut termination = ChatStreamTermination::default();
+
+        assert!(matches!(termination.observe_finish_reason("tool_calls"), provider::FinishReason::ToolCalls));
+        assert!(termination.ensure_terminal_frame().is_ok());
+    }
+
+    #[test]
+    fn eof_without_terminal_signal_is_a_network_error() {
+        let termination = ChatStreamTermination::default();
+
+        assert!(matches!(termination.ensure_terminal_frame(), Err(provider::LLMError::Network { .. })));
+    }
 }
 
 pub(crate) fn create_responses_stream(

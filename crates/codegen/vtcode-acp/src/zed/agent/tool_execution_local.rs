@@ -24,9 +24,18 @@ use vtcode_core::utils::path::ensure_path_within_workspace;
 
 const RESTRICTED_LOCAL_TOOLS: &[&str] = &["debug_agent", "analyze_agent", "execute_code"];
 
+/// Arguments shared by local-tool dispatch paths.
+#[derive(Clone, Copy)]
+struct LocalToolInvocation<'a> {
+    tool_name: &'a str,
+    args: &'a Value,
+    call_id: &'a str,
+}
+
 impl ZedAgent {
     pub(super) async fn execute_local_tool(&self, tool_name: &str, args: &Value, call_id: &str) -> ToolExecutionReport {
-        self.execute_local_tool_with_registry(&self.local_tool_registry, tool_name, args, call_id)
+        let invocation = LocalToolInvocation { tool_name, args, call_id };
+        self.execute_local_tool_with_registry(&self.local_tool_registry, invocation)
             .await
     }
 
@@ -37,11 +46,20 @@ impl ZedAgent {
         args: &Value,
         call_id: &str,
     ) -> ToolExecutionReport {
+        let invocation = LocalToolInvocation { tool_name, args, call_id };
+        self.execute_session_local_invocation(session, invocation).await
+    }
+
+    async fn execute_session_local_invocation(
+        &self,
+        session: &super::super::types::SessionHandle,
+        invocation: LocalToolInvocation<'_>,
+    ) -> ToolExecutionReport {
         let runtime = match session.workspace_runtime() {
             Ok(runtime) => runtime,
             Err(error) => {
                 return ToolExecutionReport::failure(
-                    tool_name,
+                    invocation.tool_name,
                     &format!("Failed to read ACP session workspace runtime: {error:#}"),
                 );
             }
@@ -49,8 +67,8 @@ impl ZedAgent {
         let registry = runtime
             .as_ref()
             .map_or(&self.local_tool_registry, |runtime| &runtime.local_tool_registry);
-        let execution = self.execute_local_tool_with_registry(registry, tool_name, args, call_id);
-        if !vtcode_core::subagents::is_subagent_tool(tool_name) {
+        let execution = self.execute_local_tool_with_registry(registry, invocation);
+        if !vtcode_core::subagents::is_subagent_tool(invocation.tool_name) {
             return execution.await;
         }
 
@@ -58,7 +76,7 @@ impl ZedAgent {
             Ok(data) => data.session_id.to_string(),
             Err(error) => {
                 return ToolExecutionReport::failure(
-                    tool_name,
+                    invocation.tool_name,
                     &format!("Failed to read ACP session identifier for subagent invocation: {error}"),
                 );
             }
@@ -67,7 +85,7 @@ impl ZedAgent {
             Ok(messages) => messages,
             Err(error) => {
                 return ToolExecutionReport::failure(
-                    tool_name,
+                    invocation.tool_name,
                     &format!("Failed to read ACP session messages for subagent invocation: {error:#}"),
                 );
             }
@@ -86,33 +104,31 @@ impl ZedAgent {
     async fn execute_local_tool_with_registry(
         &self,
         registry: &vtcode_core::tools::registry::ToolRegistry,
-        tool_name: &str,
-        args: &Value,
-        call_id: &str,
+        invocation: LocalToolInvocation<'_>,
     ) -> ToolExecutionReport {
-        if RESTRICTED_LOCAL_TOOLS.contains(&tool_name) {
-            warn!(tool = tool_name, "Attempted execution of restricted tool from external ACP client");
+        if RESTRICTED_LOCAL_TOOLS.contains(&invocation.tool_name) {
+            warn!(tool = invocation.tool_name, "Attempted execution of restricted tool from external ACP client");
             return ToolExecutionReport::failure(
-                tool_name,
-                &format!("Tool '{tool_name}' is not available to external clients"),
+                invocation.tool_name,
+                &format!("Tool '{}' is not available to external clients", invocation.tool_name),
             );
         }
 
-        let prepared = match registry.admit_public_tool_call(tool_name, args) {
+        let prepared = match registry.admit_public_tool_call(invocation.tool_name, invocation.args) {
             Ok(prepared) => prepared,
-            Err(error) => return ToolExecutionReport::failure(tool_name, &error.to_string()),
+            Err(error) => return ToolExecutionReport::failure(invocation.tool_name, &error.to_string()),
         };
         let policy = ExecutionPolicySnapshot::default()
-            .with_invocation_id(Some(call_id.to_string()))
+            .with_invocation_id(Some(invocation.call_id.to_string()))
             .with_prevalidated(prepared.already_preflighted);
         let request = ToolExecutionRequest::new(prepared.canonical_name, prepared.effective_args).with_policy(policy);
         let outcome = registry.execute_public_tool_request(request).await;
         match (outcome.output, outcome.error) {
             (Some(output), None) => {
-                let content = self.render_local_tool_content(tool_name, &output);
+                let content = self.render_local_tool_content(invocation.tool_name, &output);
                 let payload = json!({
                     TOOL_RESPONSE_KEY_STATUS: TOOL_SUCCESS_LABEL,
-                    TOOL_RESPONSE_KEY_TOOL: tool_name,
+                    TOOL_RESPONSE_KEY_TOOL: invocation.tool_name,
                     "result": output.clone(),
                 });
                 ToolExecutionReport::success(content, Vec::new(), payload)
@@ -121,80 +137,81 @@ impl ZedAgent {
                 let message = error.user_message();
                 warn!(
                     error = %message,
-                    tool = tool_name,
+                    tool = invocation.tool_name,
                     attempts = outcome.attempts,
                     "Failed to execute local tool"
                 );
-                ToolExecutionReport::failure(tool_name, &message)
+                ToolExecutionReport::failure(invocation.tool_name, &message)
             }
-            (None, None) => ToolExecutionReport::failure(tool_name, "Tool execution finished without output or error"),
+            (None, None) => {
+                ToolExecutionReport::failure(invocation.tool_name, "Tool execution finished without output or error")
+            }
         }
     }
 
     fn render_local_tool_content(&self, tool_name: &str, output: &Value) -> Vec<acp::ToolCallContent> {
-        if matches!(tool_name, tools::EXEC_COMMAND | tools::RUN_PTY_CMD | tools::WRITE_STDIN) {
-            return self.render_exec_command_content(output);
+        match tool_name {
+            tools::EXEC_COMMAND | tools::RUN_PTY_CMD | tools::WRITE_STDIN => self.render_exec_command_content(output),
+            tools::EDIT_FILE | tools::WRITE_FILE | tools::CREATE_FILE => Self::render_file_edit_content(output)
+                .unwrap_or_else(|| self.render_text_tool_content(tool_name, output)),
+            _ => self.render_text_tool_content(tool_name, output),
         }
+    }
 
-        if tool_name == tools::EDIT_FILE || tool_name == tools::WRITE_FILE || tool_name == tools::CREATE_FILE {
-            if let (Some(path), Some(old_text), Some(new_text)) = (
-                output.get("path").and_then(Value::as_str),
-                output.get("old_text").and_then(Value::as_str),
-                output.get("new_text").and_then(Value::as_str),
-            ) {
-                return vec![create_diff_content(path, Some(old_text), new_text)];
-            }
-            if let (Some(path), Some(new_text)) =
-                (output.get("path").and_then(Value::as_str), output.get("new_text").and_then(Value::as_str))
-            {
-                return vec![create_diff_content(path, None, new_text)];
-            }
-        }
+    fn render_file_edit_content(output: &Value) -> Option<Vec<acp::ToolCallContent>> {
+        let path = output.get("path").and_then(Value::as_str)?;
+        let new_text = output.get("new_text").and_then(Value::as_str)?;
+        let old_text = output.get("old_text").and_then(Value::as_str);
+        Some(vec![create_diff_content(path, old_text, new_text)])
+    }
 
-        let mut sections = Vec::with_capacity(10);
-
-        if let Some(stdout) = output.get("stdout").and_then(Value::as_str).filter(|value| !value.is_empty()) {
-            let plain = strip_ansi(stdout);
-            let (rendered, truncated) = self.truncate_text(&plain);
-            sections.push(format!("stdout:\n{rendered}"));
-            if truncated {
-                sections.push("[stdout truncated]".to_string());
-            }
-        }
-
-        if let Some(stderr) = output.get("stderr").and_then(Value::as_str).filter(|value| !value.is_empty()) {
-            let plain = strip_ansi(stderr);
-            let (rendered, truncated) = self.truncate_text(&plain);
-            sections.push(format!("stderr:\n{rendered}"));
-            if truncated {
-                sections.push("[stderr truncated]".to_string());
-            }
-        }
-
+    fn render_text_tool_content(&self, tool_name: &str, output: &Value) -> Vec<acp::ToolCallContent> {
+        let mut sections = self.render_stream_output_sections(output);
         if sections.is_empty() {
-            if let Some(message) = output.get("message").and_then(Value::as_str).filter(|value| !value.is_empty()) {
-                let plain = strip_ansi(message);
-                let (rendered, truncated) = self.truncate_text(&plain);
-                sections.push(rendered);
-                if truncated {
-                    sections.push("[message truncated]".to_string());
-                }
-            } else {
-                let summary = serde_json::to_string_pretty(output).unwrap_or_else(|_| output.to_string());
-                let plain = strip_ansi(&summary);
-                let (rendered, truncated) = self.truncate_text(&plain);
-                sections.push(rendered);
-                if truncated {
-                    sections.push("[response truncated]".to_string());
-                }
-            }
+            sections = self.render_fallback_output_sections(output);
         }
-
         if sections.is_empty() {
             sections.push(format!("{tool_name} completed without output"));
         }
 
         vec![acp::ToolCallContent::from(sections.join("\n"))]
+    }
+
+    fn render_stream_output_sections(&self, output: &Value) -> Vec<String> {
+        let mut sections = Vec::with_capacity(10);
+
+        for (field, truncated_label) in [("stdout", "[stdout truncated]"), ("stderr", "[stderr truncated]")] {
+            if let Some(value) = output.get(field).and_then(Value::as_str).filter(|value| !value.is_empty()) {
+                let (rendered, truncated) = self.render_plain_text(value);
+                sections.push(format!("{field}:\n{rendered}"));
+                if truncated {
+                    sections.push(truncated_label.to_string());
+                }
+            }
+        }
+
+        sections
+    }
+
+    fn render_fallback_output_sections(&self, output: &Value) -> Vec<String> {
+        let (plain, truncated_label) =
+            if let Some(message) = output.get("message").and_then(Value::as_str).filter(|value| !value.is_empty()) {
+                (strip_ansi(message), "[message truncated]")
+            } else {
+                let summary = serde_json::to_string_pretty(output).unwrap_or_else(|_| output.to_string());
+                (strip_ansi(&summary), "[response truncated]")
+            };
+        let (rendered, truncated) = self.truncate_text(&plain);
+        let mut sections = vec![rendered];
+        if truncated {
+            sections.push(truncated_label.to_string());
+        }
+        sections
+    }
+
+    fn render_plain_text(&self, output: &str) -> (String, bool) {
+        let plain = strip_ansi(output);
+        self.truncate_text(&plain)
     }
 
     pub(super) async fn run_read_file(

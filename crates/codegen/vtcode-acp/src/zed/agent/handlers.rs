@@ -31,8 +31,10 @@ use super::super::constants::*;
 use super::super::helpers::{agent_implementation_info, text_chunk};
 use super::super::types::{SessionHandle, ToolRuntime};
 use super::ZedAgent;
+use super::compaction::CompactionRequest;
 use crate::acp;
 use crate::acp::Error as SdkError;
+use crate::tooling::SupportedTool;
 use agent_client_protocol::schema::v1::{
     AuthenticateRequest, AuthenticateResponse, CancelNotification, InitializeRequest, InitializeResponse,
     ListSessionsRequest, ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
@@ -53,12 +55,14 @@ use tokio::time::Instant;
 use tracing::{Instrument, Span, debug, info, warn};
 use vtcode_commons::ansi::strip_ansi_codes;
 use vtcode_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
+use vtcode_core::config::types::ReasoningEffortLevel;
 use vtcode_core::core::message_metadata::MessageMetadata;
 use vtcode_core::core::threads::ThreadRuntimeHandle;
 use vtcode_core::llm::factory::ProviderConfig;
 use vtcode_core::llm::factory::create_provider_with_config;
 use vtcode_core::llm::provider::{
-    LLMError, LLMErrorMetadata, LLMProvider, LLMRequest, LLMResponse, LLMStreamEvent, Message,
+    LLMError, LLMErrorMetadata, LLMProvider, LLMRequest, LLMResponse, LLMStream, LLMStreamEvent, Message,
+    ToolCall as LLMToolCall, ToolDefinition,
 };
 use vtcode_core::retry::{RetryDecision, RetryPolicyCoreExt};
 
@@ -242,29 +246,33 @@ async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, b
     }
 }
 
-async fn finish_failed_provider_turn(
-    agent: &ZedAgent,
-    session: &SessionHandle,
-    session_id: &acp::SessionId,
-    content: &str,
-    reasoning: &str,
-    error: &str,
-) -> Result<PromptResponse, SdkError> {
+async fn finish_failed_provider_turn(turn: &PromptExecution, error: &str) -> Result<PromptResponse, SdkError> {
     let IncompleteProviderTurn { message, visible_update, response } =
-        IncompleteProviderTurn::from_failure(content, reasoning, error);
+        IncompleteProviderTurn::from_failure(&turn.assistant_message, &turn.assistant_reasoning, error);
     drop(
-        agent
-            .send_update(session_id, acp::SessionUpdate::AgentMessageChunk(text_chunk(visible_update)))
+        turn.agent
+            .send_update(&turn.args.session_id, acp::SessionUpdate::AgentMessageChunk(text_chunk(visible_update)))
             .await,
     );
-    push_session_message(agent, session, session_id, message)?;
-    persist_session_checkpoint(agent, session, "incomplete_provider_turn").await;
+    push_session_message(&turn.agent, &turn.session, &turn.args.session_id, message)?;
+    persist_session_checkpoint(&turn.agent, &turn.session, "incomplete_provider_turn").await;
     warn!(
-        partial_text_bytes = content.len(),
-        partial_reasoning_bytes = reasoning.len(),
+        partial_text_bytes = turn.assistant_message.len(),
+        partial_reasoning_bytes = turn.assistant_reasoning.len(),
         "ACP provider failed to complete the turn"
     );
     Ok(response)
+}
+
+async fn finish_failed_output(
+    turn: &mut PromptExecution,
+    output: ProviderOutput,
+    error: &str,
+) -> Result<ProviderTurnOutcome, SdkError> {
+    output.store_in(turn);
+    finish_failed_provider_turn(turn, error)
+        .await
+        .map(ProviderTurnOutcome::Response)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -925,7 +933,172 @@ async fn handle_prompt(
     Ok(())
 }
 
-async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptResponse, SdkError> {
+struct PromptToolState {
+    enabled_tools: Vec<SupportedTool>,
+    primary_agent: String,
+    has_local_tools: bool,
+    tools_allowed: bool,
+    tool_definitions: Option<Arc<Vec<ToolDefinition>>>,
+    messages: Vec<Message>,
+}
+
+impl PromptToolState {
+    fn new(enabled_tools: Vec<SupportedTool>, primary_agent: String, provider_supports_tools: bool) -> Self {
+        Self {
+            enabled_tools,
+            primary_agent,
+            has_local_tools: false,
+            tools_allowed: provider_supports_tools,
+            tool_definitions: None,
+            messages: Vec::new(),
+        }
+    }
+
+    fn refresh_availability(
+        &mut self,
+        agent: &ZedAgent,
+        session: &SessionHandle,
+        session_id: &acp::SessionId,
+        provider_supports_tools: bool,
+    ) -> Result<(), SdkError> {
+        self.primary_agent = session
+            .data
+            .lock()
+            .map_err(|_err| SdkError::internal_error())?
+            .primary_agent
+            .clone();
+        self.has_local_tools = agent
+            .session_local_tools_available(session, &self.primary_agent)
+            .map_err(|error| session_access_error(session_id, "checking local tool availability", error))?;
+        self.tools_allowed = provider_supports_tools && (!self.enabled_tools.is_empty() || self.has_local_tools);
+        self.tool_definitions = agent
+            .session_tool_definitions(session, provider_supports_tools, &self.enabled_tools, &self.primary_agent)
+            .map_err(|error| session_access_error(session_id, "resolving tool definitions", error))?
+            .map(Arc::new);
+        Ok(())
+    }
+}
+
+struct ToolRoundRequest<'a> {
+    agent: &'a ZedAgent,
+    session: &'a SessionHandle,
+    session_id: &'a acp::SessionId,
+    tool_calls: &'a [LLMToolCall],
+    assistant_message: &'a str,
+    assistant_reasoning: &'a str,
+    reasoning_details: Option<Vec<String>>,
+    tool_loop_count: &'a mut usize,
+    streamed: bool,
+}
+
+enum ToolRoundOutcome {
+    Continue,
+    Cancelled,
+    LimitReached(String),
+}
+
+struct PromptInput {
+    agent: Arc<ZedAgent>,
+    args: PromptRequest,
+    session: SessionHandle,
+    _turn_guard: TurnGuard,
+    user_message: String,
+}
+
+enum PromptInputOutcome {
+    Response(PromptResponse),
+    Ready(PromptInput),
+}
+
+enum ProviderTurnOutcome {
+    StopReason(acp::StopReason),
+    Response(PromptResponse),
+}
+
+struct PromptExecution {
+    agent: Arc<ZedAgent>,
+    args: PromptRequest,
+    session: SessionHandle,
+    _turn_guard: TurnGuard,
+    provider: Box<dyn LLMProvider>,
+    provider_runtime: ProviderRequestRuntime,
+    session_model: String,
+    reasoning_effort: Option<ReasoningEffortLevel>,
+    provider_supports_tools: bool,
+    allow_streaming: bool,
+    tool_state: PromptToolState,
+    assistant_message: String,
+    assistant_reasoning: String,
+    stop_hook_active: bool,
+    stop_hook_checked: bool,
+}
+
+async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<ToolRoundOutcome, SdkError> {
+    let ToolRoundRequest {
+        agent,
+        session,
+        session_id,
+        tool_calls,
+        assistant_message,
+        assistant_reasoning,
+        reasoning_details,
+        tool_loop_count,
+        streamed,
+    } = request;
+
+    if agent.tool_loop_limit_reached(*tool_loop_count) {
+        return Ok(ToolRoundOutcome::LimitReached(agent.tool_loop_limit_message()));
+    }
+    *tool_loop_count = tool_loop_count.saturating_add(1);
+
+    let assistant_tool_message = if streamed {
+        assistant_tool_call_message(
+            assistant_message.to_string(),
+            tool_calls.to_vec(),
+            assistant_reasoning,
+            reasoning_details,
+        )
+    } else {
+        Message::assistant_with_tools(assistant_message.to_string(), tool_calls.to_vec())
+    };
+    push_session_message(agent, session, session_id, assistant_tool_message)?;
+    persist_session_checkpoint(agent, session, "assistant_tool_calls").await;
+
+    let tool_results = match agent.execute_tool_calls(session, session_id, tool_calls).await {
+        Ok(results) => results,
+        Err(error) => {
+            warn!(%error, "Tool execution failed");
+            for call in tool_calls {
+                push_session_message(
+                    agent,
+                    session,
+                    session_id,
+                    Message::tool_response(call.id.clone(), format!("Tool execution was interrupted: {error}")),
+                )?;
+            }
+            persist_session_checkpoint(agent, session, "interrupted_tool_results").await;
+            return Err(error);
+        }
+    };
+
+    for result in tool_results {
+        push_session_message(
+            agent,
+            session,
+            session_id,
+            Message::tool_response(result.tool_call_id, result.llm_response),
+        )?;
+    }
+    persist_session_checkpoint(agent, session, "tool_results").await;
+
+    Ok(if session.cancellation.is_cancelled() {
+        ToolRoundOutcome::Cancelled
+    } else {
+        ToolRoundOutcome::Continue
+    })
+}
+
+async fn prepare_prompt_input(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptInputOutcome, SdkError> {
     let Some(session) = agent
         .session_handle(&args.session_id)
         .map_err(|error| session_access_error(&args.session_id, "looking up session", error))?
@@ -938,28 +1111,50 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
     }
 
     let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
-    let _turn_guard = TurnGuard::begin(thread)?;
+    let turn_guard = TurnGuard::begin(thread)?;
+    start_prompt_safety_budget(&agent, &session, &args.session_id)?;
+    session.cancellation.reset();
+
+    let user_message = tokio::select! {
+        () = session.cancellation.cancelled() => {
+            return Ok(PromptInputOutcome::Response(PromptResponse::new(acp::StopReason::Cancelled)));
+        }
+        result = agent.resolve_prompt(&session, &args.session_id, &args.prompt) => result?,
+    };
+
+    Ok(PromptInputOutcome::Ready(PromptInput {
+        agent,
+        args,
+        session,
+        _turn_guard: turn_guard,
+        user_message,
+    }))
+}
+
+fn start_prompt_safety_budget(
+    agent: &ZedAgent,
+    session: &SessionHandle,
+    session_id: &acp::SessionId,
+) -> Result<(), SdkError> {
     if let Some(runtime) = session
         .workspace_runtime()
-        .map_err(|error| session_access_error(&args.session_id, "reading workspace runtime", error))?
+        .map_err(|error| session_access_error(session_id, "reading workspace runtime", error))?
     {
         runtime.local_tool_registry.safety_gateway().start_turn();
     } else {
         agent.local_tool_registry.safety_gateway().start_turn();
     }
-    session.cancellation.reset();
+    Ok(())
+}
 
-    let user_message = tokio::select! {
-        () = session.cancellation.cancelled() => return Ok(PromptResponse::new(acp::StopReason::Cancelled)),
-        result = agent.resolve_prompt(&session, &args.session_id, &args.prompt) => result?,
-    };
-
+async fn accept_user_prompt(input: &PromptInput) -> Result<bool, SdkError> {
+    let PromptInput { agent, args, session, user_message, .. } = input;
     if let Some(hooks) = session
         .lifecycle_hooks()
         .map_err(|error| session_access_error(&args.session_id, "reading lifecycle hooks", error))?
     {
         let outcome = hooks
-            .run_user_prompt_submit(&args.session_id.to_string(), &user_message)
+            .run_user_prompt_submit(&args.session_id.to_string(), user_message)
             .await
             .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
         for message in outcome.messages {
@@ -967,7 +1162,7 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
         }
         for context in outcome.additional_context {
             if !context.trim().is_empty() {
-                push_session_message(&agent, &session, &args.session_id, Message::system(context))?;
+                push_session_message(agent, session, &args.session_id, Message::system(context))?;
             }
         }
         if !outcome.allow_prompt {
@@ -975,16 +1170,20 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
                 .block_reason
                 .unwrap_or_else(|| "Prompt blocked by lifecycle hook".to_string());
             warn!(%reason, "ACP UserPromptSubmit hook blocked prompt");
-            return Ok(PromptResponse::new(acp::StopReason::Refusal));
+            return Ok(false);
         }
     }
 
-    push_session_message(&agent, &session, &args.session_id, Message::user(user_message.clone()))?;
+    push_session_message(agent, session, &args.session_id, Message::user(user_message.clone()))?;
     agent
-        .merge_session_acp_meta(&session, args.meta.clone())
+        .merge_session_acp_meta(session, args.meta.clone())
         .map_err(|error| session_access_error(&args.session_id, "merging client metadata", error))?;
-    persist_session_checkpoint(&agent, &session, "user_message").await;
+    persist_session_checkpoint(agent, session, "user_message").await;
+    Ok(true)
+}
 
+async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecution, SdkError> {
+    let PromptInput { agent, args, session, _turn_guard, user_message: _ } = input;
     let (session_provider_name, session_model, session_reasoning_effort) = {
         let data = session.data.lock().map_err(|_err| SdkError::internal_error())?;
         (data.provider.clone(), data.model.clone(), data.reasoning_effort)
@@ -1028,701 +1227,805 @@ async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptR
     .map_err(|err| SdkError::internal_error().data(err.to_string()))?;
 
     let supports_streaming = provider.supports_streaming();
-    let reasoning_effort = if provider.supports_reasoning_effort(&session_model) {
-        Some(session_reasoning_effort)
-    } else {
-        None
-    };
-
-    let mut stop_reason: acp::StopReason;
-    let mut assistant_message = String::with_capacity(4096);
-    let mut assistant_reasoning = String::with_capacity(2048);
-    let mut stop_hook_active = false;
-    let mut stop_hook_checked = false;
+    let reasoning_effort = provider
+        .supports_reasoning_effort(&session_model)
+        .then_some(session_reasoning_effort);
     let client_supports_read_text_file = agent
         .client_supports_read_text_file()
         .map_err(|error| session_access_error(&args.session_id, "reading client filesystem capabilities", error))?;
     let provider_supports_tools = provider.supports_tools(&session_model);
-    let mut primary_agent = {
+    let primary_agent = {
         let data = session.data.lock().map_err(|_err| SdkError::internal_error())?;
         data.primary_agent.clone()
     };
-    let availability = agent.tool_availability(provider_supports_tools, client_supports_read_text_file);
-    let mut enabled_tools = Vec::with_capacity(5);
-    for (tool, runtime) in availability {
-        if matches!(runtime, ToolRuntime::Enabled) {
-            enabled_tools.push(tool);
-        }
-    }
-
-    let mut has_local_tools = agent
-        .session_local_tools_available(&session, &primary_agent)
-        .map_err(|error| session_access_error(&args.session_id, "checking local tool availability", error))?;
-    let mut tools_allowed = provider_supports_tools && (!enabled_tools.is_empty() || has_local_tools);
-    let mut tool_definitions = agent
-        .session_tool_definitions(&session, provider_supports_tools, &enabled_tools, &primary_agent)
-        .map_err(|error| session_access_error(&args.session_id, "resolving tool definitions", error))?
-        .map(Arc::new);
-    let mut messages = agent
+    let enabled_tools = agent
+        .tool_availability(provider_supports_tools, client_supports_read_text_file)
+        .into_iter()
+        .filter_map(|(tool, runtime)| matches!(runtime, ToolRuntime::Enabled).then_some(tool))
+        .collect();
+    let mut tool_state = PromptToolState::new(enabled_tools, primary_agent, provider_supports_tools);
+    tool_state.refresh_availability(&agent, &session, &args.session_id, provider_supports_tools)?;
+    tool_state.messages = agent
         .resolved_messages(&session)
         .map_err(|error| session_access_error(&args.session_id, "resolving session messages", error))?;
-    if agent
-        .maybe_compact_session(
-            &session,
-            provider.as_ref(),
-            &provider_runtime,
-            &session_model,
-            tool_definitions.as_ref(),
-        )
-        .await
-        .map_err(|error| SdkError::internal_error().data(error.to_string()))?
+    if maybe_compact_prompt(&agent, &session, provider.as_ref(), &provider_runtime, &session_model, &tool_state).await?
     {
-        messages = agent
+        tool_state.messages = agent
             .resolved_messages(&session)
             .map_err(|error| session_access_error(&args.session_id, "resolving compacted session messages", error))?;
     }
-    // Stop hooks need a complete draft before a blocking reason can feed back
-    // into the same turn. Other lifecycle hooks do not disable streaming.
-    let allow_streaming = should_allow_streaming(
-        supports_streaming,
-        tools_allowed,
-        session
-            .has_stop_hooks()
-            .map_err(|error| session_access_error(&args.session_id, "checking Stop hooks", error))?,
+
+    let has_stop_hooks = session
+        .has_stop_hooks()
+        .map_err(|error| session_access_error(&args.session_id, "checking Stop hooks", error))?;
+    let allow_streaming = should_allow_streaming(supports_streaming, tool_state.tools_allowed, has_stop_hooks);
+
+    Ok(PromptExecution {
+        agent,
+        args,
+        session,
+        _turn_guard,
+        provider,
+        provider_runtime,
+        session_model,
+        reasoning_effort,
+        provider_supports_tools,
+        allow_streaming,
+        tool_state,
+        assistant_message: String::with_capacity(4096),
+        assistant_reasoning: String::with_capacity(2048),
+        stop_hook_active: false,
+        stop_hook_checked: false,
+    })
+}
+
+async fn maybe_compact_prompt(
+    agent: &ZedAgent,
+    session: &SessionHandle,
+    provider: &dyn LLMProvider,
+    provider_runtime: &ProviderRequestRuntime,
+    session_model: &str,
+    tool_state: &PromptToolState,
+) -> Result<bool, SdkError> {
+    agent
+        .maybe_compact_session(CompactionRequest {
+            session,
+            provider,
+            runtime: provider_runtime,
+            model: session_model,
+            tools: tool_state.tool_definitions.as_ref(),
+        })
+        .await
+        .map_err(|error| SdkError::internal_error().data(error.to_string()))
+}
+
+async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptResponse, SdkError> {
+    let input = match prepare_prompt_input(agent, args).await? {
+        PromptInputOutcome::Response(response) => return Ok(response),
+        PromptInputOutcome::Ready(input) => input,
+    };
+    if !accept_user_prompt(&input).await? {
+        return Ok(PromptResponse::new(acp::StopReason::Refusal));
+    }
+    initialize_prompt_execution(input).await?.run().await
+}
+
+impl PromptExecution {
+    async fn run(mut self) -> Result<PromptResponse, SdkError> {
+        let outcome = if self.allow_streaming {
+            run_streaming_provider_turn(&mut self).await?
+        } else {
+            run_buffered_provider_turn(&mut self).await?
+        };
+        match outcome {
+            ProviderTurnOutcome::StopReason(stop_reason) => self.finish(stop_reason).await,
+            ProviderTurnOutcome::Response(response) => Ok(response),
+        }
+    }
+
+    async fn finish(self, stop_reason: acp::StopReason) -> Result<PromptResponse, SdkError> {
+        if stop_reason != acp::StopReason::Cancelled {
+            if !self.stop_hook_checked
+                && let Some(reason) = self
+                    .agent
+                    .run_stop_hook(&self.session, &self.assistant_message, self.stop_hook_active)
+                    .await?
+            {
+                warn!(%reason, "ACP Stop hook blocked final turn");
+                push_session_message(&self.agent, &self.session, &self.args.session_id, Message::system(reason))?;
+                persist_session_checkpoint(&self.agent, &self.session, "stop_hook_blocked").await;
+                return Ok(PromptResponse::new(acp::StopReason::Refusal));
+            }
+            if !self.assistant_message.is_empty() {
+                if should_emit_buffered_final_chunk(self.allow_streaming) {
+                    drop(
+                        self.agent
+                            .send_update(
+                                &self.args.session_id,
+                                acp::SessionUpdate::AgentMessageChunk(text_chunk(self.assistant_message.clone())),
+                            )
+                            .await,
+                    );
+                }
+                let mut completed_message = Message::assistant(self.assistant_message);
+                if !self.assistant_reasoning.is_empty() {
+                    completed_message.reasoning = Some(self.assistant_reasoning);
+                }
+                push_session_message(&self.agent, &self.session, &self.args.session_id, completed_message)?;
+                persist_session_checkpoint(&self.agent, &self.session, "assistant_response").await;
+            }
+        }
+        Ok(PromptResponse::new(stop_reason))
+    }
+}
+struct ProviderOutput {
+    assistant_message: String,
+    assistant_reasoning: String,
+    emitted_output: bool,
+}
+
+impl ProviderOutput {
+    fn empty() -> Self {
+        Self {
+            assistant_message: String::new(),
+            assistant_reasoning: String::new(),
+            emitted_output: false,
+        }
+    }
+
+    fn take_from(turn: &mut PromptExecution) -> Self {
+        let assistant_message = std::mem::take(&mut turn.assistant_message);
+        let assistant_reasoning = std::mem::take(&mut turn.assistant_reasoning);
+        let emitted_output = !assistant_message.is_empty() || !assistant_reasoning.is_empty();
+        Self {
+            assistant_message,
+            assistant_reasoning,
+            emitted_output,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.assistant_message.clear();
+        self.assistant_reasoning.clear();
+        self.emitted_output = false;
+    }
+
+    fn store_in(self, turn: &mut PromptExecution) {
+        turn.assistant_message = self.assistant_message;
+        turn.assistant_reasoning = self.assistant_reasoning;
+    }
+}
+
+enum StreamAttemptOutcome {
+    Completed(Box<LLMResponse>),
+    Retry(Duration),
+    Failed(LLMError),
+    Cancelled,
+}
+
+enum StreamResponseOutcome {
+    Continue,
+    StopReason(acp::StopReason),
+}
+
+struct StreamCollectionRequest<'a> {
+    turn: &'a PromptExecution,
+    span: &'a Span,
+    started_at: Instant,
+    attempt_index: u32,
+    deadlines: &'a mut StreamDeadlineTracker,
+    telemetry: &'a mut GenerationTelemetry,
+    output: &'a mut ProviderOutput,
+}
+
+struct StreamFailureRequest<'a> {
+    turn: &'a PromptExecution,
+    telemetry: &'a mut GenerationTelemetry,
+    output: &'a ProviderOutput,
+    attempt_index: u32,
+    error: LLMError,
+}
+
+struct StreamDeltaRequest<'a> {
+    turn: &'a PromptExecution,
+    output: &'a mut ProviderOutput,
+    deadlines: &'a mut StreamDeadlineTracker,
+    telemetry: &'a mut GenerationTelemetry,
+    attempt_index: u32,
+    delta: String,
+    reasoning: bool,
+}
+
+enum StreamingTurnOutcome {
+    Retry,
+    ContinueAfterTools,
+    Finished(ProviderTurnOutcome),
+}
+
+async fn run_streaming_provider_turn(turn: &mut PromptExecution) -> Result<ProviderTurnOutcome, SdkError> {
+    let mut output = ProviderOutput::take_from(turn);
+    let mut tool_loop_count = 0usize;
+    let mut attempt_index = 0u32;
+
+    loop {
+        if turn.session.cancellation.is_cancelled() {
+            output.store_in(turn);
+            return Ok(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled));
+        }
+        let request = streaming_request(turn);
+        let attempt = collect_streaming_attempt(turn, &request, &mut output, attempt_index).await?;
+        match handle_streaming_attempt(turn, &mut output, attempt, attempt_index, &mut tool_loop_count).await? {
+            StreamingTurnOutcome::Retry => attempt_index = attempt_index.saturating_add(1),
+            StreamingTurnOutcome::ContinueAfterTools => attempt_index = 0,
+            StreamingTurnOutcome::Finished(outcome) => {
+                if matches!(&outcome, ProviderTurnOutcome::StopReason(_)) {
+                    output.store_in(turn);
+                }
+                return Ok(outcome);
+            }
+        }
+    }
+}
+
+async fn handle_streaming_attempt(
+    turn: &mut PromptExecution,
+    output: &mut ProviderOutput,
+    attempt: StreamAttemptOutcome,
+    attempt_index: u32,
+    tool_loop_count: &mut usize,
+) -> Result<StreamingTurnOutcome, SdkError> {
+    match attempt {
+        StreamAttemptOutcome::Completed(response) => {
+            match process_stream_response(turn, output, *response, tool_loop_count).await? {
+                StreamResponseOutcome::Continue => Ok(StreamingTurnOutcome::ContinueAfterTools),
+                StreamResponseOutcome::StopReason(reason) => {
+                    Ok(StreamingTurnOutcome::Finished(ProviderTurnOutcome::StopReason(reason)))
+                }
+            }
+        }
+        StreamAttemptOutcome::Retry(delay) => retry_stream_attempt(turn, output, delay, attempt_index).await,
+        StreamAttemptOutcome::Failed(error) => {
+            let response =
+                finish_failed_output(turn, std::mem::replace(output, ProviderOutput::empty()), &error.to_string())
+                    .await?;
+            Ok(StreamingTurnOutcome::Finished(response))
+        }
+        StreamAttemptOutcome::Cancelled => {
+            Ok(StreamingTurnOutcome::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)))
+        }
+    }
+}
+
+async fn retry_stream_attempt(
+    turn: &mut PromptExecution,
+    output: &mut ProviderOutput,
+    delay: Duration,
+    attempt_index: u32,
+) -> Result<StreamingTurnOutcome, SdkError> {
+    let policy = turn.provider_runtime.retry_policy();
+    info!(
+        provider = turn.provider_runtime.provider_name(),
+        next_attempt = attempt_index + 2,
+        retry_count = attempt_index + 1,
+        max_retries = policy.max_attempts.saturating_sub(1),
+        ?delay,
+        "Retrying transient ACP provider stream"
     );
-    if allow_streaming {
-        let mut tool_loop_count = 0usize;
-        let mut request = LLMRequest {
-            messages: Arc::new(messages.clone()),
-            model: session_model.clone(),
-            stream: true,
-            tools: tool_definitions.clone(),
-            tool_choice: agent.tool_choice(tools_allowed),
-            reasoning_effort,
-            ..Default::default()
+    match cancellable_backoff(delay, &turn.session.cancellation).await {
+        Ok(()) => Ok(StreamingTurnOutcome::Retry),
+        Err(ProviderCallError::Cancelled) => {
+            Ok(StreamingTurnOutcome::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)))
+        }
+        Err(ProviderCallError::Failed(error)) => {
+            let response =
+                finish_failed_output(turn, std::mem::replace(output, ProviderOutput::empty()), &error).await?;
+            Ok(StreamingTurnOutcome::Finished(response))
+        }
+    }
+}
+
+fn streaming_request(turn: &PromptExecution) -> LLMRequest {
+    LLMRequest {
+        messages: Arc::new(turn.tool_state.messages.clone()),
+        model: turn.session_model.clone(),
+        stream: true,
+        tools: turn.tool_state.tool_definitions.clone(),
+        tool_choice: turn.agent.tool_choice(turn.tool_state.tools_allowed),
+        reasoning_effort: turn.reasoning_effort,
+        ..Default::default()
+    }
+}
+
+async fn collect_streaming_attempt(
+    turn: &PromptExecution,
+    request: &LLMRequest,
+    output: &mut ProviderOutput,
+    attempt_index: u32,
+) -> Result<StreamAttemptOutcome, SdkError> {
+    let provider_runtime = &turn.provider_runtime;
+    let deadline_policy = provider_runtime.deadline_policy();
+    let permit = match provider_runtime.acquire(&turn.session.cancellation).await {
+        Ok(permit) => permit,
+        Err(ProviderAdmissionError::Cancelled) => return Ok(StreamAttemptOutcome::Cancelled),
+        Err(error) => return Err(SdkError::internal_error().data(error.to_string())),
+    };
+    let mut telemetry = GenerationTelemetry::start(provider_runtime);
+    let mut deadlines = StreamDeadlineTracker::new(deadline_policy, Instant::now());
+    let started_at = Instant::now();
+    let span = tracing::info_span!(
+        "acp_provider_stream_attempt",
+        operation = "provider_stream_attempt",
+        provider = provider_runtime.provider_name(),
+        outcome = tracing::field::Empty,
+        elapsed_ms = tracing::field::Empty,
+    );
+    let next_deadline = deadlines.next();
+    let stream_result = tokio::select! {
+        () = turn.session.cancellation.cancelled() => {
+            record_stream_attempt(&span, started_at, "cancelled");
+            return Ok(StreamAttemptOutcome::Cancelled);
+        }
+        phase = sleep_until_stream_deadline(next_deadline) => {
+            Err(provider_timeout_error(
+                provider_runtime.provider_name(),
+                phase,
+                phase.timeout(deadline_policy),
+            ))
+        }
+        result = turn.provider.stream(request.clone()).instrument(span.clone()) => result,
+    };
+    let mut stream = match stream_result {
+        Ok(stream) => stream,
+        Err(error) => {
+            record_stream_attempt(&span, started_at, "failure");
+            return Ok(classify_stream_failure(StreamFailureRequest {
+                turn,
+                telemetry: &mut telemetry,
+                output,
+                attempt_index,
+                error,
+            }));
+        }
+    };
+
+    let outcome = collect_stream_events(
+        &mut stream,
+        StreamCollectionRequest {
+            turn,
+            span: &span,
+            started_at,
+            attempt_index,
+            deadlines: &mut deadlines,
+            telemetry: &mut telemetry,
+            output,
+        },
+    )
+    .await;
+    drop(stream);
+    drop(permit);
+    Ok(outcome)
+}
+
+async fn collect_stream_events(stream: &mut LLMStream, request: StreamCollectionRequest<'_>) -> StreamAttemptOutcome {
+    let StreamCollectionRequest {
+        turn,
+        span,
+        started_at,
+        attempt_index,
+        deadlines,
+        telemetry,
+        output,
+    } = request;
+    let deadline_policy = turn.provider_runtime.deadline_policy();
+
+    loop {
+        let next_deadline = deadlines.next();
+        let event = tokio::select! {
+            () = turn.session.cancellation.cancelled() => {
+                record_stream_attempt(span, started_at, "cancelled");
+                return StreamAttemptOutcome::Cancelled;
+            }
+            phase = sleep_until_stream_deadline(next_deadline) => {
+                Some(Err(provider_timeout_error(
+                    turn.provider_runtime.provider_name(),
+                    phase,
+                    phase.timeout(deadline_policy),
+                )))
+            }
+            event = poll_provider_stream(stream, span.clone()) => event,
+        };
+        let Some(event) = event else {
+            record_stream_attempt(span, started_at, "failure");
+            return classify_stream_failure(StreamFailureRequest {
+                turn,
+                telemetry,
+                output,
+                attempt_index,
+                error: LLMError::Network {
+                    message: "provider stream ended before a completion event".to_string(),
+                    metadata: None,
+                },
+            });
         };
 
-        let policy = provider_runtime.retry_policy();
-        let deadline_policy = provider_runtime.deadline_policy();
-        let mut attempt_index = 0u32;
-        let mut emitted_output = false;
-
-        'stream_attempts: loop {
-            let permit = match provider_runtime.acquire(&session.cancellation).await {
-                Ok(permit) => permit,
-                Err(ProviderAdmissionError::Cancelled) => {
-                    stop_reason = acp::StopReason::Cancelled;
-                    break 'stream_attempts;
-                }
-                Err(error) => return Err(SdkError::internal_error().data(error.to_string())),
-            };
-            let mut telemetry = GenerationTelemetry::start(&provider_runtime);
-            let mut stream_deadlines = StreamDeadlineTracker::new(deadline_policy, Instant::now());
-            let stream_attempt_started = Instant::now();
-            let stream_span = tracing::info_span!(
-                "acp_provider_stream_attempt",
-                operation = "provider_stream_attempt",
-                provider = provider_runtime.provider_name(),
-                outcome = tracing::field::Empty,
-                elapsed_ms = tracing::field::Empty,
-            );
-            let next_deadline = stream_deadlines.next();
-            let stream_result = tokio::select! {
-                () = session.cancellation.cancelled() => {
-                    record_stream_attempt(&stream_span, stream_attempt_started, "cancelled");
-                    stop_reason = acp::StopReason::Cancelled;
-                    break 'stream_attempts;
-                }
-                phase = sleep_until_stream_deadline(next_deadline) => {
-                    Err(provider_timeout_error(
-                        provider_runtime.provider_name(),
-                        phase,
-                        phase.timeout(deadline_policy),
-                    ))
-                }
-                result = provider.stream(request.clone()).instrument(stream_span.clone()) => result,
-            };
-            let mut stream = match stream_result {
-                Ok(stream) => stream,
-                Err(error) => {
-                    record_stream_attempt(&stream_span, stream_attempt_started, "failure");
-                    let decision = policy.decision_for_llm_error(&error, attempt_index);
-                    telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
-                    drop(permit);
-                    if !decision.retryable {
-                        return finish_failed_provider_turn(
-                            &agent,
-                            &session,
-                            &args.session_id,
-                            &assistant_message,
-                            &assistant_reasoning,
-                            &error.to_string(),
-                        )
-                        .await;
+        let event = match event {
+            Ok(event) => event,
+            Err(error) => {
+                record_stream_attempt(span, started_at, "failure");
+                return classify_stream_failure(StreamFailureRequest { turn, telemetry, output, attempt_index, error });
+            }
+        };
+        match event {
+            LLMStreamEvent::Token { delta } => {
+                append_stream_delta(StreamDeltaRequest {
+                    turn,
+                    output,
+                    deadlines,
+                    telemetry,
+                    attempt_index,
+                    delta,
+                    reasoning: false,
+                })
+                .await;
+            }
+            LLMStreamEvent::Reasoning { delta } => {
+                append_stream_delta(StreamDeltaRequest {
+                    turn,
+                    output,
+                    deadlines,
+                    telemetry,
+                    attempt_index,
+                    delta,
+                    reasoning: true,
+                })
+                .await;
+            }
+            LLMStreamEvent::ReasoningStage { .. } | LLMStreamEvent::ReasoningSignature { .. } => {}
+            LLMStreamEvent::Completed { response } => {
+                record_stream_attempt(span, started_at, "completion");
+                let response = *response;
+                if telemetry.first_output_at.is_none() {
+                    if let Some(content) = response.content.as_deref() {
+                        telemetry.observe_output(&turn.provider_runtime, content, attempt_index);
                     }
-                    let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
-                    info!(
-                        provider = provider_runtime.provider_name(),
-                        next_attempt = attempt_index + 2,
-                        retry_count = attempt_index + 1,
-                        max_retries = policy.max_attempts.saturating_sub(1),
-                        ?delay,
-                        "Retrying transient ACP provider stream"
-                    );
-                    match cancellable_backoff(delay, &session.cancellation).await {
-                        Ok(()) => {
-                            attempt_index = attempt_index.saturating_add(1);
-                            continue;
-                        }
-                        Err(ProviderCallError::Cancelled) => {
-                            stop_reason = acp::StopReason::Cancelled;
-                            break 'stream_attempts;
-                        }
-                        Err(ProviderCallError::Failed(error)) => {
-                            return finish_failed_provider_turn(
-                                &agent,
-                                &session,
-                                &args.session_id,
-                                &assistant_message,
-                                &assistant_reasoning,
-                                &error,
-                            )
-                            .await;
-                        }
+                    if let Some(reasoning) = response.reasoning.as_deref() {
+                        telemetry.observe_output(&turn.provider_runtime, reasoning, attempt_index);
                     }
                 }
-            };
-
-            loop {
-                let next_deadline = stream_deadlines.next();
-                let event = tokio::select! {
-                    () = session.cancellation.cancelled() => {
-                        record_stream_attempt(&stream_span, stream_attempt_started, "cancelled");
-                        stop_reason = acp::StopReason::Cancelled;
-                        break 'stream_attempts;
-                    }
-                    phase = sleep_until_stream_deadline(next_deadline) => {
-                        Some(Err(provider_timeout_error(
-                            provider_runtime.provider_name(),
-                            phase,
-                            phase.timeout(deadline_policy),
-                        )))
-                    }
-                    event = poll_provider_stream(&mut stream, stream_span.clone()) => event,
-                };
-                let Some(event) = event else {
-                    record_stream_attempt(&stream_span, stream_attempt_started, "failure");
-                    let error = LLMError::Network {
-                        message: "provider stream ended before a completion event".to_string(),
-                        metadata: None,
-                    };
-                    if emitted_output {
-                        telemetry.failed(&provider_runtime, attempt_index, "partial_output_visible", &error);
-                        return finish_failed_provider_turn(
-                            &agent,
-                            &session,
-                            &args.session_id,
-                            &assistant_message,
-                            &assistant_reasoning,
-                            &error.to_string(),
-                        )
-                        .await;
-                    }
-                    drop(stream);
-                    let decision = policy.decision_for_llm_error(&error, attempt_index);
-                    telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
-                    drop(permit);
-                    if !decision.retryable {
-                        return finish_failed_provider_turn(
-                            &agent,
-                            &session,
-                            &args.session_id,
-                            &assistant_message,
-                            &assistant_reasoning,
-                            &error.to_string(),
-                        )
-                        .await;
-                    }
-                    let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
-                    info!(
-                        provider = provider_runtime.provider_name(),
-                        next_attempt = attempt_index + 2,
-                        retry_count = attempt_index + 1,
-                        max_retries = policy.max_attempts.saturating_sub(1),
-                        ?delay,
-                        "Retrying ACP provider stream that ended before completion"
-                    );
-                    match cancellable_backoff(delay, &session.cancellation).await {
-                        Ok(()) => {
-                            attempt_index = attempt_index.saturating_add(1);
-                            continue 'stream_attempts;
-                        }
-                        Err(ProviderCallError::Cancelled) => {
-                            stop_reason = acp::StopReason::Cancelled;
-                            break 'stream_attempts;
-                        }
-                        Err(ProviderCallError::Failed(error)) => {
-                            return finish_failed_provider_turn(
-                                &agent,
-                                &session,
-                                &args.session_id,
-                                &assistant_message,
-                                &assistant_reasoning,
-                                &error,
-                            )
-                            .await;
-                        }
-                    }
-                };
-                let event = match event {
-                    Ok(event) => event,
-                    Err(error) if !emitted_output => {
-                        record_stream_attempt(&stream_span, stream_attempt_started, "failure");
-                        drop(stream);
-                        let decision = policy.decision_for_llm_error(&error, attempt_index);
-                        telemetry.failed(&provider_runtime, attempt_index, retry_disposition(&decision), &error);
-                        drop(permit);
-                        if !decision.retryable {
-                            return finish_failed_provider_turn(
-                                &agent,
-                                &session,
-                                &args.session_id,
-                                &assistant_message,
-                                &assistant_reasoning,
-                                &error.to_string(),
-                            )
-                            .await;
-                        }
-                        let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
-                        info!(
-                            provider = provider_runtime.provider_name(),
-                            next_attempt = attempt_index + 2,
-                            retry_count = attempt_index + 1,
-                            max_retries = policy.max_attempts.saturating_sub(1),
-                            ?delay,
-                            "Retrying transient ACP provider stream before output"
-                        );
-                        match cancellable_backoff(delay, &session.cancellation).await {
-                            Ok(()) => {
-                                attempt_index = attempt_index.saturating_add(1);
-                                continue 'stream_attempts;
-                            }
-                            Err(ProviderCallError::Cancelled) => {
-                                stop_reason = acp::StopReason::Cancelled;
-                                break 'stream_attempts;
-                            }
-                            Err(ProviderCallError::Failed(error)) => {
-                                return finish_failed_provider_turn(
-                                    &agent,
-                                    &session,
-                                    &args.session_id,
-                                    &assistant_message,
-                                    &assistant_reasoning,
-                                    &error,
-                                )
-                                .await;
-                            }
-                        }
-                    }
-                    Err(error) => {
-                        record_stream_attempt(&stream_span, stream_attempt_started, "failure");
-                        telemetry.failed(&provider_runtime, attempt_index, "partial_output_visible", &error);
-                        return finish_failed_provider_turn(
-                            &agent,
-                            &session,
-                            &args.session_id,
-                            &assistant_message,
-                            &assistant_reasoning,
-                            &error.to_string(),
-                        )
-                        .await;
-                    }
-                };
-
-                match event {
-                    LLMStreamEvent::Token { delta } => {
-                        if !delta.is_empty() {
-                            emitted_output = true;
-                            stream_deadlines.observe_output();
-                            telemetry.observe_output(&provider_runtime, &delta, attempt_index);
-                            assistant_message.push_str(&delta);
-                            let chunk = text_chunk(delta);
-                            drop(
-                                agent
-                                    .send_update(&args.session_id, acp::SessionUpdate::AgentMessageChunk(chunk))
-                                    .await,
-                            );
-                        }
-                    }
-                    LLMStreamEvent::Reasoning { delta } => {
-                        if !delta.is_empty() {
-                            emitted_output = true;
-                            stream_deadlines.observe_output();
-                            telemetry.observe_output(&provider_runtime, &delta, attempt_index);
-                            assistant_reasoning.push_str(&delta);
-                            let chunk = text_chunk(delta);
-                            drop(
-                                agent
-                                    .send_update(&args.session_id, acp::SessionUpdate::AgentThoughtChunk(chunk))
-                                    .await,
-                            );
-                        }
-                    }
-                    LLMStreamEvent::ReasoningStage { .. } => {}
-                    LLMStreamEvent::ReasoningSignature { .. } => {}
-                    LLMStreamEvent::Completed { response } => {
-                        record_stream_attempt(&stream_span, stream_attempt_started, "completion");
-                        let response = *response;
-                        if telemetry.first_output_at.is_none() {
-                            if let Some(content) = response.content.as_deref() {
-                                telemetry.observe_output(&provider_runtime, content, attempt_index);
-                            }
-                            if let Some(reasoning) = response.reasoning.as_deref() {
-                                telemetry.observe_output(&provider_runtime, reasoning, attempt_index);
-                            }
-                        }
-                        telemetry.complete(&provider_runtime, &response, attempt_index, false);
-                        if assistant_message.is_empty()
-                            && let Some(content) = response.content
-                        {
-                            if !content.is_empty() {
-                                let chunk = text_chunk(content.clone());
-                                drop(
-                                    agent
-                                        .send_update(&args.session_id, acp::SessionUpdate::AgentMessageChunk(chunk))
-                                        .await,
-                                );
-                            }
-                            assistant_message.push_str(&content);
-                        }
-
-                        if assistant_reasoning.is_empty()
-                            && let Some(reasoning) = response.reasoning.filter(|reasoning| !reasoning.is_empty())
-                        {
-                            let chunk = text_chunk(reasoning.clone());
-                            drop(
-                                agent
-                                    .send_update(&args.session_id, acp::SessionUpdate::AgentThoughtChunk(chunk))
-                                    .await,
-                            );
-                            assistant_reasoning.push_str(&reasoning);
-                        }
-
-                        drop(stream);
-                        drop(permit);
-
-                        if tools_allowed
-                            && let Some(tool_calls) = response.tool_calls.clone().filter(|calls| !calls.is_empty())
-                        {
-                            if agent.tool_loop_limit_reached(tool_loop_count) {
-                                let message = agent.tool_loop_limit_message();
-                                assistant_message = message;
-                                stop_reason = acp::StopReason::EndTurn;
-                                break 'stream_attempts;
-                            }
-                            tool_loop_count = tool_loop_count.saturating_add(1);
-                            let assistant_tool_message = assistant_tool_call_message(
-                                assistant_message.clone(),
-                                tool_calls.clone(),
-                                &assistant_reasoning,
-                                response.reasoning_details.clone(),
-                            );
-                            push_session_message(&agent, &session, &args.session_id, assistant_tool_message)?;
-                            persist_session_checkpoint(&agent, &session, "assistant_tool_calls").await;
-                            let tool_execution =
-                                Box::pin(agent.execute_tool_calls(&session, &args.session_id, &tool_calls));
-                            let tool_results = match tool_execution.await {
-                                Ok(results) => results,
-                                Err(error) => {
-                                    warn!(%error, "Tool execution failed");
-                                    for call in &tool_calls {
-                                        push_session_message(
-                                            &agent,
-                                            &session,
-                                            &args.session_id,
-                                            Message::tool_response(
-                                                call.id.clone(),
-                                                format!("Tool execution was interrupted: {error}"),
-                                            ),
-                                        )?;
-                                    }
-                                    persist_session_checkpoint(&agent, &session, "interrupted_tool_results").await;
-                                    return Err(error);
-                                }
-                            };
-                            for result in tool_results {
-                                push_session_message(
-                                    &agent,
-                                    &session,
-                                    &args.session_id,
-                                    Message::tool_response(result.tool_call_id, result.llm_response),
-                                )?;
-                            }
-                            persist_session_checkpoint(&agent, &session, "tool_results").await;
-                            if session.cancellation.is_cancelled() {
-                                stop_reason = acp::StopReason::Cancelled;
-                                break 'stream_attempts;
-                            }
-                            messages = agent.resolved_messages(&session).map_err(|error| {
-                                session_access_error(&args.session_id, "resolving session messages", error)
-                            })?;
-                            primary_agent = {
-                                let data = session.data.lock().map_err(|_err| SdkError::internal_error())?;
-                                data.primary_agent.clone()
-                            };
-                            has_local_tools =
-                                agent.session_local_tools_available(&session, &primary_agent).map_err(|error| {
-                                    session_access_error(&args.session_id, "checking local tool availability", error)
-                                })?;
-                            tools_allowed = provider_supports_tools && (!enabled_tools.is_empty() || has_local_tools);
-                            tool_definitions = agent
-                                .session_tool_definitions(
-                                    &session,
-                                    provider_supports_tools,
-                                    &enabled_tools,
-                                    &primary_agent,
-                                )
-                                .map_err(|error| {
-                                    session_access_error(&args.session_id, "resolving tool definitions", error)
-                                })?
-                                .map(Arc::new);
-                            if agent
-                                .maybe_compact_session(
-                                    &session,
-                                    provider.as_ref(),
-                                    &provider_runtime,
-                                    &session_model,
-                                    tool_definitions.as_ref(),
-                                )
-                                .await
-                                .map_err(|error| SdkError::internal_error().data(error.to_string()))?
-                            {
-                                messages = agent.resolved_messages(&session).map_err(|error| {
-                                    session_access_error(
-                                        &args.session_id,
-                                        "resolving compacted session messages",
-                                        error,
-                                    )
-                                })?;
-                            }
-                            request = LLMRequest {
-                                messages: Arc::new(messages.clone()),
-                                model: session_model.clone(),
-                                stream: true,
-                                tools: tool_definitions.clone(),
-                                tool_choice: agent.tool_choice(tools_allowed),
-                                reasoning_effort,
-                                ..Default::default()
-                            };
-                            assistant_message.clear();
-                            assistant_reasoning.clear();
-                            attempt_index = 0;
-                            emitted_output = false;
-                            continue 'stream_attempts;
-                        }
-
-                        stop_reason = ZedAgent::stop_reason_from_finish(response.finish_reason);
-                        break 'stream_attempts;
-                    }
-                }
+                telemetry.complete(&turn.provider_runtime, &response, attempt_index, false);
+                emit_response_fallback(turn, output, &response).await;
+                return StreamAttemptOutcome::Completed(Box::new(response));
             }
         }
+    }
+}
+
+fn classify_stream_failure(request: StreamFailureRequest<'_>) -> StreamAttemptOutcome {
+    let StreamFailureRequest { turn, telemetry, output, attempt_index, error } = request;
+    let policy = turn.provider_runtime.retry_policy();
+    let decision = policy.decision_for_llm_error(&error, attempt_index);
+    let disposition = if output.emitted_output {
+        "partial_output_visible"
     } else {
-        let mut tool_loop_count = 0usize;
-        loop {
-            if session.cancellation.is_cancelled() {
-                stop_reason = acp::StopReason::Cancelled;
-                break;
-            }
+        retry_disposition(&decision)
+    };
+    telemetry.failed(&turn.provider_runtime, attempt_index, disposition, &error);
+    if output.emitted_output || !decision.retryable {
+        StreamAttemptOutcome::Failed(error)
+    } else {
+        let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
+        StreamAttemptOutcome::Retry(delay)
+    }
+}
 
-            if agent
-                .maybe_compact_session(
-                    &session,
-                    provider.as_ref(),
-                    &provider_runtime,
-                    &session_model,
-                    tool_definitions.as_ref(),
+async fn append_stream_delta(request: StreamDeltaRequest<'_>) {
+    let StreamDeltaRequest {
+        turn,
+        output,
+        deadlines,
+        telemetry,
+        attempt_index,
+        delta,
+        reasoning,
+    } = request;
+    if delta.is_empty() {
+        return;
+    }
+    output.emitted_output = true;
+    deadlines.observe_output();
+    telemetry.observe_output(&turn.provider_runtime, &delta, attempt_index);
+    let update = if reasoning {
+        output.assistant_reasoning.push_str(&delta);
+        acp::SessionUpdate::AgentThoughtChunk(text_chunk(delta))
+    } else {
+        output.assistant_message.push_str(&delta);
+        acp::SessionUpdate::AgentMessageChunk(text_chunk(delta))
+    };
+    drop(turn.agent.send_update(&turn.args.session_id, update).await);
+}
+
+async fn emit_response_fallback(turn: &PromptExecution, output: &mut ProviderOutput, response: &LLMResponse) {
+    if output.assistant_message.is_empty()
+        && let Some(content) = response.content.as_deref().filter(|content| !content.is_empty())
+    {
+        drop(
+            turn.agent
+                .send_update(
+                    &turn.args.session_id,
+                    acp::SessionUpdate::AgentMessageChunk(text_chunk(content.to_string())),
                 )
-                .await
-                .map_err(|error| SdkError::internal_error().data(error.to_string()))?
-            {
-                messages = agent.resolved_messages(&session).map_err(|error| {
-                    session_access_error(&args.session_id, "resolving compacted session messages", error)
-                })?;
+                .await,
+        );
+        output.assistant_message.push_str(content);
+    }
+    if output.assistant_reasoning.is_empty()
+        && let Some(reasoning) = response.reasoning.as_deref().filter(|reasoning| !reasoning.is_empty())
+    {
+        drop(
+            turn.agent
+                .send_update(
+                    &turn.args.session_id,
+                    acp::SessionUpdate::AgentThoughtChunk(text_chunk(reasoning.to_string())),
+                )
+                .await,
+        );
+        output.assistant_reasoning.push_str(reasoning);
+    }
+}
+
+async fn process_stream_response(
+    turn: &mut PromptExecution,
+    output: &mut ProviderOutput,
+    response: LLMResponse,
+    tool_loop_count: &mut usize,
+) -> Result<StreamResponseOutcome, SdkError> {
+    if turn.tool_state.tools_allowed
+        && let Some(tool_calls) = response.tool_calls.clone().filter(|calls| !calls.is_empty())
+    {
+        let outcome = execute_tool_round(ToolRoundRequest {
+            agent: &turn.agent,
+            session: &turn.session,
+            session_id: &turn.args.session_id,
+            tool_calls: &tool_calls,
+            assistant_message: &output.assistant_message,
+            assistant_reasoning: &output.assistant_reasoning,
+            reasoning_details: response.reasoning_details.clone(),
+            tool_loop_count,
+            streamed: true,
+        })
+        .await?;
+        match outcome {
+            ToolRoundOutcome::Cancelled => {
+                return Ok(StreamResponseOutcome::StopReason(acp::StopReason::Cancelled));
             }
-
-            let request = LLMRequest {
-                messages: Arc::new(messages.clone()),
-                model: session_model.clone(),
-                tools: tool_definitions.clone(),
-                tool_choice: agent.tool_choice(tools_allowed),
-                reasoning_effort,
-                ..Default::default()
-            };
-
-            let response =
-                match generate_with_retry(provider.as_ref(), request, &provider_runtime, &session.cancellation).await {
-                    Ok(response) => response,
-                    Err(ProviderCallError::Cancelled) => {
-                        stop_reason = acp::StopReason::Cancelled;
-                        break;
-                    }
-                    Err(ProviderCallError::Failed(error)) => {
-                        return finish_failed_provider_turn(
-                            &agent,
-                            &session,
-                            &args.session_id,
-                            &assistant_message,
-                            &assistant_reasoning,
-                            &error,
-                        )
-                        .await;
-                    }
-                };
-
-            if session.cancellation.is_cancelled() {
-                stop_reason = acp::StopReason::Cancelled;
-                break;
+            ToolRoundOutcome::LimitReached(message) => {
+                output.assistant_message = message;
+                return Ok(StreamResponseOutcome::StopReason(acp::StopReason::EndTurn));
             }
-
-            emit_response_reasoning(&agent, &args.session_id, &response).await;
-            if session.cancellation.is_cancelled() {
-                stop_reason = acp::StopReason::Cancelled;
-                break;
-            }
-
-            if tools_allowed && let Some(tool_calls) = response.tool_calls.clone().filter(|calls| !calls.is_empty()) {
-                if agent.tool_loop_limit_reached(tool_loop_count) {
-                    let message = agent.tool_loop_limit_message();
-                    assistant_message = message;
-                    stop_reason = acp::StopReason::EndTurn;
-                    break;
-                }
-                tool_loop_count = tool_loop_count.saturating_add(1);
-                push_session_message(
-                    &agent,
-                    &session,
-                    &args.session_id,
-                    Message::assistant_with_tools(response.content.clone().unwrap_or_default(), tool_calls.clone()),
-                )?;
-                persist_session_checkpoint(&agent, &session, "assistant_tool_calls").await;
-                let tool_execution = Box::pin(agent.execute_tool_calls(&session, &args.session_id, &tool_calls));
-                let tool_results = match tool_execution.await {
-                    Ok(results) => results,
-                    Err(error) => {
-                        warn!(%error, "Tool execution failed");
-                        for call in &tool_calls {
-                            push_session_message(
-                                &agent,
-                                &session,
-                                &args.session_id,
-                                Message::tool_response(
-                                    call.id.clone(),
-                                    format!("Tool execution was interrupted: {error}"),
-                                ),
-                            )?;
-                        }
-                        persist_session_checkpoint(&agent, &session, "interrupted_tool_results").await;
-                        return Err(error);
-                    }
-                };
-                for result in tool_results {
-                    push_session_message(
-                        &agent,
-                        &session,
-                        &args.session_id,
-                        Message::tool_response(result.tool_call_id, result.llm_response),
-                    )?;
-                }
-                persist_session_checkpoint(&agent, &session, "tool_results").await;
-                if session.cancellation.is_cancelled() {
-                    stop_reason = acp::StopReason::Cancelled;
-                    break;
-                }
-                messages = agent
-                    .resolved_messages(&session)
-                    .map_err(|error| session_access_error(&args.session_id, "resolving session messages", error))?;
-                primary_agent = {
-                    let data = session.data.lock().map_err(|_err| SdkError::internal_error())?;
-                    data.primary_agent.clone()
-                };
-                has_local_tools = agent.session_local_tools_available(&session, &primary_agent).map_err(|error| {
-                    session_access_error(&args.session_id, "checking local tool availability", error)
-                })?;
-                tools_allowed = provider_supports_tools && (!enabled_tools.is_empty() || has_local_tools);
-                tool_definitions = agent
-                    .session_tool_definitions(&session, provider_supports_tools, &enabled_tools, &primary_agent)
-                    .map_err(|error| session_access_error(&args.session_id, "resolving tool definitions", error))?
-                    .map(Arc::new);
-                continue;
-            }
-
-            if let Some(content) = &response.content {
-                if !content.is_empty() {
-                    if session.cancellation.is_cancelled() {
-                        stop_reason = acp::StopReason::Cancelled;
-                        break;
-                    }
-                }
-                assistant_message = content.clone();
-            }
-
-            stop_reason = ZedAgent::stop_reason_from_finish(response.finish_reason);
-            if stop_reason != acp::StopReason::Cancelled
-                && let Some(reason) = agent.run_stop_hook(&session, &assistant_message, stop_hook_active).await?
-            {
-                stop_hook_active = true;
-                push_session_message(
-                    &agent,
-                    &session,
-                    &args.session_id,
-                    Message::assistant(assistant_message.clone()),
-                )?;
-                push_session_message(&agent, &session, &args.session_id, Message::system(reason))?;
-                messages = agent
-                    .resolved_messages(&session)
-                    .map_err(|error| session_access_error(&args.session_id, "resolving session messages", error))?;
-                assistant_message.clear();
-                assistant_reasoning.clear();
-                stop_hook_checked = false;
-                continue;
-            } else if stop_reason != acp::StopReason::Cancelled {
-                stop_hook_checked = true;
-            }
-            break;
+            ToolRoundOutcome::Continue => {}
         }
+        refresh_stream_tool_state(turn).await?;
+        output.reset();
+        return Ok(StreamResponseOutcome::Continue);
     }
 
-    if stop_reason != acp::StopReason::Cancelled {
-        if !stop_hook_checked
-            && let Some(reason) = agent.run_stop_hook(&session, &assistant_message, stop_hook_active).await?
-        {
-            warn!(%reason, "ACP Stop hook blocked final turn");
-            push_session_message(&agent, &session, &args.session_id, Message::system(reason))?;
-            persist_session_checkpoint(&agent, &session, "stop_hook_blocked").await;
-            return Ok(PromptResponse::new(acp::StopReason::Refusal));
+    Ok(StreamResponseOutcome::StopReason(ZedAgent::stop_reason_from_finish(response.finish_reason)))
+}
+
+async fn refresh_stream_tool_state(turn: &mut PromptExecution) -> Result<(), SdkError> {
+    refresh_resolved_tool_state(turn)?;
+    if turn
+        .agent
+        .maybe_compact_session(CompactionRequest {
+            session: &turn.session,
+            provider: turn.provider.as_ref(),
+            runtime: &turn.provider_runtime,
+            model: &turn.session_model,
+            tools: turn.tool_state.tool_definitions.as_ref(),
+        })
+        .await
+        .map_err(|error| SdkError::internal_error().data(error.to_string()))?
+    {
+        turn.tool_state.messages = turn.agent.resolved_messages(&turn.session).map_err(|error| {
+            session_access_error(&turn.args.session_id, "resolving compacted session messages", error)
+        })?;
+    }
+    Ok(())
+}
+
+enum BufferedGenerationOutcome {
+    Response(Box<LLMResponse>),
+    Cancelled,
+    Failed(String),
+}
+
+enum BufferedToolOutcome {
+    NoToolCalls,
+    Continue,
+    Finished(acp::StopReason, Option<String>),
+}
+
+enum BufferedResponseOutcome {
+    Continue,
+    Finished(acp::StopReason),
+}
+
+async fn run_buffered_provider_turn(turn: &mut PromptExecution) -> Result<ProviderTurnOutcome, SdkError> {
+    let mut output = ProviderOutput::take_from(turn);
+    let mut tool_loop_count = 0usize;
+
+    loop {
+        if turn.session.cancellation.is_cancelled() {
+            output.store_in(turn);
+            return Ok(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled));
         }
-        if !assistant_message.is_empty() {
-            if should_emit_buffered_final_chunk(allow_streaming) {
-                drop(
-                    agent
-                        .send_update(
-                            &args.session_id,
-                            acp::SessionUpdate::AgentMessageChunk(text_chunk(assistant_message.clone())),
-                        )
-                        .await,
-                );
+        let response = match generate_buffered_response(turn).await? {
+            BufferedGenerationOutcome::Response(response) => *response,
+            BufferedGenerationOutcome::Cancelled => {
+                output.store_in(turn);
+                return Ok(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled));
             }
-            let mut completed_message = Message::assistant(assistant_message);
-            if !assistant_reasoning.is_empty() {
-                completed_message.reasoning = Some(assistant_reasoning);
+            BufferedGenerationOutcome::Failed(error) => {
+                return finish_failed_output(turn, output, &error).await;
             }
-            push_session_message(&agent, &session, &args.session_id, completed_message)?;
-            persist_session_checkpoint(&agent, &session, "assistant_response").await;
+        };
+
+        if turn.session.cancellation.is_cancelled() {
+            output.store_in(turn);
+            return Ok(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled));
+        }
+        emit_response_reasoning(&turn.agent, &turn.args.session_id, &response).await;
+        if turn.session.cancellation.is_cancelled() {
+            output.store_in(turn);
+            return Ok(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled));
+        }
+
+        match execute_buffered_tool_calls(turn, &response, &mut tool_loop_count).await? {
+            BufferedToolOutcome::Continue => continue,
+            BufferedToolOutcome::Finished(stop_reason, message) => {
+                if let Some(message) = message {
+                    output.assistant_message = message;
+                }
+                output.store_in(turn);
+                return Ok(ProviderTurnOutcome::StopReason(stop_reason));
+            }
+            BufferedToolOutcome::NoToolCalls => {}
+        }
+
+        match process_buffered_response(turn, &mut output, response).await? {
+            BufferedResponseOutcome::Continue => continue,
+            BufferedResponseOutcome::Finished(stop_reason) => {
+                output.store_in(turn);
+                return Ok(ProviderTurnOutcome::StopReason(stop_reason));
+            }
         }
     }
+}
 
-    Ok(PromptResponse::new(stop_reason))
+async fn generate_buffered_response(turn: &mut PromptExecution) -> Result<BufferedGenerationOutcome, SdkError> {
+    let request = prepare_buffered_request(turn).await?;
+    match generate_with_retry(turn.provider.as_ref(), request, &turn.provider_runtime, &turn.session.cancellation).await
+    {
+        Ok(response) => Ok(BufferedGenerationOutcome::Response(Box::new(response))),
+        Err(ProviderCallError::Cancelled) => Ok(BufferedGenerationOutcome::Cancelled),
+        Err(ProviderCallError::Failed(error)) => Ok(BufferedGenerationOutcome::Failed(error)),
+    }
+}
+
+async fn prepare_buffered_request(turn: &mut PromptExecution) -> Result<LLMRequest, SdkError> {
+    if turn
+        .agent
+        .maybe_compact_session(CompactionRequest {
+            session: &turn.session,
+            provider: turn.provider.as_ref(),
+            runtime: &turn.provider_runtime,
+            model: &turn.session_model,
+            tools: turn.tool_state.tool_definitions.as_ref(),
+        })
+        .await
+        .map_err(|error| SdkError::internal_error().data(error.to_string()))?
+    {
+        turn.tool_state.messages = turn.agent.resolved_messages(&turn.session).map_err(|error| {
+            session_access_error(&turn.args.session_id, "resolving compacted session messages", error)
+        })?;
+    }
+
+    Ok(LLMRequest {
+        messages: Arc::new(turn.tool_state.messages.clone()),
+        model: turn.session_model.clone(),
+        tools: turn.tool_state.tool_definitions.clone(),
+        tool_choice: turn.agent.tool_choice(turn.tool_state.tools_allowed),
+        reasoning_effort: turn.reasoning_effort,
+        ..Default::default()
+    })
+}
+
+async fn execute_buffered_tool_calls(
+    turn: &mut PromptExecution,
+    response: &LLMResponse,
+    tool_loop_count: &mut usize,
+) -> Result<BufferedToolOutcome, SdkError> {
+    if !turn.tool_state.tools_allowed {
+        return Ok(BufferedToolOutcome::NoToolCalls);
+    }
+    let Some(tool_calls) = response.tool_calls.clone().filter(|calls| !calls.is_empty()) else {
+        return Ok(BufferedToolOutcome::NoToolCalls);
+    };
+
+    let outcome = execute_tool_round(ToolRoundRequest {
+        agent: &turn.agent,
+        session: &turn.session,
+        session_id: &turn.args.session_id,
+        tool_calls: &tool_calls,
+        assistant_message: response.content.as_deref().unwrap_or_default(),
+        assistant_reasoning: "",
+        reasoning_details: None,
+        tool_loop_count,
+        streamed: false,
+    })
+    .await?;
+    match outcome {
+        ToolRoundOutcome::Cancelled => Ok(BufferedToolOutcome::Finished(acp::StopReason::Cancelled, None)),
+        ToolRoundOutcome::LimitReached(message) => {
+            Ok(BufferedToolOutcome::Finished(acp::StopReason::EndTurn, Some(message)))
+        }
+        ToolRoundOutcome::Continue => {
+            refresh_resolved_tool_state(turn)?;
+            Ok(BufferedToolOutcome::Continue)
+        }
+    }
+}
+
+fn refresh_resolved_tool_state(turn: &mut PromptExecution) -> Result<(), SdkError> {
+    turn.tool_state.messages = turn
+        .agent
+        .resolved_messages(&turn.session)
+        .map_err(|error| session_access_error(&turn.args.session_id, "resolving session messages", error))?;
+    turn.tool_state.refresh_availability(
+        &turn.agent,
+        &turn.session,
+        &turn.args.session_id,
+        turn.provider_supports_tools,
+    )
+}
+
+async fn process_buffered_response(
+    turn: &mut PromptExecution,
+    output: &mut ProviderOutput,
+    response: LLMResponse,
+) -> Result<BufferedResponseOutcome, SdkError> {
+    if let Some(content) = response.content {
+        if !content.is_empty() && turn.session.cancellation.is_cancelled() {
+            return Ok(BufferedResponseOutcome::Finished(acp::StopReason::Cancelled));
+        }
+        output.assistant_message = content;
+    }
+
+    let stop_reason = ZedAgent::stop_reason_from_finish(response.finish_reason);
+    if stop_reason == acp::StopReason::Cancelled {
+        return Ok(BufferedResponseOutcome::Finished(stop_reason));
+    }
+    let Some(reason) = turn
+        .agent
+        .run_stop_hook(&turn.session, &output.assistant_message, turn.stop_hook_active)
+        .await?
+    else {
+        turn.stop_hook_checked = true;
+        return Ok(BufferedResponseOutcome::Finished(stop_reason));
+    };
+
+    turn.stop_hook_active = true;
+    push_session_message(
+        &turn.agent,
+        &turn.session,
+        &turn.args.session_id,
+        Message::assistant(output.assistant_message.clone()),
+    )?;
+    push_session_message(&turn.agent, &turn.session, &turn.args.session_id, Message::system(reason))?;
+    refresh_resolved_tool_state(turn)?;
+    output.reset();
+    turn.stop_hook_checked = false;
+    Ok(BufferedResponseOutcome::Continue)
 }
 
 impl ZedAgent {
@@ -1806,6 +2109,7 @@ fn assistant_tool_call_message(
 
 #[cfg(test)]
 mod tests {
+    use super::CompactionRequest;
     use agent_client_protocol::{Channel, on_receive_notification};
     use assert_fs::TempDir;
     use async_trait::async_trait;
@@ -2297,7 +2601,7 @@ mod tests {
             Ok(())
         }
 
-        async fn stream(&self, request: LLMRequest) -> Result<vtcode_core::llm::provider::LLMStream, LLMError> {
+        async fn stream(&self, request: LLMRequest) -> Result<LLMStream, LLMError> {
             self.requests.lock().expect("stream requests").push(request);
             let response_index = self.calls.fetch_add(1, Ordering::SeqCst);
             let events = if response_index == 0 {
@@ -2365,7 +2669,7 @@ mod tests {
             Ok(())
         }
 
-        async fn stream(&self, request: LLMRequest) -> Result<vtcode_core::llm::provider::LLMStream, LLMError> {
+        async fn stream(&self, request: LLMRequest) -> Result<LLMStream, LLMError> {
             self.requests.lock().expect("compaction provider requests").push(request);
             let response = LLMResponse {
                 content: Some("Answer after compaction.".to_string()),
@@ -2427,7 +2731,7 @@ mod tests {
             Ok(())
         }
 
-        async fn stream(&self, _request: LLMRequest) -> Result<vtcode_core::llm::provider::LLMStream, LLMError> {
+        async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
             Ok(Box::pin(futures::stream::iter(vec![
                 Ok(LLMStreamEvent::Token { delta: "partial answer".to_string() }),
                 Err(LLMError::Network {
@@ -3111,7 +3415,13 @@ mod tests {
         let runtime = agent.provider_runtime.for_provider("wire-test");
 
         let error = agent
-            .maybe_compact_session(&session, &provider, &runtime, "wire-model", None)
+            .maybe_compact_session(CompactionRequest {
+                session: &session,
+                provider: &provider,
+                runtime: &runtime,
+                model: "wire-model",
+                tools: None,
+            })
             .await
             .expect_err("over-budget prompt must not continue when compaction is disabled");
 
@@ -3136,7 +3446,13 @@ mod tests {
         let runtime = agent.provider_runtime.for_provider("wire-test");
 
         let error = agent
-            .maybe_compact_session(&session, &provider, &runtime, "wire-model", None)
+            .maybe_compact_session(CompactionRequest {
+                session: &session,
+                provider: &provider,
+                runtime: &runtime,
+                model: "wire-model",
+                tools: None,
+            })
             .await
             .expect_err("over-budget compacted prompt must not continue to the provider answer");
 
@@ -3163,7 +3479,13 @@ mod tests {
             let provider = Arc::clone(&provider);
             tokio::spawn(async move {
                 agent
-                    .maybe_compact_session(&session, provider.as_ref(), &runtime, "wire-model", None)
+                    .maybe_compact_session(CompactionRequest {
+                        session: &session,
+                        provider: provider.as_ref(),
+                        runtime: &runtime,
+                        model: "wire-model",
+                        tools: None,
+                    })
                     .await
             })
         };

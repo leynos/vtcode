@@ -705,35 +705,9 @@ impl SafetyGateway {
         let config = self.config.read();
         self.prune_rate_windows(state, now);
 
-        if config.enforce_rate_limits {
-            if state.calls_per_second.len() >= config.rate_limit_per_second {
-                return Err(SafetyError::RateLimitExceeded {
-                    current: state.calls_per_second.len(),
-                    max: config.rate_limit_per_second,
-                    window: "1s",
-                });
-            }
-
-            if let Some(limit) = config.rate_limit_per_minute
-                && state.calls_per_minute.len() >= limit
-            {
-                return Err(SafetyError::RateLimitExceeded {
-                    current: state.calls_per_minute.len(),
-                    max: limit,
-                    window: "60s",
-                });
-            }
-        }
-
-        if config.max_per_turn > 0 && state.current_turn_count >= config.max_per_turn {
-            return Err(SafetyError::TurnLimitReached { max: config.max_per_turn });
-        }
-
-        if config.max_per_session > 0 && state.session_count >= config.max_per_session {
-            return Err(SafetyError::SessionLimitReached { max: config.max_per_session });
-        }
-
-        Ok(())
+        rate_limit_violation(&config, state)
+            .or_else(|| tool_budget_violation(&config, state))
+            .map_or(Ok(()), Err)
     }
 
     fn record_execution_locked(&self, state: &mut RateLimiterState, now: Instant) {
@@ -941,6 +915,34 @@ impl SafetyGateway {
             preapproved_count: preapproved.len(),
         }
     }
+}
+
+fn rate_limit_violation(config: &SafetyGatewayConfig, state: &RateLimiterState) -> Option<SafetyError> {
+    if !config.enforce_rate_limits {
+        return None;
+    }
+
+    rate_window_violation(state.calls_per_second.len(), config.rate_limit_per_second, "1s").or_else(|| {
+        config
+            .rate_limit_per_minute
+            .and_then(|limit| rate_window_violation(state.calls_per_minute.len(), limit, "60s"))
+    })
+}
+
+fn rate_window_violation(current: usize, max: usize, window: &'static str) -> Option<SafetyError> {
+    (current >= max).then_some(SafetyError::RateLimitExceeded { current, max, window })
+}
+
+fn tool_budget_violation(config: &SafetyGatewayConfig, state: &RateLimiterState) -> Option<SafetyError> {
+    if config.max_per_turn > 0 && state.current_turn_count >= config.max_per_turn {
+        return Some(SafetyError::TurnLimitReached { max: config.max_per_turn });
+    }
+
+    if config.max_per_session > 0 && state.session_count >= config.max_per_session {
+        return Some(SafetyError::SessionLimitReached { max: config.max_per_session });
+    }
+
+    None
 }
 
 impl Default for SafetyGateway {

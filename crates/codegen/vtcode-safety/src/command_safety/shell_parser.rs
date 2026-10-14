@@ -189,16 +189,20 @@ pub fn parse_shell_commands_tree_sitter(script: &str) -> Result<Vec<Vec<String>>
 /// command output. Input, heredoc, and descriptor-closing redirections remain
 /// unsupported so progress classification can fail closed.
 pub fn has_only_output_redirections(script: &str) -> bool {
-    if matches_tree_sitter_bash_issue_337_shape(script) {
-        return false;
-    }
-    if contains_dynamic_shell_syntax(script) {
-        return false;
-    }
-    if contains_background_operator(script) {
+    if !has_static_shell_shape_for_redirection_check(script) {
         return false;
     }
 
+    parsed_script_has_only_output_redirections(script)
+}
+
+fn has_static_shell_shape_for_redirection_check(script: &str) -> bool {
+    !matches_tree_sitter_bash_issue_337_shape(script)
+        && !contains_dynamic_shell_syntax(script)
+        && !contains_background_operator(script)
+}
+
+fn parsed_script_has_only_output_redirections(script: &str) -> bool {
     let Ok(parser) = get_bash_parser() else {
         return false;
     };

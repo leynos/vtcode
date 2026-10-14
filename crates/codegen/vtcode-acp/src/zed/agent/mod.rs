@@ -112,6 +112,22 @@ enum OptionalSetupOutcome {
     Failed(String),
 }
 
+enum AcpSubagentConfiguration {
+    DisabledByConfiguration,
+    DisabledByPolicy,
+    Ready(Box<VTCodeConfig>),
+}
+
+impl OptionalSetupOutcome {
+    fn attached_with_degradation(failures: Vec<String>) -> Self {
+        if failures.is_empty() {
+            Self::Attached
+        } else {
+            Self::AttachedWithDegradation(failures)
+        }
+    }
+}
+
 fn report_optional_setup_outcome(component: &'static str, outcome: OptionalSetupOutcome) {
     match outcome {
         OptionalSetupOutcome::DisabledByConfiguration => {
@@ -139,32 +155,11 @@ async fn attach_acp_subagent_controller(
     vt_cfg: Option<&VTCodeConfig>,
     workspace_gated: bool,
 ) -> OptionalSetupOutcome {
-    let Some(mut controller_vt_cfg) = vt_cfg.filter(|config| config.subagents.enabled).cloned() else {
-        return OptionalSetupOutcome::DisabledByConfiguration;
+    let controller_vt_cfg = match configure_acp_subagents(vt_cfg, config, custom_providers) {
+        AcpSubagentConfiguration::DisabledByConfiguration => return OptionalSetupOutcome::DisabledByConfiguration,
+        AcpSubagentConfiguration::DisabledByPolicy => return OptionalSetupOutcome::DisabledByPolicy,
+        AcpSubagentConfiguration::Ready(config) => *config,
     };
-
-    if let Some(max_in_flight) = custom_providers
-        .iter()
-        .find(|provider| provider.name.eq_ignore_ascii_case(&config.provider))
-        .and_then(|provider| provider.request_policy.max_in_flight_requests)
-    {
-        match effective_acp_subagent_concurrency(controller_vt_cfg.subagents.max_concurrent, Some(max_in_flight)) {
-            None => {
-                return OptionalSetupOutcome::DisabledByPolicy;
-            }
-            Some(max_subagents) if controller_vt_cfg.subagents.max_concurrent > max_subagents => {
-                debug!(
-                    provider = %config.provider,
-                    max_in_flight,
-                    configured_subagents = controller_vt_cfg.subagents.max_concurrent,
-                    effective_subagents = max_subagents,
-                    "Capping ACP subagent concurrency to preserve provider request capacity"
-                );
-                controller_vt_cfg.subagents.max_concurrent = max_subagents;
-            }
-            Some(_) => {}
-        }
-    }
 
     let controller_config = SubagentControllerConfig {
         workspace_root: config.workspace.clone(),
@@ -181,24 +176,61 @@ async fn attach_acp_subagent_controller(
         pty_manager: registry.pty_manager().clone(),
         managed_background_runtime: false,
     };
-    match SubagentController::new(controller_config).await {
-        Ok(controller) => {
-            let controller = Arc::new(controller);
-            let mut failures = Vec::new();
-            if controller_vt_cfg.subagents.background.auto_restore
-                && let Err(error) = controller.restore_background_subagents().await
-            {
-                failures.push(format!("failed to restore background subagents: {error}"));
-            }
-            registry.set_subagent_controller(controller);
-            if failures.is_empty() {
-                OptionalSetupOutcome::Attached
-            } else {
-                OptionalSetupOutcome::AttachedWithDegradation(failures)
-            }
-        }
-        Err(error) => OptionalSetupOutcome::Failed(error.to_string()),
+    let controller = match SubagentController::new(controller_config).await {
+        Ok(controller) => Arc::new(controller),
+        Err(error) => return OptionalSetupOutcome::Failed(error.to_string()),
+    };
+    let failures = restore_configured_background_subagents(&controller, &controller_vt_cfg).await;
+    registry.set_subagent_controller(controller);
+    OptionalSetupOutcome::attached_with_degradation(failures)
+}
+
+fn configure_acp_subagents(
+    vt_cfg: Option<&VTCodeConfig>,
+    config: &CoreAgentConfig,
+    custom_providers: &[CustomProviderConfig],
+) -> AcpSubagentConfiguration {
+    let Some(mut controller_vt_cfg) = vt_cfg.filter(|config| config.subagents.enabled).cloned() else {
+        return AcpSubagentConfiguration::DisabledByConfiguration;
+    };
+    let max_in_flight = custom_providers
+        .iter()
+        .find(|provider| provider.name.eq_ignore_ascii_case(&config.provider))
+        .and_then(|provider| provider.request_policy.max_in_flight_requests);
+    let Some(max_in_flight) = max_in_flight else {
+        return AcpSubagentConfiguration::Ready(Box::new(controller_vt_cfg));
+    };
+    let Some(max_subagents) =
+        effective_acp_subagent_concurrency(controller_vt_cfg.subagents.max_concurrent, Some(max_in_flight))
+    else {
+        return AcpSubagentConfiguration::DisabledByPolicy;
+    };
+    if controller_vt_cfg.subagents.max_concurrent > max_subagents {
+        debug!(
+            provider = %config.provider,
+            max_in_flight,
+            configured_subagents = controller_vt_cfg.subagents.max_concurrent,
+            effective_subagents = max_subagents,
+            "Capping ACP subagent concurrency to preserve provider request capacity"
+        );
+        controller_vt_cfg.subagents.max_concurrent = max_subagents;
     }
+    AcpSubagentConfiguration::Ready(Box::new(controller_vt_cfg))
+}
+
+async fn restore_configured_background_subagents(
+    controller: &SubagentController,
+    config: &VTCodeConfig,
+) -> Vec<String> {
+    if !config.subagents.background.auto_restore {
+        return Vec::new();
+    }
+    controller
+        .restore_background_subagents()
+        .await
+        .err()
+        .map(|error| vec![format!("failed to restore background subagents: {error}")])
+        .unwrap_or_default()
 }
 
 /// Attach the parent session's MCP client and eagerly discover its tools.
@@ -216,63 +248,86 @@ async fn attach_acp_mcp_client(
     let Some(config) = vt_cfg.filter(|config| config.mcp.enabled) else {
         return OptionalSetupOutcome::DisabledByConfiguration;
     };
-
-    let mut failures = Vec::new();
-    let plugin_workspace = workspace_root.to_path_buf();
-    let plugin_providers =
-        match tokio::task::spawn_blocking(move || discover_plugin_mcp_providers(&plugin_workspace)).await {
-            Ok(providers) => providers,
-            Err(error) => {
-                failures.push(format!("failed to discover Agent Plugin MCP providers: {error}"));
-                Vec::new()
-            }
-        };
-    let mcp_config = effective_acp_mcp_config(config, plugin_providers);
-
-    if let Err(error) = validate_mcp_config(&mcp_config) {
-        failures.push(format!("MCP configuration validation failed: {error}"));
-    }
-
-    let sandbox_context = if config.sandbox.enabled
-        && !matches!(config.sandbox.default_policy, vtcode_config::SandboxPolicy::DangerFullAccess)
-    {
-        match sandbox_policy_from_runtime_config(&config.sandbox, workspace_root) {
-            Ok(policy) => Some(McpSandboxContext::new(policy, workspace_root)),
-            Err(error) => {
-                // Never fall back to an unsandboxed stdio launch when the
-                // configured sandbox cannot be constructed.
-                return OptionalSetupOutcome::Failed(format!("unable to construct MCP sandbox policy: {error}"));
-            }
-        }
-    } else {
-        None
+    let setup = match prepare_acp_mcp_setup(config, workspace_root).await {
+        Ok(setup) => setup,
+        Err(reason) => return OptionalSetupOutcome::Failed(reason),
     };
-
-    let enabled_provider_count = mcp_config.providers.iter().filter(|provider| provider.enabled).count();
-    let mut client = McpClient::with_sandbox_context(mcp_config, sandbox_context);
+    let AcpMcpSetupPlan {
+        config,
+        sandbox_context,
+        enabled_provider_count,
+        mut failures,
+    } = setup;
+    let mut client = McpClient::with_sandbox_context(config, sandbox_context);
     match client.initialize().await {
         Ok(()) => {}
         Err(error) => {
             return OptionalSetupOutcome::Failed(format!("MCP client initialization failed: {error}"));
         }
     }
-
     let initialized_provider_count = client.get_status().provider_count;
     if initialized_provider_count < enabled_provider_count {
         failures.push(format!(
             "initialized {initialized_provider_count} of {enabled_provider_count} configured MCP providers"
         ));
     }
-
     let client = Arc::new(client);
     registry.set_mcp_client(client).await;
     if let Err(error) = registry.refresh_mcp_tools().await {
         failures.push(format!("failed to register MCP proxy tools: {error}"));
     }
-    if failures.is_empty() {
-        OptionalSetupOutcome::Attached
+    OptionalSetupOutcome::attached_with_degradation(failures)
+}
+
+struct AcpMcpSetupPlan {
+    config: vtcode_config::mcp::McpClientConfig,
+    sandbox_context: Option<McpSandboxContext>,
+    enabled_provider_count: usize,
+    failures: Vec<String>,
+}
+
+async fn prepare_acp_mcp_setup(
+    config: &VTCodeConfig,
+    workspace_root: &std::path::Path,
+) -> Result<AcpMcpSetupPlan, String> {
+    let (plugin_providers, mut failures) = discover_acp_plugin_mcp_providers(workspace_root).await;
+    let mcp_config = effective_acp_mcp_config(config, plugin_providers);
+    if let Err(error) = validate_mcp_config(&mcp_config) {
+        failures.push(format!("MCP configuration validation failed: {error}"));
+    }
+    let sandbox_context = acp_mcp_sandbox_context(config, workspace_root)
+        .map_err(|error| format!("unable to construct MCP sandbox policy: {error}"))?;
+    let enabled_provider_count = mcp_config.providers.iter().filter(|provider| provider.enabled).count();
+    Ok(AcpMcpSetupPlan {
+        config: mcp_config,
+        sandbox_context,
+        enabled_provider_count,
+        failures,
+    })
+}
+
+async fn discover_acp_plugin_mcp_providers(
+    workspace_root: &std::path::Path,
+) -> (Vec<vtcode_config::mcp::McpProviderConfig>, Vec<String>) {
+    let plugin_workspace = workspace_root.to_path_buf();
+    match tokio::task::spawn_blocking(move || discover_plugin_mcp_providers(&plugin_workspace)).await {
+        Ok(providers) => (providers, Vec::new()),
+        Err(error) => (Vec::new(), vec![format!("failed to discover Agent Plugin MCP providers: {error}")]),
+    }
+}
+
+fn acp_mcp_sandbox_context(
+    config: &VTCodeConfig,
+    workspace_root: &std::path::Path,
+) -> anyhow::Result<Option<McpSandboxContext>> {
+    if config.sandbox.enabled
+        && !matches!(config.sandbox.default_policy, vtcode_config::SandboxPolicy::DangerFullAccess)
+    {
+        // Never fall back to an unsandboxed stdio launch when policy construction fails.
+        let policy = sandbox_policy_from_runtime_config(&config.sandbox, workspace_root)?;
+        Ok(Some(McpSandboxContext::new(policy, workspace_root)))
     } else {
-        OptionalSetupOutcome::AttachedWithDegradation(failures)
+        Ok(None)
     }
 }
 

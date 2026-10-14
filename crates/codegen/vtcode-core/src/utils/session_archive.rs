@@ -1280,11 +1280,25 @@ pub async fn list_recent_sessions(limit: usize) -> Result<Vec<SessionListing>> {
         .await
         .context("failed to resolve session directory for listing")?;
 
+    let Some(session_paths) = scan_session_archive_paths(sessions_dir).await? else {
+        return Ok(Vec::new());
+    };
+
+    let mut all_listings = load_session_listings(&session_paths).await?;
+    all_listings.sort_by(|a, b| b.snapshot.ended_at.cmp(&a.snapshot.ended_at));
+    if limit > 0 && all_listings.len() > limit {
+        all_listings.truncate(limit);
+    }
+
+    Ok(all_listings)
+}
+
+async fn scan_session_archive_paths(sessions_dir: PathBuf) -> Result<Option<Vec<PathBuf>>> {
     // `std::fs::read_dir` is a blocking directory scan; run it off the async
     // executor and collect paths before spawning parallel read tasks. See `# Blocking`
     // docs in `src/agent/runloop/git.rs`.
     let scan_path = sessions_dir.clone();
-    let session_paths = tokio::task::spawn_blocking(move || -> Result<Option<Vec<PathBuf>>> {
+    tokio::task::spawn_blocking(move || -> Result<Option<Vec<PathBuf>>> {
         let entries = match fs::read_dir(&sessions_dir) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -1305,20 +1319,26 @@ pub async fn list_recent_sessions(limit: usize) -> Result<Vec<SessionListing>> {
         Ok(Some(paths))
     })
     .await
-    .with_context(|| format!("session directory scan task failed for {}", scan_path.display()))??;
-    let Some(session_paths) = session_paths else {
-        return Ok(Vec::new());
-    };
+    .with_context(|| format!("session directory scan task failed for {}", scan_path.display()))?
+}
 
+async fn load_session_listings(session_paths: &[PathBuf]) -> Result<Vec<SessionListing>> {
     // Process session files in parallel for better performance with large archives
     // Batch processing to avoid overwhelming the system with too many concurrent tasks
     const BATCH_SIZE: usize = 10;
     let mut all_listings = Vec::new();
 
     for batch in session_paths.chunks(BATCH_SIZE) {
-        let mut tasks = Vec::with_capacity(batch.len());
+        all_listings.extend(load_session_listing_batch(batch).await?);
+    }
 
-        for path in batch {
+    Ok(all_listings)
+}
+
+async fn load_session_listing_batch(batch: &[PathBuf]) -> Result<Vec<SessionListing>> {
+    let tasks = batch
+        .iter()
+        .map(|path| {
             let path = path.clone();
             let task_path = path.clone();
             let task = tokio::task::spawn(async move {
@@ -1327,32 +1347,27 @@ pub async fn list_recent_sessions(limit: usize) -> Result<Vec<SessionListing>> {
                     .with_context(|| format!("failed to load session archive {}", path.display()))?;
                 Ok::<_, anyhow::Error>(SessionListing { path, snapshot })
             });
-            tasks.push((task_path, task));
-        }
+            (task_path, task)
+        })
+        .collect::<Vec<_>>();
+    let mut listings = Vec::with_capacity(tasks.len());
 
-        // Collect results from this batch
-        for (path, task) in tasks {
-            let result = task
-                .await
-                .with_context(|| format!("failed to join session archive read task for {}", path.display()))?;
-            match result {
-                Ok(listing) => all_listings.push(listing),
-                Err(error) => tracing::warn!(
-                    archive = %path.display(),
-                    %error,
-                    "Skipping unreadable session archive during listing"
-                ),
-            }
+    // Collect results from this batch.
+    for (path, task) in tasks {
+        let result = task
+            .await
+            .with_context(|| format!("failed to join session archive read task for {}", path.display()))?;
+        match result {
+            Ok(listing) => listings.push(listing),
+            Err(error) => tracing::warn!(
+                archive = %path.display(),
+                %error,
+                "Skipping unreadable session archive during listing"
+            ),
         }
     }
 
-    // Sort and limit results
-    all_listings.sort_by(|a, b| b.snapshot.ended_at.cmp(&a.snapshot.ended_at));
-    if limit > 0 && all_listings.len() > limit {
-        all_listings.truncate(limit);
-    }
-
-    Ok(all_listings)
+    Ok(listings)
 }
 
 /// Find a session archive by its identifier (file stem) without needing to list all sessions.
@@ -1697,55 +1712,88 @@ fn truncate_preview(input: &str, max_chars: usize) -> String {
 }
 
 fn compact_snapshot_to_max_bytes(mut snapshot: SessionSnapshot, max_bytes: usize) -> Result<SessionSnapshot> {
-    bound_client_metadata(&mut snapshot.metadata.client_metadata);
+    let client_metadata_before_compaction = prepare_snapshot_client_metadata(&mut snapshot, max_bytes);
     if max_bytes == 0 {
-        let discarded_entries = snapshot.metadata.client_metadata.take().map_or(0, |metadata| metadata.len());
-        if discarded_entries > 0 {
-            tracing::warn!(
-                discarded_entries,
-                "Dropped client metadata because the session archive snapshot budget is zero"
-            );
-        }
-        minimize_snapshot_payload(&mut snapshot);
         return Ok(snapshot);
     }
 
-    let client_metadata_before_compaction = snapshot.metadata.client_metadata.clone();
-    while serde_json::to_vec(&snapshot)?.len() > max_bytes {
-        if trim_oldest_snapshot_entries(&mut snapshot) {
-            continue;
-        }
-        if strip_snapshot_overhead(&mut snapshot) {
-            continue;
-        }
-        if shrink_snapshot_strings(&mut snapshot) {
-            continue;
-        }
-        break;
+    compact_snapshot_payload_to_fit(&mut snapshot, max_bytes)?;
+    report_client_metadata_compaction(
+        &snapshot.metadata.client_metadata,
+        &client_metadata_before_compaction,
+        max_bytes,
+    );
+
+    Ok(snapshot)
+}
+
+fn prepare_snapshot_client_metadata(
+    snapshot: &mut SessionSnapshot,
+    max_bytes: usize,
+) -> Option<serde_json::Map<String, serde_json::Value>> {
+    bound_client_metadata(&mut snapshot.metadata.client_metadata);
+    if max_bytes > 0 {
+        return snapshot.metadata.client_metadata.clone();
     }
 
-    if serde_json::to_vec(&snapshot)?.len() > max_bytes {
-        minimize_snapshot_payload(&mut snapshot);
-        while serde_json::to_vec(&snapshot)?.len() > max_bytes {
-            if !shrink_snapshot_strings(&mut snapshot) {
-                break;
-            }
-        }
+    let discarded_entries = snapshot.metadata.client_metadata.take().map_or(0, |metadata| metadata.len());
+    if discarded_entries > 0 {
+        tracing::warn!(
+            discarded_entries,
+            "Dropped client metadata because the session archive snapshot budget is zero"
+        );
+    }
+    minimize_snapshot_payload(snapshot);
+    None
+}
+
+fn compact_snapshot_payload_to_fit(snapshot: &mut SessionSnapshot, max_bytes: usize) -> Result<()> {
+    while snapshot_serialized_size(snapshot)? > max_bytes && reduce_snapshot_payload_once(snapshot) {}
+
+    if snapshot_serialized_size(snapshot)? > max_bytes {
+        minimize_snapshot_payload(snapshot);
+        shrink_snapshot_strings_until_fit(snapshot, max_bytes)?;
     }
 
-    let compacted_size = serde_json::to_vec(&snapshot)?.len();
+    ensure_snapshot_fits(snapshot, max_bytes)
+}
+
+fn reduce_snapshot_payload_once(snapshot: &mut SessionSnapshot) -> bool {
+    trim_oldest_snapshot_entries(snapshot) || strip_snapshot_overhead(snapshot) || shrink_snapshot_strings(snapshot)
+}
+
+fn shrink_snapshot_strings_until_fit(snapshot: &mut SessionSnapshot, max_bytes: usize) -> Result<()> {
+    while snapshot_serialized_size(snapshot)? > max_bytes {
+        if !shrink_snapshot_strings(snapshot) {
+            break;
+        }
+    }
+    Ok(())
+}
+
+fn ensure_snapshot_fits(snapshot: &SessionSnapshot, max_bytes: usize) -> Result<()> {
+    let compacted_size = snapshot_serialized_size(snapshot)?;
     if compacted_size > max_bytes {
         anyhow::bail!(
             "session archive snapshot cannot fit the configured size limit after compaction: {compacted_size} > {max_bytes} bytes"
         );
     }
+    Ok(())
+}
 
-    if snapshot.metadata.client_metadata != client_metadata_before_compaction {
-        let original_entries = client_metadata_before_compaction.as_ref().map_or(0, serde_json::Map::len);
-        let retained_entries = snapshot.metadata.client_metadata.as_ref().map_or(0, serde_json::Map::len);
-        let retained_bytes = snapshot
-            .metadata
-            .client_metadata
+fn snapshot_serialized_size(snapshot: &SessionSnapshot) -> Result<usize> {
+    Ok(serde_json::to_vec(snapshot)?.len())
+}
+
+fn report_client_metadata_compaction(
+    client_metadata: &Option<serde_json::Map<String, serde_json::Value>>,
+    original_metadata: &Option<serde_json::Map<String, serde_json::Value>>,
+    max_bytes: usize,
+) {
+    if client_metadata != original_metadata {
+        let original_entries = original_metadata.as_ref().map_or(0, serde_json::Map::len);
+        let retained_entries = client_metadata.as_ref().map_or(0, serde_json::Map::len);
+        let retained_bytes = client_metadata
             .as_ref()
             .and_then(|metadata| serialized_json_size_at_most(metadata, MAX_CLIENT_METADATA_BYTES))
             .unwrap_or(0);
@@ -1758,8 +1806,6 @@ fn compact_snapshot_to_max_bytes(mut snapshot: SessionSnapshot, max_bytes: usize
             "Reduced client metadata to fit the session archive snapshot size limit"
         );
     }
-
-    Ok(snapshot)
 }
 
 fn prepare_snapshot_for_write(snapshot: SessionSnapshot) -> Result<Option<SessionSnapshot>> {

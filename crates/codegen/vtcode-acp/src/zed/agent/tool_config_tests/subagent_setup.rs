@@ -1,0 +1,71 @@
+//! Tests attachment and availability of optional ACP subagent support.
+use super::super::{OptionalSetupOutcome, attach_acp_subagent_controller};
+use super::support::{build_agent, build_agent_with_config, core_agent_config, definition_names};
+use assert_fs::TempDir;
+use serde_json::json;
+use vtcode_config::core::CustomProviderConfig;
+use vtcode_core::config::constants::tools;
+use vtcode_core::config::{ToolsConfig, VTCodeConfig};
+use vtcode_core::tools::registry::ToolRegistry as CoreToolRegistry;
+
+#[tokio::test]
+async fn enabled_subagents_are_exposed_to_acp_build_agents() {
+    let temp = TempDir::new().unwrap();
+    let mut vt_cfg = VTCodeConfig::default();
+    vt_cfg.subagents.enabled = true;
+    vt_cfg.subagents.background.auto_restore = false;
+    let agent = build_agent_with_config(temp.path(), ToolsConfig::default(), Some(&vt_cfg)).await;
+
+    assert!(agent.local_tool_registry.has_subagent_controller());
+    let names = definition_names(agent.tool_definitions(true, &[], "build").expect("build agent tools"));
+    assert!(names.iter().any(|name| name == tools::AGENT));
+}
+#[tokio::test]
+async fn optional_setup_reports_subagents_disabled_by_provider_concurrency_policy() {
+    let temp = TempDir::new().unwrap();
+    let registry = CoreToolRegistry::new(temp.path().to_path_buf()).await;
+    let mut vt_cfg = VTCodeConfig::default();
+    vt_cfg.subagents.enabled = true;
+    let core_config = core_agent_config(temp.path());
+    let provider: CustomProviderConfig = serde_json::from_value(json!({
+        "name": "test-provider",
+        "display_name": "Test provider",
+        "base_url": "https://example.invalid/v1",
+        "model": "test-model",
+        "request_policy": { "max_in_flight_requests": 1 }
+    }))
+    .expect("valid custom provider configuration");
+
+    let outcome = attach_acp_subagent_controller(&registry, &core_config, &[provider], Some(&vt_cfg), false).await;
+
+    assert_eq!(outcome, OptionalSetupOutcome::DisabledByPolicy);
+    assert!(!registry.has_subagent_controller());
+}
+
+#[tokio::test]
+async fn optional_setup_reports_subagent_initialization_failure() {
+    let temp = TempDir::new().unwrap();
+    let registry = CoreToolRegistry::new(temp.path().to_path_buf()).await;
+    let mut vt_cfg = VTCodeConfig::default();
+    vt_cfg.subagents.enabled = true;
+    vt_cfg.subagents.background.auto_restore = false;
+    vt_cfg.hooks.lifecycle.session_start = serde_json::from_value(json!([
+        { "matcher": "[", "hooks": [] }
+    ]))
+    .expect("lifecycle hook configuration shape");
+    let core_config = core_agent_config(temp.path());
+
+    let outcome = attach_acp_subagent_controller(&registry, &core_config, &[], Some(&vt_cfg), false).await;
+
+    assert!(matches!(outcome, OptionalSetupOutcome::Failed(_)));
+    assert!(!registry.has_subagent_controller());
+}
+#[tokio::test]
+async fn unavailable_subagent_controller_keeps_agent_tool_hidden() {
+    let temp = TempDir::new().unwrap();
+    let agent = build_agent(temp.path()).await;
+
+    assert!(!agent.local_tool_registry.has_subagent_controller());
+    let names = definition_names(agent.tool_definitions(true, &[], "build").expect("build agent tools"));
+    assert!(!names.iter().any(|name| name == tools::AGENT));
+}

@@ -7,16 +7,18 @@ use super::super::types::SessionHandle;
 use super::ZedAgent;
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderRequestRuntime};
 use anyhow::{Context, Result};
+use std::future::Future;
 use std::sync::Arc;
 use tokio::time::{Instant, sleep_until};
 use tracing::{info, warn};
-use vtcode_core::compaction::auto::{AutoCompactionInput, auto_compact_messages};
+use vtcode_core::compaction::auto::{AutoCompactionInput, AutoCompactionOutcome, auto_compact_messages};
 use vtcode_core::compaction::memory_envelope::{
     MemoryEnvelopePlacement, effective_compaction_threshold, local_compaction_config,
 };
 use vtcode_core::compaction::{CompactionStrategy, ManualCompactionOptions, manual_compaction_strategy};
 use vtcode_core::exec::events::{CompactionMode, CompactionTrigger};
 use vtcode_core::llm::provider::{LLMProvider, Message, ToolDefinition};
+use vtcode_core::{config::VTCodeConfig, core::threads::ThreadRuntimeHandle};
 
 const DEFAULT_OUTPUT_RESERVE_TOKENS: usize = 16_384;
 const ADMISSION_SAFETY_MARGIN_TOKENS: usize = 1_024;
@@ -58,57 +60,87 @@ fn should_compact(provider: &dyn LLMProvider, model: &str, prompt_tokens: usize)
         .is_some_and(|budget| prompt_tokens >= budget)
 }
 
+pub(super) struct CompactionRequest<'a> {
+    pub(super) session: &'a SessionHandle,
+    pub(super) provider: &'a dyn LLMProvider,
+    pub(super) runtime: &'a ProviderRequestRuntime,
+    pub(super) model: &'a str,
+    pub(super) tools: Option<&'a Arc<Vec<ToolDefinition>>>,
+}
+
 impl ZedAgent {
-    pub(super) async fn maybe_compact_session(
-        &self,
-        session: &SessionHandle,
-        provider: &dyn LLMProvider,
-        runtime: &ProviderRequestRuntime,
-        model: &str,
-        tools: Option<&Arc<Vec<ToolDefinition>>>,
-    ) -> Result<bool> {
-        let Some(vt_config) = self.vt_config.as_ref() else {
+    pub(super) async fn maybe_compact_session(&self, request: CompactionRequest<'_>) -> Result<bool> {
+        let CompactionRequest { session, provider, runtime, model, tools } = request;
+        let Some(vt_config) = self.vt_config.as_deref() else {
             return Ok(false);
         };
 
         let resolved_messages = self.resolved_messages(session)?;
         let prompt_tokens = estimated_prompt_tokens(&resolved_messages, tools);
-        let configured_threshold = effective_compaction_threshold(Some(vt_config), provider, model);
-        let admission_budget = admission_prompt_budget(provider, model);
-        let trigger = configured_threshold.into_iter().chain(admission_budget).min();
-        if trigger.is_none_or(|budget| prompt_tokens < budget) {
+        let Some(decision) = CompactionDecision::for_prompt(Some(vt_config), provider, model, prompt_tokens) else {
             return Ok(false);
-        }
-
-        let (thread, session_id, mut history, mut auto_compact_suppressed) = {
-            let data = session
-                .data
-                .lock()
-                .map_err(|error| anyhow::anyhow!("ACP session lock poisoned: {error}"))?;
-            (
-                data.thread.clone(),
-                data.session_id.to_string(),
-                data.thread.messages(),
-                data.auto_compact_suppressed,
-            )
         };
-        let original_len = history.len();
-        let force_compaction = admission_budget.is_some_and(|budget| prompt_tokens >= budget)
-            && configured_threshold.is_none_or(|threshold| prompt_tokens < threshold);
 
-        if let Some(hooks) = session
-            .lifecycle_hooks()
-            .context("reading ACP session lifecycle hooks for compaction")?
-        {
-            let compaction_mode = lifecycle_compaction_mode(manual_compaction_strategy(provider, model));
-            let outcome = hooks
-                .run_pre_compact(CompactionTrigger::Auto, compaction_mode, original_len, 0, None)
-                .await
-                .context("ACP PreCompact hooks failed")?;
-            for message in outcome.messages {
-                warn!(level = ?message.level, message = %message.text, "ACP PreCompact hook");
-            }
-        }
+        let snapshot = CompactionSessionSnapshot::load(session)?;
+        let original_len = snapshot.history.len();
+        let attempt = self
+            .run_compaction(CompactionRun {
+                session,
+                provider,
+                runtime,
+                model,
+                vt_config,
+                decision,
+                snapshot,
+            })
+            .await?;
+        let Some(outcome) = verify_compaction_result(attempt.outcome, decision)? else {
+            return Ok(false);
+        };
+
+        let compacted_prompt_tokens = self
+            .commit_compacted_history(CompactionCommit {
+                session,
+                thread: attempt.thread,
+                history: attempt.history,
+                tools,
+                decision,
+            })
+            .await?;
+        info!(
+            provider = provider.name(),
+            model,
+            prompt_tokens = decision.prompt_tokens,
+            compacted_prompt_tokens,
+            original_len,
+            compacted_len = outcome.compacted_len,
+            compaction_mode = outcome.mode.as_str(),
+            configured_threshold = ?decision.configured_threshold,
+            admission_budget = ?decision.admission_budget,
+            "Applied automatic ACP conversation compaction"
+        );
+        Ok(true)
+    }
+
+    async fn run_compaction(&self, run: CompactionRun<'_>) -> Result<CompactionAttempt> {
+        let CompactionRun {
+            session,
+            provider,
+            runtime,
+            model,
+            vt_config,
+            decision,
+            snapshot,
+        } = run;
+        let CompactionSessionSnapshot {
+            thread,
+            session_id,
+            mut history,
+            mut auto_compact_suppressed,
+        } = snapshot;
+        let original_len = history.len();
+
+        run_pre_compact_hooks(session, provider, model, original_len).await?;
 
         let permit = runtime.acquire(&session.cancellation).await.map_err(|error| match error {
             ProviderAdmissionError::Cancelled => anyhow::anyhow!("ACP compaction cancelled"),
@@ -132,7 +164,7 @@ impl ZedAgent {
                     session_id: &session_id,
                     workspace_root,
                     vt_cfg: Some(vt_config),
-                    current_token_usage: prompt_tokens,
+                    current_token_usage: decision.prompt_tokens,
                     touched_files: &[],
                     engine_cfg: local_compaction_config(Some(vt_config), false),
                     manual_options: ManualCompactionOptions {
@@ -142,24 +174,13 @@ impl ZedAgent {
                     placement: MemoryEnvelopePlacement::BeforeLastUserOrSummary,
                     prefire: None,
                     auto_compact_suppressed: &mut auto_compact_suppressed,
-                    force_compaction,
+                    force_compaction: decision.force_compaction,
                     steering_update: None,
                 },
                 &mut history,
             );
             tokio::pin!(compaction);
-            if let Some(deadline) = total_deadline {
-                tokio::select! {
-                    () = session.cancellation.cancelled() => Err(anyhow::anyhow!("ACP compaction cancelled")),
-                    () = sleep_until(deadline) => Err(anyhow::anyhow!("ACP compaction exceeded the provider total-generation timeout")),
-                    result = &mut compaction => result.context("ACP automatic context compaction failed"),
-                }
-            } else {
-                tokio::select! {
-                    () = session.cancellation.cancelled() => Err(anyhow::anyhow!("ACP compaction cancelled")),
-                    result = &mut compaction => result.context("ACP automatic context compaction failed"),
-                }
-            }
+            await_compaction(session, total_deadline, compaction).await
         };
         drop(permit);
 
@@ -172,45 +193,175 @@ impl ZedAgent {
         }
         let outcome = outcome_result?;
 
-        let Some(outcome) = outcome else {
-            warn!(
-                prompt_tokens,
-                ?configured_threshold,
-                ?admission_budget,
-                "ACP context pressure crossed its admission budget but compaction made no change"
-            );
-            if admission_budget.is_some_and(|budget| prompt_tokens >= budget) {
-                anyhow::bail!(
-                    "ACP prompt uses an estimated {prompt_tokens} tokens, exceeds its safe provider admission budget, and automatic compaction made no change"
-                );
-            }
-            return Ok(false);
-        };
+        Ok(CompactionAttempt { outcome, thread, history })
+    }
 
+    async fn commit_compacted_history(&self, commit: CompactionCommit<'_>) -> Result<usize> {
+        let CompactionCommit { session, thread, history, tools, decision } = commit;
         thread.replace_messages(history);
         if let Err(error) = self.checkpoint_session(session).await {
             warn!(%error, "Failed to persist compacted ACP session checkpoint");
         }
         let compacted_prompt_tokens = estimated_prompt_tokens(&self.resolved_messages(session)?, tools);
-        if admission_budget.is_some_and(|budget| compacted_prompt_tokens >= budget) {
+        if decision.is_over_admission_budget(compacted_prompt_tokens) {
             anyhow::bail!(
-                "ACP compaction reduced the prompt from an estimated {prompt_tokens} to {compacted_prompt_tokens} tokens, which still exceeds its safe provider admission budget"
+                "ACP compaction reduced the prompt from an estimated {} to {compacted_prompt_tokens} tokens, which still exceeds its safe provider admission budget",
+                decision.prompt_tokens
             );
         }
-        info!(
-            provider = provider.name(),
-            model,
-            prompt_tokens,
-            compacted_prompt_tokens,
-            original_len,
-            compacted_len = outcome.compacted_len,
-            compaction_mode = outcome.mode.as_str(),
-            ?configured_threshold,
-            ?admission_budget,
-            "Applied automatic ACP conversation compaction"
-        );
-        Ok(true)
+        Ok(compacted_prompt_tokens)
     }
+}
+
+#[derive(Clone, Copy)]
+struct CompactionDecision {
+    prompt_tokens: usize,
+    configured_threshold: Option<usize>,
+    admission_budget: Option<usize>,
+    force_compaction: bool,
+}
+
+impl CompactionDecision {
+    fn for_prompt(
+        vt_config: Option<&VTCodeConfig>,
+        provider: &dyn LLMProvider,
+        model: &str,
+        prompt_tokens: usize,
+    ) -> Option<Self> {
+        let configured_threshold = effective_compaction_threshold(vt_config, provider, model);
+        let admission_budget = admission_prompt_budget(provider, model);
+        let trigger = configured_threshold.into_iter().chain(admission_budget).min();
+        if trigger.is_none_or(|budget| prompt_tokens < budget) {
+            return None;
+        }
+
+        let force_compaction = admission_budget.is_some_and(|budget| prompt_tokens >= budget)
+            && configured_threshold.is_none_or(|threshold| prompt_tokens < threshold);
+        Some(Self {
+            prompt_tokens,
+            configured_threshold,
+            admission_budget,
+            force_compaction,
+        })
+    }
+
+    fn is_over_admission_budget(self, prompt_tokens: usize) -> bool {
+        self.admission_budget.is_some_and(|budget| prompt_tokens >= budget)
+    }
+}
+
+struct CompactionSessionSnapshot {
+    thread: ThreadRuntimeHandle,
+    session_id: String,
+    history: Vec<Message>,
+    auto_compact_suppressed: u8,
+}
+
+impl CompactionSessionSnapshot {
+    fn load(session: &SessionHandle) -> Result<Self> {
+        let data = session
+            .data
+            .lock()
+            .map_err(|error| anyhow::anyhow!("ACP session lock poisoned: {error}"))?;
+        Ok(Self {
+            thread: data.thread.clone(),
+            session_id: data.session_id.to_string(),
+            history: data.thread.messages(),
+            auto_compact_suppressed: data.auto_compact_suppressed,
+        })
+    }
+}
+
+struct CompactionRun<'a> {
+    session: &'a SessionHandle,
+    provider: &'a dyn LLMProvider,
+    runtime: &'a ProviderRequestRuntime,
+    model: &'a str,
+    vt_config: &'a VTCodeConfig,
+    decision: CompactionDecision,
+    snapshot: CompactionSessionSnapshot,
+}
+
+struct CompactionAttempt {
+    outcome: Option<AutoCompactionOutcome>,
+    thread: ThreadRuntimeHandle,
+    history: Vec<Message>,
+}
+
+struct CompactionCommit<'a> {
+    session: &'a SessionHandle,
+    thread: ThreadRuntimeHandle,
+    history: Vec<Message>,
+    tools: Option<&'a Arc<Vec<ToolDefinition>>>,
+    decision: CompactionDecision,
+}
+
+async fn run_pre_compact_hooks(
+    session: &SessionHandle,
+    provider: &dyn LLMProvider,
+    model: &str,
+    original_len: usize,
+) -> Result<()> {
+    let Some(hooks) = session
+        .lifecycle_hooks()
+        .context("reading ACP session lifecycle hooks for compaction")?
+    else {
+        return Ok(());
+    };
+
+    let compaction_mode = lifecycle_compaction_mode(manual_compaction_strategy(provider, model));
+    let outcome = hooks
+        .run_pre_compact(CompactionTrigger::Auto, compaction_mode, original_len, 0, None)
+        .await
+        .context("ACP PreCompact hooks failed")?;
+    for message in outcome.messages {
+        warn!(level = ?message.level, message = %message.text, "ACP PreCompact hook");
+    }
+    Ok(())
+}
+
+async fn await_compaction<F>(
+    session: &SessionHandle,
+    total_deadline: Option<Instant>,
+    compaction: std::pin::Pin<&mut F>,
+) -> Result<Option<AutoCompactionOutcome>>
+where
+    F: Future<Output = Result<Option<AutoCompactionOutcome>>>,
+{
+    if let Some(deadline) = total_deadline {
+        tokio::select! {
+            () = session.cancellation.cancelled() => Err(anyhow::anyhow!("ACP compaction cancelled")),
+            () = sleep_until(deadline) => Err(anyhow::anyhow!("ACP compaction exceeded the provider total-generation timeout")),
+            result = compaction => result.context("ACP automatic context compaction failed"),
+        }
+    } else {
+        tokio::select! {
+            () = session.cancellation.cancelled() => Err(anyhow::anyhow!("ACP compaction cancelled")),
+            result = compaction => result.context("ACP automatic context compaction failed"),
+        }
+    }
+}
+
+fn verify_compaction_result(
+    outcome: Option<AutoCompactionOutcome>,
+    decision: CompactionDecision,
+) -> Result<Option<AutoCompactionOutcome>> {
+    let Some(outcome) = outcome else {
+        warn!(
+            prompt_tokens = decision.prompt_tokens,
+            configured_threshold = ?decision.configured_threshold,
+            admission_budget = ?decision.admission_budget,
+            "ACP context pressure crossed its admission budget but compaction made no change"
+        );
+        if decision.is_over_admission_budget(decision.prompt_tokens) {
+            anyhow::bail!(
+                "ACP prompt uses an estimated {} tokens, exceeds its safe provider admission budget, and automatic compaction made no change",
+                decision.prompt_tokens
+            );
+        }
+        return Ok(None);
+    };
+    Ok(Some(outcome))
 }
 
 fn lifecycle_compaction_mode(strategy: CompactionStrategy) -> CompactionMode {

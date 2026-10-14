@@ -42,6 +42,25 @@ fn usable_background_parent_session_id(owner: Option<String>) -> Option<String> 
     owner.filter(|owner| !owner.is_empty())
 }
 
+struct PreparedBackgroundSubprocess {
+    agent_name: String,
+    record_id: String,
+    prompt: String,
+    desired_max_turns: Option<usize>,
+    desired_model_override: Option<String>,
+    desired_reasoning_override: Option<String>,
+    max_turns: Option<usize>,
+    model_override: Option<String>,
+    reasoning_override: Option<String>,
+    parent_session_id: String,
+}
+
+enum ChildWaitOutcome {
+    Notified,
+    Terminal(Box<SubagentStatusEntry>),
+    TimedOut,
+}
+
 impl SubagentController {
     /// Spawns a new subagent child process from a [`SpawnAgentRequest`].
     pub async fn spawn(&self, request: SpawnAgentRequest) -> Result<SubagentStatusEntry> {
@@ -81,14 +100,48 @@ impl SubagentController {
         &self,
         request: SpawnBackgroundSubprocessRequest,
     ) -> Result<BackgroundSubprocessEntry> {
+        self.ensure_background_subprocess_enabled()?;
+        let launch = self.prepare_background_subprocess(request).await?;
+        let _ = self.refresh_background_processes().await?;
+        if let Some(entry) = self.reusable_background_subprocess(&launch).await? {
+            return Ok(entry);
+        }
+
+        let PreparedBackgroundSubprocess {
+            agent_name,
+            record_id,
+            prompt,
+            max_turns,
+            model_override,
+            reasoning_override,
+            parent_session_id,
+            ..
+        } = launch;
+        let launch_overrides = BackgroundLaunchOverrides {
+            prompt: Some(prompt),
+            max_turns,
+            model_override,
+            reasoning_override,
+            parent_session_id: Some(parent_session_id),
+        };
+        self.ensure_background_record_running(agent_name.as_str(), Some(record_id.as_str()), 0, Some(launch_overrides))
+            .await
+    }
+
+    fn ensure_background_subprocess_enabled(&self) -> Result<()> {
         if self.config.managed_background_runtime {
             bail!("managed background subprocesses cannot launch nested background subprocesses");
         }
         if !self.config.vt_cfg.subagents.background.enabled {
             bail!("Background subagents are disabled by configuration");
         }
+        Ok(())
+    }
 
-        let mut request = request;
+    async fn prepare_background_subprocess(
+        &self,
+        mut request: SpawnBackgroundSubprocessRequest,
+    ) -> Result<PreparedBackgroundSubprocess> {
         let delegation = self
             .prepare_delegation_context(
                 request.agent_type.clone(),
@@ -118,51 +171,54 @@ impl SubagentController {
             .reasoning_effort
             .clone()
             .or_else(|| spec.reasoning_effort.as_ref().map(|e| e.as_str().to_string()));
-
         let record_id = background_record_id(spec.name.as_str());
-        let _ = self.refresh_background_processes().await?;
+
+        Ok(PreparedBackgroundSubprocess {
+            agent_name: spec.name.to_string(),
+            record_id,
+            prompt,
+            desired_max_turns,
+            desired_model_override,
+            desired_reasoning_override,
+            max_turns: request.max_turns,
+            model_override: request.model,
+            reasoning_override: request.reasoning_effort,
+            parent_session_id: delegation.parent_session_id,
+        })
+    }
+
+    async fn reusable_background_subprocess(
+        &self,
+        launch: &PreparedBackgroundSubprocess,
+    ) -> Result<Option<BackgroundSubprocessEntry>> {
+        let state = self.state.read().await;
+        let Some(record) = state.background_children.get(&launch.record_id) else {
+            return Ok(None);
+        };
+        if !record.desired_enabled || !record.status.is_active() {
+            return Ok(None);
+        }
+        if current_subagent_invocation_context()
+            .is_some_and(|context| context.parent_session_id != record.parent_session_id)
         {
-            let state = self.state.read().await;
-            if let Some(record) = state.background_children.get(&record_id)
-                && record.desired_enabled
-                && record.status.is_active()
-            {
-                if current_subagent_invocation_context()
-                    .is_some_and(|context| context.parent_session_id != record.parent_session_id)
-                {
-                    bail!("A background subprocess with this agent name is already active");
-                }
-                let conflicts = Self::active_background_launch_conflicts(
-                    record,
-                    prompt.as_str(),
-                    desired_max_turns,
-                    desired_model_override.as_deref(),
-                    desired_reasoning_override.as_deref(),
-                );
-                if !conflicts.is_empty() {
-                    bail!(
-                        "spawn_background_subprocess found active background subprocess '{}' with different {}. Stop or restart the existing subprocess before changing its launch settings.",
-                        spec.name,
-                        conflicts.join(", "),
-                    );
-                }
-                return Ok(record.build_status_entry());
-            }
+            bail!("A background subprocess with this agent name is already active");
         }
 
-        self.ensure_background_record_running(
-            spec.name.as_str(),
-            Some(record_id.as_str()),
-            0,
-            Some(BackgroundLaunchOverrides {
-                prompt: Some(prompt),
-                max_turns: request.max_turns,
-                model_override: request.model,
-                reasoning_override: request.reasoning_effort,
-                parent_session_id: Some(delegation.parent_session_id.clone()),
-            }),
-        )
-        .await
+        let conflicts = Self::active_background_launch_conflicts(
+            record,
+            launch.prompt.as_str(),
+            launch.desired_max_turns,
+            launch.desired_model_override.as_deref(),
+            launch.desired_reasoning_override.as_deref(),
+        );
+        if !conflicts.is_empty() {
+            bail!(
+                "spawn_background_subprocess found active background subprocess '{}' with different {}. Stop or restart the existing subprocess before changing its launch settings.",
+                launch.agent_name,
+                conflicts.join(", "),
+            );
+        }
+        Ok(Some(record.build_status_entry()))
     }
 
     /// Spawns a subagent with a custom [`SubagentSpec`] that must be read-only.
@@ -386,12 +442,8 @@ impl SubagentController {
         for target in targets {
             self.ensure_child_owned_by_invocation(target).await?;
         }
-        for target in targets {
-            if let Ok(entry) = self.status_for_unchecked(target).await
-                && entry.status.is_terminal()
-            {
-                return Ok(Some(entry));
-            }
+        if let Some(entry) = self.first_terminal_wait_target(targets).await {
+            return Ok(Some(entry));
         }
 
         let timeout = std::time::Duration::from_millis(
@@ -400,50 +452,57 @@ impl SubagentController {
         let deadline = tokio::time::Instant::now() + timeout;
 
         loop {
-            // Collect notify handles from child records.
-            let notifies = {
-                let state = self.state.read().await;
-                targets
-                    .iter()
-                    .filter_map(|target| state.children.get(target).map(|record| record.notify.clone()))
-                    .collect::<Vec<_>>()
-            };
-            if notifies.is_empty() {
-                return Ok(None);
+            match self.wait_for_child_change(targets, deadline).await {
+                ChildWaitOutcome::Notified => {}
+                ChildWaitOutcome::Terminal(entry) => return Ok(Some(*entry)),
+                ChildWaitOutcome::TimedOut => return Ok(None),
             }
+        }
+    }
 
-            // Register notified() futures BEFORE checking terminal status.
-            // This prevents a Tokio Notify race condition: if apply_result()
-            // calls notify_waiters() between a status check and future
-            // creation, the notification is permanently lost. By registering
-            // futures first, any concurrent notification either:
-            //   (a) arrives before we poll the future → stored as a permit,
-            //       select! returns immediately, loop re-checks status, or
-            //   (b) arrives after we start waiting → wakes the future normally.
-            let wait_any = select_all(
-                notifies
-                    .into_iter()
-                    .map(|notify| Box::pin(async move { notify.notified().await }))
-                    .collect::<Vec<_>>(),
-            );
-            tokio::pin!(wait_any);
-
-            // Now check if any target is already terminal.
-            for target in targets {
-                if let Ok(entry) = self.status_for_unchecked(target).await
-                    && entry.status.is_terminal()
-                {
-                    return Ok(Some(entry));
-                }
+    async fn first_terminal_wait_target(&self, targets: &[String]) -> Option<SubagentStatusEntry> {
+        for target in targets {
+            if let Ok(entry) = self.status_for_unchecked(target).await
+                && entry.status.is_terminal()
+            {
+                return Some(entry);
             }
+        }
+        None
+    }
 
-            let sleep = tokio::time::sleep_until(deadline);
-            tokio::pin!(sleep);
+    async fn wait_for_child_change(&self, targets: &[String], deadline: tokio::time::Instant) -> ChildWaitOutcome {
+        let notifies = {
+            let state = self.state.read().await;
+            targets
+                .iter()
+                .filter_map(|target| state.children.get(target).map(|record| record.notify.clone()))
+                .collect::<Vec<_>>()
+        };
+        if notifies.is_empty() {
+            return ChildWaitOutcome::TimedOut;
+        }
 
-            tokio::select! {
-                _ = &mut sleep => return Ok(None),
-                _ = &mut wait_any => {}
-            }
+        // Register notified() futures before rechecking status. This closes
+        // the lost-wakeup window between observing state and waiting on Tokio
+        // Notify handles.
+        let wait_any = select_all(
+            notifies
+                .into_iter()
+                .map(|notify| Box::pin(async move { notify.notified().await }))
+                .collect::<Vec<_>>(),
+        );
+        tokio::pin!(wait_any);
+
+        if let Some(entry) = self.first_terminal_wait_target(targets).await {
+            return ChildWaitOutcome::Terminal(Box::new(entry));
+        }
+
+        let sleep = tokio::time::sleep_until(deadline);
+        tokio::pin!(sleep);
+        tokio::select! {
+            _ = &mut sleep => ChildWaitOutcome::TimedOut,
+            _ = &mut wait_any => ChildWaitOutcome::Notified,
         }
     }
 
@@ -791,26 +850,32 @@ impl SubagentController {
     /// are aborted so subagent tasks do not outlive the parent session.
     pub async fn signal_shutdown(&self) {
         self.shutdown_requested.store(true, Ordering::Relaxed);
-        let (nested, entries) = {
-            let mut state = self.state.write().await;
-            let mut nested = Vec::new();
-            for record in state.children.values_mut() {
-                if let Some(handle) = record.handle.take() {
-                    handle.abort();
-                }
-                record.status = SubagentStatus::Closed;
-                record.completed_at = Some(Utc::now());
-                record.notify.notify_waiters();
-                if let Some(controller) = record.child_controller.clone() {
-                    nested.push((controller, record.session_id.clone()));
-                }
-            }
-            let entries = state.children.values().map(ChildRecord::build_status_entry).collect::<Vec<_>>();
-            (nested, entries)
-        };
+        let (nested, entries) = self.close_children_for_shutdown().await;
         for entry in entries {
             self.publish_subagent_progress(entry).await;
         }
+        self.shutdown_nested_controllers(nested).await;
+    }
+
+    async fn close_children_for_shutdown(&self) -> (Vec<(Arc<SubagentController>, String)>, Vec<SubagentStatusEntry>) {
+        let mut state = self.state.write().await;
+        let mut nested = Vec::new();
+        for record in state.children.values_mut() {
+            if let Some(handle) = record.handle.take() {
+                handle.abort();
+            }
+            record.status = SubagentStatus::Closed;
+            record.completed_at = Some(Utc::now());
+            record.notify.notify_waiters();
+            if let Some(controller) = record.child_controller.clone() {
+                nested.push((controller, record.session_id.clone()));
+            }
+        }
+        let entries = state.children.values().map(ChildRecord::build_status_entry).collect::<Vec<_>>();
+        (nested, entries)
+    }
+
+    async fn shutdown_nested_controllers(&self, nested: Vec<(Arc<SubagentController>, String)>) {
         // Mark every child-scoped controller as permanently shut down (so its
         // background state is not saved) and as closing (so a race cannot let
         // a fresh grandchild outlive shutdown), then cascade.

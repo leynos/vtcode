@@ -636,6 +636,17 @@ impl CustomProviderConfig {
     /// Validate that required fields are present and the name doesn't collide
     /// with built-in provider keys.
     pub fn validate(&self) -> Result<(), String> {
+        self.validate_identity()?;
+        self.validate_provider_bounds()?;
+        self.validate_auth()?;
+        self.validate_api_key_env()?;
+        self.validate_models()?;
+        self.request_policy.validate(&self.name)?;
+        self.validate_profiles()?;
+        self.validate_name_is_not_reserved()
+    }
+
+    fn validate_identity(&self) -> Result<(), String> {
         if self.name.trim().is_empty() {
             return Err("custom_providers: `name` must not be empty".to_string());
         }
@@ -655,10 +666,24 @@ impl CustomProviderConfig {
             return Err(format!("custom_providers[{}]: `base_url` must not be empty", self.name));
         }
 
+        Ok(())
+    }
+
+    fn validate_provider_bounds(&self) -> Result<(), String> {
+        self.validate_context_window_bound()?;
+        self.validate_sampling_bounds()?;
+        self.validate_output_bounds()
+    }
+
+    fn validate_context_window_bound(&self) -> Result<(), String> {
         if self.context_window == Some(0) {
             return Err(format!("custom_providers[{}]: `context_window` must be greater than 0", self.name));
         }
 
+        Ok(())
+    }
+
+    fn validate_sampling_bounds(&self) -> Result<(), String> {
         if let Some(temperature) = self.temperature
             && !(0.0..=2.0).contains(&temperature)
         {
@@ -688,6 +713,10 @@ impl CustomProviderConfig {
             }
         }
 
+        Ok(())
+    }
+
+    fn validate_output_bounds(&self) -> Result<(), String> {
         if self.max_tokens == Some(0) {
             return Err(format!("custom_providers[{}]: `max_tokens` must be greater than 0", self.name));
         }
@@ -699,6 +728,10 @@ impl CustomProviderConfig {
             ));
         }
 
+        Ok(())
+    }
+
+    fn validate_auth(&self) -> Result<(), String> {
         if let Some(auth) = &self.auth {
             auth.validate(&self.name)?;
             if !self.api_key_env.trim().is_empty() {
@@ -706,18 +739,28 @@ impl CustomProviderConfig {
             }
         }
 
+        Ok(())
+    }
+
+    fn validate_api_key_env(&self) -> Result<(), String> {
         if !self.api_key_env.trim().is_empty()
             && let Err(err) = crate::auth::CredentialIdentity::new(&self.name, &self.api_key_env)
         {
             return Err(format!("custom_providers[{}]: invalid `api_key_env`: {err}", self.name));
         }
 
+        Ok(())
+    }
+
+    fn validate_models(&self) -> Result<(), String> {
         if self.models.iter().any(|m| m.trim().is_empty()) {
             return Err(format!("custom_providers[{}]: `models` entries must not be empty", self.name));
         }
 
-        self.request_policy.validate(&self.name)?;
+        Ok(())
+    }
 
+    fn validate_profiles(&self) -> Result<(), String> {
         for (profile_key, profile) in &self.profiles {
             if profile_key.trim().is_empty() || profile_key.trim() != profile_key {
                 return Err(format!(
@@ -729,6 +772,10 @@ impl CustomProviderConfig {
             profile.validate(&self.name, profile_key)?;
         }
 
+        Ok(())
+    }
+
+    fn validate_name_is_not_reserved(&self) -> Result<(), String> {
         let reserved = [
             "openai",
             "anthropic",

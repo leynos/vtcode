@@ -98,42 +98,40 @@ impl ZedAgent {
             .collect::<Vec<_>>();
         let mut first_error = None;
         for session in sessions {
-            let turn_id = match session.mark_session_ended() {
-                Ok(Some(turn_id)) => turn_id,
-                Ok(None) => continue,
-                Err(error) => {
-                    warn!(%error, "Failed to read ACP session end state; skipping lifecycle hooks");
-                    if first_error.is_none() {
-                        first_error = Some(error.context("checking ACP session end state"));
-                    }
-                    continue;
-                }
-            };
-            let hooks = match session.lifecycle_hooks() {
-                Ok(Some(hooks)) => hooks,
-                Ok(None) => continue,
-                Err(error) => {
-                    warn!(%error, "Failed to read ACP session lifecycle hooks at shutdown");
-                    if first_error.is_none() {
-                        first_error = Some(error.context("reading ACP session lifecycle hooks at shutdown"));
-                    }
-                    continue;
-                }
-            };
-            match hooks.run_session_end(&turn_id, reason).await {
-                Ok(messages) => {
-                    for message in messages {
-                        warn!(level = ?message.level, message = %message.text, "ACP SessionEnd hook");
-                    }
-                }
-                Err(error) => warn!(%error, "ACP SessionEnd hooks failed"),
+            if let Err(error) = Self::run_session_end_hooks_for(&session, reason).await {
+                let _ = first_error.get_or_insert(error);
             }
         }
-        if let Some(error) = first_error {
-            Err(error)
-        } else {
-            Ok(())
+        first_error.map_or(Ok(()), Err)
+    }
+
+    async fn run_session_end_hooks_for(session: &SessionHandle, reason: SessionEndReason) -> anyhow::Result<()> {
+        let turn_id = match session.mark_session_ended() {
+            Ok(Some(turn_id)) => turn_id,
+            Ok(None) => return Ok(()),
+            Err(error) => {
+                warn!(%error, "Failed to read ACP session end state; skipping lifecycle hooks");
+                return Err(error.context("checking ACP session end state"));
+            }
+        };
+        let hooks = match session.lifecycle_hooks() {
+            Ok(Some(hooks)) => hooks,
+            Ok(None) => return Ok(()),
+            Err(error) => {
+                warn!(%error, "Failed to read ACP session lifecycle hooks at shutdown");
+                return Err(error.context("reading ACP session lifecycle hooks at shutdown"));
+            }
+        };
+
+        match hooks.run_session_end(&turn_id, reason).await {
+            Ok(messages) => {
+                for message in messages {
+                    warn!(level = ?message.level, message = %message.text, "ACP SessionEnd hook");
+                }
+            }
+            Err(error) => warn!(%error, "ACP SessionEnd hooks failed"),
         }
+        Ok(())
     }
 
     fn session_reasoning_effort_for_thread(
@@ -1009,104 +1007,10 @@ impl ZedAgent {
             }
         };
         let updated = match config_id.as_str() {
-            SESSION_CONFIG_PRIMARY_AGENT_ID => {
-                let workspace_runtime = session.workspace_runtime().map_err(|error| {
-                    acp::Error::internal_error().data(format!(
-                        "Failed to read workspace runtime for ACP session {}: {error:#}",
-                        args.session_id
-                    ))
-                })?;
-                let primary_agents = workspace_runtime
-                    .as_ref()
-                    .map_or(&self.primary_agents, |runtime| &runtime.primary_agents);
-                let Some(primary_agent) = primary_agents.resolve_id(&value) else {
-                    return Err(acp::Error::invalid_params().data(serde_json::json!({
-                        "reason": "unknown_primary_agent",
-                        "value": value,
-                    })));
-                };
-                self.update_session_primary_agent(&session, primary_agent.to_string())
-                    .map_err(|error| acp::Error::internal_error().data(error.to_string()))?
-            }
-            SESSION_CONFIG_THOUGHT_LEVEL_ID => {
-                let (session_provider, session_model) = {
-                    let data = session.data.lock().map_err(|error| {
-                        acp::Error::internal_error().data(format!("Failed to read ACP session config: {error}"))
-                    })?;
-                    (data.provider.clone(), data.model.clone())
-                };
-                if !self.model_supports_thought_level(&session_provider, &session_model) {
-                    return Err(acp::Error::invalid_params().data(serde_json::json!({
-                        "reason": "unsupported_config_option",
-                        "config_id": config_id,
-                    })));
-                }
-                let Some(reasoning_effort) = ReasoningEffortLevel::parse(&value) else {
-                    return Err(acp::Error::invalid_params().data(serde_json::json!({
-                        "reason": "unknown_thought_level",
-                        "value": value,
-                    })));
-                };
-                self.update_session_reasoning_effort(&session, reasoning_effort)
-                    .map_err(|error| acp::Error::internal_error().data(error.to_string()))?
-            }
-            SESSION_CONFIG_PROVIDER_ID => {
-                let provider = value.trim().to_lowercase();
-                let current_provider = {
-                    let data = session.data.lock().map_err(|error| {
-                        acp::Error::internal_error().data(format!("Failed to read ACP session config: {error}"))
-                    })?;
-                    data.provider.clone()
-                };
-                if provider.is_empty() || !self.supports_provider(&provider, &current_provider) {
-                    return Err(acp::Error::invalid_params().data(serde_json::json!({
-                        "reason": "unknown_provider",
-                        "value": value,
-                    })));
-                }
-                let current_model = {
-                    let data = session.data.lock().map_err(|error| {
-                        acp::Error::internal_error().data(format!("Failed to read ACP session config: {error}"))
-                    })?;
-                    data.model.clone()
-                };
-                let resolved_model = if self.provider_supports_model(&provider, &current_model) {
-                    current_model
-                } else {
-                    self.provider_default_model(&provider).ok_or_else(|| {
-                        acp::Error::invalid_params().data(serde_json::json!({
-                            "reason": "provider_has_no_default_model",
-                            "provider": provider,
-                        }))
-                    })?
-                };
-                self.update_session_provider_and_model(&session, provider, resolved_model)
-                    .map_err(|error| acp::Error::internal_error().data(error.to_string()))?
-            }
-            SESSION_CONFIG_MODEL_ID => {
-                let model = value.trim();
-                if model.is_empty() {
-                    return Err(acp::Error::invalid_params().data(serde_json::json!({
-                        "reason": "unknown_model",
-                        "value": value,
-                    })));
-                }
-                let provider = {
-                    let data = session.data.lock().map_err(|error| {
-                        acp::Error::internal_error().data(format!("Failed to read ACP session config: {error}"))
-                    })?;
-                    data.provider.clone()
-                };
-                if !self.provider_supports_model(&provider, model) {
-                    return Err(acp::Error::invalid_params().data(serde_json::json!({
-                        "reason": "model_not_supported_for_provider",
-                        "provider": provider,
-                        "model": model,
-                    })));
-                }
-                self.update_session_provider_and_model(&session, provider, model.to_string())
-                    .map_err(|error| acp::Error::internal_error().data(error.to_string()))?
-            }
+            SESSION_CONFIG_PRIMARY_AGENT_ID => self.set_primary_agent_option(&session, &args.session_id, &value)?,
+            SESSION_CONFIG_THOUGHT_LEVEL_ID => self.set_thought_level_option(&session, &config_id, &value)?,
+            SESSION_CONFIG_PROVIDER_ID => self.set_provider_option(&session, &value)?,
+            SESSION_CONFIG_MODEL_ID => self.set_model_option(&session, &value)?,
             _ => {
                 return Err(acp::Error::invalid_params().data(serde_json::json!({
                     "reason": "unknown_config_option",
@@ -1115,21 +1019,142 @@ impl ZedAgent {
             }
         };
 
-        if updated {
-            let config_options = self
-                .current_session_config_options(&session)
-                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
-            let update = acp::ConfigOptionUpdate::new(config_options);
-            drop(
-                self.send_update(&args.session_id, acp::SessionUpdate::ConfigOptionUpdate(update))
-                    .await,
-            );
-        }
+        self.send_config_option_update_if_changed(&session, &args.session_id, updated)
+            .await?;
 
         let config_options = self
             .current_session_config_options(&session)
             .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
         Ok(acp::SetSessionConfigOptionResponse::new(config_options))
+    }
+
+    fn set_primary_agent_option(
+        &self,
+        session: &SessionHandle,
+        session_id: &acp::SessionId,
+        value: &str,
+    ) -> Result<bool, acp::Error> {
+        let workspace_runtime = session.workspace_runtime().map_err(|error| {
+            acp::Error::internal_error()
+                .data(format!("Failed to read workspace runtime for ACP session {session_id}: {error:#}"))
+        })?;
+        let primary_agents = workspace_runtime
+            .as_ref()
+            .map_or(&self.primary_agents, |runtime| &runtime.primary_agents);
+        let Some(primary_agent) = primary_agents.resolve_id(value) else {
+            return Err(acp::Error::invalid_params().data(serde_json::json!({
+                "reason": "unknown_primary_agent",
+                "value": value,
+            })));
+        };
+        self.update_session_primary_agent(session, primary_agent.to_string())
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))
+    }
+
+    fn set_thought_level_option(
+        &self,
+        session: &SessionHandle,
+        config_id: &str,
+        value: &str,
+    ) -> Result<bool, acp::Error> {
+        let (provider, model) = {
+            let data = session.data.lock().map_err(|error| {
+                acp::Error::internal_error().data(format!("Failed to read ACP session config: {error}"))
+            })?;
+            (data.provider.clone(), data.model.clone())
+        };
+        if !self.model_supports_thought_level(&provider, &model) {
+            return Err(acp::Error::invalid_params().data(serde_json::json!({
+                "reason": "unsupported_config_option",
+                "config_id": config_id,
+            })));
+        }
+        let Some(reasoning_effort) = ReasoningEffortLevel::parse(value) else {
+            return Err(acp::Error::invalid_params().data(serde_json::json!({
+                "reason": "unknown_thought_level",
+                "value": value,
+            })));
+        };
+        self.update_session_reasoning_effort(session, reasoning_effort)
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))
+    }
+
+    fn set_provider_option(&self, session: &SessionHandle, value: &str) -> Result<bool, acp::Error> {
+        let provider = value.trim().to_lowercase();
+        let current_provider = {
+            let data = session.data.lock().map_err(|error| {
+                acp::Error::internal_error().data(format!("Failed to read ACP session config: {error}"))
+            })?;
+            data.provider.clone()
+        };
+        if provider.is_empty() || !self.supports_provider(&provider, &current_provider) {
+            return Err(acp::Error::invalid_params().data(serde_json::json!({
+                "reason": "unknown_provider",
+                "value": value,
+            })));
+        }
+        let current_model = {
+            let data = session.data.lock().map_err(|error| {
+                acp::Error::internal_error().data(format!("Failed to read ACP session config: {error}"))
+            })?;
+            data.model.clone()
+        };
+        let resolved_model = if self.provider_supports_model(&provider, &current_model) {
+            current_model
+        } else {
+            self.provider_default_model(&provider).ok_or_else(|| {
+                acp::Error::invalid_params().data(serde_json::json!({
+                    "reason": "provider_has_no_default_model",
+                    "provider": provider,
+                }))
+            })?
+        };
+        self.update_session_provider_and_model(session, provider, resolved_model)
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))
+    }
+
+    fn set_model_option(&self, session: &SessionHandle, value: &str) -> Result<bool, acp::Error> {
+        let model = value.trim();
+        if model.is_empty() {
+            return Err(acp::Error::invalid_params().data(serde_json::json!({
+                "reason": "unknown_model",
+                "value": value,
+            })));
+        }
+        let provider = {
+            let data = session.data.lock().map_err(|error| {
+                acp::Error::internal_error().data(format!("Failed to read ACP session config: {error}"))
+            })?;
+            data.provider.clone()
+        };
+        if !self.provider_supports_model(&provider, model) {
+            return Err(acp::Error::invalid_params().data(serde_json::json!({
+                "reason": "model_not_supported_for_provider",
+                "provider": provider,
+                "model": model,
+            })));
+        }
+        self.update_session_provider_and_model(session, provider, model.to_string())
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))
+    }
+
+    async fn send_config_option_update_if_changed(
+        &self,
+        session: &SessionHandle,
+        session_id: &acp::SessionId,
+        updated: bool,
+    ) -> Result<(), acp::Error> {
+        if updated {
+            let config_options = self
+                .current_session_config_options(session)
+                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+            let update = acp::ConfigOptionUpdate::new(config_options);
+            drop(
+                self.send_update(session_id, acp::SessionUpdate::ConfigOptionUpdate(update))
+                    .await,
+            );
+        }
+        Ok(())
     }
 }
 

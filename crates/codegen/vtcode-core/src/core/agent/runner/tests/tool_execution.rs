@@ -47,7 +47,7 @@ async fn denied_tool_call_emits_one_failed_output_for_runtime_invocation() {
 }
 
 #[tokio::test]
-async fn denied_parallel_tool_halt_returns_promptly() {
+async fn denied_parallel_tool_is_rejected_without_execution() {
     let temp = TempDir::new().expect("tempdir");
     let mut runner = Box::pin(make_runner(&temp, VTCodeConfig::default(), "thread-denied-parallel")).await;
     runner.enable_full_auto(&[tools::UNIFIED_FILE.to_string()]).await;
@@ -61,18 +61,35 @@ async fn denied_parallel_tool_halt_returns_promptly() {
     )
     .tool_calls
     .expect("tool call response");
+    let tool_call_id = tool_calls[0].id.clone();
 
     let mut runtime =
         AgentRuntime::new(AgentSessionState::new("session-denied-parallel".to_string(), 16, 4, 128_000), None, None);
     let mut recorder = ExecEventRecorder::new("thread-denied-parallel", None, None);
 
-    let start = Instant::now();
     runner
         .execute_tool_call_batches(tool_calls, &mut runtime, &mut recorder, "[parallel]", false, false)
         .await
         .expect("tool execution should finish");
 
-    assert!(start.elapsed() < Duration::from_millis(200));
+    assert!(!runtime.state.executed_commands.iter().any(|tool| tool == tools::UNIFIED_EXEC));
+
+    let events = recorder.into_events();
+    let invocation_count = events
+        .iter()
+        .filter(|event| match event {
+            ThreadEvent::ItemCompleted(ItemCompletedEvent { item }) => match &item.details {
+                ThreadItemDetails::ToolInvocation(details) => {
+                    details.tool_call_id.as_deref() == Some(tool_call_id.as_str())
+                }
+                _ => false,
+            },
+            _ => false,
+        })
+        .count();
+    assert_eq!(invocation_count, 1);
+    let call_item_id = completed_tool_invocation_item_id(&events, &tool_call_id).expect("completed invocation");
+    assert_eq!(completed_tool_output_count(&events, &tool_call_id, ToolCallStatus::Failed, &call_item_id), 1);
 }
 
 #[tokio::test]
@@ -201,7 +218,7 @@ async fn removed_public_tool_names_are_rejected() {
 }
 
 #[tokio::test]
-async fn denied_sequential_tool_halt_returns_promptly() {
+async fn denied_sequential_tool_is_rejected_without_execution() {
     let temp = TempDir::new().expect("tempdir");
     let mut runner = Box::pin(make_runner(&temp, VTCodeConfig::default(), "thread-denied-sequential")).await;
     runner.enable_full_auto(&[tools::UNIFIED_FILE.to_string()]).await;
@@ -215,18 +232,35 @@ async fn denied_sequential_tool_halt_returns_promptly() {
     )
     .tool_calls
     .expect("tool call response");
+    let tool_call_id = tool_calls[0].id.clone();
 
     let mut runtime =
         AgentRuntime::new(AgentSessionState::new("session-denied-sequential".to_string(), 16, 4, 128_000), None, None);
     let mut recorder = ExecEventRecorder::new("thread-denied-sequential", None, None);
 
-    let start = Instant::now();
     runner
         .execute_tool_call_batches(tool_calls, &mut runtime, &mut recorder, "[sequential]", false, false)
         .await
         .expect("tool execution should finish");
 
-    assert!(start.elapsed() < Duration::from_millis(200));
+    assert!(!runtime.state.executed_commands.iter().any(|tool| tool == tools::UNIFIED_EXEC));
+
+    let events = recorder.into_events();
+    let invocation_count = events
+        .iter()
+        .filter(|event| match event {
+            ThreadEvent::ItemCompleted(ItemCompletedEvent { item }) => match &item.details {
+                ThreadItemDetails::ToolInvocation(details) => {
+                    details.tool_call_id.as_deref() == Some(tool_call_id.as_str())
+                }
+                _ => false,
+            },
+            _ => false,
+        })
+        .count();
+    assert_eq!(invocation_count, 1);
+    let call_item_id = completed_tool_invocation_item_id(&events, &tool_call_id).expect("completed invocation");
+    assert_eq!(completed_tool_output_count(&events, &tool_call_id, ToolCallStatus::Failed, &call_item_id), 1);
 }
 
 #[tokio::test]

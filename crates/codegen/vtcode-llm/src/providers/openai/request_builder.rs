@@ -288,6 +288,29 @@ fn allows_sampling_parameters(model: &str, reasoning_effort: Option<ReasoningEff
     }
 }
 
+fn serialize_chat_reasoning_controls(
+    openai_request: &mut Value,
+    request: &provider::LLMRequest,
+    ctx: &ChatRequestContext<'_>,
+) -> Option<ReasoningEffortLevel> {
+    let effective_effort = request
+        .reasoning_effort
+        .or_else(|| default_reasoning_effort_for_model(&request.model));
+
+    if ctx.include_reasoning {
+        openai_request["include_reasoning"] = Value::Bool(true);
+    }
+
+    if ctx.supports_reasoning_effort
+        && let Some(effort) = effective_effort
+        && !matches!(effort, ReasoningEffortLevel::None | ReasoningEffortLevel::Unknown)
+    {
+        openai_request["reasoning_effort"] = json!(effort.as_str());
+    }
+
+    effective_effort
+}
+
 pub(crate) fn build_chat_request(
     request: &provider::LLMRequest,
     ctx: &ChatRequestContext<'_>,
@@ -376,9 +399,7 @@ pub(crate) fn build_chat_request(
         "messages": messages,
         "stream": request.stream
     });
-    let effective_reasoning_effort = request
-        .reasoning_effort
-        .or_else(|| default_reasoning_effort_for_model(&request.model));
+    let effective_reasoning_effort = serialize_chat_reasoning_controls(&mut openai_request, request, ctx);
 
     let max_tokens_field = if !ctx.is_native_openai {
         "max_tokens"
@@ -388,17 +409,6 @@ pub(crate) fn build_chat_request(
 
     if let Some(max_tokens) = request.max_tokens {
         openai_request[max_tokens_field] = json!(max_tokens);
-    }
-
-    if ctx.include_reasoning {
-        openai_request["include_reasoning"] = Value::Bool(true);
-    }
-
-    if ctx.supports_reasoning_effort
-        && let Some(effort) = effective_reasoning_effort
-        && !matches!(effort, ReasoningEffortLevel::None | ReasoningEffortLevel::Unknown)
-    {
-        openai_request["reasoning_effort"] = json!(effort.as_str());
     }
 
     if let Some(temperature) = request.temperature
