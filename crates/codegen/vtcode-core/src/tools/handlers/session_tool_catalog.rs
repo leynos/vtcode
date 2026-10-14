@@ -956,6 +956,19 @@ mod tests {
         ToolRegistration::new(name, CapabilityLevel::CodeSearch, false, |_, _| Box::pin(async { Ok(Value::Null) }))
     }
 
+    fn public_names_for_single_tool(name: &'static str, surface: SessionSurface) -> Vec<String> {
+        let registration = registration(name)
+            .with_description("Test tool")
+            .with_parameter_schema(empty_object_schema());
+        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
+        catalog.public_tool_names(SessionToolsConfig::full_public(
+            surface,
+            CapabilityLevel::CodeSearch,
+            ToolDocumentationMode::Full,
+            ToolModelCapabilities::default(),
+        ))
+    }
+
     #[test]
     fn default_profile_exposes_only_codex_baseline_tools() {
         let registrations = vec![
@@ -972,9 +985,6 @@ mod tests {
                 .with_behaviour(ToolBehaviour::apply_patch(ToolMutationModel::Mutating, false, true)),
             registration(tools::CODE_SEARCH)
                 .with_description("Search code")
-                .with_parameter_schema(empty_object_schema()),
-            registration(tools::AGENT)
-                .with_description("Delegate work")
                 .with_parameter_schema(empty_object_schema()),
             registration(tools::SEARCH_TOOLS)
                 .with_description("Discover deferred tools")
@@ -1051,6 +1061,13 @@ mod tests {
         ] {
             assert!(!names.contains(&file_tool.to_string()), "{file_tool} must stay out of the default file surface");
         }
+    }
+
+    #[test]
+    fn default_agent_runner_profile_hides_agent_tool() {
+        let names = public_names_for_single_tool(tools::AGENT, SessionSurface::AgentRunner);
+
+        assert!(names.is_empty(), "the Agent tool must stay out of the default AgentRunner profile");
     }
 
     #[test]
@@ -1407,17 +1424,7 @@ mod tests {
 
     #[test]
     fn acp_surface_exposes_task_tracker_with_default_profile() {
-        let registration = registration(tools::TASK_TRACKER)
-            .with_description("Track task progress")
-            .with_parameter_schema(empty_object_schema());
-        let catalog = SessionToolCatalog::rebuild_from_registrations(vec![registration]);
-
-        let names = catalog.public_tool_names(SessionToolsConfig::full_public(
-            SessionSurface::Acp,
-            CapabilityLevel::CodeSearch,
-            ToolDocumentationMode::Full,
-            ToolModelCapabilities::default(),
-        ));
+        let names = public_names_for_single_tool(tools::TASK_TRACKER, SessionSurface::Acp);
 
         assert_eq!(names, vec![tools::TASK_TRACKER.to_string()]);
     }

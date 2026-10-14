@@ -84,6 +84,19 @@ struct StreamObservation {
     error: Option<String>,
 }
 
+fn record_stream_output(observation: &mut StreamObservation, started_at: Instant, delta: &str) {
+    if delta.is_empty() {
+        return;
+    }
+
+    let elapsed = started_at.elapsed();
+    if observation.first_output_after.is_none() {
+        observation.first_output_after = Some(elapsed);
+    }
+    observation.output_times.push(elapsed);
+    observation.content.push_str(delta);
+}
+
 fn fixture_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tests/fixtures/vidaimock")
 }
@@ -145,13 +158,8 @@ async fn observe_stream(scenario: &str) -> Result<StreamObservation> {
 
     while let Some(event) = stream.next().await {
         match event {
-            Ok(LLMStreamEvent::Token { delta }) | Ok(LLMStreamEvent::Reasoning { delta }) if !delta.is_empty() => {
-                let elapsed = started_at.elapsed();
-                if observation.first_output_after.is_none() {
-                    observation.first_output_after = Some(elapsed);
-                }
-                observation.output_times.push(elapsed);
-                observation.content.push_str(&delta);
+            Ok(LLMStreamEvent::Token { delta }) | Ok(LLMStreamEvent::Reasoning { delta }) => {
+                record_stream_output(&mut observation, started_at, &delta);
             }
             Ok(LLMStreamEvent::Completed { .. }) => observation.completed = true,
             Ok(_) => {}

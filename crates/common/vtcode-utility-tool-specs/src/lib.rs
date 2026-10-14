@@ -400,6 +400,14 @@ mod tests {
     }
 
     #[test]
+    fn write_stdin_schema_allows_action_only_poll() {
+        let stdin_params = write_stdin_parameters();
+
+        assert_eq!(stdin_params["anyOf"][1]["required"], json!(["action"]));
+        assert_eq!(stdin_params["anyOf"][1]["properties"]["action"]["const"], "poll");
+    }
+
+    #[test]
     fn codex_baseline_exec_schemas_use_public_names_shape() {
         let exec_params = exec_command_parameters();
         assert_eq!(exec_params["required"], json!(["cmd"]));
@@ -479,8 +487,6 @@ mod tests {
         assert_eq!(stdin_params["properties"]["chars"]["type"], "string");
         assert_eq!(stdin_params["properties"]["action"]["enum"], json!(["write", "poll", "wait"]));
         assert!(stdin_params["properties"]["wait_timeout_seconds"].is_object());
-        assert_eq!(stdin_params["anyOf"][1]["required"], json!(["action"]));
-        assert_eq!(stdin_params["anyOf"][1]["properties"]["action"]["const"], "poll");
         assert_eq!(stdin_params["anyOf"][2]["required"], json!(["action"]));
         assert_eq!(stdin_params["anyOf"][2]["properties"]["action"]["const"], "wait");
         assert!(

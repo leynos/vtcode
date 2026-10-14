@@ -28,7 +28,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use agent_client_protocol::{
-    Client, ConnectionTo, Error,
+    Client, ConnectionTo, Error, JsonRpcRequest,
     schema::v1::{
         AgentNotification, CreateTerminalRequest, CreateTerminalResponse, ExtNotification, ReadTextFileRequest,
         ReadTextFileResponse, RequestPermissionRequest, RequestPermissionResponse, SessionNotification,
@@ -78,16 +78,7 @@ impl ConnectionHandle {
         &self,
         request: RequestPermissionRequest,
     ) -> Result<RequestPermissionResponse, Error> {
-        let started_at = Instant::now();
-        tracing::debug!(rpc = "session/request_permission", "Sending ACP client request");
-        let result = self.cx.send_request(request).block_task().await;
-        tracing::debug!(
-            rpc = "session/request_permission",
-            elapsed_ms = elapsed_millis(started_at),
-            success = result.is_ok(),
-            "ACP client request completed"
-        );
-        result
+        self.send_request("session/request_permission", request).await
     }
 
     /// Send an `fs/read_text_file` request and await the response.
@@ -95,16 +86,7 @@ impl ConnectionHandle {
     /// **Only call from a `cx.spawn` task** — see
     /// [`ConnectionHandle::request_permission`].
     pub async fn read_text_file(&self, request: ReadTextFileRequest) -> Result<ReadTextFileResponse, Error> {
-        let started_at = Instant::now();
-        tracing::debug!(rpc = "fs/read_text_file", "Sending ACP client request");
-        let result = self.cx.send_request(request).block_task().await;
-        tracing::debug!(
-            rpc = "fs/read_text_file",
-            elapsed_ms = elapsed_millis(started_at),
-            success = result.is_ok(),
-            "ACP client request completed"
-        );
-        result
+        self.send_request("fs/read_text_file", request).await
     }
 
     /// Send a `terminal/create` request and await the response.
@@ -112,11 +94,18 @@ impl ConnectionHandle {
     /// **Only call from a `cx.spawn` task** — see
     /// [`ConnectionHandle::request_permission`].
     pub async fn create_terminal(&self, request: CreateTerminalRequest) -> Result<CreateTerminalResponse, Error> {
+        self.send_request("terminal/create", request).await
+    }
+
+    async fn send_request<Req>(&self, rpc: &'static str, request: Req) -> Result<Req::Response, Error>
+    where
+        Req: JsonRpcRequest,
+    {
         let started_at = Instant::now();
-        tracing::debug!(rpc = "terminal/create", "Sending ACP client request");
+        tracing::debug!(rpc, "Sending ACP client request");
         let result = self.cx.send_request(request).block_task().await;
         tracing::debug!(
-            rpc = "terminal/create",
+            rpc,
             elapsed_ms = elapsed_millis(started_at),
             success = result.is_ok(),
             "ACP client request completed"

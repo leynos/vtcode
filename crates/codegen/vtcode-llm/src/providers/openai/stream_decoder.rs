@@ -8,6 +8,8 @@
 //! Rig stream adapter preserves the same final `LLMResponse` and runtime event
 //! behaviour.
 
+use super::responses_api::parse_responses_payload;
+use super::streaming::OpenAIStreamTelemetry;
 use crate::error_display;
 use crate::provider;
 use crate::providers::shared::StreamTelemetry;
@@ -20,10 +22,65 @@ use async_stream::try_stream;
 use futures::StreamExt;
 use hashbrown::HashMap;
 use serde_json::{Value, json};
-use std::time::Instant;
+use std::borrow::Cow;
 
-use super::responses_api::parse_responses_payload;
-use super::streaming::OpenAIStreamTelemetry;
+fn streaming_network_error(error: reqwest::Error) -> provider::LLMError {
+    let formatted_error = error_display::format_llm_error("OpenAI", &format!("Streaming error: {error}"));
+    provider::LLMError::Network { message: formatted_error, metadata: None }
+}
+
+fn parse_stream_payload(payload: &str) -> Result<Value, provider::LLMError> {
+    serde_json::from_str(payload)
+        .map_err(|error| StreamAssemblyError::InvalidPayload(error.to_string()).into_llm_error("OpenAI"))
+}
+
+enum ParsedResponsesSseEvent {
+    Ignore,
+    Done,
+    Payload(Value),
+}
+
+fn parse_responses_sse_event(event: &str) -> Result<ParsedResponsesSseEvent, provider::LLMError> {
+    let Some(data_payload) = extract_data_payload(event) else {
+        return Ok(ParsedResponsesSseEvent::Ignore);
+    };
+    let trimmed_payload = data_payload.trim();
+    if trimmed_payload.is_empty() {
+        return Ok(ParsedResponsesSseEvent::Ignore);
+    }
+    if trimmed_payload == "[DONE]" {
+        return Ok(ParsedResponsesSseEvent::Done);
+    }
+
+    parse_stream_payload(trimmed_payload).map(ParsedResponsesSseEvent::Payload)
+}
+
+fn capture_chat_usage(payload: &mut Value, aggregator: &mut crate::providers::shared::StreamAggregator) {
+    if let Some(usage) = payload.get_mut("usage")
+        && let Ok(usage) = serde_json::from_value::<provider::Usage>(std::mem::take(usage))
+    {
+        aggregator.set_usage(usage);
+    }
+}
+
+fn parse_chat_stream_event(
+    event: &str,
+    termination: &mut ChatStreamTermination,
+) -> Result<Option<Value>, provider::LLMError> {
+    let Some(data_payload) = extract_data_payload(event) else {
+        return Ok(None);
+    };
+    let trimmed_payload = data_payload.trim();
+    if trimmed_payload.is_empty() {
+        return Ok(None);
+    }
+    if trimmed_payload == "[DONE]" {
+        termination.observe_done_frame();
+        return Ok(None);
+    }
+
+    parse_stream_payload(trimmed_payload).map(Some)
+}
 
 fn strip_reasoning(retain_reasoning: bool, mut response: provider::LLMResponse) -> provider::LLMResponse {
     if !retain_reasoning {
@@ -237,13 +294,7 @@ pub(crate) fn create_chat_stream(
         let telemetry = OpenAIStreamTelemetry;
 
         while let Some(chunk_result) = body_stream.next().await {
-            let chunk = chunk_result.map_err(|err| {
-                let formatted_error = error_display::format_llm_error(
-                    "OpenAI",
-                    &format!("Streaming error: {err}"),
-                );
-                provider::LLMError::Network { message: formatted_error, metadata: None }
-            })?;
+            let chunk = chunk_result.map_err(streaming_network_error)?;
 
             buf.extend_from_slice(&chunk);
 
@@ -251,53 +302,41 @@ pub(crate) fn create_chat_stream(
                 let event = std::str::from_utf8(&buf[offset..split_idx]).expect("valid utf-8 stream data");
                 offset = split_idx + delimiter_len;
 
-                if let Some(data_payload) = extract_data_payload(event) {
-                    let trimmed_payload = data_payload.trim();
-                    if trimmed_payload.is_empty() {
-                        continue;
-                    }
-                    if trimmed_payload == "[DONE]" {
-                        termination.observe_done_frame();
-                        continue;
-                    }
+                let Some(mut payload) = parse_chat_stream_event(event, &mut termination)? else {
+                    continue;
+                };
+                capture_chat_usage(&mut payload, &mut aggregator);
 
-                    let mut payload: Value = serde_json::from_str(trimmed_payload).map_err(|err| {
-                        StreamAssemblyError::InvalidPayload(err.to_string())
-                            .into_llm_error("OpenAI")
-                    })?;
-
-                    if let Some(usage_val) = payload.get_mut("usage")
-                        && let Ok(u) = serde_json::from_value::<provider::Usage>(std::mem::take(usage_val)) {
-                            aggregator.set_usage(u);
-                        }
-
-                    if let Some(choices) = payload.get("choices").and_then(|v| v.as_array())
-                        && let Some(choice) = choices.first() {
-                            if let Some(delta) = choice.get("delta") {
-                                if let Some(content) = delta.get("content").and_then(|v| v.as_str()) {
-                                    telemetry.on_content_delta(content);
-                                    for event in aggregator.handle_content(content) {
-                                        yield event;
-                                    }
-                                }
-
-                                if retain_reasoning
-                                    && let Some(reasoning) = delta.get("reasoning_content").and_then(|v| v.as_str())
-                                    && let Some(delta) = aggregator.handle_reasoning(reasoning) {
-                                        telemetry.on_reasoning_delta(&delta);
-                                        yield provider::LLMStreamEvent::Reasoning { delta };
-                                    }
-
-                                if let Some(tool_deltas) = delta.get("tool_calls").and_then(|v| v.as_array()) {
-                                    aggregator.handle_tool_calls(tool_deltas);
-                                    telemetry.on_tool_call_delta();
-                                }
-                            }
-
-                            if let Some(reason) = choice.get("finish_reason").and_then(|v| v.as_str()) {
-                                aggregator.set_finish_reason(termination.observe_finish_reason(reason));
+                if let Some(choice) = payload
+                    .get("choices")
+                    .and_then(Value::as_array)
+                    .and_then(|choices| choices.first())
+                {
+                    if let Some(delta) = choice.get("delta") {
+                        if let Some(content) = delta.get("content").and_then(|v| v.as_str()) {
+                            telemetry.on_content_delta(content);
+                            for event in aggregator.handle_content(content) {
+                                yield event;
                             }
                         }
+
+                        if retain_reasoning
+                            && let Some(reasoning) = delta.get("reasoning_content").and_then(|v| v.as_str())
+                            && let Some(delta) = aggregator.handle_reasoning(reasoning)
+                        {
+                            telemetry.on_reasoning_delta(&delta);
+                            yield provider::LLMStreamEvent::Reasoning { delta };
+                        }
+
+                        if let Some(tool_deltas) = delta.get("tool_calls").and_then(|v| v.as_array()) {
+                            aggregator.handle_tool_calls(tool_deltas);
+                            telemetry.on_tool_call_delta();
+                        }
+                    }
+
+                    if let Some(reason) = choice.get("finish_reason").and_then(|v| v.as_str()) {
+                        aggregator.set_finish_reason(termination.observe_finish_reason(reason));
+                    }
                 }
             }
 
@@ -384,8 +423,6 @@ pub(crate) fn create_responses_stream(
     response: reqwest::Response,
     model: String,
     include_metrics: bool,
-    _debug_model: Option<String>,
-    _request_timer: Option<Instant>,
     retain_reasoning: bool,
 ) -> provider::LLMStream {
     let stream = try_stream! {
@@ -401,13 +438,7 @@ pub(crate) fn create_responses_stream(
         let telemetry = OpenAIStreamTelemetry;
 
         while let Some(chunk_result) = body_stream.next().await {
-            let chunk = chunk_result.map_err(|err| {
-                let formatted_error = error_display::format_llm_error(
-                    "OpenAI",
-                    &format!("Streaming error: {err}"),
-                );
-                provider::LLMError::Network { message: formatted_error, metadata: None }
-            })?;
+            let chunk = chunk_result.map_err(streaming_network_error)?;
 
             buf.extend_from_slice(&chunk);
 
@@ -419,50 +450,41 @@ pub(crate) fn create_responses_stream(
                     streamed_events_counter = streamed_events_counter.saturating_add(1);
                 }
 
-                if let Some(data_payload) = extract_data_payload(event) {
-                    let trimmed_payload = data_payload.trim();
-                    if trimmed_payload.is_empty() {
-                        continue;
-                    }
-
-                    if trimmed_payload == "[DONE]" {
+                let payload = match parse_responses_sse_event(event)? {
+                    ParsedResponsesSseEvent::Ignore => continue,
+                    ParsedResponsesSseEvent::Done => {
                         done = true;
                         break;
                     }
+                    ParsedResponsesSseEvent::Payload(payload) => payload,
+                };
 
-                    let payload: Value = serde_json::from_str(trimmed_payload).map_err(|err| {
-                        StreamAssemblyError::InvalidPayload(err.to_string())
+                let event_policy = response_stream_event_policy(&payload)
+                    .map_err(|message| {
+                        StreamAssemblyError::InvalidPayload(message.to_string())
                             .into_llm_error("OpenAI")
                     })?;
+                let event_type = payload
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| StreamAssemblyError::MissingField("type").into_llm_error("OpenAI"))?;
 
-                    let event_policy = response_stream_event_policy(&payload)
-                        .map_err(|message| {
-                            StreamAssemblyError::InvalidPayload(message.to_string())
-                                .into_llm_error("OpenAI")
-                        })?;
-                    let event_type = payload
-                        .get("type")
-                        .and_then(Value::as_str)
-                        .ok_or_else(|| {
-                            StreamAssemblyError::MissingField("type").into_llm_error("OpenAI")
-                        })?;
-
-                    match event_policy {
-                        ResponsesStreamEventPolicy::DocumentedStatusMarkerNoop
-                        | ResponsesStreamEventPolicy::DocumentedValueBearingRigGap => {
-                            // Legacy `LLMStreamEvent` has no representation for
-                            // provider-hosted code, provider-side MCP, partial
-                            // images, streamed custom-tool input, or annotation
-                            // metadata. Complete custom-tool input remains
-                            // preserved by final `response.completed` replay.
-                        }
-                        ResponsesStreamEventPolicy::Unsupported => {
-                            Err(StreamAssemblyError::InvalidPayload(format!(
-                                "unsupported Responses stream event type `{event_type}`"
-                            ))
-                            .into_llm_error("OpenAI"))?;
-                        }
-                        ResponsesStreamEventPolicy::MeaningfulConversion => match event_type {
+                match event_policy {
+                    ResponsesStreamEventPolicy::DocumentedStatusMarkerNoop
+                    | ResponsesStreamEventPolicy::DocumentedValueBearingRigGap => {
+                        // Legacy `LLMStreamEvent` has no representation for
+                        // provider-hosted code, provider-side MCP, partial
+                        // images, streamed custom-tool input, or annotation
+                        // metadata. Complete custom-tool input remains
+                        // preserved by final `response.completed` replay.
+                    }
+                    ResponsesStreamEventPolicy::Unsupported => {
+                        Err(StreamAssemblyError::InvalidPayload(format!(
+                            "unsupported Responses stream event type `{event_type}`"
+                        ))
+                        .into_llm_error("OpenAI"))?;
+                    }
+                    ResponsesStreamEventPolicy::MeaningfulConversion => match event_type {
                             "response.output_text.delta" => {
                                 let delta = payload
                                     .get("delta")
@@ -488,42 +510,16 @@ pub(crate) fn create_responses_stream(
                                 telemetry.on_content_delta(delta);
                                 aggregator.content.push_str(delta);
                             }
-                            "response.reasoning_text.delta" | "response.reasoning_summary_text.delta" => {
-                                let delta = payload
-                                    .get("delta")
-                                    .and_then(|value| value.as_str())
-                                    .ok_or_else(|| {
-                                        StreamAssemblyError::MissingField("delta")
-                                            .into_llm_error("OpenAI")
-                                    })?;
-                                if retain_reasoning
-                                    && let Some(delta) = aggregator.handle_reasoning(delta) {
-                                    telemetry.on_reasoning_delta(&delta);
-                                    yield provider::LLMStreamEvent::Reasoning { delta };
-                                }
-                            }
-                            "response.reasoning_content.delta" => {
-                                let delta = payload
-                                    .get("delta")
-                                    .and_then(|value| value.as_str())
-                                    .ok_or_else(|| {
-                                        StreamAssemblyError::MissingField("delta")
-                                            .into_llm_error("OpenAI")
-                                    })?;
-                                if retain_reasoning
-                                    && let Some(delta) = aggregator.handle_reasoning(delta) {
-                                    telemetry.on_reasoning_delta(&delta);
-                                    yield provider::LLMStreamEvent::Reasoning { delta };
-                                }
-                            }
-                            "response.reasoning_text.done" => {
-                                let text = optional_string_field(&payload, "text")?;
-                                let delta = optional_string_field(&payload, "delta")?;
-                                if retain_reasoning
-                                    && let Some(text) = text.or(delta)
-                                    && let Some(delta) = aggregator.handle_reasoning(&text) {
-                                    telemetry.on_reasoning_delta(&delta);
-                                    yield provider::LLMStreamEvent::Reasoning { delta };
+                            "response.reasoning_text.delta"
+                            | "response.reasoning_summary_text.delta"
+                            | "response.reasoning_content.delta"
+                            | "response.reasoning_text.done" => {
+                                if let Some(event) = response_reasoning_event(event_type, &payload, ResponsesReasoningContext {
+                                    retain_reasoning,
+                                    aggregator: &mut aggregator,
+                                    telemetry: &telemetry,
+                                })? {
+                                    yield event;
                                 }
                             }
                             "response.output_item.added" | "response.output_item.done" => {
@@ -582,8 +578,7 @@ pub(crate) fn create_responses_stream(
                                 ))
                                 .into_llm_error("OpenAI"))?;
                             }
-                        },
-                    }
+                    },
                 }
 
                 if done {
@@ -658,6 +653,45 @@ fn optional_string_field(payload: &Value, field: &'static str) -> Result<Option<
         }),
         None => Ok(None),
     }
+}
+
+struct ResponsesReasoningContext<'a> {
+    retain_reasoning: bool,
+    aggregator: &'a mut crate::providers::shared::StreamAggregator,
+    telemetry: &'a OpenAIStreamTelemetry,
+}
+
+fn response_reasoning_event(
+    event_type: &str,
+    payload: &Value,
+    context: ResponsesReasoningContext<'_>,
+) -> Result<Option<provider::LLMStreamEvent>, provider::LLMError> {
+    let reasoning: Option<Cow<'_, str>> = match event_type {
+        "response.reasoning_text.delta"
+        | "response.reasoning_summary_text.delta"
+        | "response.reasoning_content.delta" => Some(Cow::Borrowed(
+            payload
+                .get("delta")
+                .and_then(Value::as_str)
+                .ok_or_else(|| StreamAssemblyError::MissingField("delta").into_llm_error("OpenAI"))?,
+        )),
+        "response.reasoning_text.done" => optional_string_field(payload, "text")?
+            .or(optional_string_field(payload, "delta")?)
+            .map(Cow::Owned),
+        _ => return Ok(None),
+    };
+    if !context.retain_reasoning {
+        return Ok(None);
+    }
+    let Some(reasoning) = reasoning else {
+        return Ok(None);
+    };
+    let Some(delta) = context.aggregator.handle_reasoning(reasoning.as_ref()) else {
+        return Ok(None);
+    };
+
+    context.telemetry.on_reasoning_delta(&delta);
+    Ok(Some(provider::LLMStreamEvent::Reasoning { delta }))
 }
 
 #[cfg(test)]

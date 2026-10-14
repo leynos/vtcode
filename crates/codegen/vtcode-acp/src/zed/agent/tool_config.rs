@@ -22,6 +22,13 @@ fn is_acp_session_tool(tool_name: &str) -> bool {
     tool_name == tools::TASK_TRACKER
 }
 
+pub(super) struct SessionToolDefinitionRequest<'a> {
+    pub(super) session: &'a SessionHandle,
+    pub(super) provider_supports_tools: bool,
+    pub(super) enabled_tools: &'a [SupportedTool],
+    pub(super) primary_agent: &'a str,
+}
+
 impl ZedAgent {
     pub(super) fn local_tools_available(&self, primary_agent: &str) -> bool {
         self.acp_tool_registry.definitions_for(&[], true).iter().any(|definition| {
@@ -74,11 +81,14 @@ impl ZedAgent {
 
     pub(super) fn session_tool_definitions(
         &self,
-        session: &SessionHandle,
-        provider_supports_tools: bool,
-        enabled_tools: &[SupportedTool],
-        primary_agent: &str,
+        request: SessionToolDefinitionRequest<'_>,
     ) -> Result<Option<Vec<ToolDefinition>>> {
+        let SessionToolDefinitionRequest {
+            session,
+            provider_supports_tools,
+            enabled_tools,
+            primary_agent,
+        } = request;
         let Some(runtime) = session
             .workspace_runtime()
             .context("reading ACP session workspace runtime for tool definitions")?

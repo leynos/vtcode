@@ -1,15 +1,17 @@
 //! Top-level glue: wire the [`ZedAgent`] into an SACP `AgentToClient`
 //! connection over stdio.
 
+use crate::acp;
 use crate::audit::{AcpAuditLogger, initialize_acp_audit_logger};
 use crate::register_acp_connection;
 use crate::workspace::{DefaultWorkspaceTrustSynchronizer, WorkspaceTrustSyncOutcome, WorkspaceTrustSynchronizer};
-use crate::zed::agent::ZedAgent;
 use crate::zed::agent::handlers::install_handlers;
+use crate::zed::agent::{ZedAgent, ZedAgentSetup};
 use crate::zed::connection::ConnectionHandle;
 use agent_client_protocol::{Agent, Client, ConnectionTo, Stdio};
 use anyhow::{Context, Result};
 use std::future::pending;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{error, info, warn};
 use vtcode_config::{SubagentDiscoveryInput, discover_subagents};
@@ -23,6 +25,52 @@ use super::constants::{
     WORKSPACE_TRUST_ALREADY_SATISFIED_LOG, WORKSPACE_TRUST_DOWNGRADE_SKIPPED_LOG, WORKSPACE_TRUST_UPGRADE_LOG,
 };
 use super::helpers::PrimaryAgentCatalog;
+
+/// Canonical, existing workspace selected by an ACP session client.
+///
+/// Construction validates the client-provided cwd once so session ownership,
+/// trust synchronization, and workspace runtime selection share the same path.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AcpSessionWorkspace {
+    root: PathBuf,
+}
+
+impl AcpSessionWorkspace {
+    pub(crate) async fn from_client_cwd(requested_workspace: &Path) -> Result<Self, acp::Error> {
+        if !requested_workspace.is_absolute() {
+            return Err(acp::Error::invalid_params().data("ACP session cwd must be an absolute directory"));
+        }
+        let root = vtcode_commons::fs::canonicalize_with_context_async(requested_workspace, "ACP session cwd")
+            .await
+            .map_err(|error| {
+                acp::Error::invalid_params()
+                    .data(format!("Unable to resolve ACP session cwd '{}': {error}", requested_workspace.display()))
+            })?;
+        let metadata = tokio::fs::metadata(&root).await.map_err(|error| {
+            acp::Error::invalid_params()
+                .data(format!("Unable to inspect ACP session cwd '{}': {error}", requested_workspace.display()))
+        })?;
+        if !metadata.is_dir() {
+            return Err(acp::Error::invalid_params()
+                .data(format!("ACP session cwd '{}' is not a directory", requested_workspace.display())));
+        }
+        Ok(Self { root })
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        &self.root
+    }
+}
+
+struct AcpAgentStartup {
+    config: CoreAgentConfig,
+    vt_config: VTCodeConfig,
+    title: Option<String>,
+    skip_confirmations: bool,
+    audit_logger: Option<Arc<AcpAuditLogger>>,
+    system_prompt: String,
+    primary_agents: PrimaryAgentCatalog,
+}
 
 /// Runs the ACP agent over stdio using the supplied core and VT Code config.
 ///
@@ -44,10 +92,45 @@ pub async fn run_acp_agent(
     title: Option<String>,
     skip_confirmations: bool,
 ) -> Result<()> {
+    let startup = prepare_acp_agent_startup(config, vt_cfg, title, skip_confirmations).await?;
+    run_acp_agent_runtime(startup).await
+}
+
+async fn prepare_acp_agent_startup(
+    config: &CoreAgentConfig,
+    vt_cfg: &VTCodeConfig,
+    title: Option<String>,
+    skip_confirmations: bool,
+) -> Result<AcpAgentStartup> {
     register_acp_custom_providers(vt_cfg);
     let audit_logger = initialize_acp_audit_logger(vt_cfg).await?;
     vtcode_core::utils::session_archive::apply_session_history_config_from_vtcode(vt_cfg);
 
+    synchronize_acp_workspace_trust(config, vt_cfg).await?;
+
+    let content = generate_system_instruction_with_config(&Default::default(), &config.workspace, Some(vt_cfg)).await;
+    let system_prompt = content
+        .parts
+        .first()
+        .and_then(|part| part.as_text())
+        .map_or_else(String::new, ToString::to_string);
+    let discovered = discover_subagents(&SubagentDiscoveryInput::new(config.workspace.clone()))
+        .context("Failed to discover primary agents for ACP bridge")?;
+    let primary_agents =
+        PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, &vt_cfg.default_primary_agent);
+
+    Ok(AcpAgentStartup {
+        config: config.clone(),
+        vt_config: vt_cfg.clone(),
+        title,
+        skip_confirmations,
+        audit_logger,
+        system_prompt,
+        primary_agents,
+    })
+}
+
+async fn synchronize_acp_workspace_trust(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig) -> Result<()> {
     let zed_config = &vt_cfg.acp.zed;
     let desired_trust_level = zed_config.workspace_trust.to_workspace_trust_level();
     let trust_synchronizer = DefaultWorkspaceTrustSynchronizer::new();
@@ -72,98 +155,89 @@ pub async fn run_acp_agent(
         }
     }
 
-    let content = generate_system_instruction_with_config(&Default::default(), &config.workspace, Some(vt_cfg)).await;
-    let system_prompt = if let Some(text) = content.parts.first().and_then(|p| p.as_text()) {
-        text.to_string()
-    } else {
-        String::new()
-    };
-    let tools_config = vt_cfg.tools.clone();
-    let commands_config = vt_cfg.commands.clone();
-    let custom_providers = vt_cfg.custom_providers.clone();
-    let provider_timeouts = vt_cfg.timeouts.clone();
-    let vt_cfg_clone = vt_cfg.clone();
-    let credential_storage_mode = vt_cfg.agent.credential_storage_mode;
-    let discovered = discover_subagents(&SubagentDiscoveryInput::new(config.workspace.clone()))
-        .context("Failed to discover primary agents for ACP bridge")?;
-    let primary_agents =
-        PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, &vt_cfg.default_primary_agent);
+    Ok(())
+}
 
-    let local_set = tokio::task::LocalSet::new();
-    let config_clone = config.clone();
-    let zed_config_clone = zed_config.clone();
-    let title_clone = title.clone();
-
-    let result = local_set
-        .run_until(Box::pin(async move {
-            let tools_config_clone = tools_config.clone();
-            let commands_config_clone = commands_config.clone();
-            let agent = Box::pin(ZedAgent::new(
-                config_clone,
-                credential_storage_mode,
-                zed_config_clone,
-                tools_config_clone,
-                commands_config_clone,
-                &custom_providers,
-                provider_timeouts,
-                system_prompt,
-                title_clone,
-                primary_agents,
-                skip_confirmations,
-                Some(&vt_cfg_clone),
-                audit_logger.clone(),
-            ))
-            .await;
-            let agent: Arc<ZedAgent> = Arc::new(agent);
-
-            // Build the SACP agent-side connection, then attach the
-            // vtcode request/notification handlers around `ZedAgent`.
-            let builder = install_handlers(Agent.builder().name("vtcode"), Arc::clone(&agent));
-
-            // The SACP dispatch loop never exposes `ConnectionTo` outside
-            // of handler closures, so we use `connect_with` to capture
-            // it. The closure parks on `pending()` so the spawned task
-            // lives for the entire connection lifetime (and is cancelled
-            // automatically when the connection closes).
-            let attach_agent = Arc::clone(&agent);
-            let connection_result = builder
-                .connect_with(Stdio::new(), async move |cx: ConnectionTo<Client>| {
-                    let handle = ConnectionHandle::new(cx);
-                    if let Err(existing) = register_acp_connection(Arc::clone(&handle)) {
-                        warn!("ACP client already registered; continuing with existing instance");
-                        drop(existing);
-                    }
-                    attach_agent.attach_client(Arc::clone(&handle));
-                    // Park the main task so the connection stays alive.
-                    drop(pending::<agent_client_protocol::Result<()>>().await);
-                    Ok(())
-                })
-                .await
-                .map_err(|error| anyhow::anyhow!("ACP stdio connection failed: {error}"));
-
-            let end_reason = if connection_result.is_ok() {
-                SessionEndReason::Exit
-            } else {
-                SessionEndReason::Error
-            };
-            let end_result =
-                tokio::time::timeout(std::time::Duration::from_secs(3), agent.run_session_end_hooks(end_reason))
-                    .await
-                    .map_err(|timeout_error| {
-                        anyhow::anyhow!("ACP SessionEnd hooks exceeded shutdown timeout: {timeout_error}")
-                    });
-
-            connection_result?;
-            end_result??;
-
-            Ok::<(), anyhow::Error>(())
-        }))
+async fn run_acp_agent_runtime(startup: AcpAgentStartup) -> Result<()> {
+    let result = tokio::task::LocalSet::new()
+        .run_until(Box::pin(run_local_acp_agent(startup)))
         .await;
 
     if let Err(error) = result {
         error!(%error, "ACP bridge task failed");
         return Err(error);
     }
+    Ok(())
+}
+
+async fn run_local_acp_agent(startup: AcpAgentStartup) -> Result<()> {
+    let AcpAgentStartup {
+        config,
+        vt_config,
+        title,
+        skip_confirmations,
+        audit_logger,
+        system_prompt,
+        primary_agents,
+    } = startup;
+    let agent = Box::pin(ZedAgent::new(ZedAgentSetup {
+        config,
+        credential_storage_mode: vt_config.agent.credential_storage_mode,
+        zed_config: vt_config.acp.zed.clone(),
+        tools_config: vt_config.tools.clone(),
+        commands_config: vt_config.commands.clone(),
+        custom_providers: &vt_config.custom_providers,
+        provider_timeouts: vt_config.timeouts.clone(),
+        system_prompt,
+        title,
+        primary_agents,
+        skip_confirmations,
+        vt_config: Some(&vt_config),
+        audit_logger,
+    }))
+    .await;
+
+    run_acp_connection(Arc::new(agent)).await
+}
+
+async fn run_acp_connection(agent: Arc<ZedAgent>) -> Result<()> {
+    // Build the SACP agent-side connection, then attach the vtcode request and
+    // notification handlers around `ZedAgent`.
+    let builder = install_handlers(Agent.builder().name("vtcode"), Arc::clone(&agent));
+
+    // The SACP dispatch loop never exposes `ConnectionTo` outside handler
+    // closures, so capture it with `connect_with`. Parking on `pending()` keeps
+    // the spawned task alive for the connection lifetime.
+    let attach_agent = Arc::clone(&agent);
+    let connection_result = builder
+        .connect_with(Stdio::new(), async move |cx: ConnectionTo<Client>| {
+            let handle = ConnectionHandle::new(cx);
+            if let Err(existing) = register_acp_connection(Arc::clone(&handle)) {
+                warn!("ACP client already registered; continuing with existing instance");
+                drop(existing);
+            }
+            attach_agent.attach_client(Arc::clone(&handle));
+            drop(pending::<agent_client_protocol::Result<()>>().await);
+            Ok(())
+        })
+        .await
+        .map_err(|error| anyhow::anyhow!("ACP stdio connection failed: {error}"));
+
+    finish_acp_session(agent, connection_result).await
+}
+
+async fn finish_acp_session(agent: Arc<ZedAgent>, connection_result: Result<()>) -> Result<()> {
+    let end_reason = if connection_result.is_ok() {
+        SessionEndReason::Exit
+    } else {
+        SessionEndReason::Error
+    };
+    let end_result = tokio::time::timeout(std::time::Duration::from_secs(3), agent.run_session_end_hooks(end_reason))
+        .await
+        .map_err(|timeout_error| anyhow::anyhow!("ACP SessionEnd hooks exceeded shutdown timeout: {timeout_error}"));
+
+    connection_result?;
+    end_result??;
     Ok(())
 }
 

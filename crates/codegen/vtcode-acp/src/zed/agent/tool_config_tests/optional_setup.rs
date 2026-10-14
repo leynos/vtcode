@@ -1,5 +1,7 @@
 //! Tests shared setup outcomes when ACP attaches optional components together.
-use super::super::{OptionalSetupOutcome, attach_acp_mcp_client, attach_acp_subagent_controller};
+use super::super::{
+    AcpSubagentControllerSetup, OptionalSetupOutcome, attach_acp_mcp_client, attach_acp_subagent_controller,
+};
 use super::support::core_agent_config;
 use assert_fs::TempDir;
 use vtcode_core::config::VTCodeConfig;
@@ -14,7 +16,14 @@ async fn optional_setup_reports_configuration_disabled_components() {
     vt_cfg.subagents.enabled = false;
     vt_cfg.mcp.enabled = false;
 
-    let subagent_outcome = attach_acp_subagent_controller(&registry, &core_config, &[], Some(&vt_cfg), false).await;
+    let subagent_outcome = attach_acp_subagent_controller(AcpSubagentControllerSetup {
+        registry: &registry,
+        agent_config: &core_config,
+        custom_providers: &[],
+        vt_config: Some(&vt_cfg),
+        workspace_gated: false,
+    })
+    .await;
     let mcp_outcome = attach_acp_mcp_client(&registry, Some(&vt_cfg), temp.path()).await;
 
     assert_eq!(subagent_outcome, OptionalSetupOutcome::DisabledByConfiguration);
@@ -32,7 +41,14 @@ async fn optional_setup_reports_successfully_attached_components() {
     vt_cfg.mcp.enabled = true;
     let core_config = core_agent_config(temp.path());
 
-    let subagent_outcome = attach_acp_subagent_controller(&registry, &core_config, &[], Some(&vt_cfg), false).await;
+    let subagent_outcome = attach_acp_subagent_controller(AcpSubagentControllerSetup {
+        registry: &registry,
+        agent_config: &core_config,
+        custom_providers: &[],
+        vt_config: Some(&vt_cfg),
+        workspace_gated: false,
+    })
+    .await;
     let mcp_outcome = attach_acp_mcp_client(&registry, Some(&vt_cfg), temp.path()).await;
 
     assert_eq!(subagent_outcome, OptionalSetupOutcome::Attached);

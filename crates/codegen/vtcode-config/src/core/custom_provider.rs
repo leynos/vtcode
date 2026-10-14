@@ -684,16 +684,21 @@ impl CustomProviderConfig {
     }
 
     fn validate_sampling_bounds(&self) -> Result<(), String> {
-        if let Some(temperature) = self.temperature
-            && !(0.0..=2.0).contains(&temperature)
-        {
-            return Err(format!("custom_providers[{}]: `temperature` must be between 0.0 and 2.0", self.name));
-        }
-
-        if let Some(top_p) = self.top_p
-            && !(0.0..=1.0).contains(&top_p)
-        {
-            return Err(format!("custom_providers[{}]: `top_p` must be between 0.0 and 1.0", self.name));
+        for bound in [
+            SamplingBound {
+                field: "`temperature`",
+                value: self.temperature,
+                minimum: 0.0,
+                maximum: 2.0,
+            },
+            SamplingBound {
+                field: "`top_p`",
+                value: self.top_p,
+                minimum: 0.0,
+                maximum: 1.0,
+            },
+        ] {
+            bound.validate(&self.name)?;
         }
 
         if let Some(top_k) = self.top_k
@@ -702,15 +707,21 @@ impl CustomProviderConfig {
             return Err(format!("custom_providers[{}]: `top_k` must be >= 0", self.name));
         }
 
-        for (field, value) in [
-            ("`presence_penalty`", self.presence_penalty),
-            ("`frequency_penalty`", self.frequency_penalty),
+        for bound in [
+            SamplingBound {
+                field: "`presence_penalty`",
+                value: self.presence_penalty,
+                minimum: -2.0,
+                maximum: 2.0,
+            },
+            SamplingBound {
+                field: "`frequency_penalty`",
+                value: self.frequency_penalty,
+                minimum: -2.0,
+                maximum: 2.0,
+            },
         ] {
-            if let Some(value) = value
-                && !(-2.0..=2.0).contains(&value)
-            {
-                return Err(format!("custom_providers[{}]: {field} must be between -2.0 and 2.0", self.name));
-            }
+            bound.validate(&self.name)?;
         }
 
         Ok(())
@@ -800,6 +811,29 @@ impl CustomProviderConfig {
         }
 
         Ok(())
+    }
+}
+
+struct SamplingBound {
+    field: &'static str,
+    value: Option<f32>,
+    minimum: f32,
+    maximum: f32,
+}
+
+impl SamplingBound {
+    fn validate(&self, provider_name: &str) -> Result<(), String> {
+        let Some(value) = self.value else {
+            return Ok(());
+        };
+        if (self.minimum..=self.maximum).contains(&value) {
+            return Ok(());
+        }
+
+        Err(format!(
+            "custom_providers[{provider_name}]: {} must be between {:.1} and {:.1}",
+            self.field, self.minimum, self.maximum
+        ))
     }
 }
 
@@ -1197,35 +1231,14 @@ mod tests {
         profiles.insert(
             "gpt-5-mini".to_string(),
             CustomProviderProfileConfig {
-                temperature: None,
-                top_p: None,
-                top_k: None,
-                presence_penalty: None,
-                frequency_penalty: None,
-                max_tokens: None,
-                reasoning_effort: None,
                 api_format: CustomProviderApiFormat::OpenAIResponses,
                 context_window: Some(128_000),
                 supports_tools: Some(true),
-                supports_reasoning: None,
-                supports_reasoning_effort: None,
-                supports_vision: None,
-                supports_structured_output: None,
-                supports_parallel_tool_calls: None,
-                supports_context_caching: None,
-                supports_responses_compaction: None,
-                supports_context_edits: None,
+                ..CustomProviderProfileConfig::default()
             },
         );
 
         let config = CustomProviderConfig {
-            temperature: None,
-            top_p: None,
-            top_k: None,
-            presence_penalty: None,
-            frequency_penalty: None,
-            max_tokens: None,
-            reasoning_effort: None,
             name: "mycorp".to_string(),
             display_name: "MyCorp".to_string(),
             base_url: "https://llm.example/v1".to_string(),
@@ -1233,19 +1246,9 @@ mod tests {
             context_window: Some(256_000),
             supports_tools: Some(true),
             supports_reasoning: Some(true),
-            supports_reasoning_effort: None,
-            supports_vision: None,
-            supports_structured_output: None,
-            supports_parallel_tool_calls: None,
-            supports_context_caching: None,
-            supports_responses_compaction: None,
-            supports_context_edits: None,
-            api_key_env: String::new(),
-            auth: None,
             model: "gpt-5-mini".to_string(),
-            models: Vec::new(),
             profiles,
-            request_policy: CustomProviderRequestPolicyConfig::default(),
+            ..CustomProviderConfig::default()
         };
 
         let resolved = config.resolved_profile("gpt-5-mini");
@@ -1254,22 +1257,9 @@ mod tests {
             ResolvedCustomProviderProfile {
                 api_format: Some(CustomProviderApiFormat::OpenAIResponses),
                 context_window: Some(128_000),
-                temperature: None,
-                top_p: None,
-                top_k: None,
-                presence_penalty: None,
-                frequency_penalty: None,
-                max_tokens: None,
-                reasoning_effort: None,
                 supports_tools: Some(true),
                 supports_reasoning: Some(true),
-                supports_reasoning_effort: None,
-                supports_vision: None,
-                supports_structured_output: None,
-                supports_parallel_tool_calls: None,
-                supports_context_caching: None,
-                supports_responses_compaction: None,
-                supports_context_edits: None,
+                ..ResolvedCustomProviderProfile::default()
             }
         );
         assert!(config.profile("gpt-5").is_none());

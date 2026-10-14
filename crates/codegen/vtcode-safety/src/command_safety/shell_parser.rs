@@ -80,43 +80,80 @@ pub fn contains_dynamic_shell_syntax(command: &str) -> bool {
 /// Returns whether a `find` command contains shell syntax that can change the
 /// literal option tokens after approval-time tokenization.
 pub fn contains_dynamic_find_syntax(script: &str) -> bool {
-    if let Ok(commands) = parse_shell_commands_tree_sitter(script) {
-        return commands.iter().any(|command| {
-            command
-                .first()
-                .map(|program| base_command_name(program) == "find")
-                .unwrap_or(false)
-                && find_command_contains_dynamic_syntax(command)
-        });
-    }
-
-    // Be conservative when the grammar cannot identify the command shape: a
-    // raw script containing a find invocation and dynamic syntax must not pass
-    // preflight just because parsing was incomplete.
-    let has_find_word = script.split_whitespace().any(|word| {
-        let command = word.trim_matches(|character: char| !character.is_ascii_alphanumeric() && character != '/');
-        base_command_name(command) == "find"
-    });
-    has_find_word && contains_dynamic_shell_syntax(script)
+    FindScript(script).contains_dynamic_syntax()
 }
 
-fn find_command_contains_dynamic_syntax(command: &[String]) -> bool {
-    let mut in_exec_arguments = false;
+#[derive(Clone, Copy)]
+struct FindScript<'a>(&'a str);
 
-    command.iter().any(|word| {
-        if matches!(word.as_str(), "-exec" | "-execdir") {
-            in_exec_arguments = true;
+impl FindScript<'_> {
+    fn contains_dynamic_syntax(self) -> bool {
+        match parse_shell_commands_tree_sitter(self.0) {
+            Ok(commands) => commands.iter().any(|command| FindCommand(command).contains_dynamic_syntax()),
+            Err(_) => self.raw_script_might_be_dynamic(),
+        }
+    }
+
+    fn raw_script_might_be_dynamic(self) -> bool {
+        // Be conservative when the grammar cannot identify the command shape: a
+        // raw script containing a find invocation and dynamic syntax must not pass
+        // preflight just because parsing was incomplete.
+        let has_find_invocation = self.0.split_whitespace().any(|word| {
+            let command = word.trim_matches(|character: char| !character.is_ascii_alphanumeric() && character != '/');
+            base_command_name(command) == "find"
+        });
+        has_find_invocation && contains_dynamic_shell_syntax(self.0)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct FindCommand<'a>(&'a [String]);
+
+impl FindCommand<'_> {
+    fn contains_dynamic_syntax(self) -> bool {
+        let is_find_command = self.0.first().is_some_and(|program| base_command_name(program) == "find");
+        if !is_find_command {
+            return false;
         }
 
-        let is_static_find_exec_token = in_exec_arguments && matches!(word.as_str(), "{}" | "\\;");
-        let dynamic = !is_static_find_exec_token && contains_dynamic_shell_syntax(word);
+        let mut classifier = FindExecSyntaxClassifier::default();
+        self.0
+            .iter()
+            .any(|word| classifier.contains_dynamic_syntax(FindExecArgument(word)))
+    }
+}
 
-        if in_exec_arguments && matches!(word.as_str(), ";" | "\\;" | "+") {
-            in_exec_arguments = false;
+#[derive(Clone, Copy)]
+struct FindExecArgument<'a>(&'a str);
+
+#[derive(Default)]
+struct FindExecSyntaxClassifier {
+    context: FindCommandContext,
+}
+
+#[derive(Default, PartialEq, Eq)]
+enum FindCommandContext {
+    #[default]
+    Expression,
+    ExecArguments,
+}
+
+impl FindExecSyntaxClassifier {
+    fn contains_dynamic_syntax(&mut self, argument: FindExecArgument<'_>) -> bool {
+        let word = argument.0;
+        if matches!(word, "-exec" | "-execdir") {
+            self.context = FindCommandContext::ExecArguments;
         }
 
-        dynamic
-    })
+        let is_static_exec_token = self.context == FindCommandContext::ExecArguments && matches!(word, "{}" | "\\;");
+        let is_dynamic = !is_static_exec_token && contains_dynamic_shell_syntax(word);
+
+        if self.context == FindCommandContext::ExecArguments && matches!(word, ";" | "\\;" | "+") {
+            self.context = FindCommandContext::Expression;
+        }
+
+        is_dynamic
+    }
 }
 
 /// Gets or initializes the bash parser
@@ -523,22 +560,19 @@ mod tests {
         let script = "cd crates/codegen/vtcode-core/src/tools/registry && for f in *.rs; do echo \"=== $f ===\"; grep -nE '^(pub )?(struct|enum|fn)' \"$f\" | head -50; done";
         let commands = parse_shell_commands(script).unwrap();
 
-        assert_eq!(commands[0], vec!["cd", "crates/codegen/vtcode-core/src/tools/registry"]);
-        assert!(
+        let expected_directory_change = vec![
+            "cd".to_owned(),
+            "crates/codegen/vtcode-core/src/tools/registry".to_owned(),
+        ];
+        assert_eq!(commands.first(), Some(&expected_directory_change));
+
+        let expected_loop_commands = ["echo", "grep", "head"];
+        let loop_commands_were_extracted = expected_loop_commands.iter().all(|expected| {
             commands
                 .iter()
-                .any(|command| command.first().is_some_and(|name| name == "echo"))
-        );
-        assert!(
-            commands
-                .iter()
-                .any(|command| command.first().is_some_and(|name| name == "grep"))
-        );
-        assert!(
-            commands
-                .iter()
-                .any(|command| command.first().is_some_and(|name| name == "head"))
-        );
+                .any(|command| command.first().is_some_and(|name| name == *expected))
+        });
+        assert!(loop_commands_were_extracted);
     }
 
     #[test]

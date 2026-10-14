@@ -288,6 +288,17 @@ fn allows_sampling_parameters(model: &str, reasoning_effort: Option<ReasoningEff
     }
 }
 
+fn chat_reasoning_effort_for_wire(
+    supports_reasoning_effort: bool,
+    effective_effort: Option<ReasoningEffortLevel>,
+) -> Option<ReasoningEffortLevel> {
+    if !supports_reasoning_effort {
+        return None;
+    }
+
+    effective_effort.filter(|effort| !matches!(effort, ReasoningEffortLevel::None | ReasoningEffortLevel::Unknown))
+}
+
 fn serialize_chat_reasoning_controls(
     openai_request: &mut Value,
     request: &provider::LLMRequest,
@@ -301,10 +312,7 @@ fn serialize_chat_reasoning_controls(
         openai_request["include_reasoning"] = Value::Bool(true);
     }
 
-    if ctx.supports_reasoning_effort
-        && let Some(effort) = effective_effort
-        && !matches!(effort, ReasoningEffortLevel::None | ReasoningEffortLevel::Unknown)
-    {
+    if let Some(effort) = chat_reasoning_effort_for_wire(ctx.supports_reasoning_effort, effective_effort) {
         openai_request["reasoning_effort"] = json!(effort.as_str());
     }
 

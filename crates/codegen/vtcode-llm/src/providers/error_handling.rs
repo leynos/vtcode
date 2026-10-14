@@ -551,14 +551,20 @@ mod tests {
 
     #[test]
     fn reqwest_error_metadata_codes_are_stable() {
-        assert_eq!(ReqwestErrorKind::Connect.metadata_code(), "reqwest_connect_error");
-        assert_eq!(ReqwestErrorKind::Timeout.metadata_code(), "reqwest_timeout_error");
-        assert_eq!(ReqwestErrorKind::Request.metadata_code(), "reqwest_request_error");
-        assert_eq!(ReqwestErrorKind::Body.metadata_code(), "reqwest_body_error");
-        assert_eq!(ReqwestErrorKind::Decode.metadata_code(), "reqwest_decode_error");
-        assert_eq!(ReqwestErrorKind::Redirect.metadata_code(), "reqwest_redirect_error");
-        assert_eq!(ReqwestErrorKind::Status.metadata_code(), "reqwest_status_error");
-        assert_eq!(ReqwestErrorKind::Unknown.metadata_code(), "reqwest_unknown_error");
+        let cases = [
+            (ReqwestErrorKind::Connect, "reqwest_connect_error"),
+            (ReqwestErrorKind::Timeout, "reqwest_timeout_error"),
+            (ReqwestErrorKind::Request, "reqwest_request_error"),
+            (ReqwestErrorKind::Body, "reqwest_body_error"),
+            (ReqwestErrorKind::Decode, "reqwest_decode_error"),
+            (ReqwestErrorKind::Redirect, "reqwest_redirect_error"),
+            (ReqwestErrorKind::Status, "reqwest_status_error"),
+            (ReqwestErrorKind::Unknown, "reqwest_unknown_error"),
+        ];
+
+        for (kind, expected_code) in cases {
+            assert_eq!(kind.metadata_code(), expected_code);
+        }
     }
 
     #[tokio::test]

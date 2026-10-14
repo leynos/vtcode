@@ -6,71 +6,55 @@
 )]
 use super::*;
 
-#[tokio::test]
-async fn denied_tool_call_emits_one_failed_output_for_runtime_invocation() {
-    let temp = TempDir::new().expect("tempdir");
-    let mut runner = Box::pin(make_runner(&temp, VTCodeConfig::default(), "thread-denied-tool-output")).await;
-    runner.enable_full_auto(&[tools::UNIFIED_FILE.to_string()]).await;
-
-    let response = tool_call_response(
-        tools::UNIFIED_EXEC,
-        json!({
-            "action": "run",
-            "command": "echo vtcode",
-        }),
-    );
-    let provider = QueuedProvider::new(vec![response]);
-    let mut provider_box: Box<dyn LLMProvider> = Box::new(provider);
-
-    let mut runtime =
-        AgentRuntime::new(AgentSessionState::new("session-denied".to_string(), 16, 4, 128_000), None, None);
-    let request = LLMRequest {
-        model: "gpt-5-codex".to_string(),
-        ..Default::default()
-    };
-    let turn = runtime
-        .run_turn_once(&mut provider_box, request, None)
-        .await
-        .expect("turn should succeed");
-
-    let tool_calls = turn.response.tool_calls.expect("tool call response");
-    let tool_call_id = tool_calls[0].id.clone();
-    let mut recorder = ExecEventRecorder::new("thread-denied-tool-output", None, None);
-    recorder.record_thread_events(runtime.take_emitted_events());
-
-    runner
-        .execute_tool_call_batches(tool_calls, &mut runtime, &mut recorder, "[single]", false, false)
-        .await
-        .expect("tool execution should finish");
-
-    let events = recorder.into_events();
-    let call_item_id = completed_tool_invocation_item_id(&events, &tool_call_id).expect("completed invocation");
-    assert_eq!(completed_tool_output_count(&events, &tool_call_id, ToolCallStatus::Failed, &call_item_id), 1);
-}
-
-#[tokio::test]
-async fn denied_parallel_tool_is_rejected_without_execution() {
-    let temp = TempDir::new().expect("tempdir");
-    let mut runner = Box::pin(make_runner(&temp, VTCodeConfig::default(), "thread-denied-parallel")).await;
-    runner.enable_full_auto(&[tools::UNIFIED_FILE.to_string()]).await;
-
-    let tool_calls = tool_call_response(
+fn denied_unified_exec_response() -> LLMResponse {
+    tool_call_response(
         tools::UNIFIED_EXEC,
         json!({
             "action": "run",
             "command": "echo vtcode",
         }),
     )
-    .tool_calls
-    .expect("tool call response");
+}
+
+fn assert_single_failed_output(events: &[ThreadEvent], tool_call_id: &str) {
+    let call_item_id = completed_tool_invocation_item_id(events, tool_call_id).expect("completed invocation");
+    assert_eq!(
+        completed_tool_output_count(events, tool_call_id, ToolCallStatus::Failed, &call_item_id),
+        1,
+        "each rejected invocation should emit exactly one failed output"
+    );
+}
+
+async fn run_single_tool_call_turn(runtime: &mut AgentRuntime, provider: &mut Box<dyn LLMProvider>) -> Vec<ToolCall> {
+    let request = LLMRequest {
+        model: "gpt-5-codex".to_string(),
+        ..Default::default()
+    };
+    runtime
+        .run_turn_once(provider, request, None)
+        .await
+        .expect("turn should succeed")
+        .response
+        .tool_calls
+        .expect("tool call response")
+}
+
+async fn assert_denied_tool_is_rejected(execution_mode: &str) {
+    let temp = TempDir::new().expect("tempdir");
+    let thread_id = format!("thread-denied-{execution_mode}");
+    let session_id = format!("session-denied-{execution_mode}");
+    let mut runner = Box::pin(make_runner(&temp, VTCodeConfig::default(), &thread_id)).await;
+    runner.enable_full_auto(&[tools::UNIFIED_FILE.to_string()]).await;
+
+    let tool_calls = denied_unified_exec_response().tool_calls.expect("tool call response");
     let tool_call_id = tool_calls[0].id.clone();
 
-    let mut runtime =
-        AgentRuntime::new(AgentSessionState::new("session-denied-parallel".to_string(), 16, 4, 128_000), None, None);
-    let mut recorder = ExecEventRecorder::new("thread-denied-parallel", None, None);
+    let mut runtime = AgentRuntime::new(AgentSessionState::new(session_id, 16, 4, 128_000), None, None);
+    let mut recorder = ExecEventRecorder::new(thread_id.clone(), None, None);
+    let batch_label = format!("[{execution_mode}]");
 
     runner
-        .execute_tool_call_batches(tool_calls, &mut runtime, &mut recorder, "[parallel]", false, false)
+        .execute_tool_call_batches(tool_calls, &mut runtime, &mut recorder, &batch_label, false, false)
         .await
         .expect("tool execution should finish");
 
@@ -90,8 +74,38 @@ async fn denied_parallel_tool_is_rejected_without_execution() {
         })
         .count();
     assert_eq!(invocation_count, 1);
-    let call_item_id = completed_tool_invocation_item_id(&events, &tool_call_id).expect("completed invocation");
-    assert_eq!(completed_tool_output_count(&events, &tool_call_id, ToolCallStatus::Failed, &call_item_id), 1);
+    assert_single_failed_output(&events, &tool_call_id);
+}
+
+#[tokio::test]
+async fn denied_tool_call_emits_one_failed_output_for_runtime_invocation() {
+    let temp = TempDir::new().expect("tempdir");
+    let mut runner = Box::pin(make_runner(&temp, VTCodeConfig::default(), "thread-denied-tool-output")).await;
+    runner.enable_full_auto(&[tools::UNIFIED_FILE.to_string()]).await;
+
+    let response = denied_unified_exec_response();
+    let provider = QueuedProvider::new(vec![response]);
+    let mut provider_box: Box<dyn LLMProvider> = Box::new(provider);
+
+    let mut runtime =
+        AgentRuntime::new(AgentSessionState::new("session-denied".to_string(), 16, 4, 128_000), None, None);
+    let tool_calls = run_single_tool_call_turn(&mut runtime, &mut provider_box).await;
+    let tool_call_id = tool_calls[0].id.clone();
+    let mut recorder = ExecEventRecorder::new("thread-denied-tool-output", None, None);
+    recorder.record_thread_events(runtime.take_emitted_events());
+
+    runner
+        .execute_tool_call_batches(tool_calls, &mut runtime, &mut recorder, "[single]", false, false)
+        .await
+        .expect("tool execution should finish");
+
+    let events = recorder.into_events();
+    assert_single_failed_output(&events, &tool_call_id);
+}
+
+#[tokio::test]
+async fn denied_parallel_tool_is_rejected_without_execution() {
+    assert_denied_tool_is_rejected("parallel").await;
 }
 
 #[tokio::test]
@@ -221,48 +235,7 @@ async fn removed_public_tool_names_are_rejected() {
 
 #[tokio::test]
 async fn denied_sequential_tool_is_rejected_without_execution() {
-    let temp = TempDir::new().expect("tempdir");
-    let mut runner = Box::pin(make_runner(&temp, VTCodeConfig::default(), "thread-denied-sequential")).await;
-    runner.enable_full_auto(&[tools::UNIFIED_FILE.to_string()]).await;
-
-    let tool_calls = tool_call_response(
-        tools::UNIFIED_EXEC,
-        json!({
-            "action": "run",
-            "command": "echo vtcode",
-        }),
-    )
-    .tool_calls
-    .expect("tool call response");
-    let tool_call_id = tool_calls[0].id.clone();
-
-    let mut runtime =
-        AgentRuntime::new(AgentSessionState::new("session-denied-sequential".to_string(), 16, 4, 128_000), None, None);
-    let mut recorder = ExecEventRecorder::new("thread-denied-sequential", None, None);
-
-    runner
-        .execute_tool_call_batches(tool_calls, &mut runtime, &mut recorder, "[sequential]", false, false)
-        .await
-        .expect("tool execution should finish");
-
-    assert!(!runtime.state.executed_commands.iter().any(|tool| tool == tools::UNIFIED_EXEC));
-
-    let events = recorder.into_events();
-    let invocation_count = events
-        .iter()
-        .filter(|event| match event {
-            ThreadEvent::ItemCompleted(ItemCompletedEvent { item }) => match &item.details {
-                ThreadItemDetails::ToolInvocation(details) => {
-                    details.tool_call_id.as_deref() == Some(tool_call_id.as_str())
-                }
-                _ => false,
-            },
-            _ => false,
-        })
-        .count();
-    assert_eq!(invocation_count, 1);
-    let call_item_id = completed_tool_invocation_item_id(&events, &tool_call_id).expect("completed invocation");
-    assert_eq!(completed_tool_output_count(&events, &tool_call_id, ToolCallStatus::Failed, &call_item_id), 1);
+    assert_denied_tool_is_rejected("sequential").await;
 }
 
 #[tokio::test]
@@ -446,16 +419,7 @@ async fn steer_stop_closes_open_tool_calls_with_failed_output_items() {
     let (steering_tx, steering_rx) = tokio::sync::mpsc::unbounded_channel();
     let mut runtime =
         AgentRuntime::new(AgentSessionState::new("session-stop".to_string(), 16, 4, 128_000), None, Some(steering_rx));
-    let request = LLMRequest {
-        model: "gpt-5-codex".to_string(),
-        ..Default::default()
-    };
-    let turn = runtime
-        .run_turn_once(&mut provider_box, request, None)
-        .await
-        .expect("turn should succeed");
-
-    let tool_calls = turn.response.tool_calls.expect("tool call response");
+    let tool_calls = run_single_tool_call_turn(&mut runtime, &mut provider_box).await;
     let tool_call_id = tool_calls[0].id.clone();
     let mut recorder = ExecEventRecorder::new("thread-stop-tool-output", None, None);
     recorder.record_thread_events(runtime.take_emitted_events());
@@ -467,6 +431,5 @@ async fn steer_stop_closes_open_tool_calls_with_failed_output_items() {
         .expect("tool execution should finish");
 
     let events = recorder.into_events();
-    let call_item_id = completed_tool_invocation_item_id(&events, &tool_call_id).expect("completed invocation");
-    assert_eq!(completed_tool_output_count(&events, &tool_call_id, ToolCallStatus::Failed, &call_item_id), 1);
+    assert_single_failed_output(&events, &tool_call_id);
 }

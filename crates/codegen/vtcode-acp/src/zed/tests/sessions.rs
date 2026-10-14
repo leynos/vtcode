@@ -2,6 +2,21 @@
 
 use super::*;
 
+fn config_option_has_current_value(
+    config_options: &[crate::acp::SessionConfigOption],
+    config_id: &str,
+    expected_value: &str,
+) -> bool {
+    config_options.iter().any(|option| {
+        option.id == crate::acp::SessionConfigId::new(config_id)
+            && matches!(
+                &option.kind,
+                SessionConfigKind::Select(select)
+                    if select.current_value == crate::acp::SessionConfigValueId::new(expected_value)
+            )
+    })
+}
+
 #[tokio::test]
 async fn load_session_returns_existing_session_state() {
     let temp = TempDir::new().unwrap();
@@ -21,42 +36,10 @@ async fn load_session_returns_existing_session_state() {
     assert!(response.modes.is_none());
     let config_options = response.config_options.unwrap();
     assert_eq!(config_options.len(), 4);
-    assert!(config_options.iter().any(|option| {
-        option.id == crate::acp::SessionConfigId::new(SESSION_CONFIG_PRIMARY_AGENT_ID)
-            && matches!(
-                &option.kind,
-                SessionConfigKind::Select(select)
-                    if select.current_value
-                        == crate::acp::SessionConfigValueId::new("build")
-            )
-    }));
-    assert!(config_options.iter().any(|option| {
-        option.id == crate::acp::SessionConfigId::new(SESSION_CONFIG_THOUGHT_LEVEL_ID)
-            && matches!(
-                &option.kind,
-                SessionConfigKind::Select(select)
-                    if select.current_value
-                        == crate::acp::SessionConfigValueId::new("high")
-            )
-    }));
-    assert!(config_options.iter().any(|option| {
-        option.id == crate::acp::SessionConfigId::new(SESSION_CONFIG_PROVIDER_ID)
-            && matches!(
-                &option.kind,
-                SessionConfigKind::Select(select)
-                    if select.current_value
-                        == crate::acp::SessionConfigValueId::new("openai")
-            )
-    }));
-    assert!(config_options.iter().any(|option| {
-        option.id == crate::acp::SessionConfigId::new(SESSION_CONFIG_MODEL_ID)
-            && matches!(
-                &option.kind,
-                SessionConfigKind::Select(select)
-                    if select.current_value
-                        == crate::acp::SessionConfigValueId::new("gpt-5.6-sol")
-            )
-    }));
+    assert!(config_option_has_current_value(&config_options, SESSION_CONFIG_PRIMARY_AGENT_ID, "build"));
+    assert!(config_option_has_current_value(&config_options, SESSION_CONFIG_THOUGHT_LEVEL_ID, "high"));
+    assert!(config_option_has_current_value(&config_options, SESSION_CONFIG_PROVIDER_ID, "openai"));
+    assert!(config_option_has_current_value(&config_options, SESSION_CONFIG_MODEL_ID, "gpt-5.6-sol"));
 }
 
 #[tokio::test]

@@ -1,6 +1,6 @@
 //! Shared fixtures and helpers for the ACP Zed agent test modules.
 
-use super::agent::ZedAgent;
+use super::agent::{ZedAgent, ZedAgentSetup};
 use super::*;
 use crate::tooling::{TOOL_LIST_FILES_ITEMS_KEY, TOOL_LIST_FILES_RESULT_KEY, TOOL_LIST_FILES_URI_ARG};
 use crate::zed::helpers::{
@@ -65,21 +65,21 @@ async fn build_agent_with_vt_config(workspace: &Path, vt_cfg: Option<&VTCodeConf
     let discovered = discover_subagents(&discovery_input).expect("discover primary agents");
     let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, "duck");
 
-    Box::pin(ZedAgent::new(
-        core_config,
-        AuthCredentialsStoreMode::default(),
+    Box::pin(ZedAgent::new(ZedAgentSetup {
+        config: core_config,
+        credential_storage_mode: AuthCredentialsStoreMode::default(),
         zed_config,
         tools_config,
-        CommandsConfig::default(),
-        &[],
-        TimeoutsConfig::default(),
-        String::new(),
-        Some("Zed".to_string()),
+        commands_config: CommandsConfig::default(),
+        custom_providers: &[],
+        provider_timeouts: TimeoutsConfig::default(),
+        system_prompt: String::new(),
+        title: Some("Zed".to_string()),
         primary_agents,
-        false,
-        vt_cfg,
-        None,
-    ))
+        skip_confirmations: false,
+        vt_config: vt_cfg,
+        audit_logger: None,
+    }))
     .await
 }
 

@@ -36,7 +36,7 @@ pub use skill_metrics::SkillMetrics;
 ///
 /// Provider names are deliberately not labels here: user-defined provider
 /// names would create unbounded Prometheus series cardinality.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderRequestMetrics {
     pub attempts_started: u64,
     pub attempts_succeeded: u64,
@@ -417,23 +417,53 @@ impl MetricsCollector {
 
     /// Export metrics in Prometheus format
     pub fn export_prometheus(&self) -> String {
-        let discovery = self.get_discovery_metrics();
-        let execution = self.get_execution_metrics();
-        let filtering = self.get_filtering_metrics();
-        let planning = self.get_planning_metrics();
-        let skills = self.get_skill_metrics();
-        let security = self.get_security_metrics();
-        let provider_requests = self.get_provider_request_metrics();
+        PrometheusMetricsSnapshot::collect(self).render()
+    }
+}
 
+struct PrometheusMetricsSnapshot {
+    discovery: DiscoveryMetrics,
+    execution: ExecutionMetrics,
+    filtering: FilteringMetrics,
+    planning: PlanningValidationMetrics,
+    skills: SkillMetrics,
+    security: SecurityMetrics,
+    provider_requests: ProviderRequestMetrics,
+}
+
+impl PrometheusMetricsSnapshot {
+    fn collect(collector: &MetricsCollector) -> Self {
+        Self {
+            discovery: collector.get_discovery_metrics(),
+            execution: collector.get_execution_metrics(),
+            filtering: collector.get_filtering_metrics(),
+            planning: collector.get_planning_metrics(),
+            skills: collector.get_skill_metrics(),
+            security: collector.get_security_metrics(),
+            provider_requests: collector.get_provider_request_metrics(),
+        }
+    }
+
+    fn render(&self) -> String {
         let mut output = String::new();
+        self.append_discovery(&mut output);
+        self.append_execution(&mut output);
+        self.append_filtering(&mut output);
+        self.append_skills(&mut output);
+        self.append_pii_detections(&mut output);
+        self.append_provider_requests(&mut output);
+        self.append_tokens_created(&mut output);
+        output
+    }
 
+    fn append_discovery(&self, output: &mut String) {
         // Discovery metrics
         let _ = write!(
             output,
             "# HELP vtcode_discovery_queries_total Total tool discovery queries\n\
              # TYPE vtcode_discovery_queries_total counter\n\
              vtcode_discovery_queries_total {}\n\n",
-            discovery.total_queries
+            self.discovery.total_queries
         );
 
         let _ = write!(
@@ -441,16 +471,18 @@ impl MetricsCollector {
             "# HELP vtcode_discovery_hit_rate Hit rate of discovery queries\n\
              # TYPE vtcode_discovery_hit_rate gauge\n\
              vtcode_discovery_hit_rate {}\n\n",
-            discovery.hit_rate()
+            self.discovery.hit_rate()
         );
+    }
 
+    fn append_execution(&self, output: &mut String) {
         // Execution metrics
         let _ = write!(
             output,
             "# HELP vtcode_execution_total Total code executions\n\
              # TYPE vtcode_execution_total counter\n\
              vtcode_execution_total {}\n\n",
-            execution.total_executions
+            self.execution.total_executions
         );
 
         let _ = write!(
@@ -458,7 +490,7 @@ impl MetricsCollector {
             "# HELP vtcode_execution_duration_ms Code execution average duration\n\
              # TYPE vtcode_execution_duration_ms gauge\n\
              vtcode_execution_duration_ms {}\n\n",
-            execution.avg_duration_ms()
+            self.execution.avg_duration_ms()
         );
 
         let _ = write!(
@@ -466,7 +498,7 @@ impl MetricsCollector {
             "# HELP vtcode_retry_attempts_total Total retry attempts\n\
              # TYPE vtcode_retry_attempts_total counter\n\
              vtcode_retry_attempts_total {}\n\n",
-            execution.retry_attempts
+            self.execution.retry_attempts
         );
 
         let _ = write!(
@@ -474,7 +506,7 @@ impl MetricsCollector {
             "# HELP vtcode_retry_successes_total Total retries that later succeeded\n\
              # TYPE vtcode_retry_successes_total counter\n\
              vtcode_retry_successes_total {}\n\n",
-            execution.retry_successes
+            self.execution.retry_successes
         );
 
         let _ = write!(
@@ -482,7 +514,7 @@ impl MetricsCollector {
             "# HELP vtcode_retry_exhausted_total Total operations that exhausted retries\n\
              # TYPE vtcode_retry_exhausted_total counter\n\
              vtcode_retry_exhausted_total {}\n\n",
-            execution.retry_exhausted
+            self.execution.retry_exhausted
         );
 
         let _ = write!(
@@ -490,7 +522,7 @@ impl MetricsCollector {
             "# HELP vtcode_circuit_open_total Total circuit breaker open transitions\n\
              # TYPE vtcode_circuit_open_total counter\n\
              vtcode_circuit_open_total {}\n\n",
-            execution.circuit_open_events
+            self.execution.circuit_open_events
         );
 
         let _ = write!(
@@ -498,7 +530,7 @@ impl MetricsCollector {
             "# HELP vtcode_circuit_half_open_total Total circuit breaker half-open transitions\n\
              # TYPE vtcode_circuit_half_open_total counter\n\
              vtcode_circuit_half_open_total {}\n\n",
-            execution.half_open_events
+            self.execution.half_open_events
         );
 
         let _ = write!(
@@ -506,16 +538,18 @@ impl MetricsCollector {
             "# HELP vtcode_circuit_breaker_denials_total Total circuit breaker denials\n\
              # TYPE vtcode_circuit_breaker_denials_total counter\n\
              vtcode_circuit_breaker_denials_total {}\n\n",
-            execution.breaker_denials
+            self.execution.breaker_denials
         );
+    }
 
+    fn append_filtering(&self, output: &mut String) {
         // Filtering metrics
         let _ = write!(
             output,
             "# HELP vtcode_filtering_operations_total Total filtering operations\n\
              # TYPE vtcode_filtering_operations_total counter\n\
              vtcode_filtering_operations_total {}\n\n",
-            filtering.total_operations
+            self.filtering.total_operations
         );
 
         let _ = write!(
@@ -523,7 +557,7 @@ impl MetricsCollector {
             "# HELP vtcode_plan_validation_rejected_total Total plan validation rejections by reason\n\
              # TYPE vtcode_plan_validation_rejected_total counter\n\
              vtcode_plan_validation_rejected_total{{reason=\"placeholder_token\"}} {}\n\n",
-            planning.placeholder_token_rejections
+            self.planning.placeholder_token_rejections
         );
 
         let _ = write!(
@@ -531,16 +565,18 @@ impl MetricsCollector {
             "# HELP vtcode_context_tokens_saved Estimated tokens saved by filtering\n\
              # TYPE vtcode_context_tokens_saved counter\n\
              vtcode_context_tokens_saved {}\n\n",
-            filtering.estimated_tokens_saved()
+            self.filtering.estimated_tokens_saved()
         );
+    }
 
+    fn append_skills(&self, output: &mut String) {
         // Skills metrics
         let _ = write!(
             output,
             "# HELP vtcode_skills_total Total saved skills\n\
              # TYPE vtcode_skills_total gauge\n\
              vtcode_skills_total {}\n\n",
-            skills.total_skills
+            self.skills.total_skills
         );
 
         let _ = write!(
@@ -548,18 +584,22 @@ impl MetricsCollector {
             "# HELP vtcode_skill_reuse_ratio Ratio of skill reuse\n\
              # TYPE vtcode_skill_reuse_ratio gauge\n\
              vtcode_skill_reuse_ratio {}\n\n",
-            skills.reuse_ratio()
+            self.skills.reuse_ratio()
         );
+    }
 
+    fn append_pii_detections(&self, output: &mut String) {
         // Security metrics
         let _ = write!(
             output,
             "# HELP vtcode_pii_detections_total Total PII patterns detected\n\
              # TYPE vtcode_pii_detections_total counter\n\
              vtcode_pii_detections_total {}\n\n",
-            security.pii_detections
+            self.security.pii_detections
         );
+    }
 
+    fn append_provider_requests(&self, output: &mut String) {
         // Aggregate provider metrics deliberately omit provider-name labels.
         let _ = write!(
             output,
@@ -590,28 +630,28 @@ impl MetricsCollector {
              # HELP vtcode_provider_time_to_first_output_observations_total Provider attempts with a first-output observation\n\
              # TYPE vtcode_provider_time_to_first_output_observations_total counter\n\
              vtcode_provider_time_to_first_output_observations_total {}\n\n",
-            provider_requests.attempts_started,
-            provider_requests.attempts_succeeded,
-            provider_requests.attempts_failed,
-            provider_requests.attempts_cancelled,
-            provider_requests.retries_scheduled,
-            provider_requests.attempts_in_flight,
-            provider_requests.total_duration_ms,
-            provider_requests.total_time_to_first_output_ms,
-            provider_requests.first_output_samples,
+            self.provider_requests.attempts_started,
+            self.provider_requests.attempts_succeeded,
+            self.provider_requests.attempts_failed,
+            self.provider_requests.attempts_cancelled,
+            self.provider_requests.retries_scheduled,
+            self.provider_requests.attempts_in_flight,
+            self.provider_requests.total_duration_ms,
+            self.provider_requests.total_time_to_first_output_ms,
+            self.provider_requests.first_output_samples,
         );
 
-        append_custom_provider_admission_prometheus(&mut output, &provider_requests);
+        append_custom_provider_admission_prometheus(output, &self.provider_requests);
+    }
 
+    fn append_tokens_created(&self, output: &mut String) {
         let _ = write!(
             output,
             "# HELP vtcode_tokens_created_total Total PII tokens created\n\
              # TYPE vtcode_tokens_created_total counter\n\
              vtcode_tokens_created_total {}\n\n",
-            security.tokens_created
+            self.security.tokens_created
         );
-
-        output
     }
 }
 
@@ -650,6 +690,24 @@ impl Default for MetricsCollector {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn collector_with_provider_attempts() -> MetricsCollector {
+        let collector = MetricsCollector::new();
+        collector.record_provider_attempt_started();
+        collector.record_provider_attempt_failed(12, false, Some(3));
+        collector.record_provider_retry_scheduled();
+        collector.record_provider_attempt_finished();
+        collector.record_provider_attempt_started();
+        collector.record_provider_attempt_succeeded(34, Some(7));
+        collector.record_provider_attempt_finished();
+        collector
+    }
+
+    fn filtering_metrics_with_recorded_operation() -> FilteringMetrics {
+        let collector = MetricsCollector::new();
+        collector.record_filtering_operation("redact".to_string(), 80, 32, 6);
+        collector.get_filtering_metrics()
+    }
 
     #[test]
     fn test_metrics_collector_creation() {
@@ -693,17 +751,24 @@ mod tests {
     }
 
     #[test]
-    fn test_reliability_metrics_recording() {
+    fn test_reliability_retry_metrics_recording() {
         let collector = MetricsCollector::new();
         collector.record_retry_attempt();
         collector.record_retry_success();
+
+        let metrics = collector.get_execution_metrics();
+        assert_eq!(metrics.retry_attempts, 1);
+        assert_eq!(metrics.retry_successes, 1);
+    }
+
+    #[test]
+    fn test_reliability_circuit_metrics_recording() {
+        let collector = MetricsCollector::new();
         collector.record_circuit_open();
         collector.record_half_open();
         collector.record_breaker_denial();
 
         let metrics = collector.get_execution_metrics();
-        assert_eq!(metrics.retry_attempts, 1);
-        assert_eq!(metrics.retry_successes, 1);
         assert_eq!(metrics.circuit_open_events, 1);
         assert_eq!(metrics.half_open_events, 1);
         assert_eq!(metrics.breaker_denials, 1);
@@ -721,33 +786,45 @@ mod tests {
     }
 
     #[test]
-    fn provider_request_metrics_export_bounded_aggregate_counts_and_timings() {
-        let collector = MetricsCollector::new();
-        collector.record_provider_attempt_started();
-        collector.record_provider_attempt_failed(12, false, Some(3));
-        collector.record_provider_retry_scheduled();
-        collector.record_provider_attempt_finished();
-        collector.record_provider_attempt_started();
-        collector.record_provider_attempt_succeeded(34, Some(7));
-        collector.record_provider_attempt_finished();
-
+    fn provider_request_metrics_record_bounded_aggregate_counts_and_timings() {
+        let collector = collector_with_provider_attempts();
         let metrics = collector.get_provider_request_metrics();
-        assert_eq!(metrics.attempts_started, 2);
-        assert_eq!(metrics.attempts_failed, 1);
-        assert_eq!(metrics.attempts_succeeded, 1);
-        assert_eq!(metrics.retries_scheduled, 1);
-        assert_eq!(metrics.attempts_in_flight, 0);
-        assert_eq!(metrics.total_duration_ms, 46);
-        assert_eq!(metrics.first_output_samples, 2);
-        assert_eq!(metrics.total_time_to_first_output_ms, 10);
+        let expected = ProviderRequestMetrics {
+            attempts_started: 2,
+            attempts_succeeded: 1,
+            attempts_failed: 1,
+            retries_scheduled: 1,
+            total_duration_ms: 46,
+            first_output_samples: 2,
+            total_time_to_first_output_ms: 10,
+            ..ProviderRequestMetrics::default()
+        };
 
+        assert_eq!(metrics, expected);
+    }
+
+    #[test]
+    fn provider_request_prometheus_exports_aggregate_attempt_samples() {
+        let collector = collector_with_provider_attempts();
         let prometheus = collector.export_prometheus();
         assert!(prometheus.contains("vtcode_provider_attempts_started_total 2"));
         assert!(prometheus.contains("vtcode_provider_attempts_in_flight 0"));
         assert!(prometheus.contains("vtcode_provider_time_to_first_output_ms_total 10"));
+    }
+
+    #[test]
+    fn provider_request_prometheus_exports_admission_samples() {
+        let collector = collector_with_provider_attempts();
+        let prometheus = collector.export_prometheus();
         assert!(prometheus.contains("vtcode_custom_provider_admission_queue_depth"));
         assert!(prometheus.contains("vtcode_custom_provider_admission_queue_waits_total"));
         assert!(prometheus.contains("vtcode_custom_provider_admission_queue_timeouts_total"));
+    }
+
+    #[test]
+    fn provider_request_prometheus_omits_provider_name_labels() {
+        let collector = collector_with_provider_attempts();
+        let prometheus = collector.export_prometheus();
         assert!(!prometheus.contains("provider=\""));
     }
 
@@ -765,11 +842,36 @@ mod tests {
 
         append_custom_provider_admission_prometheus(&mut prometheus, &metrics);
 
-        assert!(prometheus.contains("vtcode_custom_provider_admission_queue_depth 2\n"));
-        assert!(prometheus.contains("vtcode_custom_provider_admission_in_flight 3\n"));
-        assert!(prometheus.contains("vtcode_custom_provider_admission_queue_waits_total 5\n"));
-        assert!(prometheus.contains("vtcode_custom_provider_admission_queue_wait_ms_total 7\n"));
-        assert!(prometheus.contains("vtcode_custom_provider_admission_queue_timeouts_total 11\n"));
+        let samples: Vec<_> = prometheus
+            .lines()
+            .filter(|line| !line.starts_with('#') && !line.is_empty())
+            .collect();
+        assert_eq!(
+            samples,
+            vec![
+                "vtcode_custom_provider_admission_queue_depth 2",
+                "vtcode_custom_provider_admission_in_flight 3",
+                "vtcode_custom_provider_admission_queue_waits_total 5",
+                "vtcode_custom_provider_admission_queue_wait_ms_total 7",
+                "vtcode_custom_provider_admission_queue_timeouts_total 11",
+            ]
+        );
+    }
+
+    #[test]
+    fn filtering_operation_records_operation_and_sizes() {
+        let metrics = filtering_metrics_with_recorded_operation();
+        let record = metrics.recent_operations.back().unwrap();
+        assert_eq!(record.operation, "redact");
+        assert_eq!(record.input_size_bytes, 80);
+        assert_eq!(record.output_size_bytes, 32);
+    }
+
+    #[test]
+    fn filtering_operation_records_duration() {
+        let metrics = filtering_metrics_with_recorded_operation();
+        let record = metrics.recent_operations.back().unwrap();
+        assert_eq!(record.duration_ms, 6);
     }
 
     #[test]

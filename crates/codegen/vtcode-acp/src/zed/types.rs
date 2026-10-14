@@ -88,6 +88,43 @@ pub(crate) struct SessionData {
     pub(crate) task_lifecycle_registration: Option<vtcode_core::subagents::SubagentProgressObserverRegistration>,
 }
 
+#[derive(Clone, Copy)]
+enum SessionLifecycleBoundary {
+    Started,
+    Ended,
+}
+
+impl SessionLifecycleBoundary {
+    const fn lock_context(self) -> &'static str {
+        match self {
+            Self::Started => "marking ACP session started",
+            Self::Ended => "marking ACP session ended",
+        }
+    }
+}
+
+enum SessionLifecycleTransition {
+    Started,
+    Ended(String),
+}
+
+impl SessionData {
+    fn mark_lifecycle_boundary(&mut self, boundary: SessionLifecycleBoundary) -> Option<SessionLifecycleTransition> {
+        match boundary {
+            SessionLifecycleBoundary::Started if self.session_started => None,
+            SessionLifecycleBoundary::Started => {
+                self.session_started = true;
+                Some(SessionLifecycleTransition::Started)
+            }
+            SessionLifecycleBoundary::Ended if self.session_ended => None,
+            SessionLifecycleBoundary::Ended => {
+                self.session_ended = true;
+                Some(SessionLifecycleTransition::Ended(self.session_id.to_string()))
+            }
+        }
+    }
+}
+
 pub(crate) fn lock_poison_error(context: &str, error: impl std::fmt::Display) -> anyhow::Error {
     anyhow::anyhow!("{context}: {error}")
 }
@@ -120,29 +157,24 @@ impl SessionHandle {
     }
 
     pub(crate) fn mark_session_started(&self) -> anyhow::Result<bool> {
-        let mut data = self
-            .data
-            .lock()
-            .map_err(|error| lock_poison_error("marking ACP session started", error))?;
-        if data.session_started {
-            Ok(false)
-        } else {
-            data.session_started = true;
-            Ok(true)
-        }
+        Ok(self.mark_lifecycle_boundary(SessionLifecycleBoundary::Started)?.is_some())
     }
 
     pub(crate) fn mark_session_ended(&self) -> anyhow::Result<Option<String>> {
-        let mut data = self
-            .data
+        Ok(match self.mark_lifecycle_boundary(SessionLifecycleBoundary::Ended)? {
+            Some(SessionLifecycleTransition::Ended(session_id)) => Some(session_id),
+            _ => None,
+        })
+    }
+
+    fn mark_lifecycle_boundary(
+        &self,
+        boundary: SessionLifecycleBoundary,
+    ) -> anyhow::Result<Option<SessionLifecycleTransition>> {
+        self.data
             .lock()
-            .map_err(|error| lock_poison_error("marking ACP session ended", error))?;
-        if data.session_ended {
-            Ok(None)
-        } else {
-            data.session_ended = true;
-            Ok(Some(data.session_id.to_string()))
-        }
+            .map_err(|error| lock_poison_error(boundary.lock_context(), error))
+            .map(|mut data| data.mark_lifecycle_boundary(boundary))
     }
 
     pub(crate) async fn update_transcript_path(&self) -> anyhow::Result<()> {

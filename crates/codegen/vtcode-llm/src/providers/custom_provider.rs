@@ -214,6 +214,61 @@ impl CustomProviderAdmission {
 }
 
 /// Profile-aware backend router for custom providers.
+struct CustomProviderOpenAIRequestConfig {
+    provider_key: String,
+    display_name: String,
+    api_key: Option<String>,
+    model: String,
+    base_url: String,
+    prompt_cache: Option<PromptCachingConfig>,
+    timeouts: Option<TimeoutsConfig>,
+    openai: Option<OpenAIConfig>,
+    model_behaviour: Option<ModelConfig>,
+    auth: Option<CustomProviderAuthHandle>,
+    supported_models: Vec<String>,
+}
+
+struct CustomProviderOpenAIBackends {
+    automatic: OpenAIProvider,
+    chat: OpenAIProvider,
+    responses: OpenAIProvider,
+}
+
+impl CustomProviderOpenAIRequestConfig {
+    fn backend(
+        &self,
+        custom_config: &CustomProviderConfig,
+        api_format: Option<CustomProviderApiFormat>,
+    ) -> OpenAIProvider {
+        let provider = OpenAIProvider::from_custom_config(
+            self.provider_key.clone(),
+            self.display_name.clone(),
+            self.api_key.clone(),
+            Some(self.model.clone()),
+            Some(self.base_url.clone()),
+            self.prompt_cache.clone(),
+            self.timeouts.clone(),
+            self.openai.clone(),
+            self.model_behaviour.clone(),
+            self.auth.clone(),
+            Some(self.supported_models.clone()),
+        );
+        let provider = match api_format {
+            Some(format) => provider.with_api_format_override(Some(format)),
+            None => provider,
+        };
+        provider.with_custom_provider_config(custom_config.clone())
+    }
+
+    fn backends(&self, custom_config: &CustomProviderConfig) -> CustomProviderOpenAIBackends {
+        CustomProviderOpenAIBackends {
+            automatic: self.backend(custom_config, None),
+            chat: self.backend(custom_config, Some(CustomProviderApiFormat::OpenAIChat)),
+            responses: self.backend(custom_config, Some(CustomProviderApiFormat::OpenAIResponses)),
+        }
+    }
+}
+
 pub struct CustomProviderBackendRouter {
     provider_key: String,
     display_name: String,
@@ -256,51 +311,20 @@ impl CustomProviderBackendRouter {
             configured_default
         };
         let anthropic_config = anthropic.unwrap_or_default();
-
-        let openai_auto = OpenAIProvider::from_custom_config(
-            provider_key.clone(),
-            display_name.clone(),
-            api_key.clone(),
-            Some(default_model.clone()),
-            Some(base_url.clone()),
-            prompt_cache.clone(),
-            timeouts.clone(),
-            openai.clone(),
-            model_behaviour.clone(),
-            custom_provider_auth.clone(),
-            Some(supported_models.clone()),
-        )
-        .with_custom_provider_config(custom_config.clone());
-        let openai_chat = OpenAIProvider::from_custom_config(
-            provider_key.clone(),
-            display_name.clone(),
-            api_key.clone(),
-            Some(default_model.clone()),
-            Some(base_url.clone()),
-            prompt_cache.clone(),
-            timeouts.clone(),
-            openai.clone(),
-            model_behaviour.clone(),
-            custom_provider_auth.clone(),
-            Some(supported_models.clone()),
-        )
-        .with_api_format_override(Some(CustomProviderApiFormat::OpenAIChat))
-        .with_custom_provider_config(custom_config.clone());
-        let openai_responses = OpenAIProvider::from_custom_config(
-            provider_key.clone(),
-            display_name.clone(),
-            api_key.clone(),
-            Some(default_model.clone()),
-            Some(base_url.clone()),
-            prompt_cache.clone(),
-            timeouts.clone(),
-            openai.clone(),
-            model_behaviour.clone(),
-            custom_provider_auth.clone(),
-            Some(supported_models.clone()),
-        )
-        .with_api_format_override(Some(CustomProviderApiFormat::OpenAIResponses))
-        .with_custom_provider_config(custom_config.clone());
+        let openai_backends = CustomProviderOpenAIRequestConfig {
+            provider_key: provider_key.clone(),
+            display_name: display_name.clone(),
+            api_key: api_key.clone(),
+            model: default_model.clone(),
+            base_url: base_url.clone(),
+            prompt_cache: prompt_cache.clone(),
+            timeouts: timeouts.clone(),
+            openai,
+            model_behaviour: model_behaviour.clone(),
+            auth: custom_provider_auth.clone(),
+            supported_models: supported_models.clone(),
+        }
+        .backends(&custom_config);
         let anthropic = AnthropicProvider::from_config(
             api_key,
             Some(default_model.clone()),
@@ -320,9 +344,9 @@ impl CustomProviderBackendRouter {
             custom_config,
             request_admission,
             anthropic_config,
-            openai_auto,
-            openai_chat,
-            openai_responses,
+            openai_auto: openai_backends.automatic,
+            openai_chat: openai_backends.chat,
+            openai_responses: openai_backends.responses,
             anthropic,
         }
     }
@@ -688,6 +712,153 @@ mod tests {
         CustomProviderAdmission::new(&config, &format!("https://{provider_name}.example/v1"))
     }
 
+    struct AdmissionCapacityWave {
+        capacity: usize,
+        admission: Arc<CustomProviderAdmission>,
+        active_requests: Arc<AtomicUsize>,
+        peak_active_requests: Arc<AtomicUsize>,
+        started_receiver: tokio::sync::mpsc::Receiver<usize>,
+        admitted_receiver: tokio::sync::mpsc::Receiver<usize>,
+        release_sender: tokio::sync::watch::Sender<bool>,
+        requests: tokio::task::JoinSet<()>,
+    }
+
+    impl AdmissionCapacityWave {
+        async fn start(capacity: usize) -> Self {
+            let admission = Arc::new(admission_for_capacity(&format!("capacity-{capacity}"), capacity));
+            let request_count = capacity * 3;
+            let active_requests = Arc::new(AtomicUsize::new(0));
+            let peak_active_requests = Arc::new(AtomicUsize::new(0));
+            let start_gate = Arc::new(tokio::sync::Barrier::new(request_count + 1));
+            let (started_sender, started_receiver) = tokio::sync::mpsc::channel(request_count);
+            let (admitted_sender, admitted_receiver) = tokio::sync::mpsc::channel(request_count);
+            let (release_sender, release_receiver) = tokio::sync::watch::channel(false);
+            let mut requests = tokio::task::JoinSet::new();
+
+            for request_id in 0..request_count {
+                let admission = Arc::clone(&admission);
+                let active_requests = Arc::clone(&active_requests);
+                let peak_active_requests = Arc::clone(&peak_active_requests);
+                let start_gate = Arc::clone(&start_gate);
+                let started_sender = started_sender.clone();
+                let admitted_sender = admitted_sender.clone();
+                let mut release_receiver = release_receiver.clone();
+
+                requests.spawn(async move {
+                    start_gate.wait().await;
+                    started_sender
+                        .send(request_id)
+                        .await
+                        .expect("test should receive every started request");
+
+                    let permit = admission
+                        .acquire()
+                        .await
+                        .expect("request should be admitted")
+                        .expect("configured capacity should return a permit");
+                    let active = active_requests.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak_active_requests.fetch_max(active, Ordering::SeqCst);
+                    admitted_sender
+                        .send(request_id)
+                        .await
+                        .expect("test should receive every admitted request");
+
+                    release_receiver
+                        .wait_for(|released| *released)
+                        .await
+                        .expect("test should release every admitted request");
+                    active_requests.fetch_sub(1, Ordering::SeqCst);
+                    drop(permit);
+                });
+            }
+            drop((started_sender, admitted_sender));
+            start_gate.wait().await;
+
+            Self {
+                capacity,
+                admission,
+                active_requests,
+                peak_active_requests,
+                started_receiver,
+                admitted_receiver,
+                release_sender,
+                requests,
+            }
+        }
+
+        async fn assert_limit_is_enforced(&mut self) {
+            let request_count = self.capacity * 3;
+            for _ in 0..request_count {
+                tokio::time::timeout(Duration::from_secs(1), self.started_receiver.recv())
+                    .await
+                    .expect("all concurrent requests should start")
+                    .expect("started request channel should remain open");
+            }
+
+            let mut admitted_request_ids = Vec::with_capacity(self.capacity);
+            for _ in 0..self.capacity {
+                admitted_request_ids.push(
+                    tokio::time::timeout(Duration::from_secs(2), self.admitted_receiver.recv())
+                        .await
+                        .expect("configured capacity should be admitted")
+                        .expect("admitted request channel should remain open"),
+                );
+            }
+            admitted_request_ids.sort_unstable();
+            admitted_request_ids.dedup();
+            assert_eq!(admitted_request_ids.len(), self.capacity, "each permit admits one request");
+            assert_eq!(self.active_requests.load(Ordering::SeqCst), self.capacity);
+            assert_eq!(self.peak_active_requests.load(Ordering::SeqCst), self.capacity);
+            assert!(
+                tokio::time::timeout(Duration::from_millis(50), self.admitted_receiver.recv())
+                    .await
+                    .is_err(),
+                "no request may be admitted while all configured permits are held"
+            );
+        }
+
+        async fn release_and_assert_completion(&mut self) {
+            self.release_sender.send(true).expect("request workers are still listening");
+            while let Some(result) = self.requests.join_next().await {
+                result.expect("admission worker should complete without panicking");
+            }
+
+            assert_eq!(self.active_requests.load(Ordering::SeqCst), 0);
+            assert_eq!(self.peak_active_requests.load(Ordering::SeqCst), self.capacity);
+            assert_eq!(
+                self.admission
+                    .semaphore
+                    .as_ref()
+                    .expect("configured semaphore")
+                    .available_permits(),
+                self.capacity,
+                "completed requests should return every permit"
+            );
+        }
+
+        async fn assert_permits_are_reusable(&self) {
+            let mut reused_permits = Vec::with_capacity(self.capacity);
+            for _ in 0..self.capacity {
+                reused_permits.push(
+                    tokio::time::timeout(Duration::from_secs(1), self.admission.acquire())
+                        .await
+                        .expect("released permit should be reusable")
+                        .expect("reused request should be admitted")
+                        .expect("configured capacity should return a permit"),
+                );
+            }
+            assert_eq!(
+                self.admission
+                    .semaphore
+                    .as_ref()
+                    .expect("configured semaphore")
+                    .available_permits(),
+                0
+            );
+            drop(reused_permits);
+        }
+    }
+
     #[tokio::test]
     async fn router_instances_share_admission_for_the_same_endpoint_and_isolate_other_endpoints() {
         let _admission_test_guard = ADMISSION_TEST_LOCK.lock().await;
@@ -777,107 +948,10 @@ mod tests {
     async fn request_admission_respects_configured_capacities_and_releases_on_completion() {
         let _admission_test_guard = ADMISSION_TEST_LOCK.lock().await;
         for capacity in [1, 2, 4] {
-            let admission = Arc::new(admission_for_capacity(&format!("capacity-{capacity}"), capacity));
-            let request_count = capacity * 3;
-            let active_requests = Arc::new(AtomicUsize::new(0));
-            let peak_active_requests = Arc::new(AtomicUsize::new(0));
-            let start_gate = Arc::new(tokio::sync::Barrier::new(request_count + 1));
-            let (started_sender, mut started_receiver) = tokio::sync::mpsc::channel(request_count);
-            let (admitted_sender, mut admitted_receiver) = tokio::sync::mpsc::channel(request_count);
-            let (release_sender, release_receiver) = tokio::sync::watch::channel(false);
-            let mut requests = tokio::task::JoinSet::new();
-
-            for request_id in 0..request_count {
-                let admission = Arc::clone(&admission);
-                let active_requests = Arc::clone(&active_requests);
-                let peak_active_requests = Arc::clone(&peak_active_requests);
-                let start_gate = Arc::clone(&start_gate);
-                let started_sender = started_sender.clone();
-                let admitted_sender = admitted_sender.clone();
-                let mut release_receiver = release_receiver.clone();
-
-                requests.spawn(async move {
-                    start_gate.wait().await;
-                    started_sender
-                        .send(request_id)
-                        .await
-                        .expect("test should receive every started request");
-
-                    let permit = admission
-                        .acquire()
-                        .await
-                        .expect("request should be admitted")
-                        .expect("configured capacity should return a permit");
-                    let active = active_requests.fetch_add(1, Ordering::SeqCst) + 1;
-                    peak_active_requests.fetch_max(active, Ordering::SeqCst);
-                    admitted_sender
-                        .send(request_id)
-                        .await
-                        .expect("test should receive every admitted request");
-
-                    release_receiver
-                        .wait_for(|released| *released)
-                        .await
-                        .expect("test should release every admitted request");
-                    active_requests.fetch_sub(1, Ordering::SeqCst);
-                    drop(permit);
-                });
-            }
-
-            start_gate.wait().await;
-            for _ in 0..request_count {
-                tokio::time::timeout(Duration::from_secs(1), started_receiver.recv())
-                    .await
-                    .expect("all concurrent requests should start")
-                    .expect("started request channel should remain open");
-            }
-
-            let mut admitted_request_ids = Vec::with_capacity(capacity);
-            for _ in 0..capacity {
-                admitted_request_ids.push(
-                    tokio::time::timeout(Duration::from_secs(2), admitted_receiver.recv())
-                        .await
-                        .expect("configured capacity should be admitted")
-                        .expect("admitted request channel should remain open"),
-                );
-            }
-            admitted_request_ids.sort_unstable();
-            admitted_request_ids.dedup();
-            assert_eq!(admitted_request_ids.len(), capacity, "each permit admits one request");
-            assert_eq!(active_requests.load(Ordering::SeqCst), capacity);
-            assert_eq!(peak_active_requests.load(Ordering::SeqCst), capacity);
-            assert!(
-                tokio::time::timeout(Duration::from_millis(50), admitted_receiver.recv())
-                    .await
-                    .is_err(),
-                "no request may be admitted while all configured permits are held"
-            );
-
-            release_sender.send(true).expect("request workers are still listening");
-            while let Some(result) = requests.join_next().await {
-                result.expect("admission worker should complete without panicking");
-            }
-
-            assert_eq!(active_requests.load(Ordering::SeqCst), 0);
-            assert_eq!(peak_active_requests.load(Ordering::SeqCst), capacity);
-            assert_eq!(
-                admission.semaphore.as_ref().expect("configured semaphore").available_permits(),
-                capacity,
-                "completed requests should return every permit"
-            );
-
-            let mut reused_permits = Vec::with_capacity(capacity);
-            for _ in 0..capacity {
-                reused_permits.push(
-                    tokio::time::timeout(Duration::from_secs(1), admission.acquire())
-                        .await
-                        .expect("released permit should be reusable")
-                        .expect("reused request should be admitted")
-                        .expect("configured capacity should return a permit"),
-                );
-            }
-            assert_eq!(admission.semaphore.as_ref().expect("configured semaphore").available_permits(), 0);
-            drop(reused_permits);
+            let mut wave = AdmissionCapacityWave::start(capacity).await;
+            wave.assert_limit_is_enforced().await;
+            wave.release_and_assert_completion().await;
+            wave.assert_permits_are_reusable().await;
         }
     }
 
@@ -1262,29 +1336,11 @@ mod tests {
             display_name: "Anthropic Custom".to_string(),
             base_url: server.uri(),
             api_format: CustomProviderApiFormat::AnthropicMessages,
-            context_window: None,
-            temperature: None,
-            top_p: None,
-            top_k: None,
-            presence_penalty: None,
-            frequency_penalty: None,
-            max_tokens: None,
-            reasoning_effort: None,
-            supports_tools: None,
-            supports_reasoning: None,
-            supports_reasoning_effort: None,
-            supports_vision: None,
-            supports_structured_output: None,
-            supports_parallel_tool_calls: None,
-            supports_context_caching: None,
-            supports_responses_compaction: None,
             supports_context_edits: Some(true),
             api_key_env: "ANTHROPIC_CUSTOM_API_KEY".to_string(),
-            auth: None,
             model: models::anthropic::DEFAULT_MODEL.to_string(),
             models: vec![models::anthropic::DEFAULT_MODEL.to_string()],
-            profiles: std::collections::BTreeMap::new(),
-            request_policy: Default::default(),
+            ..Default::default()
         };
 
         let router = CustomProviderBackendRouter::from_config(
@@ -1314,6 +1370,54 @@ mod tests {
             seen_keys.lock().expect("mutex").as_slice(),
             &["first-token".to_string(), "second-token".to_string()]
         );
+    }
+
+    #[tokio::test]
+    async fn custom_provider_network_error_preserves_display_name_and_reqwest_classification() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(307).insert_header("location", format!("{}/chat/completions", server.uri())),
+            )
+            .mount(&server)
+            .await;
+        let model = "test-model".to_owned();
+        let router = CustomProviderBackendRouter::from_config(
+            CustomProviderConfig {
+                name: "arli".to_owned(),
+                display_name: "Arli AI".to_owned(),
+                base_url: server.uri(),
+                api_format: CustomProviderApiFormat::OpenAIChat,
+                model: model.clone(),
+                models: vec![model.clone()],
+                ..Default::default()
+            },
+            Some("test-key".to_owned()),
+            Some(model.clone()),
+            server.uri(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+
+        let error = router
+            .generate(LLMRequest {
+                model,
+                messages: vec![Message::user("hello".to_owned())].into(),
+                ..Default::default()
+            })
+            .await
+            .expect_err("redirect loop should exceed the configured limit");
+
+        let crate::provider::LLMError::Network { message, metadata } = error else {
+            panic!("expected a network error, got {error:?}");
+        };
+        assert!(message.contains("Arli AI"), "custom provider display name missing: {message}");
+        assert_eq!(metadata.as_ref().and_then(|value| value.code.as_deref()), Some("reqwest_redirect_error"));
     }
 
     #[tokio::test]
@@ -1385,10 +1489,7 @@ mod tests {
         assert_eq!(payload["reasoning_effort"], "high");
     }
 
-    #[tokio::test]
-    async fn openai_chat_stream_reassembles_fragmented_tool_call_playback() {
-        let server = MockServer::start().await;
-        let captured: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
+    async fn mount_fragmented_tool_call_stream(server: &MockServer, captured: Arc<Mutex<Option<Value>>>) {
         let captured_for_mock = Arc::clone(&captured);
         let body = concat!(
             "data: {\"id\":\"chatcmpl-tool\",\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Checking.\"},\"finish_reason\":null}]}\n\n",
@@ -1404,8 +1505,15 @@ mod tests {
                 ResponseTemplate::new(200).set_body_raw(body, "text/event-stream")
             })
             .expect(1)
-            .mount(&server)
+            .mount(server)
             .await;
+    }
+
+    #[tokio::test]
+    async fn openai_chat_stream_reassembles_fragmented_tool_call_playback() {
+        let server = MockServer::start().await;
+        let captured: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
+        mount_fragmented_tool_call_stream(&server, Arc::clone(&captured)).await;
 
         let model = "fixture-model".to_owned();
         let config = CustomProviderConfig {

@@ -1,4 +1,5 @@
 //! Implements workspace-local ACP file tools and converts their results for the Zed client.
+use super::super::types::SessionHandle;
 use super::ZedAgent;
 use crate::acp;
 use crate::reports::{
@@ -26,10 +27,22 @@ const RESTRICTED_LOCAL_TOOLS: &[&str] = &["debug_agent", "analyze_agent", "execu
 
 /// Arguments shared by local-tool dispatch paths.
 #[derive(Clone, Copy)]
-struct LocalToolInvocation<'a> {
-    tool_name: &'a str,
-    args: &'a Value,
-    call_id: &'a str,
+pub(super) struct LocalToolInvocation<'a> {
+    pub(super) tool_name: &'a str,
+    pub(super) args: &'a Value,
+    pub(super) call_id: &'a str,
+}
+
+pub(super) struct SessionLocalToolRequest<'a> {
+    pub(super) session: &'a SessionHandle,
+    pub(super) invocation: LocalToolInvocation<'a>,
+}
+
+pub(super) struct ClientFileReadRequest<'a> {
+    pub(super) session: &'a SessionHandle,
+    pub(super) client: &'a ConnectionHandle,
+    pub(super) session_id: &'a acp::SessionId,
+    pub(super) args: &'a Value,
 }
 
 impl ZedAgent {
@@ -39,20 +52,13 @@ impl ZedAgent {
             .await
     }
 
-    pub(super) async fn execute_session_local_tool(
-        &self,
-        session: &super::super::types::SessionHandle,
-        tool_name: &str,
-        args: &Value,
-        call_id: &str,
-    ) -> ToolExecutionReport {
-        let invocation = LocalToolInvocation { tool_name, args, call_id };
-        self.execute_session_local_invocation(session, invocation).await
+    pub(super) async fn execute_session_local_tool(&self, request: SessionLocalToolRequest<'_>) -> ToolExecutionReport {
+        self.execute_session_local_invocation(request.session, request.invocation).await
     }
 
     async fn execute_session_local_invocation(
         &self,
-        session: &super::super::types::SessionHandle,
+        session: &SessionHandle,
         invocation: LocalToolInvocation<'_>,
     ) -> ToolExecutionReport {
         let runtime = match session.workspace_runtime() {
@@ -216,20 +222,17 @@ impl ZedAgent {
 
     pub(super) async fn run_read_file(
         &self,
-        session: &super::super::types::SessionHandle,
-        client: &ConnectionHandle,
-        session_id: &acp::SessionId,
-        args: &Value,
+        request: ClientFileReadRequest<'_>,
     ) -> Result<ToolExecutionReport, String> {
-        let path = self.parse_tool_path(session, args)?;
-        let line = Self::parse_positive_argument(args, TOOL_READ_FILE_LINE_ARG)?;
-        let limit = Self::parse_positive_argument(args, TOOL_READ_FILE_LIMIT_ARG)?;
+        let path = self.parse_tool_path(request.session, request.args)?;
+        let line = Self::parse_positive_argument(request.args, TOOL_READ_FILE_LINE_ARG)?;
+        let limit = Self::parse_positive_argument(request.args, TOOL_READ_FILE_LIMIT_ARG)?;
 
-        let request = acp::ReadTextFileRequest::new(session_id.clone(), path.clone())
+        let acp_request = acp::ReadTextFileRequest::new(request.session_id.clone(), path.clone())
             .line(line)
             .limit(limit);
 
-        let response = client.read_text_file(request).await.map_err(|error| {
+        let response = request.client.read_text_file(acp_request).await.map_err(|error| {
             warn!(%error, path = ?path, "Failed to read file via ACP client");
             format!("Unable to read file: {error}")
         })?;
@@ -260,7 +263,7 @@ impl ZedAgent {
 
     pub(super) async fn run_session_list_files(
         &self,
-        session: &super::super::types::SessionHandle,
+        session: &SessionHandle,
         args: &Value,
     ) -> Result<ToolExecutionReport, String> {
         let runtime = match session.workspace_runtime() {
@@ -275,7 +278,7 @@ impl ZedAgent {
     async fn run_list_files_for_tool(
         &self,
         tool: Option<&FileOpsTool>,
-        session: Option<&super::super::types::SessionHandle>,
+        session: Option<&SessionHandle>,
         args: &Value,
     ) -> Result<ToolExecutionReport, String> {
         let Some(tool) = tool else {
@@ -308,11 +311,7 @@ impl ZedAgent {
         Ok(ToolExecutionReport::success(content, locations, payload))
     }
 
-    fn resolve_list_files_path(
-        &self,
-        session: Option<&super::super::types::SessionHandle>,
-        args: &Value,
-    ) -> Result<Option<String>, String> {
+    fn resolve_list_files_path(&self, session: Option<&SessionHandle>, args: &Value) -> Result<Option<String>, String> {
         if let Some(path) = args
             .get(TOOL_LIST_FILES_PATH_ARG)
             .and_then(Value::as_str)

@@ -1,6 +1,7 @@
 //! Provides helpers for turn limits, planning intent, and repeated tool-call handling in the unified loop.
 use anyhow::Result;
 use serde_json::json;
+use std::num::NonZeroUsize;
 
 use crate::agent::runloop::unified::planning_workflow::detect_enter_planning_intent;
 use crate::agent::runloop::unified::run_loop_context::HarnessTurnState;
@@ -27,6 +28,42 @@ pub(super) struct PrecomputedTurnConfig {
     pub(super) tool_repeat_limit: usize,
     pub(super) max_session_turns: usize,
     pub(super) request_user_input_enabled: bool,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct SafetyToolCallLimitOptions {
+    max_tool_calls_per_session: Option<usize>,
+    max_session_turns: usize,
+    planning_active: bool,
+}
+
+impl SafetyToolCallLimitOptions {
+    pub(super) fn new(
+        max_tool_calls_per_session: Option<usize>,
+        max_session_turns: usize,
+        planning_active: bool,
+    ) -> Self {
+        Self {
+            max_tool_calls_per_session,
+            max_session_turns,
+            planning_active,
+        }
+    }
+
+    pub(super) fn for_fresh_execution(
+        max_tool_calls_per_session: Option<usize>,
+        vt_cfg: Option<&VTCodeConfig>,
+    ) -> Self {
+        let max_session_turns = vt_cfg
+            .map(|cfg| cfg.agent.max_conversation_turns)
+            .unwrap_or(DEFAULT_MAX_CONVERSATION_TURNS);
+        Self::new(max_tool_calls_per_session, max_session_turns, false)
+    }
+
+    pub(super) fn for_turn(vt_cfg: Option<&VTCodeConfig>, max_session_turns: usize, planning_active: bool) -> Self {
+        let max_tool_calls_per_session = vt_cfg.and_then(|cfg| cfg.agent.harness.max_tool_calls_per_session);
+        Self::new(max_tool_calls_per_session, max_session_turns, planning_active)
+    }
 }
 
 const UNLIMITED_TOOL_LOOPS: usize = usize::MAX;
@@ -83,21 +120,16 @@ pub(super) enum ToolLoopLimitAction {
 #[inline]
 pub(super) fn resolve_safety_tool_call_limits(
     max_tool_calls_per_turn: usize,
-    max_tool_calls_per_session: Option<usize>,
-    max_session_turns: usize,
-    planning_active: bool,
+    options: SafetyToolCallLimitOptions,
 ) -> (usize, usize) {
-    let turn_limit = if max_tool_calls_per_turn == 0 {
-        usize::MAX
-    } else {
-        max_tool_calls_per_turn
-    };
-    let session_limit = match max_tool_calls_per_session {
-        Some(0) => usize::MAX,
-        Some(limit) => limit,
-        None if planning_active || max_tool_calls_per_turn == 0 => usize::MAX,
-        None => max_tool_calls_per_turn.saturating_mul(max_session_turns.max(1)),
-    };
+    let configured_turn_limit = NonZeroUsize::new(max_tool_calls_per_turn);
+    let turn_limit = configured_turn_limit.map_or(usize::MAX, NonZeroUsize::get);
+    let default_session_limit = configured_turn_limit
+        .filter(|_| !options.planning_active)
+        .map_or(usize::MAX, |limit| limit.get().saturating_mul(options.max_session_turns.max(1)));
+    let session_limit = options
+        .max_tool_calls_per_session
+        .map_or(default_session_limit, |limit| NonZeroUsize::new(limit).map_or(usize::MAX, NonZeroUsize::get));
 
     (turn_limit, session_limit)
 }
@@ -597,11 +629,11 @@ pub(super) async fn maybe_handle_tool_loop_limit(
 #[cfg(test)]
 mod tests {
     use super::{
-        TOOL_LOOP_LIMIT_RECOVERY_REASON, UNLIMITED_TOOL_LOOPS, arm_tool_loop_synthesis_recovery,
-        clamp_tool_loop_increment, effective_max_tool_calls_for_approved_plan_execution,
-        effective_max_tool_calls_for_turn, extract_turn_config, handle_steering_messages, initial_tool_loop_limit,
-        is_stale_approved_plan_pause_response, resolve_safety_tool_call_limits, resolve_tool_loop_limit,
-        tool_loop_hard_cap,
+        SafetyToolCallLimitOptions, TOOL_LOOP_LIMIT_RECOVERY_REASON, UNLIMITED_TOOL_LOOPS,
+        arm_tool_loop_synthesis_recovery, clamp_tool_loop_increment,
+        effective_max_tool_calls_for_approved_plan_execution, effective_max_tool_calls_for_turn, extract_turn_config,
+        handle_steering_messages, initial_tool_loop_limit, is_stale_approved_plan_pause_response,
+        resolve_safety_tool_call_limits, resolve_tool_loop_limit, tool_loop_hard_cap,
     };
     use crate::agent::runloop::unified::planning_workflow::{
         PlanningIntent, detect_enter_planning_intent, detect_planning_intent,
@@ -771,23 +803,32 @@ mod tests {
 
     #[test]
     fn resolve_safety_tool_call_limits_maps_zero_turn_budget_to_unbounded_limits() {
-        assert_eq!(resolve_safety_tool_call_limits(0, None, 50, false), (usize::MAX, usize::MAX));
+        assert_eq!(
+            resolve_safety_tool_call_limits(0, SafetyToolCallLimitOptions::new(None, 50, false)),
+            (usize::MAX, usize::MAX)
+        );
     }
 
     #[test]
     fn resolve_safety_tool_call_limits_scales_session_limit_from_turn_budget() {
-        assert_eq!(resolve_safety_tool_call_limits(12, None, 40, false), (12, 480));
+        assert_eq!(resolve_safety_tool_call_limits(12, SafetyToolCallLimitOptions::new(None, 40, false)), (12, 480));
     }
 
     #[test]
     fn resolve_safety_tool_call_limits_keeps_planning_workflow_session_unbounded() {
-        assert_eq!(resolve_safety_tool_call_limits(48, None, 40, true), (48, usize::MAX));
+        assert_eq!(
+            resolve_safety_tool_call_limits(48, SafetyToolCallLimitOptions::new(None, 40, true)),
+            (48, usize::MAX)
+        );
     }
 
     #[test]
     fn resolve_safety_tool_call_limits_honours_explicit_session_budget() {
-        assert_eq!(resolve_safety_tool_call_limits(12, Some(7), 40, false), (12, 7));
-        assert_eq!(resolve_safety_tool_call_limits(12, Some(0), 40, false), (12, usize::MAX));
+        assert_eq!(resolve_safety_tool_call_limits(12, SafetyToolCallLimitOptions::new(Some(7), 40, false)), (12, 7));
+        assert_eq!(
+            resolve_safety_tool_call_limits(12, SafetyToolCallLimitOptions::new(Some(0), 40, false)),
+            (12, usize::MAX)
+        );
     }
 
     #[test]

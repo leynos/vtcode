@@ -64,8 +64,8 @@ use crate::agent::runloop::unified::turn::primary_agent_runtime::{
 };
 use crate::agent::runloop::unified::turn::turn_loop::TurnLoopOutcome;
 use crate::agent::runloop::unified::turn::turn_loop_helpers::{
-    effective_max_tool_calls_for_approved_plan_execution, effective_max_tool_calls_for_turn,
-    resolve_safety_tool_call_limits,
+    SafetyToolCallLimitOptions, effective_max_tool_calls_for_approved_plan_execution,
+    effective_max_tool_calls_for_turn, resolve_safety_tool_call_limits,
 };
 use crate::agent::runloop::unified::workspace_links::LinkedDirectory;
 use crate::updater::{InlineUpdateOutcome, display_update_notice, run_inline_update_prompt};
@@ -829,15 +829,12 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                             let build_tool_limit = effective_max_tool_calls_for_approved_plan_execution(
                                 harness_config.max_tool_calls_per_turn,
                             );
-                            let max_session_turns = vt_cfg
-                                .as_ref()
-                                .map(|cfg| cfg.agent.max_conversation_turns)
-                                .unwrap_or(vtcode_config::constants::defaults::DEFAULT_MAX_CONVERSATION_TURNS);
                             let (max_per_turn, max_per_session) = resolve_safety_tool_call_limits(
                                 build_tool_limit,
-                                harness_config.max_tool_calls_per_session,
-                                max_session_turns,
-                                false,
+                                SafetyToolCallLimitOptions::for_fresh_execution(
+                                    harness_config.max_tool_calls_per_session,
+                                    vt_cfg.as_ref(),
+                                ),
                             );
                             safety_validator.reset_for_fresh_execution(max_per_turn, max_per_session);
                             crate::agent::runloop::unified::planning_workflow::emit_context_reset(
@@ -1294,15 +1291,12 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                         let build_tool_limit = effective_max_tool_calls_for_approved_plan_execution(
                             harness_config.max_tool_calls_per_turn,
                         );
-                        let max_session_turns = vt_cfg
-                            .as_ref()
-                            .map(|cfg| cfg.agent.max_conversation_turns)
-                            .unwrap_or(vtcode_config::constants::defaults::DEFAULT_MAX_CONVERSATION_TURNS);
                         let (max_per_turn, max_per_session) = resolve_safety_tool_call_limits(
                             build_tool_limit,
-                            harness_config.max_tool_calls_per_session,
-                            max_session_turns,
-                            false,
+                            SafetyToolCallLimitOptions::for_fresh_execution(
+                                harness_config.max_tool_calls_per_session,
+                                vt_cfg.as_ref(),
+                            ),
                         );
                         safety_validator.reset_for_fresh_execution(max_per_turn, max_per_session);
                         crate::agent::runloop::unified::planning_workflow::emit_context_reset(

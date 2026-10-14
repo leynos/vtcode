@@ -52,32 +52,27 @@ impl ZedAgent {
         let presentation = ExecCommandPresentation::from_output(output);
         let mut blocks = Vec::with_capacity(3);
         blocks.push(acp::ToolCallContent::from(presentation.summary));
-        blocks.push(acp::ToolCallContent::from(self.render_command_output_block(&presentation.output)));
+        blocks.push(acp::ToolCallContent::from(self.render_command_section(
+            "Command output",
+            "command output",
+            &presentation.output,
+        )));
         if let Some(details) = presentation.details {
-            blocks.push(acp::ToolCallContent::from(self.render_command_details_block(&details)));
+            blocks.push(acp::ToolCallContent::from(self.render_command_section(
+                "Execution details",
+                "execution details",
+                &details,
+            )));
         }
         blocks
     }
 
-    fn render_command_output_block(&self, output: &str) -> String {
-        let (rendered, truncated) = self.truncate_text(output);
+    fn render_command_section(&self, title: &str, section: &str, text: &str) -> String {
+        let (rendered, truncated) = self.truncate_text(text);
         if truncated {
-            format!(
-                "Command output\n{rendered}\n[command output truncated for display; complete data remains in rawOutput]"
-            )
+            format!("{title}\n{rendered}\n[{section} truncated for display; complete data remains in rawOutput]")
         } else {
-            format!("Command output\n{rendered}")
-        }
-    }
-
-    fn render_command_details_block(&self, details: &str) -> String {
-        let (rendered, truncated) = self.truncate_text(details);
-        if truncated {
-            format!(
-                "Execution details\n{rendered}\n[execution details truncated for display; complete data remains in rawOutput]"
-            )
-        } else {
-            format!("Execution details\n{rendered}")
+            format!("{title}\n{rendered}")
         }
     }
 }

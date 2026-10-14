@@ -1,5 +1,5 @@
 //! Tests attachment and availability of optional ACP subagent support.
-use super::super::{OptionalSetupOutcome, attach_acp_subagent_controller};
+use super::super::{AcpSubagentControllerSetup, OptionalSetupOutcome, attach_acp_subagent_controller};
 use super::support::{build_agent, build_agent_with_config, core_agent_config, definition_names};
 use assert_fs::TempDir;
 use serde_json::json;
@@ -36,7 +36,14 @@ async fn optional_setup_reports_subagents_disabled_by_provider_concurrency_polic
     }))
     .expect("valid custom provider configuration");
 
-    let outcome = attach_acp_subagent_controller(&registry, &core_config, &[provider], Some(&vt_cfg), false).await;
+    let outcome = attach_acp_subagent_controller(AcpSubagentControllerSetup {
+        registry: &registry,
+        agent_config: &core_config,
+        custom_providers: &[provider],
+        vt_config: Some(&vt_cfg),
+        workspace_gated: false,
+    })
+    .await;
 
     assert_eq!(outcome, OptionalSetupOutcome::DisabledByPolicy);
     assert!(!registry.has_subagent_controller());
@@ -55,7 +62,14 @@ async fn optional_setup_reports_subagent_initialization_failure() {
     .expect("lifecycle hook configuration shape");
     let core_config = core_agent_config(temp.path());
 
-    let outcome = attach_acp_subagent_controller(&registry, &core_config, &[], Some(&vt_cfg), false).await;
+    let outcome = attach_acp_subagent_controller(AcpSubagentControllerSetup {
+        registry: &registry,
+        agent_config: &core_config,
+        custom_providers: &[],
+        vt_config: Some(&vt_cfg),
+        workspace_gated: false,
+    })
+    .await;
 
     assert!(matches!(outcome, OptionalSetupOutcome::Failed(_)));
     assert!(!registry.has_subagent_controller());
