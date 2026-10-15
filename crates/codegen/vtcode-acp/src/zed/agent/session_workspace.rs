@@ -46,7 +46,7 @@ struct SessionWorkspaceRuntimeSetup<'a> {
     vt_config: Option<&'a VTCodeConfig>,
 }
 
-struct PreparedSessionWorkspace<'a> {
+struct PreparedWorkspace<'a> {
     workspace_root: PathBuf,
     session_config: CoreAgentConfig,
     runtime_config: &'a SessionWorkspaceRuntimeConfig,
@@ -62,7 +62,7 @@ struct AcpWorkspaceToolSurface {
     permission_prompter: Arc<dyn AcpPermissionPrompter + Send + Sync>,
 }
 
-struct InitializedSessionToolRegistry {
+struct InitializedWorkspaceToolRegistry {
     registry: CoreToolRegistry,
     optional_setup_outcomes: OptionalWorkspaceSetupOutcomes,
 }
@@ -79,89 +79,21 @@ struct OptionalWorkspaceComponentsSetup<'a> {
 pub(super) async fn build_launch_workspace_runtime(
     setup: &ZedAgentSetup<'_>,
 ) -> anyhow::Result<SessionWorkspaceRuntime> {
-    let workspace_root = setup.config.workspace.clone();
-    let file_ops_tool = create_file_ops_tool(&workspace_root, &setup.zed_config);
-    let local_tool_registry = CoreToolRegistry::new(workspace_root.clone()).await;
-    configure_acp_tool_call_limits(&local_tool_registry, setup.vt_config);
-    local_tool_registry
-        .apply_tool_runtime_config(&setup.commands_config, &setup.tools_config)
-        .await
-        .context("applying tool runtime configuration to ACP launch workspace registry")?;
-
-    let workspace_hooks_gated = setup.primary_agents.workspace_hooks_gated(setup.vt_config);
-    let optional_setup_outcomes = attach_optional_workspace_components(OptionalWorkspaceComponentsSetup {
-        registry: &local_tool_registry,
-        agent_config: &setup.config,
-        custom_providers: setup.custom_providers,
-        vt_config: setup.vt_config,
-        workspace_gated: workspace_hooks_gated,
-        workspace_root: &workspace_root,
-    })
-    .await;
-    let tool_surface = build_acp_tool_surface(
-        &local_tool_registry,
-        &workspace_root,
-        &setup.zed_config,
-        &setup.tools_config,
-        setup.skip_confirmations,
-        file_ops_tool.is_some(),
-    )
-    .await;
-
-    let runtime = SessionWorkspaceRuntime {
-        workspace_root,
-        workspace_hooks_gated,
-        system_prompt: setup.system_prompt.clone(),
-        primary_agents: setup.primary_agents.clone(),
-        acp_tool_registry: tool_surface.registry,
-        permission_prompter: tool_surface.permission_prompter,
-        local_tool_registry,
-        file_ops_tool,
-        optional_setup_outcomes,
-        shutdown_managed: false,
-        lifecycle: Mutex::new(WorkspaceRuntimeLifecycle {
-            state: WorkspaceRuntimeLifecycleState::Open,
-            active_sessions: 0,
-        }),
-        lifecycle_changed: Notify::new(),
+    let runtime_config = SessionWorkspaceRuntimeConfig {
+        zed_config: setup.zed_config.clone(),
+        tools_config: setup.tools_config.clone(),
+        commands_config: setup.commands_config.clone(),
+        custom_providers: setup.custom_providers.to_vec(),
+        skip_confirmations: setup.skip_confirmations,
     };
-    runtime.report_optional_setup_outcomes();
-    Ok(runtime)
+    let prepared = prepare_launch_workspace(setup, &runtime_config);
+    build_prepared_workspace_runtime(prepared, false).await
 }
 
 impl SessionWorkspaceRuntime {
     async fn build(setup: SessionWorkspaceRuntimeSetup<'_>) -> anyhow::Result<Self> {
         let prepared = prepare_session_workspace(setup).await?;
-        let initialized_registry = initialize_session_tool_registry(&prepared).await?;
-        let tool_surface = build_acp_tool_surface(
-            &initialized_registry.registry,
-            &prepared.workspace_root,
-            &prepared.runtime_config.zed_config,
-            &prepared.runtime_config.tools_config,
-            prepared.runtime_config.skip_confirmations,
-            prepared.file_ops_tool.is_some(),
-        )
-        .await;
-
-        let runtime = Self {
-            workspace_root: prepared.workspace_root,
-            workspace_hooks_gated: prepared.workspace_hooks_gated,
-            system_prompt: prepared.system_prompt,
-            primary_agents: prepared.primary_agents,
-            acp_tool_registry: tool_surface.registry,
-            permission_prompter: tool_surface.permission_prompter,
-            local_tool_registry: initialized_registry.registry,
-            file_ops_tool: prepared.file_ops_tool,
-            optional_setup_outcomes: initialized_registry.optional_setup_outcomes,
-            shutdown_managed: true,
-            lifecycle: Mutex::new(WorkspaceRuntimeLifecycle {
-                state: WorkspaceRuntimeLifecycleState::Open,
-                active_sessions: 0,
-            }),
-            lifecycle_changed: Notify::new(),
-        };
-        runtime.report_optional_setup_outcomes();
-        Ok(runtime)
+        build_prepared_workspace_runtime(prepared, true).await
     }
 
     fn report_optional_setup_outcomes(&self) {
@@ -235,9 +167,29 @@ impl ZedAgent {
     }
 }
 
+fn prepare_launch_workspace<'a>(
+    setup: &ZedAgentSetup<'a>,
+    runtime_config: &'a SessionWorkspaceRuntimeConfig,
+) -> PreparedWorkspace<'a> {
+    let workspace_root = setup.config.workspace.clone();
+    let workspace_hooks_gated = setup.primary_agents.workspace_hooks_gated(setup.vt_config);
+    let file_ops_tool = create_file_ops_tool(&workspace_root, &runtime_config.zed_config);
+
+    PreparedWorkspace {
+        workspace_root,
+        session_config: setup.config.clone(),
+        runtime_config,
+        vt_config: setup.vt_config,
+        system_prompt: setup.system_prompt.clone(),
+        primary_agents: setup.primary_agents.clone(),
+        workspace_hooks_gated,
+        file_ops_tool,
+    }
+}
+
 async fn prepare_session_workspace<'a>(
     setup: SessionWorkspaceRuntimeSetup<'a>,
-) -> anyhow::Result<PreparedSessionWorkspace<'a>> {
+) -> anyhow::Result<PreparedWorkspace<'a>> {
     let SessionWorkspaceRuntimeSetup { base_config, workspace, runtime_config, vt_config } = setup;
     let workspace_root = workspace.path().to_path_buf();
     let mut session_config = base_config.clone();
@@ -255,7 +207,7 @@ async fn prepare_session_workspace<'a>(
     let workspace_hooks_gated = primary_agents.workspace_hooks_gated(vt_config);
     let file_ops_tool = create_file_ops_tool(&workspace_root, &runtime_config.zed_config);
 
-    Ok(PreparedSessionWorkspace {
+    Ok(PreparedWorkspace {
         workspace_root,
         session_config,
         runtime_config,
@@ -275,9 +227,9 @@ fn discover_session_primary_agents(
     Ok(PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, default_primary_agent))
 }
 
-async fn initialize_session_tool_registry(
-    prepared: &PreparedSessionWorkspace<'_>,
-) -> anyhow::Result<InitializedSessionToolRegistry> {
+async fn initialize_workspace_tool_registry(
+    prepared: &PreparedWorkspace<'_>,
+) -> anyhow::Result<InitializedWorkspaceToolRegistry> {
     let local_tool_registry = CoreToolRegistry::new(prepared.workspace_root.clone()).await;
     configure_acp_tool_call_limits(&local_tool_registry, prepared.vt_config);
     local_tool_registry
@@ -285,7 +237,7 @@ async fn initialize_session_tool_registry(
         .await
         .with_context(|| {
             format!(
-                "applying tool runtime configuration to ACP session workspace registry {}",
+                "applying tool runtime configuration to ACP workspace registry {}",
                 prepared.workspace_root.display()
             )
         })?;
@@ -298,10 +250,46 @@ async fn initialize_session_tool_registry(
         workspace_root: &prepared.workspace_root,
     })
     .await;
-    Ok(InitializedSessionToolRegistry {
+    Ok(InitializedWorkspaceToolRegistry {
         registry: local_tool_registry,
         optional_setup_outcomes,
     })
+}
+
+async fn build_prepared_workspace_runtime(
+    prepared: PreparedWorkspace<'_>,
+    shutdown_managed: bool,
+) -> anyhow::Result<SessionWorkspaceRuntime> {
+    let initialized_registry = initialize_workspace_tool_registry(&prepared).await?;
+    let tool_surface = build_acp_tool_surface(
+        &initialized_registry.registry,
+        &prepared.workspace_root,
+        &prepared.runtime_config.zed_config,
+        &prepared.runtime_config.tools_config,
+        prepared.runtime_config.skip_confirmations,
+        prepared.file_ops_tool.is_some(),
+    )
+    .await;
+
+    let runtime = SessionWorkspaceRuntime {
+        workspace_root: prepared.workspace_root,
+        workspace_hooks_gated: prepared.workspace_hooks_gated,
+        system_prompt: prepared.system_prompt,
+        primary_agents: prepared.primary_agents,
+        acp_tool_registry: tool_surface.registry,
+        permission_prompter: tool_surface.permission_prompter,
+        local_tool_registry: initialized_registry.registry,
+        file_ops_tool: prepared.file_ops_tool,
+        optional_setup_outcomes: initialized_registry.optional_setup_outcomes,
+        shutdown_managed,
+        lifecycle: Mutex::new(WorkspaceRuntimeLifecycle {
+            state: WorkspaceRuntimeLifecycleState::Open,
+            active_sessions: 0,
+        }),
+        lifecycle_changed: Notify::new(),
+    };
+    runtime.report_optional_setup_outcomes();
+    Ok(runtime)
 }
 
 async fn attach_optional_workspace_components(

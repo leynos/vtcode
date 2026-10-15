@@ -122,7 +122,7 @@ impl ZedAgent {
                 .await
                 .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
             for message in outcome.messages {
-                tracing::warn!(level = ?message.level, message = %message.text, "ACP PreToolUse hook");
+                tracing::warn!(level = ?message.level, message_bytes = message.text.len(), "ACP PreToolUse hook");
             }
             outcome.decision
         } else {
@@ -364,7 +364,7 @@ impl ZedAgent {
             .await
             .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
         for message in outcome.messages {
-            tracing::warn!(level = ?message.level, message = %message.text, "ACP PermissionRequest hook");
+            tracing::warn!(level = ?message.level, message_bytes = message.text.len(), "ACP PermissionRequest hook");
         }
         Ok(outcome.decision)
     }

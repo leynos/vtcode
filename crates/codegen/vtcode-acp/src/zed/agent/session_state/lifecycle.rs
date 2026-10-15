@@ -23,7 +23,7 @@ impl ZedAgent {
         vtcode_core::hooks::restore_workspace_hook_approval(&hooks, &workspace).await;
         let outcome = hooks.run_session_start().await?;
         for message in outcome.messages {
-            warn!(level = ?message.level, message = %message.text, "ACP SessionStart hook");
+            warn!(level = ?message.level, message_bytes = message.text.len(), "ACP SessionStart hook");
         }
         for context in outcome.additional_context {
             if !context.trim().is_empty() {
@@ -72,7 +72,7 @@ impl ZedAgent {
         match hooks.run_session_end(&turn_id, reason).await {
             Ok(messages) => {
                 for message in messages {
-                    warn!(level = ?message.level, message = %message.text, "ACP SessionEnd hook");
+                    warn!(level = ?message.level, message_bytes = message.text.len(), "ACP SessionEnd hook");
                 }
             }
             Err(error) => warn!(%error, "ACP SessionEnd hooks failed"),

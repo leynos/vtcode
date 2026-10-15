@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 import sys
 
@@ -25,5 +26,5 @@ def test_override_requires_every_configured_schema_field() -> None:
         )
     ]
 
-    with pytest.raises(RuntimeError, match="acp.audit.max_files"):
+    with pytest.raises(RuntimeError, match=re.escape("acp.audit.max_files")):
         generator.apply_reference_overrides(entries)

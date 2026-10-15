@@ -315,7 +315,7 @@ async fn run_pre_compact_hooks(
         .await
         .context("ACP PreCompact hooks failed")?;
     for message in outcome.messages {
-        warn!(level = ?message.level, message = %message.text, "ACP PreCompact hook");
+        warn!(level = ?message.level, message_bytes = message.text.len(), "ACP PreCompact hook");
     }
     Ok(())
 }

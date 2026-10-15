@@ -10,7 +10,7 @@ impl PromptExecution {
                     .run_stop_hook(&self.session, &self.assistant_message, self.stop_hook_active)
                     .await?
             {
-                warn!(%reason, "ACP Stop hook blocked final turn");
+                warn!(reason_bytes = reason.len(), "ACP Stop hook blocked final turn");
                 push_session_message(&self.agent, &self.session, &self.args.session_id, Message::system(reason))?;
                 persist_session_checkpoint(&self.agent, &self.session, "stop_hook_blocked").await;
                 return Ok(PromptResponse::new(acp::StopReason::Refusal));
@@ -56,7 +56,7 @@ impl ZedAgent {
             .await
             .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
         for message in outcome.messages {
-            warn!(level = ?message.level, message = %message.text, "ACP Stop hook");
+            warn!(level = ?message.level, message_bytes = message.text.len(), "ACP Stop hook");
         }
         Ok(outcome.block_reason)
     }

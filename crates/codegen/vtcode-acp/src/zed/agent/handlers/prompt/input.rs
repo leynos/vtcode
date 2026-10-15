@@ -62,7 +62,7 @@ fn start_prompt_safety_budget(
 pub(super) async fn accept_user_prompt(input: &PromptInput) -> Result<bool, SdkError> {
     let PromptInput { agent, args, session, user_message, .. } = input;
     if let Some(reason) = apply_user_prompt_hooks(input).await? {
-        warn!(%reason, "ACP UserPromptSubmit hook blocked prompt");
+        warn!(reason_bytes = reason.len(), "ACP UserPromptSubmit hook blocked prompt");
         return Ok(false);
     }
 
@@ -87,7 +87,7 @@ async fn apply_user_prompt_hooks(input: &PromptInput) -> Result<Option<String>, 
         .await
         .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
     for message in outcome.messages {
-        warn!(level = ?message.level, message = %message.text, "ACP UserPromptSubmit hook");
+        warn!(level = ?message.level, message_bytes = message.text.len(), "ACP UserPromptSubmit hook");
     }
     for context in outcome.additional_context {
         if !context.trim().is_empty() {

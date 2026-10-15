@@ -219,7 +219,7 @@ impl ZedAgent {
             }
         };
         for message in outcome.messages {
-            tracing::warn!(level = ?message.level, message = %message.text, "ACP PostToolUse hook");
+            tracing::warn!(level = ?message.level, message_bytes = message.text.len(), "ACP PostToolUse hook");
         }
         for context in outcome.additional_context {
             if !context.trim().is_empty() {
