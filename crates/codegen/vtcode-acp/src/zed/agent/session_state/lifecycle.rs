@@ -1,4 +1,5 @@
 //! ACP session lifecycle hooks, close semantics, and workspace release.
+use super::super::warn_hook_message;
 use super::*;
 use std::time::Duration;
 use vtcode_core::hooks::SessionEndReason;
@@ -23,7 +24,7 @@ impl ZedAgent {
         vtcode_core::hooks::restore_workspace_hook_approval(&hooks, &workspace).await;
         let outcome = hooks.run_session_start().await?;
         for message in outcome.messages {
-            warn!(level = ?message.level, message_bytes = message.text.len(), "ACP SessionStart hook");
+            warn_hook_message("SessionStart", &message);
         }
         for context in outcome.additional_context {
             if !context.trim().is_empty() {
@@ -72,7 +73,7 @@ impl ZedAgent {
         match hooks.run_session_end(&turn_id, reason).await {
             Ok(messages) => {
                 for message in messages {
-                    warn!(level = ?message.level, message_bytes = message.text.len(), "ACP SessionEnd hook");
+                    warn_hook_message("SessionEnd", &message);
                 }
             }
             Err(error) => warn!(%error, "ACP SessionEnd hooks failed"),

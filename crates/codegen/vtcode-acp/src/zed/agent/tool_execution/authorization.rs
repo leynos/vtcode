@@ -1,5 +1,6 @@
 //! Resolve ACP tool calls and apply lifecycle and permission authorization.
 use super::super::ZedAgent;
+use super::super::warn_hook_message;
 use super::cancelable_session_request;
 use super::data::{
     PermissionResolutionInput, ResolvedToolCall, ToolAuthorization, ToolAuthorizationInput, ToolCallInvocation,
@@ -122,7 +123,7 @@ impl ZedAgent {
                 .await
                 .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
             for message in outcome.messages {
-                tracing::warn!(level = ?message.level, message_bytes = message.text.len(), "ACP PreToolUse hook");
+                warn_hook_message("PreToolUse", &message);
             }
             outcome.decision
         } else {
@@ -364,7 +365,7 @@ impl ZedAgent {
             .await
             .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
         for message in outcome.messages {
-            tracing::warn!(level = ?message.level, message_bytes = message.text.len(), "ACP PermissionRequest hook");
+            warn_hook_message("PermissionRequest", &message);
         }
         Ok(outcome.decision)
     }

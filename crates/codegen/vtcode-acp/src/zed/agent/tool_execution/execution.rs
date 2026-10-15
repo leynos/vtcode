@@ -1,6 +1,7 @@
 //! Coordinate ACP tool execution, audit recording, and result finalization.
 use super::super::ZedAgent;
 use super::super::task_progress::task_plan_from_report;
+use super::super::warn_hook_message;
 use super::apply_patch::{
     ApplyPatchSnapshot, attach_apply_patch_diff_content, capture_apply_patch_snapshot_for_workspace,
 };
@@ -219,7 +220,7 @@ impl ZedAgent {
             }
         };
         for message in outcome.messages {
-            tracing::warn!(level = ?message.level, message_bytes = message.text.len(), "ACP PostToolUse hook");
+            warn_hook_message("PostToolUse", &message);
         }
         for context in outcome.additional_context {
             if !context.trim().is_empty() {

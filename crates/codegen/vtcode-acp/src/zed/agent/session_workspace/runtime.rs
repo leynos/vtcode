@@ -1,4 +1,5 @@
 //! Workspace runtime lifecycle and cache state shared by ACP session setup.
+use super::super::warn_workspace_mcp_shutdown_failure;
 use hashbrown::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
@@ -161,7 +162,7 @@ impl SessionWorkspaceRuntime {
             if let Some(client) = runtime.local_tool_registry.mcp_client()
                 && let Err(error) = client.shutdown().await
             {
-                tracing::warn!(%error, workspace = %runtime.workspace_root.display(), "Failed to shut down ACP workspace MCP client");
+                warn_workspace_mcp_shutdown_failure(&error);
             }
             runtime.local_tool_registry.clear_mcp_client().await;
             runtime.mark_shutdown_complete();

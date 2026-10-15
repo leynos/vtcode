@@ -17,6 +17,7 @@ use vtcode_config::core::CustomProviderConfig;
 use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
 use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig, VTCodeConfig};
 use vtcode_core::core::threads::ThreadManager;
+use vtcode_core::hooks::HookMessage;
 use vtcode_core::subagents::SubagentController;
 use vtcode_core::tools::file_ops::FileOpsTool;
 use vtcode_core::tools::registry::ToolRegistry as CoreToolRegistry;
@@ -34,6 +35,28 @@ use optional_setup::{
 pub(super) use session_workspace::{SessionWorkspaceLease, SessionWorkspaceRuntime};
 use session_workspace::{SessionWorkspaceRuntimeConfig, WorkspaceRuntimeCache, build_launch_workspace_runtime};
 
+fn warn_hook_message(hook_event: &'static str, message: &HookMessage) {
+    tracing::warn!(
+        hook_event,
+        level = ?message.level,
+        message_bytes = message.text.len(),
+        "ACP hook emitted a message"
+    );
+}
+
+fn warn_hook_block_reason(hook_event: &'static str, reason: &str) {
+    tracing::warn!(hook_event, reason_bytes = reason.len(), "ACP hook blocked an operation");
+}
+
+fn warn_workspace_mcp_shutdown_failure(error: &anyhow::Error) {
+    let error_chain_depth = error.chain().count();
+    tracing::warn!(
+        error_category = "mcp_client_shutdown",
+        error_chain_depth,
+        "Failed to shut down ACP workspace MCP client"
+    );
+}
+
 mod compaction;
 pub(crate) mod handlers;
 mod prompt;
@@ -47,6 +70,78 @@ mod tool_execution;
 mod tool_execution_local;
 mod tool_execution_output;
 mod updates;
+
+#[cfg(test)]
+mod hook_logging_tests {
+    use super::{warn_hook_block_reason, warn_hook_message, warn_workspace_mcp_shutdown_failure};
+    use std::fmt::Write as FmtWrite;
+    use std::sync::{Arc, Mutex};
+    use tracing::field::{Field, Visit};
+    use tracing_subscriber::layer::{Context, SubscriberExt};
+    use tracing_subscriber::{Layer, Registry};
+    use vtcode_core::hooks::HookMessage;
+
+    #[derive(Clone, Default)]
+    struct HookLogCapture(Arc<Mutex<Vec<String>>>);
+
+    impl<S> Layer<S> for HookLogCapture
+    where
+        S: tracing::Subscriber + for<'lookup> tracing_subscriber::registry::LookupSpan<'lookup>,
+    {
+        fn on_event(&self, event: &tracing::Event<'_>, _context: Context<'_, S>) {
+            let mut fields = CapturedFields::default();
+            event.record(&mut fields);
+            self.0.lock().expect("hook log capture lock").push(fields.0);
+        }
+    }
+
+    #[derive(Default)]
+    struct CapturedFields(String);
+
+    impl Visit for CapturedFields {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            write!(&mut self.0, " {}={value:?}", field.name()).expect("write trace field");
+        }
+
+        fn record_str(&mut self, field: &Field, value: &str) {
+            write!(&mut self.0, " {}={value:?}", field.name()).expect("write trace field");
+        }
+
+        fn record_u64(&mut self, field: &Field, value: u64) {
+            write!(&mut self.0, " {}={value}", field.name()).expect("write trace field");
+        }
+    }
+
+    #[test]
+    fn hook_logs_keep_event_level_and_size_without_hook_text() {
+        let private_path = "/home/private/workspace";
+        let private_message = format!("hook stdout from {private_path}");
+        let private_reason = format!("blocked because of {private_path}");
+        let capture = HookLogCapture::default();
+        let events = Arc::clone(&capture.0);
+        let subscriber = Registry::default().with(capture);
+
+        tracing::subscriber::with_default(subscriber, || {
+            warn_hook_message("PreToolUse", &HookMessage::warning(private_message.clone()));
+            warn_hook_block_reason("UserPromptSubmit", &private_reason);
+            warn_workspace_mcp_shutdown_failure(&anyhow::anyhow!("shutdown failed for {private_path}"));
+        });
+
+        let events = events.lock().expect("hook log capture lock");
+        assert_eq!(events.len(), 3);
+        let captured = events.join("\n");
+        assert!(!captured.contains(private_message.as_str()), "hook message text must stay out of logs");
+        assert!(!captured.contains(private_reason.as_str()), "hook block reasons must stay out of logs");
+        assert!(!captured.contains(private_path), "workspace paths must stay out of logs");
+        assert!(captured.contains("hook_event=\"PreToolUse\""));
+        assert!(captured.contains("level=Warning"));
+        assert!(captured.contains(&format!("message_bytes={}", private_message.len())));
+        assert!(captured.contains("hook_event=\"UserPromptSubmit\""));
+        assert!(captured.contains(&format!("reason_bytes={}", private_reason.len())));
+        assert!(captured.contains("error_category=\"mcp_client_shutdown\""));
+        assert!(captured.contains("error_chain_depth=1"));
+    }
+}
 
 /// SACP-style agent bridge. `Send + Sync` so it can be moved into SACP
 /// `cx.spawn` tasks and held inside the global connection registry.

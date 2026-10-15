@@ -4,7 +4,7 @@
 //! automatic, provider-native, and hook-assisted compaction.
 
 use super::super::types::SessionHandle;
-use super::ZedAgent;
+use super::{ZedAgent, warn_hook_message};
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderRequestRuntime};
 use anyhow::{Context, Result};
 use std::future::Future;
@@ -315,7 +315,7 @@ async fn run_pre_compact_hooks(
         .await
         .context("ACP PreCompact hooks failed")?;
     for message in outcome.messages {
-        warn!(level = ?message.level, message_bytes = message.text.len(), "ACP PreCompact hook");
+        warn_hook_message("PreCompact", &message);
     }
     Ok(())
 }
