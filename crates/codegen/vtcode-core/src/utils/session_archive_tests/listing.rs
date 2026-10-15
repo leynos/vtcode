@@ -1,5 +1,37 @@
 //! Tests archive lookup, ordering, search, previews, and handling of unreadable entries.
 use super::*;
+use std::fmt::Write as FmtWrite;
+use std::sync::{Arc, Mutex};
+use tracing::field::{Field, Visit};
+use tracing_subscriber::layer::{Context as TracingContext, SubscriberExt};
+use tracing_subscriber::{Layer, Registry};
+
+#[derive(Clone, Default)]
+struct ArchiveDiagnosticCapture(Arc<Mutex<Vec<String>>>);
+
+impl<S> Layer<S> for ArchiveDiagnosticCapture
+where
+    S: tracing::Subscriber + for<'lookup> tracing_subscriber::registry::LookupSpan<'lookup>,
+{
+    fn on_event(&self, event: &tracing::Event<'_>, _context: TracingContext<'_, S>) {
+        let mut fields = CapturedArchiveFields::default();
+        event.record(&mut fields);
+        self.0.lock().expect("archive diagnostic capture lock").push(fields.0);
+    }
+}
+
+#[derive(Default)]
+struct CapturedArchiveFields(String);
+
+impl Visit for CapturedArchiveFields {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        write!(&mut self.0, " {}={value:?}", field.name()).expect("write archive trace field");
+    }
+
+    fn record_str(&mut self, field: &Field, value: &str) {
+        write!(&mut self.0, " {}={value:?}", field.name()).expect("write archive trace field");
+    }
+}
 
 #[serial_test::serial(session_dir_override)]
 #[tokio::test]
@@ -81,7 +113,8 @@ async fn list_recent_sessions_propagates_directory_resolution_errors() -> Result
         .expect_err("a session path blocked by a regular file must fail");
     let error = format!("{error:#}");
     assert!(error.contains("failed to resolve session directory for listing"));
-    assert!(error.contains(&blocked_path.display().to_string()));
+    assert!(error.contains("session_directory_resolution_failed"));
+    assert!(!error.contains(&blocked_path.display().to_string()));
 
     Ok(())
 }
@@ -92,7 +125,9 @@ async fn list_recent_sessions_skips_unreadable_archive_files() -> Result<()> {
     let _settings_lock = lock_history_test_guard().await;
     let _history_guard = HistorySettingsGuard::set(HistoryPersistence::File, None);
     let temp_dir = tempfile::tempdir().context("failed to create temp dir")?;
-    let _guard = EnvGuard::set(SESSION_DIR_ENV, temp_dir.path());
+    let sessions_dir = temp_dir.path().join("private-session-listing-path");
+    fs::create_dir(&sessions_dir).context("failed to create session directory")?;
+    let _guard = EnvGuard::set(SESSION_DIR_ENV, &sessions_dir);
     let valid_metadata = SessionArchiveMetadata::new("Valid", "/tmp/valid", "model-a", "provider-a", "light", "medium");
     let valid_archive = SessionArchive::new(valid_metadata.clone(), None).await?;
     valid_archive.finalize(
@@ -102,15 +137,35 @@ async fn list_recent_sessions_skips_unreadable_archive_files() -> Result<()> {
         vec![SessionMessage::new(MessageRole::User, "Valid")],
     )?;
 
-    let archive_path = temp_dir.path().join("session-malformed.json");
+    let archive_path = sessions_dir.join("private-session-listing-archive.json");
     fs::write(&archive_path, "{ malformed json")
         .with_context(|| format!("failed to write malformed archive {}", archive_path.display()))?;
-    fs::write(temp_dir.path().join("debug-old-session.log"), "debug output")
+    fs::write(sessions_dir.join("debug-old-session.log"), "debug output")
         .context("failed to write unrelated session debug log")?;
 
+    let capture = ArchiveDiagnosticCapture::default();
+    let captured_events = Arc::clone(&capture.0);
+    let subscriber = Registry::default().with(capture);
+    let _subscriber_guard = tracing::subscriber::set_default(subscriber);
     let listings = list_recent_sessions(10).await?;
+    drop(_subscriber_guard);
     assert_eq!(listings.len(), 1);
     assert_eq!(listings[0].snapshot.metadata, valid_metadata);
+
+    let captured = captured_events.lock().expect("archive diagnostic capture lock").join("\n");
+    assert!(!captured.contains(&sessions_dir.display().to_string()));
+    assert!(!captured.contains(&archive_path.display().to_string()));
+    assert!(captured.contains("operation=\"session_archive_listing\""));
+    assert!(captured.contains("outcome=\"archive_skipped\""));
+    assert!(captured.contains("error_category=\"session_archive_read_failed\""));
+
+    let lookup_error = find_session_by_identifier("private-session-listing-archive")
+        .await
+        .expect_err("malformed archive lookup must return an error");
+    let lookup_error = format!("{lookup_error:#}");
+    assert!(lookup_error.contains("session_archive_read_failed"));
+    assert!(!lookup_error.contains(&sessions_dir.display().to_string()));
+    assert!(!lookup_error.contains(&archive_path.display().to_string()));
 
     Ok(())
 }

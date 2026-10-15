@@ -5,7 +5,7 @@ use super::{
     session_archive_path_for_identifier, validate_session_identifier,
 };
 use crate::llm::provider::{MessageContent, MessageRole};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
@@ -25,12 +25,12 @@ impl SessionListing {
 
     /// Return an identifier that is safe to advertise as an archive resume target.
     pub(super) fn verified_identifier(&self) -> Result<VerifiedSessionArchiveIdentifier> {
-        let identifier = self
-            .path
-            .file_stem()
-            .and_then(|value| value.to_str())
-            .with_context(|| format!("session archive path has no valid identifier: {}", self.path.display()))?;
-        validate_session_identifier(identifier)?;
+        let identifier =
+            self.path.file_stem().and_then(|value| value.to_str()).ok_or_else(|| {
+                anyhow!("session archive identifier is unavailable (session_archive_identifier_invalid)")
+            })?;
+        validate_session_identifier(identifier)
+            .map_err(|_error| anyhow!("session archive identifier is invalid (session_archive_identifier_invalid)"))?;
         Ok(VerifiedSessionArchiveIdentifier(identifier.to_owned()))
     }
 
@@ -93,9 +93,9 @@ pub(in crate::utils) fn truncate_preview(input: &str, max_chars: usize) -> Strin
 }
 
 pub async fn list_recent_sessions(limit: usize) -> Result<Vec<SessionListing>> {
-    let sessions_dir = resolve_sessions_dir()
-        .await
-        .context("failed to resolve session directory for listing")?;
+    let sessions_dir = resolve_sessions_dir().await.map_err(|_error| {
+        anyhow!("failed to resolve session directory for listing (session_directory_resolution_failed)")
+    })?;
 
     let Some(session_paths) = scan_session_archive_paths(sessions_dir).await? else {
         return Ok(Vec::new());
@@ -114,20 +114,19 @@ async fn scan_session_archive_paths(sessions_dir: PathBuf) -> Result<Option<Vec<
     // `std::fs::read_dir` is a blocking directory scan; run it off the async
     // executor and collect paths before spawning parallel read tasks. See `# Blocking`
     // docs in `src/agent/runloop/git.rs`.
-    let scan_path = sessions_dir.clone();
     tokio::task::spawn_blocking(move || -> Result<Option<Vec<PathBuf>>> {
         let entries = match fs::read_dir(&sessions_dir) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => {
-                return Err(error)
-                    .with_context(|| format!("failed to read session directory: {}", sessions_dir.display()));
+            Err(_error) => {
+                return Err(anyhow!("failed to read session directory for listing (session_directory_read_failed)"));
             }
         };
 
         let mut paths = Vec::new();
         for entry in entries {
-            let entry = entry.with_context(|| format!("failed to read session entry in {}", sessions_dir.display()))?;
+            let entry = entry
+                .map_err(|_error| anyhow!("failed to read session entry during listing (session_entry_read_failed)"))?;
             let path = entry.path();
             if is_session_file(&path) {
                 paths.push(path);
@@ -136,7 +135,7 @@ async fn scan_session_archive_paths(sessions_dir: PathBuf) -> Result<Option<Vec<
         Ok(Some(paths))
     })
     .await
-    .with_context(|| format!("session directory scan task failed for {}", scan_path.display()))?
+    .map_err(|_error| anyhow!("session directory scan task failed (session_directory_scan_task_failed)"))?
 }
 
 async fn load_session_listings(session_paths: &[PathBuf]) -> Result<Vec<SessionListing>> {
@@ -157,28 +156,27 @@ async fn load_session_listing_batch(batch: &[PathBuf]) -> Result<Vec<SessionList
         .iter()
         .map(|path| {
             let path = path.clone();
-            let task_path = path.clone();
-            let task = tokio::task::spawn(async move {
+            tokio::task::spawn(async move {
                 let snapshot = read_private_json_file::<SessionSnapshot>(&path)
                     .await
-                    .with_context(|| format!("failed to load session archive {}", path.display()))?;
+                    .map_err(|_error| anyhow!("failed to read session archive (session_archive_read_failed)"))?;
                 Ok::<_, anyhow::Error>(SessionListing { path, snapshot })
-            });
-            (task_path, task)
+            })
         })
         .collect::<Vec<_>>();
     let mut listings = Vec::with_capacity(tasks.len());
 
     // Collect results from this batch.
-    for (path, task) in tasks {
+    for task in tasks {
         let result = task
             .await
-            .with_context(|| format!("failed to join session archive read task for {}", path.display()))?;
+            .map_err(|_error| anyhow!("session archive read task failed (session_archive_read_task_failed)"))?;
         match result {
             Ok(listing) => listings.push(listing),
-            Err(error) => tracing::warn!(
-                archive = %path.display(),
-                %error,
+            Err(_) => tracing::warn!(
+                operation = "session_archive_listing",
+                outcome = "archive_skipped",
+                error_category = "session_archive_read_failed",
                 "Skipping unreadable session archive during listing"
             ),
         }
@@ -206,12 +204,12 @@ pub async fn find_session_by_identifier(identifier: &str) -> Result<Option<Sessi
         Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => return Ok(None),
         Ok(_) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => {
-            return Err(error).with_context(|| format!("failed to inspect session archive {}", path.display()));
-        }
+        Err(_) => return Err(anyhow!("failed to inspect session archive (session_archive_inspection_failed)")),
     }
 
-    let snapshot: SessionSnapshot = read_private_json_file(&path).await?;
+    let snapshot: SessionSnapshot = read_private_json_file(&path)
+        .await
+        .map_err(|_error| anyhow!("failed to read session archive (session_archive_read_failed)"))?;
     Ok(Some(SessionListing { path, snapshot }))
 }
 

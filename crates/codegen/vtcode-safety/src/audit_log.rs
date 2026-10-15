@@ -281,6 +281,15 @@ fn rotated_path(path: &Path, index: usize) -> PathBuf {
     PathBuf::from(s)
 }
 
+fn log_io_failure(operation: &'static str, error: &std::io::Error) {
+    tracing::warn!(
+        operation,
+        error_kind = ?error.kind(),
+        outcome = "failed",
+        "JsonlFileSink: I/O operation failed"
+    );
+}
+
 impl ToolAuditSink for JsonlFileSink {
     fn write(&self, entry: &ToolAuditEntry) {
         let mut state = match self.state.lock() {
@@ -298,11 +307,11 @@ impl ToolAuditSink for JsonlFileSink {
         let line_length = serialized.len() as u64 + 1; // account for trailing newline
 
         if let Err(err) = Self::rotate_if_needed(&mut state, &self.path, self.max_size_bytes, self.max_files) {
-            tracing::warn!(error = %err, path = %self.path.display(), "JsonlFileSink: rotation failed");
+            log_io_failure("rotation", &err);
         }
         if let Some(writer) = state.writer.as_mut() {
             if let Err(err) = writeln!(writer, "{serialized}") {
-                tracing::warn!(error = %err, path = %self.path.display(), "JsonlFileSink: write failed");
+                log_io_failure("write", &err);
                 return;
             }
             state.bytes_written = state.bytes_written.saturating_add(line_length);
@@ -316,9 +325,9 @@ impl ToolAuditSink for JsonlFileSink {
         };
         if let Some(writer) = state.writer.as_mut() {
             if let Err(error) = writer.flush() {
-                tracing::warn!(error = %error, path = %self.path.display(), "JsonlFileSink: flush failed");
+                log_io_failure("flush", &error);
             } else if let Err(error) = writer.get_ref().sync_all() {
-                tracing::warn!(error = %error, path = %self.path.display(), "JsonlFileSink: durable sync failed");
+                log_io_failure("durable_sync", &error);
             }
         }
     }
@@ -487,7 +496,53 @@ fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Write as _;
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use tempfile::TempDir;
+    use tracing::field::{Field, Visit};
+    use tracing::span::{Attributes, Id, Record};
+    use tracing::{Event, Metadata, Subscriber};
+
+    struct CapturedEvents {
+        events: Arc<Mutex<Vec<String>>>,
+        next_span_id: AtomicU64,
+    }
+
+    impl Subscriber for CapturedEvents {
+        fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
+            true
+        }
+
+        fn new_span(&self, _attributes: &Attributes<'_>) -> Id {
+            Id::from_u64(self.next_span_id.fetch_add(1, Ordering::Relaxed) + 1)
+        }
+
+        fn record(&self, _span: &Id, _values: &Record<'_>) {}
+
+        fn record_follows_from(&self, _span: &Id, _follows: &Id) {}
+
+        fn event(&self, event: &Event<'_>) {
+            let mut fields = String::new();
+            event.record(&mut CapturedFields(&mut fields));
+            self.events
+                .lock()
+                .expect("captured event lock should be available")
+                .push(fields);
+        }
+
+        fn enter(&self, _span: &Id) {}
+
+        fn exit(&self, _span: &Id) {}
+    }
+
+    struct CapturedFields<'a>(&'a mut String);
+
+    impl Visit for CapturedFields<'_> {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            let _ignored = writeln!(self.0, "{}={value:?}", field.name());
+        }
+    }
 
     fn sample_entry(suffix: &str) -> ToolAuditEntry {
         ToolAuditEntry {
@@ -547,6 +602,40 @@ mod tests {
             let value: Value = serde_json::from_str(line).expect("line is valid JSON");
             assert_eq!(value["tool_name"], "mcp::fetch::fetch");
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn jsonl_file_sink_io_failure_logs_safe_fields_without_audit_path() {
+        const SENTINEL_PATH: &str = "CUSTOM_AUDIT_PATH_7bd907a9";
+
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .open("/dev/full")
+            .expect("Linux /dev/full should be available for the failing writer");
+        let sink = JsonlFileSink {
+            path: PathBuf::from(format!("/private/audit/{SENTINEL_PATH}/audit.jsonl")),
+            max_size_bytes: u64::MAX,
+            max_files: 1,
+            state: Mutex::new(JsonlFileState {
+                writer: Some(BufWriter::with_capacity(0, file)),
+                bytes_written: 0,
+            }),
+        };
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing::Dispatch::new(CapturedEvents {
+            events: Arc::clone(&events),
+            next_span_id: AtomicU64::default(),
+        });
+
+        tracing::dispatcher::with_default(&subscriber, || sink.write(&sample_entry("failure")));
+
+        let events = events.lock().expect("captured event lock should be available");
+        let logs = events.join("\n");
+        assert!(!logs.contains(SENTINEL_PATH), "audit path leaked into logs: {logs}");
+        assert!(logs.contains("operation=\"write\""), "operation should remain observable: {logs}");
+        assert!(logs.contains("error_kind=StorageFull"), "bounded I/O kind should remain observable: {logs}");
+        assert!(logs.contains("outcome=\"failed\""), "failure outcome should remain observable: {logs}");
     }
 
     #[test]

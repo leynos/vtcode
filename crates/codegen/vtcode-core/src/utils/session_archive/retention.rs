@@ -2,7 +2,7 @@
 
 use super::{SESSION_MAX_AGE_DAYS_ENV, SESSION_MAX_FILES_ENV, SESSION_MAX_SIZE_MB_ENV, is_session_file, read_env_var};
 use crate::core::SECONDS_PER_DAY;
-use anyhow::{Context, Result};
+use anyhow::{Result, anyhow};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -62,10 +62,11 @@ where
 }
 
 pub(in crate::utils) fn apply_session_retention_best_effort(sessions_dir: &Path) {
-    if let Err(err) = apply_session_retention(sessions_dir) {
+    if apply_session_retention(sessions_dir).is_err() {
         tracing::warn!(
-            sessions_dir = %sessions_dir.display(),
-            error = %err,
+            operation = "session_archive_retention",
+            outcome = "failed",
+            error_category = "session_directory_read_failed",
             "Failed to prune session archives"
         );
     }
@@ -148,14 +149,15 @@ fn collect_session_entries(sessions_dir: &Path) -> Result<Vec<SessionFileEntry>>
 
     let mut entries = Vec::new();
     for entry in fs::read_dir(sessions_dir)
-        .with_context(|| format!("failed to read session directory for retention: {}", sessions_dir.display()))?
+        .map_err(|_error| anyhow!("failed to read session directory for retention (session_directory_read_failed)"))?
     {
         let entry = match entry {
             Ok(value) => value,
-            Err(err) => {
+            Err(_) => {
                 tracing::warn!(
-                    sessions_dir = %sessions_dir.display(),
-                    error = %err,
+                    operation = "session_archive_retention",
+                    outcome = "entry_skipped",
+                    error_category = "session_entry_read_failed",
                     "Failed to read a session archive entry"
                 );
                 continue;
@@ -167,10 +169,11 @@ fn collect_session_entries(sessions_dir: &Path) -> Result<Vec<SessionFileEntry>>
         }
         let metadata = match fs::symlink_metadata(&path) {
             Ok(value) => value,
-            Err(err) => {
+            Err(_) => {
                 tracing::warn!(
-                    path = %path.display(),
-                    error = %err,
+                    operation = "session_archive_retention",
+                    outcome = "archive_skipped",
+                    error_category = "session_archive_metadata_read_failed",
                     "Failed to read session archive metadata"
                 );
                 continue;
@@ -188,10 +191,11 @@ fn collect_session_entries(sessions_dir: &Path) -> Result<Vec<SessionFileEntry>>
 
 fn remove_session_files(entries: Vec<SessionFileEntry>) {
     for entry in entries {
-        if let Err(err) = fs::remove_file(&entry.path) {
+        if fs::remove_file(&entry.path).is_err() {
             tracing::warn!(
-                path = %entry.path.display(),
-                error = %err,
+                operation = "session_archive_retention",
+                outcome = "remove_failed",
+                error_category = "session_archive_remove_failed",
                 "Failed to remove session archive"
             );
         }

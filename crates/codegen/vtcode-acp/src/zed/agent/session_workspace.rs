@@ -235,12 +235,7 @@ async fn initialize_workspace_tool_registry(
     local_tool_registry
         .apply_tool_runtime_config(&prepared.runtime_config.commands_config, &prepared.runtime_config.tools_config)
         .await
-        .with_context(|| {
-            format!(
-                "applying tool runtime configuration to ACP workspace registry {}",
-                prepared.workspace_root.display()
-            )
-        })?;
+        .context("applying tool runtime configuration to ACP workspace registry")?;
     let optional_setup_outcomes = attach_optional_workspace_components(OptionalWorkspaceComponentsSetup {
         registry: &local_tool_registry,
         agent_config: &prepared.session_config,
