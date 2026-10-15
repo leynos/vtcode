@@ -35,6 +35,26 @@ struct WorkspaceSessionProjection {
 }
 
 #[tokio::test]
+async fn new_session_discovery_failure_does_not_expose_workspace_path() {
+    let launch_workspace = TempDir::new().expect("temporary launch workspace");
+    let requested_workspace = TempDir::new().expect("temporary selected workspace");
+    let agent = build_agent(launch_workspace.path()).await;
+    let agents_directory = requested_workspace.path().join(".codex/agents");
+    fs::create_dir_all(&agents_directory).expect("create workspace agents directory");
+    fs::write(agents_directory.join("private-agent-path-sentinel.toml"), b"\xff")
+        .expect("write unreadable workspace agent");
+
+    let error = agent
+        .new_session(acp::NewSessionRequest::new(requested_workspace.path()))
+        .await
+        .expect_err("invalid UTF-8 workspace agent must fail discovery");
+    let surfaced = format!("{error:?}");
+    assert!(surfaced.contains("discovering ACP workspace agents"));
+    assert!(!surfaced.contains(&requested_workspace.path().display().to_string()));
+    assert!(!surfaced.contains("private-agent-path-sentinel"));
+}
+
+#[tokio::test]
 async fn new_session_canonicalizes_and_isolates_requested_workspaces() {
     let launch_workspace = TempDir::new().unwrap();
     let first_workspace = TempDir::new().unwrap();

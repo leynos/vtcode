@@ -202,8 +202,7 @@ async fn prepare_session_workspace<'a>(
         .map_or_else(String::new, ToString::to_string);
     let default_primary_agent = vt_config.map_or("duck", |config| config.default_primary_agent.as_str());
     let discovery_input = SubagentDiscoveryInput::new(workspace_root.clone());
-    let primary_agents = discover_session_primary_agents(&discovery_input, default_primary_agent)
-        .with_context(|| format!("preparing ACP runtime for workspace {}", workspace_root.display()))?;
+    let primary_agents = discover_session_primary_agents(&discovery_input, default_primary_agent)?;
     let workspace_hooks_gated = primary_agents.workspace_hooks_gated(vt_config);
     let file_ops_tool = create_file_ops_tool(&workspace_root, &runtime_config.zed_config);
 

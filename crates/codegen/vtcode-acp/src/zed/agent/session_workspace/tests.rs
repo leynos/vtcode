@@ -14,8 +14,9 @@ fn workspace_runtime_cache<T>() -> WorkspaceRuntimeCache<T> {
 }
 
 #[test]
-fn workspace_agent_discovery_failure_keeps_its_stage_context() {
-    let mut input = SubagentDiscoveryInput::new(PathBuf::from("/tmp/acp-session-workspace"));
+fn workspace_agent_discovery_failure_keeps_its_stage_without_exposing_workspace_path() {
+    let workspace = "/tmp/private-acp-session-workspace-sentinel";
+    let mut input = SubagentDiscoveryInput::new(PathBuf::from(workspace));
     input.include_user_agents = false;
     input.cli_agents = Some(Value::Null);
 
@@ -25,6 +26,8 @@ fn workspace_agent_discovery_failure_keeps_its_stage_context() {
     };
 
     assert!(error.to_string().contains("discovering ACP workspace agents"));
+    assert!(!error.to_string().contains(workspace));
+    assert_eq!(error.root_cause().to_string(), "CLI subagent payload must be a JSON object");
 }
 
 #[test]

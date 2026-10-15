@@ -26,10 +26,14 @@ struct SessionSnapshotContent {
 }
 
 fn write_private_json_file_sync<T: Serialize>(path: &Path, value: &T) -> Result<()> {
-    let contents =
-        serde_json::to_vec_pretty(value).with_context(|| format!("failed to serialize {}", path.display()))?;
-    VtCodePaths::write_private_file_atomic(path, &contents)
-        .with_context(|| format!("failed to write private session archive {}", path.display()))
+    let contents = serde_json::to_vec_pretty(value).context("failed to serialize private session archive")?;
+    VtCodePaths::write_private_file_atomic(path, &contents).context("failed to write private session archive")
+}
+
+async fn write_private_json_file_async<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+    write_private_json_file(path, value)
+        .await
+        .context("failed to write private session archive")
 }
 
 impl SessionArchive {
@@ -204,7 +208,7 @@ impl SessionArchive {
             return Ok(self.path.clone());
         };
 
-        write_private_json_file(&self.path, &snapshot).await?;
+        write_private_json_file_async(&self.path, &snapshot).await?;
         Ok(self.path.clone())
     }
 
@@ -228,5 +232,59 @@ impl SessionArchive {
         throttle.last_written = Instant::now();
         throttle.last_turn = turn_number;
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{write_private_json_file_async, write_private_json_file_sync};
+    use serde::{Serialize, Serializer};
+
+    struct FailingArchiveSerialization;
+
+    impl Serialize for FailingArchiveSerialization {
+        fn serialize<S: Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
+            Err(serde::ser::Error::custom("archive serialization sentinel failure"))
+        }
+    }
+
+    #[tokio::test]
+    async fn archive_write_failures_hide_paths_and_preserve_io_sources() {
+        let directory = tempfile::tempdir().expect("temporary archive root");
+        let blocked_parent = directory.path().join("private-archive-path-sentinel");
+        std::fs::write(&blocked_parent, b"not a directory").expect("block archive parent");
+        let path = blocked_parent.join("session.json");
+
+        for asynchronous in [false, true] {
+            let result = if asynchronous {
+                write_private_json_file_async(&path, &"snapshot").await
+            } else {
+                write_private_json_file_sync(&path, &"snapshot")
+            };
+            let error = result.expect_err("writing through a file must fail");
+            let surfaced = error.to_string();
+            assert_eq!(surfaced, "failed to write private session archive");
+            assert!(!surfaced.contains("private-archive-path-sentinel"));
+            assert!(!surfaced.contains(&path.display().to_string()));
+            assert!(error.downcast_ref::<std::io::Error>().is_some(), "I/O error source remains inspectable");
+        }
+    }
+
+    #[tokio::test]
+    async fn archive_serialization_failures_hide_paths_and_preserve_serializer_sources() {
+        let path = std::path::Path::new("/private-archive-path-sentinel/session.json");
+        for asynchronous in [false, true] {
+            let result = if asynchronous {
+                write_private_json_file_async(path, &FailingArchiveSerialization).await
+            } else {
+                write_private_json_file_sync(path, &FailingArchiveSerialization)
+            };
+            let error = result.expect_err("failing serializer must fail before filesystem access");
+            let surfaced = error.to_string();
+            assert!(surfaced.contains("private session archive"));
+            assert!(!surfaced.contains("private-archive-path-sentinel"));
+            assert_eq!(error.root_cause().to_string(), "archive serialization sentinel failure");
+            assert!(error.downcast_ref::<serde_json::Error>().is_some());
+        }
     }
 }
