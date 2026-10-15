@@ -24,6 +24,7 @@ use vtcode_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver
 
 pub(super) const TASK_LIFECYCLE_METHOD: &str = "_vtcode/taskLifecycle";
 const SESSION_CORRELATION_HEX_LENGTH: usize = 12;
+const TASK_LIFECYCLE_SEND_FAILURE_CATEGORY: &str = "notification_send_failed";
 
 fn bounded_session_correlation(session_id: &acp::SessionId) -> String {
     vtcode_commons::utils::calculate_sha256(session_id.to_string().as_bytes())
@@ -173,6 +174,15 @@ fn task_lifecycle_forwarder_outcome(send_failures: u64) -> &'static str {
     if send_failures == 0 { "completed" } else { "send_failed" }
 }
 
+fn warn_task_lifecycle_notification_failure(session_correlation: &str, notification_send_elapsed_ms: u64) {
+    warn!(
+        session_correlation,
+        failure_category = TASK_LIFECYCLE_SEND_FAILURE_CATEGORY,
+        notification_send_elapsed_ms,
+        "Failed to forward ACP task lifecycle notification"
+    );
+}
+
 impl ZedAgent {
     pub(super) fn ensure_task_lifecycle_forwarder(&self, session: &SessionHandle) -> anyhow::Result<()> {
         let already_running = session
@@ -285,9 +295,9 @@ fn spawn_task_lifecycle_forwarder(
                 let notification_send_elapsed_ms =
                     u64::try_from(send_started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
                 match send_result {
-                    Err(error) => {
+                    Err(_) => {
                         forwarder_span.record_failure();
-                        warn!(notification_send_elapsed_ms, %error, "Failed to forward ACP task lifecycle notification");
+                        warn_task_lifecycle_notification_failure(&session_correlation, notification_send_elapsed_ms);
                     }
                     Ok(()) => {
                         forwarder_span.record_sent();

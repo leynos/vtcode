@@ -139,6 +139,36 @@ fn session_correlation_is_stable_bounded_and_does_not_expose_the_session_id() {
     assert!(!correlation.contains("sensitive-parent-session-id"));
 }
 
+#[test]
+fn notification_failure_warning_includes_bounded_correlation_category_and_latency() {
+    let trace_capture = LifecycleTraceCapture::default();
+    let subscriber = Registry::default().with(trace_capture.clone());
+    let _subscriber_guard = tracing::subscriber::set_default(subscriber);
+    let session_id = acp::SessionId::new(Arc::from("sensitive-parent-session-id"));
+    let correlation = bounded_session_correlation(&session_id);
+    let span = tracing::info_span!(
+        "acp_task_lifecycle_forwarder",
+        session_correlation = %correlation,
+        outcome = field::Empty,
+        elapsed_ms = field::Empty,
+        notifications_sent = 0_u64,
+        send_failures = 0_u64
+    );
+    let _entered = span.enter();
+
+    warn_task_lifecycle_notification_failure(&correlation, 17);
+
+    let captured = trace_capture.0.lock().expect("trace capture lock").join("\n");
+    let warning = captured
+        .lines()
+        .find(|line| line.contains("Failed to forward ACP task lifecycle notification"))
+        .expect("notification failure warning");
+    assert!(warning.contains(&correlation));
+    assert!(warning.contains("failure_category=\"notification_send_failed\""));
+    assert!(warning.contains("notification_send_elapsed_ms=17"));
+    assert!(!warning.contains("sensitive-parent-session-id"));
+}
+
 fn subagent_entry(status: &str) -> SubagentStatusEntry {
     serde_json::from_value(json!({
         "id": "child-1",
