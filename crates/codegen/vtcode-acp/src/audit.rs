@@ -39,11 +39,12 @@ impl AcpAuditLogger {
     pub(crate) async fn record(&self, entry: ToolAuditEntry) -> Result<()> {
         let logger = Arc::clone(&self.logger);
         tokio::task::spawn_blocking(move || {
-            logger.record(entry);
-            logger.flush();
+            logger.record(entry)?;
+            logger.flush()
         })
         .await
-        .context("ACP audit logger write task failed")?;
+        .context("ACP audit logger write task failed")?
+        .context("failed to persist ACP audit entry")?;
         Ok(())
     }
 }
@@ -85,6 +86,39 @@ mod tests {
                 .is_none()
         );
         assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn audit_record_propagates_sink_rotation_failure() {
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("audit.jsonl");
+        let config: ToolAuditConfig =
+            toml::from_str(&format!("enabled = true\npath = {:?}\nmax_size_bytes = 1\nmax_files = 1", path))
+                .expect("audit config");
+        let logger = AcpAuditLogger::from_config(&config).await.expect("startup").expect("enabled");
+        let entry = || {
+            ToolAuditEntry::from_invocation(ToolAuditInvocation {
+                timestamp_unix_ms: 1,
+                session_id: "s",
+                turn_id: "t",
+                tool_call_id: "c",
+                tool_name: "apply_patch",
+                arguments: b"{}",
+                result: b"completed",
+                duration_ms: 1,
+                status: ToolAuditStatus::Success,
+                model_id: None,
+                reason: None,
+            })
+        };
+        logger.record(entry()).await.expect("initial durable write");
+        fs::create_dir(temp.path().join("audit.jsonl.1")).expect("block rotation destination");
+        let error = logger
+            .record(entry())
+            .await
+            .expect_err("sink failure must cross blocking task boundary");
+        assert!(error.downcast_ref::<std::io::Error>().is_some());
+        assert_eq!(error.to_string(), "failed to persist ACP audit entry");
     }
 
     #[tokio::test]

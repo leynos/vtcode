@@ -3,7 +3,7 @@
 //! Provides consistent timeout configuration and client creation
 //! across all providers based on the application's TimeoutsConfig.
 
-use reqwest::Client;
+use reqwest::{Client, ClientBuilder};
 use std::time::Duration;
 
 use vtcode_config::TimeoutsConfig;
@@ -17,26 +17,23 @@ impl HttpClientFactory {
     /// Uses the `default_ceiling_seconds` from TimeoutsConfig for the request timeout.
     /// Uses the separately configured provider connection timeout.
     pub fn for_llm(config: &TimeoutsConfig) -> Client {
-        let connect_timeout = Duration::from_secs(config.connect_timeout_seconds);
-        let request_timeout = Duration::from_secs(config.default_ceiling_seconds);
-        Self::with_optional_timeouts(request_timeout, connect_timeout)
+        TimeoutPolicy::regular(config)
+            .apply(Client::builder())
+            .build()
+            .unwrap_or_else(|_| Client::new())
     }
 
     /// Create an HTTP client optimized for streaming requests.
     ///
-    /// Uses the `streaming_ceiling_seconds` from TimeoutsConfig.
-    /// Streaming requests typically take longer as they wait for incremental output.
+    /// Uses the streaming request ceiling and separately configured connection timeout.
     pub fn for_streaming(config: &TimeoutsConfig) -> Client {
-        let mut builder = Client::builder()
+        let builder = Client::builder()
             .pool_idle_timeout(Some(Duration::from_secs(90)))
             .pool_max_idle_per_host(1);
-        if config.streaming_ceiling_seconds > 0 {
-            builder = builder.timeout(Duration::from_secs(config.streaming_ceiling_seconds));
-        }
-        if config.connect_timeout_seconds > 0 {
-            builder = builder.connect_timeout(Duration::from_secs(config.connect_timeout_seconds));
-        }
-        builder.build().unwrap_or_else(|_| Client::new())
+        TimeoutPolicy::streaming(config)
+            .apply(builder)
+            .build()
+            .unwrap_or_else(|_| Client::new())
     }
 
     /// Create an HTTP client with explicit timeout values.
@@ -44,17 +41,6 @@ impl HttpClientFactory {
     /// Use this when providers need custom timeout handling.
     pub(crate) fn with_timeouts(request_timeout: Duration, connect_timeout: Duration) -> Client {
         vtcode_commons::http::create_client_with_timeouts(connect_timeout, request_timeout)
-    }
-
-    fn with_optional_timeouts(request_timeout: Duration, connect_timeout: Duration) -> Client {
-        let mut builder = Client::builder();
-        if !request_timeout.is_zero() {
-            builder = builder.timeout(request_timeout);
-        }
-        if !connect_timeout.is_zero() {
-            builder = builder.connect_timeout(connect_timeout);
-        }
-        builder.build().unwrap_or_else(|_| Client::new())
     }
 
     /// Create a default HTTP client with reasonable defaults.
@@ -65,28 +51,83 @@ impl HttpClientFactory {
     }
 }
 
+/// Zero ceilings disable their deadline independently of the other timeout.
+#[derive(Debug, PartialEq, Eq)]
+struct TimeoutPolicy {
+    request: Option<Duration>,
+    connection: Option<Duration>,
+}
+
+impl TimeoutPolicy {
+    fn regular(config: &TimeoutsConfig) -> Self {
+        Self::new(config.default_ceiling_seconds, config.connect_timeout_seconds)
+    }
+
+    fn streaming(config: &TimeoutsConfig) -> Self {
+        Self::new(config.streaming_ceiling_seconds, config.connect_timeout_seconds)
+    }
+
+    fn new(request_seconds: u64, connection_seconds: u64) -> Self {
+        Self {
+            request: (request_seconds > 0).then(|| Duration::from_secs(request_seconds)),
+            connection: (connection_seconds > 0).then(|| Duration::from_secs(connection_seconds)),
+        }
+    }
+
+    fn apply(&self, mut builder: ClientBuilder) -> ClientBuilder {
+        if let Some(timeout) = self.request {
+            builder = builder.timeout(timeout);
+        }
+        if let Some(timeout) = self.connection {
+            builder = builder.connect_timeout(timeout);
+        }
+        builder
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn default_client_is_created() {
-        let client = HttpClientFactory::default_client();
-        // Just verify it doesn't panic
-        drop(client);
+    fn regular_and_streaming_policies_select_independent_ceilings() {
+        let config = TimeoutsConfig {
+            default_ceiling_seconds: 17,
+            streaming_ceiling_seconds: 41,
+            connect_timeout_seconds: 3,
+            ..TimeoutsConfig::default()
+        };
+        assert_eq!(
+            TimeoutPolicy::regular(&config),
+            TimeoutPolicy {
+                request: Some(Duration::from_secs(17)),
+                connection: Some(Duration::from_secs(3)),
+            }
+        );
+        assert_eq!(
+            TimeoutPolicy::streaming(&config),
+            TimeoutPolicy {
+                request: Some(Duration::from_secs(41)),
+                connection: Some(Duration::from_secs(3)),
+            }
+        );
     }
 
     #[test]
-    fn for_llm_uses_config_timeout() {
-        let config = TimeoutsConfig::default();
-        let client = HttpClientFactory::for_llm(&config);
-        drop(client);
-    }
-
-    #[test]
-    fn for_streaming_uses_longer_timeout() {
-        let config = TimeoutsConfig::default();
-        let client = HttpClientFactory::for_streaming(&config);
-        drop(client);
+    fn zero_disables_each_timeout_independently_for_both_clients() {
+        for (request_seconds, connection_seconds) in [(0, 0), (0, 3), (17, 0)] {
+            let config = TimeoutsConfig {
+                default_ceiling_seconds: request_seconds,
+                streaming_ceiling_seconds: request_seconds,
+                connect_timeout_seconds: connection_seconds,
+                ..TimeoutsConfig::default()
+            };
+            let expected = TimeoutPolicy {
+                request: (request_seconds > 0).then(|| Duration::from_secs(request_seconds)),
+                connection: (connection_seconds > 0).then(|| Duration::from_secs(connection_seconds)),
+            };
+            assert_eq!(TimeoutPolicy::regular(&config), expected);
+            assert_eq!(TimeoutPolicy::streaming(&config), expected);
+        }
     }
 }

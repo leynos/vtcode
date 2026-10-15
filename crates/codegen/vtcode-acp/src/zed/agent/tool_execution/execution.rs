@@ -86,7 +86,13 @@ impl ZedAgent {
                 reason: reason.as_deref(),
             });
         if let Err(error) = logger.record(entry).await {
-            tracing::warn!(%error, tool = tool_name, call_id = %input.call.id, "Failed to write ACP tool audit entry");
+            let error_kind = error.downcast_ref::<std::io::Error>().map(std::io::Error::kind);
+            tracing::warn!(
+                ?error_kind,
+                operation = "audit_record",
+                outcome = "failed",
+                "Failed to persist ACP tool audit entry; preserving the completed tool result"
+            );
         }
     }
 
