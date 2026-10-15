@@ -1,3 +1,4 @@
+//! Tests command-backed custom-provider authentication and transport diagnostics.
 use super::super::CustomProviderBackendRouter;
 use crate::provider::{LLMProvider, LLMRequest, Message};
 use crate::providers::openai::CustomProviderAuthHandle;

@@ -1,3 +1,4 @@
+//! Property-tests generated admission operations against permit and queue invariants.
 use super::super::super::custom_provider_admission_metrics;
 use super::{ADMISSION_TEST_LOCK, admission_for_capacity};
 use proptest::prelude::*;

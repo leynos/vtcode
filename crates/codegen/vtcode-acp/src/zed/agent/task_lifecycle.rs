@@ -18,11 +18,19 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::task::JoinHandle;
 use tracing::Instrument;
-use tracing::{Span, field, info_span, warn};
+use tracing::{Span, debug, field, info_span, warn};
 use vtcode_core::metrics::MetricsCollector;
 use vtcode_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver, SubagentStatusEntry};
 
 pub(super) const TASK_LIFECYCLE_METHOD: &str = "_vtcode/taskLifecycle";
+const SESSION_CORRELATION_HEX_LENGTH: usize = 12;
+
+fn bounded_session_correlation(session_id: &acp::SessionId) -> String {
+    vtcode_commons::utils::calculate_sha256(session_id.to_string().as_bytes())
+        .chars()
+        .take(SESSION_CORRELATION_HEX_LENGTH)
+        .collect()
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum LifecycleQueueDropKind {
@@ -257,8 +265,10 @@ fn spawn_task_lifecycle_forwarder(
     queue: Arc<LifecycleQueueTracker>,
 ) -> JoinHandle<()> {
     let queue_guard = LifecycleQueueForwarderGuard(Arc::clone(&queue));
+    let session_correlation = bounded_session_correlation(&session_id);
     let span = info_span!(
         "acp_task_lifecycle_forwarder",
+        session_correlation = %session_correlation,
         outcome = field::Empty,
         elapsed_ms = field::Empty,
         notifications_sent = 0_u64,
@@ -270,11 +280,19 @@ fn spawn_task_lifecycle_forwarder(
             let mut forwarder_span = TaskLifecycleForwarderSpan::new(Span::current());
             while let Some(update) = receiver.recv().await {
                 queue.dequeued();
-                if let Err(error) = send_task_lifecycle(&client, &session_id, update) {
-                    forwarder_span.record_failure();
-                    warn!(%error, "Failed to forward ACP task lifecycle notification");
-                } else {
-                    forwarder_span.record_sent();
+                let send_started_at = Instant::now();
+                let send_result = send_task_lifecycle(&client, &session_id, update);
+                let notification_send_elapsed_ms =
+                    u64::try_from(send_started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+                match send_result {
+                    Err(error) => {
+                        forwarder_span.record_failure();
+                        warn!(notification_send_elapsed_ms, %error, "Failed to forward ACP task lifecycle notification");
+                    }
+                    Ok(()) => {
+                        forwarder_span.record_sent();
+                        debug!(notification_send_elapsed_ms, "Forwarded ACP task lifecycle notification");
+                    }
                 }
             }
             let outcome = task_lifecycle_forwarder_outcome(forwarder_span.send_failures);

@@ -1,3 +1,4 @@
+//! Adapts the shared permission prompter to ACP permission requests.
 use super::*;
 
 #[async_trait]

@@ -217,9 +217,9 @@ fn usd_to_micros(value: f64) -> Option<u64> {
         return None;
     }
 
-    #[allow(
+    #[expect(
         clippy::cast_sign_loss,
-        reason = "Intentional compatibility, platform, or test-only suppression."
+        reason = "The preceding finite/nonnegative guard ensures the rounded cast value is nonnegative."
     )]
     Some((value * 1_000_000.0).round() as u64)
 }

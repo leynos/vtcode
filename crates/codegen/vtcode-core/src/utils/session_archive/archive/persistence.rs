@@ -1,3 +1,4 @@
+//! Builds and persists finalized and in-progress session archive snapshots.
 use super::super::{
     SessionMessage, SessionProgress, SessionProgressArgs, SessionProgressPersistenceStatus, SessionSnapshot,
     apply_session_retention_best_effort, clean_transcript_lines, history_persistence_enabled,

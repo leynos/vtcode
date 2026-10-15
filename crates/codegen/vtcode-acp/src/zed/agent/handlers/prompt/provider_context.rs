@@ -1,6 +1,8 @@
 //! Builds provider and tool context for an ACP prompt before turn execution.
 use super::super::provider::create_prompt_provider;
 use super::*;
+use std::path::Path;
+use vtcode_config::api_keys::resolve_credential_with_mode;
 
 pub(super) fn create_prompt_provider_context(input: &PromptInput) -> Result<PromptProviderContext, SdkError> {
     let PromptInput { agent, args, session, .. } = input;
@@ -22,8 +24,27 @@ pub(super) fn create_prompt_provider_context(input: &PromptInput) -> Result<Prom
     } else {
         None
     };
+    let custom_provider = agent
+        .workspace_runtime_config
+        .custom_providers
+        .iter()
+        .find(|provider| provider.name.eq_ignore_ascii_case(&provider_name));
+    let configured_api_key_env = custom_provider.map(|provider| provider.resolved_api_key_env()).or_else(|| {
+        agent
+            .vt_config
+            .as_deref()
+            .and_then(|config| config.configured_api_key_env(&provider_name))
+    });
     let config = ProviderConfig {
-        api_key: Some(resolve_api_key_for_provider(agent, &provider_name)),
+        api_key: Some(resolve_api_key_for_provider(
+            &provider_name,
+            &agent.config.provider,
+            &agent.config.api_key,
+            configured_api_key_env.as_deref(),
+            custom_provider.is_some_and(|provider| provider.uses_command_auth()) || openai_chatgpt_auth.is_some(),
+            &workspace_root,
+            agent.credential_storage_mode,
+        )?),
         openai_chatgpt_auth,
         copilot_auth: None,
         base_url: None,
@@ -101,10 +122,106 @@ async fn maybe_compact_prompt(
         .map_err(|error| SdkError::internal_error().data(error.to_string()))
 }
 
-fn resolve_api_key_for_provider(agent: &ZedAgent, provider: &str) -> String {
-    if provider.eq_ignore_ascii_case(&agent.config.provider) && !agent.config.api_key.is_empty() {
-        return agent.config.api_key.clone();
+fn resolve_api_key_for_provider(
+    provider: &str,
+    launch_provider: &str,
+    launch_api_key: &str,
+    configured_api_key_env: Option<&str>,
+    allow_missing_key: bool,
+    workspace_root: &Path,
+    storage_mode: vtcode_config::auth::AuthCredentialsStoreMode,
+) -> Result<String, SdkError> {
+    if provider.eq_ignore_ascii_case(launch_provider) && !launch_api_key.is_empty() {
+        return Ok(launch_api_key.to_owned());
     }
 
-    get_api_key_with_mode(provider, &ApiKeySources::default(), agent.credential_storage_mode).unwrap_or_default()
+    if let Some(key_name) = configured_api_key_env {
+        let resolved =
+            resolve_credential_with_mode(provider, key_name, Some(workspace_root), storage_mode).map_err(|error| {
+                SdkError::internal_error().data(serde_json::json!({
+                    "reason": "provider_credential_resolution_failed",
+                    "provider": provider,
+                    "key_name": key_name,
+                    "detail": error.to_string(),
+                }))
+            })?;
+        if let Some(secret) = resolved
+            .and_then(|credential| credential.secret)
+            .filter(|secret| !secret.trim().is_empty())
+        {
+            return Ok(secret);
+        }
+        if allow_missing_key {
+            return Ok(String::new());
+        }
+
+        return Err(SdkError::internal_error().data(serde_json::json!({
+            "reason": "provider_credential_unavailable",
+            "provider": provider,
+            "key_name": key_name,
+            "detail": "No credential was found in the process environment, session workspace, or configured storage.",
+        })));
+    }
+
+    if allow_missing_key {
+        return Ok(String::new());
+    }
+
+    get_api_key_with_mode(provider, &ApiKeySources::default(), storage_mode).map_err(|error| {
+        SdkError::internal_error().data(serde_json::json!({
+            "reason": "provider_credential_unavailable",
+            "provider": provider,
+            "detail": error.to_string(),
+        }))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolves_configured_provider_key_from_session_workspace() {
+        let workspace = assert_fs::TempDir::new().expect("create workspace");
+        let key_name = format!("CUSTOM_PROVIDER_TEST_{}_API_KEY", uuid::Uuid::new_v4().simple()).to_ascii_uppercase();
+        vtcode_config::write_workspace_env_value(workspace.path(), &key_name, "session-workspace-secret")
+            .expect("write workspace .env");
+        assert_eq!(
+            vtcode_config::read_workspace_env_value(workspace.path(), &key_name)
+                .expect("read workspace .env")
+                .as_deref(),
+            Some("session-workspace-secret")
+        );
+        let api_key = resolve_api_key_for_provider(
+            "custom-provider",
+            "openai",
+            "",
+            Some(&key_name),
+            false,
+            workspace.path(),
+            vtcode_config::auth::AuthCredentialsStoreMode::File,
+        )
+        .expect("resolve configured key from the session workspace");
+
+        assert_eq!(api_key, "session-workspace-secret");
+    }
+
+    #[test]
+    fn configured_provider_without_a_key_returns_an_sdk_error() {
+        let workspace = assert_fs::TempDir::new().expect("create workspace");
+        let key_name = format!("VTCODE_ACP_TEST_{}_API_KEY", uuid::Uuid::new_v4().simple());
+
+        let error = resolve_api_key_for_provider(
+            "custom-provider",
+            "openai",
+            "",
+            Some(&key_name),
+            false,
+            workspace.path(),
+            vtcode_config::auth::AuthCredentialsStoreMode::File,
+        )
+        .expect_err("missing required provider credentials should fail");
+
+        assert!(format!("{error:?}").contains("provider_credential_unavailable"));
+    }
 }

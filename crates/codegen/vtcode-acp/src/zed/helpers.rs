@@ -1,3 +1,4 @@
+//! Builds shared ACP session configuration, command, and display values.
 use crate::acp;
 use std::collections::HashSet;
 use std::path::Path;

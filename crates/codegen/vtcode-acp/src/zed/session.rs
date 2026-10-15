@@ -135,11 +135,10 @@ pub(super) async fn prepare_acp_agent_startup(
 async fn synchronize_acp_workspace_trust(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig) -> Result<()> {
     let zed_config = &vt_cfg.acp.zed;
     let workspace_policy = AcpWorkspacePolicy::new(&config.workspace, &zed_config.allowed_workspace_roots).await?;
-    let workspace = workspace_policy.resolve_client_cwd(&config.workspace).await?;
     let desired_trust_level = zed_config.workspace_trust.to_workspace_trust_level();
     let trust_synchronizer = DefaultWorkspaceTrustSynchronizer::new();
     match trust_synchronizer
-        .synchronize(workspace.path(), desired_trust_level)
+        .synchronize(workspace_policy.launch_context(), desired_trust_level)
         .await
         .context("Failed to synchronize workspace trust for ACP bridge")?
     {
@@ -241,14 +240,18 @@ async fn finish_acp_session(agent: Arc<ZedAgent>, connection_result: Result<()>)
         SessionEndReason::Error
     };
     let cleanup_task = tokio::spawn(async move { agent.close_all_sessions(end_reason).await });
-    let end_result = tokio::time::timeout(std::time::Duration::from_secs(3), cleanup_task)
-        .await
-        .map_err(|timeout_error| anyhow::anyhow!("ACP session cleanup exceeded shutdown timeout: {timeout_error}"))?
-        .map_err(|join_error| anyhow::anyhow!("ACP session cleanup task failed: {join_error}"));
+    let cleanup_result = match tokio::time::timeout(std::time::Duration::from_secs(3), cleanup_task).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(join_error)) => Err(anyhow::anyhow!("ACP session cleanup task failed: {join_error}")),
+        Err(timeout_error) => Err(anyhow::anyhow!("ACP session cleanup exceeded shutdown timeout: {timeout_error}")),
+    };
 
+    preserve_connection_error(connection_result, cleanup_result)
+}
+
+fn preserve_connection_error(connection_result: Result<()>, cleanup_result: Result<()>) -> Result<()> {
     connection_result?;
-    end_result??;
-    Ok(())
+    cleanup_result
 }
 
 fn register_acp_custom_providers(vt_cfg: &VTCodeConfig) {
@@ -261,6 +264,16 @@ mod tests {
     use vtcode_core::llm::factory::{ProviderConfig, create_provider_with_config};
 
     use super::*;
+
+    #[test]
+    fn connection_error_takes_precedence_over_cleanup_error() {
+        let result = preserve_connection_error(
+            Err(anyhow::anyhow!("ACP stdio connection failed: closed")),
+            Err(anyhow::anyhow!("ACP session cleanup timed out")),
+        );
+
+        assert_eq!(result.unwrap_err().to_string(), "ACP stdio connection failed: closed");
+    }
 
     #[test]
     fn acp_launch_registers_runtime_custom_providers() {

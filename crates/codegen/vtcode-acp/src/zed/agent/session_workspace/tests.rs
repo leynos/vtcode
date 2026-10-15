@@ -1,3 +1,4 @@
+//! Tests workspace runtime caching, discovery, and optional setup outcomes.
 use super::{
     OptionalSetupOutcome, OptionalWorkspaceSetupOutcomes, WorkspaceRuntimeCache, WorkspaceRuntimeLookup,
     discover_session_primary_agents, preserve_optional_workspace_setup_outcomes,

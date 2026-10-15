@@ -1,3 +1,4 @@
+//! Creates, resumes, forks, and reserves identifiers for session archives.
 use super::super::{apply_session_retention_best_effort, resolve_sessions_dir};
 use super::{
     SessionArchive, SessionArchiveMetadata, SessionListing, SessionSnapshot, generate_unique_archive_path,

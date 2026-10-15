@@ -1,3 +1,4 @@
+//! Shared mock providers and tracing capture for provider-runtime handler tests.
 use super::*;
 
 #[derive(Clone, Default)]
@@ -43,8 +44,6 @@ impl Visit for CapturedFields {
         write!(&mut self.0, " {}={value:?}", field.name()).expect("write trace field");
     }
 }
-
-use super::*;
 
 pub(super) struct FlakyProvider {
     pub(super) attempts: AtomicUsize,

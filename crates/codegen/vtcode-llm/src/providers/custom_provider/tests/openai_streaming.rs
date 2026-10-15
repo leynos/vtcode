@@ -1,3 +1,4 @@
+//! Tests OpenAI-compatible custom-profile serialization and streamed tool calls.
 use super::super::CustomProviderBackendRouter;
 use crate::provider::{LLMProvider, LLMRequest, LLMStreamEvent, Message, ToolCall, ToolDefinition};
 use futures::StreamExt;

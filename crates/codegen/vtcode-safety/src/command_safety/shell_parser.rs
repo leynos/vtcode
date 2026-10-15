@@ -137,6 +137,9 @@ enum FindCommandContext {
     Expression,
     ExecProgram,
     ExecArguments,
+    EnvArguments,
+    EnvOptionArgument,
+    EnvCommand,
     ShellArguments,
     ShellCommand,
 }
@@ -158,16 +161,48 @@ impl FindExecSyntaxClassifier {
                 if matches!(word, ";" | "\\;" | "+") {
                     self.context = FindCommandContext::Expression;
                 } else {
-                    self.context = if base_command_name(word) == "sh" {
-                        FindCommandContext::ShellArguments
-                    } else {
-                        FindCommandContext::ExecArguments
+                    self.context = match base_command_name(word) {
+                        "env" => FindCommandContext::EnvArguments,
+                        _ if is_shell_interpreter(word) => FindCommandContext::ShellArguments,
+                        _ => FindCommandContext::ExecArguments,
                     };
                 }
 
                 contains_dynamic_shell_syntax(word)
             }
-            FindCommandContext::ShellArguments if word == "-c" => {
+            FindCommandContext::EnvArguments if is_env_split_string_option(word) => true,
+            FindCommandContext::EnvArguments if is_env_option_with_argument(word) => {
+                self.context = FindCommandContext::EnvOptionArgument;
+                false
+            }
+            FindCommandContext::EnvArguments if is_env_option(word) => false,
+            FindCommandContext::EnvArguments if is_env_assignment(word) => false,
+            FindCommandContext::EnvArguments if word == "--" => {
+                self.context = FindCommandContext::EnvCommand;
+                false
+            }
+            FindCommandContext::EnvArguments if word.starts_with('-') => true,
+            FindCommandContext::EnvArguments if matches!(word, ";" | "\\;" | "+") => {
+                self.context = FindCommandContext::Expression;
+                false
+            }
+            FindCommandContext::EnvCommand if matches!(word, ";" | "\\;" | "+") => {
+                self.context = FindCommandContext::Expression;
+                false
+            }
+            FindCommandContext::EnvArguments | FindCommandContext::EnvCommand => {
+                self.context = if is_shell_interpreter(word) {
+                    FindCommandContext::ShellArguments
+                } else {
+                    FindCommandContext::ExecArguments
+                };
+                contains_dynamic_shell_syntax(word)
+            }
+            FindCommandContext::EnvOptionArgument => {
+                self.context = FindCommandContext::EnvArguments;
+                false
+            }
+            FindCommandContext::ShellArguments if is_shell_command_option(word) => {
                 self.context = FindCommandContext::ShellCommand;
                 false
             }
@@ -187,6 +222,53 @@ impl FindExecSyntaxClassifier {
             }
         }
     }
+}
+
+fn is_env_option(argument: &str) -> bool {
+    matches!(
+        argument,
+        "-i" | "--ignore-environment" | "-0" | "--null" | "-v" | "--debug" | "--list-signal-handling"
+    ) || argument.starts_with("--unset=")
+        || argument.starts_with("--chdir=")
+        || argument.starts_with("--argv0=")
+        || argument.starts_with("--block-signal=")
+        || argument.starts_with("--default-signal=")
+        || argument.starts_with("--ignore-signal=")
+}
+
+fn is_env_option_with_argument(argument: &str) -> bool {
+    matches!(argument, "-u" | "--unset" | "-C" | "--chdir" | "--argv0")
+}
+
+fn is_env_split_string_option(argument: &str) -> bool {
+    argument == "-S"
+        || argument.starts_with("-S")
+        || argument == "--split-string"
+        || argument.starts_with("--split-string=")
+        || argument
+            .strip_prefix('-')
+            .is_some_and(|short_options| !short_options.starts_with('-') && short_options.contains('S'))
+}
+
+fn is_env_assignment(argument: &str) -> bool {
+    argument.split_once('=').is_some_and(|(name, _)| !name.is_empty())
+}
+
+fn is_shell_interpreter(program: &str) -> bool {
+    matches!(
+        base_command_name(program).to_ascii_lowercase().as_str(),
+        "sh" | "bash" | "dash" | "zsh" | "ksh" | "ksh93" | "ash" | "mksh"
+    )
+}
+
+fn is_shell_command_option(argument: &str) -> bool {
+    if argument == "-c" {
+        return true;
+    }
+
+    argument.strip_prefix('-').is_some_and(|short_options| {
+        short_options.len() > 1 && !short_options.starts_with('-') && short_options.contains('c')
+    })
 }
 
 /// Gets or initializes the bash parser
@@ -793,6 +875,41 @@ mod tests {
         assert!(contains_dynamic_find_syntax("find src -name {}"));
         assert!(contains_dynamic_find_syntax("find src -name {one,two}"));
         assert!(contains_dynamic_find_syntax("find src -exec printf '%s\\n' ${path} \\;"));
+    }
+
+    #[test]
+    fn find_exec_bash_command_option_classifies_command_source_as_dynamic() {
+        assert!(contains_dynamic_find_syntax("find . -exec bash -c {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_combined_shell_flags_detect_command_source_without_reclassifying_placeholders() {
+        assert!(contains_dynamic_find_syntax("find . -exec sh -ec {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec sh -ec 'printf %s' {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec sh -e printf {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_recognizes_supported_shell_interpreters() {
+        for shell in ["sh", "bash", "dash", "zsh", "ksh", "ksh93", "ash", "mksh"] {
+            let script = format!("find . -exec {shell} -c {{}} \\;");
+            assert!(contains_dynamic_find_syntax(&script), "expected dynamic shell source: {script}");
+        }
+    }
+
+    #[test]
+    fn find_exec_env_wrapper_detects_nested_shell_command_source() {
+        assert!(contains_dynamic_find_syntax("find . -exec env bash -c {} \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env -i -- bash -ec {} \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env -u HOME -- bash -c {} \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env --split-string 'bash -c {}' \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec env bash -c 'printf %s' {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_env_end_of_options_preserves_following_find_expressions() {
+        assert!(contains_dynamic_find_syntax("find . -exec env -- \\; -exec bash -c {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec env -- \\; -exec printf {} \\;"));
     }
 
     proptest! {

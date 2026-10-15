@@ -7,6 +7,7 @@ use super::session::AcpSessionWorkspace;
 
 #[derive(Clone, Debug)]
 pub(crate) struct AcpWorkspacePolicy {
+    launch_context: PathBuf,
     allowed_roots: Vec<PathBuf>,
     home: Option<PathBuf>,
 }
@@ -18,12 +19,11 @@ impl AcpWorkspacePolicy {
             None => None,
         };
         let launch_root = canonical_existing_directory(launch_workspace, "ACP launch workspace").await?;
-        ensure!(
-            !is_broad_scope(&launch_root, home.as_deref()),
-            "ACP launch workspace cannot be a filesystem root or the home directory"
-        );
 
-        let mut allowed_roots = vec![launch_root];
+        let mut allowed_roots = Vec::new();
+        if !is_broad_scope(&launch_root, home.as_deref()) {
+            allowed_roots.push(launch_root.clone());
+        }
         for configured_root in configured_roots {
             let root = canonical_existing_directory(configured_root, "configured ACP allowed workspace root").await?;
             ensure!(
@@ -36,7 +36,17 @@ impl AcpWorkspacePolicy {
             }
         }
 
-        Ok(Self { allowed_roots, home })
+        Ok(Self { launch_context: launch_root, allowed_roots, home })
+    }
+
+    /// Return the canonical process launch directory for startup context.
+    ///
+    /// This path is not necessarily a session workspace and is not necessarily
+    /// an allowed root. In particular, broad launch directories remain usable
+    /// for startup configuration while `resolve_client_cwd` rejects them for
+    /// client-created sessions.
+    pub(crate) fn launch_context(&self) -> &Path {
+        &self.launch_context
     }
 
     pub(crate) async fn resolve_client_cwd(
@@ -131,6 +141,32 @@ mod tests {
         assert!(policy.resolve_client_cwd(&filesystem_root).await.is_err());
         if let Some(home) = dirs::home_dir() {
             assert!(policy.resolve_client_cwd(&home).await.is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn allows_broad_launch_context_without_admitting_it_as_a_session_root() {
+        let filesystem_root = std::env::current_dir()
+            .expect("resolve current directory")
+            .ancestors()
+            .last()
+            .expect("filesystem root exists")
+            .to_path_buf();
+        let policy = AcpWorkspacePolicy::new(&filesystem_root, &[])
+            .await
+            .expect("filesystem root is valid launch context");
+
+        assert_eq!(policy.launch_context(), filesystem_root.as_path());
+        assert!(policy.allowed_roots.is_empty());
+        assert!(policy.resolve_client_cwd(&filesystem_root).await.is_err());
+
+        if let Some(home) = dirs::home_dir() {
+            let policy = AcpWorkspacePolicy::new(&home, &[])
+                .await
+                .expect("home directory is valid launch context");
+
+            assert!(policy.allowed_roots.is_empty());
+            assert!(policy.resolve_client_cwd(policy.launch_context()).await.is_err());
         }
     }
 

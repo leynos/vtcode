@@ -1,5 +1,7 @@
 //! Checks snapshot size reduction and bounded persistence of namespaced extensions.
 use super::*;
+use proptest::prelude::*;
+use std::collections::BTreeMap;
 
 #[test]
 fn snapshot_compaction_shrinks_large_single_message_payloads() -> Result<()> {
@@ -126,4 +128,145 @@ fn snapshot_compaction_reduces_extensions_to_fit_the_total_size_limit() -> Resul
             .is_none_or(|extensions| extensions.len() < MAX_SESSION_ARCHIVE_EXTENSION_NAMESPACES)
     );
     Ok(())
+}
+
+fn archive_json_value() -> impl Strategy<Value = serde_json::Value> {
+    let scalar = prop_oneof![
+        Just(serde_json::Value::Null),
+        any::<bool>().prop_map(serde_json::Value::Bool),
+        any::<i16>().prop_map(|value| serde_json::json!(value)),
+        "[a-zA-Z0-9 _-]{0,512}".prop_map(serde_json::Value::String),
+    ];
+    let array = prop::collection::vec(scalar.clone(), 0..5).prop_map(serde_json::Value::Array);
+    let object = prop::collection::vec(("[a-z][a-z0-9_-]{0,8}", scalar.clone()), 0..5)
+        .prop_map(|entries| serde_json::Value::Object(entries.into_iter().collect()));
+
+    prop_oneof![scalar, array, object]
+}
+
+fn archive_extension_entries() -> impl Strategy<Value = BTreeMap<u8, serde_json::Value>> {
+    prop::collection::btree_map(0_u8..120, archive_json_value(), 0..100)
+}
+
+fn reference_bounded_extensions(original: &SessionArchiveExtensions) -> Option<SessionArchiveExtensions> {
+    let mut bounded = SessionArchiveExtensions::new();
+    for (index, (namespace, value)) in original.iter().enumerate() {
+        if index >= MAX_SESSION_ARCHIVE_EXTENSION_NAMESPACES {
+            break;
+        }
+        drop(bounded.insert(namespace.clone(), value.clone()));
+        if serde_json::to_vec(&bounded).expect("generated extensions serialize").len()
+            > MAX_SESSION_ARCHIVE_EXTENSION_BYTES
+        {
+            drop(bounded.remove(namespace));
+        }
+    }
+
+    if bounded.is_empty() {
+        (original.is_empty()).then_some(bounded)
+    } else {
+        Some(bounded)
+    }
+}
+
+proptest! {
+    #[test]
+    fn archive_extension_bounds_retain_deterministic_fitting_namespaces(
+        entries in archive_extension_entries(),
+    ) {
+        let mut original = SessionArchiveExtensions::new();
+        for (index, value) in entries {
+            drop(original.insert(format!("org.example.namespace-{index:03}"), value));
+        }
+
+        let expected = reference_bounded_extensions(&original);
+        let mut actual = Some(original.clone());
+        let changed = bound_session_archive_extensions(&mut actual);
+        prop_assert_eq!(&actual, &expected);
+        prop_assert_eq!(changed, actual.as_ref() != Some(&original));
+
+        if let Some(bounded) = &actual {
+            prop_assert!(bounded.len() <= MAX_SESSION_ARCHIVE_EXTENSION_NAMESPACES);
+            let serialized = serde_json::to_vec(bounded).expect("bounded extensions serialize");
+            prop_assert!(serialized.len() <= MAX_SESSION_ARCHIVE_EXTENSION_BYTES);
+        }
+
+        let mut repeated = Some(original);
+        let _ = bound_session_archive_extensions(&mut repeated);
+        prop_assert_eq!(repeated, actual);
+    }
+
+    #[test]
+    fn snapshot_compaction_obeys_every_generated_byte_budget(
+        entries in archive_extension_entries(),
+        payload_bytes in 0_usize..1_024,
+        max_bytes in 0_usize..4_096,
+    ) {
+        let mut metadata = SessionArchiveMetadata::new(
+            "Workspace",
+            "/tmp/workspace",
+            "model",
+            "provider",
+            "dark",
+            "medium",
+        );
+        let mut extensions = SessionArchiveExtensions::new();
+        for (index, value) in entries {
+            drop(extensions.insert(format!("org.example.namespace-{index:03}"), value));
+        }
+        metadata.extensions = Some(extensions);
+
+        let snapshot = SessionSnapshot {
+            metadata,
+            started_at: Utc::now(),
+            ended_at: Utc::now(),
+            total_messages: 1,
+            distinct_tools: vec!["tool".repeat(payload_bytes / 8)],
+            transcript: vec!["transcript ".repeat(payload_bytes)],
+            messages: Vec::new(),
+            progress: None,
+            error_logs: Vec::new(),
+        };
+
+        match compact_snapshot_to_max_bytes(snapshot, max_bytes) {
+            Ok(compacted) => {
+                let serialized = serde_json::to_vec(&compacted).expect("compacted snapshot serializes");
+                prop_assert!(
+                    serialized.len() <= max_bytes,
+                    "successful compaction returned {} bytes for a {max_bytes}-byte budget",
+                    serialized.len(),
+                );
+            }
+            Err(error) => prop_assert!(
+                error.to_string().starts_with("session archive snapshot cannot fit the configured size limit after compaction:"),
+                "unexpected compaction error: {error}"
+            ),
+        }
+    }
+}
+
+#[test]
+fn zero_and_subminimum_snapshot_budgets_return_the_documented_size_error() {
+    let snapshot = SessionSnapshot {
+        metadata: SessionArchiveMetadata::new("Workspace", "/tmp/workspace", "model", "provider", "dark", "medium"),
+        started_at: Utc::now(),
+        ended_at: Utc::now(),
+        total_messages: 0,
+        distinct_tools: Vec::new(),
+        transcript: Vec::new(),
+        messages: Vec::new(),
+        progress: None,
+        error_logs: Vec::new(),
+    };
+
+    for max_bytes in [0, 1] {
+        let error = compact_snapshot_to_max_bytes(snapshot.clone(), max_bytes)
+            .expect_err("the required snapshot envelope cannot fit this budget");
+        assert!(
+            error
+                .to_string()
+                .starts_with("session archive snapshot cannot fit the configured size limit after compaction:"),
+            "unexpected compaction error: {error}"
+        );
+    }
 }

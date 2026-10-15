@@ -5,7 +5,60 @@ use super::*;
 use agent_client_protocol::{Agent, Builder, Client, ConnectionTo, RunWithConnectionTo, on_receive_notification};
 use serde_json::Value;
 use serde_json::json;
+use std::fmt::Write as FmtWrite;
 use tokio::sync::mpsc;
+use tracing::field::{Field, Visit};
+use tracing_subscriber::layer::{Context, SubscriberExt};
+use tracing_subscriber::{Layer, Registry};
+
+#[derive(Clone, Default)]
+struct LifecycleTraceCapture(Arc<Mutex<Vec<String>>>);
+
+impl<S> Layer<S> for LifecycleTraceCapture
+where
+    S: tracing::Subscriber + for<'lookup> tracing_subscriber::registry::LookupSpan<'lookup>,
+{
+    fn on_new_span(&self, attrs: &tracing::span::Attributes<'_>, _id: &tracing::Id, _context: Context<'_, S>) {
+        if attrs.metadata().name() != "acp_task_lifecycle_forwarder" {
+            return;
+        }
+        let mut fields = CapturedFields::default();
+        attrs.record(&mut fields);
+        self.0
+            .lock()
+            .expect("trace capture lock")
+            .push(format!("span={}{}", attrs.metadata().name(), fields.0));
+    }
+
+    fn on_event(&self, event: &tracing::Event<'_>, context: Context<'_, S>) {
+        if event.metadata().target() != "vtcode_acp::zed::agent::task_lifecycle" {
+            return;
+        }
+        let Some(span) = context.lookup_current() else { return };
+        if span.name() != "acp_task_lifecycle_forwarder" {
+            return;
+        }
+        let mut fields = CapturedFields::default();
+        event.record(&mut fields);
+        self.0
+            .lock()
+            .expect("trace capture lock")
+            .push(format!("event={}{}", event.metadata().name(), fields.0));
+    }
+}
+
+#[derive(Default)]
+struct CapturedFields(String);
+
+impl Visit for CapturedFields {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        write!(&mut self.0, " {}={value:?}", field.name()).expect("write trace field");
+    }
+
+    fn record_str(&mut self, field: &Field, value: &str) {
+        write!(&mut self.0, " {}={value:?}", field.name()).expect("write trace field");
+    }
+}
 
 #[test]
 fn classifies_lifecycle_queue_full_and_closed_errors() {
@@ -72,6 +125,20 @@ fn lifecycle_forwarder_outcome_is_bounded_by_send_result() {
     assert_eq!(task_lifecycle_forwarder_outcome(1), "send_failed");
 }
 
+#[test]
+fn session_correlation_is_stable_bounded_and_does_not_expose_the_session_id() {
+    let session_id = acp::SessionId::new(Arc::from("sensitive-parent-session-id"));
+    let other_session_id = acp::SessionId::new(Arc::from("another-parent-session-id"));
+
+    let correlation = bounded_session_correlation(&session_id);
+
+    assert_eq!(correlation.len(), SESSION_CORRELATION_HEX_LENGTH);
+    assert!(correlation.chars().all(|character| character.is_ascii_hexdigit()));
+    assert_eq!(correlation, bounded_session_correlation(&session_id));
+    assert_ne!(correlation, bounded_session_correlation(&other_session_id));
+    assert!(!correlation.contains("sensitive-parent-session-id"));
+}
+
 fn subagent_entry(status: &str) -> SubagentStatusEntry {
     serde_json::from_value(json!({
         "id": "child-1",
@@ -133,6 +200,10 @@ fn maps_worker_and_background_states_to_claude_style_lifecycle_messages() {
 
 #[tokio::test]
 async fn forwards_lifecycle_events_through_the_official_acp_duplex() {
+    let trace_capture = LifecycleTraceCapture::default();
+    let subscriber = Registry::default().with(trace_capture.clone());
+    let _subscriber_guard = tracing::subscriber::set_default(subscriber);
+
     let (agent_channel, client_channel) = agent_client_protocol::Channel::duplex();
     let (progress_tx, progress_rx) = mpsc::channel(8);
     let (received_tx, mut received_rx) = mpsc::unbounded_channel();
@@ -202,4 +273,20 @@ async fn forwards_lifecycle_events_through_the_official_acp_duplex() {
         .expect("client connection deadline")
         .expect("client connection");
     agent_task.await.expect("agent task").expect("agent connection");
+
+    let captured = trace_capture.0.lock().expect("trace capture lock").join("\n");
+    let forwarder_span = captured
+        .lines()
+        .find(|line| line.starts_with("span=acp_task_lifecycle_forwarder"))
+        .expect("forwarder span trace");
+    let expected_correlation = bounded_session_correlation(&acp::SessionId::new(Arc::from("parent-session")));
+    assert!(forwarder_span.contains("session_correlation="));
+    assert!(forwarder_span.contains(&expected_correlation));
+    assert!(!forwarder_span.contains("parent-session"));
+
+    let send_event = captured
+        .lines()
+        .find(|line| line.contains("notification_send_elapsed_ms="))
+        .expect("notification send latency trace");
+    assert!(!send_event.contains("parent-session"));
 }

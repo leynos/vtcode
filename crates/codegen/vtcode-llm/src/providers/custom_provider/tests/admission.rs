@@ -1,3 +1,4 @@
+//! Tests endpoint-scoped request admission, capacity limits, and queue outcomes.
 use super::super::{CustomProviderAdmission, CustomProviderBackendRouter, custom_provider_admission_metrics};
 use proptest::prelude::*;
 use rstest::rstest;

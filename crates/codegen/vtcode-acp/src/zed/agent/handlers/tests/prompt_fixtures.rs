@@ -1,3 +1,4 @@
+//! Shared mock providers and session setup for ACP prompt-handler tests.
 use super::*;
 use agent_client_protocol::schema::v1::NewSessionRequest;
 

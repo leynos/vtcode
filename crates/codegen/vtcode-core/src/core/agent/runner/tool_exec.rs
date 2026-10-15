@@ -1,3 +1,4 @@
+//! Executes prepared runner tool calls and records their runtime outcomes.
 use super::AgentRunner;
 use super::constants::{LOOP_THROTTLE_BASE_MS, LOOP_THROTTLE_MAX_MS};
 use super::tool_execution_guard::ToolExecutionGuard;

@@ -17,10 +17,6 @@ pub(in crate::utils) fn compact_snapshot_to_max_bytes(
     max_bytes: usize,
 ) -> Result<SessionSnapshot> {
     let extensions_before_compaction = prepare_snapshot_extensions(&mut snapshot, max_bytes);
-    if max_bytes == 0 {
-        return Ok(snapshot);
-    }
-
     compact_snapshot_payload_to_fit(&mut snapshot, max_bytes)?;
     report_extensions_compaction(&snapshot.metadata.extensions, &extensions_before_compaction, max_bytes);
 

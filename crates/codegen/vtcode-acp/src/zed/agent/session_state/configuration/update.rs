@@ -1,3 +1,4 @@
+//! Applies client-selected configuration changes to an active ACP session.
 use super::super::ZedAgent;
 use crate::acp;
 use crate::zed::types::SessionHandle;

@@ -1,3 +1,4 @@
+//! Tests provider request admission, queue telemetry, timeouts, and cancellation.
 use super::*;
 
 fn runtime(limit: usize, queue_timeout: Duration) -> ProviderRequestRuntime {

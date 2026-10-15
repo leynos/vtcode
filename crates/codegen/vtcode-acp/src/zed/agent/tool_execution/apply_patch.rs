@@ -3,7 +3,7 @@ use super::super::ZedAgent;
 use crate::acp;
 use crate::reports::{ToolExecutionReport, create_diff_content};
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use vtcode_core::config::constants::tools;
 use vtcode_core::tools::apply_patch::{Patch, PatchOperation, decode_apply_patch_input};
 
@@ -22,32 +22,81 @@ pub(super) enum ApplyPatchNewText {
     ReadAfterWrite,
 }
 
+enum ValidatedApplyPatchOperation {
+    Add {
+        path: PathBuf,
+    },
+    Delete {
+        path: PathBuf,
+    },
+    Update {
+        source_path: PathBuf,
+        destination_path: Option<PathBuf>,
+    },
+}
+
+async fn validate_apply_patch_path(workspace: &Path, path: &str) -> Option<PathBuf> {
+    let relative_path = Path::new(path);
+    if relative_path.is_absolute()
+        || relative_path
+            .components()
+            .any(|component| matches!(component, Component::ParentDir))
+    {
+        return None;
+    }
+
+    vtcode_commons::paths::ensure_path_within_workspace_resolved(&workspace.join(relative_path), workspace)
+        .await
+        .ok()
+}
+
 pub(super) async fn capture_apply_patch_snapshot_for_workspace(
-    workspace: &std::path::Path,
+    workspace: &Path,
     patch: &Patch,
 ) -> Option<ApplyPatchSnapshot> {
-    let mut files = Vec::new();
-
+    let mut validated_operations = Vec::with_capacity(patch.operations().len());
     for operation in patch.operations() {
         match operation {
-            PatchOperation::AddFile { path, .. } => files.push(ApplyPatchFileSnapshot {
-                path: workspace.join(path),
+            PatchOperation::AddFile { path, .. } => {
+                validated_operations.push(ValidatedApplyPatchOperation::Add {
+                    path: validate_apply_patch_path(workspace, path).await?,
+                });
+            }
+            PatchOperation::DeleteFile { path } => {
+                validated_operations.push(ValidatedApplyPatchOperation::Delete {
+                    path: validate_apply_patch_path(workspace, path).await?,
+                });
+            }
+            PatchOperation::UpdateFile { path, new_path, .. } => {
+                let source_path = validate_apply_patch_path(workspace, path).await?;
+                let destination_path = match new_path.as_deref() {
+                    Some(destination) => {
+                        let safe_destination = validate_apply_patch_path(workspace, destination).await?;
+                        (destination != path.as_str()).then_some(safe_destination)
+                    }
+                    None => None,
+                };
+                validated_operations.push(ValidatedApplyPatchOperation::Update { source_path, destination_path });
+            }
+        }
+    }
+
+    let mut files = Vec::new();
+
+    for operation in validated_operations {
+        match operation {
+            ValidatedApplyPatchOperation::Add { path } => files.push(ApplyPatchFileSnapshot {
+                path,
                 old_text: None,
                 new_text: ApplyPatchNewText::ReadAfterWrite,
             }),
-            PatchOperation::DeleteFile { path } => files.push(ApplyPatchFileSnapshot {
-                path: workspace.join(path),
-                old_text: Some(tokio::fs::read_to_string(workspace.join(path)).await.ok()?),
+            ValidatedApplyPatchOperation::Delete { path } => files.push(ApplyPatchFileSnapshot {
+                old_text: Some(tokio::fs::read_to_string(&path).await.ok()?),
+                path,
                 new_text: ApplyPatchNewText::Empty,
             }),
-            PatchOperation::UpdateFile { path, new_path, .. } => {
-                let source_path = workspace.join(path);
+            ValidatedApplyPatchOperation::Update { source_path, destination_path } => {
                 let old_text = tokio::fs::read_to_string(&source_path).await.ok()?;
-                let destination_path = new_path
-                    .as_deref()
-                    .filter(|candidate| *candidate != path.as_str())
-                    .map(|destination| workspace.join(destination));
-
                 files.push(ApplyPatchFileSnapshot {
                     path: source_path,
                     old_text: Some(old_text),
@@ -191,6 +240,84 @@ mod tests {
         assert_eq!(diffs[4].new_text, "new move");
         assert_eq!(diffs[0].path, temp.path().join("update.txt"));
         assert_eq!(diffs[4].path, temp.path().join("moved.txt"));
+    }
+
+    #[tokio::test]
+    async fn apply_patch_path_validation_rejects_parent_traversal() {
+        let workspace = TempDir::new().expect("workspace for traversal rejection");
+        assert!(validate_apply_patch_path(workspace.path(), "../secret.txt").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn apply_patch_snapshot_rejects_absolute_paths() {
+        let workspace = TempDir::new().expect("workspace for absolute-path rejection");
+        let outside = TempDir::new().expect("outside directory for absolute-path rejection");
+        let outside_file = outside.path().join("secret.txt");
+        fs::write(&outside_file, "outside secret").expect("write outside file");
+        let patch =
+            Patch::parse(&format!("*** Begin Patch\n*** Delete File: {}\n*** End Patch\n", outside_file.display()))
+                .expect("parse patch with absolute target");
+
+        assert!(
+            capture_apply_patch_snapshot_for_workspace(workspace.path(), &patch)
+                .await
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_patch_snapshot_rejects_absolute_move_destinations() {
+        let workspace = TempDir::new().expect("workspace for absolute move destination");
+        let outside = TempDir::new().expect("outside directory for absolute move destination");
+        fs::write(workspace.path().join("source.txt"), "old content").expect("write source file");
+        let patch = Patch::parse(&format!(
+            "*** Begin Patch\n*** Update File: source.txt\n*** Move to: {}\n@@\n-old content\n+new content\n*** End Patch\n",
+            outside.path().join("destination.txt").display()
+        ))
+        .expect("parse patch with absolute move destination");
+
+        assert!(
+            capture_apply_patch_snapshot_for_workspace(workspace.path(), &patch)
+                .await
+                .is_none()
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn apply_patch_snapshot_rejects_symlink_escape() {
+        use std::os::unix::fs::symlink;
+
+        let workspace = TempDir::new().expect("workspace for symlink rejection");
+        let outside = TempDir::new().expect("outside directory for symlink rejection");
+        fs::write(outside.path().join("secret.txt"), "outside secret").expect("write outside file");
+        symlink(outside.path(), workspace.path().join("escape")).expect("create symlink escape");
+        let patch = Patch::parse("*** Begin Patch\n*** Delete File: escape/secret.txt\n*** End Patch\n")
+            .expect("parse patch with symlink target");
+
+        assert!(
+            capture_apply_patch_snapshot_for_workspace(workspace.path(), &patch)
+                .await
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_patch_snapshot_accepts_valid_relative_paths() {
+        let workspace = TempDir::new().expect("workspace for valid relative path");
+        fs::create_dir(workspace.path().join("nested")).expect("create nested workspace directory");
+        fs::write(workspace.path().join("nested/valid.txt"), "workspace content").expect("write workspace file");
+        let patch = Patch::parse("*** Begin Patch\n*** Delete File: nested/valid.txt\n*** End Patch\n")
+            .expect("parse patch with valid relative target");
+
+        let snapshot = capture_apply_patch_snapshot_for_workspace(workspace.path(), &patch)
+            .await
+            .expect("capture snapshot for valid relative path");
+        let [file] = snapshot.files.as_slice() else {
+            panic!("valid one-file patch should produce one snapshot");
+        };
+        assert_eq!(file.path, workspace.path().join("nested/valid.txt"));
+        assert_eq!(file.old_text.as_deref(), Some("workspace content"));
     }
 
     #[tokio::test]

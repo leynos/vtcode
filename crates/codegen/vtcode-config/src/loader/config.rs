@@ -1,3 +1,4 @@
+//! Defines the top-level configuration model and its deserialization defaults.
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

@@ -1,3 +1,4 @@
+//! Tests custom-provider profile selection and per-model request controls.
 use super::super::CustomProviderBackendRouter;
 use crate::provider::LLMProvider;
 use crate::provider::{LLMRequest, Message, SamplingOverrides};

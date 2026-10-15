@@ -1,3 +1,4 @@
+//! Collects regression tests for custom-provider routing and request behavior.
 #[path = "tests/admission.rs"]
 mod admission;
 #[path = "tests/command_auth.rs"]

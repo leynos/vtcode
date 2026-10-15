@@ -2,7 +2,8 @@
 use super::*;
 use crate::zed::agent::tool_execution::ToolAuditInput;
 use assert_fs::TempDir;
-use std::collections::BTreeSet;
+use proptest::prelude::*;
+use std::collections::{BTreeMap, BTreeSet};
 
 async fn session_without_acp_metadata(agent: &ZedAgent, workspace: &Path) -> SessionHandle {
     let response = agent.new_session(acp::NewSessionRequest::new(workspace)).await.unwrap();
@@ -239,4 +240,88 @@ fn oversized_metadata_size_probe_stops_at_the_configured_budget() {
 
     assert!(result.is_err(), "oversized metadata must stop serialization at the writer boundary");
     assert!(writer.bytes_written <= MAX_SESSION_ARCHIVE_EXTENSION_BYTES);
+}
+
+fn acp_metadata_value() -> impl Strategy<Value = serde_json::Value> {
+    let scalar = prop_oneof![
+        Just(serde_json::Value::Null),
+        any::<bool>().prop_map(serde_json::Value::Bool),
+        any::<i16>().prop_map(|value| serde_json::json!(value)),
+        "[a-zA-Z0-9 _-]{0,512}".prop_map(serde_json::Value::String),
+    ];
+    let array = prop::collection::vec(scalar.clone(), 0..5).prop_map(serde_json::Value::Array);
+    let object = prop::collection::vec(("[a-z][a-z0-9_-]{0,8}", scalar.clone()), 0..5)
+        .prop_map(|entries| serde_json::Value::Object(entries.into_iter().collect()));
+
+    prop_oneof![scalar, array, object]
+}
+
+fn acp_metadata_entries() -> impl Strategy<Value = BTreeMap<u8, serde_json::Value>> {
+    prop::collection::btree_map(0_u8..100, acp_metadata_value(), 0..90)
+}
+
+fn acp_json_map(entries: BTreeMap<u8, serde_json::Value>) -> serde_json::Map<String, serde_json::Value> {
+    entries
+        .into_iter()
+        .map(|(index, value)| (format!("key-{index:03}"), value))
+        .collect()
+}
+
+fn reference_bounded_acp_metadata(
+    existing: Option<serde_json::Map<String, serde_json::Value>>,
+    incoming: Option<serde_json::Map<String, serde_json::Value>>,
+) -> (Option<serde_json::Map<String, serde_json::Value>>, usize) {
+    let preserve_presence = existing.is_some() || incoming.is_some();
+    let mut merged = existing.unwrap_or_default().into_iter().collect::<BTreeMap<_, _>>();
+    if let Some(incoming) = incoming {
+        merged.extend(incoming);
+    }
+
+    let mut bounded = serde_json::Map::new();
+    let mut discarded_entries = 0_usize;
+    for (key, value) in merged {
+        if bounded.len() >= MAX_ACP_METADATA_ENTRIES {
+            discarded_entries = discarded_entries.saturating_add(1);
+            continue;
+        }
+        drop(bounded.insert(key.clone(), value));
+        if serde_json::to_vec(&bounded).expect("generated ACP metadata serializes").len()
+            > MAX_SESSION_ARCHIVE_EXTENSION_BYTES
+        {
+            drop(bounded.remove(&key));
+            discarded_entries = discarded_entries.saturating_add(1);
+        }
+    }
+
+    (preserve_presence.then_some(bounded), discarded_entries)
+}
+
+proptest! {
+    #[test]
+    fn acp_metadata_merge_preserves_presence_order_and_both_size_bounds(
+        existing_entries in prop::option::of(acp_metadata_entries()),
+        incoming_entries in prop::option::of(acp_metadata_entries()),
+    ) {
+        let existing = existing_entries.map(acp_json_map);
+        let incoming = incoming_entries.map(|entries| acp::Meta::from_iter(
+            acp_json_map(entries),
+        ));
+        let incoming_for_reference = incoming.as_ref().map(|meta| {
+            meta.iter().map(|(key, value)| (key.clone(), value.clone())).collect()
+        });
+        let (expected, expected_discarded) = reference_bounded_acp_metadata(
+            existing.clone(),
+            incoming_for_reference,
+        );
+
+        let actual = merge_bounded_acp_meta(existing, incoming);
+        prop_assert_eq!(&actual.value, &expected);
+        prop_assert_eq!(actual.discarded_entries, expected_discarded);
+
+        if let Some(metadata) = &actual.value {
+            prop_assert!(metadata.len() <= MAX_ACP_METADATA_ENTRIES);
+            let serialized = serde_json::to_vec(metadata).expect("bounded ACP metadata serializes");
+            prop_assert!(serialized.len() <= MAX_SESSION_ARCHIVE_EXTENSION_BYTES);
+        }
+    }
 }
