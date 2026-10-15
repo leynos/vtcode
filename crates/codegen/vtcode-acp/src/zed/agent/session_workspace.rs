@@ -1,8 +1,9 @@
 //! Workspace-scoped ACP registries, prompts, permissions, and runtime setup.
+use anyhow::Context;
+use futures::future::BoxFuture;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use tokio::sync::OnceCell;
-use tracing::warn;
+use std::sync::{Arc, Mutex};
+use tokio::sync::Notify;
 use vtcode_config::core::CustomProviderConfig;
 use vtcode_config::{SubagentDiscoveryInput, VTCodeConfig, discover_subagents};
 use vtcode_core::config::ToolDocumentationMode;
@@ -17,22 +18,17 @@ use vtcode_core::tools::registry::ToolRegistry as CoreToolRegistry;
 use super::super::helpers::PrimaryAgentCatalog;
 use super::super::session::AcpSessionWorkspace;
 use super::{
-    AcpSubagentControllerSetup, ZedAgent, ZedAgentSetup, attach_acp_mcp_client, attach_acp_subagent_controller,
-    configure_acp_tool_call_limits, report_optional_setup_outcome,
+    AcpSubagentControllerSetup, OptionalSetupOutcome, OptionalWorkspaceSetupOutcomes, ZedAgent, ZedAgentSetup,
+    attach_acp_mcp_client, attach_acp_subagent_controller, configure_acp_tool_call_limits,
+    report_optional_workspace_setup_outcomes,
 };
 use crate::permissions::{AcpPermissionPrompter, DefaultPermissionPrompter};
 use crate::tooling::AcpToolRegistry;
 
-pub(crate) struct SessionWorkspaceRuntime {
-    pub(super) workspace_root: PathBuf,
-    pub(super) workspace_hooks_gated: bool,
-    pub(super) system_prompt: String,
-    pub(super) primary_agents: PrimaryAgentCatalog,
-    pub(super) acp_tool_registry: Arc<AcpToolRegistry>,
-    pub(super) permission_prompter: Arc<dyn AcpPermissionPrompter + Send + Sync>,
-    pub(super) local_tool_registry: CoreToolRegistry,
-    pub(super) file_ops_tool: Option<FileOpsTool>,
-}
+mod runtime;
+use runtime::WorkspaceRuntimeLookup;
+pub(in crate::zed) use runtime::{SessionWorkspaceLease, SessionWorkspaceRuntime};
+pub(super) use runtime::{WorkspaceRuntimeCache, WorkspaceRuntimeLifecycle, WorkspaceRuntimeLifecycleState};
 
 #[derive(Clone)]
 pub(super) struct SessionWorkspaceRuntimeConfig {
@@ -66,6 +62,11 @@ struct AcpWorkspaceToolSurface {
     permission_prompter: Arc<dyn AcpPermissionPrompter + Send + Sync>,
 }
 
+struct InitializedSessionToolRegistry {
+    registry: CoreToolRegistry,
+    optional_setup_outcomes: OptionalWorkspaceSetupOutcomes,
+}
+
 struct OptionalWorkspaceComponentsSetup<'a> {
     registry: &'a CoreToolRegistry,
     agent_config: &'a CoreAgentConfig,
@@ -75,23 +76,20 @@ struct OptionalWorkspaceComponentsSetup<'a> {
     workspace_root: &'a Path,
 }
 
-pub(super) async fn build_launch_workspace_runtime(setup: &ZedAgentSetup<'_>) -> SessionWorkspaceRuntime {
+pub(super) async fn build_launch_workspace_runtime(
+    setup: &ZedAgentSetup<'_>,
+) -> anyhow::Result<SessionWorkspaceRuntime> {
     let workspace_root = setup.config.workspace.clone();
     let file_ops_tool = create_file_ops_tool(&workspace_root, &setup.zed_config);
     let local_tool_registry = CoreToolRegistry::new(workspace_root.clone()).await;
     configure_acp_tool_call_limits(&local_tool_registry, setup.vt_config);
-    if let Err(error) = local_tool_registry
+    local_tool_registry
         .apply_tool_runtime_config(&setup.commands_config, &setup.tools_config)
         .await
-    {
-        warn!(%error, "Failed to apply tools configuration to ACP tool registry");
-    }
+        .context("applying tool runtime configuration to ACP launch workspace registry")?;
 
-    let workspace_hooks_gated = setup
-        .vt_config
-        .and_then(|config| config.workspace_lifecycle_hooks.as_ref())
-        .is_some_and(|hooks| !hooks.is_empty());
-    attach_optional_workspace_components(OptionalWorkspaceComponentsSetup {
+    let workspace_hooks_gated = setup.primary_agents.workspace_hooks_gated(setup.vt_config);
+    let optional_setup_outcomes = attach_optional_workspace_components(OptionalWorkspaceComponentsSetup {
         registry: &local_tool_registry,
         agent_config: &setup.config,
         custom_providers: setup.custom_providers,
@@ -100,7 +98,6 @@ pub(super) async fn build_launch_workspace_runtime(setup: &ZedAgentSetup<'_>) ->
         workspace_root: &workspace_root,
     })
     .await;
-
     let tool_surface = build_acp_tool_surface(
         &local_tool_registry,
         &workspace_root,
@@ -111,7 +108,7 @@ pub(super) async fn build_launch_workspace_runtime(setup: &ZedAgentSetup<'_>) ->
     )
     .await;
 
-    SessionWorkspaceRuntime {
+    let runtime = SessionWorkspaceRuntime {
         workspace_root,
         workspace_hooks_gated,
         system_prompt: setup.system_prompt.clone(),
@@ -120,15 +117,24 @@ pub(super) async fn build_launch_workspace_runtime(setup: &ZedAgentSetup<'_>) ->
         permission_prompter: tool_surface.permission_prompter,
         local_tool_registry,
         file_ops_tool,
-    }
+        optional_setup_outcomes,
+        shutdown_managed: false,
+        lifecycle: Mutex::new(WorkspaceRuntimeLifecycle {
+            state: WorkspaceRuntimeLifecycleState::Open,
+            active_sessions: 0,
+        }),
+        lifecycle_changed: Notify::new(),
+    };
+    runtime.report_optional_setup_outcomes();
+    Ok(runtime)
 }
 
 impl SessionWorkspaceRuntime {
     async fn build(setup: SessionWorkspaceRuntimeSetup<'_>) -> anyhow::Result<Self> {
         let prepared = prepare_session_workspace(setup).await?;
-        let local_tool_registry = initialize_session_tool_registry(&prepared).await?;
+        let initialized_registry = initialize_session_tool_registry(&prepared).await?;
         let tool_surface = build_acp_tool_surface(
-            &local_tool_registry,
+            &initialized_registry.registry,
             &prepared.workspace_root,
             &prepared.runtime_config.zed_config,
             &prepared.runtime_config.tools_config,
@@ -137,46 +143,95 @@ impl SessionWorkspaceRuntime {
         )
         .await;
 
-        Ok(Self {
+        let runtime = Self {
             workspace_root: prepared.workspace_root,
             workspace_hooks_gated: prepared.workspace_hooks_gated,
             system_prompt: prepared.system_prompt,
             primary_agents: prepared.primary_agents,
             acp_tool_registry: tool_surface.registry,
             permission_prompter: tool_surface.permission_prompter,
-            local_tool_registry,
+            local_tool_registry: initialized_registry.registry,
             file_ops_tool: prepared.file_ops_tool,
-        })
+            optional_setup_outcomes: initialized_registry.optional_setup_outcomes,
+            shutdown_managed: true,
+            lifecycle: Mutex::new(WorkspaceRuntimeLifecycle {
+                state: WorkspaceRuntimeLifecycleState::Open,
+                active_sessions: 0,
+            }),
+            lifecycle_changed: Notify::new(),
+        };
+        runtime.report_optional_setup_outcomes();
+        Ok(runtime)
     }
+
+    fn report_optional_setup_outcomes(&self) {
+        report_optional_workspace_setup_outcomes(&self.optional_setup_outcomes);
+    }
+}
+
+fn build_session_workspace_runtime<'a>(
+    setup: SessionWorkspaceRuntimeSetup<'a>,
+) -> BoxFuture<'a, anyhow::Result<Arc<SessionWorkspaceRuntime>>> {
+    Box::pin(async move { SessionWorkspaceRuntime::build(setup).await.map(Arc::new) })
 }
 
 impl ZedAgent {
     pub(super) async fn workspace_runtime_for(
         &self,
         workspace: &AcpSessionWorkspace,
-    ) -> anyhow::Result<Arc<SessionWorkspaceRuntime>> {
+    ) -> anyhow::Result<SessionWorkspaceLease> {
         let workspace_root = workspace.path().to_path_buf();
-        let runtime_cell = {
-            let mut runtimes = self.workspace_runtimes.lock().await;
-            Arc::clone(
-                runtimes
-                    .entry(workspace_root.clone())
-                    .or_insert_with(|| Arc::new(OnceCell::new())),
-            )
-        };
-        let runtime = runtime_cell
-            .get_or_try_init(|| async {
-                SessionWorkspaceRuntime::build(SessionWorkspaceRuntimeSetup {
-                    base_config: &self.config,
-                    workspace,
-                    runtime_config: &self.workspace_runtime_config,
-                    vt_config: self.vt_config.as_deref(),
-                })
+        if self.launch_workspace_runtime.workspace_root == workspace_root {
+            return Ok(SessionWorkspaceLease::unmanaged(Arc::clone(&self.launch_workspace_runtime)));
+        }
+        loop {
+            let lookup = {
+                let mut runtimes = self.workspace_runtimes.lock().await;
+                runtimes.lookup(&workspace_root)
+            };
+            let (runtime, runtime_cell) = match lookup {
+                WorkspaceRuntimeLookup::Ready(runtime) => (runtime, None),
+                WorkspaceRuntimeLookup::Initialize(runtime_cell) => {
+                    let runtime_result = runtime_cell
+                        .get_or_try_init(|| {
+                            build_session_workspace_runtime(SessionWorkspaceRuntimeSetup {
+                                base_config: &self.config,
+                                workspace,
+                                runtime_config: &self.workspace_runtime_config,
+                                vt_config: self.vt_config.as_deref(),
+                            })
+                        })
+                        .await;
+                    match runtime_result {
+                        Ok(runtime) => {
+                            let runtime = Arc::clone(runtime);
+                            self.workspace_runtimes.lock().await.store_initialized_runtime(
+                                workspace_root.clone(),
+                                &runtime,
+                                &runtime_cell,
+                            );
+                            (runtime, Some(runtime_cell))
+                        }
+                        Err(error) => {
+                            self.workspace_runtimes
+                                .lock()
+                                .await
+                                .remove_in_flight_if_same(&workspace_root, &runtime_cell);
+                            return Err(error);
+                        }
+                    }
+                }
+            };
+
+            if let Some(lease) = SessionWorkspaceLease::acquire(Arc::clone(&runtime)).await? {
+                return Ok(lease);
+            }
+            self.workspace_runtimes
+                .lock()
                 .await
-                .map(Arc::new)
-            })
-            .await?;
-        Ok(Arc::clone(runtime))
+                .remove_runtime_if_same(&workspace_root, &runtime);
+            drop(runtime_cell);
+        }
     }
 }
 
@@ -193,15 +248,11 @@ async fn prepare_session_workspace<'a>(
         .first()
         .and_then(|part| part.as_text())
         .map_or_else(String::new, ToString::to_string);
-    let discovered = discover_subagents(&SubagentDiscoveryInput::new(workspace_root.clone()))?;
     let default_primary_agent = vt_config.map_or("duck", |config| config.default_primary_agent.as_str());
-    let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, default_primary_agent);
-    let workspace_hooks_gated = vt_config
-        .and_then(|config| config.workspace_lifecycle_hooks.as_ref())
-        .is_some_and(|hooks| !hooks.is_empty())
-        || vtcode_core::ActivePrimaryAgentState::from_specs_with_default(&discovered.effective, default_primary_agent)
-            .active()
-            .contributes_workspace_controlled_hooks();
+    let discovery_input = SubagentDiscoveryInput::new(workspace_root.clone());
+    let primary_agents = discover_session_primary_agents(&discovery_input, default_primary_agent)
+        .with_context(|| format!("preparing ACP runtime for workspace {}", workspace_root.display()))?;
+    let workspace_hooks_gated = primary_agents.workspace_hooks_gated(vt_config);
     let file_ops_tool = create_file_ops_tool(&workspace_root, &runtime_config.zed_config);
 
     Ok(PreparedSessionWorkspace {
@@ -216,13 +267,29 @@ async fn prepare_session_workspace<'a>(
     })
 }
 
-async fn initialize_session_tool_registry(prepared: &PreparedSessionWorkspace<'_>) -> anyhow::Result<CoreToolRegistry> {
+fn discover_session_primary_agents(
+    input: &SubagentDiscoveryInput,
+    default_primary_agent: &str,
+) -> anyhow::Result<PrimaryAgentCatalog> {
+    let discovered = discover_subagents(input).context("discovering ACP workspace agents")?;
+    Ok(PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, default_primary_agent))
+}
+
+async fn initialize_session_tool_registry(
+    prepared: &PreparedSessionWorkspace<'_>,
+) -> anyhow::Result<InitializedSessionToolRegistry> {
     let local_tool_registry = CoreToolRegistry::new(prepared.workspace_root.clone()).await;
     configure_acp_tool_call_limits(&local_tool_registry, prepared.vt_config);
     local_tool_registry
         .apply_tool_runtime_config(&prepared.runtime_config.commands_config, &prepared.runtime_config.tools_config)
-        .await?;
-    attach_optional_workspace_components(OptionalWorkspaceComponentsSetup {
+        .await
+        .with_context(|| {
+            format!(
+                "applying tool runtime configuration to ACP session workspace registry {}",
+                prepared.workspace_root.display()
+            )
+        })?;
+    let optional_setup_outcomes = attach_optional_workspace_components(OptionalWorkspaceComponentsSetup {
         registry: &local_tool_registry,
         agent_config: &prepared.session_config,
         custom_providers: &prepared.runtime_config.custom_providers,
@@ -231,21 +298,32 @@ async fn initialize_session_tool_registry(prepared: &PreparedSessionWorkspace<'_
         workspace_root: &prepared.workspace_root,
     })
     .await;
-    Ok(local_tool_registry)
+    Ok(InitializedSessionToolRegistry {
+        registry: local_tool_registry,
+        optional_setup_outcomes,
+    })
 }
 
-async fn attach_optional_workspace_components(setup: OptionalWorkspaceComponentsSetup<'_>) {
-    let subagent_outcome = Box::pin(attach_acp_subagent_controller(AcpSubagentControllerSetup {
+async fn attach_optional_workspace_components(
+    setup: OptionalWorkspaceComponentsSetup<'_>,
+) -> OptionalWorkspaceSetupOutcomes {
+    let subagent_outcome = attach_acp_subagent_controller(AcpSubagentControllerSetup {
         registry: setup.registry,
         agent_config: setup.agent_config,
         custom_providers: setup.custom_providers,
         vt_config: setup.vt_config,
         workspace_gated: setup.workspace_gated,
-    }))
+    })
     .await;
-    report_optional_setup_outcome("subagent controller", subagent_outcome);
     let mcp_outcome = attach_acp_mcp_client(setup.registry, setup.vt_config, setup.workspace_root).await;
-    report_optional_setup_outcome("MCP client", mcp_outcome);
+    preserve_optional_workspace_setup_outcomes(subagent_outcome, mcp_outcome)
+}
+
+fn preserve_optional_workspace_setup_outcomes(
+    subagent_controller: OptionalSetupOutcome,
+    mcp_client: OptionalSetupOutcome,
+) -> OptionalWorkspaceSetupOutcomes {
+    OptionalWorkspaceSetupOutcomes { subagent_controller, mcp_client }
 }
 
 fn create_file_ops_tool(workspace_root: &Path, zed_config: &AgentClientProtocolZedConfig) -> Option<FileOpsTool> {
@@ -288,3 +366,6 @@ async fn build_acp_tool_surface(
 
     AcpWorkspaceToolSurface { registry, permission_prompter }
 }
+
+#[cfg(test)]
+mod tests;

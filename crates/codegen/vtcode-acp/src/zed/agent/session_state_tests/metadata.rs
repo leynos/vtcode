@@ -1,4 +1,4 @@
-//! Metadata behavior for ACP session state.
+//! Metadata behaviour for ACP session state.
 use super::*;
 use crate::zed::agent::tool_execution::ToolAuditInput;
 use assert_fs::TempDir;

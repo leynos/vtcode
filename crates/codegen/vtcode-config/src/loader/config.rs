@@ -1205,6 +1205,8 @@ enabled = true
 transport = "stdio"
 # workspace_trust controls ACP trust mode: "tools_policy" (prompts) or "full_auto" (no prompts)
 workspace_trust = "full_auto"
+# The launch workspace is allowed by default. Add absolute roots here to admit other ACP client workspaces.
+allowed_workspace_roots = []
 
 [acp.zed.tools]
 read_file = true

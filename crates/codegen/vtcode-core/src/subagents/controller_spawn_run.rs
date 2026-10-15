@@ -8,6 +8,7 @@ use chrono::Utc;
 use futures::future::{BoxFuture, select_all};
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{Notify, RwLock};
@@ -380,15 +381,11 @@ impl SubagentController {
             return ChildWaitOutcome::TimedOut;
         }
 
-        // Register notified() futures before rechecking status. This closes
-        // the lost-wakeup window between observing state and waiting on Tokio
-        // Notify handles.
-        let wait_any = select_all(
-            notifies
-                .into_iter()
-                .map(|notify| Box::pin(async move { notify.notified().await }))
-                .collect::<Vec<_>>(),
-        );
+        // Register notified() futures before rechecking status. Merely
+        // constructing a Notified future does not register it; enable() is
+        // needed because notify_waiters() does not retain a permit for futures
+        // that have not yet been polled.
+        let wait_any = select_all(register_notify_waiters(&notifies));
         tokio::pin!(wait_any);
 
         if let Some(entry) = self.first_terminal_wait_target(targets).await {
@@ -903,5 +900,33 @@ impl SubagentController {
             bail!("Subagent {target} has no queued input");
         }
         self.launch_child(target).await
+    }
+}
+
+fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync::futures::Notified<'_>>>> {
+    let mut waiters = notifies.iter().map(|notify| Box::pin(notify.notified())).collect::<Vec<_>>();
+    for waiter in &mut waiters {
+        waiter.as_mut().enable();
+    }
+    waiters
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn registered_waiter_observes_notify_waiters_before_first_wait_poll() {
+        let notify = Arc::new(Notify::new());
+        let notifies = [Arc::clone(&notify)];
+        let waiters = register_notify_waiters(&notifies);
+
+        // notify_waiters() is lossy for futures that have not registered.
+        // Deliver it after enable() but before select_all first polls a waiter.
+        notify.notify_waiters();
+
+        let outcome = tokio::time::timeout(Duration::from_millis(50), select_all(waiters)).await;
+        assert!(outcome.is_ok(), "registered waiter should retain the wakeup");
     }
 }

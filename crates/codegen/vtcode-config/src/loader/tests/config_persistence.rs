@@ -2,16 +2,14 @@
 
 use super::*;
 
-struct SerializedConfig<'a>(&'a str);
-
-fn assert_saved_comments_are_preserved(saved_content: &SerializedConfig<'_>) {
-    assert!(saved_content.0.contains("# This is a test comment"), "top-level comment should be preserved");
-    assert!(saved_content.0.contains("# Provider comment"), "inline comment should be preserved");
-    assert!(saved_content.0.contains("# Tools section comment"), "section comment should be preserved");
+fn assert_saved_comments_are_preserved(saved_content: &str) {
+    assert!(saved_content.contains("# This is a test comment"), "top-level comment should be preserved");
+    assert!(saved_content.contains("# Provider comment"), "inline comment should be preserved");
+    assert!(saved_content.contains("# Tools section comment"), "section comment should be preserved");
 }
 
-fn assert_saved_model_is_updated(saved_content: &SerializedConfig<'_>) {
-    assert!(saved_content.0.contains("gpt-5"), "modified value should be present");
+fn assert_saved_model_is_updated(saved_content: &str) {
+    assert!(saved_content.contains("gpt-5"), "modified value should be present");
 }
 
 fn assert_repository_config_excludes_trusted_provider_settings(saved: &toml::Value) {
@@ -44,55 +42,20 @@ fn assert_trusted_provider_is_loaded(config: &VTCodeConfig) {
     assert_eq!(config.provider_overrides["openai"].base_url.as_deref(), Some("https://trusted.example/v1"));
 }
 
-fn assert_workspace_save_excludes_trusted_values(written: &SerializedConfig<'_>) {
-    assert!(!written.0.contains("custom_providers"), "workspace must not receive trusted providers");
-    assert!(!written.0.contains("trusted.example"), "workspace must not receive trusted provider endpoints");
-    assert!(!written.0.contains("TRUSTED_OPENAI_API_KEY"), "workspace must not receive credential selectors");
+fn assert_workspace_save_excludes_trusted_values(written: &str) {
+    assert!(!written.contains("custom_providers"), "workspace must not receive trusted providers");
+    assert!(!written.contains("trusted.example"), "workspace must not receive trusted provider endpoints");
+    assert!(!written.contains("TRUSTED_OPENAI_API_KEY"), "workspace must not receive credential selectors");
 }
 
-fn assert_workspace_save_persists_theme(written: &SerializedConfig<'_>) {
-    assert!(written.0.contains("theme = \"ansi\""), "workspace setting should still be persisted");
+fn assert_workspace_save_persists_theme(written: &str) {
+    assert!(written.contains("theme = \"ansi\""), "workspace setting should still be persisted");
 }
 
 fn assert_trusted_provider_survives_workspace_reload(config: &VTCodeConfig) {
     assert_eq!(config.custom_providers[0].name, "trusted-provider");
     assert_eq!(config.provider_overrides["openai"].base_url.as_deref(), Some("https://trusted.example/v1"));
     assert_eq!(config.agent.theme, "ansi");
-}
-
-fn assert_sparse_agent_values_are_saved(saved_content: &SerializedConfig<'_>) {
-    assert!(saved_content.0.contains("[agent]"));
-    assert!(saved_content.0.contains("default_model = \"gpt-5.6-sol\""));
-    assert!(saved_content.0.contains("theme = \"ansi\""));
-}
-
-fn assert_sparse_permission_values_are_saved(saved_content: &SerializedConfig<'_>) {
-    assert!(saved_content.0.contains("[permissions]"));
-    assert!(saved_content.0.contains("allow = [\"read_file\"]"));
-}
-
-fn assert_sparse_defaults_are_omitted(saved_content: &SerializedConfig<'_>) {
-    assert!(
-        !saved_content.0.contains("default_primary_agent"),
-        "unchanged default primary agent should not be persisted. Got:\n{}",
-        saved_content.0
-    );
-    assert!(
-        !saved_content.0.contains("provider = \"openai\""),
-        "default agent provider should not be expanded. Got:\n{}",
-        saved_content.0
-    );
-    assert!(
-        !saved_content.0.contains("[ui]"),
-        "default UI section should not be expanded. Got:\n{}",
-        saved_content.0
-    );
-}
-
-fn assert_sparse_values_survive_reload(config: &VTCodeConfig) {
-    assert_eq!(config.agent.default_model, "gpt-5.6-sol");
-    assert_eq!(config.agent.theme, "ansi");
-    assert_eq!(config.permissions.allow, vec!["read_file".to_string()]);
 }
 
 #[test]
@@ -125,10 +88,8 @@ default_policy = "deny"
 
     // Read back and verify comments are preserved
     let saved_content = fs::read_to_string(temp_file.path()).expect("failed to read saved config");
-    let saved_config = SerializedConfig(&saved_content);
-
-    assert_saved_comments_are_preserved(&saved_config);
-    assert_saved_model_is_updated(&saved_config);
+    assert_saved_comments_are_preserved(&saved_content);
+    assert_saved_model_is_updated(&saved_content);
 }
 
 #[test]
@@ -167,7 +128,7 @@ fn config_defaults_provider_overrides_paths_and_theme() {
 #[test]
 #[serial]
 fn save_config_updates_disk_file() {
-    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir = tempfile::tempdir().expect("failed to create temporary workspace");
     let workspace = temp_dir.path();
     let config_path = workspace.join("vtcode.toml");
 
@@ -309,9 +270,8 @@ api_key_env = "TRUSTED_OPENAI_API_KEY"
         manager.save_config(&modified).expect("save workspace setting");
 
         let written = fs::read_to_string(&workspace_config).expect("read workspace config");
-        let written_config = SerializedConfig(&written);
-        assert_workspace_save_excludes_trusted_values(&written_config);
-        assert_workspace_save_persists_theme(&written_config);
+        assert_workspace_save_excludes_trusted_values(&written);
+        assert_workspace_save_persists_theme(&written);
 
         let reloaded = ConfigManager::load_from_workspace(workspace.path()).expect("reload layered config");
         assert_trusted_provider_survives_workspace_reload(reloaded.config());
@@ -359,69 +319,4 @@ model = "explicit-model"
         );
         assert!(saved.to_string().contains("theme = \"ansi\""));
     });
-}
-
-#[test]
-#[serial]
-fn save_config_writes_sparse_model_theme_and_permission_values() {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let workspace = temp_dir.path();
-    let config_path = workspace.join("vtcode.toml");
-    // Opt out of the developer's global config so this persistence test is
-    // deterministic when run on a machine with user-level settings.
-    fs::write(&config_path, "[workspace]\nuse_root_config = true\n").expect("failed to write initial config");
-
-    let mut manager = ConfigManager::load_from_workspace(workspace).expect("failed to load config");
-    let mut modified_config = manager.config().clone();
-    modified_config.agent.default_model = "gpt-5.6-sol".to_string();
-    modified_config.agent.theme = "ansi".to_string();
-    modified_config.permissions.allow = vec!["read_file".to_string()];
-
-    manager.save_config(&modified_config).expect("failed to save config");
-
-    let saved_content = fs::read_to_string(&config_path).expect("failed to read saved config");
-    let saved_config = SerializedConfig(&saved_content);
-    assert_sparse_agent_values_are_saved(&saved_config);
-    assert_sparse_permission_values_are_saved(&saved_config);
-    assert_sparse_defaults_are_omitted(&saved_config);
-
-    let reloaded = ConfigManager::load_from_workspace(workspace).expect("failed to reload config");
-    assert_sparse_values_survive_reload(reloaded.config());
-}
-
-#[test]
-#[serial]
-fn deprecated_permission_keys_are_migrated_on_save() {
-    for deprecated_key in ["allowed_tools", "disallowed_tools"] {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let workspace = temp_dir.path();
-        let config_path = workspace.join("vtcode.toml");
-        fs::write(
-            &config_path,
-            format!(
-                r#"
-[workspace]
-use_root_config = true
-
-[permissions]
-{deprecated_key} = ["read_file"]
-"#
-            ),
-        )
-        .expect("failed to write config");
-
-        // Deprecated keys are accepted on load (they are not a hard error),
-        // so existing configs keep working until they are migrated on save.
-        let manager = ConfigManager::load_from_workspace(workspace)
-            .unwrap_or_else(|e| panic!("deprecated permission keys should load: {e:#}"));
-
-        // Saving strips the deprecated keys (the save path migrates them away).
-        ConfigManager::save_config_to_path(&config_path, manager.config()).expect("failed to save config");
-
-        let written = fs::read_to_string(&config_path).unwrap();
-        assert!(
-            !written.contains(deprecated_key),
-            "deprecated key {deprecated_key} should be stripped on save. Got:\n{written}"
-        );
-    }
 }

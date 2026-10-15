@@ -1,6 +1,7 @@
 //! Builds ACP agent fixtures and groups tests for session state, configuration, metadata, and workspaces.
 use super::super::ZedAgentSetup;
 use super::*;
+use crate::zed::AcpWorkspacePolicy;
 use crate::zed::helpers::PrimaryAgentCatalog;
 use chrono::Utc;
 use std::collections::BTreeMap;
@@ -112,10 +113,13 @@ async fn build_agent_with_vt_config(
     let discovered = discover_subagents(&discovery_input).expect("discover primary agents");
     let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, default_primary_agent);
 
+    let mut zed_config = AgentClientProtocolZedConfig::default();
+    zed_config.allowed_workspace_roots.push(std::env::temp_dir());
+
     let mut agent = Box::pin(ZedAgent::new(ZedAgentSetup {
         config: core_config,
         credential_storage_mode: AuthCredentialsStoreMode::default(),
-        zed_config: AgentClientProtocolZedConfig::default(),
+        zed_config,
         tools_config: ToolsConfig::default(),
         commands_config: CommandsConfig::default(),
         custom_providers: &[],
@@ -127,7 +131,8 @@ async fn build_agent_with_vt_config(
         vt_config,
         audit_logger: None,
     }))
-    .await;
+    .await
+    .expect("build test ACP agent");
     agent.workspace_trust_synchronizer = Arc::new(NoOpWorkspaceTrustSynchronizer);
     agent
 }

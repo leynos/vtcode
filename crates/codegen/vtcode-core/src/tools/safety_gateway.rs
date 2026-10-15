@@ -463,6 +463,9 @@ impl SafetyGateway {
     /// Increase session limit dynamically
     pub fn increase_session_limit(&self, increment: usize) {
         let mut config = self.config.write();
+        if config.max_per_session == 0 {
+            return;
+        }
         let new_max = config.max_per_session.saturating_add(increment);
         config.max_per_session = new_max;
         tracing::info!("Session tool limit increased to {}", new_max);
@@ -1339,5 +1342,24 @@ mod tests {
 
         let third = gateway.check_and_record(&ctx, "read_file", &serde_json::json!({})).await;
         assert!(third.decision.is_allowed());
+    }
+
+    #[tokio::test]
+    async fn increasing_zero_session_limit_preserves_unlimited_mode() {
+        let gateway = SafetyGateway::with_config(SafetyGatewayConfig {
+            max_per_turn: 0,
+            max_per_session: 0,
+            enforce_rate_limits: false,
+            ..Default::default()
+        });
+        gateway.increase_session_limit(1);
+
+        assert_eq!(gateway.max_per_session(), 0);
+
+        let ctx = make_ctx();
+        for _ in 0..3 {
+            let result = gateway.check_and_record(&ctx, "read_file", &serde_json::json!({})).await;
+            assert!(result.decision.is_allowed());
+        }
     }
 }

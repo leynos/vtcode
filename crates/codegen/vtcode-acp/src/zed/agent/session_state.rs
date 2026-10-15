@@ -6,201 +6,42 @@ use super::ZedAgent;
 use crate::acp;
 use crate::workspace::{WorkspaceTrustSyncOutcome, WorkspaceTrustSynchronizer};
 use anyhow::Context;
-use std::collections::BTreeMap;
-use std::io::{self, Write};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, warn};
 use uuid::Uuid;
 use vtcode_config::auth::AuthCredentialsStoreMode;
 use vtcode_core::core::threads::{ThreadBootstrap, build_thread_archive_metadata};
-use vtcode_core::hooks::{LifecycleHookEngine, SessionEndReason, SessionStartTrigger};
+use vtcode_core::hooks::{LifecycleHookEngine, SessionStartTrigger};
 use vtcode_core::llm::provider::{FinishReason, Message};
-use vtcode_core::utils::session_archive::{
-    MAX_SESSION_ARCHIVE_EXTENSION_BYTES, SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE, SessionArchive,
-    SessionArchiveMetadata,
-};
+use vtcode_core::utils::session_archive::SessionArchive;
 
 use super::super::constants::SESSION_PREFIX;
 use super::super::session::AcpSessionWorkspace;
-use super::super::types::{SessionData, SessionHandle, lock_poison_error};
-use super::SessionWorkspaceRuntime;
+use super::super::types::{SessionData, SessionHandle, SessionPromptGuard, lock_poison_error};
+use super::{SessionWorkspaceLease, SessionWorkspaceRuntime};
+#[cfg(test)]
+use metadata::BoundedMetadataSizeWriter;
+use metadata::{
+    ACP_SESSION_METADATA_NAMESPACE, MAX_ACP_METADATA_ENTRIES, MAX_SESSION_ARCHIVE_EXTENSION_BYTES,
+    SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE, merge_bounded_acp_meta, migrate_legacy_acp_meta,
+};
 
 mod archive;
 mod configuration;
+mod lifecycle;
+mod metadata;
 
 struct SessionHandleBootstrap {
     session_id: acp::SessionId,
     archive: Option<SessionArchive>,
     trigger: SessionStartTrigger,
     workspace_runtime: Option<Arc<SessionWorkspaceRuntime>>,
-}
-
-struct BoundedAcpMeta {
-    value: Option<serde_json::Map<String, serde_json::Value>>,
-    discarded_entries: usize,
-}
-
-const ACP_SESSION_METADATA_NAMESPACE: &str = "dev.vtcode.acp";
-const MAX_ACP_METADATA_ENTRIES: usize = 64;
-
-fn merge_bounded_acp_meta(
-    existing: Option<serde_json::Map<String, serde_json::Value>>,
-    incoming: Option<acp::Meta>,
-) -> BoundedAcpMeta {
-    let preserve_presence = existing.is_some() || incoming.is_some();
-    let mut merged = existing.unwrap_or_default().into_iter().collect::<BTreeMap<_, _>>();
-    merged.extend(incoming.unwrap_or_default());
-
-    let mut bounded = serde_json::Map::new();
-    let mut discarded_entries = 0usize;
-    for (key, value) in merged {
-        if bounded.len() >= MAX_ACP_METADATA_ENTRIES {
-            discarded_entries = discarded_entries.saturating_add(1);
-            continue;
-        }
-        drop(bounded.insert(key.clone(), value));
-        if serialized_acp_meta_size_at_most(&bounded, MAX_SESSION_ARCHIVE_EXTENSION_BYTES).is_none() {
-            drop(bounded.remove(&key));
-            discarded_entries = discarded_entries.saturating_add(1);
-        }
-    }
-
-    BoundedAcpMeta {
-        value: preserve_presence.then_some(bounded),
-        discarded_entries,
-    }
-}
-
-fn migrate_legacy_acp_meta(metadata: &mut SessionArchiveMetadata) -> bool {
-    // Older ACP archives used protocol-named top-level metadata fields. Core
-    // preserves them generically; this boundary migrates only ACP-owned keys.
-    let Some(mut legacy_fields) = metadata
-        .extension(SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE)
-        .and_then(serde_json::Value::as_object)
-        .cloned()
-    else {
-        return false;
-    };
-
-    let mut legacy_acp_meta = serde_json::Map::new();
-    let mut had_legacy_acp_meta = false;
-    for legacy_key in ["acp_meta", "client_metadata"] {
-        let Some(value) = legacy_fields.get(legacy_key).and_then(serde_json::Value::as_object).cloned() else {
-            continue;
-        };
-        had_legacy_acp_meta = true;
-        drop(legacy_fields.remove(legacy_key));
-        legacy_acp_meta.extend(value);
-    }
-
-    if !had_legacy_acp_meta {
-        return false;
-    }
-
-    if legacy_fields.is_empty() {
-        drop(metadata.remove_extension(SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE));
-    } else {
-        metadata.set_extension(SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE, serde_json::Value::Object(legacy_fields));
-    }
-
-    let current_acp_meta = metadata
-        .extension(ACP_SESSION_METADATA_NAMESPACE)
-        .and_then(|value| value.as_object());
-    let incoming = current_acp_meta.cloned().map(acp::Meta::from_iter);
-    let merged = merge_bounded_acp_meta(Some(legacy_acp_meta), incoming);
-    if let Some(value) = merged.value {
-        metadata.set_extension(ACP_SESSION_METADATA_NAMESPACE, serde_json::Value::Object(value));
-    }
-    if merged.discarded_entries > 0 {
-        warn!(
-            discarded_entries = merged.discarded_entries,
-            max_entries = MAX_ACP_METADATA_ENTRIES,
-            max_serialized_bytes = MAX_SESSION_ARCHIVE_EXTENSION_BYTES,
-            "Discarded legacy ACP metadata entries beyond the archive budget"
-        );
-    }
-    true
+    workspace_lease: Option<SessionWorkspaceLease>,
 }
 
 impl ZedAgent {
     const SESSION_LIST_PAGE_SIZE: usize = 100;
-
-    pub(crate) async fn run_session_start_hooks(&self, session: &SessionHandle) -> anyhow::Result<()> {
-        if !session.mark_session_started().context("checking ACP session start state")? {
-            return Ok(());
-        }
-
-        session
-            .update_transcript_path()
-            .await
-            .context("updating ACP session transcript path")?;
-        let Some(hooks) = session.lifecycle_hooks().context("reading ACP session lifecycle hooks")? else {
-            return Ok(());
-        };
-        let workspace = session
-            .workspace_runtime()
-            .context("reading ACP session workspace runtime for SessionStart hooks")?
-            .map_or_else(|| self.config.workspace.clone(), |runtime| runtime.workspace_root.clone());
-        vtcode_core::hooks::restore_workspace_hook_approval(&hooks, &workspace).await;
-        let outcome = hooks.run_session_start().await?;
-        for message in outcome.messages {
-            warn!(level = ?message.level, message = %message.text, "ACP SessionStart hook");
-        }
-        for context in outcome.additional_context {
-            if !context.trim().is_empty() {
-                self.push_message(session, Message::system(context))
-                    .context("appending SessionStart hook context to the ACP session")?;
-            }
-        }
-        Ok(())
-    }
-
-    pub(crate) async fn run_session_end_hooks(&self, reason: SessionEndReason) -> anyhow::Result<()> {
-        let sessions = self
-            .sessions
-            .lock()
-            .map_err(|error| lock_poison_error("listing ACP sessions for SessionEnd hooks", error))?
-            .values()
-            .cloned()
-            .collect::<Vec<_>>();
-        let mut first_error = None;
-        for session in sessions {
-            if let Err(error) = Self::run_session_end_hooks_for(&session, reason).await {
-                let _ = first_error.get_or_insert(error);
-            }
-        }
-        first_error.map_or(Ok(()), Err)
-    }
-
-    async fn run_session_end_hooks_for(session: &SessionHandle, reason: SessionEndReason) -> anyhow::Result<()> {
-        let turn_id = match session.mark_session_ended() {
-            Ok(Some(turn_id)) => turn_id,
-            Ok(None) => return Ok(()),
-            Err(error) => {
-                warn!(%error, "Failed to read ACP session end state; skipping lifecycle hooks");
-                return Err(error.context("checking ACP session end state"));
-            }
-        };
-        let hooks = match session.lifecycle_hooks() {
-            Ok(Some(hooks)) => hooks,
-            Ok(None) => return Ok(()),
-            Err(error) => {
-                warn!(%error, "Failed to read ACP session lifecycle hooks at shutdown");
-                return Err(error.context("reading ACP session lifecycle hooks at shutdown"));
-            }
-        };
-
-        match hooks.run_session_end(&turn_id, reason).await {
-            Ok(messages) => {
-                for message in messages {
-                    warn!(level = ?message.level, message = %message.text, "ACP SessionEnd hook");
-                }
-            }
-            Err(error) => warn!(%error, "ACP SessionEnd hooks failed"),
-        }
-        Ok(())
-    }
 
     pub(super) fn merge_session_acp_meta(
         &self,
@@ -245,6 +86,7 @@ impl ZedAgent {
             mut archive,
             trigger,
             workspace_runtime,
+            workspace_lease,
         } = bootstrap;
         // Archive metadata is protocol-neutral in core; restore the old ACP
         // fields before the client adapter exposes this session.
@@ -296,7 +138,7 @@ impl ZedAgent {
                 thread,
                 archive,
                 workspace_runtime,
-                tool_notice_sent: std::sync::atomic::AtomicBool::new(false),
+                workspace_lease,
                 primary_agent,
                 reasoning_effort,
                 provider,
@@ -310,6 +152,7 @@ impl ZedAgent {
                 task_lifecycle_registration: None,
             })),
             cancellation: super::super::types::SessionCancellation::default(),
+            activity: super::super::types::SessionActivity::default(),
         }
     }
 
@@ -333,6 +176,7 @@ impl ZedAgent {
                 archive: None,
                 trigger: SessionStartTrigger::NewSession,
                 workspace_runtime: None,
+                workspace_lease: None,
             },
         );
         drop(
@@ -344,11 +188,12 @@ impl ZedAgent {
         Ok(session_id)
     }
 
-    fn register_durable_session(
+    async fn register_durable_session(
         &self,
-        workspace_runtime: Arc<SessionWorkspaceRuntime>,
+        workspace_lease: SessionWorkspaceLease,
         acp_meta: Option<acp::Meta>,
     ) -> anyhow::Result<acp::SessionId> {
+        let workspace_runtime = Arc::clone(workspace_lease.runtime());
         let session_id = acp::SessionId::new(Arc::from(format!("{SESSION_PREFIX}-{}", Uuid::new_v4())));
         let mut metadata = build_thread_archive_metadata(
             workspace_runtime.workspace_root.as_path(),
@@ -369,15 +214,34 @@ impl ZedAgent {
                 archive: None,
                 trigger: SessionStartTrigger::NewSession,
                 workspace_runtime: Some(workspace_runtime),
+                workspace_lease: Some(workspace_lease),
             },
         );
-        self.merge_session_acp_meta(&handle, acp_meta)?;
-        drop(
-            self.sessions
-                .lock()
-                .map_err(|error| lock_poison_error("registering durable ACP session", error))?
-                .insert(session_id.clone(), handle),
-        );
+        if let Err(error) = self.merge_session_acp_meta(&handle, acp_meta) {
+            if let Err(cleanup_error) = handle.release_workspace_lease().await {
+                warn!(
+                    %cleanup_error,
+                    session_id = %session_id,
+                    "Failed to release ACP workspace lease after session metadata merge failed"
+                );
+            }
+            return Err(error);
+        }
+        let insert_result = self
+            .sessions
+            .lock()
+            .map_err(|error| lock_poison_error("registering durable ACP session", error))
+            .map(|mut sessions| drop(sessions.insert(session_id.clone(), handle.clone())));
+        if let Err(error) = insert_result {
+            if let Err(cleanup_error) = handle.release_workspace_lease().await {
+                warn!(
+                    %cleanup_error,
+                    session_id = %session_id,
+                    "Failed to release ACP workspace lease after session registration failed"
+                );
+            }
+            return Err(error);
+        }
         Ok(session_id)
     }
 
@@ -390,31 +254,25 @@ impl ZedAgent {
             .cloned())
     }
 
+    pub(super) fn begin_session_prompt(&self, session_id: &acp::SessionId) -> Result<SessionPromptGuard, acp::Error> {
+        let sessions = self
+            .sessions
+            .lock()
+            .map_err(|error| acp::Error::internal_error().data(format!("Failed to admit ACP prompt: {error}")))?;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| acp::Error::invalid_params().data(serde_json::json!({ "reason": "unknown_session" })))?;
+        session
+            .try_start_prompt()
+            .ok_or_else(|| acp::Error::invalid_params().data(serde_json::json!({ "reason": "session_closing" })))
+    }
+
     pub(super) fn push_message(&self, session: &SessionHandle, message: Message) -> anyhow::Result<()> {
         let data = session
             .data
             .lock()
             .map_err(|error| lock_poison_error("appending a message to the ACP session", error))?;
         data.thread.append_message(message);
-        Ok(())
-    }
-
-    #[allow(dead_code, reason = "Intentional compatibility, platform, or test-only suppression.")]
-    pub(super) fn should_send_tool_notice(&self, session: &SessionHandle) -> anyhow::Result<bool> {
-        session
-            .data
-            .lock()
-            .map_err(|error| lock_poison_error("checking whether to send the ACP tool notice", error))
-            .map(|data| !data.tool_notice_sent.load(Ordering::Relaxed))
-    }
-
-    #[allow(dead_code, reason = "Intentional compatibility, platform, or test-only suppression.")]
-    pub(super) fn mark_tool_notice_sent(&self, session: &SessionHandle) -> anyhow::Result<()> {
-        let data = session
-            .data
-            .lock()
-            .map_err(|error| lock_poison_error("marking the ACP tool notice as sent", error))?;
-        data.tool_notice_sent.store(true, Ordering::Relaxed);
         Ok(())
     }
 
@@ -456,7 +314,7 @@ impl ZedAgent {
     /// Programmatic equivalent of the SACP `session/new` handler — exposed
     /// for tests and for the SACP handler shim to call.
     pub(crate) async fn new_session(&self, req: acp::NewSessionRequest) -> Result<acp::NewSessionResponse, acp::Error> {
-        let workspace = AcpSessionWorkspace::from_client_cwd(&req.cwd).await?;
+        let workspace = self.workspace_policy.resolve_client_cwd(&req.cwd).await?;
         let desired_trust = self
             .workspace_runtime_config
             .zed_config
@@ -467,25 +325,40 @@ impl ZedAgent {
             .synchronize(workspace.path(), desired_trust)
             .await
             .map_err(|error| acp::Error::internal_error().data(format!("Failed to trust ACP session cwd: {error}")))?;
-        let workspace_runtime = self
+        let workspace_lease = self
             .workspace_runtime_for(&workspace)
             .await
             .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
         let session_id = self
-            .register_durable_session(workspace_runtime, req.meta)
-            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
-        let session = self
-            .session_handle(&session_id)
-            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?
-            .ok_or_else(|| acp::Error::internal_error().data("newly registered ACP session is missing"))?;
-        self.ensure_task_lifecycle_forwarder(&session)
-            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
-        self.run_session_start_hooks(&session)
+            .register_durable_session(workspace_lease, req.meta)
             .await
             .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
-        let config_options = self
-            .current_session_config_options(&session)
-            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+        let session = match self.session_handle(&session_id) {
+            Ok(Some(session)) => session,
+            Ok(None) => {
+                self.discard_failed_new_session(&session_id).await;
+                return Err(acp::Error::internal_error().data("newly registered ACP session is missing"));
+            }
+            Err(error) => {
+                self.discard_failed_new_session(&session_id).await;
+                return Err(acp::Error::internal_error().data(error.to_string()));
+            }
+        };
+        if let Err(error) = self.ensure_task_lifecycle_forwarder(&session) {
+            self.discard_failed_new_session(&session_id).await;
+            return Err(acp::Error::internal_error().data(error.to_string()));
+        }
+        if let Err(error) = self.run_session_start_hooks(&session).await {
+            self.discard_failed_new_session(&session_id).await;
+            return Err(acp::Error::internal_error().data(error.to_string()));
+        }
+        let config_options = match self.current_session_config_options(&session) {
+            Ok(config_options) => config_options,
+            Err(error) => {
+                self.discard_failed_new_session(&session_id).await;
+                return Err(acp::Error::internal_error().data(error.to_string()));
+            }
+        };
 
         if let Err(error) = self.send_available_commands_update(&session_id).await {
             warn!(%error, "Failed to advertise initial slash commands");
@@ -494,37 +367,6 @@ impl ZedAgent {
         debug!(%session_id, "Created ACP session");
 
         Ok(acp::NewSessionResponse::new(session_id).config_options(config_options))
-    }
-}
-
-fn serialized_acp_meta_size_at_most(
-    metadata: &serde_json::Map<String, serde_json::Value>,
-    max_bytes: usize,
-) -> Option<usize> {
-    let mut writer = BoundedMetadataSizeWriter { bytes_written: 0, max_bytes };
-    serde_json::to_writer(&mut writer, metadata).ok()?;
-    Some(writer.bytes_written)
-}
-
-struct BoundedMetadataSizeWriter {
-    bytes_written: usize,
-    max_bytes: usize,
-}
-
-impl Write for BoundedMetadataSizeWriter {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        let Some(new_size) = self.bytes_written.checked_add(bytes.len()) else {
-            return Err(io::Error::other("serialized ACP metadata size overflowed"));
-        };
-        if new_size > self.max_bytes {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "serialized ACP metadata exceeded its size limit"));
-        }
-        self.bytes_written = new_size;
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
     }
 }
 

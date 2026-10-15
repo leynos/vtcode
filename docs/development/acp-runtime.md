@@ -30,10 +30,15 @@ core/provider behavior for non-ACP callers. The crate-specific rules are in
 ## Session workspace and durability
 
 `session/new` requires an absolute client-selected `cwd`; ACP canonicalizes and
-validates it before constructing session state. Each session's canonical
-workspace scopes its local tools, MCP configuration, prompt context,
-sub-agents, compaction artifacts and archive metadata. Do not substitute the
-server launch directory when the requested workspace is invalid.
+validates it before constructing session state. The server launch workspace is
+allowed by default, with additional absolute roots configured through
+`[acp.zed].allowed_workspace_roots`. Requested workspaces must fall beneath an
+allowed root; filesystem roots and the home directory are rejected. The same
+policy validates list, load and resume requests before workspace trust is
+persisted. Each session's canonical workspace scopes its local tools, MCP
+configuration, prompt context, sub-agents, compaction artifacts and archive
+metadata. Do not substitute the server launch directory when the requested
+workspace is invalid.
 
 Durable session archives are controlled by `[history].persistence` and
 `max_bytes`, and live under `$VT_SESSION_DIR` or the configured VT Code data

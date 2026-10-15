@@ -134,12 +134,10 @@ fn save_config_uses_the_canonical_path_captured_during_load() {
         let replacement_paths = StaticWorkspacePaths::new(workspace.path(), workspace.path().join(".vtcode"));
         let replacement_provider =
             WorkspacePathsDefaults::new(Arc::new(replacement_paths)).with_home_paths(vec![other_path.clone()]);
-        let previous = defaults::provider::install_config_defaults_provider(Arc::new(replacement_provider));
-
-        let config = manager.config().clone();
-        manager.save_config(&config).expect("save canonical config");
-
-        let _ = defaults::provider::install_config_defaults_provider(previous);
+        defaults::provider::with_config_defaults_provider_for_test(Arc::new(replacement_provider), || {
+            let config = manager.config().clone();
+            manager.save_config(&config).expect("save canonical config");
+        });
 
         assert!(canonical_path.exists());
         assert!(!other_path.exists());

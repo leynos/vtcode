@@ -31,6 +31,7 @@ pub(super) struct PrecomputedTurnConfig {
 }
 
 #[derive(Clone, Copy)]
+/// Inputs for resolving per-turn and per-session tool-call limits.
 pub(super) struct SafetyToolCallLimitOptions {
     max_tool_calls_per_session: Option<usize>,
     max_session_turns: usize,
@@ -38,6 +39,12 @@ pub(super) struct SafetyToolCallLimitOptions {
 }
 
 impl SafetyToolCallLimitOptions {
+    /// Creates options with explicit limits and planning-mode state.
+    ///
+    /// A session limit of `Some(0)` means unlimited. `None` derives the
+    /// session limit from the per-turn limit and configured session turns;
+    /// planning mode removes that default cap while preserving an explicit
+    /// session budget.
     pub(super) fn new(
         max_tool_calls_per_session: Option<usize>,
         max_session_turns: usize,
@@ -50,6 +57,11 @@ impl SafetyToolCallLimitOptions {
         }
     }
 
+    /// Builds options for a fresh execution using configured session turns.
+    ///
+    /// A configured `Some(0)` session budget remains unlimited. When no
+    /// session budget is configured, the default is derived from the per-turn
+    /// limit and configured session-turn count.
     pub(super) fn for_fresh_execution(
         max_tool_calls_per_session: Option<usize>,
         vt_cfg: Option<&VTCodeConfig>,
@@ -60,6 +72,11 @@ impl SafetyToolCallLimitOptions {
         Self::new(max_tool_calls_per_session, max_session_turns, false)
     }
 
+    /// Builds options for a turn using the active configuration and mode.
+    ///
+    /// A configured `Some(0)` session budget remains unlimited. Without an
+    /// explicit session budget, planning mode removes the default session cap;
+    /// other modes derive it from the per-turn limit and session-turn count.
     pub(super) fn for_turn(vt_cfg: Option<&VTCodeConfig>, max_session_turns: usize, planning_active: bool) -> Self {
         let max_tool_calls_per_session = vt_cfg.and_then(|cfg| cfg.agent.harness.max_tool_calls_per_session);
         Self::new(max_tool_calls_per_session, max_session_turns, planning_active)
@@ -641,6 +658,7 @@ mod tests {
     use crate::agent::runloop::unified::run_loop_context::{HarnessTurnState, TurnId, TurnRunId};
     use crate::agent::runloop::unified::turn::context::TurnLoopResult;
     use crate::agent::runloop::unified::turn::turn_processing::test_support::TestTurnProcessingBacking;
+    use rstest::rstest;
     use std::time::Duration;
     use vtcode_core::config::loader::VTCodeConfig;
     use vtcode_core::core::agent::steering::SteeringMessage;
@@ -801,34 +819,22 @@ mod tests {
         assert_eq!(resolve_tool_loop_limit(0, true), UNLIMITED_TOOL_LOOPS);
     }
 
-    #[test]
-    fn resolve_safety_tool_call_limits_maps_zero_turn_budget_to_unbounded_limits() {
-        assert_eq!(
-            resolve_safety_tool_call_limits(0, SafetyToolCallLimitOptions::new(None, 50, false)),
-            (usize::MAX, usize::MAX)
-        );
-    }
-
-    #[test]
-    fn resolve_safety_tool_call_limits_scales_session_limit_from_turn_budget() {
-        assert_eq!(resolve_safety_tool_call_limits(12, SafetyToolCallLimitOptions::new(None, 40, false)), (12, 480));
-    }
-
-    #[test]
-    fn resolve_safety_tool_call_limits_keeps_planning_workflow_session_unbounded() {
-        assert_eq!(
-            resolve_safety_tool_call_limits(48, SafetyToolCallLimitOptions::new(None, 40, true)),
-            (48, usize::MAX)
-        );
-    }
-
-    #[test]
-    fn resolve_safety_tool_call_limits_honours_explicit_session_budget() {
-        assert_eq!(resolve_safety_tool_call_limits(12, SafetyToolCallLimitOptions::new(Some(7), 40, false)), (12, 7));
-        assert_eq!(
-            resolve_safety_tool_call_limits(12, SafetyToolCallLimitOptions::new(Some(0), 40, false)),
-            (12, usize::MAX)
-        );
+    #[rstest]
+    #[case(0, None, 50, false, (usize::MAX, usize::MAX))]
+    #[case(12, None, 40, false, (12, 480))]
+    #[case(48, None, 40, true, (48, usize::MAX))]
+    #[case(12, Some(7), 40, false, (12, 7))]
+    #[case(12, Some(0), 40, false, (12, usize::MAX))]
+    #[case(48, Some(7), 40, true, (48, 7))]
+    fn resolve_safety_tool_call_limits_covers_configured_and_planning_budgets(
+        #[case] per_turn_limit: usize,
+        #[case] per_session_limit: Option<usize>,
+        #[case] session_turns: usize,
+        #[case] planning_active: bool,
+        #[case] expected: (usize, usize),
+    ) {
+        let options = SafetyToolCallLimitOptions::new(per_session_limit, session_turns, planning_active);
+        assert_eq!(resolve_safety_tool_call_limits(per_turn_limit, options), expected);
     }
 
     #[test]

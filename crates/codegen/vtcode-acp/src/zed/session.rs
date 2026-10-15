@@ -21,6 +21,7 @@ use vtcode_core::hooks::SessionEndReason;
 use vtcode_core::llm::factory::register_custom_providers;
 use vtcode_core::prompts::system::generate_system_instruction_with_config;
 
+use super::AcpWorkspacePolicy;
 use super::constants::{
     WORKSPACE_TRUST_ALREADY_SATISFIED_LOG, WORKSPACE_TRUST_DOWNGRADE_SKIPPED_LOG, WORKSPACE_TRUST_UPGRADE_LOG,
 };
@@ -82,10 +83,11 @@ pub(super) struct AcpAgentStartup {
 /// stdio connection are owned by this call for the connection lifetime.
 ///
 /// Returns setup, connection or shutdown errors. In particular, audit logger
-/// initialization, workspace trust synchronization and primary-agent discovery
-/// can fail before the connection starts. A connection failure is returned;
-/// after a successful connection, a SessionEnd hook failure or timeout is
-/// returned instead.
+/// initialization, workspace trust synchronization, primary-agent discovery
+/// and ACP tool-registry configuration can fail before the connection starts.
+/// A connection failure is returned.
+/// After a successful connection, individual SessionEnd hook command failures
+/// are logged; session-state errors and shutdown timeouts are returned.
 pub async fn run_acp_agent(
     config: &CoreAgentConfig,
     vt_cfg: &VTCodeConfig,
@@ -132,10 +134,12 @@ pub(super) async fn prepare_acp_agent_startup(
 
 async fn synchronize_acp_workspace_trust(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig) -> Result<()> {
     let zed_config = &vt_cfg.acp.zed;
+    let workspace_policy = AcpWorkspacePolicy::new(&config.workspace, &zed_config.allowed_workspace_roots).await?;
+    let workspace = workspace_policy.resolve_client_cwd(&config.workspace).await?;
     let desired_trust_level = zed_config.workspace_trust.to_workspace_trust_level();
     let trust_synchronizer = DefaultWorkspaceTrustSynchronizer::new();
     match trust_synchronizer
-        .synchronize(&config.workspace, desired_trust_level)
+        .synchronize(workspace.path(), desired_trust_level)
         .await
         .context("Failed to synchronize workspace trust for ACP bridge")?
     {
@@ -171,12 +175,12 @@ async fn run_acp_agent_runtime(startup: AcpAgentStartup) -> Result<()> {
 }
 
 async fn run_local_acp_agent(startup: AcpAgentStartup) -> Result<()> {
-    let agent = Arc::new(create_acp_agent(startup).await);
+    let agent = Arc::new(create_acp_agent(startup).await?);
 
     run_acp_connection(agent).await
 }
 
-pub(super) async fn create_acp_agent(startup: AcpAgentStartup) -> ZedAgent {
+pub(super) async fn create_acp_agent(startup: AcpAgentStartup) -> Result<ZedAgent> {
     let AcpAgentStartup {
         config,
         vt_config,
@@ -236,9 +240,11 @@ async fn finish_acp_session(agent: Arc<ZedAgent>, connection_result: Result<()>)
     } else {
         SessionEndReason::Error
     };
-    let end_result = tokio::time::timeout(std::time::Duration::from_secs(3), agent.run_session_end_hooks(end_reason))
+    let cleanup_task = tokio::spawn(async move { agent.close_all_sessions(end_reason).await });
+    let end_result = tokio::time::timeout(std::time::Duration::from_secs(3), cleanup_task)
         .await
-        .map_err(|timeout_error| anyhow::anyhow!("ACP SessionEnd hooks exceeded shutdown timeout: {timeout_error}"));
+        .map_err(|timeout_error| anyhow::anyhow!("ACP session cleanup exceeded shutdown timeout: {timeout_error}"))?
+        .map_err(|join_error| anyhow::anyhow!("ACP session cleanup task failed: {join_error}"));
 
     connection_result?;
     end_result??;

@@ -1,6 +1,7 @@
 //! Defines the shared Zed ACP session, tool, and run-state types used across adapter modules.
 use crate::acp;
-use std::sync::atomic::AtomicBool;
+use anyhow::Context;
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
 use tokio::time::Instant;
@@ -29,32 +30,117 @@ pub(crate) struct ToolCallResult {
 /// Cancellation signal that can be checked synchronously or awaited.
 #[derive(Clone, Default)]
 pub(crate) struct SessionCancellation {
-    cancelled: Arc<AtomicBool>,
+    state: Arc<AtomicU8>,
     notify: Arc<Notify>,
 }
 
 impl SessionCancellation {
     pub(crate) fn cancel(&self) {
-        self.cancelled.store(true, std::sync::atomic::Ordering::Release);
+        let _previous_state = self.state.fetch_or(CANCELLED, Ordering::AcqRel);
         self.notify.notify_waiters();
     }
 
-    pub(crate) fn reset(&self) {
-        self.cancelled.store(false, std::sync::atomic::Ordering::Release);
+    pub(crate) fn close(&self) {
+        let _previous_state = self.state.fetch_or(CANCELLED | CLOSED, Ordering::AcqRel);
+        self.notify.notify_waiters();
+    }
+
+    pub(crate) fn reset(&self) -> bool {
+        loop {
+            let state = self.state.load(Ordering::Acquire);
+            if state & CLOSED != 0 {
+                return false;
+            }
+            if self
+                .state
+                .compare_exchange(state, state & !CANCELLED, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                return true;
+            }
+        }
     }
 
     pub(crate) fn is_cancelled(&self) -> bool {
-        self.cancelled.load(std::sync::atomic::Ordering::Acquire)
+        self.state.load(Ordering::Acquire) & CANCELLED != 0
+    }
+
+    pub(crate) fn is_closed(&self) -> bool {
+        self.state.load(Ordering::Acquire) & CLOSED != 0
     }
 
     pub(crate) async fn cancelled(&self) {
         loop {
             let notified = self.notify.notified();
+            tokio::pin!(notified);
+            let _was_newly_enabled = notified.as_mut().enable();
             if self.is_cancelled() {
                 return;
             }
             notified.await;
         }
+    }
+}
+
+const CANCELLED: u8 = 1;
+const CLOSED: u8 = 2;
+
+#[derive(Clone, Default)]
+pub(crate) struct SessionActivity {
+    closing: Arc<AtomicBool>,
+    active_prompts: Arc<AtomicUsize>,
+    prompts_idle: Arc<Notify>,
+}
+
+pub(crate) struct SessionPromptGuard {
+    activity: SessionActivity,
+}
+
+impl SessionActivity {
+    fn try_start_prompt(&self) -> Option<SessionPromptGuard> {
+        if self.closing.load(Ordering::Acquire) {
+            return None;
+        }
+        let _previous_active_prompts = self.active_prompts.fetch_add(1, Ordering::AcqRel);
+        if self.closing.load(Ordering::Acquire) {
+            self.finish_prompt();
+            return None;
+        }
+        Some(SessionPromptGuard { activity: self.clone() })
+    }
+
+    fn begin_close(&self) {
+        self.closing.store(true, Ordering::Release);
+    }
+
+    async fn wait_for_prompts(&self) {
+        loop {
+            let notified = self.prompts_idle.notified();
+            tokio::pin!(notified);
+            let _was_newly_enabled = notified.as_mut().enable();
+            if self.active_prompts.load(Ordering::Acquire) == 0 {
+                return;
+            }
+            notified.await;
+        }
+    }
+
+    fn finish_prompt(&self) {
+        if self.active_prompts.fetch_sub(1, Ordering::AcqRel) == 1 {
+            self.prompts_idle.notify_waiters();
+        }
+    }
+}
+
+impl SessionPromptGuard {
+    pub(crate) fn is_closing(&self) -> bool {
+        self.activity.closing.load(Ordering::Acquire)
+    }
+}
+
+impl Drop for SessionPromptGuard {
+    fn drop(&mut self) {
+        self.activity.finish_prompt();
     }
 }
 
@@ -66,15 +152,30 @@ impl SessionCancellation {
 pub(crate) struct SessionHandle {
     pub(crate) data: Arc<Mutex<SessionData>>,
     pub(crate) cancellation: SessionCancellation,
+    pub(crate) activity: SessionActivity,
+}
+
+impl SessionHandle {
+    pub(crate) fn try_start_prompt(&self) -> Option<SessionPromptGuard> {
+        self.activity.try_start_prompt()
+    }
+
+    pub(crate) fn begin_close(&self) {
+        self.activity.begin_close();
+        self.cancellation.close();
+    }
+
+    pub(crate) async fn wait_for_prompts(&self) {
+        self.activity.wait_for_prompts().await;
+    }
 }
 
 pub(crate) struct SessionData {
     pub(crate) session_id: acp::SessionId,
     pub(crate) thread: ThreadRuntimeHandle,
     pub(crate) archive: Option<vtcode_core::utils::session_archive::SessionArchive>,
-    pub(crate) workspace_runtime: Option<Arc<super::agent::SessionWorkspaceRuntime>>,
-    #[allow(dead_code, reason = "Intentional compatibility, platform, or test-only suppression.")]
-    pub(crate) tool_notice_sent: AtomicBool,
+    pub(in crate::zed) workspace_runtime: Option<Arc<super::agent::SessionWorkspaceRuntime>>,
+    pub(super) workspace_lease: Option<super::agent::SessionWorkspaceLease>,
     pub(crate) primary_agent: String,
     pub(crate) reasoning_effort: ReasoningEffortLevel,
     pub(crate) provider: String,
@@ -138,11 +239,48 @@ impl Drop for SessionData {
 }
 
 impl SessionHandle {
-    pub(crate) fn workspace_runtime(&self) -> anyhow::Result<Option<Arc<super::agent::SessionWorkspaceRuntime>>> {
+    pub(in crate::zed) fn workspace_runtime(
+        &self,
+    ) -> anyhow::Result<Option<Arc<super::agent::SessionWorkspaceRuntime>>> {
         self.data
             .lock()
             .map_err(|error| lock_poison_error("reading ACP session workspace runtime", error))
             .map(|data| data.workspace_runtime.clone())
+    }
+
+    pub(crate) async fn release_workspace_lease(&self) -> anyhow::Result<()> {
+        let (lease, runtime) = {
+            let mut data = self
+                .data
+                .lock()
+                .map_err(|error| lock_poison_error("releasing ACP session workspace lease", error))?;
+            (data.workspace_lease.take(), data.workspace_runtime.take())
+        };
+        drop(runtime);
+        if let Some(lease) = lease {
+            lease.release().await;
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn stop_task_lifecycle_forwarder(&self) -> anyhow::Result<()> {
+        let (forwarder, registration) = {
+            let mut data = self
+                .data
+                .lock()
+                .map_err(|error| lock_poison_error("stopping ACP task lifecycle forwarding", error))?;
+            (data.task_lifecycle_forwarder.take(), data.task_lifecycle_registration.take())
+        };
+        drop(registration);
+        if let Some(forwarder) = forwarder {
+            forwarder.abort();
+            match forwarder.await {
+                Ok(()) => {}
+                Err(error) if error.is_cancelled() => {}
+                Err(error) => return Err(error).context("waiting for ACP task lifecycle forwarder to stop"),
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn lifecycle_hooks(&self) -> anyhow::Result<Option<LifecycleHookEngine>> {
@@ -217,7 +355,7 @@ mod tests {
         let cancellation = SessionCancellation::default();
         cancellation.cancel();
         cancellation.cancelled().await;
-        cancellation.reset();
+        assert!(cancellation.reset());
 
         assert!(
             tokio::time::timeout(Duration::from_millis(10), cancellation.cancelled())
@@ -225,5 +363,15 @@ mod tests {
                 .is_err(),
             "reset signal must wait for a fresh cancellation"
         );
+    }
+
+    #[test]
+    fn close_cancellation_cannot_be_reset_for_another_prompt() {
+        let cancellation = SessionCancellation::default();
+        cancellation.close();
+
+        assert!(!cancellation.reset());
+        assert!(cancellation.is_cancelled());
+        assert!(cancellation.is_closed());
     }
 }

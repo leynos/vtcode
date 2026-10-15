@@ -72,19 +72,14 @@ async fn repeated_permission_results(
         } else {
             scenario.args
         };
+        let tool = PermissionToolContext::new("exec_command", acp::ToolKind::Execute, "Run command");
         let result = if scenario.force_prompt {
             prompter
-                .request_tool_permission_forced(
-                    client,
-                    scenario.session_id,
-                    scenario.call,
-                    SupportedTool::ReadFile,
-                    args,
-                )
+                .request_named_tool_permission_forced(client, scenario.session_id, scenario.call, tool, args)
                 .await
         } else {
             prompter
-                .request_tool_permission(client, scenario.session_id, scenario.call, SupportedTool::ReadFile, args)
+                .request_named_tool_permission(client, scenario.session_id, scenario.call, tool, args)
                 .await
         };
         results.push(result);
@@ -162,8 +157,8 @@ async fn run_repeated_permission_flow(
     let request_count = Arc::new(AtomicUsize::new(0));
     let client_request_count = Arc::clone(&request_count);
     let session_id = acp::SessionId::new("persistent-permission-test-session");
-    let call = acp::ToolCall::new("persistent-permission-test-call", "Read file src/lib.rs");
-    let args = json!({ "path": "src/lib.rs" });
+    let call = acp::ToolCall::new("persistent-permission-test-call", "Run command");
+    let args = json!({ "cmd": "echo permitted" });
 
     let agent = Agent
         .builder()
@@ -305,11 +300,33 @@ async fn forced_permission_prompt_overrides_cached_session_decisions() {
 }
 
 #[tokio::test]
-async fn allow_always_does_not_cover_a_different_action_for_the_same_tool() {
-    let (results, request_count) =
-        run_repeated_permission_flow(ClientDecision::AllowAlways, false, false, Some(json!({ "path": "secrets.env" })))
-            .await;
+async fn allow_always_does_not_cover_different_arguments_for_the_same_local_tool() {
+    let (results, request_count) = run_repeated_permission_flow(
+        ClientDecision::AllowAlways,
+        false,
+        false,
+        Some(json!({ "cmd": "cat secrets.env" })),
+    )
+    .await;
 
     assert!(results.iter().all(Option::is_none));
+    assert_eq!(request_count, 2);
+}
+
+#[tokio::test]
+async fn reject_always_does_not_cover_different_arguments_for_the_same_local_tool() {
+    let (results, request_count) = run_repeated_permission_flow(
+        ClientDecision::DenyAlways,
+        false,
+        false,
+        Some(json!({ "cmd": "cat secrets.env" })),
+    )
+    .await;
+
+    assert!(results.iter().all(|report| {
+        report
+            .as_ref()
+            .is_some_and(|report| report.llm_response.contains(TOOL_PERMISSION_DENIED_MESSAGE))
+    }));
     assert_eq!(request_count, 2);
 }

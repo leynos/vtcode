@@ -65,6 +65,7 @@ enabled = true
     enabled = true
     transport = "stdio"
     workspace_trust = "full_auto"
+    allowed_workspace_roots = []
 
         [acp.zed.tools]
         read_file = true
@@ -90,8 +91,14 @@ function calling and automatically downgrades to plain completions.
 
 The ACP client selects the workspace for each new session through the absolute
 `cwd` in `session/new`. VT Code canonicalizes that directory before creating
-the session and rejects missing, relative, or non-directory paths. It does not
-silently fall back to the directory from which the ACP server was launched.
+the session and rejects missing, relative, or non-directory paths. The launch
+workspace is allowed by default; add absolute paths to
+`[acp.zed].allowed_workspace_roots` to allow other workspaces. Client paths
+must be beneath an allowed root, and filesystem roots and the home directory
+are rejected. The same policy applies when listing, loading or resuming
+sessions, and a rejected path is denied before VT Code persists workspace
+trust. VT Code does not silently fall back to the directory from which the ACP
+server was launched.
 
 The canonical session workspace scopes archive metadata, system instructions,
 prompt templates, lifecycle hooks, compaction artefacts, local and ACP tools,
@@ -129,11 +136,22 @@ does not persist hook permission scopes or apply `permission_updates`; it logs
 an explicit warning when those fields are returned. An `interrupt` decision
 fails the tool safely.
 
-`SessionEnd` is emitted when the ACP connection actually closes (with a bounded
-shutdown wait), not after every prompt. Notification hooks are not invented for
-ACP protocol messages; they run only for real VT Code notification events. The
-current ACP subagent controller does not expose child lifecycle callbacks, so
-ACP does not currently emit `SubagentStart` or `SubagentStop`.
+`SessionEnd` runs when a client closes an ACP session and when the ACP
+connection shuts down, not after every prompt. On `session/close`, VT Code
+removes the session from that connection, cancels it, waits for admitted prompt
+work to finish, stops its task-lifecycle forwarder, runs `SessionEnd`, and then
+releases its workspace runtime. The close request waits up to three seconds; if
+cleanup has not finished by then, it returns an ACP error while cleanup
+continues and retains the workspace runtime until cleanup releases it. Closing
+a session does not delete its durable archive, so the session can still be
+loaded or resumed later when durable history is enabled.
+
+When the ACP connection shuts down, VT Code cancels and drains its registered
+sessions and runs their cleanup within the bounded shutdown wait. If that wait
+expires, cleanup continues in the background. Notification hooks are not
+invented for ACP protocol messages; they run only for real VT Code notification
+events. The current ACP subagent controller does not expose child lifecycle
+callbacks, so ACP does not currently emit `SubagentStart` or `SubagentStop`.
 
 MCP connections are scoped to the session that declares them. A subagent does
 not implicitly inherit its parent's MCP connections; declare the required MCP
@@ -400,14 +418,16 @@ These stores are independent: disabling one does not disable the others. In
 particular, `context.dynamic` settings do not control durable session archives,
 and `[history]` settings do not control ACP audit output.
 
-- **Session management** – ACP advertises and implements `session/list` and
-  `session/resume` while retaining the legacy `session/load` method. With
-  durable history enabled, `session/list` discovers durable archives and, when
-  the client supplies `cwd`, returns only archives belonging to that workspace.
-  An ACP client can pass a returned session ID to either `session/load` or
-  `session/resume`; both restore that archive by exact session ID, including
-  after a VT Code process or editor restart. Set `history.persistence = "none"`
-  to disable durable archives and discovery; sessions then remain process-local.
+- **Session management** – ACP advertises and implements `session/list`,
+  `session/resume`, and `session/close` while retaining the legacy
+  `session/load` method. Closing a session ends its active connection state but
+  preserves its durable archive. With durable history enabled, `session/list`
+  discovers durable archives and, when the client supplies `cwd`, returns only
+  archives belonging to that workspace. An ACP client can pass a returned
+  session ID to either `session/load` or `session/resume`; both restore that
+  archive by exact session ID, including after a VT Code process or editor
+  restart. Set `history.persistence = "none"` to disable durable archives and
+  discovery; sessions then remain process-local.
 - **Sub-agent delegation** – When ACP sub-agents are enabled, the session
   exposes the canonical `agent` tool. Its actions are `spawn`,
   `spawn_subprocess`, `send_input`, `wait`, `resume`, and `close`. Before

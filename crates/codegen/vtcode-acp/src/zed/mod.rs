@@ -10,6 +10,9 @@ mod helpers;
 mod provider_runtime;
 mod session;
 mod types;
+mod workspace_policy;
+
+pub(crate) use workspace_policy::AcpWorkspacePolicy;
 
 use session::run_acp_agent;
 

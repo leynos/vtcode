@@ -35,6 +35,12 @@ pub(super) enum OptionalSetupOutcome {
     Failed(String),
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct OptionalWorkspaceSetupOutcomes {
+    pub(super) subagent_controller: OptionalSetupOutcome,
+    pub(super) mcp_client: OptionalSetupOutcome,
+}
+
 enum AcpSubagentConfiguration {
     DisabledByConfiguration,
     DisabledByPolicy,
@@ -51,7 +57,7 @@ impl OptionalSetupOutcome {
     }
 }
 
-pub(super) fn report_optional_setup_outcome(component: &'static str, outcome: OptionalSetupOutcome) {
+pub(super) fn report_optional_setup_outcome(component: &'static str, outcome: &OptionalSetupOutcome) {
     match outcome {
         OptionalSetupOutcome::DisabledByConfiguration => {
             debug!(component, "Optional ACP component is disabled by configuration");
@@ -69,6 +75,11 @@ pub(super) fn report_optional_setup_outcome(component: &'static str, outcome: Op
             warn!(component, %reason, "Optional ACP component setup failed; continuing without it");
         }
     }
+}
+
+pub(super) fn report_optional_workspace_setup_outcomes(outcomes: &OptionalWorkspaceSetupOutcomes) {
+    report_optional_setup_outcome("subagent controller", &outcomes.subagent_controller);
+    report_optional_setup_outcome("MCP client", &outcomes.mcp_client);
 }
 
 pub(super) async fn attach_acp_subagent_controller(setup: AcpSubagentControllerSetup<'_>) -> OptionalSetupOutcome {
@@ -183,6 +194,7 @@ pub(super) async fn attach_acp_mcp_client(
         mut failures,
     } = setup;
     let mut client = McpClient::with_sandbox_context(config, sandbox_context);
+    client.set_startup_observer(registry.metrics_collector());
     match client.initialize().await {
         Ok(()) => {}
         Err(error) => {

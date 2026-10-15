@@ -2,6 +2,7 @@
 use crate::constants::env::acp::AgentClientProtocolEnvKey;
 use crate::safety::ToolAuditConfig;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 fn parse_env_bool(key: AgentClientProtocolEnvKey, default: bool) -> bool {
     crate::env_helpers::parse_env_bool(key.as_str(), default)
@@ -106,6 +107,10 @@ pub struct AgentClientProtocolZedConfig {
     #[serde(default = "default_zed_workspace_trust_mode")]
     pub workspace_trust: AgentClientProtocolZedWorkspaceTrustMode,
 
+    /// Additional absolute workspace roots accepted from ACP clients.
+    #[serde(default)]
+    pub allowed_workspace_roots: Vec<PathBuf>,
+
     /// Authentication method configuration for ACP
     #[serde(default)]
     auth: AcpAuthConfig,
@@ -118,6 +123,7 @@ impl Default for AgentClientProtocolZedConfig {
             transport: default_transport(),
             tools: AgentClientProtocolZedToolsConfig::default(),
             workspace_trust: default_zed_workspace_trust_mode(),
+            allowed_workspace_roots: Vec::new(),
             auth: AcpAuthConfig::default(),
         }
     }
@@ -275,6 +281,20 @@ mod tests {
         assert!(cfg.zed.tools.read_file);
         assert!(cfg.zed.tools.list_files);
         assert!(matches!(cfg.zed.workspace_trust, AgentClientProtocolZedWorkspaceTrustMode::FullAuto));
+        assert!(cfg.zed.allowed_workspace_roots.is_empty());
+    }
+
+    #[test]
+    fn parses_additional_allowed_workspace_roots() {
+        let cfg: AgentClientProtocolConfig = toml::from_str(
+            r#"
+            [zed]
+            allowed_workspace_roots = ["/workspaces", "/projects"]
+            "#,
+        )
+        .expect("ACP allowed workspace roots should parse");
+
+        assert_eq!(cfg.zed.allowed_workspace_roots, [PathBuf::from("/workspaces"), PathBuf::from("/projects")]);
     }
 
     #[test]

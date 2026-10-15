@@ -30,6 +30,11 @@ class TestPathClassification(unittest.TestCase):
 
         self.assertFalse(scanner.is_test_path(production_path))
 
+    def test_contests_module_is_not_mistaken_for_test_source(self) -> None:
+        production_path = scanner.REPO_ROOT / "crates/example/src/contests.rs"
+
+        self.assertFalse(scanner.is_test_path(production_path))
+
 
 if __name__ == "__main__":
     unittest.main()

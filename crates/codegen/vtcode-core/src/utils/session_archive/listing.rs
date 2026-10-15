@@ -1,9 +1,10 @@
 //! Session archive discovery, lookup, and search.
 
 use super::{
-    MessageContent, MessageRole, SessionListing, SessionSnapshot, VerifiedSessionArchiveIdentifier, is_session_file,
-    resolve_sessions_dir, session_archive_path_for_identifier, validate_session_identifier,
+    SessionListing, SessionSnapshot, VerifiedSessionArchiveIdentifier, is_session_file, resolve_sessions_dir,
+    session_archive_path_for_identifier, validate_session_identifier,
 };
+use crate::llm::provider::{MessageContent, MessageRole};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use regex::RegexBuilder;

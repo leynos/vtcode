@@ -14,7 +14,9 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
+use vtcode_mcp::{McpClientStartupOutcome, McpProviderStartupOutcome, McpStartupObserver};
 
 pub mod discovery_metrics;
 pub mod execution_metrics;
@@ -54,6 +56,46 @@ pub struct ProviderRequestMetrics {
     pub custom_provider_queue_timeouts: u64,
 }
 
+/// Bounded aggregate outcomes and timings for MCP client/provider startup.
+///
+/// This snapshot intentionally contains no provider names or request payloads,
+/// so the same fixed metrics are safe to expose through JSON and Prometheus.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpStartupMetrics {
+    pub client_attempts_started: u64,
+    pub client_attempts_succeeded: u64,
+    pub client_attempts_partial: u64,
+    pub client_attempts_failed: u64,
+    pub client_attempts_disabled: u64,
+    pub client_attempts_cancelled: u64,
+    pub client_attempts_in_flight: u64,
+    pub provider_attempts_started: u64,
+    pub provider_attempts_succeeded: u64,
+    pub provider_attempts_failed: u64,
+    pub provider_attempts_cancelled: u64,
+    pub provider_attempts_in_flight: u64,
+    pub provider_connection_failures: u64,
+    pub provider_connection_timeouts: u64,
+    pub provider_initialization_failures: u64,
+    pub provider_initialization_timeouts: u64,
+    pub provider_other_failures: u64,
+    pub provider_timeouts: u64,
+    pub active_providers: u64,
+    pub total_client_duration_ms: u64,
+    pub total_provider_duration_ms: u64,
+}
+
+/// Bounded aggregate metrics for ACP task-lifecycle notification queues.
+///
+/// These values cover all active sessions and deliberately carry no session,
+/// task, or payload labels.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcpTaskLifecycleMetrics {
+    pub queue_depth: u64,
+    pub queue_dropped_full: u64,
+    pub queue_dropped_closed: u64,
+}
+
 /// Central metrics collector for all MCP execution activities
 #[derive(Debug, Clone)]
 pub struct MetricsCollector {
@@ -65,6 +107,9 @@ pub struct MetricsCollector {
     skills: Arc<Mutex<SkillMetrics>>,
     security: Arc<Mutex<SecurityMetrics>>,
     provider_requests: Arc<Mutex<ProviderRequestMetrics>>,
+    mcp_startup: Arc<Mutex<McpStartupMetrics>>,
+    acp_task_lifecycle: Arc<Mutex<AcpTaskLifecycleMetrics>>,
+    acp_workspace_runtime_cache_entries: Arc<AtomicU64>,
     start_time: Instant,
 }
 
@@ -80,6 +125,12 @@ pub struct MetricsSummary {
     pub skills: SkillMetrics,
     pub security: SecurityMetrics,
     pub provider_requests: ProviderRequestMetrics,
+    #[serde(default)]
+    pub mcp_startup: McpStartupMetrics,
+    #[serde(default)]
+    pub acp_task_lifecycle: AcpTaskLifecycleMetrics,
+    #[serde(default)]
+    pub acp_workspace_runtime_cache_entries: u64,
 }
 
 impl MetricsCollector {
@@ -94,6 +145,9 @@ impl MetricsCollector {
             skills: Arc::new(Mutex::new(SkillMetrics::new())),
             security: Arc::new(Mutex::new(SecurityMetrics::new())),
             provider_requests: Arc::new(Mutex::new(ProviderRequestMetrics::default())),
+            mcp_startup: Arc::new(Mutex::new(McpStartupMetrics::default())),
+            acp_task_lifecycle: Arc::new(Mutex::new(AcpTaskLifecycleMetrics::default())),
+            acp_workspace_runtime_cache_entries: Arc::new(AtomicU64::new(0)),
             start_time: Instant::now(),
         }
     }
@@ -159,6 +213,60 @@ impl MetricsCollector {
         metrics.custom_provider_queue_wait_ms = admission.queue_wait_ms;
         metrics.custom_provider_queue_timeouts = admission.queue_timeouts;
         metrics
+    }
+
+    /// Get the bounded aggregate MCP startup metrics snapshot.
+    pub fn get_mcp_startup_metrics(&self) -> McpStartupMetrics {
+        self.mcp_startup.lock().clone()
+    }
+
+    /// Mark one ACP task-lifecycle update as queued.
+    pub fn record_acp_task_lifecycle_queue_enqueued(&self) {
+        let mut metrics = self.acp_task_lifecycle.lock();
+        metrics.queue_depth = metrics.queue_depth.saturating_add(1);
+    }
+
+    /// Mark one ACP task-lifecycle update as removed from its queue.
+    pub fn record_acp_task_lifecycle_queue_dequeued(&self) {
+        let mut metrics = self.acp_task_lifecycle.lock();
+        metrics.queue_depth = metrics.queue_depth.saturating_sub(1);
+    }
+
+    /// Remove buffered ACP task-lifecycle updates discarded during shutdown.
+    pub fn record_acp_task_lifecycle_queue_drained(&self, entries: usize) {
+        let entries = u64::try_from(entries).unwrap_or(u64::MAX);
+        let mut metrics = self.acp_task_lifecycle.lock();
+        metrics.queue_depth = metrics.queue_depth.saturating_sub(entries);
+    }
+
+    /// Record an ACP task-lifecycle update rejected because its queue was full.
+    pub fn record_acp_task_lifecycle_queue_drop_full(&self) -> u64 {
+        let mut metrics = self.acp_task_lifecycle.lock();
+        metrics.queue_dropped_full = metrics.queue_dropped_full.saturating_add(1);
+        metrics.queue_dropped_full
+    }
+
+    /// Record an ACP task-lifecycle update rejected because its queue was closed.
+    pub fn record_acp_task_lifecycle_queue_drop_closed(&self) -> u64 {
+        let mut metrics = self.acp_task_lifecycle.lock();
+        metrics.queue_dropped_closed = metrics.queue_dropped_closed.saturating_add(1);
+        metrics.queue_dropped_closed
+    }
+
+    /// Get the current aggregate ACP task-lifecycle queue metrics.
+    pub fn get_acp_task_lifecycle_metrics(&self) -> AcpTaskLifecycleMetrics {
+        self.acp_task_lifecycle.lock().clone()
+    }
+
+    /// Set the current number of cached ACP workspace runtime entries.
+    pub fn set_acp_workspace_runtime_cache_entries(&self, entries: usize) {
+        let entries = u64::try_from(entries).unwrap_or(u64::MAX);
+        self.acp_workspace_runtime_cache_entries.store(entries, Ordering::Relaxed);
+    }
+
+    /// Get the current number of cached ACP workspace runtime entries.
+    pub fn get_acp_workspace_runtime_cache_entries(&self) -> u64 {
+        self.acp_workspace_runtime_cache_entries.load(Ordering::Relaxed)
     }
 
     // ========== Discovery Metrics ==========
@@ -404,6 +512,9 @@ impl MetricsCollector {
             skills: self.get_skill_metrics(),
             security: self.get_security_metrics(),
             provider_requests: self.get_provider_request_metrics(),
+            mcp_startup: self.get_mcp_startup_metrics(),
+            acp_task_lifecycle: self.get_acp_task_lifecycle_metrics(),
+            acp_workspace_runtime_cache_entries: self.get_acp_workspace_runtime_cache_entries(),
         }
     }
 
@@ -429,6 +540,9 @@ struct PrometheusMetricsSnapshot {
     skills: SkillMetrics,
     security: SecurityMetrics,
     provider_requests: ProviderRequestMetrics,
+    mcp_startup: McpStartupMetrics,
+    acp_task_lifecycle: AcpTaskLifecycleMetrics,
+    acp_workspace_runtime_cache_entries: u64,
 }
 
 impl PrometheusMetricsSnapshot {
@@ -441,6 +555,9 @@ impl PrometheusMetricsSnapshot {
             skills: collector.get_skill_metrics(),
             security: collector.get_security_metrics(),
             provider_requests: collector.get_provider_request_metrics(),
+            mcp_startup: collector.get_mcp_startup_metrics(),
+            acp_task_lifecycle: collector.get_acp_task_lifecycle_metrics(),
+            acp_workspace_runtime_cache_entries: collector.get_acp_workspace_runtime_cache_entries(),
         }
     }
 
@@ -452,6 +569,9 @@ impl PrometheusMetricsSnapshot {
         self.append_skills(&mut output);
         self.append_pii_detections(&mut output);
         self.append_provider_requests(&mut output);
+        self.append_mcp_startup(&mut output);
+        self.append_acp_task_lifecycle(&mut output);
+        self.append_acp_workspace_runtime_cache(&mut output);
         self.append_tokens_created(&mut output);
         output
     }
@@ -653,6 +773,218 @@ impl PrometheusMetricsSnapshot {
             self.security.tokens_created
         );
     }
+
+    fn append_mcp_startup(&self, output: &mut String) {
+        append_mcp_startup_prometheus(output, &self.mcp_startup);
+    }
+
+    fn append_acp_workspace_runtime_cache(&self, output: &mut String) {
+        let _ = writeln!(
+            output,
+            "# HELP vtcode_acp_workspace_runtime_cache_entries Live and in-flight ACP workspace runtime cache entries\n\
+             # TYPE vtcode_acp_workspace_runtime_cache_entries gauge\n\
+             vtcode_acp_workspace_runtime_cache_entries {}\n",
+            self.acp_workspace_runtime_cache_entries
+        );
+    }
+
+    fn append_acp_task_lifecycle(&self, output: &mut String) {
+        append_acp_task_lifecycle_prometheus(output, &self.acp_task_lifecycle);
+    }
+}
+
+fn append_acp_task_lifecycle_prometheus(output: &mut String, metrics: &AcpTaskLifecycleMetrics) {
+    let _ = write!(
+        output,
+        "# HELP vtcode_acp_task_lifecycle_queue_depth Buffered ACP task-lifecycle updates across active sessions\n\
+         # TYPE vtcode_acp_task_lifecycle_queue_depth gauge\n\
+         vtcode_acp_task_lifecycle_queue_depth {}\n\n\
+         # HELP vtcode_acp_task_lifecycle_queue_dropped_full_total ACP task-lifecycle updates rejected by full queues\n\
+         # TYPE vtcode_acp_task_lifecycle_queue_dropped_full_total counter\n\
+         vtcode_acp_task_lifecycle_queue_dropped_full_total {}\n\n\
+         # HELP vtcode_acp_task_lifecycle_queue_dropped_closed_total ACP task-lifecycle updates rejected by closed queues\n\
+         # TYPE vtcode_acp_task_lifecycle_queue_dropped_closed_total counter\n\
+         vtcode_acp_task_lifecycle_queue_dropped_closed_total {}\n\n",
+        metrics.queue_depth, metrics.queue_dropped_full, metrics.queue_dropped_closed,
+    );
+}
+
+fn append_mcp_startup_prometheus(output: &mut String, metrics: &McpStartupMetrics) {
+    let _ = write!(
+        output,
+        "# HELP vtcode_mcp_client_startup_attempts_started_total MCP client startup attempts started\n\
+         # TYPE vtcode_mcp_client_startup_attempts_started_total counter\n\
+         vtcode_mcp_client_startup_attempts_started_total {}\n\n\
+         # HELP vtcode_mcp_client_startup_attempts_succeeded_total MCP client startup attempts with all providers initialized\n\
+         # TYPE vtcode_mcp_client_startup_attempts_succeeded_total counter\n\
+         vtcode_mcp_client_startup_attempts_succeeded_total {}\n\n\
+         # HELP vtcode_mcp_client_startup_attempts_partial_total MCP client startup attempts with both successful and failed providers\n\
+         # TYPE vtcode_mcp_client_startup_attempts_partial_total counter\n\
+         vtcode_mcp_client_startup_attempts_partial_total {}\n\n\
+         # HELP vtcode_mcp_client_startup_attempts_failed_total MCP client startup attempts that failed\n\
+         # TYPE vtcode_mcp_client_startup_attempts_failed_total counter\n\
+         vtcode_mcp_client_startup_attempts_failed_total {}\n\n\
+         # HELP vtcode_mcp_client_startup_attempts_disabled_total MCP client startup attempts skipped by configuration\n\
+         # TYPE vtcode_mcp_client_startup_attempts_disabled_total counter\n\
+         vtcode_mcp_client_startup_attempts_disabled_total {}\n\n\
+         # HELP vtcode_mcp_client_startup_attempts_cancelled_total MCP client startup attempts cancelled before completion\n\
+         # TYPE vtcode_mcp_client_startup_attempts_cancelled_total counter\n\
+         vtcode_mcp_client_startup_attempts_cancelled_total {}\n\n\
+         # HELP vtcode_mcp_client_startup_attempts_in_flight MCP client startup attempts currently running\n\
+         # TYPE vtcode_mcp_client_startup_attempts_in_flight gauge\n\
+         vtcode_mcp_client_startup_attempts_in_flight {}\n\n\
+         # HELP vtcode_mcp_provider_startup_attempts_started_total MCP provider startup attempts started\n\
+         # TYPE vtcode_mcp_provider_startup_attempts_started_total counter\n\
+         vtcode_mcp_provider_startup_attempts_started_total {}\n\n\
+         # HELP vtcode_mcp_provider_startup_attempts_succeeded_total MCP provider startup attempts that succeeded\n\
+         # TYPE vtcode_mcp_provider_startup_attempts_succeeded_total counter\n\
+         vtcode_mcp_provider_startup_attempts_succeeded_total {}\n\n\
+         # HELP vtcode_mcp_provider_startup_attempts_failed_total MCP provider startup attempts that failed\n\
+         # TYPE vtcode_mcp_provider_startup_attempts_failed_total counter\n\
+         vtcode_mcp_provider_startup_attempts_failed_total {}\n\n\
+         # HELP vtcode_mcp_provider_startup_attempts_cancelled_total MCP provider startup attempts cancelled before completion\n\
+         # TYPE vtcode_mcp_provider_startup_attempts_cancelled_total counter\n\
+         vtcode_mcp_provider_startup_attempts_cancelled_total {}\n\n\
+         # HELP vtcode_mcp_provider_startup_attempts_in_flight MCP provider startup attempts currently running\n\
+         # TYPE vtcode_mcp_provider_startup_attempts_in_flight gauge\n\
+         vtcode_mcp_provider_startup_attempts_in_flight {}\n\n\
+         # HELP vtcode_mcp_provider_startup_connection_failures_total MCP provider connection failures\n\
+         # TYPE vtcode_mcp_provider_startup_connection_failures_total counter\n\
+         vtcode_mcp_provider_startup_connection_failures_total {}\n\n\
+         # HELP vtcode_mcp_provider_startup_connection_timeouts_total MCP provider connection timeouts\n\
+         # TYPE vtcode_mcp_provider_startup_connection_timeouts_total counter\n\
+         vtcode_mcp_provider_startup_connection_timeouts_total {}\n\n\
+         # HELP vtcode_mcp_provider_startup_initialization_failures_total MCP provider initialization failures\n\
+         # TYPE vtcode_mcp_provider_startup_initialization_failures_total counter\n\
+         vtcode_mcp_provider_startup_initialization_failures_total {}\n\n\
+         # HELP vtcode_mcp_provider_startup_initialization_timeouts_total MCP provider initialization timeouts\n\
+         # TYPE vtcode_mcp_provider_startup_initialization_timeouts_total counter\n\
+         vtcode_mcp_provider_startup_initialization_timeouts_total {}\n\n\
+         # HELP vtcode_mcp_provider_startup_other_failures_total MCP provider startup failures in other bounded categories\n\
+         # TYPE vtcode_mcp_provider_startup_other_failures_total counter\n\
+         vtcode_mcp_provider_startup_other_failures_total {}\n\n\
+         # HELP vtcode_mcp_provider_startup_timeouts_total MCP provider startup timeouts\n\
+         # TYPE vtcode_mcp_provider_startup_timeouts_total counter\n\
+         vtcode_mcp_provider_startup_timeouts_total {}\n\n\
+         # HELP vtcode_mcp_active_providers Currently active MCP providers across observed clients\n\
+         # TYPE vtcode_mcp_active_providers gauge\n\
+         vtcode_mcp_active_providers {}\n\n\
+         # HELP vtcode_mcp_client_startup_duration_ms_total Cumulative MCP client startup duration in milliseconds\n\
+         # TYPE vtcode_mcp_client_startup_duration_ms_total counter\n\
+         vtcode_mcp_client_startup_duration_ms_total {}\n\n\
+         # HELP vtcode_mcp_provider_startup_duration_ms_total Cumulative MCP provider startup duration in milliseconds\n\
+         # TYPE vtcode_mcp_provider_startup_duration_ms_total counter\n\
+         vtcode_mcp_provider_startup_duration_ms_total {}\n\n",
+        metrics.client_attempts_started,
+        metrics.client_attempts_succeeded,
+        metrics.client_attempts_partial,
+        metrics.client_attempts_failed,
+        metrics.client_attempts_disabled,
+        metrics.client_attempts_cancelled,
+        metrics.client_attempts_in_flight,
+        metrics.provider_attempts_started,
+        metrics.provider_attempts_succeeded,
+        metrics.provider_attempts_failed,
+        metrics.provider_attempts_cancelled,
+        metrics.provider_attempts_in_flight,
+        metrics.provider_connection_failures,
+        metrics.provider_connection_timeouts,
+        metrics.provider_initialization_failures,
+        metrics.provider_initialization_timeouts,
+        metrics.provider_other_failures,
+        metrics.provider_timeouts,
+        metrics.active_providers,
+        metrics.total_client_duration_ms,
+        metrics.total_provider_duration_ms,
+    );
+}
+
+impl McpStartupObserver for MetricsCollector {
+    fn client_startup_started(&self) {
+        let mut metrics = self.mcp_startup.lock();
+        metrics.client_attempts_started = metrics.client_attempts_started.saturating_add(1);
+        metrics.client_attempts_in_flight = metrics.client_attempts_in_flight.saturating_add(1);
+    }
+
+    fn client_startup_finished(
+        &self,
+        outcome: McpClientStartupOutcome,
+        previous_active_provider_count: u64,
+        active_provider_count: u64,
+        duration_ms: u64,
+    ) {
+        let mut metrics = self.mcp_startup.lock();
+        metrics.client_attempts_in_flight = metrics.client_attempts_in_flight.saturating_sub(1);
+        match outcome {
+            McpClientStartupOutcome::Succeeded => {
+                metrics.client_attempts_succeeded = metrics.client_attempts_succeeded.saturating_add(1);
+            }
+            McpClientStartupOutcome::Partial => {
+                metrics.client_attempts_partial = metrics.client_attempts_partial.saturating_add(1);
+            }
+            McpClientStartupOutcome::Failed => {
+                metrics.client_attempts_failed = metrics.client_attempts_failed.saturating_add(1);
+            }
+            McpClientStartupOutcome::Disabled => {
+                metrics.client_attempts_disabled = metrics.client_attempts_disabled.saturating_add(1);
+            }
+            McpClientStartupOutcome::Cancelled => {
+                metrics.client_attempts_cancelled = metrics.client_attempts_cancelled.saturating_add(1);
+            }
+        }
+        if active_provider_count >= previous_active_provider_count {
+            metrics.active_providers = metrics
+                .active_providers
+                .saturating_add(active_provider_count.saturating_sub(previous_active_provider_count));
+        } else {
+            metrics.active_providers = metrics
+                .active_providers
+                .saturating_sub(previous_active_provider_count.saturating_sub(active_provider_count));
+        }
+        metrics.total_client_duration_ms = metrics.total_client_duration_ms.saturating_add(duration_ms);
+    }
+
+    fn provider_startup_started(&self) {
+        let mut metrics = self.mcp_startup.lock();
+        metrics.provider_attempts_started = metrics.provider_attempts_started.saturating_add(1);
+        metrics.provider_attempts_in_flight = metrics.provider_attempts_in_flight.saturating_add(1);
+    }
+
+    fn provider_startup_finished(&self, outcome: McpProviderStartupOutcome, duration_ms: u64) {
+        let mut metrics = self.mcp_startup.lock();
+        metrics.provider_attempts_in_flight = metrics.provider_attempts_in_flight.saturating_sub(1);
+        match outcome {
+            McpProviderStartupOutcome::Succeeded => {
+                metrics.provider_attempts_succeeded = metrics.provider_attempts_succeeded.saturating_add(1);
+            }
+            McpProviderStartupOutcome::ConnectionFailed => {
+                metrics.provider_attempts_failed = metrics.provider_attempts_failed.saturating_add(1);
+                metrics.provider_connection_failures = metrics.provider_connection_failures.saturating_add(1);
+            }
+            McpProviderStartupOutcome::ConnectionTimedOut => {
+                metrics.provider_attempts_failed = metrics.provider_attempts_failed.saturating_add(1);
+                metrics.provider_connection_timeouts = metrics.provider_connection_timeouts.saturating_add(1);
+                metrics.provider_timeouts = metrics.provider_timeouts.saturating_add(1);
+            }
+            McpProviderStartupOutcome::InitializationFailed => {
+                metrics.provider_attempts_failed = metrics.provider_attempts_failed.saturating_add(1);
+                metrics.provider_initialization_failures = metrics.provider_initialization_failures.saturating_add(1);
+            }
+            McpProviderStartupOutcome::InitializationTimedOut => {
+                metrics.provider_attempts_failed = metrics.provider_attempts_failed.saturating_add(1);
+                metrics.provider_initialization_timeouts = metrics.provider_initialization_timeouts.saturating_add(1);
+                metrics.provider_timeouts = metrics.provider_timeouts.saturating_add(1);
+            }
+            McpProviderStartupOutcome::OtherFailed => {
+                metrics.provider_attempts_failed = metrics.provider_attempts_failed.saturating_add(1);
+                metrics.provider_other_failures = metrics.provider_other_failures.saturating_add(1);
+            }
+            McpProviderStartupOutcome::Cancelled => {
+                metrics.provider_attempts_cancelled = metrics.provider_attempts_cancelled.saturating_add(1);
+            }
+        }
+        metrics.total_provider_duration_ms = metrics.total_provider_duration_ms.saturating_add(duration_ms);
+    }
 }
 
 fn append_custom_provider_admission_prometheus(output: &mut String, provider_requests: &ProviderRequestMetrics) {
@@ -826,6 +1158,121 @@ mod tests {
         let collector = collector_with_provider_attempts();
         let prometheus = collector.export_prometheus();
         assert!(!prometheus.contains("provider=\""));
+    }
+
+    #[test]
+    fn mcp_startup_metrics_export_fixed_outcomes_and_cumulative_durations() {
+        let collector = MetricsCollector::new();
+        collector.client_startup_started();
+        for outcome in [
+            McpProviderStartupOutcome::Succeeded,
+            McpProviderStartupOutcome::ConnectionFailed,
+            McpProviderStartupOutcome::ConnectionTimedOut,
+            McpProviderStartupOutcome::InitializationFailed,
+            McpProviderStartupOutcome::InitializationTimedOut,
+            McpProviderStartupOutcome::OtherFailed,
+            McpProviderStartupOutcome::Cancelled,
+        ] {
+            collector.provider_startup_started();
+            collector.provider_startup_finished(outcome, 5);
+        }
+        collector.client_startup_finished(McpClientStartupOutcome::Partial, 0, 2, 47);
+
+        let expected = McpStartupMetrics {
+            client_attempts_started: 1,
+            client_attempts_partial: 1,
+            provider_attempts_started: 7,
+            provider_attempts_succeeded: 1,
+            provider_attempts_failed: 5,
+            provider_attempts_cancelled: 1,
+            provider_connection_failures: 1,
+            provider_connection_timeouts: 1,
+            provider_initialization_failures: 1,
+            provider_initialization_timeouts: 1,
+            provider_other_failures: 1,
+            provider_timeouts: 2,
+            active_providers: 2,
+            total_client_duration_ms: 47,
+            total_provider_duration_ms: 35,
+            ..McpStartupMetrics::default()
+        };
+        assert_eq!(collector.get_mcp_startup_metrics(), expected);
+
+        let json = collector.export_json().expect("metrics JSON should serialize");
+        assert_eq!(json["mcp_startup"]["provider_timeouts"], 2);
+        assert_eq!(json["mcp_startup"]["total_client_duration_ms"], 47);
+
+        let prometheus = collector.export_prometheus();
+        assert!(prometheus.contains("vtcode_mcp_provider_startup_attempts_started_total 7"));
+        assert!(prometheus.contains("vtcode_mcp_provider_startup_timeouts_total 2"));
+        assert!(prometheus.contains("vtcode_mcp_active_providers 2"));
+        assert!(prometheus.contains("vtcode_mcp_client_startup_duration_ms_total 47"));
+        assert!(prometheus.contains("vtcode_mcp_provider_startup_duration_ms_total 35"));
+        assert!(!prometheus.contains("provider=\""));
+    }
+
+    #[test]
+    fn mcp_active_provider_gauge_accumulates_client_deltas() {
+        let collector = MetricsCollector::new();
+        collector.client_startup_started();
+        collector.client_startup_finished(McpClientStartupOutcome::Succeeded, 0, 2, 1);
+        collector.client_startup_started();
+        collector.client_startup_finished(McpClientStartupOutcome::Partial, 0, 1, 1);
+        collector.client_startup_started();
+        collector.client_startup_finished(McpClientStartupOutcome::Failed, 2, 0, 1);
+
+        assert_eq!(collector.get_mcp_startup_metrics().active_providers, 1);
+    }
+
+    #[test]
+    fn acp_workspace_runtime_cache_size_is_exported_as_a_gauge() {
+        let collector = MetricsCollector::new();
+        collector.set_acp_workspace_runtime_cache_entries(3);
+
+        assert_eq!(collector.get_acp_workspace_runtime_cache_entries(), 3);
+        assert_eq!(collector.get_summary().acp_workspace_runtime_cache_entries, 3);
+        let prometheus = collector.export_prometheus();
+        assert!(prometheus.contains("vtcode_acp_workspace_runtime_cache_entries 3"));
+    }
+
+    #[test]
+    fn acp_task_lifecycle_queue_depth_and_drops_are_exported_without_labels() {
+        let collector = MetricsCollector::new();
+        collector.record_acp_task_lifecycle_queue_enqueued();
+        collector.record_acp_task_lifecycle_queue_enqueued();
+        collector.record_acp_task_lifecycle_queue_dequeued();
+        collector.record_acp_task_lifecycle_queue_drop_full();
+        collector.record_acp_task_lifecycle_queue_drop_closed();
+
+        assert_eq!(
+            collector.get_acp_task_lifecycle_metrics(),
+            AcpTaskLifecycleMetrics {
+                queue_depth: 1,
+                queue_dropped_full: 1,
+                queue_dropped_closed: 1,
+            }
+        );
+
+        let json = collector.export_json().expect("metrics JSON should serialize");
+        assert_eq!(json["acp_task_lifecycle"]["queue_depth"], 1);
+        assert_eq!(json["acp_task_lifecycle"]["queue_dropped_full"], 1);
+        assert_eq!(json["acp_task_lifecycle"]["queue_dropped_closed"], 1);
+
+        let prometheus = collector.export_prometheus();
+        assert!(prometheus.contains("vtcode_acp_task_lifecycle_queue_depth 1"));
+        assert!(prometheus.contains("vtcode_acp_task_lifecycle_queue_dropped_full_total 1"));
+        assert!(prometheus.contains("vtcode_acp_task_lifecycle_queue_dropped_closed_total 1"));
+        assert!(!prometheus.contains("session_id="));
+        assert!(!prometheus.contains("task_id="));
+    }
+
+    #[test]
+    fn acp_task_lifecycle_shutdown_drain_clamps_queue_depth_to_zero() {
+        let collector = MetricsCollector::new();
+        collector.record_acp_task_lifecycle_queue_enqueued();
+        collector.record_acp_task_lifecycle_queue_drained(2);
+
+        assert_eq!(collector.get_acp_task_lifecycle_metrics().queue_depth, 0);
     }
 
     #[test]

@@ -53,6 +53,7 @@ pub(super) async fn build_agent_with_config(
         audit_logger: None,
     }))
     .await
+    .expect("build test ACP agent")
 }
 
 pub(super) fn core_agent_config(workspace: &Path) -> CoreAgentConfig {

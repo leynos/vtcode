@@ -58,6 +58,7 @@ async fn build_agent_with_vt_config(workspace: &Path, vt_cfg: Option<&VTCodeConf
     let mut zed_config = AgentClientProtocolZedConfig::default();
     zed_config.tools.list_files = true;
     zed_config.tools.read_file = false;
+    zed_config.allowed_workspace_roots.push(std::env::temp_dir());
 
     let tools_config = ToolsConfig::default();
     let mut discovery_input = SubagentDiscoveryInput::new(workspace.to_path_buf());
@@ -81,6 +82,7 @@ async fn build_agent_with_vt_config(workspace: &Path, vt_cfg: Option<&VTCodeConf
         audit_logger: None,
     }))
     .await
+    .expect("build test ACP agent")
 }
 
 mod session_config;

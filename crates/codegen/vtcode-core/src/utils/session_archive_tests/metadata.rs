@@ -4,8 +4,10 @@ use super::*;
 #[cfg(test)]
 mod metadata_compat_tests {
     use super::{
-        SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE, SessionArchive, SessionArchiveExtensions, SessionArchiveMetadata,
+        EnvGuard, SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE, SESSION_DIR_ENV, SessionArchive, SessionArchiveExtensions,
+        SessionArchiveMetadata, lock_history_test_guard,
     };
+    use anyhow::Result;
 
     #[test]
     fn primary_agent_metadata_is_backward_compatible() {
@@ -63,16 +65,20 @@ mod metadata_compat_tests {
         );
     }
 
-    #[test]
-    fn set_primary_agent_records_mode_on_archive() {
+    #[serial_test::serial(session_dir_override)]
+    #[tokio::test]
+    async fn set_primary_agent_records_mode_on_archive() -> Result<()> {
+        let _settings_lock = lock_history_test_guard().await;
+        let temp_dir = tempfile::tempdir().expect("create temporary session directory");
+        let _guard = EnvGuard::set(SESSION_DIR_ENV, temp_dir.path());
+
         let metadata = SessionArchiveMetadata::new("ws", "/tmp/ws", "gpt-5.6-sol", "openai", "test", "low");
-        let mut archive = tokio::runtime::Runtime::new()
-            .expect("runtime")
-            .block_on(SessionArchive::new_with_identifier(metadata, "ws-0000".to_string()))
-            .expect("create archive");
+        let mut archive = SessionArchive::new_with_identifier(metadata, "ws-0000".to_string()).await?;
+        assert!(archive.path().starts_with(temp_dir.path()));
         assert_eq!(archive.metadata().primary_agent, None);
 
         archive.set_primary_agent("plan");
         assert_eq!(archive.metadata().primary_agent.as_deref(), Some("plan"));
+        Ok(())
     }
 }

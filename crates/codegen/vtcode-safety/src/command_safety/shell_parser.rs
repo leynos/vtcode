@@ -131,28 +131,61 @@ struct FindExecSyntaxClassifier {
     context: FindCommandContext,
 }
 
-#[derive(Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum FindCommandContext {
     #[default]
     Expression,
+    ExecProgram,
     ExecArguments,
+    ShellArguments,
+    ShellCommand,
 }
 
 impl FindExecSyntaxClassifier {
     fn contains_dynamic_syntax(&mut self, argument: FindExecArgument<'_>) -> bool {
         let word = argument.0;
         if matches!(word, "-exec" | "-execdir") {
-            self.context = FindCommandContext::ExecArguments;
+            self.context = FindCommandContext::ExecProgram;
+            return false;
         }
 
-        let is_static_exec_token = self.context == FindCommandContext::ExecArguments && matches!(word, "{}" | "\\;");
-        let is_dynamic = !is_static_exec_token && contains_dynamic_shell_syntax(word);
+        match self.context {
+            FindCommandContext::ExecProgram => {
+                if word.contains("{}") {
+                    return true;
+                }
 
-        if self.context == FindCommandContext::ExecArguments && matches!(word, ";" | "\\;" | "+") {
-            self.context = FindCommandContext::Expression;
+                if matches!(word, ";" | "\\;" | "+") {
+                    self.context = FindCommandContext::Expression;
+                } else {
+                    self.context = if base_command_name(word) == "sh" {
+                        FindCommandContext::ShellArguments
+                    } else {
+                        FindCommandContext::ExecArguments
+                    };
+                }
+
+                contains_dynamic_shell_syntax(word)
+            }
+            FindCommandContext::ShellArguments if word == "-c" => {
+                self.context = FindCommandContext::ShellCommand;
+                false
+            }
+            FindCommandContext::ShellCommand => {
+                self.context = FindCommandContext::ExecArguments;
+                word.contains("{}") || contains_dynamic_shell_syntax(word)
+            }
+            context => {
+                let is_static_exec_token = context != FindCommandContext::Expression && matches!(word, "{}" | "\\;");
+                let is_dynamic = !is_static_exec_token && contains_dynamic_shell_syntax(word);
+
+                if context != FindCommandContext::Expression && matches!(word, ";" | "\\;" | "+") {
+                    self.context = FindCommandContext::Expression;
+                }
+
+                is_dynamic
+            }
         }
-
-        is_dynamic
     }
 }
 
@@ -754,6 +787,9 @@ mod tests {
     fn find_exec_placeholder_is_distinct_from_dynamic_braces_and_expansions() {
         assert!(!contains_dynamic_find_syntax("find src -type f -exec printf '%s\\n' {} \\;"));
         assert!(!contains_dynamic_find_syntax("find src -type f -execdir wc -l {} +"));
+        assert!(contains_dynamic_find_syntax("find . -exec {} \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec sh -c {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec printf {} \\;"));
         assert!(contains_dynamic_find_syntax("find src -name {}"));
         assert!(contains_dynamic_find_syntax("find src -name {one,two}"));
         assert!(contains_dynamic_find_syntax("find src -exec printf '%s\\n' ${path} \\;"));

@@ -238,6 +238,7 @@ impl OpenAIProvider {
                 let include_metrics = self.prompt_cache_enabled && self.prompt_cache_settings.surface_metrics;
                 Ok(stream_decoder::create_responses_stream(
                     response,
+                    self.provider_display_override.as_deref().unwrap_or("OpenAI").to_owned(),
                     model.clone(),
                     include_metrics,
                     self.model_supports_reasoning(&model),
@@ -292,7 +293,12 @@ impl OpenAIProvider {
             return Err(provider::LLMError::Provider { message: formatted_error, metadata: None });
         }
 
-        Ok(stream_decoder::create_chat_stream(response, model.clone(), self.model_supports_reasoning(&model)))
+        Ok(stream_decoder::create_chat_stream(
+            response,
+            self.provider_display_override.as_deref().unwrap_or("OpenAI").to_owned(),
+            model.clone(),
+            self.model_supports_reasoning(&model),
+        ))
     }
 
     async fn stream_chat_completions_normalized(

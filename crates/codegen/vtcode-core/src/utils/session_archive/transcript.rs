@@ -1,6 +1,7 @@
 //! Transcript extraction and normalization for session archive snapshots.
 
-use super::{MessageRole, SessionMessage};
+use super::SessionMessage;
+use crate::llm::provider::MessageRole;
 use crate::utils::session_transcript_norm::{
     format_repeated_summary, normalize_recovery_line, normalized_transcript_key, push_clean_transcript_line,
     should_drop_transcript_line, summarize_tool_block,

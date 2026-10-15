@@ -24,9 +24,8 @@ use hashbrown::HashMap;
 use serde_json::{Value, json};
 use std::borrow::Cow;
 
-fn streaming_network_error(error: reqwest::Error) -> provider::LLMError {
-    let formatted_error = error_display::format_llm_error("OpenAI", &format!("Streaming error: {error}"));
-    provider::LLMError::Network { message: formatted_error, metadata: None }
+fn streaming_network_error(provider_name: &str, error: reqwest::Error) -> provider::LLMError {
+    crate::providers::error_handling::format_reqwest_network_error(provider_name, &error)
 }
 
 fn parse_stream_payload(payload: &str) -> Result<Value, provider::LLMError> {
@@ -282,6 +281,7 @@ impl ResponsesToolCallState {
 
 pub(crate) fn create_chat_stream(
     response: reqwest::Response,
+    provider_name: String,
     model: String,
     retain_reasoning: bool,
 ) -> provider::LLMStream {
@@ -294,7 +294,7 @@ pub(crate) fn create_chat_stream(
         let telemetry = OpenAIStreamTelemetry;
 
         while let Some(chunk_result) = body_stream.next().await {
-            let chunk = chunk_result.map_err(streaming_network_error)?;
+            let chunk = chunk_result.map_err(|error| streaming_network_error(&provider_name, error))?;
 
             buf.extend_from_slice(&chunk);
 
@@ -421,6 +421,7 @@ mod chat_stream_termination_tests {
 
 pub(crate) fn create_responses_stream(
     response: reqwest::Response,
+    provider_name: String,
     model: String,
     include_metrics: bool,
     retain_reasoning: bool,
@@ -438,7 +439,7 @@ pub(crate) fn create_responses_stream(
         let telemetry = OpenAIStreamTelemetry;
 
         while let Some(chunk_result) = body_stream.next().await {
-            let chunk = chunk_result.map_err(streaming_network_error)?;
+            let chunk = chunk_result.map_err(|error| streaming_network_error(&provider_name, error))?;
 
             buf.extend_from_slice(&chunk);
 
@@ -652,6 +653,96 @@ fn optional_string_field(payload: &Value, field: &'static str) -> Result<Option<
                 .into_llm_error("OpenAI")
         }),
         None => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod stream_transport_error_tests {
+    use super::{create_chat_stream, create_responses_stream};
+    use crate::provider::{self, LLMError};
+    use futures::StreamExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    const CUSTOM_PROVIDER: &str = "Example Gateway";
+
+    async fn response_with_truncated_body(event: &'static str) -> reqwest::Response {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("test server should bind");
+        let address = listener.local_addr().expect("test server address should be available");
+
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("test request should connect");
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 1024];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let bytes_read = socket.read(&mut buffer).await.expect("request should be readable");
+                assert_ne!(bytes_read, 0, "request should include HTTP headers");
+                request.extend_from_slice(&buffer[..bytes_read]);
+            }
+
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 4096\r\nConnection: close\r\n\r\n",
+                )
+                .await
+                .expect("response headers should be writable");
+            socket.write_all(event.as_bytes()).await.expect("event should be writable");
+            socket.flush().await.expect("event should flush");
+            socket.shutdown().await.expect("connection should close after a truncated body");
+        });
+
+        reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("test HTTP client should build")
+            .get(format!("http://{address}/stream"))
+            .send()
+            .await
+            .expect("headers should arrive before the truncated body")
+    }
+
+    async fn assert_custom_provider_body_error(stream: provider::LLMStream) {
+        let events = stream.collect::<Vec<_>>().await;
+        assert!(
+            events
+                .iter()
+                .any(|event| { matches!(event, Ok(provider::LLMStreamEvent::Token { delta }) if delta == "partial") })
+        );
+
+        let error = events
+            .into_iter()
+            .find_map(Result::err)
+            .expect("truncated response body should fail the stream");
+        match error {
+            LLMError::Network { message, metadata } => {
+                let metadata = metadata.expect("reqwest transport error should include metadata");
+                assert_eq!(metadata.code.as_deref(), Some("reqwest_decode_error"));
+                let serialized = serde_json::to_value(metadata.as_ref()).expect("metadata should serialize");
+                assert_eq!(serialized["provider"], CUSTOM_PROVIDER);
+                assert!(message.contains(CUSTOM_PROVIDER), "display label missing from {message}");
+            }
+            other => panic!("expected a network error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn chat_stream_classifies_post_header_disconnect_for_custom_provider() {
+        let response =
+            response_with_truncated_body("data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n").await;
+        let stream = create_chat_stream(response, CUSTOM_PROVIDER.to_owned(), "custom-model".to_owned(), false);
+
+        assert_custom_provider_body_error(stream).await;
+    }
+
+    #[tokio::test]
+    async fn responses_stream_classifies_post_header_disconnect_for_custom_provider() {
+        let response =
+            response_with_truncated_body("data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n")
+                .await;
+        let stream =
+            create_responses_stream(response, CUSTOM_PROVIDER.to_owned(), "custom-model".to_owned(), false, false);
+
+        assert_custom_provider_body_error(stream).await;
     }
 }
 

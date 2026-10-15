@@ -43,6 +43,29 @@ async fn local_tool_execution_uses_registry_request_path() {
     assert!(rendered_blocks[0].contains("Exit code: 0"));
     assert_eq!(rendered_blocks[1], "Command output\nsample.txt");
     assert!(rendered_blocks[2].contains("Execution details"));
+
+    // Keep the ACP text variant and command output stable while omitting the
+    // workspace-specific summary and process metadata from the snapshot.
+    let crate::acp::ToolCallContent::Content(content) = &report.content[1] else {
+        panic!("command output should be an ACP content block");
+    };
+    let crate::acp::ContentBlock::Text(text) = &content.content else {
+        panic!("command output should use the ACP text variant");
+    };
+    assert_eq!(text.text, "Command output\nsample.txt");
+    insta::assert_json_snapshot!(
+        json!({
+            "kind": "text",
+            "text": text.text,
+        }),
+        @r###"
+        {
+          "kind": "text",
+          "text": "Command output\nsample.txt"
+        }
+        "###
+    );
+
     let payload = report.raw_output.expect("successful tool output");
     assert_eq!(payload["status"], "success");
     assert_eq!(payload["tool"], tools::EXEC_COMMAND);

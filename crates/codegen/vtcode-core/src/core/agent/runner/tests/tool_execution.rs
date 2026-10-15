@@ -6,6 +6,8 @@
 )]
 use super::*;
 
+mod parallel_batch;
+
 fn denied_unified_exec_response() -> LLMResponse {
     tool_call_response(
         tools::UNIFIED_EXEC,
@@ -14,6 +16,23 @@ fn denied_unified_exec_response() -> LLMResponse {
             "command": "echo vtcode",
         }),
     )
+}
+
+fn denied_unified_exec_calls() -> Vec<ToolCall> {
+    ["call-denied-a", "call-denied-b"]
+        .into_iter()
+        .map(|id| {
+            ToolCall::function(
+                id.to_string(),
+                tools::UNIFIED_EXEC.to_string(),
+                json!({
+                    "action": "run",
+                    "command": "echo vtcode",
+                })
+                .to_string(),
+            )
+        })
+        .collect()
 }
 
 fn assert_single_failed_output(events: &[ThreadEvent], tool_call_id: &str) {
@@ -39,22 +58,20 @@ async fn run_single_tool_call_turn(runtime: &mut AgentRuntime, provider: &mut Bo
         .expect("tool call response")
 }
 
-async fn assert_denied_tool_is_rejected(execution_mode: &str) {
+async fn assert_sequential_denied_tools_are_rejected() {
     let temp = TempDir::new().expect("tempdir");
-    let thread_id = format!("thread-denied-{execution_mode}");
-    let session_id = format!("session-denied-{execution_mode}");
-    let mut runner = Box::pin(make_runner(&temp, VTCodeConfig::default(), &thread_id)).await;
+    let thread_id = "thread-denied-tool";
+    let session_id = "session-denied-tool";
+    let mut runner = Box::pin(make_runner(&temp, VTCodeConfig::default(), thread_id)).await;
     runner.enable_full_auto(&[tools::UNIFIED_FILE.to_string()]).await;
 
-    let tool_calls = denied_unified_exec_response().tool_calls.expect("tool call response");
-    let tool_call_id = tool_calls[0].id.clone();
+    let tool_calls = denied_unified_exec_calls();
+    let tool_call_ids = tool_calls.iter().map(|call| call.id.clone()).collect::<Vec<_>>();
 
-    let mut runtime = AgentRuntime::new(AgentSessionState::new(session_id, 16, 4, 128_000), None, None);
-    let mut recorder = ExecEventRecorder::new(thread_id.clone(), None, None);
-    let batch_label = format!("[{execution_mode}]");
-
+    let mut runtime = AgentRuntime::new(AgentSessionState::new(session_id.to_string(), 16, 4, 128_000), None, None);
+    let mut recorder = ExecEventRecorder::new(thread_id, None, None);
     runner
-        .execute_tool_call_batches(tool_calls, &mut runtime, &mut recorder, &batch_label, false, false)
+        .execute_tool_call_batches(tool_calls, &mut runtime, &mut recorder, "[denied]", false, false)
         .await
         .expect("tool execution should finish");
 
@@ -63,18 +80,18 @@ async fn assert_denied_tool_is_rejected(execution_mode: &str) {
     let events = recorder.into_events();
     let invocation_count = events
         .iter()
-        .filter(|event| match event {
-            ThreadEvent::ItemCompleted(ItemCompletedEvent { item }) => match &item.details {
-                ThreadItemDetails::ToolInvocation(details) => {
-                    details.tool_call_id.as_deref() == Some(tool_call_id.as_str())
-                }
-                _ => false,
-            },
-            _ => false,
+        .filter(|event| {
+            matches!(
+                event,
+                ThreadEvent::ItemCompleted(ItemCompletedEvent { item })
+                    if matches!(&item.details, ThreadItemDetails::ToolInvocation(_))
+            )
         })
         .count();
-    assert_eq!(invocation_count, 1);
-    assert_single_failed_output(&events, &tool_call_id);
+    assert_eq!(invocation_count, 2);
+    for tool_call_id in &tool_call_ids {
+        assert_single_failed_output(&events, tool_call_id);
+    }
 }
 
 #[tokio::test]
@@ -104,61 +121,8 @@ async fn denied_tool_call_emits_one_failed_output_for_runtime_invocation() {
 }
 
 #[tokio::test]
-async fn denied_parallel_tool_is_rejected_without_execution() {
-    assert_denied_tool_is_rejected("parallel").await;
-}
-
-#[tokio::test]
-async fn duplicate_parallel_tool_names_are_split_into_safe_batches() {
-    let temp = TempDir::new().expect("tempdir");
-    let mut runner = Box::pin(make_runner(&temp, VTCodeConfig::default(), "thread-duplicate-parallel")).await;
-    runner.enable_full_auto(&[tools::EXEC_COMMAND.to_string()]).await;
-
-    let tool_calls = vec![
-        ToolCall::function(
-            "call-echo-a".to_string(),
-            tools::EXEC_COMMAND.to_string(),
-            json!({
-                "cmd": "printf hello",
-            })
-            .to_string(),
-        ),
-        ToolCall::function(
-            "call-echo-b".to_string(),
-            tools::EXEC_COMMAND.to_string(),
-            json!({
-                "cmd": "printf world",
-            })
-            .to_string(),
-        ),
-    ];
-
-    let mut runtime =
-        AgentRuntime::new(AgentSessionState::new("session-duplicate-parallel".to_string(), 16, 4, 128_000), None, None);
-    let mut recorder = ExecEventRecorder::new("thread-duplicate-parallel", None, None);
-
-    runner
-        .execute_tool_call_batches(tool_calls, &mut runtime, &mut recorder, "[batch]", false, false)
-        .await
-        .expect("tool execution should finish");
-
-    let tool_outputs = runtime
-        .state
-        .messages
-        .iter()
-        .filter_map(|message| {
-            let id = message.tool_call_id.as_ref()?;
-            let output = serde_json::from_str::<serde_json::Value>(&message.content.as_text()).ok()?;
-            Some((id.as_str(), output))
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(tool_outputs.len(), 2);
-    assert!(tool_outputs.iter().any(|(id, output)| {
-        *id == "call-echo-a" && output["success"].as_bool() == Some(true) && output["output"].as_str() == Some("hello")
-    }));
-    assert!(tool_outputs.iter().any(|(id, output)| {
-        *id == "call-echo-b" && output["success"].as_bool() == Some(true) && output["output"].as_str() == Some("world")
-    }));
+async fn sequential_denied_tool_calls_are_rejected_without_execution() {
+    assert_sequential_denied_tools_are_rejected().await;
 }
 
 #[tokio::test]
@@ -231,11 +195,6 @@ async fn removed_public_tool_names_are_rejected() {
     let search_item_id = completed_tool_invocation_item_id(&events, "call-search").expect("search invocation");
     assert_eq!(completed_tool_output_count(&events, "call-list", ToolCallStatus::Failed, &list_item_id), 1);
     assert_eq!(completed_tool_output_count(&events, "call-search", ToolCallStatus::Failed, &search_item_id), 1);
-}
-
-#[tokio::test]
-async fn denied_sequential_tool_is_rejected_without_execution() {
-    assert_denied_tool_is_rejected("sequential").await;
 }
 
 #[tokio::test]

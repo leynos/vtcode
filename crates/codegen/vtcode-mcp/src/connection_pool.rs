@@ -7,9 +7,11 @@ use hashbrown::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{RwLock, Semaphore};
-use tracing::{error, info, warn};
+use tokio::time::error::Elapsed;
+use tracing::Instrument;
+use tracing::{error, field, info, info_span, warn};
 
-use super::{McpElicitationHandler, McpProvider, McpSandboxContext};
+use super::{McpElicitationHandler, McpProvider, McpProviderStartupOutcome, McpSandboxContext, McpStartupObserver};
 use rmcp::model::{ClientCapabilities, InitializeRequestParams};
 use vtcode_commons::MultiErrors;
 use vtcode_config::mcp::{McpAllowListConfig, McpProviderConfig};
@@ -26,6 +28,61 @@ pub(crate) struct McpConnectionPool {
     connection_timeout: Duration,
     /// Default provider initialization timeout when no provider override exists.
     default_startup_timeout: Option<Duration>,
+}
+
+pub(crate) struct McpProviderStartupSample {
+    pub(crate) outcome: McpProviderStartupOutcome,
+    pub(crate) duration_ms: u64,
+}
+
+pub(crate) struct McpProviderInitializationBatch {
+    pub(crate) providers: Vec<(String, Arc<McpProvider>)>,
+    pub(crate) startup_samples: Vec<McpProviderStartupSample>,
+}
+
+struct McpProviderInitializationAttempt {
+    sample: McpProviderStartupSample,
+    result: Result<(String, Arc<McpProvider>), McpPoolError>,
+}
+
+struct McpProviderStartupTracker {
+    observer: Option<Arc<dyn McpStartupObserver>>,
+    span: tracing::Span,
+    started_at: std::time::Instant,
+    finished: bool,
+}
+
+impl McpProviderStartupTracker {
+    fn new(observer: Option<Arc<dyn McpStartupObserver>>, span: tracing::Span) -> Self {
+        if let Some(observer) = &observer {
+            observer.provider_startup_started();
+        }
+        Self {
+            observer,
+            span,
+            started_at: std::time::Instant::now(),
+            finished: false,
+        }
+    }
+
+    fn finish(&mut self, outcome: McpProviderStartupOutcome) -> McpProviderStartupSample {
+        let duration_ms = u64::try_from(self.started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let _ = self.span.record("startup_outcome", field::display(outcome.as_str()));
+        let _ = self.span.record("elapsed_ms", duration_ms);
+        if let Some(observer) = &self.observer {
+            observer.provider_startup_finished(outcome, duration_ms);
+        }
+        self.finished = true;
+        McpProviderStartupSample { outcome, duration_ms }
+    }
+}
+
+impl Drop for McpProviderStartupTracker {
+    fn drop(&mut self) {
+        if !self.finished {
+            let _ = self.finish(McpProviderStartupOutcome::Cancelled);
+        }
+    }
 }
 
 impl McpConnectionPool {
@@ -53,6 +110,27 @@ impl McpConnectionPool {
         tool_timeout: Option<Duration>,
         allowlist_snapshot: &McpAllowListConfig,
     ) -> Result<Vec<(String, Arc<McpProvider>)>, McpPoolError> {
+        self.initialize_providers_parallel_with_summary(
+            provider_configs,
+            elicitation_handler,
+            sandbox_context,
+            tool_timeout,
+            allowlist_snapshot,
+            None,
+        )
+        .await
+        .map(|batch| batch.providers)
+    }
+
+    pub(crate) async fn initialize_providers_parallel_with_summary(
+        &self,
+        provider_configs: Vec<McpProviderConfig>,
+        elicitation_handler: Option<Arc<dyn McpElicitationHandler>>,
+        sandbox_context: Option<McpSandboxContext>,
+        tool_timeout: Option<Duration>,
+        allowlist_snapshot: &McpAllowListConfig,
+        startup_observer: Option<Arc<dyn McpStartupObserver>>,
+    ) -> Result<McpProviderInitializationBatch, McpPoolError> {
         use futures::future::join_all;
 
         // Create initialization tasks for each provider
@@ -62,6 +140,7 @@ impl McpConnectionPool {
                 let elicitation_handler = elicitation_handler.clone();
                 let sandbox_context = sandbox_context.clone();
                 let allowlist_snapshot = allowlist_snapshot.clone();
+                let startup_observer = startup_observer.clone();
 
                 async move {
                     self.initialize_provider(
@@ -70,6 +149,7 @@ impl McpConnectionPool {
                         sandbox_context,
                         tool_timeout.unwrap_or(Duration::from_secs(30)),
                         allowlist_snapshot,
+                        startup_observer,
                     )
                     .await
                 }
@@ -81,10 +161,12 @@ impl McpConnectionPool {
 
         // Collect successful connections, accumulating errors
         let mut successful_providers = Vec::new();
+        let mut startup_samples = Vec::with_capacity(results.len());
         let mut errors: MultiErrors<McpPoolError> = MultiErrors::new();
 
-        for result in results {
-            if let Some(provider) = errors.collect_result(result) {
+        for attempt in results {
+            startup_samples.push(attempt.sample);
+            if let Some(provider) = errors.collect_result(attempt.result) {
                 successful_providers.push(provider);
             }
         }
@@ -93,7 +175,7 @@ impl McpConnectionPool {
             warn!("Some MCP provider connections failed: {errors}");
         }
 
-        Ok(successful_providers)
+        Ok(McpProviderInitializationBatch { providers: successful_providers, startup_samples })
     }
 
     /// Initialize a single provider with connection pooling
@@ -104,45 +186,71 @@ impl McpConnectionPool {
         sandbox_context: Option<McpSandboxContext>,
         tool_timeout: Duration,
         allowlist_snapshot: McpAllowListConfig,
-    ) -> Result<(String, Arc<McpProvider>), McpPoolError> {
-        // Acquire semaphore permit to limit concurrent connections
-        let _permit = self
-            .connection_semaphore
-            .acquire()
+        startup_observer: Option<Arc<dyn McpStartupObserver>>,
+    ) -> McpProviderInitializationAttempt {
+        let span = info_span!(
+            "mcp_provider_startup",
+            provider = %config.name,
+            startup_outcome = field::Empty,
+            elapsed_ms = field::Empty
+        );
+        let mut startup_tracker = McpProviderStartupTracker::new(startup_observer, span.clone());
+        let result: Result<(String, Arc<McpProvider>), McpPoolError> = async move {
+            // Acquire semaphore permit to limit concurrent connections.
+            let _permit = self
+                .connection_semaphore
+                .acquire()
+                .await
+                .map_err(|error| McpPoolError::SemaphoreError(error.to_string()))?;
+
+            info!("Initializing MCP provider");
+
+            // Connect to provider with timeout.
+            let provider = tokio::time::timeout(
+                self.connection_timeout,
+                McpProvider::connect(config.clone(), elicitation_handler, sandbox_context),
+            )
             .await
-            .map_err(|e| McpPoolError::SemaphoreError(e.to_string()))?;
+            .map_err(|_error| McpPoolError::ConnectionTimeout(config.name.clone()))?
+            .map_err(|error| McpPoolError::ConnectionError(config.name.clone(), error.to_string()))?;
 
-        info!("Initializing MCP provider '{}'", config.name);
+            // Initialize the provider with proper parameters.
+            let provider_startup_timeout = self.resolve_startup_timeout(&config);
+            let initialize_params = build_pool_initialize_params(&provider);
+            let tool_timeout_opt = Some(tool_timeout);
 
-        // Connect to provider with timeout
-        let provider = tokio::time::timeout(
-            self.connection_timeout,
-            McpProvider::connect(config.clone(), elicitation_handler, sandbox_context),
-        )
-        .await
-        .map_err(|_e| McpPoolError::ConnectionTimeout(config.name.clone()))?
-        .map_err(|e| McpPoolError::ConnectionError(config.name.clone(), e.to_string()))?;
+            if let Err(error) = provider
+                .initialize(initialize_params, provider_startup_timeout, tool_timeout_opt, &allowlist_snapshot)
+                .await
+            {
+                let timed_out = error.chain().any(|cause| cause.downcast_ref::<Elapsed>().is_some());
+                let error = if timed_out {
+                    McpPoolError::InitializationTimeout(config.name.clone())
+                } else {
+                    McpPoolError::InitializationError(config.name.clone(), error.to_string())
+                };
+                return Err(error);
+            }
 
-        // Initialize the provider with proper parameters
-        let provider_startup_timeout = self.resolve_startup_timeout(&config);
-        let initialize_params = build_pool_initialize_params(&provider);
-        let tool_timeout_opt = Some(tool_timeout);
+            // Refresh tools. Failure is non-fatal to the existing provider
+            // startup contract, but remains visible in diagnostics.
+            if let Err(error) = provider.cached_tools_or_refresh(&allowlist_snapshot, tool_timeout_opt).await {
+                warn!(%error, "MCP provider initialized but initial tool discovery failed");
+            }
 
-        if let Err(err) = provider
-            .initialize(initialize_params, provider_startup_timeout, tool_timeout_opt, &allowlist_snapshot)
-            .await
-        {
-            return Err(McpPoolError::InitializationError(config.name.clone(), err.to_string()));
+            info!("MCP provider initialized successfully");
+
+            Ok((config.name.clone(), Arc::new(provider)))
         }
+        .instrument(span.clone())
+        .await;
 
-        // Refresh tools
-        if let Err(err) = provider.cached_tools_or_refresh(&allowlist_snapshot, tool_timeout_opt).await {
-            warn!("Failed to fetch tools for provider '{}': {}", config.name, err);
-        }
+        let outcome = result
+            .as_ref()
+            .map_or_else(|error| error.startup_outcome(), |_| McpProviderStartupOutcome::Succeeded);
+        let sample = startup_tracker.finish(outcome);
 
-        info!("Successfully initialized MCP provider '{}'", config.name);
-
-        Ok((config.name.clone(), Arc::new(provider)))
+        McpProviderInitializationAttempt { sample, result }
     }
 
     /// Get a provider by name
@@ -412,6 +520,19 @@ pub enum McpPoolError {
     SemaphoreError(String),
 }
 
+impl McpPoolError {
+    fn startup_outcome(&self) -> McpProviderStartupOutcome {
+        match self {
+            Self::ConnectionTimeout(_) => McpProviderStartupOutcome::ConnectionTimedOut,
+            Self::ConnectionError(_, _) => McpProviderStartupOutcome::ConnectionFailed,
+            Self::InitializationTimeout(_) => McpProviderStartupOutcome::InitializationTimedOut,
+            Self::InitializationError(_, _) => McpProviderStartupOutcome::InitializationFailed,
+            Self::SemaphoreError(_) => McpProviderStartupOutcome::OtherFailed,
+            Self::ProviderNotFound(_) | Self::ToolExecutionError(_, _) => McpProviderStartupOutcome::OtherFailed,
+        }
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -478,6 +599,30 @@ pub(crate) mod tests {
         let error = McpPoolError::InitializationError("auth".to_string(), "invalid credentials".to_string());
         assert!(error.to_string().contains("auth"));
         assert!(error.to_string().contains("invalid credentials"));
+    }
+
+    #[test]
+    fn startup_failures_map_to_fixed_metric_categories() {
+        assert_eq!(
+            McpPoolError::ConnectionTimeout("provider".to_string()).startup_outcome(),
+            McpProviderStartupOutcome::ConnectionTimedOut
+        );
+        assert_eq!(
+            McpPoolError::ConnectionError("provider".to_string(), "error".to_string()).startup_outcome(),
+            McpProviderStartupOutcome::ConnectionFailed
+        );
+        assert_eq!(
+            McpPoolError::InitializationTimeout("provider".to_string()).startup_outcome(),
+            McpProviderStartupOutcome::InitializationTimedOut
+        );
+        assert_eq!(
+            McpPoolError::InitializationError("provider".to_string(), "error".to_string()).startup_outcome(),
+            McpProviderStartupOutcome::InitializationFailed
+        );
+        assert_eq!(
+            McpPoolError::SemaphoreError("closed".to_string()).startup_outcome(),
+            McpProviderStartupOutcome::OtherFailed
+        );
     }
 
     #[tokio::test]

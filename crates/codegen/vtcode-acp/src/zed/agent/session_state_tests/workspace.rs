@@ -1,7 +1,27 @@
-//! Workspace behavior for ACP session state.
+//! Workspace behaviour for ACP session state.
 use super::*;
+use crate::workspace::{WorkspaceTrustSyncOutcome, WorkspaceTrustSynchronizer};
 use assert_fs::TempDir;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use vtcode_core::config::WorkspaceTrustLevel;
+
+#[derive(Default)]
+struct CountingWorkspaceTrustSynchronizer {
+    calls: AtomicUsize,
+}
+
+#[async_trait::async_trait]
+impl WorkspaceTrustSynchronizer for CountingWorkspaceTrustSynchronizer {
+    async fn synchronize(
+        &self,
+        _workspace: &Path,
+        desired_level: WorkspaceTrustLevel,
+    ) -> anyhow::Result<WorkspaceTrustSyncOutcome> {
+        let _previous_call_count = self.calls.fetch_add(1, Ordering::Relaxed);
+        Ok(WorkspaceTrustSyncOutcome::AlreadyMatches(desired_level))
+    }
+}
 
 #[derive(Debug, PartialEq)]
 struct WorkspaceSessionProjection {
@@ -19,7 +39,7 @@ async fn new_session_canonicalizes_and_isolates_requested_workspaces() {
     let launch_workspace = TempDir::new().unwrap();
     let first_workspace = TempDir::new().unwrap();
     let second_workspace = TempDir::new().unwrap();
-    let agent = build_agent(launch_workspace.path()).await;
+    let agent = Arc::new(build_agent(launch_workspace.path()).await);
 
     let (first, second) = tokio::join!(
         agent.new_session(acp::NewSessionRequest::new(first_workspace.path())),
@@ -60,6 +80,28 @@ async fn new_session_canonicalizes_and_isolates_requested_workspaces() {
 }
 
 #[tokio::test]
+async fn disallowed_workspace_is_rejected_before_trust_is_synchronized() {
+    let launch_workspace = TempDir::new().expect("temporary launch workspace");
+    let requested_workspace = TempDir::new().expect("temporary unconfigured workspace");
+    let mut agent = build_agent(launch_workspace.path()).await;
+    agent.workspace_policy = AcpWorkspacePolicy::new(launch_workspace.path(), &[])
+        .await
+        .expect("policy limited to the launch workspace");
+    let synchronizer = Arc::new(CountingWorkspaceTrustSynchronizer::default());
+    let synchronizer_handle: Arc<dyn WorkspaceTrustSynchronizer + Send + Sync> = synchronizer.clone();
+    agent.workspace_trust_synchronizer = synchronizer_handle;
+
+    let error = agent
+        .new_session(acp::NewSessionRequest::new(requested_workspace.path()))
+        .await
+        .expect_err("unconfigured workspace should be rejected");
+
+    assert_eq!(synchronizer.calls.load(Ordering::Relaxed), 0);
+    assert!(agent.sessions.lock().expect("ACP sessions lock").is_empty());
+    drop(error);
+}
+
+#[tokio::test]
 async fn sessions_in_the_same_workspace_share_the_workspace_runtime() {
     let workspace = TempDir::new().unwrap();
     let agent = build_agent(workspace.path()).await;
@@ -82,6 +124,62 @@ async fn sessions_in_the_same_workspace_share_the_workspace_runtime() {
         .unwrap();
 
     assert!(Arc::ptr_eq(&first_runtime, &second_runtime));
+}
+
+#[tokio::test]
+async fn closing_only_the_last_session_shuts_down_its_workspace_runtime() {
+    let launch_workspace = TempDir::new().unwrap();
+    let session_workspace = TempDir::new().unwrap();
+    let agent = Arc::new(build_agent(launch_workspace.path()).await);
+
+    let first = agent
+        .new_session(acp::NewSessionRequest::new(session_workspace.path()))
+        .await
+        .unwrap();
+    let second = agent
+        .new_session(acp::NewSessionRequest::new(session_workspace.path()))
+        .await
+        .unwrap();
+    let runtime = agent
+        .session_handle(&first.session_id)
+        .unwrap()
+        .unwrap()
+        .workspace_runtime()
+        .unwrap()
+        .unwrap();
+
+    let _close_response = agent.close_session(&first.session_id).await.unwrap();
+    assert!(!runtime.is_shutdown(), "one remaining session must retain its workspace runtime");
+
+    let _close_response = agent.close_session(&second.session_id).await.unwrap();
+    assert!(runtime.is_shutdown(), "closing the last session should finish workspace runtime shutdown");
+}
+
+#[tokio::test]
+async fn workspace_runtime_reservation_survives_close_before_session_registration() {
+    let launch_workspace = TempDir::new().unwrap();
+    let session_workspace = TempDir::new().unwrap();
+    let agent = Arc::new(build_agent(launch_workspace.path()).await);
+
+    let first = agent
+        .new_session(acp::NewSessionRequest::new(session_workspace.path()))
+        .await
+        .unwrap();
+    let first_session = agent.session_handle(&first.session_id).unwrap().unwrap();
+    let runtime = first_session.workspace_runtime().unwrap().unwrap();
+    let selected_workspace = AcpSessionWorkspace::from_client_cwd(session_workspace.path()).await.unwrap();
+    let reservation = agent.workspace_runtime_for(&selected_workspace).await.unwrap();
+    assert!(Arc::ptr_eq(&runtime, reservation.runtime()));
+
+    let _close_response = agent.close_session(&first.session_id).await.unwrap();
+    assert!(
+        !runtime.is_shutdown(),
+        "a runtime lease acquired before registration must protect the pending session from close"
+    );
+
+    let second_session_id = agent.register_durable_session(reservation, None).await.unwrap();
+    let _close_response = agent.close_session(&second_session_id).await.unwrap();
+    assert!(runtime.is_shutdown(), "the final registered lease should shut down the runtime");
 }
 
 #[tokio::test]

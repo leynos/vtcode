@@ -25,7 +25,6 @@ use tokio::sync::Mutex as AsyncMutex;
 use tracing::debug;
 use uuid::Uuid;
 use vtcode_commons::file_input::{MAX_INPUT_FILE_BYTES, decoded_base64_size};
-use vtcode_commons::model_family::find_family_for_model;
 use vtcode_config::TimeoutsConfig;
 use vtcode_config::auth::{OpenAIChatGptAuthHandle, OpenAIChatGptSession};
 use vtcode_config::constants::models;
@@ -186,15 +185,8 @@ impl OpenAIProvider {
         matches!(model, models::openai::GPT | models::openai::GPT_5_6_SOL)
     }
 
-    fn model_supports_reasoning_summaries(model: &str) -> bool {
-        find_family_for_model(model).supports_reasoning_summaries
-    }
-
     fn model_supports_reasoning(&self, model: &str) -> bool {
-        self.custom_provider_config
-            .as_ref()
-            .and_then(|config| config.resolved_profile(model).supports_reasoning)
-            .unwrap_or_else(|| Self::model_supports_reasoning_summaries(model))
+        LLMProvider::supports_reasoning(self, model)
     }
 
     fn normalize_reasoning_output(&self, model: &str, mut response: provider::LLMResponse) -> provider::LLMResponse {
@@ -749,7 +741,10 @@ impl OpenAIProvider {
             supports_tools: self.supports_tools(&request.model),
             supports_parallel_tool_config: self.supports_parallel_tool_config(&request.model),
             supports_temperature: Self::supports_temperature_parameter(&request.model),
-            include_reasoning: self.custom_provider_config.is_some() && self.supports_reasoning(&request.model),
+            include_reasoning: self
+                .custom_provider_config
+                .as_ref()
+                .is_some_and(|config| config.resolved_profile(&request.model).supports_reasoning == Some(true)),
             supports_reasoning_effort: self.supports_reasoning_effort(&request.model),
             prompt_cache_key,
             default_service_tier,

@@ -67,6 +67,7 @@ def list_tracked_rust_files() -> list[Path]:
 
 def is_test_path(path: Path) -> bool:
     rel = path.relative_to(REPO_ROOT).as_posix()
+    filename = path.name
     return (
         rel.startswith("fuzz/")
         or rel.startswith("target/")
@@ -75,10 +76,8 @@ def is_test_path(path: Path) -> bool:
         or "/tests/" in rel
         or "/benches/" in rel
         or "/examples/" in rel
-        or rel.endswith("/tests.rs")
-        or rel.endswith("tests.rs")
-        or rel.endswith("_test.rs")
-        or rel.endswith("_tests.rs")
+        or filename == "tests.rs"
+        or filename.endswith(("_test.rs", "_tests.rs"))
     )
 
 

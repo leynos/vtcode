@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 UNWRAP_EXPECT_RE = re.compile(r"\.(unwrap|expect)\s*\(")
 TEST_ROOT_DIRECTORIES = ("fuzz", "target", "tests")
 NESTED_TEST_DIRECTORIES = ("tests", "benches", "examples")
-TEST_SOURCE_SUFFIXES = ("tests.rs", "_test.rs")
+TEST_SOURCE_SUFFIXES = ("_test.rs", "_tests.rs")
 
 
 @dataclass
@@ -86,7 +86,7 @@ def _is_test_module_path(path_parts: list[str]) -> bool:
 
 
 def _is_test_source_path(filename: str) -> bool:
-    return filename.endswith(TEST_SOURCE_SUFFIXES)
+    return filename == "tests.rs" or filename.endswith(TEST_SOURCE_SUFFIXES)
 
 
 def parse_allow_rules(path: Path) -> list[AllowRule]:

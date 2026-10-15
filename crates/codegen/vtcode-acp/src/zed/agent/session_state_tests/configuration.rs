@@ -1,7 +1,11 @@
-//! Configuration behavior for ACP session state.
+//! Configuration behaviour for ACP session state.
+use super::super::super::optional_setup::{OptionalSetupOutcome, OptionalWorkspaceSetupOutcomes};
+use super::super::super::session_workspace::{WorkspaceRuntimeLifecycle, WorkspaceRuntimeLifecycleState};
 use super::*;
 use assert_fs::TempDir;
 use std::fs;
+use std::sync::Arc;
+use vtcode_core::hooks::SessionEndReason;
 
 #[tokio::test]
 async fn build_session_handle_falls_back_for_unknown_metadata_primary_agent() {
@@ -25,6 +29,7 @@ async fn build_session_handle_falls_back_for_unknown_metadata_primary_agent() {
             archive: None,
             trigger: SessionStartTrigger::NewSession,
             workspace_runtime: None,
+            workspace_lease: None,
         },
     );
 
@@ -131,6 +136,76 @@ async fn session_optional_state_accessors_preserve_absent_state() {
     assert!(session.workspace_runtime().unwrap().is_none());
     assert!(session.lifecycle_hooks().unwrap().is_none());
     assert!(!session.has_stop_hooks().unwrap());
+}
+
+#[tokio::test]
+async fn session_subagent_controller_stays_with_its_workspace_runtime() {
+    let launch_workspace = TempDir::new().unwrap();
+    let session_workspace = TempDir::new().unwrap();
+    let mut vt_config = vtcode_core::config::VTCodeConfig::default();
+    vt_config.subagents.enabled = true;
+    vt_config.subagents.background.auto_restore = false;
+    let agent = build_agent_with_vt_config(launch_workspace.path(), "duck", Some(&vt_config)).await;
+    let launch_controller = agent
+        .local_tool_registry
+        .subagent_controller()
+        .expect("launch workspace controller");
+
+    let launch_session_id = agent.register_session().expect("register launch workspace session");
+    let launch_session = agent
+        .session_handle(&launch_session_id)
+        .expect("lookup launch workspace session")
+        .expect("registered launch workspace session");
+    let selected_launch_controller = agent
+        .session_subagent_controller(&launch_session)
+        .expect("select launch workspace controller")
+        .expect("controller without a session workspace runtime");
+    assert!(Arc::ptr_eq(&selected_launch_controller, &launch_controller));
+
+    let runtime_registry =
+        vtcode_core::tools::registry::ToolRegistry::new(session_workspace.path().to_path_buf()).await;
+    assert!(!runtime_registry.has_subagent_controller());
+    let workspace_runtime = Arc::new(SessionWorkspaceRuntime {
+        workspace_root: session_workspace.path().to_path_buf(),
+        workspace_hooks_gated: false,
+        system_prompt: String::new(),
+        primary_agents: agent.primary_agents.clone(),
+        acp_tool_registry: Arc::clone(&agent.acp_tool_registry),
+        permission_prompter: Arc::clone(&agent.permission_prompter),
+        local_tool_registry: runtime_registry,
+        file_ops_tool: None,
+        optional_setup_outcomes: OptionalWorkspaceSetupOutcomes {
+            subagent_controller: OptionalSetupOutcome::DisabledByConfiguration,
+            mcp_client: OptionalSetupOutcome::DisabledByConfiguration,
+        },
+        shutdown_managed: false,
+        lifecycle: Mutex::new(WorkspaceRuntimeLifecycle {
+            state: WorkspaceRuntimeLifecycleState::Open,
+            active_sessions: 0,
+        }),
+        lifecycle_changed: tokio::sync::Notify::new(),
+    });
+    let thread = agent
+        .thread_manager
+        .start_thread_with_identifier("session-without-workspace-controller", ThreadBootstrap::new(None));
+    let session = agent.build_session_handle(
+        thread,
+        SessionHandleBootstrap {
+            session_id: acp::SessionId::new("session-without-workspace-controller"),
+            archive: None,
+            trigger: SessionStartTrigger::NewSession,
+            workspace_runtime: Some(workspace_runtime),
+            workspace_lease: None,
+        },
+    );
+
+    assert!(
+        agent
+            .session_subagent_controller(&session)
+            .expect("select session workspace controller")
+            .is_none(),
+        "a session with a workspace runtime must not borrow the launch workspace controller"
+    );
 }
 
 #[tokio::test]

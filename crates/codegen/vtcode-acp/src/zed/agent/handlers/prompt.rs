@@ -1,12 +1,12 @@
 //! Coordinates ACP prompt preparation, hooks, compaction, and provider-turn execution.
 use super::super::tool_config::SessionToolDefinitionRequest;
-use super::provider::{
-    GenerationTelemetry, IncompleteProviderTurn, ProviderCallError, StreamDeadlineTracker, StreamTimeoutPhase,
-    cancellable_backoff, create_prompt_provider,
-};
+use super::provider::IncompleteProviderTurn;
 use super::*;
 
 mod buffered;
+mod input;
+mod lifecycle;
+mod provider_context;
 mod streaming;
 
 pub(super) use buffered::response_reasoning_update;
@@ -242,104 +242,9 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
     })
 }
 
-async fn prepare_prompt_input(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptInputOutcome, SdkError> {
-    let Some(session) = agent
-        .session_handle(&args.session_id)
-        .map_err(|error| session_access_error(&args.session_id, "looking up session", error))?
-    else {
-        return Err(SdkError::invalid_params().data(json!({ "reason": "unknown_session" })));
-    };
-
-    if let Err(error) = agent.replay_persisted_task_plan(&session, &args.session_id).await {
-        warn!(%error, session_id = %args.session_id, "Failed to replay persisted ACP task plan");
-    }
-
-    let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
-    let turn_guard = TurnGuard::begin(thread)?;
-    start_prompt_safety_budget(&agent, &session, &args.session_id)?;
-    session.cancellation.reset();
-
-    let user_message = tokio::select! {
-        () = session.cancellation.cancelled() => {
-            return Ok(PromptInputOutcome::Response(PromptResponse::new(acp::StopReason::Cancelled)));
-        }
-        result = agent.resolve_prompt(&session, &args.session_id, &args.prompt) => result?,
-    };
-
-    Ok(PromptInputOutcome::Ready(PromptInput {
-        agent,
-        args,
-        session,
-        _turn_guard: turn_guard,
-        user_message,
-    }))
-}
-
-fn start_prompt_safety_budget(
-    agent: &ZedAgent,
-    session: &SessionHandle,
-    session_id: &acp::SessionId,
-) -> Result<(), SdkError> {
-    if let Some(runtime) = session
-        .workspace_runtime()
-        .map_err(|error| session_access_error(session_id, "reading workspace runtime", error))?
-    {
-        runtime.local_tool_registry.safety_gateway().start_turn();
-    } else {
-        agent.local_tool_registry.safety_gateway().start_turn();
-    }
-    Ok(())
-}
-
-async fn accept_user_prompt(input: &PromptInput) -> Result<bool, SdkError> {
-    let PromptInput { agent, args, session, user_message, .. } = input;
-    if let Some(reason) = apply_user_prompt_hooks(input).await? {
-        warn!(%reason, "ACP UserPromptSubmit hook blocked prompt");
-        return Ok(false);
-    }
-
-    push_session_message(agent, session, &args.session_id, Message::user(user_message.clone()))?;
-    agent
-        .merge_session_acp_meta(session, args.meta.clone())
-        .map_err(|error| session_access_error(&args.session_id, "merging client metadata", error))?;
-    persist_session_checkpoint(agent, session, "user_message").await;
-    Ok(true)
-}
-
-async fn apply_user_prompt_hooks(input: &PromptInput) -> Result<Option<String>, SdkError> {
-    let PromptInput { agent, args, session, user_message, .. } = input;
-    let Some(hooks) = session
-        .lifecycle_hooks()
-        .map_err(|error| session_access_error(&args.session_id, "reading lifecycle hooks", error))?
-    else {
-        return Ok(None);
-    };
-    let outcome = hooks
-        .run_user_prompt_submit(&args.session_id.to_string(), user_message)
-        .await
-        .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
-    for message in outcome.messages {
-        warn!(level = ?message.level, message = %message.text, "ACP UserPromptSubmit hook");
-    }
-    for context in outcome.additional_context {
-        if !context.trim().is_empty() {
-            push_session_message(agent, session, &args.session_id, Message::system(context))?;
-        }
-    }
-    if outcome.allow_prompt {
-        Ok(None)
-    } else {
-        Ok(Some(
-            outcome
-                .block_reason
-                .unwrap_or_else(|| "Prompt blocked by lifecycle hook".to_string()),
-        ))
-    }
-}
-
 async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecution, SdkError> {
-    let provider = create_prompt_provider_context(&input)?;
-    let tool_state = initialize_prompt_tool_state(&input, &provider).await?;
+    let provider = provider_context::create_prompt_provider_context(&input)?;
+    let tool_state = provider_context::initialize_prompt_tool_state(&input, &provider).await?;
     let has_stop_hooks = input
         .session
         .has_stop_hooks()
@@ -366,7 +271,7 @@ async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecuti
     })
 }
 
-struct PromptProviderContext {
+pub(super) struct PromptProviderContext {
     provider: Box<dyn LLMProvider>,
     runtime: ProviderRequestRuntime,
     model: String,
@@ -375,116 +280,12 @@ struct PromptProviderContext {
     supports_tools: bool,
 }
 
-fn create_prompt_provider_context(input: &PromptInput) -> Result<PromptProviderContext, SdkError> {
-    let PromptInput { agent, args, session, .. } = input;
-    let (provider_name, model, configured_reasoning_effort) = {
-        let data = session.data.lock().map_err(|_err| SdkError::internal_error())?;
-        (data.provider.clone(), data.model.clone(), data.reasoning_effort)
-    };
-    let runtime = agent.provider_runtime.for_provider(&provider_name);
-    let mut timeouts = agent.provider_timeouts.clone();
-    runtime.apply_http_timeouts(&mut timeouts);
-    runtime.apply_http_timeouts(&mut timeouts);
-    let workspace_root = session
-        .workspace_runtime()
-        .map_err(|error| {
-            session_access_error(&args.session_id, "reading workspace runtime for provider configuration", error)
-        })?
-        .map_or_else(|| agent.config.workspace.clone(), |runtime| runtime.workspace_root.clone());
-    let openai_chatgpt_auth = if provider_name.eq_ignore_ascii_case("openai") {
-        agent.config.openai_chatgpt_auth.clone()
-    } else {
-        None
-    };
-    let config = ProviderConfig {
-        api_key: Some(resolve_api_key_for_provider(agent, &provider_name)),
-        openai_chatgpt_auth,
-        copilot_auth: None,
-        base_url: None,
-        model: Some(model.clone()),
-        prompt_cache: Some(agent.config.prompt_cache.clone()),
-        timeouts: Some(timeouts),
-        openai: None,
-        anthropic: None,
-        model_behaviour: agent.config.model_behaviour.clone(),
-        workspace_root: Some(workspace_root),
-    };
-    let provider = create_prompt_provider(&provider_name, config)
-        .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
-    let reasoning_effort = provider
-        .supports_reasoning_effort(&model)
-        .then_some(configured_reasoning_effort);
-
-    Ok(PromptProviderContext {
-        supports_streaming: provider.supports_streaming(),
-        supports_tools: provider.supports_tools(&model),
-        provider,
-        runtime,
-        model,
-        reasoning_effort,
-    })
-}
-
-async fn initialize_prompt_tool_state(
-    input: &PromptInput,
-    provider: &PromptProviderContext,
-) -> Result<PromptToolState, SdkError> {
-    let PromptInput { agent, args, session, .. } = input;
-    let client_supports_read_text_file = agent
-        .client_supports_read_text_file()
-        .map_err(|error| session_access_error(&args.session_id, "reading client filesystem capabilities", error))?;
-    let primary_agent = session
-        .data
-        .lock()
-        .map_err(|_err| SdkError::internal_error())?
-        .primary_agent
-        .clone();
-    let enabled_tools = agent
-        .tool_availability(provider.supports_tools, client_supports_read_text_file)
-        .into_iter()
-        .filter_map(|(tool, runtime)| matches!(runtime, ToolRuntime::Enabled).then_some(tool))
-        .collect();
-    let mut tool_state = PromptToolState::new(enabled_tools, primary_agent, provider.supports_tools);
-    tool_state.refresh_availability(agent, session, &args.session_id, provider.supports_tools)?;
-    tool_state.messages = agent
-        .resolved_messages(session)
-        .map_err(|error| session_access_error(&args.session_id, "resolving session messages", error))?;
-    if maybe_compact_prompt(agent, session, provider.provider.as_ref(), &provider.runtime, &provider.model, &tool_state)
-        .await?
-    {
-        tool_state.messages = agent
-            .resolved_messages(session)
-            .map_err(|error| session_access_error(&args.session_id, "resolving compacted session messages", error))?;
-    }
-    Ok(tool_state)
-}
-
-async fn maybe_compact_prompt(
-    agent: &ZedAgent,
-    session: &SessionHandle,
-    provider: &dyn LLMProvider,
-    provider_runtime: &ProviderRequestRuntime,
-    session_model: &str,
-    tool_state: &PromptToolState,
-) -> Result<bool, SdkError> {
-    agent
-        .maybe_compact_session(CompactionRequest {
-            session,
-            provider,
-            runtime: provider_runtime,
-            model: session_model,
-            tools: tool_state.tool_definitions.as_ref(),
-        })
-        .await
-        .map_err(|error| SdkError::internal_error().data(error.to_string()))
-}
-
 pub(super) async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptResponse, SdkError> {
-    let input = match prepare_prompt_input(agent, args).await? {
+    let input = match input::prepare_prompt_input(agent, args).await? {
         PromptInputOutcome::Response(response) => return Ok(response),
         PromptInputOutcome::Ready(input) => input,
     };
-    if !accept_user_prompt(&input).await? {
+    if !input::accept_user_prompt(&input).await? {
         return Ok(PromptResponse::new(acp::StopReason::Refusal));
     }
     initialize_prompt_execution(input).await?.run().await
@@ -501,41 +302,6 @@ impl PromptExecution {
             ProviderTurnOutcome::StopReason(stop_reason) => self.finish(stop_reason).await,
             ProviderTurnOutcome::Response(response) => Ok(response),
         }
-    }
-
-    async fn finish(self, stop_reason: acp::StopReason) -> Result<PromptResponse, SdkError> {
-        if stop_reason != acp::StopReason::Cancelled {
-            if !self.stop_hook_checked
-                && let Some(reason) = self
-                    .agent
-                    .run_stop_hook(&self.session, &self.assistant_message, self.stop_hook_active)
-                    .await?
-            {
-                warn!(%reason, "ACP Stop hook blocked final turn");
-                push_session_message(&self.agent, &self.session, &self.args.session_id, Message::system(reason))?;
-                persist_session_checkpoint(&self.agent, &self.session, "stop_hook_blocked").await;
-                return Ok(PromptResponse::new(acp::StopReason::Refusal));
-            }
-            if !self.assistant_message.is_empty() {
-                if should_emit_buffered_final_chunk(self.allow_streaming) {
-                    drop(
-                        self.agent
-                            .send_update(
-                                &self.args.session_id,
-                                acp::SessionUpdate::AgentMessageChunk(text_chunk(self.assistant_message.clone())),
-                            )
-                            .await,
-                    );
-                }
-                let mut completed_message = Message::assistant(self.assistant_message);
-                if !self.assistant_reasoning.is_empty() {
-                    completed_message.reasoning = Some(self.assistant_reasoning);
-                }
-                push_session_message(&self.agent, &self.session, &self.args.session_id, completed_message)?;
-                persist_session_checkpoint(&self.agent, &self.session, "assistant_response").await;
-            }
-        }
-        Ok(PromptResponse::new(stop_reason))
     }
 }
 pub(super) struct ProviderOutput {
@@ -576,76 +342,6 @@ impl ProviderOutput {
     }
 }
 
-enum StreamAttemptOutcome {
-    Completed(Box<LLMResponse>),
-    Retry(Duration),
-    Failed(LLMError),
-    Cancelled,
-}
-
-enum StreamResponseOutcome {
-    Continue,
-    StopReason(acp::StopReason),
-}
-
-struct StreamCollectionRequest<'a> {
-    turn: &'a PromptExecution,
-    span: &'a Span,
-    started_at: Instant,
-    attempt_index: u32,
-    deadlines: &'a mut StreamDeadlineTracker,
-    telemetry: &'a mut GenerationTelemetry,
-    output: &'a mut ProviderOutput,
-}
-
-struct StreamFailureRequest<'a> {
-    turn: &'a PromptExecution,
-    telemetry: &'a mut GenerationTelemetry,
-    output: &'a ProviderOutput,
-    attempt_index: u32,
-    error: LLMError,
-}
-
-struct StreamDeltaRequest<'a> {
-    turn: &'a PromptExecution,
-    output: &'a mut ProviderOutput,
-    deadlines: &'a mut StreamDeadlineTracker,
-    telemetry: &'a mut GenerationTelemetry,
-    attempt_index: u32,
-    delta: String,
-    reasoning: bool,
-}
-
-enum StreamingTurnOutcome {
-    Retry,
-    ContinueAfterTools,
-    Finished(ProviderTurnOutcome),
-}
-
-impl ZedAgent {
-    async fn run_stop_hook(
-        &self,
-        session: &SessionHandle,
-        assistant_message: &str,
-        stop_hook_active: bool,
-    ) -> Result<Option<String>, SdkError> {
-        let Some(hooks) = session.lifecycle_hooks().map_err(|error| {
-            SdkError::internal_error().data(format!("Failed to read lifecycle hooks for ACP Stop hook: {error:#}"))
-        })?
-        else {
-            return Ok(None);
-        };
-        let outcome = hooks
-            .run_stop(assistant_message, stop_hook_active)
-            .await
-            .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
-        for message in outcome.messages {
-            warn!(level = ?message.level, message = %message.text, "ACP Stop hook");
-        }
-        Ok(outcome.block_reason)
-    }
-}
-
 pub(super) fn session_access_error(session_id: &acp::SessionId, operation: &str, error: impl Display) -> SdkError {
     SdkError::internal_error().data(format!("Failed to {operation} for ACP session {session_id}: {error}"))
 }
@@ -659,14 +355,6 @@ pub(super) fn push_session_message(
     agent
         .push_message(session, message)
         .map_err(|error| session_access_error(session_id, "appending a session message", error))
-}
-
-fn resolve_api_key_for_provider(agent: &ZedAgent, provider: &str) -> String {
-    if provider.eq_ignore_ascii_case(&agent.config.provider) && !agent.config.api_key.is_empty() {
-        return agent.config.api_key.clone();
-    }
-
-    get_api_key_with_mode(provider, &ApiKeySources::default(), agent.credential_storage_mode).unwrap_or_default()
 }
 
 /// Streaming is safe unless a Stop hook needs to inspect the complete draft.

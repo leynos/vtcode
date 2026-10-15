@@ -31,6 +31,6 @@ fn load_from_file_rejects_invalid_syntax_highlighting() {
 
     let result = ConfigManager::load_from_file(temp_file.path());
     assert!(result.is_err(), "expected validation error");
-    let error = format!("{:?}", result.err().unwrap());
+    let error = format!("{:?}", result.err().expect("invalid highlighting configuration should be rejected"));
     assert!(error.contains("validate"), "expected validation context in error, got: {error}");
 }

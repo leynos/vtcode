@@ -1,4 +1,4 @@
-//! Archive behavior for ACP session state.
+//! Archive behaviour for ACP session state.
 use super::super::archive::{WorkspaceMatch, session_listing_workspace_match, trace_storage_operation};
 use super::*;
 use assert_fs::TempDir;
@@ -154,6 +154,7 @@ async fn build_session_handle_restores_session_config_from_thread_metadata() {
             archive: None,
             trigger: SessionStartTrigger::NewSession,
             workspace_runtime: None,
+            workspace_lease: None,
         },
     );
 
@@ -193,6 +194,7 @@ async fn checkpoint_session_persists_messages_for_a_fresh_runtime() {
             archive: Some(archive),
             trigger: SessionStartTrigger::Resume,
             workspace_runtime: None,
+            workspace_lease: None,
         },
     );
     agent.push_message(&handle, Message::user("continue".to_string())).unwrap();
@@ -326,28 +328,23 @@ fn session_list_filters_archives_by_workspace() {
 }
 
 #[test]
-fn session_list_reports_an_unresolvable_archive_in_workspace_filtered_results() {
+fn session_list_skips_an_unresolvable_archive_in_workspace_filtered_results() {
     let workspace = TempDir::new().unwrap();
     let missing_workspace = workspace.path().join("missing");
     let request = acp::ListSessionsRequest::new().cwd(workspace.path());
 
-    let error = ZedAgent::session_list_response(
+    let response = ZedAgent::session_list_response(
         &request,
-        vec![archived_listing(
-            "session-unavailable",
-            &missing_workspace,
-            "unavailable task",
-        )],
+        vec![
+            archived_listing("session-unavailable", &missing_workspace, "unavailable task"),
+            archived_listing("session-available", workspace.path(), "available task"),
+        ],
     )
-    .expect_err("an unresolved stored workspace must fail a filtered listing");
+    .expect("an unresolved stored workspace must not fail a filtered listing");
 
-    assert_eq!(error.code, acp::ErrorCode::InternalError);
-    assert!(
-        error
-            .data
-            .and_then(|data| data.as_str().map(str::to_owned))
-            .is_some_and(|detail| detail.contains("resolving stored ACP session workspace"))
-    );
+    assert_eq!(response.sessions.len(), 1);
+    assert_eq!(response.sessions[0].session_id, acp::SessionId::new("session-available"));
+    assert_eq!(response.sessions[0].cwd, workspace.path());
 }
 
 #[test]

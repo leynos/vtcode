@@ -76,6 +76,7 @@ pub use cgp_facade::CgpRuntimeMode;
 pub use cgp_facade::native_cgp_tool_factory;
 pub use cgp_facade::wrap_registered_native_tool;
 pub use error::{ToolErrorType, ToolExecutionError};
+pub(crate) use execution_facade::with_tool_reentrancy_scope;
 pub use execution_history::{
     HarnessContextSnapshot, ToolExecutionHistory, ToolExecutionRecord, ToolTaskTelemetrySnapshot,
 };

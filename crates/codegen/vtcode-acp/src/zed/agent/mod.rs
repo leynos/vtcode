@@ -11,7 +11,6 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::OnceCell;
 use vtcode_config::TimeoutsConfig;
 use vtcode_config::auth::AuthCredentialsStoreMode;
 use vtcode_config::core::CustomProviderConfig;
@@ -28,12 +27,12 @@ use super::types::SessionHandle;
 mod optional_setup;
 mod session_workspace;
 use optional_setup::{
-    AcpSubagentControllerSetup, OptionalSetupOutcome, attach_acp_mcp_client, attach_acp_subagent_controller,
-    configure_acp_tool_call_limits, effective_acp_mcp_config, effective_acp_subagent_concurrency,
-    report_optional_setup_outcome,
+    AcpSubagentControllerSetup, OptionalSetupOutcome, OptionalWorkspaceSetupOutcomes, attach_acp_mcp_client,
+    attach_acp_subagent_controller, configure_acp_tool_call_limits, effective_acp_mcp_config,
+    effective_acp_subagent_concurrency, report_optional_workspace_setup_outcomes,
 };
-pub(super) use session_workspace::SessionWorkspaceRuntime;
-use session_workspace::{SessionWorkspaceRuntimeConfig, build_launch_workspace_runtime};
+pub(super) use session_workspace::{SessionWorkspaceLease, SessionWorkspaceRuntime};
+use session_workspace::{SessionWorkspaceRuntimeConfig, WorkspaceRuntimeCache, build_launch_workspace_runtime};
 
 mod compaction;
 pub(crate) mod handlers;
@@ -73,7 +72,9 @@ pub(crate) struct ZedAgent {
     vt_config: Option<Box<VTCodeConfig>>,
     audit_logger: Option<Arc<AcpAuditLogger>>,
     workspace_runtime_config: SessionWorkspaceRuntimeConfig,
-    workspace_runtimes: tokio::sync::Mutex<HashMap<PathBuf, Arc<OnceCell<Arc<SessionWorkspaceRuntime>>>>>,
+    workspace_policy: super::AcpWorkspacePolicy,
+    launch_workspace_runtime: Arc<SessionWorkspaceRuntime>,
+    workspace_runtimes: tokio::sync::Mutex<WorkspaceRuntimeCache<SessionWorkspaceRuntime>>,
     workspace_trust_synchronizer: Arc<dyn crate::workspace::WorkspaceTrustSynchronizer + Send + Sync>,
 }
 
@@ -94,7 +95,7 @@ pub(crate) struct ZedAgentSetup<'a> {
 }
 
 impl ZedAgent {
-    pub(crate) async fn new(mut setup: ZedAgentSetup<'_>) -> Self {
+    pub(crate) async fn new(mut setup: ZedAgentSetup<'_>) -> anyhow::Result<Self> {
         if let Ok(workspace_root) = vtcode_commons::canonicalize(&setup.config.workspace) {
             setup.config.workspace = workspace_root;
         }
@@ -107,16 +108,17 @@ impl ZedAgent {
             custom_providers: setup.custom_providers.to_vec(),
             skip_confirmations: setup.skip_confirmations,
         };
-        let launch_runtime = Arc::new(build_launch_workspace_runtime(&setup).await);
+        let workspace_policy =
+            super::AcpWorkspacePolicy::new(&setup.config.workspace, &setup.zed_config.allowed_workspace_roots)
+                .await
+                .context("building ACP allowed-workspace policy")?;
+        let launch_runtime = Arc::new(build_launch_workspace_runtime(&setup).await?);
         let provider_metrics = launch_runtime.local_tool_registry.metrics_collector();
-        let mut workspace_runtimes = HashMap::new();
+        let mut workspace_runtimes = WorkspaceRuntimeCache::new(Arc::clone(&provider_metrics));
         if let Ok(canonical_workspace) = vtcode_commons::canonicalize(&launch_runtime.workspace_root) {
-            let runtime_cell = Arc::new(OnceCell::new());
-            if runtime_cell.set(Arc::clone(&launch_runtime)).is_ok() {
-                drop(workspace_runtimes.insert(canonical_workspace, runtime_cell));
-            }
+            workspace_runtimes.remember_runtime(canonical_workspace, &launch_runtime);
         }
-        Self {
+        Ok(Self {
             config: setup.config,
             credential_storage_mode: setup.credential_storage_mode,
             system_prompt: setup.system_prompt,
@@ -142,17 +144,21 @@ impl ZedAgent {
             vt_config: setup.vt_config.cloned().map(Box::new),
             audit_logger: setup.audit_logger,
             workspace_runtime_config,
+            workspace_policy,
+            launch_workspace_runtime: Arc::clone(&launch_runtime),
             workspace_runtimes: tokio::sync::Mutex::new(workspace_runtimes),
             workspace_trust_synchronizer: Arc::new(crate::workspace::DefaultWorkspaceTrustSynchronizer::new()),
-        }
+        })
     }
 
     fn session_subagent_controller(&self, session: &SessionHandle) -> anyhow::Result<Option<Arc<SubagentController>>> {
-        Ok(session
+        let workspace_runtime = session
             .workspace_runtime()
-            .context("reading ACP session workspace runtime for subagent controller")?
-            .and_then(|runtime| runtime.local_tool_registry.subagent_controller())
-            .or_else(|| self.local_tool_registry.subagent_controller()))
+            .context("reading ACP session workspace runtime for subagent controller")?;
+        Ok(match workspace_runtime {
+            Some(runtime) => runtime.local_tool_registry.subagent_controller(),
+            None => self.local_tool_registry.subagent_controller(),
+        })
     }
 
     /// Attach the live SACP `cx` handle. Called once after the SACP

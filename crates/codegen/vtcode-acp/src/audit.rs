@@ -51,7 +51,7 @@ impl AcpAuditLogger {
 pub(crate) async fn initialize_acp_audit_logger(vt_cfg: &VTCodeConfig) -> Result<Option<Arc<AcpAuditLogger>>> {
     AcpAuditLogger::from_config(&vt_cfg.acp.audit)
         .await
-        .context("Failed to initialise ACP audit logger")
+        .context("Failed to initialize ACP audit logger")
         .map(|logger| logger.map(Arc::new))
 }
 

@@ -3,6 +3,7 @@ use super::super::{AcpSubagentControllerSetup, OptionalSetupOutcome, attach_acp_
 use super::support::{build_agent, build_agent_with_config, core_agent_config, definition_names};
 use assert_fs::TempDir;
 use serde_json::json;
+use vtcode_config::WorkspaceLifecycleHooks;
 use vtcode_config::core::CustomProviderConfig;
 use vtcode_core::config::constants::tools;
 use vtcode_core::config::{ToolsConfig, VTCodeConfig};
@@ -20,6 +21,48 @@ async fn enabled_subagents_are_exposed_to_acp_build_agents() {
     let names = definition_names(agent.tool_definitions(true, &[], "build").expect("build agent tools"));
     assert!(names.iter().any(|name| name == tools::AGENT));
 }
+
+#[tokio::test]
+async fn launch_controller_is_gated_for_primary_agent_hooks_without_global_workspace_hooks() {
+    let temp = TempDir::new().unwrap();
+    let agent_dir = temp.path().join(".vtcode/agents");
+    std::fs::create_dir_all(&agent_dir).expect("create project agent directory");
+    std::fs::write(
+        agent_dir.join("duck.md"),
+        r#"---
+name: duck
+description: Project duck agent
+permissions:
+  default: ask
+hooks:
+  PreToolUse:
+    - matcher: Bash
+      hooks:
+        - command: echo primary-agent-hook
+mode: primary
+---
+Project primary prompt.
+"#,
+    )
+    .expect("write project primary agent");
+
+    let mut vt_cfg = VTCodeConfig::default();
+    vt_cfg.subagents.enabled = true;
+    vt_cfg.subagents.background.auto_restore = false;
+    assert!(
+        vt_cfg
+            .workspace_lifecycle_hooks
+            .as_ref()
+            .is_none_or(WorkspaceLifecycleHooks::is_empty)
+    );
+
+    let agent = build_agent_with_config(temp.path(), ToolsConfig::default(), Some(&vt_cfg)).await;
+    let launch_runtime = &agent.launch_workspace_runtime;
+
+    assert!(launch_runtime.workspace_hooks_gated);
+    assert!(launch_runtime.local_tool_registry.has_subagent_controller());
+}
+
 #[tokio::test]
 async fn optional_setup_reports_subagents_disabled_by_provider_concurrency_policy() {
     let temp = TempDir::new().unwrap();

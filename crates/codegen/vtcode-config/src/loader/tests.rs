@@ -18,6 +18,7 @@ use vtcode_commons::reference::StaticWorkspacePaths;
 
 mod config_defaults;
 mod config_persistence;
+mod config_sparse_save;
 mod custom_provider_profile_config;
 mod custom_provider_trust;
 mod ide_context;

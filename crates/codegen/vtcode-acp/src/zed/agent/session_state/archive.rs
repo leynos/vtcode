@@ -130,25 +130,35 @@ impl ZedAgent {
             let thread = self
                 .thread_manager
                 .start_thread_with_identifier(listing.identifier(), ThreadBootstrap::from_listing(listing));
-            let runtime = self
+            let workspace_lease = self
                 .workspace_runtime_for(workspace)
                 .await
-                .context("Failed to initialise archived ACP session workspace")?;
+                .context("Failed to initialize archived ACP session workspace")?;
             let handle = self.build_session_handle(
                 thread,
                 SessionHandleBootstrap {
                     session_id: session_id.clone(),
                     archive: Some(archive),
                     trigger: SessionStartTrigger::Resume,
-                    workspace_runtime: Some(runtime),
+                    workspace_runtime: Some(workspace_lease.runtime().clone()),
+                    workspace_lease: Some(workspace_lease),
                 },
             );
-            drop(
-                self.sessions
-                    .lock()
-                    .map_err(|error| lock_poison_error("registering resumed ACP session", error))?
-                    .insert(session_id.clone(), handle.clone()),
-            );
+            let insert_result = self
+                .sessions
+                .lock()
+                .map_err(|error| lock_poison_error("registering resumed ACP session", error))
+                .map(|mut sessions| drop(sessions.insert(session_id.clone(), handle.clone())));
+            if let Err(error) = insert_result {
+                if let Err(cleanup_error) = handle.release_workspace_lease().await {
+                    warn!(
+                        %cleanup_error,
+                        session_id = %session_id,
+                        "Failed to release ACP workspace lease after resumed session registration failed"
+                    );
+                }
+                return Err(error);
+            }
             Ok(handle)
         })
         .await
@@ -168,7 +178,7 @@ impl ZedAgent {
                 .metadata()
                 .map(|metadata| metadata.workspace_path)
                 .ok_or_else(|| anyhow::anyhow!("active session has no stored workspace path"))?;
-            let workspace_match = canonical_workspace_match(std::path::Path::new(&stored_workspace), workspace.path())
+            let workspace_match = canonical_workspace_match(Path::new(&stored_workspace), workspace.path())
                 .with_context(|| format!("resolving workspace ownership for active session '{session_id}'"))?;
             anyhow::ensure!(
                 workspace_match == WorkspaceMatch::Matches,
@@ -197,20 +207,35 @@ impl ZedAgent {
         args: &acp::ListSessionsRequest,
         listings: Vec<SessionListing>,
     ) -> Result<acp::ListSessionsResponse, acp::Error> {
-        let offset = Self::session_list_offset(args.cursor.as_deref())?;
         let requested_workspace = args
             .cwd
             .as_deref()
             .map(vtcode_commons::canonicalize)
             .transpose()
             .map_err(|error| acp::Error::invalid_params().data(format!("invalid session list workspace: {error}")))?;
+        Self::session_list_response_for_workspace(args, listings, requested_workspace.as_deref())
+    }
+
+    fn session_list_response_for_workspace(
+        args: &acp::ListSessionsRequest,
+        listings: Vec<SessionListing>,
+        requested_workspace: Option<&Path>,
+    ) -> Result<acp::ListSessionsResponse, acp::Error> {
+        let offset = Self::session_list_offset(args.cursor.as_deref())?;
         let mut sessions = Vec::new();
         for listing in listings {
-            if let Some(workspace) = requested_workspace.as_deref() {
+            if let Some(workspace) = requested_workspace {
                 match session_listing_workspace_match(&listing, workspace) {
                     Ok(WorkspaceMatch::Matches) => {}
                     Ok(WorkspaceMatch::Differs) => continue,
-                    Err(error) => return Err(acp::Error::internal_error().data(error.to_string())),
+                    Err(error) => {
+                        debug!(
+                            session_id = %listing.identifier(),
+                            %error,
+                            "Skipping archived ACP session with an unresolved workspace"
+                        );
+                        continue;
+                    }
                 }
             }
 
@@ -243,6 +268,10 @@ impl ZedAgent {
         args: acp::ListSessionsRequest,
     ) -> Result<acp::ListSessionsResponse, acp::Error> {
         trace_storage_operation("archive_list", async {
+            let requested_workspace = match args.cwd.as_deref() {
+                Some(cwd) => Some(self.workspace_policy.resolve_client_cwd(cwd).await?),
+                None => None,
+            };
             if !history_persistence_enabled() {
                 return Ok(acp::ListSessionsResponse::new(Vec::new()));
             }
@@ -250,7 +279,18 @@ impl ZedAgent {
             let listings = list_recent_sessions(0)
                 .await
                 .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
-            let response = Self::session_list_response(&args, listings)?;
+            let listing_span = tracing::Span::current();
+            let response = tokio::task::spawn_blocking(move || {
+                listing_span.in_scope(|| {
+                    Self::session_list_response_for_workspace(
+                        &args,
+                        listings,
+                        requested_workspace.as_ref().map(AcpSessionWorkspace::path),
+                    )
+                })
+            })
+            .await
+            .map_err(|error| acp::Error::internal_error().data(format!("session listing worker failed: {error}")))??;
             debug!(
                 session_count = response.sessions.len(),
                 has_more = response.next_cursor.is_some(),
@@ -267,7 +307,7 @@ impl ZedAgent {
         args: acp::LoadSessionRequest,
     ) -> Result<acp::LoadSessionResponse, acp::Error> {
         trace_storage_operation("session_load", async {
-            let workspace = AcpSessionWorkspace::from_client_cwd(&args.cwd).await?;
+            let workspace = self.workspace_policy.resolve_client_cwd(&args.cwd).await?;
             let session = self
                 .attach_or_get_session(&args.session_id, &workspace)
                 .await
@@ -301,7 +341,7 @@ impl ZedAgent {
         args: acp::ResumeSessionRequest,
     ) -> Result<acp::ResumeSessionResponse, acp::Error> {
         trace_storage_operation("session_resume", async {
-            let workspace = AcpSessionWorkspace::from_client_cwd(&args.cwd).await?;
+            let workspace = self.workspace_policy.resolve_client_cwd(&args.cwd).await?;
             let session = self
                 .attach_or_get_session(&args.session_id, &workspace)
                 .await
@@ -336,10 +376,7 @@ pub(super) enum WorkspaceMatch {
     Differs,
 }
 
-fn canonical_workspace_match(
-    stored_workspace: &std::path::Path,
-    requested_workspace: &std::path::Path,
-) -> anyhow::Result<WorkspaceMatch> {
+fn canonical_workspace_match(stored_workspace: &Path, requested_workspace: &Path) -> anyhow::Result<WorkspaceMatch> {
     let canonical_stored_workspace = vtcode_commons::canonicalize(stored_workspace)
         .with_context(|| format!("resolving stored ACP session workspace '{}'", stored_workspace.display()))?;
     Ok(if canonical_stored_workspace == requested_workspace {
@@ -351,7 +388,7 @@ fn canonical_workspace_match(
 
 pub(super) fn session_listing_workspace_match(
     listing: &SessionListing,
-    requested_workspace: &std::path::Path,
+    requested_workspace: &Path,
 ) -> anyhow::Result<WorkspaceMatch> {
     let stored_workspace = session_workspace_path(listing)
         .ok_or_else(|| anyhow::anyhow!("archived session '{}' has no stored workspace path", listing.identifier()))?;

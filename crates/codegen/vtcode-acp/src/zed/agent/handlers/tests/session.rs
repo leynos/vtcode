@@ -1,5 +1,7 @@
 //! Checks ACP session capabilities, turn exclusion, recovery, and lifecycle-hook effects.
 use super::*;
+use agent_client_protocol::schema::v1::{CloseSessionRequest, InitializeRequest, NewSessionRequest};
+use std::time::Duration;
 
 #[test]
 fn advertised_capabilities_include_session_discovery_and_resume() {
@@ -8,6 +10,139 @@ fn advertised_capabilities_include_session_discovery_and_resume() {
     assert!(capabilities.load_session);
     assert!(capabilities.session_capabilities.list.is_some());
     assert!(capabilities.session_capabilities.resume.is_some());
+    assert!(capabilities.session_capabilities.close.is_some());
+}
+
+#[tokio::test]
+async fn close_session_cancels_and_waits_for_admitted_prompt_work() {
+    let workspace = TempDir::new().expect("temporary ACP workspace");
+    let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+    let session_id = agent.register_session().expect("register ACP session");
+    let session = agent
+        .session_handle(&session_id)
+        .expect("look up ACP session")
+        .expect("registered ACP session");
+    let prompt_guard = agent.begin_session_prompt(&session_id).expect("admit prompt work");
+
+    let closing_agent = Arc::clone(&agent);
+    let closing_session_id = session_id.clone();
+    let close_task = tokio::spawn(async move { closing_agent.close_session(&closing_session_id).await });
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while !session.cancellation.is_closed() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("session close should publish cancellation");
+    assert!(!close_task.is_finished(), "close must wait for admitted prompt work");
+    assert!(agent.session_handle(&session_id).expect("session lookup after close").is_none());
+    assert!(agent.begin_session_prompt(&session_id).is_err(), "close must reject new prompt admission");
+
+    drop(prompt_guard);
+    let response = tokio::time::timeout(Duration::from_secs(1), close_task)
+        .await
+        .expect("close should finish after prompt work is released")
+        .expect("close task should complete")
+        .expect("session close should succeed");
+    drop(response);
+    assert!(session.cancellation.is_closed());
+    assert!(
+        session
+            .mark_session_ended()
+            .expect("session end state should be readable")
+            .is_none(),
+        "session close should run the SessionEnd boundary before succeeding"
+    );
+}
+
+#[tokio::test]
+async fn close_wait_is_bounded_and_keeps_the_runtime_until_prompt_work_quiesces() {
+    let launch_workspace = TempDir::new().expect("temporary launch workspace");
+    let session_workspace = TempDir::new().expect("temporary session workspace");
+    let agent = Arc::new(build_wire_test_agent(launch_workspace.path()).await);
+    let session_id = agent
+        .new_session(NewSessionRequest::new(session_workspace.path()))
+        .await
+        .expect("create ACP session")
+        .session_id;
+    let session = agent
+        .session_handle(&session_id)
+        .expect("look up ACP session")
+        .expect("registered ACP session");
+    let runtime = session
+        .workspace_runtime()
+        .expect("session runtime state")
+        .expect("workspace runtime");
+    let prompt_guard = agent.begin_session_prompt(&session_id).expect("admit prompt work");
+
+    let closing_agent = Arc::clone(&agent);
+    let closing_session_id = session_id.clone();
+    let close_task = tokio::spawn(async move { closing_agent.close_session(&closing_session_id).await });
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while !session.cancellation.is_closed() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("session close should publish cancellation");
+
+    let close_result = tokio::time::timeout(Duration::from_secs(5), close_task)
+        .await
+        .expect("close request should remain bounded")
+        .expect("close task should complete");
+    assert!(close_result.is_err(), "close must not report success before prompt work is quiescent");
+    assert!(!runtime.is_shutdown(), "the workspace lease must remain while the prompt is still active");
+
+    drop(prompt_guard);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while !runtime.is_shutdown() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("detached cleanup should shut down the last workspace runtime after prompt quiescence");
+}
+
+#[tokio::test]
+async fn session_close_is_registered_on_the_wire() {
+    let workspace = TempDir::new().expect("temporary ACP workspace");
+    let client_workspace = workspace.path().to_path_buf();
+    let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+    let (agent_channel, client_channel) = Channel::duplex();
+    let agent_connection = install_handlers(Agent.builder().name("vtcode-close-test"), Arc::clone(&agent))
+        .connect_with(agent_channel, {
+            let agent = Arc::clone(&agent);
+            async move |cx: ConnectionTo<Client>| {
+                agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                std::future::pending::<agent_client_protocol::Result<()>>().await
+            }
+        });
+    let agent_task = tokio::spawn(agent_connection);
+
+    let client_connection = Client
+        .builder()
+        .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+            let initialized = cx
+                .send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                .block_task()
+                .await?;
+            assert!(initialized.agent_capabilities.session_capabilities.close.is_some());
+            let session = cx.send_request(NewSessionRequest::new(client_workspace)).block_task().await?;
+            let _close_response = cx
+                .send_request(CloseSessionRequest::new(session.session_id))
+                .block_task()
+                .await?;
+            Ok(())
+        });
+
+    tokio::time::timeout(Duration::from_secs(5), client_connection)
+        .await
+        .expect("client connection should finish")
+        .expect("session close protocol flow should succeed");
+    agent_task.abort();
+    drop(agent_task.await);
+    assert!(agent.sessions.lock().expect("ACP session map").is_empty());
 }
 
 #[test]

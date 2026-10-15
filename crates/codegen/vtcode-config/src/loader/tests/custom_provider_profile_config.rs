@@ -142,7 +142,12 @@ supports_parallel_tool_calls = true
 
     let provider = config.custom_providers.first().expect("provider should exist");
     assert_eq!(provider.api_format, CustomProviderApiFormat::OpenAIChat);
-    assert_eq!(provider.profile("gpt-5-mini").unwrap().supports_tools, Some(false));
+    assert!(
+        provider
+            .profile("gpt-5-mini")
+            .is_some_and(|profile| profile.supports_tools == Some(false)),
+        "the model profile should disable tools"
+    );
     assert!(provider.profile("gpt-5").is_none());
     assert_eq!(
         provider.resolved_profile("gpt-5-mini"),
