@@ -67,7 +67,6 @@ pub(crate) fn timestamp_unix_ms() -> u64 {
 mod tests {
     use super::*;
     use assert_fs::TempDir;
-    #[cfg(unix)]
     use std::fs;
 
     #[tokio::test]
