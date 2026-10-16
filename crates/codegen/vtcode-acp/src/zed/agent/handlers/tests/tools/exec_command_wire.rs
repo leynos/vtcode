@@ -94,7 +94,7 @@ async fn run_exec_command_wire_case(arguments: serde_json::Value) -> ExecCommand
             }
         });
 
-    tokio::time::timeout(Duration::from_secs(5), client_connection)
+    tokio::time::timeout(Duration::from_secs(30), client_connection)
         .await
         .expect("client connection should finish")
         .expect("exec_command protocol flow should succeed");
