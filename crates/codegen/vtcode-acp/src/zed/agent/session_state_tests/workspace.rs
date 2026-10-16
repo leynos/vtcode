@@ -49,7 +49,7 @@ async fn new_session_discovery_failure_does_not_expose_workspace_path() {
         .await
         .expect_err("invalid UTF-8 workspace agent must fail discovery");
     let surfaced = format!("{error:?}");
-    assert!(surfaced.contains("discovering ACP workspace agents"));
+    assert!(surfaced.contains("workspace_runtime_setup_failed"));
     assert!(!surfaced.contains(&requested_workspace.path().display().to_string()));
     assert!(!surfaced.contains("private-agent-path-sentinel"));
 }

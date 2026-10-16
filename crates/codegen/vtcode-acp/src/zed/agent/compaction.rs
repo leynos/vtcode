@@ -199,8 +199,12 @@ impl ZedAgent {
     async fn commit_compacted_history(&self, commit: CompactionCommit<'_>) -> Result<usize> {
         let CompactionCommit { session, thread, history, tools, decision } = commit;
         thread.replace_messages(history);
-        if let Err(error) = self.checkpoint_session(session).await {
-            warn!(%error, "Failed to persist compacted ACP session checkpoint");
+        if self.checkpoint_session(session).await.is_err() {
+            warn!(
+                operation = "session_checkpoint",
+                error_category = "archive_write_failed",
+                "Failed to persist compacted ACP session checkpoint"
+            );
         }
         let compacted_prompt_tokens = estimated_prompt_tokens(&self.resolved_messages(session)?, tools);
         if decision.is_over_admission_budget(compacted_prompt_tokens) {

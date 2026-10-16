@@ -17,7 +17,7 @@ use crate::acp;
 use crate::zed::session::AcpSessionWorkspace;
 use crate::zed::types::{SessionHandle, lock_poison_error};
 
-use super::{SessionHandleBootstrap, ZedAgent};
+use super::{SessionHandleBootstrap, ZedAgent, safe_internal_error, safe_invalid_params_error};
 
 pub(super) fn trace_storage_operation<'a, T: 'a, E: 'a, F>(
     operation: &'static str,
@@ -152,10 +152,11 @@ impl ZedAgent {
             if let Err(error) = insert_result {
                 if let Err(cleanup_error) = handle.release_workspace_lease().await {
                     warn!(
-                        %cleanup_error,
-                        session_id = %session_id,
+                        operation = "archive_attach",
+                        error_category = "workspace_lease_cleanup_failed",
                         "Failed to release ACP workspace lease after resumed session registration failed"
                     );
+                    let _source = cleanup_error;
                 }
                 return Err(error);
             }
@@ -207,12 +208,18 @@ impl ZedAgent {
         args: &acp::ListSessionsRequest,
         listings: Vec<SessionListing>,
     ) -> Result<acp::ListSessionsResponse, acp::Error> {
-        let requested_workspace = args
-            .cwd
-            .as_deref()
-            .map(vtcode_commons::canonicalize)
-            .transpose()
-            .map_err(|error| acp::Error::invalid_params().data(format!("invalid session list workspace: {error}")))?;
+        let requested_workspace =
+            args.cwd
+                .as_deref()
+                .map(vtcode_commons::canonicalize)
+                .transpose()
+                .map_err(|_error| {
+                    safe_invalid_params_error(
+                        "session_list",
+                        "workspace_resolution_failed",
+                        "Unable to resolve ACP session list workspace",
+                    )
+                })?;
         Self::session_list_response_for_workspace(args, listings, requested_workspace.as_deref())
     }
 
@@ -228,10 +235,10 @@ impl ZedAgent {
                 match session_listing_workspace_match(&listing, workspace) {
                     Ok(WorkspaceMatch::Matches) => {}
                     Ok(WorkspaceMatch::Differs) => continue,
-                    Err(error) => {
+                    Err(_error) => {
                         debug!(
-                            session_id = %listing.identifier(),
-                            %error,
+                            operation = "session_list",
+                            error_category = "stored_workspace_unresolvable",
                             "Skipping archived ACP session with an unresolved workspace"
                         );
                         continue;
@@ -276,9 +283,9 @@ impl ZedAgent {
                 return Ok(acp::ListSessionsResponse::new(Vec::new()));
             }
 
-            let listings = list_recent_sessions(0)
-                .await
-                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+            let listings = list_recent_sessions(0).await.map_err(|_error| {
+                safe_internal_error("session_list", "archive_read_failed", "Unable to list archived ACP sessions")
+            })?;
             let listing_span = tracing::Span::current();
             let response = tokio::task::spawn_blocking(move || {
                 listing_span.in_scope(|| {
@@ -290,7 +297,9 @@ impl ZedAgent {
                 })
             })
             .await
-            .map_err(|error| acp::Error::internal_error().data(format!("session listing worker failed: {error}")))??;
+            .map_err(|_error| {
+                safe_internal_error("session_list", "archive_worker_failed", "Unable to list archived ACP sessions")
+            })??;
             debug!(
                 session_count = response.sessions.len(),
                 has_more = response.next_cursor.is_some(),
@@ -311,24 +320,51 @@ impl ZedAgent {
             let session = self
                 .attach_or_get_session(&args.session_id, &workspace)
                 .await
-                .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
-            self.ensure_task_lifecycle_forwarder(&session)
-                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+                .map_err(|_error| {
+                    safe_internal_error(
+                        "session_load",
+                        "archive_restore_failed",
+                        "Unable to load the requested ACP session",
+                    )
+                })?;
+            self.ensure_task_lifecycle_forwarder(&session).map_err(|_error| {
+                safe_internal_error(
+                    "session_load",
+                    "task_lifecycle_setup_failed",
+                    "Unable to initialize ACP session updates",
+                )
+            })?;
 
-            if let Err(error) = self.replay_persisted_task_plan(&session, &args.session_id).await {
-                warn!(%error, "Failed to replay persisted ACP task plan on session load");
+            if self.replay_persisted_task_plan(&session, &args.session_id).await.is_err() {
+                warn!(
+                    operation = "session_load",
+                    error_category = "task_plan_replay_failed",
+                    "Failed to replay persisted ACP task plan"
+                );
             }
 
-            if let Err(error) = self.send_available_commands_update(&args.session_id).await {
-                warn!(%error, "Failed to advertise slash commands on session load");
+            if self.send_available_commands_update(&args.session_id).await.is_err() {
+                warn!(
+                    operation = "session_load",
+                    error_category = "command_update_failed",
+                    "Failed to advertise ACP slash commands"
+                );
             }
 
-            let config_options = self
-                .current_session_config_options(&session)
-                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
-            self.run_session_start_hooks(&session)
-                .await
-                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+            let config_options = self.current_session_config_options(&session).map_err(|_error| {
+                safe_internal_error(
+                    "session_load",
+                    "session_configuration_failed",
+                    "Unable to read ACP session configuration",
+                )
+            })?;
+            self.run_session_start_hooks(&session).await.map_err(|_error| {
+                safe_internal_error(
+                    "session_load",
+                    "session_start_hook_failed",
+                    "Unable to run ACP session start hooks",
+                )
+            })?;
             debug!("Loaded durable ACP session through legacy session/load");
             Ok(acp::LoadSessionResponse::new().config_options(config_options))
         })
@@ -345,24 +381,51 @@ impl ZedAgent {
             let session = self
                 .attach_or_get_session(&args.session_id, &workspace)
                 .await
-                .map_err(|err| acp::Error::internal_error().data(err.to_string()))?;
-            self.ensure_task_lifecycle_forwarder(&session)
-                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+                .map_err(|_error| {
+                    safe_internal_error(
+                        "session_resume",
+                        "archive_restore_failed",
+                        "Unable to resume the requested ACP session",
+                    )
+                })?;
+            self.ensure_task_lifecycle_forwarder(&session).map_err(|_error| {
+                safe_internal_error(
+                    "session_resume",
+                    "task_lifecycle_setup_failed",
+                    "Unable to initialize ACP session updates",
+                )
+            })?;
 
-            if let Err(error) = self.replay_persisted_task_plan(&session, &args.session_id).await {
-                warn!(%error, "Failed to replay persisted ACP task plan on session resume");
+            if self.replay_persisted_task_plan(&session, &args.session_id).await.is_err() {
+                warn!(
+                    operation = "session_resume",
+                    error_category = "task_plan_replay_failed",
+                    "Failed to replay persisted ACP task plan"
+                );
             }
 
-            if let Err(error) = self.send_available_commands_update(&args.session_id).await {
-                warn!(%error, "Failed to advertise slash commands on session resume");
+            if self.send_available_commands_update(&args.session_id).await.is_err() {
+                warn!(
+                    operation = "session_resume",
+                    error_category = "command_update_failed",
+                    "Failed to advertise ACP slash commands"
+                );
             }
 
-            let config_options = self
-                .current_session_config_options(&session)
-                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
-            self.run_session_start_hooks(&session)
-                .await
-                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+            let config_options = self.current_session_config_options(&session).map_err(|_error| {
+                safe_internal_error(
+                    "session_resume",
+                    "session_configuration_failed",
+                    "Unable to read ACP session configuration",
+                )
+            })?;
+            self.run_session_start_hooks(&session).await.map_err(|_error| {
+                safe_internal_error(
+                    "session_resume",
+                    "session_start_hook_failed",
+                    "Unable to run ACP session start hooks",
+                )
+            })?;
             debug!("Resumed durable ACP session");
             Ok(acp::ResumeSessionResponse::new().config_options(config_options))
         })

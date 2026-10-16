@@ -10,6 +10,8 @@ use crate::zed::agent::{ZedAgent, ZedAgentSetup};
 use crate::zed::connection::ConnectionHandle;
 use agent_client_protocol::{Agent, Client, ConnectionTo, Stdio};
 use anyhow::{Context, Result};
+use std::error::Error as StdError;
+use std::fmt;
 use std::future::pending;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -36,24 +38,107 @@ pub(crate) struct AcpSessionWorkspace {
     root: PathBuf,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum AcpWorkspaceErrorCategory {
+    InvalidPath,
+    ResolveFailed,
+    InspectFailed,
+    NotDirectory,
+    UnsupportedScope,
+    OutsideAllowedRoots,
+}
+
+impl AcpWorkspaceErrorCategory {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidPath => "invalid_path",
+            Self::ResolveFailed => "resolve_failed",
+            Self::InspectFailed => "inspect_failed",
+            Self::NotDirectory => "not_directory",
+            Self::UnsupportedScope => "unsupported_scope",
+            Self::OutsideAllowedRoots => "outside_allowed_roots",
+        }
+    }
+
+    const fn public_message(self) -> &'static str {
+        match self {
+            Self::InvalidPath => "ACP session workspace must be an absolute path",
+            Self::ResolveFailed => "Unable to resolve ACP session workspace",
+            Self::InspectFailed => "Unable to inspect ACP session workspace",
+            Self::NotDirectory => "ACP session workspace is not a directory",
+            Self::UnsupportedScope => "ACP session workspace has an unsupported scope",
+            Self::OutsideAllowedRoots => "ACP session workspace is outside configured allowed roots",
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct AcpWorkspaceError {
+    operation: &'static str,
+    category: AcpWorkspaceErrorCategory,
+    source: Option<anyhow::Error>,
+}
+
+impl AcpWorkspaceError {
+    pub(crate) fn new(operation: &'static str, category: AcpWorkspaceErrorCategory) -> Self {
+        Self { operation, category, source: None }
+    }
+
+    pub(crate) fn with_source(
+        operation: &'static str,
+        category: AcpWorkspaceErrorCategory,
+        source: impl Into<anyhow::Error>,
+    ) -> Self {
+        Self { operation, category, source: Some(source.into()) }
+    }
+}
+
+impl fmt::Display for AcpWorkspaceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ACP workspace {} failed ({})", self.operation, self.category.as_str())
+    }
+}
+
+impl StdError for AcpWorkspaceError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.source.as_ref().map(|source| source.as_ref())
+    }
+}
+
+impl From<AcpWorkspaceError> for acp::Error {
+    fn from(error: AcpWorkspaceError) -> Self {
+        tracing::warn!(
+            operation = error.operation,
+            error_category = error.category.as_str(),
+            "ACP workspace request rejected"
+        );
+        acp::Error::invalid_params().data(serde_json::json!({
+            "operation": error.operation,
+            "error_category": error.category.as_str(),
+            "message": error.category.public_message(),
+        }))
+    }
+}
+
 impl AcpSessionWorkspace {
-    pub(crate) async fn from_client_cwd(requested_workspace: &Path) -> Result<Self, acp::Error> {
+    pub(crate) async fn from_client_cwd(requested_workspace: &Path) -> Result<Self, AcpWorkspaceError> {
         if !requested_workspace.is_absolute() {
-            return Err(acp::Error::invalid_params().data("ACP session cwd must be an absolute directory"));
+            return Err(AcpWorkspaceError::new("resolve_session_workspace", AcpWorkspaceErrorCategory::InvalidPath));
         }
         let root = vtcode_commons::fs::canonicalize_with_context_async(requested_workspace, "ACP session cwd")
             .await
             .map_err(|error| {
-                acp::Error::invalid_params()
-                    .data(format!("Unable to resolve ACP session cwd '{}': {error}", requested_workspace.display()))
+                AcpWorkspaceError::with_source(
+                    "resolve_session_workspace",
+                    AcpWorkspaceErrorCategory::ResolveFailed,
+                    error,
+                )
             })?;
         let metadata = tokio::fs::metadata(&root).await.map_err(|error| {
-            acp::Error::invalid_params()
-                .data(format!("Unable to inspect ACP session cwd '{}': {error}", requested_workspace.display()))
+            AcpWorkspaceError::with_source("inspect_session_workspace", AcpWorkspaceErrorCategory::InspectFailed, error)
         })?;
         if !metadata.is_dir() {
-            return Err(acp::Error::invalid_params()
-                .data(format!("ACP session cwd '{}' is not a directory", requested_workspace.display())));
+            return Err(AcpWorkspaceError::new("inspect_session_workspace", AcpWorkspaceErrorCategory::NotDirectory));
         }
         Ok(Self { root })
     }

@@ -4,6 +4,7 @@ use hashbrown::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
 use tokio::sync::{Notify, OnceCell};
+use vtcode_core::metrics::RuntimeCacheKind;
 use vtcode_core::tools::file_ops::FileOpsTool;
 use vtcode_core::tools::registry::ToolRegistry as CoreToolRegistry;
 
@@ -304,7 +305,9 @@ impl<T> WorkspaceRuntimeCache<T> {
     }
 
     fn update_cache_size_metric(&self) {
-        self.metrics
-            .set_acp_workspace_runtime_cache_entries(self.runtimes.len().saturating_add(self.in_flight.len()));
+        self.metrics.set_runtime_cache_entries(
+            RuntimeCacheKind::Workspace,
+            self.runtimes.len().saturating_add(self.in_flight.len()),
+        );
     }
 }

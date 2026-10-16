@@ -192,6 +192,32 @@ fn jsonl_file_sink_rotates_when_threshold_exceeded() {
     assert!(rotated.contains("\"call-a\""), "expected rotated file to contain call-a, got: {rotated}");
 }
 
+#[cfg(unix)]
+#[test]
+fn jsonl_file_sink_recovers_after_rotation_rename_failure() {
+    let dir = TempDir::new().expect("tempdir");
+    let path = dir.path().join("audit.jsonl");
+    let rotated_path = dir.path().join("audit.jsonl.1");
+    let sink = JsonlFileSink::open(&path, 1, 1).expect("open sink");
+
+    sink.write(&sample_entry("before-failure")).expect("initial audit entry");
+    std::fs::create_dir(&rotated_path).expect("block rotation destination");
+    let error = sink
+        .write(&sample_entry("rejected-during-failure"))
+        .expect_err("rotation failure must be returned to the caller");
+    assert_eq!(error.kind(), std::io::ErrorKind::IsADirectory);
+    sink.flush().expect("writer remains usable after failed rotation");
+
+    std::fs::remove_dir(&rotated_path).expect("remove rotation blocker");
+    sink.write(&sample_entry("after-recovery")).expect("rotation and write recover");
+    sink.flush().expect("recovered entry is durable");
+
+    let active = std::fs::read_to_string(&path).expect("active audit file");
+    let rotated = std::fs::read_to_string(&rotated_path).expect("rotated audit file");
+    assert!(active.contains("after-recovery"), "recovered entry should reach active file: {active}");
+    assert!(rotated.contains("before-failure"), "original entry should remain rotated: {rotated}");
+}
+
 #[test]
 fn multi_sink_forwards_to_every_inner_sink() {
     let a = Arc::new(InMemorySink::new());

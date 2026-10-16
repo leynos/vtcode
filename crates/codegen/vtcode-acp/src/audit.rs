@@ -67,6 +67,7 @@ pub(crate) fn timestamp_unix_ms() -> u64 {
 mod tests {
     use super::*;
     use assert_fs::TempDir;
+    #[cfg(unix)]
     use std::fs;
 
     #[tokio::test]
@@ -88,6 +89,7 @@ mod tests {
         assert!(!path.exists());
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn audit_record_propagates_sink_rotation_failure() {
         let temp = TempDir::new().expect("tempdir");

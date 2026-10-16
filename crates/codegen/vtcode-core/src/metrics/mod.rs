@@ -16,7 +16,6 @@ use std::fmt::Write;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
-use vtcode_mcp::{McpClientStartupOutcome, McpProviderStartupOutcome, McpStartupObserver};
 
 pub mod discovery_metrics;
 pub mod execution_metrics;
@@ -61,7 +60,7 @@ pub struct ProviderRequestMetrics {
 /// This snapshot intentionally contains no provider names or request payloads,
 /// so the same fixed metrics are safe to expose through JSON and Prometheus.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct McpStartupMetrics {
+pub struct ServiceStartupMetrics {
     pub client_attempts_started: u64,
     pub client_attempts_succeeded: u64,
     pub client_attempts_partial: u64,
@@ -90,10 +89,67 @@ pub struct McpStartupMetrics {
 /// These values cover all active sessions and deliberately carry no session,
 /// task, or payload labels.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AcpTaskLifecycleMetrics {
+pub struct TaskLifecycleQueueMetrics {
     pub queue_depth: u64,
     pub queue_dropped_full: u64,
     pub queue_dropped_closed: u64,
+}
+
+/// Bounded client startup outcomes without integration-specific provider data.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ServiceClientStartupOutcome {
+    Succeeded,
+    Partial,
+    Failed,
+    Disabled,
+    Cancelled,
+}
+
+/// Bounded provider startup outcomes without integration-specific provider data.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ServiceProviderStartupOutcome {
+    Succeeded,
+    ConnectionFailed,
+    ConnectionTimedOut,
+    InitializationFailed,
+    InitializationTimedOut,
+    OtherFailed,
+    Cancelled,
+}
+
+/// Driven port for bounded service-client and provider startup metrics.
+pub trait ServiceStartupMetricsObserver: Send + Sync {
+    fn client_startup_started(&self);
+    fn client_startup_finished(
+        &self,
+        outcome: ServiceClientStartupOutcome,
+        previous_active_provider_count: u64,
+        active_provider_count: u64,
+        duration_ms: u64,
+    );
+    fn provider_startup_started(&self);
+    fn provider_startup_finished(&self, outcome: ServiceProviderStartupOutcome, duration_ms: u64);
+}
+
+/// Bounded queue events used by task-lifecycle notification adapters.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TaskLifecycleQueueDrop {
+    Full,
+    Closed,
+}
+
+/// Driven port for tracking a bounded task-lifecycle notification queue.
+pub trait TaskLifecycleQueueMetricsObserver: Send + Sync {
+    fn queue_item_enqueued(&self);
+    fn queue_item_dequeued(&self);
+    fn queue_items_drained(&self, entries: usize);
+    fn queue_item_dropped(&self, reason: TaskLifecycleQueueDrop) -> u64;
+}
+
+/// The kind of runtime cache whose bounded entry count is being observed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RuntimeCacheKind {
+    Workspace,
 }
 
 /// Central metrics collector for all MCP execution activities
@@ -107,9 +163,9 @@ pub struct MetricsCollector {
     skills: Arc<Mutex<SkillMetrics>>,
     security: Arc<Mutex<SecurityMetrics>>,
     provider_requests: Arc<Mutex<ProviderRequestMetrics>>,
-    mcp_startup: Arc<Mutex<McpStartupMetrics>>,
-    acp_task_lifecycle: Arc<Mutex<AcpTaskLifecycleMetrics>>,
-    acp_workspace_runtime_cache_entries: Arc<AtomicU64>,
+    service_startup: Arc<Mutex<ServiceStartupMetrics>>,
+    task_lifecycle_queue: Arc<Mutex<TaskLifecycleQueueMetrics>>,
+    workspace_runtime_cache_entries: Arc<AtomicU64>,
     start_time: Instant,
 }
 
@@ -126,9 +182,9 @@ pub struct MetricsSummary {
     pub security: SecurityMetrics,
     pub provider_requests: ProviderRequestMetrics,
     #[serde(default)]
-    pub mcp_startup: McpStartupMetrics,
+    pub mcp_startup: ServiceStartupMetrics,
     #[serde(default)]
-    pub acp_task_lifecycle: AcpTaskLifecycleMetrics,
+    pub acp_task_lifecycle: TaskLifecycleQueueMetrics,
     #[serde(default)]
     pub acp_workspace_runtime_cache_entries: u64,
 }
@@ -145,9 +201,9 @@ impl MetricsCollector {
             skills: Arc::new(Mutex::new(SkillMetrics::new())),
             security: Arc::new(Mutex::new(SecurityMetrics::new())),
             provider_requests: Arc::new(Mutex::new(ProviderRequestMetrics::default())),
-            mcp_startup: Arc::new(Mutex::new(McpStartupMetrics::default())),
-            acp_task_lifecycle: Arc::new(Mutex::new(AcpTaskLifecycleMetrics::default())),
-            acp_workspace_runtime_cache_entries: Arc::new(AtomicU64::new(0)),
+            service_startup: Arc::new(Mutex::new(ServiceStartupMetrics::default())),
+            task_lifecycle_queue: Arc::new(Mutex::new(TaskLifecycleQueueMetrics::default())),
+            workspace_runtime_cache_entries: Arc::new(AtomicU64::new(0)),
             start_time: Instant::now(),
         }
     }
@@ -216,57 +272,29 @@ impl MetricsCollector {
     }
 
     /// Get the bounded aggregate MCP startup metrics snapshot.
-    pub fn get_mcp_startup_metrics(&self) -> McpStartupMetrics {
-        self.mcp_startup.lock().clone()
+    pub fn get_service_startup_metrics(&self) -> ServiceStartupMetrics {
+        self.service_startup.lock().clone()
     }
 
-    /// Mark one ACP task-lifecycle update as queued.
-    pub fn record_acp_task_lifecycle_queue_enqueued(&self) {
-        let mut metrics = self.acp_task_lifecycle.lock();
-        metrics.queue_depth = metrics.queue_depth.saturating_add(1);
+    /// Get aggregate measurements for the task-lifecycle notification queue.
+    pub fn get_task_lifecycle_queue_metrics(&self) -> TaskLifecycleQueueMetrics {
+        self.task_lifecycle_queue.lock().clone()
     }
 
-    /// Mark one ACP task-lifecycle update as removed from its queue.
-    pub fn record_acp_task_lifecycle_queue_dequeued(&self) {
-        let mut metrics = self.acp_task_lifecycle.lock();
-        metrics.queue_depth = metrics.queue_depth.saturating_sub(1);
-    }
-
-    /// Remove buffered ACP task-lifecycle updates discarded during shutdown.
-    pub fn record_acp_task_lifecycle_queue_drained(&self, entries: usize) {
+    /// Set the current number of cached entries for a runtime cache kind.
+    pub fn set_runtime_cache_entries(&self, kind: RuntimeCacheKind, entries: usize) {
+        match kind {
+            RuntimeCacheKind::Workspace => {}
+        }
         let entries = u64::try_from(entries).unwrap_or(u64::MAX);
-        let mut metrics = self.acp_task_lifecycle.lock();
-        metrics.queue_depth = metrics.queue_depth.saturating_sub(entries);
+        self.workspace_runtime_cache_entries.store(entries, Ordering::Relaxed);
     }
 
-    /// Record an ACP task-lifecycle update rejected because its queue was full.
-    pub fn record_acp_task_lifecycle_queue_drop_full(&self) -> u64 {
-        let mut metrics = self.acp_task_lifecycle.lock();
-        metrics.queue_dropped_full = metrics.queue_dropped_full.saturating_add(1);
-        metrics.queue_dropped_full
-    }
-
-    /// Record an ACP task-lifecycle update rejected because its queue was closed.
-    pub fn record_acp_task_lifecycle_queue_drop_closed(&self) -> u64 {
-        let mut metrics = self.acp_task_lifecycle.lock();
-        metrics.queue_dropped_closed = metrics.queue_dropped_closed.saturating_add(1);
-        metrics.queue_dropped_closed
-    }
-
-    /// Get the current aggregate ACP task-lifecycle queue metrics.
-    pub fn get_acp_task_lifecycle_metrics(&self) -> AcpTaskLifecycleMetrics {
-        self.acp_task_lifecycle.lock().clone()
-    }
-
-    /// Set the current number of cached ACP workspace runtime entries.
-    pub fn set_acp_workspace_runtime_cache_entries(&self, entries: usize) {
-        let entries = u64::try_from(entries).unwrap_or(u64::MAX);
-        self.acp_workspace_runtime_cache_entries.store(entries, Ordering::Relaxed);
-    }
-
-    /// Get the current number of cached ACP workspace runtime entries.
-    pub fn get_acp_workspace_runtime_cache_entries(&self) -> u64 {
-        self.acp_workspace_runtime_cache_entries.load(Ordering::Relaxed)
+    /// Get the current number of entries in the workspace runtime cache.
+    pub fn get_runtime_cache_entries(&self, kind: RuntimeCacheKind) -> u64 {
+        match kind {
+            RuntimeCacheKind::Workspace => self.workspace_runtime_cache_entries.load(Ordering::Relaxed),
+        }
     }
 
     // ========== Discovery Metrics ==========
@@ -512,9 +540,9 @@ impl MetricsCollector {
             skills: self.get_skill_metrics(),
             security: self.get_security_metrics(),
             provider_requests: self.get_provider_request_metrics(),
-            mcp_startup: self.get_mcp_startup_metrics(),
-            acp_task_lifecycle: self.get_acp_task_lifecycle_metrics(),
-            acp_workspace_runtime_cache_entries: self.get_acp_workspace_runtime_cache_entries(),
+            mcp_startup: self.get_service_startup_metrics(),
+            acp_task_lifecycle: self.get_task_lifecycle_queue_metrics(),
+            acp_workspace_runtime_cache_entries: self.get_runtime_cache_entries(RuntimeCacheKind::Workspace),
         }
     }
 
@@ -540,9 +568,9 @@ struct PrometheusMetricsSnapshot {
     skills: SkillMetrics,
     security: SecurityMetrics,
     provider_requests: ProviderRequestMetrics,
-    mcp_startup: McpStartupMetrics,
-    acp_task_lifecycle: AcpTaskLifecycleMetrics,
-    acp_workspace_runtime_cache_entries: u64,
+    service_startup: ServiceStartupMetrics,
+    acp_task_lifecycle: TaskLifecycleQueueMetrics,
+    workspace_runtime_cache_entries: u64,
 }
 
 impl PrometheusMetricsSnapshot {
@@ -555,9 +583,9 @@ impl PrometheusMetricsSnapshot {
             skills: collector.get_skill_metrics(),
             security: collector.get_security_metrics(),
             provider_requests: collector.get_provider_request_metrics(),
-            mcp_startup: collector.get_mcp_startup_metrics(),
-            acp_task_lifecycle: collector.get_acp_task_lifecycle_metrics(),
-            acp_workspace_runtime_cache_entries: collector.get_acp_workspace_runtime_cache_entries(),
+            service_startup: collector.get_service_startup_metrics(),
+            acp_task_lifecycle: collector.get_task_lifecycle_queue_metrics(),
+            workspace_runtime_cache_entries: collector.get_runtime_cache_entries(RuntimeCacheKind::Workspace),
         }
     }
 
@@ -569,7 +597,7 @@ impl PrometheusMetricsSnapshot {
         self.append_skills(&mut output);
         self.append_pii_detections(&mut output);
         self.append_provider_requests(&mut output);
-        self.append_mcp_startup(&mut output);
+        self.append_service_startup(&mut output);
         self.append_acp_task_lifecycle(&mut output);
         self.append_acp_workspace_runtime_cache(&mut output);
         self.append_tokens_created(&mut output);
@@ -774,8 +802,8 @@ impl PrometheusMetricsSnapshot {
         );
     }
 
-    fn append_mcp_startup(&self, output: &mut String) {
-        append_mcp_startup_prometheus(output, &self.mcp_startup);
+    fn append_service_startup(&self, output: &mut String) {
+        append_mcp_startup_prometheus(output, &self.service_startup);
     }
 
     fn append_acp_workspace_runtime_cache(&self, output: &mut String) {
@@ -784,7 +812,7 @@ impl PrometheusMetricsSnapshot {
             "# HELP vtcode_acp_workspace_runtime_cache_entries Live and in-flight ACP workspace runtime cache entries\n\
              # TYPE vtcode_acp_workspace_runtime_cache_entries gauge\n\
              vtcode_acp_workspace_runtime_cache_entries {}\n",
-            self.acp_workspace_runtime_cache_entries
+            self.workspace_runtime_cache_entries
         );
     }
 
@@ -793,7 +821,7 @@ impl PrometheusMetricsSnapshot {
     }
 }
 
-fn append_acp_task_lifecycle_prometheus(output: &mut String, metrics: &AcpTaskLifecycleMetrics) {
+fn append_acp_task_lifecycle_prometheus(output: &mut String, metrics: &TaskLifecycleQueueMetrics) {
     let _ = write!(
         output,
         "# HELP vtcode_acp_task_lifecycle_queue_depth Buffered ACP task-lifecycle updates across active sessions\n\
@@ -809,7 +837,7 @@ fn append_acp_task_lifecycle_prometheus(output: &mut String, metrics: &AcpTaskLi
     );
 }
 
-fn append_mcp_startup_prometheus(output: &mut String, metrics: &McpStartupMetrics) {
+fn append_mcp_startup_prometheus(output: &mut String, metrics: &ServiceStartupMetrics) {
     let _ = write!(
         output,
         "# HELP vtcode_mcp_client_startup_attempts_started_total MCP client startup attempts started\n\
@@ -899,36 +927,36 @@ fn append_mcp_startup_prometheus(output: &mut String, metrics: &McpStartupMetric
     );
 }
 
-impl McpStartupObserver for MetricsCollector {
+impl ServiceStartupMetricsObserver for MetricsCollector {
     fn client_startup_started(&self) {
-        let mut metrics = self.mcp_startup.lock();
+        let mut metrics = self.service_startup.lock();
         metrics.client_attempts_started = metrics.client_attempts_started.saturating_add(1);
         metrics.client_attempts_in_flight = metrics.client_attempts_in_flight.saturating_add(1);
     }
 
     fn client_startup_finished(
         &self,
-        outcome: McpClientStartupOutcome,
+        outcome: ServiceClientStartupOutcome,
         previous_active_provider_count: u64,
         active_provider_count: u64,
         duration_ms: u64,
     ) {
-        let mut metrics = self.mcp_startup.lock();
+        let mut metrics = self.service_startup.lock();
         metrics.client_attempts_in_flight = metrics.client_attempts_in_flight.saturating_sub(1);
         match outcome {
-            McpClientStartupOutcome::Succeeded => {
+            ServiceClientStartupOutcome::Succeeded => {
                 metrics.client_attempts_succeeded = metrics.client_attempts_succeeded.saturating_add(1);
             }
-            McpClientStartupOutcome::Partial => {
+            ServiceClientStartupOutcome::Partial => {
                 metrics.client_attempts_partial = metrics.client_attempts_partial.saturating_add(1);
             }
-            McpClientStartupOutcome::Failed => {
+            ServiceClientStartupOutcome::Failed => {
                 metrics.client_attempts_failed = metrics.client_attempts_failed.saturating_add(1);
             }
-            McpClientStartupOutcome::Disabled => {
+            ServiceClientStartupOutcome::Disabled => {
                 metrics.client_attempts_disabled = metrics.client_attempts_disabled.saturating_add(1);
             }
-            McpClientStartupOutcome::Cancelled => {
+            ServiceClientStartupOutcome::Cancelled => {
                 metrics.client_attempts_cancelled = metrics.client_attempts_cancelled.saturating_add(1);
             }
         }
@@ -945,45 +973,77 @@ impl McpStartupObserver for MetricsCollector {
     }
 
     fn provider_startup_started(&self) {
-        let mut metrics = self.mcp_startup.lock();
+        let mut metrics = self.service_startup.lock();
         metrics.provider_attempts_started = metrics.provider_attempts_started.saturating_add(1);
         metrics.provider_attempts_in_flight = metrics.provider_attempts_in_flight.saturating_add(1);
     }
 
-    fn provider_startup_finished(&self, outcome: McpProviderStartupOutcome, duration_ms: u64) {
-        let mut metrics = self.mcp_startup.lock();
+    fn provider_startup_finished(&self, outcome: ServiceProviderStartupOutcome, duration_ms: u64) {
+        let mut metrics = self.service_startup.lock();
         metrics.provider_attempts_in_flight = metrics.provider_attempts_in_flight.saturating_sub(1);
         match outcome {
-            McpProviderStartupOutcome::Succeeded => {
+            ServiceProviderStartupOutcome::Succeeded => {
                 metrics.provider_attempts_succeeded = metrics.provider_attempts_succeeded.saturating_add(1);
             }
-            McpProviderStartupOutcome::ConnectionFailed => {
+            ServiceProviderStartupOutcome::ConnectionFailed => {
                 metrics.provider_attempts_failed = metrics.provider_attempts_failed.saturating_add(1);
                 metrics.provider_connection_failures = metrics.provider_connection_failures.saturating_add(1);
             }
-            McpProviderStartupOutcome::ConnectionTimedOut => {
+            ServiceProviderStartupOutcome::ConnectionTimedOut => {
                 metrics.provider_attempts_failed = metrics.provider_attempts_failed.saturating_add(1);
                 metrics.provider_connection_timeouts = metrics.provider_connection_timeouts.saturating_add(1);
                 metrics.provider_timeouts = metrics.provider_timeouts.saturating_add(1);
             }
-            McpProviderStartupOutcome::InitializationFailed => {
+            ServiceProviderStartupOutcome::InitializationFailed => {
                 metrics.provider_attempts_failed = metrics.provider_attempts_failed.saturating_add(1);
                 metrics.provider_initialization_failures = metrics.provider_initialization_failures.saturating_add(1);
             }
-            McpProviderStartupOutcome::InitializationTimedOut => {
+            ServiceProviderStartupOutcome::InitializationTimedOut => {
                 metrics.provider_attempts_failed = metrics.provider_attempts_failed.saturating_add(1);
                 metrics.provider_initialization_timeouts = metrics.provider_initialization_timeouts.saturating_add(1);
                 metrics.provider_timeouts = metrics.provider_timeouts.saturating_add(1);
             }
-            McpProviderStartupOutcome::OtherFailed => {
+            ServiceProviderStartupOutcome::OtherFailed => {
                 metrics.provider_attempts_failed = metrics.provider_attempts_failed.saturating_add(1);
                 metrics.provider_other_failures = metrics.provider_other_failures.saturating_add(1);
             }
-            McpProviderStartupOutcome::Cancelled => {
+            ServiceProviderStartupOutcome::Cancelled => {
                 metrics.provider_attempts_cancelled = metrics.provider_attempts_cancelled.saturating_add(1);
             }
         }
         metrics.total_provider_duration_ms = metrics.total_provider_duration_ms.saturating_add(duration_ms);
+    }
+}
+
+impl TaskLifecycleQueueMetricsObserver for MetricsCollector {
+    fn queue_item_enqueued(&self) {
+        let mut metrics = self.task_lifecycle_queue.lock();
+        metrics.queue_depth = metrics.queue_depth.saturating_add(1);
+    }
+
+    fn queue_item_dequeued(&self) {
+        let mut metrics = self.task_lifecycle_queue.lock();
+        metrics.queue_depth = metrics.queue_depth.saturating_sub(1);
+    }
+
+    fn queue_items_drained(&self, entries: usize) {
+        let entries = u64::try_from(entries).unwrap_or(u64::MAX);
+        let mut metrics = self.task_lifecycle_queue.lock();
+        metrics.queue_depth = metrics.queue_depth.saturating_sub(entries);
+    }
+
+    fn queue_item_dropped(&self, reason: TaskLifecycleQueueDrop) -> u64 {
+        let mut metrics = self.task_lifecycle_queue.lock();
+        match reason {
+            TaskLifecycleQueueDrop::Full => {
+                metrics.queue_dropped_full = metrics.queue_dropped_full.saturating_add(1);
+                metrics.queue_dropped_full
+            }
+            TaskLifecycleQueueDrop::Closed => {
+                metrics.queue_dropped_closed = metrics.queue_dropped_closed.saturating_add(1);
+                metrics.queue_dropped_closed
+            }
+        }
     }
 }
 
@@ -1165,20 +1225,20 @@ mod tests {
         let collector = MetricsCollector::new();
         collector.client_startup_started();
         for outcome in [
-            McpProviderStartupOutcome::Succeeded,
-            McpProviderStartupOutcome::ConnectionFailed,
-            McpProviderStartupOutcome::ConnectionTimedOut,
-            McpProviderStartupOutcome::InitializationFailed,
-            McpProviderStartupOutcome::InitializationTimedOut,
-            McpProviderStartupOutcome::OtherFailed,
-            McpProviderStartupOutcome::Cancelled,
+            ServiceProviderStartupOutcome::Succeeded,
+            ServiceProviderStartupOutcome::ConnectionFailed,
+            ServiceProviderStartupOutcome::ConnectionTimedOut,
+            ServiceProviderStartupOutcome::InitializationFailed,
+            ServiceProviderStartupOutcome::InitializationTimedOut,
+            ServiceProviderStartupOutcome::OtherFailed,
+            ServiceProviderStartupOutcome::Cancelled,
         ] {
             collector.provider_startup_started();
             collector.provider_startup_finished(outcome, 5);
         }
-        collector.client_startup_finished(McpClientStartupOutcome::Partial, 0, 2, 47);
+        collector.client_startup_finished(ServiceClientStartupOutcome::Partial, 0, 2, 47);
 
-        let expected = McpStartupMetrics {
+        let expected = ServiceStartupMetrics {
             client_attempts_started: 1,
             client_attempts_partial: 1,
             provider_attempts_started: 7,
@@ -1194,9 +1254,9 @@ mod tests {
             active_providers: 2,
             total_client_duration_ms: 47,
             total_provider_duration_ms: 35,
-            ..McpStartupMetrics::default()
+            ..ServiceStartupMetrics::default()
         };
-        assert_eq!(collector.get_mcp_startup_metrics(), expected);
+        assert_eq!(collector.get_service_startup_metrics(), expected);
 
         let json = collector.export_json().expect("metrics JSON should serialize");
         assert_eq!(json["mcp_startup"]["provider_timeouts"], 2);
@@ -1215,21 +1275,21 @@ mod tests {
     fn mcp_active_provider_gauge_accumulates_client_deltas() {
         let collector = MetricsCollector::new();
         collector.client_startup_started();
-        collector.client_startup_finished(McpClientStartupOutcome::Succeeded, 0, 2, 1);
+        collector.client_startup_finished(ServiceClientStartupOutcome::Succeeded, 0, 2, 1);
         collector.client_startup_started();
-        collector.client_startup_finished(McpClientStartupOutcome::Partial, 0, 1, 1);
+        collector.client_startup_finished(ServiceClientStartupOutcome::Partial, 0, 1, 1);
         collector.client_startup_started();
-        collector.client_startup_finished(McpClientStartupOutcome::Failed, 2, 0, 1);
+        collector.client_startup_finished(ServiceClientStartupOutcome::Failed, 2, 0, 1);
 
-        assert_eq!(collector.get_mcp_startup_metrics().active_providers, 1);
+        assert_eq!(collector.get_service_startup_metrics().active_providers, 1);
     }
 
     #[test]
     fn acp_workspace_runtime_cache_size_is_exported_as_a_gauge() {
         let collector = MetricsCollector::new();
-        collector.set_acp_workspace_runtime_cache_entries(3);
+        collector.set_runtime_cache_entries(RuntimeCacheKind::Workspace, 3);
 
-        assert_eq!(collector.get_acp_workspace_runtime_cache_entries(), 3);
+        assert_eq!(collector.get_runtime_cache_entries(RuntimeCacheKind::Workspace), 3);
         assert_eq!(collector.get_summary().acp_workspace_runtime_cache_entries, 3);
         let prometheus = collector.export_prometheus();
         assert!(prometheus.contains("vtcode_acp_workspace_runtime_cache_entries 3"));
@@ -1238,15 +1298,15 @@ mod tests {
     #[test]
     fn acp_task_lifecycle_queue_depth_and_drops_are_exported_without_labels() {
         let collector = MetricsCollector::new();
-        collector.record_acp_task_lifecycle_queue_enqueued();
-        collector.record_acp_task_lifecycle_queue_enqueued();
-        collector.record_acp_task_lifecycle_queue_dequeued();
-        collector.record_acp_task_lifecycle_queue_drop_full();
-        collector.record_acp_task_lifecycle_queue_drop_closed();
+        collector.queue_item_enqueued();
+        collector.queue_item_enqueued();
+        collector.queue_item_dequeued();
+        collector.queue_item_dropped(TaskLifecycleQueueDrop::Full);
+        collector.queue_item_dropped(TaskLifecycleQueueDrop::Closed);
 
         assert_eq!(
-            collector.get_acp_task_lifecycle_metrics(),
-            AcpTaskLifecycleMetrics {
+            collector.get_task_lifecycle_queue_metrics(),
+            TaskLifecycleQueueMetrics {
                 queue_depth: 1,
                 queue_dropped_full: 1,
                 queue_dropped_closed: 1,
@@ -1269,10 +1329,10 @@ mod tests {
     #[test]
     fn acp_task_lifecycle_shutdown_drain_clamps_queue_depth_to_zero() {
         let collector = MetricsCollector::new();
-        collector.record_acp_task_lifecycle_queue_enqueued();
-        collector.record_acp_task_lifecycle_queue_drained(2);
+        collector.queue_item_enqueued();
+        collector.queue_items_drained(2);
 
-        assert_eq!(collector.get_acp_task_lifecycle_metrics().queue_depth, 0);
+        assert_eq!(collector.get_task_lifecycle_queue_metrics().queue_depth, 0);
     }
 
     #[test]

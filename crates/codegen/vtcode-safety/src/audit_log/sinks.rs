@@ -117,12 +117,24 @@ impl JsonlFileSink {
         &self.path
     }
 
+    fn ensure_active_writer(state: &mut JsonlFileState, path: &Path) -> std::io::Result<()> {
+        if state.writer.is_some() {
+            return Ok(());
+        }
+
+        let file = VtCodePaths::open_private_append_file(path).map_err(std::io::Error::other)?;
+        state.bytes_written = file.metadata().map(|metadata| metadata.len()).unwrap_or(state.bytes_written);
+        state.writer = Some(BufWriter::new(file));
+        Ok(())
+    }
+
     fn rotate_if_needed(
         state: &mut JsonlFileState,
         path: &Path,
         max_size_bytes: u64,
         max_files: usize,
     ) -> std::io::Result<()> {
+        Self::ensure_active_writer(state, path)?;
         if state.bytes_written < max_size_bytes {
             return Ok(());
         }
@@ -132,21 +144,35 @@ impl JsonlFileSink {
             writer.get_ref().sync_all()?;
         }
         drop(state.writer.take());
-        // Shift generations: <path>.N-1 -> <path>.N, …, <path> -> <path>.1
-        for index in (1..max_files).rev() {
-            let from = rotated_path(path, index);
-            let to = rotated_path(path, index + 1);
-            if from.exists() {
-                std::fs::rename(&from, &to)?;
+        let rotation_result = (|| {
+            // Shift generations: <path>.N-1 -> <path>.N, …, <path> -> <path>.1
+            for index in (1..max_files).rev() {
+                let from = rotated_path(path, index);
+                let to = rotated_path(path, index + 1);
+                if from.exists() {
+                    std::fs::rename(&from, &to)?;
+                }
+            }
+            if path.exists() {
+                std::fs::rename(path, rotated_path(path, 1))?;
+            }
+            Ok(())
+        })();
+
+        match rotation_result {
+            Ok(()) => {
+                state.bytes_written = 0;
+                Self::ensure_active_writer(state, path)?;
+                state.bytes_written = 0;
+                Ok(())
+            }
+            Err(rotation_error) => {
+                if let Err(reopen_error) = Self::ensure_active_writer(state, path) {
+                    log_io_failure("rotation_reopen", &reopen_error);
+                }
+                Err(rotation_error)
             }
         }
-        if path.exists() {
-            std::fs::rename(path, rotated_path(path, 1))?;
-        }
-        let file = VtCodePaths::open_private_append_file(path).map_err(std::io::Error::other)?;
-        state.writer = Some(BufWriter::new(file));
-        state.bytes_written = 0;
-        Ok(())
     }
 }
 
@@ -174,6 +200,7 @@ impl ToolAuditSink for JsonlFileSink {
 
     fn flush(&self) -> std::io::Result<()> {
         let mut state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        Self::ensure_active_writer(&mut state, &self.path)?;
         let writer = state
             .writer
             .as_mut()

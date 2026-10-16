@@ -32,6 +32,32 @@ mod configuration;
 mod lifecycle;
 mod metadata;
 
+pub(super) fn safe_internal_error(
+    operation: &'static str,
+    error_category: &'static str,
+    message: &'static str,
+) -> acp::Error {
+    tracing::error!(operation, error_category, "ACP request failed");
+    acp::Error::internal_error().data(serde_json::json!({
+        "operation": operation,
+        "error_category": error_category,
+        "message": message,
+    }))
+}
+
+pub(super) fn safe_invalid_params_error(
+    operation: &'static str,
+    error_category: &'static str,
+    message: &'static str,
+) -> acp::Error {
+    tracing::warn!(operation, error_category, "ACP request rejected");
+    acp::Error::invalid_params().data(serde_json::json!({
+        "operation": operation,
+        "error_category": error_category,
+        "message": message,
+    }))
+}
+
 struct SessionHandleBootstrap {
     session_id: acp::SessionId,
     archive: Option<SessionArchive>,
@@ -324,15 +350,30 @@ impl ZedAgent {
             .workspace_trust_synchronizer
             .synchronize(workspace.path(), desired_trust)
             .await
-            .map_err(|error| acp::Error::internal_error().data(format!("Failed to trust ACP session cwd: {error}")))?;
-        let workspace_lease = self
-            .workspace_runtime_for(&workspace)
-            .await
-            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+            .map_err(|_error| {
+                safe_internal_error(
+                    "new_session",
+                    "workspace_trust_sync_failed",
+                    "Unable to synchronize workspace trust",
+                )
+            })?;
+        let workspace_lease = self.workspace_runtime_for(&workspace).await.map_err(|_error| {
+            safe_internal_error(
+                "new_session",
+                "workspace_runtime_setup_failed",
+                "Unable to initialize ACP workspace runtime",
+            )
+        })?;
         let session_id = self
             .register_durable_session(workspace_lease, req.meta)
             .await
-            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+            .map_err(|_error| {
+                safe_internal_error(
+                    "new_session",
+                    "session_archive_initialization_failed",
+                    "Unable to initialize ACP session storage",
+                )
+            })?;
         let session = match self.session_handle(&session_id) {
             Ok(Some(session)) => session,
             Ok(None) => {
@@ -341,22 +382,42 @@ impl ZedAgent {
             }
             Err(error) => {
                 self.discard_failed_new_session(&session_id).await;
-                return Err(acp::Error::internal_error().data(error.to_string()));
+                let _source = error;
+                return Err(safe_internal_error(
+                    "new_session",
+                    "session_registration_failed",
+                    "Unable to register ACP session",
+                ));
             }
         };
         if let Err(error) = self.ensure_task_lifecycle_forwarder(&session) {
             self.discard_failed_new_session(&session_id).await;
-            return Err(acp::Error::internal_error().data(error.to_string()));
+            let _source = error;
+            return Err(safe_internal_error(
+                "new_session",
+                "task_lifecycle_setup_failed",
+                "Unable to initialize ACP session updates",
+            ));
         }
         if let Err(error) = self.run_session_start_hooks(&session).await {
             self.discard_failed_new_session(&session_id).await;
-            return Err(acp::Error::internal_error().data(error.to_string()));
+            let _source = error;
+            return Err(safe_internal_error(
+                "new_session",
+                "session_start_hook_failed",
+                "Unable to run ACP session start hooks",
+            ));
         }
         let config_options = match self.current_session_config_options(&session) {
             Ok(config_options) => config_options,
             Err(error) => {
                 self.discard_failed_new_session(&session_id).await;
-                return Err(acp::Error::internal_error().data(error.to_string()));
+                let _source = error;
+                return Err(safe_internal_error(
+                    "new_session",
+                    "session_configuration_failed",
+                    "Unable to read ACP session configuration",
+                ));
             }
         };
 

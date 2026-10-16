@@ -20,7 +20,15 @@ impl HttpClientFactory {
         TimeoutPolicy::regular(config)
             .apply(Client::builder())
             .build()
-            .unwrap_or_else(|_| Client::new())
+            .unwrap_or_else(|error| {
+                tracing::error!(
+                    operation = "build_regular_http_client",
+                    error_is_builder = error.is_builder(),
+                    error_is_timeout = error.is_timeout(),
+                    "failed to build HTTP client with configured deadlines; falling back to reqwest defaults"
+                );
+                Client::new()
+            })
     }
 
     /// Create an HTTP client optimized for streaming requests.
@@ -30,10 +38,15 @@ impl HttpClientFactory {
         let builder = Client::builder()
             .pool_idle_timeout(Some(Duration::from_secs(90)))
             .pool_max_idle_per_host(1);
-        TimeoutPolicy::streaming(config)
-            .apply(builder)
-            .build()
-            .unwrap_or_else(|_| Client::new())
+        TimeoutPolicy::streaming(config).apply(builder).build().unwrap_or_else(|error| {
+            tracing::error!(
+                operation = "build_streaming_http_client",
+                error_is_builder = error.is_builder(),
+                error_is_timeout = error.is_timeout(),
+                "failed to build HTTP client with configured deadlines; falling back to reqwest defaults"
+            );
+            Client::new()
+        })
     }
 
     /// Create an HTTP client with explicit timeout values.

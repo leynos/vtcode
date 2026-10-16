@@ -7,6 +7,7 @@ mod agent;
 pub(crate) mod connection;
 pub(crate) mod constants;
 mod helpers;
+mod metrics;
 mod provider_runtime;
 mod session;
 mod types;

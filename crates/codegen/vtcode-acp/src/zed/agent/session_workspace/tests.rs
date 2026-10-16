@@ -58,7 +58,12 @@ fn workspace_runtime_cache_releases_expired_runtimes_and_prunes_keys() {
     let weak_runtime = Arc::downgrade(&runtime);
 
     cache.remember_runtime(workspace_root.clone(), &runtime);
-    assert_eq!(cache.metrics.get_acp_workspace_runtime_cache_entries(), 1);
+    assert_eq!(
+        cache
+            .metrics
+            .get_runtime_cache_entries(vtcode_core::metrics::RuntimeCacheKind::Workspace),
+        1
+    );
     let cached_runtime = match cache.lookup(&workspace_root) {
         WorkspaceRuntimeLookup::Ready(cached_runtime) => cached_runtime,
         WorkspaceRuntimeLookup::Initialize(_) => panic!("live runtime should be reused"),
@@ -73,12 +78,22 @@ fn workspace_runtime_cache_releases_expired_runtimes_and_prunes_keys() {
         WorkspaceRuntimeLookup::Initialize(runtime_cell) => runtime_cell,
     };
     assert!(cache.runtimes.is_empty(), "expired workspace keys are pruned on lookup");
-    assert_eq!(cache.metrics.get_acp_workspace_runtime_cache_entries(), 1);
+    assert_eq!(
+        cache
+            .metrics
+            .get_runtime_cache_entries(vtcode_core::metrics::RuntimeCacheKind::Workspace),
+        1
+    );
     drop(initializing);
 
     let _next_workspace = cache.lookup(&PathBuf::from("/tmp/acp-next-workspace"));
     assert_eq!(cache.in_flight.len(), 1, "expired initialization keys are pruned on lookup");
-    assert_eq!(cache.metrics.get_acp_workspace_runtime_cache_entries(), 1);
+    assert_eq!(
+        cache
+            .metrics
+            .get_runtime_cache_entries(vtcode_core::metrics::RuntimeCacheKind::Workspace),
+        1
+    );
 }
 
 #[test]

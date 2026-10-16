@@ -50,9 +50,10 @@ event type in a consumer crate.
   lifecycle boundaries. Tool handlers request client permission before
   dispatching local calls through the core tool registry, which applies its
   execution policy and safety checks.
-- Core publishes `SubagentProgressEvent` snapshots without ACP-specific
-  payloads. The ACP task-lifecycle forwarder filters events by parent session
-  and projects them into client extension notifications.
+- Core publishes sub-agent progress through `SubagentProgressObserver` using
+  `SubagentStatusEntry` and `BackgroundSubprocessEntry` snapshots without
+  ACP-specific payloads. The ACP task-lifecycle forwarder filters updates by
+  parent session and projects them into client extension notifications.
 
 ## Model + Harness
 

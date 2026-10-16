@@ -19,7 +19,7 @@ use tokio::sync::mpsc::error::TrySendError;
 use tokio::task::JoinHandle;
 use tracing::Instrument;
 use tracing::{Span, debug, field, info_span, warn};
-use vtcode_core::metrics::MetricsCollector;
+use vtcode_core::metrics::{TaskLifecycleQueueDrop, TaskLifecycleQueueMetricsObserver};
 use vtcode_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver, SubagentStatusEntry};
 
 pub(super) const TASK_LIFECYCLE_METHOD: &str = "_vtcode/taskLifecycle";
@@ -63,11 +63,11 @@ struct LifecycleQueueState {
 
 struct LifecycleQueueTracker {
     state: Mutex<LifecycleQueueState>,
-    metrics: Arc<MetricsCollector>,
+    metrics: Arc<dyn TaskLifecycleQueueMetricsObserver>,
 }
 
 impl LifecycleQueueTracker {
-    fn new(metrics: Arc<MetricsCollector>) -> Self {
+    fn new(metrics: Arc<dyn TaskLifecycleQueueMetricsObserver>) -> Self {
         Self {
             state: Mutex::new(LifecycleQueueState::default()),
             metrics,
@@ -83,7 +83,7 @@ impl LifecycleQueueTracker {
         match sender.try_send(update) {
             Ok(()) => {
                 state.depth = state.depth.saturating_add(1);
-                self.metrics.record_acp_task_lifecycle_queue_enqueued();
+                self.metrics.queue_item_enqueued();
                 Ok(())
             }
             Err(error) => Err(lifecycle_queue_drop_kind(error)),
@@ -94,14 +94,14 @@ impl LifecycleQueueTracker {
         let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if state.depth > 0 {
             state.depth -= 1;
-            self.metrics.record_acp_task_lifecycle_queue_dequeued();
+            self.metrics.queue_item_dequeued();
         }
     }
 
     fn record_drop(&self, kind: LifecycleQueueDropKind) -> u64 {
         match kind {
-            LifecycleQueueDropKind::Full => self.metrics.record_acp_task_lifecycle_queue_drop_full(),
-            LifecycleQueueDropKind::Closed => self.metrics.record_acp_task_lifecycle_queue_drop_closed(),
+            LifecycleQueueDropKind::Full => self.metrics.queue_item_dropped(TaskLifecycleQueueDrop::Full),
+            LifecycleQueueDropKind::Closed => self.metrics.queue_item_dropped(TaskLifecycleQueueDrop::Closed),
         }
     }
 
@@ -110,7 +110,7 @@ impl LifecycleQueueTracker {
         state.closed = true;
         let remaining = std::mem::take(&mut state.depth);
         if remaining > 0 {
-            self.metrics.record_acp_task_lifecycle_queue_drained(remaining);
+            self.metrics.queue_items_drained(remaining);
         }
     }
 }

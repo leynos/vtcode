@@ -10,6 +10,7 @@ use tokio::sync::mpsc;
 use tracing::field::{Field, Visit};
 use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::{Layer, Registry};
+use vtcode_core::metrics::MetricsCollector;
 
 #[derive(Clone, Default)]
 struct LifecycleTraceCapture(Arc<Mutex<Vec<String>>>);
@@ -76,11 +77,12 @@ fn classifies_lifecycle_queue_full_and_closed_errors() {
 #[test]
 fn lifecycle_queue_metrics_track_depth_and_bounded_drop_categories() {
     let metrics = Arc::new(MetricsCollector::new());
-    let queue = LifecycleQueueTracker::new(Arc::clone(&metrics));
+    let observer: Arc<dyn TaskLifecycleQueueMetricsObserver> = metrics.clone();
+    let queue = LifecycleQueueTracker::new(observer);
     let (sender, mut receiver) = mpsc::channel(1);
 
     queue.try_send(&sender, ()).expect("first queue entry should fit");
-    assert_eq!(metrics.get_acp_task_lifecycle_metrics().queue_depth, 1);
+    assert_eq!(metrics.get_task_lifecycle_queue_metrics().queue_depth, 1);
     let full = queue
         .try_send(&sender, ())
         .expect_err("second queue entry should find a full queue");
@@ -89,28 +91,29 @@ fn lifecycle_queue_metrics_track_depth_and_bounded_drop_categories() {
 
     receiver.try_recv().expect("first queue entry should be available");
     queue.dequeued();
-    assert_eq!(metrics.get_acp_task_lifecycle_metrics().queue_depth, 0);
+    assert_eq!(metrics.get_task_lifecycle_queue_metrics().queue_depth, 0);
 
     drop(receiver);
     let closed = queue.try_send(&sender, ()).expect_err("closed queue should reject an entry");
     assert_eq!(closed, LifecycleQueueDropKind::Closed);
     assert_eq!(queue.record_drop(closed), 1);
 
-    assert_eq!(metrics.get_acp_task_lifecycle_metrics().queue_dropped_full, 1);
-    assert_eq!(metrics.get_acp_task_lifecycle_metrics().queue_dropped_closed, 1);
+    assert_eq!(metrics.get_task_lifecycle_queue_metrics().queue_dropped_full, 1);
+    assert_eq!(metrics.get_task_lifecycle_queue_metrics().queue_dropped_closed, 1);
 }
 
 #[test]
 fn lifecycle_forwarder_shutdown_drains_queued_depth_before_closing_tracker() {
     let metrics = Arc::new(MetricsCollector::new());
-    let queue = LifecycleQueueTracker::new(Arc::clone(&metrics));
+    let observer: Arc<dyn TaskLifecycleQueueMetricsObserver> = metrics.clone();
+    let queue = LifecycleQueueTracker::new(observer);
     let (sender, _receiver) = mpsc::channel(1);
     queue.try_send(&sender, ()).expect("queue entry should fit");
-    assert_eq!(metrics.get_acp_task_lifecycle_metrics().queue_depth, 1);
+    assert_eq!(metrics.get_task_lifecycle_queue_metrics().queue_depth, 1);
 
     queue.close_and_drain();
 
-    assert_eq!(metrics.get_acp_task_lifecycle_metrics().queue_depth, 0);
+    assert_eq!(metrics.get_task_lifecycle_queue_metrics().queue_depth, 0);
     assert_eq!(
         queue
             .try_send(&sender, ())

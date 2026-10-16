@@ -1,4 +1,5 @@
 //! Optional integrations attached to an ACP workspace tool registry.
+use crate::zed::metrics::AcpMcpStartupMetricsObserver;
 use std::sync::Arc;
 use tracing::{debug, warn};
 use vtcode_config::VTCodeConfig;
@@ -194,7 +195,7 @@ pub(super) async fn attach_acp_mcp_client(
         mut failures,
     } = setup;
     let mut client = McpClient::with_sandbox_context(config, sandbox_context);
-    client.set_startup_observer(registry.metrics_collector());
+    client.set_startup_observer(Arc::new(AcpMcpStartupMetricsObserver::new(registry.metrics_collector())));
     match client.initialize().await {
         Ok(()) => {}
         Err(error) => {

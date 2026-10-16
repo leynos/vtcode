@@ -13,11 +13,21 @@ pub(super) use buffered::response_reasoning_update;
 
 #[tracing::instrument(skip_all, fields(boundary = boundary))]
 pub(super) async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, boundary: &'static str) {
-    if let Err(error) = agent.checkpoint_session(session).await {
-        warn!(%error, boundary, "Failed to persist ACP session checkpoint");
+    if agent.checkpoint_session(session).await.is_err() {
+        warn!(
+            operation = "session_checkpoint",
+            error_category = "archive_write_failed",
+            boundary,
+            "Failed to persist ACP session checkpoint"
+        );
     }
-    if let Err(error) = session.update_transcript_path().await {
-        warn!(%error, boundary, "Failed to update ACP session transcript path");
+    if session.update_transcript_path().await.is_err() {
+        warn!(
+            operation = "transcript_update",
+            error_category = "transcript_write_failed",
+            boundary,
+            "Failed to update ACP session transcript path"
+        );
     }
 }
 
