@@ -5,7 +5,7 @@ use super::{ToolAuditEntry, ToolAuditSink};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use vtcode_commons::VtCodePaths;
 
 /// Null sink — accepts every entry but discards them.
@@ -31,14 +31,18 @@ impl InMemorySink {
         Self::default()
     }
 
+    fn lock_entries(&self) -> MutexGuard<'_, Vec<ToolAuditEntry>> {
+        self.entries.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     /// Snapshot all entries recorded so far.
     pub(super) fn entries(&self) -> Vec<ToolAuditEntry> {
-        self.entries.lock().expect("in-memory sink poisoned").clone()
+        self.lock_entries().clone()
     }
 
     /// Number of recorded entries.
     pub(super) fn len(&self) -> usize {
-        self.entries.lock().expect("in-memory sink poisoned").len()
+        self.lock_entries().len()
     }
 
     /// Returns true when no entries have been recorded.
@@ -48,13 +52,13 @@ impl InMemorySink {
 
     /// Drop all recorded entries.
     pub(super) fn clear(&self) {
-        self.entries.lock().expect("in-memory sink poisoned").clear();
+        self.lock_entries().clear();
     }
 }
 
 impl ToolAuditSink for InMemorySink {
     fn write(&self, entry: &ToolAuditEntry) -> std::io::Result<()> {
-        self.entries.lock().expect("in-memory sink poisoned").push(entry.clone());
+        self.lock_entries().push(entry.clone());
         Ok(())
     }
 }
@@ -245,5 +249,28 @@ impl ToolAuditSink for MultiSink {
             }
         }
         first_error.map_or(Ok(()), Err)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InMemorySink;
+    use std::sync::Arc;
+
+    #[test]
+    fn in_memory_sink_recovers_a_poisoned_lock() {
+        let sink = InMemorySink::new();
+        let entries = Arc::clone(&sink.entries);
+        let poison_result = std::thread::spawn(move || {
+            let _entries = entries.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            panic!("poison the in-memory audit sink lock");
+        })
+        .join();
+
+        assert!(poison_result.is_err());
+        assert!(sink.entries().is_empty());
+        assert_eq!(sink.len(), 0);
+        sink.clear();
+        assert!(sink.is_empty());
     }
 }
