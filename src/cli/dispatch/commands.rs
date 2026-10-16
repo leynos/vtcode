@@ -20,8 +20,15 @@ use crate::cli::{
     analyse, benchmark, check, config, create_project, dependencies, exec, init, init_project, man, notify, revert,
     review, schedule, schema, secret, skills, snapshots, trajectory, update,
 };
+use vtcode_core::core::interfaces::acp::AcpClientAdapter;
 
-pub(crate) async fn dispatch_command(args: &Cli, startup: &StartupContext, command: Commands) -> Result<()> {
+pub(crate) async fn dispatch_command_with_acp_adapters(
+    args: &Cli,
+    startup: &StartupContext,
+    command: Commands,
+    zed_adapter: &dyn AcpClientAdapter,
+    standard_adapter: &dyn AcpClientAdapter,
+) -> Result<()> {
     let cfg = &startup.config;
     let core_cfg = &startup.agent_config;
     let skip_confirmations = startup.skip_confirmations;
@@ -33,15 +40,8 @@ pub(crate) async fn dispatch_command(args: &Cli, startup: &StartupContext, comma
 
     match command {
         Commands::AgentClientProtocol { target } => {
-            handle_acp_command_with_adapters(
-                core_cfg,
-                cfg,
-                target,
-                skip_confirmations,
-                &vtcode::acp::ZedAcpAdapter,
-                &vtcode::acp::StandardAcpAdapter,
-            )
-            .await?;
+            handle_acp_command_with_adapters(core_cfg, cfg, target, skip_confirmations, zed_adapter, standard_adapter)
+                .await?;
         }
         Commands::ToolPolicy { command } => {
             vtcode_core::cli::tool_policy_commands::handle_tool_policy_command(command).await?;
@@ -270,23 +270,15 @@ async fn dispatch_schema_command(
 
 #[cfg(test)]
 mod tests {
-    use super::{dispatch_schema_command, handle_acp_command_with_adapters};
+    use super::dispatch_schema_command;
     use crate::startup::StartupContext;
     use clap::Parser;
-    use std::collections::BTreeMap;
     use std::fs;
-    use std::path::PathBuf;
     use std::sync::Mutex;
     use tempfile::TempDir;
     use vtcode_commons::env_lock;
-    use vtcode_core::cli::args::AgentClientProtocolTarget;
-    use vtcode_core::cli::args::{Cli, Commands};
+    use vtcode_core::cli::args::{AgentClientProtocolTarget, Cli, Commands};
     use vtcode_core::config::ToolProfile;
-    use vtcode_core::config::VTCodeConfig;
-    use vtcode_core::config::core::PromptCachingConfig;
-    use vtcode_core::config::types::{
-        AgentConfig as CoreAgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference,
-    };
     use vtcode_core::core::interfaces::acp::{AcpClientAdapter, AcpLaunchParams};
 
     #[derive(Default)]
@@ -297,31 +289,6 @@ mod tests {
         async fn serve(&self, params: AcpLaunchParams<'_>) -> anyhow::Result<()> {
             self.0.lock().expect("recorded launches").push(params.skip_confirmations);
             Ok(())
-        }
-    }
-
-    fn sample_agent_config() -> CoreAgentConfig {
-        CoreAgentConfig {
-            model: "test-model".to_owned(),
-            api_key: "test-key".to_owned(),
-            provider: "test-provider".to_owned(),
-            openai_chatgpt_auth: None,
-            api_key_env: "TEST_API_KEY".to_owned(),
-            workspace: PathBuf::from("."),
-            verbose: false,
-            quiet: false,
-            theme: "default".to_owned(),
-            reasoning_effort: ReasoningEffortLevel::default(),
-            ui_surface: UiSurfacePreference::default(),
-            prompt_cache: PromptCachingConfig::default(),
-            model_source: ModelSelectionSource::default(),
-            custom_api_keys: BTreeMap::new(),
-            checkpointing_enabled: false,
-            checkpointing_storage_dir: None,
-            checkpointing_max_snapshots: 0,
-            checkpointing_max_age_days: None,
-            max_conversation_turns: 1,
-            model_behaviour: None,
         }
     }
 
@@ -363,55 +330,67 @@ mod tests {
         assert!(output.contains("\"name\":\"code_search\""), "{output}");
     }
 
-    #[tokio::test]
-    async fn parsed_acp_commands_dispatch_selected_adapter_with_permission_setting() {
-        let agent_config = sample_agent_config();
-        let mut config = VTCodeConfig::default();
-        config.acp.enabled = true;
-        config.acp.zed.enabled = true;
+    #[test]
+    fn parsed_acp_commands_dispatch_selected_adapter_with_startup_permission_setting() {
+        let env_guard = env_lock::lock();
+        let temp = TempDir::new().expect("isolated ACP CLI workspace");
+        fs::write(temp.path().join("vtcode.toml"), "[workspace]\nuse_root_config = true\n")
+            .expect("write isolated workspace config");
+        env_guard.set_var("OPENAI_API_KEY", "test");
+        env_guard.set_var("OPENROUTER_API_KEY", "test");
+        let workspace = temp.path().to_path_buf();
 
-        for (target_name, target) in [
-            ("zed", AgentClientProtocolTarget::Zed),
-            ("standard", AgentClientProtocolTarget::Standard),
-        ] {
-            for skip_confirmations in [false, true] {
-                let mut arguments = vec!["vtcode".to_owned(), target_name.to_owned()];
-                if skip_confirmations {
-                    arguments.insert(1, "--dangerously-skip-permissions".to_owned());
-                }
-                arguments.insert(if skip_confirmations { 2 } else { 1 }, "acp".to_owned());
-                let args = Cli::try_parse_from(arguments).expect("parse ACP CLI boundary");
-                let parsed_target = match args.command.expect("ACP command") {
-                    Commands::AgentClientProtocol { target } => target,
-                    _ => panic!("expected ACP command"),
-                };
-                match (target, parsed_target) {
-                    (AgentClientProtocolTarget::Zed, AgentClientProtocolTarget::Zed)
-                    | (AgentClientProtocolTarget::Standard, AgentClientProtocolTarget::Standard) => {}
-                    _ => panic!("CLI parser selected an unexpected ACP target"),
-                }
-                let parsed_skip_confirmations = args.dangerously_skip_permissions;
-                let zed = RecordingAdapter::default();
-                let standard = RecordingAdapter::default();
+        // The full CLI dispatch future exceeds the test harness's smaller thread stack.
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("ACP CLI test runtime");
 
-                handle_acp_command_with_adapters(
-                    &agent_config,
-                    &config,
-                    parsed_target,
-                    parsed_skip_confirmations,
-                    &zed,
-                    &standard,
-                )
-                .await
-                .expect("dispatch parsed ACP command");
+                runtime.block_on(async move {
+                    for (target_name, target) in [
+                        ("zed", AgentClientProtocolTarget::Zed),
+                        ("standard", AgentClientProtocolTarget::Standard),
+                    ] {
+                        for skip_confirmations in [false, true] {
+                            let mut arguments = vec![
+                                "vtcode".to_owned(),
+                                "--workspace".to_owned(),
+                                workspace.display().to_string(),
+                                "-c".to_owned(),
+                                "acp.enabled=true".to_owned(),
+                                "-c".to_owned(),
+                                "acp.zed.enabled=true".to_owned(),
+                            ];
+                            if skip_confirmations {
+                                arguments.push("--dangerously-skip-permissions".to_owned());
+                            }
+                            arguments.push("acp".to_owned());
+                            arguments.push(target_name.to_owned());
+                            let args = Cli::try_parse_from(arguments).expect("parse ACP CLI boundary");
+                            let startup = StartupContext::from_cli_args(&args).await.expect("build startup context");
+                            assert_eq!(startup.skip_confirmations, skip_confirmations);
+                            let zed = RecordingAdapter::default();
+                            let standard = RecordingAdapter::default();
 
-                let (selected, unselected) = match target {
-                    AgentClientProtocolTarget::Zed => (&zed, &standard),
-                    AgentClientProtocolTarget::Standard => (&standard, &zed),
-                };
-                assert_eq!(*selected.0.lock().expect("selected adapter"), vec![skip_confirmations]);
-                assert!(unselected.0.lock().expect("unselected adapter").is_empty());
-            }
-        }
+                            crate::cli::dispatch_with_acp_adapters(&args, &startup, None, &zed, &standard)
+                                .await
+                                .expect("dispatch parsed ACP command through CLI dispatcher");
+
+                            let (selected, unselected) = match target {
+                                AgentClientProtocolTarget::Zed => (&zed, &standard),
+                                AgentClientProtocolTarget::Standard => (&standard, &zed),
+                            };
+                            assert_eq!(*selected.0.lock().expect("selected adapter"), vec![skip_confirmations]);
+                            assert!(unselected.0.lock().expect("unselected adapter").is_empty());
+                        }
+                    }
+                });
+            })
+            .expect("spawn ACP CLI test thread")
+            .join()
+            .expect("ACP CLI test thread");
     }
 }
