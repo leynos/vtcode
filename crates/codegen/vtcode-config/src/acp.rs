@@ -1,5 +1,8 @@
+//! Defines ACP configuration fields and their environment-aware defaults.
 use crate::constants::env::acp::AgentClientProtocolEnvKey;
+use crate::safety::ToolAuditConfig;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 fn parse_env_bool(key: AgentClientProtocolEnvKey, default: bool) -> bool {
     crate::env_helpers::parse_env_bool(key.as_str(), default)
@@ -50,6 +53,10 @@ pub struct AgentClientProtocolConfig {
     #[serde(default = "default_enabled")]
     pub enabled: bool,
 
+    /// Explicit, opt-in ACP tool invocation audit configuration.
+    #[serde(default)]
+    pub audit: ToolAuditConfig,
+
     /// Agent Client Protocol settings
     #[serde(default)]
     pub zed: AgentClientProtocolZedConfig,
@@ -59,6 +66,7 @@ impl Default for AgentClientProtocolConfig {
     fn default() -> Self {
         Self {
             enabled: default_enabled(),
+            audit: ToolAuditConfig::default(),
             zed: AgentClientProtocolZedConfig::default(),
         }
     }
@@ -99,6 +107,10 @@ pub struct AgentClientProtocolZedConfig {
     #[serde(default = "default_zed_workspace_trust_mode")]
     pub workspace_trust: AgentClientProtocolZedWorkspaceTrustMode,
 
+    /// Additional absolute workspace roots accepted from ACP clients.
+    #[serde(default)]
+    pub allowed_workspace_roots: Vec<PathBuf>,
+
     /// Authentication method configuration for ACP
     #[serde(default)]
     auth: AcpAuthConfig,
@@ -111,6 +123,7 @@ impl Default for AgentClientProtocolZedConfig {
             transport: default_transport(),
             tools: AgentClientProtocolZedToolsConfig::default(),
             workspace_trust: default_zed_workspace_trust_mode(),
+            allowed_workspace_roots: Vec::new(),
             auth: AcpAuthConfig::default(),
         }
     }
@@ -263,10 +276,44 @@ mod tests {
     #[test]
     fn defaults_use_stdio_transport() {
         let cfg = AgentClientProtocolConfig::default();
+        assert!(!cfg.audit.enabled());
         assert!(matches!(cfg.zed.transport, AgentClientProtocolTransport::Stdio));
         assert!(cfg.zed.tools.read_file);
         assert!(cfg.zed.tools.list_files);
         assert!(matches!(cfg.zed.workspace_trust, AgentClientProtocolZedWorkspaceTrustMode::FullAuto));
+        assert!(cfg.zed.allowed_workspace_roots.is_empty());
+    }
+
+    #[test]
+    fn parses_additional_allowed_workspace_roots() {
+        let cfg: AgentClientProtocolConfig = toml::from_str(
+            r#"
+            [zed]
+            allowed_workspace_roots = ["/workspaces", "/projects"]
+            "#,
+        )
+        .expect("ACP allowed workspace roots should parse");
+
+        assert_eq!(cfg.zed.allowed_workspace_roots, [PathBuf::from("/workspaces"), PathBuf::from("/projects")]);
+    }
+
+    #[test]
+    fn parses_explicit_acp_audit_config() {
+        let cfg: AgentClientProtocolConfig = toml::from_str(
+            r#"
+            [audit]
+            enabled = true
+            path = "/tmp/acp-audit.jsonl"
+            max_size_bytes = 4096
+            max_files = 2
+            "#,
+        )
+        .expect("ACP audit config should parse");
+
+        assert!(cfg.audit.enabled());
+        assert_eq!(cfg.audit.path(), std::path::Path::new("/tmp/acp-audit.jsonl"));
+        assert_eq!(cfg.audit.max_size_bytes(), 4096);
+        assert_eq!(cfg.audit.max_files(), 2);
     }
 
     #[test]

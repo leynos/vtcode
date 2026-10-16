@@ -1,3 +1,4 @@
+//! Defines the launch parameters and adapter port used by hosts to start an ACP client.
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -9,11 +10,22 @@ use crate::config::types::AgentConfig as CoreAgentConfig;
 pub struct AcpLaunchParams<'a> {
     pub agent_config: &'a CoreAgentConfig,
     pub runtime_config: &'a VTCodeConfig,
+    pub skip_confirmations: bool,
 }
 
 impl<'a> AcpLaunchParams<'a> {
     pub fn new(agent_config: &'a CoreAgentConfig, runtime_config: &'a VTCodeConfig) -> Self {
-        Self { agent_config, runtime_config }
+        Self {
+            agent_config,
+            runtime_config,
+            skip_confirmations: false,
+        }
+    }
+
+    #[must_use]
+    pub fn with_skip_confirmations(mut self, skip_confirmations: bool) -> Self {
+        self.skip_confirmations = skip_confirmations;
+        self
     }
 }
 
@@ -21,4 +33,50 @@ impl<'a> AcpLaunchParams<'a> {
 #[async_trait(?Send)]
 pub trait AcpClientAdapter: Send + Sync {
     async fn serve(&self, params: AcpLaunchParams<'_>) -> Result<()>;
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+
+    use super::AcpLaunchParams;
+    use crate::config::core::PromptCachingConfig;
+    use crate::config::loader::VTCodeConfig;
+    use crate::config::types::{AgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference};
+
+    fn sample_agent_config() -> AgentConfig {
+        AgentConfig {
+            model: "test-model".to_owned(),
+            api_key: "test-key".to_owned(),
+            provider: "test-provider".to_owned(),
+            openai_chatgpt_auth: None,
+            api_key_env: "TEST_API_KEY".to_owned(),
+            workspace: PathBuf::from("."),
+            verbose: false,
+            quiet: false,
+            theme: "default".to_owned(),
+            reasoning_effort: ReasoningEffortLevel::default(),
+            ui_surface: UiSurfacePreference::default(),
+            prompt_cache: PromptCachingConfig::default(),
+            model_source: ModelSelectionSource::default(),
+            custom_api_keys: BTreeMap::new(),
+            checkpointing_enabled: false,
+            checkpointing_storage_dir: None,
+            checkpointing_max_snapshots: 0,
+            checkpointing_max_age_days: None,
+            max_conversation_turns: 1,
+            model_behaviour: None,
+        }
+    }
+
+    #[test]
+    fn skip_confirmations_builder_sets_public_launch_parameter() {
+        let agent_config = sample_agent_config();
+        let runtime_config = VTCodeConfig::default();
+
+        let params = AcpLaunchParams::new(&agent_config, &runtime_config).with_skip_confirmations(true);
+
+        assert!(params.skip_confirmations);
+    }
 }

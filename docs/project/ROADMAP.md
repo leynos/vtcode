@@ -121,11 +121,16 @@ agent, inspired by Anthropic's breakthrough engineering approach that achieved
 
 ### 10. User Experience & Interface
 
-- **Conversation Persistence** - Context preservation across sessions
-- **Conversation Branching** - Explore multiple solution paths
+- **COMPLETED (2026-10-14, ACP scope): Conversation Persistence** - Durable
+  ACP archives checkpoint messages, tool calls and results, assistant
+  responses, and incomplete turns for later resume.
+- **Conversation Branching** - Explore multiple solution paths (still open;
+  ACP archive and resume support does not provide branching).
 - **Rich Terminal UI** - Enhanced interactive experience
 - **Conversation Search** - Find and reference previous interactions
-- **Session Management** - Organize and manage multiple conversations
+- **COMPLETED (2026-10-14, ACP scope): Session Management** - ACP supports
+  session discovery, workspace-scoped listing, loading and resuming. Broader
+  conversation organization across interfaces remains open.
 
 ### 11. Monitoring & Analytics
 

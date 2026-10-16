@@ -1,3 +1,4 @@
+//! Defines custom provider profiles, request policies, and their serialized configuration.
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -303,6 +304,129 @@ impl CustomProviderCommandAuthConfig {
     }
 }
 
+const fn default_provider_queue_timeout_seconds() -> u64 {
+    600
+}
+
+const fn default_provider_max_retries() -> u32 {
+    2
+}
+
+const fn default_provider_retry_initial_backoff_ms() -> u64 {
+    10_000
+}
+
+const fn default_provider_retry_max_backoff_ms() -> u64 {
+    160_000
+}
+
+const fn default_provider_retry_jitter() -> bool {
+    true
+}
+
+const fn default_provider_connect_timeout_seconds() -> u64 {
+    30
+}
+
+const fn default_provider_first_token_timeout_seconds() -> u64 {
+    180
+}
+
+const fn default_provider_stream_idle_timeout_seconds() -> u64 {
+    120
+}
+
+const fn default_provider_total_generation_timeout_seconds() -> u64 {
+    600
+}
+/// Runtime admission and retry policy for a custom provider.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CustomProviderRequestPolicyConfig {
+    /// Maximum provider requests that one VT Code process may keep in flight.
+    /// `None` leaves concurrency unrestricted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_in_flight_requests: Option<usize>,
+
+    /// Maximum time to wait for an in-process provider permit.
+    #[serde(default = "default_provider_queue_timeout_seconds")]
+    pub queue_timeout_seconds: u64,
+
+    /// Number of retries after the initial request for transient failures.
+    #[serde(default = "default_provider_max_retries")]
+    pub max_retries: u32,
+
+    /// Initial retry backoff duration in milliseconds.
+    #[serde(default = "default_provider_retry_initial_backoff_ms")]
+    pub retry_initial_backoff_ms: u64,
+
+    /// Maximum retry backoff duration in milliseconds.
+    #[serde(default = "default_provider_retry_max_backoff_ms")]
+    pub retry_max_backoff_ms: u64,
+
+    /// Add deterministic jitter to retry delays to avoid synchronized reconnects.
+    #[serde(default = "default_provider_retry_jitter")]
+    pub retry_jitter: bool,
+
+    /// Maximum time to establish the provider connection. Zero disables the limit.
+    #[serde(default = "default_provider_connect_timeout_seconds")]
+    pub connect_timeout_seconds: u64,
+
+    /// Maximum time to wait for the first streamed event. Zero disables the limit.
+    #[serde(default = "default_provider_first_token_timeout_seconds")]
+    pub first_token_timeout_seconds: u64,
+
+    /// Maximum time between streamed events. Zero disables the limit.
+    #[serde(default = "default_provider_stream_idle_timeout_seconds")]
+    pub stream_idle_timeout_seconds: u64,
+
+    /// Maximum duration of one provider generation attempt. Zero disables the limit.
+    #[serde(default = "default_provider_total_generation_timeout_seconds")]
+    pub total_generation_timeout_seconds: u64,
+}
+
+impl Default for CustomProviderRequestPolicyConfig {
+    fn default() -> Self {
+        Self {
+            max_in_flight_requests: None,
+            queue_timeout_seconds: default_provider_queue_timeout_seconds(),
+            max_retries: default_provider_max_retries(),
+            retry_initial_backoff_ms: default_provider_retry_initial_backoff_ms(),
+            retry_max_backoff_ms: default_provider_retry_max_backoff_ms(),
+            retry_jitter: default_provider_retry_jitter(),
+            connect_timeout_seconds: default_provider_connect_timeout_seconds(),
+            first_token_timeout_seconds: default_provider_first_token_timeout_seconds(),
+            stream_idle_timeout_seconds: default_provider_stream_idle_timeout_seconds(),
+            total_generation_timeout_seconds: default_provider_total_generation_timeout_seconds(),
+        }
+    }
+}
+
+impl CustomProviderRequestPolicyConfig {
+    fn validate(&self, provider_name: &str) -> Result<(), String> {
+        if self.max_in_flight_requests == Some(0) {
+            return Err(format!(
+                "custom_providers[{provider_name}].request_policy: `max_in_flight_requests` must be greater than 0"
+            ));
+        }
+        if self.queue_timeout_seconds == 0 {
+            return Err(format!(
+                "custom_providers[{provider_name}].request_policy: `queue_timeout_seconds` must be greater than 0"
+            ));
+        }
+        if self.retry_initial_backoff_ms == 0 {
+            return Err(format!(
+                "custom_providers[{provider_name}].request_policy: `retry_initial_backoff_ms` must be greater than 0"
+            ));
+        }
+        if self.retry_max_backoff_ms < self.retry_initial_backoff_ms {
+            return Err(format!(
+                "custom_providers[{provider_name}].request_policy: `retry_max_backoff_ms` must be greater than or equal to `retry_initial_backoff_ms`"
+            ));
+        }
+        Ok(())
+    }
+}
 /// Configuration for a user-defined OpenAI-compatible provider endpoint.
 ///
 /// Allows users to define multiple named custom endpoints (e.g., corporate
@@ -431,6 +555,10 @@ pub struct CustomProviderConfig {
     /// Exact model-keyed sparse capability profiles.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub profiles: BTreeMap<String, CustomProviderProfileConfig>,
+
+    /// Per-process request admission and transient retry policy.
+    #[serde(default)]
+    pub request_policy: CustomProviderRequestPolicyConfig,
 }
 
 impl CustomProviderConfig {
@@ -508,6 +636,17 @@ impl CustomProviderConfig {
     /// Validate that required fields are present and the name doesn't collide
     /// with built-in provider keys.
     pub fn validate(&self) -> Result<(), String> {
+        self.validate_identity()?;
+        self.validate_provider_bounds()?;
+        self.validate_auth()?;
+        self.validate_api_key_env()?;
+        self.validate_models()?;
+        self.request_policy.validate(&self.name)?;
+        self.validate_profiles()?;
+        self.validate_name_is_not_reserved()
+    }
+
+    fn validate_identity(&self) -> Result<(), String> {
         if self.name.trim().is_empty() {
             return Err("custom_providers: `name` must not be empty".to_string());
         }
@@ -527,20 +666,39 @@ impl CustomProviderConfig {
             return Err(format!("custom_providers[{}]: `base_url` must not be empty", self.name));
         }
 
+        Ok(())
+    }
+
+    fn validate_provider_bounds(&self) -> Result<(), String> {
+        self.validate_context_window_bound()?;
+        self.validate_sampling_bounds()?;
+        self.validate_output_bounds()
+    }
+
+    fn validate_context_window_bound(&self) -> Result<(), String> {
         if self.context_window == Some(0) {
             return Err(format!("custom_providers[{}]: `context_window` must be greater than 0", self.name));
         }
 
-        if let Some(temperature) = self.temperature
-            && !(0.0..=2.0).contains(&temperature)
-        {
-            return Err(format!("custom_providers[{}]: `temperature` must be between 0.0 and 2.0", self.name));
-        }
+        Ok(())
+    }
 
-        if let Some(top_p) = self.top_p
-            && !(0.0..=1.0).contains(&top_p)
-        {
-            return Err(format!("custom_providers[{}]: `top_p` must be between 0.0 and 1.0", self.name));
+    fn validate_sampling_bounds(&self) -> Result<(), String> {
+        for bound in [
+            SamplingBound {
+                field: "`temperature`",
+                value: self.temperature,
+                minimum: 0.0,
+                maximum: 2.0,
+            },
+            SamplingBound {
+                field: "`top_p`",
+                value: self.top_p,
+                minimum: 0.0,
+                maximum: 1.0,
+            },
+        ] {
+            bound.validate(&self.name)?;
         }
 
         if let Some(top_k) = self.top_k
@@ -549,17 +707,27 @@ impl CustomProviderConfig {
             return Err(format!("custom_providers[{}]: `top_k` must be >= 0", self.name));
         }
 
-        for (field, value) in [
-            ("`presence_penalty`", self.presence_penalty),
-            ("`frequency_penalty`", self.frequency_penalty),
+        for bound in [
+            SamplingBound {
+                field: "`presence_penalty`",
+                value: self.presence_penalty,
+                minimum: -2.0,
+                maximum: 2.0,
+            },
+            SamplingBound {
+                field: "`frequency_penalty`",
+                value: self.frequency_penalty,
+                minimum: -2.0,
+                maximum: 2.0,
+            },
         ] {
-            if let Some(value) = value
-                && !(-2.0..=2.0).contains(&value)
-            {
-                return Err(format!("custom_providers[{}]: {field} must be between -2.0 and 2.0", self.name));
-            }
+            bound.validate(&self.name)?;
         }
 
+        Ok(())
+    }
+
+    fn validate_output_bounds(&self) -> Result<(), String> {
         if self.max_tokens == Some(0) {
             return Err(format!("custom_providers[{}]: `max_tokens` must be greater than 0", self.name));
         }
@@ -571,6 +739,10 @@ impl CustomProviderConfig {
             ));
         }
 
+        Ok(())
+    }
+
+    fn validate_auth(&self) -> Result<(), String> {
         if let Some(auth) = &self.auth {
             auth.validate(&self.name)?;
             if !self.api_key_env.trim().is_empty() {
@@ -578,16 +750,28 @@ impl CustomProviderConfig {
             }
         }
 
+        Ok(())
+    }
+
+    fn validate_api_key_env(&self) -> Result<(), String> {
         if !self.api_key_env.trim().is_empty()
             && let Err(err) = crate::auth::CredentialIdentity::new(&self.name, &self.api_key_env)
         {
             return Err(format!("custom_providers[{}]: invalid `api_key_env`: {err}", self.name));
         }
 
+        Ok(())
+    }
+
+    fn validate_models(&self) -> Result<(), String> {
         if self.models.iter().any(|m| m.trim().is_empty()) {
             return Err(format!("custom_providers[{}]: `models` entries must not be empty", self.name));
         }
 
+        Ok(())
+    }
+
+    fn validate_profiles(&self) -> Result<(), String> {
         for (profile_key, profile) in &self.profiles {
             if profile_key.trim().is_empty() || profile_key.trim() != profile_key {
                 return Err(format!(
@@ -599,6 +783,10 @@ impl CustomProviderConfig {
             profile.validate(&self.name, profile_key)?;
         }
 
+        Ok(())
+    }
+
+    fn validate_name_is_not_reserved(&self) -> Result<(), String> {
         let reserved = [
             "openai",
             "anthropic",
@@ -626,6 +814,29 @@ impl CustomProviderConfig {
     }
 }
 
+struct SamplingBound {
+    field: &'static str,
+    value: Option<f32>,
+    minimum: f32,
+    maximum: f32,
+}
+
+impl SamplingBound {
+    fn validate(&self, provider_name: &str) -> Result<(), String> {
+        let Some(value) = self.value else {
+            return Ok(());
+        };
+        if (self.minimum..=self.maximum).contains(&value) {
+            return Ok(());
+        }
+
+        Err(format!(
+            "custom_providers[{provider_name}]: {} must be between {:.1} and {:.1}",
+            self.field, self.minimum, self.maximum
+        ))
+    }
+}
+
 fn is_valid_provider_name(name: &str) -> bool {
     let bytes = name.as_bytes();
     let Some(first) = bytes.first() else {
@@ -648,7 +859,8 @@ mod tests {
 
     use super::{
         CustomProviderApiFormat, CustomProviderCommandAuthConfig, CustomProviderConfig, CustomProviderProfileConfig,
-        ResolvedCustomProviderProfile, default_auth_refresh_interval_ms, default_auth_timeout_ms,
+        CustomProviderRequestPolicyConfig, ResolvedCustomProviderProfile, default_auth_refresh_interval_ms,
+        default_auth_timeout_ms,
     };
 
     #[test]
@@ -680,6 +892,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         assert!(config.validate().is_ok());
@@ -715,6 +928,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         let err = config.validate().expect_err("invalid name should fail");
@@ -756,6 +970,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         let err = config.validate().expect_err("conflicting auth should fail");
@@ -797,6 +1012,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         assert!(config.validate().is_ok());
@@ -832,6 +1048,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: vec!["valid-model".to_string(), "   ".to_string()],
             profiles: BTreeMap::new(),
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         let err = config.validate().expect_err("blank models entry should fail");
@@ -867,6 +1084,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         let err = config.validate().expect_err("zero context window should fail");
@@ -927,6 +1145,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles,
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         let err = config.validate().expect_err("profile key with whitespace should fail");
@@ -971,6 +1190,7 @@ mod tests {
                 "minimaxai/minimax-m3".to_string(),
             ],
             profiles: BTreeMap::new(),
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         assert_eq!(
@@ -1011,35 +1231,14 @@ mod tests {
         profiles.insert(
             "gpt-5-mini".to_string(),
             CustomProviderProfileConfig {
-                temperature: None,
-                top_p: None,
-                top_k: None,
-                presence_penalty: None,
-                frequency_penalty: None,
-                max_tokens: None,
-                reasoning_effort: None,
                 api_format: CustomProviderApiFormat::OpenAIResponses,
                 context_window: Some(128_000),
                 supports_tools: Some(true),
-                supports_reasoning: None,
-                supports_reasoning_effort: None,
-                supports_vision: None,
-                supports_structured_output: None,
-                supports_parallel_tool_calls: None,
-                supports_context_caching: None,
-                supports_responses_compaction: None,
-                supports_context_edits: None,
+                ..CustomProviderProfileConfig::default()
             },
         );
 
         let config = CustomProviderConfig {
-            temperature: None,
-            top_p: None,
-            top_k: None,
-            presence_penalty: None,
-            frequency_penalty: None,
-            max_tokens: None,
-            reasoning_effort: None,
             name: "mycorp".to_string(),
             display_name: "MyCorp".to_string(),
             base_url: "https://llm.example/v1".to_string(),
@@ -1047,18 +1246,9 @@ mod tests {
             context_window: Some(256_000),
             supports_tools: Some(true),
             supports_reasoning: Some(true),
-            supports_reasoning_effort: None,
-            supports_vision: None,
-            supports_structured_output: None,
-            supports_parallel_tool_calls: None,
-            supports_context_caching: None,
-            supports_responses_compaction: None,
-            supports_context_edits: None,
-            api_key_env: String::new(),
-            auth: None,
             model: "gpt-5-mini".to_string(),
-            models: Vec::new(),
             profiles,
+            ..CustomProviderConfig::default()
         };
 
         let resolved = config.resolved_profile("gpt-5-mini");
@@ -1067,22 +1257,9 @@ mod tests {
             ResolvedCustomProviderProfile {
                 api_format: Some(CustomProviderApiFormat::OpenAIResponses),
                 context_window: Some(128_000),
-                temperature: None,
-                top_p: None,
-                top_k: None,
-                presence_penalty: None,
-                frequency_penalty: None,
-                max_tokens: None,
-                reasoning_effort: None,
                 supports_tools: Some(true),
                 supports_reasoning: Some(true),
-                supports_reasoning_effort: None,
-                supports_vision: None,
-                supports_structured_output: None,
-                supports_parallel_tool_calls: None,
-                supports_context_caching: None,
-                supports_responses_compaction: None,
-                supports_context_edits: None,
+                ..ResolvedCustomProviderProfile::default()
             }
         );
         assert!(config.profile("gpt-5").is_none());
@@ -1142,6 +1319,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles,
+            request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
         let resolved = config.resolved_profile("gpt-5-mini");
@@ -1172,6 +1350,71 @@ model = "gpt-5-mini"
         assert_eq!(parsed.api_format, CustomProviderApiFormat::Auto);
         assert!(parsed.profiles.is_empty());
         assert_eq!(parsed.resolved_profile("gpt-5-mini"), ResolvedCustomProviderProfile::default());
+        assert_eq!(parsed.request_policy, CustomProviderRequestPolicyConfig::default());
+    }
+
+    #[test]
+    fn request_policy_defaults_allow_five_exponential_retry_delays() {
+        let policy = CustomProviderRequestPolicyConfig::default();
+
+        assert_eq!(policy.retry_initial_backoff_ms, 10_000);
+        assert_eq!(policy.retry_max_backoff_ms, 160_000);
+    }
+
+    #[test]
+    fn request_policy_deserializes_provider_limits_and_retries() {
+        let parsed: CustomProviderConfig = toml::from_str(
+            r#"
+name = "mycorp"
+display_name = "MyCorp"
+base_url = "https://llm.example/v1"
+model = "gpt-5-mini"
+
+[request_policy]
+max_in_flight_requests = 3
+queue_timeout_seconds = 120
+max_retries = 4
+retry_initial_backoff_ms = 250
+retry_max_backoff_ms = 5000
+retry_jitter = false
+connect_timeout_seconds = 45
+first_token_timeout_seconds = 240
+stream_idle_timeout_seconds = 150
+total_generation_timeout_seconds = 900
+"#,
+        )
+        .expect("custom provider request policy should parse");
+
+        assert_eq!(parsed.request_policy.max_in_flight_requests, Some(3));
+        assert_eq!(parsed.request_policy.queue_timeout_seconds, 120);
+        assert_eq!(parsed.request_policy.max_retries, 4);
+        assert_eq!(parsed.request_policy.retry_initial_backoff_ms, 250);
+        assert_eq!(parsed.request_policy.retry_max_backoff_ms, 5_000);
+        assert!(!parsed.request_policy.retry_jitter);
+        assert_eq!(parsed.request_policy.connect_timeout_seconds, 45);
+        assert_eq!(parsed.request_policy.first_token_timeout_seconds, 240);
+        assert_eq!(parsed.request_policy.stream_idle_timeout_seconds, 150);
+        assert_eq!(parsed.request_policy.total_generation_timeout_seconds, 900);
+        assert!(parsed.validate().is_ok());
+    }
+
+    #[test]
+    fn request_policy_validation_rejects_unsafe_bounds() {
+        let mut config = CustomProviderConfig {
+            name: "mycorp".to_string(),
+            display_name: "MyCorp".to_string(),
+            base_url: "https://llm.example/v1".to_string(),
+            model: "gpt-5-mini".to_string(),
+            ..CustomProviderConfig::default()
+        };
+
+        config.request_policy.max_in_flight_requests = Some(0);
+        assert!(config.validate().is_err_and(|error| error.contains("max_in_flight_requests")));
+
+        config.request_policy.max_in_flight_requests = Some(1);
+        config.request_policy.retry_initial_backoff_ms = 2_000;
+        config.request_policy.retry_max_backoff_ms = 1_000;
+        assert!(config.validate().is_err_and(|error| error.contains("retry_max_backoff_ms")));
     }
 
     #[test]

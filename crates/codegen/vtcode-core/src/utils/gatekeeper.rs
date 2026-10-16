@@ -1,3 +1,4 @@
+//! Caches and applies macOS Gatekeeper quarantine checks used when handling executable paths.
 use lru::LruCache;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
@@ -14,7 +15,7 @@ const GATEKEEPER_CACHE_MAX_ENTRIES: NonZeroUsize = NonZeroUsize::MIN.saturating_
 
 #[cfg_attr(
     not(target_os = "macos"),
-    allow(dead_code, reason = "Intentional compatibility, platform, or test-only suppression.")
+    allow(dead_code, reason = "Gatekeeper policy is only enforced by macOS quarantine APIs.")
 )]
 #[derive(Debug, Clone)]
 pub struct GatekeeperPolicy {
@@ -26,7 +27,7 @@ pub struct GatekeeperPolicy {
 
 #[cfg_attr(
     not(target_os = "macos"),
-    allow(dead_code, reason = "Intentional compatibility, platform, or test-only suppression.")
+    allow(dead_code, reason = "Gatekeeper cache entries are only consumed on macOS.")
 )]
 #[derive(Debug, Clone)]
 struct GatekeeperCacheEntry {
@@ -43,7 +44,10 @@ pub fn initialize_gatekeeper(config: &GatekeeperConfig, workspace_root: Option<&
 
 #[cfg_attr(
     not(target_os = "macos"),
-    allow(dead_code, reason = "Intentional compatibility, platform, or test-only suppression.")
+    allow(
+        dead_code,
+        reason = "Gatekeeper policy methods are only called by macOS quarantine handling."
+    )
 )]
 impl GatekeeperPolicy {
     fn from_config(config: &GatekeeperConfig, workspace_root: Option<&Path>) -> Self {

@@ -1,9 +1,11 @@
+//! Builds shared ACP session configuration, command, and display values.
 use crate::acp;
 use std::collections::HashSet;
 use std::path::Path;
 use vtcode_config::core::permissions::AgentPermissionsConfig;
 use vtcode_config::{SubagentSource, SubagentSpec, builtin_primary_duck_agent};
 use vtcode_core::ActivePrimaryAgentState;
+use vtcode_core::config::VTCodeConfig;
 use vtcode_core::config::types::ReasoningEffortLevel;
 use vtcode_core::permissions::{
     ResolvedPermissionDecision, build_advertised_permission_requests, evaluate_agent_permissions,
@@ -35,6 +37,7 @@ pub(crate) struct PrimaryAgentSessionOption {
 pub(crate) struct PrimaryAgentCatalog {
     options: Vec<PrimaryAgentSessionOption>,
     default_id: String,
+    active_contributes_workspace_controlled_hooks: bool,
 }
 
 impl PrimaryAgentCatalog {
@@ -54,6 +57,7 @@ impl PrimaryAgentCatalog {
         }
 
         let active = ActivePrimaryAgentState::from_specs_with_default(specs, default_primary_agent);
+        let active_contributes_workspace_controlled_hooks = active.active().contributes_workspace_controlled_hooks();
         let default_id = if options
             .iter()
             .any(|option| option.id.eq_ignore_ascii_case(&active.active().identity.name))
@@ -66,12 +70,24 @@ impl PrimaryAgentCatalog {
                 .unwrap_or_else(|| "duck".to_string())
         };
 
-        Self { options, default_id }
+        Self {
+            options,
+            default_id,
+            active_contributes_workspace_controlled_hooks,
+        }
     }
 
     #[must_use]
     pub(crate) fn default_id(&self) -> &str {
         &self.default_id
+    }
+
+    #[must_use]
+    pub(crate) fn workspace_hooks_gated(&self, vt_config: Option<&VTCodeConfig>) -> bool {
+        vt_config
+            .and_then(|config| config.workspace_lifecycle_hooks.as_ref())
+            .is_some_and(|hooks| !hooks.is_empty())
+            || self.active_contributes_workspace_controlled_hooks
     }
 
     #[must_use]

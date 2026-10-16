@@ -1,3 +1,4 @@
+//! Resolves provider configuration and constructs the LLM backend selected for an agent.
 use super::cgp::{CanBuildProvider, CanDescribeProvider, register_builtin_cgp_providers};
 use super::model_resolver::{ModelResolver, heuristic_provider_from_model};
 use super::provider::{LLMError, LLMProvider};
@@ -539,6 +540,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            request_policy: Default::default(),
         }]);
 
         let provider = create_provider_with_config(
@@ -595,6 +597,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            request_policy: Default::default(),
         }]);
 
         let provider = create_provider_with_config(
@@ -685,6 +688,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: vec!["gpt-5-mini".to_string(), "claude-sonnet-5".to_string()],
             profiles,
+            request_policy: Default::default(),
         }
     }
 
@@ -850,6 +854,7 @@ mod tests {
                 "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B".to_string(),
             ],
             profiles: BTreeMap::new(),
+            request_policy: Default::default(),
         }
     }
 

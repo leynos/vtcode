@@ -1,3 +1,4 @@
+//! Collects protocol labels, limits, and message templates shared by the Zed ACP adapter.
 pub(crate) const SESSION_PREFIX: &str = "vtcode-zed-session";
 pub(crate) const RESOURCE_FALLBACK_LABEL: &str = "Resource";
 pub(crate) const RESOURCE_FAILURE_LABEL: &str = "Resource unavailable";
@@ -14,9 +15,6 @@ pub(crate) const TOOL_READ_FILE_INTEGER_RANGE_TEMPLATE: &str = "{argument} value
 pub(crate) const TOOL_READ_FILE_ABSOLUTE_PATH_TEMPLATE: &str = "Invalid {argument} value: expected an absolute path";
 pub(crate) const TOOL_READ_FILE_WORKSPACE_ESCAPE_TEMPLATE: &str =
     "Invalid {argument} value: path escapes the trusted workspace";
-pub(crate) const PLAN_STEP_ANALYSE: &str = "Review the latest user request and conversation context";
-pub(crate) const PLAN_STEP_GATHER_CONTEXT: &str = "Gather referenced workspace files when required";
-pub(crate) const PLAN_STEP_RESPOND: &str = "Compose and send the assistant response";
 pub(crate) const WORKSPACE_TRUST_UPGRADE_LOG: &str = "ACP workspace trust level updated";
 pub(crate) const WORKSPACE_TRUST_ALREADY_SATISFIED_LOG: &str = "ACP workspace trust level already satisfied";
 pub(crate) const WORKSPACE_TRUST_DOWNGRADE_SKIPPED_LOG: &str =

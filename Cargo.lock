@@ -3080,6 +3080,7 @@ checksum = "86f0f8fee8c926415c58d6ae43a08523a26faccb2323f5e6b644fe7dd4ef6b82"
 dependencies = [
  "console 0.16.4",
  "once_cell",
+ "serde",
  "similar",
  "tempfile",
 ]
@@ -4895,9 +4896,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.16"
+version = "0.11.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f4bfc015262b9df63c8845072ce59068853ff5872180c2ce2f13038b970e560"
+checksum = "a9746dbde176634f4f2f1faf2404e30a31b2bc1e9cafb5329c95d8177a18c9fc"
 dependencies = [
  "aws-lc-rs",
  "bytes",
@@ -5690,9 +5691,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.45"
+version = "0.23.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
+checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "aws-lc-rs",
  "once_cell",
@@ -5784,9 +5785,9 @@ dependencies = [
 
 [[package]]
 name = "ruzstd"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a252f5e20f038fe7b4ea53e073e65398d652c864cc162fc77c56c2f13717b888"
+checksum = "69e4ce4a039f42bf25920b95667e4d789e98749ab11bbb8d2c2936f788421bb5"
 dependencies = [
  "twox-hash",
 ]
@@ -7573,6 +7574,7 @@ dependencies = [
  "ratatui",
  "regex",
  "reqwest 0.12.28",
+ "rstest",
  "rustc-hash 2.1.3",
  "self-replace",
  "semver",
@@ -7644,20 +7646,27 @@ dependencies = [
  "assert_fs",
  "async-trait",
  "chrono",
+ "dirs",
  "futures",
  "hashbrown 0.17.1",
+ "insta",
  "percent-encoding",
+ "proptest",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
  "tokio",
+ "toml",
  "tracing",
+ "tracing-subscriber",
  "url",
  "uuid",
  "vtcode-commons",
  "vtcode-config",
  "vtcode-core",
+ "vtcode-llm",
+ "vtcode-safety",
 ]
 
 [[package]]
@@ -7828,6 +7837,7 @@ dependencies = [
  "dunce",
  "filetime",
  "flate2",
+ "fs2",
  "futures",
  "glob",
  "hashbrown 0.17.1",
@@ -7988,6 +7998,7 @@ dependencies = [
  "openai-harmony",
  "parking_lot",
  "portable-pty",
+ "proptest",
  "ratatui",
  "regex",
  "reqwest 0.12.28",
@@ -8086,6 +8097,7 @@ dependencies = [
  "hashbrown 0.17.1",
  "nix 0.31.3",
  "once_cell",
+ "proptest",
  "rustc-hash 2.1.3",
  "serde",
  "serde_json",

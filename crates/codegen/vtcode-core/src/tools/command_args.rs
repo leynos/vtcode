@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::tools::tool_intent::{command_session_action, command_session_action_in, command_session_action_is};
+use crate::tools::tool_intent::{command_session_action, command_session_action_is};
 
 const INDEXED_COMMAND_TYPE_ERROR: &str = "command array must contain only strings";
 const COMMAND_VALUE_TYPE_ERROR: &str = "command must be a string or array of strings";
@@ -29,12 +29,22 @@ impl WriteStdinDispatch {
 
 pub(crate) fn write_stdin_dispatch(args: &Value) -> Result<WriteStdinDispatch, &'static str> {
     let payload = args.as_object().ok_or("write_stdin requires a JSON object")?;
-    if payload
-        .get("action")
-        .and_then(Value::as_str)
-        .is_some_and(|action| action.eq_ignore_ascii_case("wait"))
-    {
-        return Ok(WriteStdinDispatch::Wait);
+    if let Some(action_value) = payload.get("action") {
+        let action = action_value.as_str().ok_or("write_stdin action must be a string")?;
+        if action.eq_ignore_ascii_case("poll") {
+            return Ok(WriteStdinDispatch::Poll);
+        }
+        if action.eq_ignore_ascii_case("wait") {
+            return Ok(WriteStdinDispatch::Wait);
+        }
+        if action.eq_ignore_ascii_case("write") {
+            payload
+                .get("chars")
+                .and_then(Value::as_str)
+                .ok_or("write_stdin action write requires string chars")?;
+            return Ok(WriteStdinDispatch::Write);
+        }
+        return Err("write_stdin action must be write, poll, or wait");
     }
     let chars = payload
         .get("chars")
@@ -165,6 +175,13 @@ pub fn interactive_input_text(args: &Value) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
+fn has_explicit_write_chars(args: &Value) -> bool {
+    args.get("action")
+        .and_then(Value::as_str)
+        .is_some_and(|action| action.eq_ignore_ascii_case("write"))
+        && args.get("chars").and_then(Value::as_str).is_some()
+}
+
 pub fn session_id_text_from_payload(payload: &serde_json::Map<String, Value>) -> Option<&str> {
     payload
         .get("session_id")
@@ -179,40 +196,57 @@ pub fn session_id_text(args: &Value) -> Option<&str> {
 }
 
 pub fn command_session_missing_required_args(args: &Value) -> Vec<&'static str> {
-    if command_session_action(args).is_none() {
+    let Some(action) = command_session_action(args) else {
         return Vec::new();
-    }
+    };
 
-    let mut missing = Vec::new();
-    if command_session_action_is(args, "run") {
-        if command_text(args).ok().flatten().is_none() {
-            missing.push("command");
-        }
-    } else if command_session_action_is(args, "write") {
-        if session_id_text(args).is_none() {
-            missing.push("session_id");
-        }
-        if interactive_input_text(args).is_none() {
-            missing.push("input or chars or text");
-        }
-    } else if command_session_action_in(args, &["poll", "wait", "continue", "close"]) {
-        if session_id_text(args).is_none() {
-            missing.push("session_id");
-        }
-    } else if command_session_action_is(args, "inspect") {
-        let has_session_id = session_id_text(args).is_some();
-        let has_spool_path = has_nonempty_string_field(args, "spool_path");
-        if !has_session_id && !has_spool_path {
-            missing.push("session_id or spool_path");
-        }
-    } else if command_session_action_is(args, "code") {
-        let has_code = has_nonempty_string_field(args, "code") || has_nonempty_string_field(args, "command");
-        if !has_code {
-            missing.push("code or command");
-        }
+    match action.to_ascii_lowercase().as_str() {
+        "run" => missing_command_session_run_args(args),
+        "write" => missing_command_session_write_args(args),
+        "poll" | "wait" | "continue" | "close" => missing_session_id_args(args),
+        "inspect" => missing_inspect_args(args),
+        "code" => missing_code_args(args),
+        _ => Vec::new(),
     }
+}
 
+fn missing_command_session_run_args(args: &Value) -> Vec<&'static str> {
+    if command_text(args).ok().flatten().is_none() {
+        vec!["command"]
+    } else {
+        Vec::new()
+    }
+}
+
+fn missing_command_session_write_args(args: &Value) -> Vec<&'static str> {
+    let mut missing = missing_session_id_args(args);
+    if interactive_input_text(args).is_none() && !has_explicit_write_chars(args) {
+        missing.push("input or chars or text");
+    }
     missing
+}
+
+fn missing_session_id_args(args: &Value) -> Vec<&'static str> {
+    if session_id_text(args).is_none() {
+        vec!["session_id"]
+    } else {
+        Vec::new()
+    }
+}
+
+fn missing_inspect_args(args: &Value) -> Vec<&'static str> {
+    let has_session_id = session_id_text(args).is_some();
+    let has_spool_path = has_nonempty_string_field(args, "spool_path");
+    if !has_session_id && !has_spool_path {
+        vec!["session_id or spool_path"]
+    } else {
+        Vec::new()
+    }
+}
+
+fn missing_code_args(args: &Value) -> Vec<&'static str> {
+    let has_code = has_nonempty_string_field(args, "code") || has_nonempty_string_field(args, "command");
+    if has_code { Vec::new() } else { vec!["code or command"] }
 }
 
 pub fn command_session_requires_command_safety(args: &Value) -> bool {
@@ -941,10 +975,50 @@ mod tests {
     }
 
     #[test]
+    fn explicit_empty_write_passes_required_validation_while_legacy_empty_chars_poll() {
+        let explicit_write = json!({"action": "write", "session_id": "run-1", "chars": ""});
+        assert_eq!(write_stdin_dispatch(&explicit_write), Ok(WriteStdinDispatch::Write));
+        assert!(command_session_missing_required_args(&explicit_write).is_empty());
+
+        let legacy_empty_chars = json!({"session_id": "run-1", "chars": ""});
+        let dispatch = write_stdin_dispatch(&legacy_empty_chars).expect("legacy empty chars should dispatch as a poll");
+        assert_eq!(dispatch, WriteStdinDispatch::Poll);
+        assert_eq!(dispatch.command_session_action(), "poll");
+    }
+
+    #[test]
     fn write_stdin_dispatch_accepts_explicit_wait_without_chars() {
         assert_eq!(
             write_stdin_dispatch(&json!({"action": "wait", "session_id": "run-1"})),
             Ok(WriteStdinDispatch::Wait)
+        );
+    }
+
+    #[test]
+    fn write_stdin_dispatch_accepts_explicit_poll_without_chars() {
+        assert_eq!(
+            write_stdin_dispatch(&json!({"action": "poll", "session_id": "run-1"})),
+            Ok(WriteStdinDispatch::Poll)
+        );
+    }
+
+    #[test]
+    fn write_stdin_dispatch_rejects_non_string_action_even_with_string_chars() {
+        assert_eq!(
+            write_stdin_dispatch(&json!({"action": 1, "chars": "status\n"})),
+            Err("write_stdin action must be a string")
+        );
+    }
+
+    #[test]
+    fn write_stdin_dispatch_requires_chars_for_explicit_write() {
+        assert_eq!(
+            write_stdin_dispatch(&json!({"action": "write", "session_id": "run-1"})),
+            Err("write_stdin action write requires string chars")
+        );
+        assert_eq!(
+            write_stdin_dispatch(&json!({"action": "write", "session_id": "run-1", "chars": ""})),
+            Ok(WriteStdinDispatch::Write)
         );
     }
 

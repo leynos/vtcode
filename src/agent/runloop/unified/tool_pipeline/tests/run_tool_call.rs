@@ -1,3 +1,4 @@
+//! Tests tool-call pipeline authorization, execution, result handling, and session-level permission behavior.
 #![allow(
     missing_docs,
     reason = "Intentional compatibility, platform, or test-only suppression."
@@ -842,6 +843,15 @@ async fn test_run_tool_call_command_session_git_diff_uses_cache_on_repeat() {
     assert_eq!(first_stable, second_stable);
 }
 
+async fn run_cache_invalidation_tool_call(
+    ctx: &mut crate::agent::runloop::unified::run_loop_context::RunLoopContext<'_>,
+    call: vtcode_core::llm::provider::ToolCall,
+    ctrl_c_state: &Arc<CtrlCState>,
+    ctrl_c_notify: &Arc<Notify>,
+) -> anyhow::Result<ToolPipelineOutcome> {
+    Box::pin(run_tool_call(ctx, &call, ctrl_c_state, ctrl_c_notify, None, None, true, None, 0, false)).await
+}
+
 #[tokio::test]
 async fn successful_apply_patch_invalidates_cached_code_search() {
     let mut test_ctx = TestContext::new().await;
@@ -904,20 +914,10 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
         )
     };
 
-    let first = run_tool_call(
-        &mut ctx,
-        &search_call("search_before_patch"),
-        &ctrl_c_state,
-        &ctrl_c_notify,
-        None,
-        None,
-        true,
-        None,
-        0,
-        false,
-    )
-    .await
-    .expect("initial code_search should run");
+    let first =
+        run_cache_invalidation_tool_call(&mut ctx, search_call("search_before_patch"), &ctrl_c_state, &ctrl_c_notify)
+            .await
+            .expect("initial code_search should run");
     match first.status {
         ToolExecutionStatus::Success { output, .. } => {
             assert_eq!(output["returned"], json!(1));
@@ -931,24 +931,17 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
         tools::APPLY_PATCH.to_string(),
         json!({"input": "*** Begin Patch\n*** Not An Operation\n*** End Patch\n"}).to_string(),
     );
-    let failed =
-        run_tool_call(&mut ctx, &failed_patch, &ctrl_c_state, &ctrl_c_notify, None, None, true, None, 0, false)
-            .await
-            .expect("failed apply_patch should produce a pipeline outcome");
+    let failed = run_cache_invalidation_tool_call(&mut ctx, failed_patch, &ctrl_c_state, &ctrl_c_notify)
+        .await
+        .expect("failed apply_patch should produce a pipeline outcome");
     assert!(matches!(failed.status, ToolExecutionStatus::Failure { .. }));
     assert_eq!(result_cache.read().await.stats().current_size, 1, "a failed patch must preserve cached reads");
 
-    let cached = run_tool_call(
+    let cached = run_cache_invalidation_tool_call(
         &mut ctx,
-        &search_call("search_after_failed_patch"),
+        search_call("search_after_failed_patch"),
         &ctrl_c_state,
         &ctrl_c_notify,
-        None,
-        None,
-        true,
-        None,
-        0,
-        false,
     )
     .await
     .expect("search after failed patch should run");
@@ -964,10 +957,9 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
         tools::APPLY_PATCH.to_string(),
         json!({"input": patch}).to_string(),
     );
-    let patched =
-        run_tool_call(&mut ctx, &successful_patch, &ctrl_c_state, &ctrl_c_notify, None, None, true, None, 0, false)
-            .await
-            .expect("successful apply_patch should run");
+    let patched = run_cache_invalidation_tool_call(&mut ctx, successful_patch, &ctrl_c_state, &ctrl_c_notify)
+        .await
+        .expect("successful apply_patch should run");
     match patched.status {
         ToolExecutionStatus::Success { modified_files, .. } => {
             assert_eq!(
@@ -987,17 +979,11 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
         "successful patch metadata must invalidate the scoped search cache"
     );
 
-    let fresh = run_tool_call(
+    let fresh = run_cache_invalidation_tool_call(
         &mut ctx,
-        &search_call("search_after_successful_patch"),
+        search_call("search_after_successful_patch"),
         &ctrl_c_state,
         &ctrl_c_notify,
-        None,
-        None,
-        true,
-        None,
-        0,
-        false,
     )
     .await
     .expect("search after successful patch should run");
@@ -1022,7 +1008,7 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
         })
         .to_string(),
     );
-    let shell = run_tool_call(&mut ctx, &shell_call, &ctrl_c_state, &ctrl_c_notify, None, None, true, None, 0, false)
+    let shell = run_cache_invalidation_tool_call(&mut ctx, shell_call, &ctrl_c_state, &ctrl_c_notify)
         .await
         .expect("shell mutation should run");
     assert!(matches!(shell.status, ToolExecutionStatus::Success { .. }));
