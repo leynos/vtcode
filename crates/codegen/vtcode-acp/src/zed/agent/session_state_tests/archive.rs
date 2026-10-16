@@ -242,7 +242,9 @@ fn archived_workspace_matching_distinguishes_resolution_mismatch_and_match() {
     assert_eq!(session_listing_workspace_match(&matching, &requested_workspace).unwrap(), WorkspaceMatch::Matches);
     assert_eq!(session_listing_workspace_match(&different, &requested_workspace).unwrap(), WorkspaceMatch::Differs);
     let error = session_listing_workspace_match(&unavailable, &requested_workspace).unwrap_err();
-    assert!(format!("{error:#}").contains("resolving stored ACP session workspace"));
+    let formatted_error = format!("{error:#}");
+    assert!(formatted_error.contains("resolving stored ACP session workspace"));
+    assert!(!formatted_error.contains(&missing_workspace.display().to_string()));
 }
 
 #[tokio::test]

@@ -378,7 +378,7 @@ pub(super) enum WorkspaceMatch {
 
 fn canonical_workspace_match(stored_workspace: &Path, requested_workspace: &Path) -> anyhow::Result<WorkspaceMatch> {
     let canonical_stored_workspace = vtcode_commons::canonicalize(stored_workspace)
-        .with_context(|| format!("resolving stored ACP session workspace '{}'", stored_workspace.display()))?;
+        .context("resolving stored ACP session workspace")?;
     Ok(if canonical_stored_workspace == requested_workspace {
         WorkspaceMatch::Matches
     } else {
