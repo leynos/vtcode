@@ -88,6 +88,8 @@ impl TimeoutPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::matchers::any;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
     fn regular_and_streaming_policies_select_independent_ceilings() {
@@ -129,5 +131,63 @@ mod tests {
             assert_eq!(TimeoutPolicy::regular(&config), expected);
             assert_eq!(TimeoutPolicy::streaming(&config), expected);
         }
+    }
+
+    #[tokio::test]
+    async fn client_factories_enforce_configured_request_timeouts() {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(2)))
+            .mount(&server)
+            .await;
+
+        let config = TimeoutsConfig {
+            default_ceiling_seconds: 1,
+            streaming_ceiling_seconds: 1,
+            connect_timeout_seconds: 1,
+            ..TimeoutsConfig::default()
+        };
+        let regular_client = HttpClientFactory::for_llm(&config);
+        let streaming_client = HttpClientFactory::for_streaming(&config);
+        let (regular_result, streaming_result) =
+            tokio::join!(regular_client.get(server.uri()).send(), streaming_client.get(server.uri()).send(),);
+
+        let regular_error = regular_result.expect_err("regular request should exceed its request timeout");
+        let streaming_error = streaming_result.expect_err("streaming request should exceed its request timeout");
+        assert!(regular_error.is_timeout(), "{regular_error}");
+        assert!(streaming_error.is_timeout(), "{streaming_error}");
+    }
+
+    #[tokio::test]
+    async fn zero_request_ceiling_allows_a_delayed_response_for_both_clients() {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_millis(1_100)))
+            .mount(&server)
+            .await;
+
+        let config = TimeoutsConfig {
+            default_ceiling_seconds: 0,
+            streaming_ceiling_seconds: 0,
+            connect_timeout_seconds: 2,
+            ..TimeoutsConfig::default()
+        };
+        let regular_client = HttpClientFactory::for_llm(&config);
+        let streaming_client = HttpClientFactory::for_streaming(&config);
+        let (regular_result, streaming_result) =
+            tokio::join!(regular_client.get(server.uri()).send(), streaming_client.get(server.uri()).send(),);
+
+        assert_eq!(
+            regular_result
+                .expect("regular request should complete without a request deadline")
+                .status(),
+            200
+        );
+        assert_eq!(
+            streaming_result
+                .expect("streaming request should complete without a request deadline")
+                .status(),
+            200
+        );
     }
 }
