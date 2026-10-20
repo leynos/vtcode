@@ -81,7 +81,7 @@ dirs = { workspace = true }
 # YAML support
 serde-saphyr = { workspace = true }
 # Zip support for skill packaging
-zip = { version = "8.6", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.0", default-features = false, features = ["deflate"] }
 flate2 = "1.1"
 tar = "0.4"
 tracing = { workspace = true }
