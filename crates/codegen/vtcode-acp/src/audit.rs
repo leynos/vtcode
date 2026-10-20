@@ -97,12 +97,12 @@ mod tests {
             toml::from_str(&format!("enabled = true\npath = {:?}\nmax_size_bytes = 1\nmax_files = 1", path))
                 .expect("audit config");
         let logger = AcpAuditLogger::from_config(&config).await.expect("startup").expect("enabled");
-        let entry = || {
+        let entry = |tool_call_id| {
             ToolAuditEntry::from_invocation(ToolAuditInvocation {
                 timestamp_unix_ms: 1,
                 session_id: "s",
                 turn_id: "t",
-                tool_call_id: "c",
+                tool_call_id,
                 tool_name: "apply_patch",
                 arguments: b"{}",
                 result: b"completed",
@@ -112,14 +112,25 @@ mod tests {
                 reason: None,
             })
         };
-        logger.record(entry()).await.expect("initial durable write");
-        fs::create_dir(temp.path().join("audit.jsonl.1")).expect("block rotation destination");
+        logger.record(entry("initial")).await.expect("initial durable write");
+        let rotation_blocker = temp.path().join("audit.jsonl.1");
+        fs::create_dir(&rotation_blocker).expect("block rotation destination");
         let error = logger
-            .record(entry())
+            .record(entry("blocked"))
             .await
             .expect_err("sink failure must cross blocking task boundary");
         assert!(error.downcast_ref::<std::io::Error>().is_some());
         assert_eq!(error.to_string(), "failed to persist ACP audit entry");
+
+        fs::remove_dir(rotation_blocker).expect("remove rotation blocker");
+        logger
+            .record(entry("recovered"))
+            .await
+            .expect("audit persistence recovers after blocker removal");
+
+        let active_jsonl = fs::read_to_string(path).expect("active audit log after recovered write");
+        let active_entry: serde_json::Value = serde_json::from_str(active_jsonl.trim()).expect("active audit JSONL");
+        assert_eq!(active_entry["tool_call_id"], "recovered");
     }
 
     #[tokio::test]

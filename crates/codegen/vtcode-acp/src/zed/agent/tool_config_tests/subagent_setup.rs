@@ -1,5 +1,5 @@
 //! Tests attachment and availability of optional ACP subagent support.
-use super::super::{AcpSubagentControllerSetup, OptionalSetupOutcome, attach_acp_subagent_controller};
+use super::super::optional_setup::{AcpSubagentControllerSetup, OptionalSetupOutcome, attach_acp_subagent_controller};
 use super::support::{build_agent, build_agent_with_config, core_agent_config, definition_names};
 use assert_fs::TempDir;
 use serde_json::json;

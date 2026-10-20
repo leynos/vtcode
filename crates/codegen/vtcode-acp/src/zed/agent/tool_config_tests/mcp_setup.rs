@@ -1,5 +1,5 @@
 //! Tests optional ACP MCP client attachment and provider startup degradation.
-use super::super::{OptionalSetupOutcome, attach_acp_mcp_client};
+use super::super::optional_setup::{OptionalSetupOutcome, attach_acp_mcp_client};
 use super::support::core_agent_config;
 use assert_fs::TempDir;
 use serde_json::json;

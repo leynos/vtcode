@@ -79,6 +79,11 @@ fn archive_file_name_for_label(
     )
 }
 
+/// Generate a filename-safe identifier for a session archive.
+///
+/// The identifier is derived from the workspace label, current time, and
+/// optional suffix. Use [`reserve_session_archive_identifier`] to obtain an
+/// identifier before constructing an archive with that identifier.
 pub fn generate_session_archive_identifier(workspace_label: &str, custom_suffix: Option<String>) -> String {
     let file_name = archive_file_name_for_label(workspace_label, Utc::now(), custom_suffix.as_deref(), Some(0));
     Path::new(&file_name)
@@ -145,6 +150,7 @@ pub(in crate::utils) fn is_session_file(path: &Path) -> bool {
     )
 }
 
+/// Handle for writing durable snapshots to one session archive.
 #[derive(Debug, Clone)]
 pub struct SessionArchive {
     path: PathBuf,
@@ -184,6 +190,7 @@ impl SessionArchive {
         self.metadata.primary_agent = Some(primary_agent.into());
     }
 
+    /// Borrow the metadata included in snapshots written by this archive.
     pub fn metadata(&self) -> &SessionArchiveMetadata {
         &self.metadata
     }
@@ -203,6 +210,7 @@ impl SessionArchive {
         self.metadata.continuation_metadata = continuation_metadata;
     }
 
+    /// Return the path where this archive writes its snapshots.
     pub fn path(&self) -> &Path {
         &self.path
     }

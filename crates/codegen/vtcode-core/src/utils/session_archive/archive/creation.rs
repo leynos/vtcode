@@ -47,6 +47,10 @@ pub async fn reserve_session_archive_identifier(
 }
 
 impl SessionArchive {
+    /// Create a new archive with an identifier derived from its metadata.
+    ///
+    /// When `custom_suffix` is absent, the generated filename includes
+    /// disambiguating process and timestamp components.
     pub async fn new(metadata: SessionArchiveMetadata, custom_suffix: Option<String>) -> Result<Self> {
         let sessions_dir = resolve_sessions_dir_for_archive_writes().await?;
         let started_at = Utc::now();
@@ -63,12 +67,15 @@ impl SessionArchive {
         Ok(Self::from_path(path, metadata, Utc::now()))
     }
 
-    /// Reopen an existing archive file so follow-up runs can overwrite the snapshot in place.
+    /// Reopen a listed archive so a follow-up run can overwrite its snapshot.
+    ///
+    /// The supplied metadata becomes the metadata for subsequent snapshots;
+    /// the original start time is retained from the listing.
     pub fn resume_from_listing(listing: &SessionListing, metadata: SessionArchiveMetadata) -> Self {
         Self::from_path(listing.path.clone(), metadata, listing.snapshot.started_at)
     }
 
-    /// Create a forked session from an existing session snapshot
+    /// Create a forked session from an existing session snapshot.
     ///
     /// This creates a new session archive that inherits metadata from the source
     /// session but operates independently. The forked session will have a new

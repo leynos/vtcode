@@ -19,7 +19,7 @@ use tokio::sync::mpsc::error::TrySendError;
 use tokio::task::JoinHandle;
 use tracing::Instrument;
 use tracing::{Span, debug, field, info_span, warn};
-use vtcode_core::metrics::{TaskLifecycleQueueDrop, TaskLifecycleQueueMetricsObserver};
+use vtcode_core::metrics::{TaskLifecycleNotificationQueueDrop, TaskLifecycleNotificationQueueMetricsObserver};
 use vtcode_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver, SubagentStatusEntry};
 
 pub(super) const TASK_LIFECYCLE_METHOD: &str = "_vtcode/taskLifecycle";
@@ -63,11 +63,11 @@ struct LifecycleQueueState {
 
 struct LifecycleQueueTracker {
     state: Mutex<LifecycleQueueState>,
-    metrics: Arc<dyn TaskLifecycleQueueMetricsObserver>,
+    metrics: Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>,
 }
 
 impl LifecycleQueueTracker {
-    fn new(metrics: Arc<dyn TaskLifecycleQueueMetricsObserver>) -> Self {
+    fn new(metrics: Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>) -> Self {
         Self {
             state: Mutex::new(LifecycleQueueState::default()),
             metrics,
@@ -100,8 +100,10 @@ impl LifecycleQueueTracker {
 
     fn record_drop(&self, kind: LifecycleQueueDropKind) -> u64 {
         match kind {
-            LifecycleQueueDropKind::Full => self.metrics.queue_item_dropped(TaskLifecycleQueueDrop::Full),
-            LifecycleQueueDropKind::Closed => self.metrics.queue_item_dropped(TaskLifecycleQueueDrop::Closed),
+            LifecycleQueueDropKind::Full => self.metrics.queue_item_dropped(TaskLifecycleNotificationQueueDrop::Full),
+            LifecycleQueueDropKind::Closed => {
+                self.metrics.queue_item_dropped(TaskLifecycleNotificationQueueDrop::Closed)
+            }
         }
     }
 

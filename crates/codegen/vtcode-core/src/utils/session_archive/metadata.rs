@@ -3,13 +3,20 @@ use super::SESSION_ARCHIVE_LEGACY_FIELDS_NAMESPACE;
 use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
 
+/// Metadata that accompanies every durable session snapshot.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct SessionArchiveMetadata {
+    /// Display label for the session workspace.
     pub workspace_label: String,
+    /// Filesystem path of the workspace recorded when the session was created.
     pub workspace_path: String,
+    /// Model identifier used by the session.
     pub model: String,
+    /// Provider identifier used by the session.
     pub provider: String,
+    /// UI theme active for the session.
     pub theme: String,
+    /// Reasoning effort configured for the session.
     pub reasoning_effort: String,
     /// Opaque values owned by protocol adapters and keyed by stable namespace.
     ///
@@ -20,21 +27,28 @@ pub struct SessionArchiveMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extensions: Option<SessionArchiveExtensions>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Path to the session debug log, when one was written.
     pub debug_log_path: Option<String>,
     /// Names of skills loaded in this session
     #[serde(default)]
     pub loaded_skills: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Stable identifier linking prompt-cache lineage for this session.
     pub prompt_cache_lineage_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Thread identifier assigned by an external client, when available.
     pub external_thread_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Identifier of the session from which this session was continued.
     pub parent_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Name of the primary agent selected for this session.
     pub primary_agent: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Fork strategy recorded for this session, when it was created as a fork.
     pub fork_mode: Option<SessionForkMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Budget exhaustion details and continuation guidance, when applicable.
     pub continuation_metadata: Option<SessionContinuationMetadata>,
 }
 
@@ -154,41 +168,57 @@ impl<'de> Deserialize<'de> for SessionArchiveMetadata {
     }
 }
 
+/// Strategy used to create a child archive from a source session.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionForkMode {
+    /// Copy the full source history into the fork.
     FullCopy,
+    /// Start from a summarized representation of the source history.
     Summarized,
 }
 
+/// Budget condition that ended the prior session.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionContinuationExhaustionReason {
+    /// The configured maximum dollar budget was reached.
     MaxBudgetUsd,
 }
 
+/// Suggested way to proceed after a session reaches its budget limit.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionContinuationRecommendedAction {
+    /// Continue using the available summary as the starting context.
     ContinueFromSummary,
+    /// Continue with the full saved conversation history.
     ContinueFullHistory,
+    /// Start a new session without continuing the saved conversation.
     StartFresh,
 }
 
+/// Continuation information recorded when a session reaches a configured budget.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SessionContinuationMetadata {
+    /// Budget condition that ended the session.
     pub exhaustion_reason: SessionContinuationExhaustionReason,
+    /// Configured maximum budget in integer millionths of a US dollar.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_budget_usd_micros: Option<u64>,
+    /// Actual cost in integer millionths of a US dollar, when available.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actual_cost_usd_micros: Option<u64>,
+    /// Whether a continuation summary is available.
     #[serde(default)]
     pub summary_available: bool,
+    /// Suggested action for continuing after the budget limit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recommended_action: Option<SessionContinuationRecommendedAction>,
 }
 
 impl SessionContinuationMetadata {
+    /// Build budget-limit metadata from dollar amounts and summary availability.
     pub fn budget_limit(max_budget_usd: f64, actual_cost_usd: f64, summary_available: bool) -> Self {
         Self {
             exhaustion_reason: SessionContinuationExhaustionReason::MaxBudgetUsd,
@@ -199,14 +229,17 @@ impl SessionContinuationMetadata {
         }
     }
 
+    /// Return the configured limit in dollars, if it was recorded.
     pub fn max_budget_usd(&self) -> Option<f64> {
         self.max_budget_usd_micros.map(micros_to_usd)
     }
 
+    /// Return the actual cost in dollars, if it was recorded.
     pub fn actual_cost_usd(&self) -> Option<f64> {
         self.actual_cost_usd_micros.map(micros_to_usd)
     }
 
+    /// Return whether this metadata describes exhaustion of a maximum budget.
     pub fn is_budget_limit(&self) -> bool {
         matches!(self.exhaustion_reason, SessionContinuationExhaustionReason::MaxBudgetUsd)
     }
@@ -229,6 +262,7 @@ fn micros_to_usd(value: u64) -> f64 {
 }
 
 impl SessionArchiveMetadata {
+    /// Create metadata with the required workspace, model, provider, theme, and reasoning fields.
     pub fn new(
         workspace_label: impl Into<String>,
         workspace_path: impl Into<String>,
@@ -256,7 +290,7 @@ impl SessionArchiveMetadata {
         }
     }
 
-    /// Set loaded skills for this session
+    /// Set the names of skills loaded for this session.
     pub fn with_loaded_skills(mut self, skills: Vec<String>) -> Self {
         self.loaded_skills = skills;
         self
@@ -268,16 +302,19 @@ impl SessionArchiveMetadata {
         self
     }
 
+    /// Set the prompt-cache lineage identifier.
     pub fn with_prompt_cache_lineage_id(mut self, lineage_id: impl Into<String>) -> Self {
         self.prompt_cache_lineage_id = Some(lineage_id.into());
         self
     }
 
+    /// Set the external thread identifier associated with this session.
     pub fn with_external_thread_id(mut self, thread_id: impl Into<String>) -> Self {
         self.external_thread_id = Some(thread_id.into());
         self
     }
 
+    /// Generate and set a prompt-cache lineage identifier if none is present.
     pub fn ensure_prompt_cache_lineage_id(mut self) -> Self {
         if self.prompt_cache_lineage_id.is_none() {
             self.prompt_cache_lineage_id = Some(format!("lineage-{}", Uuid::new_v4()));
@@ -285,26 +322,31 @@ impl SessionArchiveMetadata {
         self
     }
 
+    /// Set the parent session identifier for this continuation or fork.
     pub fn with_parent_session_id(mut self, session_id: impl Into<String>) -> Self {
         self.parent_session_id = Some(session_id.into());
         self
     }
 
+    /// Set the name of the primary agent selected for this session.
     pub fn with_primary_agent(mut self, primary_agent: impl Into<String>) -> Self {
         self.primary_agent = Some(primary_agent.into());
         self
     }
 
+    /// Set the fork strategy recorded for this session.
     pub fn with_fork_mode(mut self, fork_mode: SessionForkMode) -> Self {
         self.fork_mode = Some(fork_mode);
         self
     }
 
+    /// Set or clear continuation metadata.
     pub fn with_continuation_metadata(mut self, continuation_metadata: Option<SessionContinuationMetadata>) -> Self {
         self.continuation_metadata = continuation_metadata;
         self
     }
 
+    /// Borrow continuation metadata when it represents a budget limit.
     pub fn budget_limit_continuation(&self) -> Option<&SessionContinuationMetadata> {
         self.continuation_metadata
             .as_ref()
@@ -316,6 +358,7 @@ impl SessionArchiveMetadata {
         self.extensions.as_ref()?.get(namespace)
     }
 
+    /// Set or replace an opaque extension value in `namespace`.
     pub fn set_extension(&mut self, namespace: impl Into<String>, value: serde_json::Value) {
         let extensions = self.extensions.get_or_insert_with(SessionArchiveExtensions::new);
         drop(extensions.insert(namespace, value));

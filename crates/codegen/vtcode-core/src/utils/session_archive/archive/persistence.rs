@@ -87,6 +87,7 @@ impl SessionArchive {
         })
     }
 
+    /// Write a final snapshot and apply archive retention after a successful write.
     pub fn finalize(
         &self,
         transcript: Vec<String>,
@@ -125,6 +126,7 @@ impl SessionArchive {
         Ok(path)
     }
 
+    /// Persist a progress snapshot synchronously, without applying the async throttle.
     pub fn persist_progress(&self, args: SessionProgressArgs) -> Result<PathBuf> {
         let mut perf = PerfSpan::new("vtcode.perf.session_progress_write_ms");
         perf.tag("mode", "sync");
@@ -190,6 +192,10 @@ impl SessionArchive {
         self.persist_progress_async_with_status_forced(args).await
     }
 
+    /// Persist progress asynchronously and return the archive path.
+    ///
+    /// Use [`Self::persist_progress_async_with_status`] when the caller needs
+    /// to distinguish a durable write from a throttled or disabled attempt.
     pub async fn persist_progress_async(&self, args: SessionProgressArgs) -> Result<PathBuf> {
         Ok(self.persist_progress_async_with_status(args).await?.path().to_path_buf())
     }

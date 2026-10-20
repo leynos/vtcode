@@ -20,6 +20,7 @@ use crate::reports::{
 
 use crate::tooling::{SupportedTool, ToolDescriptor, ToolRegistryProvider};
 
+/// Describes a tool request by its registered name, protocol kind, and prompt label.
 #[derive(Clone, Copy, Debug)]
 pub struct PermissionToolContext<'a> {
     name: &'a str,
@@ -39,10 +40,13 @@ impl<'a> PermissionToolContext<'a> {
 /// The trait stays object-safe (`Send + Sync`) so the agent can keep the
 /// prompter behind an `Arc<dyn ...>` in its shared state and ship it into
 /// SACP `cx.spawn` tasks along with the agent itself.
+/// Permission-prompt operations used by ACP tool execution.
 #[async_trait]
 pub trait AcpPermissionPrompter: Send + Sync {
+    /// Build the permission choices shown for a registered tool call.
     fn permission_options(&self, tool: SupportedTool, args: Option<&Value>) -> Vec<acp::PermissionOption>;
 
+    /// Request client authorization before executing a registered tool call.
     async fn request_tool_permission(
         &self,
         client: &ConnectionHandle,
@@ -66,6 +70,7 @@ pub trait AcpPermissionPrompter: Send + Sync {
         self.request_tool_permission(client, session_id, call, tool, args).await
     }
 
+    /// Request client authorization for a tool identified by its protocol name.
     async fn request_named_tool_permission(
         &self,
         client: &ConnectionHandle,
@@ -75,6 +80,7 @@ pub trait AcpPermissionPrompter: Send + Sync {
         args: &Value,
     ) -> Result<Option<ToolExecutionReport>, SdkError>;
 
+    /// Request named-tool authorization even when ordinary confirmations are skipped.
     async fn request_named_tool_permission_forced(
         &self,
         client: &ConnectionHandle,
@@ -143,6 +149,7 @@ enum PermissionRequestDisposition {
     Prompt,
 }
 
+/// Requests tool permission from the connected ACP client and caches session decisions.
 pub struct DefaultPermissionPrompter<P> {
     registry: P,
     skip_confirmations: bool,
@@ -153,6 +160,8 @@ impl<P> DefaultPermissionPrompter<P>
 where
     P: ToolRegistryProvider,
 {
+    /// Create a prompter that requests confirmation for each tool call unless a
+    /// persistent decision has already been recorded for that request.
     pub fn new(registry: P) -> Self {
         Self::with_skip_confirmations(registry, false)
     }

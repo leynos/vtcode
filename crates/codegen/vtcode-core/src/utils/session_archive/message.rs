@@ -7,9 +7,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::path::{Path, PathBuf};
 
+/// A conversation message stored in a session archive.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SessionMessage {
+    /// Role that produced or receives this message.
     pub role: MessageRole,
+    /// Text or structured content persisted for the message.
     pub content: MessageContent,
     // Keep sparse metadata boxed so long histories don't pay large inline Option<T> costs.
     #[serde(
@@ -17,21 +20,26 @@ pub struct SessionMessage {
         skip_serializing_if = "Option::is_none",
         deserialize_with = "deserialize_boxed_non_empty_string_opt"
     )]
+    /// Optional model reasoning associated with the message.
     pub reasoning: Option<Box<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         deserialize_with = "deserialize_boxed_non_empty_vec_opt"
     )]
+    /// Provider-specific structured reasoning details, when available.
     pub reasoning_details: Option<Box<Vec<serde_json::Value>>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         deserialize_with = "deserialize_boxed_non_empty_vec_opt"
     )]
+    /// Tool calls requested by this message, if any.
     pub tool_calls: Option<Box<Vec<ToolCall>>>,
+    /// Identifier of the tool call answered by this message, if any.
     #[serde(default, deserialize_with = "deserialize_boxed_non_empty_string_opt")]
     pub tool_call_id: Option<Box<String>>,
+    /// Assistant response phase associated with the message.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<AssistantPhase>,
     #[serde(
@@ -39,13 +47,16 @@ pub struct SessionMessage {
         skip_serializing_if = "Option::is_none",
         deserialize_with = "deserialize_boxed_non_empty_string_opt"
     )]
+    /// Name of the tool that originated this message, if applicable.
     pub origin_tool: Option<Box<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         deserialize_with = "deserialize_boxed_metadata_opt"
     )]
+    /// Typed metadata attached to the message.
     pub metadata: Option<Box<crate::core::message_metadata::MessageMetadata>>,
+    /// Provider-specific clearing semantics for this message, when present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clear_at: Option<MessageClearAt>,
 }
@@ -136,18 +147,22 @@ impl SessionMessage {
         }
     }
 
+    /// Create a text message with no optional tool or provider metadata.
     pub fn new(role: MessageRole, content: impl Into<String>) -> Self {
         Self::base(role, MessageContent::Text(content.into()))
     }
 
+    /// Create a message with structured or text content and no optional metadata.
     pub fn with_content(role: MessageRole, content: MessageContent) -> Self {
         Self::base(role, content)
     }
 
+    /// Create a text message associated with an optional tool-call identifier.
     pub fn with_tool_call_id(role: MessageRole, content: impl Into<String>, tool_call_id: Option<String>) -> Self {
         Self::with_tool_call_id_content(role, MessageContent::Text(content.into()), tool_call_id)
     }
 
+    /// Create a message with arbitrary content and an optional tool-call identifier.
     pub fn with_tool_call_id_content(role: MessageRole, content: MessageContent, tool_call_id: Option<String>) -> Self {
         let mut message = Self::base(role, content);
         message.tool_call_id = boxed_non_empty_string(tool_call_id);
@@ -189,33 +204,48 @@ impl From<&SessionMessage> for Message {
     }
 }
 
+/// Durable snapshot of a completed or in-progress session archive.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SessionSnapshot {
+    /// Workspace, model, provider, and continuation metadata for this session.
     pub metadata: SessionArchiveMetadata,
+    /// Time the session archive was created.
     pub started_at: DateTime<Utc>,
+    /// Time represented by the latest snapshot write.
     pub ended_at: DateTime<Utc>,
+    /// Total number of messages in the session at snapshot time.
     pub total_messages: usize,
+    /// Distinct tool names used during the session.
     pub distinct_tools: Vec<String>,
+    /// Human-readable transcript lines included in the snapshot.
     pub transcript: Vec<String>,
+    /// Persisted conversation messages.
     #[serde(default)]
     pub messages: Vec<SessionMessage>,
     // SessionProgress is heavy and frequently absent in final snapshots.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Detailed state from an in-progress checkpoint, when retained.
     pub progress: Option<Box<SessionProgress>>,
     /// ERROR-level log entries captured during the session for post-mortem debugging.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub error_logs: Vec<ErrorLogEntry>,
 }
 
+/// Detailed conversation state stored in a progress checkpoint.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct SessionProgress {
+    /// Turn number represented by this checkpoint.
     pub turn_number: usize,
+    /// Recent messages used to build the progress transcript.
     #[serde(default)]
     pub recent_messages: Vec<SessionMessage>,
+    /// Compact summaries of tools used by the checkpointed session.
     #[serde(default)]
     pub tool_summaries: Vec<String>,
+    /// Token usage summary, when available.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token_usage: Option<String>,
+    /// Maximum context size associated with the checkpoint, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_context_tokens: Option<usize>,
     /// Names of skills loaded at checkpoint time
@@ -227,9 +257,12 @@ pub struct SessionProgress {
     pub turn_diagnostics: Option<SnapshotTurnDiagnostics>,
 }
 
+/// A loaded snapshot paired with the archive file from which it was read.
 #[derive(Debug, Clone)]
 pub struct SessionListing {
+    /// Path to the session archive file.
     pub path: PathBuf,
+    /// Snapshot decoded from the archive file.
     pub snapshot: SessionSnapshot,
 }
 
@@ -249,15 +282,24 @@ impl VerifiedSessionArchiveIdentifier {
     }
 }
 
+/// Inputs used to construct and persist a session progress checkpoint.
 #[derive(Debug, Clone)]
 pub struct SessionProgressArgs {
+    /// Total number of messages in the session.
     pub total_messages: usize,
+    /// Tool names to include in the checkpoint summary.
     pub distinct_tools: Vec<String>,
+    /// Full message history to persist in the snapshot.
     pub messages: Vec<SessionMessage>,
+    /// Recent messages used for the compact progress transcript.
     pub recent_messages: Vec<SessionMessage>,
+    /// Current turn number.
     pub turn_number: usize,
+    /// Token usage summary, when available.
     pub token_usage: Option<String>,
+    /// Maximum context size, when known.
     pub max_context_tokens: Option<usize>,
+    /// Skill names loaded for the session, when available.
     pub loaded_skills: Option<Vec<String>>,
     /// Optional diagnostics for the turn represented by this checkpoint.
     pub turn_diagnostics: Option<SnapshotTurnDiagnostics>,

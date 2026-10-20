@@ -1,5 +1,6 @@
 //! Optional integrations attached to an ACP workspace tool registry.
 use crate::zed::metrics::AcpMcpStartupMetricsObserver;
+use futures::future::BoxFuture;
 use std::sync::Arc;
 use tracing::{debug, warn};
 use vtcode_config::VTCodeConfig;
@@ -17,6 +18,44 @@ pub(super) struct AcpSubagentControllerSetup<'a> {
     pub(super) custom_providers: &'a [CustomProviderConfig],
     pub(super) vt_config: Option<&'a VTCodeConfig>,
     pub(super) workspace_gated: bool,
+}
+
+/// Driven boundary for attaching the optional ACP sub-agent controller.
+pub(super) trait AcpSubagentControllerAttacher: Send + Sync {
+    fn attach<'a>(&'a self, setup: AcpSubagentControllerSetup<'a>) -> BoxFuture<'a, OptionalSetupOutcome>;
+}
+
+/// Default adapter that attaches the configured ACP sub-agent controller.
+pub(super) struct DefaultAcpSubagentControllerAttacher;
+
+impl AcpSubagentControllerAttacher for DefaultAcpSubagentControllerAttacher {
+    fn attach<'a>(&'a self, setup: AcpSubagentControllerSetup<'a>) -> BoxFuture<'a, OptionalSetupOutcome> {
+        Box::pin(attach_acp_subagent_controller(setup))
+    }
+}
+
+/// Driven boundary for attaching the optional ACP MCP client.
+pub(super) trait AcpMcpClientAttacher: Send + Sync {
+    fn attach<'a>(
+        &'a self,
+        registry: &'a CoreToolRegistry,
+        vt_config: Option<&'a VTCodeConfig>,
+        workspace_root: &'a std::path::Path,
+    ) -> BoxFuture<'a, OptionalSetupOutcome>;
+}
+
+/// Default adapter that attaches the configured ACP MCP client.
+pub(super) struct DefaultAcpMcpClientAttacher;
+
+impl AcpMcpClientAttacher for DefaultAcpMcpClientAttacher {
+    fn attach<'a>(
+        &'a self,
+        registry: &'a CoreToolRegistry,
+        vt_config: Option<&'a VTCodeConfig>,
+        workspace_root: &'a std::path::Path,
+    ) -> BoxFuture<'a, OptionalSetupOutcome> {
+        Box::pin(attach_acp_mcp_client(registry, vt_config, workspace_root))
+    }
 }
 
 pub(super) fn effective_acp_subagent_concurrency(configured: usize, max_in_flight: Option<usize>) -> Option<usize> {

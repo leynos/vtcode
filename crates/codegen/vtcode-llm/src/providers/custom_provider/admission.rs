@@ -13,12 +13,21 @@ static SHARED_PROVIDER_SEMAPHORES: LazyLock<Mutex<HashMap<String, Weak<Semaphore
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static ADMISSION_METRICS: LazyLock<AdmissionMetricCounters> = LazyLock::new(AdmissionMetricCounters::default);
 
+/// A process-wide snapshot of custom-provider request admission activity.
+///
+/// Current counts and cumulative counters are loaded independently, so a
+/// snapshot may combine values from slightly different instants.
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
 pub struct CustomProviderAdmissionMetrics {
+    /// Requests currently waiting for a provider concurrency slot.
     pub queue_depth: u64,
+    /// Requests currently holding a provider concurrency slot.
     pub in_flight: u64,
+    /// Cumulative number of requests that waited for admission.
     pub queue_waits: u64,
+    /// Cumulative admission wait time in milliseconds.
     pub queue_wait_ms: u64,
+    /// Cumulative number of requests that timed out while waiting for admission.
     pub queue_timeouts: u64,
 }
 

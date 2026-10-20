@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use vtcode_commons::fs::read_private_json_file;
 
 impl SessionListing {
+    /// Return the archive filename stem, falling back to the displayed path.
     pub fn identifier(&self) -> String {
         self.path
             .file_stem()
@@ -34,10 +35,12 @@ impl SessionListing {
         Ok(VerifiedSessionArchiveIdentifier(identifier.to_owned()))
     }
 
+    /// Return a short preview of the first non-empty user message, if present.
     pub fn first_prompt_preview(&self) -> Option<String> {
         self.preview_for_role(MessageRole::User)
     }
 
+    /// Return a short preview of the first non-empty assistant message, if present.
     pub fn first_reply_preview(&self) -> Option<String> {
         self.preview_for_role(MessageRole::Assistant)
     }
@@ -75,11 +78,13 @@ fn normalize_workspace_for_match(path: &Path) -> PathBuf {
     crate::utils::path::normalize_path(&absolute)
 }
 
+/// Return the workspace path recorded in a listing when it is non-empty.
 pub fn session_workspace_path(listing: &SessionListing) -> Option<PathBuf> {
     let raw = listing.snapshot.metadata.workspace_path.trim();
     if raw.is_empty() { None } else { Some(PathBuf::from(raw)) }
 }
 
+/// Compare the listing workspace with `workspace` after lexical path normalization.
 pub fn session_listing_matches_workspace(listing: &SessionListing, workspace: &Path) -> bool {
     let Some(session_workspace) = session_workspace_path(listing) else {
         return false;
@@ -92,6 +97,9 @@ pub(in crate::utils) fn truncate_preview(input: &str, max_chars: usize) -> Strin
     vtcode_commons::formatting::truncate_within(input, max_chars, "…")
 }
 
+/// Load readable session archives, ordered by most recent end time first.
+///
+/// A `limit` of zero leaves the result untruncated.
 pub async fn list_recent_sessions(limit: usize) -> Result<Vec<SessionListing>> {
     let sessions_dir = resolve_sessions_dir().await.map_err(|_error| {
         anyhow!("failed to resolve session directory for listing (session_directory_resolution_failed)")
@@ -245,19 +253,29 @@ fn session_identifier_matches_query(listing: &SessionListing, normalized_query: 
         .is_some_and(|stem| stem.to_lowercase().contains(normalized_query))
 }
 
+/// A message match returned by [`search_sessions`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
+    /// Identifier derived from the archive filename.
     pub session_id: String,
+    /// Path to the matched session archive.
     pub session_path: PathBuf,
+    /// Start time of the matched session.
     pub timestamp: DateTime<Utc>,
+    /// Zero-based index of the matching message in the snapshot.
     pub message_index: usize,
+    /// Role of the matching message.
     pub role: MessageRole,
+    /// Text surrounding the matched query.
     pub content_snippet: String,
-    pub score: f32, // Simple matching score (e.g., term frequency or just 1.0)
+    /// Simple matching score; current literal matches receive `1.0`.
+    pub score: f32,
 }
 
-/// Search for a query string across recent sessions.
-/// Returns a list of `SearchResult` sorted by relevance (or recency).
+/// Search text messages in recent sessions for a case-insensitive literal query.
+///
+/// Results follow the order of recent sessions and message order within each
+/// session. Empty queries and a zero `max_results` return no matches.
 pub async fn search_sessions(query: &str, session_limit: usize, max_results: usize) -> Result<Vec<SearchResult>> {
     if query.trim().is_empty() || max_results == 0 {
         return Ok(Vec::new());

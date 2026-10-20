@@ -84,12 +84,12 @@ pub struct ServiceStartupMetrics {
     pub total_provider_duration_ms: u64,
 }
 
-/// Bounded aggregate metrics for ACP task-lifecycle notification queues.
+/// Bounded aggregate metrics for task-lifecycle notification queues.
 ///
 /// These values cover all active sessions and deliberately carry no session,
 /// task, or payload labels.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TaskLifecycleQueueMetrics {
+pub struct TaskLifecycleNotificationQueueMetrics {
     pub queue_depth: u64,
     pub queue_dropped_full: u64,
     pub queue_dropped_closed: u64,
@@ -131,19 +131,19 @@ pub trait ServiceStartupMetricsObserver: Send + Sync {
     fn provider_startup_finished(&self, outcome: ServiceProviderStartupOutcome, duration_ms: u64);
 }
 
-/// Bounded queue events used by task-lifecycle notification adapters.
+/// Bounded queue drop reasons for task-lifecycle notification adapters.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TaskLifecycleQueueDrop {
+pub enum TaskLifecycleNotificationQueueDrop {
     Full,
     Closed,
 }
 
 /// Driven port for tracking a bounded task-lifecycle notification queue.
-pub trait TaskLifecycleQueueMetricsObserver: Send + Sync {
+pub trait TaskLifecycleNotificationQueueMetricsObserver: Send + Sync {
     fn queue_item_enqueued(&self);
     fn queue_item_dequeued(&self);
     fn queue_items_drained(&self, entries: usize);
-    fn queue_item_dropped(&self, reason: TaskLifecycleQueueDrop) -> u64;
+    fn queue_item_dropped(&self, reason: TaskLifecycleNotificationQueueDrop) -> u64;
 }
 
 /// The kind of runtime cache whose bounded entry count is being observed.
@@ -164,7 +164,7 @@ pub struct MetricsCollector {
     security: Arc<Mutex<SecurityMetrics>>,
     provider_requests: Arc<Mutex<ProviderRequestMetrics>>,
     service_startup: Arc<Mutex<ServiceStartupMetrics>>,
-    task_lifecycle_queue: Arc<Mutex<TaskLifecycleQueueMetrics>>,
+    task_lifecycle_notification_queue: Arc<Mutex<TaskLifecycleNotificationQueueMetrics>>,
     workspace_runtime_cache_entries: Arc<AtomicU64>,
     start_time: Instant,
 }
@@ -184,9 +184,9 @@ pub struct MetricsSummary {
     #[serde(default)]
     pub mcp_startup: ServiceStartupMetrics,
     #[serde(default)]
-    pub acp_task_lifecycle: TaskLifecycleQueueMetrics,
+    pub task_lifecycle_notification_queue: TaskLifecycleNotificationQueueMetrics,
     #[serde(default)]
-    pub acp_workspace_runtime_cache_entries: u64,
+    pub workspace_runtime_cache_entries: u64,
 }
 
 impl MetricsCollector {
@@ -202,7 +202,7 @@ impl MetricsCollector {
             security: Arc::new(Mutex::new(SecurityMetrics::new())),
             provider_requests: Arc::new(Mutex::new(ProviderRequestMetrics::default())),
             service_startup: Arc::new(Mutex::new(ServiceStartupMetrics::default())),
-            task_lifecycle_queue: Arc::new(Mutex::new(TaskLifecycleQueueMetrics::default())),
+            task_lifecycle_notification_queue: Arc::new(Mutex::new(TaskLifecycleNotificationQueueMetrics::default())),
             workspace_runtime_cache_entries: Arc::new(AtomicU64::new(0)),
             start_time: Instant::now(),
         }
@@ -277,8 +277,8 @@ impl MetricsCollector {
     }
 
     /// Get aggregate measurements for the task-lifecycle notification queue.
-    pub fn get_task_lifecycle_queue_metrics(&self) -> TaskLifecycleQueueMetrics {
-        self.task_lifecycle_queue.lock().clone()
+    pub fn get_task_lifecycle_notification_queue_metrics(&self) -> TaskLifecycleNotificationQueueMetrics {
+        self.task_lifecycle_notification_queue.lock().clone()
     }
 
     /// Set the current number of cached entries for a runtime cache kind.
@@ -541,8 +541,8 @@ impl MetricsCollector {
             security: self.get_security_metrics(),
             provider_requests: self.get_provider_request_metrics(),
             mcp_startup: self.get_service_startup_metrics(),
-            acp_task_lifecycle: self.get_task_lifecycle_queue_metrics(),
-            acp_workspace_runtime_cache_entries: self.get_runtime_cache_entries(RuntimeCacheKind::Workspace),
+            task_lifecycle_notification_queue: self.get_task_lifecycle_notification_queue_metrics(),
+            workspace_runtime_cache_entries: self.get_runtime_cache_entries(RuntimeCacheKind::Workspace),
         }
     }
 
@@ -569,7 +569,7 @@ struct PrometheusMetricsSnapshot {
     security: SecurityMetrics,
     provider_requests: ProviderRequestMetrics,
     service_startup: ServiceStartupMetrics,
-    acp_task_lifecycle: TaskLifecycleQueueMetrics,
+    task_lifecycle_notification_queue: TaskLifecycleNotificationQueueMetrics,
     workspace_runtime_cache_entries: u64,
 }
 
@@ -584,7 +584,7 @@ impl PrometheusMetricsSnapshot {
             security: collector.get_security_metrics(),
             provider_requests: collector.get_provider_request_metrics(),
             service_startup: collector.get_service_startup_metrics(),
-            acp_task_lifecycle: collector.get_task_lifecycle_queue_metrics(),
+            task_lifecycle_notification_queue: collector.get_task_lifecycle_notification_queue_metrics(),
             workspace_runtime_cache_entries: collector.get_runtime_cache_entries(RuntimeCacheKind::Workspace),
         }
     }
@@ -598,8 +598,8 @@ impl PrometheusMetricsSnapshot {
         self.append_pii_detections(&mut output);
         self.append_provider_requests(&mut output);
         self.append_service_startup(&mut output);
-        self.append_acp_task_lifecycle(&mut output);
-        self.append_acp_workspace_runtime_cache(&mut output);
+        self.append_task_lifecycle_notification_queue(&mut output);
+        self.append_workspace_runtime_cache(&mut output);
         self.append_tokens_created(&mut output);
         output
     }
@@ -806,33 +806,36 @@ impl PrometheusMetricsSnapshot {
         append_mcp_startup_prometheus(output, &self.service_startup);
     }
 
-    fn append_acp_workspace_runtime_cache(&self, output: &mut String) {
+    fn append_workspace_runtime_cache(&self, output: &mut String) {
         let _ = writeln!(
             output,
-            "# HELP vtcode_acp_workspace_runtime_cache_entries Live and in-flight ACP workspace runtime cache entries\n\
-             # TYPE vtcode_acp_workspace_runtime_cache_entries gauge\n\
-             vtcode_acp_workspace_runtime_cache_entries {}\n",
+            "# HELP vtcode_workspace_runtime_cache_entries Live and in-flight workspace runtime cache entries\n\
+             # TYPE vtcode_workspace_runtime_cache_entries gauge\n\
+             vtcode_workspace_runtime_cache_entries {}\n",
             self.workspace_runtime_cache_entries
         );
     }
 
-    fn append_acp_task_lifecycle(&self, output: &mut String) {
-        append_acp_task_lifecycle_prometheus(output, &self.acp_task_lifecycle);
+    fn append_task_lifecycle_notification_queue(&self, output: &mut String) {
+        append_task_lifecycle_notification_queue_prometheus(output, &self.task_lifecycle_notification_queue);
     }
 }
 
-fn append_acp_task_lifecycle_prometheus(output: &mut String, metrics: &TaskLifecycleQueueMetrics) {
+fn append_task_lifecycle_notification_queue_prometheus(
+    output: &mut String,
+    metrics: &TaskLifecycleNotificationQueueMetrics,
+) {
     let _ = write!(
         output,
-        "# HELP vtcode_acp_task_lifecycle_queue_depth Buffered ACP task-lifecycle updates across active sessions\n\
-         # TYPE vtcode_acp_task_lifecycle_queue_depth gauge\n\
-         vtcode_acp_task_lifecycle_queue_depth {}\n\n\
-         # HELP vtcode_acp_task_lifecycle_queue_dropped_full_total ACP task-lifecycle updates rejected by full queues\n\
-         # TYPE vtcode_acp_task_lifecycle_queue_dropped_full_total counter\n\
-         vtcode_acp_task_lifecycle_queue_dropped_full_total {}\n\n\
-         # HELP vtcode_acp_task_lifecycle_queue_dropped_closed_total ACP task-lifecycle updates rejected by closed queues\n\
-         # TYPE vtcode_acp_task_lifecycle_queue_dropped_closed_total counter\n\
-         vtcode_acp_task_lifecycle_queue_dropped_closed_total {}\n\n",
+        "# HELP vtcode_task_lifecycle_notification_queue_depth Buffered task-lifecycle updates across active sessions\n\
+         # TYPE vtcode_task_lifecycle_notification_queue_depth gauge\n\
+         vtcode_task_lifecycle_notification_queue_depth {}\n\n\
+         # HELP vtcode_task_lifecycle_notification_queue_dropped_full_total Task-lifecycle updates rejected by full queues\n\
+         # TYPE vtcode_task_lifecycle_notification_queue_dropped_full_total counter\n\
+         vtcode_task_lifecycle_notification_queue_dropped_full_total {}\n\n\
+         # HELP vtcode_task_lifecycle_notification_queue_dropped_closed_total Task-lifecycle updates rejected by closed queues\n\
+         # TYPE vtcode_task_lifecycle_notification_queue_dropped_closed_total counter\n\
+         vtcode_task_lifecycle_notification_queue_dropped_closed_total {}\n\n",
         metrics.queue_depth, metrics.queue_dropped_full, metrics.queue_dropped_closed,
     );
 }
@@ -1015,31 +1018,31 @@ impl ServiceStartupMetricsObserver for MetricsCollector {
     }
 }
 
-impl TaskLifecycleQueueMetricsObserver for MetricsCollector {
+impl TaskLifecycleNotificationQueueMetricsObserver for MetricsCollector {
     fn queue_item_enqueued(&self) {
-        let mut metrics = self.task_lifecycle_queue.lock();
+        let mut metrics = self.task_lifecycle_notification_queue.lock();
         metrics.queue_depth = metrics.queue_depth.saturating_add(1);
     }
 
     fn queue_item_dequeued(&self) {
-        let mut metrics = self.task_lifecycle_queue.lock();
+        let mut metrics = self.task_lifecycle_notification_queue.lock();
         metrics.queue_depth = metrics.queue_depth.saturating_sub(1);
     }
 
     fn queue_items_drained(&self, entries: usize) {
         let entries = u64::try_from(entries).unwrap_or(u64::MAX);
-        let mut metrics = self.task_lifecycle_queue.lock();
+        let mut metrics = self.task_lifecycle_notification_queue.lock();
         metrics.queue_depth = metrics.queue_depth.saturating_sub(entries);
     }
 
-    fn queue_item_dropped(&self, reason: TaskLifecycleQueueDrop) -> u64 {
-        let mut metrics = self.task_lifecycle_queue.lock();
+    fn queue_item_dropped(&self, reason: TaskLifecycleNotificationQueueDrop) -> u64 {
+        let mut metrics = self.task_lifecycle_notification_queue.lock();
         match reason {
-            TaskLifecycleQueueDrop::Full => {
+            TaskLifecycleNotificationQueueDrop::Full => {
                 metrics.queue_dropped_full = metrics.queue_dropped_full.saturating_add(1);
                 metrics.queue_dropped_full
             }
-            TaskLifecycleQueueDrop::Closed => {
+            TaskLifecycleNotificationQueueDrop::Closed => {
                 metrics.queue_dropped_closed = metrics.queue_dropped_closed.saturating_add(1);
                 metrics.queue_dropped_closed
             }
@@ -1285,28 +1288,32 @@ mod tests {
     }
 
     #[test]
-    fn acp_workspace_runtime_cache_size_is_exported_as_a_gauge() {
+    fn workspace_runtime_cache_size_is_exported_as_a_gauge() {
         let collector = MetricsCollector::new();
         collector.set_runtime_cache_entries(RuntimeCacheKind::Workspace, 3);
 
         assert_eq!(collector.get_runtime_cache_entries(RuntimeCacheKind::Workspace), 3);
-        assert_eq!(collector.get_summary().acp_workspace_runtime_cache_entries, 3);
+        assert_eq!(collector.get_summary().workspace_runtime_cache_entries, 3);
+        let json = collector.export_json().expect("metrics JSON should serialize");
+        assert_eq!(json["workspace_runtime_cache_entries"], 3);
+        assert!(json.get("acp_workspace_runtime_cache_entries").is_none());
         let prometheus = collector.export_prometheus();
-        assert!(prometheus.contains("vtcode_acp_workspace_runtime_cache_entries 3"));
+        assert!(prometheus.contains("vtcode_workspace_runtime_cache_entries 3"));
+        assert!(!prometheus.contains("vtcode_acp_workspace_runtime_cache_entries"));
     }
 
     #[test]
-    fn acp_task_lifecycle_queue_depth_and_drops_are_exported_without_labels() {
+    fn task_lifecycle_notification_queue_metrics_are_exported_without_labels() {
         let collector = MetricsCollector::new();
         collector.queue_item_enqueued();
         collector.queue_item_enqueued();
         collector.queue_item_dequeued();
-        collector.queue_item_dropped(TaskLifecycleQueueDrop::Full);
-        collector.queue_item_dropped(TaskLifecycleQueueDrop::Closed);
+        collector.queue_item_dropped(TaskLifecycleNotificationQueueDrop::Full);
+        collector.queue_item_dropped(TaskLifecycleNotificationQueueDrop::Closed);
 
         assert_eq!(
-            collector.get_task_lifecycle_queue_metrics(),
-            TaskLifecycleQueueMetrics {
+            collector.get_task_lifecycle_notification_queue_metrics(),
+            TaskLifecycleNotificationQueueMetrics {
                 queue_depth: 1,
                 queue_dropped_full: 1,
                 queue_dropped_closed: 1,
@@ -1314,25 +1321,27 @@ mod tests {
         );
 
         let json = collector.export_json().expect("metrics JSON should serialize");
-        assert_eq!(json["acp_task_lifecycle"]["queue_depth"], 1);
-        assert_eq!(json["acp_task_lifecycle"]["queue_dropped_full"], 1);
-        assert_eq!(json["acp_task_lifecycle"]["queue_dropped_closed"], 1);
+        assert_eq!(json["task_lifecycle_notification_queue"]["queue_depth"], 1);
+        assert_eq!(json["task_lifecycle_notification_queue"]["queue_dropped_full"], 1);
+        assert_eq!(json["task_lifecycle_notification_queue"]["queue_dropped_closed"], 1);
+        assert!(json.get("acp_task_lifecycle").is_none());
 
         let prometheus = collector.export_prometheus();
-        assert!(prometheus.contains("vtcode_acp_task_lifecycle_queue_depth 1"));
-        assert!(prometheus.contains("vtcode_acp_task_lifecycle_queue_dropped_full_total 1"));
-        assert!(prometheus.contains("vtcode_acp_task_lifecycle_queue_dropped_closed_total 1"));
+        assert!(prometheus.contains("vtcode_task_lifecycle_notification_queue_depth 1"));
+        assert!(prometheus.contains("vtcode_task_lifecycle_notification_queue_dropped_full_total 1"));
+        assert!(prometheus.contains("vtcode_task_lifecycle_notification_queue_dropped_closed_total 1"));
+        assert!(!prometheus.contains("vtcode_acp_task_lifecycle"));
         assert!(!prometheus.contains("session_id="));
         assert!(!prometheus.contains("task_id="));
     }
 
     #[test]
-    fn acp_task_lifecycle_shutdown_drain_clamps_queue_depth_to_zero() {
+    fn task_lifecycle_notification_queue_shutdown_drain_clamps_depth_to_zero() {
         let collector = MetricsCollector::new();
         collector.queue_item_enqueued();
         collector.queue_items_drained(2);
 
-        assert_eq!(collector.get_task_lifecycle_queue_metrics().queue_depth, 0);
+        assert_eq!(collector.get_task_lifecycle_notification_queue_metrics().queue_depth, 0);
     }
 
     #[test]

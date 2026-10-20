@@ -8,12 +8,16 @@ use crate::config::types::AgentConfig as CoreAgentConfig;
 /// Parameters required to launch an Agent Client Protocol adapter.
 #[derive(Debug)]
 pub struct AcpLaunchParams<'a> {
+    /// Agent configuration used to initialize the ACP runtime.
     pub agent_config: &'a CoreAgentConfig,
+    /// Runtime configuration supplying ACP and provider settings.
     pub runtime_config: &'a VTCodeConfig,
+    /// Whether ordinary tool confirmation prompts should be bypassed.
     pub skip_confirmations: bool,
 }
 
 impl<'a> AcpLaunchParams<'a> {
+    /// Create launch parameters with ordinary permission confirmations enabled.
     pub fn new(agent_config: &'a CoreAgentConfig, runtime_config: &'a VTCodeConfig) -> Self {
         Self {
             agent_config,
@@ -23,6 +27,10 @@ impl<'a> AcpLaunchParams<'a> {
     }
 
     #[must_use]
+    /// Set whether ordinary tool permission confirmations are bypassed.
+    ///
+    /// Forced permission requests, such as lifecycle policy checks, may still
+    /// prompt the client.
     pub fn with_skip_confirmations(mut self, skip_confirmations: bool) -> Self {
         self.skip_confirmations = skip_confirmations;
         self
@@ -32,6 +40,7 @@ impl<'a> AcpLaunchParams<'a> {
 /// Interface for components that expose VT Code over the Agent Client Protocol.
 #[async_trait(?Send)]
 pub trait AcpClientAdapter: Send + Sync {
+    /// Serve the ACP client using the supplied agent and runtime configuration.
     async fn serve(&self, params: AcpLaunchParams<'_>) -> Result<()>;
 }
 

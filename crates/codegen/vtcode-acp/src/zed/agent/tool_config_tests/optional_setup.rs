@@ -1,5 +1,5 @@
 //! Tests shared setup outcomes when ACP attaches optional components together.
-use super::super::{
+use super::super::optional_setup::{
     AcpSubagentControllerSetup, OptionalSetupOutcome, attach_acp_mcp_client, attach_acp_subagent_controller,
 };
 use super::support::core_agent_config;
