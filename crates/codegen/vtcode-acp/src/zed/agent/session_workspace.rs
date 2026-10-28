@@ -290,7 +290,7 @@ impl ZedAgent {
         loop {
             let lookup = {
                 let mut runtimes = self.workspace_runtimes.lock().await;
-                runtimes.lookup(&workspace_root)
+                runtimes.lookup_or_reserve_initialization(&workspace_root)
             };
             let (runtime, runtime_cell) = match lookup {
                 WorkspaceRuntimeLookup::Ready(runtime) => (runtime, None),

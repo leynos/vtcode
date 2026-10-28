@@ -238,7 +238,28 @@ impl<T> WorkspaceRuntimeCache<T> {
         self.prune_stale_entries();
     }
 
-    pub(super) fn lookup(&mut self, workspace_root: &Path) -> WorkspaceRuntimeLookup<T> {
+    /// Reports what the cache currently holds for `workspace_root` without changing it.
+    ///
+    /// This is a pure query: it neither prunes stale entries, publishes the cache-size
+    /// metric, nor reserves an initialization slot on a miss. Use
+    /// [`Self::lookup_or_reserve_initialization`] when the caller intends to act on a
+    /// miss.
+    pub(super) fn cached_runtime(&self, workspace_root: &Path) -> Option<WorkspaceRuntimeLookup<T>> {
+        if let Some(runtime) = self.runtimes.get(workspace_root).and_then(Weak::upgrade) {
+            return Some(WorkspaceRuntimeLookup::Ready(runtime));
+        }
+        let runtime_cell = self.in_flight.get(workspace_root).and_then(Weak::upgrade)?;
+        Some(WorkspaceRuntimeLookup::Initialize(runtime_cell))
+    }
+
+    /// Resolves `workspace_root`, reserving an initialization slot on a cache miss.
+    ///
+    /// This is a command, not a query: it prunes expired entries, publishes the
+    /// cache-size metric, and inserts a fresh `OnceCell` into `in_flight` when no
+    /// runtime is cached. Call it only from paths that will go on to initialize and
+    /// store the runtime; a caller that merely wants to observe the cache should use
+    /// [`Self::cached_runtime`].
+    pub(super) fn lookup_or_reserve_initialization(&mut self, workspace_root: &Path) -> WorkspaceRuntimeLookup<T> {
         self.prune_stale_entries();
         if let Some(runtime) = self.runtimes.get(workspace_root).and_then(Weak::upgrade) {
             return WorkspaceRuntimeLookup::Ready(runtime);

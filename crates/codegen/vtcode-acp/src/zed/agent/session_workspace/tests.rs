@@ -64,7 +64,7 @@ fn workspace_runtime_cache_releases_expired_runtimes_and_prunes_keys() {
             .get_runtime_cache_entries(vtcode_core::metrics::RuntimeCacheKind::Workspace),
         1
     );
-    let cached_runtime = match cache.lookup(&workspace_root) {
+    let cached_runtime = match cache.lookup_or_reserve_initialization(&workspace_root) {
         WorkspaceRuntimeLookup::Ready(cached_runtime) => cached_runtime,
         WorkspaceRuntimeLookup::Initialize(_) => panic!("live runtime should be reused"),
     };
@@ -73,7 +73,7 @@ fn workspace_runtime_cache_releases_expired_runtimes_and_prunes_keys() {
     drop(runtime);
 
     assert!(weak_runtime.upgrade().is_none());
-    let initializing = match cache.lookup(&workspace_root) {
+    let initializing = match cache.lookup_or_reserve_initialization(&workspace_root) {
         WorkspaceRuntimeLookup::Ready(_) => panic!("expired runtime should not be reused"),
         WorkspaceRuntimeLookup::Initialize(runtime_cell) => runtime_cell,
     };
@@ -86,7 +86,7 @@ fn workspace_runtime_cache_releases_expired_runtimes_and_prunes_keys() {
     );
     drop(initializing);
 
-    let _next_workspace = cache.lookup(&PathBuf::from("/tmp/acp-next-workspace"));
+    let _next_workspace = cache.lookup_or_reserve_initialization(&PathBuf::from("/tmp/acp-next-workspace"));
     assert_eq!(cache.in_flight.len(), 1, "expired initialization keys are pruned on lookup");
     assert_eq!(
         cache
@@ -102,19 +102,52 @@ fn workspace_runtime_cache_shares_initialization_per_key_only() {
     let second_workspace = PathBuf::from("/tmp/acp-second-workspace");
     let mut cache = workspace_runtime_cache::<String>();
 
-    let first_cell = match cache.lookup(&first_workspace) {
+    let first_cell = match cache.lookup_or_reserve_initialization(&first_workspace) {
         WorkspaceRuntimeLookup::Initialize(runtime_cell) => runtime_cell,
         WorkspaceRuntimeLookup::Ready(_) => panic!("first workspace should initialize"),
     };
-    let concurrent_cell = match cache.lookup(&first_workspace) {
+    let concurrent_cell = match cache.lookup_or_reserve_initialization(&first_workspace) {
         WorkspaceRuntimeLookup::Initialize(runtime_cell) => runtime_cell,
         WorkspaceRuntimeLookup::Ready(_) => panic!("workspace initialization is still in flight"),
     };
-    let other_cell = match cache.lookup(&second_workspace) {
+    let other_cell = match cache.lookup_or_reserve_initialization(&second_workspace) {
         WorkspaceRuntimeLookup::Initialize(runtime_cell) => runtime_cell,
         WorkspaceRuntimeLookup::Ready(_) => panic!("second workspace should initialize independently"),
     };
 
     assert!(Arc::ptr_eq(&first_cell, &concurrent_cell));
     assert!(!Arc::ptr_eq(&first_cell, &other_cell));
+}
+
+#[test]
+fn workspace_runtime_cache_query_does_not_mutate_cache_state_or_metrics() {
+    let workspace_root = PathBuf::from("/tmp/acp-cache-query-workspace");
+    let cache = workspace_runtime_cache::<String>();
+
+    assert!(
+        cache.cached_runtime(&workspace_root).is_none(),
+        "query must not reserve an initialization slot on a miss"
+    );
+    assert!(cache.runtimes.is_empty(), "query must not insert into runtimes");
+    assert!(cache.in_flight.is_empty(), "query must not insert into in_flight");
+    assert_eq!(
+        cache
+            .metrics
+            .get_runtime_cache_entries(vtcode_core::metrics::RuntimeCacheKind::Workspace),
+        0,
+        "query must not publish the cache-size metric"
+    );
+
+    // A stale weak handle is reported as absent without being pruned by the query.
+    let stale_runtime = Arc::new(String::from("stale workspace runtime"));
+    let mut cache = workspace_runtime_cache::<String>();
+    drop(cache.runtimes.insert(workspace_root.clone(), Arc::downgrade(&stale_runtime)));
+    drop(stale_runtime);
+
+    assert!(cache.cached_runtime(&workspace_root).is_none(), "expired runtimes are not reported as ready");
+    assert_eq!(
+        cache.runtimes.len(),
+        1,
+        "query must not prune expired keys; pruning belongs to the reserving command"
+    );
 }
