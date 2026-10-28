@@ -128,6 +128,108 @@ fn lifecycle_forwarder_outcome_is_bounded_by_send_result() {
     assert_eq!(task_lifecycle_forwarder_outcome(1), "send_failed");
 }
 
+/// Reference model for [`LifecycleQueueTracker`] depth accounting.
+///
+/// Depth only grows on a successful enqueue, only shrinks on a dequeue of a
+/// live entry, is never driven negative by duplicate dequeues, and is forced
+/// to zero — then held there — by closure. The generated sequences are
+/// sequential and assert bookkeeping conservation, not concurrency safety.
+#[derive(Debug, Default)]
+struct QueueDepthModel {
+    depth: usize,
+    closed: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum QueueOp {
+    Enqueue,
+    Dequeue,
+    Close,
+}
+
+#[test]
+fn lifecycle_queue_depth_matches_the_reference_model() {
+    use proptest::prelude::*;
+
+    let strategy = prop::collection::vec(
+        prop_oneof![Just(QueueOp::Enqueue), Just(QueueOp::Dequeue), Just(QueueOp::Close),],
+        0..16,
+    );
+
+    proptest!(ProptestConfig { cases: 128, max_shrink_iters: 256, ..ProptestConfig::default() },
+        |(ops in strategy)| {
+            let metrics = Arc::new(MetricsCollector::new());
+            let observer: Arc<dyn TaskLifecycleNotificationQueueMetricsObserver> = metrics.clone();
+            let queue = LifecycleQueueTracker::new(observer);
+            // Capacity 2 keeps "full" reachable inside short sequences.
+            let (sender, mut receiver) = mpsc::channel(2);
+            let mut model = QueueDepthModel::default();
+
+            for op in ops {
+                match op {
+                    QueueOp::Enqueue => {
+                        let result = queue.try_send(&sender, ());
+                        match result {
+                            Ok(()) => {
+                                prop_assert!(!model.closed, "a closed tracker must reject entries");
+                                prop_assert!(model.depth < 2, "a full channel must reject entries");
+                                model.depth += 1;
+                            }
+                            Err(kind) => {
+                                // A rejected enqueue never changes depth.
+                                if kind == LifecycleQueueDropKind::Closed {
+                                    prop_assert!(
+                                        model.closed || model.depth >= 2,
+                                        "a closed drop requires a closed tracker or a full queue"
+                                    );
+                                } else {
+                                    prop_assert!(model.closed || model.depth == 2, "Full requires a full queue");
+                                }
+                            }
+                        }
+                    }
+                    QueueOp::Dequeue => {
+                        // Only dequeue when a real entry exists.
+                        if model.depth > 0 && !model.closed {
+                            let entry = receiver.try_recv();
+                            prop_assert!(entry.is_ok(), "a live depth implies a real queued entry");
+                            queue.dequeued();
+                            model.depth -= 1;
+                        } else {
+                            // A spurious dequeue must not drive depth negative.
+                            queue.dequeued();
+                        }
+                    }
+                    QueueOp::Close => {
+                        queue.close_and_drain();
+                        model.depth = 0;
+                        model.closed = true;
+                    }
+                }
+
+                let observed = metrics
+                    .get_task_lifecycle_notification_queue_metrics()
+                    .queue_depth;
+                prop_assert_eq!(observed, model.depth as u64);
+            }
+
+            // Closure is terminal.
+            if model.closed {
+                prop_assert_eq!(
+                    queue.try_send(&sender, ()).expect_err("closed tracker must reject entries"),
+                    LifecycleQueueDropKind::Closed
+                );
+                queue.close_and_drain();
+                prop_assert_eq!(
+                    metrics.get_task_lifecycle_notification_queue_metrics().queue_depth,
+                    0
+                );
+            }
+            drop(receiver);
+        }
+    );
+}
+
 #[test]
 fn session_correlation_is_stable_bounded_and_does_not_expose_the_session_id() {
     let session_id = acp::SessionId::new(Arc::from("sensitive-parent-session-id"));

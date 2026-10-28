@@ -23,6 +23,98 @@ impl WorkspaceTrustSynchronizer for CountingWorkspaceTrustSynchronizer {
     }
 }
 
+/// Reference model for workspace-lease accounting.
+///
+/// A counted lease increments `active_sessions` exactly once on acquisition and
+/// decrements it exactly once, whether it leaves through `release` or `Drop`.
+/// Releasing an already-released lease must not decrement a second time, and
+/// unmanaged leases never touch the count. The generated sequences are
+/// sequential; they assert bookkeeping conservation, not concurrency safety.
+#[derive(Clone, Copy, Debug)]
+enum LeaseOp {
+    Acquire,
+    Release,
+    Drop,
+}
+
+fn active_sessions(runtime: &SessionWorkspaceRuntime) -> usize {
+    runtime
+        .lifecycle
+        .lock()
+        .expect("workspace runtime lifecycle lock")
+        .active_sessions
+}
+
+#[tokio::test]
+async fn workspace_lease_accounting_matches_the_reference_model() {
+    use proptest::prelude::*;
+
+    let launch_workspace = TempDir::new().expect("launch workspace");
+    let session_workspace = TempDir::new().expect("session workspace");
+    let agent = Arc::new(build_agent(launch_workspace.path()).await);
+
+    // One live session pins a shutdown-managed workspace runtime.
+    let session = agent
+        .new_session(acp::NewSessionRequest::new(session_workspace.path()))
+        .await
+        .expect("create ACP session");
+    let runtime = agent
+        .session_handle(&session.session_id)
+        .expect("look up session")
+        .expect("registered session")
+        .workspace_runtime()
+        .expect("runtime state")
+        .expect("workspace runtime");
+
+    let strategy =
+        prop::collection::vec(prop_oneof![Just(LeaseOp::Acquire), Just(LeaseOp::Release), Just(LeaseOp::Drop),], 0..8);
+
+    let approved_workspace = AcpSessionWorkspace::from_client_cwd(session_workspace.path())
+        .await
+        .expect("approve session workspace");
+
+    // The registered session already holds one counted lease; the model asserts
+    // that additional leases move the count by exactly their live cardinality.
+    let baseline = active_sessions(&runtime);
+    assert!(baseline >= 1, "the session's own lease must be counted");
+
+    proptest!(ProptestConfig { cases: 32, max_shrink_iters: 128, ..ProptestConfig::default() },
+        |(ops in strategy)| {
+            let mut live: Vec<SessionWorkspaceLease> = Vec::new();
+
+            for op in ops {
+                match op {
+                    LeaseOp::Acquire => {
+                        // Use the production acquisition path so the lease is
+                        // counted exactly as the agent counts it.
+                        let lease = futures::executor::block_on(
+                            agent.workspace_runtime_for(&approved_workspace),
+                        )
+                        .expect("an open runtime must grant a lease");
+                        live.push(lease);
+                    }
+                    LeaseOp::Release => {
+                        if let Some(lease) = live.pop() {
+                            futures::executor::block_on(lease.release());
+                        }
+                    }
+                    LeaseOp::Drop => {
+                        drop(live.pop());
+                    }
+                }
+
+                prop_assert_eq!(active_sessions(&runtime), baseline + live.len());
+            }
+
+            // Dropping every extra lease must leave exactly the session's lease.
+            drop(live);
+            prop_assert_eq!(active_sessions(&runtime), baseline);
+        }
+    );
+
+    drop(agent);
+}
+
 #[derive(Debug, PartialEq)]
 struct WorkspaceSessionProjection {
     first_runtime_root: std::path::PathBuf,

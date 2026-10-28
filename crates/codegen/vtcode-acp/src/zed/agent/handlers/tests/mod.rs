@@ -5,6 +5,7 @@ use super::provider::*;
 use super::*;
 
 mod archive_test_support;
+mod client;
 mod prompt;
 mod provider;
 mod session;
