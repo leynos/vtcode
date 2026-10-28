@@ -2845,7 +2845,7 @@ MIT License — SPDX: MIT
   pulldown-cmark-escape 0.11.0
     Source: https://github.com/raphlinus/pulldown-cmark
     License: MIT
-  pulldown-cmark 0.13.4
+  pulldown-cmark 0.13.5
     Source: https://github.com/raphlinus/pulldown-cmark
     License: MIT
 --------------------------------------------------------------------------------
