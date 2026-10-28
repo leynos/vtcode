@@ -45,7 +45,7 @@ fn active_sessions(runtime: &SessionWorkspaceRuntime) -> usize {
         .active_sessions
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn workspace_lease_accounting_matches_the_reference_model() {
     use proptest::prelude::*;
 
@@ -78,6 +78,11 @@ async fn workspace_lease_accounting_matches_the_reference_model() {
     let baseline = active_sessions(&runtime);
     assert!(baseline >= 1, "the session's own lease must be counted");
 
+    // The proptest closure is synchronous, so it must drive the async lease
+    // operations through the runtime handle instead of blocking the only
+    // worker thread.
+    let handle = tokio::runtime::Handle::current();
+
     proptest!(ProptestConfig { cases: 32, max_shrink_iters: 128, ..ProptestConfig::default() },
         |(ops in strategy)| {
             let mut live: Vec<SessionWorkspaceLease> = Vec::new();
@@ -87,15 +92,15 @@ async fn workspace_lease_accounting_matches_the_reference_model() {
                     LeaseOp::Acquire => {
                         // Use the production acquisition path so the lease is
                         // counted exactly as the agent counts it.
-                        let lease = futures::executor::block_on(
-                            agent.workspace_runtime_for(&approved_workspace),
-                        )
+                        let lease = tokio::task::block_in_place(|| {
+                            handle.block_on(agent.workspace_runtime_for(&approved_workspace))
+                        })
                         .expect("an open runtime must grant a lease");
                         live.push(lease);
                     }
                     LeaseOp::Release => {
                         if let Some(lease) = live.pop() {
-                            futures::executor::block_on(lease.release());
+                            tokio::task::block_in_place(|| handle.block_on(lease.release()));
                         }
                     }
                     LeaseOp::Drop => {
