@@ -4,7 +4,7 @@
 //! automatic, provider-native, and hook-assisted compaction.
 
 use super::super::types::SessionHandle;
-use super::{ZedAgent, warn_hook_message};
+use super::{ZedAgent, log_suppressed_error, warn_hook_message};
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderRequestRuntime};
 use anyhow::{Context, Result};
 use std::future::Future;
@@ -199,7 +199,8 @@ impl ZedAgent {
     async fn commit_compacted_history(&self, commit: CompactionCommit<'_>) -> Result<usize> {
         let CompactionCommit { session, thread, history, tools, decision } = commit;
         thread.replace_messages(history);
-        if self.checkpoint_session(session).await.is_err() {
+        if let Err(error) = self.checkpoint_session(session).await {
+            log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
             warn!(
                 operation = "session_checkpoint",
                 error_category = "archive_write_failed",

@@ -51,6 +51,33 @@ fn warn_hook_block_reason(hook_event: &'static str, reason: &str) {
     tracing::warn!(hook_event, reason_bytes = reason.len(), "ACP hook blocked an operation");
 }
 
+/// Renders an error through its source chain, deferring formatting until the
+/// event is actually enabled.
+struct ErrorChain<'a>(&'a dyn std::fmt::Display);
+
+impl std::fmt::Display for ErrorChain<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{:#}", self.0)
+    }
+}
+
+/// Record the originating error for a redacted ACP failure.
+///
+/// ACP clients only ever see the closed-set `operation`/`error_category`
+/// reason codes, because the underlying error may embed workspace paths,
+/// provider detail or archive contents. That leaves the local log as the only
+/// place the root cause can be recovered, so it is emitted here at `debug`
+/// level, where trusted diagnostics are enabled deliberately rather than by
+/// default. The client-facing payloads are unchanged.
+fn log_suppressed_error(error: &impl std::fmt::Display, operation: &'static str, error_category: &'static str) {
+    tracing::debug!(
+        operation,
+        error_category,
+        error = %ErrorChain(error),
+        "Suppressed ACP failure detail"
+    );
+}
+
 fn warn_workspace_mcp_shutdown_failure(error: &anyhow::Error) {
     let error_chain_depth = error.chain().count();
     tracing::warn!(
@@ -75,8 +102,8 @@ mod tool_execution_output;
 mod updates;
 
 #[cfg(test)]
-mod hook_logging_tests {
-    use super::{warn_hook_block_reason, warn_hook_message, warn_workspace_mcp_shutdown_failure};
+mod acp_logging_tests {
+    use super::{log_suppressed_error, warn_hook_block_reason, warn_hook_message, warn_workspace_mcp_shutdown_failure};
     use std::fmt::Write as FmtWrite;
     use std::sync::{Arc, Mutex};
     use tracing::field::{Field, Visit};
@@ -143,6 +170,49 @@ mod hook_logging_tests {
         assert!(captured.contains(&format!("reason_bytes={}", private_reason.len())));
         assert!(captured.contains("error_category=\"mcp_client_shutdown\""));
         assert!(captured.contains("error_chain_depth=1"));
+    }
+
+    #[test]
+    fn suppressed_error_detail_keeps_the_full_chain_at_debug() {
+        let capture = HookLogCapture::default();
+        let events = Arc::clone(&capture.0);
+        let subscriber = Registry::default().with(capture);
+        let error = anyhow::anyhow!("archive write failed").context("checkpointing ACP session");
+
+        tracing::subscriber::with_default(subscriber, || {
+            log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
+        });
+
+        let events = events.lock().expect("hook log capture lock");
+        assert_eq!(events.len(), 1);
+        let captured = &events[0];
+        assert!(captured.contains("operation=\"session_checkpoint\""));
+        assert!(captured.contains("error_category=\"archive_write_failed\""));
+        assert!(
+            captured.contains("error=checkpointing ACP session: archive write failed"),
+            "the debug event must retain the source chain, got {captured}"
+        );
+    }
+
+    #[test]
+    fn suppressed_error_detail_stays_out_of_default_log_levels() {
+        let capture = HookLogCapture::default();
+        let events = Arc::clone(&capture.0);
+        let subscriber = Registry::default()
+            .with(tracing_subscriber::filter::LevelFilter::INFO)
+            .with(capture);
+        let private_path = "/home/private/workspace";
+
+        tracing::subscriber::with_default(subscriber, || {
+            log_suppressed_error(
+                &anyhow::anyhow!("failed to read {private_path}"),
+                "session_list",
+                "archive_read_failed",
+            );
+        });
+
+        let events = events.lock().expect("hook log capture lock");
+        assert!(events.is_empty(), "suppressed detail must not reach warn/error output, got {events:?}");
     }
 }
 

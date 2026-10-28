@@ -18,6 +18,7 @@ use crate::zed::session::AcpSessionWorkspace;
 use crate::zed::types::{SessionHandle, lock_poison_error};
 
 use super::{SessionHandleBootstrap, ZedAgent, safe_internal_error, safe_invalid_params_error};
+use crate::zed::agent::log_suppressed_error;
 
 pub(super) fn trace_storage_operation<'a, T: 'a, E: 'a, F>(
     operation: &'static str,
@@ -151,12 +152,12 @@ impl ZedAgent {
                 .map(|mut sessions| drop(sessions.insert(session_id.clone(), handle.clone())));
             if let Err(error) = insert_result {
                 if let Err(cleanup_error) = handle.release_workspace_lease().await {
+                    log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
                     warn!(
                         operation = "archive_attach",
                         error_category = "workspace_lease_cleanup_failed",
                         "Failed to release ACP workspace lease after resumed session registration failed"
                     );
-                    let _source = cleanup_error;
                 }
                 return Err(error);
             }
@@ -213,7 +214,8 @@ impl ZedAgent {
                 .as_deref()
                 .map(vtcode_commons::canonicalize)
                 .transpose()
-                .map_err(|_error| {
+                .map_err(|error| {
+                    log_suppressed_error(&error, "session_list", "workspace_resolution_failed");
                     safe_invalid_params_error(
                         "session_list",
                         "workspace_resolution_failed",
@@ -235,7 +237,8 @@ impl ZedAgent {
                 match session_listing_workspace_match(&listing, workspace) {
                     Ok(WorkspaceMatch::Matches) => {}
                     Ok(WorkspaceMatch::Differs) => continue,
-                    Err(_error) => {
+                    Err(error) => {
+                        log_suppressed_error(&error, "session_list", "stored_workspace_unresolvable");
                         debug!(
                             operation = "session_list",
                             error_category = "stored_workspace_unresolvable",
@@ -283,7 +286,8 @@ impl ZedAgent {
                 return Ok(acp::ListSessionsResponse::new(Vec::new()));
             }
 
-            let listings = list_recent_sessions(0).await.map_err(|_error| {
+            let listings = list_recent_sessions(0).await.map_err(|error| {
+                log_suppressed_error(&error, "session_list", "archive_read_failed");
                 safe_internal_error("session_list", "archive_read_failed", "Unable to list archived ACP sessions")
             })?;
             let listing_span = tracing::Span::current();
@@ -297,7 +301,8 @@ impl ZedAgent {
                 })
             })
             .await
-            .map_err(|_error| {
+            .map_err(|error| {
+                log_suppressed_error(&error, "session_list", "archive_worker_failed");
                 safe_internal_error("session_list", "archive_worker_failed", "Unable to list archived ACP sessions")
             })??;
             debug!(
@@ -320,14 +325,16 @@ impl ZedAgent {
             let session = self
                 .attach_or_get_session(&args.session_id, &workspace)
                 .await
-                .map_err(|_error| {
+                .map_err(|error| {
+                    log_suppressed_error(&error, "session_load", "archive_restore_failed");
                     safe_internal_error(
                         "session_load",
                         "archive_restore_failed",
                         "Unable to load the requested ACP session",
                     )
                 })?;
-            self.ensure_task_lifecycle_forwarder(&session).map_err(|_error| {
+            self.ensure_task_lifecycle_forwarder(&session).map_err(|error| {
+                log_suppressed_error(&error, "session_load", "task_lifecycle_setup_failed");
                 safe_internal_error(
                     "session_load",
                     "task_lifecycle_setup_failed",
@@ -335,7 +342,8 @@ impl ZedAgent {
                 )
             })?;
 
-            if self.replay_persisted_task_plan(&session, &args.session_id).await.is_err() {
+            if let Err(error) = self.replay_persisted_task_plan(&session, &args.session_id).await {
+                log_suppressed_error(&error, "session_load", "task_plan_replay_failed");
                 warn!(
                     operation = "session_load",
                     error_category = "task_plan_replay_failed",
@@ -343,7 +351,8 @@ impl ZedAgent {
                 );
             }
 
-            if self.send_available_commands_update(&args.session_id).await.is_err() {
+            if let Err(error) = self.send_available_commands_update(&args.session_id).await {
+                log_suppressed_error(&error, "session_load", "command_update_failed");
                 warn!(
                     operation = "session_load",
                     error_category = "command_update_failed",
@@ -351,14 +360,16 @@ impl ZedAgent {
                 );
             }
 
-            let config_options = self.current_session_config_options(&session).map_err(|_error| {
+            let config_options = self.current_session_config_options(&session).map_err(|error| {
+                log_suppressed_error(&error, "session_load", "session_configuration_failed");
                 safe_internal_error(
                     "session_load",
                     "session_configuration_failed",
                     "Unable to read ACP session configuration",
                 )
             })?;
-            self.run_session_start_hooks(&session).await.map_err(|_error| {
+            self.run_session_start_hooks(&session).await.map_err(|error| {
+                log_suppressed_error(&error, "session_load", "session_start_hook_failed");
                 safe_internal_error(
                     "session_load",
                     "session_start_hook_failed",
@@ -381,14 +392,16 @@ impl ZedAgent {
             let session = self
                 .attach_or_get_session(&args.session_id, &workspace)
                 .await
-                .map_err(|_error| {
+                .map_err(|error| {
+                    log_suppressed_error(&error, "session_resume", "archive_restore_failed");
                     safe_internal_error(
                         "session_resume",
                         "archive_restore_failed",
                         "Unable to resume the requested ACP session",
                     )
                 })?;
-            self.ensure_task_lifecycle_forwarder(&session).map_err(|_error| {
+            self.ensure_task_lifecycle_forwarder(&session).map_err(|error| {
+                log_suppressed_error(&error, "session_resume", "task_lifecycle_setup_failed");
                 safe_internal_error(
                     "session_resume",
                     "task_lifecycle_setup_failed",
@@ -396,7 +409,8 @@ impl ZedAgent {
                 )
             })?;
 
-            if self.replay_persisted_task_plan(&session, &args.session_id).await.is_err() {
+            if let Err(error) = self.replay_persisted_task_plan(&session, &args.session_id).await {
+                log_suppressed_error(&error, "session_resume", "task_plan_replay_failed");
                 warn!(
                     operation = "session_resume",
                     error_category = "task_plan_replay_failed",
@@ -404,7 +418,8 @@ impl ZedAgent {
                 );
             }
 
-            if self.send_available_commands_update(&args.session_id).await.is_err() {
+            if let Err(error) = self.send_available_commands_update(&args.session_id).await {
+                log_suppressed_error(&error, "session_resume", "command_update_failed");
                 warn!(
                     operation = "session_resume",
                     error_category = "command_update_failed",
@@ -412,7 +427,8 @@ impl ZedAgent {
                 );
             }
 
-            let config_options = self.current_session_config_options(&session).map_err(|_error| {
+            let config_options = self.current_session_config_options(&session).map_err(|error| {
+                log_suppressed_error(&error, "session_resume", "session_configuration_failed");
                 safe_internal_error(
                     "session_resume",
                     "session_configuration_failed",

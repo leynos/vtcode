@@ -1,4 +1,5 @@
 //! Coordinates ACP prompt preparation, hooks, compaction, and provider-turn execution.
+use super::super::log_suppressed_error;
 use super::super::tool_config::SessionToolDefinitionRequest;
 use super::provider::IncompleteProviderTurn;
 use super::*;
@@ -13,7 +14,8 @@ pub(super) use buffered::response_reasoning_update;
 
 #[tracing::instrument(skip_all, fields(boundary = boundary))]
 pub(super) async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, boundary: &'static str) {
-    if agent.checkpoint_session(session).await.is_err() {
+    if let Err(error) = agent.checkpoint_session(session).await {
+        log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
         warn!(
             operation = "session_checkpoint",
             error_category = "archive_write_failed",
@@ -21,7 +23,8 @@ pub(super) async fn persist_session_checkpoint(agent: &ZedAgent, session: &Sessi
             "Failed to persist ACP session checkpoint"
         );
     }
-    if session.update_transcript_path().await.is_err() {
+    if let Err(error) = session.update_transcript_path().await {
+        log_suppressed_error(&error, "transcript_update", "transcript_write_failed");
         warn!(
             operation = "transcript_update",
             error_category = "transcript_write_failed",

@@ -2,7 +2,7 @@
 //! workspace-aware list/load/resume operations here, then provider runtime
 //! uses the resulting session handles for model execution.
 
-use super::ZedAgent;
+use super::{ZedAgent, log_suppressed_error};
 use crate::acp;
 use crate::workspace::{WorkspaceTrustSyncOutcome, WorkspaceTrustSynchronizer};
 use anyhow::Context;
@@ -350,14 +350,16 @@ impl ZedAgent {
             .workspace_trust_synchronizer
             .synchronize(workspace.path(), desired_trust)
             .await
-            .map_err(|_error| {
+            .map_err(|error| {
+                log_suppressed_error(&error, "new_session", "workspace_trust_sync_failed");
                 safe_internal_error(
                     "new_session",
                     "workspace_trust_sync_failed",
                     "Unable to synchronize workspace trust",
                 )
             })?;
-        let workspace_lease = self.workspace_runtime_for(&workspace).await.map_err(|_error| {
+        let workspace_lease = self.workspace_runtime_for(&workspace).await.map_err(|error| {
+            log_suppressed_error(&error, "new_session", "workspace_runtime_setup_failed");
             safe_internal_error(
                 "new_session",
                 "workspace_runtime_setup_failed",
@@ -367,7 +369,8 @@ impl ZedAgent {
         let session_id = self
             .register_durable_session(workspace_lease, req.meta)
             .await
-            .map_err(|_error| {
+            .map_err(|error| {
+                log_suppressed_error(&error, "new_session", "session_archive_initialization_failed");
                 safe_internal_error(
                     "new_session",
                     "session_archive_initialization_failed",
@@ -382,7 +385,7 @@ impl ZedAgent {
             }
             Err(error) => {
                 self.discard_failed_new_session(&session_id).await;
-                let _source = error;
+                log_suppressed_error(&error, "new_session", "session_registration_failed");
                 return Err(safe_internal_error(
                     "new_session",
                     "session_registration_failed",
@@ -392,7 +395,7 @@ impl ZedAgent {
         };
         if let Err(error) = self.ensure_task_lifecycle_forwarder(&session) {
             self.discard_failed_new_session(&session_id).await;
-            let _source = error;
+            log_suppressed_error(&error, "new_session", "task_lifecycle_setup_failed");
             return Err(safe_internal_error(
                 "new_session",
                 "task_lifecycle_setup_failed",
@@ -401,7 +404,7 @@ impl ZedAgent {
         }
         if let Err(error) = self.run_session_start_hooks(&session).await {
             self.discard_failed_new_session(&session_id).await;
-            let _source = error;
+            log_suppressed_error(&error, "new_session", "session_start_hook_failed");
             return Err(safe_internal_error(
                 "new_session",
                 "session_start_hook_failed",
@@ -412,7 +415,7 @@ impl ZedAgent {
             Ok(config_options) => config_options,
             Err(error) => {
                 self.discard_failed_new_session(&session_id).await;
-                let _source = error;
+                log_suppressed_error(&error, "new_session", "session_configuration_failed");
                 return Err(safe_internal_error(
                     "new_session",
                     "session_configuration_failed",
