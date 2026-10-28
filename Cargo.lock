@@ -7653,6 +7653,7 @@ dependencies = [
  "percent-encoding",
  "proptest",
  "reqwest 0.12.28",
+ "rstest",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
