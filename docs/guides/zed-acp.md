@@ -535,16 +535,16 @@ and `[history]` settings do not control ACP audit output.
   source file. A mismatch is write-free and reports the expected and current
   hashes, bounded failed-anchor context, whether the patch can be safely
   rebased, and an explicit reread or regeneration action. Omitting the
-  precondition remains supported and retains VT Code's internal external-mutation
-  protection.
+  precondition remains supported and retains VT Code's internal
+  external-mutation protection.
 - **Identical patch guard** – If the rendered post-patch bytes already equal the
   initial bytes, the first identical request succeeds with an explanation and
   the second succeeds with a warning not to retry it. The third is a
-  non-retryable structured tool error. Changing the parsed patch, canonical path
-  set, or file versions resets this streak; changing only the `input`/`patch`
-  alias, base64 wrapper, path order, or line-ending envelope does not. These
-  structured results and errors are forwarded through ACP and retained in tool
-  execution history.
+  non-retryable structured tool error. Changing the parsed patch, canonical
+  path set, or file versions resets this streak; changing only the
+  `input`/`patch` alias, base64 wrapper, path order, or line-ending envelope
+  does not. These structured results and errors are forwarded through ACP and
+  retained in tool execution history.
 - **Tool policy compatibility** – VT Code advertises the current core tool suite
   through ACP when the model supports function calling, including
   `exec_command`, `write_stdin`, `apply_patch`, and advanced `code_search`
