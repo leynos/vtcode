@@ -27,6 +27,7 @@ mod exec_output;
 mod exec_sessions;
 mod exec_support;
 mod patch_pipeline;
+mod patch_preconditions;
 mod sandbox_runtime;
 mod search_introspection;
 mod subagents;
