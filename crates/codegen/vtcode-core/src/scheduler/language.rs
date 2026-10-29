@@ -24,10 +24,15 @@ static REMIND_IN_RE: LazyLock<std::result::Result<Regex, regex::Error>> = LazyLo
     )
 });
 
+/// Recognizes task-list, cancellation, and reminder commands relative to `now`.
+///
+/// Unrecognized input and out-of-range relative reminders return `None`;
+/// recognized reminders with invalid absolute times retain their parse errors.
 pub fn parse_session_language_command(input: &str, now: DateTime<Local>) -> Option<Result<SessionLanguageCommand>> {
     parse_language_command(input, now).transpose()
 }
 
+/// Dispatches commands in priority order while preserving regex initialization errors.
 fn parse_language_command(input: &str, now: DateTime<Local>) -> Result<Option<SessionLanguageCommand>> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
@@ -51,6 +56,7 @@ fn parse_language_command(input: &str, now: DateTime<Local>) -> Result<Option<Se
         .map(|query| SessionLanguageCommand::CancelTask { query: query.trim().to_string() }))
 }
 
+/// Resolves a recognized absolute reminder using the shared local-time parser.
 fn parse_remind_at(input: &str, now: DateTime<Local>) -> Result<Option<SessionLanguageCommand>> {
     let regex = REMIND_AT_RE.as_ref().context("Failed to compile the remind-at regex")?;
     let Some(captures) = regex.captures(input) else {
@@ -64,17 +70,19 @@ fn parse_remind_at(input: &str, now: DateTime<Local>) -> Result<Option<SessionLa
     parse_local_datetime(when, now).map(|run_at| Some(SessionLanguageCommand::CreateOneShotPrompt { prompt, run_at }))
 }
 
+/// Recognizes relative reminders only when both duration and deadline fit Chrono's ranges.
 fn parse_remind_in(input: &str, now: DateTime<Local>) -> Result<Option<SessionLanguageCommand>> {
     let regex = REMIND_IN_RE.as_ref().context("Failed to compile the remind-in regex")?;
     Ok(regex.captures(input).and_then(|captures| {
         let count = captures["count"].parse::<i64>().ok()?;
         let prompt = captures["prompt"].trim().to_string();
         let delta = match captures["unit"].to_ascii_lowercase().as_str() {
-            "minute" | "minutes" => ChronoDuration::minutes(count),
-            "hour" | "hours" => ChronoDuration::hours(count),
-            "day" | "days" => ChronoDuration::days(count),
+            "minute" | "minutes" => ChronoDuration::try_minutes(count),
+            "hour" | "hours" => ChronoDuration::try_hours(count),
+            "day" | "days" => ChronoDuration::try_days(count),
             _ => return None,
-        };
-        Some(SessionLanguageCommand::CreateOneShotPrompt { prompt, run_at: (now + delta).with_timezone(&Utc) })
+        }?;
+        let run_at = now.checked_add_signed(delta)?.with_timezone(&Utc);
+        Some(SessionLanguageCommand::CreateOneShotPrompt { prompt, run_at })
     }))
 }

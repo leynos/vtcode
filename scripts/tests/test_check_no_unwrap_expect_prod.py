@@ -22,7 +22,7 @@ sys.modules[SPEC.name] = CHECKER
 SPEC.loader.exec_module(CHECKER)
 
 
-class ProductionScannerTests(unittest.TestCase):
+class ScannerHarness(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -48,6 +48,8 @@ class ProductionScannerTests(unittest.TestCase):
             for name, line, _ in CHECKER.scan_file(path, [])
         ]
 
+
+class ProductionScannerTests(ScannerHarness):
     def test_production_expect_is_reported_with_its_source_line(self) -> None:
         self.rust("src/lib.rs", 'fn production() {\n    value.expect("required");\n}\n')
 
@@ -233,7 +235,7 @@ class ProductionScannerTests(unittest.TestCase):
         self.rust("src/lib.rs", '#[cfg(test)]\nmod tests { #[path = "capture.rs"] mod capture; }\n')
         self.rust("src/tests/capture.rs", 'fn capture() { value.unwrap(); }\n')
 
-        self.assertEqual(CHECKER.test_only_files(self.files), {self.files[1]})
+        self.assertEqual(CHECKER.test_only_files(self.files), {self.files[1].resolve()})
 
     def test_filename_policy_and_line_allowlist_remain_supported(self) -> None:
         self.rust("src/helper_tests.rs", 'fn check() { value.unwrap(); }\n')

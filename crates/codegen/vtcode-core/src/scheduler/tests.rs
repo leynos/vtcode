@@ -52,10 +52,29 @@ fn reminder_language_detects_relative_time() {
     match command {
         SessionLanguageCommand::CreateOneShotPrompt { prompt, run_at } => {
             assert_eq!(prompt, "check whether the integration tests passed");
-            assert_eq!(run_at, (now + ChronoDuration::minutes(45)).with_timezone(&Utc));
+            let expected = Local.with_ymd_and_hms(2026, 3, 28, 13, 45, 0).single().expect("deadline");
+            assert_eq!(run_at, expected.with_timezone(&Utc));
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn reminder_language_rejects_duration_overflow_for_each_unit() {
+    let now = utc(2026, 3, 28, 13, 0, 0).with_timezone(&Local);
+    for unit in ["minutes", "hours", "days"] {
+        let input = format!("in {} {unit}, check the release", i64::MAX);
+        assert!(parse_session_language_command(&input, now).is_none(), "out-of-range duration accepted: {unit}");
+    }
+}
+
+#[test]
+fn reminder_language_rejects_deadline_overflow_with_representable_duration() {
+    let now = utc(2026, 3, 28, 13, 0, 0).with_timezone(&Local);
+    // One hundred million days fit a TimeDelta, but exceed DateTime's roughly
+    // 262,000-year upper limit when added to this ordinary starting date.
+    let command = parse_session_language_command("in 100000000 days, check the release", now);
+    assert!(command.is_none(), "out-of-range deadline accepted: {command:?}");
 }
 
 #[test]

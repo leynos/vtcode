@@ -27,9 +27,9 @@ child.
 
 - Start from exact reviewed PR #53 head
   `98f4e0d2ee25d783185b1075fb024b269b232e58`.
-- Change only the planner setup terminalisation and task-publication scope:
+- Change only the planner setup terminalization and task-publication scope:
   `crates/codegen/vtcode-core/src/core/agent/runner/task_setup.rs`,
-  `orchestration.rs` only when needed to centralise the terminal owner, focused
+  `orchestration.rs` only when needed to centralize the terminal owner, focused
   harness tests, and this plan.
 - Preserve `vtcode-exec-events::ThreadEvent` as the only event contract. Add no
   new event type, public API, dependency, wire shape, durable-store format,
@@ -56,7 +56,7 @@ Stop and escalate to the stack lead if any of these become necessary:
   more than one plan document.
 - Any public Rust API, ACP wire contract, persisted event/file schema, or new
   dependency.
-- A second error-terminalisation path rather than one explicitly owned path, or
+- A second error-terminalization path rather than one explicitly owned path, or
   any duplicate `TurnFailed` event.
 - A test seam that requires a production-only test hook, a global environment
   change, or a permission-dependent filesystem failure.
@@ -70,9 +70,9 @@ Stop and escalate to the stack lead if any of these become necessary:
 - **PR53-RECOVERY-001:** PR #53 promised durable child failures, safe
   structured planner diagnostics, and retained accepted task history.
 - **ISSUE-21-TERMINAL-001:**
-  [Issue #21](https://github.com/leynos/vtcode/issues/21) requires typed/safe
-  planner diagnostics, distinct termination causes, no duplicate children, no
-  uncertain tool replay, and durable ACP-visible terminal status.
+  [Issue #21](https://github.com/leynos/vtcode/issues/21) requires typed and
+  safe planner diagnostics, distinct termination causes, no duplicate children,
+  no uncertain tool replay, and durable ACP-visible terminal status.
 - **CODEX-3952425077:** planner request/parse and artifact-stage failures need
   one terminal lifecycle, including `ThreadCompleted(ErrorDuringExecution)`.
 - **CODEX-3952425085:** the accepted task must be published before a
@@ -173,21 +173,21 @@ CI/format/lint/build/documentation gates and captures logs under `/tmp`.
    failure.
 2. The tests must inspect event counts,
    `ThreadCompleted(ErrorDuringExecution)`, turn closure, persisted event
-   drain, accepted task snapshot, sanitisation, and absence of tools.
+   drain, accepted task snapshot, sanitization, and absence of tools.
 3. Update this plan with the selected deterministic failure seams and the
    baseline source facts.
 
 Acceptance: each test expresses a concrete failure contract without a sleep,
 external provider, or global state.
 
-### EP-M2: Centralise terminalisation and publish the task early
+### EP-M2: Centralize terminalization and publish the task early
 
 1. Construct and publish the accepted task conversation before the first
    fallible prompt/catalog operation.
-2. Give every error from `run_planner_phase` one terminalisation owner in
+2. Give every error from `run_planner_phase` one terminalization owner in
    `prepare_task_execution`, or an equivalent single owner with the same event
    order.
-3. Remove the earlier partial `turn_failed` emission if centralisation would
+3. Remove the earlier partial `turn_failed` emission if centralization would
    otherwise emit duplicate failure events.
 4. Preserve successful prompt construction, conversation state, planner
    artifact creation, and error classification.
@@ -226,14 +226,14 @@ the shared scrutineer has an executable gate packet.
   turn admission; the planner cases also assert one provider request.
 - [x] 2026-09-08: implemented the source plateau in `task_setup.rs` and
   `orchestration.rs`, pending shared verification. Task setup now publishes the
-  accepted conversation before bundle construction and owns terminalisation of
+  accepted conversation before bundle construction and owns terminalization of
   every error returned by `run_planner_phase`; the planner no longer emits an
   earlier partial terminal event.
 - [x] 2026-09-19: reconciled the preserved source WIP onto Stack16 L8
       6e0f1728a1f231a7f262e0f5c1573e635fcf365a in the isolated successor
       worktree. The target's current spelling, surrounding harness coverage,
       and planner/continuation behaviour remain intact; the source's shared
-      terminalisation owner, prompt-builder seam, and four lifecycle cases are
+      terminalization owner, prompt-builder seam, and four lifecycle cases are
       now frozen for shared gates.
 - [ ] EP-M3: frozen source and shared-gate hand-off.
 
@@ -261,11 +261,11 @@ the shared scrutineer has an executable gate packet.
   private injection seam or earlier validation; neither is silently assumed.
 - 2026-09-08: the stack lead approved the private builder seam instead of
   altering prompt-validation policy. It shares the production setup flow, so
-  the test verifies publication and terminalisation around the real boundary.
+  the test verifies publication and terminalization around the real boundary.
 
 ## Decision log
 
-- 2026-09-08: make `prepare_task_execution` the intended terminalisation owner
+- 2026-09-08: make `prepare_task_execution` the intended terminalization owner
   for planner setup errors, subject to confirming the deterministic fixture
   seams. This prevents divergent event orders and duplicate `TurnFailed`
   emission.
@@ -290,7 +290,7 @@ the shared scrutineer has an executable gate packet.
 
 ## Risks
 
-- **Duplicate terminal events:** moving terminalisation outward could leave
+- **Duplicate terminal events:** moving terminalization outward could leave
   `run_planner_phase`'s existing `turn_failed` in place. Mitigation: assert
   exact event counts in request/parse and artifact tests.
 - **Snapshot drift:** moving task publication early could make successful
@@ -300,8 +300,8 @@ the shared scrutineer has an executable gate packet.
   seam. Mitigation: the stack-lead-approved private builder closure exercises
   the actual setup flow while the separate artifact case uses the real
   filesystem failure boundary.
-- **Persistence ordering:** dropping the recorder before terminalising would
-  lose the authoritative sink sender. Mitigation: terminalise first, then close
+- **Persistence ordering:** dropping the recorder before terminalizing would
+  lose the authoritative sink sender. Mitigation: terminalize first, then close
   the store through the existing helper.
 - **Scope drift:** tracker ownership would solve a distinct defect but is
   already Issue #116. Mitigation: do not edit continuation logic.

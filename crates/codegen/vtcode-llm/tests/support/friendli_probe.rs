@@ -1,3 +1,5 @@
+mod tool_call;
+
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::Path;
@@ -7,6 +9,7 @@ use futures::StreamExt;
 use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use serde::Serialize;
 use serde_json::{Value, json};
+use tool_call::classify_tool_call;
 
 pub(crate) const MODEL: &str = "zai-org/GLM-5.3-Flash";
 pub(crate) const OUTPUT_CAP: u32 = 2_048;
@@ -362,60 +365,6 @@ fn classify_terminal(case: ProbeCase, terminal: Value) -> ProbeOutcome {
     } else {
         ProbeOutcome::DecodeFailure { error: format!("text probe omitted OK: {text:?}") }
     }
-}
-
-fn classify_tool_call(call: &Value, expected_type: &str, expected_name: &str) -> ProbeOutcome {
-    if call["type"] != expected_type {
-        return ProbeOutcome::DecodeFailure {
-            error: format!("tool call type {:?} did not match {expected_type:?}", call["type"]),
-        };
-    }
-    let Some(name) = call["name"].as_str() else {
-        return ProbeOutcome::DecodeFailure { error: "tool call omitted name".into() };
-    };
-    let Some(call_id) = call["call_id"].as_str() else {
-        return ProbeOutcome::DecodeFailure { error: "tool call omitted final call_id".into() };
-    };
-    if call_id.is_empty() {
-        return ProbeOutcome::DecodeFailure {
-            error: "tool call had an empty final call_id".into(),
-        };
-    }
-    if name != expected_name {
-        return ProbeOutcome::DecodeFailure {
-            error: format!("tool call name {name:?} did not match {expected_name:?}"),
-        };
-    }
-    let input = match decode_expected_tool_input(call, expected_type) {
-        Ok(input) => input,
-        Err(error) => return ProbeOutcome::DecodeFailure { error },
-    };
-    ProbeOutcome::ToolCallSuccess {
-        tool_type: expected_type.into(),
-        name: name.into(),
-        call_id: call_id.into(),
-        input,
-    }
-}
-
-fn decode_expected_tool_input(call: &Value, expected_type: &str) -> Result<Value, String> {
-    let input = if expected_type == "function_call" {
-        call["arguments"]
-            .as_str()
-            .and_then(|raw| serde_json::from_str(raw).ok())
-            .ok_or_else(|| "function arguments were not strict JSON".to_string())?
-    } else {
-        call.get("input").cloned().unwrap_or(Value::Null)
-    };
-    let valid_input = if expected_type == "function_call" {
-        input == json!({"text":"OK"})
-    } else {
-        input == "OK"
-    };
-    if !valid_input {
-        return Err(format!("unexpected tool input: {input}"));
-    }
-    Ok(input)
 }
 
 fn output_text(outputs: &[Value]) -> String {

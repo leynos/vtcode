@@ -95,6 +95,7 @@ def _repo_status_identity(value: object, label: str) -> str:
 
 
 def _finding_identity(value: object, label: str) -> FindingIdentity:
+    """Build a stable identity, sorting dependencies and excluding Age values."""
     finding = _require_exact_keys(value, SCANNER_KEYS, label)
     name = _require_string(finding["name"], f"{label}.name")
     version = _require_string(finding["version"], f"{label}.version")
@@ -217,6 +218,10 @@ def _run_scanner(scanner: str) -> subprocess.CompletedProcess[bytes]:
 def _parse_scanner_output(
     completed: subprocess.CompletedProcess[bytes], scanner: str
 ) -> list[object]:
+    """Decode scanner output as UTF-8 and parse stdout as a JSON list.
+
+    When stdout is invalid JSON, include non-empty stderr in the diagnostic.
+    """
     try:
         stdout = completed.stdout.decode("utf-8")
         stderr = completed.stderr.decode("utf-8").strip()
@@ -268,6 +273,7 @@ def _load_scanner_output(
 def _validate_findings(
     findings: object,
 ) -> list[tuple[FindingIdentity, dict[str, object]]]:
+    """Validate a finding list, rejecting duplicate identities while preserving order."""
     if not isinstance(findings, list):
         raise ValidationError("scanner output must be a list")
 

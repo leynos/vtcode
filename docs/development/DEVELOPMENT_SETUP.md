@@ -54,12 +54,11 @@ For debug or release launches:
 # Fast compile check
 cargo check
 
-# Fast test loop (recommended)
+# Rust tests (requires cargo-nextest)
 cargo nextest run
-
-# Fallback if nextest is unavailable
-cargo test --workspace
 ```
+
+Install Nextest if needed with `cargo install cargo-nextest --locked`.
 
 ## Full Quality Gate
 

@@ -68,6 +68,11 @@ impl GenerationTelemetry {
             .await;
     }
 
+    /// Accumulate a rough token count and record the first-output time once.
+    ///
+    /// Each delta contributes one estimated token per four Unicode scalar
+    /// values, rounded up. Only the first observed delta supplies the logged
+    /// time-to-first-token and retry count.
     pub(in crate::zed::agent::handlers) fn observe_output(
         &mut self,
         runtime: &ProviderRequestRuntime,
@@ -99,6 +104,13 @@ impl GenerationTelemetry {
         self.first_output_at.is_some()
     }
 
+    /// Log completed generation telemetry and record its duration metric.
+    ///
+    /// A positive provider completion-token count is authoritative; otherwise
+    /// the estimate accumulated by [`Self::observe_output`] is used. That
+    /// estimate rounds each output delta's character count up per four
+    /// Unicode scalar values. If no output was observed, elapsed generation
+    /// time is reported as time to first token.
     pub(in crate::zed::agent::handlers) async fn complete(
         &mut self,
         runtime: &ProviderRequestRuntime,
@@ -147,6 +159,11 @@ impl GenerationTelemetry {
             .await;
     }
 
+    /// Log a bounded error projection and record applicable failure metrics.
+    ///
+    /// Error detail in the warning is limited to safe category and status
+    /// fields. Rate-limit metrics are recorded for rate-limit errors; retry
+    /// and optional retry-delay metrics are recorded when a retry is scheduled.
     pub(in crate::zed::agent::handlers) async fn failed(&mut self, failure: GenerationFailure<'_>) {
         let GenerationFailure {
             runtime,

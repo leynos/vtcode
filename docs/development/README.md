@@ -56,6 +56,8 @@ Entry point for VT Code contributor workflows.
 
 ## Model Management
 
+- [Model Profiles and Provider API Format](./model-profiles.md) - Provider API
+  hints, capability defaults, and sparse per-model profiles.
 - [Adding Models](./ADDING_MODELS.md) - Complete workflow for adding new LLM
   models.
 - [Model Addition Checklist](./MODEL_ADDITION_CHECKLIST.md) - Step-by-step
@@ -63,6 +65,10 @@ Entry point for VT Code contributor workflows.
 
 ## Maintenance Workflows
 
+- [Unmaintained dependency baseline](../guides/cargo-unmaintained.md) -
+  Reviewed baseline identity, scanner capture, and CI artifact contract.
+- [Patched tree-sitter-bash grammar](../../patches/tree-sitter-bash/README.vtcode.md)
+  - Shared grammar patch provenance and maintenance notes.
 - [Asset Synchronization](./asset-synchronization.md) - Embedded asset
   maintenance.
 - [AI Tool Surface Eval Report](./ai-tool-surface-eval-report.md) - Executable
@@ -76,6 +82,20 @@ Entry point for VT Code contributor workflows.
   transition summaries, configuration, and testing boundaries.
 - [First-party debt scan](../../scripts/first-party-debt-scan.sh) - Detect
   actionable debt markers while excluding generated and fixture content.
+
+## Internal Module Ownership
+
+- The public scheduler API is defined in
+  [`scheduler/mod.rs`](../../crates/codegen/vtcode-core/src/scheduler/mod.rs);
+  its private
+  [`language.rs`](../../crates/codegen/vtcode-core/src/scheduler/language.rs)
+  module owns session-language recognition and regex initialization errors.
+- ACP prompt streaming is orchestrated in
+  [`handlers.rs`](../../crates/codegen/vtcode-acp/src/zed/agent/handlers.rs).
+  Its private
+  [`generation_telemetry.rs`](../../crates/codegen/vtcode-acp/src/zed/agent/handlers/generation_telemetry.rs)
+  module owns first-output timing, token usage estimates, and bounded failure
+  projection.
 
 ## Navigation
 

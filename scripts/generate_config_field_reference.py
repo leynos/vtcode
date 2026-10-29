@@ -468,6 +468,12 @@ def escape_cell(value: str) -> str:
 
 
 def code_cell(value: str) -> str:
+    """Escape a table value and wrap it as CommonMark inline code.
+
+    Pipes are escaped, newlines become spaces, and surrounding whitespace is
+    stripped. The delimiter is the shortest backtick run absent from the text;
+    boundary backticks are padded with spaces inside the delimiters.
+    """
     text = escape_cell(value)
     delimiter = "`"
     while delimiter in text:
@@ -478,6 +484,11 @@ def code_cell(value: str) -> str:
 
 
 def render_markdown(entries: list[FieldEntry]) -> str:
+    """Render field tables grouped by each path's first two components.
+
+    Groups and their entries retain first-seen input order; paths with fewer
+    than two components form a group from the components they have.
+    """
     lines = [
         "# Config Field Reference",
         "",

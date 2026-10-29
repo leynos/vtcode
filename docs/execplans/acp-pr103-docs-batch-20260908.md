@@ -108,7 +108,7 @@ the stack lead owns publication and review replies.
   `custom_providers.rate_limit_headers` example, links to the existing
   developer reference for provider tables, distinguishes `Retry-After` from
   configured quota resets, and documents ACP/Lody notices without inferring
-  utilisation or account data from incomplete headers. Shared Markdown, link,
+  utilization or account data from incomplete headers. Shared Markdown, link,
   and spelling validation remains pending.
 
 ## Decisions and discoveries

@@ -33,7 +33,7 @@ configuration tests; native error-path coverage requires separate evidence or a
 scope escalation.
 
 OpenRouter 429 paths deliberately retain `parse_api_error_with_headers`, whose
-established rate-error metadata contains a sanitised diagnostic. Their
+established rate-error metadata contains a sanitized diagnostic. Their
 regression assertions therefore prove provider, status, request identifier,
 Retry-After, and configured quota metadata without asserting that the body is
 absent. The body-free metadata assertion applies only to the ten non-rate

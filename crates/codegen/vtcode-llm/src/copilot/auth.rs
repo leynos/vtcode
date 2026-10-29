@@ -365,6 +365,13 @@ fn drain_complete_lines(buffer: &mut Vec<u8>) -> Vec<String> {
     lines
 }
 
+/// Parses a captured CLI line into a device-flow or known progress event.
+///
+/// Device-flow instructions are checked first. Otherwise, matching is
+/// case-insensitive: lines containing `waiting for authorization` produce a
+/// waiting event, while lines containing `opening browser` or `opened
+/// browser` produce a browser-opened event. Unrelated lines return `Ok(None)`.
+/// Errors from device-flow regex initialization are propagated.
 fn parse_login_event(line: &str) -> Result<Option<CopilotAuthEvent>> {
     if let Some((url, user_code)) = parse_device_flow_code(line)? {
         return Ok(Some(CopilotAuthEvent::VerificationCode { url, user_code }));
@@ -382,6 +389,14 @@ fn parse_login_event(line: &str) -> Result<Option<CopilotAuthEvent>> {
     Ok(None)
 }
 
+/// Extracts a device-flow URL and user code from a matching instruction line.
+///
+/// The case-insensitive line pattern is `visit <http(s) URL> and enter code
+/// <user code>`. Lines without both captures return `Ok(None)`.
+/// The URL is trimmed of terminal `.`, `,`, `)`, and `]` characters; the code
+/// is trimmed of terminal `.`, `,`, `:`, and `;` characters. A missing capture
+/// or an empty value after trimming returns `Ok(None)`. Regex initialization
+/// failures are returned with context.
 fn parse_device_flow_code(line: &str) -> Result<Option<(String, String)>> {
     let regex = DEVICE_FLOW_LINE_RE
         .as_ref()

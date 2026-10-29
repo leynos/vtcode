@@ -38,7 +38,7 @@ or background tasks are available when they are absent from the handshake.
 
 Subagent and background-process progress uses ordinary ACP `session/update`
 tool calls and tool-call updates. The update carries task description and
-status in standard fields, while `meta.lody.task` contains the additional Lody
+status in standard fields, while `_meta.lody.task` contains the additional Lody
 task snapshot, such as task ID, kind, actor, timestamps, summary, and error
 details.
 
@@ -74,13 +74,14 @@ required.
 
 VT Code advertises push-only `_meta.lody.rateLimits = { "version": 1 }`.
 Recognized HTTP 429 quota headers produce `_lody/rate_limits/update` snapshots
-scoped to the provider and model. Complete nonzero limit/remaining pairs produce
-`usedPercent` and the provider's documented window duration. Missing reset
-times remain null. Limit-only headers, including Fireworks throughput ceilings,
-retain their absolute values in `limitName` with empty `windows`. There is no
-quota query method or inferred account identifier. Per-request token counters,
-`Retry-After`, and other diagnostics remain in warning notices; they are not
-added to usage deltas. See
+scoped to the provider and model. Complete limit/remaining pairs with a
+positive limit produce `usedPercent` and the provider's documented window
+duration. A positive limit with `remaining = 0` produces `usedPercent = 100`.
+Missing reset times remain null. Limit-only headers, including Fireworks
+throughput ceilings, retain their absolute values in `limitName` with empty
+`windows`. There is no quota query method or inferred account identifier.
+Per-request token counters, `Retry-After`, and other diagnostics remain in
+warning notices; they are not added to usage deltas. See
 [provider rate-limit headers](../development/provider-rate-limit-headers.md)
 for configuration and retry semantics.
 
