@@ -87,7 +87,7 @@ fn tool_error_value_to_string(value: &Value) -> String {
     if let Some(message) = value.as_str() {
         return message.to_string();
     }
-    if value.get("details").is_some() {
+    if value.get("details").is_some_and(|details| !details.is_null()) {
         return value.to_string();
     }
     if let Some(message) = value.get("message").and_then(Value::as_str) {
@@ -1906,5 +1906,26 @@ impl ToolRegistry {
                 Ok(payload)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tool_error_value_to_string;
+    use serde_json::json;
+
+    #[test]
+    fn null_details_falls_back_to_message() {
+        // `ToolExecutionError::to_json_value` always emits a `details` key, using
+        // null when there are none. A message without details must not be
+        // replaced by the whole JSON blob.
+        let value = json!({"message": "boom", "details": null});
+        assert_eq!(tool_error_value_to_string(&value), "boom");
+    }
+
+    #[test]
+    fn present_details_keep_structured_payload() {
+        let value = json!({"message": "boom", "details": {"path": "a.rs"}});
+        assert!(tool_error_value_to_string(&value).contains("a.rs"));
     }
 }
