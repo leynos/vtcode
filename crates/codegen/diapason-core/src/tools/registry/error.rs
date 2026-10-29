@@ -206,6 +206,11 @@ impl ToolExecutionError {
         self
     }
 
+    /// Attach a structured `details` payload to the error.
+    ///
+    /// The CLI renders only the message, while MCP and ACP clients consume
+    /// `details`. Attaching a payload lets a machine-readable diagnostic reach
+    /// a model-visible caller without changing what a human sees.
     #[must_use]
     pub fn with_details(mut self, details: Value) -> Self {
         self.details = Some(details);
