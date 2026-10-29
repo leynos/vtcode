@@ -1,3 +1,11 @@
+//! Tool executor bodies for the command, session, and harness surfaces.
+//!
+//! Holds the `ToolRegistry` methods that actually run tools after dispatch has
+//! decided *whether* they may run: command and PTY session execution, harness
+//! terminal runs, and their approval-reason plumbing. Sandbox setup, exec
+//! sessions, and cargo failure diagnostics live in the child modules of this
+//! directory; patch execution lives in `patch_pipeline`.
+
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
@@ -22,14 +30,23 @@ use crate::tools::registry::unified_actions::CommandSessionAction;
 use crate::tools::{native_memory, tool_intent};
 
 mod cargo_failure_diagnostics;
+
 mod exec_command;
+
 mod exec_output;
+
 mod exec_sessions;
+
 mod exec_support;
+
 mod patch_pipeline;
+
 mod patch_preconditions;
+
 mod sandbox_runtime;
+
 mod search_introspection;
+
 mod subagents;
 
 pub use sandbox_runtime::sandbox_policy_from_runtime_config;

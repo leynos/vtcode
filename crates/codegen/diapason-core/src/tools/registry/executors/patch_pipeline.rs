@@ -1,3 +1,17 @@
+//! `apply_patch` planning, precondition checking, and mutation ordering.
+//!
+//! The applicator replays a patch's operations in order against live file state.
+//! This module mirrors that order: it canonicalises the touched paths, acquires
+//! mutation leases, snapshots each path, and then plans every write from the
+//! preceding operation's *result* rather than from the pre-patch snapshot. That
+//! carry-forward is what keeps the no-op guard honest when a patch updates the
+//! same path more than once, since planning from the original snapshot would
+//! make a productive chain look like a no-op.
+//!
+//! Version and anchor preconditions are validated in the sibling
+//! `patch_preconditions` module; the decision state machine itself lives in
+//! `crate::tools::registry::patch_guard`.
+
 use super::ToolRegistry;
 use super::patch_preconditions::{invalid_patch_precondition, repeated_no_op_error, validate_patch_content_hash};
 use crate::tools::edited_file_monitor::{FileSnapshot, MutationLease, conflict_override_snapshot};
