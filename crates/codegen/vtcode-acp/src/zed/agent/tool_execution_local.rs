@@ -238,36 +238,51 @@ impl ZedAgent {
                 None => return Ok(ToolExecutionReport::cancelled(tools::READ_FILE)),
             };
 
-        let version_result = match request.session.workspace_runtime() {
-            Ok(Some(runtime)) => {
-                runtime
-                    .local_tool_registry
-                    .file_ops_tool()
-                    .capture_read_content_hash(&path)
-                    .await
-            }
-            Ok(None) => self.local_tool_registry.file_ops_tool().capture_read_content_hash(&path).await,
-            Err(error) => Err(error),
-        };
-        // A client may return content for a buffer that is not on disk, such as an
-        // unsaved editor file, so version capture can fail where the read itself
-        // succeeded. Report the content with an absent version instead of failing
-        // the whole read; `apply_patch` already treats an absent precondition as
-        // omitted.
-        let content_hash = match version_result {
-            Ok(content_hash) => json!(content_hash),
-            Err(error) => {
-                warn!(%error, path = ?path, "Failed to capture ACP read file version");
-                Value::Null
-            }
-        };
-
         let plain_response = strip_ansi(&response.content);
         let (truncated_content, truncated) = self.truncate_text(&plain_response);
         let mut tool_content = truncated_content.clone();
         if truncated {
             tool_content.push_str("\n\n[truncated]");
         }
+
+        // The ACP client serves the editor's buffer, which may be unsaved and may
+        // differ from the disk. Version the response only when it covers the whole
+        // file and the on-disk bytes still hash to the content the model is about to
+        // receive; otherwise report an absent version rather than certifying bytes
+        // the model never saw. `apply_patch` treats an absent precondition as omitted.
+        let content_hash = if truncated {
+            Value::Null
+        } else {
+            let expected_hash =
+                format!("sha256:{}", vtcode_commons::utils::calculate_sha256(truncated_content.as_bytes()));
+            let record_result = match request.session.workspace_runtime() {
+                Ok(Some(runtime)) => {
+                    runtime
+                        .local_tool_registry
+                        .file_ops_tool()
+                        .record_read_content_hash_if_matches(&path, &expected_hash)
+                        .await
+                }
+                Ok(None) => {
+                    self.local_tool_registry
+                        .file_ops_tool()
+                        .record_read_content_hash_if_matches(&path, &expected_hash)
+                        .await
+                }
+                Err(error) => Err(error),
+            };
+            match record_result {
+                Ok(Some(content_hash)) => json!(content_hash),
+                Ok(None) => {
+                    warn!(path = ?path, "ACP read content does not match the on-disk file version");
+                    Value::Null
+                }
+                Err(error) => {
+                    warn!(%error, path = ?path, "Failed to capture ACP read file version");
+                    Value::Null
+                }
+            }
+        };
 
         let payload = json!({
             TOOL_RESPONSE_KEY_STATUS: TOOL_SUCCESS_LABEL,
