@@ -142,6 +142,10 @@ impl ToolRegistry {
         Ok(response)
     }
 
+    /// Canonicalise and deduplicate every path the patch can touch.
+    ///
+    /// Includes move and copy destinations, so leases and snapshots cover the
+    /// destination of a rename as well as its source.
     async fn patch_mutation_paths(&self, patch: &crate::tools::editing::Patch) -> Result<Vec<PathBuf>> {
         let mut paths = Vec::new();
         for path in crate::tools::apply_patch::patch_mutation_target_paths(patch) {
@@ -153,6 +157,11 @@ impl ToolRegistry {
         Ok(paths)
     }
 
+    /// Resolve each operation's source and destination to workspace paths.
+    ///
+    /// The guard hashes these rather than the raw patch text, so transport and
+    /// path aliases describe the same operation. A move to the same path is
+    /// recorded as having no destination.
     async fn canonical_patch_operations(
         &self,
         patch: &crate::tools::editing::Patch,
@@ -227,6 +236,11 @@ impl ToolRegistry {
             .collect()
     }
 
+    /// Snapshot every mutation path before any planning or mutation happens.
+    ///
+    /// These snapshots feed both the `expected_content_hash` precondition and
+    /// the no-op guard's `before` state, so they must be taken before the
+    /// patch is applied.
     async fn capture_patch_paths(&self, mutation_paths: &[PathBuf]) -> Result<Vec<CapturedPatchPath>> {
         let mut captured = Vec::with_capacity(mutation_paths.len());
         for path in mutation_paths {
