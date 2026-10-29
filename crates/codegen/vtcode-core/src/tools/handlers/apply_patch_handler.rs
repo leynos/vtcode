@@ -455,7 +455,6 @@ mod tests {
     use crate::tools::handlers::tool_handler::{Constrained, ShellEnvironmentPolicy, TurnContext};
     #[cfg(unix)]
     use std::sync::Arc;
-    #[cfg(unix)]
     use tempfile::TempDir;
 
     #[test]
