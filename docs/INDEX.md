@@ -35,6 +35,8 @@ Last reviewed: 2026-08-28
 - [Config Field Reference](config/CONFIG_FIELD_REFERENCE.md) - Field-level
   schema reference.
 - [Tool Specifications](tools/TOOL_SPECS.md) - Canonical tool surface reference.
+- [Patch Safety](guides/patch-safety.md) - File-version preconditions and the
+  repeated no-op guard for `apply_patch`.
 - [AI Tool Surface Migration](development/ai-tool-surface-migration.md) -
   Breaking-change notes for the Codex-style default tools.
 - [Web Search Tool](tools/web_search.md) - Web search configuration and guard
