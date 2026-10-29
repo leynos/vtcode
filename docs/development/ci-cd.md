@@ -102,8 +102,9 @@ For the complete local Make gate and target list, see the
 
 **Triggers:**
 
-- Push and PR to `main` on `.rs`, `.toml`, `.lock`, `scripts/`,
-  `.github/workflows/`
+- Manual `workflow_dispatch` for a selected branch or tag
+- Push and PR on `.rs`, `.toml`, `.lock`, `scripts/`, and
+  `.github/workflows/` paths; neither trigger is restricted to `main`
 
 **Jobs:**
 
