@@ -5,6 +5,7 @@ use crate::tools::exec_session::ExecSessionManager;
 use anyhow::Context;
 use tokio::sync::watch;
 
+#[cfg(unix)]
 const HARNESS_COMPLETION_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Holds the crate-visible pipe activity signal beside the session being observed.
