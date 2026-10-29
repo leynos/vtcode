@@ -187,3 +187,6 @@ mod configuration;
 mod metadata;
 #[path = "session_state_tests/workspace.rs"]
 mod workspace;
+
+#[path = "session_state/tests/rejected_compaction_tests.rs"]
+mod rejected_compaction_tests;

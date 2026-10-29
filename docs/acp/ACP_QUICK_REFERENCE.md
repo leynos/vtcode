@@ -74,6 +74,11 @@ and is emitted through standard `tool_call` and `tool_call_update` updates. The
 updates carry `_meta.lody.activity` for token counts, duration, and failure
 details.
 
+Compaction preserves the complete initial task prompt and latest user steering
+regardless of tool-message count. If those messages cannot fit the model's
+context budget, compaction reports an error and keeps the original history
+intact.
+
 HTTP 429 notices include configured provider quota headers, preserving
 per-minute, per-second, and per-request units. `Retry-After` and configured
 reset intervals set a minimum for exponential back-off; missing headers are

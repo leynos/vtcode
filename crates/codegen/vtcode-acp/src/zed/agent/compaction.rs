@@ -68,6 +68,25 @@ pub(super) struct CompactionRequest<'a> {
     pub(super) tools: Option<&'a Arc<Vec<ToolDefinition>>>,
 }
 
+/// Validate the candidate, including resolved prompt and tool overhead, before
+/// the caller publishes live history or writes its checkpoint.
+fn admit_compacted_history(
+    history: &[Message],
+    prompt_tokens: usize,
+    original_history_tokens: usize,
+    admission_budget: Option<usize>,
+) -> Result<usize> {
+    let compacted_prompt_tokens = prompt_tokens
+        .saturating_sub(original_history_tokens)
+        .saturating_add(history.iter().map(Message::estimate_tokens).sum::<usize>());
+    if admission_budget.is_some_and(|budget| compacted_prompt_tokens >= budget) {
+        anyhow::bail!(
+            "ACP compaction reduced the prompt from an estimated {prompt_tokens} to {compacted_prompt_tokens} tokens, which still exceeds its safe provider admission budget"
+        );
+    }
+    Ok(compacted_prompt_tokens)
+}
+
 impl ZedAgent {
     pub(super) async fn maybe_compact_session(&self, request: CompactionRequest<'_>) -> Result<bool> {
         let CompactionRequest { session, provider, runtime, model, tools } = request;
@@ -96,6 +115,7 @@ impl ZedAgent {
         }
         let compaction_result: Result<bool> = async {
             let original_len = snapshot.history.len();
+            let original_history_tokens = snapshot.history.iter().map(Message::estimate_tokens).sum();
             let attempt = self
                 .run_compaction(CompactionRun {
                     session,
@@ -116,8 +136,8 @@ impl ZedAgent {
                     session,
                     thread: attempt.thread,
                     history: attempt.history,
-                    tools,
                     decision,
+                    original_history_tokens,
                 })
                 .await?;
             info!(
@@ -229,7 +249,19 @@ impl ZedAgent {
     }
 
     async fn commit_compacted_history(&self, commit: CompactionCommit<'_>) -> Result<usize> {
-        let CompactionCommit { session, thread, history, tools, decision } = commit;
+        let CompactionCommit {
+            session,
+            thread,
+            history,
+            decision,
+            original_history_tokens,
+        } = commit;
+        let compacted_prompt_tokens = admit_compacted_history(
+            &history,
+            decision.prompt_tokens,
+            original_history_tokens,
+            decision.admission_budget,
+        )?;
         thread.replace_messages(history);
         if let Err(error) = self.checkpoint_session(session).await {
             log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
@@ -237,13 +269,6 @@ impl ZedAgent {
                 operation = "session_checkpoint",
                 error_category = "archive_write_failed",
                 "Failed to persist compacted ACP session checkpoint"
-            );
-        }
-        let compacted_prompt_tokens = estimated_prompt_tokens(&self.resolved_messages(session)?, tools);
-        if decision.is_over_admission_budget(compacted_prompt_tokens) {
-            anyhow::bail!(
-                "ACP compaction reduced the prompt from an estimated {} to {compacted_prompt_tokens} tokens, which still exceeds its safe provider admission budget",
-                decision.prompt_tokens
             );
         }
         Ok(compacted_prompt_tokens)
@@ -329,8 +354,8 @@ struct CompactionCommit<'a> {
     session: &'a SessionHandle,
     thread: ThreadRuntimeHandle,
     history: Vec<Message>,
-    tools: Option<&'a Arc<Vec<ToolDefinition>>>,
     decision: CompactionDecision,
+    original_history_tokens: usize,
 }
 
 async fn run_pre_compact_hooks(

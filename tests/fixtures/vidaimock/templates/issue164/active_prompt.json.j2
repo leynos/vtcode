@@ -1,0 +1,16 @@
+{% set request_text = json | json_encode %}
+{% set step = headers["x-issue164-step"] | int %}
+{% if headers["x-issue164-summary"] == "true" %}
+{% if "ISSUE164_WORK" in request_text and ("fix/issue-164-preserve-complete-original-task-through-repeated-local-compaction" in request_text or "ISSUE164_SUMMARY" in request_text) %}
+{% set content = "ISSUE164_SUMMARY: Inspecting the ACP compaction call graph and read-only workspace listings. ISSUE164_WORK has established the exact original task and its acceptance criteria. Continue checking protocol-safe tool history and persisted session recovery." %}
+{% else %}
+{% set content = "ISSUE164_EMPTY_SUMMARY_INPUT" %}
+{% endif %}
+{"id":"issue164-summary","object":"chat.completion","created":1788606498,"model":"wire-model","choices":[{"index":0,"message":{"role":"assistant","content":{{ content | json_encode | safe }}},"finish_reason":"stop"}]}
+{% elif "ISSUE164_ACCEPTANCE_KEEP_THIS_EXACT_SUFFIX_7f2c6a" not in request_text %}
+{"id":"issue164-lost","object":"chat.completion","created":1788606498,"model":"wire-model","choices":[{"index":0,"message":{"role":"assistant","content":"ISSUE164_TASK_LOST"},"finish_reason":"stop"}]}
+{% elif step < 12 %}
+{"id":"issue164-work-{{ step }}","object":"chat.completion","created":1788606498,"model":"wire-model","choices":[{"index":0,"message":{"role":"assistant","content":"{% for item in range(end=400) %}ISSUE164_WORK phase {{ step }} observation {{ item }}: Inspect the ACP handler, preserve the complete task, correlate tool calls with results, and verify persisted recovery before reporting success. {% endfor %}","tool_calls":[{"id":"issue164-list-{{ step }}","type":"function","function":{"name":"list_files","arguments":"{\"path\":\"\"}"}}]},"finish_reason":"tool_calls"}]}
+{% else %}
+{"id":"issue164-complete","object":"chat.completion","created":1788606498,"model":"wire-model","choices":[{"index":0,"message":{"role":"assistant","content":"ISSUE164_COMPLETE: the full task and its acceptance criteria remain available."},"finish_reason":"stop"}]}
+{% endif %}

@@ -85,6 +85,23 @@ The `vtcode-llm` Chat and `vtcode-acp` Responses tests require VidaiMock 0.3.1.
 Each test checks that version on `PATH`, binds the mock to an ephemeral
 localhost port, and terminates the child process after the scenario.
 
+The issue 164 regression uses the
+[provider fixture](providers/issue164-active-prompt.yaml) and the
+[active-prompt response template](templates/issue164/active_prompt.json.j2)
+through the in-repository ACP duplex harness. It submits a long task, completes
+twelve read-only tool exchanges, and checks the exact task in HTTP requests
+after repeated automatic local compaction and a fresh runtime's `session/load`.
+The observation text exceeds the old 20,000-token continuity allowance; the
+test checks its BPE token estimate. Summary requests must contain actual task
+and work history. A recording proxy adds deterministic sequence headers; all
+task and summary responses still come from isolated VidaiMock. This regression
+accepts VidaiMock 0.3.1 and 0.4.0 on `PATH`.
+
+```bash
+cargo nextest run -p vtcode-acp --run-ignored only \
+  vidaimock_preserves_complete_task_across_repeated_auto_compaction_and_reload
+```
+
 All scenario files use VidaiMock's exact configuration sections and keys:
 
 ```toml

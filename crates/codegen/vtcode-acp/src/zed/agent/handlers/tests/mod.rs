@@ -4,6 +4,7 @@ use super::prompt::*;
 use super::provider::*;
 use super::*;
 
+mod active_prompt_tests;
 mod archive_test_support;
 mod client;
 mod prompt;

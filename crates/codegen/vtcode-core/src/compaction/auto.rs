@@ -233,6 +233,7 @@ async fn try_two_pass_with_prefire(
     history: &[Message],
     config: &CompactionConfig,
 ) -> Result<Option<Vec<Message>>> {
+    crate::compaction::ensure_protected_user_budget(history, provider, model)?;
     let cache = match prefire.take() {
         Some(cache) => cache,
         None => return Ok(None),
@@ -254,6 +255,15 @@ async fn try_two_pass_with_prefire(
     let tail = &history[cache.prefix_len..];
     let prompt = build_summary_prompt(tail, &config.summary_prompt);
     let pass2_history = crate::compaction::two_pass::build_two_pass_pass2_history(prefix, tail, &cache.note1, &prompt);
+
+    // The cached note and duplicated tail prompt can exceed the model window.
+    // Fall back to the bounded single-pass path instead of sending a doomed
+    // pass-2 request or clipping its user-carried instructions.
+    if crate::compaction::compaction_history_budget(provider, model)
+        .is_some_and(|budget| pass2_history.iter().map(Message::estimate_tokens).sum::<usize>() > budget)
+    {
+        return Ok(None);
+    }
 
     let request = LLMRequest {
         messages: std::sync::Arc::new(pass2_history),
@@ -277,7 +287,7 @@ async fn try_two_pass_with_prefire(
         true,
     );
 
-    Ok(Some(crate::compaction::bound_compacted_history_to_context(compacted, provider, model)))
+    Ok(Some(crate::compaction::bound_compacted_history_to_context(compacted, provider, model)?))
 }
 
 #[cfg(test)]

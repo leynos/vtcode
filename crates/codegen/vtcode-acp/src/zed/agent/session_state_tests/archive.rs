@@ -108,7 +108,7 @@ struct SessionListProjection<TCursor> {
     next_cursor: TCursor,
 }
 
-fn archived_listing(identifier: &str, workspace: &Path, prompt: &str) -> SessionListing {
+pub(super) fn archived_listing(identifier: &str, workspace: &Path, prompt: &str) -> SessionListing {
     session_listing(
         identifier,
         workspace,
