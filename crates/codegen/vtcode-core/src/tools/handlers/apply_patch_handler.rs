@@ -465,6 +465,9 @@ mod tests {
     use super::*;
     use crate::exec_policy::RejectConfig;
     use crate::tools::handlers::adapter::DefaultToolSession;
+    // Only the `#[cfg(unix)]` symlink-escape test builds a `SandboxAttempt`, so
+    // importing these unconditionally fails Windows' `-D warnings` build.
+    #[cfg(unix)]
     use crate::tools::handlers::sandboxing::{SandboxConfig, SandboxType};
     use crate::tools::handlers::tool_handler::{Constrained, ShellEnvironmentPolicy, TurnContext};
     use std::sync::Arc;
