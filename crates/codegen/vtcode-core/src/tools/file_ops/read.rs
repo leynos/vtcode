@@ -310,6 +310,28 @@ impl FileOpsTool {
         content_hash_from_snapshot(&snapshot, path)
     }
 
+    /// Record a read version only when the on-disk bytes still match `expected_hash`.
+    ///
+    /// ACP clients can return unsaved buffer content that never reached the disk, so
+    /// a hash sampled locally may describe bytes the model never saw. Recording only
+    /// on a match keeps the edited-file baseline honest; on a mismatch nothing is
+    /// recorded and the caller reports an absent version.
+    pub async fn record_read_content_hash_if_matches(
+        &self,
+        path: &Path,
+        expected_hash: &str,
+    ) -> Result<Option<String>> {
+        use crate::tools::edited_file_monitor::EditedFileMonitor;
+
+        let snapshot = EditedFileMonitor::current_snapshot(path).await?;
+        let current_hash = content_hash_from_snapshot(&snapshot, path)?;
+        if current_hash != expected_hash {
+            return Ok(None);
+        }
+        self.edited_file_monitor.record_read_snapshot(path, snapshot)?;
+        Ok(Some(current_hash))
+    }
+
     /// Capture a read version without certifying content the caller never returned.
     ///
     /// The content is read before the version is captured, so a concurrent writer can
@@ -319,11 +341,18 @@ impl FileOpsTool {
     /// Comparing the unrecorded version before and after the read turns that race into
     /// a hard error. The snapshot is recorded only on a match, so a failed comparison
     /// leaves the previously read version in place and fails safe.
-    pub async fn capture_read_content_hash_consistent(&self, path: &Path) -> Result<String> {
+    ///
+    /// `before` must be captured before the content is read; sampling it here would
+    /// let a write that lands during the read move both samples to the same new
+    /// revision and certify bytes the model never saw.
+    pub(crate) async fn capture_read_content_hash_consistent(
+        &self,
+        path: &Path,
+        before: &crate::tools::edited_file_monitor::FileSnapshot,
+    ) -> Result<String> {
         use crate::tools::edited_file_monitor::EditedFileMonitor;
 
-        let before = EditedFileMonitor::current_snapshot(path).await?;
-        let before_hash = content_hash_from_snapshot(&before, path)?;
+        let before_hash = content_hash_from_snapshot(before, path)?;
         let after = EditedFileMonitor::current_snapshot(path).await?;
         let after_hash = content_hash_from_snapshot(&after, path)?;
         if before_hash != after_hash {
@@ -430,6 +459,10 @@ impl FileOpsTool {
                         let requested_path = self.workspace_relative_display(&canonical);
                         let handler = ReadFileHandler;
                         let requested_offset = read_args.offset;
+                        // Sample the version before the content is read so a write
+                        // during the read cannot move both samples.
+                        let before_snapshot =
+                            crate::tools::edited_file_monitor::EditedFileMonitor::current_snapshot(&canonical).await?;
                         let ReadFileOutcome {
                             content,
                             lines_read: lines_returned,
@@ -444,7 +477,8 @@ impl FileOpsTool {
                         } else {
                             content.clone()
                         };
-                        let content_hash = self.capture_read_content_hash_consistent(&canonical).await?;
+                        let content_hash =
+                            self.capture_read_content_hash_consistent(&canonical, &before_snapshot).await?;
 
                         let mut builder = ToolResponseBuilder::new(tools::READ_FILE)
                             .success()
@@ -551,6 +585,10 @@ impl FileOpsTool {
                 || input.offset_lines.is_some()
                 || input.page_size_lines.is_some();
 
+            // Sample the version before the content is read so a write during the
+            // read cannot move both samples.
+            let before_snapshot =
+                crate::tools::edited_file_monitor::EditedFileMonitor::current_snapshot(&canonical).await?;
             let (content, metadata, truncated, line_truncated) = if use_paging {
                 self.read_file_paged(&canonical, &input).await?
             } else {
@@ -558,7 +596,7 @@ impl FileOpsTool {
                 let line_truncated = metadata.get("line_truncated").and_then(Value::as_bool).unwrap_or(false);
                 (content, metadata, truncated, line_truncated)
             };
-            let content_hash = self.capture_read_content_hash_consistent(&canonical).await?;
+            let content_hash = self.capture_read_content_hash_consistent(&canonical, &before_snapshot).await?;
 
             let mut builder = ToolResponseBuilder::new(tools::READ_FILE)
                 .success()
