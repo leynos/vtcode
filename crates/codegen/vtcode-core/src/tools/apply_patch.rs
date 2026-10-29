@@ -33,6 +33,14 @@ pub struct DecodedApplyPatchInput {
 }
 pub const EXPECTED_CONTENT_HASH_ARG: &str = "expected_content_hash";
 
+/// Read and validate the `expected_content_hash` argument from raw tool arguments.
+///
+/// Accepts the canonical wire shape `sha256:<64 lower-case hexadecimal digits>`
+/// and nothing else, so a caller cannot smuggle in an upper-case or truncated
+/// digest that would silently never match. Returns `Ok(None)` when the argument
+/// is absent or `null`, `Ok(Some)` with the original string when it is valid,
+/// and an error describing the accepted shape otherwise. Callers use this to
+/// reject a malformed precondition before touching the workspace.
 pub fn expected_content_hash_from_args(args: &Value) -> anyhow::Result<Option<&str>> {
     let Some(value) = args.get(EXPECTED_CONTENT_HASH_ARG).filter(|value| !value.is_null()) else {
         return Ok(None);
@@ -53,6 +61,11 @@ pub fn expected_content_hash_from_args(args: &Value) -> anyhow::Result<Option<&s
     Ok(Some(hash))
 }
 
+/// List the paths whose pre-patch content gates the patch.
+///
+/// Only `UpdateFile` and `DeleteFile` read existing content, so `AddFile`
+/// contributes nothing and is skipped. The result is sorted and deduplicated so
+/// that callers that hash or compare it get an order-independent answer.
 pub fn patch_precondition_source_paths(patch: &Patch) -> Vec<&str> {
     patch
         .operations()
