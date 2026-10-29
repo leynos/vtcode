@@ -361,17 +361,27 @@ pub(super) async fn large_compaction_session(agent: &ZedAgent, workspace: &std::
         .session_handle(&response.session_id)
         .expect("ACP session lookup")
         .expect("new ACP session handle");
+    // Protected original/latest instructions must fit; historical observations
+    // create pressure so these tests reach summary generation and ACP admission.
     for index in 0..12 {
+        agent
+            .push_message(&session, Message::user(format!("Inspect historical context {index}.")))
+            .expect("append historical user request");
         agent
             .push_message(
                 &session,
-                Message::user(format!("large user turn {index} {}", "older context ".repeat(12_000))),
+                Message::assistant(format!("Historical observation {index}: {}", "older context ".repeat(400))),
             )
-            .expect("append large user history");
-        agent
-            .push_message(&session, Message::assistant(format!("large assistant turn {index}")))
             .expect("append large assistant history");
     }
+    agent
+        .push_message(&session, Message::user("Continue the original task using the observed context.".to_string()))
+        .expect("append small active task");
+    let history = session.data.lock().expect("compaction fixture history").thread.messages();
+    assert!(history.iter().map(Message::estimate_tokens).sum::<usize>() > 8_192);
+    let original_task = history.first().expect("original task");
+    let active_task = history.last().expect("active task");
+    assert!(original_task.estimate_tokens() + active_task.estimate_tokens() < 1_024);
     session
 }
 

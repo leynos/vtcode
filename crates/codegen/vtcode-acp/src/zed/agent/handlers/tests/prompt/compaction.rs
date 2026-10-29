@@ -275,7 +275,7 @@ async fn prompt_over_budget_fails_closed_when_compaction_stays_over_budget() {
         .await
         .expect_err("over-budget compacted prompt must not continue to the provider answer");
 
-    assert!(error.to_string().contains("still exceeds its safe provider admission budget"));
+    assert!(error.to_string().contains("still exceeds its safe provider admission budget"), "{error:#}");
     let requests = requests.lock().expect("compaction requests");
     assert_eq!(requests.len(), 1, "only the compaction request may reach the provider");
     assert!(!requests[0].stream, "the provider request must be compaction, not an answer turn");

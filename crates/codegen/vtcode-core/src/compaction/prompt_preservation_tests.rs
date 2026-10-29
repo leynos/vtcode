@@ -179,6 +179,48 @@ async fn original_task_and_latest_steering_keep_identity_and_chronology() {
     assert!(requests[0].messages[0].estimate_tokens() < provider.context_size, "summary request must fit too");
 }
 
+#[tokio::test]
+async fn prefix_user_before_continuity_tail_stays_subject_to_optional_budget() {
+    let provider = provider(1_000_000);
+    let original = task_message("Original task END-ORIGINAL-TASK".into(), "original");
+    let optional =
+        task_message(format!("{}END-OPTIONAL-STEERING", "historical instruction ".repeat(30_000)), "historical");
+    let latest = task_message("Latest steering END-LATEST-TURN".into(), "latest");
+    let history = vec![
+        original.clone(),
+        Message::assistant("Earlier completed work".into()),
+        optional.clone(),
+        Message::assistant("Discarded turn work: INTERMEDIATE-VERIFICATION".into()),
+        latest.clone(),
+        Message::assistant("Latest completed work".into()),
+    ];
+    let config = CompactionConfig {
+        always_summarize: true,
+        retained_user_message_tokens: 64,
+        ..Default::default()
+    };
+    assert!(optional.estimate_tokens() > CONTINUITY_TAIL_TARGET_TOKENS);
+    assert!(optional.estimate_tokens() > config.retained_user_message_tokens);
+
+    let compacted = compact_history_manual(&provider, "test", &history, &config, &Default::default())
+        .await
+        .expect("optional history is summarized")
+        .0;
+
+    let users = compacted
+        .iter()
+        .filter(|message| message.role == MessageRole::User)
+        .collect::<Vec<_>>();
+    assert_eq!(users, vec![&original, &latest], "prefix steering must not gain latest-user protection");
+    let requests = provider.requests.lock().expect("requests lock");
+    let summary_input = requests[0].messages[0].content.as_text();
+    assert!(summary_input.contains("END-OPTIONAL-STEERING"), "the omitted user turn still reaches summarization");
+    assert!(
+        summary_input.contains("INTERMEDIATE-VERIFICATION"),
+        "discarded turn work still reaches summarization"
+    );
+}
+
 #[test]
 fn native_normalization_restores_full_source_instructions_with_duplicate_intents() {
     let original = task_message("Keep the full instructions END-SENTINEL".into(), "original");
