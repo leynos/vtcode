@@ -173,8 +173,18 @@ Cargo.toml so the size-optimized profiles are actually applied.
 
 **Jobs:**
 
-- **Code Coverage**: `cargo tarpaulin` with XML output
-- **Coverage Report**: Uploads to code coverage service
+- **Code Coverage**: Runs `cargo llvm-cov nextest` on the locked workspace
+  and writes LCOV output to `lcov.info`.
+- **Coverage Report**: Uploads `lcov.info` to Codecov.
+
+To reproduce the coverage job locally, install `llvm-tools-preview`,
+`cargo-llvm-cov`, and `cargo-nextest`, then run:
+
+```bash
+cargo llvm-cov nextest --locked --workspace --lcov --output-path lcov.info
+```
+
+This writes the same LCOV file that the workflow uploads.
 
 ### 5. Release (`release.yml`)
 
@@ -293,7 +303,7 @@ To set up the development environment manually:
 
 ```bash
 # Install required components
-rustup component add rustfmt clippy
+rustup component add rustfmt clippy llvm-tools-preview
 
 # Install additional tools
 cargo install cargo-audit      # Security auditing
@@ -301,7 +311,8 @@ cargo install cargo-outdated   # Dependency checking
 cargo install cargo-udeps      # Unused dependencies
 cargo install cargo-msrv       # MSRV checking
 cargo install cargo-license    # License checking
-cargo install cargo-tarpaulin  # Code coverage
+cargo install cargo-llvm-cov   # Code coverage
+cargo install cargo-nextest    # Test runner used by coverage
 ```
 
 ## Best Practices
