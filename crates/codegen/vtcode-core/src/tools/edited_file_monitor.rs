@@ -1,3 +1,12 @@
+//! Per-path read/mutation bookkeeping for edited files.
+//!
+//! The monitor tracks the most recent version of each file the agent has read or
+//! written, so `apply_patch` can reject a patch built from stale content and so a
+//! repeated identical no-op patch is refused rather than silently re-applied. It
+//! owns the `FileSnapshot` type, the mutation leases that serialise concurrent
+//! writes through `ToolRegistry`, and the conflict-audit trail surfaced to the
+//! model when a write is rejected.
+
 use crate::audit::{FileConflictAuditEvent, FileConflictAuditLog};
 use crate::config::PermissionsConfig;
 use crate::tools::file_ops::{build_diff_preview, diff_preview_error_skip};

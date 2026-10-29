@@ -1987,6 +1987,37 @@ async fn identical_no_op_patch_escalates_across_registry_clones_without_writing(
 }
 
 #[tokio::test]
+async fn repeated_updates_to_one_path_apply_in_order_instead_of_reporting_a_no_op() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let path = temp_dir.path().join("chain.txt");
+    fs::write(&path, "alpha\nbeta\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+    // Both operations target the same file. Planning every operation against the
+    // pre-patch snapshot made the planned final state equal the original, so the
+    // guard reported a no-op and the productive first update never ran.
+    let patch = concat!(
+        "*** Begin Patch\n",
+        "*** Update File: chain.txt\n",
+        "@@\n",
+        "-alpha\n",
+        "+ALPHA\n",
+        "*** Update File: chain.txt\n",
+        "@@\n",
+        "-beta\n",
+        "+beta\n",
+        "*** End Patch\n",
+    );
+
+    let response = registry.execute_tool(tools::APPLY_PATCH, json!({ "input": patch })).await?;
+
+    assert_eq!(response["success"], true);
+    assert!(response.get("no_op").is_none(), "chained updates must not be reported as a no-op");
+    assert_eq!(fs::read_to_string(&path)?, "ALPHA\nbeta\n");
+    Ok(())
+}
+
+#[tokio::test]
 async fn apply_patch_hash_rejects_malformed_and_invalid_scopes() -> Result<()> {
     let temp_dir = TempDir::new()?;
     fs::write(temp_dir.path().join("one.txt"), "one\n")?;
