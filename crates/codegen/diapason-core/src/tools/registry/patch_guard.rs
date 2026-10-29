@@ -63,12 +63,23 @@ impl NoOpPatchGuard {
         }
     }
 
+    /// Forget the previous signature so the next no-op starts the ladder again.
+    ///
+    /// Called whenever a patch actually changes something: the ladder exists to
+    /// catch repeats of one stuck request, not identical requests separated by
+    /// productive work.
     fn reset(&mut self) {
         self.last_signature = None;
         self.occurrence = 0;
     }
 }
 
+/// Hash the identity of a no-op request.
+///
+/// Covers the patch contents, the canonicalised paths, and the before/after
+/// state of every touched path, so two requests share a signature only when
+/// repeating one would be genuinely identical. See [`encode_patch`] and
+/// [`encode_states`] for the encoding.
 fn patch_signature(
     patch: &Patch,
     canonical_operations: &[CanonicalPatchOperation],
@@ -82,6 +93,10 @@ fn patch_signature(
     format!("sha256:{}", vtcode_commons::utils::calculate_sha256(encoded.as_bytes()))
 }
 
+/// Append the patch's operations to the signature encoding.
+///
+/// Every field is length-prefixed so concatenation cannot alias: without it
+/// `("ab", "c")` and `("a", "bc")` would encode identically.
 fn encode_patch(encoded: &mut String, patch: &Patch, canonical_operations: &[CanonicalPatchOperation]) {
     debug_assert_eq!(patch.operations().len(), canonical_operations.len());
     encoded.push_str(&patch.operations().len().to_string());
@@ -124,6 +139,10 @@ fn encode_patch(encoded: &mut String, patch: &Patch, canonical_operations: &[Can
     }
 }
 
+/// Append one side of the before/after state to the signature encoding.
+///
+/// States are sorted by path so that the order a patch happens to list its
+/// operations in cannot change the signature.
 fn encode_states(encoded: &mut String, marker: char, states: &[PatchPathState]) {
     encoded.push(marker);
     let mut states = states.to_vec();
@@ -135,6 +154,7 @@ fn encode_states(encoded: &mut String, marker: char, states: &[PatchPathState]) 
     }
 }
 
+/// Append one length-prefixed field to the signature encoding.
 fn push_field(encoded: &mut String, value: &str) {
     encoded.push_str(&value.len().to_string());
     encoded.push(':');
