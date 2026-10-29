@@ -21,6 +21,11 @@ pub(crate) fn hash_base_system_prompt(base_prompt: &str) -> u64 {
 pub(crate) struct IncrementalSystemPrompt {
     /// The cached system prompt content
     cached_prompt: Arc<RwLock<CachedPrompt>>,
+    /// Home directory used for user-scope instruction discovery.
+    ///
+    /// Production snapshots `dirs::home_dir()` at construction. Tests pass
+    /// `None` so instruction assembly never reads the developer's real home.
+    instruction_home: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -49,12 +54,22 @@ struct CachedPrompt {
 
 impl IncrementalSystemPrompt {
     pub(crate) fn new() -> Self {
+        Self::with_instruction_home(dirs::home_dir())
+    }
+
+    /// Build a prompt builder with an explicit user-scope instruction home.
+    ///
+    /// Pass `None` to disable user-scope instruction discovery. Production uses
+    /// [`Self::new`]; tests use this constructor so prompt contents do not vary
+    /// with the machine's home directory.
+    pub(crate) fn with_instruction_home(instruction_home: Option<PathBuf>) -> Self {
         Self {
             cached_prompt: Arc::new(RwLock::new(CachedPrompt {
                 content: String::new(),
                 base_prompt_hash: 0,
                 context_hash: 0,
             })),
+            instruction_home,
         }
     }
 
@@ -127,15 +142,20 @@ impl IncrementalSystemPrompt {
         agent_config: Option<&vtcode_config::core::AgentConfig>,
     ) -> String {
         use std::fmt::Write;
-        use vtcode_core::project_doc::build_instruction_appendix_with_context;
+        use vtcode_core::project_doc::build_instruction_appendix_with_context_and_home;
 
         let mut prompt = String::with_capacity(base_system_prompt.len() + 1024);
         prompt.push_str(base_system_prompt);
 
         if let Some(cfg) = agent_config {
             if let Some(active_dir) = context.active_instruction_directory.as_deref()
-                && let Some(unified) =
-                    build_instruction_appendix_with_context(cfg, active_dir, &context.instruction_context_paths).await
+                && let Some(unified) = build_instruction_appendix_with_context_and_home(
+                    cfg,
+                    active_dir,
+                    &context.instruction_context_paths,
+                    self.instruction_home.as_deref(),
+                )
+                .await
             {
                 let _ = writeln!(prompt, "\n# INSTRUCTIONS\n{unified}");
             }
