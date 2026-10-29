@@ -1,7 +1,7 @@
 //! Tests workspace runtime caching, discovery, and optional setup outcomes.
 use super::{
-    OptionalSetupOutcome, OptionalWorkspaceSetupOutcomes, WorkspaceRuntimeCache, WorkspaceRuntimeLookup,
-    discover_session_primary_agents, preserve_optional_workspace_setup_outcomes,
+    OptionalSetupFailure, OptionalSetupOutcome, OptionalWorkspaceSetupOutcomes, WorkspaceRuntimeCache,
+    WorkspaceRuntimeLookup, discover_session_primary_agents, preserve_optional_workspace_setup_outcomes,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -33,9 +33,7 @@ fn workspace_agent_discovery_failure_keeps_its_stage_without_exposing_workspace_
 #[test]
 fn optional_workspace_setup_outcomes_preserve_component_degradation() {
     let outcomes = preserve_optional_workspace_setup_outcomes(
-        OptionalSetupOutcome::AttachedWithDegradation(vec![
-            "failed to restore background subagents: archive unavailable".to_string(),
-        ]),
+        OptionalSetupOutcome::AttachedWithDegradation(vec![OptionalSetupFailure::BackgroundSubagentRestoreFailed]),
         OptionalSetupOutcome::DisabledByConfiguration,
     );
 
@@ -43,7 +41,7 @@ fn optional_workspace_setup_outcomes_preserve_component_degradation() {
         outcomes,
         OptionalWorkspaceSetupOutcomes {
             subagent_controller: OptionalSetupOutcome::AttachedWithDegradation(vec![
-                "failed to restore background subagents: archive unavailable".to_string(),
+                OptionalSetupFailure::BackgroundSubagentRestoreFailed,
             ]),
             mcp_client: OptionalSetupOutcome::DisabledByConfiguration,
         }

@@ -3,7 +3,9 @@ use super::super::helpers::build_available_commands;
 use super::ZedAgent;
 use crate::acp;
 use crate::acp::Error as SdkError;
+use crate::zed::agent::log_suppressed_error;
 use crate::zed::connection::ConnectionHandle;
+use crate::zed::constants::SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE;
 use anyhow::Result;
 use vtcode_core::prompts::discover_prompt_templates;
 use vtcode_core::ui::slash::visible_commands;
@@ -30,8 +32,8 @@ impl ZedAgent {
             })?
             .map(|session| {
                 session.workspace_runtime().map_err(|error| {
-                    SdkError::internal_error()
-                        .data(format!("Failed to read workspace runtime for ACP session {session_id}: {error:#}"))
+                    log_suppressed_error(&error, "session_workspace_runtime_read", "session_lock_unavailable");
+                    SdkError::internal_error().data(SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE)
                 })
             })
             .transpose()?;

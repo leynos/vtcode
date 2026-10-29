@@ -1,6 +1,8 @@
 //! Applies client-selected configuration changes to an active ACP session.
 use super::super::ZedAgent;
 use crate::acp;
+use crate::zed::agent::log_suppressed_error;
+use crate::zed::constants::SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE;
 use crate::zed::types::SessionHandle;
 use vtcode_core::config::types::ReasoningEffortLevel;
 
@@ -60,12 +62,14 @@ impl ZedAgent {
     fn set_primary_agent_option(
         &self,
         session: &SessionHandle,
-        session_id: &acp::SessionId,
+        // Retained for the caller's session scope; the failure detail that used
+        // to be rendered here is now suppressed behind a stable reason code.
+        _session_id: &acp::SessionId,
         value: &str,
     ) -> Result<bool, acp::Error> {
         let workspace_runtime = session.workspace_runtime().map_err(|error| {
-            acp::Error::internal_error()
-                .data(format!("Failed to read workspace runtime for ACP session {session_id}: {error:#}"))
+            log_suppressed_error(&error, "session_workspace_runtime_read", "session_lock_unavailable");
+            acp::Error::internal_error().data(SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE)
         })?;
         let primary_agents = workspace_runtime
             .as_ref()

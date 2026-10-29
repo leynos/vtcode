@@ -9,13 +9,19 @@ use crate::tooling::{
 use anyhow::Result;
 use serde_json::{Value, json};
 use std::path::PathBuf;
-use tracing::warn;
 use vtcode_core::config::constants::tools;
 use vtcode_core::tools::file_ops::FileOpsTool;
 use vtcode_core::tools::traits::Tool;
 use vtcode_core::utils::path::ensure_path_within_workspace;
 
+use crate::zed::agent::log_suppressed_error;
+use crate::zed::constants::{
+    SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE, TOOL_LIST_FILES_FAILURE, TOOL_LIST_FILES_UNAVAILABLE_FAILURE,
+};
 use crate::zed::types::SessionHandle;
+
+/// Operation label for every log event emitted by this ACP file-listing boundary.
+const LIST_FILES_OPERATION: &str = "list_files";
 
 impl ZedAgent {
     pub(super) async fn run_list_files_inner(&self, args: &Value) -> Result<ToolExecutionReport, String> {
@@ -30,7 +36,7 @@ impl ZedAgent {
         let runtime = match session.workspace_runtime() {
             Ok(Some(runtime)) => runtime,
             Ok(None) => return self.run_list_files_inner(args).await,
-            Err(error) => return Err(format!("Failed to read ACP session workspace runtime: {error:#}")),
+            Err(error) => return Err(Self::report_list_files_runtime_failure(&error)),
         };
         self.run_list_files_for_tool(runtime.file_ops_tool.as_ref(), Some(session), args)
             .await
@@ -43,7 +49,14 @@ impl ZedAgent {
         args: &Value,
     ) -> Result<ToolExecutionReport, String> {
         let Some(tool) = tool else {
-            return Err("List files tool is unavailable".to_string());
+            tracing::warn!(
+                operation = LIST_FILES_OPERATION,
+                component = "list_files",
+                outcome = "failed",
+                error_category = "tool_unavailable",
+                "ACP list_files tool is unavailable for this session"
+            );
+            return Err(TOOL_LIST_FILES_UNAVAILABLE_FAILURE.to_string());
         };
 
         let resolved_path = self.resolve_list_files_path(session, args)?.unwrap_or_else(|| ".".into());
@@ -56,9 +69,16 @@ impl ZedAgent {
         let normalized_args = Value::Object(normalized_args);
 
         let listing = tool.execute(normalized_args).await.map_err(|error| {
-            let detail = error.to_string();
-            warn!(error = %detail, "Failed to execute list_files tool");
-            format!("Unable to list files: {detail}")
+            log_suppressed_error(&error, LIST_FILES_OPERATION, "listing_failed");
+            tracing::warn!(
+                operation = LIST_FILES_OPERATION,
+                component = "list_files",
+                outcome = "failed",
+                error_category = "listing_failed",
+                error_chain_depth = error.chain().count(),
+                "ACP list_files tool failed to list the workspace"
+            );
+            TOOL_LIST_FILES_FAILURE.to_string()
         })?;
 
         let content = Self::list_files_content(&listing);
@@ -95,14 +115,14 @@ impl ZedAgent {
             let workspace_runtime = match session {
                 Some(session) => session
                     .workspace_runtime()
-                    .map_err(|error| format!("Failed to read ACP session workspace runtime: {error:#}"))?,
+                    .map_err(|error| Self::report_list_files_runtime_failure(&error))?,
                 None => None,
             };
             let workspace_root = workspace_runtime
                 .as_ref()
                 .map_or_else(|| self.workspace_root(), |runtime| runtime.workspace_root.as_path());
             let normalized = ensure_path_within_workspace(&resolved, workspace_root)
-                .map_err(|_err| "list_files path must stay within the workspace".to_string())?;
+                .map_err(|_err| Self::report_list_files_path_escape())?;
 
             if normalized == workspace_root {
                 return Ok(Some(".".into()));
@@ -119,6 +139,37 @@ impl ZedAgent {
         }
 
         Ok(None)
+    }
+
+    /// Record why the session workspace runtime could not be read and return a
+    /// fixed client-facing failure.
+    ///
+    /// The underlying error is an `anyhow` chain whose context names the runtime
+    /// lock and whose sources may carry workspace paths, so only its depth is
+    /// published at warning level while the full chain stays at debug.
+    pub(super) fn report_list_files_runtime_failure(error: &anyhow::Error) -> String {
+        log_suppressed_error(error, LIST_FILES_OPERATION, "workspace_runtime_unavailable");
+        tracing::warn!(
+            operation = LIST_FILES_OPERATION,
+            component = "workspace_runtime",
+            outcome = "failed",
+            error_category = "workspace_runtime_unavailable",
+            error_chain_depth = error.chain().count(),
+            "ACP list_files could not read the session workspace runtime"
+        );
+        SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE.to_string()
+    }
+
+    /// Record a workspace-escape rejection without echoing the requested path.
+    pub(super) fn report_list_files_path_escape() -> String {
+        tracing::warn!(
+            operation = LIST_FILES_OPERATION,
+            component = "path_resolution",
+            outcome = "rejected",
+            error_category = "workspace_path_escape",
+            "ACP list_files rejected a path outside the trusted workspace"
+        );
+        "Invalid list_files uri value: path escapes the trusted workspace".to_string()
     }
 
     fn list_files_content(output: &Value) -> Vec<acp::ToolCallContent> {
@@ -195,5 +246,145 @@ impl ZedAgent {
             .take(TOOL_LIST_FILES_SUMMARY_MAX_ITEMS)
             .map(acp::ToolCallLocation::new)
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ZedAgent;
+    use crate::zed::constants::{
+        SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE, TOOL_LIST_FILES_FAILURE, TOOL_LIST_FILES_UNAVAILABLE_FAILURE,
+    };
+    use std::fmt::Write as FmtWrite;
+    use std::sync::{Arc, Mutex};
+    use tracing::field::{Field, Visit};
+    use tracing_subscriber::layer::{Context, SubscriberExt};
+    use tracing_subscriber::{Layer, Registry};
+
+    /// Collect every emitted log event so tests can assert on the exact fields
+    /// that reach the diagnostics pipeline.
+    #[derive(Clone, Default)]
+    struct LogCapture(Arc<Mutex<Vec<String>>>);
+
+    impl<S> Layer<S> for LogCapture
+    where
+        S: tracing::Subscriber + for<'lookup> tracing_subscriber::registry::LookupSpan<'lookup>,
+    {
+        fn on_event(&self, event: &tracing::Event<'_>, _context: Context<'_, S>) {
+            let mut fields = CapturedFields::default();
+            event.record(&mut fields);
+            self.0.lock().expect("log capture lock").push(fields.0);
+        }
+    }
+
+    #[derive(Default)]
+    struct CapturedFields(String);
+
+    impl Visit for CapturedFields {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            write!(&mut self.0, " {}={value:?}", field.name()).expect("write trace field");
+        }
+
+        fn record_str(&mut self, field: &Field, value: &str) {
+            write!(&mut self.0, " {}={value:?}", field.name()).expect("write trace field");
+        }
+
+        fn record_u64(&mut self, field: &Field, value: u64) {
+            write!(&mut self.0, " {}={value}", field.name()).expect("write trace field");
+        }
+    }
+
+    /// Run `run` with log capture installed and return its output plus the
+    /// events admitted at `level` and above.
+    fn capturing_at<T>(level: tracing_subscriber::filter::LevelFilter, run: impl FnOnce() -> T) -> (T, Vec<String>) {
+        let capture = LogCapture::default();
+        let events = Arc::clone(&capture.0);
+        let subscriber = Registry::default().with(level).with(capture);
+        let output = tracing::subscriber::with_default(subscriber, run);
+        let events = events.lock().expect("log capture lock").clone();
+        (output, events)
+    }
+
+    /// Capture at the default operator-visible severity.
+    fn capturing<T>(run: impl FnOnce() -> T) -> (T, Vec<String>) {
+        capturing_at(tracing_subscriber::filter::LevelFilter::WARN, run)
+    }
+
+    #[test]
+    fn runtime_failure_reports_a_fixed_reason_without_workspace_detail() {
+        let private_path = "/home/private/workspace/session-runtime.lock";
+        let error = anyhow::anyhow!("lock poisoned while reading {private_path}")
+            .context("reading the ACP session workspace runtime");
+
+        let (message, events) = capturing(|| ZedAgent::report_list_files_runtime_failure(&error));
+
+        assert_eq!(
+            message, SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE,
+            "the client-facing failure must be a fixed message"
+        );
+        assert!(!message.contains(private_path), "the failure must not echo workspace detail");
+
+        let captured = events.join("\n");
+        assert!(!captured.contains(private_path), "workspace paths must stay out of logs");
+        assert!(!captured.contains("lock poisoned"), "raw error text must stay out of logs");
+        assert!(captured.contains("operation=\"list_files\""));
+        assert!(captured.contains("component=\"workspace_runtime\""));
+        assert!(captured.contains("outcome=\"failed\""));
+        assert!(captured.contains("error_category=\"workspace_runtime_unavailable\""));
+        assert!(captured.contains("error_chain_depth=2"));
+    }
+
+    #[test]
+    fn runtime_failure_keeps_the_full_chain_only_at_debug() {
+        let private_path = "/home/private/workspace/session-runtime.lock";
+        let error = anyhow::anyhow!("lock poisoned while reading {private_path}")
+            .context("reading the ACP session workspace runtime");
+        let debug = tracing_subscriber::filter::LevelFilter::DEBUG;
+
+        let (_, events) = capturing_at(debug, || ZedAgent::report_list_files_runtime_failure(&error));
+
+        let captured = events.join("\n");
+        assert!(
+            captured.contains("reading the ACP session workspace runtime"),
+            "the debug event must retain the chain for local diagnosis, got {captured}"
+        );
+        // The chain is deliberately available at debug; the warning beside it
+        // is what reaches normal operator output, and that stays path-free.
+        assert!(captured.contains("operation=\"list_files\""));
+    }
+
+    #[test]
+    fn path_escape_rejection_does_not_echo_the_requested_path() {
+        // The helper takes no path argument precisely so the rejected path can
+        // never leak; assert the message is path-free as well as fixed.
+        let (message, events) = capturing(ZedAgent::report_list_files_path_escape);
+
+        assert_eq!(
+            message, "Invalid list_files uri value: path escapes the trusted workspace",
+            "the rejection must be a fixed, actionable message"
+        );
+
+        let captured = events.join("\n");
+        for leaked in ["/home", "/tmp", "secret", ".."] {
+            assert!(!message.contains(leaked), "the rejection must not embed {leaked:?}");
+            assert!(!captured.contains(leaked), "rejected paths must stay out of logs");
+        }
+        assert!(captured.contains("component=\"path_resolution\""));
+        assert!(captured.contains("outcome=\"rejected\""));
+        assert!(captured.contains("error_category=\"workspace_path_escape\""));
+    }
+
+    #[test]
+    fn client_facing_list_files_failures_carry_no_operational_detail() {
+        for message in [
+            TOOL_LIST_FILES_UNAVAILABLE_FAILURE,
+            TOOL_LIST_FILES_FAILURE,
+            SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE,
+        ] {
+            assert!(!message.is_empty());
+            for leaked in ["/", "\\", "panic", "lock", "poison", "errno"] {
+                assert!(!message.contains(leaked), "failure message must not embed {leaked:?}, got {message:?}");
+            }
+        }
     }
 }

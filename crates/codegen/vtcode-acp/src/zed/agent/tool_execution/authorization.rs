@@ -11,6 +11,8 @@ use crate::acp::Error as SdkError;
 use crate::permissions::PermissionToolContext;
 use crate::reports::ToolExecutionReport;
 use crate::tooling::{AcpToolRegistry, ToolDescriptor};
+use crate::zed::agent::log_suppressed_error;
+use crate::zed::constants::SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE;
 use crate::zed::types::ToolCallResult;
 use serde_json::Value;
 use std::sync::Arc;
@@ -26,8 +28,8 @@ impl ZedAgent {
         audit_arguments: &mut Vec<u8>,
     ) -> Result<ToolCallResult, SdkError> {
         let workspace_runtime = invocation.session.workspace_runtime().map_err(|error| {
-            SdkError::internal_error()
-                .data(format!("Failed to read workspace runtime for ACP session {}: {error:#}", invocation.session_id))
+            log_suppressed_error(&error, "session_workspace_runtime_read", "session_lock_unavailable");
+            SdkError::internal_error().data(SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE)
         })?;
         let acp_tool_registry = workspace_runtime
             .as_ref()
@@ -343,8 +345,8 @@ impl ZedAgent {
             .session
             .workspace_runtime()
             .map_err(|error| {
-                SdkError::internal_error()
-                    .data(format!("Failed to read workspace runtime for ACP permission hook: {error:#}"))
+                log_suppressed_error(&error, "session_workspace_runtime_read", "session_lock_unavailable");
+                SdkError::internal_error().data(SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE)
             })?
             .map_or_else(|| self.config.workspace.clone(), |runtime| runtime.workspace_root.clone());
         let request = build_permission_request(&workspace, &workspace, resolved.tool_name, Some(args));

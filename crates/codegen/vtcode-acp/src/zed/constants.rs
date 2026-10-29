@@ -15,6 +15,9 @@ pub(crate) const TOOL_READ_FILE_INTEGER_RANGE_TEMPLATE: &str = "{argument} value
 pub(crate) const TOOL_READ_FILE_ABSOLUTE_PATH_TEMPLATE: &str = "Invalid {argument} value: expected an absolute path";
 pub(crate) const TOOL_READ_FILE_WORKSPACE_ESCAPE_TEMPLATE: &str =
     "Invalid {argument} value: path escapes the trusted workspace";
+pub(crate) const TOOL_LIST_FILES_UNAVAILABLE_FAILURE: &str = "The list_files tool is unavailable for this session";
+pub(crate) const TOOL_LIST_FILES_FAILURE: &str = "The list_files tool could not list the requested path";
+pub(crate) const SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE: &str = "The session workspace runtime is unavailable";
 pub(crate) const WORKSPACE_TRUST_UPGRADE_LOG: &str = "ACP workspace trust level updated";
 pub(crate) const WORKSPACE_TRUST_ALREADY_SATISFIED_LOG: &str = "ACP workspace trust level already satisfied";
 pub(crate) const WORKSPACE_TRUST_DOWNGRADE_SKIPPED_LOG: &str =

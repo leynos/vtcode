@@ -13,6 +13,8 @@ use crate::acp;
 use crate::acp::Error as SdkError;
 use crate::audit::timestamp_unix_ms;
 use crate::reports::ToolExecutionReport;
+use crate::zed::agent::log_suppressed_error;
+use crate::zed::constants::SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE;
 use crate::zed::types::{SessionHandle, ToolCallResult};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -298,7 +300,8 @@ impl ZedAgent {
         let workspace = session
             .workspace_runtime()
             .map_err(|error| {
-                SdkError::internal_error().data(format!("Failed to read ACP session workspace runtime: {error:#}"))
+                log_suppressed_error(&error, "session_workspace_runtime_read", "session_lock_unavailable");
+                SdkError::internal_error().data(SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE)
             })?
             .map_or_else(|| self.workspace_root().to_path_buf(), |runtime| runtime.workspace_root.clone());
         if workspace.is_absolute() {

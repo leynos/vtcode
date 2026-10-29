@@ -52,7 +52,7 @@ struct DegradedSubagentAttachment;
 impl AcpSubagentControllerAttacher for DegradedSubagentAttachment {
     fn attach<'a>(&'a self, _setup: AcpSubagentControllerSetup<'a>) -> BoxFuture<'a, OptionalSetupOutcome> {
         Box::pin(async {
-            OptionalSetupOutcome::AttachedWithDegradation(vec!["background restore unavailable".to_string()])
+            OptionalSetupOutcome::AttachedWithDegradation(vec![OptionalSetupFailure::BackgroundSubagentRestoreFailed])
         })
     }
 }
@@ -246,7 +246,7 @@ async fn optional_workspace_attachments_preserve_degraded_and_disabled_outcomes(
         outcomes,
         OptionalWorkspaceSetupOutcomes {
             subagent_controller: OptionalSetupOutcome::AttachedWithDegradation(vec![
-                "background restore unavailable".to_string(),
+                OptionalSetupFailure::BackgroundSubagentRestoreFailed,
             ]),
             mcp_client: OptionalSetupOutcome::DisabledByConfiguration,
         }

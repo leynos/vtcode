@@ -28,7 +28,7 @@ pub(in crate::zed) struct SessionWorkspaceRuntime {
     pub(in crate::zed::agent) lifecycle_changed: Notify,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::zed::agent) enum WorkspaceRuntimeLifecycleState {
     Open,
     ShutdownPending,
@@ -52,7 +52,7 @@ impl SessionWorkspaceLease {
         Self { runtime, counted: false, released: false }
     }
 
-    pub(super) async fn acquire(runtime: Arc<SessionWorkspaceRuntime>) -> anyhow::Result<Option<Self>> {
+    pub(in crate::zed::agent) async fn acquire(runtime: Arc<SessionWorkspaceRuntime>) -> anyhow::Result<Option<Self>> {
         if !runtime.shutdown_managed {
             return Ok(Some(Self::unmanaged(runtime)));
         }
@@ -98,6 +98,11 @@ impl SessionWorkspaceLease {
 
     pub(in crate::zed::agent) fn runtime(&self) -> &Arc<SessionWorkspaceRuntime> {
         &self.runtime
+    }
+
+    #[cfg(test)]
+    pub(in crate::zed::agent) fn is_counted(&self) -> bool {
+        self.counted
     }
 
     pub(in crate::zed) async fn release(mut self) {
@@ -154,7 +159,7 @@ impl SessionWorkspaceRuntime {
         }
     }
 
-    fn spawn_shutdown(self: &Arc<Self>) {
+    pub(in crate::zed::agent) fn spawn_shutdown(self: &Arc<Self>) {
         let runtime = Arc::clone(self);
         drop(tokio::spawn(async move {
             if let Some(controller) = runtime.local_tool_registry.subagent_controller() {
@@ -171,7 +176,7 @@ impl SessionWorkspaceRuntime {
         }));
     }
 
-    fn mark_shutdown_complete(&self) {
+    pub(in crate::zed::agent) fn mark_shutdown_complete(&self) {
         match self.lifecycle.lock() {
             Ok(mut lifecycle) => lifecycle.state = WorkspaceRuntimeLifecycleState::Closed,
             Err(error) => error.into_inner().state = WorkspaceRuntimeLifecycleState::Closed,

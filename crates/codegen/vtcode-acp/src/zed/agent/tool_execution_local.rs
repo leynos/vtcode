@@ -60,10 +60,8 @@ impl ZedAgent {
         let runtime = match session.workspace_runtime() {
             Ok(runtime) => runtime,
             Err(error) => {
-                return ToolExecutionReport::failure(
-                    invocation.tool_name,
-                    &format!("Failed to read ACP session workspace runtime: {error:#}"),
-                );
+                let message = super::report_session_runtime_failure(&error);
+                return ToolExecutionReport::failure(invocation.tool_name, &message);
             }
         };
         let registry = runtime

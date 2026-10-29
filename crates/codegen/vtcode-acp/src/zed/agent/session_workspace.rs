@@ -19,8 +19,8 @@ use super::super::helpers::PrimaryAgentCatalog;
 use super::super::session::AcpSessionWorkspace;
 use super::{
     AcpMcpClientAttacher, AcpSubagentControllerAttacher, AcpSubagentControllerSetup, DefaultAcpMcpClientAttacher,
-    DefaultAcpSubagentControllerAttacher, OptionalSetupOutcome, OptionalWorkspaceSetupOutcomes, ZedAgent,
-    ZedAgentSetup, configure_acp_tool_call_limits, report_optional_workspace_setup_outcomes,
+    DefaultAcpSubagentControllerAttacher, OptionalSetupFailure, OptionalSetupOutcome, OptionalWorkspaceSetupOutcomes,
+    ZedAgent, ZedAgentSetup, configure_acp_tool_call_limits, report_optional_workspace_setup_outcomes,
 };
 use crate::permissions::{AcpPermissionPrompter, DefaultPermissionPrompter};
 use crate::tooling::AcpToolRegistry;

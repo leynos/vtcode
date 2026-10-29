@@ -24,12 +24,13 @@ use vtcode_core::tools::registry::ToolRegistry as CoreToolRegistry;
 
 use super::helpers::PrimaryAgentCatalog;
 use super::types::SessionHandle;
+use crate::zed::constants::SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE;
 
 mod optional_setup;
 mod session_workspace;
 use optional_setup::{
     AcpMcpClientAttacher, AcpSubagentControllerAttacher, AcpSubagentControllerSetup, DefaultAcpMcpClientAttacher,
-    DefaultAcpSubagentControllerAttacher, OptionalSetupOutcome, OptionalWorkspaceSetupOutcomes,
+    DefaultAcpSubagentControllerAttacher, OptionalSetupFailure, OptionalSetupOutcome, OptionalWorkspaceSetupOutcomes,
     configure_acp_tool_call_limits, effective_acp_mcp_config, effective_acp_subagent_concurrency,
     report_optional_workspace_setup_outcomes,
 };
@@ -85,6 +86,26 @@ fn warn_workspace_mcp_shutdown_failure(error: &anyhow::Error) {
         error_chain_depth,
         "Failed to shut down ACP workspace MCP client"
     );
+}
+
+/// Record why a session's workspace runtime could not be read and return a
+/// fixed client-facing failure.
+///
+/// `SessionHandle::workspace_runtime` fails only when the session data lock is
+/// poisoned. Its context names the runtime operation and its sources may embed
+/// workload detail, so the log carries the chain depth only while the chain
+/// itself stays at the `debug` level used for suppressed ACP failures.
+fn report_session_runtime_failure(error: &anyhow::Error) -> String {
+    log_suppressed_error(error, "session_workspace_runtime_read", "session_lock_unavailable");
+    tracing::warn!(
+        operation = "session_workspace_runtime_read",
+        component = "session_workspace_runtime",
+        outcome = "failed",
+        error_category = "session_lock_unavailable",
+        error_chain_depth = error.chain().count(),
+        "Failed to read the ACP session workspace runtime"
+    );
+    SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE.to_string()
 }
 
 mod compaction;
@@ -213,6 +234,40 @@ mod acp_logging_tests {
 
         let events = events.lock().expect("hook log capture lock");
         assert!(events.is_empty(), "suppressed detail must not reach warn/error output, got {events:?}");
+    }
+
+    #[test]
+    fn session_runtime_failure_reports_a_stable_reason_without_the_error_chain() {
+        let capture = HookLogCapture::default();
+        let events = Arc::clone(&capture.0);
+        // Capture only operator-visible severities: the full chain stays at
+        // debug by design, so asserting on it here would contradict the
+        // suppressed-detail convention this boundary follows.
+        let subscriber = Registry::default()
+            .with(tracing_subscriber::filter::LevelFilter::WARN)
+            .with(capture);
+        let private_context = "/home/private/workspace/session-archive";
+        let error =
+            anyhow::anyhow!("poisoned lock for {private_context}").context("reading ACP session workspace runtime");
+
+        let message = tracing::subscriber::with_default(subscriber, || super::report_session_runtime_failure(&error));
+
+        assert_eq!(
+            message,
+            crate::zed::constants::SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE,
+            "the client-facing failure must be a fixed message"
+        );
+        assert!(!message.contains(private_context), "the failure must not echo workspace detail");
+
+        let events = events.lock().expect("hook log capture lock");
+        let captured = events.join("\n");
+        assert!(!captured.contains(private_context), "workspace paths must stay out of logs");
+        assert!(!captured.contains("poisoned lock for"), "raw error text must stay out of warnings");
+        assert!(captured.contains("operation=\"session_workspace_runtime_read\""));
+        assert!(captured.contains("component=\"session_workspace_runtime\""));
+        assert!(captured.contains("outcome=\"failed\""));
+        assert!(captured.contains("error_category=\"session_lock_unavailable\""));
+        assert!(captured.contains("error_chain_depth=2"));
     }
 }
 
