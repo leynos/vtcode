@@ -287,7 +287,13 @@ async fn validate_request_content_hash(
     if current_hash == expected_hash {
         return Ok(());
     }
-    let (can_safely_rebase, anchor_failures) = crate::tools::apply_patch::assess_patch_rebase(patch, &disk_path).await;
+    // The file was just read above, so a failure here is a genuine internal
+    // inconsistency (for example the file vanished between the two reads)
+    // rather than a bad patch. Surfacing it as a rejection would tell the model
+    // its anchors are wrong when the patch was never actually assessed.
+    let (can_safely_rebase, anchor_failures) = crate::tools::apply_patch::assess_patch_rebase(patch, &disk_path)
+        .await
+        .map_err(ToolError::Codex)?;
     let details = serde_json::json!({
         "reason": "content_hash_mismatch",
         "path": source_path,
@@ -458,13 +464,9 @@ const APPLY_PATCH_UPDATE_EXAMPLE: &str = r#"*** Begin Patch
 mod tests {
     use super::*;
     use crate::exec_policy::RejectConfig;
-    #[cfg(unix)]
     use crate::tools::handlers::adapter::DefaultToolSession;
-    #[cfg(unix)]
     use crate::tools::handlers::sandboxing::{SandboxConfig, SandboxType};
-    #[cfg(unix)]
     use crate::tools::handlers::tool_handler::{Constrained, ShellEnvironmentPolicy, TurnContext};
-    #[cfg(unix)]
     use std::sync::Arc;
     use tempfile::TempDir;
 
@@ -531,6 +533,88 @@ mod tests {
             std::fs::read_to_string(workspace.path().join("versioned.txt")).expect("read unchanged fixture"),
             "current\n"
         );
+    }
+
+    /// The JSON `expected_content_hash` precondition must be enforced by the
+    /// handler *runtime*, not only by the precondition helper. This drives the
+    /// real `ApplyPatchHandler::handle` entry point so the payload decoding,
+    /// orchestrator, and runtime wiring are all covered.
+    #[tokio::test]
+    async fn handler_runtime_rejects_stale_expected_content_hash() {
+        let workspace = TempDir::new().expect("temporary workspace");
+        let fixture = workspace.path().join("versioned.txt");
+        std::fs::write(&fixture, "current\n").expect("write fixture");
+        let stale_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"));
+        let arguments = json!({
+            "input": "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n",
+            "expected_content_hash": stale_hash,
+        })
+        .to_string();
+
+        let error = ApplyPatchHandler
+            .handle(test_invocation(workspace.path().to_path_buf(), arguments))
+            .await
+            .expect_err("the handler must reject a stale expected_content_hash");
+
+        let message = error.to_string();
+        assert!(message.contains("content_hash_mismatch"), "unexpected error: {message}");
+        assert!(message.contains("current_content_hash"), "unexpected error: {message}");
+        assert_eq!(
+            std::fs::read_to_string(&fixture).expect("read unchanged fixture"),
+            "current\n",
+            "a rejected precondition must not mutate the file"
+        );
+    }
+
+    /// A matching `expected_content_hash` must let the handler through to the
+    /// mutation itself, proving the guard is a precondition and not a blanket
+    /// rejection of versioned patches.
+    #[tokio::test]
+    async fn handler_runtime_applies_patch_with_matching_expected_content_hash() {
+        let workspace = TempDir::new().expect("temporary workspace");
+        let fixture = workspace.path().join("versioned.txt");
+        std::fs::write(&fixture, "current\n").expect("write fixture");
+        let current_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"current\n"));
+        let arguments = json!({
+            "input": "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n",
+            "expected_content_hash": current_hash,
+        })
+        .to_string();
+
+        ApplyPatchHandler
+            .handle(test_invocation(workspace.path().to_path_buf(), arguments))
+            .await
+            .expect("a matching content hash must allow the patch to apply");
+
+        assert_eq!(
+            std::fs::read_to_string(&fixture).expect("read patched fixture"),
+            "changed\n",
+            "the handler should have applied the patch"
+        );
+    }
+
+    /// Builds a `ToolInvocation` whose session and turn both point at
+    /// `workspace`, so the handler exercises the same workspace-containment and
+    /// precondition path a real turn would use.
+    fn test_invocation(workspace: PathBuf, arguments: String) -> ToolInvocation {
+        let session = Arc::new(DefaultToolSession::with_workspace(workspace.clone(), workspace.clone()));
+        let turn = Arc::new(TurnContext {
+            cwd: workspace,
+            turn_id: "apply-patch-handler-runtime-test".to_string(),
+            sub_id: None,
+            shell_environment_policy: ShellEnvironmentPolicy::default(),
+            approval_policy: Constrained::default(),
+            codex_linux_sandbox_exe: None,
+            sandbox_policy: Constrained::default(),
+        });
+        ToolInvocation {
+            session,
+            turn,
+            tracker: None,
+            call_id: "call-apply-patch".to_string(),
+            tool_name: tools::APPLY_PATCH.to_string(),
+            payload: ToolPayload::Function { arguments },
+        }
     }
 
     #[test]
