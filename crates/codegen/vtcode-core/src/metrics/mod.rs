@@ -33,6 +33,42 @@ pub use sdk_metrics::SdkMetrics;
 pub use security_metrics::SecurityMetrics;
 pub use skill_metrics::SkillMetrics;
 
+/// Frozen, bounded snapshot of the process-wide admission counters.
+///
+/// The values are copied out of the provider's counters in one read, so the
+/// snapshot is *not* a consistent cross-counter view: `queue_depth` and
+/// `in_flight` are current gauges while the remaining fields are cumulative
+/// counters, and concurrent updates may move them between individual loads.
+/// The snapshot is process-wide, not collector-scoped, and reading it neither
+/// mutates nor resets the underlying counters.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderAdmissionSnapshot {
+    /// Requests currently waiting for a provider concurrency slot.
+    pub queue_depth: u64,
+    /// Requests currently holding a provider concurrency slot.
+    pub in_flight: u64,
+    /// Cumulative number of requests that waited for admission.
+    pub queue_waits: u64,
+    /// Cumulative admission wait time in milliseconds.
+    pub queue_wait_ms: u64,
+    /// Cumulative number of requests that timed out while waiting for admission.
+    pub queue_timeouts: u64,
+}
+
+/// Consumer-owned port for sampling the process-wide provider admission counters.
+///
+/// `MetricsCollector` depends on this narrow port rather than on any provider
+/// crate. Implementations live outside this module and are injected at the
+/// composition boundary, which keeps the metrics module free of provider
+/// dependencies and lets tests substitute a deterministic source.
+///
+/// Implementations must sample live counters on every call: the collector reads
+/// the source at export/read time so a snapshot is never cached across reads.
+pub trait ProviderAdmissionMetricsSource: std::fmt::Debug + Send + Sync {
+    /// Read the current process-wide admission counters.
+    fn snapshot(&self) -> ProviderAdmissionSnapshot;
+}
+
 /// Bounded aggregate metrics for model-provider request attempts.
 ///
 /// Provider names are deliberately not labels here: user-defined provider
@@ -166,6 +202,7 @@ pub struct MetricsCollector {
     service_startup: Arc<Mutex<ServiceStartupMetrics>>,
     task_lifecycle_notification_queue: Arc<Mutex<TaskLifecycleNotificationQueueMetrics>>,
     workspace_runtime_cache_entries: Arc<AtomicU64>,
+    admission_metrics_source: Arc<dyn ProviderAdmissionMetricsSource>,
     start_time: Instant,
 }
 
@@ -190,8 +227,25 @@ pub struct MetricsSummary {
 }
 
 impl MetricsCollector {
-    /// Create a new metrics collector
+    /// Create a new metrics collector.
+    ///
+    /// Admission counters are sampled from the real process-wide provider
+    /// source, so a collector built through this entry point never exports a
+    /// permanently zeroed admission snapshot in production. Callers that need a
+    /// different source (tests, alternate hosts) use
+    /// [`Self::with_admission_metrics_source`] instead.
     pub fn new() -> Self {
+        Self::with_admission_metrics_source(Arc::new(
+            crate::llm::admission_metrics::ProcessProviderAdmissionMetricsSource::new(),
+        ))
+    }
+
+    /// Create a metrics collector that samples admission counters from `source`.
+    ///
+    /// This is the injection seam: production supplies the concrete provider
+    /// adapter through [`Self::new`], while tests supply a fake source to make
+    /// the exported values deterministic.
+    pub fn with_admission_metrics_source(source: Arc<dyn ProviderAdmissionMetricsSource>) -> Self {
         Self {
             discovery: Arc::new(Mutex::new(DiscoveryMetrics::new())),
             execution: Arc::new(Mutex::new(ExecutionMetrics::new())),
@@ -204,6 +258,7 @@ impl MetricsCollector {
             service_startup: Arc::new(Mutex::new(ServiceStartupMetrics::default())),
             task_lifecycle_notification_queue: Arc::new(Mutex::new(TaskLifecycleNotificationQueueMetrics::default())),
             workspace_runtime_cache_entries: Arc::new(AtomicU64::new(0)),
+            admission_metrics_source: source,
             start_time: Instant::now(),
         }
     }
@@ -257,11 +312,17 @@ impl MetricsCollector {
 
     /// Get the bounded aggregate provider-request metrics snapshot.
     ///
-    /// The `custom_provider_*` fields are sampled from process-wide admission
-    /// counters shared across collectors, not scoped to this instance. Each
-    /// counter is loaded independently with relaxed ordering.
+    /// The `custom_provider_*` fields are copied from the injected
+    /// [`ProviderAdmissionMetricsSource`] on every call, so the sample is taken
+    /// at read time rather than cached at construction. The counters are
+    /// process-wide and shared across collectors, not scoped to this instance.
+    ///
+    /// Consistency: the source returns one [`ProviderAdmissionSnapshot`] per
+    /// call, but the snapshot's own fields are loaded independently, so the
+    /// result is a point-in-time sample that may mix instants under concurrent
+    /// admission activity. It is never a transactional view.
     pub fn get_provider_request_metrics(&self) -> ProviderRequestMetrics {
-        let admission = vtcode_llm::providers::custom_provider_admission_metrics();
+        let admission = self.admission_metrics_source.snapshot();
         let mut metrics = self.provider_requests.lock().clone();
         metrics.custom_provider_queue_depth = admission.queue_depth;
         metrics.custom_provider_in_flight = admission.in_flight;
@@ -1082,12 +1143,30 @@ impl Default for MetricsCollector {
     }
 }
 
+/// Inert admission source used only by tests that do not care about admission.
+///
+/// Production never installs this: it exists so unit tests outside the metrics
+/// module can build a collector without reading process-wide provider counters.
+#[cfg(test)]
+#[derive(Debug)]
+pub struct ZeroProviderAdmissionMetricsSource;
+
+#[cfg(test)]
+impl ProviderAdmissionMetricsSource for ZeroProviderAdmissionMetricsSource {
+    fn snapshot(&self) -> ProviderAdmissionSnapshot {
+        ProviderAdmissionSnapshot::default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn collector_with_provider_attempts() -> MetricsCollector {
-        let collector = MetricsCollector::new();
+        // Pin admission sampling to zeros so these tests assert only this
+        // collector's own attempt accounting; live process-wide counters are
+        // covered by the dedicated admission tests.
+        let collector = MetricsCollector::with_admission_metrics_source(Arc::new(ZeroProviderAdmissionMetricsSource));
         collector.record_provider_attempt_started();
         collector.record_provider_attempt_failed(12, false, Some(3));
         collector.record_provider_retry_scheduled();
@@ -1214,6 +1293,121 @@ mod tests {
         assert!(prometheus.contains("vtcode_custom_provider_admission_queue_depth"));
         assert!(prometheus.contains("vtcode_custom_provider_admission_queue_waits_total"));
         assert!(prometheus.contains("vtcode_custom_provider_admission_queue_timeouts_total"));
+    }
+
+    /// Fake admission source whose values change between reads, so a collector
+    /// that caches the sample or ignores the injected port fails loudly.
+    #[derive(Debug)]
+    struct ChangingAdmissionSource {
+        reads: std::sync::Mutex<Vec<ProviderAdmissionSnapshot>>,
+        next: std::sync::atomic::AtomicUsize,
+    }
+
+    impl ChangingAdmissionSource {
+        fn new(samples: [ProviderAdmissionSnapshot; 2]) -> Self {
+            Self {
+                reads: std::sync::Mutex::new(samples.to_vec()),
+                next: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl ProviderAdmissionMetricsSource for ChangingAdmissionSource {
+        fn snapshot(&self) -> ProviderAdmissionSnapshot {
+            let index = self.next.fetch_add(1, Ordering::SeqCst);
+            let reads = self.reads.lock().expect("admission sample lock");
+            reads[index.min(reads.len() - 1)]
+        }
+    }
+
+    fn sample_source(samples: [ProviderAdmissionSnapshot; 2]) -> Arc<ChangingAdmissionSource> {
+        Arc::new(ChangingAdmissionSource::new(samples))
+    }
+
+    #[test]
+    fn admission_metrics_are_sampled_from_the_injected_source_at_read_time() {
+        let source = sample_source([
+            ProviderAdmissionSnapshot {
+                queue_depth: 3,
+                in_flight: 2,
+                queue_waits: 11,
+                queue_wait_ms: 700,
+                queue_timeouts: 1,
+            },
+            ProviderAdmissionSnapshot {
+                queue_depth: 0,
+                in_flight: 5,
+                queue_waits: 19,
+                queue_wait_ms: 1_400,
+                queue_timeouts: 4,
+            },
+        ]);
+        let collector = MetricsCollector::with_admission_metrics_source(source);
+
+        let first = collector.get_provider_request_metrics();
+        assert_eq!(first.custom_provider_queue_depth, 3);
+        assert_eq!(first.custom_provider_in_flight, 2);
+        assert_eq!(first.custom_provider_queue_waits, 11);
+        assert_eq!(first.custom_provider_queue_wait_ms, 700);
+        assert_eq!(first.custom_provider_queue_timeouts, 1);
+
+        // The second read must observe the source's new values: sampling is live,
+        // never a value captured at construction.
+        let second = collector.get_provider_request_metrics();
+        assert_eq!(second.custom_provider_queue_depth, 0);
+        assert_eq!(second.custom_provider_in_flight, 5);
+        assert_eq!(second.custom_provider_queue_waits, 19);
+        assert_eq!(second.custom_provider_queue_wait_ms, 1_400);
+        assert_eq!(second.custom_provider_queue_timeouts, 4);
+        assert_ne!(first, second, "the injected source must be re-read on every call");
+    }
+
+    #[test]
+    fn json_export_carries_the_supplied_admission_values() {
+        let source = sample_source([
+            ProviderAdmissionSnapshot {
+                queue_depth: 7,
+                in_flight: 4,
+                queue_waits: 31,
+                queue_wait_ms: 2_500,
+                queue_timeouts: 2,
+            },
+            ProviderAdmissionSnapshot::default(),
+        ]);
+        let collector = MetricsCollector::with_admission_metrics_source(source);
+
+        let json = collector.export_json().expect("metrics JSON should serialize");
+        let provider_requests = json
+            .get("provider_requests")
+            .expect("the summary must expose provider_requests");
+
+        assert_eq!(provider_requests["custom_provider_queue_depth"], 7);
+        assert_eq!(provider_requests["custom_provider_in_flight"], 4);
+        assert_eq!(provider_requests["custom_provider_queue_waits"], 31);
+        assert_eq!(provider_requests["custom_provider_queue_wait_ms"], 2_500);
+        assert_eq!(provider_requests["custom_provider_queue_timeouts"], 2);
+    }
+
+    #[test]
+    fn prometheus_export_carries_the_supplied_admission_values() {
+        let source = sample_source([
+            ProviderAdmissionSnapshot {
+                queue_depth: 7,
+                in_flight: 4,
+                queue_waits: 31,
+                queue_wait_ms: 2_500,
+                queue_timeouts: 2,
+            },
+            ProviderAdmissionSnapshot::default(),
+        ]);
+        let collector = MetricsCollector::with_admission_metrics_source(source);
+
+        let prometheus = collector.export_prometheus();
+        assert!(prometheus.contains("vtcode_custom_provider_admission_queue_depth 7"), "{prometheus}");
+        assert!(prometheus.contains("vtcode_custom_provider_admission_in_flight 4"), "{prometheus}");
+        assert!(prometheus.contains("vtcode_custom_provider_admission_queue_waits_total 31"), "{prometheus}");
+        assert!(prometheus.contains("vtcode_custom_provider_admission_queue_wait_ms_total 2500"), "{prometheus}");
+        assert!(prometheus.contains("vtcode_custom_provider_admission_queue_timeouts_total 2"), "{prometheus}");
     }
 
     #[test]
