@@ -1885,7 +1885,7 @@ Boost Software License 1.0 — SPDX: BSL-1.0
 --------------------------------------------------------------------------------
 Boost Software License 1.0 — SPDX: BSL-1.0
 --------------------------------------------------------------------------------
-  clipboard-win 5.4.1
+  clipboard-win 5.4.2
     Source: https://github.com/DoumanAsh/clipboard-win
     License: BSL-1.0
 --------------------------------------------------------------------------------
@@ -2797,7 +2797,7 @@ MIT License — SPDX: MIT
   tokio-util 0.7.19
     Source: https://github.com/tokio-rs/tokio
     License: MIT
-  tokio 1.53.1
+  tokio 1.53.3
     Source: https://github.com/tokio-rs/tokio
     License: MIT
 --------------------------------------------------------------------------------
