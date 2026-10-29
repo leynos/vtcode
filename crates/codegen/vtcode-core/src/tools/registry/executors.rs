@@ -1,3 +1,11 @@
+//! Tool executor bodies for the command, session, and harness surfaces.
+//!
+//! Holds the `ToolRegistry` methods that actually run tools after dispatch has
+//! decided *whether* they may run: command and PTY session execution, harness
+//! terminal runs, and their approval-reason plumbing. Sandbox setup, exec
+//! sessions, and cargo failure diagnostics live in the child modules of this
+//! directory; patch execution lives in `patch_pipeline`.
+
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 

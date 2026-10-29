@@ -1,3 +1,14 @@
+//! `read_file` execution: windowing, continuation, and version certification.
+//!
+//! Serves the model-visible read surface. Besides slicing the requested line
+//! window and producing continuation metadata, this module samples a content
+//! version around the read itself and returns it as `content_hash`, so a later
+//! `apply_patch` can prove the patch was generated from the content the model
+//! actually saw. The sampling lives in `capture_read_content_hash` and
+//! `capture_read_content_hash_consistent`; the surrounding staleness policy is
+//! owned by `crate::tools::edited_file_monitor` and enforced by the registry
+//! patch pipeline.
+
 use super::FileOpsTool;
 use super::is_image_path;
 use super::path_policy::PathSuggestionKind;
