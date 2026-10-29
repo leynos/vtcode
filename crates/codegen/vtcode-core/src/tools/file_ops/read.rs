@@ -345,24 +345,35 @@ impl FileOpsTool {
     /// `before` must be captured before the content is read; sampling it here would
     /// let a write that lands during the read move both samples to the same new
     /// revision and certify bytes the model never saw.
+    ///
+    /// Tool-output spools are append-only streams that are *expected* to grow while
+    /// a chunk is being read, so a boundary mismatch there is normal rather than a
+    /// lost-update hazard. For those, `allow_concurrent_growth` returns `Ok(None)`
+    /// instead of failing: the chunk and its continuation arguments are still
+    /// returned, but no `content_hash` is certified, which keeps the version honest
+    /// without breaking chunked reads of live output.
     pub(crate) async fn capture_read_content_hash_consistent(
         &self,
         path: &Path,
         before: &crate::tools::edited_file_monitor::FileSnapshot,
-    ) -> Result<String> {
+        allow_concurrent_growth: bool,
+    ) -> Result<Option<String>> {
         use crate::tools::edited_file_monitor::EditedFileMonitor;
 
         let before_hash = content_hash_from_snapshot(before, path)?;
         let after = EditedFileMonitor::current_snapshot(path).await?;
         let after_hash = content_hash_from_snapshot(&after, path)?;
         if before_hash != after_hash {
+            if allow_concurrent_growth {
+                return Ok(None);
+            }
             return Err(anyhow!(
                 "File changed while it was being read: {}; reread it to obtain a valid content_hash.",
                 path.display()
             ));
         }
         self.edited_file_monitor.record_read_snapshot(path, after)?;
-        Ok(after_hash)
+        Ok(Some(after_hash))
     }
 
     pub async fn read_file(&self, args: Value) -> Result<Value> {
@@ -477,21 +488,26 @@ impl FileOpsTool {
                         } else {
                             content.clone()
                         };
-                        let content_hash =
-                            self.capture_read_content_hash_consistent(&canonical, &before_snapshot).await?;
-
                         let mut builder = ToolResponseBuilder::new(tools::READ_FILE)
                             .success()
                             .message(format!("Successfully read file {requested_path}"))
                             .content(&response_content)
                             .field("path", json!(requested_path.clone()))
-                            .field("content_hash", json!(content_hash))
                             .field("no_spool", json!(true))
                             .field("content_kind", json!("text"))
                             .field("encoding", json!("utf8"))
                             .data("size_bytes", json!(size_bytes))
                             .data("content_kind", json!("text"))
                             .data("encoding", json!("utf8"));
+
+                        // Spool files are append-only streams that grow while a chunk
+                        // is read, so certify a version only for editable files.
+                        if let Some(content_hash) = self
+                            .capture_read_content_hash_consistent(&canonical, &before_snapshot, is_spool_output)
+                            .await?
+                        {
+                            builder = builder.field("content_hash", json!(content_hash));
+                        }
 
                         if line_truncated {
                             builder = builder
@@ -596,8 +612,6 @@ impl FileOpsTool {
                 let line_truncated = metadata.get("line_truncated").and_then(Value::as_bool).unwrap_or(false);
                 (content, metadata, truncated, line_truncated)
             };
-            let content_hash = self.capture_read_content_hash_consistent(&canonical, &before_snapshot).await?;
-
             let mut builder = ToolResponseBuilder::new(tools::READ_FILE)
                 .success()
                 .message(format!(
@@ -607,8 +621,16 @@ impl FileOpsTool {
                 ))
                 .content(&content)
                 .field("path", json!(self.workspace_relative_display(&canonical)))
-                .field("content_hash", json!(content_hash))
                 .field("no_spool", json!(true));
+
+            // Spool files are append-only streams that grow while a chunk is read,
+            // so certify a version only for editable files.
+            if let Some(content_hash) = self
+                .capture_read_content_hash_consistent(&canonical, &before_snapshot, is_spool_output)
+                .await?
+            {
+                builder = builder.field("content_hash", json!(content_hash));
+            }
 
             // Merge legacy metadata - extract actual data fields, not wrapper structure
             if let Some(obj) = metadata.as_object() {
@@ -1693,5 +1715,44 @@ mod read_tests {
                 .is_none(),
             "stream must be exhausted after the third line"
         );
+    }
+
+    #[tokio::test]
+    async fn spool_read_omits_content_hash_when_output_grows_mid_read() {
+        let temp_dir = TempDir::new().unwrap();
+        let workspace_root = temp_dir.path().to_path_buf();
+        let spool_dir = workspace_root.join(".vtcode/context/tool_outputs");
+        fs::create_dir_all(&spool_dir).unwrap();
+        let spool_file = spool_dir.join("command_session_growing.txt");
+        let spool_content = (1..=120).map(|i| format!("line{i}")).collect::<Vec<_>>().join("\n");
+        fs::write(&spool_file, &spool_content).unwrap();
+
+        let grep_manager = std::sync::Arc::new(GrepSearchManager::new(workspace_root.clone()));
+        let file_ops = FileOpsTool::new(workspace_root.clone(), grep_manager);
+
+        // A spool legitimately grows while a chunk is read. The chunk must still be
+        // returned with its continuation arguments, but without a certified version.
+        let before = crate::tools::edited_file_monitor::EditedFileMonitor::current_snapshot(&spool_file)
+            .await
+            .unwrap();
+        fs::write(&spool_file, format!("{spool_content}\nline121\n")).unwrap();
+        let certified = file_ops
+            .capture_read_content_hash_consistent(&spool_file, &before, true)
+            .await
+            .unwrap();
+        assert!(certified.is_none(), "a spool that grew during the read must not certify a content_hash");
+
+        // Editable files keep the hard failure: a torn read there is a real hazard.
+        let editable = workspace_root.join("editable.txt");
+        fs::write(&editable, "original\n").unwrap();
+        let before = crate::tools::edited_file_monitor::EditedFileMonitor::current_snapshot(&editable)
+            .await
+            .unwrap();
+        fs::write(&editable, "changed\n").unwrap();
+        let err = file_ops
+            .capture_read_content_hash_consistent(&editable, &before, false)
+            .await
+            .expect_err("an editable file that changed mid-read must fail");
+        assert!(err.to_string().contains("changed while it was being read"));
     }
 }
