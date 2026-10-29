@@ -66,13 +66,21 @@ pub fn patch_precondition_source_paths(patch: &Patch) -> Vec<&str> {
         .collect()
 }
 
-pub async fn assess_patch_rebase(patch: &Patch, source_path: &Path) -> (bool, Vec<Value>) {
-    let Ok(current) = tokio::fs::read_to_string(source_path).await else {
-        return (false, Vec::new());
-    };
-    assess_patch_rebase_with_content(patch, source_path, &current).await
+/// Assess whether a stale patch could be rebased onto the current file content.
+///
+/// Reads `source_path` and reports whether the patch still applies to it, plus
+/// bounded anchor context for chunks that no longer match. A read failure is
+/// returned as `Err` rather than folded into `(false, vec![])`: "the file could
+/// not be read" and "the patch no longer applies" are different outcomes, and
+/// callers must be able to tell the model which one it hit. Reporting the former
+/// as the latter would tell the model its anchors are wrong and send it off to
+/// regenerate a patch that was never actually assessed.
+pub async fn assess_patch_rebase(patch: &Patch, source_path: &Path) -> anyhow::Result<(bool, Vec<Value>)> {
+    let current = tokio::fs::read_to_string(source_path).await.with_context(|| {
+        format!("Failed to read {} while assessing whether the patch could be rebased", source_path.display())
+    })?;
+    Ok(assess_patch_rebase_with_content(patch, source_path, &current).await)
 }
-
 pub(crate) async fn assess_patch_rebase_with_content(
     patch: &Patch,
     source_path: &Path,
