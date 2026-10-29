@@ -292,14 +292,48 @@ fn build_history_cache_key(path: &Path, metadata: &std::fs::Metadata, args: &Val
     ))
 }
 
+/// Render the `sha256:` version field from a captured snapshot.
+fn content_hash_from_snapshot(
+    snapshot: &crate::tools::edited_file_monitor::FileSnapshot,
+    path: &Path,
+) -> Result<String> {
+    if !snapshot.exists || snapshot.sha256.is_empty() {
+        return Err(anyhow!("Unable to version file after reading it: {}", path.display()));
+    }
+    Ok(format!("sha256:{}", snapshot.sha256))
+}
+
 impl FileOpsTool {
     /// Capture and record the current full-file version for a successful read.
     pub async fn capture_read_content_hash(&self, path: &Path) -> Result<String> {
         let snapshot = self.edited_file_monitor.capture_read_snapshot(path).await?;
-        if !snapshot.exists || snapshot.sha256.is_empty() {
-            return Err(anyhow!("Unable to version file after reading it: {}", path.display()));
+        content_hash_from_snapshot(&snapshot, path)
+    }
+
+    /// Capture a read version without certifying content the caller never returned.
+    ///
+    /// The content is read before the version is captured, so a concurrent writer can
+    /// leave the response describing one revision while the hash describes the next.
+    /// A model that then passed `expected_content_hash` would satisfy both the explicit
+    /// precondition and the edited-file staleness check for bytes it never saw.
+    /// Comparing the unrecorded version before and after the read turns that race into
+    /// a hard error. The snapshot is recorded only on a match, so a failed comparison
+    /// leaves the previously read version in place and fails safe.
+    pub async fn capture_read_content_hash_consistent(&self, path: &Path) -> Result<String> {
+        use crate::tools::edited_file_monitor::EditedFileMonitor;
+
+        let before = EditedFileMonitor::current_snapshot(path).await?;
+        let before_hash = content_hash_from_snapshot(&before, path)?;
+        let after = EditedFileMonitor::current_snapshot(path).await?;
+        let after_hash = content_hash_from_snapshot(&after, path)?;
+        if before_hash != after_hash {
+            return Err(anyhow!(
+                "File changed while it was being read: {}; reread it to obtain a valid content_hash.",
+                path.display()
+            ));
         }
-        Ok(format!("sha256:{}", snapshot.sha256))
+        self.edited_file_monitor.record_read_snapshot(path, after)?;
+        Ok(after_hash)
     }
 
     pub async fn read_file(&self, args: Value) -> Result<Value> {
@@ -410,7 +444,7 @@ impl FileOpsTool {
                         } else {
                             content.clone()
                         };
-                        let content_hash = self.capture_read_content_hash(&canonical).await?;
+                        let content_hash = self.capture_read_content_hash_consistent(&canonical).await?;
 
                         let mut builder = ToolResponseBuilder::new(tools::READ_FILE)
                             .success()
@@ -524,7 +558,7 @@ impl FileOpsTool {
                 let line_truncated = metadata.get("line_truncated").and_then(Value::as_bool).unwrap_or(false);
                 (content, metadata, truncated, line_truncated)
             };
-            let content_hash = self.capture_read_content_hash(&canonical).await?;
+            let content_hash = self.capture_read_content_hash_consistent(&canonical).await?;
 
             let mut builder = ToolResponseBuilder::new(tools::READ_FILE)
                 .success()
