@@ -249,10 +249,18 @@ impl ZedAgent {
             Ok(None) => self.local_tool_registry.file_ops_tool().capture_read_content_hash(&path).await,
             Err(error) => Err(error),
         };
-        let content_hash = version_result.map_err(|error| {
-            warn!(%error, path = ?path, "Failed to capture ACP read file version");
-            format!("Unable to version file: {error}")
-        })?;
+        // A client may return content for a buffer that is not on disk, such as an
+        // unsaved editor file, so version capture can fail where the read itself
+        // succeeded. Report the content with an absent version instead of failing
+        // the whole read; `apply_patch` already treats an absent precondition as
+        // omitted.
+        let content_hash = match version_result {
+            Ok(content_hash) => json!(content_hash),
+            Err(error) => {
+                warn!(%error, path = ?path, "Failed to capture ACP read file version");
+                Value::Null
+            }
+        };
 
         let plain_response = strip_ansi(&response.content);
         let (truncated_content, truncated) = self.truncate_text(&plain_response);

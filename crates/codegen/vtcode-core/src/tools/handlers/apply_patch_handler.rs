@@ -144,7 +144,7 @@ impl ToolRuntime<ApplyPatchRequest, ExecToolCallOutput> for ApplyPatchRuntime {
             });
         }
 
-        validate_request_content_hash(req, &patch).await?;
+        validate_request_content_hash(req, &patch, ctx.session.workspace_root()).await?;
 
         // Apply the patch
         match patch.apply(&req.cwd).await {
@@ -257,7 +257,11 @@ impl ToolHandler for ApplyPatchHandler {
     }
 }
 
-async fn validate_request_content_hash(req: &ApplyPatchRequest, patch: &Patch) -> Result<(), ToolError> {
+async fn validate_request_content_hash(
+    req: &ApplyPatchRequest,
+    patch: &Patch,
+    workspace_root: &Path,
+) -> Result<(), ToolError> {
     let Some(expected_hash) = req.expected_content_hash.as_deref() else {
         return Ok(());
     };
@@ -269,6 +273,13 @@ async fn validate_request_content_hash(req: &ApplyPatchRequest, patch: &Patch) -
         ));
     };
     let disk_path = req.cwd.join(source_path);
+    vtcode_commons::paths::ensure_path_within_workspace_resolved(&disk_path, workspace_root)
+        .await
+        .map_err(|error| {
+            ToolError::Rejected(format!(
+                "apply_patch rejected precondition path '{source_path}' outside session workspace: {error}"
+            ))
+        })?;
     let bytes = tokio::fs::read(&disk_path)
         .await
         .map_err(|error| ToolError::Rejected(format!("Failed to read {source_path} for hash validation: {error}")))?;
@@ -509,7 +520,7 @@ mod tests {
             user_explicitly_approved: true,
         };
 
-        let error = validate_request_content_hash(&request, &patch)
+        let error = validate_request_content_hash(&request, &patch, workspace.path())
             .await
             .expect_err("stale handler precondition");
 

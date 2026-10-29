@@ -34,7 +34,7 @@ pub struct DecodedApplyPatchInput {
 pub const EXPECTED_CONTENT_HASH_ARG: &str = "expected_content_hash";
 
 pub fn expected_content_hash_from_args(args: &Value) -> anyhow::Result<Option<&str>> {
-    let Some(value) = args.get(EXPECTED_CONTENT_HASH_ARG) else {
+    let Some(value) = args.get(EXPECTED_CONTENT_HASH_ARG).filter(|value| !value.is_null()) else {
         return Ok(None);
     };
     let hash = value
