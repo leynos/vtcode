@@ -33,6 +33,10 @@ use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 const MODEL: &str = "responses-wire-model";
 const PROVIDER: &str = "wire-test";
 
+#[path = "provider_failure_capture_tests.rs"]
+mod provider_failure_capture_tests;
+pub(super) use provider_failure_capture_tests::record_provider_failure;
+
 #[derive(Clone, Debug)]
 pub(super) struct CapturedRequest {
     pub(super) path: String,
@@ -66,14 +70,9 @@ impl Respond for ScriptedResponder {
     }
 }
 
-pub(super) struct AcpRun {
-    pub(super) notifications: Vec<acp::AgentNotification>,
-    pub(super) output_times: Vec<StdInstant>,
-    pub(super) stop_reasons: Vec<acp::StopReason>,
-    pub(super) messages: Vec<ProviderMessage>,
-    pub(super) checkpoint_json: Option<String>,
-    pub(super) active_acp_requests: usize,
-}
+#[path = "responses_harness.rs"]
+mod responses_harness;
+pub(super) use responses_harness::{AcpRun, run_acp_prompts};
 
 pub(super) fn provider_config(base_url: String) -> CustomProviderConfig {
     CustomProviderConfig {
@@ -111,114 +110,6 @@ fn custom_provider(config: CustomProviderConfig) -> CustomProviderBackendRouter 
         None,
         None,
     )
-}
-
-pub(super) async fn run_acp_prompts(config: CustomProviderConfig, prompts: &[&str], timeout: Duration) -> AcpRun {
-    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
-    let factory_config = config.clone();
-    let _factory_guard = PromptProviderFactoryGuard::install(
-        PROVIDER,
-        Arc::new(move || Box::new(custom_provider(factory_config.clone()))),
-    );
-    let workspace = TempDir::new().expect("Responses ACP workspace");
-    let workspace_path = workspace.path().to_path_buf();
-    let agent = Arc::new(build_wire_test_agent_with_providers(workspace.path(), &[config]).await);
-    let (agent_channel, client_channel) = Channel::duplex();
-    let (notifications_tx, mut notifications_rx) = mpsc::unbounded_channel();
-    let output_times = Arc::new(Mutex::new(Vec::new()));
-    let observed_output_times = Arc::clone(&output_times);
-
-    let agent_connection = install_handlers(Agent.builder().name("vtcode-responses-test"), Arc::clone(&agent))
-        .connect_with(agent_channel, {
-            let agent = Arc::clone(&agent);
-            async move |cx: ConnectionTo<Client>| {
-                agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
-                std::future::pending::<agent_client_protocol::Result<()>>().await
-            }
-        });
-    let agent_task = tokio::spawn(agent_connection);
-    let prompt_texts = prompts.iter().map(|prompt| (*prompt).to_string()).collect::<Vec<_>>();
-    let client_connection = Client
-        .builder()
-        .on_receive_notification(
-            async move |notification: acp::AgentNotification, _cx| {
-                if let acp::AgentNotification::SessionNotification(session) = &notification
-                    && let acp::SessionUpdate::AgentMessageChunk(chunk) = &session.update
-                    && let acp::ContentBlock::Text(text) = &chunk.content
-                    && !text.text.is_empty()
-                {
-                    observed_output_times
-                        .lock()
-                        .expect("Responses output times")
-                        .push(StdInstant::now());
-                }
-                drop(notifications_tx.send(notification));
-                Ok(())
-            },
-            on_receive_notification!(),
-        )
-        .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
-            drop(
-                cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
-                    .block_task()
-                    .await?,
-            );
-            let session = cx.send_request(NewSessionRequest::new(workspace_path)).block_task().await?;
-            drop(
-                cx.send_request(SetSessionConfigOptionRequest::new(
-                    session.session_id.clone(),
-                    crate::zed::helpers::SESSION_CONFIG_MODEL_ID,
-                    MODEL,
-                ))
-                .block_task()
-                .await?,
-            );
-            let mut stop_reasons = Vec::with_capacity(prompt_texts.len());
-            for prompt in prompt_texts {
-                let response = cx
-                    .send_request(PromptRequest::new(
-                        session.session_id.clone(),
-                        vec![acp::ContentBlock::Text(acp::TextContent::new(prompt))],
-                    ))
-                    .block_task()
-                    .await?;
-                stop_reasons.push(response.stop_reason);
-            }
-            Ok((session.session_id, stop_reasons))
-        });
-
-    let (session_id, stop_reasons) = tokio::time::timeout(timeout, client_connection)
-        .await
-        .expect("Responses ACP protocol deadline")
-        .expect("Responses ACP protocol flow");
-    agent_task.abort();
-    drop(agent_task.await);
-
-    let session = agent
-        .session_handle(&session_id)
-        .expect("Responses session lookup")
-        .expect("Responses ACP session");
-    let (messages, checkpoint_path) = {
-        let data = session.data.lock().expect("Responses session data");
-        (data.thread.messages(), data.archive.as_ref().map(|archive| archive.path().to_path_buf()))
-    };
-    let checkpoint_json = checkpoint_path.and_then(|path| std::fs::read_to_string(path).ok());
-    let active_acp_requests = agent
-        .provider_runtime
-        .for_provider(PROVIDER)
-        .telemetry_snapshot()
-        .active_acp_requests;
-    let notifications = std::iter::from_fn(|| notifications_rx.try_recv().ok()).collect();
-    let output_times = output_times.lock().expect("Responses output times").clone();
-
-    AcpRun {
-        notifications,
-        output_times,
-        stop_reasons,
-        messages,
-        checkpoint_json,
-        active_acp_requests,
-    }
 }
 
 fn responses_success() -> ResponseTemplate {
@@ -717,7 +608,11 @@ async fn friendli_function_id_mismatch_is_strict_by_default_and_never_executes()
         run.messages.iter().all(|message| !message.is_tool_response()),
         "strict mismatch must not execute or persist a tool result"
     );
-    assert!(visible_text(&run.notifications).contains("completed response omitted a streamed tool call"));
+    assert_private_failure_and_safe_public_projection(
+        &run,
+        "completed response omitted a streamed tool call",
+        "Execution failed",
+    );
 }
 
 #[tokio::test]
@@ -804,8 +699,7 @@ async fn friendli_function_id_remap_rejects_ambiguous_missing_and_changed_candid
         assert_responses_requests(&requests.lock().expect("rejected remap requests"), 1);
         assert!(executable_tool_call_ids(&run.notifications).is_empty(), "{case}");
         assert!(run.messages.iter().all(|message| !message.is_tool_response()), "{case}");
-        let visible = visible_text(&run.notifications);
-        assert!(visible.contains(diagnostic), "{case}: expected {diagnostic:?}, received {visible:?}");
+        assert_private_failure_and_safe_public_projection(&run, diagnostic, "Execution failed");
     }
 }
 
@@ -1414,6 +1308,26 @@ fn responses_completed(text: &str) -> Bytes {
     ))
 }
 
+fn assert_private_failure_and_safe_public_projection(run: &AcpRun, diagnostic: &str, category: &str) {
+    assert_eq!(run.provider_failures.len(), 1, "exactly one failed generation attempt is expected");
+    assert!(
+        run.provider_failures[0].contains(diagnostic),
+        "the same ACP generation must fail for the expected internal cause: {diagnostic}"
+    );
+    let visible = visible_text(&run.notifications);
+    let safe_detail = format!("Provider failure category: {category}.");
+    assert!(visible.contains(&safe_detail));
+    assert!(!visible.contains(diagnostic), "raw provider diagnostics must stay out of ACP output");
+    assert!(
+        run.messages.iter().any(|message| {
+            message.metadata.as_ref().is_some_and(|metadata| {
+                metadata.is_incomplete() && metadata.incomplete_reason() == Some(safe_detail.as_str())
+            })
+        }),
+        "durable failure metadata must preserve the same safe public category"
+    );
+}
+
 #[test]
 fn responses_output_progress_updates_exact_idle_boundary_without_sliding_total_deadline() {
     let started_at = Instant::now();
@@ -1473,10 +1387,7 @@ async fn custom_responses_enforces_first_token_deadline_without_replay_or_permit
     assert_eq!(run.active_acp_requests, 0);
     assert_eq!(run.stop_reasons, [acp::StopReason::EndTurn]);
     let visible = visible_text(&run.notifications);
-    // Paced fixtures, incomplete-message checks, and tracker tests distinguish
-    // phases; the client projection exposes only the bounded category.
-    assert!(visible.contains("Provider failure category: Network error."));
-    assert!(!visible.contains("time to first token"));
+    assert_private_failure_and_safe_public_projection(&run, "time to first token", "Network error");
     assert!(!visible.contains("too late"));
 }
 
@@ -1498,8 +1409,7 @@ async fn custom_responses_enforces_idle_deadline_after_partial_output_without_re
     assert_eq!(run.stop_reasons, [acp::StopReason::EndTurn]);
     let visible = visible_text(&run.notifications);
     assert!(visible.contains("idle prefix"));
-    assert!(visible.contains("Provider failure category: Network error."));
-    assert!(!visible.contains("inter-token idle"));
+    assert_private_failure_and_safe_public_projection(&run, "inter-token idle", "Network error");
     assert!(run.messages.iter().any(|message| {
         message.role == ProviderMessageRole::Assistant
             && message.content.as_text().contains("idle prefix")
@@ -1526,8 +1436,7 @@ async fn custom_responses_total_deadline_is_not_extended_by_paced_output() {
     assert_eq!(run.stop_reasons, [acp::StopReason::EndTurn]);
     let visible = visible_text(&run.notifications);
     assert!(visible.contains("one two"));
-    assert!(visible.contains("Provider failure category: Network error."));
-    assert!(!visible.contains("total generation"));
+    assert_private_failure_and_safe_public_projection(&run, "total generation", "Network error");
     assert!(run.messages.iter().any(|message| {
         message.role == ProviderMessageRole::Assistant
             && message.content.as_text().contains("one two")

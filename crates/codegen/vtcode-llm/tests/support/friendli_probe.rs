@@ -162,6 +162,13 @@ pub(crate) struct CapturedResponse {
     pub(crate) transport_error: Option<String>,
 }
 
+#[derive(Default)]
+struct CapturedBody {
+    bytes: Vec<u8>,
+    truncated: bool,
+    transport_error: Option<String>,
+}
+
 pub(crate) fn parse_selected_cases(raw: &str) -> Result<Vec<ProbeCase>> {
     ensure!(!raw.trim().is_empty(), "select at least one Friendli probe case");
     let cases: Vec<ProbeCase> = raw.split(',').map(str::parse).collect::<Result<_>>()?;
@@ -221,36 +228,45 @@ pub(crate) async fn send_case_to(
                 .flatten()
         }))
         .collect();
-    let mut body = Vec::new();
-    let mut capture_truncated = false;
-    let mut transport_error = None;
+    let captured_body = capture_response_body(response, &mut response_file, case).await?;
+    Ok(CapturedResponse {
+        status,
+        safe_headers,
+        body: captured_body.bytes,
+        capture_truncated: captured_body.truncated,
+        transport_error: captured_body.transport_error,
+    })
+}
+
+async fn capture_response_body(
+    response: reqwest::Response,
+    response_file: &mut std::fs::File,
+    case: ProbeCase,
+) -> Result<CapturedBody> {
+    let mut captured_body = CapturedBody::default();
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
         match chunk {
             Ok(chunk) => {
-                let prefix_end = chunk.len().min(MAX_CAPTURE_BYTES.saturating_sub(body.len()));
-                let prefix = &chunk[..prefix_end];
+                let prefix_end = chunk.len().min(MAX_CAPTURE_BYTES.saturating_sub(captured_body.bytes.len()));
+                let prefix = chunk
+                    .get(..prefix_end)
+                    .context("response capture prefix exceeds chunk bounds")?;
                 response_file.write_all(prefix)?;
                 response_file.flush()?;
-                body.extend_from_slice(prefix);
+                captured_body.bytes.extend_from_slice(prefix);
                 if prefix_end < chunk.len() {
-                    capture_truncated = true;
+                    captured_body.truncated = true;
                     break;
                 }
             }
             Err(error) => {
-                transport_error = Some(format!("read {} response stream: {error}", case.label()));
+                captured_body.transport_error = Some(format!("read {} response stream: {error}", case.label()));
                 break;
             }
         }
     }
-    Ok(CapturedResponse {
-        status,
-        safe_headers,
-        body,
-        capture_truncated,
-        transport_error,
-    })
+    Ok(captured_body)
 }
 
 pub(crate) fn classify(case: ProbeCase, response: &CapturedResponse) -> ProbeOutcome {
@@ -330,68 +346,76 @@ fn classify_terminal(case: ProbeCase, terminal: Value) -> ProbeOutcome {
             .filter(|item| item["type"].as_str().is_some_and(|kind| kind.ends_with("_call")))
             .collect::<Vec<_>>();
         if let [call] = calls.as_slice() {
-            if call["type"] != expected_type {
-                return ProbeOutcome::DecodeFailure {
-                    error: format!("tool call type {:?} did not match {expected_type:?}", call["type"]),
-                };
-            }
-            let Some(name) = call["name"].as_str() else {
-                return ProbeOutcome::DecodeFailure { error: "tool call omitted name".into() };
-            };
-            let Some(call_id) = call["call_id"].as_str() else {
-                return ProbeOutcome::DecodeFailure { error: "tool call omitted final call_id".into() };
-            };
-            if call_id.is_empty() {
-                return ProbeOutcome::DecodeFailure {
-                    error: "tool call had an empty final call_id".into(),
-                };
-            }
-            if name != expected_name {
-                return ProbeOutcome::DecodeFailure {
-                    error: format!("tool call name {name:?} did not match {expected_name:?}"),
-                };
-            }
-            let input = if expected_type == "function_call" {
-                match call["arguments"].as_str().and_then(|raw| serde_json::from_str(raw).ok()) {
-                    Some(value) => value,
-                    None => {
-                        return ProbeOutcome::DecodeFailure {
-                            error: "function arguments were not strict JSON".into(),
-                        };
-                    }
-                }
-            } else {
-                call.get("input").cloned().unwrap_or(Value::Null)
-            };
-            let valid_input = if expected_type == "function_call" {
-                input == json!({"text":"OK"})
-            } else {
-                input == "OK"
-            };
-            if !valid_input {
-                return ProbeOutcome::DecodeFailure { error: format!("unexpected tool input: {input}") };
-            }
-            return ProbeOutcome::ToolCallSuccess {
-                tool_type: expected_type.into(),
-                name: name.into(),
-                call_id: call_id.into(),
-                input,
-            };
+            return classify_tool_call(call, expected_type, expected_name);
         }
         if calls.is_empty() {
-            let text = output_text(&outputs);
+            let text = output_text(outputs);
             return ProbeOutcome::NoCall { terminal_status: status, text };
         }
         return ProbeOutcome::DecodeFailure {
             error: format!("expected exactly one tool call, received {}", calls.len()),
         };
     }
-    let text = output_text(&outputs);
+    let text = output_text(outputs);
     if text.trim() == "OK" {
         ProbeOutcome::TextSuccess { text }
     } else {
         ProbeOutcome::DecodeFailure { error: format!("text probe omitted OK: {text:?}") }
     }
+}
+
+fn classify_tool_call(call: &Value, expected_type: &str, expected_name: &str) -> ProbeOutcome {
+    if call["type"] != expected_type {
+        return ProbeOutcome::DecodeFailure {
+            error: format!("tool call type {:?} did not match {expected_type:?}", call["type"]),
+        };
+    }
+    let Some(name) = call["name"].as_str() else {
+        return ProbeOutcome::DecodeFailure { error: "tool call omitted name".into() };
+    };
+    let Some(call_id) = call["call_id"].as_str() else {
+        return ProbeOutcome::DecodeFailure { error: "tool call omitted final call_id".into() };
+    };
+    if call_id.is_empty() {
+        return ProbeOutcome::DecodeFailure {
+            error: "tool call had an empty final call_id".into(),
+        };
+    }
+    if name != expected_name {
+        return ProbeOutcome::DecodeFailure {
+            error: format!("tool call name {name:?} did not match {expected_name:?}"),
+        };
+    }
+    let input = match decode_expected_tool_input(call, expected_type) {
+        Ok(input) => input,
+        Err(error) => return ProbeOutcome::DecodeFailure { error },
+    };
+    ProbeOutcome::ToolCallSuccess {
+        tool_type: expected_type.into(),
+        name: name.into(),
+        call_id: call_id.into(),
+        input,
+    }
+}
+
+fn decode_expected_tool_input(call: &Value, expected_type: &str) -> Result<Value, String> {
+    let input = if expected_type == "function_call" {
+        call["arguments"]
+            .as_str()
+            .and_then(|raw| serde_json::from_str(raw).ok())
+            .ok_or_else(|| "function arguments were not strict JSON".to_string())?
+    } else {
+        call.get("input").cloned().unwrap_or(Value::Null)
+    };
+    let valid_input = if expected_type == "function_call" {
+        input == json!({"text":"OK"})
+    } else {
+        input == "OK"
+    };
+    if !valid_input {
+        return Err(format!("unexpected tool input: {input}"));
+    }
+    Ok(input)
 }
 
 fn output_text(outputs: &[Value]) -> String {

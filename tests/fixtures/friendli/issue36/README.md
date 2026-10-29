@@ -7,10 +7,9 @@ synthetic.
 
 The six capture groups are `function`, `custom`, `custom-format-required`,
 `custom-named`, `custom-text-format`, and `planner`. The first five exercise
-Responses tool compatibility; `planner` preserves the adjacent baseline used
-by the same investigation. Response bodies are exact captures. Header files
-retain only the HTTP status and safe response metadata present in the source
-capture.
+Responses tool compatibility; `planner` preserves the adjacent baseline used by
+the same investigation. Response bodies are exact captures. Header files retain
+only the HTTP status and safe response metadata present in the source capture.
 
 Observed results must not be upgraded beyond the wire evidence:
 

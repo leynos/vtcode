@@ -7,10 +7,10 @@ the bounded work moves through the shared serial runner.
 
 ## Purpose and scope
 
-The integrated plateau must make retry timing finite and deterministic,
-prevent provider response-body data from entering error metadata, keep Gemini
-quota projection explicitly empty, and make rate-limit header defaults easier
-to validate without changing their public configuration path.
+The integrated plateau must make retry timing finite and deterministic, prevent
+provider response-body data from entering error metadata, keep Gemini quota
+projection explicitly empty, and make rate-limit header defaults easier to
+validate without changing their public configuration path.
 
 This worktree owns only:
 
@@ -24,8 +24,8 @@ This worktree owns only:
 
 Do not include the separately committed documentation repair `035f1979d`,
 create a provider-path extraction, change provider wire formats, add a public
-clock trait or dependency, or publish, review, or merge. The serial runner
-owns all format, lint, test, build, CodeScene, and CodeRabbit commands.
+clock trait or dependency, or publish, review, or merge. The serial runner owns
+all format, lint, test, build, CodeScene, and CodeRabbit commands.
 
 ## Approved behaviour
 
@@ -62,8 +62,8 @@ The shared serial runner executes the focused selectors from all three source
 packets before broader required gates. It runs no CodeRabbit request until all
 deterministic checks are green.
 
-Acceptance: retry, Gemini/privacy, and config-contract selections all pass
-from the same integrated tree.
+Acceptance: retry, Gemini/privacy, and config-contract selections all pass from
+the same integrated tree.
 
 ### M3: Freeze and hand off
 
@@ -94,8 +94,8 @@ RUSTFLAGS='-D warnings' cargo nextest run --locked -p vtcode-config --jobs 1 \
 ```
 
 Then run the repository-required sequential gates. The runner must verify the
-integrated source still generates the existing configuration schema and that
-no retained HTTP-date floor or nonnumeric reset value escapes the focused
+integrated source still generates the existing configuration schema and that no
+retained HTTP-date floor or nonnumeric reset value escapes the focused
 contracts.
 
 ## Progress
@@ -105,23 +105,22 @@ contracts.
 - 2026-09-08: Began source-manifest and shared-hunk review. An artisan maps
   the `error_handling.rs` composition before it is applied.
 - 2026-09-08: Applied B1 first, then Batch A, and copied B2's new sibling
-  module from its frozen worktree. The artisan confirmed the B1 and A hunks
-  are independent: B1 owns Gemini/error-metadata sites, while A owns strict
-  reset parsing. The integrated candidate now has the six approved source
-  paths plus this plan and remains uncommitted pending shared validation.
+  module from its frozen worktree. The artisan confirmed the B1 and A hunks are
+  independent: B1 owns Gemini/error-metadata sites, while A owns strict reset
+  parsing. The integrated candidate now has the six approved source paths plus
+  this plan and remains uncommitted pending shared validation.
 - 2026-09-08: Addressed the introduced CodeScene cyclomatic warning on private
   `parse_reset_after_millis` (threshold 9) with private `parse_ascii_u64` and
   `parse_fractional_millis` helpers. The former is shared by the existing
   whole-second header extractor and reset parser; the latter owns the existing
-  strict fractional digit validation, three-digit truncation, ceiling
-  rounding, and overflow behavior. This repair modifies only
+  strict fractional digit validation, three-digit truncation, ceiling rounding,
+  and overflow behavior. This repair modifies only
   `crates/codegen/vtcode-llm/src/providers/error_handling.rs` and this plan.
   The serial runner owns all gates; they are delegated and were not run by the
-  artisan. The separate five-argument
-  `decision_for_llm_error_with_backoff_at` CodeScene finding remains
-  intentionally retained because its policy, error, attempt, mutable
-  backoff, and injected `SystemTime` inputs are independent and the fixed-time
-  seam is required by its regression test.
+  artisan. The separate five-argument `decision_for_llm_error_with_backoff_at`
+  CodeScene finding remains intentionally retained because its policy, error,
+  attempt, mutable backoff, and injected `SystemTime` inputs are independent
+  and the fixed-time seam is required by its regression test.
 
 ## Decisions and risks
 
@@ -144,5 +143,5 @@ contracts.
 
 ## Outcome and retrospective
 
-Pending source composition and shared validation. No commit, push, comments,
-or hosted action has occurred from this integration worktree.
+Pending source composition and shared validation. No commit, push, comments, or
+hosted action has occurred from this integration worktree.

@@ -37,9 +37,10 @@ capabilities are conditional; a client must not assume that subagent management
 or background tasks are available when they are absent from the handshake.
 
 Subagent and background-process progress uses ordinary ACP `session/update`
-tool calls and tool-call updates. The update carries task description and status
-in standard fields, while `meta.lody.task` contains the additional Lody task
-snapshot, such as task ID, kind, actor, timestamps, summary, and error details.
+tool calls and tool-call updates. The update carries task description and
+status in standard fields, while `meta.lody.task` contains the additional Lody
+task snapshot, such as task ID, kind, actor, timestamps, summary, and error
+details.
 
 The following Lody extension requests are available when subagent management
 was advertised:
@@ -49,8 +50,8 @@ was advertised:
 - `_lody/subagents/output` returns a bounded output tail for an owned task.
 
 Usage is reported with the `_lody/session/usage_update` extension notification.
-Its parameters contain `sessionId`, a `usage` object, and `modelUsage`, keyed by
-model name. The notification represents the usage delta for one provider
+Its parameters contain `sessionId`, a `usage` object, and `modelUsage`, keyed
+by model name. The notification represents the usage delta for one provider
 response, not a running total. The normalized usage object may contain:
 
 - `inputTokens`, `outputTokens`, `cacheReadInputTokens`, and
@@ -64,21 +65,22 @@ response, not a running total. The normalized usage object may contain:
   output rates. Pricing is configured in USD per million tokens, with optional
   cache-read and cache-write rates.
 
-Automatic context compaction is advertised as `_meta.lody.compaction = {
-"version": 1 }`. Each compaction is represented by standard ACP
-`tool_call`/`tool_call_update` session updates. The updates use a stable tool
-call ID and carry `_meta.lody.activity` with the activity kind, token counts,
-duration, and any failure reason; no private ACP update type is required.
+Automatic context compaction is advertised as
+`_meta.lody.compaction = { "version": 1 }`. Each compaction is represented by
+standard ACP `tool_call`/`tool_call_update` session updates. The updates use a
+stable tool call ID and carry `_meta.lody.activity` with the activity kind,
+token counts, duration, and any failure reason; no private ACP update type is
+required.
 
 VT Code advertises push-only `_meta.lody.rateLimits = { "version": 1 }`.
 Recognized HTTP 429 quota headers produce `_lody/rate_limits/update` snapshots
-scoped to the provider and model. Complete nonzero limit/remaining pairs
-produce `usedPercent` and the provider's documented window duration. Missing
-reset times remain null. Limit-only headers, including Fireworks throughput
-ceilings, retain their absolute values in `limitName` with empty `windows`.
-There is no quota query method or inferred account identifier. Per-request
-token counters, `Retry-After`, and other diagnostics remain in warning notices;
-they are not added to usage deltas. See
+scoped to the provider and model. Complete nonzero limit/remaining pairs produce
+`usedPercent` and the provider's documented window duration. Missing reset
+times remain null. Limit-only headers, including Fireworks throughput ceilings,
+retain their absolute values in `limitName` with empty `windows`. There is no
+quota query method or inferred account identifier. Per-request token counters,
+`Retry-After`, and other diagnostics remain in warning notices; they are not
+added to usage deltas. See
 [provider rate-limit headers](../development/provider-rate-limit-headers.md)
 for configuration and retry semantics.
 

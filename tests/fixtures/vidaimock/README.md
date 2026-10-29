@@ -37,8 +37,8 @@ Issue 21 child-planner recovery fixtures keep two contracts explicit:
   sanitised, structurally valid success response derived from the supplied
   capture. It is not the historical failing response.
 - [`planner-response-empty.json`](planner-response-empty.json), the malformed
-  scenario, and the provider-drop scenario deliberately exercise empty
-  content, invalid transport JSON, and provider failure.
+  scenario, and the provider-drop scenario deliberately exercise empty content,
+  invalid transport JSON, and provider failure.
 - [`providers/child-single-physics.yaml`](providers/child-single-physics.yaml)
   serves one minimal buffered child response at
   `/v1/child-single/chat/completions`. Its request count can prove that a

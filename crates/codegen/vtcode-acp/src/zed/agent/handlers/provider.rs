@@ -323,7 +323,7 @@ pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
                 if let Some(reasoning) = response.reasoning.as_deref() {
                     telemetry.observe_output(runtime, reasoning, attempt_index);
                 }
-                telemetry.complete(runtime, &response, attempt_index, true).await;
+                telemetry.complete(runtime, &response, attempt_index).await;
                 drop(permit);
                 return Ok(response);
             }

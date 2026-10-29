@@ -356,6 +356,44 @@ pub fn load_skill_index(store_path: &Path) -> Result<SkillStoreIndex> {
 mod tests {
     use super::*;
 
+    fn zip_file_bytes(entry_name: &str, contents: &[u8]) -> Result<Vec<u8>> {
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        writer.start_file(entry_name, options)?;
+        writer.write_all(contents)?;
+        Ok(writer.finish()?.into_inner())
+    }
+
+    #[test]
+    fn extracts_zip_file_into_nested_directory() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let destination = temp.path().join("extracted");
+        fs::create_dir(&destination)?;
+        let zip_bytes = zip_file_bytes("nested/payload.txt", b"archive payload")?;
+
+        extract_zip_safely(&zip_bytes, &destination)?;
+
+        assert_eq!(fs::read(destination.join("nested/payload.txt"))?, b"archive payload");
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_zip_parent_traversal_without_writing_files() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let destination = temp.path().join("extracted");
+        fs::create_dir(&destination)?;
+        let outside_path = temp.path().join("outside.txt");
+        fs::write(&outside_path, b"original sentinel")?;
+        let zip_bytes = zip_file_bytes("../outside.txt", b"archive payload")?;
+
+        let result = extract_zip_safely(&zip_bytes, &destination);
+
+        assert!(result.is_err());
+        assert_eq!(fs::read(outside_path)?, b"original sentinel");
+        assert!(fs::read_dir(destination)?.next().is_none());
+        Ok(())
+    }
+
     #[test]
     fn test_skill_store_index_default() {
         let index = SkillStoreIndex::default();

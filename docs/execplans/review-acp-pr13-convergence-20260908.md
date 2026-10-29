@@ -53,8 +53,8 @@ an archive with ambiguous terminal results is rejected before continuation.
   thread lock. Severity: high. Likelihood: low. Mitigation: inspect callers and
   test only closure-local mutation without re-entering the handle.
 - Risk: treating every checkpoint as fatal could regress ordinary session
-  transcripts. Severity: high. Likelihood: medium. Mitigation: introduce or
-  use the required-checkpoint path only at pre-tool admission.
+  transcripts. Severity: high. Likelihood: medium. Mitigation: introduce or use
+  the required-checkpoint path only at pre-tool admission.
 - Risk: archive repair may confuse duplicate terminal evidence for a canonical
   provider result. Severity: high. Likelihood: medium. Mitigation: retain the
   archive byte-for-byte and fail closed before registration or continuation
@@ -117,14 +117,14 @@ an archive with ambiguous terminal results is rejected before continuation.
 ## Surprises & discoveries
 
 - The pre-existing dirty repair worktree is based on a different ancestry:
-  `git merge-base aa434f916 HEAD` there is `1aa90f19`, not `aa434f916`.
-  It is therefore unsuitable as a publication source, even though it contains
-  related exploratory changes.
+  `git merge-base aa434f916 HEAD` there is `1aa90f19`, not `aa434f916`. It is
+  therefore unsuitable as a publication source, even though it contains related
+  exploratory changes.
 - A Red-test artisan incorrectly ran a focused nextest command despite the
   exclusive-scrutineer rule. Its owned process was interrupted; the log ends in
-  compilation interruption and proves no test result. Future artisan packets
-  in this programme may author source and return a selector, but may not run
-  tests or any gate.
+  compilation interruption and proves no test result. Future artisan packets in
+  this programme may author source and return a selector, but may not run tests
+  or any gate.
 - The requested atomic repair needs a cross-crate API. Root approved a narrow
   method on the existing session mutex, constrained to short synchronous and
   non-reentrant closures with no handle calls, I/O, or await while locked.
@@ -156,14 +156,14 @@ an archive with ambiguous terminal results is rejected before continuation.
   because both controls are required to distinguish a real duplicate result
   from legitimate ID reuse across completed assistant batches.
 - The completed four-file production/test delta is 597 additions and 25
-  deletions, or +572 non-plan lines. It remains within the root-approved
-  +600 tolerance. The only public interface addition is the approved existing
-  handle method; no wire or archive format changes were made.
+  deletions, or +572 non-plan lines. It remains within the root-approved +600
+  tolerance. The only public interface addition is the approved existing handle
+  method; no wire or archive format changes were made.
 - CodeScene reports the four observations in
-  `ambiguous_archive_is_not_resumed_or_replayed_and_preserves_the_archive` as
-  a large assertion block. They are one failure contract for one resume
-  attempt: an actionable error, no registered session, byte-identical archive,
-  and unchanged external target. Splitting or weakening them would obscure the
+  `ambiguous_archive_is_not_resumed_or_replayed_and_preserves_the_archive` as a
+  large assertion block. They are one failure contract for one resume attempt:
+  an actionable error, no registered session, byte-identical archive, and
+  unchanged external target. Splitting or weakening them would obscure the
   causal relation and could permit an unsafe partial failure, so the metric is
   deliberately retained with this evidence.
 - The `handlers.rs` file-size warning predates this narrow repair (#118). The
@@ -185,78 +185,75 @@ an archive with ambiguous terminal results is rejected before continuation.
 ## Decision log
 
 - Decision: reconcile CodeRabbit's suggestion to log a failed repair checkpoint
-  with the Codex durability finding by checkpointing before session registration
-  and returning an error on failure.
-  Rationale: this preserves the documented uncertain-effect recovery contract;
-  an in-memory repaired session with a stale archive is not safe.
-  Date/Author: 2026-09-08 / ACP stack convergence journeyman, approved by root.
+  with the Codex durability finding by checkpointing before session
+  registration and returning an error on failure. Rationale: this preserves the
+  documented uncertain-effect recovery contract; an in-memory repaired session
+  with a stale archive is not safe. Date/Author: 2026-09-08 / ACP stack
+  convergence journeyman, approved by root.
 - Decision: keep the atomic mutation primitive in the existing thread runtime
-  rather than adding a second ACP lock.
-  Rationale: one authoritative lock prevents lost updates across ACP and other
-  thread appenders.
-  Date/Author: 2026-09-08 / ACP stack convergence journeyman.
+  rather than adding a second ACP lock. Rationale: one authoritative lock
+  prevents lost updates across ACP and other thread appenders. Date/Author:
+  2026-09-08 / ACP stack convergence journeyman.
 - Decision: treat all artisan test execution as out of bounds, including a Red
   test. Red/Green commands are exclusively scheduled through the shared
   scrutineer unless a separate alchemist experiment is explicitly authorized.
-  Rationale: shared Cargo state and the project gate policy require one
-  serial verifier; a source-only artisan cannot create validation evidence.
+  Rationale: shared Cargo state and the project gate policy require one serial
+  verifier; a source-only artisan cannot create validation evidence.
   Date/Author: 2026-09-08 / ACP stack convergence journeyman, directed by root.
 - Decision: add `ThreadRuntimeHandle::mutate_messages<T>` as a narrow atomic
   closure operation over the already-authoritative session mutex. Its closure
   must be short, synchronous and non-reentrant; it must not call the handle,
-  perform I/O, or await while the mutex is held.
-  Rationale: it retains the single state owner and existing API compatibility,
-  prevents lost updates, and crosses the crate boundary without a second lock.
-  Date/Author: 2026-09-08 / root-approved ACP stack convergence decision.
+  perform I/O, or await while the mutex is held. Rationale: it retains the
+  single state owner and existing API compatibility, prevents lost updates, and
+  crosses the crate boundary without a second lock. Date/Author: 2026-09-08 /
+  root-approved ACP stack convergence decision.
 - Decision: canonicalize a uniquely attributable late Tool result by moving it
   beside its assistant call while preserving exact terminal payload and the
   relative order of unrelated messages. Do not replay, discard, or replace a
   known terminal effect. Treat duplicate, ambiguous, or conflicting identities
   as conservative uncertainty and escalate if the representation cannot retain
-  all evidence.
-  Rationale: provider-valid contiguity cannot justify loss of durable effect
-  evidence.
-  Date/Author: 2026-09-08 / root-approved ACP stack convergence decision.
+  all evidence. Rationale: provider-valid contiguity cannot justify loss of
+  durable effect evidence. Date/Author: 2026-09-08 / root-approved ACP stack
+  convergence decision.
 - Decision: carry the restored archive's existing `turn_diagnostics` into the
   one repair checkpoint, while ordinary subsequent checkpoints retain their
-  existing absence of explicit diagnostics.
-  Rationale: repair must not silently erase a known durable outcome merely to
-  satisfy the expanded progress-checkpoint contract.
-  Date/Author: 2026-09-08 / root-directed focused-gate repair.
+  existing absence of explicit diagnostics. Rationale: repair must not silently
+  erase a known durable outcome merely to satisfy the expanded
+  progress-checkpoint contract. Date/Author: 2026-09-08 / root-directed
+  focused-gate repair.
 - Decision: reject an archive before repair persistence, session registration,
   provider generation, or tool execution when duplicate/conflicting results
   cannot be attributed one-for-one to one assistant tool-call batch. Preserve
   its on-disk bytes and return an actionable ACP error. Reused IDs in distinct,
-  completed batches remain permitted.
-  Rationale: durable evidence cannot be deleted or guessed into a wire-valid
-  result, and provider serializers differ in their unsafe duplicate handling.
-  Date/Author: 2026-09-08 / root-approved ACP stack convergence decision.
+  completed batches remain permitted. Rationale: durable evidence cannot be
+  deleted or guessed into a wire-valid result, and provider serializers differ
+  in their unsafe duplicate handling. Date/Author: 2026-09-08 / root-approved
+  ACP stack convergence decision.
 - Decision: retain the four assertions in the ambiguous-archive admission test
   as one atomic failure contract instead of reducing CodeScene's large-block
-  count by splitting them.
-  Rationale: they observe the same rejected resume attempt across its caller,
-  in-memory registration, durable archive, and external side-effect boundary;
-  separate attempts would no longer prove the required fail-closed outcome.
-  Date/Author: 2026-09-08 / root-directed PR13 CodeScene triage.
+  count by splitting them. Rationale: they observe the same rejected resume
+  attempt across its caller, in-memory registration, durable archive, and
+  external side-effect boundary; separate attempts would no longer prove the
+  required fail-closed outcome. Date/Author: 2026-09-08 / root-directed PR13
+  CodeScene triage.
 - Decision: treat the `handlers.rs` file-size finding as a tracked baseline
   concern (#118), while reducing only the newly added checkpoint test's method
-  size through a private fixture.
-  Rationale: a whole-module reduction exceeds this recovery plateau, but the
-  new admission coverage must remain explicit and reviewable.
-  Date/Author: 2026-09-08 / root-directed PR13 CodeScene triage.
+  size through a private fixture. Rationale: a whole-module reduction exceeds
+  this recovery plateau, but the new admission coverage must remain explicit
+  and reviewable. Date/Author: 2026-09-08 / root-directed PR13 CodeScene triage.
 - Decision: raise the non-plan-line ceiling from +600 to +650 only for the
   current CodeScene follow-up and any formatter wrapping it requires.
   Rationale: the coherent fixture and single-batch validator produce +603
   lines, and reducing that count by minifying or weakening assertions would
-  damage the required evidence without reducing feature scope.
-  Date/Author: 2026-09-08 / root-approved PR13 CodeScene tolerance decision.
+  damage the required evidence without reducing feature scope. Date/Author:
+  2026-09-08 / root-approved PR13 CodeScene tolerance decision.
 - Decision: satisfy recovery observability with the existing tracing surface:
   stable outcome labels with session/thread identifiers and call/result counts.
   Do not create an ACP metric collector, event bus, payload logging, or log
-  while a thread-history mutex is held.
-  Rationale: this makes durable admission and recovery outcomes diagnosable
-  without widening the runtime contract or exposing tool inputs/results.
-  Date/Author: 2026-09-08 / root-approved PR13 pre-merge packet.
+  while a thread-history mutex is held. Rationale: this makes durable admission
+  and recovery outcomes diagnosable without widening the runtime contract or
+  exposing tool inputs/results. Date/Author: 2026-09-08 / root-approved PR13
+  pre-merge packet.
 - Decision: when agent capacity prevented the approved disjoint artisan/scribe
   packets, complete the mechanical six-file change directly as journeyman;
   retain independent verification through the root-designated scrutineer.
@@ -270,9 +267,9 @@ repair with focused green evidence and no changes outside recovery/history
 integrity, apart from the approved `ThreadRuntimeHandle` API addition. The
 historical Red stage was not executed against this clean worktree because the
 shared scrutineer was the sole runner; an interrupted artisan attempt is not
-evidence. The plan therefore records the honest source-to-green limitation
-and will add the remaining gate, review, commit, and disposition evidence
-before the plateau is complete.
+evidence. The plan therefore records the honest source-to-green limitation and
+will add the remaining gate, review, commit, and disposition evidence before
+the plateau is complete.
 
 The pre-merge documentation and tracing amendment is implemented but not yet
 validated. Its intended outcome is explicit fail-closed archive-resume
@@ -315,10 +312,10 @@ the negative control is the old best-effort helper, which would execute the
 fake and fail the call-count assertion.
 
 `INV-REPAIR-REGISTER`: a failed repaired-archive checkpoint leaves
-`session_handle(session_id)` absent; a retry after a valid destination succeeds.
-Use the existing session-state fixture. The directory-as-file target is a
-reachable failure witness and the retry proves the test did not merely reject
-all loads.
+`session_handle(session_id)` absent; a retry after a valid destination
+succeeds. Use the existing session-state fixture. The directory-as-file target
+is a reachable failure witness and the retry proves the test did not merely
+reject all loads.
 
 `INV-HISTORY-ATOMIC`: one thread-history mutation observes and writes under one
 lock, so an append cannot be discarded between a snapshot and replacement. Use
@@ -329,8 +326,8 @@ append is retained after release; it must use no timing or sleep criterion.
 `INV-TOOL-CLOSURE`: a uniquely attributable result separated by a non-Tool
 message is relocated beside its assistant call with its exact payload
 preserved. Duplicate, ambiguous, or conflicting evidence remains represented
-without guessing or deletion; therefore the strict one-result canonical form
-is asserted only for unambiguous fixtures. Use table-driven cases plus existing
+without guessing or deletion; therefore the strict one-result canonical form is
+asserted only for unambiguous fixtures. Use table-driven cases plus existing
 proptest support. Each generated fixture includes at least one assistant call;
 classify duplicate, contiguous, and non-contiguous cases so the property cannot
 pass vacuously.
@@ -384,11 +381,10 @@ There is no compatibility layer.
 `EP-M2` ends after the narrow production repair and focused green tests. Its
 acceptance evidence is no tool fake call on checkpoint error, no registered
 failed repair, preserved concurrent history, canonical unambiguous repaired
-messages, and fail-closed ambiguous archive continuation.
-The conformance check confirms no wire/archive schema change and only the
-approved minimal public `ThreadRuntimeHandle::mutate_messages<T>` addition.
-Remaining work is the ACP/core relevant gates, Clippy, documentation checks
-and external review.
+messages, and fail-closed ambiguous archive continuation. The conformance check
+confirms no wire/archive schema change and only the approved minimal public
+`ThreadRuntimeHandle::mutate_messages<T>` addition. Remaining work is the
+ACP/core relevant gates, Clippy, documentation checks and external review.
 
 `EP-M3` ends after root-scheduled gates and review convergence. Its recovery is
 to retain the focused commit and re-run the gate packet; publication is outside
@@ -397,14 +393,16 @@ on the existing public thread handle; all other changed interfaces are internal.
 
 ## Concrete steps
 
-Run all commands in `/home/leynos/Projects/VTCode.worktrees/acp-pr13-review-convergence`.
+Run all commands in
+`/home/leynos/Projects/VTCode.worktrees/acp-pr13-review-convergence`.
 
 1. Add focused tests and return their selectors to the root-designated
-   scrutineer. The scrutineer, not an artisan, runs `cargo nextest run --locked
-   -p vtcode-acp <test filters>` with `RUSTFLAGS='-D warnings'`. The initial
-   source-only repair began under the exclusive-runner constraint, so the
-   historical red run is absent; the scrutineer records the focused green
-   result against the completed repair and the plan records this limitation.
+   scrutineer. The scrutineer, not an artisan, runs
+   `cargo nextest run --locked -p vtcode-acp <test filters>` with
+   `RUSTFLAGS='-D warnings'`. The initial source-only repair began under the
+   exclusive-runner constraint, so the historical red run is absent; the
+   scrutineer records the focused green result against the completed repair and
+   the plan records this limitation.
 2. Make the smallest edits in `handlers.rs`, `session_state.rs`,
    `tool_recovery.rs`, and, if necessary, `core/threads.rs`.
 3. Run `cargo fmt --all -- --check`, the focused nextest packet, and the
@@ -420,8 +418,8 @@ The original red-stage expectations remain the design oracle, but no valid
 clean-worktree Red result exists. The shared scrutineer has instead recorded
 focused green behaviour for the completed repair. A successful formatter alone
 is not acceptance. Completion requires the remaining ACP/core relevant
-behavioural evidence, Clippy, documentation checks, a committed exact head,
-and review-thread replies with `@coderabbitai` after the commit exists.
+behavioural evidence, Clippy, documentation checks, a committed exact head, and
+review-thread replies with `@coderabbitai` after the commit exists.
 
 ## Idempotence and recovery
 
@@ -442,12 +440,12 @@ external dependency, wire interface, or archive-format interface is added.
 
 2026-09-08: created from the exact PR #13 review inventory and root-approved
 bounded repair packet. It deliberately excludes restacking, publication and all
-other ACP layers. Revised after an artisan started an unauthorized focused test:
-the plan now makes the shared scrutineer the sole executor of Red/Green commands
-as well as repository gates. Revised again to record the public-interface and
-archive-canonicalization escalations, then root's approved narrow atomic
-mutation and evidence-preserving relocation decisions. The final approved
-tolerance is 600 net non-plan lines in the existing four owned files,
+other ACP layers. Revised after an artisan started an unauthorized focused
+test: the plan now makes the shared scrutineer the sole executor of Red/Green
+commands as well as repository gates. Revised again to record the
+public-interface and archive-canonicalization escalations, then root's approved
+narrow atomic mutation and evidence-preserving relocation decisions. The final
+approved tolerance is 600 net non-plan lines in the existing four owned files,
 including the ambiguity guard and its load/continuation controls.
 
 2026-09-08: reconciled the live plan after focused gates. It now records the

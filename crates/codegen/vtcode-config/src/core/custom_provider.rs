@@ -192,6 +192,10 @@ pub struct CustomProviderProfileConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_responses_compaction: Option<bool>,
 
+    /// Explicit opt-in for compatible Responses function-call ID remapping.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub responses_allow_function_call_id_remap: Option<bool>,
+
     /// Whether streaming requests should ask the provider to return usage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_stream_usage: Option<bool>,
@@ -285,6 +289,7 @@ pub struct ResolvedCustomProviderProfile {
     pub supports_parallel_tool_calls: Option<bool>,
     pub supports_context_caching: Option<bool>,
     pub supports_responses_compaction: Option<bool>,
+    pub responses_allow_function_call_id_remap: Option<bool>,
     pub supports_stream_usage: Option<bool>,
     pub supports_context_edits: Option<bool>,
 }
@@ -323,6 +328,9 @@ impl ResolvedCustomProviderProfile {
             supports_responses_compaction: profile
                 .supports_responses_compaction
                 .or(defaults.supports_responses_compaction),
+            responses_allow_function_call_id_remap: profile
+                .responses_allow_function_call_id_remap
+                .or(defaults.responses_allow_function_call_id_remap),
             supports_stream_usage: profile.supports_stream_usage.or(defaults.supports_stream_usage),
             supports_context_edits: profile.supports_context_edits.or(defaults.supports_context_edits),
         }
@@ -581,6 +589,10 @@ pub struct CustomProviderConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_responses_compaction: Option<bool>,
 
+    /// Explicit opt-in for compatible Responses function-call ID remapping.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub responses_allow_function_call_id_remap: Option<bool>,
+
     /// Optional support for streamed usage chunks.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_stream_usage: Option<bool>,
@@ -736,6 +748,7 @@ impl CustomProviderConfig {
             supports_parallel_tool_calls: self.supports_parallel_tool_calls,
             supports_context_caching: self.supports_context_caching,
             supports_responses_compaction: self.supports_responses_compaction,
+            responses_allow_function_call_id_remap: self.responses_allow_function_call_id_remap,
             supports_stream_usage: self.supports_stream_usage,
             supports_context_edits: self.supports_context_edits,
         }
@@ -1025,6 +1038,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            responses_allow_function_call_id_remap: None,
             supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: String::new(),
@@ -1064,6 +1078,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            responses_allow_function_call_id_remap: None,
             supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: String::new(),
@@ -1103,6 +1118,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            responses_allow_function_call_id_remap: None,
             supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: "MYCORP_API_KEY".to_string(),
@@ -1148,6 +1164,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            responses_allow_function_call_id_remap: None,
             supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: String::new(),
@@ -1193,6 +1210,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            responses_allow_function_call_id_remap: None,
             supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: "MYCORP_API_KEY".to_string(),
@@ -1232,6 +1250,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            responses_allow_function_call_id_remap: None,
             supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: String::new(),
@@ -1253,60 +1272,22 @@ mod tests {
         profiles.insert(
             " gpt-5-mini ".to_string(),
             CustomProviderProfileConfig {
-                temperature: None,
-                top_p: None,
-                top_k: None,
-                presence_penalty: None,
-                frequency_penalty: None,
-                max_tokens: None,
-                reasoning_effort: None,
                 api_format: CustomProviderApiFormat::Auto,
                 context_window: Some(128_000),
-                pricing: Default::default(),
-                supports_tools: None,
-                supports_reasoning: None,
-                supports_reasoning_effort: None,
-                supports_vision: None,
-                supports_structured_output: None,
-                supports_parallel_tool_calls: None,
-                supports_context_caching: None,
-                supports_responses_compaction: None,
-                supports_stream_usage: None,
-                supports_context_edits: None,
+                responses_allow_function_call_id_remap: None,
+                ..Default::default()
             },
         );
 
         let config = CustomProviderConfig {
-            temperature: None,
-            top_p: None,
-            top_k: None,
-            presence_penalty: None,
-            frequency_penalty: None,
-            max_tokens: None,
-            reasoning_effort: None,
             name: "mycorp".to_string(),
             display_name: "MyCorp".to_string(),
             base_url: "https://llm.example/v1".to_string(),
             api_format: CustomProviderApiFormat::Auto,
-            context_window: None,
-            pricing: Default::default(),
-            supports_tools: None,
-            supports_reasoning: None,
-            supports_reasoning_effort: None,
-            supports_vision: None,
-            supports_structured_output: None,
-            supports_parallel_tool_calls: None,
-            supports_context_caching: None,
-            supports_responses_compaction: None,
-            supports_stream_usage: None,
-            supports_context_edits: None,
-            api_key_env: String::new(),
-            auth: None,
+            responses_allow_function_call_id_remap: None,
             model: "gpt-5-mini".to_string(),
-            models: Vec::new(),
             profiles,
-            rate_limit_headers: RateLimitHeaderConfig::default(),
-            request_policy: CustomProviderRequestPolicyConfig::default(),
+            ..Default::default()
         };
 
         let err = config.validate().expect_err("profile key with whitespace should fail");
@@ -1337,6 +1318,7 @@ mod tests {
             supports_parallel_tool_calls: None,
             supports_context_caching: None,
             supports_responses_compaction: None,
+            responses_allow_function_call_id_remap: None,
             supports_stream_usage: None,
             supports_context_edits: None,
             api_key_env: "ATLASCLOUD_API_KEY".to_string(),
@@ -1398,7 +1380,8 @@ mod tests {
                 api_format: CustomProviderApiFormat::OpenAIResponses,
                 context_window: Some(128_000),
                 supports_tools: Some(true),
-                ..CustomProviderProfileConfig::default()
+                responses_allow_function_call_id_remap: None,
+                ..Default::default()
             },
         );
 
@@ -1410,9 +1393,10 @@ mod tests {
             context_window: Some(256_000),
             supports_tools: Some(true),
             supports_reasoning: Some(true),
+            responses_allow_function_call_id_remap: None,
             model: "gpt-5-mini".to_string(),
             profiles,
-            ..CustomProviderConfig::default()
+            ..Default::default()
         };
 
         let resolved = config.resolved_profile("gpt-5-mini");
@@ -1423,7 +1407,8 @@ mod tests {
                 context_window: Some(128_000),
                 supports_tools: Some(true),
                 supports_reasoning: Some(true),
-                ..ResolvedCustomProviderProfile::default()
+                responses_allow_function_call_id_remap: None,
+                ..Default::default()
             }
         );
         assert!(config.profile("gpt-5").is_none());
@@ -1435,60 +1420,31 @@ mod tests {
         profiles.insert(
             "gpt-5-mini".to_string(),
             CustomProviderProfileConfig {
-                supports_stream_usage: Some(false),
-                temperature: None,
-                top_p: None,
-                top_k: None,
-                presence_penalty: None,
-                frequency_penalty: None,
-                max_tokens: None,
-                reasoning_effort: None,
                 api_format: CustomProviderApiFormat::Auto,
-                context_window: None,
-                pricing: Default::default(),
                 supports_tools: Some(false),
-                supports_reasoning: None,
                 supports_reasoning_effort: Some(true),
-                supports_vision: None,
-                supports_structured_output: None,
-                supports_parallel_tool_calls: None,
-                supports_context_caching: None,
-                supports_responses_compaction: None,
-                supports_context_edits: None,
+                responses_allow_function_call_id_remap: None,
+                supports_stream_usage: Some(false),
+                ..Default::default()
             },
         );
 
         let config = CustomProviderConfig {
-            temperature: None,
-            top_p: None,
-            top_k: None,
-            presence_penalty: None,
-            frequency_penalty: None,
-            max_tokens: None,
-            reasoning_effort: None,
             name: "mycorp".to_string(),
             display_name: "MyCorp".to_string(),
             base_url: "https://llm.example/v1".to_string(),
             api_format: CustomProviderApiFormat::OpenAIChat,
             context_window: Some(256_000),
-            pricing: Default::default(),
             supports_tools: Some(true),
             supports_reasoning: Some(false),
-            supports_reasoning_effort: None,
             supports_vision: Some(true),
-            supports_structured_output: None,
             supports_parallel_tool_calls: Some(true),
             supports_context_caching: Some(false),
-            supports_responses_compaction: None,
+            responses_allow_function_call_id_remap: None,
             supports_stream_usage: Some(true),
-            supports_context_edits: None,
-            api_key_env: String::new(),
-            auth: None,
             model: "gpt-5-mini".to_string(),
-            models: Vec::new(),
             profiles,
-            rate_limit_headers: RateLimitHeaderConfig::default(),
-            request_policy: CustomProviderRequestPolicyConfig::default(),
+            ..Default::default()
         };
 
         let resolved = config.resolved_profile("gpt-5-mini");

@@ -86,7 +86,7 @@ if [[ "$RUN_MSRV" == true ]]; then
     echo -e "${BLUE}Current Rust:${NC} $RUST_VERSION"
     
     # Check MSRV in Cargo.toml files
-    echo -e "${BLUE}Expected MSRV:${NC} 1.88 (Rust 2024 Edition)"
+    echo -e "${BLUE}Expected MSRV:${NC} 1.93.0 (declared Rust 2024 workspace toolchain)"
     echo ""
     
     # Verify all crates have rust-version set

@@ -95,12 +95,15 @@ impl GenerationTelemetry {
         );
     }
 
+    pub(in crate::zed::agent::handlers) fn has_observed_output(&self) -> bool {
+        self.first_output_at.is_some()
+    }
+
     pub(in crate::zed::agent::handlers) async fn complete(
         &mut self,
         runtime: &ProviderRequestRuntime,
         response: &LLMResponse,
         retry_count: u32,
-        buffered: bool,
     ) {
         let elapsed = self.started_at.elapsed();
         let elapsed_ms = duration_millis(elapsed).max(1);
@@ -125,7 +128,7 @@ impl GenerationTelemetry {
                 .first_output_at
                 .map(|first| duration_millis(first.duration_since(self.started_at)))
                 .unwrap_or(elapsed_ms),
-            ttft_observation = if buffered { "buffered_response" } else { "stream_event" },
+            ttft_observation = match self.mode { ProviderMode::Buffered => "buffered_response", ProviderMode::Stream => "stream_event" },
             output_tokens,
             token_count_source,
             tokens_per_second,
@@ -152,6 +155,8 @@ impl GenerationTelemetry {
             retry_delay,
             error,
         } = failure;
+        #[cfg(test)]
+        crate::zed::agent::handlers::responses_tests::record_provider_failure(error, runtime);
         let elapsed_ms = duration_millis(self.started_at.elapsed());
         let first_output_ms = self
             .first_output_at

@@ -139,6 +139,11 @@ impl ProviderRequestRuntime {
         &self.provider_name
     }
 
+    #[cfg(test)]
+    pub(crate) fn shares_request_state(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.counters, &other.counters)
+    }
+
     pub(crate) fn provider_class(&self) -> ProviderClass {
         self.provider_class
     }

@@ -19,7 +19,7 @@ uses heuristics to detect unmaintained packages by checking:
 ## Installation
 
 ```bash
-cargo install cargo-unmaintained
+cargo install --locked --version 1.10.0 cargo-unmaintained
 ```
 
 ## Usage
@@ -74,18 +74,60 @@ CI runs `scripts/check_unmaintained_baseline.py`. It invokes the pinned
 shape, and compares every stable finding field with
 `scripts/cargo_unmaintained_baseline.json`.
 
-The baseline is tracked debt for
-[issue #108](https://github.com/leynos/vtcode/issues/108), not an ignore list.
-Every entry records its exact package version, repository status kind, stale
-dependency requirements, classification, and rationale. The checker
-deliberately ignores only the changing age count. A new package, version,
-status, requirement, malformed result, scanner error, or invalid baseline fails
-CI.
+The baseline records tracked maintenance debt for
+[issue #108](https://github.com/leynos/vtcode/issues/108); it is not an ignore
+list. Each entry records the package and version, repository status category,
+outdated dependency requirements and versions, classification, and rationale.
+Only the changing numeric repository age is excluded from identity. A change to
+any other identity field, including the latest dependency version, must be
+reviewed. The checker prints explicit identity-field differences for changed
+findings. A new package or version, changed status category or dependency
+record, malformed result, scanner error, or invalid baseline fails CI.
+
+For local use, capture the scanner's exact JSON stdout with:
+
+```bash
+python3 scripts/check_unmaintained_baseline.py \
+  --capture-json /path/to/cargo-unmaintained.json
+```
+
+The wrapper runs the scanner once and writes its stdout bytes before parsing or
+validating them, including when the output is invalid. The destination's parent
+directory must already exist. If capture fails, the wrapper exits with status
+2. CI preserves this artifact for 14 days, including on job failure.
 
 Do not add packages to `[package.metadata.unmaintained].ignore` to pass this
 check. Do not add `--no-exit-code`, `continue-on-error`, or an automated
 baseline refresh. A missing previous finding is reported as eligible for manual
 removal after it has been reviewed.
+
+### Reviewed baseline changes (2026-10-29)
+
+The following existing findings were reviewed for issue #108. For these eight
+packages, only the scanner's latest-version indicator changed; the locked
+version, requirement, and repository-status category remain unchanged:
+
+| Package             | Dependency | Latest-version change |
+| ------------------- | ---------- | --------------------- |
+| bs58                | sha2       | 0.11.0 to 0.11.1      |
+| bytecount           | rand       | 0.10.2 to 0.10.3      |
+| dbus-secret-service | sha2       | 0.11.0 to 0.11.1      |
+| lab                 | rand       | 0.10.2 to 0.10.3      |
+| miow                | rand       | 0.10.2 to 0.10.3      |
+| qoi                 | rand       | 0.10.2 to 0.10.3      |
+| subtle              | rand       | 0.10.2 to 0.10.3      |
+| web-time            | rand       | 0.10.2 to 0.10.3      |
+
+The `rusty-fork` 0.3.1 test dependency is retained for process-isolation
+coverage. It is used through `vtcode-bash-runner` and the test-only `proptest`
+dependency graph; its `quick-error` requirement `^1.2` selects 1.2.3 while
+2.0.1 is current. Track remediation with the dependency owners in issue #108.
+
+The `process-wrap` 9.1.0 `Uncloneable` finding was not accepted as baseline
+debt: a fresh lookup of its official repository returned HTTP 200, and an SSH
+HEAD lookup succeeded. Validate any operational report before treating this as
+an abandoned or unavailable repository. The absent `mac_address` 1.1.8 and
+`redox_users` 0.5.2 entries remain unchanged pending platform reconciliation.
 
 ### GitHub Token (Optional)
 

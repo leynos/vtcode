@@ -329,8 +329,8 @@ Notes:
   Optional `rate_limit_headers` maps quota response headers into ACP 429
   notices, with Baseten's four per-minute headers as defaults. See
   [provider rate-limit headers](../development/provider-rate-limit-headers.md)
-  for Fireworks/Together mappings and the exponential `Retry-After` floor.
-  The defaults are `queue_timeout_seconds = 600`, `max_retries = 2`,
+  for Fireworks/Together mappings and the exponential `Retry-After` floor. The
+  defaults are `queue_timeout_seconds = 600`, `max_retries = 2`,
   `retry_initial_backoff_ms = 10000`, `retry_max_backoff_ms = 160000`, and
   `retry_jitter = true`. Provider deadlines default to 30 seconds to connect,
   180 seconds to the first streamed token, 120 seconds between streamed tokens,
@@ -357,11 +357,11 @@ use when model metadata is absent. These are useful for gateways and
 aggregators that do not provide per-model descriptors. Set fields such as
 `supports_tools`, `supports_vision`, `supports_structured_output`,
 `supports_parallel_tool_calls`, or `supports_stream_usage` directly on the
-provider entry. `supports_stream_usage` is optional and defaults to `false`; set
-it to `true` only when an OpenAI-chat endpoint supports a terminal usage chunk
-in streamed responses. It enables `stream_options.include_usage = true` for that
-custom provider's OpenAI-chat requests. Native OpenAI provider behaviour is
-unchanged.
+provider entry. `supports_stream_usage` is optional and defaults to `false`;
+set it to `true` only when an OpenAI-chat endpoint supports a terminal usage
+chunk in streamed responses. It enables `stream_options.include_usage = true`
+for that custom provider's OpenAI-chat requests. Native OpenAI provider
+behaviour is unchanged.
 
 Providers and profiles can also pin sampling values. Available fields:
 `temperature` (0.0-2.0), `top_p` (0.0-1.0), `top_k` (>= 0), `presence_penalty` /
@@ -435,13 +435,14 @@ Additional rules:
   not silently fall back.
 - `supports_stream_usage` follows the same precedence: a profile value
   overrides the provider default. When `true`, only custom OpenAI-chat streams
-  request `stream_options.include_usage = true`; the endpoint should return usage
-  in the terminal empty-choices chunk. When omitted or `false`, VT Code does not
-  request streamed usage. Native OpenAI requests are unaffected.
+  request `stream_options.include_usage = true`; the endpoint should return
+  usage in the terminal empty-choices chunk. When omitted or `false`, VT Code
+  does not request streamed usage. Native OpenAI requests are unaffected.
 - `pricing` follows the same precedence and is opt-in. Rates are configured as
-  USD per million tokens with separate input, output, cache-read, and cache-write
-  fields. ACP `costUSD` is omitted unless both input and output rates resolve;
-  cache rates are used when the provider reports cache token counts.
+  USD per million tokens with separate input, output, cache-read, and
+  cache-write fields. ACP `costUSD` is omitted unless both input and output
+  rates resolve; cache rates are used when the provider reports cache token
+  counts.
 - Profiles do not make a model available in the picker — use `model` or
   `models` to control availability.
 - Wire delivery depends on the backend's API format. The OpenAI Chat shape sends

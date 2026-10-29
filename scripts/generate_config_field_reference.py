@@ -467,6 +467,16 @@ def escape_cell(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", " ").strip()
 
 
+def code_cell(value: str) -> str:
+    text = escape_cell(value)
+    delimiter = "`"
+    while delimiter in text:
+        delimiter += "`"
+    if text.startswith("`") or text.endswith("`"):
+        text = f" {text} "
+    return f"{delimiter}{text}{delimiter}"
+
+
 def render_markdown(entries: list[FieldEntry]) -> str:
     lines = [
         "# Config Field Reference",
@@ -480,18 +490,31 @@ def render_markdown(entries: list[FieldEntry]) -> str:
         "make fmt",
         "```",
         "",
-        "| Field | Type | Required | Default | Description |",
-        "|-------|------|----------|---------|-------------|",
     ]
+    groups: dict[str, list[FieldEntry]] = {}
     for entry in entries:
-        required = "yes" if entry.required else "no"
-        default = entry.default or "-"
-        description = entry.description or "-"
-        lines.append(
-            f"| `{escape_cell(entry.path)}` | `{escape_cell(entry.type_name)}` | "
-            f"{required} | `{escape_cell(default)}` | {escape_cell(description)} |"
+        group = ".".join(entry.path.split(".")[:2])
+        groups.setdefault(group, []).append(entry)
+
+    # Separate tables keep a long default from padding every field in the reference.
+    for group, group_entries in groups.items():
+        lines.extend(
+            [
+                f"## {code_cell(group)}",
+                "",
+                "| Field | Type | Required | Default | Description |",
+                "|-------|------|----------|---------|-------------|",
+            ]
         )
-    lines.append("")
+        for entry in group_entries:
+            required = "yes" if entry.required else "no"
+            default = entry.default or "-"
+            description = entry.description or "-"
+            lines.append(
+                f"| {code_cell(entry.path)} | {code_cell(entry.type_name)} | "
+                f"{required} | {code_cell(default)} | {escape_cell(description)} |"
+            )
+        lines.append("")
     return "\n".join(lines)
 
 
