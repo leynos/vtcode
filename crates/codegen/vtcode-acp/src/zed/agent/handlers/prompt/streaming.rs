@@ -157,7 +157,15 @@ async fn handle_streaming_attempt(
                 finish_failed_or_cancelled_output(turn, output, SafeProviderProjection::from_llm_error(&error)).await?;
             Ok(StreamingTurnOutcome::Finished(response))
         }
-        StreamAttemptOutcome::EmptyResponse => Err(empty_response_error()),
+        StreamAttemptOutcome::EmptyResponse => {
+            // Cancellation can arrive after the retry budget is spent. ACP
+            // requires `Cancelled` for a cancelled turn, so it outranks the
+            // empty-response failure.
+            if turn.session.cancellation.is_cancelled() {
+                return Ok(StreamingTurnOutcome::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)));
+            }
+            Err(empty_response_error())
+        }
         StreamAttemptOutcome::Cancelled => {
             Ok(StreamingTurnOutcome::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)))
         }

@@ -34,10 +34,14 @@ pub(super) async fn collect_stream_events(
                 };
                 let outcome = classify_stream_poll_failure(&mut request, error).await;
                 // Keep truncated streams retryable. Once a retry cannot
-                // recover and no assistant content ever reached the client,
-                // report `empty_response` rather than a generic failure
-                // notice: ACP must never acknowledge an empty turn.
-                if !request.output.assistant_emitted && matches!(&outcome, StreamAttemptOutcome::Failed { .. }) {
+                // recover and nothing at all reached the client, report
+                // `empty_response` rather than a generic failure notice: ACP
+                // must never acknowledge an empty turn. Visible reasoning or
+                // tool deltas keep the normal failure path and its reporting.
+                if !request.output.assistant_emitted
+                    && !request.output.emitted_output
+                    && matches!(&outcome, StreamAttemptOutcome::Failed { .. })
+                {
                     return StreamAttemptOutcome::EmptyResponse;
                 }
                 return outcome;

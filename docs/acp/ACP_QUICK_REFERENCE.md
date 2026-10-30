@@ -99,6 +99,8 @@ cancellation returns `internal_error` with
 `data.reason = "tool_execution_failed"`. Neither case is acknowledged as a
 silent `EndTurn`.
 
+### Provider rate limits
+
 HTTP 429 notices include configured provider quota headers, preserving
 per-minute, per-second, and per-request units. `Retry-After` and configured
 reset intervals set a minimum for exponential back-off; missing headers are
