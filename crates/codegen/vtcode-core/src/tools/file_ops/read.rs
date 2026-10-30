@@ -1,6 +1,18 @@
+//! `read_file` execution: windowing, continuation, and version certification.
+//!
+//! Serves the model-visible read surface. Besides slicing the requested line
+//! window and producing continuation metadata, this module samples a content
+//! version around the read itself and returns it as `content_hash`, so a later
+//! `apply_patch` can prove the patch was generated from the content the model
+//! actually saw. The sampling lives in `capture_read_content_hash` and
+//! `capture_read_content_hash_consistent`; the surrounding staleness policy is
+//! owned by `crate::tools::edited_file_monitor` and enforced by the registry
+//! patch pipeline.
+
 use super::FileOpsTool;
 use super::is_image_path;
 use super::path_policy::PathSuggestionKind;
+use super::restore_exact_text_content;
 mod legacy;
 mod logging;
 mod segments;
@@ -13,6 +25,7 @@ use crate::tools::handlers::read_file::{ReadFileArgs, ReadFileHandler, ReadFileO
 use crate::tools::traits::FileTool;
 use crate::tools::types::{Input, PathArgs};
 use anyhow::{Context, Result, anyhow};
+pub use segments::line_window;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -181,32 +194,24 @@ fn parse_usize_value(value: &Value) -> Option<usize> {
         .or_else(|| value.as_str().and_then(|s| s.parse::<usize>().ok()))
 }
 
+/// Report whether the arguments set any limit alias.
 fn has_explicit_limit(args: &Value) -> bool {
     ["limit", "l", "page_size_lines", "max_lines", "chunk_lines", "end_line"]
         .iter()
         .any(|key| args.get(*key).is_some())
 }
 
+/// Report whether the arguments set any offset alias.
 fn has_explicit_offset(args: &Value) -> bool {
     ["offset", "o", "offset_lines", "offset_bytes", "start_line"]
         .iter()
         .any(|key| args.get(*key).is_some())
 }
 
+/// Report whether the read covers the whole file with no explicit window.
 fn is_full_text_read(args: &Value, is_spool_output: bool) -> bool {
     !is_spool_output && !has_explicit_offset(args) && !has_explicit_limit(args)
 }
-
-use super::restore_exact_text_content;
-
-fn response_size_bytes(response: &Value) -> Option<u64> {
-    response
-        .get("metadata")
-        .and_then(|metadata| metadata.get("data"))
-        .and_then(|data| data.get("size_bytes"))
-        .and_then(Value::as_u64)
-}
-
 fn apply_spool_chunk_defaults(handler_args_json: &mut Value, raw_args: &Value) -> SpoolChunkPlan {
     let mut offset = 1usize;
     let mut limit = SPOOL_CHUNK_DEFAULT_LIMIT_LINES;
@@ -255,6 +260,23 @@ fn is_tool_output_spool_path(path: &Path) -> bool {
     s.contains(".vtcode") && s.contains("/context/tool_outputs/")
 }
 
+/// Choose the single `cache` tag emitted for a read that missed the cache.
+///
+/// `PerfSpan` keeps tags in a map, so a second `tag("cache", ...)` for the same
+/// key overwrites the first. Treating a stale entry as an ordinary miss would
+/// therefore hide the revalidation path from `vtcode.perf.read_file_ms`, which
+/// is the only place it can be observed. Deciding the value once keeps `stale`
+/// distinct from `miss` and from the `skip` case where the cache does not apply.
+fn cache_outcome_tag(has_cache_key: bool, entry_was_stale: bool) -> &'static str {
+    if entry_was_stale {
+        "stale"
+    } else if has_cache_key {
+        "miss"
+    } else {
+        "skip"
+    }
+}
+
 fn pty_session_id_from_tool_output_path(path: &Path) -> Option<String> {
     let file_name = path.file_name()?.to_str()?;
     let session_file = file_name.strip_suffix(".txt")?;
@@ -269,6 +291,13 @@ fn pty_session_id_from_tool_output_path(path: &Path) -> Option<String> {
     }
 }
 
+/// Key the read-history cache on the file version and the window arguments.
+///
+/// The size and mtime identify the version the cached entry was produced from,
+/// and every argument that changes the rendered window is folded in, so a
+/// different page or encoding never reuses another window's text. Returns
+/// `None` when the modification time is unavailable, which makes the read
+/// uncacheable rather than silently shared.
 fn build_history_cache_key(path: &Path, metadata: &std::fs::Metadata, args: &Value) -> Option<String> {
     let modified = metadata.modified().ok()?;
     let mtime = modified.duration_since(UNIX_EPOCH).ok()?.as_millis();
@@ -302,47 +331,91 @@ fn build_history_cache_key(path: &Path, metadata: &std::fs::Metadata, args: &Val
     ))
 }
 
+/// Render the `sha256:` version field from a captured snapshot.
+fn content_hash_from_snapshot(
+    snapshot: &crate::tools::edited_file_monitor::FileSnapshot,
+    path: &Path,
+) -> Result<String> {
+    if !snapshot.exists || snapshot.sha256.is_empty() {
+        return Err(anyhow!("Unable to version file after reading it: {}", path.display()));
+    }
+    Ok(format!("sha256:{}", snapshot.sha256))
+}
+
 impl FileOpsTool {
-    async fn track_read_snapshot(&self, path: &Path) {
-        if let Err(err) = self.edited_file_monitor.track_read(path).await {
-            tracing::warn!(
-                path = %path.display(),
-                error = %err,
-                "Failed to record edited-file read snapshot"
-            );
-        }
+    /// Capture and record the current full-file version for a successful read.
+    pub async fn capture_read_content_hash(&self, path: &Path) -> Result<String> {
+        let snapshot = self.edited_file_monitor.capture_read_snapshot(path).await?;
+        content_hash_from_snapshot(&snapshot, path)
     }
 
-    fn track_read_text_snapshot(&self, path: &Path, content: &str) {
-        if let Err(err) = self.edited_file_monitor.record_read_text(path, content) {
-            tracing::warn!(
-                path = %path.display(),
-                error = %err,
-                "Failed to record edited-file read snapshot"
-            );
+    /// Record a read version only when the on-disk bytes still match `expected_hash`.
+    ///
+    /// ACP clients can return unsaved buffer content that never reached the disk, so
+    /// a hash sampled locally may describe bytes the model never saw. Recording only
+    /// on a match keeps the edited-file baseline honest; on a mismatch nothing is
+    /// recorded and the caller reports an absent version.
+    pub async fn record_read_content_hash_if_matches(
+        &self,
+        path: &Path,
+        expected_hash: &str,
+    ) -> Result<Option<String>> {
+        use crate::tools::edited_file_monitor::EditedFileMonitor;
+
+        let snapshot = EditedFileMonitor::current_snapshot(path).await?;
+        let current_hash = content_hash_from_snapshot(&snapshot, path)?;
+        if current_hash != expected_hash {
+            return Ok(None);
         }
+        self.edited_file_monitor.record_read_snapshot(path, snapshot)?;
+        Ok(Some(current_hash))
     }
 
-    async fn track_exact_text_snapshot(&self, path: &Path, content: &str, size_bytes: u64) {
-        if let Some(exact_content) = restore_exact_text_content(content, size_bytes) {
-            self.track_read_text_snapshot(path, &exact_content);
-        } else {
-            self.track_read_snapshot(path).await;
+    /// Capture a read version without certifying content the caller never returned.
+    ///
+    /// The content is read before the version is captured, so a concurrent writer can
+    /// leave the response describing one revision while the hash describes the next.
+    /// A model that then passed `expected_content_hash` would satisfy both the explicit
+    /// precondition and the edited-file staleness check for bytes it never saw.
+    /// Comparing the unrecorded version before and after the read turns that race into
+    /// a hard error. The snapshot is recorded only on a match, so a failed comparison
+    /// leaves the previously read version in place and fails safe.
+    ///
+    /// `before` must be captured before the content is read; sampling it here would
+    /// let a write that lands during the read move both samples to the same new
+    /// revision and certify bytes the model never saw.
+    ///
+    /// Tool-output spools are append-only streams that are *expected* to grow while
+    /// a chunk is being read, so a boundary mismatch there is normal rather than a
+    /// lost-update hazard. For those, `allow_concurrent_growth` returns `Ok(None)`
+    /// instead of failing: the chunk and its continuation arguments are still
+    /// returned, but no `content_hash` is certified, which keeps the version honest
+    /// without breaking chunked reads of live output.
+    pub(crate) async fn capture_read_content_hash_consistent(
+        &self,
+        path: &Path,
+        before: &crate::tools::edited_file_monitor::FileSnapshot,
+        allow_concurrent_growth: bool,
+    ) -> Result<Option<String>> {
+        use crate::tools::edited_file_monitor::EditedFileMonitor;
+
+        let before_hash = content_hash_from_snapshot(before, path)?;
+        let after = EditedFileMonitor::current_snapshot(path).await?;
+        let after_hash = content_hash_from_snapshot(&after, path)?;
+        if before_hash != after_hash {
+            if allow_concurrent_growth {
+                return Ok(None);
+            }
+            return Err(anyhow!(
+                "File changed while it was being read: {}; reread it to obtain a valid content_hash.",
+                path.display()
+            ));
         }
+        self.edited_file_monitor.record_read_snapshot(path, after)?;
+        Ok(Some(after_hash))
     }
 
-    async fn track_cached_read_snapshot(&self, path: &Path, args: &Value, response: &Value) {
-        if is_full_text_read(args, false)
-            && let Some(content) = response.get("content").and_then(Value::as_str)
-            && let Some(size_bytes) = response_size_bytes(response)
-        {
-            self.track_exact_text_snapshot(path, content, size_bytes).await;
-            return;
-        }
-
-        self.track_read_snapshot(path).await;
-    }
-
+    /// Resolve the target, apply paging and caching, and return the read payload.
     pub async fn read_file(&self, args: Value) -> Result<Value> {
         let mut perf = PerfSpan::new("vtcode.perf.read_file_ms");
 
@@ -413,14 +486,18 @@ impl FileOpsTool {
                 None
             };
 
+            let mut cache_was_stale = false;
             if let Some(key) = cache_key.as_ref()
                 && let Some(cached) = FILE_CACHE.get_file(key).await
             {
-                perf.tag("cache", "hit");
-                self.track_cached_read_snapshot(&canonical, &args, &cached).await;
-                return Ok(cached);
+                let current_hash = self.capture_read_content_hash(&canonical).await?;
+                if cached.get("content_hash").and_then(Value::as_str) == Some(current_hash.as_str()) {
+                    perf.tag("cache", "hit");
+                    return Ok(cached);
+                }
+                cache_was_stale = true;
             }
-            perf.tag("cache", if cache_key.is_some() { "miss" } else { "skip" });
+            perf.tag("cache", cache_outcome_tag(cache_key.is_some(), cache_was_stale));
 
             if !is_image && (is_new_request || !is_legacy_request) {
                 let mut handler_args_json = build_read_handler_args(&args, &canonical);
@@ -434,6 +511,10 @@ impl FileOpsTool {
                         let requested_path = self.workspace_relative_display(&canonical);
                         let handler = ReadFileHandler;
                         let requested_offset = read_args.offset;
+                        // Sample the version before the content is read so a write
+                        // during the read cannot move both samples.
+                        let before_snapshot =
+                            crate::tools::edited_file_monitor::EditedFileMonitor::current_snapshot(&canonical).await?;
                         let ReadFileOutcome {
                             content,
                             lines_read: lines_returned,
@@ -448,7 +529,6 @@ impl FileOpsTool {
                         } else {
                             content.clone()
                         };
-
                         let mut builder = ToolResponseBuilder::new(tools::READ_FILE)
                             .success()
                             .message(format!("Successfully read file {requested_path}"))
@@ -460,6 +540,15 @@ impl FileOpsTool {
                             .data("size_bytes", json!(size_bytes))
                             .data("content_kind", json!("text"))
                             .data("encoding", json!("utf8"));
+
+                        // Spool files are append-only streams that grow while a chunk
+                        // is read, so certify a version only for editable files.
+                        if let Some(content_hash) = self
+                            .capture_read_content_hash_consistent(&canonical, &before_snapshot, is_spool_output)
+                            .await?
+                        {
+                            builder = builder.field("content_hash", json!(content_hash));
+                        }
 
                         if line_truncated {
                             builder = builder
@@ -527,11 +616,6 @@ impl FileOpsTool {
 
                         let response = builder.build_json();
 
-                        if full_text_read {
-                            self.track_exact_text_snapshot(&canonical, &response_content, size_bytes).await;
-                        } else {
-                            self.track_read_snapshot(&canonical).await;
-                        }
                         if let Some(key) = cache_key.as_ref() {
                             FILE_CACHE.put_file(key.clone(), response.clone()).await;
                         }
@@ -558,6 +642,10 @@ impl FileOpsTool {
                 || input.offset_lines.is_some()
                 || input.page_size_lines.is_some();
 
+            // Sample the version before the content is read so a write during the
+            // read cannot move both samples.
+            let before_snapshot =
+                crate::tools::edited_file_monitor::EditedFileMonitor::current_snapshot(&canonical).await?;
             let (content, metadata, truncated, line_truncated) = if use_paging {
                 self.read_file_paged(&canonical, &input).await?
             } else {
@@ -565,7 +653,6 @@ impl FileOpsTool {
                 let line_truncated = metadata.get("line_truncated").and_then(Value::as_bool).unwrap_or(false);
                 (content, metadata, truncated, line_truncated)
             };
-
             let mut builder = ToolResponseBuilder::new(tools::READ_FILE)
                 .success()
                 .message(format!(
@@ -576,6 +663,15 @@ impl FileOpsTool {
                 .content(&content)
                 .field("path", json!(self.workspace_relative_display(&canonical)))
                 .field("no_spool", json!(true));
+
+            // Spool files are append-only streams that grow while a chunk is read,
+            // so certify a version only for editable files.
+            if let Some(content_hash) = self
+                .capture_read_content_hash_consistent(&canonical, &before_snapshot, is_spool_output)
+                .await?
+            {
+                builder = builder.field("content_hash", json!(content_hash));
+            }
 
             // Merge legacy metadata - extract actual data fields, not wrapper structure
             if let Some(obj) = metadata.as_object() {
@@ -631,14 +727,7 @@ impl FileOpsTool {
                 }
             }
 
-            let content_kind = metadata.get("content_kind").and_then(Value::as_str).unwrap_or("text");
-            let full_legacy_text_read = !use_paging && !truncated && content_kind == "text";
             let response = builder.build_json();
-            if full_legacy_text_read {
-                self.track_exact_text_snapshot(&canonical, &content, size_bytes).await;
-            } else {
-                self.track_read_snapshot(&canonical).await;
-            }
             if let Some(key) = cache_key.as_ref() {
                 FILE_CACHE.put_file(key.clone(), response.clone()).await;
             }
@@ -694,6 +783,12 @@ mod read_tests {
     use std::fs;
     use std::path::Path;
     use tempfile::TempDir;
+    use vtcode_commons::utils::calculate_sha256;
+
+    /// Format the canonical `sha256:` content hash for test fixtures.
+    fn expected_content_hash(content: &[u8]) -> String {
+        format!("sha256:{}", calculate_sha256(content))
+    }
 
     #[test]
     fn history_jsonl_detection() {
@@ -707,6 +802,16 @@ mod read_tests {
         assert!(is_tool_output_spool_path(Path::new(".vtcode/context/tool_outputs/run-123.txt")));
         assert!(is_tool_output_spool_path(Path::new("/tmp/work/.vtcode/context/tool_outputs/run-123.txt")));
         assert!(!is_tool_output_spool_path(Path::new(".vtcode/history/session.jsonl")));
+    }
+
+    /// Check a stale cache entry keeps its own tag instead of collapsing to
+    /// `miss`; the two are the same code path otherwise and only this value
+    /// lets an operator see revalidation in `vtcode.perf.read_file_ms`.
+    #[test]
+    fn cache_outcome_tag_keeps_stale_distinct_from_miss() {
+        assert_eq!(cache_outcome_tag(true, true), "stale");
+        assert_eq!(cache_outcome_tag(true, false), "miss");
+        assert_eq!(cache_outcome_tag(false, false), "skip");
     }
 
     #[test]
@@ -1110,6 +1215,7 @@ mod read_tests {
         assert!(!truncated);
     }
 
+    /// Check a legacy max_bytes read clamps content but hashes the whole file.
     #[tokio::test]
     async fn test_read_file_legacy_functionality() {
         let temp_dir = TempDir::new().unwrap();
@@ -1133,8 +1239,46 @@ mod read_tests {
         let content = result["content"].as_str().unwrap();
         assert!(content.len() <= 10);
         assert!(content.starts_with("line1"));
+        assert_eq!(result["content_hash"], expected_content_hash(test_content.as_bytes()));
     }
 
+    /// Ensure a cached history read rehashes content even when mtime is unchanged.
+    #[tokio::test]
+    async fn history_cache_revalidates_the_full_file_version() {
+        let temp_dir = TempDir::new().unwrap();
+        let workspace_root = temp_dir.path().to_path_buf();
+        let history_dir = workspace_root.join(".vtcode/history");
+        fs::create_dir_all(&history_dir).unwrap();
+        let history_path = history_dir.join("session.jsonl");
+        let original = "a".repeat(300_000);
+        let changed = "b".repeat(300_000);
+        fs::write(&history_path, &original).unwrap();
+
+        let grep_manager = std::sync::Arc::new(GrepSearchManager::new(workspace_root.clone()));
+        let file_ops = FileOpsTool::new(workspace_root, grep_manager);
+        let args = json!({
+            "path": ".vtcode/history/session.jsonl",
+            "offset_lines": 0,
+            "page_size_lines": 1
+        });
+
+        let first = file_ops.read_file(args.clone()).await.unwrap();
+        let original_mtime = fs::metadata(&history_path).unwrap().modified().unwrap();
+        fs::write(&history_path, &changed).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&history_path)
+            .unwrap()
+            .set_modified(original_mtime)
+            .unwrap();
+        let second = file_ops.read_file(args).await.unwrap();
+
+        assert_eq!(first["content_hash"], expected_content_hash(original.as_bytes()));
+        assert_eq!(second["content_hash"], expected_content_hash(changed.as_bytes()));
+        assert_ne!(first["content_hash"], second["content_hash"]);
+    }
+
+    /// Check a full-text read keeps the trailing newline and hashes raw bytes.
     #[tokio::test]
     async fn test_read_file_full_text_preserves_trailing_newline() {
         let temp_dir = TempDir::new().unwrap();
@@ -1148,6 +1292,37 @@ mod read_tests {
         let result = file_ops.read_file(json!({ "path": "note.txt" })).await.unwrap();
 
         assert_eq!(result["content"].as_str(), Some("hello\n"));
+        assert_eq!(result["content_hash"], expected_content_hash(b"hello\n"));
+    }
+
+    /// Check every paged read reports the hash of the whole raw file.
+    #[tokio::test]
+    async fn read_file_pages_report_the_full_raw_file_version() {
+        let temp_dir = TempDir::new().unwrap();
+        let workspace_root = temp_dir.path().to_path_buf();
+        let test_file = workspace_root.join("versioned.txt");
+        let raw_content = b"alpha\r\nbeta\r\ngamma\r\n";
+        fs::write(&test_file, raw_content).unwrap();
+
+        let grep_manager = std::sync::Arc::new(GrepSearchManager::new(workspace_root.clone()));
+        let file_ops = FileOpsTool::new(workspace_root, grep_manager);
+        let expected = expected_content_hash(raw_content);
+
+        let modern_page = file_ops
+            .read_file(json!({ "path": "versioned.txt", "offset": 2, "limit": 1 }))
+            .await
+            .unwrap();
+        let legacy_page = file_ops
+            .read_file(json!({
+                "path": "versioned.txt",
+                "offset_lines": 1,
+                "page_size_lines": 1
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(modern_page["content_hash"], expected);
+        assert_eq!(legacy_page["content_hash"], expected);
     }
 
     #[tokio::test]
@@ -1596,5 +1771,45 @@ mod read_tests {
                 .is_none(),
             "stream must be exhausted after the third line"
         );
+    }
+
+    /// Check a spool that grows mid-read omits the content hash but still pages.
+    #[tokio::test]
+    async fn spool_read_omits_content_hash_when_output_grows_mid_read() {
+        let temp_dir = TempDir::new().unwrap();
+        let workspace_root = temp_dir.path().to_path_buf();
+        let spool_dir = workspace_root.join(".vtcode/context/tool_outputs");
+        fs::create_dir_all(&spool_dir).unwrap();
+        let spool_file = spool_dir.join("command_session_growing.txt");
+        let spool_content = (1..=120).map(|i| format!("line{i}")).collect::<Vec<_>>().join("\n");
+        fs::write(&spool_file, &spool_content).unwrap();
+
+        let grep_manager = std::sync::Arc::new(GrepSearchManager::new(workspace_root.clone()));
+        let file_ops = FileOpsTool::new(workspace_root.clone(), grep_manager);
+
+        // A spool legitimately grows while a chunk is read. The chunk must still be
+        // returned with its continuation arguments, but without a certified version.
+        let before = crate::tools::edited_file_monitor::EditedFileMonitor::current_snapshot(&spool_file)
+            .await
+            .unwrap();
+        fs::write(&spool_file, format!("{spool_content}\nline121\n")).unwrap();
+        let certified = file_ops
+            .capture_read_content_hash_consistent(&spool_file, &before, true)
+            .await
+            .unwrap();
+        assert!(certified.is_none(), "a spool that grew during the read must not certify a content_hash");
+
+        // Editable files keep the hard failure: a torn read there is a real hazard.
+        let editable = workspace_root.join("editable.txt");
+        fs::write(&editable, "original\n").unwrap();
+        let before = crate::tools::edited_file_monitor::EditedFileMonitor::current_snapshot(&editable)
+            .await
+            .unwrap();
+        fs::write(&editable, "changed\n").unwrap();
+        let err = file_ops
+            .capture_read_content_hash_consistent(&editable, &before, false)
+            .await
+            .expect_err("an editable file that changed mid-read must fail");
+        assert!(err.to_string().contains("changed while it was being read"));
     }
 }

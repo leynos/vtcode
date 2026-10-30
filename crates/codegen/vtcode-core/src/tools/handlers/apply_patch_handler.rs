@@ -3,6 +3,11 @@
 //! Implements the apply_patch tool using the Codex-style handler pattern.
 //! Supports both freeform and JSON function call formats.
 //!
+//! This surface enforces only the `expected_content_hash` version precondition.
+//! The no-op ladder and mutation leases are registry session state, not handler
+//! state; parity between this handler's guard and the registry's leases belongs
+//! to the deferred architecture work (#168) and must not be assumed here.
+//!
 //! Based on [openai/codex] tool handler patterns (Apache-2.0).
 //! Copyright 2025 OpenAI. See the repository `THIRD-PARTY-NOTICES` file for
 //! full attribution.
@@ -28,6 +33,7 @@ use super::tool_handler::{
 use super::tool_orchestrator::ToolOrchestrator;
 use crate::config::constants::tools;
 use crate::tools::editing::{Patch, PatchOperation};
+use crate::tools::registry::patch_preconditions::{invalid_patch_precondition, patch_precondition_scope_error};
 
 /// Apply patch handler
 pub struct ApplyPatchHandler;
@@ -37,12 +43,15 @@ pub struct ApplyPatchHandler;
 pub struct ApplyPatchToolArgs {
     pub input: Option<String>,
     pub patch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_content_hash: Option<String>,
 }
 
 /// Request for apply_patch runtime
 #[derive(Clone, Debug)]
 pub struct ApplyPatchRequest {
     pub patch: String,
+    pub expected_content_hash: Option<String>,
     pub cwd: PathBuf,
     pub timeout_ms: Option<u64>,
     pub user_explicitly_approved: bool,
@@ -114,6 +123,12 @@ impl Approvable<ApplyPatchRequest> for ApplyPatchRuntime {
 
 #[async_trait]
 impl ToolRuntime<ApplyPatchRequest, ExecToolCallOutput> for ApplyPatchRuntime {
+    /// Validate the cwd, parse the patch, and apply it.
+    ///
+    /// The `expected_content_hash` precondition is enforced by the handler
+    /// before the orchestrator reaches this runtime, because a rejection has to
+    /// reach the model as a structured envelope rather than as a flat
+    /// `ToolError` string.
     async fn run(
         &mut self,
         req: &ApplyPatchRequest,
@@ -174,6 +189,7 @@ impl ToolHandler for ApplyPatchHandler {
         true // apply_patch always mutates
     }
 
+    /// Decode the patch payload and run it through the orchestrator.
     async fn handle(&self, invocation: ToolInvocation) -> Result<ToolOutput, ToolCallError> {
         let ToolInvocation {
             session,
@@ -185,11 +201,14 @@ impl ToolHandler for ApplyPatchHandler {
         } = invocation;
 
         // Extract patch input from payload
-        let patch_input = match payload {
+        let (patch_input, expected_content_hash) = match payload {
             ToolPayload::Function { arguments } => {
                 let args: Value = serde_json::from_str(&arguments)
                     .map_err(|e| ToolCallError::respond(format!("Failed to parse function arguments: {e}")))?;
-                crate::tools::apply_patch::decode_apply_patch_input(&args)
+                let expected_content_hash = crate::tools::apply_patch::expected_content_hash_from_args(&args)
+                    .map_err(|e| ToolCallError::respond(format!("Invalid expected_content_hash: {e}")))?
+                    .map(ToOwned::to_owned);
+                let patch_input = crate::tools::apply_patch::decode_apply_patch_input(&args)
                     .map_err(|e| ToolCallError::respond(format!("Failed to decode patch input: {e}")))?
                     .map(|input| input.text)
                     .ok_or_else(|| {
@@ -197,9 +216,10 @@ impl ToolHandler for ApplyPatchHandler {
                             "Missing patch input {}",
                             crate::tools::error_helpers::PATCH_PARAMETER_HINT
                         ))
-                    })?
+                    })?;
+                (patch_input, expected_content_hash)
             }
-            ToolPayload::Custom { input } => input,
+            ToolPayload::Custom { input } => (input, None),
             _ => {
                 return Err(ToolCallError::respond("apply_patch handler received unsupported payload"));
             }
@@ -209,6 +229,22 @@ impl ToolHandler for ApplyPatchHandler {
         let patch =
             Patch::parse(&patch_input).map_err(|e| ToolCallError::respond(format!("Failed to parse patch: {e}")))?;
 
+        // Create request
+        let req = ApplyPatchRequest {
+            patch: patch_input.clone(),
+            expected_content_hash,
+            cwd: turn.cwd.clone(),
+            timeout_ms: None,
+            user_explicitly_approved: true,
+        };
+
+        // Enforce the version precondition before any mutation event is emitted
+        // so a rejection reaches the model as the registry's structured
+        // envelope rather than a flat `ToolError::Rejected` string.
+        validate_request_content_hash(&req, &patch, session.workspace_root())
+            .await
+            .map_err(PatchPreconditionFailure::into_tool_call_error)?;
+
         // Convert patch operations to file changes for tracking
         let changes = convert_patch_to_changes(&patch, &turn.cwd);
 
@@ -216,14 +252,6 @@ impl ToolHandler for ApplyPatchHandler {
         let emitter = ToolEmitter::apply_patch(changes.clone(), true);
         let event_ctx = ToolEventCtx::new(session.as_ref(), turn.as_ref(), &call_id, tracker.as_ref());
         emitter.begin(event_ctx).await;
-
-        // Create request
-        let req = ApplyPatchRequest {
-            patch: patch_input.clone(),
-            cwd: turn.cwd.clone(),
-            timeout_ms: None,
-            user_explicitly_approved: true,
-        };
 
         // Execute using orchestrator
         let mut orchestrator = ToolOrchestrator::new();
@@ -245,6 +273,110 @@ impl ToolHandler for ApplyPatchHandler {
 
         Ok(ToolOutput::Function { content, content_items: None, success: Some(true) })
     }
+}
+
+/// A rejected `expected_content_hash` precondition on the handler surface.
+///
+/// Structured failures carry the same envelope the registry pipeline returns,
+/// so the model sees one payload shape whichever apply-patch surface rejected
+/// its patch. Plain rejections cover containment and read failures, which have
+/// no version metadata to report.
+#[derive(Debug)]
+enum PatchPreconditionFailure {
+    /// A plain rejection for a path-containment or read failure.
+    Rejected(String),
+    /// The registry's structured, model-facing rejection envelope.
+    Structured(Value),
+}
+
+impl PatchPreconditionFailure {
+    /// Convert into the handler error the model is shown.
+    fn into_tool_call_error(self) -> ToolCallError {
+        match self {
+            Self::Rejected(message) => ToolCallError::Rejected(message),
+            // The adapter treats `RespondToModel` as a model-facing failure,
+            // so the serialized envelope is not reclassified as internal.
+            Self::Structured(envelope) => ToolCallError::RespondToModel(envelope.to_string()),
+        }
+    }
+}
+
+impl std::fmt::Display for PatchPreconditionFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Rejected(message) => f.write_str(message),
+            Self::Structured(envelope) => write!(f, "{envelope}"),
+        }
+    }
+}
+
+/// Enforce `expected_content_hash` on the Codex-style handler surface.
+///
+/// The file is read once: the same bytes produce the current hash and the
+/// rebase assessment, so a concurrent writer cannot retarget a workspace
+/// symlink between the containment check and a second open. A mismatch returns
+/// the registry's structured envelope carrying the expected and current hashes
+/// plus bounded anchor failures, which tells the model to reread rather than to
+/// regenerate blindly. A file whose bytes are not UTF-8 cannot be assessed for
+/// rebase, so it reports `can_safely_rebase: false` with no anchor failures,
+/// matching the registry's `text_content == None` case.
+async fn validate_request_content_hash(
+    req: &ApplyPatchRequest,
+    patch: &Patch,
+    workspace_root: &Path,
+) -> Result<(), PatchPreconditionFailure> {
+    let Some(expected_hash) = req.expected_content_hash.as_deref() else {
+        return Ok(());
+    };
+    let source_paths = crate::tools::apply_patch::patch_precondition_source_paths(patch);
+    let [source_path] = source_paths.as_slice() else {
+        let scope = patch_precondition_scope_error(source_paths.len());
+        return Err(PatchPreconditionFailure::Structured(invalid_patch_precondition(
+            scope.message,
+            json!({
+                "reason": "invalid_precondition_scope",
+                "source_file_count": scope.source_file_count,
+                "next_action": "Split the patch by source file, reread each file, and retry with its content_hash."
+            }),
+        )));
+    };
+    let disk_path = req.cwd.join(source_path);
+    vtcode_commons::paths::ensure_path_within_workspace_resolved(&disk_path, workspace_root)
+        .await
+        .map_err(|error| {
+            PatchPreconditionFailure::Rejected(format!(
+                "apply_patch rejected precondition path '{source_path}' outside session workspace: {error}"
+            ))
+        })?;
+    let bytes = tokio::fs::read(&disk_path).await.map_err(|error| {
+        PatchPreconditionFailure::Rejected(format!("Failed to read {source_path} for hash validation: {error}"))
+    })?;
+    let current_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(&bytes));
+    if current_hash == expected_hash {
+        return Ok(());
+    }
+    // Reuse the bytes already read for hash validation instead of reopening the
+    // path. A concurrent local writer could retarget a workspace symlink between
+    // the containment check and a second read, which would let the rebase
+    // assessment read a file outside the workspace and quote it back to the
+    // model through the anchor failures.
+    let (can_safely_rebase, anchor_failures) = match std::str::from_utf8(&bytes) {
+        Ok(current) => crate::tools::apply_patch::assess_patch_rebase_with_content(patch, &disk_path, current).await,
+        Err(_) => (false, Vec::new()),
+    };
+    let details = json!({
+        "reason": "content_hash_mismatch",
+        "path": source_path,
+        "expected_content_hash": expected_hash,
+        "current_content_hash": current_hash,
+        "anchor_failures": anchor_failures,
+        "can_safely_rebase": can_safely_rebase,
+        "next_action": format!("Reread {source_path} and regenerate the patch using the new content_hash."),
+    });
+    Err(PatchPreconditionFailure::Structured(invalid_patch_precondition(
+        format!("File version changed before apply_patch: {source_path}"),
+        details,
+    )))
 }
 
 /// Convert patch operations to file changes for tracking
@@ -406,15 +538,13 @@ const APPLY_PATCH_UPDATE_EXAMPLE: &str = r#"*** Begin Patch
 mod tests {
     use super::*;
     use crate::exec_policy::RejectConfig;
-    #[cfg(unix)]
     use crate::tools::handlers::adapter::DefaultToolSession;
+    // Only the `#[cfg(unix)]` symlink-escape test builds a `SandboxAttempt`, so
+    // importing these unconditionally fails Windows' `-D warnings` build.
     #[cfg(unix)]
     use crate::tools::handlers::sandboxing::{SandboxConfig, SandboxType};
-    #[cfg(unix)]
     use crate::tools::handlers::tool_handler::{Constrained, ShellEnvironmentPolicy, TurnContext};
-    #[cfg(unix)]
     use std::sync::Arc;
-    #[cfg(unix)]
     use tempfile::TempDir;
 
     #[test]
@@ -454,6 +584,238 @@ mod tests {
         assert_eq!(parsed.patch.as_deref(), Some("*** Begin Patch\n*** End Patch\n"));
     }
 
+    /// Check a stale expected hash is rejected before the handler writes.
+    #[tokio::test]
+    async fn json_handler_enforces_expected_content_hash_before_apply() {
+        let workspace = TempDir::new().expect("temporary workspace");
+        std::fs::write(workspace.path().join("versioned.txt"), "current\n").expect("write fixture");
+        let patch =
+            Patch::parse("*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n")
+                .expect("valid patch");
+        let request = ApplyPatchRequest {
+            patch: String::new(),
+            expected_content_hash: Some(format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"))),
+            cwd: workspace.path().to_path_buf(),
+            timeout_ms: None,
+            user_explicitly_approved: true,
+        };
+
+        let error = validate_request_content_hash(&request, &patch, workspace.path())
+            .await
+            .expect_err("stale handler precondition");
+
+        let message = error.to_string();
+        assert!(message.contains("content_hash_mismatch"));
+        assert!(message.contains("current_content_hash"));
+        assert_eq!(
+            std::fs::read_to_string(workspace.path().join("versioned.txt")).expect("read unchanged fixture"),
+            "current\n"
+        );
+    }
+
+    /// The JSON `expected_content_hash` precondition must be enforced by the
+    /// handler *runtime*, not only by the precondition helper. This drives the
+    /// real `ApplyPatchHandler::handle` entry point so the payload decoding,
+    /// orchestrator, and runtime wiring are all covered.
+    #[tokio::test]
+    async fn handler_runtime_rejects_stale_expected_content_hash() {
+        let workspace = TempDir::new().expect("temporary workspace");
+        let fixture = workspace.path().join("versioned.txt");
+        std::fs::write(&fixture, "current\n").expect("write fixture");
+        let stale_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"));
+        let arguments = json!({
+            "input": "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n",
+            "expected_content_hash": stale_hash,
+        })
+        .to_string();
+
+        let error = ApplyPatchHandler
+            .handle(test_invocation(workspace.path().to_path_buf(), arguments))
+            .await
+            .expect_err("the handler must reject a stale expected_content_hash");
+
+        let message = error.to_string();
+        assert!(message.contains("content_hash_mismatch"), "unexpected error: {message}");
+        assert!(message.contains("current_content_hash"), "unexpected error: {message}");
+        assert_eq!(
+            std::fs::read_to_string(&fixture).expect("read unchanged fixture"),
+            "current\n",
+            "a rejected precondition must not mutate the file"
+        );
+    }
+
+    /// A matching `expected_content_hash` must let the handler through to the
+    /// mutation itself, proving the guard is a precondition and not a blanket
+    /// rejection of versioned patches.
+    #[tokio::test]
+    async fn handler_runtime_applies_patch_with_matching_expected_content_hash() {
+        let workspace = TempDir::new().expect("temporary workspace");
+        let fixture = workspace.path().join("versioned.txt");
+        std::fs::write(&fixture, "current\n").expect("write fixture");
+        let current_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"current\n"));
+        let arguments = json!({
+            "input": "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n",
+            "expected_content_hash": current_hash,
+        })
+        .to_string();
+
+        ApplyPatchHandler
+            .handle(test_invocation(workspace.path().to_path_buf(), arguments))
+            .await
+            .expect("a matching content hash must allow the patch to apply");
+
+        assert_eq!(
+            std::fs::read_to_string(&fixture).expect("read patched fixture"),
+            "changed\n",
+            "the handler should have applied the patch"
+        );
+    }
+
+    /// An add-only patch has no pre-existing content to version, so the handler
+    /// must reject the hash with the registry's scope envelope rather than a
+    /// generic message.
+    #[tokio::test]
+    async fn handler_runtime_rejects_expected_hash_on_add_only_patch() {
+        let workspace = TempDir::new().expect("temporary workspace");
+        let expected_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"anything\n"));
+        let arguments = json!({
+            "input": "*** Begin Patch\n*** Add File: fresh.txt\n+hello\n*** End Patch\n",
+            "expected_content_hash": expected_hash,
+        })
+        .to_string();
+
+        let error = ApplyPatchHandler
+            .handle(test_invocation(workspace.path().to_path_buf(), arguments))
+            .await
+            .expect_err("an add-only patch must reject expected_content_hash");
+
+        let envelope = precondition_envelope(&error);
+        let body = &envelope["error"];
+        assert_eq!(body["error_type"], "InvalidParameters", "unexpected error: {envelope}");
+        assert_eq!(body["details"]["reason"], "invalid_precondition_scope", "unexpected error: {envelope}");
+        assert_eq!(body["details"]["source_file_count"], 0, "unexpected error: {envelope}");
+        assert!(
+            body["message"]
+                .as_str()
+                .expect("message should be a string")
+                .contains("add-only"),
+            "unexpected error: {envelope}"
+        );
+        assert!(!workspace.path().join("fresh.txt").exists(), "a rejected precondition must not add files");
+    }
+
+    /// A patch touching several source files has more than one version to check,
+    /// so the handler must report the multi-source scope distinct from add-only.
+    #[tokio::test]
+    async fn handler_runtime_rejects_expected_hash_on_multi_source_patch() {
+        let workspace = TempDir::new().expect("temporary workspace");
+        for name in ["left.txt", "right.txt"] {
+            std::fs::write(workspace.path().join(name), format!("{name}\n")).expect("write fixture");
+        }
+        let expected_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"left.txt\n"));
+        let arguments = json!({
+            "input": "*** Begin Patch\n*** Update File: left.txt\n@@\n-left.txt\n+changed left\n*** Update File: right.txt\n@@\n-right.txt\n+changed right\n*** End Patch\n",
+            "expected_content_hash": expected_hash,
+        })
+        .to_string();
+
+        let error = ApplyPatchHandler
+            .handle(test_invocation(workspace.path().to_path_buf(), arguments))
+            .await
+            .expect_err("a multi-source patch must reject expected_content_hash");
+
+        let envelope = precondition_envelope(&error);
+        let body = &envelope["error"];
+        assert_eq!(body["error_type"], "InvalidParameters", "unexpected error: {envelope}");
+        assert_eq!(body["details"]["reason"], "invalid_precondition_scope", "unexpected error: {envelope}");
+        assert_eq!(body["details"]["source_file_count"], 2, "unexpected error: {envelope}");
+        assert!(
+            body["message"]
+                .as_str()
+                .expect("message should be a string")
+                .contains("exactly one pre-existing source file"),
+            "unexpected error: {envelope}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(workspace.path().join("left.txt")).expect("read unchanged fixture"),
+            "left.txt\n",
+            "a rejected precondition must not mutate the file"
+        );
+    }
+
+    /// A non-UTF-8 file cannot be assessed for rebase, so the mismatch must
+    /// report the registry's binary shape: no safe rebase and no anchor
+    /// failures, rather than a UTF-8 decode error.
+    #[tokio::test]
+    async fn handler_runtime_reports_binary_mismatch_shape() {
+        let workspace = TempDir::new().expect("temporary workspace");
+        let fixture = workspace.path().join("binary.bin");
+        let bytes = [0xff_u8, 0xfe, 0xfd];
+        std::fs::write(&fixture, bytes).expect("write binary fixture");
+        let expected_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"expected text\n"));
+        let arguments = json!({
+            "input": "*** Begin Patch\n*** Update File: binary.bin\n@@\n-old\n+new\n*** End Patch\n",
+            "expected_content_hash": expected_hash,
+        })
+        .to_string();
+
+        let error = ApplyPatchHandler
+            .handle(test_invocation(workspace.path().to_path_buf(), arguments))
+            .await
+            .expect_err("a binary mismatch must be rejected");
+
+        let envelope = precondition_envelope(&error);
+        let details = &envelope["error"]["details"];
+        assert_eq!(details["reason"], "content_hash_mismatch", "unexpected error: {envelope}");
+        assert_eq!(details["can_safely_rebase"], false, "unexpected error: {envelope}");
+        assert_eq!(details["anchor_failures"], json!([]), "unexpected error: {envelope}");
+        assert_eq!(
+            details["current_content_hash"],
+            format!("sha256:{}", vtcode_commons::utils::calculate_sha256(&bytes)),
+            "unexpected error: {envelope}"
+        );
+        assert_eq!(
+            std::fs::read(&fixture).expect("read unchanged fixture"),
+            bytes,
+            "a rejected precondition must not mutate the file"
+        );
+    }
+
+    /// Parse the structured envelope out of a model-facing precondition
+    /// rejection.
+    fn precondition_envelope(error: &ToolCallError) -> Value {
+        match error {
+            ToolCallError::RespondToModel(message) => {
+                serde_json::from_str(message).expect("precondition rejection should serialize to a JSON envelope")
+            }
+            other => panic!("expected a model-facing rejection, got {other:?}"),
+        }
+    }
+
+    /// Builds a `ToolInvocation` whose session and turn both point at
+    /// `workspace`, so the handler exercises the same workspace-containment and
+    /// precondition path a real turn would use.
+    fn test_invocation(workspace: PathBuf, arguments: String) -> ToolInvocation {
+        let session = Arc::new(DefaultToolSession::with_workspace(workspace.clone(), workspace.clone()));
+        let turn = Arc::new(TurnContext {
+            cwd: workspace,
+            turn_id: "apply-patch-handler-runtime-test".to_string(),
+            sub_id: None,
+            shell_environment_policy: ShellEnvironmentPolicy::default(),
+            approval_policy: Constrained::default(),
+            codex_linux_sandbox_exe: None,
+            sandbox_policy: Constrained::default(),
+        });
+        ToolInvocation {
+            session,
+            turn,
+            tracker: None,
+            call_id: "call-apply-patch".to_string(),
+            tool_name: tools::APPLY_PATCH.to_string(),
+            payload: ToolPayload::Function { arguments },
+        }
+    }
+
     #[test]
     fn wants_no_sandbox_approval_reject_respects_sandbox_flag() {
         let runtime = ApplyPatchRuntime::new();
@@ -472,6 +834,7 @@ mod tests {
         })));
     }
 
+    /// Check a symlinked cwd is rejected before the runtime mutates anything.
     #[cfg(unix)]
     #[tokio::test]
     async fn direct_runtime_rejects_symlink_escaped_cwd_before_mutation() {
@@ -510,6 +873,7 @@ mod tests {
         };
         let request = ApplyPatchRequest {
             patch: "*** Begin Patch\n*** Add File: created.txt\n+must not exist\n*** End Patch\n".to_string(),
+            expected_content_hash: None,
             cwd: escaped_cwd,
             timeout_ms: None,
             user_explicitly_approved: true,
