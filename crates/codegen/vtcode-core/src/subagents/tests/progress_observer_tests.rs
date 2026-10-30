@@ -59,6 +59,7 @@ async fn seed_child_records(controller: &SubagentController) {
 fn background_record(id: &str, parent_session_id: &str, timestamp: chrono::DateTime<Utc>) -> BackgroundRecord {
     BackgroundRecord {
         id: id.to_string(),
+        owner_session_id: Some(parent_session_id.to_string()),
         agent_name: "watcher".to_string(),
         display_label: "Watcher".to_string(),
         description: "Watch the workspace".to_string(),

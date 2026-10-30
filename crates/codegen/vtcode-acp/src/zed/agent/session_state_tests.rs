@@ -62,7 +62,7 @@ async fn build_agent_with_default_primary_agent(workspace: &Path, default_primar
 async fn build_agent_with_vt_config(
     workspace: &Path,
     default_primary_agent: &str,
-    vt_config: Option<VTCodeConfig>,
+    vt_config: Option<&VTCodeConfig>,
 ) -> ZedAgent {
     let core_config = CoreAgentConfig {
         model: "gpt-5.6-sol".to_string(),

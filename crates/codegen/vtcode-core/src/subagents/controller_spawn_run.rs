@@ -960,6 +960,11 @@ fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync:
     waiters
 }
 
+static BACKGROUND_STATE_PERSISTENCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+fn background_state_persistence_lock() -> &'static Mutex<()> {
+    BACKGROUND_STATE_PERSISTENCE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -978,9 +983,4 @@ mod tests {
         let outcome = tokio::time::timeout(Duration::from_millis(50), select_all(waiters)).await;
         assert!(outcome.is_ok(), "registered waiter should retain the wakeup");
     }
-}
-
-static BACKGROUND_STATE_PERSISTENCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-fn background_state_persistence_lock() -> &'static Mutex<()> {
-    BACKGROUND_STATE_PERSISTENCE_LOCK.get_or_init(|| Mutex::new(()))
 }

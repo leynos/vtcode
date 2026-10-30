@@ -43,8 +43,10 @@ impl ZedAgent {
             .map_or(&self.local_tool_registry, |runtime| &runtime.local_tool_registry);
         let local_tool_registry = if workspace_runtime.is_some() {
             scoped_registry = local_tool_registry.with_subagent_controller(
-                self.session_subagent_controller(invocation.session)
-                    .map_err(|_| SdkError::internal_error())?,
+                self.session_subagent_controller(invocation.session).map_err(|error| {
+                    log_suppressed_error(&error, "session_subagent_controller_read", "session_lock_unavailable");
+                    SdkError::internal_error()
+                })?,
             );
             &scoped_registry
         } else {
