@@ -3,7 +3,7 @@ use crate::acp;
 use anyhow::Context;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use tokio::sync::Notify;
+use tokio::sync::{Mutex as AsyncMutex, Notify};
 use tokio::time::Instant;
 use vtcode_core::config::types::ReasoningEffortLevel;
 use vtcode_core::core::threads::ThreadRuntimeHandle;
@@ -153,6 +153,23 @@ pub(crate) struct SessionHandle {
     pub(crate) data: Arc<Mutex<SessionData>>,
     pub(crate) cancellation: SessionCancellation,
     pub(crate) activity: SessionActivity,
+    /// Serializes prompt turns for this session. ACP permits clients to send a
+    /// new `session/prompt` while another turn is active; turns run one at a
+    /// time instead of failing the turn guard or racing the cancellation flag.
+    /// Waiters acquire the gate in the order their spawned tasks reach it, so
+    /// queued steers have no stricter arrival-order guarantee. The mutex is
+    /// held for the whole turn, so the guard must only be awaited inside a
+    /// spawned task.
+    pub(crate) prompt_gate: Arc<AsyncMutex<()>>,
+}
+
+impl SessionHandle {
+    /// Acquires the per-session turn gate, waiting for any earlier prompt to
+    /// finish. Callers must already have distinguished an unknown session;
+    /// awaiting here is only safe inside a spawned task.
+    pub(crate) async fn acquire_prompt_gate(&self) -> tokio::sync::OwnedMutexGuard<()> {
+        Arc::clone(&self.prompt_gate).lock_owned().await
+    }
 }
 
 impl SessionHandle {

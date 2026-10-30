@@ -13,10 +13,6 @@ pub(super) async fn prepare_prompt_input(
         return Err(SdkError::invalid_params().data(json!({ "reason": "unknown_session" })));
     };
 
-    if session.cancellation.is_closed() {
-        return Ok(PromptInputOutcome::Response(PromptResponse::new(acp::StopReason::Cancelled)));
-    }
-
     let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
     let turn_guard = TurnGuard::begin(thread)?;
 
@@ -25,9 +21,6 @@ pub(super) async fn prepare_prompt_input(
     }
 
     start_prompt_safety_budget(&agent, &session, &args.session_id)?;
-    if !session.cancellation.reset() {
-        return Ok(PromptInputOutcome::Response(PromptResponse::new(acp::StopReason::Cancelled)));
-    }
 
     let user_message = tokio::select! {
         () = session.cancellation.cancelled() => {

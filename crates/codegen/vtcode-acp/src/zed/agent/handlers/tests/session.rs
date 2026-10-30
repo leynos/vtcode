@@ -1,4 +1,4 @@
-//! Checks ACP session capabilities, turn exclusion, recovery, and lifecycle-hook effects.
+//! Checks ACP session capabilities, turn serialization, recovery, and lifecycle-hook effects.
 use super::*;
 use agent_client_protocol::schema::v1::{CloseSessionRequest, InitializeRequest, NewSessionRequest};
 use std::time::Duration;
@@ -184,7 +184,7 @@ fn failed_turn_releases_session_and_preserves_gathered_context() {
 }
 
 #[test]
-fn concurrent_prompt_is_rejected_without_mutating_history() {
+fn turn_guard_still_rejects_an_overlapping_turn() {
     let thread = ThreadManager::new().start_thread_with_identifier("acp-serial", ThreadBootstrap::new(None));
     let _guard = TurnGuard::begin(thread.clone()).expect("first turn should begin");
 
@@ -292,6 +292,7 @@ use tokio::sync::Notify;
 struct BlockingPromptProvider {
     started: Arc<Notify>,
     release: Arc<Notify>,
+    calls: Arc<AtomicUsize>,
 }
 
 #[async_trait]
@@ -313,9 +314,14 @@ impl LLMProvider for BlockingPromptProvider {
     }
 
     async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
+        let call_index = self.calls.fetch_add(1, Ordering::SeqCst);
         self.started.notify_one();
-        self.release.notified().await;
-        let response = LLMResponse::new("wire-model", "first prompt complete");
+        // Hold only the first turn open. A queued steer reaches the provider
+        // after the gate is released, so it must not block here as well.
+        if call_index == 0 {
+            self.release.notified().await;
+        }
+        let response = LLMResponse::new("wire-model", format!("wire response {call_index}"));
         Ok(Box::pin(futures::stream::iter([Ok(LLMStreamEvent::Completed { response: Box::new(response) })])))
     }
 
@@ -325,18 +331,21 @@ impl LLMProvider for BlockingPromptProvider {
 }
 
 #[tokio::test]
-async fn concurrent_prompt_is_rejected_over_official_acp_transport() {
+async fn concurrent_prompt_is_serialized_over_official_acp_transport() {
     let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
     let started = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
+    let calls = Arc::new(AtomicUsize::new(0));
     let provider_started = Arc::clone(&started);
     let provider_release = Arc::clone(&release);
+    let provider_calls = Arc::clone(&calls);
     let _factory_guard = PromptProviderFactoryGuard::install(
         "wire-test",
         Arc::new(move || {
             Box::new(BlockingPromptProvider {
                 started: Arc::clone(&provider_started),
                 release: Arc::clone(&provider_release),
+                calls: Arc::clone(&provider_calls),
             })
         }),
     );
@@ -380,19 +389,29 @@ async fn concurrent_prompt_is_rejected_over_official_acp_transport() {
                 response = &mut first => panic!("first prompt completed before provider blockage: {response:?}"),
             }
 
-            let second = cx
-                .send_request(PromptRequest::new(
+            // Poll once so the steer frame is written while the first turn
+            // still holds the session gate; it must not resolve until that
+            // turn completes.
+            let mut second = Box::pin(
+                cx.send_request(PromptRequest::new(
                     session.session_id.clone(),
                     vec![acp::ContentBlock::Text(acp::TextContent::new("second prompt"))],
                 ))
-                .block_task()
-                .await
-                .expect_err("a concurrent prompt must be rejected");
-            assert!(format!("{second:?}").contains("turn_in_progress"));
+                .block_task(),
+            );
+            let pending =
+                std::future::poll_fn(|poll_cx| std::task::Poll::Ready(Future::poll(second.as_mut(), poll_cx))).await;
+            assert!(pending.is_pending(), "the steer must wait for the active turn");
 
             unblock_provider.notify_one();
-            let response = first.await?;
-            assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+            let first_response = first.await?;
+            let second_response = second.await?;
+            assert_eq!(first_response.stop_reason, acp::StopReason::EndTurn);
+            assert_eq!(
+                second_response.stop_reason,
+                acp::StopReason::EndTurn,
+                "a steer queued during an active turn must still receive a response"
+            );
             Ok(())
         });
 
@@ -403,6 +422,7 @@ async fn concurrent_prompt_is_rejected_over_official_acp_transport() {
     agent_task.abort();
     drop(agent_task.await);
 
+    assert_eq!(calls.load(Ordering::SeqCst), 2, "each prompt must reach the provider once");
     let sessions = inspected_agent.sessions.lock().unwrap_or_else(|error| error.into_inner());
     let session = sessions.values().next().expect("wire session should remain attached");
     let messages = session.data.lock().expect("wire session data").thread.messages();
@@ -410,7 +430,7 @@ async fn concurrent_prompt_is_rejected_over_official_acp_transport() {
         .into_iter()
         .filter(|message| message.role == vtcode_core::llm::provider::MessageRole::User)
         .count();
-    assert_eq!(user_messages, 1, "the rejected prompt must not mutate durable history");
+    assert_eq!(user_messages, 2, "both serialized prompts must persist their user message");
 }
 
 use vtcode_core::subagents::SpawnBackgroundSubprocessRequest;

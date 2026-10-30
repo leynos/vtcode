@@ -122,8 +122,7 @@ async fn next_buffered_generation(
             return Ok(BufferedGenerationStep::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)));
         }
         BufferedGenerationOutcome::Failed(error) => {
-            let pending_output = std::mem::replace(output, ProviderOutput::empty());
-            return finish_failed_output(turn, pending_output, error)
+            return finish_failed_or_cancelled_output(turn, output, error)
                 .await
                 .map(BufferedGenerationStep::Finished);
         }

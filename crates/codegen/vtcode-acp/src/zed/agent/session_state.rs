@@ -207,6 +207,7 @@ impl ZedAgent {
             })),
             cancellation: super::super::types::SessionCancellation::default(),
             activity: super::super::types::SessionActivity::default(),
+            prompt_gate: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 
