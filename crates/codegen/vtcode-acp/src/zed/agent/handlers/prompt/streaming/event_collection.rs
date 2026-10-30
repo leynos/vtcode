@@ -28,24 +28,19 @@ pub(super) async fn collect_stream_events(
                 return classify_stream_poll_failure(&mut request, error).await;
             }
             StreamPollOutcome::Item(None) => {
-                if !request.output.assistant_emitted {
-                    request
-                        .previews
-                        .finish(
-                            request.turn.agent.as_ref(),
-                            &request.turn.args.session_id,
-                            acp::ToolCallStatus::Failed,
-                            "Provider stream ended before completion; it was not executed.",
-                        )
-                        .await;
-                    record_stream_attempt(request.span, request.started_at, "empty_response");
-                    return StreamAttemptOutcome::EmptyResponse;
-                }
                 let error = LLMError::Network {
                     message: "provider stream ended before a completion event".to_string(),
                     metadata: None,
                 };
-                return classify_stream_poll_failure(&mut request, error).await;
+                let outcome = classify_stream_poll_failure(&mut request, error).await;
+                // Keep truncated streams retryable. Once a retry cannot
+                // recover and no assistant content ever reached the client,
+                // report `empty_response` rather than a generic failure
+                // notice: ACP must never acknowledge an empty turn.
+                if !request.output.assistant_emitted && matches!(&outcome, StreamAttemptOutcome::Failed { .. }) {
+                    return StreamAttemptOutcome::EmptyResponse;
+                }
+                return outcome;
             }
             StreamPollOutcome::Item(Some(Err(error))) => {
                 return classify_stream_poll_failure(&mut request, error).await;

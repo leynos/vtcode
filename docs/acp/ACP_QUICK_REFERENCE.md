@@ -79,6 +79,26 @@ regardless of tool-message count. If those messages cannot fit the model's
 context budget, compaction reports an error and keeps the original history
 intact.
 
+### Prompt turns and cancellation
+
+ACP lets a client steer an active turn by sending another `session/prompt`. The
+server admits each prompt for a session and serializes the turns behind one
+gate, so a steer waits for the active turn instead of being rejected with
+`turn_in_progress` or racing its state. Queued steers run one at a time; their
+relative order is not guaranteed beyond the order in which their tasks reach
+the gate. A steer admitted before `session/cancel` runs after the cancelled
+turn finishes, while a cancel arriving after the next turn starts aborts that
+turn.
+
+A cancelled turn always ends with `StopReason::Cancelled`, and a cancellation
+that races a provider failure still reports `Cancelled`. Every non-cancelled
+turn must produce assistant content: a provider turn that completes with no
+assistant message returns an `internal_error` with
+`data.reason = "empty_response"`, and a tool-execution failure that is not a
+cancellation returns `internal_error` with
+`data.reason = "tool_execution_failed"`. Neither case is acknowledged as a
+silent `EndTurn`.
+
 HTTP 429 notices include configured provider quota headers, preserving
 per-minute, per-second, and per-request units. `Retry-After` and configured
 reset intervals set a minimum for exponential back-off; missing headers are

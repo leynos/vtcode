@@ -19,8 +19,8 @@ enum StreamAttemptOutcome {
         error: LLMError,
         observed_at: SystemTime,
     },
-    /// The provider stream ended cleanly without a completion event and
-    /// without ever sending assistant content.
+    /// The provider stream ended before a completion event and retries could
+    /// not recover it, without any assistant content ever reaching the client.
     EmptyResponse,
     Cancelled,
 }
@@ -153,11 +153,8 @@ async fn handle_streaming_attempt(
                     provider_class: turn.provider_runtime.provider_class(),
                 })
                 .await;
-            let pending = std::mem::replace(output, ProviderOutput::empty());
-            if turn.session.cancellation.is_cancelled() {
-                return Ok(StreamingTurnOutcome::Finished(finish_cancelled_output(turn, pending).await));
-            }
-            let response = finish_failed_output(turn, pending, SafeProviderProjection::from_llm_error(&error)).await?;
+            let response =
+                finish_failed_or_cancelled_output(turn, output, SafeProviderProjection::from_llm_error(&error)).await?;
             Ok(StreamingTurnOutcome::Finished(response))
         }
         StreamAttemptOutcome::EmptyResponse => Err(empty_response_error()),
@@ -188,11 +185,7 @@ async fn retry_stream_attempt(
             Ok(StreamingTurnOutcome::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)))
         }
         Err(ProviderCallError::Failed(error)) => {
-            let pending = std::mem::replace(output, ProviderOutput::empty());
-            if turn.session.cancellation.is_cancelled() {
-                return Ok(StreamingTurnOutcome::Finished(finish_cancelled_output(turn, pending).await));
-            }
-            let response = finish_failed_output(turn, pending, error).await?;
+            let response = finish_failed_or_cancelled_output(turn, output, error).await?;
             Ok(StreamingTurnOutcome::Finished(response))
         }
     }

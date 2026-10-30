@@ -6,6 +6,8 @@ use super::provider::IncompleteProviderTurn;
 use super::*;
 
 mod buffered;
+#[cfg(test)]
+mod flush_tests;
 mod input;
 mod lifecycle;
 mod provider_context;
@@ -76,19 +78,30 @@ pub(super) async fn finish_cancelled_output(
     turn: &mut PromptExecution,
     mut output: ProviderOutput,
 ) -> ProviderTurnOutcome {
-    if !output.assistant_emitted && !output.assistant_message.is_empty() {
+    if let Some(text) = output.take_unemitted_assistant_text() {
         drop(
             turn.agent
-                .send_update(
-                    &turn.args.session_id,
-                    acp::SessionUpdate::AgentMessageChunk(text_chunk(output.assistant_message.clone())),
-                )
+                .send_update(&turn.args.session_id, acp::SessionUpdate::AgentMessageChunk(text_chunk(text)))
                 .await,
         );
-        output.assistant_emitted = true;
     }
     output.store_in(turn);
     ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)
+}
+
+/// Commits a provider failure, preferring `Cancelled` when the turn was
+/// cancelled while the error was in flight. Centralizes the rule shared by the
+/// buffered and streaming failure paths.
+pub(super) async fn finish_failed_or_cancelled_output(
+    turn: &mut PromptExecution,
+    output: &mut ProviderOutput,
+    error: SafeProviderProjection,
+) -> Result<ProviderTurnOutcome, SdkError> {
+    let pending = std::mem::replace(output, ProviderOutput::empty());
+    if turn.session.cancellation.is_cancelled() {
+        return Ok(finish_cancelled_output(turn, pending).await);
+    }
+    finish_failed_output(turn, pending, error).await
 }
 
 pub(super) struct TurnGuard {
@@ -424,6 +437,17 @@ impl ProviderOutput {
         turn.assistant_message = self.assistant_message;
         turn.assistant_reasoning = self.assistant_reasoning;
         turn.assistant_emitted |= self.assistant_emitted;
+    }
+
+    /// Marks a buffered draft as client-visible when it has not been emitted
+    /// yet, returning the text the caller must send. Cancellation flushes the
+    /// draft so a partially generated answer is not silently discarded.
+    pub(super) fn take_unemitted_assistant_text(&mut self) -> Option<String> {
+        if self.assistant_emitted || self.assistant_message.is_empty() {
+            return None;
+        }
+        self.assistant_emitted = true;
+        Some(self.assistant_message.clone())
     }
 }
 
