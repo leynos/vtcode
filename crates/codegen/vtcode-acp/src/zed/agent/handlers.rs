@@ -218,3 +218,7 @@ use prompt::run_prompt_with_metric_sink;
 #[cfg(test)]
 #[path = "responses_tests.rs"]
 mod responses_tests;
+
+#[cfg(test)]
+#[path = "responses_probe_tests.rs"]
+mod responses_probe_tests;

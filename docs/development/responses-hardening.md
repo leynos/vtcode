@@ -165,19 +165,21 @@ status and reported usage, and distinguish actual measurements from pricing
 estimates. Keep a working Chat profile alongside an experimental Responses
 profile until model-specific compatibility has been demonstrated.
 
-The ignored `friendli_responses_bounded_compatibility` integration test requires
-both `VTCODE_FRIENDLI_LIVE=1` and `VTCODE_FRIENDLI_LIVE_KEY_FILE`. It makes at most
-four requests capped at 2,048 output tokens each (8,192 total), has no automatic
-retry loop and runs no returned tools. Its synthetic cases cover buffered text,
-streamed text, a function call and a raw custom call. Do not enable it in ordinary
-CI or run it repeatedly without reassessing the live budget.
+The ignored `friendli_responses_selected_compatibility_probes` integration test
+requires explicit live, key-file, case-selection and private capture-directory
+settings. Each selected synthetic case makes one request capped at 2,048 output
+tokens, redirects and automatic retries are disabled, and the total requested
+budget may not exceed 10,000 tokens. Returned tools are never executed. Cases
+are independent: one failure does not prevent capture of the remaining selected
+cases. See [Friendli Responses compatibility probes](friendli-responses-probes.md)
+for the operator contract and exact outcome rules.
 
-The 2026-09-05 live run passed buffered and streamed text, then rejected
-`response.reasoning_part.added` during the function-call case. That event-name
-gap is covered by offline regression fixtures. The raw custom-call case was
-not reached, and no paid rerun has verified tool compatibility after the fix.
-The successful requests reported 34 input and 27 output tokens in total;
-usage of the failed third attempt was unavailable, not zero.
+The sanitized 2026-09-05 captures show one function call whose streamed and
+terminal IDs differ, two required-custom requests that returned HTTP 500, and
+two named-custom requests that returned HTTP 200 with prose but no custom call.
+The latter are `no_call` compatibility failures, not successes. These captures
+motivate offline remapping and ACP replay coverage, but no later paid run has
+established current function- or custom-tool compatibility through VT Code.
 
 Friendli documents [Responses with SSE](https://friendli.ai/docs/openapi/model-apis/responses)
 as beta. Its published schema does not establish WebSocket support; do not
