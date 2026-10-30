@@ -156,7 +156,7 @@ impl LLMProvider for InvalidateArchiveBeforeToolProvider {
         Ok(())
     }
 
-    async fn stream(&self, _request: LLMRequest) -> Result<vtcode_core::llm::provider::LLMStream, LLMError> {
+    async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
         let response_index = self.calls.fetch_add(1, Ordering::SeqCst);
         let events = if response_index == 0 {
             std::fs::remove_file(&self.archive_path)
