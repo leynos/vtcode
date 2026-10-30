@@ -274,3 +274,79 @@ async fn test_head_with_line_count() {
 
     assert!(result.is_ok(), "head with line count should be allowed");
 }
+
+#[tokio::test]
+async fn deletion_assessment_denies_traversal_and_absolute_escapes() {
+    use vtcode_core::exec_policy::{DeletionDecision, assess_deletion_targets};
+
+    let workspace = tempfile::TempDir::new().expect("workspace");
+    let working_dir = workspace.path().to_path_buf();
+
+    for operand in ["../outside.txt", "/etc/hostname"] {
+        let decision = assess_deletion_targets(&[operand.to_string()], &working_dir, workspace.path()).await;
+        assert!(
+            matches!(decision, DeletionDecision::Denied { .. }),
+            "operand {operand} should be denied, got {decision:?}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn deletion_assessment_denies_symlink_escape_including_final_component() {
+    use vtcode_core::exec_policy::{DeletionDecision, assess_deletion_targets};
+
+    let workspace = tempfile::TempDir::new().expect("workspace");
+    let outside = tempfile::TempDir::new().expect("outside");
+    let sentinel = outside.path().join("sentinel.txt");
+    std::fs::write(&sentinel, b"sentinel").expect("sentinel");
+    std::os::unix::fs::symlink(outside.path(), workspace.path().join("dir-link")).expect("dir symlink");
+    std::os::unix::fs::symlink(&sentinel, workspace.path().join("file-link")).expect("file symlink");
+
+    for operand in ["dir-link/sentinel.txt", "file-link"] {
+        let decision = assess_deletion_targets(&[operand.to_string()], workspace.path(), workspace.path()).await;
+        assert!(
+            matches!(decision, DeletionDecision::Denied { .. }),
+            "operand {operand} should be denied, got {decision:?}"
+        );
+    }
+    assert!(sentinel.exists(), "assessment must not touch the outside file");
+}
+
+#[test]
+fn deletion_recognition_fails_closed_for_shell_metacharacters() {
+    use vtcode_core::exec_policy::{DeletionRecognition, recognize_deletion_command};
+
+    for command in [
+        "rm -f target; echo done",
+        "rm -f target | cat",
+        "rm -f $(find . -name target)",
+        "rm -f target > /dev/null",
+        "rm -f target &",
+    ] {
+        let recognition = recognize_deletion_command(command);
+        assert!(
+            matches!(recognition, DeletionRecognition::Unsupported { .. }),
+            "command {command:?} should fail closed, got {recognition:?}"
+        );
+    }
+}
+
+#[test]
+fn deletion_recognition_rejects_wrappers_and_environment_prefixes() {
+    use vtcode_core::exec_policy::{DeletionRecognition, recognize_deletion_command};
+
+    for command in [
+        "sudo rm -f target",
+        "env rm -f target",
+        "command rm -f target",
+        "FOO=1 rm -f target",
+        "bash -c 'rm -f target'",
+    ] {
+        let recognition = recognize_deletion_command(command);
+        assert!(
+            matches!(recognition, DeletionRecognition::Unsupported { .. }),
+            "command {command:?} should be unsupported, got {recognition:?}"
+        );
+    }
+}

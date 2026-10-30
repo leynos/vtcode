@@ -38,11 +38,16 @@ Only explicitly approved commands can execute. The allowlist includes:
 
 **All other commands are blocked by default**, including:
 
-- Destructive commands: `rm`, `dd`, `shred`
+- Destructive commands: root/home `rm` targets, `dd`, `shred`
 - Privilege escalation: `sudo`, `su`, `doas`
 - System modification: `chmod`, `chown`, `systemctl`
 - Network commands: `curl`, `wget`, `ssh`
 - Container tools: `docker`, `kubectl`
+
+A single simple `rm` over literal workspace paths is allowed only when the call
+sets `confirm: true`; unsupported shapes and targets outside the workspace are
+refused. See
+[Workspace-scoped deletion](../development/COMMAND_SECURITY_MODEL.md#workspace-scoped-deletion).
 
 ### Layer 2: Argument Validation
 

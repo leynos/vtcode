@@ -143,8 +143,11 @@ impl Default for CommandsConfig {
             approval_prefixes: Vec::new(),
             extra_path_entries: default_extra_path_entries(),
             deny_list: vec![
-                // Dangerous file deletion
-                "rm".into(),
+                // Dangerous file deletion. A bare `rm` prefix is deliberately
+                // absent: supported workspace-scoped deletions are gated by
+                // recognition, explicit confirmation, and target assessment in
+                // the exec path, while these absolute-path denies stay ahead of
+                // any allow rule.
                 "rm -rf /".into(),
                 "rm -rf ~".into(),
                 "rm -rf /*".into(),
@@ -211,6 +214,9 @@ impl Default for CommandsConfig {
                 "head -n 1 /var/log".into(),
             ],
             allow_glob: vec![
+                // Workspace-scoped deletion. The exec path still requires
+                // confirm=true and refuses targets outside the workspace.
+                "rm *".into(),
                 // Version control
                 "git *".into(),
                 // Rust ecosystem
@@ -260,8 +266,6 @@ impl Default for CommandsConfig {
                 "gunzip *".into(),
             ],
             deny_glob: vec![
-                // File deletion
-                "rm *".into(),
                 // Privilege escalation
                 "sudo *".into(),
                 // Permission changes

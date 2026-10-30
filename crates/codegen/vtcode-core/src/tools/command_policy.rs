@@ -247,6 +247,22 @@ mod tests {
         assert!(evaluator.allows_text("bun run check"));
     }
 
+    /// The default policy allows `rm` only as a whole command token, so
+    /// `rmdir`-style neighbours stay fail-closed, and the shipped deny rules
+    /// still win over the allow glob.
+    #[test]
+    fn default_policy_allows_workspace_rm_without_widening_similar_commands() {
+        let config = CommandsConfig::default();
+        let evaluator = CommandPolicyEvaluator::from_config(&config);
+
+        assert!(evaluator.allows_text("rm -f scratch/tmp.txt"));
+        assert!(evaluator.allows_text("rm scratch/tmp.txt"));
+        assert!(!evaluator.allows_text("rmdir scratch"));
+        assert!(!evaluator.allows_text("rmx scratch"));
+        assert!(!evaluator.allows_text("rm -rf /"));
+        assert!(!evaluator.allows_text("rm --force scratch/tmp.txt"));
+    }
+
     #[test]
     fn allow_list_allows_exact_git_and_cargo_commands() {
         let mut config = CommandsConfig::default();

@@ -3,8 +3,15 @@
 //! This module re-exports `validate_command_safety` from the canonical
 //! `command_safety` module. All dangerous-command detection, injection
 //! pattern detection, and shell parsing live in `command_safety/`.
+//!
+//! Workspace-scoped deletion recognition is re-exported from `vtcode-safety`
+//! so preflight and executors share one definition of a supported `rm`.
 
 pub use crate::command_safety::validate_command_safety;
+pub use crate::exec_policy::{
+    DeletionCommandSet, DeletionDecision, DeletionPlan, DeletionRecognition, assess_deletion_targets,
+    classify_deletion_commands, recognize_deletion_command,
+};
 
 #[cfg(test)]
 mod tests {

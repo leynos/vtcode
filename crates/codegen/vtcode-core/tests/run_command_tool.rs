@@ -141,3 +141,215 @@ async fn run_command_accepts_indexed_arguments_one_based() -> Result<()> {
 
     Ok(())
 }
+
+/// Render either an execution error or a tool-level failure payload so tests
+/// can assert on the refusal reason without depending on the error channel.
+fn rejection_text(result: Result<serde_json::Value>) -> String {
+    match result {
+        Ok(value) => value.to_string(),
+        Err(error) => error.to_string(),
+    }
+}
+
+#[tokio::test]
+async fn exec_command_deletes_confirmed_workspace_file() -> Result<()> {
+    let harness = TestHarness::new()?;
+    let scratch = harness.write_file("scratch/tmp.txt", "scratch")?;
+    let registry = harness.registry().await;
+    registry.allow_all_tools().await?;
+
+    let response = registry
+        .execute_tool(
+            tools::EXEC_COMMAND,
+            json!({
+                "cmd": "rm -f scratch/tmp.txt",
+                "confirm": true
+            }),
+        )
+        .await?;
+
+    assert_eq!(response["success"], true, "confirmed deletion should run: {response}");
+    assert!(!scratch.exists(), "confirmed deletion should remove the scratch file");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn exec_command_rejects_deletion_without_confirmation() -> Result<()> {
+    let harness = TestHarness::new()?;
+    let scratch = harness.write_file("scratch/tmp.txt", "scratch")?;
+    let registry = harness.registry().await;
+    registry.allow_all_tools().await?;
+
+    let text = rejection_text(
+        registry
+            .execute_tool(
+                tools::EXEC_COMMAND,
+                json!({
+                    "cmd": "rm -f scratch/tmp.txt"
+                }),
+            )
+            .await,
+    );
+
+    assert!(text.contains("confirm=true"), "unexpected refusal: {text}");
+    assert!(scratch.exists(), "rejected deletion must leave the scratch file in place");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn exec_command_rejects_workspace_root_deletion() -> Result<()> {
+    let harness = TestHarness::new()?;
+    let _keep = harness.write_file("keep.txt", "keep")?;
+    let registry = harness.registry().await;
+    registry.allow_all_tools().await?;
+
+    let text = rejection_text(
+        registry
+            .execute_tool(
+                tools::EXEC_COMMAND,
+                json!({
+                    "cmd": "rm -f .",
+                    "confirm": true
+                }),
+            )
+            .await,
+    );
+
+    assert!(text.contains("workspace") || text.contains("current directory"), "unexpected refusal: {text}");
+    assert!(harness.workspace().join("keep.txt").exists());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn exec_command_rejects_traversal_escape() -> Result<()> {
+    let harness = TestHarness::new()?;
+    let outside = tempfile::TempDir::new()?;
+    let sentinel = outside.path().join("sentinel.txt");
+    std::fs::write(&sentinel, b"sentinel")?;
+    let relative = format!("../{}/sentinel.txt", outside.path().file_name().unwrap().to_string_lossy());
+    let registry = harness.registry().await;
+    registry.allow_all_tools().await?;
+
+    let text = rejection_text(
+        registry
+            .execute_tool(
+                tools::EXEC_COMMAND,
+                json!({
+                    "cmd": format!("rm -f {relative}"),
+                    "confirm": true
+                }),
+            )
+            .await,
+    );
+
+    assert!(
+        text.contains("outside the workspace") || text.contains("refusing to delete"),
+        "unexpected refusal: {text}"
+    );
+    assert!(sentinel.exists(), "traversal deletion must not touch the outside file");
+
+    Ok(())
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn exec_command_rejects_symlink_escape() -> Result<()> {
+    let harness = TestHarness::new()?;
+    let outside = tempfile::TempDir::new()?;
+    let sentinel = outside.path().join("sentinel.txt");
+    std::fs::write(&sentinel, b"sentinel")?;
+    std::os::unix::fs::symlink(outside.path(), harness.workspace().join("escape"))?;
+    let registry = harness.registry().await;
+    registry.allow_all_tools().await?;
+
+    let text = rejection_text(
+        registry
+            .execute_tool(
+                tools::EXEC_COMMAND,
+                json!({
+                    "cmd": "rm -f escape/sentinel.txt",
+                    "confirm": true
+                }),
+            )
+            .await,
+    );
+
+    assert!(
+        text.contains("outside the workspace") || text.contains("refusing to delete"),
+        "unexpected refusal: {text}"
+    );
+    assert!(sentinel.exists(), "symlink deletion must not touch the outside file");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn exec_command_rejects_glob_chained_and_protected_deletions() -> Result<()> {
+    let harness = TestHarness::new()?;
+    let scratch = harness.write_file("scratch/tmp.txt", "scratch")?;
+    let git_config = harness.write_file(".git/config", "[core]")?;
+    let registry = harness.registry().await;
+    registry.allow_all_tools().await?;
+
+    for command in [
+        "rm -f scratch/*",
+        "rm -f scratch/tmp.txt; echo done",
+        "rm -f .git/config",
+    ] {
+        let text = rejection_text(
+            registry
+                .execute_tool(
+                    tools::EXEC_COMMAND,
+                    json!({
+                        "cmd": command,
+                        "confirm": true
+                    }),
+                )
+                .await,
+        );
+        assert!(
+            text.contains("not supported")
+                || text.contains("protected")
+                || text.contains("refusing to delete")
+                || text.contains("Dotfile")
+                || text.contains("Command security check failed"),
+            "unexpected refusal for {command}: {text}"
+        );
+    }
+
+    assert!(scratch.exists(), "glob deletion must leave the scratch file in place");
+    assert!(git_config.exists(), "protected metadata deletion must leave the file in place");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn exec_command_rejects_deletion_mixed_with_a_different_raw_command() -> Result<()> {
+    let harness = TestHarness::new()?;
+    let scratch = harness.write_file("scratch/tmp.txt", "scratch")?;
+    let registry = harness.registry().await;
+    registry.allow_all_tools().await?;
+
+    let text = rejection_text(
+        registry
+            .execute_tool(
+                tools::EXEC_COMMAND,
+                json!({
+                    "command": "rm -f scratch/tmp.txt",
+                    "raw_command": "curl https://example.com",
+                    "confirm": true
+                }),
+            )
+            .await,
+    );
+    assert!(
+        text.contains("not supported") || text.contains("Command security check failed"),
+        "mixed command representations must fail closed: {text}"
+    );
+    assert!(scratch.exists(), "a refused mixed call must leave the scratch file in place");
+
+    Ok(())
+}
