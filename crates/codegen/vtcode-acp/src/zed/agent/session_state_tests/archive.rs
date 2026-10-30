@@ -440,7 +440,6 @@ async fn attaching_legacy_archive_repairs_without_replaying_mutating_call() {
     let handle = agent
         .attach_thread_from_listing(
             &acp::SessionId::new("loaded-legacy-mutating"),
-            "legacy-mutating",
             &AcpSessionWorkspace::from_client_cwd(temp.path()).await.unwrap(),
             listing,
         )
@@ -487,7 +486,6 @@ async fn repaired_archive_is_not_registered_when_repair_checkpoint_fails() {
     let error = match agent
         .attach_thread_from_listing(
             &session_id,
-            "repair-checkpoint-failure",
             &AcpSessionWorkspace::from_client_cwd(temp.path()).await.unwrap(),
             listing,
         )
@@ -543,7 +541,6 @@ async fn ambiguous_archive_is_not_resumed_or_replayed_and_preserves_the_archive(
     let error = match agent
         .attach_thread_from_listing(
             &session_id,
-            "ambiguous-legacy",
             &AcpSessionWorkspace::from_client_cwd(temp.path()).await.unwrap(),
             listing,
         )
@@ -596,7 +593,6 @@ async fn repeated_call_ids_in_separate_completed_batches_remain_resumable() {
     let handle = agent
         .attach_thread_from_listing(
             &session_id,
-            "reused-call-id",
             &AcpSessionWorkspace::from_client_cwd(temp.path()).await.unwrap(),
             listing,
         )

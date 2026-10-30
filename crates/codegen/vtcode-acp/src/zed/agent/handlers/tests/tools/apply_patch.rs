@@ -2,15 +2,14 @@
 use super::*;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
 
-#[tokio::test]
-async fn approved_apply_patch_executes_and_emits_preview_and_diff_over_acp() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
-    let calls = Arc::new(AtomicUsize::new(0));
-    let requests = Arc::new(Mutex::new(Vec::new()));
-    let patch = "*** Begin Patch\n*** Add File: patched.txt\n+created over ACP\n*** End Patch\n";
+/// Drive one approved `apply_patch` prompt over the ACP wire and collect the
+/// update notifications the agent emitted.
+async fn run_approved_patch_flow(
+    workspace_path: &std::path::Path,
+    patch: &str,
+    calls: Arc<AtomicUsize>,
+    requests: Arc<Mutex<Vec<LLMRequest>>>,
+) -> Vec<acp::SessionNotification> {
     let patch_arguments = serde_json::json!({ "patch": patch }).to_string();
     let factory_calls = Arc::clone(&calls);
     let factory_requests = Arc::clone(&requests);
@@ -26,9 +25,7 @@ async fn approved_apply_patch_executes_and_emits_preview_and_diff_over_acp() {
             })
         }),
     );
-    let workspace = TempDir::new().expect("wire test workspace");
-    let workspace_path = workspace.path().to_path_buf();
-    let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+    let agent = Arc::new(build_wire_test_agent(workspace_path).await);
     let (agent_channel, client_channel) = Channel::duplex();
     let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
 
@@ -42,6 +39,7 @@ async fn approved_apply_patch_executes_and_emits_preview_and_diff_over_acp() {
         });
     let agent_task = tokio::spawn(agent_connection);
 
+    let session_path = workspace_path.to_path_buf();
     let client_connection = Client
         .builder()
         .on_receive_notification(
@@ -57,7 +55,7 @@ async fn approved_apply_patch_executes_and_emits_preview_and_diff_over_acp() {
                     .block_task()
                     .await?,
             );
-            let session = cx.send_request(NewSessionRequest::new(workspace_path)).block_task().await?;
+            let session = cx.send_request(NewSessionRequest::new(session_path)).block_task().await?;
             let response = cx
                 .send_request(PromptRequest::new(
                     session.session_id,
@@ -75,14 +73,10 @@ async fn approved_apply_patch_executes_and_emits_preview_and_diff_over_acp() {
         .expect("apply_patch protocol flow should succeed");
     agent_task.abort();
     drop(agent_task.await);
+    std::iter::from_fn(|| updates_rx.try_recv().ok()).collect()
+}
 
-    assert_eq!(
-        std::fs::read_to_string(workspace.path().join("patched.txt")).expect("read patched file"),
-        "created over ACP\n"
-    );
-    assert_eq!(calls.load(Ordering::SeqCst), 2, "the tool result must return to the provider");
-
-    let requests = requests.lock().expect("stream requests");
+fn assert_tool_continuation_saw_completed_result(requests: &[LLMRequest]) {
     let tool_response = requests[1]
         .messages
         .iter()
@@ -94,9 +88,9 @@ async fn approved_apply_patch_executes_and_emits_preview_and_diff_over_acp() {
         !tool_response.contains("\"status\":\"incomplete\""),
         "write-ahead placeholders must be replaced before provider continuation"
     );
-    drop(requests);
+}
 
-    let updates = std::iter::from_fn(|| updates_rx.try_recv().ok()).collect::<Vec<_>>();
+fn assert_patch_preview_visible(updates: &[acp::SessionNotification], patch: &str) {
     let preview_visible = updates.iter().any(|notification| {
         let acp::SessionUpdate::ToolCall(call) = &notification.update else {
             return false;
@@ -110,7 +104,9 @@ async fn approved_apply_patch_executes_and_emits_preview_and_diff_over_acp() {
         })
     });
     assert!(preview_visible, "the initial ACP tool call must expose the patch text");
+}
 
+fn assert_completed_diff(updates: &[acp::SessionNotification], expected_path: &std::path::Path) {
     let diff = updates.iter().find_map(|notification| {
         let acp::SessionUpdate::ToolCallUpdate(update) = &notification.update else {
             return None;
@@ -121,9 +117,32 @@ async fn approved_apply_patch_executes_and_emits_preview_and_diff_over_acp() {
         })
     });
     let diff = diff.expect("the completed ACP tool update must include a standardized diff");
-    assert_eq!(diff.path, workspace.path().join("patched.txt"));
+    assert_eq!(diff.path.as_path(), expected_path);
     assert_eq!(diff.old_text, None);
     assert_eq!(diff.new_text, "created over ACP\n");
+}
+
+#[tokio::test]
+async fn approved_apply_patch_executes_and_emits_preview_and_diff_over_acp() {
+    let _history_test_guard = lock_history_test_guard().await;
+    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
+    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
+    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let patch = "*** Begin Patch\n*** Add File: patched.txt\n+created over ACP\n*** End Patch\n";
+    let workspace = TempDir::new().expect("wire test workspace");
+
+    let updates = run_approved_patch_flow(workspace.path(), patch, Arc::clone(&calls), Arc::clone(&requests)).await;
+
+    assert_eq!(
+        std::fs::read_to_string(workspace.path().join("patched.txt")).expect("read patched file"),
+        "created over ACP\n"
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 2, "the tool result must return to the provider");
+    assert_tool_continuation_saw_completed_result(&requests.lock().expect("stream requests"));
+    assert_patch_preview_visible(&updates, patch);
+    assert_completed_diff(&updates, &workspace.path().join("patched.txt"));
 }
 
 use std::path::PathBuf;
