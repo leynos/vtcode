@@ -304,7 +304,7 @@ impl SubagentController {
             self.attach_child_controller(child_id, &mut execution).await;
             let thread_handle = self.record_child_runtime(child_id, &execution).await?;
             self.run_child_start_hook(child_id, &execution, &thread_handle).await;
-            self.execute_child_task(execution).await
+            self.execute_child_task(child_id, execution).await
         })
     }
 
@@ -534,7 +534,11 @@ impl SubagentController {
         }
     }
 
-    fn execute_child_task(&self, execution: PreparedChildExecution) -> BoxFuture<'_, Result<ChildRunResult>> {
+    fn execute_child_task<'a>(
+        &'a self,
+        child_id: &'a str,
+        execution: PreparedChildExecution,
+    ) -> BoxFuture<'a, Result<ChildRunResult>> {
         Box::pin(async move {
             let mut execution = execution;
             // Fail closed on tool exposure: only expose the delegation tools when
@@ -568,10 +572,32 @@ impl SubagentController {
             );
             task.instructions = Some(compose_subagent_instructions(&execution.spec, memory_appendix));
 
-            let results = Box::pin(execution.runner.execute_task(&task, &[])).await?;
+            let task_result = Box::pin(execution.runner.execute_task(&task, &[])).await;
             let messages = execution.runner.session_messages();
-            let transcript_path =
-                persist_child_archive(&execution.archive, &messages, execution.spec.name.as_str()).await?;
+            let archive_result =
+                persist_child_archive(&execution.archive, &messages, execution.spec.name.as_str()).await;
+            if task_result.is_err()
+                && let Ok(transcript_path) = archive_result.as_ref()
+            {
+                let mut state = self.state.write().await;
+                if let Some(record) = state.children.get_mut(child_id) {
+                    record.transcript_path = transcript_path.clone();
+                    record.stored_messages = messages.clone();
+                }
+            }
+            let (results, transcript_path) = match (task_result, archive_result) {
+                (Ok(results), Ok(path)) => (results, path),
+                (Ok(_), Err(archive_error)) => return Err(archive_error),
+                (Err(execution_error), Ok(_)) => return Err(execution_error),
+                (Err(execution_error), Err(archive_error)) => {
+                    tracing::warn!(
+                        child_id,
+                        error = %archive_error,
+                        "Failed to finalize child archive after task execution failed"
+                    );
+                    return Err(execution_error);
+                }
+            };
 
             Ok(ChildRunResult {
                 messages,
