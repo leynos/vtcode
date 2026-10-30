@@ -77,6 +77,56 @@ pub fn contains_dynamic_shell_syntax(command: &str) -> bool {
     quote.is_some()
 }
 
+/// Returns whether a shell script contains an unquoted command separator,
+/// pipe, background operator, subshell grouping, or redirection.
+///
+/// Callers that must classify a *single simple command* (for example the
+/// workspace-scoped deletion recogniser) use this to fail closed on shell
+/// structure that the tree-sitter command list would otherwise flatten:
+/// `rm -f x > out`, `rm -f x | cat`, and `rm -f x &` all contain control
+/// syntax even though they may still parse to a single command vector.
+pub fn contains_shell_control_syntax(command: &str) -> bool {
+    enum ShellQuote {
+        Single,
+        Double,
+    }
+
+    let mut quote: Option<ShellQuote> = None;
+    let mut characters = command.chars();
+
+    while let Some(character) = characters.next() {
+        match quote {
+            Some(ShellQuote::Single) => {
+                if character == '\'' {
+                    quote = None;
+                }
+            }
+            Some(ShellQuote::Double) => match character {
+                '"' => quote = None,
+                '\\' => {
+                    if characters.next().is_none() {
+                        return true;
+                    }
+                }
+                _ => {}
+            },
+            None => match character {
+                '\'' => quote = Some(ShellQuote::Single),
+                '"' => quote = Some(ShellQuote::Double),
+                '\\' => {
+                    if characters.next().is_none() {
+                        return true;
+                    }
+                }
+                ';' | '&' | '|' | '<' | '>' | '(' | ')' | '\n' | '\r' => return true,
+                _ => {}
+            },
+        }
+    }
+
+    false
+}
+
 /// Returns whether a `find` command contains shell syntax that can change the
 /// literal option tokens after approval-time tokenization.
 pub fn contains_dynamic_find_syntax(script: &str) -> bool {
