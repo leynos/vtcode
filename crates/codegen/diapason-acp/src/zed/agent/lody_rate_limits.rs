@@ -169,8 +169,13 @@ impl ZedAgent {
         let Some(client) = self.client() else {
             return;
         };
-        let Some(session) = self.session_handle(session_id) else {
-            return;
+        let session = match self.session_handle(session_id) {
+            Ok(Some(session)) => session,
+            Ok(None) => return,
+            Err(error) => {
+                super::log_suppressed_error(&error, "publish_lody_rate_limits", "session_lookup_failed");
+                return;
+            }
         };
         let model = match session.data.lock() {
             Ok(data) => data.model.clone(),
