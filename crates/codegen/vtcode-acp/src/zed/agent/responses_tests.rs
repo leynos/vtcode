@@ -1,8 +1,9 @@
 //! Behavioural coverage for custom OpenAI Responses providers through ACP.
 
+use super::provider::{StreamDeadlineTracker, StreamTimeoutPhase};
 use super::tests::{PROMPT_PROVIDER_TEST_LOCK, PromptProviderFactoryGuard, build_wire_test_agent_with_providers};
 use super::*;
-use crate::acp::{InitializeRequest, NewSessionRequest};
+use crate::acp::{InitializeRequest, NewSessionRequest, SetSessionConfigOptionRequest};
 use agent_client_protocol::{Channel, on_receive_notification};
 use assert_fs::TempDir;
 use axum::Router;
@@ -1164,7 +1165,10 @@ async fn custom_responses_enforces_first_token_deadline_without_replay_or_permit
     assert_eq!(run.active_acp_requests, 0);
     assert_eq!(run.stop_reasons, [acp::StopReason::EndTurn]);
     let visible = visible_text(&run.notifications);
-    assert!(visible.contains("time to first token"));
+    // Paced fixtures, incomplete-message checks, and tracker tests distinguish
+    // phases; the client projection exposes only the bounded category.
+    assert!(visible.contains("Provider failure category: Network error."));
+    assert!(!visible.contains("time to first token"));
     assert!(!visible.contains("too late"));
 }
 
@@ -1186,7 +1190,8 @@ async fn custom_responses_enforces_idle_deadline_after_partial_output_without_re
     assert_eq!(run.stop_reasons, [acp::StopReason::EndTurn]);
     let visible = visible_text(&run.notifications);
     assert!(visible.contains("idle prefix"));
-    assert!(visible.contains("inter-token idle"));
+    assert!(visible.contains("Provider failure category: Network error."));
+    assert!(!visible.contains("inter-token idle"));
     assert!(run.messages.iter().any(|message| {
         message.role == ProviderMessageRole::Assistant
             && message.content.as_text().contains("idle prefix")
@@ -1213,7 +1218,8 @@ async fn custom_responses_total_deadline_is_not_extended_by_paced_output() {
     assert_eq!(run.stop_reasons, [acp::StopReason::EndTurn]);
     let visible = visible_text(&run.notifications);
     assert!(visible.contains("one two"));
-    assert!(visible.contains("total generation"));
+    assert!(visible.contains("Provider failure category: Network error."));
+    assert!(!visible.contains("total generation"));
     assert!(run.messages.iter().any(|message| {
         message.role == ProviderMessageRole::Assistant
             && message.content.as_text().contains("one two")
