@@ -391,6 +391,7 @@ mod tests {
         let results = [ToolCallResult {
             tool_call_id: "call-1".to_string(),
             llm_response: "real result".to_string(),
+            audit_arguments: Vec::new(),
             audit_status: ToolAuditStatus::Success,
         }];
 

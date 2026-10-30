@@ -305,7 +305,7 @@ impl LLMProvider for BlockingPromptProvider {
         Ok(())
     }
 
-    async fn stream(&self, _request: LLMRequest) -> Result<vtcode_core::llm::provider::LLMStream, LLMError> {
+    async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
         self.started.notify_one();
         self.release.notified().await;
         let response = LLMResponse::new("wire-model", "first prompt complete");
