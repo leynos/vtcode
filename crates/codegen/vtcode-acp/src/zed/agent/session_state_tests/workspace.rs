@@ -628,7 +628,7 @@ async fn new_session_restores_matching_workspace_hook_approval_before_session_st
     env_guard.set_var("VTCODE_CONFIG", dot_config.path().join("config").to_string_lossy().into_owned());
     vtcode_core::utils::dot_config::initialize_dot_folder().await.unwrap();
 
-    let mut vt_config = vtcode_core::config::VTCodeConfig::default();
+    let mut vt_config = VTCodeConfig::default();
     vt_config
         .hooks
         .lifecycle
@@ -771,7 +771,7 @@ async fn new_session_does_not_restore_a_background_record_owned_by_another_sessi
     vt_config.subagents.enabled = true;
     vt_config.subagents.background.enabled = true;
     vt_config.subagents.background.auto_restore = true;
-    let agent = build_agent_with_vt_config(temp.path(), "duck", Some(vt_config)).await;
+    let agent = build_agent_with_vt_config(temp.path(), "duck", Some(&vt_config)).await;
     let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
     let session = agent.session_handle(&response.session_id).unwrap().unwrap();
     let controller = agent

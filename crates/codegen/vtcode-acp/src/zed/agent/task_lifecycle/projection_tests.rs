@@ -6,12 +6,12 @@ use proptest::prelude::*;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
-fn subagent_event(status: &str) -> SubagentProgressEvent {
+fn subagent_event(status: &str) -> LifecycleUpdate {
     subagent_event_for("parent-session", status)
 }
 
-fn subagent_event_for(parent_session_id: &str, status: &str) -> SubagentProgressEvent {
-    SubagentProgressEvent::Subagent {
+fn subagent_event_for(parent_session_id: &str, status: &str) -> LifecycleUpdate {
+    LifecycleUpdate::Subagent {
         parent_session_id: parent_session_id.to_string(),
         task: serde_json::from_value(json!({
             "id": "child-1",
@@ -32,8 +32,8 @@ fn subagent_event_for(parent_session_id: &str, status: &str) -> SubagentProgress
     }
 }
 
-fn background_event(status: &str) -> SubagentProgressEvent {
-    SubagentProgressEvent::BackgroundProcess {
+fn background_event(status: &str) -> LifecycleUpdate {
+    LifecycleUpdate::BackgroundProcess {
         parent_session_id: "parent-session".to_string(),
         task: serde_json::from_value(json!({
             "id": "background-1",
@@ -64,10 +64,10 @@ fn task_meta(update: &acp::SessionUpdate) -> &Value {
     &meta["lody"]["task"]
 }
 
-fn with_task_id(mut event: SubagentProgressEvent, task_id: String) -> SubagentProgressEvent {
+fn with_task_id(mut event: LifecycleUpdate, task_id: String) -> LifecycleUpdate {
     match &mut event {
-        SubagentProgressEvent::Subagent { task, .. } => task.id = task_id,
-        SubagentProgressEvent::BackgroundProcess { task, .. } => task.id = task_id,
+        LifecycleUpdate::Subagent { task, .. } => task.id = task_id,
+        LifecycleUpdate::BackgroundProcess { task, .. } => task.id = task_id,
     }
     event
 }
@@ -156,8 +156,14 @@ async fn forwards_lifecycle_events_through_the_official_acp_duplex() {
         agent_channel,
         move |cx: ConnectionTo<Client>| async move {
             let client = ConnectionHandle::new(cx);
-            let forwarder =
-                spawn_task_lifecycle_forwarder(progress_rx, acp::SessionId::new(Arc::from("parent-session")), client);
+            let metrics = Arc::new(vtcode_core::metrics::MetricsCollector::new());
+            let queue = Arc::new(LifecycleQueueTracker::new(metrics));
+            let forwarder = spawn_task_lifecycle_forwarder(
+                progress_rx,
+                acp::SessionId::new(Arc::from("parent-session")),
+                client,
+                Arc::clone(&queue),
+            );
             queue
                 .try_send(&progress_tx, subagent_event_for("other-session", "running"))
                 .unwrap();

@@ -1309,7 +1309,6 @@ mod tests {
                 supports_parallel_tool_calls: None,
                 supports_context_caching: None,
                 supports_responses_compaction: None,
-                supports_stream_usage: None,
                 supports_context_edits: None,
             },
         );

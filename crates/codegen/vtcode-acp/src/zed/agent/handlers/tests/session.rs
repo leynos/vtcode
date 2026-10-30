@@ -36,13 +36,7 @@ async fn close_session_cancels_and_waits_for_admitted_prompt_work() {
     .await
     .expect("session close should publish cancellation");
     assert!(!close_task.is_finished(), "close must wait for admitted prompt work");
-    assert!(
-        agent
-            .session_handle(&session_id)
-            .expect("session lookup")
-            .expect("session lookup after close")
-            .is_none()
-    );
+    assert!(agent.session_handle(&session_id).expect("session lookup after close").is_none());
     assert!(agent.begin_session_prompt(&session_id).is_err(), "close must reject new prompt admission");
 
     drop(prompt_guard);
@@ -441,20 +435,24 @@ fn advertised_capabilities_include_background_tasks_only_when_enabled() {
 async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex() {
     let workspace = TempDir::new().expect("Lody management workspace");
     write_lody_background_fixture(workspace.path());
-    let mut agent = build_wire_test_agent(workspace.path()).await;
-    let mut vt_config = vtcode_core::config::VTCodeConfig::default();
+    let launch_workspace = TempDir::new().expect("separate launch workspace");
+    let mut agent = build_wire_test_agent(launch_workspace.path()).await;
+    let mut vt_config = VTCodeConfig::default();
     vt_config.subagents.enabled = true;
     vt_config.subagents.background.enabled = true;
     agent.vt_config = Some(Box::new(vt_config.clone()));
-    crate::zed::agent::optional_setup::attach_acp_subagent_controller(crate::zed::agent::AcpSubagentControllerSetup {
-        registry: &agent.local_tool_registry,
-        agent_config: &agent.config,
-        custom_providers: &[],
-        vt_config: Some(&vt_config),
-        owner_session_id: None,
-        workspace_gated: false,
-    })
+    let setup_outcome = crate::zed::agent::optional_setup::attach_acp_subagent_controller(
+        crate::zed::agent::AcpSubagentControllerSetup {
+            registry: &agent.local_tool_registry,
+            agent_config: &agent.config,
+            custom_providers: &[],
+            vt_config: Some(&vt_config),
+            owner_session_id: None,
+            workspace_gated: false,
+        },
+    )
     .await;
+    assert_eq!(setup_outcome, crate::zed::agent::OptionalSetupOutcome::Attached);
     let agent = Arc::new(agent);
     assert!(agent.local_tool_registry.has_subagent_controller());
     let (agent_channel, client_channel) = Channel::duplex();
@@ -545,6 +543,43 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 .await?;
             assert_eq!(foreign_list, serde_json::json!({ "tasks": [] }));
 
+            let foreign_owned_session = inspected_agent.session_handle(&foreign_session.session_id).unwrap().unwrap();
+            let foreign_controller = inspected_agent
+                .session_subagent_controller(&foreign_owned_session)
+                .unwrap()
+                .unwrap();
+            let first_runtime = owned_session.workspace_runtime().unwrap().unwrap();
+            let foreign_runtime = foreign_owned_session.workspace_runtime().unwrap().unwrap();
+            assert!(
+                Arc::ptr_eq(&first_runtime, &foreign_runtime),
+                "session ownership must preserve shared workspace resources"
+            );
+            assert!(
+                !Arc::ptr_eq(&controller, &foreign_controller),
+                "controllers must retain independent immutable owners"
+            );
+            let params = serde_json::value::to_raw_value(&serde_json::json!({
+                "sessionId": foreign_session.session_id, "taskId": background.id,
+            }))?;
+            let foreign_cancel = cx
+                .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                    crate::zed::agent::lody::LODY_SUBAGENTS_CANCEL_METHOD,
+                    params.into(),
+                )))
+                .block_task()
+                .await
+                .expect_err("a sibling must not cancel the owned task");
+            assert_eq!(foreign_cancel.data, Some(serde_json::json!({ "reason": "unknown_task" })));
+            assert!(
+                controller
+                    .background_snapshot(&background.id)
+                    .await
+                    .unwrap()
+                    .entry
+                    .status
+                    .is_active()
+            );
+
             let foreign_error = lody_output_error(&cx, &foreign_session.session_id, &background.id).await;
             let unknown_error = lody_output_error(&cx, &session.session_id, "unknown-task").await;
             assert_eq!(foreign_error, unknown_error);
@@ -563,6 +598,79 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 .block_task()
                 .await?;
             assert_eq!(cancelled, serde_json::json!({}));
+
+            // Exercise the registry route itself: a detached session view must
+            // never execute through the shared runtime's ownerless controller.
+            let registry = foreign_runtime
+                .local_tool_registry
+                .with_subagent_controller(Some(Arc::clone(&foreign_controller)));
+            registry.mark_tool_preapproved("agent").await;
+            let spawned = registry
+                .execute_tool(
+                    "agent",
+                    serde_json::json!({
+                        "action": "spawn_subprocess", "agent_type": "background-demo",
+                    }),
+                )
+                .await
+                .expect("spawn through the session registry executor");
+            let sibling = foreign_controller
+                .background_status_entries()
+                .await
+                .into_iter()
+                .next()
+                .expect("sibling task");
+            assert_eq!(sibling.owner_session_id.as_deref(), Some(foreign_session.session_id.0.as_ref()));
+            assert_ne!(
+                sibling.exec_session_id, background.exec_session_id,
+                "same-workspace sessions need distinct child processes"
+            );
+            assert_eq!(spawned["id"], sibling.id);
+            let disabled = registry.with_subagent_controller(None);
+            // Preapproval is consumed once, including on the successful spawn.
+            disabled.mark_tool_preapproved("agent").await;
+            let denied = disabled
+                .execute_tool(
+                    "agent",
+                    serde_json::json!({
+                        "action": "spawn_subprocess", "agent_type": "background-demo",
+                    }),
+                )
+                .await
+                .expect("registry execution errors are returned in the public JSON envelope");
+            assert_eq!(denied["error"]["message"], "Subagent controller is not active in this session");
+            assert_eq!(denied["error"]["category"], "ExecutionError");
+            assert!(denied.get("id").is_none(), "an empty controller slot must not spawn a child: {denied}");
+            assert!(registry.has_subagent_controller(), "detaching a sibling view must not clear its controller");
+
+            drop(
+                cx.send_request(CloseSessionRequest::new(session.session_id.clone()))
+                    .block_task()
+                    .await?,
+            );
+            assert!(
+                foreign_controller
+                    .background_snapshot(&sibling.id)
+                    .await
+                    .unwrap()
+                    .entry
+                    .status
+                    .is_active(),
+                "closing the first session must not stop a sibling's live child process"
+            );
+            assert_eq!(first_runtime.lifecycle.lock().unwrap().active_sessions, 1);
+            assert_eq!(
+                first_runtime.lifecycle.lock().unwrap().state,
+                crate::zed::agent::session_workspace::WorkspaceRuntimeLifecycleState::Open
+            );
+            let cancelled_sibling = foreign_controller.force_cancel_background(&sibling.id).await.unwrap();
+            assert!(!cancelled_sibling.status.is_active(), "the sibling process must be stopped during test cleanup");
+            drop(
+                cx.send_request(CloseSessionRequest::new(foreign_session.session_id.clone()))
+                    .block_task()
+                    .await?,
+            );
+            assert_eq!(first_runtime.lifecycle.lock().unwrap().active_sessions, 0);
             Ok(())
         });
 
