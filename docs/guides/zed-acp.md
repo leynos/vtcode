@@ -485,14 +485,18 @@ and `[history]` settings do not control ACP audit output.
   `circuit_breaker_state = "not_configured"`; the tool and MCP circuit breakers
   are separate. HTTP 408, 429, 500, 502, 503, and 504 failures are eligible for
   the configured bounded retry policy before output becomes visible.
-- **Failure diagnostics** – Operator-visible logs (WARN and above) report a
-  fixed message plus bounded fields: `operation`, `component`, `outcome`,
-  `error_category`, and `error_chain_depth`. Failures returned to Zed use short
-  fixed messages that never embed workspace paths, provider or command text,
-  environment values, or tool payloads. The full error chain is kept at
-  `debug`, so debug logs can contain workspace paths, provider detail, and
-  prompt or tool payload text. That is a diagnostic aid rather than redaction:
-  collect and share debug logs deliberately.
+- **Failure diagnostics** – For `list_files` and optional-component setup,
+  operator-visible logs (WARN and above) report a fixed message plus bounded
+  fields: `operation`, `component`, `outcome`, `error_category`, and
+  `error_chain_depth`. Failures from those boundaries returned to Zed use short
+  fixed messages that do not embed workspace paths, command text, environment
+  values, or tool payloads. That guarantee is scoped to those boundaries, not
+  to every ACP response: provider incomplete-turn notices deliberately include
+  provider error text, and stripping ANSI codes is not redaction. At the
+  repaired boundaries the full error chain is kept at `debug`, so debug logs
+  can contain workspace paths, provider detail, and prompt or tool payload
+  text. That is a diagnostic aid rather than redaction: collect and share debug
+  logs deliberately.
 - **Tool-call budgets** – ACP applies `agent.harness.max_tool_calls_per_turn`
   and the optional `agent.harness.max_tool_calls_per_session` to local tool
   execution. Set either value to `0` to disable that cap. The separate

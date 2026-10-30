@@ -99,20 +99,27 @@ security audit trail, not session history or a source for resume/compaction.
 
 ## Diagnostics privacy
 
-Operator-visible ACP diagnostics (WARN and above) carry a fixed message and
-bounded fields: `operation`, `component`, `outcome`, `error_category`, and, for
-suppressed failures, `error_chain_depth`. Client-facing failures use short
-fixed messages and never embed workspace paths, provider or command text,
-environment values, or tool payloads. Any surface that turns a failure into a
-client error — REST error bodies as well as logs — needs the same treatment;
-sanitizing only the log line still leaks.
+The repaired ACP failure boundaries — the `list_files` tool boundary and
+optional-component setup — publish a fixed message and bounded fields:
+`operation`, `component`, `outcome`, `error_category`, and, for suppressed
+failures, `error_chain_depth`. Their client-facing failures are short fixed
+messages that do not embed workspace paths, command text, environment values,
+or tool payloads. That guarantee is scoped to those boundaries; it is not a
+repository-wide claim that every ACP client response is detail-free. Any
+surface that turns a failure into a client error — REST error bodies as well as
+logs — needs the same treatment; sanitizing only the log line still leaks.
 
-The originating `anyhow` chain is retained at `debug` for local diagnosis. That
-is a diagnostic aid, not redaction: debug logs can contain workspace paths,
-provider detail, and prompt or tool payloads. Treat them as sensitive and
-collect or share them deliberately. Severity suppression alone is not
-redaction; where detail must never surface, remove it from the value that
-carries it rather than lowering the level it is logged at.
+Provider incomplete-turn notices are outside that scope. They deliberately
+include the provider error text so the caller can see what failed, and the
+notice strips ANSI escape codes as presentation hygiene rather than privacy
+redaction.
+
+At the repaired boundaries the originating `anyhow` chain is retained at
+`debug` for local diagnosis. That is a diagnostic aid, not redaction: debug
+logs can contain workspace paths, provider detail, and prompt or tool payloads.
+Treat them as sensitive and collect or share them deliberately. Severity
+suppression alone is not redaction; where detail must never surface, remove it
+from the value that carries it rather than lowering the level it is logged at.
 
 ## Property-model limits
 
