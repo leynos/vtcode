@@ -67,8 +67,12 @@ async fn buffered_acp_retries_remember_server_floor_with_injected_time() {
         },
         ..Default::default()
     };
-    let runtime =
-        ProviderRuntimeRegistry::new(&[config], &vtcode_config::TimeoutsConfig::default()).for_provider("timing");
+    let runtime = ProviderRuntimeRegistry::new(
+        &[config],
+        &vtcode_config::TimeoutsConfig::default(),
+        Arc::new(vtcode_core::metrics::MetricsCollector::new()),
+    )
+    .for_provider("timing");
     let response =
         generate_with_retry(&provider, LLMRequest::default(), &runtime, &SessionCancellation::default(), None)
             .await
@@ -78,7 +82,8 @@ async fn buffered_acp_retries_remember_server_floor_with_injected_time() {
     assert_eq!(attempts.len(), 3);
     assert_eq!(attempts[1] - attempts[0], Duration::from_secs(15));
     assert_eq!(attempts[2] - attempts[1], Duration::from_secs(30));
-    assert_eq!(runtime.telemetry_snapshot().active_permits, 0);
+    // ACP permits count active attempts even when router admission owns concurrency.
+    assert_eq!(runtime.telemetry_snapshot().active_acp_requests, 0);
 }
 
 #[tokio::test(start_paused = true)]
@@ -180,7 +185,7 @@ impl LLMProvider for FixedObservationStreamProvider {
         })
     }
 
-    async fn stream(&self, _request: LLMRequest) -> Result<vtcode_core::llm::provider::LLMStream, LLMError> {
+    async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
         let attempt_index = self.next_attempt.fetch_add(1, Ordering::SeqCst);
         self.attempts
             .lock()
@@ -210,8 +215,12 @@ fn fixed_observation_provider_config() -> CustomProviderConfig {
 }
 
 fn fixed_observation_runtime() -> ProviderRequestRuntime {
-    ProviderRuntimeRegistry::new(&[fixed_observation_provider_config()], &vtcode_config::TimeoutsConfig::default())
-        .for_provider("wire-test")
+    ProviderRuntimeRegistry::new(
+        &[fixed_observation_provider_config()],
+        &vtcode_config::TimeoutsConfig::default(),
+        Arc::new(vtcode_core::metrics::MetricsCollector::new()),
+    )
+    .for_provider("wire-test")
 }
 
 fn assert_http_date_then_local_backoff(attempts: &[Instant]) {
