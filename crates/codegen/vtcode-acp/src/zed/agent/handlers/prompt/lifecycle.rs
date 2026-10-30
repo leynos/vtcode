@@ -16,23 +16,36 @@ impl PromptExecution {
                 persist_session_checkpoint(&self.agent, &self.session, "stop_hook_blocked").await;
                 return Ok(PromptResponse::new(acp::StopReason::Refusal));
             }
-            if !self.assistant_message.is_empty() {
+            let has_assistant_output = !self.assistant_message.is_empty() || !self.assistant_reasoning.is_empty();
+            if has_assistant_output {
                 if should_emit_buffered_final_chunk(self.allow_streaming) {
-                    drop(
-                        self.agent
-                            .send_update(
-                                &self.args.session_id,
-                                acp::SessionUpdate::AgentMessageChunk(text_chunk(self.assistant_message.clone())),
-                            )
-                            .await,
-                    );
+                    for failure in self
+                        .agent
+                        .send_assistant_updates(
+                            &self.args.session_id,
+                            self.provider_iteration,
+                            &self.assistant_message,
+                            &self.assistant_reasoning,
+                            0,
+                        )
+                        .await
+                    {
+                        warn!(
+                            session_id = %self.args.session_id,
+                            update_kind = failure.kind.as_str(),
+                            error = %failure.error,
+                            "Failed to send assistant update to ACP client"
+                        );
+                    }
                 }
-                let mut completed_message = Message::assistant(self.assistant_message);
-                if !self.assistant_reasoning.is_empty() {
-                    completed_message.reasoning = Some(self.assistant_reasoning);
+                if !self.assistant_message.is_empty() {
+                    let mut completed_message = Message::assistant(self.assistant_message);
+                    if !self.assistant_reasoning.is_empty() {
+                        completed_message.reasoning = Some(self.assistant_reasoning);
+                    }
+                    push_session_message(&self.agent, &self.session, &self.args.session_id, completed_message)?;
+                    persist_session_checkpoint(&self.agent, &self.session, "assistant_response").await;
                 }
-                push_session_message(&self.agent, &self.session, &self.args.session_id, completed_message)?;
-                persist_session_checkpoint(&self.agent, &self.session, "assistant_response").await;
             }
         }
         Ok(PromptResponse::new(stop_reason))

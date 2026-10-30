@@ -11,8 +11,6 @@ mod lifecycle;
 mod provider_context;
 mod streaming;
 
-pub(super) use buffered::response_reasoning_update;
-
 #[tracing::instrument(skip_all, fields(boundary = boundary))]
 pub(super) async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, boundary: &'static str) {
     if let Err(error) = agent.checkpoint_session(session).await {
@@ -41,11 +39,18 @@ pub(super) async fn finish_failed_provider_turn(
 ) -> Result<PromptResponse, SdkError> {
     let IncompleteProviderTurn { message, visible_update, response } =
         IncompleteProviderTurn::from_failure(&turn.assistant_message, &turn.assistant_reasoning, error);
-    drop(
-        turn.agent
-            .send_update(&turn.args.session_id, acp::SessionUpdate::AgentMessageChunk(text_chunk(visible_update)))
-            .await,
-    );
+    if let Err(error) = turn
+        .agent
+        .send_update(&turn.args.session_id, acp::SessionUpdate::AgentMessageChunk(text_chunk(visible_update)))
+        .await
+    {
+        warn!(
+            session_id = %turn.args.session_id,
+            update_kind = "agent_message_chunk",
+            error = %error,
+            "Failed to send assistant update to ACP client"
+        );
+    }
     push_session_message(&turn.agent, &turn.session, &turn.args.session_id, message)?;
     persist_session_checkpoint(&turn.agent, &turn.session, "incomplete_provider_turn").await;
     warn!(
@@ -191,6 +196,7 @@ pub(super) struct PromptExecution {
     tool_state: PromptToolState,
     assistant_message: String,
     assistant_reasoning: String,
+    provider_iteration: usize,
     stop_hook_active: bool,
     stop_hook_checked: bool,
 }
@@ -229,6 +235,21 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
     info!(session_id = %session_id, tool_call_count, tool_loop_count = *tool_loop_count,
           tool_recovery_outcome = "placeholders_staged", "ACP tool recovery placeholders staged");
     require_session_checkpoint(agent, session, "assistant_tool_calls_write_ahead").await?;
+
+    if !streamed && !session.cancellation.is_cancelled() {
+        let loop_iteration = *tool_loop_count;
+        for failure in agent
+            .send_assistant_updates(session_id, loop_iteration, assistant_message, assistant_reasoning, tool_call_count)
+            .await
+        {
+            warn!(
+                session_id = %session_id,
+                update_kind = failure.kind.as_str(),
+                error = %failure.error,
+                "Failed to send assistant update to ACP client"
+            );
+        }
+    }
 
     let tool_results = match agent.execute_tool_calls(session, session_id, tool_calls).await {
         Ok(results) => results,
@@ -277,6 +298,7 @@ async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecuti
         tool_state,
         assistant_message: String::with_capacity(4096),
         assistant_reasoning: String::with_capacity(2048),
+        provider_iteration: 0,
         stop_hook_active: false,
         stop_hook_checked: false,
     })
