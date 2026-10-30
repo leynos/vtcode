@@ -69,6 +69,28 @@ pub(super) async fn finish_failed_output(
         .map(ProviderTurnOutcome::Response)
 }
 
+/// Flushes any buffered assistant text that never reached the client, then
+/// reports cancellation. Used when a provider failure follows `session/cancel`:
+/// ACP requires `Cancelled`, not an `EndTurn` failure notice.
+pub(super) async fn finish_cancelled_output(
+    turn: &mut PromptExecution,
+    mut output: ProviderOutput,
+) -> ProviderTurnOutcome {
+    if !output.assistant_emitted && !output.assistant_message.is_empty() {
+        drop(
+            turn.agent
+                .send_update(
+                    &turn.args.session_id,
+                    acp::SessionUpdate::AgentMessageChunk(text_chunk(output.assistant_message.clone())),
+                )
+                .await,
+        );
+        output.assistant_emitted = true;
+    }
+    output.store_in(turn);
+    ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)
+}
+
 pub(super) struct TurnGuard {
     thread: ThreadRuntimeHandle,
 }
@@ -191,6 +213,11 @@ pub(super) struct PromptExecution {
     tool_state: PromptToolState,
     assistant_message: String,
     assistant_reasoning: String,
+    /// Whether at least one assistant `AgentMessageChunk` reached the client
+    /// during this turn. Thought chunks and tool updates do not count: a turn
+    /// that ends without visible assistant content is a failure, not a silent
+    /// `EndTurn`.
+    assistant_emitted: bool,
     stop_hook_active: bool,
     stop_hook_checked: bool,
 }
@@ -236,7 +263,10 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
             warn!(%error, session_id = %session_id, tool_call_count,
                   tool_recovery_outcome = "execution_interrupted", "Tool execution failed");
             persist_session_checkpoint(agent, session, "interrupted_tool_results").await;
-            return Err(error);
+            if session.cancellation.is_cancelled() {
+                return Ok(ToolRoundOutcome::Cancelled);
+            }
+            return Err(tool_execution_failed_error());
         }
     };
 
@@ -277,6 +307,7 @@ async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecuti
         tool_state,
         assistant_message: String::with_capacity(4096),
         assistant_reasoning: String::with_capacity(2048),
+        assistant_emitted: false,
         stop_hook_active: false,
         stop_hook_checked: false,
     })
@@ -310,6 +341,20 @@ pub(super) async fn run_prompt_with_retry_observer(
     retry_observed_at: impl Fn() -> SystemTime + Send + Sync,
     metric_sink: ProviderMetricSink,
 ) -> Result<PromptResponse, SdkError> {
+    let session = agent
+        .session_handle(&args.session_id)
+        .map_err(|error| session_access_error(&args.session_id, "looking up session", error))?
+        .ok_or_else(|| SdkError::invalid_params().data(json!({ "reason": "unknown_session" })))?;
+    // ACP lets a client steer an active turn by sending another
+    // `session/prompt`. Serialize the turns per session instead of rejecting
+    // the steer or racing the active turn's state; this is only awaited here,
+    // inside the spawned prompt task.
+    let _prompt_gate = session.acquire_prompt_gate().await;
+    // Clear cancellation only once the previous turn has fully completed. A
+    // queued steer must not clear a cancel aimed at the turn it waited for.
+    if !session.cancellation.reset() {
+        return Ok(PromptResponse::new(acp::StopReason::Cancelled));
+    }
     let input = match input::prepare_prompt_input(agent, args).await? {
         PromptInputOutcome::Response(response) => return Ok(response),
         PromptInputOutcome::Ready(input) => input,
@@ -342,6 +387,7 @@ pub(super) struct ProviderOutput {
     assistant_message: String,
     assistant_reasoning: String,
     emitted_output: bool,
+    assistant_emitted: bool,
 }
 
 impl ProviderOutput {
@@ -350,6 +396,7 @@ impl ProviderOutput {
             assistant_message: String::new(),
             assistant_reasoning: String::new(),
             emitted_output: false,
+            assistant_emitted: false,
         }
     }
 
@@ -361,6 +408,7 @@ impl ProviderOutput {
             assistant_message,
             assistant_reasoning,
             emitted_output,
+            assistant_emitted: turn.assistant_emitted,
         }
     }
 
@@ -368,16 +416,38 @@ impl ProviderOutput {
         self.assistant_message.clear();
         self.assistant_reasoning.clear();
         self.emitted_output = false;
+        // `assistant_emitted` is turn-scoped: text streamed before a tool round
+        // still reached the client and must not be forgotten.
     }
 
     pub(super) fn store_in(self, turn: &mut PromptExecution) {
         turn.assistant_message = self.assistant_message;
         turn.assistant_reasoning = self.assistant_reasoning;
+        turn.assistant_emitted |= self.assistant_emitted;
     }
 }
 
 pub(super) fn session_access_error(session_id: &acp::SessionId, operation: &str, error: impl Display) -> SdkError {
     SdkError::internal_error().data(format!("Failed to {operation} for ACP session {session_id}: {error}"))
+}
+
+/// A non-cancelled turn completed without ever sending the client assistant
+/// content. Returning `EndTurn` here would acknowledge a prompt with no
+/// response, so surface an explicit, sanitized failure instead.
+pub(super) fn empty_response_error() -> SdkError {
+    SdkError::internal_error().data(json!({
+        "reason": "empty_response",
+        "message": "The provider completed the turn without emitting assistant content.",
+    }))
+}
+
+/// Tool execution failed before producing results. The underlying error stays
+/// in logs; the client receives a stable, sanitized provider-failure shape.
+pub(super) fn tool_execution_failed_error() -> SdkError {
+    SdkError::internal_error().data(json!({
+        "reason": "tool_execution_failed",
+        "message": "Tool execution failed before producing results.",
+    }))
 }
 
 pub(super) fn push_session_message(

@@ -16,8 +16,11 @@ impl PromptExecution {
                 persist_session_checkpoint(&self.agent, &self.session, "stop_hook_blocked").await;
                 return Ok(PromptResponse::new(acp::StopReason::Refusal));
             }
+            let mut assistant_emitted = self.assistant_emitted;
             if !self.assistant_message.is_empty() {
-                if should_emit_buffered_final_chunk(self.allow_streaming) {
+                // Buffered drafts have not reached the client yet; streamed
+                // deltas already did.
+                if !assistant_emitted && should_emit_buffered_final_chunk(self.allow_streaming) {
                     drop(
                         self.agent
                             .send_update(
@@ -26,6 +29,7 @@ impl PromptExecution {
                             )
                             .await,
                     );
+                    assistant_emitted = true;
                 }
                 let mut completed_message = Message::assistant(self.assistant_message);
                 if !self.assistant_reasoning.is_empty() {
@@ -33,6 +37,9 @@ impl PromptExecution {
                 }
                 push_session_message(&self.agent, &self.session, &self.args.session_id, completed_message)?;
                 persist_session_checkpoint(&self.agent, &self.session, "assistant_response").await;
+            }
+            if stop_reason == acp::StopReason::EndTurn && !assistant_emitted {
+                return Err(empty_response_error());
             }
         }
         Ok(PromptResponse::new(stop_reason))

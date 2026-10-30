@@ -27,10 +27,24 @@ model tools.
   receives the `cx`.
 - `acp` module in `vtcode-core` is the compatibility facade; canonical code
   lives here.
-- ACP 1.0.1 uses SACP builder + handlers, not the old `impl acp::Agent` trait.
-  `handlers.rs` registers SACP request/notification handlers around `ZedAgent`.
+- ACP 2.0.0 (schema 1.5.0) uses SACP builder + handlers, not the old
+  `impl acp::Agent` trait. `handlers.rs` registers SACP request/notification
+  handlers around `ZedAgent`.
 - `ZedAgent` is `Send + Sync` (`Arc<Mutex<_>>` + `AtomicBool`) so it can be
   moved into SACP `cx.spawn` tasks.
+- `session/prompt` turns are serialized per session by
+  `SessionHandle::prompt_gate` (`Arc<tokio::sync::Mutex<()>>`). Acquire it only
+  inside the spawned prompt task, after the unknown-session check; never await
+  it in `handle_prompt`.
+- Reset `SessionCancellation` only after acquiring the gate. Cancellation
+  targets the active turn: a steer queued before `session/cancel` runs
+  afterwards, and a cancel arriving after the reset aborts the new turn.
+- Every non-cancelled turn must end with assistant content or an explicit
+  `internal_error` (`empty_response`, `tool_execution_failed`), never a silent
+  `EndTurn`. A cancelled turn always returns `StopReason::Cancelled`.
+- `zed/agent/prompt_lifecycle_tests.rs` drives the real duplex transport with a
+  scripted provider; keep overlapping-prompt, steer-then-cancel and
+  empty-response coverage deterministic (no sleeps as ordering primitives).
 - Tool execution RPCs (`fs/read_text_file`, `terminal/create`,
   `session/request_permission`) must be called from inside a `cx.spawn(...)`
   task — invoking them directly from an SACP request handler deadlocks the

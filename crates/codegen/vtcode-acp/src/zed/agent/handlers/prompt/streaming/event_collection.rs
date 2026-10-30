@@ -28,6 +28,19 @@ pub(super) async fn collect_stream_events(
                 return classify_stream_poll_failure(&mut request, error).await;
             }
             StreamPollOutcome::Item(None) => {
+                if !request.output.assistant_emitted {
+                    request
+                        .previews
+                        .finish(
+                            request.turn.agent.as_ref(),
+                            &request.turn.args.session_id,
+                            acp::ToolCallStatus::Failed,
+                            "Provider stream ended before completion; it was not executed.",
+                        )
+                        .await;
+                    record_stream_attempt(request.span, request.started_at, "empty_response");
+                    return StreamAttemptOutcome::EmptyResponse;
+                }
                 let error = LLMError::Network {
                     message: "provider stream ended before a completion event".to_string(),
                     metadata: None,
@@ -253,6 +266,7 @@ async fn append_stream_delta(request: StreamDeltaRequest<'_>) {
         acp::SessionUpdate::AgentThoughtChunk(text_chunk(delta))
     } else {
         output.assistant_message.push_str(&delta);
+        output.assistant_emitted = true;
         acp::SessionUpdate::AgentMessageChunk(text_chunk(delta))
     };
     drop(turn.agent.send_update(&turn.args.session_id, update).await);
@@ -271,6 +285,7 @@ async fn emit_response_fallback(turn: &PromptExecution, output: &mut ProviderOut
                 .await,
         );
         output.assistant_message.push_str(content);
+        output.assistant_emitted = true;
     }
     if output.assistant_reasoning.is_empty()
         && let Some(reasoning) = response.reasoning.as_deref().filter(|reasoning| !reasoning.is_empty())

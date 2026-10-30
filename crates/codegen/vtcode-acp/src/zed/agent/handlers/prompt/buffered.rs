@@ -123,6 +123,9 @@ async fn next_buffered_generation(
         }
         BufferedGenerationOutcome::Failed(error) => {
             let pending_output = std::mem::replace(output, ProviderOutput::empty());
+            if turn.session.cancellation.is_cancelled() {
+                return Ok(BufferedGenerationStep::Finished(finish_cancelled_output(turn, pending_output).await));
+            }
             return finish_failed_output(turn, pending_output, error)
                 .await
                 .map(BufferedGenerationStep::Finished);
