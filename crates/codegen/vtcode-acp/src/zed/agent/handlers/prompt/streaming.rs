@@ -8,7 +8,7 @@ use event_collection::classify_stream_failure;
 
 enum StreamAttemptOutcome {
     Completed(Box<LLMResponse>),
-    Retry(Duration),
+    Retry { delay: Duration, error: LLMError },
     Failed(LLMError),
     Cancelled,
 }
@@ -101,8 +101,21 @@ async fn handle_streaming_attempt(
                 }
             }
         }
-        StreamAttemptOutcome::Retry(delay) => retry_stream_attempt(turn, output, delay, attempt_index).await,
+        StreamAttemptOutcome::Retry { delay, error } => {
+            turn.agent
+                .publish_rate_limit_notice(
+                    &turn.args.session_id,
+                    turn.provider_runtime.provider_name(),
+                    &error,
+                    Some(delay),
+                )
+                .await;
+            retry_stream_attempt(turn, output, delay, attempt_index).await
+        }
         StreamAttemptOutcome::Failed(error) => {
+            turn.agent
+                .publish_rate_limit_notice(&turn.args.session_id, turn.provider_runtime.provider_name(), &error, None)
+                .await;
             let response =
                 finish_failed_output(turn, std::mem::replace(output, ProviderOutput::empty()), &error.to_string())
                     .await?;

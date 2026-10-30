@@ -205,6 +205,7 @@ impl EvolinkProvider {
             crate::provider::Usage {
                 prompt_tokens,
                 completion_tokens,
+                reasoning_output_tokens: None,
                 total_tokens: prompt_tokens + completion_tokens,
                 cached_prompt_tokens: u.get("cache_read_input_tokens").and_then(|t| t.as_u64()).map(|v| v as u32),
                 cache_creation_tokens: u.get("cache_creation_input_tokens").and_then(|t| t.as_u64()).map(|v| v as u32),

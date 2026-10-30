@@ -617,6 +617,7 @@ impl OllamaProvider {
         Some(Usage {
             prompt_tokens: prompt,
             completion_tokens: completion,
+            reasoning_output_tokens: None,
             total_tokens: prompt + completion,
             cached_prompt_tokens: None,
             cache_creation_tokens: None,

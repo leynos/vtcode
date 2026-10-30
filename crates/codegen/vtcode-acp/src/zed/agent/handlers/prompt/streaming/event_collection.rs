@@ -25,7 +25,9 @@ pub(super) async fn collect_stream_events(
                 };
                 return classify_stream_poll_failure(&mut request, error);
             }
-            StreamPollOutcome::Item(Some(Err(error))) => return classify_stream_poll_failure(&mut request, error),
+            StreamPollOutcome::Item(Some(Err(error))) => {
+                return classify_stream_poll_failure(&mut request, error);
+            }
             StreamPollOutcome::Item(Some(Ok(event))) => {
                 if let Some(outcome) = process_stream_event(event, &mut request).await {
                     return outcome;
@@ -108,10 +110,12 @@ async fn complete_stream_response(
     request
         .telemetry
         .complete(&request.turn.provider_runtime, &response, request.attempt_index, false);
-    request
-        .turn
-        .agent
-        .publish_lody_usage(&request.turn.args.session_id, &request.turn.session_model, &response);
+    request.turn.agent.publish_lody_usage(
+        &request.turn.args.session_id,
+        request.turn.provider_runtime.provider_name(),
+        &request.turn.session_model,
+        &response,
+    );
     emit_response_fallback(request.turn, request.output, &response).await;
     StreamAttemptOutcome::Completed(Box::new(response))
 }
@@ -143,7 +147,7 @@ pub(super) fn classify_stream_failure(request: StreamFailureRequest<'_>) -> Stre
         StreamAttemptOutcome::Failed(error)
     } else {
         let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
-        StreamAttemptOutcome::Retry(delay)
+        StreamAttemptOutcome::Retry { delay, error }
     }
 }
 
