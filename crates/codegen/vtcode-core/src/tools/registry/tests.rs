@@ -1883,6 +1883,7 @@ async fn stale_unrebasable_patch_reports_bounded_anchor_context() -> Result<()> 
         .and_then(|failures| failures.first())
         .expect("anchor failure");
     assert_eq!(failure["anchor"], "fn missing()");
+    assert_eq!(failure["reason"], "missing_anchor");
     assert!(
         failure["expected_excerpt"]
             .as_str()
@@ -1924,6 +1925,38 @@ async fn matching_apply_patch_hash_allows_the_write() -> Result<()> {
 
     assert_eq!(response["success"], true);
     assert_eq!(fs::read_to_string(path)?, "changed\n");
+    Ok(())
+}
+
+/// Check a matching hash is accepted for the single-source delete and rename forms.
+#[tokio::test]
+async fn matching_apply_patch_hash_allows_single_source_delete_and_rename() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let obsolete = temp_dir.path().join("obsolete.txt");
+    let renamed_from = temp_dir.path().join("before.txt");
+    let renamed_to = temp_dir.path().join("after.txt");
+    fs::write(&obsolete, "obsolete\n")?;
+    fs::write(&renamed_from, "moved\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+
+    let delete_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"obsolete\n"));
+    let delete_patch = "*** Begin Patch\n*** Delete File: obsolete.txt\n*** End Patch\n";
+    let delete_response = registry
+        .execute_tool(tools::APPLY_PATCH, json!({ "input": delete_patch, "expected_content_hash": delete_hash }))
+        .await?;
+    assert_eq!(delete_response["success"], true);
+    assert!(!obsolete.exists());
+
+    let rename_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"moved\n"));
+    let rename_patch =
+        "*** Begin Patch\n*** Update File: before.txt\n*** Move to: after.txt\n@@\n-moved\n+relocated\n*** End Patch\n";
+    let rename_response = registry
+        .execute_tool(tools::APPLY_PATCH, json!({ "input": rename_patch, "expected_content_hash": rename_hash }))
+        .await?;
+    assert_eq!(rename_response["success"], true);
+    assert!(!renamed_from.exists());
+    assert_eq!(fs::read_to_string(renamed_to)?, "relocated\n");
     Ok(())
 }
 
@@ -2033,6 +2066,67 @@ async fn repeated_updates_to_one_path_apply_in_order_instead_of_reporting_a_no_o
     assert_eq!(response["success"], true);
     assert!(response.get("no_op").is_none(), "chained updates must not be reported as a no-op");
     assert_eq!(fs::read_to_string(&path)?, "ALPHA\nbeta\n");
+    Ok(())
+}
+
+/// Check reordering independent no-op updates cannot reset the ladder.
+#[tokio::test]
+async fn reordered_independent_no_op_updates_escalate_the_ladder() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    fs::write(temp_dir.path().join("a.txt"), "alpha\n")?;
+    fs::write(temp_dir.path().join("b.txt"), "beta\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+    let forward = concat!(
+        "*** Begin Patch\n",
+        "*** Update File: a.txt\n",
+        "@@\n",
+        "-alpha\n",
+        "+alpha\n",
+        "*** Update File: b.txt\n",
+        "@@\n",
+        "-beta\n",
+        "+beta\n",
+        "*** End Patch\n",
+    );
+    let reverse = concat!(
+        "*** Begin Patch\n",
+        "*** Update File: b.txt\n",
+        "@@\n",
+        "-beta\n",
+        "+beta\n",
+        "*** Update File: a.txt\n",
+        "@@\n",
+        "-alpha\n",
+        "+alpha\n",
+        "*** End Patch\n",
+    );
+
+    let first = registry.execute_tool(tools::APPLY_PATCH, json!({ "input": forward })).await?;
+    assert_eq!(first["success"], true);
+    assert_eq!(first["no_op"], true);
+    assert_eq!(first["occurrence"], 1);
+
+    let second = registry.execute_tool(tools::APPLY_PATCH, json!({ "input": reverse })).await?;
+    assert_eq!(second["success"], true);
+    assert_eq!(second["no_op"], true);
+    assert_eq!(second["occurrence"], 2);
+    assert_eq!(second["warning"], true);
+    assert_eq!(second["retry_prohibited"], true);
+
+    let error = registry
+        .execute_public_tool_request(ToolExecutionRequest::new(tools::APPLY_PATCH, json!({ "input": forward })))
+        .await
+        .error
+        .expect("third reordered no-op must be blocked");
+    assert_eq!(error.error_type, ToolErrorType::PolicyViolation);
+    assert!(!error.retryable);
+    assert_eq!(
+        error.details.as_ref().and_then(|details| details["reason"].as_str()),
+        Some("repeated_identical_no_op")
+    );
+    assert_eq!(fs::read_to_string(temp_dir.path().join("a.txt"))?, "alpha\n");
+    assert_eq!(fs::read_to_string(temp_dir.path().join("b.txt"))?, "beta\n");
     Ok(())
 }
 

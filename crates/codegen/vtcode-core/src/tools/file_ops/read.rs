@@ -25,6 +25,7 @@ use crate::tools::handlers::read_file::{ReadFileArgs, ReadFileHandler, ReadFileO
 use crate::tools::traits::FileTool;
 use crate::tools::types::{Input, PathArgs};
 use anyhow::{Context, Result, anyhow};
+pub use segments::line_window;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -259,6 +260,23 @@ fn is_tool_output_spool_path(path: &Path) -> bool {
     s.contains(".vtcode") && s.contains("/context/tool_outputs/")
 }
 
+/// Choose the single `cache` tag emitted for a read that missed the cache.
+///
+/// `PerfSpan` keeps tags in a map, so a second `tag("cache", ...)` for the same
+/// key overwrites the first. Treating a stale entry as an ordinary miss would
+/// therefore hide the revalidation path from `vtcode.perf.read_file_ms`, which
+/// is the only place it can be observed. Deciding the value once keeps `stale`
+/// distinct from `miss` and from the `skip` case where the cache does not apply.
+fn cache_outcome_tag(has_cache_key: bool, entry_was_stale: bool) -> &'static str {
+    if entry_was_stale {
+        "stale"
+    } else if has_cache_key {
+        "miss"
+    } else {
+        "skip"
+    }
+}
+
 fn pty_session_id_from_tool_output_path(path: &Path) -> Option<String> {
     let file_name = path.file_name()?.to_str()?;
     let session_file = file_name.strip_suffix(".txt")?;
@@ -468,6 +486,7 @@ impl FileOpsTool {
                 None
             };
 
+            let mut cache_was_stale = false;
             if let Some(key) = cache_key.as_ref()
                 && let Some(cached) = FILE_CACHE.get_file(key).await
             {
@@ -476,9 +495,9 @@ impl FileOpsTool {
                     perf.tag("cache", "hit");
                     return Ok(cached);
                 }
-                perf.tag("cache", "stale");
+                cache_was_stale = true;
             }
-            perf.tag("cache", if cache_key.is_some() { "miss" } else { "skip" });
+            perf.tag("cache", cache_outcome_tag(cache_key.is_some(), cache_was_stale));
 
             if !is_image && (is_new_request || !is_legacy_request) {
                 let mut handler_args_json = build_read_handler_args(&args, &canonical);
@@ -783,6 +802,16 @@ mod read_tests {
         assert!(is_tool_output_spool_path(Path::new(".vtcode/context/tool_outputs/run-123.txt")));
         assert!(is_tool_output_spool_path(Path::new("/tmp/work/.vtcode/context/tool_outputs/run-123.txt")));
         assert!(!is_tool_output_spool_path(Path::new(".vtcode/history/session.jsonl")));
+    }
+
+    /// Check a stale cache entry keeps its own tag instead of collapsing to
+    /// `miss`; the two are the same code path otherwise and only this value
+    /// lets an operator see revalidation in `vtcode.perf.read_file_ms`.
+    #[test]
+    fn cache_outcome_tag_keeps_stale_distinct_from_miss() {
+        assert_eq!(cache_outcome_tag(true, true), "stale");
+        assert_eq!(cache_outcome_tag(true, false), "miss");
+        assert_eq!(cache_outcome_tag(false, false), "skip");
     }
 
     #[test]

@@ -20,6 +20,12 @@ how to recover.
 identifies the file content the model actually saw, so a later `apply_patch`
 can prove it was written against that content and not against an older copy.
 
+The hash always describes the whole file, including for a windowed read. Under
+ACP, where the client may serve an unsaved editor buffer, the version is
+returned only when the requested window matches what is on disk, so a buffer
+that diverges from the file yields no `content_hash` rather than a hash for
+bytes that were never saved.
+
 The hash is sampled around the read itself rather than after it, so a file that
 changes while it is being read does not silently produce a hash describing
 bytes the model never received. If the content moved during the read, the read
@@ -44,7 +50,9 @@ Practical rules:
 - `expected_content_hash` is only valid for a patch with exactly one
   pre-existing source file. Add-only patches have no prior version, and a
   multi-file patch has several, so split the patch by source file instead of
-  guessing which hash to send.
+  guessing which hash to send. A single delete, or a single update that renames
+  its file, also has exactly one source, so the argument is accepted there; for
+  a rename the hash describes the source file, not the destination.
 - Omit the argument when the guarantee is not required. It is optional, and
   unversioned patches behave as before.
 - The hash is not a lock. It is a precondition: it is checked immediately
@@ -57,10 +65,16 @@ The patch is rejected before any file is touched. The response carries
 `reason: "content_hash_mismatch"` together with the expected and current
 hashes, the anchor failures that were detected, and `can_safely_rebase`.
 
-- `can_safely_rebase: true` means the patch still lands on the current content,
-  so regenerating it against the fresh hash will normally apply cleanly.
-- `can_safely_rebase: false` means the anchors moved. Reread the file and
-  regenerate the hunk rather than adjusting the hash.
+- `can_safely_rebase: true` means every anchor matched the current content
+  exactly once, so regenerating the patch against the fresh hash will normally
+  apply cleanly.
+- `can_safely_rebase: false` means the anchors moved, matched more than one
+  location, or only matched after whitespace or character normalization. Each
+  failure carries a `reason` (`missing_anchor`, `ambiguous_anchor`,
+  `inexact_anchor`, or `semantic_only_anchor`) so the cause is visible. Reread
+  the file and regenerate the hunk rather than adjusting the hash. A delete or
+  a rename is not an assessable update, so it reports `false` with an empty
+  `anchor_failures` list; reread the source and resend that operation.
 
 The correct recovery in both cases is to reread the file and rebuild the patch
 from what is actually there. Sending the new hash with the old hunk text only
@@ -97,8 +111,12 @@ ladder, because those describe the same request.
 | `content_hash_mismatch`                   | The file changed after it was read.                                   | Reread the file and regenerate the patch from the new content. |
 | `invalid_precondition_scope`              | `expected_content_hash` was sent for an add-only or multi-file patch. | Split the patch so each one has a single source file.          |
 
-Both guards are per session and in memory. They are a guard rail against a
-looping turn, not a durable audit trail, and they never survive a restart.
+The no-op ladder and the edited-file monitor's tracked-read state are per
+session and held in memory. They are a guard rail against a looping turn, not a
+durable audit trail, and they never survive a restart. A supplied
+`expected_content_hash` is different: it is a stateless precondition compared
+with the file's bytes on disk, so a hash still applies after a restart for as
+long as the file itself is unchanged.
 
 ## Related documentation
 

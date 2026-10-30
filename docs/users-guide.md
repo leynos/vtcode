@@ -19,15 +19,17 @@ conditional on the file still being the version the model read.
   carries `reason: "content_hash_mismatch"`, the supplied hash, the current
   hash, and a `next_action`. Reread the file and regenerate the patch against
   the new version; nothing on disk was touched.
-- Omit `expected_content_hash` when the guarantee is not required, for example
-  for an add-only patch or one that edits several files.
+- Omit `expected_content_hash` when the guarantee is not required. Add-only
+  patches and patches with more than one source file must omit it; supplying it
+  there returns `reason: "invalid_precondition_scope"`.
 
 Independently of hashes, `apply_patch` compares each touched file's state
 before and after the patch. A patch that would leave every file exactly as it
 already is has no effect, so repeating the identical no-op is escalated rather
 than silently accepted:
 
-1. first attempt: reported as success with an empty diff and `"no_op": true`,
+1. first attempt: reported as success with `"no_op": true` and
+   `"occurrence": 1`,
 2. second identical attempt: still accepted, but flagged with
    `"retry_prohibited": true` and a warning,
 3. third identical attempt: refused with `reason: "repeated_identical_no_op"`.

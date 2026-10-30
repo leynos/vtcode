@@ -4,7 +4,7 @@ use std::path::Path;
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-use super::super::matcher::{PatchContextMatcher, seek_segment};
+use super::super::matcher::{MatchPolicy, PatchContextMatcher, SeekOutcome, seek_segment};
 use super::super::semantic::{resolve_semantic_match, semantic_anchor_term};
 use super::io::AtomicWriter;
 use super::{PatchChunk, PatchError};
@@ -96,7 +96,12 @@ pub(super) async fn compute_replacements(
     original_lines: &[String],
     chunks: &[PatchChunk],
     path: &str,
+    policy: MatchPolicy,
 ) -> Result<Vec<(usize, usize, Vec<String>)>, PatchError> {
+    if matches!(policy, MatchPolicy::StrictUnique) {
+        return compute_replacements_strict(original_lines, chunks, path);
+    }
+
     let matcher = PatchContextMatcher::new(original_lines);
     let mut replacements = Vec::new();
     let mut line_index = 0usize;
@@ -188,6 +193,100 @@ pub(super) async fn compute_replacements(
     Ok(replacements)
 }
 
+/// Compute replacement spans while requiring every anchor to be byte-exact and
+/// unique.
+///
+/// This is the rebase-assessment simulation. It mirrors the sequenced search
+/// window and hunk progression, but refuses whitespace/Unicode-tolerant
+/// matching, the trailing-empty-line retry, and semantic fallback. Where the
+/// sequenced path would silently take the first hit, this reports ambiguity.
+fn compute_replacements_strict(
+    original_lines: &[String],
+    chunks: &[PatchChunk],
+    path: &str,
+) -> Result<Vec<(usize, usize, Vec<String>)>, PatchError> {
+    let matcher = PatchContextMatcher::new(original_lines);
+    let mut replacements = Vec::new();
+    let mut line_index = 0usize;
+
+    for chunk in chunks {
+        let mut search_start = line_index;
+        if let Some(hint_line) = chunk.parse_line_number() {
+            line_index = hint_line.saturating_sub(1);
+            search_start = line_index;
+        } else if let Some(context) = chunk.change_context() {
+            let pattern = vec![context.to_string()];
+            match matcher.seek_exact_unique(&pattern, line_index, false) {
+                SeekOutcome::Unique(idx) => {
+                    line_index = idx + 1;
+                    search_start = line_index;
+                }
+                SeekOutcome::Ambiguous => {
+                    return Err(PatchError::AmbiguousAnchor {
+                        path: path.to_string(),
+                        anchor: context.to_string(),
+                    });
+                }
+                SeekOutcome::NotFound => {
+                    return Err(if matcher.has_inexact_match(&pattern, line_index, false) {
+                        PatchError::InexactAnchor {
+                            path: path.to_string(),
+                            anchor: context.to_string(),
+                        }
+                    } else {
+                        PatchError::ContextNotFound {
+                            path: path.to_string(),
+                            context: context.to_string(),
+                        }
+                    });
+                }
+            }
+        }
+
+        let (old_segment, new_segment) = chunk.to_segments();
+
+        if !chunk.has_old_lines() {
+            let insertion_idx = if chunk.change_context().is_some() {
+                line_index.min(original_lines.len())
+            } else {
+                original_lines.len()
+            };
+
+            line_index = insertion_idx.saturating_add(new_segment.len());
+            replacements.push((insertion_idx, 0, new_segment));
+            continue;
+        }
+
+        let anchor = chunk
+            .change_context()
+            .or_else(|| old_segment.first().map(String::as_str))
+            .unwrap_or_default();
+        let eof = chunk.is_end_of_file();
+        match matcher.seek_exact_unique(&old_segment, search_start, eof) {
+            SeekOutcome::Unique(idx) => {
+                line_index = idx + old_segment.len();
+                replacements.push((idx, old_segment.len(), new_segment));
+            }
+            SeekOutcome::Ambiguous => {
+                return Err(PatchError::AmbiguousAnchor { path: path.to_string(), anchor: anchor.to_string() });
+            }
+            SeekOutcome::NotFound => {
+                return Err(if matcher.has_inexact_match(&old_segment, search_start, eof) {
+                    PatchError::InexactAnchor { path: path.to_string(), anchor: anchor.to_string() }
+                } else {
+                    PatchError::SegmentNotFound {
+                        path: path.to_string(),
+                        snippet: old_segment.join("\n"),
+                    }
+                });
+            }
+        }
+    }
+
+    replacements.sort_by_key(|(idx, _, _)| *idx);
+    Ok(replacements)
+}
+
 pub(super) async fn render_patched_text_from_content(
     source_path: &Path,
     content: &str,
@@ -195,7 +294,24 @@ pub(super) async fn render_patched_text_from_content(
     path: &str,
 ) -> Result<String, PatchError> {
     let (original_lines, had_trailing_newline, line_ending) = lines_from_content(content);
-    let replacements = compute_replacements(source_path, &original_lines, chunks, path).await?;
+    let replacements = compute_replacements(source_path, &original_lines, chunks, path, MatchPolicy::Sequenced).await?;
+    let ensure_trailing_newline = had_trailing_newline || chunks.iter().any(|chunk| chunk.is_end_of_file());
+    Ok(render_patched_content(original_lines, replacements, ensure_trailing_newline, line_ending))
+}
+
+/// Render the content a patch would produce under [`MatchPolicy::StrictUnique`].
+///
+/// Used only by rebase assessment; the apply path keeps the sequenced,
+/// fuzzy-tolerant renderer above.
+pub(super) async fn render_patched_text_from_content_strict(
+    source_path: &Path,
+    content: &str,
+    chunks: &[PatchChunk],
+    path: &str,
+) -> Result<String, PatchError> {
+    let (original_lines, had_trailing_newline, line_ending) = lines_from_content(content);
+    let replacements =
+        compute_replacements(source_path, &original_lines, chunks, path, MatchPolicy::StrictUnique).await?;
     let ensure_trailing_newline = had_trailing_newline || chunks.iter().any(|chunk| chunk.is_end_of_file());
     Ok(render_patched_content(original_lines, replacements, ensure_trailing_newline, line_ending))
 }
