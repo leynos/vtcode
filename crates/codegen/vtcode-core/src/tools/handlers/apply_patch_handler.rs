@@ -117,6 +117,7 @@ impl Approvable<ApplyPatchRequest> for ApplyPatchRuntime {
 
 #[async_trait]
 impl ToolRuntime<ApplyPatchRequest, ExecToolCallOutput> for ApplyPatchRuntime {
+    /// Validate the cwd, parse the patch, enforce the precondition, and apply it.
     async fn run(
         &mut self,
         req: &ApplyPatchRequest,
@@ -179,6 +180,7 @@ impl ToolHandler for ApplyPatchHandler {
         true // apply_patch always mutates
     }
 
+    /// Decode the patch payload and run it through the orchestrator.
     async fn handle(&self, invocation: ToolInvocation) -> Result<ToolOutput, ToolCallError> {
         let ToolInvocation {
             session,
@@ -257,6 +259,13 @@ impl ToolHandler for ApplyPatchHandler {
     }
 }
 
+/// Enforce `expected_content_hash` on the Codex-style handler surface.
+///
+/// The file is read once: the same bytes produce the current hash and the
+/// rebase assessment, so a concurrent writer cannot retarget a workspace
+/// symlink between the containment check and a second open. A mismatch returns
+/// a rejection carrying the expected and current hashes plus bounded anchor
+/// failures, which tells the model to reread rather than to regenerate blindly.
 async fn validate_request_content_hash(
     req: &ApplyPatchRequest,
     patch: &Patch,
@@ -287,13 +296,15 @@ async fn validate_request_content_hash(
     if current_hash == expected_hash {
         return Ok(());
     }
-    // The file was just read above, so a failure here is a genuine internal
-    // inconsistency (for example the file vanished between the two reads)
-    // rather than a bad patch. Surfacing it as a rejection would tell the model
-    // its anchors are wrong when the patch was never actually assessed.
-    let (can_safely_rebase, anchor_failures) = crate::tools::apply_patch::assess_patch_rebase(patch, &disk_path)
-        .await
-        .map_err(ToolError::Codex)?;
+    // Reuse the bytes already read for hash validation instead of reopening the
+    // path. A concurrent local writer could retarget a workspace symlink between
+    // the containment check and a second read, which would let the rebase
+    // assessment read a file outside the workspace and quote it back to the
+    // model through the anchor failures.
+    let current = std::str::from_utf8(&bytes)
+        .map_err(|error| ToolError::Rejected(format!("{source_path} is not valid UTF-8: {error}")))?;
+    let (can_safely_rebase, anchor_failures) =
+        crate::tools::apply_patch::assess_patch_rebase_with_content(patch, &disk_path, current).await;
     let details = serde_json::json!({
         "reason": "content_hash_mismatch",
         "path": source_path,
@@ -305,6 +316,7 @@ async fn validate_request_content_hash(
     });
     Err(ToolError::Rejected(format!("apply_patch precondition failed: {details}")))
 }
+
 /// Convert patch operations to file changes for tracking
 fn convert_patch_to_changes(patch: &Patch, cwd: &Path) -> HashMap<PathBuf, FileChange> {
     let mut changes = HashMap::new();
@@ -510,6 +522,7 @@ mod tests {
         assert_eq!(parsed.patch.as_deref(), Some("*** Begin Patch\n*** End Patch\n"));
     }
 
+    /// Check a stale expected hash is rejected before the handler writes.
     #[tokio::test]
     async fn json_handler_enforces_expected_content_hash_before_apply() {
         let workspace = TempDir::new().expect("temporary workspace");
@@ -638,6 +651,7 @@ mod tests {
         })));
     }
 
+    /// Check a symlinked cwd is rejected before the runtime mutates anything.
     #[cfg(unix)]
     #[tokio::test]
     async fn direct_runtime_rejects_symlink_escaped_cwd_before_mutation() {

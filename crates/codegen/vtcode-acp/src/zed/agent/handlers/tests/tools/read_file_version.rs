@@ -13,26 +13,35 @@ struct ScriptedToolCallProvider {
 
 #[async_trait]
 impl LLMProvider for ScriptedToolCallProvider {
+    /// Return the provider identifier used to install this scripted provider.
     fn name(&self) -> &str {
         "wire-test"
     }
 
+    /// Return the single model identifier the scripted provider advertises.
     fn supported_models(&self) -> Vec<String> {
         vec!["wire-model".to_string()]
     }
 
+    /// Report that the scripted provider emits streamed responses.
     fn supports_streaming(&self) -> bool {
         true
     }
 
+    /// Report that the scripted provider accepts tool calls for every model.
     fn supports_tools(&self, _model: &str) -> bool {
         true
     }
 
+    /// Accept every request without validation.
     fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
         Ok(())
     }
 
+    /// Replay the next scripted tool call and record the incoming request.
+    ///
+    /// An optional fixture mutation runs before the call so the test can change
+    /// the file between turns.
     async fn stream(&self, request: LLMRequest) -> Result<LLMStream, LLMError> {
         self.requests.lock().expect("stream requests").push(request);
         let response_index = self.calls.fetch_add(1, Ordering::SeqCst);
@@ -74,6 +83,7 @@ impl LLMProvider for ScriptedToolCallProvider {
         Ok(Box::pin(futures::stream::iter(events)))
     }
 
+    /// Fail buffered generation so the test proves the streaming path is used.
     async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
         Err(LLMError::InvalidRequest {
             message: "tool-enabled ACP turn used buffered generation".to_string(),
@@ -82,6 +92,7 @@ impl LLMProvider for ScriptedToolCallProvider {
     }
 }
 
+/// Drive the versioned read and no-op guard flow over the official ACP transport.
 #[tokio::test]
 async fn file_versions_and_no_op_guard_survive_the_official_acp_transport() {
     let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;

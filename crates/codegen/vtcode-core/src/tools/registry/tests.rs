@@ -655,12 +655,26 @@ async fn harness_terminal_runs_retain_completed_sessions_until_close(
     .await
     .expect("terminal session should complete before deadline")?;
     assert_eq!(exit_code, 0);
-    let retained_output = registry
-        .read_harness_exec_session_output(&session_id, false)
-        .await?
-        .unwrap_or_default();
     let initial_output = response["output"].as_str().unwrap_or_default();
-    let complete_output = format!("{initial_output}{retained_output}");
+    // The child can exit before the PTY reader thread publishes its final
+    // bytes, so completion alone does not prove the output has been flushed.
+    // Poll the retained buffer until the flush is observable, and fail the
+    // retention assertion only when it never arrives.
+    let complete_output = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let retained_output = registry
+                .read_harness_exec_session_output(&session_id, false)
+                .await?
+                .unwrap_or_default();
+            let complete_output = format!("{initial_output}{retained_output}");
+            if complete_output.contains("vtcode-terminal") {
+                return Ok::<_, anyhow::Error>(complete_output);
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("terminal output must remain observable until close")?;
     assert!(complete_output.contains("vtcode-terminal"), "terminal output must remain observable until close");
     assert_eq!(registry.harness_exec_session_completed(&session_id).await?, Some(0));
 
@@ -1798,6 +1812,7 @@ async fn apply_patch_accepts_input_payload() -> Result<()> {
     Ok(())
 }
 
+/// Check a stale hash returns diagnostics and leaves the file untouched.
 #[tokio::test]
 async fn stale_apply_patch_hash_returns_diagnostics_without_writing() -> Result<()> {
     let temp_dir = TempDir::new()?;
@@ -1843,6 +1858,7 @@ async fn stale_apply_patch_hash_returns_diagnostics_without_writing() -> Result<
     Ok(())
 }
 
+/// Check an unrebasable stale patch reports bounded anchor excerpts.
 #[tokio::test]
 async fn stale_unrebasable_patch_reports_bounded_anchor_context() -> Result<()> {
     let temp_dir = TempDir::new()?;
@@ -1891,6 +1907,7 @@ async fn stale_unrebasable_patch_reports_bounded_anchor_context() -> Result<()> 
     Ok(())
 }
 
+/// Check a matching hash lets the write proceed.
 #[tokio::test]
 async fn matching_apply_patch_hash_allows_the_write() -> Result<()> {
     let temp_dir = TempDir::new()?;
@@ -1910,6 +1927,7 @@ async fn matching_apply_patch_hash_allows_the_write() -> Result<()> {
     Ok(())
 }
 
+/// Check identical no-ops escalate across registry clones without writing.
 #[tokio::test]
 async fn identical_no_op_patch_escalates_across_registry_clones_without_writing() -> Result<()> {
     let temp_dir = TempDir::new()?;
@@ -1986,6 +2004,7 @@ async fn identical_no_op_patch_escalates_across_registry_clones_without_writing(
     Ok(())
 }
 
+/// Check repeated updates to one path apply in order instead of as a no-op.
 #[tokio::test]
 async fn repeated_updates_to_one_path_apply_in_order_instead_of_reporting_a_no_op() -> Result<()> {
     let temp_dir = TempDir::new()?;
@@ -2017,6 +2036,7 @@ async fn repeated_updates_to_one_path_apply_in_order_instead_of_reporting_a_no_o
     Ok(())
 }
 
+/// Check malformed hashes and invalid scopes are rejected.
 #[tokio::test]
 async fn apply_patch_hash_rejects_malformed_and_invalid_scopes() -> Result<()> {
     let temp_dir = TempDir::new()?;

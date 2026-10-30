@@ -6,16 +6,32 @@
 
 use super::ToolRegistry;
 use super::patch_pipeline::CapturedPatchPath;
+use crate::metrics::PatchPreconditionOutcome;
 use crate::tools::registry::{ToolErrorType, ToolExecutionError};
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 
+/// A rejected `apply_patch` version precondition.
+///
+/// The response is what the model sees; the outcome is the bounded label the
+/// caller records in metrics and decision logs.
+pub(super) struct PatchPreconditionRejection {
+    pub(super) response: Value,
+    pub(super) outcome: PatchPreconditionOutcome,
+}
+
+/// Check `expected_content_hash` against the snapshot taken for this patch.
+///
+/// Returns `None` when the hash matched (or when no hash was supplied, which
+/// the caller has already handled), and a bounded rejection otherwise. The
+/// rebase assessment runs against the captured text, so the file is not read a
+/// second time after the snapshots were taken.
 pub(super) async fn validate_patch_content_hash(
     registry: &ToolRegistry,
     patch: &crate::tools::editing::Patch,
     expected_hash: &str,
     captured_paths: &[CapturedPatchPath],
-) -> Result<Option<Value>> {
+) -> Result<Option<PatchPreconditionRejection>> {
     let source_paths = crate::tools::apply_patch::patch_precondition_source_paths(patch);
     let [source_path] = source_paths.as_slice() else {
         let message = if source_paths.is_empty() {
@@ -23,14 +39,17 @@ pub(super) async fn validate_patch_content_hash(
         } else {
             "expected_content_hash requires exactly one pre-existing source file; split the patch by source file"
         };
-        return Ok(Some(invalid_patch_precondition(
-            message,
-            json!({
-                "reason": "invalid_precondition_scope",
-                "source_file_count": source_paths.len(),
-                "next_action": "Split the patch by source file, reread each file, and retry with its content_hash."
-            }),
-        )));
+        return Ok(Some(PatchPreconditionRejection {
+            response: invalid_patch_precondition(
+                message,
+                json!({
+                    "reason": "invalid_precondition_scope",
+                    "source_file_count": source_paths.len(),
+                    "next_action": "Split the patch by source file, reread each file, and retry with its content_hash."
+                }),
+            ),
+            outcome: PatchPreconditionOutcome::InvalidScope,
+        }));
     };
     let canonical_path = registry.file_ops_tool().normalize_user_path(source_path).await?;
     let snapshot = captured_paths
@@ -58,18 +77,23 @@ pub(super) async fn validate_patch_content_hash(
         "can_safely_rebase": can_safely_rebase,
         "next_action": format!("Reread {source_path} and regenerate the patch using the new content_hash."),
     });
-    Ok(Some(invalid_patch_precondition(
-        format!("File version changed before apply_patch: {source_path}"),
-        details,
-    )))
+    Ok(Some(PatchPreconditionRejection {
+        response: invalid_patch_precondition(
+            format!("File version changed before apply_patch: {source_path}"),
+            details,
+        ),
+        outcome: PatchPreconditionOutcome::ContentHashMismatch,
+    }))
 }
 
+/// Build the structured rejection payload shared by every precondition failure.
 pub(super) fn invalid_patch_precondition(message: impl Into<String>, details: Value) -> Value {
     ToolExecutionError::new(crate::config::constants::tools::APPLY_PATCH, ToolErrorType::InvalidParameters, message)
         .with_details(details)
         .to_json_value()
 }
 
+/// Build the refusal returned once the same no-op has been offered three times.
 pub(super) fn repeated_no_op_error(signature: String, occurrence: u8) -> Value {
     ToolExecutionError::new(
         crate::config::constants::tools::APPLY_PATCH,

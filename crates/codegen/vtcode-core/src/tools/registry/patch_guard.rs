@@ -17,6 +17,10 @@ pub(super) struct CanonicalPatchOperation {
 }
 
 impl PatchPathState {
+    /// Record one path's observed state for the no-op comparison.
+    ///
+    /// `content_hash` is the full-file hash the patch was planned against, so
+    /// two states compare equal only when the final bytes really are unchanged.
     pub(super) fn new(path: PathBuf, exists: bool, content_hash: String) -> Self {
         Self { path, exists, content_hash }
     }
@@ -36,6 +40,18 @@ pub(super) struct NoOpPatchGuard {
 }
 
 impl NoOpPatchGuard {
+    /// Classify the patch currently being applied against the no-op ladder.
+    ///
+    /// Returns [`NoOpPatchDecision::Execute`] when the patch changes at least
+    /// one file, [`NoOpPatchDecision::Success`] for the first two identical
+    /// no-ops, and [`NoOpPatchDecision::Block`] for the third. The ladder is
+    /// keyed by the canonical patch signature plus the before/after path
+    /// states, so a materially different retry — or the same retry after
+    /// productive work — starts over instead of escalating.
+    ///
+    /// `canonical_operations` must be the normalised form of `patch`: raw
+    /// transport text and path aliases would otherwise hash differently and
+    /// defeat the repeat detection.
     pub(super) fn observe(
         &mut self,
         patch: &Patch,
@@ -166,14 +182,17 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
+    /// Build a single-path state fixture for the guard property tests.
     fn state(path: &str, hash: &str) -> PatchPathState {
         PatchPathState::new(PathBuf::from(path), true, hash.to_string())
     }
 
+    /// Build a one-operation fixture targeting the given path.
     fn operation(path: &str) -> Vec<CanonicalPatchOperation> {
         vec![CanonicalPatchOperation { source: PathBuf::from(path), destination: None }]
     }
 
+    /// Check LF, CRLF, and `./` aliases normalise to the same signature.
     #[test]
     fn parsed_transport_and_path_aliases_share_one_signature() {
         let lf = Patch::parse("*** Begin Patch\n*** Update File: x.txt\n@@\n-x\n+x\n*** End Patch\n")
@@ -191,6 +210,7 @@ mod tests {
     }
 
     proptest! {
+        /// Check the signature ignores the order paths are listed in.
         #[test]
         fn patch_guard_prop_signature_is_path_order_invariant(
             left_path in "[a-z]{1,8}\\.txt",
@@ -210,6 +230,7 @@ mod tests {
             );
         }
 
+        /// Check a changed patch or file state resets the no-op ladder.
         #[test]
         fn patch_guard_prop_state_or_patch_changes_reset_the_ladder(
             suffix in "[a-z]{1,12}",
