@@ -28,6 +28,8 @@ use vtcode_commons::{ErrorCategory, canonicalize};
 #[path = "../../../tests/support/config_defaults.rs"]
 mod config_defaults;
 
+mod stale_exec_session;
+
 #[cfg(unix)]
 mod pipe_session;
 
@@ -883,49 +885,6 @@ async fn active_exec_continuations_bypass_identical_call_loop_detection(
         third.get("exit_code").is_some() || third.get("next_continue_args").is_some(),
         "continuation should either remain active or complete cleanly"
     );
-
-    Ok(())
-}
-
-#[rstest]
-#[tokio::test]
-async fn stale_write_stdin_modes_are_resource_not_found_without_partial_state(
-    #[future] command_session_fixture: Result<CommandSessionFixture>,
-) -> Result<()> {
-    let fixture_res = command_session_fixture.await;
-    let fixture = fixture_res?;
-    let registry = &fixture.registry;
-    registry.allow_all_tools().await?;
-    let modes = [
-        json!({"session_id": "run-stale", "chars": "input"}),
-        json!({"action": "poll", "session_id": "run-stale"}),
-        json!({"action": "wait", "session_id": "run-stale", "yield_time_ms": 1}),
-    ];
-
-    for args in modes {
-        let policy = ExecutionPolicySnapshot::default()
-            .with_prevalidated(true)
-            .with_safety_prevalidated(true);
-        let outcome = registry
-            .execute_public_tool_request(ToolExecutionRequest::new(tools::WRITE_STDIN, args).with_policy(policy))
-            .await;
-        let error = outcome.error.expect("stale continuation should return a structured error");
-
-        assert_eq!(error.category, ErrorCategory::ResourceNotFound);
-        assert_eq!(error.error_type, ToolErrorType::ResourceNotFound);
-        assert!(!error.retryable);
-        assert!(!error.circuit_breaker_impact);
-        assert!(!error.partial_state_possible);
-        assert!(!error.user_message().contains("Partial changes may still exist"));
-        assert_eq!(
-            error
-                .details
-                .as_ref()
-                .and_then(|details| details.get("reason"))
-                .and_then(Value::as_str),
-            Some("stale_exec_session")
-        );
-    }
 
     Ok(())
 }

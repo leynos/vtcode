@@ -406,7 +406,13 @@ async fn require_session_checkpoint(
     boundary: &'static str,
 ) -> Result<(), SdkError> {
     if let Err(error) = agent.checkpoint_session(session).await {
-        warn!(%error, boundary, "Failed to persist ACP session checkpoint");
+        log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
+        warn!(
+            operation = "session_checkpoint",
+            error_category = "archive_write_failed",
+            boundary,
+            "Failed to persist ACP session checkpoint"
+        );
         return Err(
             SdkError::internal_error().data(format!("Failed to persist ACP session checkpoint at {boundary}: {error}"))
         );

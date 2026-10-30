@@ -30,11 +30,13 @@ pub(crate) struct ExecSessionNotFound {
 }
 
 impl ExecSessionNotFound {
+    /// Build the typed error for a continuation naming an unknown session.
     fn new(session_id: &str) -> Self {
         Self { session_id: session_id.to_string() }
     }
 }
 
+/// Wrap [`ExecSessionNotFound`] so callers can recover the typed source.
 fn missing_session(session_id: &str) -> anyhow::Error {
     anyhow::Error::new(ExecSessionNotFound::new(session_id))
 }

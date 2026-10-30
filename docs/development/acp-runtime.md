@@ -56,6 +56,34 @@ controlled by `[context.dynamic]`; it supports summarization but is not a
 resumable ACP archive. ACP tool audit output is a third, independent store.
 Changing one store's configuration does not enable or disable the others.
 
+## Interrupted tool recovery
+
+A turn can end after the model emits tool calls but before every call has a
+terminal result, for example when the process exits or an archive is resumed
+mid-round. ACP closes that gap with a write-ahead protocol instead of replaying
+mutating tools:
+
+- Before executing a tool round, ACP appends an incomplete result placeholder
+  for every call and requires a durable checkpoint. If that checkpoint fails,
+  the prompt fails and no tool runs.
+- After execution, ACP replaces the placeholders with terminal results and
+  checkpoints again, so a resumed archive never observes an unresolved batch.
+- `session/load` and `session/resume` repair legacy archives by inserting an
+  explicit incomplete result before later messages, then checkpoint the
+  repaired history before the session becomes visible. The repair records that
+  the call was not replayed and tells the model to verify workspace state
+  before resubmitting.
+- History with duplicate or otherwise ambiguous terminal results is rejected
+  rather than guessed at. The archive is left untouched and the session does
+  not become resumable.
+
+Recovery never executes a tool a second time. Related failures carry typed
+outcomes: a `write_stdin` continuation for a terminated exec session becomes a
+non-retryable resource-not-found error with no partial-state claim, and a
+checkpoint failure is logged with its operation and error category before the
+prompt is rejected. Prompt admission remains single-turn, so a concurrent
+prompt is rejected without mutating history.
+
 ## Providers
 
 For custom-provider configuration and defaults, see
@@ -168,12 +196,15 @@ cargo nextest run -p vtcode-acp forwards_lifecycle_events_through_the_official_a
 cargo nextest run -p vtcode-acp checkpoint_session_persists_messages_for_a_fresh_runtime
 cargo nextest run -p vtcode-acp -E 'test(session_activity_matches_the_reference_model)'
 cargo nextest run -p vtcode-acp -E 'test(workspace_lease_accounting_matches_the_reference_model)'
+cargo nextest run -p vtcode-acp attaching_legacy_archive_repairs_without_replaying_mutating_call
+cargo nextest run -p vtcode-core stale_write_stdin_modes_are_resource_not_found_without_partial_state
 cargo nextest run -p vtcode-llm request_admission
 ```
 
 These cover ACP plan projection and replay, duplex lifecycle forwarding,
 session checkpoint persistence, the sequential activity and lease reference
-models, and the custom-provider admission regressions. The relevant provider
+models, interrupted-tool repair and stale-session mapping, and the
+custom-provider admission regressions. The relevant provider
 retry/deadline unit tests are in the ACP `zed/provider_runtime.rs` module; run
 them with `cargo nextest run -p vtcode-acp <test-name>` after selecting a test
 name from that module.

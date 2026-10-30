@@ -139,19 +139,23 @@ impl ZedAgent {
             let listing = find_session_by_identifier(identifier)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("unknown archived session '{identifier}'"))?;
-            self.attach_thread_from_listing(session_id, identifier, workspace, listing)
-                .await
+            self.attach_thread_from_listing(session_id, workspace, listing).await
         })
         .await
     }
 
+    /// Attach an already-loaded archive listing as a live ACP session.
+    ///
+    /// The listing's own identifier names the session, so callers cannot
+    /// attach a listing under a name that does not match its archive path.
     pub(super) async fn attach_thread_from_listing(
         &self,
         session_id: &acp::SessionId,
-        identifier: &str,
         workspace: &AcpSessionWorkspace,
         mut listing: SessionListing,
     ) -> anyhow::Result<SessionHandle> {
+        let identifier = listing.identifier();
+        let identifier = identifier.as_str();
         let workspace_match = session_listing_workspace_match(&listing, workspace.path())
             .with_context(|| format!("resolving workspace ownership for archived session '{identifier}'"))?;
         anyhow::ensure!(
@@ -171,7 +175,7 @@ impl ZedAgent {
         let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
         let thread = self
             .thread_manager
-            .start_thread_with_identifier(listing.identifier(), ThreadBootstrap::from_listing(listing));
+            .start_thread_with_identifier(identifier, ThreadBootstrap::from_listing(listing));
         let workspace_lease = self
             .workspace_runtime_for(workspace)
             .await
@@ -196,6 +200,22 @@ impl ZedAgent {
                 "Repaired unresolved tool calls while loading durable ACP session"
             );
         }
+        if let Some(existing) = self.register_resumed_session(session_id, &handle).await? {
+            return Ok(existing);
+        }
+        Ok(handle)
+    }
+
+    /// Publish a resumed session, returning any handle registered concurrently.
+    ///
+    /// If another task registered the same session first, the existing handle
+    /// wins and the newly built handle's workspace lease is released so a
+    /// failed load leaves no half-owned runtime.
+    async fn register_resumed_session(
+        &self,
+        session_id: &acp::SessionId,
+        handle: &SessionHandle,
+    ) -> anyhow::Result<Option<SessionHandle>> {
         let registration = self
             .sessions
             .lock()
@@ -222,18 +242,17 @@ impl ZedAgent {
                 return Err(error);
             }
         };
-        if let Some(existing) = existing {
-            if let Err(cleanup_error) = handle.release_workspace_lease().await {
-                log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
-                warn!(
-                    operation = "archive_attach",
-                    error_category = "workspace_lease_cleanup_failed",
-                    "Failed to release ACP workspace lease for a concurrently registered resumed session"
-                );
-            }
-            return Ok(existing);
+        if existing.is_some()
+            && let Err(cleanup_error) = handle.release_workspace_lease().await
+        {
+            log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
+            warn!(
+                operation = "archive_attach",
+                error_category = "workspace_lease_cleanup_failed",
+                "Failed to release ACP workspace lease for a concurrently registered resumed session"
+            );
         }
-        Ok(handle)
+        Ok(existing)
     }
 
     pub(super) async fn attach_or_get_session(
@@ -556,5 +575,6 @@ pub(super) fn repair_archived_tool_calls(
     }
     Ok(report)
 }
+// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/session_state/archive.rs' for per-hunk detail, 'weave check' to verify your resolution
 // weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/session_state/archive.rs' for per-hunk detail, 'weave check' to verify your resolution
 // weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/session_state/archive.rs' for per-hunk detail, 'weave check' to verify your resolution

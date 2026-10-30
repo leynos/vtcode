@@ -317,6 +317,47 @@ impl LLMProvider for BlockingPromptProvider {
     }
 }
 
+/// Drive one blocked prompt and one rejected concurrent prompt over ACP.
+async fn reject_concurrent_prompt(
+    cx: ConnectionTo<Agent>,
+    workspace_path: std::path::PathBuf,
+    wait_for_provider: Arc<Notify>,
+    unblock_provider: Arc<Notify>,
+) -> agent_client_protocol::Result<()> {
+    drop(
+        cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+            .block_task()
+            .await?,
+    );
+    let session = cx.send_request(NewSessionRequest::new(workspace_path)).block_task().await?;
+    let first = cx
+        .send_request(PromptRequest::new(
+            session.session_id.clone(),
+            vec![acp::ContentBlock::Text(acp::TextContent::new("first prompt"))],
+        ))
+        .block_task();
+    tokio::pin!(first);
+    tokio::select! {
+        () = wait_for_provider.notified() => {}
+        response = &mut first => panic!("first prompt completed before provider blockage: {response:?}"),
+    }
+
+    let second = cx
+        .send_request(PromptRequest::new(
+            session.session_id,
+            vec![acp::ContentBlock::Text(acp::TextContent::new("second prompt"))],
+        ))
+        .block_task()
+        .await
+        .expect_err("a concurrent prompt must be rejected");
+    assert!(format!("{second:?}").contains("turn_in_progress"));
+
+    unblock_provider.notify_one();
+    let response = first.await?;
+    assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+    Ok(())
+}
+
 #[tokio::test]
 async fn concurrent_prompt_is_rejected_over_official_acp_transport() {
     let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
@@ -334,6 +375,7 @@ async fn concurrent_prompt_is_rejected_over_official_acp_transport() {
         }),
     );
     let workspace = TempDir::new().expect("wire test workspace");
+    let workspace_path = workspace.path().to_path_buf();
     let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
     let inspected_agent = Arc::clone(&agent);
     let (agent_channel, client_channel) = Channel::duplex();
@@ -352,41 +394,7 @@ async fn concurrent_prompt_is_rejected_over_official_acp_transport() {
     let client_connection = Client
         .builder()
         .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
-            drop(
-                cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
-                    .block_task()
-                    .await?,
-            );
-            let session = cx
-                .send_request(NewSessionRequest::new(workspace.path().to_path_buf()))
-                .block_task()
-                .await?;
-            let first = cx
-                .send_request(PromptRequest::new(
-                    session.session_id.clone(),
-                    vec![acp::ContentBlock::Text(acp::TextContent::new("first prompt"))],
-                ))
-                .block_task();
-            tokio::pin!(first);
-            tokio::select! {
-                () = wait_for_provider.notified() => {}
-                response = &mut first => panic!("first prompt completed before provider blockage: {response:?}"),
-            }
-
-            let second = cx
-                .send_request(PromptRequest::new(
-                    session.session_id.clone(),
-                    vec![acp::ContentBlock::Text(acp::TextContent::new("second prompt"))],
-                ))
-                .block_task()
-                .await
-                .expect_err("a concurrent prompt must be rejected");
-            assert!(format!("{second:?}").contains("turn_in_progress"));
-
-            unblock_provider.notify_one();
-            let response = first.await?;
-            assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
-            Ok(())
+            reject_concurrent_prompt(cx, workspace_path, wait_for_provider, unblock_provider).await
         });
 
     tokio::time::timeout(Duration::from_secs(5), client_connection)
