@@ -6,124 +6,22 @@ use super::provider::IncompleteProviderTurn;
 use super::*;
 
 mod buffered;
+mod cancelled;
+mod finish;
 #[cfg(test)]
 mod flush_tests;
 mod input;
 mod lifecycle;
+mod output;
 mod provider_context;
 mod streaming;
 
 pub(super) use buffered::response_reasoning_update;
-
-#[tracing::instrument(skip_all, fields(boundary = boundary))]
-pub(super) async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, boundary: &'static str) {
-    if let Err(error) = agent.checkpoint_session(session).await {
-        log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
-        warn!(
-            operation = "session_checkpoint",
-            error_category = "archive_write_failed",
-            boundary,
-            "Failed to persist ACP session checkpoint"
-        );
-    }
-    if let Err(error) = session.update_transcript_path().await {
-        log_suppressed_error(&error, "transcript_update", "transcript_write_failed");
-        warn!(
-            operation = "transcript_update",
-            error_category = "transcript_write_failed",
-            boundary,
-            "Failed to update ACP session transcript path"
-        );
-    }
-}
-
-pub(super) async fn finish_failed_provider_turn(
-    turn: &PromptExecution,
-    error: SafeProviderProjection,
-) -> Result<PromptResponse, SdkError> {
-    let IncompleteProviderTurn { message, visible_update, response } =
-        IncompleteProviderTurn::from_failure(&turn.assistant_message, &turn.assistant_reasoning, error);
-    drop(
-        turn.agent
-            .send_update(&turn.args.session_id, acp::SessionUpdate::AgentMessageChunk(text_chunk(visible_update)))
-            .await,
-    );
-    push_session_message(&turn.agent, &turn.session, &turn.args.session_id, message)?;
-    persist_session_checkpoint(&turn.agent, &turn.session, "incomplete_provider_turn").await;
-    warn!(
-        error_category = error.category(),
-        error_status = ?error.status(),
-        partial_text_bytes = turn.assistant_message.len(),
-        partial_reasoning_bytes = turn.assistant_reasoning.len(),
-        "ACP provider failed to complete the turn"
-    );
-    Ok(response)
-}
-
-pub(super) async fn finish_failed_output(
-    turn: &mut PromptExecution,
-    output: ProviderOutput,
-    error: SafeProviderProjection,
-) -> Result<ProviderTurnOutcome, SdkError> {
-    output.store_in(turn);
-    finish_failed_provider_turn(turn, error)
-        .await
-        .map(ProviderTurnOutcome::Response)
-}
-
-/// Flushes any buffered assistant text that never reached the client, then
-/// reports cancellation. Used when a provider failure follows `session/cancel`:
-/// ACP requires `Cancelled`, not an `EndTurn` failure notice.
-///
-/// A flushed draft becomes client-visible, so it is also persisted: durable
-/// history must match what the user saw. Text that was already streamed keeps
-/// the cancellation path's existing history behaviour.
-pub(super) async fn finish_cancelled_output(
-    turn: &mut PromptExecution,
-    mut output: ProviderOutput,
-) -> Result<ProviderTurnOutcome, SdkError> {
-    let flushed = output.take_unemitted_assistant_text().is_some();
-    if flushed {
-        let text = output.assistant_message.clone();
-        drop(
-            turn.agent
-                .send_update(&turn.args.session_id, acp::SessionUpdate::AgentMessageChunk(text_chunk(text)))
-                .await,
-        );
-    }
-    let visible_message = flushed.then(|| {
-        let mut message = Message::assistant(output.assistant_message.clone());
-        if !output.assistant_reasoning.is_empty() {
-            message.reasoning = Some(output.assistant_reasoning.clone());
-        }
-        message
-    });
-    output.store_in(turn);
-    if let Some(message) = visible_message {
-        // Cancellation must keep `StopReason::Cancelled` even if persisting the
-        // visible draft fails, so this is best-effort like other checkpoints.
-        match push_session_message(&turn.agent, &turn.session, &turn.args.session_id, message) {
-            Ok(()) => persist_session_checkpoint(&turn.agent, &turn.session, "assistant_response_cancelled").await,
-            Err(error) => warn!(%error, "Failed to persist the visible cancelled ACP draft"),
-        }
-    }
-    Ok(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled))
-}
-
-/// Commits a provider failure, preferring `Cancelled` when the turn was
-/// cancelled while the error was in flight. Centralizes the rule shared by the
-/// buffered and streaming failure paths.
-pub(super) async fn finish_failed_or_cancelled_output(
-    turn: &mut PromptExecution,
-    output: &mut ProviderOutput,
-    error: SafeProviderProjection,
-) -> Result<ProviderTurnOutcome, SdkError> {
-    let pending = std::mem::replace(output, ProviderOutput::empty());
-    if turn.session.cancellation.is_cancelled() {
-        return finish_cancelled_output(turn, pending).await;
-    }
-    finish_failed_output(turn, pending, error).await
-}
+pub(super) use cancelled::{finish_cancelled_output, finish_failed_or_cancelled_output};
+pub(super) use finish::{
+    finish_failed_output, finish_failed_provider_turn, persist_session_checkpoint, require_session_checkpoint,
+};
+pub(super) use output::{ProviderOutput, assistant_tool_call_message};
 
 pub(super) struct TurnGuard {
     thread: ThreadRuntimeHandle,
@@ -383,7 +281,20 @@ pub(super) async fn run_prompt_with_retry_observer(
     // `session/prompt`. Serialize the turns per session instead of rejecting
     // the steer or racing the active turn's state; this is only awaited here,
     // inside the spawned prompt task.
+    //
+    // Sample the admitted count before waiting: it is the queue depth this
+    // prompt joined, including any turn already holding the gate. Reporting it
+    // alongside the wait keeps a stalled turn visible without capping steers,
+    // which ACP deliberately allows.
+    let queued_prompts = session.admitted_prompt_count().saturating_sub(1);
+    let gate_wait_started = Instant::now();
     let _prompt_gate = session.acquire_prompt_gate().await;
+    debug!(
+        session_id = %args.session_id,
+        queued_prompts,
+        wait_ms = u64::try_from(gate_wait_started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        "Acquired ACP prompt gate"
+    );
     // Clear cancellation only once the previous turn has fully completed. A
     // queued steer must not clear a cancel aimed at the turn it waited for.
     if !session.cancellation.reset() {
@@ -417,61 +328,6 @@ impl PromptExecution {
         }
     }
 }
-pub(super) struct ProviderOutput {
-    assistant_message: String,
-    assistant_reasoning: String,
-    emitted_output: bool,
-    assistant_emitted: bool,
-}
-
-impl ProviderOutput {
-    pub(super) fn empty() -> Self {
-        Self {
-            assistant_message: String::new(),
-            assistant_reasoning: String::new(),
-            emitted_output: false,
-            assistant_emitted: false,
-        }
-    }
-
-    pub(super) fn take_from(turn: &mut PromptExecution) -> Self {
-        let assistant_message = std::mem::take(&mut turn.assistant_message);
-        let assistant_reasoning = std::mem::take(&mut turn.assistant_reasoning);
-        let emitted_output = !assistant_message.is_empty() || !assistant_reasoning.is_empty();
-        Self {
-            assistant_message,
-            assistant_reasoning,
-            emitted_output,
-            assistant_emitted: turn.assistant_emitted,
-        }
-    }
-
-    pub(super) fn reset(&mut self) {
-        self.assistant_message.clear();
-        self.assistant_reasoning.clear();
-        self.emitted_output = false;
-        // `assistant_emitted` is turn-scoped: text streamed before a tool round
-        // still reached the client and must not be forgotten.
-    }
-
-    pub(super) fn store_in(self, turn: &mut PromptExecution) {
-        turn.assistant_message = self.assistant_message;
-        turn.assistant_reasoning = self.assistant_reasoning;
-        turn.assistant_emitted |= self.assistant_emitted;
-    }
-
-    /// Marks a buffered draft as client-visible when it has not been emitted
-    /// yet, returning the text the caller must send. Cancellation flushes the
-    /// draft so a partially generated answer is not silently discarded.
-    pub(super) fn take_unemitted_assistant_text(&mut self) -> Option<String> {
-        if self.assistant_emitted || self.assistant_message.is_empty() {
-            return None;
-        }
-        self.assistant_emitted = true;
-        Some(self.assistant_message.clone())
-    }
-}
-
 pub(super) fn session_access_error(session_id: &acp::SessionId, operation: &str, error: impl Display) -> SdkError {
     SdkError::internal_error().data(format!("Failed to {operation} for ACP session {session_id}: {error}"))
 }
@@ -514,53 +370,4 @@ pub(super) fn should_allow_streaming(supports_streaming: bool, _tools_allowed: b
 
 pub(super) fn should_emit_buffered_final_chunk(allow_streaming: bool) -> bool {
     !allow_streaming
-}
-
-pub(super) fn assistant_tool_call_message(
-    content: String,
-    tool_calls: Vec<vtcode_core::llm::provider::ToolCall>,
-    reasoning: &str,
-    reasoning_details: Option<Vec<String>>,
-) -> Message {
-    let reasoning_details = reasoning_details.map(|details| {
-        details
-            .into_iter()
-            .map(|detail| match serde_json::from_str::<serde_json::Value>(&detail) {
-                Ok(value) if value.is_object() || value.is_array() => value,
-                _ => serde_json::Value::String(detail),
-            })
-            .collect()
-    });
-    let mut message = Message::assistant_with_tools_and_reasoning(content, tool_calls, reasoning_details);
-    if !reasoning.is_empty() {
-        message.reasoning = Some(reasoning.to_owned());
-    }
-    message
-}
-
-/// Persists the strict write-ahead checkpoint required before tool execution.
-///
-/// Ordinary transcript checkpoints remain best-effort through
-/// [`persist_session_checkpoint`].
-async fn require_session_checkpoint(
-    agent: &ZedAgent,
-    session: &SessionHandle,
-    boundary: &'static str,
-) -> Result<(), SdkError> {
-    if let Err(error) = agent.checkpoint_session(session).await {
-        warn!(%error, boundary, "Failed to persist ACP session checkpoint");
-        return Err(
-            SdkError::internal_error().data(format!("Failed to persist ACP session checkpoint at {boundary}: {error}"))
-        );
-    }
-    if let Err(error) = session.update_transcript_path().await {
-        log_suppressed_error(&error, "transcript_update", "transcript_write_failed");
-        warn!(
-            operation = "transcript_update",
-            error_category = "transcript_write_failed",
-            boundary,
-            "Failed to update ACP session transcript path"
-        );
-    }
-    Ok(())
 }

@@ -128,6 +128,14 @@ client, `client_v2/` current client, `discovery/` agent registry, `session/`
 session lifecycle, `transport/` stdio transport, `jsonrpc/` JSON-RPC types,
 `tooling/` tool adapters, `zed/` Zed adapter, `workspace/` workspace helpers,
 `permissions/` permission flow, `reports/` reporting, and `error/` `AcpError`.
+Within `zed/agent/handlers/prompt/`, `input.rs` prepares a turn, `streaming/`
+and `buffered.rs` drive providers, `cancelled.rs` commits cancellation,
+`finish.rs` owns failure finalization and checkpoints, and `output.rs` tracks
+assistant output visible to the client.
+
+A queued `session/prompt` reports `wait_ms` and `queued_prompts` after it
+acquires `SessionHandle::prompt_gate`, so a stalled earlier turn is observable
+without rejecting steers: ACP permits them, and the gate only serializes.
 
 `zed/agent/handlers.rs` is the canonical SACP handler wiring;
 `zed/connection.rs` wraps `ConnectionTo<Client>`. `ZedAgent::new` attaches and

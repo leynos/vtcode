@@ -130,6 +130,10 @@ impl SessionActivity {
             self.prompts_idle.notify_waiters();
         }
     }
+
+    fn admitted_prompt_count(&self) -> usize {
+        self.active_prompts.load(Ordering::Acquire)
+    }
 }
 
 impl SessionPromptGuard {
@@ -169,6 +173,14 @@ impl SessionHandle {
     /// awaiting here is only safe inside a spawned task.
     pub(crate) async fn acquire_prompt_gate(&self) -> tokio::sync::OwnedMutexGuard<()> {
         Arc::clone(&self.prompt_gate).lock_owned().await
+    }
+
+    /// Prompts admitted for this session that have not finished yet, including
+    /// the caller. Sampled before waiting on the gate, this is the queue depth
+    /// a steering prompt joins; it is observational only and never rejects a
+    /// steer.
+    pub(crate) fn admitted_prompt_count(&self) -> usize {
+        self.activity.admitted_prompt_count()
     }
 }
 

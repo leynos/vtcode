@@ -13,7 +13,9 @@ Canonical ACP entrypoint. Crate conventions and gotchas live in
   deadlocks dispatch.
 - Serialize `session/prompt` per session behind `SessionHandle::prompt_gate`
   (`Arc<tokio::sync::Mutex<()>>`), acquired only inside the spawned task after
-  the unknown-session check; reset cancellation only after acquisition.
+  the unknown-session check; reset cancellation only after acquisition. Log
+  `wait_ms` and `queued_prompts` after acquisition; observe steers, never cap
+  them.
 - A cancelled turn returns `StopReason::Cancelled`; every other turn ends with
   assistant content or an explicit `internal_error` (`empty_response`,
   `tool_execution_failed`), never a silent `EndTurn`. Persist any buffered text
