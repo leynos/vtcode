@@ -1,13 +1,14 @@
 //! Projects subagent and background-task lifecycle state into ACP tool calls
 //! and Lody capability metadata.
 
+use super::task_lifecycle::LifecycleUpdate;
 use crate::acp;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::{Map, Value};
 use std::collections::HashSet;
 use vtcode_core::subagents::{
-    BackgroundSubprocessEntry, BackgroundSubprocessStatus, SubagentProgressEvent, SubagentStatus, SubagentStatusEntry,
+    BackgroundSubprocessEntry, BackgroundSubprocessStatus, SubagentStatus, SubagentStatusEntry,
 };
 
 const LODY_EXTENSION_VERSION: u8 = 1;
@@ -40,20 +41,20 @@ struct TaskSnapshot<'a> {
     meta: LodyTaskMeta<'a>,
 }
 
-pub(super) fn lody_task_id(event: &SubagentProgressEvent) -> &str {
+pub(super) fn lody_task_id(event: &LifecycleUpdate) -> &str {
     match event {
-        SubagentProgressEvent::Subagent { task, .. } => &task.id,
-        SubagentProgressEvent::BackgroundProcess { task, .. } => &task.id,
+        LifecycleUpdate::Subagent { task, .. } => &task.id,
+        LifecycleUpdate::BackgroundProcess { task, .. } => &task.id,
     }
 }
 
 pub(super) fn lody_task_session_update(
-    event: SubagentProgressEvent,
+    event: LifecycleUpdate,
     previously_emitted: bool,
 ) -> anyhow::Result<acp::SessionUpdate> {
     let snapshot = match &event {
-        SubagentProgressEvent::Subagent { task, .. } => subagent_snapshot(task),
-        SubagentProgressEvent::BackgroundProcess { task, .. } => background_snapshot(task),
+        LifecycleUpdate::Subagent { task, .. } => subagent_snapshot(task),
+        LifecycleUpdate::BackgroundProcess { task, .. } => background_snapshot(task),
     };
     let tool_call_id = format!("task:{}", snapshot.id);
     let task_value = serde_json::to_value(snapshot.meta)?;
@@ -194,12 +195,12 @@ fn epoch_seconds(timestamp: DateTime<Utc>) -> f64 {
     timestamp.timestamp_millis().max(0) as f64 / 1_000.0
 }
 
-fn task_content(event: &SubagentProgressEvent) -> Vec<acp::ToolCallContent> {
+fn task_content(event: &LifecycleUpdate) -> Vec<acp::ToolCallContent> {
     let text = match event {
-        SubagentProgressEvent::Subagent { task, .. } => {
+        LifecycleUpdate::Subagent { task, .. } => {
             task.error.as_deref().or(task.summary.as_deref()).unwrap_or(&task.description)
         }
-        SubagentProgressEvent::BackgroundProcess { task, .. } => {
+        LifecycleUpdate::BackgroundProcess { task, .. } => {
             task.error.as_deref().or(task.summary.as_deref()).unwrap_or(&task.description)
         }
     };

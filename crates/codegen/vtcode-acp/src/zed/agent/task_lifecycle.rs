@@ -7,11 +7,10 @@ mod messages;
 #[cfg(test)]
 mod tests;
 
+pub(super) use self::messages::LifecycleUpdate;
 use self::messages::send_task_lifecycle;
 use super::lody::lody_task_id;
 use hashbrown::HashSet;
-use vtcode_core::subagents::SubagentProgressEvent;
-type LifecycleUpdate = SubagentProgressEvent;
 #[cfg(test)]
 mod projection_tests;
 use super::super::types::{SessionHandle, lock_poison_error};
@@ -258,14 +257,14 @@ struct AcpTaskLifecycleObserver {
 
 impl SubagentProgressObserver for AcpTaskLifecycleObserver {
     fn subagent_status_changed(&self, entry: SubagentStatusEntry) {
-        self.try_send(SubagentProgressEvent::Subagent {
+        self.try_send(LifecycleUpdate::Subagent {
             parent_session_id: self.session_id.clone(),
             task: entry,
         });
     }
 
     fn background_status_changed(&self, entry: BackgroundSubprocessEntry) {
-        self.try_send(SubagentProgressEvent::BackgroundProcess {
+        self.try_send(LifecycleUpdate::BackgroundProcess {
             parent_session_id: self.session_id.clone(),
             task: entry,
         });

@@ -40,7 +40,7 @@ struct HistorySettingsGuard;
 
 impl HistorySettingsGuard {
     fn set(persistence: HistoryPersistence, max_bytes: Option<usize>) -> Self {
-        let mut config = vtcode_core::config::VTCodeConfig::default();
+        let mut config = VTCodeConfig::default();
         config.history.persistence = persistence;
         config.history.max_bytes = max_bytes;
         vtcode_core::utils::session_archive::apply_session_history_config_from_vtcode(&config);
@@ -50,9 +50,7 @@ impl HistorySettingsGuard {
 
 impl Drop for HistorySettingsGuard {
     fn drop(&mut self) {
-        vtcode_core::utils::session_archive::apply_session_history_config_from_vtcode(
-            &vtcode_core::config::VTCodeConfig::default(),
-        );
+        vtcode_core::utils::session_archive::apply_session_history_config_from_vtcode(&VTCodeConfig::default());
     }
 }
 #[derive(Debug, PartialEq)]
@@ -83,7 +81,7 @@ async fn build_agent_with_default_primary_agent(workspace: &Path, default_primar
 async fn build_agent_with_vt_config(
     workspace: &Path,
     default_primary_agent: &str,
-    vt_config: Option<VTCodeConfig>,
+    vt_config: Option<&VTCodeConfig>,
 ) -> ZedAgent {
     let core_config = CoreAgentConfig {
         model: "gpt-5.6-sol".to_string(),
