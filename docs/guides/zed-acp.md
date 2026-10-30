@@ -547,13 +547,16 @@ and `[history]` settings do not control ACP audit output.
   accept or block it before any text becomes visible. A stream failure after
   visible output is never replayed and checkpoints an incomplete assistant
   response instead.
-- **Provider reasoning** – When a provider response exposes reasoning alongside
-  tool calls, VT Code sends it to ACP as an `AgentThoughtChunk` before
-  executing those tools. Exposed reasoning on the final provider response is
-  sent as an `AgentThoughtChunk` as well. Debug logs distinguish
-  `Sending provider reasoning to ACP client` from
-  `Provider response did not include exposed reasoning for ACP`; they record
-  metadata only and never the reasoning content.
+- **Provider reasoning and commentary** – When a buffered provider response
+  exposes reasoning or assistant commentary alongside tool calls, VT Code sends
+  the reasoning as an `AgentThoughtChunk` and then the commentary as an
+  `AgentMessageChunk` before executing those tools. Exposed reasoning and
+  commentary on the final buffered provider response are relayed in the same
+  order, and a cancelled turn relays neither. Debug logs record
+  `Sending provider reasoning to ACP client`,
+  `Sending assistant commentary to ACP client`, and
+  `Tool-bearing provider response carried no assistant commentary or reasoning`;
+  they log byte counts and tool metadata only, never the text content.
 - **Plan tracking** – VT Code emits ACP plans from successful `task_tracker`
   results and replays the persisted checklist when a session is loaded or
   resumed and at the start of a later prompt. It does not synthesize a plan
@@ -638,14 +641,14 @@ and `[history]` settings do not control ACP audit output.
 
 ## Debugging and verification
 
-| Symptom                                 | Resolution                                                                                                                                                                                                                                                                                                                                          |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Only the stdio transport is supported` | Ensure `transport = "stdio"` in `vtcode.toml`.                                                                                                                                                                                                                                                                                                      |
-| Empty responses in Zed                  | Confirm ACP env vars are present in the `env` map and that ACP is enabled in `vtcode.toml`.                                                                                                                                                                                                                                                         |
-| `read_file` returns placeholders        | Validate the referenced URI is accessible from Zed's workspace.                                                                                                                                                                                                                                                                                     |
-| Tool calls report "Unsupported tool"    | Disable the tool bridge or switch to a model that supports function calling. VT Code emits a reasoning notice when the downgrade occurs.                                                                                                                                                                                                            |
-| Missing thought traces in Zed           | Enable debug logging and inspect whether VT Code reports `Sending provider reasoning to ACP client` or `Provider response did not include exposed reasoning for ACP`. The latter means the provider response exposed no reasoning; verify that the selected provider/model and API format return reasoning. Neither message logs reasoning content. |
-| Sessions cancel unexpectedly            | Inspect VT Code logs (and Zed's ACP logs) for cancellations triggered by the client.                                                                                                                                                                                                                                                                |
+| Symptom                                     | Resolution                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Only the stdio transport is supported`     | Ensure `transport = "stdio"` in `vtcode.toml`.                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Empty responses in Zed                      | Confirm ACP env vars are present in the `env` map and that ACP is enabled in `vtcode.toml`.                                                                                                                                                                                                                                                                                                                                                                      |
+| `read_file` returns placeholders            | Validate the referenced URI is accessible from Zed's workspace.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Tool calls report "Unsupported tool"        | Disable the tool bridge or switch to a model that supports function calling. VT Code emits a reasoning notice when the downgrade occurs.                                                                                                                                                                                                                                                                                                                         |
+| Missing thought or commentary traces in Zed | Enable debug logging and inspect whether VT Code reports `Sending provider reasoning to ACP client`, `Sending assistant commentary to ACP client`, or `Tool-bearing provider response carried no assistant commentary or reasoning`. The last means a tool-bearing response exposed neither channel; verify that the selected provider/model and API format return reasoning and assistant content. These messages log byte counts only, never the text content. |
+| Sessions cancel unexpectedly                | Inspect VT Code logs (and Zed's ACP logs) for cancellations triggered by the client.                                                                                                                                                                                                                                                                                                                                                                             |
 
 ## Next steps
 

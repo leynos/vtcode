@@ -33,11 +33,18 @@ pub(in crate::zed::agent::handlers) async fn finish_failed_provider_turn(
 ) -> Result<PromptResponse, SdkError> {
     let IncompleteProviderTurn { message, visible_update, response } =
         IncompleteProviderTurn::from_failure(&turn.assistant_message, &turn.assistant_reasoning, error);
-    drop(
-        turn.agent
-            .send_update(&turn.args.session_id, acp::SessionUpdate::AgentMessageChunk(text_chunk(visible_update)))
-            .await,
-    );
+    if let Err(error) = turn
+        .agent
+        .send_update(&turn.args.session_id, acp::SessionUpdate::AgentMessageChunk(text_chunk(visible_update)))
+        .await
+    {
+        warn!(
+            session_id = %turn.args.session_id,
+            update_kind = "agent_message_chunk",
+            error = %error,
+            "Failed to send assistant update to ACP client"
+        );
+    }
     push_session_message(&turn.agent, &turn.session, &turn.args.session_id, message)?;
     persist_session_checkpoint(&turn.agent, &turn.session, "incomplete_provider_turn").await;
     warn!(

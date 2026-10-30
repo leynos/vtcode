@@ -16,7 +16,6 @@ mod output;
 mod provider_context;
 mod streaming;
 
-pub(super) use buffered::response_reasoning_update;
 pub(super) use cancelled::{finish_cancelled_output, finish_failed_or_cancelled_output};
 pub(super) use finish::{
     finish_failed_output, finish_failed_provider_turn, persist_session_checkpoint, require_session_checkpoint,
@@ -150,6 +149,7 @@ pub(super) struct PromptExecution {
     /// that ends without visible assistant content is a failure, not a silent
     /// `EndTurn`.
     assistant_emitted: bool,
+    provider_iteration: usize,
     stop_hook_active: bool,
     stop_hook_checked: bool,
 }
@@ -188,6 +188,21 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
     info!(session_id = %session_id, tool_call_count, tool_loop_count = *tool_loop_count,
           tool_recovery_outcome = "placeholders_staged", "ACP tool recovery placeholders staged");
     require_session_checkpoint(agent, session, "assistant_tool_calls_write_ahead").await?;
+
+    if !streamed && !session.cancellation.is_cancelled() {
+        let loop_iteration = *tool_loop_count;
+        for failure in agent
+            .send_assistant_updates(session_id, loop_iteration, assistant_message, assistant_reasoning, tool_call_count)
+            .await
+        {
+            warn!(
+                session_id = %session_id,
+                update_kind = failure.kind.as_str(),
+                error = %failure.error,
+                "Failed to send assistant update to ACP client"
+            );
+        }
+    }
 
     let tool_results = match agent.execute_tool_calls(session, session_id, tool_calls).await {
         Ok(results) => results,
@@ -240,6 +255,7 @@ async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecuti
         assistant_message: String::with_capacity(4096),
         assistant_reasoning: String::with_capacity(2048),
         assistant_emitted: false,
+        provider_iteration: 0,
         stop_hook_active: false,
         stop_hook_checked: false,
     })

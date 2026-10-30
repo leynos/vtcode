@@ -21,25 +21,38 @@ impl PromptExecution {
         self.finish_assistant_turn(stop_reason).await
     }
 
-    /// Emits a buffered final chunk when the client has not seen the draft,
-    /// commits the assistant message to durable history, and enforces the
-    /// content-or-error rule for the turn.
-    async fn finish_assistant_turn(self, stop_reason: acp::StopReason) -> Result<PromptResponse, SdkError> {
+    /// Relays a buffered final draft the client has not seen, commits the
+    /// assistant message to durable history, and enforces the content-or-error
+    /// rule for the turn.
+    async fn finish_assistant_turn(mut self, stop_reason: acp::StopReason) -> Result<PromptResponse, SdkError> {
+        let has_assistant_output = !self.assistant_message.is_empty() || !self.assistant_reasoning.is_empty();
         let mut assistant_emitted = self.assistant_emitted;
+        if has_assistant_output && !assistant_emitted && should_emit_buffered_final_chunk(self.allow_streaming) {
+            for failure in self
+                .agent
+                .send_assistant_updates(
+                    &self.args.session_id,
+                    self.provider_iteration,
+                    &self.assistant_message,
+                    &self.assistant_reasoning,
+                    0,
+                )
+                .await
+            {
+                warn!(
+                    session_id = %self.args.session_id,
+                    update_kind = failure.kind.as_str(),
+                    error = %failure.error,
+                    "Failed to send assistant update to ACP client"
+                );
+            }
+            // Thought chunks do not satisfy the content rule; only a delivered
+            // commentary chunk makes the turn visible to the client.
+            assistant_emitted |= !self.assistant_message.is_empty();
+        }
         if self.assistant_message.is_empty() {
             require_assistant_content(stop_reason, assistant_emitted)?;
             return Ok(PromptResponse::new(stop_reason));
-        }
-        if !assistant_emitted && should_emit_buffered_final_chunk(self.allow_streaming) {
-            drop(
-                self.agent
-                    .send_update(
-                        &self.args.session_id,
-                        acp::SessionUpdate::AgentMessageChunk(text_chunk(self.assistant_message.clone())),
-                    )
-                    .await,
-            );
-            assistant_emitted = true;
         }
         let mut completed_message = Message::assistant(self.assistant_message);
         if !self.assistant_reasoning.is_empty() {

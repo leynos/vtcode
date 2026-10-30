@@ -1,7 +1,9 @@
 //! Verifies ACP prompt streaming, partial-turn recovery, compaction, and reasoning projection.
 use super::*;
+use crate::zed::agent::updates::assistant_updates;
 use agent_client_protocol::schema::v1::{InitializeRequest, LoadSessionRequest, NewSessionRequest};
 
+mod buffered_tool_commentary;
 mod compaction;
 mod partial_stream;
 
@@ -37,8 +39,9 @@ fn assistant_tool_call_continuation_preserves_signed_reasoning_details() {
     assert_eq!(archived["reasoning_details"][2], serde_json::json!(raw_reasoning));
 }
 #[test]
-fn reasoning_remains_visible_when_response_requests_a_tool() {
+fn reasoning_and_commentary_remain_visible_when_response_requests_a_tool() {
     let response = LLMResponse {
+        content: Some("Checking the call graph.".to_string()),
         reasoning: Some("Inspect the call graph before editing.".to_string()),
         tool_calls: Some(vec![vtcode_core::llm::provider::ToolCall {
             id: "call-1".to_string(),
@@ -50,13 +53,25 @@ fn reasoning_remains_visible_when_response_requests_a_tool() {
         ..LLMResponse::default()
     };
 
-    let Some(acp::SessionUpdate::AgentThoughtChunk(chunk)) = response_reasoning_update(&response) else {
-        panic!("reasoning should produce an ACP thought update");
+    let updates = assistant_updates(
+        response.content.as_deref().unwrap_or_default(),
+        response.reasoning.as_deref().unwrap_or_default(),
+    );
+    assert_eq!(updates.len(), 2, "a tool-bearing response must expose both channels");
+    let acp::SessionUpdate::AgentThoughtChunk(thought) = &updates[0] else {
+        panic!("reasoning should produce the first ACP thought update");
     };
-    let acp::ContentBlock::Text(text) = chunk.content else {
+    let acp::ContentBlock::Text(thought_text) = &thought.content else {
         panic!("reasoning update should contain text");
     };
-    assert_eq!(text.text, "Inspect the call graph before editing.");
+    assert_eq!(thought_text.text, "Inspect the call graph before editing.");
+    let acp::SessionUpdate::AgentMessageChunk(message) = &updates[1] else {
+        panic!("commentary should produce an ACP message update");
+    };
+    let acp::ContentBlock::Text(message_text) = &message.content else {
+        panic!("commentary update should contain text");
+    };
+    assert_eq!(message_text.text, "Checking the call graph.");
 }
 
 #[tokio::test]

@@ -1,34 +1,4 @@
-//! Handles complete provider responses, including reasoning updates and buffered tool calls.
-pub(in crate::zed::agent::handlers) fn response_reasoning_update(response: &LLMResponse) -> Option<acp::SessionUpdate> {
-    response
-        .reasoning
-        .as_deref()
-        .filter(|reasoning| !reasoning.is_empty())
-        .map(|reasoning| acp::SessionUpdate::AgentThoughtChunk(text_chunk(reasoning.to_string())))
-}
-
-async fn emit_response_reasoning(agent: &ZedAgent, session_id: &acp::SessionId, response: &LLMResponse) {
-    let has_tool_calls = response.tool_calls.as_ref().is_some_and(|calls| !calls.is_empty());
-    let Some(update) = response_reasoning_update(response) else {
-        debug!(
-            %session_id,
-            has_tool_calls,
-            "Provider response did not include exposed reasoning for ACP"
-        );
-        return;
-    };
-
-    debug!(
-        %session_id,
-        reasoning_bytes = response.reasoning.as_ref().map_or(0, String::len),
-        has_tool_calls,
-        "Sending provider reasoning to ACP client"
-    );
-    if let Err(error) = agent.send_update(session_id, update).await {
-        warn!(%session_id, %error, "Failed to send provider reasoning to ACP client");
-    }
-}
-
+//! Handles complete provider responses and buffered tool calls.
 use super::super::provider::*;
 use super::*;
 
@@ -115,6 +85,7 @@ async fn next_buffered_generation(
         store_buffered_output(turn, output);
         return Ok(BufferedGenerationStep::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)));
     }
+    turn.provider_iteration = turn.provider_iteration.saturating_add(1);
     let response = match generate_buffered_response(turn, retry_observed_at).await? {
         BufferedGenerationOutcome::Response(response) => *response,
         BufferedGenerationOutcome::Cancelled => {
@@ -133,11 +104,6 @@ async fn next_buffered_generation(
         &turn.session_model,
         &response,
     );
-    if turn.session.cancellation.is_cancelled() {
-        store_buffered_output(turn, output);
-        return Ok(BufferedGenerationStep::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)));
-    }
-    emit_response_reasoning(&turn.agent, &turn.args.session_id, &response).await;
     if turn.session.cancellation.is_cancelled() {
         store_buffered_output(turn, output);
         return Ok(BufferedGenerationStep::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)));
@@ -217,7 +183,7 @@ async fn execute_buffered_tool_calls(
         session_id: &turn.args.session_id,
         tool_calls: &tool_calls,
         assistant_message: response.content.as_deref().unwrap_or_default(),
-        assistant_reasoning: "",
+        assistant_reasoning: response.reasoning.as_deref().unwrap_or_default(),
         reasoning_details: None,
         tool_loop_count,
         streamed: false,
@@ -253,6 +219,9 @@ async fn process_buffered_response(
     output: &mut ProviderOutput,
     response: LLMResponse,
 ) -> Result<BufferedResponseOutcome, SdkError> {
+    if let Some(reasoning) = response.reasoning {
+        output.assistant_reasoning = reasoning;
+    }
     if let Some(content) = response.content {
         if !content.is_empty() && turn.session.cancellation.is_cancelled() {
             return Ok(BufferedResponseOutcome::Finished(acp::StopReason::Cancelled));
