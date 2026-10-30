@@ -110,6 +110,11 @@ fn report_session_runtime_failure(error: &anyhow::Error) -> String {
 
 mod compaction;
 pub(crate) mod handlers;
+mod lody;
+mod lody_management;
+#[cfg(test)]
+mod lody_tests;
+mod lody_usage;
 mod prompt;
 mod session_state;
 mod task_lifecycle;
@@ -385,7 +390,12 @@ impl ZedAgent {
             .workspace_runtime()
             .context("reading ACP session workspace runtime for subagent controller")?;
         Ok(match workspace_runtime {
-            Some(runtime) => runtime.local_tool_registry.subagent_controller(),
+            Some(_) => session
+                .data
+                .lock()
+                .map_err(|error| super::types::lock_poison_error("reading session subagent controller", error))?
+                .subagent_controller
+                .clone(),
             None => self.local_tool_registry.subagent_controller(),
         })
     }

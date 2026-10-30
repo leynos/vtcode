@@ -73,6 +73,7 @@ async fn streamed_reasoning_is_emitted_as_an_acp_thought_chunk_over_wire() {
         "wire-test",
         Arc::new(move || {
             Box::new(StreamToolThenAnswerProvider {
+                emit_usage: false,
                 calls: Arc::clone(&factory_calls),
                 requests: Arc::clone(&factory_requests),
                 tool_name: "list_files",

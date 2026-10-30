@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+import json
 from pathlib import Path
 import sys
 
@@ -28,3 +29,36 @@ def test_override_requires_every_configured_schema_field() -> None:
 
     with pytest.raises(RuntimeError, match=re.escape("acp.audit.max_files")):
         generator.apply_reference_overrides(entries)
+
+
+def test_long_default_remains_parseable_json() -> None:
+    value = [f"entry-{index}-with-enough-text-to-exceed-the-old-limit" for index in range(4)]
+
+    rendered = generator.format_default(value)
+
+    assert json.loads(rendered) == value
+
+
+def test_render_markdown_escapes_pipes_inside_backtick_safe_code_span() -> None:
+    entry = generator.FieldEntry(
+        path="example.path",
+        type_name="string",
+        required=False,
+        default="value|with`tick",
+        description="Example value.",
+    )
+
+    rows = [
+        line
+        for line in generator.render_markdown([entry]).splitlines()
+        if line.startswith("| `example.path`")
+    ]
+
+    assert rows == [
+        "| `example.path` | `string` | no | ``value\\|with`tick`` | Example value. |"
+    ]
+
+
+if __name__ == "__main__":
+    test_long_default_remains_parseable_json()
+    test_render_markdown_escapes_pipes_inside_backtick_safe_code_span()

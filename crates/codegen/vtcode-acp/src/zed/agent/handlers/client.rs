@@ -59,7 +59,13 @@ async fn handle_initialize(
             INITIALIZE_VERSION_MISMATCH_LOG
         );
     }
-    let mut capabilities = advertised_agent_capabilities();
+    let controller = agent.local_tool_registry.subagent_controller();
+    let mut capabilities = advertised_agent_capabilities(
+        controller.is_some(),
+        controller
+            .as_deref()
+            .is_some_and(vtcode_core::subagents::SubagentController::background_subagents_enabled),
+    );
     capabilities.prompt_capabilities.embedded_context = true;
     capabilities.prompt_capabilities.image = true;
     capabilities.prompt_capabilities.audio = true;
@@ -74,13 +80,20 @@ async fn handle_initialize(
     request_cx.respond(response)
 }
 
-pub(super) fn advertised_agent_capabilities() -> acp::AgentCapabilities {
+pub(super) fn advertised_agent_capabilities(
+    has_subagent_controller: bool,
+    background_enabled: bool,
+) -> acp::AgentCapabilities {
     let mut capabilities = acp::AgentCapabilities::default();
     capabilities.load_session = true;
     capabilities.session_capabilities = acp::SessionCapabilities::new()
         .list(acp::SessionListCapabilities::new())
         .resume(acp::SessionResumeCapabilities::new())
         .close(acp::SessionCloseCapabilities::new());
+    super::super::lody_usage::add_lody_usage_capability(&mut capabilities);
+    if has_subagent_controller {
+        super::super::lody::add_lody_subagent_management_capability(&mut capabilities, background_enabled);
+    }
     capabilities
 }
 

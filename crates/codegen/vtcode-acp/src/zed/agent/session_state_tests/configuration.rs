@@ -25,6 +25,7 @@ async fn build_session_handle_falls_back_for_unknown_metadata_primary_agent() {
     let handle = agent.build_session_handle(
         thread,
         SessionHandleBootstrap {
+            subagent_controller: None,
             session_id: acp::SessionId::new("session-1"),
             archive: None,
             trigger: SessionStartTrigger::NewSession,
@@ -142,7 +143,7 @@ async fn session_optional_state_accessors_preserve_absent_state() {
 async fn session_subagent_controller_stays_with_its_workspace_runtime() {
     let launch_workspace = TempDir::new().unwrap();
     let session_workspace = TempDir::new().unwrap();
-    let mut vt_config = vtcode_core::config::VTCodeConfig::default();
+    let mut vt_config = VTCodeConfig::default();
     vt_config.subagents.enabled = true;
     vt_config.subagents.background.auto_restore = false;
     let agent = build_agent_with_vt_config(launch_workspace.path(), "duck", Some(&vt_config)).await;
@@ -191,6 +192,7 @@ async fn session_subagent_controller_stays_with_its_workspace_runtime() {
     let session = agent.build_session_handle(
         thread,
         SessionHandleBootstrap {
+            subagent_controller: None,
             session_id: acp::SessionId::new("session-without-workspace-controller"),
             archive: None,
             trigger: SessionStartTrigger::NewSession,

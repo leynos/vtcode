@@ -80,6 +80,7 @@ async fn optional_setup_reports_subagents_disabled_by_provider_concurrency_polic
     .expect("valid custom provider configuration");
 
     let outcome = attach_acp_subagent_controller(AcpSubagentControllerSetup {
+        owner_session_id: None,
         registry: &registry,
         agent_config: &core_config,
         custom_providers: &[provider],
@@ -106,6 +107,7 @@ async fn optional_setup_reports_subagent_initialization_failure() {
     let core_config = core_agent_config(temp.path());
 
     let outcome = attach_acp_subagent_controller(AcpSubagentControllerSetup {
+        owner_session_id: None,
         registry: &registry,
         agent_config: &core_config,
         custom_providers: &[],

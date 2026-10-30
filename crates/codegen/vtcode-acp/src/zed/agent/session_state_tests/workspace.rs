@@ -646,7 +646,7 @@ async fn new_session_restores_matching_workspace_hook_approval_before_session_st
     env_guard.set_var("VTCODE_CONFIG", dot_config.path().join("config").to_string_lossy().into_owned());
     vtcode_core::utils::dot_config::initialize_dot_folder().await.unwrap();
 
-    let mut vt_config = vtcode_core::config::VTCodeConfig::default();
+    let mut vt_config = VTCodeConfig::default();
     vt_config
         .hooks
         .lifecycle
@@ -743,4 +743,59 @@ async fn resume_archive_is_disabled_when_history_persistence_is_disabled() {
         .await;
 
     assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn new_session_does_not_restore_a_background_record_owned_by_another_session() {
+    let temp = TempDir::new().unwrap();
+    let state_dir = temp.path().join(".vtcode/state");
+    fs::create_dir_all(&state_dir).unwrap();
+    fs::write(
+        state_dir.join("background_subagents.json"),
+        serde_json::json!({
+            "records": [{
+                "id": "foreign-worker",
+                "agent_name": "worker",
+                "display_label": "worker",
+                "description": "worker",
+                "source": "builtin",
+                "color": null,
+                "owner_session_id": "prior-session",
+                "session_id": "child-session",
+                "exec_session_id": "exec-session",
+                "desired_enabled": true,
+                "status": "stopped",
+                "created_at": "2026-08-28T00:00:00Z",
+                "updated_at": "2026-08-28T00:00:00Z",
+                "started_at": null,
+                "ended_at": null,
+                "pid": null,
+                "prompt": "work",
+                "summary": null,
+                "error": null,
+                "archive_path": null,
+                "transcript_path": null,
+                "max_turns": null,
+                "model_override": null,
+                "reasoning_override": null,
+                "restart_attempts": 0
+            }]
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let mut vt_config = VTCodeConfig::default();
+    vt_config.subagents.enabled = true;
+    vt_config.subagents.background.enabled = true;
+    vt_config.subagents.background.auto_restore = true;
+    let agent = build_agent_with_vt_config(temp.path(), "duck", Some(&vt_config)).await;
+    let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
+    let session = agent.session_handle(&response.session_id).unwrap().unwrap();
+    let controller = agent
+        .session_subagent_controller(&session)
+        .unwrap()
+        .expect("per-session subagent controller");
+
+    assert!(controller.background_status_entries().await.is_empty());
 }

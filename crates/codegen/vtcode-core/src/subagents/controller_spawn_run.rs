@@ -9,9 +9,9 @@ use futures::future::{BoxFuture, select_all};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::{Notify, RwLock};
+use std::sync::{Arc, OnceLock};
+use tokio::sync::{Mutex, Notify, RwLock};
 
 use crate::config::VTCodeConfig;
 use crate::config::types::ReasoningEffortLevel;
@@ -594,7 +594,15 @@ impl SubagentController {
                 .map(BackgroundRecord::into_persisted)
                 .collect()
         };
-        persist_background_state(&self.config.workspace_root, records).await
+        let _guard = background_state_persistence_lock().lock().await;
+        if let Some(owner_session_id) = self.background_owner_session_id.as_deref() {
+            let mut persisted_records = load_background_state(&self.config.workspace_root).await?.records;
+            persisted_records.retain(|record| record.owner_session_id.as_deref() != Some(owner_session_id));
+            persisted_records.extend(records);
+            persist_background_state(&self.config.workspace_root, persisted_records).await
+        } else {
+            persist_background_state(&self.config.workspace_root, records).await
+        }
     }
 
     pub(super) async fn find_spec(&self, candidate: &str) -> Option<SubagentSpec> {
@@ -909,6 +917,11 @@ fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync:
         waiter.as_mut().enable();
     }
     waiters
+}
+
+static BACKGROUND_STATE_PERSISTENCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+fn background_state_persistence_lock() -> &'static Mutex<()> {
+    BACKGROUND_STATE_PERSISTENCE_LOCK.get_or_init(|| Mutex::new(()))
 }
 
 #[cfg(test)]
