@@ -1,15 +1,17 @@
+//! Tests subagent configuration, execution, lifecycle, and background task behavior.
 use super::*;
 use crate::config::constants::models;
 use crate::config::constants::tools;
 use crate::config::models::{ModelId, Provider};
 use crate::llm::provider::ToolDefinition;
+use crate::llm::provider::{Message, MessageContent, MessageRole};
 use crate::tools::exec_session::ExecSessionManager;
 use crate::tools::registry::PtySessionManager;
 use anyhow::{Result, anyhow};
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::sync::Notify;
@@ -85,6 +87,10 @@ fn test_child_record(
         child_controller,
     }
 }
+
+mod invocation_context_tests;
+mod progress_observer_tests;
+mod spawn_custom_tests;
 
 fn write_test_background_subagent(workspace_root: &std::path::Path) {
     let agent_dir = workspace_root.join(".vtcode/agents");
@@ -1394,6 +1400,7 @@ async fn spawn_background_subprocess_returns_active_record_when_settings_match()
                 source: spec.source.label(),
                 color: spec.color.clone(),
                 session_id: "session-background-demo".to_string(),
+                parent_session_id: "parent-session".to_string(),
                 exec_session_id: "exec-session-background-demo".to_string(),
                 desired_enabled: true,
                 status: BackgroundSubprocessStatus::Running,
@@ -1455,6 +1462,7 @@ async fn spawn_background_subprocess_rejects_conflicting_active_record_settings(
                 source: spec.source.label(),
                 color: spec.color.clone(),
                 session_id: "session-background-demo".to_string(),
+                parent_session_id: "parent-session".to_string(),
                 exec_session_id: "exec-session-background-demo".to_string(),
                 desired_enabled: true,
                 status: BackgroundSubprocessStatus::Running,
@@ -1560,39 +1568,6 @@ async fn spawn_captures_runtime_config_before_first_child_turn() {
     assert_eq!(snapshot.id, spawned.id);
     assert!(!snapshot.effective_config.agent.default_model.trim().is_empty());
 
-    controller.close(&spawned.id).await.expect("close");
-}
-
-#[tokio::test]
-async fn spawn_custom_uses_explicit_spec_without_delegation_hints() {
-    let temp = TempDir::new().expect("tempdir");
-    let controller =
-        SubagentController::new(test_controller_config(temp.path().to_path_buf(), VTCodeConfig::default()))
-            .await
-            .expect("controller");
-
-    let mut spec = vtcode_config::builtin_subagents()
-        .into_iter()
-        .find(|spec| spec.name == "explorer")
-        .expect("explorer");
-    spec.name = "init-grounding-explorer".to_string();
-    spec.description = "VT Code /init grounding explorer.".to_string();
-    spec.source = SubagentSource::ProjectVtcode;
-
-    let spawned = controller
-        .spawn_custom(
-            spec,
-            SpawnAgentRequest {
-                message: Some("Inspect the repository and report agent-facing findings.".to_string()),
-                max_turns: Some(2),
-                ..SpawnAgentRequest::default()
-            },
-        )
-        .await
-        .expect("spawn");
-
-    assert_eq!(spawned.agent_name, "init-grounding-explorer");
-    assert_eq!(spawned.source, SubagentSource::ProjectVtcode.label());
     controller.close(&spawned.id).await.expect("close");
 }
 
@@ -1931,7 +1906,7 @@ async fn close_cascades_to_child_scoped_grandchildren() {
             ),
         );
     }
-    let child_controller = std::sync::Arc::new(child_controller);
+    let child_controller = Arc::new(child_controller);
 
     // Register the child on the parent controller with the child-scoped
     // controller attached, then close it and assert the grandchild is closed.
@@ -2013,8 +1988,8 @@ async fn close_does_not_affect_sibling_grandchildren() {
             ),
         );
     }
-    let controller_a = std::sync::Arc::new(controller_a);
-    let controller_b = std::sync::Arc::new(controller_b);
+    let controller_a = Arc::new(controller_a);
+    let controller_b = Arc::new(controller_b);
 
     {
         let mut state = parent.state.write().await;
@@ -2153,7 +2128,7 @@ async fn resume_restores_closed_grandchildren() {
             ),
         );
     }
-    let child_controller = std::sync::Arc::new(child_controller);
+    let child_controller = Arc::new(child_controller);
     {
         let mut state = parent.state.write().await;
         state.children.insert(
@@ -2241,8 +2216,8 @@ async fn resume_does_not_affect_sibling_grandchildren() {
             ),
         );
     }
-    let controller_a = std::sync::Arc::new(controller_a);
-    let controller_b = std::sync::Arc::new(controller_b);
+    let controller_a = Arc::new(controller_a);
+    let controller_b = Arc::new(controller_b);
     {
         let mut state = parent.state.write().await;
         state.children.insert(

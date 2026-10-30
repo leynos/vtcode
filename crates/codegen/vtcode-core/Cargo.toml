@@ -44,6 +44,7 @@ tokio = { workspace = true, features = [
 tokio-util = { workspace = true, features = ["codec"] }
 async-process = "2.2"
 futures = { workspace = true }
+fs2 = { workspace = true }
 async-stream = "0.3"
 base64 = { workspace = true }
 glob = "0.3"
@@ -80,7 +81,7 @@ dirs = { workspace = true }
 # YAML support
 serde-saphyr = { workspace = true }
 # Zip support for skill packaging
-zip = { version = "8.6", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.0", default-features = false, features = ["deflate"] }
 flate2 = "1.1"
 tar = "0.4"
 tracing = { workspace = true }

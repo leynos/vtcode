@@ -13,11 +13,47 @@ ecosystem-style project.
 
 For internal composition, prefer explicit provider selection over "clever"
 trait resolution when a boundary starts depending on many overlapping impls,
-associated types, or context-specific behavior. In practice, VT Code treats
+associated types, or context-specific behaviour. In practice, VT Code treats
 `HasComponent<Name>::Provider` as an elaborated dictionary: the context chooses
 the provider once, and blanket consumer traits delegate through that explicit
 selection. See `crates/codegen/vtcode-core/src/components.rs` and
 `crates/codegen/vtcode-core/src/llm/cgp.rs`.
+
+## Internal crate boundaries
+
+Workspace crates separate the main runtime responsibilities:
+
+- `vtcode-core` owns agent orchestration, tools, prompts, and runtime
+  integration.
+- `vtcode-llm` owns provider abstractions, clients, and streaming;
+  `vtcode-config` owns configuration loading and schema.
+- `vtcode-skills` owns skill discovery, loading, and validation;
+  `vtcode-memory` owns per-session event storage and derived queries.
+- `vtcode-exec-events` defines the shared `ThreadEvent` contract and ATIF
+  export; `vtcode-safety` owns command safety and sandboxing.
+
+Keep reusable logic in a narrow existing crate where it fits, and keep the
+runtime event contract in `vtcode-exec-events` rather than defining a parallel
+event type in a consumer crate.
+
+### ACP runtime boundary
+
+- `vtcode-core` defines the `AcpClientAdapter::serve` launch interface;
+  `vtcode-acp` implements the standard and Zed adapters. Its agent handlers map
+  ACP requests such as session creation, resume, and prompt, plus cancel
+  notifications, to runtime operations and send session updates to the client.
+- `SessionHandle` holds per-session state, cancellation, the thread handle, and
+  its archive. `SessionWorkspaceRuntime` groups the prompt, agent catalog, tool
+  registries, and permission prompter for a canonical workspace; the ACP agent
+  caches these runtimes by workspace.
+- ACP handlers drive protocol sequencing and checkpoint session snapshots at
+  lifecycle boundaries. Tool handlers request client permission before
+  dispatching local calls through the core tool registry, which applies its
+  execution policy and safety checks.
+- Core publishes sub-agent progress through `SubagentProgressObserver` using
+  `SubagentStatusEntry` and `BackgroundSubprocessEntry` snapshots without
+  ACP-specific payloads. The ACP task-lifecycle forwarder filters updates by
+  parent session and projects them into client extension notifications.
 
 ## Model + Harness
 
@@ -52,10 +88,13 @@ Harness primitives in VT Code map to the runtime like this:
   persisted `SessionMemoryEnvelope` is the harness working-memory artifact: it
   summarizes objective, constraints, touched files, grounded facts,
   verification status, verification TODOs, and delegated findings for resume
-  and summarized-fork handoff.
-- **Compaction / offloading**: split tool results, spool files, archive
-  transcripts, and provider-aware auto-compaction reduce context rot while
-  preserving recoverable state on disk. On VT Code's local compaction path,
+  and summarized-fork handoff. Compaction artifacts under `.vtcode/history/`
+  support summarization and working-memory recovery; they are not complete
+  resumable sessions.
+- **Compaction / offloading**: split tool results, spool files, and
+  provider-aware auto-compaction reduce context rot while preserving compaction
+  recovery state on disk. Durable session archives and checkpoints provide
+  resumable ACP/CLI sessions separately. On VT Code's local compaction path,
   older repeated single-file reads are deduplicated before summarization so the
   summary prompt keeps the newest copy and avoids re-injecting stale file
   payloads.
@@ -69,13 +108,16 @@ Harness primitives in VT Code map to the runtime like this:
   while durable `vtcode schedule` jobs persist definitions under the VT Code
   config/data directories and launch fresh `vtcode exec` runs through a local
   daemon.
-- **Traces / archives**: thread events, session archives, checkpoints, Open
-  Responses emission, ATIF trajectory export, and optional harness event logs
-  capture what happened for resume, audit, and downstream tooling. The
-  [ATIF](https://www.harborframework.com/docs/agents/trajectory-format) exporter
-  (`vtcode-exec-events::atif`) converts live `ThreadEvent` streams into the
-  standardized Agent Trajectory Interchange Format for SFT/RL pipelines,
-  debugging, and visualization.
+- **Session archives and traces**: durable session archives, checkpoints,
+  thread events, Open Responses emission, ATIF trajectory export, and optional
+  harness event logs capture what happened for resume and downstream tooling.
+  The [ATIF](https://www.harborframework.com/docs/agents/trajectory-format)
+  exporter (`vtcode-exec-events::atif`) converts live `ThreadEvent` streams
+  into the standardized Agent Trajectory Interchange Format for SFT/RL
+  pipelines, debugging, and visualization.
+- **Security auditing**: the opt-in ACP audit JSONL is a separate security
+  record. It stores tool-invocation metadata, status, timing, and hashes, not
+  conversation bodies, and is not a source for resume or compaction.
 
 `vtcode-exec-events::ThreadEvent` is the authoritative runtime event contract
 across exec mode, harness logs, and interactive lifecycle emission. Item
@@ -86,16 +128,16 @@ one-at-a-time only after a turn reaches an idle boundary.
 
 ### Prompt guidance boundaries
 
-VT Code separates universal runtime behavior from project-specific developer
+VT Code separates universal runtime behaviour from project-specific developer
 instructions:
 
 - The compiled, cache-stable guidance in
   `crates/codegen/vtcode-core/src/prompts/runtime_guidance.rs` applies to every
   user and every static prompt profile. It contains only concise user-facing
-  behavior and is capped before prompt assembly.
+  behaviour and is capped before prompt assembly.
 - `AGENTS.md`, `CLAUDE.md`, and `.vtcode/rules/` remain dynamically loaded
   project/user instruction maps. Their precedence, path scoping, exclusions,
-  and active-directory behavior are preserved by the instruction loader.
+  and active-directory behaviour are preserved by the instruction loader.
 - Workspace instruction content is user-controlled context, not a security
   boundary. It cannot replace command policy, sandbox checks, approvals, or
   correctness-critical validation implemented in code, schemas, tests, and
@@ -178,7 +220,7 @@ interoperability:
 1. **Strict Output Separation**: Data goes to `stdout`, diagnostics/logs go to
     `stderr`. This enables clean piping of machine-readable output.
 2. **Standard Argument Parsing**: Uses `clap` for POSIX/GNU compliance,
-    supporting standard flags and behavior.
+    supporting standard flags and behaviour.
 3. **Command Isolation**: Each sub-command (`ask`, `exec`, `chat`) is handled
     by a dedicated module in `src/cli/`, sharing core logic via `vtcode-core`.
 4. **Signal Handling**: Graceful handling of `SIGINT`/`SIGTERM` to ensure
@@ -281,7 +323,7 @@ pub trait CacheableTool: Tool {
 
 - Advanced-profile public tool with one required literal `query` and optional
   `path`, `file_types`, `result_types`, and `max_results`.
-- Combines recognised definitions, exact syntactic usages, literal text, and
+- Combines recognized definitions, exact syntactic usages, literal text, and
   matching paths behind typed internal components.
 - Usage classification is syntactic and does not resolve references.
 - Each component is bounded. Results merge deterministically, truncate once,
@@ -296,7 +338,7 @@ pub trait CacheableTool: Tool {
    extension points so external integrations do not depend on compile-time impl
    slots in VT Code
 2. **Prefer Explicit Provider Dictionaries** - When internal Rust abstractions
-   become coherence-sensitive, move behavior behind context-selected providers
+   become coherence-sensitive, move behaviour behind context-selected providers
    instead of adding more blanket impl magic
 3. **Mode-based Execution** - Single tools support multiple execution modes
 4. **Simplicity First** - Prefer simple algorithms and control flow until real

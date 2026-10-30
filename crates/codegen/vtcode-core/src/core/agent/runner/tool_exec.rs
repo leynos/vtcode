@@ -1,3 +1,4 @@
+//! Executes prepared runner tool calls and records their runtime outcomes.
 use super::AgentRunner;
 use super::constants::{LOOP_THROTTLE_BASE_MS, LOOP_THROTTLE_MAX_MS};
 use super::tool_execution_guard::ToolExecutionGuard;
@@ -14,7 +15,7 @@ use crate::exec::events::ToolCallStatus;
 use crate::exec::events::ToolOutcome;
 use crate::exec::events::tool_outcome_from_status;
 use crate::llm::provider::ToolCall;
-use crate::tools::registry::{ToolErrorType, ToolExecutionError};
+use crate::tools::registry::{ToolErrorType, ToolExecutionError, with_tool_reentrancy_scope};
 use anyhow::Result;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -438,7 +439,7 @@ impl AgentRunner {
             let runner = self;
             let circuit_before = snapshot_circuit_diagnostics(runner, &name);
             let sem = semaphore.clone();
-            futures.push(async move {
+            futures.push(with_tool_reentrancy_scope(async move {
                 // Acquire a concurrency slot when the cap is in force.  The permit
                 // is held for the duration of tool execution and released on drop.
                 let _permit = if let Some(s) = sem {
@@ -468,7 +469,7 @@ impl AgentRunner {
                 let result = runner.execute_prepared_tool_internal(&prepared).await;
                 let duration_ms = _start.elapsed().as_millis() as u64;
                 (name, tool_call_id, args, tool_call_item, result, circuit_before, duration_ms)
-            });
+            }));
         }
 
         let results = join_all(futures).await;

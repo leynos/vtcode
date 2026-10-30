@@ -1,3 +1,4 @@
+//! Implements MCP client connections, provider lifecycle, and tool, prompt, and resource operations.
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
 use chrono::Utc;
@@ -7,8 +8,8 @@ use rustc_hash::FxHashMap;
 use serde_json::{Map, Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
-use tracing::{info, warn};
+use std::time::{Duration, Instant};
+use tracing::{Span, error, field, info, warn};
 use vtcode_commons::fs::{ensure_dir_exists, write_file_with_context};
 use vtcode_config::mcp::{McpAllowListConfig, McpClientConfig, McpProviderConfig, McpTransportConfig};
 
@@ -19,6 +20,146 @@ use super::{
 };
 use crate::connection_pool::McpConnectionPool;
 
+/// Stable outcome categories for one configured MCP provider startup attempt.
+///
+/// These categories are intentionally independent of provider names so they
+/// can be aggregated without creating high-cardinality metric labels.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum McpProviderStartupOutcome {
+    /// The provider connected, completed initialization, and loaded its tools.
+    Succeeded,
+    /// The provider transport could not be established.
+    ConnectionFailed,
+    /// Establishing the provider transport exceeded its deadline.
+    ConnectionTimedOut,
+    /// The provider handshake or MCP initialization failed.
+    InitializationFailed,
+    /// The provider handshake or MCP initialization exceeded its deadline.
+    InitializationTimedOut,
+    /// The attempt failed for another bounded startup reason.
+    OtherFailed,
+    /// The startup future was cancelled before it completed.
+    Cancelled,
+}
+
+impl McpProviderStartupOutcome {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Succeeded => "succeeded",
+            Self::ConnectionFailed => "connection_failed",
+            Self::ConnectionTimedOut => "connection_timeout",
+            Self::InitializationFailed => "initialization_failed",
+            Self::InitializationTimedOut => "initialization_timeout",
+            Self::OtherFailed => "other_failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+/// Stable outcome categories for one MCP client initialization call.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum McpClientStartupOutcome {
+    /// Every enabled provider initialized successfully.
+    Succeeded,
+    /// At least one provider initialized and at least one failed.
+    Partial,
+    /// No enabled provider initialized or client initialization failed.
+    Failed,
+    /// MCP startup was skipped because the client is disabled.
+    Disabled,
+    /// The initialization future was cancelled before it completed.
+    Cancelled,
+}
+
+impl McpClientStartupOutcome {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Succeeded => "succeeded",
+            Self::Partial => "partial",
+            Self::Failed => "failed",
+            Self::Disabled => "disabled",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+/// Driven port for reporting bounded MCP startup measurements.
+///
+/// Implementations receive counts, durations, and fixed outcome categories
+/// only. Provider names, task IDs, session IDs, and MCP payloads are not part
+/// of this metrics contract.
+pub trait McpStartupObserver: Send + Sync {
+    /// Record that an MCP client initialization attempt began.
+    fn client_startup_started(&self);
+
+    /// Record completion or cancellation of an MCP client initialization.
+    fn client_startup_finished(
+        &self,
+        outcome: McpClientStartupOutcome,
+        previous_active_provider_count: u64,
+        active_provider_count: u64,
+        duration_ms: u64,
+    );
+
+    /// Record the beginning of a single provider initialization attempt.
+    fn provider_startup_started(&self);
+
+    /// Record a single provider initialization outcome and duration.
+    fn provider_startup_finished(&self, outcome: McpProviderStartupOutcome, duration_ms: u64);
+}
+
+struct McpClientStartupAttempt {
+    observer: Option<Arc<dyn McpStartupObserver>>,
+    span: Span,
+    started_at: Instant,
+    previous_active_provider_count: usize,
+    finished: bool,
+}
+
+impl McpClientStartupAttempt {
+    fn new(observer: Option<Arc<dyn McpStartupObserver>>, span: Span, previous_active_provider_count: usize) -> Self {
+        if let Some(observer) = &observer {
+            observer.client_startup_started();
+        }
+        Self {
+            observer,
+            span,
+            started_at: Instant::now(),
+            previous_active_provider_count,
+            finished: false,
+        }
+    }
+
+    fn finish(&mut self, outcome: McpClientStartupOutcome, active_provider_count: usize) {
+        if self.finished {
+            return;
+        }
+        let duration_ms = elapsed_milliseconds(self.started_at);
+        let previous_active_provider_count = u64::try_from(self.previous_active_provider_count).unwrap_or(u64::MAX);
+        let active_provider_count = u64::try_from(active_provider_count).unwrap_or(u64::MAX);
+        let _ = self.span.record("startup_outcome", field::display(outcome.as_str()));
+        let _ = self.span.record("active_provider_count", active_provider_count);
+        let _ = self.span.record("elapsed_ms", duration_ms);
+        if let Some(observer) = &self.observer {
+            observer.client_startup_finished(
+                outcome,
+                previous_active_provider_count,
+                active_provider_count,
+                duration_ms,
+            );
+        }
+        self.finished = true;
+    }
+}
+
+impl Drop for McpClientStartupAttempt {
+    fn drop(&mut self) {
+        if !self.finished {
+            self.finish(McpClientStartupOutcome::Cancelled, self.previous_active_provider_count);
+        }
+    }
+}
+
 struct McpClientState {
     providers: FxHashMap<String, Arc<McpProvider>>,
     allowlist: McpAllowListConfig,
@@ -27,11 +168,16 @@ struct McpClientState {
     prompt_provider_index: FxHashMap<String, String>,
 }
 
+fn elapsed_milliseconds(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
 pub struct McpClient {
     config: McpClientConfig,
     state: RwLock<McpClientState>,
     elicitation_handler: Option<Arc<dyn McpElicitationHandler>>,
     sandbox_context: Option<McpSandboxContext>,
+    startup_observer: Option<Arc<dyn McpStartupObserver>>,
 }
 
 impl McpClient {
@@ -55,7 +201,13 @@ impl McpClient {
             }),
             elicitation_handler: None,
             sandbox_context,
+            startup_observer: None,
         }
+    }
+
+    /// Register a sink for bounded MCP startup measurements.
+    pub fn set_startup_observer(&mut self, observer: Arc<dyn McpStartupObserver>) {
+        self.startup_observer = Some(observer);
     }
 
     /// Register a handler used to satisfy elicitation requests from providers.
@@ -65,40 +217,101 @@ impl McpClient {
 
     /// Establish connections to all configured providers and complete the
     /// MCP handshake.
+    #[tracing::instrument(
+        name = "mcp_client_startup",
+        skip_all,
+        fields(
+            enabled_provider_count = field::Empty,
+            startup_outcome = field::Empty,
+            active_provider_count = field::Empty,
+            elapsed_ms = field::Empty
+        )
+    )]
     pub async fn initialize(&mut self) -> Result<()> {
+        let span = Span::current();
+        let previous_active_provider_count = self.state.read().providers.len();
+        let mut startup =
+            McpClientStartupAttempt::new(self.startup_observer.clone(), span.clone(), previous_active_provider_count);
         if !self.config.enabled {
-            info!("MCP client is disabled in configuration");
+            startup.finish(McpClientStartupOutcome::Disabled, previous_active_provider_count);
+            info!("MCP client initialization skipped because it is disabled");
             return Ok(());
         }
 
         info!("Initializing MCP client with {} configured providers", self.config.providers.len());
 
         let max_connections = self.config.max_concurrent_connections.max(1);
-        let pool = McpConnectionPool::new(max_connections, self.config.request_timeout_seconds);
+        let pool = McpConnectionPool::new(max_connections, self.config.request_timeout_seconds)
+            .with_startup_timeout(self.startup_timeout());
         let tool_timeout = Some(Duration::from_secs(self.config.request_timeout_seconds));
         let allowlist_snapshot = self.state.read().allowlist.clone();
 
         let provider_configs: Vec<McpProviderConfig> =
             self.config.providers.iter().filter(|c| c.enabled).cloned().collect();
+        let _ = span.record("enabled_provider_count", u64::try_from(provider_configs.len()).unwrap_or(u64::MAX));
+        let enabled_provider_names: Vec<String> =
+            provider_configs.iter().map(|provider| provider.name.clone()).collect();
 
-        let results = pool
-            .initialize_providers_parallel(
+        let results = match pool
+            .initialize_providers_parallel_with_summary(
                 provider_configs,
                 self.elicitation_handler.clone(),
                 self.sandbox_context.clone(),
                 tool_timeout,
                 &allowlist_snapshot,
+                self.startup_observer.clone(),
             )
             .await
-            .map_err(|e| anyhow::anyhow!("MCP connection pool initialization failed: {e}"))?;
+        {
+            Ok(results) => results,
+            Err(error) => {
+                startup.finish(McpClientStartupOutcome::Failed, previous_active_provider_count);
+                error!(
+                    outcome = "failed",
+                    enabled_provider_count = enabled_provider_names.len(),
+                    error = %error,
+                    "MCP provider initialization failed"
+                );
+                return Err(anyhow!("MCP connection pool initialization failed: {error}"));
+            }
+        };
 
         let mut initialized = FxHashMap::default();
-        for (name, provider) in results {
+        let failed_provider_count = results
+            .startup_samples
+            .iter()
+            .filter(|sample| sample.outcome != McpProviderStartupOutcome::Succeeded)
+            .count();
+        for (name, provider) in results.providers {
             drop(initialized.insert(name, provider));
         }
 
+        for provider_name in &enabled_provider_names {
+            if initialized.contains_key(provider_name) {
+                info!(provider = %provider_name, outcome = "initialized", "MCP provider initialization outcome");
+            } else {
+                warn!(provider = %provider_name, outcome = "failed", "MCP provider initialization outcome");
+            }
+        }
+
+        let outcome = if failed_provider_count == 0 {
+            McpClientStartupOutcome::Succeeded
+        } else if initialized.is_empty() {
+            McpClientStartupOutcome::Failed
+        } else {
+            McpClientStartupOutcome::Partial
+        };
+        let active_provider_count = initialized.len();
         self.state.write().providers = initialized;
-        info!("MCP client initialization complete. Active providers: {}", self.state.read().providers.len());
+        startup.finish(outcome, active_provider_count);
+        info!(
+            outcome = outcome.as_str(),
+            enabled_provider_count = enabled_provider_names.len(),
+            initialized_provider_count = active_provider_count,
+            failed_provider_count,
+            duration_ms = elapsed_milliseconds(startup.started_at),
+            "MCP client initialization complete"
+        );
 
         Ok(())
     }

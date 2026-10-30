@@ -330,7 +330,7 @@ smallvec = "1.13"
 self-replace = "1.5.0"
 flate2 = "1.1"
 tar = "0.4"
-zip = { version = "8.6", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.0", default-features = false, features = ["deflate"] }
 reqwest = { workspace = true }
 semver = { workspace = true }
 thiserror = { workspace = true }
@@ -514,6 +514,7 @@ path = "src/main.rs"
 [dev-dependencies]
 temp-env = { workspace = true }
 criterion = { workspace = true }
+rstest = { workspace = true }
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
 assert_fs = { workspace = true }

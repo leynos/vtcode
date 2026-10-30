@@ -155,6 +155,9 @@ See [CHANGELOG](../CHANGELOG.md) for complete details on these improvements.
 
 New to VT Code? Start with installation and basic usage:
 
+- [User Guide](./users-guide.md) - Quick links to canonical setup, ACP,
+  configuration, permissions, MCP, and storage guides.
+
 - **[Getting Started](./user-guide/getting-started.md)** - Installation,
   configuration, and first steps
 - **[Subagents](./user-guide/subagents.md)** - Create, configure, invoke, and
@@ -174,6 +177,8 @@ New to VT Code? Start with installation and basic usage:
   options
 - **[User Data Directories](./guides/user-data-directories.md)** - XDG/native
   storage paths, migration, permissions, and troubleshooting
+- **[Zed ACP Guide](./guides/zed-acp.md)** - Set up Zed's Agent Client Protocol
+  integration and understand ACP session behaviour
 - **[Status Line Configuration](./guides/status-line.md)** - Customize the
   inline prompt footer
 - **[Responses API & Reasoning Models](./guides/responses-api-reasoning.md)** -
@@ -184,6 +189,9 @@ New to VT Code? Start with installation and basic usage:
 ### For Developers
 
 Contributing to VT Code? Understand the architecture and development processes:
+
+- [Developer Guide](./developers-guide.md) - Quick links to architecture,
+  development workflows, ACP runtime, provider policy, and testing.
 
 - **[Architecture Overview](./ARCHITECTURE.md)** - System design and core
   components

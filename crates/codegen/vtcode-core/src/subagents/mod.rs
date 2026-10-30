@@ -1,3 +1,4 @@
+//! Coordinates subagent discovery, execution, background work, and the public controller API.
 #![allow(
     unused_imports,
     reason = "Intentional compatibility, platform, or test-only suppression."
@@ -33,8 +34,9 @@ pub use prompt::{
 pub use types::{
     BackgroundRecord, BackgroundSubprocessEntry, BackgroundSubprocessSnapshot, BackgroundSubprocessStatus, ChildRecord,
     ChildRunResult, ControllerState, PersistedBackgroundRecord, PersistedBackgroundState, SendInputRequest,
-    SpawnAgentRequest, SpawnBackgroundSubprocessRequest, StatusEntryBuilder, SubagentInputItem, SubagentStatus,
-    SubagentStatusEntry, SubagentThreadSnapshot, TurnDelegationHints,
+    SpawnAgentRequest, SpawnBackgroundSubprocessRequest, StatusEntryBuilder, SubagentInputItem,
+    SubagentInvocationContext, SubagentProgressObserver, SubagentStatus, SubagentStatusEntry, SubagentThreadSnapshot,
+    TurnDelegationHints,
 };
 
 // VerificationResult is defined in this module (below) and re-exported at the
@@ -53,6 +55,7 @@ pub(super) struct BackgroundLaunchOverrides {
     max_turns: Option<usize>,
     model_override: Option<String>,
     reasoning_override: Option<String>,
+    parent_session_id: Option<String>,
 }
 
 #[derive(Clone, Default)]
@@ -60,6 +63,8 @@ pub(super) struct PreparedDelegationContext {
     requested_agent: Option<String>,
     explicit_mentions: Vec<String>,
     explicit_request: bool,
+    parent_session_id: String,
+    parent_messages: Vec<Message>,
 }
 
 /// Result of a propose/verify cycle.
@@ -81,11 +86,12 @@ pub struct VerificationResult {
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::Utc;
 use futures::future::select_all;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Mutex, Weak};
 use tokio::sync::{Notify, RwLock};
 
 use crate::config::VTCodeConfig;
@@ -107,6 +113,19 @@ use self::constants::*;
 use self::discovery::discover_controller_subagents;
 use self::model::*;
 use vtcode_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
+
+tokio::task_local! {
+    static SUBAGENT_INVOCATION_CONTEXT: SubagentInvocationContext;
+}
+
+/// Runs one local tool invocation with parent-session context captured by its adapter.
+pub async fn with_subagent_invocation_context<F: Future>(context: SubagentInvocationContext, future: F) -> F::Output {
+    SUBAGENT_INVOCATION_CONTEXT.scope(context, future).await
+}
+
+fn current_subagent_invocation_context() -> Option<SubagentInvocationContext> {
+    SUBAGENT_INVOCATION_CONTEXT.try_with(Clone::clone).ok()
+}
 
 // ─── Controller Config ─────────────────────────────────────────────────────
 
@@ -146,6 +165,36 @@ pub struct SubagentControllerConfig {
     pub managed_background_runtime: bool,
 }
 
+#[derive(Default)]
+struct ProgressObserverRegistry {
+    next_id: AtomicU64,
+    observers: Mutex<BTreeMap<u64, RegisteredProgressObserver>>,
+}
+
+struct RegisteredProgressObserver {
+    parent_session_id: String,
+    observer: Arc<dyn SubagentProgressObserver>,
+}
+
+/// Keeps a progress observer registered with its subagent controller.
+///
+/// Dropping the registration detaches the observer. Adapters should retain it
+/// for exactly the lifetime in which they want to receive status snapshots.
+#[must_use = "dropping the registration detaches the progress observer"]
+pub struct SubagentProgressObserverRegistration {
+    registry: Weak<ProgressObserverRegistry>,
+    id: u64,
+}
+
+impl Drop for SubagentProgressObserverRegistration {
+    fn drop(&mut self) {
+        if let Some(registry) = self.registry.upgrade() {
+            let mut observers = registry.observers.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            observers.remove(&self.id);
+        }
+    }
+}
+
 /// Central controller that manages spawning, lifecycle, and state of all subagents.
 #[derive(Clone)]
 pub struct SubagentController {
@@ -160,6 +209,7 @@ pub struct SubagentController {
     /// state. Set only while `close_tree`/`signal_shutdown` are tearing a
     /// subtree down.
     closing: Arc<AtomicBool>,
+    progress_observers: Arc<ProgressObserverRegistry>,
 }
 
 impl SubagentController {
@@ -192,11 +242,12 @@ impl SubagentController {
                     discovered,
                     parent_messages: Vec::new(),
                     turn_hints: TurnDelegationHints::default(),
-                    children: std::collections::BTreeMap::new(),
+                    children: BTreeMap::new(),
                     background_children,
                 })),
                 shutdown_requested: Arc::new(AtomicBool::new(false)),
                 closing: Arc::new(AtomicBool::new(false)),
+                progress_observers: Arc::default(),
             })
         })
     }
@@ -250,7 +301,115 @@ impl SubagentController {
     /// Returns status entries for all tracked child subagents.
     pub async fn status_entries(&self) -> Vec<SubagentStatusEntry> {
         let state = self.state.read().await;
-        state.children.values().map(ChildRecord::build_status_entry).collect()
+        let invocation_owner = current_subagent_invocation_context().map(|context| context.parent_session_id);
+        state
+            .children
+            .values()
+            .filter(|record| invocation_owner.as_ref().is_none_or(|owner| &record.parent_thread_id == owner))
+            .map(ChildRecord::build_status_entry)
+            .collect()
+    }
+
+    pub(super) async fn ensure_child_owned_by_invocation(&self, target: &str) -> Result<()> {
+        let Some(context) = current_subagent_invocation_context() else {
+            return Ok(());
+        };
+        let state = self.state.read().await;
+        let record = state
+            .children
+            .get(target)
+            .ok_or_else(|| anyhow!("Unknown subagent id {target}"))?;
+        if record.parent_thread_id != context.parent_session_id {
+            bail!("Unknown subagent id {target}");
+        }
+        Ok(())
+    }
+
+    /// Registers an observer for lifecycle snapshots belonging to one parent
+    /// session. Separate registrations allow multiple adapters or sessions to
+    /// observe the same controller without replacing one another.
+    pub fn register_progress_observer(
+        &self,
+        parent_session_id: impl Into<String>,
+        observer: Arc<dyn SubagentProgressObserver>,
+    ) -> SubagentProgressObserverRegistration {
+        let id = self.progress_observers.next_id.fetch_add(1, Ordering::Relaxed);
+        let mut observers = self
+            .progress_observers
+            .observers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        observers.insert(
+            id,
+            RegisteredProgressObserver {
+                parent_session_id: parent_session_id.into(),
+                observer,
+            },
+        );
+        SubagentProgressObserverRegistration {
+            registry: Arc::downgrade(&self.progress_observers),
+            id,
+        }
+    }
+
+    fn with_progress_observers(&self, parent_session_id: &str, notify: impl Fn(&dyn SubagentProgressObserver)) {
+        let observers = {
+            let observers = self
+                .progress_observers
+                .observers
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            observers
+                .values()
+                .filter(|registration| registration.parent_session_id == parent_session_id)
+                .map(|registration| Arc::clone(&registration.observer))
+                .collect::<Vec<_>>()
+        };
+        for observer in observers {
+            notify(observer.as_ref());
+        }
+    }
+
+    pub(crate) async fn publish_subagent_progress(&self, task: SubagentStatusEntry) {
+        self.with_progress_observers(&task.parent_thread_id, |observer| observer.subagent_status_changed(task.clone()));
+    }
+
+    pub(crate) async fn publish_background_progress(&self, task: BackgroundSubprocessEntry) {
+        let parent_session_id = {
+            let state = self.state.read().await;
+            state
+                .background_children
+                .get(&task.id)
+                .map(|record| record.parent_session_id.clone())
+        };
+        if let Some(parent_session_id) = parent_session_id.filter(|owner| !owner.is_empty()) {
+            self.with_progress_observers(&parent_session_id, |observer| {
+                observer.background_status_changed(task.clone())
+            });
+        }
+    }
+
+    pub(crate) async fn publish_child_status(&self, child_id: &str) {
+        let entry = {
+            let state = self.state.read().await;
+            state.children.get(child_id).map(ChildRecord::build_status_entry)
+        };
+        if let Some(entry) = entry {
+            self.publish_subagent_progress(entry).await;
+        }
+    }
+
+    pub(crate) async fn publish_background_status(&self, record_id: &str) {
+        let entry = {
+            let state = self.state.read().await;
+            state
+                .background_children
+                .get(record_id)
+                .map(BackgroundRecord::build_status_entry)
+        };
+        if let Some(entry) = entry {
+            self.publish_background_progress(entry).await;
+        }
     }
 }
 

@@ -1,3 +1,4 @@
+//! Implements the LLM provider interface for the OpenAI provider and delegates request execution.
 use super::OpenAIProvider;
 use crate::client::LLMClient;
 use crate::provider::{self, LLMNormalizedStream};
@@ -36,6 +37,14 @@ impl provider::LLMProvider for OpenAIProvider {
             model
         };
 
+        if let Some(value) = self
+            .custom_provider_config
+            .as_ref()
+            .and_then(|config| config.resolved_profile(requested).supports_reasoning)
+        {
+            return value;
+        }
+
         // Codex-inspired robustness: Setting model_supports_reasoning to false
         // does NOT disable it for known reasoning models.
         models::openai::REASONING_MODELS.contains(&requested)
@@ -52,6 +61,14 @@ impl provider::LLMProvider for OpenAIProvider {
         } else {
             model
         };
+
+        if let Some(value) = self
+            .custom_provider_config
+            .as_ref()
+            .and_then(|config| config.resolved_profile(requested).supports_reasoning_effort)
+        {
+            return value;
+        }
 
         // Same robustness logic for reasoning effort
         models::openai::REASONING_MODELS.iter().any(|candidate| *candidate == requested)

@@ -14,6 +14,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 UNWRAP_EXPECT_RE = re.compile(r"\.(unwrap|expect)\s*\(")
+TEST_ROOT_DIRECTORIES = ("fuzz", "target", "tests")
+NESTED_TEST_DIRECTORIES = ("tests", "benches", "examples")
+TEST_SOURCE_SUFFIXES = ("_test.rs", "_tests.rs")
 
 
 @dataclass
@@ -60,18 +63,30 @@ def list_tracked_rust_files() -> list[Path]:
 
 def is_test_path(path: Path) -> bool:
     rel = path.relative_to(REPO_ROOT).as_posix()
+    path_parts = rel.split("/")
     return (
-        rel.startswith("fuzz/")
-        or rel.startswith("target/")
-        or rel.startswith("tests/")
-        or "/tests/" in rel
-        or "/benches/" in rel
-        or "/examples/" in rel
-        or rel.endswith("/tests.rs")
-        or rel.endswith("tests.rs")
-        or rel.endswith("_test.rs")
-        or rel.endswith("_tests.rs")
+        _is_test_tree_path(path_parts)
+        or _is_test_module_path(path_parts)
+        or _is_test_source_path(path_parts[-1])
     )
+
+
+def _is_test_tree_path(path_parts: list[str]) -> bool:
+    has_workspace_test_root = (
+        len(path_parts) > 1 and path_parts[0] in TEST_ROOT_DIRECTORIES
+    )
+    has_nested_test_directory = any(
+        directory in NESTED_TEST_DIRECTORIES for directory in path_parts[1:-1]
+    )
+    return has_workspace_test_root or has_nested_test_directory
+
+
+def _is_test_module_path(path_parts: list[str]) -> bool:
+    return any(part.endswith("_tests") for part in path_parts[:-1])
+
+
+def _is_test_source_path(filename: str) -> bool:
+    return filename == "tests.rs" or filename.endswith(TEST_SOURCE_SUFFIXES)
 
 
 def parse_allow_rules(path: Path) -> list[AllowRule]:

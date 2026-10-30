@@ -34,9 +34,9 @@ use crate::agent::runloop::unified::run_loop_context::{HarnessTurnState, RunLoop
 use crate::agent::runloop::unified::tool_call_safety::ToolCallSafetyValidator;
 use crate::agent::runloop::unified::turn::context::TurnLoopResult;
 use crate::agent::runloop::unified::turn::turn_loop_helpers::{
-    ToolLoopLimitAction, extract_turn_config, handle_steering_messages, initial_tool_loop_limit,
-    is_stale_approved_plan_pause_response, maybe_handle_planning_enter_trigger, maybe_handle_tool_loop_limit,
-    resolve_safety_tool_call_limits,
+    SafetyToolCallLimitOptions, ToolLoopLimitAction, extract_turn_config, handle_steering_messages,
+    initial_tool_loop_limit, is_stale_approved_plan_pause_response, maybe_handle_planning_enter_trigger,
+    maybe_handle_tool_loop_limit, resolve_safety_tool_call_limits,
 };
 
 #[path = "turn_loop/notifications.rs"]
@@ -724,8 +724,7 @@ pub(crate) async fn run_turn_loop(
     {
         let (max_per_turn, max_per_session) = resolve_safety_tool_call_limits(
             ctx.harness_state.max_tool_calls,
-            turn_config.max_session_turns,
-            ctx.is_planning_active(),
+            SafetyToolCallLimitOptions::for_turn(ctx.vt_cfg, turn_config.max_session_turns, ctx.is_planning_active()),
         );
         ctx.safety_validator.set_limits(max_per_turn, max_per_session);
         ctx.safety_validator.start_turn();
@@ -772,8 +771,10 @@ pub(crate) async fn run_turn_loop(
             current_max_tool_loops = current_max_tool_loops.max(turn_config.max_tool_loops);
             ctx.harness_state.max_tool_calls =
                 super::turn_loop_helpers::effective_max_tool_calls_for_turn(ctx.harness_state.max_tool_calls, true);
-            let (max_per_turn, max_per_session) =
-                resolve_safety_tool_call_limits(ctx.harness_state.max_tool_calls, turn_config.max_session_turns, true);
+            let (max_per_turn, max_per_session) = resolve_safety_tool_call_limits(
+                ctx.harness_state.max_tool_calls,
+                SafetyToolCallLimitOptions::for_turn(ctx.vt_cfg, turn_config.max_session_turns, true),
+            );
             ctx.safety_validator.set_limits(max_per_turn, max_per_session);
         }
 

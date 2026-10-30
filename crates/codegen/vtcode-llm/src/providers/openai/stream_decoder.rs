@@ -8,6 +8,8 @@
 //! Rig stream adapter preserves the same final `LLMResponse` and runtime event
 //! behaviour.
 
+use super::responses_api::parse_responses_payload;
+use super::streaming::OpenAIStreamTelemetry;
 use crate::error_display;
 use crate::provider;
 use crate::providers::shared::StreamTelemetry;
@@ -20,14 +22,67 @@ use async_stream::try_stream;
 use futures::StreamExt;
 use hashbrown::HashMap;
 use serde_json::{Value, json};
-use std::time::Instant;
-use vtcode_commons::model_family::find_family_for_model;
+use std::borrow::Cow;
 
-use super::responses_api::parse_responses_payload;
-use super::streaming::OpenAIStreamTelemetry;
+fn streaming_network_error(provider_name: &str, error: reqwest::Error) -> provider::LLMError {
+    crate::providers::error_handling::format_reqwest_network_error(provider_name, &error)
+}
 
-fn strip_reasoning_for_model(model: &str, mut response: provider::LLMResponse) -> provider::LLMResponse {
-    if !find_family_for_model(model).supports_reasoning_summaries {
+fn parse_stream_payload(payload: &str) -> Result<Value, provider::LLMError> {
+    serde_json::from_str(payload)
+        .map_err(|error| StreamAssemblyError::InvalidPayload(error.to_string()).into_llm_error("OpenAI"))
+}
+
+enum ParsedResponsesSseEvent {
+    Ignore,
+    Done,
+    Payload(Value),
+}
+
+fn parse_responses_sse_event(event: &str) -> Result<ParsedResponsesSseEvent, provider::LLMError> {
+    let Some(data_payload) = extract_data_payload(event) else {
+        return Ok(ParsedResponsesSseEvent::Ignore);
+    };
+    let trimmed_payload = data_payload.trim();
+    if trimmed_payload.is_empty() {
+        return Ok(ParsedResponsesSseEvent::Ignore);
+    }
+    if trimmed_payload == "[DONE]" {
+        return Ok(ParsedResponsesSseEvent::Done);
+    }
+
+    parse_stream_payload(trimmed_payload).map(ParsedResponsesSseEvent::Payload)
+}
+
+fn capture_chat_usage(payload: &mut Value, aggregator: &mut crate::providers::shared::StreamAggregator) {
+    if let Some(usage) = payload.get_mut("usage")
+        && let Ok(usage) = serde_json::from_value::<provider::Usage>(std::mem::take(usage))
+    {
+        aggregator.set_usage(usage);
+    }
+}
+
+fn parse_chat_stream_event(
+    event: &str,
+    termination: &mut ChatStreamTermination,
+) -> Result<Option<Value>, provider::LLMError> {
+    let Some(data_payload) = extract_data_payload(event) else {
+        return Ok(None);
+    };
+    let trimmed_payload = data_payload.trim();
+    if trimmed_payload.is_empty() {
+        return Ok(None);
+    }
+    if trimmed_payload == "[DONE]" {
+        termination.observe_done_frame();
+        return Ok(None);
+    }
+
+    parse_stream_payload(trimmed_payload).map(Some)
+}
+
+fn strip_reasoning(retain_reasoning: bool, mut response: provider::LLMResponse) -> provider::LLMResponse {
+    if !retain_reasoning {
         response.reasoning = None;
         response.reasoning_details = None;
     }
@@ -224,23 +279,22 @@ impl ResponsesToolCallState {
     }
 }
 
-pub(crate) fn create_chat_stream(response: reqwest::Response, model: String) -> provider::LLMStream {
+pub(crate) fn create_chat_stream(
+    response: reqwest::Response,
+    provider_name: String,
+    model: String,
+    retain_reasoning: bool,
+) -> provider::LLMStream {
     let stream = try_stream! {
         let mut body_stream = response.bytes_stream();
         let mut buf: Vec<u8> = Vec::new();
         let mut offset = 0usize;
-        let retain_reasoning_summaries = find_family_for_model(&model).supports_reasoning_summaries;
         let mut aggregator = crate::providers::shared::StreamAggregator::new(model.clone());
+        let mut termination = ChatStreamTermination::default();
         let telemetry = OpenAIStreamTelemetry;
 
         while let Some(chunk_result) = body_stream.next().await {
-            let chunk = chunk_result.map_err(|err| {
-                let formatted_error = error_display::format_llm_error(
-                    "OpenAI",
-                    &format!("Streaming error: {err}"),
-                );
-                provider::LLMError::Network { message: formatted_error, metadata: None }
-            })?;
+            let chunk = chunk_result.map_err(|error| streaming_network_error(&provider_name, error))?;
 
             buf.extend_from_slice(&chunk);
 
@@ -248,55 +302,41 @@ pub(crate) fn create_chat_stream(response: reqwest::Response, model: String) -> 
                 let event = std::str::from_utf8(&buf[offset..split_idx]).expect("valid utf-8 stream data");
                 offset = split_idx + delimiter_len;
 
-                if let Some(data_payload) = extract_data_payload(event) {
-                    let trimmed_payload = data_payload.trim();
-                    if trimmed_payload.is_empty() || trimmed_payload == "[DONE]" {
-                        continue;
+                let Some(mut payload) = parse_chat_stream_event(event, &mut termination)? else {
+                    continue;
+                };
+                capture_chat_usage(&mut payload, &mut aggregator);
+
+                if let Some(choice) = payload
+                    .get("choices")
+                    .and_then(Value::as_array)
+                    .and_then(|choices| choices.first())
+                {
+                    if let Some(delta) = choice.get("delta") {
+                        if let Some(content) = delta.get("content").and_then(|v| v.as_str()) {
+                            telemetry.on_content_delta(content);
+                            for event in aggregator.handle_content(content) {
+                                yield event;
+                            }
+                        }
+
+                        if retain_reasoning
+                            && let Some(reasoning) = delta.get("reasoning_content").and_then(|v| v.as_str())
+                            && let Some(delta) = aggregator.handle_reasoning(reasoning)
+                        {
+                            telemetry.on_reasoning_delta(&delta);
+                            yield provider::LLMStreamEvent::Reasoning { delta };
+                        }
+
+                        if let Some(tool_deltas) = delta.get("tool_calls").and_then(|v| v.as_array()) {
+                            aggregator.handle_tool_calls(tool_deltas);
+                            telemetry.on_tool_call_delta();
+                        }
                     }
 
-                    let mut payload: Value = serde_json::from_str(trimmed_payload).map_err(|err| {
-                        StreamAssemblyError::InvalidPayload(err.to_string())
-                            .into_llm_error("OpenAI")
-                    })?;
-
-                    if let Some(usage_val) = payload.get_mut("usage")
-                        && let Ok(u) = serde_json::from_value::<provider::Usage>(std::mem::take(usage_val)) {
-                            aggregator.set_usage(u);
-                        }
-
-                    if let Some(choices) = payload.get("choices").and_then(|v| v.as_array())
-                        && let Some(choice) = choices.first() {
-                            if let Some(delta) = choice.get("delta") {
-                                if let Some(content) = delta.get("content").and_then(|v| v.as_str()) {
-                                    telemetry.on_content_delta(content);
-                                    for event in aggregator.handle_content(content) {
-                                        yield event;
-                                    }
-                                }
-
-                                if retain_reasoning_summaries
-                                    && let Some(reasoning) = delta.get("reasoning_content").and_then(|v| v.as_str())
-                                    && let Some(delta) = aggregator.handle_reasoning(reasoning) {
-                                        telemetry.on_reasoning_delta(&delta);
-                                        yield provider::LLMStreamEvent::Reasoning { delta };
-                                    }
-
-                                if let Some(tool_deltas) = delta.get("tool_calls").and_then(|v| v.as_array()) {
-                                    aggregator.handle_tool_calls(tool_deltas);
-                                    telemetry.on_tool_call_delta();
-                                }
-                            }
-
-                            if let Some(reason) = choice.get("finish_reason").and_then(|v| v.as_str()) {
-                                aggregator.set_finish_reason(match reason {
-                                    "stop" => provider::FinishReason::Stop,
-                                    "length" => provider::FinishReason::Length,
-                                    "tool_calls" => provider::FinishReason::ToolCalls,
-                                    "content_filter" => provider::FinishReason::ContentFilter,
-                                    _ => provider::FinishReason::Stop,
-                                });
-                            }
-                        }
+                    if let Some(reason) = choice.get("finish_reason").and_then(|v| v.as_str()) {
+                        aggregator.set_finish_reason(termination.observe_finish_reason(reason));
+                    }
                 }
             }
 
@@ -308,27 +348,89 @@ pub(crate) fn create_chat_stream(response: reqwest::Response, model: String) -> 
             }
         }
 
+        termination.ensure_terminal_frame()?;
+
         let response = aggregator.finalize();
-        let response = strip_reasoning_for_model(&model, response);
+        let response = strip_reasoning(retain_reasoning, response);
         yield provider::LLMStreamEvent::Completed { response: Box::new(response) };
     };
 
     Box::pin(stream)
 }
 
+#[derive(Default)]
+struct ChatStreamTermination {
+    terminal_frame_seen: bool,
+}
+
+impl ChatStreamTermination {
+    fn observe_done_frame(&mut self) {
+        self.terminal_frame_seen = true;
+    }
+
+    fn observe_finish_reason(&mut self, reason: &str) -> provider::FinishReason {
+        self.terminal_frame_seen = true;
+        match reason {
+            "stop" => provider::FinishReason::Stop,
+            "length" => provider::FinishReason::Length,
+            "tool_calls" => provider::FinishReason::ToolCalls,
+            "content_filter" => provider::FinishReason::ContentFilter,
+            _ => provider::FinishReason::Stop,
+        }
+    }
+
+    fn ensure_terminal_frame(&self) -> Result<(), provider::LLMError> {
+        if self.terminal_frame_seen {
+            return Ok(());
+        }
+
+        let formatted_error =
+            error_display::format_llm_error("OpenAI", "Streaming error: response ended before a terminal frame");
+        Err(provider::LLMError::Network { message: formatted_error, metadata: None })
+    }
+}
+
+#[cfg(test)]
+mod chat_stream_termination_tests {
+    use super::ChatStreamTermination;
+    use crate::provider;
+
+    #[test]
+    fn done_frame_completes_chat_stream() {
+        let mut termination = ChatStreamTermination::default();
+        termination.observe_done_frame();
+
+        assert!(termination.ensure_terminal_frame().is_ok());
+    }
+
+    #[test]
+    fn finish_reason_completes_chat_stream_and_preserves_mapping() {
+        let mut termination = ChatStreamTermination::default();
+
+        assert!(matches!(termination.observe_finish_reason("tool_calls"), provider::FinishReason::ToolCalls));
+        assert!(termination.ensure_terminal_frame().is_ok());
+    }
+
+    #[test]
+    fn eof_without_terminal_signal_is_a_network_error() {
+        let termination = ChatStreamTermination::default();
+
+        assert!(matches!(termination.ensure_terminal_frame(), Err(provider::LLMError::Network { .. })));
+    }
+}
+
 pub(crate) fn create_responses_stream(
     response: reqwest::Response,
+    provider_name: String,
     model: String,
     include_metrics: bool,
-    _debug_model: Option<String>,
-    _request_timer: Option<Instant>,
+    retain_reasoning: bool,
 ) -> provider::LLMStream {
     let stream = try_stream! {
         let mut body_stream = response.bytes_stream();
         let mut buf: Vec<u8> = Vec::new();
         let mut offset = 0usize;
         let mut aggregator = crate::providers::shared::StreamAggregator::new(model.clone());
-        let retain_reasoning_summaries = find_family_for_model(&model).supports_reasoning_summaries;
         let mut final_response: Option<Value> = None;
         let mut done = false;
         let mut tool_call_state = ResponsesToolCallState::default();
@@ -337,13 +439,7 @@ pub(crate) fn create_responses_stream(
         let telemetry = OpenAIStreamTelemetry;
 
         while let Some(chunk_result) = body_stream.next().await {
-            let chunk = chunk_result.map_err(|err| {
-                let formatted_error = error_display::format_llm_error(
-                    "OpenAI",
-                    &format!("Streaming error: {err}"),
-                );
-                provider::LLMError::Network { message: formatted_error, metadata: None }
-            })?;
+            let chunk = chunk_result.map_err(|error| streaming_network_error(&provider_name, error))?;
 
             buf.extend_from_slice(&chunk);
 
@@ -355,50 +451,41 @@ pub(crate) fn create_responses_stream(
                     streamed_events_counter = streamed_events_counter.saturating_add(1);
                 }
 
-                if let Some(data_payload) = extract_data_payload(event) {
-                    let trimmed_payload = data_payload.trim();
-                    if trimmed_payload.is_empty() {
-                        continue;
-                    }
-
-                    if trimmed_payload == "[DONE]" {
+                let payload = match parse_responses_sse_event(event)? {
+                    ParsedResponsesSseEvent::Ignore => continue,
+                    ParsedResponsesSseEvent::Done => {
                         done = true;
                         break;
                     }
+                    ParsedResponsesSseEvent::Payload(payload) => payload,
+                };
 
-                    let payload: Value = serde_json::from_str(trimmed_payload).map_err(|err| {
-                        StreamAssemblyError::InvalidPayload(err.to_string())
+                let event_policy = response_stream_event_policy(&payload)
+                    .map_err(|message| {
+                        StreamAssemblyError::InvalidPayload(message.to_string())
                             .into_llm_error("OpenAI")
                     })?;
+                let event_type = payload
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| StreamAssemblyError::MissingField("type").into_llm_error("OpenAI"))?;
 
-                    let event_policy = response_stream_event_policy(&payload)
-                        .map_err(|message| {
-                            StreamAssemblyError::InvalidPayload(message.to_string())
-                                .into_llm_error("OpenAI")
-                        })?;
-                    let event_type = payload
-                        .get("type")
-                        .and_then(Value::as_str)
-                        .ok_or_else(|| {
-                            StreamAssemblyError::MissingField("type").into_llm_error("OpenAI")
-                        })?;
-
-                    match event_policy {
-                        ResponsesStreamEventPolicy::DocumentedStatusMarkerNoop
-                        | ResponsesStreamEventPolicy::DocumentedValueBearingRigGap => {
-                            // Legacy `LLMStreamEvent` has no representation for
-                            // provider-hosted code, provider-side MCP, partial
-                            // images, streamed custom-tool input, or annotation
-                            // metadata. Complete custom-tool input remains
-                            // preserved by final `response.completed` replay.
-                        }
-                        ResponsesStreamEventPolicy::Unsupported => {
-                            Err(StreamAssemblyError::InvalidPayload(format!(
-                                "unsupported Responses stream event type `{event_type}`"
-                            ))
-                            .into_llm_error("OpenAI"))?;
-                        }
-                        ResponsesStreamEventPolicy::MeaningfulConversion => match event_type {
+                match event_policy {
+                    ResponsesStreamEventPolicy::DocumentedStatusMarkerNoop
+                    | ResponsesStreamEventPolicy::DocumentedValueBearingRigGap => {
+                        // Legacy `LLMStreamEvent` has no representation for
+                        // provider-hosted code, provider-side MCP, partial
+                        // images, streamed custom-tool input, or annotation
+                        // metadata. Complete custom-tool input remains
+                        // preserved by final `response.completed` replay.
+                    }
+                    ResponsesStreamEventPolicy::Unsupported => {
+                        Err(StreamAssemblyError::InvalidPayload(format!(
+                            "unsupported Responses stream event type `{event_type}`"
+                        ))
+                        .into_llm_error("OpenAI"))?;
+                    }
+                    ResponsesStreamEventPolicy::MeaningfulConversion => match event_type {
                             "response.output_text.delta" => {
                                 let delta = payload
                                     .get("delta")
@@ -424,42 +511,16 @@ pub(crate) fn create_responses_stream(
                                 telemetry.on_content_delta(delta);
                                 aggregator.content.push_str(delta);
                             }
-                            "response.reasoning_text.delta" | "response.reasoning_summary_text.delta" => {
-                                let delta = payload
-                                    .get("delta")
-                                    .and_then(|value| value.as_str())
-                                    .ok_or_else(|| {
-                                        StreamAssemblyError::MissingField("delta")
-                                            .into_llm_error("OpenAI")
-                                    })?;
-                                if retain_reasoning_summaries
-                                    && let Some(delta) = aggregator.handle_reasoning(delta) {
-                                    telemetry.on_reasoning_delta(&delta);
-                                    yield provider::LLMStreamEvent::Reasoning { delta };
-                                }
-                            }
-                            "response.reasoning_content.delta" => {
-                                let delta = payload
-                                    .get("delta")
-                                    .and_then(|value| value.as_str())
-                                    .ok_or_else(|| {
-                                        StreamAssemblyError::MissingField("delta")
-                                            .into_llm_error("OpenAI")
-                                    })?;
-                                if retain_reasoning_summaries
-                                    && let Some(delta) = aggregator.handle_reasoning(delta) {
-                                    telemetry.on_reasoning_delta(&delta);
-                                    yield provider::LLMStreamEvent::Reasoning { delta };
-                                }
-                            }
-                            "response.reasoning_text.done" => {
-                                let text = optional_string_field(&payload, "text")?;
-                                let delta = optional_string_field(&payload, "delta")?;
-                                if retain_reasoning_summaries
-                                    && let Some(text) = text.or(delta)
-                                    && let Some(delta) = aggregator.handle_reasoning(&text) {
-                                    telemetry.on_reasoning_delta(&delta);
-                                    yield provider::LLMStreamEvent::Reasoning { delta };
+                            "response.reasoning_text.delta"
+                            | "response.reasoning_summary_text.delta"
+                            | "response.reasoning_content.delta"
+                            | "response.reasoning_text.done" => {
+                                if let Some(event) = response_reasoning_event(event_type, &payload, ResponsesReasoningContext {
+                                    retain_reasoning,
+                                    aggregator: &mut aggregator,
+                                    telemetry: &telemetry,
+                                })? {
+                                    yield event;
                                 }
                             }
                             "response.output_item.added" | "response.output_item.done" => {
@@ -518,8 +579,7 @@ pub(crate) fn create_responses_stream(
                                 ))
                                 .into_llm_error("OpenAI"))?;
                             }
-                        },
-                    }
+                    },
                 }
 
                 if done {
@@ -579,7 +639,7 @@ pub(crate) fn create_responses_stream(
             response.tool_calls = final_aggregator_response.tool_calls;
         }
 
-        let response = strip_reasoning_for_model(&model, response);
+        let response = strip_reasoning(retain_reasoning, response);
         yield provider::LLMStreamEvent::Completed { response: Box::new(response) };
     };
 
@@ -594,6 +654,135 @@ fn optional_string_field(payload: &Value, field: &'static str) -> Result<Option<
         }),
         None => Ok(None),
     }
+}
+
+#[cfg(test)]
+mod stream_transport_error_tests {
+    use super::{create_chat_stream, create_responses_stream};
+    use crate::provider::{self, LLMError};
+    use futures::StreamExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    const CUSTOM_PROVIDER: &str = "Example Gateway";
+
+    async fn response_with_truncated_body(event: &'static str) -> reqwest::Response {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("test server should bind");
+        let address = listener.local_addr().expect("test server address should be available");
+
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("test request should connect");
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 1024];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let bytes_read = socket.read(&mut buffer).await.expect("request should be readable");
+                assert_ne!(bytes_read, 0, "request should include HTTP headers");
+                request.extend_from_slice(&buffer[..bytes_read]);
+            }
+
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 4096\r\nConnection: close\r\n\r\n",
+                )
+                .await
+                .expect("response headers should be writable");
+            socket.write_all(event.as_bytes()).await.expect("event should be writable");
+            socket.flush().await.expect("event should flush");
+            socket.shutdown().await.expect("connection should close after a truncated body");
+        });
+
+        reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("test HTTP client should build")
+            .get(format!("http://{address}/stream"))
+            .send()
+            .await
+            .expect("headers should arrive before the truncated body")
+    }
+
+    async fn assert_custom_provider_body_error(stream: provider::LLMStream) {
+        let events = stream.collect::<Vec<_>>().await;
+        assert!(
+            events
+                .iter()
+                .any(|event| { matches!(event, Ok(provider::LLMStreamEvent::Token { delta }) if delta == "partial") })
+        );
+
+        let error = events
+            .into_iter()
+            .find_map(Result::err)
+            .expect("truncated response body should fail the stream");
+        match error {
+            LLMError::Network { message, metadata } => {
+                let metadata = metadata.expect("reqwest transport error should include metadata");
+                assert_eq!(metadata.code.as_deref(), Some("reqwest_decode_error"));
+                let serialized = serde_json::to_value(metadata.as_ref()).expect("metadata should serialize");
+                assert_eq!(serialized["provider"], CUSTOM_PROVIDER);
+                assert!(message.contains(CUSTOM_PROVIDER), "display label missing from {message}");
+            }
+            other => panic!("expected a network error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn chat_stream_classifies_post_header_disconnect_for_custom_provider() {
+        let response =
+            response_with_truncated_body("data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n").await;
+        let stream = create_chat_stream(response, CUSTOM_PROVIDER.to_owned(), "custom-model".to_owned(), false);
+
+        assert_custom_provider_body_error(stream).await;
+    }
+
+    #[tokio::test]
+    async fn responses_stream_classifies_post_header_disconnect_for_custom_provider() {
+        let response =
+            response_with_truncated_body("data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n")
+                .await;
+        let stream =
+            create_responses_stream(response, CUSTOM_PROVIDER.to_owned(), "custom-model".to_owned(), false, false);
+
+        assert_custom_provider_body_error(stream).await;
+    }
+}
+
+struct ResponsesReasoningContext<'a> {
+    retain_reasoning: bool,
+    aggregator: &'a mut crate::providers::shared::StreamAggregator,
+    telemetry: &'a OpenAIStreamTelemetry,
+}
+
+fn response_reasoning_event(
+    event_type: &str,
+    payload: &Value,
+    context: ResponsesReasoningContext<'_>,
+) -> Result<Option<provider::LLMStreamEvent>, provider::LLMError> {
+    let reasoning: Option<Cow<'_, str>> = match event_type {
+        "response.reasoning_text.delta"
+        | "response.reasoning_summary_text.delta"
+        | "response.reasoning_content.delta" => Some(Cow::Borrowed(
+            payload
+                .get("delta")
+                .and_then(Value::as_str)
+                .ok_or_else(|| StreamAssemblyError::MissingField("delta").into_llm_error("OpenAI"))?,
+        )),
+        "response.reasoning_text.done" => optional_string_field(payload, "text")?
+            .or(optional_string_field(payload, "delta")?)
+            .map(Cow::Owned),
+        _ => return Ok(None),
+    };
+    if !context.retain_reasoning {
+        return Ok(None);
+    }
+    let Some(reasoning) = reasoning else {
+        return Ok(None);
+    };
+    let Some(delta) = context.aggregator.handle_reasoning(reasoning.as_ref()) else {
+        return Ok(None);
+    };
+
+    context.telemetry.on_reasoning_delta(&delta);
+    Ok(Some(provider::LLMStreamEvent::Reasoning { delta }))
 }
 
 #[cfg(test)]

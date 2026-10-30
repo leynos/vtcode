@@ -87,17 +87,28 @@ pub async fn read_project_doc_with_options(options: &ProjectDocOptions<'_>) -> R
 }
 
 pub async fn read_project_doc(cwd: &Path, max_bytes: usize) -> Result<Option<ProjectDocBundle>> {
+    read_project_doc_with_home(cwd, max_bytes, dirs::home_dir().as_deref()).await
+}
+
+/// Reads the project documentation for `cwd` using an explicit home directory.
+///
+/// Pass `None` to disable user-scope instruction discovery, which keeps callers
+/// (notably tests) independent of the developer's home directory.
+pub async fn read_project_doc_with_home(
+    cwd: &Path,
+    max_bytes: usize,
+    home_dir: Option<&Path>,
+) -> Result<Option<ProjectDocBundle>> {
     if max_bytes == 0 {
         return Ok(None);
     }
 
     let project_root = resolve_project_root(cwd).await.unwrap_or_else(|_| cwd.to_path_buf());
-    let home_dir = dirs::home_dir();
 
     read_project_doc_with_options(&ProjectDocOptions {
         current_dir: cwd,
         project_root: &project_root,
-        home_dir: home_dir.as_deref(),
+        home_dir,
         extra_instruction_files: &[],
         fallback_filenames: &[],
         exclude_patterns: &[],
@@ -128,7 +139,20 @@ pub async fn build_instruction_appendix_with_context(
     active_dir: &Path,
     match_paths: &[PathBuf],
 ) -> Option<String> {
-    load_instruction_appendix(config, active_dir, match_paths)
+    build_instruction_appendix_with_context_and_home(config, active_dir, match_paths, dirs::home_dir().as_deref()).await
+}
+
+/// Builds the instruction appendix with an explicit home directory.
+///
+/// Pass `None` to disable user-scope instruction discovery, which keeps callers
+/// (notably tests) independent of the developer's home directory.
+pub async fn build_instruction_appendix_with_context_and_home(
+    config: &AgentConfig,
+    active_dir: &Path,
+    match_paths: &[PathBuf],
+    home_dir: Option<&Path>,
+) -> Option<String> {
+    load_instruction_appendix_with_home(config, active_dir, match_paths, home_dir)
         .await
         .map(|bundle| bundle.contents)
 }
@@ -138,10 +162,23 @@ pub async fn load_instruction_appendix(
     active_dir: &Path,
     match_paths: &[PathBuf],
 ) -> Option<InstructionAppendixBundle> {
+    load_instruction_appendix_with_home(config, active_dir, match_paths, dirs::home_dir().as_deref()).await
+}
+
+/// Loads the instruction appendix with an explicit home directory.
+///
+/// Pass `None` to disable user-scope instruction discovery, which keeps callers
+/// (notably tests) independent of the developer's home directory.
+pub async fn load_instruction_appendix_with_home(
+    config: &AgentConfig,
+    active_dir: &Path,
+    match_paths: &[PathBuf],
+    home_dir: Option<&Path>,
+) -> Option<InstructionAppendixBundle> {
     let project_root = resolve_project_root(active_dir)
         .await
         .unwrap_or_else(|_| active_dir.to_path_buf());
-    let home_dir = dirs::home_dir();
+    let home_dir = home_dir.map(Path::to_path_buf);
     let bundle = read_project_doc_with_options(&ProjectDocOptions {
         current_dir: active_dir,
         project_root: &project_root,
@@ -315,7 +352,9 @@ mod tests {
     #[tokio::test]
     async fn returns_none_when_no_docs_present() {
         let tmp = tempdir().expect("failed to unwrap");
-        let result = read_project_doc(tmp.path(), 4096).await.expect("failed to unwrap");
+        let result = read_project_doc_with_home(tmp.path(), 4096, None)
+            .await
+            .expect("failed to unwrap");
         assert!(result.is_none());
     }
 
@@ -324,7 +363,7 @@ mod tests {
         let tmp = tempdir().expect("failed to unwrap");
         write_doc(tmp.path(), "hello world").expect("write doc");
 
-        let result = read_project_doc(tmp.path(), 4096)
+        let result = read_project_doc_with_home(tmp.path(), 4096, None)
             .await
             .expect("failed to unwrap")
             .expect("failed to unwrap");
@@ -338,7 +377,7 @@ mod tests {
         let content = "A".repeat(64);
         write_doc(tmp.path(), &content).expect("write doc");
 
-        let result = read_project_doc(tmp.path(), 16)
+        let result = read_project_doc_with_home(tmp.path(), 16, None)
             .await
             .expect("failed to unwrap")
             .expect("failed to unwrap");
@@ -397,10 +436,14 @@ mod tests {
             ..Default::default()
         };
 
-        let appendix =
-            build_instruction_appendix_with_context(&config, &nested, &[repo.path().join("nested/sub/file.rs")])
-                .await
-                .expect("instruction appendix");
+        let appendix = build_instruction_appendix_with_context_and_home(
+            &config,
+            &nested,
+            &[repo.path().join("nested/sub/file.rs")],
+            None,
+        )
+        .await
+        .expect("instruction appendix");
 
         assert!(appendix.starts_with("user note"));
         assert!(appendix.contains("--- project-doc ---"));
@@ -416,7 +459,8 @@ mod tests {
     #[tokio::test]
     async fn instruction_appendix_returns_none_when_empty() {
         let tmp = tempdir().expect("tmp");
-        let appendix = build_instruction_appendix(&AgentConfig::default(), tmp.path()).await;
+        let appendix =
+            build_instruction_appendix_with_context_and_home(&AgentConfig::default(), tmp.path(), &[], None).await;
         assert!(appendix.is_none());
     }
 
@@ -429,7 +473,7 @@ mod tests {
 
         let config = AgentConfig { instruction_max_bytes: 16, ..Default::default() };
 
-        let appendix = build_instruction_appendix(&config, repo.path())
+        let appendix = build_instruction_appendix_with_context_and_home(&config, repo.path(), &[], None)
             .await
             .expect("instruction appendix");
 
@@ -500,9 +544,10 @@ mod tests {
         std::fs::create_dir_all(&nested).expect("failed to unwrap");
         write_doc(&nested, "- Nested summary\n\nFollow the nested guidance last.\n").expect("write doc");
 
-        let instructions = get_user_instructions(&AgentConfig::default(), &nested, None)
-            .await
-            .expect("expected instructions");
+        let instructions =
+            build_instruction_appendix_with_context_and_home(&AgentConfig::default(), &nested, &[], None)
+                .await
+                .expect("expected instructions");
 
         assert!(instructions.contains("### Instruction map"));
         assert!(instructions.contains("AGENTS.md (workspace AGENTS)"));
@@ -539,7 +584,7 @@ mod tests {
         )
         .expect("write memory summary");
 
-        let appendix = build_instruction_appendix(&config, repo.path())
+        let appendix = build_instruction_appendix_with_context_and_home(&config, repo.path(), &[], None)
             .await
             .expect("instruction appendix");
 
@@ -578,7 +623,7 @@ mod tests {
         )
         .expect("write memory summary");
 
-        let appendix = build_instruction_appendix(&config, repo.path())
+        let appendix = build_instruction_appendix_with_context_and_home(&config, repo.path(), &[], None)
             .await
             .expect("instruction appendix");
         let approx_tokens = appendix.len() / 4;
@@ -598,9 +643,10 @@ mod tests {
         )
         .expect("write root doc");
 
-        let appendix = build_instruction_appendix(&AgentConfig::default(), repo.path())
-            .await
-            .expect("instruction appendix");
+        let appendix =
+            build_instruction_appendix_with_context_and_home(&AgentConfig::default(), repo.path(), &[], None)
+                .await
+                .expect("instruction appendix");
         let approx_tokens = appendix.len() / 4;
 
         assert!(appendix.contains("### Instruction map"));

@@ -1,0 +1,226 @@
+//! Fail-closed workspace admission for client-selected ACP session paths.
+use anyhow::Result;
+use std::path::{Path, PathBuf};
+
+use super::session::{AcpSessionWorkspace, AcpWorkspaceError, AcpWorkspaceErrorCategory};
+
+#[derive(Clone, Debug)]
+pub(crate) struct AcpWorkspacePolicy {
+    launch_context: PathBuf,
+    allowed_roots: Vec<PathBuf>,
+    home: Option<PathBuf>,
+}
+
+impl AcpWorkspacePolicy {
+    pub(crate) async fn new(launch_workspace: &Path, configured_roots: &[PathBuf]) -> Result<Self, AcpWorkspaceError> {
+        let home = match dirs::home_dir() {
+            Some(home) => Some(canonical_existing_directory(&home, "user home directory").await?),
+            None => None,
+        };
+        let launch_root = canonical_existing_directory(launch_workspace, "ACP launch workspace").await?;
+
+        let mut allowed_roots = Vec::new();
+        if !is_broad_scope(&launch_root, home.as_deref()) {
+            allowed_roots.push(launch_root.clone());
+        }
+        for configured_root in configured_roots {
+            let root = canonical_existing_directory(configured_root, "configured ACP allowed workspace root").await?;
+            if is_broad_scope(&root, home.as_deref()) {
+                return Err(AcpWorkspaceError::new(
+                    "initialize_workspace_policy",
+                    AcpWorkspaceErrorCategory::UnsupportedScope,
+                ));
+            }
+            if !allowed_roots.contains(&root) {
+                allowed_roots.push(root);
+            }
+        }
+
+        Ok(Self { launch_context: launch_root, allowed_roots, home })
+    }
+
+    /// Return the canonical process launch directory for startup context.
+    ///
+    /// This path is not necessarily a session workspace and is not necessarily
+    /// an allowed root. In particular, broad launch directories remain usable
+    /// for startup configuration while `resolve_client_cwd` rejects them for
+    /// client-created sessions.
+    pub(crate) fn launch_context(&self) -> &Path {
+        &self.launch_context
+    }
+
+    pub(crate) async fn resolve_client_cwd(
+        &self,
+        requested_workspace: &Path,
+    ) -> Result<AcpSessionWorkspace, AcpWorkspaceError> {
+        let workspace = AcpSessionWorkspace::from_client_cwd(requested_workspace).await?;
+        if is_broad_scope(workspace.path(), self.home.as_deref()) {
+            return Err(AcpWorkspaceError::new(
+                "validate_session_workspace",
+                AcpWorkspaceErrorCategory::UnsupportedScope,
+            ));
+        }
+        if !self.allowed_roots.iter().any(|root| workspace.path().starts_with(root)) {
+            return Err(AcpWorkspaceError::new(
+                "validate_session_workspace",
+                AcpWorkspaceErrorCategory::OutsideAllowedRoots,
+            ));
+        }
+        Ok(workspace)
+    }
+}
+
+async fn canonical_existing_directory(path: &Path, label: &str) -> Result<PathBuf, AcpWorkspaceError> {
+    if !path.is_absolute() {
+        return Err(AcpWorkspaceError::new("initialize_workspace_policy", AcpWorkspaceErrorCategory::InvalidPath));
+    }
+    let canonical = vtcode_commons::fs::canonicalize_with_context_async(path, label)
+        .await
+        .map_err(|error| {
+            AcpWorkspaceError::with_source(
+                "initialize_workspace_policy",
+                AcpWorkspaceErrorCategory::ResolveFailed,
+                error,
+            )
+        })?;
+    let metadata = tokio::fs::metadata(&canonical).await.map_err(|error| {
+        AcpWorkspaceError::with_source("initialize_workspace_policy", AcpWorkspaceErrorCategory::InspectFailed, error)
+    })?;
+    if !metadata.is_dir() {
+        return Err(AcpWorkspaceError::new("initialize_workspace_policy", AcpWorkspaceErrorCategory::NotDirectory));
+    }
+    Ok(canonical)
+}
+
+fn is_broad_scope(path: &Path, home: Option<&Path>) -> bool {
+    path.parent().is_none() || home.is_some_and(|home| path == home)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use assert_fs::TempDir;
+
+    #[tokio::test]
+    async fn workspace_errors_keep_sources_internal_and_return_sanitized_protocol_data() {
+        const SENTINEL: &str = "private-workspace-sentinel";
+
+        let fixture = TempDir::new().expect("temporary workspace error fixture");
+        let launch = fixture.path().join("launch");
+        tokio::fs::create_dir_all(&launch).await.expect("create launch workspace");
+        let policy = AcpWorkspacePolicy::new(&launch, &[]).await.expect("construct workspace policy");
+
+        let missing = fixture.path().join(SENTINEL).join("missing");
+        let resolution_error = policy
+            .resolve_client_cwd(&missing)
+            .await
+            .expect_err("missing workspace should fail resolution");
+        assert!(std::error::Error::source(&resolution_error).is_some());
+        let protocol_error: crate::acp::Error = resolution_error.into();
+        let rendered = format!("{protocol_error:?}");
+        assert!(!rendered.contains(SENTINEL), "workspace path leaked in ACP error: {rendered}");
+        assert!(rendered.contains("resolve_session_workspace"), "operation missing from ACP error: {rendered}");
+        assert!(rendered.contains("resolve_failed"), "error category missing from ACP error: {rendered}");
+
+        let outside = fixture.path().join(SENTINEL);
+        tokio::fs::create_dir_all(&outside).await.expect("create disallowed workspace");
+        let scope_error = policy
+            .resolve_client_cwd(&outside)
+            .await
+            .expect_err("outside workspace should fail policy");
+        let protocol_error: crate::acp::Error = scope_error.into();
+        let rendered = format!("{protocol_error:?}");
+        assert!(!rendered.contains(SENTINEL), "workspace path leaked in ACP error: {rendered}");
+        assert!(rendered.contains("outside_allowed_roots"), "error category missing from ACP error: {rendered}");
+    }
+
+    #[tokio::test]
+    async fn allows_only_the_launch_workspace_and_configured_roots() {
+        let fixture = TempDir::new().expect("temporary workspace policy fixture");
+        let launch = fixture.path().join("launch");
+        let configured = fixture.path().join("configured");
+        let configured_child = configured.join("project");
+        let unrelated = fixture.path().join("unrelated");
+        for path in [&launch, &configured_child, &unrelated] {
+            tokio::fs::create_dir_all(path).await.expect("create policy test directory");
+        }
+
+        let policy = AcpWorkspacePolicy::new(&launch, std::slice::from_ref(&configured))
+            .await
+            .expect("construct allowed-workspace policy");
+        let launch_workspace = policy.resolve_client_cwd(&launch).await.expect("launch workspace is allowed");
+        let configured_workspace = policy
+            .resolve_client_cwd(&configured_child)
+            .await
+            .expect("configured root admits its child workspace");
+
+        assert_eq!(
+            launch_workspace.path(),
+            vtcode_commons::fs::canonicalize_with_context_async(&launch, "ACP launch test workspace")
+                .await
+                .expect("canonical launch path")
+        );
+        assert_eq!(
+            configured_workspace.path(),
+            vtcode_commons::fs::canonicalize_with_context_async(&configured_child, "configured child test workspace")
+                .await
+                .expect("canonical configured child path")
+        );
+        assert!(policy.resolve_client_cwd(&unrelated).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn rejects_filesystem_root_and_home_as_session_workspaces() {
+        let launch = TempDir::new().expect("temporary launch workspace");
+        let policy = AcpWorkspacePolicy::new(launch.path(), &[])
+            .await
+            .expect("construct allowed-workspace policy");
+        let filesystem_root = std::env::current_dir()
+            .expect("resolve current directory")
+            .ancestors()
+            .last()
+            .expect("filesystem root exists")
+            .to_path_buf();
+
+        assert!(policy.resolve_client_cwd(&filesystem_root).await.is_err());
+        if let Some(home) = dirs::home_dir() {
+            assert!(policy.resolve_client_cwd(&home).await.is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn allows_broad_launch_context_without_admitting_it_as_a_session_root() {
+        let filesystem_root = std::env::current_dir()
+            .expect("resolve current directory")
+            .ancestors()
+            .last()
+            .expect("filesystem root exists")
+            .to_path_buf();
+        let policy = AcpWorkspacePolicy::new(&filesystem_root, &[])
+            .await
+            .expect("filesystem root is valid launch context");
+
+        assert_eq!(policy.launch_context(), filesystem_root.as_path());
+        assert!(policy.allowed_roots.is_empty());
+        assert!(policy.resolve_client_cwd(&filesystem_root).await.is_err());
+
+        if let Some(home) = dirs::home_dir() {
+            let policy = AcpWorkspacePolicy::new(&home, &[])
+                .await
+                .expect("home directory is valid launch context");
+
+            assert!(policy.allowed_roots.is_empty());
+            assert!(policy.resolve_client_cwd(policy.launch_context()).await.is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_unconfigured_and_nonexistent_roots_during_startup() {
+        let launch = TempDir::new().expect("temporary launch workspace");
+        let relative_root = PathBuf::from("relative-workspace");
+        assert!(AcpWorkspacePolicy::new(launch.path(), &[relative_root]).await.is_err());
+
+        let missing_root = launch.path().join("missing");
+        assert!(AcpWorkspacePolicy::new(launch.path(), &[missing_root]).await.is_err());
+    }
+}

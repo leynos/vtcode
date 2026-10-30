@@ -8,6 +8,88 @@ use reqwest::Response;
 use serde_json::Value;
 use vtcode_commons::sanitizer::sanitize_provider_diagnostic;
 
+/// Stable classification for failures reported by reqwest.
+///
+/// The value is persisted in [`LLMErrorMetadata::code`] so callers can inspect
+/// the transport failure without parsing reqwest's display text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReqwestErrorKind {
+    Connect,
+    Timeout,
+    Request,
+    Body,
+    Decode,
+    Redirect,
+    Status,
+    Unknown,
+}
+
+impl ReqwestErrorKind {
+    const fn metadata_code(self) -> &'static str {
+        match self {
+            Self::Connect => "reqwest_connect_error",
+            Self::Timeout => "reqwest_timeout_error",
+            Self::Request => "reqwest_request_error",
+            Self::Body => "reqwest_body_error",
+            Self::Decode => "reqwest_decode_error",
+            Self::Redirect => "reqwest_redirect_error",
+            Self::Status => "reqwest_status_error",
+            Self::Unknown => "reqwest_unknown_error",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct ReqwestErrorFlags {
+    is_connect: bool,
+    is_timeout: bool,
+    is_request: bool,
+    is_body: bool,
+    is_decode: bool,
+    is_redirect: bool,
+    is_status: bool,
+}
+
+impl From<&reqwest::Error> for ReqwestErrorFlags {
+    fn from(error: &reqwest::Error) -> Self {
+        Self {
+            is_connect: error.is_connect(),
+            is_timeout: error.is_timeout(),
+            is_request: error.is_request(),
+            is_body: error.is_body(),
+            is_decode: error.is_decode(),
+            is_redirect: error.is_redirect(),
+            is_status: error.is_status(),
+        }
+    }
+}
+
+const fn classify_reqwest_flags(flags: ReqwestErrorFlags) -> ReqwestErrorKind {
+    // Some reqwest errors occupy more than one category. Prefer the most
+    // actionable classification over the generic request/body buckets.
+    if flags.is_timeout {
+        ReqwestErrorKind::Timeout
+    } else if flags.is_connect {
+        ReqwestErrorKind::Connect
+    } else if flags.is_decode {
+        ReqwestErrorKind::Decode
+    } else if flags.is_redirect {
+        ReqwestErrorKind::Redirect
+    } else if flags.is_status {
+        ReqwestErrorKind::Status
+    } else if flags.is_body {
+        ReqwestErrorKind::Body
+    } else if flags.is_request {
+        ReqwestErrorKind::Request
+    } else {
+        ReqwestErrorKind::Unknown
+    }
+}
+
+pub(crate) fn classify_reqwest_error(error: &reqwest::Error) -> ReqwestErrorKind {
+    classify_reqwest_flags(error.into())
+}
+
 #[derive(Debug, Clone, Default)]
 struct ApiResponseMetadata {
     request_id: Option<String>,
@@ -79,12 +161,11 @@ pub(crate) async fn handle_openai_http_error(
     let metadata = extract_response_metadata(&response);
     let error_text = read_provider_error_body(response).await;
 
-    // Universal diagnostic logging — helps debug post-tool follow-up failures
-    // and transient API issues across all OpenAI-compatible providers.
+    // Keep response bodies out of logs: providers may include customer prompts
+    // or other sensitive content in their error messages.
     tracing::warn!(
         provider = provider_name,
         status = %status,
-        body = %sanitize_provider_diagnostic(error_text.as_bytes()),
         "{} HTTP error",
         provider_name
     );
@@ -109,6 +190,54 @@ pub(crate) fn is_rate_limit_error(status_code: u16, error_text: &str) -> bool {
 pub(crate) fn format_network_error(provider: &str, error: &impl std::fmt::Display) -> LLMError {
     let formatted_error = error_display::format_llm_error(provider, &format!("network error: {error}"));
     LLMError::Network { message: formatted_error, metadata: None }
+}
+
+/// Formats a reqwest transport failure while preserving its structured
+/// classification and source chain in canonical LLM error metadata.
+#[cold]
+pub(crate) fn format_reqwest_network_error(provider: &str, error: &reqwest::Error) -> LLMError {
+    let kind = classify_reqwest_error(error);
+    let formatted_error = error_display::format_llm_error(provider, &format!("network error: {error}"));
+    let source_chain = reqwest_source_chain(error);
+    LLMError::Network {
+        message: formatted_error,
+        metadata: Some(LLMErrorMetadata::new(
+            provider,
+            error.status().map(|status| status.as_u16()),
+            Some(kind.metadata_code().to_owned()),
+            None,
+            None,
+            None,
+            source_chain,
+        )),
+    }
+}
+
+fn reqwest_source_chain(error: &reqwest::Error) -> Option<String> {
+    use std::error::Error as _;
+
+    const MAX_SOURCE_DEPTH: usize = 8;
+
+    let mut current = error.source();
+    let mut depth = 0;
+    let mut diagnostic = String::new();
+    while let Some(source) = current {
+        if !diagnostic.is_empty() {
+            diagnostic.push_str(": ");
+        }
+        diagnostic.push_str(&source.to_string());
+        current = source.source();
+        depth += 1;
+        if depth == MAX_SOURCE_DEPTH {
+            break;
+        }
+    }
+
+    if diagnostic.is_empty() {
+        None
+    } else {
+        Some(sanitize_provider_diagnostic(diagnostic.as_bytes()))
+    }
 }
 
 /// Handle JSON parsing errors with consistent formatting
@@ -332,6 +461,184 @@ fn extract_response_metadata(response: &Response) -> ApiResponseMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Write as _;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{Arc, Mutex};
+    use tracing::field::{Field, Visit};
+    use tracing::span::{Attributes, Id, Record};
+    use tracing::{Event, Metadata, Subscriber};
+
+    struct CapturedEvents {
+        events: Arc<Mutex<Vec<String>>>,
+        next_span_id: AtomicU64,
+    }
+
+    impl Subscriber for CapturedEvents {
+        fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
+            true
+        }
+
+        fn new_span(&self, _attributes: &Attributes<'_>) -> Id {
+            Id::from_u64(self.next_span_id.fetch_add(1, Ordering::Relaxed) + 1)
+        }
+
+        fn record(&self, _span: &Id, _values: &Record<'_>) {}
+
+        fn record_follows_from(&self, _span: &Id, _follows: &Id) {}
+
+        fn event(&self, event: &Event<'_>) {
+            let mut fields = String::new();
+            event.record(&mut CapturedFields(&mut fields));
+            self.events
+                .lock()
+                .expect("captured event lock should be available")
+                .push(fields);
+        }
+
+        fn enter(&self, _span: &Id) {}
+
+        fn exit(&self, _span: &Id) {}
+    }
+
+    struct CapturedFields<'a>(&'a mut String);
+
+    impl Visit for CapturedFields<'_> {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            let _ = writeln!(self.0, "{}={value:?}", field.name());
+        }
+    }
+
+    #[test]
+    fn reqwest_error_classification_covers_transport_categories() {
+        let cases = [
+            (ReqwestErrorFlags { is_connect: true, ..Default::default() }, ReqwestErrorKind::Connect),
+            (ReqwestErrorFlags { is_timeout: true, ..Default::default() }, ReqwestErrorKind::Timeout),
+            (ReqwestErrorFlags { is_request: true, ..Default::default() }, ReqwestErrorKind::Request),
+            (ReqwestErrorFlags { is_body: true, ..Default::default() }, ReqwestErrorKind::Body),
+            (ReqwestErrorFlags { is_decode: true, ..Default::default() }, ReqwestErrorKind::Decode),
+            (ReqwestErrorFlags { is_redirect: true, ..Default::default() }, ReqwestErrorKind::Redirect),
+            (ReqwestErrorFlags { is_status: true, ..Default::default() }, ReqwestErrorKind::Status),
+            (ReqwestErrorFlags::default(), ReqwestErrorKind::Unknown),
+        ];
+
+        for (flags, expected) in cases {
+            assert_eq!(classify_reqwest_flags(flags), expected);
+        }
+    }
+
+    #[test]
+    fn reqwest_error_classification_prefers_specific_categories() {
+        let request_timeout = ReqwestErrorFlags {
+            is_timeout: true,
+            is_request: true,
+            ..Default::default()
+        };
+        let request_connect = ReqwestErrorFlags {
+            is_connect: true,
+            is_request: true,
+            ..Default::default()
+        };
+        let body_decode = ReqwestErrorFlags {
+            is_body: true,
+            is_decode: true,
+            ..Default::default()
+        };
+
+        assert_eq!(classify_reqwest_flags(request_timeout), ReqwestErrorKind::Timeout);
+        assert_eq!(classify_reqwest_flags(request_connect), ReqwestErrorKind::Connect);
+        assert_eq!(classify_reqwest_flags(body_decode), ReqwestErrorKind::Decode);
+    }
+
+    #[test]
+    fn reqwest_error_metadata_codes_are_stable() {
+        let cases = [
+            (ReqwestErrorKind::Connect, "reqwest_connect_error"),
+            (ReqwestErrorKind::Timeout, "reqwest_timeout_error"),
+            (ReqwestErrorKind::Request, "reqwest_request_error"),
+            (ReqwestErrorKind::Body, "reqwest_body_error"),
+            (ReqwestErrorKind::Decode, "reqwest_decode_error"),
+            (ReqwestErrorKind::Redirect, "reqwest_redirect_error"),
+            (ReqwestErrorKind::Status, "reqwest_status_error"),
+            (ReqwestErrorKind::Unknown, "reqwest_unknown_error"),
+        ];
+
+        for (kind, expected_code) in cases {
+            assert_eq!(kind.metadata_code(), expected_code);
+        }
+    }
+
+    #[tokio::test]
+    async fn reqwest_redirect_error_is_preserved_in_llm_metadata() {
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
+
+        let server = MockServer::start().await;
+        Mock::given(path("/loop"))
+            .respond_with(ResponseTemplate::new(302).insert_header("location", format!("{}/loop", server.uri())))
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::limited(1))
+            .build()
+            .expect("redirect-limited test client should build");
+        let error = client
+            .post(format!("{}/loop", server.uri()))
+            .send()
+            .await
+            .expect_err("redirect loop should exceed the configured limit");
+
+        let llm_error = format_reqwest_network_error("Test provider", &error);
+        match llm_error {
+            LLMError::Network { metadata, .. } => {
+                assert_eq!(metadata.as_ref().and_then(|value| value.code.as_deref()), Some("reqwest_redirect_error"));
+            }
+            other => panic!("expected a network error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn openai_http_error_logs_metadata_without_provider_response_text() {
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
+
+        const RESPONSE_MARKER: &str = "CUSTOMER_RESPONSE_MARKER_63aebd88";
+        let captured_events = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing::Dispatch::new(CapturedEvents {
+            events: Arc::clone(&captured_events),
+            next_span_id: AtomicU64::default(),
+        });
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("current-thread runtime should build");
+
+        let error = tracing::dispatcher::with_default(&subscriber, || {
+            runtime.block_on(async {
+                let server = MockServer::start().await;
+                Mock::given(path("/error"))
+                    .respond_with(
+                        ResponseTemplate::new(500)
+                            .set_body_string(format!(r#"{{"error":{{"message":"{RESPONSE_MARKER}"}}}}"#)),
+                    )
+                    .mount(&server)
+                    .await;
+                let response = reqwest::Client::new()
+                    .post(format!("{}/error", server.uri()))
+                    .send()
+                    .await
+                    .expect("mock provider response should be received");
+
+                handle_openai_http_error(response, "Test Provider", "TEST_API_KEY")
+                    .await
+                    .expect_err("HTTP error response should be returned as an LLM error")
+            })
+        });
+
+        assert!(error.to_string().contains(RESPONSE_MARKER), "returned error should retain provider detail");
+        let captured_events = captured_events.lock().expect("captured event lock should be available");
+        let logs = captured_events.join("\n");
+        assert!(logs.contains("Test Provider"), "provider metadata should remain in logs: {logs}");
+        assert!(logs.contains("500"), "HTTP status should remain in logs: {logs}");
+        assert!(!logs.contains(RESPONSE_MARKER), "provider response detail leaked into logs: {logs}");
+    }
 
     #[test]
     fn test_rate_limit_detection() {

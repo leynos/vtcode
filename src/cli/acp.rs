@@ -1,3 +1,4 @@
+//! Validates ACP command configuration and launches the selected protocol adapter.
 use anyhow::{Result, bail};
 use vtcode::acp::{StandardAcpAdapter, ZedAcpAdapter};
 use vtcode_core::cli::args::AgentClientProtocolTarget;
@@ -9,6 +10,19 @@ pub async fn handle_acp_command(
     config: &CoreAgentConfig,
     vt_cfg: &VTCodeConfig,
     target: AgentClientProtocolTarget,
+    skip_confirmations: bool,
+) -> Result<()> {
+    handle_acp_command_with_adapters(config, vt_cfg, target, skip_confirmations, &ZedAcpAdapter, &StandardAcpAdapter)
+        .await
+}
+
+pub(super) async fn handle_acp_command_with_adapters(
+    config: &CoreAgentConfig,
+    vt_cfg: &VTCodeConfig,
+    target: AgentClientProtocolTarget,
+    skip_confirmations: bool,
+    zed: &dyn AcpClientAdapter,
+    standard: &dyn AcpClientAdapter,
 ) -> Result<()> {
     if !vt_cfg.acp.enabled {
         bail!(
@@ -28,14 +42,12 @@ pub async fn handle_acp_command(
                 bail!("Only the stdio transport is currently supported for Zed ACP integration.");
             }
 
-            let adapter = ZedAcpAdapter;
-            let params = AcpLaunchParams::new(config, vt_cfg);
-            adapter.serve(params).await?
+            let params = AcpLaunchParams::new(config, vt_cfg).with_skip_confirmations(skip_confirmations);
+            zed.serve(params).await?
         }
         AgentClientProtocolTarget::Standard => {
-            let adapter = StandardAcpAdapter;
-            let params = AcpLaunchParams::new(config, vt_cfg);
-            adapter.serve(params).await?
+            let params = AcpLaunchParams::new(config, vt_cfg).with_skip_confirmations(skip_confirmations);
+            standard.serve(params).await?
         }
     }
 

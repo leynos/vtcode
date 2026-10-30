@@ -1,3 +1,4 @@
+//! Handles incoming ACP prompts and routes their content and resource references into agent turns.
 use super::ZedAgent;
 use crate::acp;
 use crate::acp::Error as SdkError;
@@ -10,6 +11,7 @@ use url::Url;
 use vtcode_core::config::constants::tools;
 
 use super::super::constants::*;
+use super::super::types::SessionHandle;
 use crate::tooling::TOOL_READ_FILE_URI_ARG;
 
 impl ZedAgent {
@@ -45,14 +47,43 @@ impl ZedAgent {
         }
     }
 
-    pub(super) fn parse_resource_path(&self, uri: &str) -> Result<PathBuf, String> {
+    pub(super) fn resolve_session_workspace_path(
+        &self,
+        session: &SessionHandle,
+        candidate: PathBuf,
+        argument: &str,
+    ) -> Result<PathBuf, String> {
+        let Some(runtime) = session
+            .workspace_runtime()
+            .map_err(|error| super::report_session_runtime_failure(&error))?
+        else {
+            return self.resolve_workspace_path(candidate, argument);
+        };
+        let resolved = if candidate.is_absolute() {
+            candidate
+        } else {
+            runtime.workspace_root.join(candidate)
+        };
+        let normalized = vtcode_core::utils::path::ensure_path_within_workspace(&resolved, &runtime.workspace_root)
+            .map_err(|_error| Self::argument_message(TOOL_READ_FILE_WORKSPACE_ESCAPE_TEMPLATE, argument))?;
+        if !normalized.is_absolute() {
+            return Err(Self::argument_message(TOOL_READ_FILE_ABSOLUTE_PATH_TEMPLATE, argument));
+        }
+        Ok(normalized)
+    }
+
+    pub(super) fn parse_resource_path(&self, session: &SessionHandle, uri: &str) -> Result<PathBuf, String> {
+        let path = Self::decode_resource_uri(uri)?;
+        self.resolve_session_workspace_path(session, path, TOOL_READ_FILE_URI_ARG)
+    }
+
+    pub(super) fn decode_resource_uri(uri: &str) -> Result<PathBuf, String> {
         if uri.is_empty() {
             return Err(format!("Unable to resolve URI provided to {}", tools::READ_FILE));
         }
 
         if uri.starts_with('/') {
-            let candidate = PathBuf::from(uri);
-            return self.resolve_workspace_path(candidate, TOOL_READ_FILE_URI_ARG);
+            return Ok(PathBuf::from(uri));
         }
 
         let parsed =
@@ -77,11 +108,12 @@ impl ZedAgent {
             }
         };
 
-        self.resolve_workspace_path(path, TOOL_READ_FILE_URI_ARG)
+        Ok(path)
     }
 
     pub(super) async fn resolve_prompt(
         &self,
+        session: &SessionHandle,
         session_id: &acp::SessionId,
         prompt: &[acp::ContentBlock],
     ) -> Result<String, SdkError> {
@@ -91,7 +123,7 @@ impl ZedAgent {
             match block {
                 acp::ContentBlock::Text(text) => Self::append_segment(&mut aggregated, &text.text),
                 acp::ContentBlock::ResourceLink(link) => {
-                    let rendered = self.render_resource_link(session_id, link).await?;
+                    let rendered = self.render_resource_link(session, session_id, link).await?;
                     Self::append_segment(&mut aggregated, &rendered);
                 }
                 acp::ContentBlock::Resource(resource) => match &resource.resource {
@@ -125,6 +157,7 @@ impl ZedAgent {
 
     async fn render_resource_link(
         &self,
+        session: &SessionHandle,
         session_id: &acp::SessionId,
         link: &acp::ResourceLink,
     ) -> Result<String, SdkError> {
@@ -132,11 +165,14 @@ impl ZedAgent {
             return Ok(Self::render_context_block(&link.name, &link.uri, None));
         };
 
-        if !self.client_supports_read_text_file() {
+        if !self.client_supports_read_text_file().map_err(|error| {
+            acp::Error::internal_error()
+                .data(format!("Failed to read ACP client filesystem capabilities for session {session_id}: {error:#}"))
+        })? {
             return Ok(Self::render_context_block(&link.name, &link.uri, None));
         }
 
-        let path = match self.parse_resource_path(&link.uri) {
+        let path = match self.parse_resource_path(session, &link.uri) {
             Ok(path) => path,
             Err(_) => {
                 return Ok(Self::render_context_block(&link.name, &link.uri, None));
