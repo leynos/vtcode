@@ -121,6 +121,45 @@ blocked items are pending and marked `[blocked]`. On `session/load`,
 re-emits the plan. Replay sends a plan update only: it does not fabricate a
 model-visible tool call or repeat a tool side effect.
 
+## Crate conventions and gotchas
+
+Module map: `capabilities/` protocol negotiation, `client/` deprecated legacy
+client, `client_v2/` current client, `discovery/` agent registry, `session/`
+session lifecycle, `transport/` stdio transport, `jsonrpc/` JSON-RPC types,
+`tooling/` tool adapters, `zed/` Zed adapter, `workspace/` workspace helpers,
+`permissions/` permission flow, `reports/` reporting, and `error/` `AcpError`.
+
+`zed/agent/handlers.rs` is the canonical SACP handler wiring;
+`zed/connection.rs` wraps `ConnectionTo<Client>`. `ZedAgent::new` attaches and
+refreshes parent MCP providers before snapshotting model tools. `AcpClientV2`
+is the current client API (`AcpClient` is deprecated since 0.60.x), and
+`StandardAcpAdapter` / `ZedAcpAdapter` in `zed/` bridge protocol to Zed.
+`register_acp_connection()` is a process-global
+`OnceLock<Arc<ConnectionHandle>>`; call it once from the host protocol after
+the SACP `connect_with` closure receives the `cx`. The `acp` module in
+`vtcode-core` is a compatibility facade; canonical code lives in this crate.
+
+- Update `PROTOCOL_VERSION` and `SUPPORTED_VERSIONS` together when protocol
+  negotiation changes.
+- `messages.rs` types are deprecated; use the `jsonrpc/` module.
+- `ConnectionHandle` wraps `agent_client_protocol::ConnectionTo<Client>`.
+  `cx.send_request(...).block_task()` is only safe in a `cx.spawn` task;
+  calling it from a request handler deadlocks.
+- The `acp` module re-exports `agent_client_protocol::schema::v1::*` plus
+  `ProtocolVersion` from `schema::*`. `Client` and `Agent` (role structs) are
+  at the crate root.
+- `SessionUpdateNotification` decodes through a direct wire shape for SSE
+  performance; new update variants must update that shape and its regression
+  tests.
+- Permission-flow tests use the duplex SACP connection harness; preserve
+  allow, deny, cancel, unknown-option and request-failure coverage. Stdio EOF,
+  timeout and cancellation paths must clear pending calls; frames and stderr
+  stay bounded and sanitized.
+- Provider quota observations use Lody's push-only rate-limit snapshots plus
+  warning notices; never infer utilization without valid limit/remaining pairs,
+  or treat `Retry-After` as a quota reset. See
+  [provider rate-limit headers](provider-rate-limit-headers.md).
+
 ## Focused verification
 
 Run the ACP and provider crate suites when changing these boundaries:

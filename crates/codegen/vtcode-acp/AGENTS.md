@@ -1,77 +1,24 @@
 # vtcode-acp
 
 [Root AGENTS.md](../AGENTS.md) | Agent Client Protocol (Zed integration).
-Canonical ACP entrypoint.
-
-## Modules
-
-`capabilities/` protocol negotiation | `client/` legacy client (deprecated) |
-`client_v2/` current ACP client | `discovery/` agent registry | `session/`
-session lifecycle | `transport/` StdioTransport | `jsonrpc/` JSON-RPC types |
-`tooling/` tool adapters | `zed/` Zed-specific adapter | `workspace/` workspace
-helpers | `permissions/` permission flow | `reports/` reporting | `error/`
-AcpError
-
-`zed/agent/handlers.rs` is the canonical SACP handler wiring;
-`zed/connection.rs` wraps the SACP `ConnectionTo<Client>` handle;
-`ZedAgent::new` attaches and refreshes parent MCP providers before snapshotting
-model tools.
+Canonical ACP entrypoint. Crate conventions and gotchas live in
+[ACP Runtime](../../../docs/development/acp-runtime.md#crate-conventions-and-gotchas).
 
 ## Rules
 
-- `AcpClientV2` is the current API. `AcpClient` is deprecated (legacy since
-  0.60.x).
-- `StandardAcpAdapter` / `ZedAcpAdapter` in `zed/` bridge protocol to Zed.
-- `register_acp_connection()` is a global `OnceLock<Arc<ConnectionHandle>>` —
-  call once from the host protocol after the SACP `connect_with` closure
-  receives the `cx`.
-- `acp` module in `vtcode-core` is the compatibility facade; canonical code
-  lives here.
-- ACP 2.0.0 (schema 1.5.0) uses SACP builder + handlers, not the old
-  `impl acp::Agent` trait. `handlers.rs` registers SACP request/notification
-  handlers around `ZedAgent`.
-- `ZedAgent` is `Send + Sync` (`Arc<Mutex<_>>` + `AtomicBool`) so it can be
-  moved into SACP `cx.spawn` tasks.
-- `session/prompt` turns are serialized per session by
-  `SessionHandle::prompt_gate` (`Arc<tokio::sync::Mutex<()>>`). Acquire it only
-  inside the spawned prompt task, after the unknown-session check; never await
-  it in `handle_prompt`.
-- Reset `SessionCancellation` only after acquiring the gate. Cancellation
-  targets the active turn: a steer queued before `session/cancel` runs
-  afterwards, and a cancel arriving after the reset aborts the new turn.
-- Every non-cancelled turn must end with assistant content or an explicit
-  `internal_error` (`empty_response`, `tool_execution_failed`), never a silent
-  `EndTurn`. A cancelled turn always returns `StopReason::Cancelled`.
-- `zed/agent/prompt_lifecycle_tests.rs` drives the real duplex transport with a
-  scripted provider; keep overlapping-prompt, steer-then-cancel and
-  empty-response coverage deterministic (no sleeps as ordering primitives).
-- Tool execution RPCs (`fs/read_text_file`, `terminal/create`,
-  `session/request_permission`) must be called from inside a `cx.spawn(...)`
-  task — invoking them directly from an SACP request handler deadlocks the
-  dispatch loop.
-- `ZedAgent` carries the configured `AuthCredentialsStoreMode`; provider-key
-  resolution must use that mode rather than the platform default.
-
-## Gotchas
-
-- `PROTOCOL_VERSION` + `SUPPORTED_VERSIONS` control negotiation — update both
-  when protocol changes.
-- `messages.rs` types are deprecated — use `jsonrpc/` module instead.
-- `ConnectionHandle` wraps `agent_client_protocol::ConnectionTo<Client>`. The
-  `block_task()` future returned by `cx.send_request(...).block_task()` is
-  **only safe in a `cx.spawn` task**; calling it from a request handler
-  deadlocks.
-- The `acp` module re-exports `agent_client_protocol::schema::v1::*` plus
-  `ProtocolVersion` from `schema::*`. `Client` and `Agent` (role structs) are
-  at the crate root.
-- `SessionUpdateNotification` decodes through a direct wire shape for SSE
-  performance; new update variants must update that shape and its regression
-  tests.
-- Permission-flow tests use the duplex SACP connection harness; preserve allow,
-  deny, cancel, unknown-option, and request-failure coverage. Stdio EOF,
-  timeout, and cancellation paths must clear pending calls; frames and stderr
-  remain bounded and sanitized.
-- Provider quota observations use Lody's push-only rate-limit snapshots plus
-  warning notices; never infer utilization without valid limit/remaining pairs,
-  or treat `Retry-After` as a quota reset. See
-  `docs/development/provider-rate-limit-headers.md`.
+- ACP 2.0.0 (schema 1.5.0) uses the SACP builder + handlers, not
+  `impl acp::Agent`; `zed/agent/handlers.rs` is the canonical wiring.
+- `ZedAgent` is `Send + Sync` for `cx.spawn`. Tool RPCs and `block_task()` are
+  only safe inside a spawned task; calling them from a request handler
+  deadlocks dispatch.
+- Serialize `session/prompt` per session behind `SessionHandle::prompt_gate`
+  (`Arc<tokio::sync::Mutex<()>>`), acquired only inside the spawned task after
+  the unknown-session check; reset cancellation only after acquisition.
+- A cancelled turn returns `StopReason::Cancelled`; every other turn ends with
+  assistant content or an explicit `internal_error` (`empty_response`,
+  `tool_execution_failed`), never a silent `EndTurn`. Persist any buffered text
+  flushed visible on cancellation.
+- Provider-key resolution uses the configured `AuthCredentialsStoreMode`, not
+  the platform default.
+- `zed/agent/prompt_lifecycle_tests.rs` drives the duplex transport with a
+  scripted provider; keep ordering deterministic (no sleeps).
