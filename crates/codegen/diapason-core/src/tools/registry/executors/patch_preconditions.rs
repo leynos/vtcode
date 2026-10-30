@@ -34,17 +34,13 @@ pub(super) async fn validate_patch_content_hash(
 ) -> Result<Option<PatchPreconditionRejection>> {
     let source_paths = crate::tools::apply_patch::patch_precondition_source_paths(patch);
     let [source_path] = source_paths.as_slice() else {
-        let message = if source_paths.is_empty() {
-            "expected_content_hash is not valid for an add-only patch"
-        } else {
-            "expected_content_hash requires exactly one pre-existing source file; split the patch by source file"
-        };
+        let scope = patch_precondition_scope_error(source_paths.len());
         return Ok(Some(PatchPreconditionRejection {
             response: invalid_patch_precondition(
-                message,
+                scope.message,
                 json!({
                     "reason": "invalid_precondition_scope",
-                    "source_file_count": source_paths.len(),
+                    "source_file_count": scope.source_file_count,
                     "next_action": "Split the patch by source file, reread each file, and retry with its content_hash."
                 }),
             ),
@@ -86,15 +82,40 @@ pub(super) async fn validate_patch_content_hash(
     }))
 }
 
+/// The model-facing explanation for an out-of-scope `expected_content_hash`.
+///
+/// Both apply-patch surfaces share this so an add-only patch and a multi-source
+/// patch are told apart with the same wording and the same source count.
+pub(crate) struct PatchPreconditionScope {
+    /// Bounded explanation of why the supplied hash cannot gate this patch.
+    pub(crate) message: &'static str,
+    /// Number of distinct pre-existing source files the patch touches.
+    pub(crate) source_file_count: usize,
+}
+
+/// Explain why an `expected_content_hash` cannot gate this patch.
+///
+/// An add-only patch has no pre-existing content to hash, and a patch touching
+/// several source files has more than one version to check. Each needs its own
+/// message so the model's next action is unambiguous.
+pub(crate) fn patch_precondition_scope_error(source_file_count: usize) -> PatchPreconditionScope {
+    let message = if source_file_count == 0 {
+        "expected_content_hash is not valid for an add-only patch"
+    } else {
+        "expected_content_hash requires exactly one pre-existing source file; split the patch by source file"
+    };
+    PatchPreconditionScope { message, source_file_count }
+}
+
 /// Build the structured rejection payload shared by every precondition failure.
-pub(super) fn invalid_patch_precondition(message: impl Into<String>, details: Value) -> Value {
+pub(crate) fn invalid_patch_precondition(message: impl Into<String>, details: Value) -> Value {
     ToolExecutionError::new(crate::config::constants::tools::APPLY_PATCH, ToolErrorType::InvalidParameters, message)
         .with_details(details)
         .to_json_value()
 }
 
 /// Build the refusal returned once the same no-op has been offered three times.
-pub(super) fn repeated_no_op_error(signature: String, occurrence: u8) -> Value {
+pub(crate) fn repeated_no_op_error(signature: String, occurrence: u8) -> Value {
     ToolExecutionError::new(
         crate::config::constants::tools::APPLY_PATCH,
         ToolErrorType::PolicyViolation,

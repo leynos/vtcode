@@ -109,15 +109,108 @@ fn patch_signature(
     format!("sha256:{}", vtcode_commons::utils::calculate_sha256(encoded.as_bytes()))
 }
 
+/// Return original operation indices in canonical encoding order.
+///
+/// The applicator replays operations in order and carries pending content per
+/// path, so two operations that touch a common path must keep their supplied
+/// relative order: swapping them could describe different final bytes.
+/// Independent operations carry no such dependency, so they are emitted
+/// deterministically — smallest canonical source path bytes first, with the
+/// original index as a tie-break. That makes the signature invariant to the
+/// order a caller happened to list unrelated edits, so alternating two
+/// equivalent orderings cannot reset the no-op ladder.
+///
+/// For each operation the touched paths are its canonical source plus its
+/// destination when present. Only interacting pairs (earlier-supplied to
+/// later-supplied) add an edge, which keeps the graph acyclic and preserves
+/// the supplied order of dependent operations.
+fn canonical_operation_order(canonical_operations: &[CanonicalPatchOperation]) -> Vec<usize> {
+    let count = canonical_operations.len();
+    if count <= 1 {
+        return (0..count).collect();
+    }
+
+    let touched_paths: Vec<Vec<&std::path::Path>> = canonical_operations
+        .iter()
+        .map(|operation| {
+            let mut paths = vec![operation.source.as_path()];
+            if let Some(destination) = operation.destination.as_deref() {
+                paths.push(destination);
+            }
+            paths
+        })
+        .collect();
+
+    let mut indegree = vec![0usize; count];
+    let mut dependents: Vec<Vec<usize>> = vec![Vec::new(); count];
+    for (earlier, earlier_paths) in touched_paths.iter().enumerate() {
+        for (later, later_paths) in touched_paths.iter().enumerate().skip(earlier + 1) {
+            let interacts = earlier_paths.iter().any(|left| later_paths.iter().any(|right| left == right));
+            if !interacts {
+                continue;
+            }
+            if let Some(degree) = indegree.get_mut(later) {
+                *degree += 1;
+            }
+            if let Some(edges) = dependents.get_mut(earlier) {
+                edges.push(later);
+            }
+        }
+    }
+
+    let mut emitted = vec![false; count];
+    let mut order = Vec::with_capacity(count);
+    while order.len() < count {
+        let next = indegree
+            .iter()
+            .enumerate()
+            .filter(|(index, degree)| **degree == 0 && !emitted.get(*index).copied().unwrap_or(true))
+            .map(|(index, _)| index)
+            .min_by_key(|index| operation_order_key(canonical_operations, *index));
+        let Some(chosen) = next else {
+            break;
+        };
+        if let Some(flag) = emitted.get_mut(chosen) {
+            *flag = true;
+        }
+        order.push(chosen);
+        if let Some(edges) = dependents.get(chosen) {
+            for dependent in edges {
+                if let Some(degree) = indegree.get_mut(*dependent) {
+                    *degree = degree.saturating_sub(1);
+                }
+            }
+        }
+    }
+    order
+}
+
+/// Ordering key for canonical emission: source path bytes, then original index.
+fn operation_order_key(canonical_operations: &[CanonicalPatchOperation], index: usize) -> (&[u8], usize) {
+    let source = canonical_operations
+        .get(index)
+        .map(|operation| operation.source.as_os_str().as_encoded_bytes())
+        .unwrap_or_default();
+    (source, index)
+}
+
 /// Append the patch's operations to the signature encoding.
 ///
 /// Every field is length-prefixed so concatenation cannot alias: without it
-/// `("ab", "c")` and `("a", "bc")` would encode identically.
+/// `("ab", "c")` and `("a", "bc")` would encode identically. Operations are
+/// emitted in the canonical order from [`canonical_operation_order`], paired
+/// back with their canonical path by original index.
 fn encode_patch(encoded: &mut String, patch: &Patch, canonical_operations: &[CanonicalPatchOperation]) {
     debug_assert_eq!(patch.operations().len(), canonical_operations.len());
     encoded.push_str(&patch.operations().len().to_string());
     encoded.push(';');
-    for (operation, canonical) in patch.operations().iter().zip(canonical_operations) {
+    for original_index in canonical_operation_order(canonical_operations) {
+        let Some(operation) = patch.operations().get(original_index) else {
+            continue;
+        };
+        let Some(canonical) = canonical_operations.get(original_index) else {
+            continue;
+        };
         match operation {
             PatchOperation::AddFile { content, .. } => {
                 encoded.push('A');
@@ -209,6 +302,98 @@ mod tests {
         );
     }
 
+    /// Build a canonical update operation fixture for the given path.
+    fn update_operation(path: &str) -> CanonicalPatchOperation {
+        CanonicalPatchOperation { source: PathBuf::from(path), destination: None }
+    }
+
+    /// Check independent updates hash the same when their order is swapped.
+    #[test]
+    fn independent_operations_in_swapped_order_share_one_signature() {
+        let forward = Patch::parse(concat!(
+            "*** Begin Patch\n",
+            "*** Update File: a.txt\n",
+            "@@\n",
+            "-alpha\n",
+            "+alpha\n",
+            "*** Update File: b.txt\n",
+            "@@\n",
+            "-beta\n",
+            "+beta\n",
+            "*** End Patch\n",
+        ))
+        .expect("valid forward patch");
+        let reverse = Patch::parse(concat!(
+            "*** Begin Patch\n",
+            "*** Update File: b.txt\n",
+            "@@\n",
+            "-beta\n",
+            "+beta\n",
+            "*** Update File: a.txt\n",
+            "@@\n",
+            "-alpha\n",
+            "+alpha\n",
+            "*** End Patch\n",
+        ))
+        .expect("valid reverse patch");
+        let forward_operations = vec![
+            update_operation("/workspace/a.txt"),
+            update_operation("/workspace/b.txt"),
+        ];
+        let reverse_operations = vec![
+            update_operation("/workspace/b.txt"),
+            update_operation("/workspace/a.txt"),
+        ];
+        let states = vec![state("/workspace/a.txt", "same-a"), state("/workspace/b.txt", "same-b")];
+
+        assert_eq!(
+            patch_signature(&forward, &forward_operations, &states, &states),
+            patch_signature(&reverse, &reverse_operations, &states, &states)
+        );
+    }
+
+    /// Check updates to a common path keep their supplied relative order.
+    #[test]
+    fn dependent_operations_keep_their_supplied_order() {
+        let forward = Patch::parse(concat!(
+            "*** Begin Patch\n",
+            "*** Update File: a.txt\n",
+            "@@\n",
+            "-one\n",
+            "+ONE\n",
+            "*** Update File: a.txt\n",
+            "@@\n",
+            "-two\n",
+            "+TWO\n",
+            "*** End Patch\n",
+        ))
+        .expect("valid forward patch");
+        let reverse = Patch::parse(concat!(
+            "*** Begin Patch\n",
+            "*** Update File: a.txt\n",
+            "@@\n",
+            "-two\n",
+            "+TWO\n",
+            "*** Update File: a.txt\n",
+            "@@\n",
+            "-one\n",
+            "+ONE\n",
+            "*** End Patch\n",
+        ))
+        .expect("valid reverse patch");
+        let operations = vec![
+            update_operation("/workspace/a.txt"),
+            update_operation("/workspace/a.txt"),
+        ];
+        let states = vec![state("/workspace/a.txt", "same")];
+
+        assert_ne!(
+            patch_signature(&forward, &operations, &states, &states),
+            patch_signature(&reverse, &operations, &states, &states),
+            "operations sharing a path must keep their supplied order"
+        );
+    }
+
     proptest! {
         /// Check the signature ignores the order paths are listed in.
         #[test]
@@ -227,6 +412,43 @@ mod tests {
             prop_assert_eq!(
                 patch_signature(&patch, &operations, &forward, &forward),
                 patch_signature(&patch, &operations, &reverse, &reverse)
+            );
+        }
+
+        /// Check swapping two independent operations cannot change the signature.
+        #[test]
+        fn patch_guard_prop_signature_is_independent_operation_order_invariant(
+            left_path in "[a-z]{1,8}\\.txt",
+            right_path in "[a-z]{1,8}\\.txt",
+            left_body in "[a-z]{1,12}",
+            right_body in "[a-z]{1,12}",
+        ) {
+            prop_assume!(left_path != right_path);
+            let forward = Patch::parse(&format!(
+                "*** Begin Patch\n*** Add File: {left_path}\n+{left_body}\n\
+                 *** Add File: {right_path}\n+{right_body}\n*** End Patch\n"
+            ))
+            .map_err(|error| TestCaseError::fail(error.to_string()))?;
+            let reverse = Patch::parse(&format!(
+                "*** Begin Patch\n*** Add File: {right_path}\n+{right_body}\n\
+                 *** Add File: {left_path}\n+{left_body}\n*** End Patch\n"
+            ))
+            .map_err(|error| TestCaseError::fail(error.to_string()))?;
+            let forward_operations = vec![
+                update_operation(&format!("/workspace/{left_path}")),
+                update_operation(&format!("/workspace/{right_path}")),
+            ];
+            let reverse_operations = vec![
+                update_operation(&format!("/workspace/{right_path}")),
+                update_operation(&format!("/workspace/{left_path}")),
+            ];
+            let states = vec![
+                state(&format!("/workspace/{left_path}"), "same"),
+                state(&format!("/workspace/{right_path}"), "same"),
+            ];
+            prop_assert_eq!(
+                patch_signature(&forward, &forward_operations, &states, &states),
+                patch_signature(&reverse, &reverse_operations, &states, &states)
             );
         }
 

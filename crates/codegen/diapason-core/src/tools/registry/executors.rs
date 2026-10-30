@@ -41,7 +41,7 @@ mod exec_support;
 
 mod patch_pipeline;
 
-mod patch_preconditions;
+pub(crate) mod patch_preconditions;
 
 mod sandbox_runtime;
 

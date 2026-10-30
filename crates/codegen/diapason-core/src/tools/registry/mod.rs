@@ -83,6 +83,7 @@ pub use execution_history::{
 };
 pub use execution_kernel::ToolPreflightOutcome;
 pub use execution_request::{ExecSettlementMode, ExecutionPolicySnapshot, ToolExecutionOutcome, ToolExecutionRequest};
+pub(crate) use executors::patch_preconditions;
 pub use executors::sandbox_policy_from_runtime_config;
 pub use harness::HarnessContext;
 pub use justification::{ApprovalPattern, JustificationManager, ToolJustification};
