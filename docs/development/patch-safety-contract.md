@@ -84,14 +84,22 @@ The `apply_patch_handler.rs` path enforces the same hash precondition
 independently via `validate_request_content_hash`, so the guarantee holds on
 both the registry and handler surfaces.
 
-### Error propagation, not error masking
+### Read failures stay distinct from rebase verdicts
 
-`assess_patch_rebase` returns `anyhow::Result`. An unreadable file is an `Err`,
-not `(false, vec![])`. Reporting a read failure as "cannot rebase" would tell
-the model its anchors are wrong when the patch was never assessed. Callers must
-keep those two outcomes distinct when adding new call sites;
-`apply_patch_handler` maps the error to `ToolError::Codex` rather than a
-rejection for exactly this reason.
+The rebase assessment is a pure function of content the caller has already read:
+`assess_patch_rebase_with_content` takes the current text and returns
+`(can_safely_rebase, anchor_failures)`. Reading is the caller's responsibility,
+so a read failure must stay a Rust error rather than be reported as "cannot
+rebase" — that would tell the model its anchors are wrong when the patch was
+never assessed.
+
+`apply_patch_handler::validate_request_content_hash` reads the file once,
+hashes those bytes, and reuses the same buffer for the assessment. Reading a
+second time would let a concurrent writer retarget a workspace symlink after
+the containment check and quote an out-of-workspace file back through the
+anchor failures. Where the registry supplies a snapshot that is not text there
+is no content to assess, so `patch_preconditions` reports `(false, [])`; that
+is a rejection the model can act on, not a masked I/O error.
 
 ## Invariant 3: planning follows the applicator's order
 
@@ -127,6 +135,34 @@ increments only while the signature is unchanged; a different signature
 restarts it at `1`, and a patch that actually changes a file resets it before
 the signature is even computed.
 
+## Observability
+
+Both guards report through `metrics::patch_safety_metrics`, which keeps two
+bounded counter sets and one timer:
+
+- precondition outcomes: `matched`, `content_hash_mismatch`, `invalid_scope`,
+  `malformed_hash`;
+- no-op decisions: `execute`, `no_op_first`, `no_op_repeated`, `no_op_blocked`;
+- `evaluations` plus `total_duration_ms`, from which `avg_duration_ms` is
+  derived.
+
+The snapshot appears as `patch_safety` in the metrics summary JSON and as
+`vtcode_apply_patch_precondition_total{outcome=...}`,
+`vtcode_apply_patch_no_op_total{decision=...}`,
+`vtcode_apply_patch_evaluations_total`, and
+`vtcode_apply_patch_avg_duration_ms` in the Prometheus export.
+
+Every label is a fixed enum variant. Paths, patch signatures, patch text, and
+error strings never become a label or a log value, so a session editing private
+files can export this snapshot without leaking their content. Adding a
+dimension means adding an enum variant and its `as_str` arm; a free-form string
+label is not acceptable.
+
+Each rejected precondition and each no-op decision also emits one
+`tracing::info!` record carrying `operation`, `outcome` or `decision`,
+`occurrence` where it applies, `session_id`, and `task_id`. Logs may carry the
+bounded outcome, but not the rejection payload.
+
 ## Testing expectations
 
 When changing any of the above, the following are the minimum checks:
@@ -140,6 +176,9 @@ When changing any of the above, the following are the minimum checks:
   through to the write.
 - **Read certification** — a growing file must yield no version rather than an
   inconsistent one.
+- **Observability** — the `patch_safety` metrics test must keep asserting the
+  summary fields, the Prometheus series, and that neither export can contain
+  patch text or a hash.
 
 Assert on the observable contract (file unchanged, `reason` present, occurrence
 counted) rather than on internal state, so refactors inside the guard do not

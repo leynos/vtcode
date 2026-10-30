@@ -113,6 +113,7 @@ impl ToolRegistry {
         Self::build_with_policy(workspace_root, pty_config, None, true).await
     }
 
+    /// Build the registry with an optional policy manager and policy initialization.
     async fn build_with_policy(
         workspace_root: PathBuf,
         pty_config: PtyConfig,

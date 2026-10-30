@@ -102,6 +102,7 @@ pub fn with_semantic_anchor_guidance(base: &str) -> String {
     }
 }
 
+/// Build the apply_patch parameter schema around the given input description.
 #[must_use]
 pub fn apply_patch_parameter_schema(input_description: &str) -> Value {
     json!({
@@ -567,6 +568,7 @@ mod tests {
         assert_eq!(with_semantic_anchor_guidance(&with_guidance), with_guidance);
     }
 
+    /// Check the default schema keeps the alias shape and hash guidance.
     #[test]
     fn default_apply_patch_parameters_keep_expected_alias_shape() {
         let schema = apply_patch_parameters();

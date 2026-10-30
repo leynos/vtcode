@@ -83,6 +83,7 @@ fn structured_tool_output_error(value: &Value) -> Option<String> {
     obj.get("error").map(tool_error_value_to_string)
 }
 
+/// Prefer a string or non-null details value, falling back to the message.
 fn tool_error_value_to_string(value: &Value) -> String {
     if let Some(message) = value.as_str() {
         return message.to_string();
@@ -688,6 +689,7 @@ impl ToolRegistry {
         .await
     }
 
+    /// Resolve the tool name and arguments, then execute through the registry.
     async fn execute_tool_ref_internal(
         &self,
         name: &str,
@@ -1914,6 +1916,7 @@ mod tests {
     use super::tool_error_value_to_string;
     use serde_json::json;
 
+    /// Check a null details field falls back to the message.
     #[test]
     fn null_details_falls_back_to_message() {
         // `ToolExecutionError::to_json_value` always emits a `details` key, using
@@ -1923,6 +1926,7 @@ mod tests {
         assert_eq!(tool_error_value_to_string(&value), "boom");
     }
 
+    /// Check populated details are preserved in the flattened error string.
     #[test]
     fn present_details_keep_structured_payload() {
         let value = json!({"message": "boom", "details": {"path": "a.rs"}});

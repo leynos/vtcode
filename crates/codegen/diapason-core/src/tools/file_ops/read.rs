@@ -197,18 +197,21 @@ fn parse_usize_value(value: &Value) -> Option<usize> {
         .or_else(|| value.as_str().and_then(|s| s.parse::<usize>().ok()))
 }
 
+/// Report whether the arguments set any limit alias.
 fn has_explicit_limit(args: &Value) -> bool {
     ["limit", "l", "page_size_lines", "max_lines", "chunk_lines", "end_line"]
         .iter()
         .any(|key| args.get(*key).is_some())
 }
 
+/// Report whether the arguments set any offset alias.
 fn has_explicit_offset(args: &Value) -> bool {
     ["offset", "o", "offset_lines", "offset_bytes", "start_line"]
         .iter()
         .any(|key| args.get(*key).is_some())
 }
 
+/// Report whether the read covers the whole file with no explicit window.
 fn is_full_text_read(args: &Value, is_spool_output: bool) -> bool {
     !is_spool_output && !has_explicit_offset(args) && !has_explicit_limit(args)
 }
@@ -276,6 +279,13 @@ fn pty_session_id_from_tool_output_path(path: &Path) -> Option<String> {
     }
 }
 
+/// Key the read-history cache on the file version and the window arguments.
+///
+/// The size and mtime identify the version the cached entry was produced from,
+/// and every argument that changes the rendered window is folded in, so a
+/// different page or encoding never reuses another window's text. Returns
+/// `None` when the modification time is unavailable, which makes the read
+/// uncacheable rather than silently shared.
 fn build_history_cache_key(path: &Path, metadata: &std::fs::Metadata, args: &Value) -> Option<String> {
     let modified = metadata.modified().ok()?;
     let mtime = modified.duration_since(UNIX_EPOCH).ok()?.as_millis();
@@ -393,6 +403,7 @@ impl FileOpsTool {
         Ok(Some(after_hash))
     }
 
+    /// Resolve the target, apply paging and caching, and return the read payload.
     pub async fn read_file(&self, args: Value) -> Result<Value> {
         let mut perf = PerfSpan::new("diapason.perf.read_file_ms");
 
@@ -761,6 +772,7 @@ mod read_tests {
     use diapason_commons::utils::calculate_sha256;
     use tempfile::TempDir;
 
+    /// Format the canonical `sha256:` content hash for test fixtures.
     fn expected_content_hash(content: &[u8]) -> String {
         format!("sha256:{}", calculate_sha256(content))
     }
@@ -1183,6 +1195,7 @@ mod read_tests {
         assert!(!truncated);
     }
 
+    /// Check a legacy max_bytes read clamps content but hashes the whole file.
     #[tokio::test]
     async fn test_read_file_legacy_functionality() {
         let temp_dir = TempDir::new().unwrap();
@@ -1209,6 +1222,7 @@ mod read_tests {
         assert_eq!(result["content_hash"], expected_content_hash(test_content.as_bytes()));
     }
 
+    /// Ensure a cached history read rehashes content even when mtime is unchanged.
     #[tokio::test]
     async fn history_cache_revalidates_the_full_file_version() {
         let temp_dir = TempDir::new().unwrap();
@@ -1255,6 +1269,7 @@ mod read_tests {
         assert_ne!(first["content_hash"], second["content_hash"]);
     }
 
+    /// Check a full-text read keeps the trailing newline and hashes raw bytes.
     #[tokio::test]
     async fn test_read_file_full_text_preserves_trailing_newline() {
         let temp_dir = TempDir::new().unwrap();
@@ -1271,6 +1286,7 @@ mod read_tests {
         assert_eq!(result["content_hash"], expected_content_hash(b"hello\n"));
     }
 
+    /// Check every paged read reports the hash of the whole raw file.
     #[tokio::test]
     async fn read_file_pages_report_the_full_raw_file_version() {
         let temp_dir = TempDir::new().unwrap();
@@ -1756,6 +1772,7 @@ mod read_tests {
         );
     }
 
+    /// Check a spool that grows mid-read omits the content hash but still pages.
     #[tokio::test]
     async fn spool_read_omits_content_hash_when_output_grows_mid_read() {
         let temp_dir = TempDir::new().unwrap();

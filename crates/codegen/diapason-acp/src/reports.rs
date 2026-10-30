@@ -70,6 +70,12 @@ impl ToolExecutionReport {
         }
     }
 
+    /// Render a structured tool error as a failed report.
+    ///
+    /// The serialized error, including its model-visible `details` payload, is
+    /// preserved in `raw_output`, while the visible content carries the user
+    /// message. That keeps an ACP client's structured diagnostics identical to
+    /// what the model received instead of flattening them into a string.
     pub(crate) fn structured_failure(error: &vtcode_core::tools::registry::ToolExecutionError) -> Self {
         let payload = json!({
             TOOL_RESPONSE_KEY_STATUS: TOOL_ERROR_LABEL,
@@ -129,6 +135,7 @@ mod tests {
         assert_eq!(ToolExecutionReport::cancelled("read_file").audit_status, ToolAuditStatus::Cancelled);
     }
 
+    /// Assert structured failure details reach both raw and model-visible output.
     #[test]
     fn structured_failure_preserves_model_visible_error_details() {
         let error = vtcode_core::tools::registry::ToolExecutionError::new(

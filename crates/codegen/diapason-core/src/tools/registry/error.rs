@@ -89,6 +89,7 @@ impl ToolExecutionError {
         Self::from_parts(tool_name.into(), category, ToolErrorType::from(category), message.into())
     }
 
+    /// Assemble an error and derive its recovery guidance from the category.
     fn from_parts(tool_name: String, category: ErrorCategory, error_type: ToolErrorType, message: String) -> Self {
         let (retryable, is_recoverable, recovery_suggestions) =
             generate_recovery_info(tool_name.as_str(), category, error_type);
@@ -359,6 +360,7 @@ impl ToolExecutionError {
         })
     }
 
+    /// Serialize the error into the canonical tool-output envelope.
     #[must_use]
     pub fn to_json_value(&self) -> Value {
         json!({
@@ -572,6 +574,7 @@ mod tests {
         }
     }
 
+    /// Check structured details survive serialization and parsing back.
     #[test]
     fn structured_details_survive_the_tool_output_round_trip() {
         let error = ToolExecutionError::new("apply_patch", ToolErrorType::InvalidParameters, "version mismatch")
