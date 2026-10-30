@@ -718,7 +718,7 @@ fn reconcile_reasoning_delta(
 ) -> Result<String, provider::LLMError> {
     reconciler
         .reasoning_delta(reasoning_item_identity(payload, event_type), delta)
-        .map_err(|message| provider_error("OpenAI", message))
+        .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))
 }
 
 fn reconcile_reasoning_done(
@@ -729,7 +729,7 @@ fn reconcile_reasoning_done(
 ) -> Result<Option<String>, provider::LLMError> {
     reconciler
         .reasoning_done(reasoning_item_identity(payload, event_type), text)
-        .map_err(|message| provider_error("OpenAI", message))
+        .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))
 }
 
 fn merge_reconciled_custom_calls(
