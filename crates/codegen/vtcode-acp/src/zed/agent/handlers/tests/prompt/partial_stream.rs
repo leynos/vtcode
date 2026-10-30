@@ -73,7 +73,17 @@ async fn visible_stream_failure_checkpoints_an_incomplete_turn_over_acp() {
         .collect::<String>();
     assert!(visible_text.contains("partial answer"));
     assert!(visible_text.contains("You can retry the prompt"));
+    assert_safe_provider_projection(&visible_text, "Network error", "HTTP status 503", "provider-marker-body");
+    assert_checkpointed_incomplete_turn(&agent);
+}
 
+fn assert_safe_provider_projection(text: &str, category: &str, status: &str, marker: &str) {
+    assert!(text.contains(category));
+    assert!(text.contains(status));
+    assert!(!text.contains(marker));
+}
+
+fn assert_checkpointed_incomplete_turn(agent: &ZedAgent) {
     let session = agent
         .sessions
         .lock()
@@ -84,6 +94,9 @@ async fn visible_stream_failure_checkpoints_an_incomplete_turn_over_acp() {
         .clone();
     let messages = session.data.lock().expect("wire session data").thread.messages();
     let incomplete = messages.last().expect("incomplete assistant message");
-    assert!(incomplete.content.as_text().contains("partial answer"));
+    let content = incomplete.content.as_text();
+
+    assert!(content.contains("partial answer"));
+    assert_safe_provider_projection(&content, "Network error", "HTTP status 503", "provider-marker-body");
     assert!(incomplete.metadata.as_ref().is_some_and(MessageMetadata::is_incomplete));
 }

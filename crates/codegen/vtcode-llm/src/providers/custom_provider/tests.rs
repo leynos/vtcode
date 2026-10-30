@@ -7,3 +7,6 @@ mod command_auth;
 mod openai_streaming;
 #[path = "tests/profiles.rs"]
 mod profiles;
+
+#[path = "tests/error_metadata.rs"]
+mod error_metadata;

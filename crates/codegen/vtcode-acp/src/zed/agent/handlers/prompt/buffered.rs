@@ -35,7 +35,7 @@ use super::*;
 enum BufferedGenerationOutcome {
     Response(Box<LLMResponse>),
     Cancelled,
-    Failed(String),
+    Failed(SafeProviderProjection),
 }
 
 enum BufferedToolOutcome {
@@ -59,12 +59,15 @@ enum BufferedTurnStep {
     Finished(ProviderTurnOutcome),
 }
 
-pub(super) async fn run_buffered_provider_turn(turn: &mut PromptExecution) -> Result<ProviderTurnOutcome, SdkError> {
+pub(super) async fn run_buffered_provider_turn(
+    turn: &mut PromptExecution,
+    retry_observed_at: &RetryObservationClock<'_>,
+) -> Result<ProviderTurnOutcome, SdkError> {
     let mut output = ProviderOutput::take_from(turn);
     let mut tool_loop_count = 0usize;
 
     loop {
-        match buffered_turn_step(turn, &mut output, &mut tool_loop_count).await? {
+        match buffered_turn_step(turn, &mut output, &mut tool_loop_count, retry_observed_at).await? {
             BufferedTurnStep::Continue => {}
             BufferedTurnStep::Finished(outcome) => return Ok(outcome),
         }
@@ -75,8 +78,9 @@ async fn buffered_turn_step(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,
     tool_loop_count: &mut usize,
+    retry_observed_at: &RetryObservationClock<'_>,
 ) -> Result<BufferedTurnStep, SdkError> {
-    let response = match next_buffered_generation(turn, output).await? {
+    let response = match next_buffered_generation(turn, output, retry_observed_at).await? {
         BufferedGenerationStep::Ready(response) => *response,
         BufferedGenerationStep::Finished(outcome) => return Ok(BufferedTurnStep::Finished(outcome)),
     };
@@ -105,12 +109,13 @@ async fn buffered_turn_step(
 async fn next_buffered_generation(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,
+    retry_observed_at: &RetryObservationClock<'_>,
 ) -> Result<BufferedGenerationStep, SdkError> {
     if turn.session.cancellation.is_cancelled() {
         store_buffered_output(turn, output);
         return Ok(BufferedGenerationStep::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)));
     }
-    let response = match generate_buffered_response(turn).await? {
+    let response = match generate_buffered_response(turn, retry_observed_at).await? {
         BufferedGenerationOutcome::Response(response) => *response,
         BufferedGenerationOutcome::Cancelled => {
             store_buffered_output(turn, output);
@@ -118,7 +123,7 @@ async fn next_buffered_generation(
         }
         BufferedGenerationOutcome::Failed(error) => {
             let pending_output = std::mem::replace(output, ProviderOutput::empty());
-            return finish_failed_output(turn, pending_output, &error)
+            return finish_failed_output(turn, pending_output, error)
                 .await
                 .map(BufferedGenerationStep::Finished);
         }
@@ -145,14 +150,19 @@ fn store_buffered_output(turn: &mut PromptExecution, output: &mut ProviderOutput
     std::mem::replace(output, ProviderOutput::empty()).store_in(turn);
 }
 
-async fn generate_buffered_response(turn: &mut PromptExecution) -> Result<BufferedGenerationOutcome, SdkError> {
+async fn generate_buffered_response(
+    turn: &mut PromptExecution,
+    retry_observed_at: &RetryObservationClock<'_>,
+) -> Result<BufferedGenerationOutcome, SdkError> {
     let request = prepare_buffered_request(turn).await?;
-    match generate_with_retry(
+    match generate_with_retry_with_observer_and_metric_sink(
         turn.provider.as_ref(),
         request,
         &turn.provider_runtime,
         &turn.session.cancellation,
         Some((&turn.agent, &turn.args.session_id)),
+        retry_observed_at,
+        &turn.metric_sink,
     )
     .await
     {

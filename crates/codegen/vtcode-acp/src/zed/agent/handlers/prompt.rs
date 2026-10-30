@@ -37,7 +37,7 @@ pub(super) async fn persist_session_checkpoint(agent: &ZedAgent, session: &Sessi
 
 pub(super) async fn finish_failed_provider_turn(
     turn: &PromptExecution,
-    error: &str,
+    error: SafeProviderProjection,
 ) -> Result<PromptResponse, SdkError> {
     let IncompleteProviderTurn { message, visible_update, response } =
         IncompleteProviderTurn::from_failure(&turn.assistant_message, &turn.assistant_reasoning, error);
@@ -49,6 +49,8 @@ pub(super) async fn finish_failed_provider_turn(
     push_session_message(&turn.agent, &turn.session, &turn.args.session_id, message)?;
     persist_session_checkpoint(&turn.agent, &turn.session, "incomplete_provider_turn").await;
     warn!(
+        error_category = error.category(),
+        error_status = ?error.status(),
         partial_text_bytes = turn.assistant_message.len(),
         partial_reasoning_bytes = turn.assistant_reasoning.len(),
         "ACP provider failed to complete the turn"
@@ -59,7 +61,7 @@ pub(super) async fn finish_failed_provider_turn(
 pub(super) async fn finish_failed_output(
     turn: &mut PromptExecution,
     output: ProviderOutput,
-    error: &str,
+    error: SafeProviderProjection,
 ) -> Result<ProviderTurnOutcome, SdkError> {
     output.store_in(turn);
     finish_failed_provider_turn(turn, error)
@@ -175,6 +177,7 @@ pub(super) enum ProviderTurnOutcome {
 }
 
 pub(super) struct PromptExecution {
+    metric_sink: ProviderMetricSink,
     agent: Arc<ZedAgent>,
     args: PromptRequest,
     session: SessionHandle,
@@ -260,6 +263,7 @@ async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecuti
     let PromptInput { agent, args, session, _turn_guard, user_message: _ } = input;
 
     Ok(PromptExecution {
+        metric_sink: ProviderMetricSink::production(),
         agent,
         args,
         session,
@@ -288,6 +292,24 @@ pub(super) struct PromptProviderContext {
 }
 
 pub(super) async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptResponse, SdkError> {
+    run_prompt_with_retry_observer(agent, args, SystemTime::now, ProviderMetricSink::production()).await
+}
+
+#[cfg(test)]
+pub(super) async fn run_prompt_with_metric_sink(
+    agent: Arc<ZedAgent>,
+    args: PromptRequest,
+    metric_sink: ProviderMetricSink,
+) -> Result<PromptResponse, SdkError> {
+    run_prompt_with_retry_observer(agent, args, SystemTime::now, metric_sink).await
+}
+
+pub(super) async fn run_prompt_with_retry_observer(
+    agent: Arc<ZedAgent>,
+    args: PromptRequest,
+    retry_observed_at: impl Fn() -> SystemTime + Send + Sync,
+    metric_sink: ProviderMetricSink,
+) -> Result<PromptResponse, SdkError> {
     let input = match input::prepare_prompt_input(agent, args).await? {
         PromptInputOutcome::Response(response) => return Ok(response),
         PromptInputOutcome::Ready(input) => input,
@@ -295,15 +317,20 @@ pub(super) async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Res
     if !input::accept_user_prompt(&input).await? {
         return Ok(PromptResponse::new(acp::StopReason::Refusal));
     }
-    initialize_prompt_execution(input).await?.run().await
+    let mut execution = initialize_prompt_execution(input).await?;
+    execution.metric_sink = metric_sink;
+    execution.run(&retry_observed_at).await
 }
 
 impl PromptExecution {
-    async fn run(mut self) -> Result<PromptResponse, SdkError> {
+    async fn run(
+        mut self,
+        retry_observed_at: &provider::RetryObservationClock<'_>,
+    ) -> Result<PromptResponse, SdkError> {
         let outcome = if self.allow_streaming {
-            streaming::run_streaming_provider_turn(&mut self).await?
+            streaming::run_streaming_provider_turn(&mut self, retry_observed_at).await?
         } else {
-            buffered::run_buffered_provider_turn(&mut self).await?
+            buffered::run_buffered_provider_turn(&mut self, retry_observed_at).await?
         };
         match outcome {
             ProviderTurnOutcome::StopReason(stop_reason) => self.finish(stop_reason).await,

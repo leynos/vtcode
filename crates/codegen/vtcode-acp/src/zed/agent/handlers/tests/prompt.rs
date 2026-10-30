@@ -145,8 +145,11 @@ async fn streamed_reasoning_is_emitted_as_an_acp_thought_chunk_over_wire() {
 
 #[test]
 fn partial_stream_message_preserves_output_and_marks_it_incomplete() {
-    let failed_turn =
-        IncompleteProviderTurn::from_failure("partial answer", "partial reasoning", "stream disconnected");
+    let failed_turn = IncompleteProviderTurn::from_failure(
+        "partial answer",
+        "partial reasoning",
+        SafeProviderProjection::execution_error(),
+    );
     let message = failed_turn.message;
 
     assert!(message.content.as_text().starts_with("partial answer"));
@@ -157,22 +160,41 @@ fn partial_stream_message_preserves_output_and_marks_it_incomplete() {
     assert!(
         metadata
             .incomplete_reason()
-            .is_some_and(|reason| reason.contains("stream disconnected"))
+            .is_some_and(|reason| reason.contains("Execution failed"))
     );
 }
 
 #[test]
 fn provider_failure_without_output_becomes_a_normal_retryable_turn() {
-    let failed_turn = IncompleteProviderTurn::from_failure("", "", "\u{1b}[31m502 Bad Gateway\u{1b}[0m");
+    let failed_turn = IncompleteProviderTurn::from_failure(
+        "",
+        "",
+        SafeProviderProjection::from_llm_error(&LLMError::Provider {
+            message: "provider-marker".to_string(),
+            metadata: Some(LLMErrorMetadata::new(
+                "provider-marker",
+                Some(502),
+                Some("provider-marker".to_string()),
+                None,
+                None,
+                None,
+                Some("provider-marker".to_string()),
+            )),
+        }),
+    );
 
     assert_eq!(failed_turn.response.stop_reason, acp::StopReason::EndTurn);
     assert_eq!(failed_turn.message.content.as_text(), failed_turn.visible_update);
     assert!(failed_turn.visible_update.contains("You can retry the prompt"));
-    assert!(failed_turn.visible_update.contains("502 Bad Gateway"));
-    assert!(!failed_turn.visible_update.contains('\u{1b}'));
+    assert!(failed_turn.visible_update.contains("Service temporarily unavailable"));
+    assert!(failed_turn.visible_update.contains("HTTP status 502"));
+    assert!(!failed_turn.visible_update.contains("provider-marker"));
     let metadata = failed_turn.message.metadata.as_ref().expect("incomplete response metadata");
     assert!(metadata.is_incomplete());
-    assert_eq!(metadata.incomplete_reason(), Some("502 Bad Gateway"));
+    assert_eq!(
+        metadata.incomplete_reason(),
+        Some("Provider failure category: Service temporarily unavailable (HTTP status 502).")
+    );
 }
 
 #[tokio::test]

@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::models::ModelPricing;
 use crate::types::ReasoningEffortLevel;
 
+pub use super::rate_limit_headers::RateLimitHeaderConfig;
+
 fn default_auth_timeout_ms() -> u64 {
     5_000
 }
@@ -99,6 +101,7 @@ impl CustomProviderPricingConfig {
             && self.cache_write_per_million_usd.is_none()
     }
 }
+
 impl CustomProviderApiFormat {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -420,6 +423,7 @@ const fn default_provider_stream_idle_timeout_seconds() -> u64 {
 const fn default_provider_total_generation_timeout_seconds() -> u64 {
     600
 }
+
 /// Runtime admission and retry policy for a custom provider.
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
@@ -508,6 +512,7 @@ impl CustomProviderRequestPolicyConfig {
         Ok(())
     }
 }
+
 /// Configuration for a user-defined OpenAI-compatible provider endpoint.
 ///
 /// Allows users to define multiple named custom endpoints (e.g., corporate
@@ -645,6 +650,10 @@ pub struct CustomProviderConfig {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub profiles: BTreeMap<String, CustomProviderProfileConfig>,
 
+    /// Provider response-header names carrying typed rate-limit metadata.
+    #[serde(default, skip_serializing_if = "RateLimitHeaderConfig::is_default")]
+    pub rate_limit_headers: RateLimitHeaderConfig,
+
     /// Per-process request admission and transient retry policy.
     #[serde(default)]
     pub request_policy: CustomProviderRequestPolicyConfig,
@@ -699,6 +708,14 @@ impl CustomProviderConfig {
         ResolvedCustomProviderProfile::from_layers(&defaults, self.profile(model))
     }
 
+    /// Resolve response header mappings, preserving every explicit mapping and
+    /// filling provider-specific fields that were not configured.
+    pub fn effective_rate_limit_headers(&self) -> RateLimitHeaderConfig {
+        let mut headers = self.rate_limit_headers.clone();
+        headers.fill_missing_from(&RateLimitHeaderConfig::for_provider_name(&self.name));
+        headers
+    }
+
     pub fn provider_defaults_profile(&self) -> CustomProviderProfileConfig {
         CustomProviderProfileConfig {
             api_format: self.api_format,
@@ -734,6 +751,7 @@ impl CustomProviderConfig {
         self.validate_api_key_env()?;
         self.validate_models()?;
         self.request_policy.validate(&self.name)?;
+        self.rate_limit_headers.validate(&self.name)?;
         self.validate_profiles()?;
         self.validate_name_is_not_reserved()
     }
@@ -951,8 +969,8 @@ mod tests {
 
     use super::{
         CustomProviderApiFormat, CustomProviderCommandAuthConfig, CustomProviderConfig, CustomProviderPricingConfig,
-        CustomProviderProfileConfig, CustomProviderRequestPolicyConfig, ResolvedCustomProviderProfile,
-        default_auth_refresh_interval_ms, default_auth_timeout_ms,
+        CustomProviderProfileConfig, CustomProviderRequestPolicyConfig, RateLimitHeaderConfig,
+        ResolvedCustomProviderProfile, default_auth_refresh_interval_ms, default_auth_timeout_ms,
     };
 
     #[test]
@@ -1014,6 +1032,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1052,6 +1071,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1096,6 +1116,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1140,6 +1161,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1178,6 +1200,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: vec!["valid-model".to_string(), "   ".to_string()],
             profiles: BTreeMap::new(),
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1216,6 +1239,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1281,6 +1305,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles,
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1328,6 +1353,7 @@ mod tests {
                 "minimaxai/minimax-m3".to_string(),
             ],
             profiles: BTreeMap::new(),
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1461,6 +1487,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles,
+            rate_limit_headers: RateLimitHeaderConfig::default(),
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1493,7 +1520,24 @@ model = "gpt-5-mini"
         assert_eq!(parsed.api_format, CustomProviderApiFormat::Auto);
         assert!(parsed.profiles.is_empty());
         assert_eq!(parsed.resolved_profile("gpt-5-mini"), ResolvedCustomProviderProfile::default());
+        assert_eq!(parsed.rate_limit_headers, RateLimitHeaderConfig::default());
         assert_eq!(parsed.request_policy, CustomProviderRequestPolicyConfig::default());
+    }
+
+    #[test]
+    fn explicit_header_mapping_wins_over_provider_defaults() {
+        let config = CustomProviderConfig {
+            name: "together-proxy".to_string(),
+            rate_limit_headers: RateLimitHeaderConfig {
+                tokens_limit_per_second: Some("x-proxy-token-limit".to_string()),
+                ..RateLimitHeaderConfig::default()
+            },
+            ..CustomProviderConfig::default()
+        };
+
+        let headers = config.effective_rate_limit_headers();
+        assert_eq!(headers.tokens_limit_per_second.as_deref(), Some("x-proxy-token-limit"));
+        assert_eq!(headers.reset_after_seconds.as_deref(), Some("x-ratelimit-reset"));
     }
 
     #[test]

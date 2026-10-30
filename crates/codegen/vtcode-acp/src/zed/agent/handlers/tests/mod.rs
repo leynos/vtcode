@@ -40,3 +40,7 @@ mod provider_runtime_fixtures;
 use archive_test_support::{EnvGuard, SESSION_DIR_ENV, lock_history_test_guard};
 use prompt_fixtures::*;
 use provider_runtime_fixtures::*;
+
+pub(super) use prompt_fixtures::{
+    PROMPT_PROVIDER_TEST_LOCK, PromptProviderFactoryGuard, build_wire_test_agent_with_providers,
+};

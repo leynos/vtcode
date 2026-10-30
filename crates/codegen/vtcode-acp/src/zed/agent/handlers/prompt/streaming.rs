@@ -8,8 +8,15 @@ use event_collection::classify_stream_failure;
 
 enum StreamAttemptOutcome {
     Completed(Box<LLMResponse>),
-    Retry { delay: Duration, error: LLMError },
-    Failed(LLMError),
+    Retry {
+        delay: Duration,
+        error: LLMError,
+        observed_at: SystemTime,
+    },
+    Failed {
+        error: LLMError,
+        observed_at: SystemTime,
+    },
     Cancelled,
 }
 
@@ -26,6 +33,8 @@ struct StreamCollectionRequest<'a> {
     deadlines: &'a mut StreamDeadlineTracker,
     telemetry: &'a mut GenerationTelemetry,
     output: &'a mut ProviderOutput,
+    backoff: &'a mut RetryBackoff,
+    retry_observed_at: &'a RetryObservationClock<'a>,
 }
 
 struct StreamFailureRequest<'a> {
@@ -34,6 +43,8 @@ struct StreamFailureRequest<'a> {
     output: &'a ProviderOutput,
     attempt_index: u32,
     error: LLMError,
+    backoff: &'a mut RetryBackoff,
+    retry_observed_at: &'a RetryObservationClock<'a>,
 }
 
 struct StreamDeltaRequest<'a> {
@@ -52,10 +63,14 @@ enum StreamingTurnOutcome {
     Finished(ProviderTurnOutcome),
 }
 
-pub(super) async fn run_streaming_provider_turn(turn: &mut PromptExecution) -> Result<ProviderTurnOutcome, SdkError> {
+pub(super) async fn run_streaming_provider_turn(
+    turn: &mut PromptExecution,
+    retry_observed_at: &RetryObservationClock<'_>,
+) -> Result<ProviderTurnOutcome, SdkError> {
     let mut output = ProviderOutput::take_from(turn);
     let mut tool_loop_count = 0usize;
     let mut attempt_index = 0u32;
+    let mut backoff = RetryBackoff::new();
 
     loop {
         if turn.session.cancellation.is_cancelled() {
@@ -63,10 +78,15 @@ pub(super) async fn run_streaming_provider_turn(turn: &mut PromptExecution) -> R
             return Ok(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled));
         }
         let request = streaming_request(turn);
-        let attempt = collect_streaming_attempt(turn, &request, &mut output, attempt_index).await?;
+        let attempt =
+            collect_streaming_attempt(turn, &request, &mut output, attempt_index, &mut backoff, retry_observed_at)
+                .await?;
         match handle_streaming_attempt(turn, &mut output, attempt, attempt_index, &mut tool_loop_count).await? {
             StreamingTurnOutcome::Retry => attempt_index = attempt_index.saturating_add(1),
-            StreamingTurnOutcome::ContinueAfterTools => attempt_index = 0,
+            StreamingTurnOutcome::ContinueAfterTools => {
+                attempt_index = 0;
+                backoff.reset();
+            }
             StreamingTurnOutcome::Finished(outcome) => {
                 return Ok(preserve_streaming_output(turn, output, outcome));
             }
@@ -101,24 +121,38 @@ async fn handle_streaming_attempt(
                 }
             }
         }
-        StreamAttemptOutcome::Retry { delay, error } => {
+        StreamAttemptOutcome::Retry { delay, error, observed_at } => {
             turn.agent
-                .publish_rate_limit_notice(
-                    &turn.args.session_id,
-                    turn.provider_runtime.provider_name(),
-                    &error,
-                    Some(delay),
-                )
+                .publish_rate_limit_notice_with_context(RateLimitNotice {
+                    session_id: &turn.args.session_id,
+                    provider: turn.provider_runtime.provider_name(),
+                    error: &error,
+                    retry_delay: Some(delay),
+                    observed_at,
+                    metric_sink: &turn.metric_sink,
+                    provider_class: turn.provider_runtime.provider_class(),
+                })
                 .await;
             retry_stream_attempt(turn, output, delay, attempt_index).await
         }
-        StreamAttemptOutcome::Failed(error) => {
+        StreamAttemptOutcome::Failed { error, observed_at } => {
             turn.agent
-                .publish_rate_limit_notice(&turn.args.session_id, turn.provider_runtime.provider_name(), &error, None)
+                .publish_rate_limit_notice_with_context(RateLimitNotice {
+                    session_id: &turn.args.session_id,
+                    provider: turn.provider_runtime.provider_name(),
+                    error: &error,
+                    retry_delay: None,
+                    observed_at,
+                    metric_sink: &turn.metric_sink,
+                    provider_class: turn.provider_runtime.provider_class(),
+                })
                 .await;
-            let response =
-                finish_failed_output(turn, std::mem::replace(output, ProviderOutput::empty()), &error.to_string())
-                    .await?;
+            let response = finish_failed_output(
+                turn,
+                std::mem::replace(output, ProviderOutput::empty()),
+                SafeProviderProjection::from_llm_error(&error),
+            )
+            .await?;
             Ok(StreamingTurnOutcome::Finished(response))
         }
         StreamAttemptOutcome::Cancelled => {
@@ -135,7 +169,7 @@ async fn retry_stream_attempt(
 ) -> Result<StreamingTurnOutcome, SdkError> {
     let policy = turn.provider_runtime.retry_policy();
     info!(
-        provider = turn.provider_runtime.provider_name(),
+        provider_class = turn.provider_runtime.provider_class().as_str(),
         next_attempt = attempt_index + 2,
         retry_count = attempt_index + 1,
         max_retries = policy.max_attempts.saturating_sub(1),
@@ -149,7 +183,7 @@ async fn retry_stream_attempt(
         }
         Err(ProviderCallError::Failed(error)) => {
             let response =
-                finish_failed_output(turn, std::mem::replace(output, ProviderOutput::empty()), &error).await?;
+                finish_failed_output(turn, std::mem::replace(output, ProviderOutput::empty()), error).await?;
             Ok(StreamingTurnOutcome::Finished(response))
         }
     }
@@ -172,6 +206,8 @@ async fn collect_streaming_attempt(
     request: &LLMRequest,
     output: &mut ProviderOutput,
     attempt_index: u32,
+    backoff: &mut RetryBackoff,
+    retry_observed_at: &RetryObservationClock<'_>,
 ) -> Result<StreamAttemptOutcome, SdkError> {
     let provider_runtime = &turn.provider_runtime;
     let deadline_policy = provider_runtime.deadline_policy();
@@ -180,7 +216,8 @@ async fn collect_streaming_attempt(
         Err(ProviderAdmissionError::Cancelled) => return Ok(StreamAttemptOutcome::Cancelled),
         Err(error) => return Err(SdkError::internal_error().data(error.to_string())),
     };
-    let mut telemetry = GenerationTelemetry::start(provider_runtime);
+    let mut telemetry = GenerationTelemetry::start(provider_runtime, turn.metric_sink.clone(), ProviderMode::Stream);
+    telemetry.record_attempt(provider_runtime).await;
     let mut deadlines = StreamDeadlineTracker::new(deadline_policy, Instant::now());
     let started_at = Instant::now();
     let span = tracing::info_span!(
@@ -215,7 +252,10 @@ async fn collect_streaming_attempt(
                 output,
                 attempt_index,
                 error,
-            }));
+                backoff,
+                retry_observed_at,
+            })
+            .await);
         }
     };
 
@@ -229,6 +269,8 @@ async fn collect_streaming_attempt(
             deadlines: &mut deadlines,
             telemetry: &mut telemetry,
             output,
+            backoff,
+            retry_observed_at,
         },
     )
     .await;

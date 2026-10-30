@@ -64,6 +64,11 @@ fn custom_provider_round_trip_config() -> CustomProviderConfig {
                 supports_context_edits: None,
             },
         )]),
+        rate_limit_headers: RateLimitHeaderConfig {
+            requests_limit_per_minute: Some("x-corp-request-limit".to_string()),
+            reset_after_seconds: Some("x-corp-reset-seconds".to_string()),
+            ..Default::default()
+        },
         request_policy: Default::default(),
     }
 }
@@ -85,6 +90,8 @@ fn assert_custom_provider_round_trip(provider: &CustomProviderConfig) {
     assert_eq!(provider.supports_responses_compaction, Some(false));
     assert_eq!(provider.supports_stream_usage, Some(true));
     assert_eq!(provider.supports_context_edits, Some(true));
+    assert_eq!(provider.rate_limit_headers.requests_limit_per_minute.as_deref(), Some("x-corp-request-limit"));
+    assert_eq!(provider.rate_limit_headers.reset_after_seconds.as_deref(), Some("x-corp-reset-seconds"));
     assert_eq!(provider.api_key_env, "MYCORP_API_KEY");
     assert_eq!(provider.model, "gpt-5-mini");
     assert_eq!(provider.models, vec!["gpt-5-mini".to_string(), "gpt-5-large".to_string()]);

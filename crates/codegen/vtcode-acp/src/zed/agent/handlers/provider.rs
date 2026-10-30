@@ -51,14 +51,14 @@ where
 #[derive(Debug)]
 pub(super) enum ProviderCallError {
     Cancelled,
-    Failed(String),
+    Failed(SafeProviderProjection),
 }
 
 impl From<ProviderAdmissionError> for ProviderCallError {
     fn from(error: ProviderAdmissionError) -> Self {
         match error {
             ProviderAdmissionError::Cancelled => Self::Cancelled,
-            other => Self::Failed(other.to_string()),
+            _error => Self::Failed(SafeProviderProjection::execution_error()),
         }
     }
 }
@@ -69,7 +69,7 @@ pub(super) async fn cancellable_backoff(
 ) -> Result<(), ProviderCallError> {
     tokio::select! {
         () = cancellation.cancelled() => Err(ProviderCallError::Cancelled),
-        () = tokio::time::sleep(delay) => Ok(()),
+        () = sleep_until_optional(Instant::now().checked_add(delay)) => Ok(()),
     }
 }
 
@@ -119,23 +119,16 @@ pub(super) struct IncompleteProviderTurn {
 }
 
 impl IncompleteProviderTurn {
-    pub(super) fn from_failure(content: &str, reasoning: &str, error: &str) -> Self {
-        let sanitized_error = strip_ansi_codes(error).trim().to_string();
-        let error_detail = if sanitized_error.is_empty() {
-            "The provider did not report any additional details."
-        } else {
-            sanitized_error.as_str()
-        };
-        let notice = format!(
-            "The provider could not complete this turn. You can retry the prompt.\n\nProvider error: {error_detail}"
-        );
+    pub(super) fn from_failure(content: &str, reasoning: &str, error: SafeProviderProjection) -> Self {
+        let error_detail = error.client_message();
+        let notice = format!("The provider could not complete this turn. You can retry the prompt.\n\n{error_detail}");
         let visible_update = if content.is_empty() {
             notice
         } else {
             format!("\n\n{notice}")
         };
         let message_content = format!("{content}{visible_update}");
-        let message = incomplete_assistant_message(&message_content, reasoning, error_detail);
+        let message = incomplete_assistant_message(&message_content, reasoning, &error_detail);
         Self {
             message,
             visible_update,
@@ -149,11 +142,8 @@ fn incomplete_assistant_message(content: &str, reasoning: &str, error: &str) -> 
     if !reasoning.is_empty() {
         message.reasoning = Some(reasoning.to_string());
     }
-    message.metadata = Some(MessageMetadata::incomplete_llm_response(
-        unix_timestamp_millis(),
-        message.estimate_tokens(),
-        strip_ansi_codes(error).trim(),
-    ));
+    message.metadata =
+        Some(MessageMetadata::incomplete_llm_response(unix_timestamp_millis(), message.estimate_tokens(), error));
     message
 }
 
@@ -208,6 +198,8 @@ pub(super) struct StreamDeadlineTracker {
 }
 
 pub(super) struct GenerationTelemetry {
+    metric_sink: ProviderMetricSink,
+    mode: ProviderMode,
     // Starts before calling the provider router, so first-token and total
     // latency include any wait at the router's shared admission gate.
     started_at: Instant,
@@ -215,6 +207,14 @@ pub(super) struct GenerationTelemetry {
     estimated_output_tokens: u64,
     runtime: ProviderRequestRuntime,
     finished: bool,
+}
+
+pub(super) struct GenerationFailure<'a> {
+    pub(super) runtime: &'a ProviderRequestRuntime,
+    pub(super) retry_count: u32,
+    pub(super) retry_disposition: RetryDisposition,
+    pub(super) retry_delay: Option<Duration>,
+    pub(super) error: &'a LLMError,
 }
 
 impl StreamDeadlineTracker {
@@ -248,6 +248,9 @@ impl StreamDeadlineTracker {
     }
 }
 
+pub(super) type RetryObservationClock<'clock> = dyn Fn() -> SystemTime + Send + Sync + 'clock;
+
+#[cfg(test)]
 pub(super) async fn generate_with_retry(
     provider: &dyn LLMProvider,
     request: LLMRequest,
@@ -255,12 +258,47 @@ pub(super) async fn generate_with_retry(
     cancellation: &SessionCancellation,
     notice_target: Option<(&ZedAgent, &acp::SessionId)>,
 ) -> Result<LLMResponse, ProviderCallError> {
+    generate_with_retry_with_observer(provider, request, runtime, cancellation, notice_target, &SystemTime::now).await
+}
+
+#[cfg(test)]
+pub(super) async fn generate_with_retry_with_observer(
+    provider: &dyn LLMProvider,
+    request: LLMRequest,
+    runtime: &ProviderRequestRuntime,
+    cancellation: &SessionCancellation,
+    notice_target: Option<(&ZedAgent, &acp::SessionId)>,
+    retry_observed_at: &RetryObservationClock<'_>,
+) -> Result<LLMResponse, ProviderCallError> {
+    generate_with_retry_with_observer_and_metric_sink(
+        provider,
+        request,
+        runtime,
+        cancellation,
+        notice_target,
+        retry_observed_at,
+        &ProviderMetricSink::production(),
+    )
+    .await
+}
+
+pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
+    provider: &dyn LLMProvider,
+    request: LLMRequest,
+    runtime: &ProviderRequestRuntime,
+    cancellation: &SessionCancellation,
+    notice_target: Option<(&ZedAgent, &acp::SessionId)>,
+    retry_observed_at: &RetryObservationClock<'_>,
+    metric_sink: &ProviderMetricSink,
+) -> Result<LLMResponse, ProviderCallError> {
     let policy = runtime.retry_policy();
     let mut attempt_index = 0;
+    let mut backoff = RetryBackoff::new();
 
     loop {
         let permit = runtime.acquire(cancellation).await?;
-        let mut telemetry = GenerationTelemetry::start(runtime);
+        let mut telemetry = GenerationTelemetry::start(runtime, metric_sink.clone(), ProviderMode::Buffered);
+        telemetry.record_attempt(runtime).await;
         let deadline_policy = runtime.deadline_policy();
         let total_deadline = deadline_after(deadline_policy.total_generation);
         let result = tokio::select! {
@@ -285,28 +323,46 @@ pub(super) async fn generate_with_retry(
                 if let Some(reasoning) = response.reasoning.as_deref() {
                     telemetry.observe_output(runtime, reasoning, attempt_index);
                 }
-                telemetry.complete(runtime, &response, attempt_index, true);
+                telemetry.complete(runtime, &response, attempt_index, true).await;
                 drop(permit);
                 return Ok(response);
             }
             Err(error) => {
-                let decision = policy.decision_for_llm_error(&error, attempt_index);
-                telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
-                drop(permit);
+                let observed_at = retry_observed_at();
+                let decision =
+                    policy.decision_for_llm_error_with_backoff_at(&error, attempt_index, &mut backoff, observed_at);
                 let retry_delay = decision
                     .retryable
                     .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
+                telemetry
+                    .failed(GenerationFailure {
+                        runtime,
+                        retry_count: attempt_index,
+                        retry_disposition: retry_disposition(&decision),
+                        retry_delay,
+                        error: &error,
+                    })
+                    .await;
+                drop(permit);
                 if let Some((agent, session_id)) = notice_target {
                     agent
-                        .publish_rate_limit_notice(session_id, runtime.provider_name(), &error, retry_delay)
+                        .publish_rate_limit_notice_with_context(RateLimitNotice {
+                            session_id,
+                            provider: runtime.provider_name(),
+                            error: &error,
+                            retry_delay,
+                            observed_at,
+                            metric_sink,
+                            provider_class: runtime.provider_class(),
+                        })
                         .await;
                 }
                 if !decision.retryable {
-                    return Err(ProviderCallError::Failed(error.to_string()));
+                    return Err(ProviderCallError::Failed(SafeProviderProjection::from_llm_error(&error)));
                 }
                 let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                 info!(
-                    provider = runtime.provider_name(),
+                    provider_class = runtime.provider_class().as_str(),
                     next_attempt = attempt_index + 2,
                     retry_count = attempt_index + 1,
                     max_retries = policy.max_attempts.saturating_sub(1),

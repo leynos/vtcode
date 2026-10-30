@@ -32,6 +32,9 @@ use super::super::helpers::text_chunk;
 use super::super::types::{SessionHandle, ToolRuntime};
 use super::ZedAgent;
 use super::compaction::CompactionRequest;
+use super::lody_notice::RateLimitNotice;
+use super::provider_telemetry::{ProviderMetricContext, ProviderMetricObservation};
+use super::provider_telemetry::{ProviderMetricSink, ProviderMode, RetryDisposition, SafeProviderProjection};
 use crate::acp;
 use crate::acp::Error as SdkError;
 use crate::tooling::SupportedTool;
@@ -52,7 +55,6 @@ use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::Instant;
 use tracing::{Instrument, Span, debug, info, warn};
-use vtcode_commons::ansi::strip_ansi_codes;
 use vtcode_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
 use vtcode_core::config::types::ReasoningEffortLevel;
 use vtcode_core::core::message_metadata::MessageMetadata;
@@ -63,7 +65,7 @@ use vtcode_core::llm::provider::{
     LLMError, LLMErrorMetadata, LLMProvider, LLMRequest, LLMResponse, LLMStream, LLMStreamEvent, Message,
     ToolCall as LLMToolCall, ToolDefinition,
 };
-use vtcode_core::retry::{RetryDecision, RetryPolicyCoreExt};
+use vtcode_core::retry::{RetryBackoff, RetryDecision, RetryPolicyCoreExt};
 
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderDeadlinePolicy, ProviderRequestRuntime};
 
@@ -192,3 +194,23 @@ impl HandleDispatchFrom<Client> for LodySubagentManagementHandler {
         "LodySubagentManagementHandler"
     }
 }
+
+#[cfg(test)]
+#[path = "rate_limit_tests.rs"]
+mod rate_limit_tests;
+#[cfg(test)]
+#[path = "rate_limit_timing_tests.rs"]
+mod rate_limit_timing_tests;
+
+#[cfg(test)]
+use prompt::run_prompt_with_retry_observer;
+
+#[cfg(test)]
+#[path = "rate_limit_physics_tests.rs"]
+mod rate_limit_physics_tests;
+#[cfg(test)]
+#[path = "rate_limit_test_support.rs"]
+mod rate_limit_test_support;
+
+#[cfg(test)]
+use prompt::run_prompt_with_metric_sink;

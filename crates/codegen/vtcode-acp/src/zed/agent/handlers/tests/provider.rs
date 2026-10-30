@@ -58,7 +58,7 @@ fn provider_error_telemetry_exposes_stable_network_metadata() {
     assert_eq!(
         provider_error_telemetry(&error),
         ProviderErrorTelemetry {
-            code: Some("reqwest_timeout_error"),
+            category: "Network error",
             status: Some(504),
             timeout_phase: None,
         }
@@ -72,7 +72,7 @@ fn provider_error_telemetry_exposes_acp_timeout_phase_separately() {
     assert_eq!(
         provider_error_telemetry(&error),
         ProviderErrorTelemetry {
-            code: None,
+            category: "Network error",
             status: None,
             timeout_phase: Some("inter_token_idle"),
         }
@@ -133,7 +133,8 @@ async fn buffered_generation_obeys_total_generation_timeout() {
     let Err(ProviderCallError::Failed(error)) = result else {
         panic!("pending generation should fail at its total deadline");
     };
-    assert!(error.contains("total generation"));
+    assert_eq!(error.category(), "Network error");
+    assert_eq!(error.status(), None);
 }
 
 #[test]
@@ -184,7 +185,8 @@ async fn bad_gateway_retries_until_the_configured_budget_is_exhausted() {
     let Err(ProviderCallError::Failed(error)) = result else {
         panic!("persistent 502 response should exhaust the retry budget");
     };
-    assert!(error.contains("502 Bad Gateway"));
+    assert_eq!(error.category(), "Service temporarily unavailable");
+    assert_eq!(error.status(), Some(502));
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 3);
 }
 
@@ -221,9 +223,185 @@ fn provider_error_telemetry_exposes_rate_limit_diagnostics() {
     assert_eq!(
         provider_error_telemetry(&error),
         ProviderErrorTelemetry {
-            code: Some("rate_limit_error"),
+            category: "Rate limit exceeded",
             status: Some(429),
             timeout_phase: None,
         }
     );
+}
+
+use agent_client_protocol::schema::v1::NewSessionRequest;
+use vtcode_core::telemetry::TelemetryEvent;
+use vtcode_core::telemetry::perf::TestPerfRecorder;
+struct RetryMetricWitness<'a> {
+    expected_names: &'a [&'a str],
+    forbidden_marker: &'a str,
+    forbid_marker_in_tag_keys: bool,
+    mode: &'a str,
+    provider_class: &'a str,
+    error_category: &'a str,
+    retry_disposition: &'a str,
+}
+
+impl<'a> RetryMetricWitness<'a> {
+    fn assert_events(&self, events: &[TelemetryEvent]) {
+        let names = events.iter().map(|event| event.name.as_str()).collect::<Vec<_>>();
+        assert_eq!(names.as_slice(), self.expected_names);
+        assert!(events.iter().all(|event| {
+            event.tags.iter().all(|(key, value)| {
+                (!self.forbid_marker_in_tag_keys || !key.contains(self.forbidden_marker))
+                    && !value.contains(self.forbidden_marker)
+            })
+        }));
+        assert_eq!(events[0].tags.get("mode").map(String::as_str), Some(self.mode));
+        assert_eq!(events[0].tags.get("provider_class").map(String::as_str), Some(self.provider_class));
+        assert_eq!(events[1].tags.get("error_category").map(String::as_str), Some(self.error_category));
+        assert_eq!(events[1].tags.get("retry_disposition").map(String::as_str), Some(self.retry_disposition));
+    }
+}
+
+struct RetryingStreamProvider {
+    calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl LLMProvider for RetryingStreamProvider {
+    fn name(&self) -> &str {
+        "wire-test"
+    }
+
+    fn supported_models(&self) -> Vec<String> {
+        vec!["wire-model".to_string()]
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+
+    fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+        Ok(())
+    }
+
+    async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Err(LLMError::RateLimit {
+                metadata: Some(LLMErrorMetadata::new(
+                    "provider-marker://model/request/session/error-code/body",
+                    Some(429),
+                    Some("provider-marker-code".to_string()),
+                    None,
+                    None,
+                    Some("0".to_string()),
+                    Some("provider-marker-body".to_string()),
+                )),
+            });
+        }
+
+        let response = LLMResponse::new("wire-model", "recovered stream");
+        Ok(Box::pin(futures::stream::iter([
+            Ok(LLMStreamEvent::Token { delta: "recovered stream".to_string() }),
+            Ok(LLMStreamEvent::Completed { response: Box::new(response) }),
+        ])))
+    }
+
+    async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+        panic!("retrying stream fixture must use streaming")
+    }
+}
+
+#[tokio::test]
+async fn buffered_retry_records_bounded_perf_metrics() {
+    let provider = FlakyProvider {
+        attempts: AtomicUsize::new(0),
+        network_failures: 1,
+        invalid_request: false,
+    };
+    let recorder = Arc::new(TestPerfRecorder::new());
+    let metric_sink = ProviderMetricSink::test(Arc::clone(&recorder));
+
+    let response = generate_with_retry_with_observer_and_metric_sink(
+        &provider,
+        LLMRequest::default(),
+        &retry_runtime(),
+        &SessionCancellation::default(),
+        None,
+        &SystemTime::now,
+        &metric_sink,
+    )
+    .await
+    .expect("transient request should recover");
+
+    assert_eq!(response.content.as_deref(), Some("recovered"));
+    let events = recorder.drain().await;
+    RetryMetricWitness {
+        expected_names: &[
+            "vtcode.acp.provider_attempt_total",
+            "vtcode.acp.provider_retry_total",
+            "vtcode.acp.provider_retry_delay_ms",
+            "vtcode.acp.provider_attempt_total",
+            "vtcode.acp.provider_generation_ms",
+        ],
+        forbidden_marker: "retry-test",
+        forbid_marker_in_tag_keys: false,
+        mode: "buffered",
+        provider_class: "custom",
+        error_category: "Network error",
+        retry_disposition: "retry_scheduled",
+    }
+    .assert_events(&events);
+    assert!(recorder.drain().await.is_empty());
+}
+
+#[tokio::test]
+async fn streaming_retry_records_bounded_perf_metrics() {
+    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let provider_calls = Arc::clone(&calls);
+    let _factory_guard = PromptProviderFactoryGuard::install(
+        "wire-test",
+        Arc::new(move || Box::new(RetryingStreamProvider { calls: Arc::clone(&provider_calls) })),
+    );
+    let workspace = TempDir::new().expect("wire test workspace");
+    let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+    let session = agent
+        .new_session(NewSessionRequest::new(workspace.path()))
+        .await
+        .expect("create wire test session");
+    let recorder = Arc::new(TestPerfRecorder::new());
+
+    let response = run_prompt_with_metric_sink(
+        Arc::clone(&agent),
+        PromptRequest::new(
+            session.session_id,
+            vec![acp::ContentBlock::Text(acp::TextContent::new(
+                "exercise streaming retry metrics",
+            ))],
+        ),
+        ProviderMetricSink::test(Arc::clone(&recorder)),
+    )
+    .await
+    .expect("stream retry should recover");
+
+    assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    let events = recorder.drain().await;
+    RetryMetricWitness {
+        expected_names: &[
+            "vtcode.acp.provider_attempt_total",
+            "vtcode.acp.provider_rate_limited_total",
+            "vtcode.acp.provider_retry_total",
+            "vtcode.acp.provider_retry_delay_ms",
+            "vtcode.acp.rate_limit_notification_failure_total",
+            "vtcode.acp.provider_attempt_total",
+            "vtcode.acp.provider_generation_ms",
+        ],
+        forbidden_marker: "provider-marker",
+        forbid_marker_in_tag_keys: true,
+        mode: "stream",
+        provider_class: "unknown",
+        error_category: "Rate limit exceeded",
+        retry_disposition: "retry_scheduled",
+    }
+    .assert_events(&events);
+    assert!(recorder.drain().await.is_empty());
 }

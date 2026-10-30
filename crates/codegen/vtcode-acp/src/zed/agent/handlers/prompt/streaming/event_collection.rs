@@ -16,17 +16,17 @@ pub(super) async fn collect_stream_events(
                 let policy = request.turn.provider_runtime.deadline_policy();
                 let error =
                     provider_timeout_error(request.turn.provider_runtime.provider_name(), phase, phase.timeout(policy));
-                return classify_stream_poll_failure(&mut request, error);
+                return classify_stream_poll_failure(&mut request, error).await;
             }
             StreamPollOutcome::Item(None) => {
                 let error = LLMError::Network {
                     message: "provider stream ended before a completion event".to_string(),
                     metadata: None,
                 };
-                return classify_stream_poll_failure(&mut request, error);
+                return classify_stream_poll_failure(&mut request, error).await;
             }
             StreamPollOutcome::Item(Some(Err(error))) => {
-                return classify_stream_poll_failure(&mut request, error);
+                return classify_stream_poll_failure(&mut request, error).await;
             }
             StreamPollOutcome::Item(Some(Ok(event))) => {
                 if let Some(outcome) = process_stream_event(event, &mut request).await {
@@ -52,7 +52,10 @@ async fn poll_next_stream_event(stream: &mut LLMStream, request: &StreamCollecti
     }
 }
 
-fn classify_stream_poll_failure(request: &mut StreamCollectionRequest<'_>, error: LLMError) -> StreamAttemptOutcome {
+async fn classify_stream_poll_failure(
+    request: &mut StreamCollectionRequest<'_>,
+    error: LLMError,
+) -> StreamAttemptOutcome {
     record_stream_attempt(request.span, request.started_at, "failure");
     classify_stream_failure(StreamFailureRequest {
         turn: request.turn,
@@ -60,7 +63,10 @@ fn classify_stream_poll_failure(request: &mut StreamCollectionRequest<'_>, error
         output: request.output,
         attempt_index: request.attempt_index,
         error,
+        backoff: &mut *request.backoff,
+        retry_observed_at: request.retry_observed_at,
     })
+    .await
 }
 
 async fn process_stream_event(
@@ -109,7 +115,8 @@ async fn complete_stream_response(
     }
     request
         .telemetry
-        .complete(&request.turn.provider_runtime, &response, request.attempt_index, false);
+        .complete(&request.turn.provider_runtime, &response, request.attempt_index, false)
+        .await;
     request.turn.agent.publish_lody_usage(
         &request.turn.args.session_id,
         request.turn.provider_runtime.provider_name(),
@@ -133,21 +140,40 @@ fn observe_response_output(request: &mut StreamCollectionRequest<'_>, response: 
     }
 }
 
-pub(super) fn classify_stream_failure(request: StreamFailureRequest<'_>) -> StreamAttemptOutcome {
-    let StreamFailureRequest { turn, telemetry, output, attempt_index, error } = request;
+pub(super) async fn classify_stream_failure(request: StreamFailureRequest<'_>) -> StreamAttemptOutcome {
+    let StreamFailureRequest {
+        turn,
+        telemetry,
+        output,
+        attempt_index,
+        error,
+        backoff,
+        retry_observed_at,
+    } = request;
     let policy = turn.provider_runtime.retry_policy();
-    let decision = policy.decision_for_llm_error(&error, attempt_index);
+    let observed_at = retry_observed_at();
+    let decision = policy.decision_for_llm_error_with_backoff_at(&error, attempt_index, backoff, observed_at);
     let disposition = if output.emitted_output {
-        "partial_output_visible"
+        RetryDisposition::PartialOutputVisible
     } else {
         retry_disposition(&decision)
     };
-    telemetry.failed(&turn.provider_runtime, attempt_index, disposition, &error);
+    let retry_delay = (!output.emitted_output && decision.retryable)
+        .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
+    telemetry
+        .failed(GenerationFailure {
+            runtime: &turn.provider_runtime,
+            retry_count: attempt_index,
+            retry_disposition: disposition,
+            retry_delay,
+            error: &error,
+        })
+        .await;
     if output.emitted_output || !decision.retryable {
-        StreamAttemptOutcome::Failed(error)
+        StreamAttemptOutcome::Failed { error, observed_at }
     } else {
         let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
-        StreamAttemptOutcome::Retry { delay, error }
+        StreamAttemptOutcome::Retry { delay, error, observed_at }
     }
 }
 
