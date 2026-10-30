@@ -552,7 +552,8 @@ and `[history]` settings do not control ACP audit output.
   the reasoning as an `AgentThoughtChunk` and then the commentary as an
   `AgentMessageChunk` before executing those tools. Exposed reasoning and
   commentary on the final buffered provider response are relayed in the same
-  order, and a cancelled turn relays neither. Debug logs record
+  order. Cancellation suppresses updates that have not yet been sent, but it
+  cannot recall chunks already relayed to the client. Debug logs record
   `Sending provider reasoning to ACP client`,
   `Sending assistant commentary to ACP client`, and
   `Tool-bearing provider response carried no assistant commentary or reasoning`;
