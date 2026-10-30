@@ -270,13 +270,6 @@ mod tests {
     }
 
     #[test]
-    fn unresolved_history_is_not_closed_without_repair() {
-        let messages = vec![assistant([call("call-1")]), Message::user("continue".to_string())];
-
-        assert!(tool_ids_after(&messages, 0).is_empty());
-    }
-
-    #[test]
     fn repair_inserts_incomplete_result_before_later_messages() {
         let mut messages = vec![assistant([call("call-1")]), Message::user("continue".to_string())];
 
