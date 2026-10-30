@@ -96,9 +96,42 @@ Example pivot:
    - Tool-level: Which tools can be used
    - Command-level: Which specific commands and flags are permitted
 
+## Workspace-Scoped Deletion
+
+A single, simple `rm` invocation over literal workspace paths is allowed when
+the call carries `confirm=true`:
+
+```json
+{ "cmd": "rm -f scratch/tmp.txt", "confirm": true }
+```
+
+The command is validated twice. Preflight recognizes the deletion shape, and
+the executor re-assesses every resolved target against the launch workspace.
+Chains, pipes, redirects, wrappers, environment prefixes, globs, and shell
+expansion are refused as unsupported shapes. Operands may not resolve to the
+workspace root, the home directory, protected metadata directories (`.git`,
+`.vtcode`, `.codex`, `.agents`), or outside the workspace through `..`,
+absolute paths, or symlinks (including a symlink as the final component). Refer
+to
+[COMMAND_SECURITY_MODEL.md](COMMAND_SECURITY_MODEL.md#workspace-scoped-deletion)
+for the complete contract.
+
+Configured denials still win: the shipped defaults keep the `rm -rf /`,
+`rm -rf ~`, and `sudo rm` denies and the `rm\s+(-rf|--force)` deny regex, so
+the exact `rm -rf` and `rm --force` spellings stay blocked unless you relax
+them. Reordered or separated flags such as `rm -f -r` are accepted by the
+recognizer; add a `deny_regex` covering them if recursive deletion must stay
+blocked.
+
+Under `--dangerously-skip-permissions`, a confirmed supported deletion is
+auto-approved at the runloop after the permission and policy checks; the
+executor target assessment still runs. An unconfirmed or unsupported deletion
+is still refused by command preflight, so skip-permissions cannot delete a
+scratch file without `confirm=true`.
+
 ## Dangerous Operations (Blocked)
 
-- `rm -rf` (recursively remove)
+- `rm -rf` and `rm --force` (recursive/forced remove; default deny regex)
 - `sudo` (privilege escalation)
 - `kubectl` (Kubernetes operations)
 - `chmod`, `chown` (permission changes)

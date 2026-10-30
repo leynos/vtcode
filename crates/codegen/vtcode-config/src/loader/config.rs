@@ -850,11 +850,11 @@ allow_glob = [
     "git *",        # All git commands
     "cargo *",      # All cargo commands
     "python -m *",  # Python module commands
+    "rm *",         # Workspace-scoped deletion; still requires confirm=true
 ]
 
 # Command patterns that are denied (supports glob patterns)
 deny_glob = [
-    "rm *",         # All rm commands
     "sudo *",       # All sudo commands
     "chmod *",      # All chmod commands
     "chown *",      # All chown commands

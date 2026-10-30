@@ -621,13 +621,50 @@ pub(super) fn preflight_validate_resolved_call(
         tool_names::RUN_PTY_CMD | tool_names::CREATE_PTY_SESSION | tool_names::SHELL
     ) || (validation_tool_name == tool_names::UNIFIED_EXEC
         && crate::tools::command_args::command_session_requires_command_safety(validation_args.as_ref()));
-    if should_validate_command
-        && let Some(command) = crate::tools::command_args::command_text(validation_args.as_ref())
+    if should_validate_command {
+        // Verbatim string fields preserve shell operators that joining an argv
+        // would quote away, so both forms are inspected.
+        let mut command_candidates = Vec::new();
+        for key in ["raw_command", "command", "cmd"] {
+            if let Some(text) = validation_args.as_ref().get(key).and_then(Value::as_str) {
+                command_candidates.push(text.to_string());
+            }
+        }
+        let joined_command = crate::tools::command_args::command_text(validation_args.as_ref())
             .ok()
-            .flatten()
-        && let Err(err) = commands::validate_command_safety(&command)
-    {
-        failures.push(format!("Command security check failed: {err}"));
+            .flatten();
+        if let Some(command) = joined_command.as_ref() {
+            command_candidates.push(command.clone());
+        }
+        command_candidates.sort_unstable();
+        command_candidates.dedup();
+
+        match commands::classify_deletion_commands(&command_candidates) {
+            commands::DeletionCommandSet::Unsupported { reason } => {
+                failures.push(format!("Command security check failed: deletion command is not supported: {reason}"));
+            }
+            commands::DeletionCommandSet::Supported(_) => {
+                // A supported workspace-scoped deletion defers the
+                // dangerous-command check to the executor, which validates
+                // resolved targets. Without an explicit confirmation there is
+                // no deletion path at all.
+                let confirm = validation_args
+                    .as_ref()
+                    .get("confirm")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                if !confirm {
+                    failures.push("Deletion via exec_command requires confirm=true".to_string());
+                }
+            }
+            commands::DeletionCommandSet::NotDeletion => {
+                if let Some(command) = joined_command
+                    && let Err(err) = commands::validate_command_safety(&command)
+                {
+                    failures.push(format!("Command security check failed: {err}"));
+                }
+            }
+        }
     }
     enforce_file_operation_payload_limit(
         &validation_tool_name,

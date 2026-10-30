@@ -17,7 +17,11 @@ workspace configuration and have reviewed the safeguards below.
   allow-list are routed through automatic permission review after explicit deny
   and policy checks instead of asking.
 - `--dangerously-skip-permissions` auto-approves promptable actions while still
-  respecting explicit denies and policy blocks.
+  respecting explicit denies and policy blocks. A workspace-scoped `rm` is
+  auto-approved only when the call carries `confirm=true` and the command is a
+  single supported shape; unconfirmed or unsupported deletions are still
+  refused by command preflight, and the executor re-assesses every target
+  against the workspace.
 
 Primary-agent selection still works normally. If you explicitly select or
 configure a primary agent, including `duck`, full-auto runs on top of that

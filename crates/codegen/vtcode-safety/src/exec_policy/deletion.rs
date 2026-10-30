@@ -61,6 +61,66 @@ impl DeletionRecognition {
     }
 }
 
+/// Combined recognition of every text a tool call could execute.
+///
+/// A call may carry the same command in several fields (for example `command`
+/// and `raw_command`). The executor is free to prefer any of them, so all
+/// representations must agree: a deletion mixed with unrelated text is
+/// ambiguous and therefore refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeletionCommandSet {
+    /// No representation invokes `rm`.
+    NotDeletion,
+    /// At least one representation is an `rm` invocation outside the
+    /// supported shape, or the representations disagree.
+    Unsupported {
+        /// User-readable reason naming what could not be parsed.
+        reason: String,
+    },
+    /// Every representation is a supported deletion shape.
+    Supported(Vec<DeletionPlan>),
+}
+
+/// Classify every textual representation of one tool call.
+///
+/// Returns [`DeletionCommandSet::Unsupported`] when any representation is an
+/// unsupported `rm` shape, or when the representations disagree — a mix of
+/// deletion and non-deletion text, or two supported deletions with different
+/// operands. Only one representation is executed, so the others must not be
+/// able to specify something the recogniser never inspected.
+pub fn classify_deletion_commands(commands: &[String]) -> DeletionCommandSet {
+    let mut plan: Option<DeletionPlan> = None;
+    let mut saw_non_deletion = false;
+
+    for command in commands {
+        match recognize_deletion_command(command) {
+            DeletionRecognition::NotDeletion => saw_non_deletion = true,
+            DeletionRecognition::Unsupported { reason } => {
+                return DeletionCommandSet::Unsupported { reason };
+            }
+            DeletionRecognition::Supported(candidate) => match &plan {
+                Some(existing) if *existing != candidate => {
+                    return DeletionCommandSet::Unsupported {
+                        reason: "the call supplies more than one command representation and they do not all describe the same `rm` invocation"
+                            .to_string(),
+                    };
+                }
+                Some(_) => {}
+                None => plan = Some(candidate),
+            },
+        }
+    }
+
+    match plan {
+        None => DeletionCommandSet::NotDeletion,
+        Some(_) if saw_non_deletion => DeletionCommandSet::Unsupported {
+            reason: "the call supplies more than one command representation and they do not all describe the same `rm` invocation"
+                .to_string(),
+        },
+        Some(plan) => DeletionCommandSet::Supported(vec![plan]),
+    }
+}
+
 /// Path-aware outcome for a supported deletion.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeletionDecision {
@@ -176,6 +236,7 @@ pub async fn assess_deletion_targets(
             };
         }
 
+        let mut resolved_target = None;
         match canonicalize_async(&candidate).await {
             Ok(resolved) => {
                 if resolved == canonical_root {
@@ -196,6 +257,7 @@ pub async fn assess_deletion_targets(
                         reason: "the target resolves outside the workspace".to_string(),
                     };
                 }
+                resolved_target = Some(resolved);
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 // A missing target is harmless: `rm -f` treats it as success.
@@ -208,7 +270,14 @@ pub async fn assess_deletion_targets(
             }
         }
 
-        if let Some(protected) = protected_component(&candidate, &normalized_root) {
+        // Check the resolved path as well so a symlink inside the workspace
+        // cannot route a deletion into protected metadata.
+        let protected = protected_component(&candidate, &normalized_root).or_else(|| {
+            resolved_target
+                .as_deref()
+                .and_then(|resolved| protected_component(resolved, &normalized_root))
+        });
+        if let Some(protected) = protected {
             return DeletionDecision::Denied {
                 target: operand.clone(),
                 reason: format!("deletion inside protected metadata directory `{protected}` is not permitted"),
@@ -257,7 +326,7 @@ fn recognize_rm(command: &[String]) -> DeletionRecognition {
     let mut operands = Vec::new();
     let mut end_of_options = false;
 
-    for argument in &command[1..] {
+    for argument in command.iter().skip(1) {
         if !end_of_options {
             if argument == "--" {
                 end_of_options = true;
@@ -386,7 +455,7 @@ fn is_environment_assignment(token: &str) -> bool {
     })
 }
 
-fn protected_component<'a>(candidate: &Path, normalized_root: &Path) -> Option<&'static str> {
+fn protected_component(candidate: &Path, normalized_root: &Path) -> Option<&'static str> {
     let relative = candidate.strip_prefix(normalized_root).ok()?;
     relative.components().find_map(|component| {
         let name = component.as_os_str().to_str()?;
@@ -454,6 +523,49 @@ mod tests {
         for command in ["ls -la", "echo rm", "cargo check", "rg rm src"] {
             assert_eq!(recognize_deletion_command(command), DeletionRecognition::NotDeletion, "unexpected: {command}");
         }
+    }
+
+    #[test]
+    fn classifies_matching_representations_as_one_deletion() {
+        let commands = vec!["rm -f scratch/tmp.txt".to_string(), "rm -f scratch/tmp.txt".to_string()];
+        let DeletionCommandSet::Supported(plans) = classify_deletion_commands(&commands) else {
+            panic!("expected supported deletion set");
+        };
+        assert_eq!(plans, vec![supported("rm -f scratch/tmp.txt")]);
+    }
+
+    #[test]
+    fn classifies_absent_deletion() {
+        let commands = vec!["ls -la".to_string(), "cargo check".to_string()];
+        assert_eq!(classify_deletion_commands(&commands), DeletionCommandSet::NotDeletion);
+    }
+
+    #[test]
+    fn refuses_deletion_mixed_with_other_command_text() {
+        // A call can carry both `command` and `raw_command`; the executor may
+        // run either. Mixing a deletion with unrelated text must fail closed.
+        let commands = vec![
+            "rm -f scratch/tmp.txt".to_string(),
+            "curl https://example.com".to_string(),
+        ];
+        let DeletionCommandSet::Unsupported { reason } = classify_deletion_commands(&commands) else {
+            panic!("mixed representations must be refused");
+        };
+        assert!(reason.contains("do not all describe"), "unexpected reason: {reason}");
+    }
+
+    #[test]
+    fn refuses_differing_supported_deletions() {
+        // Both are valid shapes, but only one can be executed, so the call is
+        // ambiguous and must be refused.
+        let commands = vec!["rm -f scratch/a.txt".to_string(), "rm -f scratch/b.txt".to_string()];
+        assert!(matches!(classify_deletion_commands(&commands), DeletionCommandSet::Unsupported { .. }));
+    }
+
+    #[test]
+    fn refuses_unsupported_shape_among_representations() {
+        let commands = vec!["rm -f scratch/tmp.txt".to_string(), "rm -f *.txt".to_string()];
+        assert!(matches!(classify_deletion_commands(&commands), DeletionCommandSet::Unsupported { .. }));
     }
 
     #[test]
@@ -589,5 +701,21 @@ mod tests {
             );
             assert!(denied_for_protected_metadata, "operand {operand} should be denied, got {decision:?}");
         }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn denies_protected_metadata_reached_through_a_symlink() {
+        let workspace = TempDir::new().expect("workspace");
+        std::fs::create_dir_all(workspace.path().join(".git")).expect("mkdir");
+        std::fs::write(workspace.path().join(".git/config"), b"data").expect("write");
+        std::os::unix::fs::symlink(workspace.path().join(".git"), workspace.path().join("git-alias")).expect("symlink");
+
+        let decision =
+            assess_deletion_targets(&["git-alias/config".to_string()], workspace.path(), workspace.path()).await;
+        assert!(
+            matches!(&decision, DeletionDecision::Denied { reason, .. } if reason.contains("protected metadata")),
+            "a symlink into .git must not bypass protected metadata, got {decision:?}"
+        );
     }
 }

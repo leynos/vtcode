@@ -163,6 +163,10 @@ allow_glob = [
 - **Home deletion**: `rm -rf ~`
 - **Filesystem tools**: `mkfs`, `mkfs.ext4`, `fdisk`, `dd if=/dev/*`
 
+Workspace-scoped deletion is not blanket-denied; see
+[Workspace-scoped deletion](#workspace-scoped-deletion). A bare `rm` prefix in
+your own `deny_list` still blocks every deletion.
+
 #### 2. System Shutdown/Reboot
 
 - `shutdown`, `reboot`, `halt`, `poweroff`
@@ -221,6 +225,41 @@ VT Code supports automation through internal scheduling primitives instead:
 - `kubectl *` - Kubernetes operations (admin access)
 - `docker run *` - Container creation (requires careful review)
 
+## Workspace-scoped deletion
+
+`exec_command` (including its PTY and pipe backends) accepts one simple `rm`
+invocation when all of these hold:
+
+1. The argument `confirm` is `true`. Without it, preflight fails with
+   `Deletion via exec_command requires confirm=true`.
+2. The command is exactly one static `rm` with literal operands. Chains, pipes,
+   redirects, background operators, wrappers (`sudo`, `env`, `command`, `nohup`,
+   `xargs`), environment prefixes, nested shell bodies, globs, and shell
+   expansion are refused and reported as unsupported shapes. When a call
+   supplies more than one representation of the command (`command`, `cmd`, or
+   `raw_command`), every representation must describe the same supported `rm`;
+   mixing a deletion with other command text is refused, because the executor
+   may run a different field from the one preflight inspected.
+3. Options are limited to `-f`, `-r`, `-R`, `-d`, `-v`, `-i`, `-I` (stacked
+   short groups included), their long forms, and `--`. `--no-preserve-root` and
+   unknown options are rejected.
+4. Every operand resolves inside the launch workspace. The executor rejects the
+   workspace root and its aliases, lexical `..` or absolute escapes, symlink
+   escapes (including a symlink as the final component), the home directory,
+   and paths inside protected metadata directories (`.git`, `.vtcode`, `.codex`,
+   `.agents`). A nonexistent in-workspace operand is allowed.
+
+Configured denials still win. The shipped defaults allow `rm *` but keep the
+absolute-path denies and the `rm\s+(-rf|--force)` deny regex, so the exact
+`rm -rf` and `rm --force` spellings remain blocked by default even inside the
+workspace. The default regex does not catch reordered or separated flags such as
+`rm -f -r`; add a `deny_regex` that matches them if recursive deletion must
+stay blocked. Conversely, relax your own `deny_regex` if you want the bundled
+spellings to work.
+
+Under `--dangerously-skip-permissions`, a confirmed supported deletion is
+auto-approved by the runloop; the executor still performs the target assessment.
+
 ## Validation Rules (Configuration Reference)
 
 ### `allow_list` - Explicit Commands
@@ -259,6 +298,7 @@ allow_glob = [
   "git *",        # All git commands
   "cargo *",      # All cargo commands
   "npm run *",    # NPM scripts
+  "rm *",         # Workspace-scoped deletion; still needs confirm=true
 ]
 ```
 
@@ -268,7 +308,6 @@ Blocks entire command families.
 
 ```toml
 deny_glob = [
-  "rm *",         # All rm variations
   "sudo *",       # All sudo usage
   "chmod *",      # All chmod variations
 ]

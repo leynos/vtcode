@@ -294,6 +294,7 @@ allow_glob = [
     "grep *",
     "find *",
     "wc *",
+    "rm *",          # Workspace-scoped deletion; still requires confirm=true
 ]
 
 deny_list = [
