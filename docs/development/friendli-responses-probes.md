@@ -1,8 +1,8 @@
 # Friendli Responses compatibility probes
 
 The ignored `friendli_responses_selected_compatibility_probes` test is a paid,
-explicitly selected compatibility probe. It sends synthetic prompts directly
-to Friendli's Responses endpoint, never executes returned tools, and stores the
+explicitly selected compatibility probe. It sends synthetic prompts directly to
+Friendli's Responses endpoint, never executes returned tools, and stores the
 raw response plus a classified outcome in a caller-selected private directory.
 
 ## Safety contract
@@ -42,21 +42,21 @@ cargo nextest run --run-ignored only -p vtcode-llm \
 
 ## Outcome rules
 
-Text succeeds only when the trimmed completed output is exactly `OK`. Function success
-requires exactly one terminal `fixture_echo` call, a nonempty final call ID,
-and strict JSON arguments equal to `{"text":"OK"}`. Custom success requires
-exactly one terminal `fixture_raw` call with raw input `OK` and a nonempty final
-call ID.
+Text succeeds only when the trimmed completed output is exactly `OK`. Function
+success requires exactly one terminal `fixture_echo` call, a nonempty final
+call ID, and strict JSON arguments equal to `{"text":"OK"}`. Custom success
+requires exactly one terminal `fixture_raw` call with raw input `OK` and a
+nonempty final call ID.
 
-An HTTP failure, malformed or incomplete response, changed call name/input,
-or terminal prose without the requested call is failed compatibility. A 200
-status alone is not success. The outcome file retains `no_call`,
-`http_failure`, `transport_failure`, and `decode_failure` separately so later
-reports cannot silently reinterpret them. Partial or non-UTF-8 response bytes
-remain raw evidence and are never lossily decoded as a successful response.
+An HTTP failure, malformed or incomplete response, changed call name/input, or
+terminal prose without the requested call is failed compatibility. A 200 status
+alone is not success. The outcome file retains `no_call`, `http_failure`,
+`transport_failure`, and `decode_failure` separately so later reports cannot
+silently reinterpret them. Partial or non-UTF-8 response bytes remain raw
+evidence and are never lossily decoded as a successful response.
 
-The sanitized historical captures in
-`tests/fixtures/friendli/issue36/` document one function-call success, two
-custom HTTP 500 failures, and two named-custom prose/no-call completions.
-Offline replay proves parser and client behaviour for those recorded shapes;
-it does not prove that the current paid service behaves the same way.
+The sanitized historical captures in `tests/fixtures/friendli/issue36/`
+document one function-call success, two custom HTTP 500 failures, and two
+named-custom prose/no-call completions. Offline replay proves parser and client
+behaviour for those recorded shapes; it does not prove that the current paid
+service behaves the same way.

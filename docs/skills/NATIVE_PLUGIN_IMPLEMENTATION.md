@@ -516,7 +516,7 @@ cargo check
 
 ### Rust Version
 
-- Minimum: Rust 1.88 (as per workspace)
+- Minimum: Rust 1.93.0 (as declared by the workspace)
 - Tested: Stable channel
 
 ### libloading Version

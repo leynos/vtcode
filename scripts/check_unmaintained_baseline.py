@@ -4,11 +4,15 @@
 The scanner's repository-status age is deliberately excluded from the identity
 used by the ratchet.  Age changes on every scan and does not identify a new
 maintenance finding.
+
+With --capture-json PATH, save the scanner's exact stdout bytes before parsing
+or validation. The destination's parent must exist; a write failure exits two.
 """
 
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import subprocess
@@ -29,6 +33,16 @@ ISSUE_NUMBER = 108
 REPOSITORY_STATUSES = frozenset(
     {"Uncloneable", "Unnamed", "Unassociated", "Nonexistent", "Archived"}
 )
+DependencyIdentity = tuple[str, str, str, str]
+FindingIdentity = tuple[str, str, str, tuple[DependencyIdentity, ...]]
+
+
+@dataclass(frozen=True)
+class Arguments:
+    """Scanner invocation and optional raw-output destination."""
+
+    scanner: str
+    capture_json: Path | None
 
 
 class ValidationError(ValueError):
@@ -80,7 +94,8 @@ def _repo_status_identity(value: object, label: str) -> str:
     return "Age"
 
 
-def _finding_identity(value: object, label: str) -> tuple[object, ...]:
+def _finding_identity(value: object, label: str) -> FindingIdentity:
+    """Build a stable identity, sorting dependencies and excluding Age values."""
     finding = _require_exact_keys(value, SCANNER_KEYS, label)
     name = _require_string(finding["name"], f"{label}.name")
     version = _require_string(finding["version"], f"{label}.version")
@@ -90,7 +105,7 @@ def _finding_identity(value: object, label: str) -> tuple[object, ...]:
     if not isinstance(dependencies, list):
         raise ValidationError(f"{label}.outdated_deps must be a list")
 
-    dependency_identities: list[tuple[str, str, str, str]] = []
+    dependency_identities: list[DependencyIdentity] = []
     for index, dependency in enumerate(dependencies):
         dependency_label = f"{label}.outdated_deps[{index}]"
         dependency_object = _require_exact_keys(
@@ -144,7 +159,7 @@ def _baseline_entries(baseline: dict[str, object]) -> list[object]:
 
 def _parse_baseline_entry(
     entry: object, index: int
-) -> tuple[tuple[object, ...], dict[str, object]]:
+) -> tuple[FindingIdentity, dict[str, object]]:
     label = f"baseline.entries[{index}]"
     entry_object = _require_exact_keys(entry, BASELINE_ENTRY_KEYS, label)
     classification = _require_string(
@@ -169,8 +184,8 @@ def _parse_baseline_entry(
 
 def _index_baseline_entries(
     entries: list[object],
-) -> dict[tuple[object, ...], dict[str, object]]:
-    by_identity: dict[tuple[object, ...], dict[str, object]] = {}
+) -> dict[FindingIdentity, dict[str, object]]:
+    by_identity: dict[FindingIdentity, dict[str, object]] = {}
     for index, entry in enumerate(entries):
         identity, metadata = _parse_baseline_entry(entry, index)
         if identity in by_identity:
@@ -181,13 +196,13 @@ def _index_baseline_entries(
     return by_identity
 
 
-def _load_baseline() -> dict[tuple[object, ...], dict[str, object]]:
+def _load_baseline() -> dict[FindingIdentity, dict[str, object]]:
     baseline = _read_baseline_document()
     _validate_baseline_metadata(baseline)
     return _index_baseline_entries(_baseline_entries(baseline))
 
 
-def _run_scanner(scanner: str) -> subprocess.CompletedProcess[str]:
+def _run_scanner(scanner: str) -> subprocess.CompletedProcess[bytes]:
     command = [scanner, "unmaintained", "--json", "--no-warnings"]
     try:
         return subprocess.run(
@@ -195,19 +210,27 @@ def _run_scanner(scanner: str) -> subprocess.CompletedProcess[str]:
             cwd=REPO_ROOT,
             capture_output=True,
             check=False,
-            text=True,
         )
     except (OSError, UnicodeError) as error:
         raise ValidationError(f"could not launch scanner: {error}") from error
 
 
 def _parse_scanner_output(
-    completed: subprocess.CompletedProcess[str], scanner: str
+    completed: subprocess.CompletedProcess[bytes], scanner: str
 ) -> list[object]:
+    """Decode scanner output as UTF-8 and parse stdout as a JSON list.
+
+    When stdout is invalid JSON, include non-empty stderr in the diagnostic.
+    """
     try:
-        output = _load_json(completed.stdout, f"scanner {scanner!r}")
+        stdout = completed.stdout.decode("utf-8")
+        stderr = completed.stderr.decode("utf-8").strip()
+    except UnicodeError as error:
+        raise ValidationError(f"could not decode scanner output: {error}") from error
+
+    try:
+        output = _load_json(stdout, f"scanner {scanner!r}")
     except ValidationError as error:
-        stderr = completed.stderr.strip()
         detail = f" ({stderr})" if stderr else ""
         raise ValidationError(f"{error}{detail}") from error
 
@@ -225,8 +248,23 @@ def _validate_scanner_status(status: int, output: list[object]) -> None:
         )
 
 
-def _load_scanner_output(scanner: str) -> tuple[int, list[object]]:
+def _capture_scanner_output(stdout: bytes, capture_json: Path | None) -> None:
+    """Retain the one scanner invocation's bytes, including invalid JSON."""
+    if capture_json is None:
+        return
+    try:
+        capture_json.write_bytes(stdout)
+    except OSError as error:
+        raise ValidationError(
+            f"cannot capture scanner stdout to {capture_json}: {error}"
+        ) from error
+
+
+def _load_scanner_output(
+    scanner: str, capture_json: Path | None
+) -> tuple[int, list[object]]:
     completed = _run_scanner(scanner)
+    _capture_scanner_output(completed.stdout, capture_json)
     output = _parse_scanner_output(completed, scanner)
     _validate_scanner_status(completed.returncode, output)
     return completed.returncode, output
@@ -234,12 +272,13 @@ def _load_scanner_output(scanner: str) -> tuple[int, list[object]]:
 
 def _validate_findings(
     findings: object,
-) -> list[tuple[tuple[object, ...], dict[str, object]]]:
+) -> list[tuple[FindingIdentity, dict[str, object]]]:
+    """Validate a finding list, rejecting duplicate identities while preserving order."""
     if not isinstance(findings, list):
         raise ValidationError("scanner output must be a list")
 
-    validated: list[tuple[tuple[object, ...], dict[str, object]]] = []
-    seen: set[tuple[object, ...]] = set()
+    validated: list[tuple[FindingIdentity, dict[str, object]]] = []
+    seen: set[FindingIdentity] = set()
     for index, finding in enumerate(findings):
         label = f"scanner.findings[{index}]"
         identity = _finding_identity(finding, label)
@@ -250,33 +289,114 @@ def _validate_findings(
     return validated
 
 
-def _parse_arguments(argv: list[str] | None) -> str | None:
+def _parse_arguments(argv: list[str] | None) -> Arguments | None:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--scanner", default="cargo")
+    parser.add_argument("--capture-json", type=Path)
     try:
         arguments = parser.parse_args(argv)
     except SystemExit:
         return None
-    return arguments.scanner
+    return Arguments(arguments.scanner, arguments.capture_json)
 
 
 def _load_current_state(
-    scanner: str,
+    arguments: Arguments,
 ) -> tuple[
-    list[tuple[tuple[object, ...], dict[str, object]]],
-    dict[tuple[object, ...], dict[str, object]],
+    list[tuple[FindingIdentity, dict[str, object]]],
+    dict[FindingIdentity, dict[str, object]],
 ]:
-    _scanner_status, raw_findings = _load_scanner_output(scanner)
+    _scanner_status, raw_findings = _load_scanner_output(
+        arguments.scanner, arguments.capture_json
+    )
     return _validate_findings(raw_findings), _load_baseline()
 
 
+def _identity_json(identity: FindingIdentity) -> str:
+    """Render every ratcheted field in deterministic dependency order."""
+    name, version, status, dependencies = identity
+    document = {
+        "name": name,
+        "version": version,
+        "repo_status": status,
+        "outdated_deps": [
+            dict(zip(("name", "req", "version_used", "version_latest"), dependency))
+            for dependency in dependencies
+        ],
+    }
+    return json.dumps(document, sort_keys=True)
+
+
+def _report_dependency_field_differences(
+    label: str,
+    current_deps: list[DependencyIdentity],
+    reviewed_deps: list[DependencyIdentity],
+) -> None:
+    """Report changed field values without pairing same-name records."""
+    for index, field in enumerate(("req", "version_used", "version_latest"), 1):
+        current_values = sorted(dep[index] for dep in current_deps)
+        reviewed_values = sorted(dep[index] for dep in reviewed_deps)
+        if current_values != reviewed_values:
+            print(
+                f"    {label}.{field}: reviewed {json.dumps(reviewed_values)} "
+                f"-> current {json.dumps(current_values)}",
+                file=sys.stderr,
+            )
+
+
+def _report_dependency_differences(
+    current: tuple[DependencyIdentity, ...],
+    reviewed: tuple[DependencyIdentity, ...],
+) -> None:
+    """Compare fields by name without pairing ambiguous dependency records."""
+    dependency_names = sorted({dep[0] for dep in (*current, *reviewed)})
+    for name in dependency_names:
+        current_deps = [dep for dep in current if dep[0] == name]
+        reviewed_deps = [dep for dep in reviewed if dep[0] == name]
+        if current_deps == reviewed_deps:
+            continue
+        label = f"outdated_deps[{json.dumps(name)}]"
+        print(
+            f"    {label} records: reviewed {json.dumps(reviewed_deps)} "
+            f"-> current {json.dumps(current_deps)} "
+            "(record fields: name, req, version_used, version_latest)",
+            file=sys.stderr,
+        )
+        _report_dependency_field_differences(label, current_deps, reviewed_deps)
+
+
+def _report_reviewed_differences(
+    identity: FindingIdentity, baseline: dict[FindingIdentity, dict[str, object]]
+) -> None:
+    """Compare all same-package/version identities without choosing a match."""
+    candidates = sorted(
+        reviewed for reviewed in baseline if reviewed[:2] == identity[:2]
+    )
+    print(f"  current identity: {_identity_json(identity)}", file=sys.stderr)
+    if not candidates:
+        print("  new package/version: no reviewed baseline identity", file=sys.stderr)
+        return
+    for index, reviewed in enumerate(candidates, 1):
+        print(
+            f"  reviewed identity {index}/{len(candidates)}: {_identity_json(reviewed)}",
+            file=sys.stderr,
+        )
+        if identity[2] != reviewed[2]:
+            print(
+                f"    repo_status: reviewed {json.dumps(reviewed[2])} "
+                f"-> current {json.dumps(identity[2])}",
+                file=sys.stderr,
+            )
+        _report_dependency_differences(identity[3], reviewed[3])
+
+
 def _report_unexpected_findings(
-    findings: list[tuple[tuple[object, ...], dict[str, object]]],
-    baseline: dict[tuple[object, ...], dict[str, object]],
+    findings: list[tuple[FindingIdentity, dict[str, object]]],
+    baseline: dict[FindingIdentity, dict[str, object]],
 ) -> bool:
-    unexpected = [
+    unexpected = sorted(
         identity for identity, _finding in findings if identity not in baseline
-    ]
+    )
     if not unexpected:
         return False
 
@@ -287,12 +407,13 @@ def _report_unexpected_findings(
             f"(repository status {status}, {len(dependencies)} outdated dependencies)",
             file=sys.stderr,
         )
+        _report_reviewed_differences(identity, baseline)
     return True
 
 
 def _report_accepted_findings(
-    findings: list[tuple[tuple[object, ...], dict[str, object]]],
-    baseline: dict[tuple[object, ...], dict[str, object]],
+    findings: list[tuple[FindingIdentity, dict[str, object]]],
+    baseline: dict[FindingIdentity, dict[str, object]],
 ) -> None:
     for identity, finding in findings:
         metadata = baseline[identity]
@@ -304,8 +425,8 @@ def _report_accepted_findings(
 
 
 def _report_removable_baseline_entries(
-    findings: list[tuple[tuple[object, ...], dict[str, object]]],
-    baseline: dict[tuple[object, ...], dict[str, object]],
+    findings: list[tuple[FindingIdentity, dict[str, object]]],
+    baseline: dict[FindingIdentity, dict[str, object]],
 ) -> None:
     current_identities = {identity for identity, _finding in findings}
     for identity, metadata in baseline.items():
@@ -330,13 +451,16 @@ def main(argv: list[str] | None = None) -> int:
         Zero for an accepted baseline, one for unexpected findings, or two for
         invalid input or scanner failures.
     """
-    scanner = _parse_arguments(argv)
-    if scanner is None:
-        print("usage: check_unmaintained_baseline.py [--scanner PATH]", file=sys.stderr)
+    arguments = _parse_arguments(argv)
+    if arguments is None:
+        print(
+            "usage: check_unmaintained_baseline.py [--scanner PATH] [--capture-json PATH]",
+            file=sys.stderr,
+        )
         return 2
 
     try:
-        findings, baseline = _load_current_state(scanner)
+        findings, baseline = _load_current_state(arguments)
     except ValidationError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2

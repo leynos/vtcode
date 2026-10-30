@@ -34,9 +34,8 @@ use crate::process_env::{
 
 const DEFAULT_HOST_URL: &str = "https://github.com";
 const ENV_AUTH_VARS: &[&str] = &["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"];
-static DEVICE_FLOW_LINE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)visit\s+(https?://\S+)\s+and\s+enter code\s+([A-Z0-9-]+)").expect("device flow regex must compile")
-});
+static DEVICE_FLOW_LINE_RE: Lazy<std::result::Result<Regex, regex::Error>> =
+    Lazy::new(|| Regex::new(r"(?i)visit\s+(https?://\S+)\s+and\s+enter code\s+([A-Z0-9-]+)"));
 
 pub async fn login(config: &CopilotAuthConfig, workspace_root: &Path) -> Result<()> {
     login_with_events(config, workspace_root, |_| Ok(())).await
@@ -262,7 +261,7 @@ impl CapturedCommandState {
         }
 
         if matches!(kind, CommandKind::Login)
-            && let Some(event) = parse_login_event(trimmed)
+            && let Some(event) = parse_login_event(trimmed)?
         {
             match &event {
                 CopilotAuthEvent::VerificationCode { .. } if self.emitted_verification_code => {
@@ -366,32 +365,51 @@ fn drain_complete_lines(buffer: &mut Vec<u8>) -> Vec<String> {
     lines
 }
 
-fn parse_login_event(line: &str) -> Option<CopilotAuthEvent> {
-    if let Some((url, user_code)) = parse_device_flow_code(line) {
-        return Some(CopilotAuthEvent::VerificationCode { url, user_code });
+/// Parses a captured CLI line into a device-flow or known progress event.
+///
+/// Device-flow instructions are checked first. Otherwise, matching is
+/// case-insensitive: lines containing `waiting for authorization` produce a
+/// waiting event, while lines containing `opening browser` or `opened
+/// browser` produce a browser-opened event. Unrelated lines return `Ok(None)`.
+/// Errors from device-flow regex initialization are propagated.
+fn parse_login_event(line: &str) -> Result<Option<CopilotAuthEvent>> {
+    if let Some((url, user_code)) = parse_device_flow_code(line)? {
+        return Ok(Some(CopilotAuthEvent::VerificationCode { url, user_code }));
     }
 
     let lower = line.to_ascii_lowercase();
     if lower.contains("waiting for authorization") {
-        return Some(CopilotAuthEvent::Progress { message: "Waiting for authorization".to_string() });
+        return Ok(Some(CopilotAuthEvent::Progress { message: "Waiting for authorization".to_string() }));
     }
     if lower.contains("opening browser") || lower.contains("opened browser") {
-        return Some(CopilotAuthEvent::Progress {
+        return Ok(Some(CopilotAuthEvent::Progress {
             message: "Opened the browser for GitHub device authorization".to_string(),
-        });
+        }));
     }
-    None
+    Ok(None)
 }
 
-fn parse_device_flow_code(line: &str) -> Option<(String, String)> {
-    let captures = DEVICE_FLOW_LINE_RE.captures(line)?;
-    let url = captures.get(1)?.as_str().trim_end_matches(['.', ',', ')', ']']).to_string();
-    let code = captures
-        .get(2)?
-        .as_str()
-        .trim_matches(|ch: char| matches!(ch, '.' | ',' | ':' | ';'))
-        .to_string();
-    (!url.is_empty() && !code.is_empty()).then_some((url, code))
+/// Extracts a device-flow URL and user code from a matching instruction line.
+///
+/// The case-insensitive line pattern is `visit <http(s) URL> and enter code
+/// <user code>`. Lines without both captures return `Ok(None)`.
+/// The URL is trimmed of terminal `.`, `,`, `)`, and `]` characters; the code
+/// is trimmed of terminal `.`, `,`, `:`, and `;` characters. A missing capture
+/// or an empty value after trimming returns `Ok(None)`. Regex initialization
+/// failures are returned with context.
+fn parse_device_flow_code(line: &str) -> Result<Option<(String, String)>> {
+    let regex = DEVICE_FLOW_LINE_RE
+        .as_ref()
+        .context("Failed to compile the device-flow regex")?;
+    Ok(regex.captures(line).and_then(|captures| {
+        let url = captures.get(1)?.as_str().trim_end_matches(['.', ',', ')', ']']).to_string();
+        let code = captures
+            .get(2)?
+            .as_str()
+            .trim_matches(|ch: char| matches!(ch, '.' | ',' | ':' | ';'))
+            .to_string();
+        (!url.is_empty() && !code.is_empty()).then_some((url, code))
+    }))
 }
 
 fn normalize_captured_line(line: &str) -> String {
@@ -1041,7 +1059,8 @@ mod tests {
     #[test]
     fn device_flow_code_parser_extracts_url_and_code() {
         let parsed =
-            parse_device_flow_code("To authenticate, visit https://github.com/login/device and enter code D8E1-101D.");
+            parse_device_flow_code("To authenticate, visit https://github.com/login/device and enter code D8E1-101D.")
+                .expect("device-flow regex compiles");
 
         assert_eq!(parsed, Some(("https://github.com/login/device".to_string(), "D8E1-101D".to_string())));
     }
@@ -1052,7 +1071,7 @@ mod tests {
             "\u{1b}[1mTo authenticate, visit https://github.com/login/device and enter code D8E1-101D.\u{1b}[0m",
         );
 
-        let parsed = parse_device_flow_code(&normalized);
+        let parsed = parse_device_flow_code(&normalized).expect("device-flow regex compiles");
 
         assert_eq!(parsed, Some(("https://github.com/login/device".to_string(), "D8E1-101D".to_string())));
     }

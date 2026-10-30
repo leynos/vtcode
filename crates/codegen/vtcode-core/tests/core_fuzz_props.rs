@@ -49,6 +49,20 @@ proptest! {
     }
 }
 
+/// A parse error is allowed; returning without process termination is the oracle.
+#[test]
+fn shell_parser_unicode_after_open_brace_does_not_terminate_process() -> anyhow::Result<()> {
+    let _parsed_commands = parse_shell_commands("{\u{31860}");
+    Ok(())
+}
+
+/// A parse error is allowed; returning without process termination is the oracle.
+#[test]
+fn shell_parser_unicode_in_numeric_brace_range_does_not_terminate_process() -> anyhow::Result<()> {
+    let _parsed_commands = parse_shell_commands("echo {1\u{86F22}..2}");
+    Ok(())
+}
+
 proptest! {
     /// Fuzz: `PrefixRule::matches` must never panic
     #[test]

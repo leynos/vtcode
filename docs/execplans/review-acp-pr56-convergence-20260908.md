@@ -31,9 +31,10 @@ branch topology change, publication, or review request.
 
 `NoCall` remains valid only for a completed response with a schema-valid output
 array containing no call. Capture overflow is a local incomplete decode: it is
-reported as `DecodeFailure`, never as a successful or replayable provider result.
-The raw capture is a prefix capped at 16 KiB, and `response-meta.json` records
-the truncation flag so its byte contents are not misrepresented as complete.
+reported as `DecodeFailure`, never as a successful or replayable provider
+result. The raw capture is a prefix capped at 16 KiB, and `response-meta.json`
+records the truncation flag so its byte contents are not misrepresented as
+complete.
 
 ## Verification plan
 

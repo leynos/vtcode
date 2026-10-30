@@ -90,6 +90,8 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
+      - name: Test repository policy checkers
+        run: python3 -m unittest discover -s scripts/tests -p 'test_check_*.py'
       - name: Check tracked file sizes
         run: python3 scripts/check_large_files.py 400000
       - name: Check markdown documentation location
@@ -150,6 +152,8 @@ jobs:
         uses: leynos/shared-actions/.github/actions/install-mdtablefix@0606ca899ce2995a0c4bc78e660e80832e6e8855
         with:
           version: "0.6.1"
+      - name: Test generated reference formatting
+        run: python3 -m unittest discover -s scripts/tests -p test_generate_config_field_reference.py
       - run: make check-fmt
 
   # Check for typos in the codebase.
@@ -231,7 +235,15 @@ jobs:
         with:
           tool: cargo-unmaintained@1.10.0
       - name: Check for unmaintained dependencies
-        run: python3 scripts/check_unmaintained_baseline.py
+        run: python3 scripts/check_unmaintained_baseline.py --capture-json "$RUNNER_TEMP/cargo-unmaintained.json"
+      - name: Preserve maintenance scanner output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: cargo-unmaintained
+          path: ${{ runner.temp }}/cargo-unmaintained.json
+          if-no-files-found: warn
+          retention-days: 14
 
   dependency-audit:
     name: Check RustSec Advisories
@@ -335,6 +347,7 @@ jobs:
   test:
     name: "Cargo nextest"
     runs-on: "ubuntu-latest"
+    # CI-profile tests and the regular overflow-checked harness use separate Cargo builds.
     timeout-minutes: 40
     permissions:
       contents: read
@@ -362,13 +375,12 @@ jobs:
 
       - name: Run focused harness PTY/TUI regressions
         if: success() || failure()
-        run: |
-          cargo test --locked -p vtcode-core --test pty_tests
-          cargo test --locked -p vtcode-bash-runner --test pipe_tests
-          cargo test --locked -p vtcode --bin vtcode inline_events::tests
+        env:
+          BUILD_JOBS: "--jobs 4"
+        run: make test-harness
 
   msrv:
-    name: MSRV Check (1.88)
+    name: MSRV Check (1.93.0)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -381,11 +393,16 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@efcb852328a9f50117170cc43094fb6f09eaf1ae # nightly
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
-          toolchain: "1.88"
+          toolchain: "1.93.0"
       - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
-      - run: cargo check --locked --jobs 4
+      - name: Verify declared compiler
+        run: |
+          rustc +1.93.0 --version
+          cargo +1.93.0 --version
+      - name: Check workspace on Rust 1.93.0
+        run: cargo +1.93.0 check --locked --workspace --all-targets --all-features --jobs 4
 
   nightly:
     name: Nightly Smoke Test

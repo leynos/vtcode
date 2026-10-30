@@ -21,30 +21,30 @@ messages and rate-limit classification stay unchanged.
 CR3952440889 permits a private rate-header parser module. CR3952440904 permits
 one private OpenAI helper for ten non-rate metadata sites. CR3952440908 permits
 one private OpenRouter provider-name/configuration helper. No public provider
-trait, wire format, event type, paid provider probe, universal parser, or
-new dependency is permitted. `openai/stream_decoder.rs` and
+trait, wire format, event type, paid provider probe, universal parser, or new
+dependency is permitted. `openai/stream_decoder.rs` and
 `shared/responses_reconciler.rs` belong to PR104 and are excluded.
 
 Metadata privacy is narrower than outer error-message or ACP projection
 privacy: this milestone proves only that metadata excludes the body marker.
-Gemini helper semantics have no real caller in this scope and are not claimed as
-end-to-end coverage. Anthropic numeric-header mapping remains proven by B2
+Gemini helper semantics have no real caller in this scope and are not claimed
+as end-to-end coverage. Anthropic numeric-header mapping remains proven by B2
 configuration tests; native error-path coverage requires separate evidence or a
 scope escalation.
 
-OpenRouter 429 paths deliberately retain
-`parse_api_error_with_headers`, whose established rate-error metadata contains
-a sanitised diagnostic. Their regression assertions therefore prove provider,
-status, request identifier, Retry-After, and configured quota metadata without
-asserting that the body is absent. The body-free metadata assertion applies only
-to the ten non-rate OpenAI paths using `error_metadata_from_headers`.
+OpenRouter 429 paths deliberately retain `parse_api_error_with_headers`, whose
+established rate-error metadata contains a sanitized diagnostic. Their
+regression assertions therefore prove provider, status, request identifier,
+Retry-After, and configured quota metadata without asserting that the body is
+absent. The body-free metadata assertion applies only to the ten non-rate
+OpenAI paths using `error_metadata_from_headers`.
 
 ## Conformance basis
 
-The ACP remediation programme requires bounded provider diagnostics and reliable
-rate-limit metadata without a competing provider abstraction. The review items
-above are the direct requirements. `LLMError` remains the existing error
-contract, and `ThreadEvent` is untouched.
+The ACP remediation programme requires bounded provider diagnostics and
+reliable rate-limit metadata without a competing provider abstraction. The
+review items above are the direct requirements. `LLMError` remains the existing
+error contract, and `ThreadEvent` is untouched.
 
 ## Milestones
 
@@ -57,10 +57,10 @@ contract, and `ThreadEvent` is untouched.
    existing implementation fails the new concrete assertion; the pre-existing
    duplication is structural rather than an observable defect.
 2. **Extract private header reduction.** Move response metadata and the final
-   reset parser to `error_handling/rate_limit_headers.rs`; retain classification
-   and `LLMError` shaping in `error_handling.rs`. Strict ASCII grammar,
-   fractional ceiling rounding, overflow checks, and the 24-hour cap remain
-   unchanged.
+   reset parser to `error_handling/rate_limit_headers.rs`; retain
+   classification and `LLMError` shaping in `error_handling.rs`. Strict ASCII
+   grammar, fractional ceiling rounding, overflow checks, and the 24-hour cap
+   remain unchanged.
 3. **Consolidate real callers.** Add the smallest private helpers on
    `OpenAIProvider` and `OpenRouterProvider`, migrate only the ten and three
    evidenced sites, and preserve rate-limit branches and error text.
@@ -69,11 +69,11 @@ contract, and `ThreadEvent` is untouched.
    CodeScene, then CodeRabbit CLI. Commit only on green. Hosted/PR review and
    publication stay with the stack lead.
 5. **Isolate OpenAI metadata contracts.** Move only this milestone's OpenAI
-   header-metadata fixtures into a sibling test module. Parameterize the
-   legacy and normalized Responses stream forms through an explicit test-only
-   mode while retaining both public entrypoints and their request assertions.
-   Keep the five production error-helper inputs explicit: they describe the
-   provider error boundary and must not be wrapped solely for a metric.
+   header-metadata fixtures into a sibling test module. Parameterize the legacy
+   and normalized Responses stream forms through an explicit test-only mode
+   while retaining both public entrypoints and their request assertions. Keep
+   the five production error-helper inputs explicit: they describe the provider
+   error boundary and must not be wrapped solely for a metric.
 6. **Keep custom-provider tests navigable.** Split the extracted test suite
    into authentication, error-metadata, sampling, and streaming modules. The
    repository warns at 500 Rust lines; it does not impose a 400-line rule.
@@ -92,8 +92,9 @@ terminal Chat request, while rate-limit sites keep
 The tests rely on Wiremock's local listener, which existing helpers skip only
 when listener binding is prohibited. Serial commands run sequentially:
 `cargo fmt --check`; focused `cargo nextest run --locked -p vtcode-llm` OpenAI
-and OpenRouter selectors; `cargo clippy --locked -p vtcode-llm --all-targets --
--D warnings`; Markdown and spelling; immutable CodeScene; then CodeRabbit CLI.
+and OpenRouter selectors;
+`cargo clippy --locked -p vtcode-llm --all-targets -- -D warnings`; Markdown
+and spelling; immutable CodeScene; then CodeRabbit CLI.
 
 ## Progress
 
@@ -133,9 +134,8 @@ and OpenRouter selectors; `cargo clippy --locked -p vtcode-llm --all-targets --
 ## Decisions and risks
 
 - Retain the explicit five-argument retry helper from the preceding plateau:
-  policy, error, attempt, mutable backoff, and injected time are independent;
-  a wrapper would obscure the deterministic time seam merely to satisfy a
-  metric.
+  policy, error, attempt, mutable backoff, and injected time are independent; a
+  wrapper would obscure the deterministic time seam merely to satisfy a metric.
 - Keep the rate-header module private. If extraction requires a public type or
   an unrelated provider path, stop and obtain a new scope decision.
 - Do not hand-wave Anthropic execution coverage. Inspect a real native path; if

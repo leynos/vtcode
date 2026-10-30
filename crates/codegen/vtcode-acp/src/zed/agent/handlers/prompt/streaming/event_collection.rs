@@ -156,12 +156,12 @@ async fn complete_stream_response(
     response: LLMResponse,
 ) -> StreamAttemptOutcome {
     record_stream_attempt(request.span, request.started_at, "completion");
-    if request.telemetry.first_output_at.is_none() {
+    if !request.telemetry.has_observed_output() {
         observe_response_output(request, &response);
     }
     request
         .telemetry
-        .complete(&request.turn.provider_runtime, &response, request.attempt_index, false)
+        .complete(&request.turn.provider_runtime, &response, request.attempt_index)
         .await;
     request
         .previews

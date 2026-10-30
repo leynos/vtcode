@@ -75,7 +75,7 @@ export OPENAI_API_KEY="sk-..."  # Replace with your actual API key
 
 ## Project Structure
 
-Cargo workspace with ~30 crates. Rust stable, MSRV 1.88, edition 2024.
+Cargo workspace with ~30 crates. Rust stable, MSRV 1.93.0, edition 2024.
 
 - **`src/`** (root): Binary crate — CLI, session bootstrap
 - **`vtcode-core/`**: Agent loop, tools, prompts, LLM orchestration, UI

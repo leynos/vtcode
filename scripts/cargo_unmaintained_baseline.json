@@ -39,7 +39,7 @@
         { "name": "sha2", "req": "^0.10", "version_used": "0.10.9", "version_latest": "0.11.1" }
       ],
       "classification": "transitive-stale-dependency-requirement",
-      "rationale": "Transitive dependency with a stale sha2 requirement; tracked for dependency-owner review in #108.",
+      "rationale": "Transitive dependency with a stale sha2 requirement; tracked for dependency-owner review in #108. Reviewed 2026-10-29: only the scanner's latest sha2 indicator changed 0.11.0 -> 0.11.1; locked code, requirement, repository status category, and #108 classification are unchanged.",
       "issue": 108
     },
     {
@@ -50,7 +50,7 @@
         { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.3" }
       ],
       "classification": "transitive-stale-dependency-requirement",
-      "rationale": "Transitive dependency with a stale rand requirement; tracked for dependency-owner review in #108.",
+      "rationale": "Transitive dependency with a stale rand requirement; tracked for dependency-owner review in #108. Reviewed 2026-10-29: only the scanner's latest rand indicator changed 0.10.2 -> 0.10.3; locked code, requirement, repository status category, and #108 classification are unchanged.",
       "issue": 108
     },
     {
@@ -65,7 +65,7 @@
         { "name": "sha2", "req": "^0.10", "version_used": "0.10.9", "version_latest": "0.11.1" }
       ],
       "classification": "transitive-stale-dependency-requirement",
-      "rationale": "Transitive dependency with stale cryptographic requirements; tracked for dependency-owner review in #108.",
+      "rationale": "Transitive dependency with stale cryptographic requirements; tracked for dependency-owner review in #108. Reviewed 2026-10-29: only the scanner's latest sha2 indicator changed 0.11.0 -> 0.11.1; locked code, requirement, repository status category, and #108 classification are unchanged.",
       "issue": 108
     },
     {
@@ -87,7 +87,7 @@
         { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.3" }
       ],
       "classification": "transitive-stale-dependency-requirement",
-      "rationale": "Transitive dependency with a stale rand requirement; tracked for dependency-owner review in #108.",
+      "rationale": "Transitive dependency with a stale rand requirement; tracked for dependency-owner review in #108. Reviewed 2026-10-29: only the scanner's latest rand indicator changed 0.10.2 -> 0.10.3; locked code, requirement, repository status category, and #108 classification are unchanged.",
       "issue": 108
     },
     {
@@ -107,7 +107,7 @@
         { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.3" }
       ],
       "classification": "transitive-stale-dependency-requirement",
-      "rationale": "Transitive dependency with a stale rand requirement; tracked for dependency-owner review in #108.",
+      "rationale": "Transitive dependency with a stale rand requirement; tracked for dependency-owner review in #108. Reviewed 2026-10-29: only the scanner's latest rand indicator changed 0.10.2 -> 0.10.3; locked code, requirement, repository status category, and #108 classification are unchanged.",
       "issue": 108
     },
     {
@@ -133,12 +133,19 @@
     {
       "name": "rusty-fork",
       "version": "0.3.1",
-      "repo_status": { "Age": 374 },
+      "repo_status": {
+        "Age": 389
+      },
       "outdated_deps": [
-        { "name": "quick-error", "req": "^1.2", "version_used": "1.2.3", "version_latest": "2.0.1" }
+        {
+          "name": "quick-error",
+          "req": "^1.2",
+          "version_used": "1.2.3",
+          "version_latest": "2.0.1"
+        }
       ],
       "classification": "test-only-stale-dependency-requirement",
-      "rationale": "Proptest's process-isolation helper is test-only; its quick-error 1.x constraint is tracked for dependency-owner review in #108.",
+      "rationale": "Reviewed 2026-10-29: used only by vtcode-bash-runner dev-dependencies and the workspace test-only proptest graph. quick-error ^1.2 locks 1.2.3 while 2.0.1 is current; keep process-isolation coverage and track parent remediation in #108. Source: https://github.com/AltSysrq/rusty-fork . Advisory DB 40f5be6fb12ed93fc591bf4ab23b7d793b3f2239 reports no RustSec vulnerability for rusty-fork.",
       "issue": 108
     },
     {
@@ -149,7 +156,7 @@
         { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.3" }
       ],
       "classification": "transitive-stale-dependency-requirement",
-      "rationale": "Transitive dependency with a stale rand requirement; tracked for dependency-owner review in #108.",
+      "rationale": "Transitive dependency with a stale rand requirement; tracked for dependency-owner review in #108. Reviewed 2026-10-29: only the scanner's latest rand indicator changed 0.10.2 -> 0.10.3; locked code, requirement, repository status category, and #108 classification are unchanged.",
       "issue": 108
     },
     {
@@ -170,7 +177,7 @@
         { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.3" }
       ],
       "classification": "transitive-stale-dependency-requirement",
-      "rationale": "Transitive dependency with stale upstream requirements; tracked for dependency-owner review in #108.",
+      "rationale": "Transitive dependency with stale upstream requirements; tracked for dependency-owner review in #108. Reviewed 2026-10-29: only the scanner's latest rand indicator changed 0.10.2 -> 0.10.3; locked code, requirement, repository status category, and #108 classification are unchanged.",
       "issue": 108
     },
     {
@@ -309,7 +316,7 @@
         { "name": "rand", "req": "^0.8.0", "version_used": "0.8.7", "version_latest": "0.10.3" }
       ],
       "classification": "windows-target-transitive-dependency",
-      "rationale": "Windows PTY dependency through rio-vt and teletypewriter; tracked for terminal-backend owner review in #108.",
+      "rationale": "Windows PTY dependency through rio-vt and teletypewriter; tracked for terminal-backend owner review in #108. Reviewed 2026-10-29: only the scanner's latest rand indicator changed 0.10.2 -> 0.10.3; locked code, requirement, repository status category, and #108 classification are unchanged.",
       "issue": 108
     }
   ]

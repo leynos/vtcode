@@ -26,9 +26,9 @@ model-generated content. A diagnostic includes:
 - a parse class: `empty`, `syntax`, `schema`, `truncated`, or `io`; and
 - the parser line and column when available.
 
-The diagnostic never includes the response body or the provider text carried
-by `FinishReason::Error`. This keeps terminal child status useful without
-echoing model-generated values.
+The diagnostic never includes the response body or the provider text carried by
+`FinishReason::Error`. This keeps terminal child status useful without echoing
+model-generated values.
 
 ## Failed child history
 
@@ -41,10 +41,10 @@ The runner publishes the accepted task to its thread snapshot before fallible
 setup begins. A failed planner or provider request therefore cannot leave the
 archive containing only the earlier bootstrap messages.
 
-`ChildRecord` records the terminal `Failed` status, completion timestamp, and
-a control-character-normalized error chain capped at 2,048 characters. The
-record retains its archive path and effective child configuration for status
-and ACP projections.
+`ChildRecord` records the terminal `Failed` status, completion timestamp, and a
+control-character-normalized error chain capped at 2,048 characters. The record
+retains its archive path and effective child configuration for status and ACP
+projections.
 
 ## Verify the contracts
 

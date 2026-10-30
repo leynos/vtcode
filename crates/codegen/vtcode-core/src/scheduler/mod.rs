@@ -21,6 +21,10 @@ use crate::notifications::{NotificationEvent, send_global_notification};
 use crate::utils::path::normalize_path;
 use vtcode_commons::VtCodePaths;
 
+mod language;
+
+pub use language::parse_session_language_command;
+
 pub const MAX_SCHEDULED_TASKS: usize = 50;
 pub const SESSION_TASK_EXPIRY_HOURS: i64 = 72;
 pub const DISABLE_CRON_ENV: &str = "VTCODE_DISABLE_CRON";
@@ -55,28 +59,8 @@ mod test_env_overrides {
 #[cfg(test)]
 mod tests;
 
-static REMIND_AT_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?ix)^\s*remind\s+me\s+at\s+(?P<when>.+?)\s+to\s+(?P<prompt>.+)\s*$").expect("remind-at regex")
-});
-
-static REMIND_IN_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?ix)
-        ^\s*in\s+
-        (?P<count>\d+)
-        \s*
-        (?P<unit>minutes|minute|hours|hour|days|day)
-        \s*,?\s*
-        (?P<prompt>.+)
-        \s*$
-    ",
-    )
-    .expect("remind-in regex")
-});
-
-static TIME_ONLY_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?ix)^\s*(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?\s*$").expect("time-only regex")
-});
+static TIME_ONLY_RE: LazyLock<std::result::Result<Regex, regex::Error>> =
+    LazyLock::new(|| Regex::new(r"(?ix)^\s*(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?\s*$"));
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -1043,51 +1027,6 @@ pub fn durable_task_is_overdue(
     !has_last_status && last_run_at.is_none() && next_run_at.is_some_and(|next_run| next_run <= now)
 }
 
-pub fn parse_session_language_command(input: &str, now: DateTime<Local>) -> Option<Result<SessionLanguageCommand>> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let normalized = trimmed.trim_end_matches(['?', '.', '!']).to_ascii_lowercase();
-    if normalized == "what scheduled tasks do i have" {
-        return Some(Ok(SessionLanguageCommand::ListTasks));
-    }
-
-    if let Some(captures) = REMIND_AT_RE.captures(trimmed) {
-        let when = captures.name("when").map(|value| value.as_str()).unwrap_or_default();
-        let prompt = captures
-            .name("prompt")
-            .map(|value| value.as_str().trim().to_string())
-            .unwrap_or_default();
-        return Some(
-            parse_local_datetime(when, now)
-                .map(|run_at| SessionLanguageCommand::CreateOneShotPrompt { prompt, run_at }),
-        );
-    }
-
-    if let Some(captures) = REMIND_IN_RE.captures(trimmed) {
-        let count = captures["count"].parse::<i64>().ok()?;
-        let prompt = captures["prompt"].trim().to_string();
-        let delta = match captures["unit"].to_ascii_lowercase().as_str() {
-            "minute" | "minutes" => ChronoDuration::minutes(count),
-            "hour" | "hours" => ChronoDuration::hours(count),
-            "day" | "days" => ChronoDuration::days(count),
-            _ => return None,
-        };
-        return Some(Ok(SessionLanguageCommand::CreateOneShotPrompt {
-            prompt,
-            run_at: (now + delta).with_timezone(&Utc),
-        }));
-    }
-
-    if let Some(query) = trimmed.strip_prefix("cancel ") {
-        return Some(Ok(SessionLanguageCommand::CancelTask { query: query.trim().to_string() }));
-    }
-
-    None
-}
-
 pub fn parse_schedule_create_args(args: &str) -> Result<ScheduleCreateInput> {
     let tokens = shell_words::split(args).with_context(|| format!("Failed to parse arguments: {args}"))?;
     parse_schedule_create_tokens(&tokens)
@@ -1411,7 +1350,11 @@ pub fn parse_local_datetime(raw: &str, now: DateTime<Local>) -> Result<DateTime<
         }
     }
 
-    if let Some(captures) = TIME_ONLY_RE.captures(trimmed) {
+    if let Some(captures) = TIME_ONLY_RE
+        .as_ref()
+        .context("Failed to compile the time-only regex")?
+        .captures(trimmed)
+    {
         let mut hour = captures["hour"].parse::<u32>()?;
         let minute = captures
             .name("minute")

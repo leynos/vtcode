@@ -68,6 +68,11 @@ impl GenerationTelemetry {
             .await;
     }
 
+    /// Accumulate a rough token count and record the first-output time once.
+    ///
+    /// Each delta contributes one estimated token per four Unicode scalar
+    /// values, rounded up. Only the first observed delta supplies the logged
+    /// time-to-first-token and retry count.
     pub(in crate::zed::agent::handlers) fn observe_output(
         &mut self,
         runtime: &ProviderRequestRuntime,
@@ -95,12 +100,22 @@ impl GenerationTelemetry {
         );
     }
 
+    pub(in crate::zed::agent::handlers) fn has_observed_output(&self) -> bool {
+        self.first_output_at.is_some()
+    }
+
+    /// Log completed generation telemetry and record its duration metric.
+    ///
+    /// A positive provider completion-token count is authoritative; otherwise
+    /// the estimate accumulated by [`Self::observe_output`] is used. That
+    /// estimate rounds each output delta's character count up per four
+    /// Unicode scalar values. If no output was observed, elapsed generation
+    /// time is reported as time to first token.
     pub(in crate::zed::agent::handlers) async fn complete(
         &mut self,
         runtime: &ProviderRequestRuntime,
         response: &LLMResponse,
         retry_count: u32,
-        buffered: bool,
     ) {
         let elapsed = self.started_at.elapsed();
         let elapsed_ms = duration_millis(elapsed).max(1);
@@ -125,7 +140,7 @@ impl GenerationTelemetry {
                 .first_output_at
                 .map(|first| duration_millis(first.duration_since(self.started_at)))
                 .unwrap_or(elapsed_ms),
-            ttft_observation = if buffered { "buffered_response" } else { "stream_event" },
+            ttft_observation = match self.mode { ProviderMode::Buffered => "buffered_response", ProviderMode::Stream => "stream_event" },
             output_tokens,
             token_count_source,
             tokens_per_second,
@@ -144,6 +159,11 @@ impl GenerationTelemetry {
             .await;
     }
 
+    /// Log a bounded error projection and record applicable failure metrics.
+    ///
+    /// Error detail in the warning is limited to safe category and status
+    /// fields. Rate-limit metrics are recorded for rate-limit errors; retry
+    /// and optional retry-delay metrics are recorded when a retry is scheduled.
     pub(in crate::zed::agent::handlers) async fn failed(&mut self, failure: GenerationFailure<'_>) {
         let GenerationFailure {
             runtime,
@@ -152,6 +172,8 @@ impl GenerationTelemetry {
             retry_delay,
             error,
         } = failure;
+        #[cfg(test)]
+        crate::zed::agent::handlers::responses_tests::record_provider_failure(error, runtime);
         let elapsed_ms = duration_millis(self.started_at.elapsed());
         let first_output_ms = self
             .first_output_at

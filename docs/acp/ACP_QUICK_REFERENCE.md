@@ -13,11 +13,12 @@ vtcode acp
 ```
 
 The server negotiates protocol version 1 during `initialize`. Its Lody usage
-capability is always advertised as `_meta.lody.usage = { "version": 1 }`.
-When a subagent controller is configured, the handshake also advertises
-`_meta.lody.subagents` version 1 with `lifecycle`, `list`, `cancel`, and `output`
-operations. The `_meta.lody.tasks = { "version": 1, "background": true }`
-capability is included only when background subagents are enabled.
+capability is always advertised as `_meta.lody.usage = { "version": 1 }`. When
+a subagent controller is configured, the handshake also advertises
+`_meta.lody.subagents` version 1 with `lifecycle`, `list`, `cancel`, and
+`output` operations. The
+`_meta.lody.tasks = { "version": 1, "background": true }` capability is
+included only when background subagents are enabled.
 
 Subagent and background-process progress is sent through standard ACP
 `session/update` tool calls and tool-call updates. The standard task fields
@@ -58,43 +59,44 @@ notification `_lody/session/usage_update`. Its parameters contain:
 ```
 
 `modelUsage` is keyed by the response model. The values are deltas for one
-provider response, and no notification is emitted when the provider supplies
-no usage data.
+provider response, and no notification is emitted when the provider supplies no
+usage data.
 
 `reasoningOutputTokens`, `contextWindow`, and `costUSD` are optional. The
 visible `outputTokens` value excludes reasoning tokens when the provider
-reports them; Baseten's nested
-`completion_tokens_details.reasoning_tokens` field is preserved during
-normalization. `costUSD` is emitted only when explicitly configured custom
-provider pricing supplies both input and output rates (USD per million
-tokens). Cache pricing is optional.
+reports them; Baseten's nested `completion_tokens_details.reasoning_tokens`
+field is preserved during normalization. `costUSD` is emitted only when
+explicitly configured custom provider pricing supplies both input and output
+rates (USD per million tokens). Cache pricing is optional.
 
-Automatic context compaction is advertised as `_meta.lody.compaction` version
-1 and is emitted through standard `tool_call` and `tool_call_update` updates.
-The updates carry `_meta.lody.activity` for token counts, duration, and failure
+Automatic context compaction is advertised as `_meta.lody.compaction` version 1
+and is emitted through standard `tool_call` and `tool_call_update` updates. The
+updates carry `_meta.lody.activity` for token counts, duration, and failure
 details.
 
 HTTP 429 notices include configured provider quota headers, preserving
 per-minute, per-second, and per-request units. `Retry-After` and configured
 reset intervals set a minimum for exponential back-off; missing headers are
-silent. See [provider rate-limit headers](../development/provider-rate-limit-headers.md).
+silent. See
+[provider rate-limit headers](../development/provider-rate-limit-headers.md).
 
 VT Code advertises push-only `_meta.lody.rateLimits` version 1 and emits
 `_lody/rate_limits/update` for observed quota headers. Complete limit/remaining
-pairs produce utilization windows; limit-only headers retain the absolute
-limit in `limitName` with no invented utilization. There is no query method.
+pairs produce utilization windows; limit-only headers retain the absolute limit
+in `limitName` with no invented utilization. There is no query method.
 
 ### Responses profiles
 
-| Boundary | Behaviour |
-| --- | --- |
-| HTTP/SSE completion | Requires `response.completed`; EOF is not success |
-| Partial output | Checkpointed as incomplete; no automatic generation replay |
-| Reasoning and custom inputs | Incremental visibility; done text reconciled as an aggregate |
-| Usage | Missing/null is absent; invalid or overflowing counts are errors |
-| Optional WebSockets | Cancelled exchanges discard their socket and continuation |
+| Boundary                    | Behaviour                                                        |
+| --------------------------- | ---------------------------------------------------------------- |
+| HTTP/SSE completion         | Requires `response.completed`; EOF is not success                |
+| Partial output              | Checkpointed as incomplete; no automatic generation replay       |
+| Reasoning and custom inputs | Incremental visibility; done text reconciled as an aggregate     |
+| Usage                       | Missing/null is absent; invalid or overflowing counts are errors |
+| Optional WebSockets         | Cancelled exchanges discard their socket and continuation        |
 
-See [Responses hardening and verification](../development/responses-hardening.md).
+See
+[Responses hardening and verification](../development/responses-hardening.md).
 
 ## Legacy REST ACP client reference
 

@@ -1,9 +1,9 @@
 # Negotiate Lody usage, tasks and subagents over ACP
 
-This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & discoveries`,
-`Decision log`, `Outcomes & retrospective`, `Conformance basis`, and
-`Verification plan` must be kept up to date as work proceeds.
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+`Tolerances`, `Risks`, `Progress`, `Surprises & discoveries`, `Decision log`,
+`Outcomes & retrospective`, `Conformance basis`, and `Verification plan` must
+be kept up to date as work proceeds.
 
 Status: COMPLETE
 
@@ -73,8 +73,8 @@ management requests return only tasks owned by the requested ACP session.
   method constants and return a protocol method-not-found error otherwise.
 - Risk: one subagent controller may retain tasks from more than one ACP session.
   Severity: high. Likelihood: medium. Mitigation: compute the requested
-  session's task closure from parent identifiers and test generated mixed-session
-  forests; validate ownership before list, cancel and output.
+  session's task closure from parent identifiers and test generated
+  mixed-session forests; validate ownership before list, cancel and output.
 - Risk: `SubagentStatus::Closed` and background `Stopped` do not encode every
   Lody terminal reason. Severity: medium. Likelihood: high. Mitigation: define
   one explicit, documented mapping; use `failed` for a closed child and
@@ -108,11 +108,11 @@ management requests return only tasks owned by the requested ACP session.
 - [x] (2026-08-28 15:24Z) EP-M1: replace `_vtcode/taskLifecycle` with standard
   task-carrying ACP tool updates and negotiate subagent lifecycle.
 - [x] (2026-08-28 16:02Z) Resolve the EP-M2 security tolerance:
-  persisted background records do not carry an explicit owning ACP session,
-  so foreign-task isolation cannot be proved without expanding the core model.
-  The user approved the robust expansion: persist explicit ownership, hide
-  legacy ownerless records from ACP management and add a bounded output-tail
-  API before registering any management handlers.
+  persisted background records do not carry an explicit owning ACP session, so
+  foreign-task isolation cannot be proved without expanding the core model. The
+  user approved the robust expansion: persist explicit ownership, hide legacy
+  ownerless records from ACP management and add a bounded output-tail API
+  before registering any management handlers.
 - [x] (2026-08-28) EP-M2: implement and negotiate background tasks plus
   session-scoped subagent list, cancel and output methods. The core expansion
   persists optional `owner_session_id`, hides legacy ownerless records from
@@ -122,8 +122,8 @@ management requests return only tasks owned by the requested ACP session.
   foreign-task indistinguishability from unknown tasks.
 - [x] (2026-08-28) EP-M3: emit negotiated provider usage and opt custom
   providers into streaming usage. Per-response usage deltas now use the
-  canonical `_lody/session/usage_update` method, and custom-provider
-  streaming usage is opt-in through profile resolution.
+  canonical `_lody/session/usage_update` method, and custom-provider streaming
+  usage is opt-in through profile resolution.
 - [x] (2026-08-28) EP-M4: update documentation, run release gates, install the
   binary, push the stack and open the draft PR.
   - Current ACP/Lody negotiation, task/subagent management and usage are now
@@ -141,134 +141,130 @@ management requests return only tasks owned by the requested ACP session.
 
 - Observation: Lody's version-1 task schema accepts only `pending`,
   `in_progress`, `completed` and `failed`; it does not accept `killed`.
-  Evidence: `packages/shared/src/acp/claude-subagent-task.ts` in the checked-out
-  Lody source defines the closed status enum used by `_meta.lody.task`.
-  Impact: a closed child maps to `failed`, with its error retained, rather than
-  the unsupported `killed` value in the draft risk mitigation.
+  Evidence: `packages/shared/src/acp/claude-subagent-task.ts` in the
+  checked-out Lody source defines the closed status enum used by
+  `_meta.lody.task`. Impact: a closed child maps to `failed`, with its error
+  retained, rather than the unsupported `killed` value in the draft risk
+  mitigation.
 - Observation: the EP-M1 red run failed at compile time because
-  `lody_task_session_update` was intentionally absent.
-  Evidence: `/tmp/red-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm1.out`
-  reports `E0425` from the new task lifecycle unit test.
-  Impact: the red test directly proves that the new standard ACP adapter is
-  required; the existing private notification cannot satisfy it.
+  `lody_task_session_update` was intentionally absent. Evidence:
+  `/tmp/red-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm1.out` reports
+  `E0425` from the new task lifecycle unit test. Impact: the red test directly
+  proves that the new standard ACP adapter is required; the existing private
+  notification cannot satisfy it.
 - Observation: EP-M1 passed the complete repository release gate and was
-  committed as `16ba7b5160a28aab2fcf1d47cb8d37bc9c28892f`.
-  Evidence: `/tmp/check-VTCode-fix-acp-lody-task-lifecycle-negotiation-2.out`
-  records rustfmt, policy checks, Clippy, build, 6,582 tests, harness
-  regressions and rustdoc passing.
-  Impact: the standard lifecycle repair is a complete, independently
-  releasable plateau.
+  committed as `16ba7b5160a28aab2fcf1d47cb8d37bc9c28892f`. Evidence:
+  `/tmp/check-VTCode-fix-acp-lody-task-lifecycle-negotiation-2.out` records
+  rustfmt, policy checks, Clippy, build, 6,582 tests, harness regressions and
+  rustdoc passing. Impact: the standard lifecycle repair is a complete,
+  independently releasable plateau.
 - Observation: persisted background records are loaded into every controller
   for a workspace without an explicit owning ACP session, while background
-  cancellation itself performs no ACP ownership check.
-  Evidence: `SubagentController::new` loads `background_children` from
-  workspace state; `BackgroundSubprocessEntry` contains generated runtime and
-  exec session IDs but no parent ACP session ID.
-  Impact: EP-M2 cannot prove `SESSION-ISOLATION` for background list, cancel or
-  output using the existing controller state. This activates the plan's
-  security tolerance and requires a deliberate persisted-model/API expansion
-  or removal of background management from this stack.
+  cancellation itself performs no ACP ownership check. Evidence:
+  `SubagentController::new` loads `background_children` from workspace state;
+  `BackgroundSubprocessEntry` contains generated runtime and exec session IDs
+  but no parent ACP session ID. Impact: EP-M2 cannot prove `SESSION-ISOLATION`
+  for background list, cancel or output using the existing controller state.
+  This activates the plan's security tolerance and requires a deliberate
+  persisted-model/API expansion or removal of background management from this
+  stack.
 - Observation: the current public background snapshot API hard-limits previews
   to 24 lines, while the approved Lody output contract specifies a caller
-  default of 200 and a hard maximum of 10,000.
-  Evidence: `SUBAGENT_PREVIEW_LINES` and `background_snapshot()` clamp both
-  live and archived output before the ACP adapter can apply a requested tail.
-  Impact: meeting the output contract also requires extending the controller
-  API rather than adding only an ACP adapter.
+  default of 200 and a hard maximum of 10,000. Evidence:
+  `SUBAGENT_PREVIEW_LINES` and `background_snapshot()` clamp both live and
+  archived output before the ACP adapter can apply a requested tail. Impact:
+  meeting the output contract also requires extending the controller API rather
+  than adding only an ACP adapter.
 - Observation: ACP SDK `ExtRequest` is a schema value, not a directly
-  registerable typed request handler.
-  Evidence: `ClientRequest::ExtMethodRequest` owns extension dispatch and the
-  SDK strips the leading underscore before constructing `ExtRequest`.
-  Impact: EP-M2 must use a custom untyped dispatcher or a carefully scoped
-  `ClientRequest` catch-all that returns `Handled::No` for standard requests.
+  registerable typed request handler. Evidence:
+  `ClientRequest::ExtMethodRequest` owns extension dispatch and the SDK strips
+  the leading underscore before constructing `ExtRequest`. Impact: EP-M2 must
+  use a custom untyped dispatcher or a carefully scoped `ClientRequest`
+  catch-all that returns `Handled::No` for standard requests.
 - Observation: filtering persisted records only when a controller loads is not
-  sufficient isolation: an owner-scoped save would otherwise delete foreign
-  and legacy records from the shared workspace state file.
-  Evidence: `save_background_state` previously replaced the whole persisted
-  record set with the controller's in-memory subset.
-  Impact: scoped controllers now receive their real ACP session ID before
-  restore and merge only their owner's records under a process-wide
-  persistence lock; unscoped CLI controllers retain replace-all semantics.
+  sufficient isolation: an owner-scoped save would otherwise delete foreign and
+  legacy records from the shared workspace state file. Evidence:
+  `save_background_state` previously replaced the whole persisted record set
+  with the controller's in-memory subset. Impact: scoped controllers now
+  receive their real ACP session ID before restore and merge only their owner's
+  records under a process-wide persistence lock; unscoped CLI controllers
+  retain replace-all semantics.
 
 - Observation: truthful background-task negotiation is controlled by
   `background_subagents_enabled`, not by the broader
-  `managed_background_runtime` predicate.
-  Evidence: the EP-M2 capability and duplex tests exercise the configured
-  background-subagent feature flag directly.
-  Impact: ACP advertises background tasks only when that capability is enabled;
-  unrelated runtime state cannot cause an unsupported promise.
+  `managed_background_runtime` predicate. Evidence: the EP-M2 capability and
+  duplex tests exercise the configured background-subagent feature flag
+  directly. Impact: ACP advertises background tasks only when that capability
+  is enabled; unrelated runtime state cannot cause an unsupported promise.
 
 - Observation: EP-M2's red tests exposed absent ownership and management
-  plumbing; the expanded core and ACP suites then passed the contract.
-  Evidence: `/tmp/red-vtcode-core-epm2.out`,
-  `/tmp/green-vtcode-core-epm2-final.out` (5/5),
-  `/tmp/red-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm2-acp.out`,
-  and `/tmp/test-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm2-final.out`
-  (6/6).
-  Impact: EP-M2 is complete; provider usage and custom-provider streaming
-  opt-in are the remaining implementation work.
+  plumbing; the expanded core and ACP suites then passed the contract. Evidence:
+  `/tmp/red-vtcode-core-epm2.out`, `/tmp/green-vtcode-core-epm2-final.out`
+  (5/5),
+  `/tmp/red-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm2-acp.out`, and
+  `/tmp/test-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm2-final.out`
+  (6/6). Impact: EP-M2 is complete; provider usage and custom-provider
+  streaming opt-in are the remaining implementation work.
 
 - Observation: VTCode already emits the model's task tracker as a standard ACP
-  `Plan`, including blocked-task labels and durable replay.
-  Evidence: `crates/codegen/vtcode-acp/src/zed/agent/task_progress.rs` and its
-  duplex tests in `zed/agent/handlers.rs`.
-  Impact: no new plan/task-tracker protocol is required. The Lody `tasks`
-  capability will advertise only enabled background-subagent work.
+  `Plan`, including blocked-task labels and durable replay. Evidence:
+  `crates/codegen/vtcode-acp/src/zed/agent/task_progress.rs` and its duplex
+  tests in `zed/agent/handlers.rs`. Impact: no new plan/task-tracker protocol
+  is required. The Lody `tasks` capability will advertise only enabled
+  background-subagent work.
 - Observation: `_vtcode/taskLifecycle` is neither a standard ACP task update nor
   a Lody-recognized legacy extension, and its discriminator is incompatible
-  with Lody's Claude compatibility parser.
-  Evidence: `crates/codegen/vtcode-acp/src/zed/agent/task_lifecycle.rs` uses
+  with Lody's Claude compatibility parser. Evidence:
+  `crates/codegen/vtcode-acp/src/zed/agent/task_lifecycle.rs` uses
   `message.type`; Lody commit `dd241fd4108ba5de2f7e2d8d627713152d812a06`
   recognizes only `_claude/taskLifecycle` and `_kimi/taskLifecycle` legacy
-  carriers using a different shape.
-  Impact: the custom notification must be removed rather than renamed.
+  carriers using a different shape. Impact: the custom notification must be
+  removed rather than renamed.
 - Observation: the existing `SubagentController` already exposes status,
-  close/cancel, child snapshots and background output previews.
-  Evidence: `vtcode-core/src/subagents/mod.rs`,
-  `controller_spawn_run.rs` and `controller_background_ops.rs`.
-  Impact: Lody management is an ACP adapter concern, not a new core subsystem.
+  close/cancel, child snapshots and background output previews. Evidence:
+  `vtcode-core/src/subagents/mod.rs`, `controller_spawn_run.rs` and
+  `controller_background_ops.rs`. Impact: Lody management is an ACP adapter
+  concern, not a new core subsystem.
 - Observation: Baseten documents per-request token usage, cached input tokens
   and final streamed usage, but the final usage chunk is conditional on
-  `stream_options.include_usage: true`.
-  Evidence: Baseten's Chat Completions reference and GLM-5.3 Flash model page;
-  VTCode currently adds the option only for native OpenAI in
-  `vtcode-llm/src/providers/openai/provider/streaming.rs`.
+  `stream_options.include_usage: true`. Evidence: Baseten's Chat Completions
+  reference and GLM-5.3 Flash model page; VTCode currently adds the option only
+  for native OpenAI in `vtcode-llm/src/providers/openai/provider/streaming.rs`.
   Impact: negotiated Lody usage would remain empty for the user's Baseten
   sessions without a provider-profile opt-in.
 - Observation: Lody's canonical usage extension is the version-1
   `_lody/session/usage_update` method, and VTCode must advertise
-  `usage: {version: 1}` even when a provider does not return usage.
-  Evidence: the Lody Core usage method and the EP-M3 capability and mapping
-  tests; `/tmp/test-vtcode-acp-fix-acp-lody-task-lifecycle-negotiation-epm3-final.out`.
+  `usage: {version: 1}` even when a provider does not return usage. Evidence:
+  the Lody Core usage method and the EP-M3 capability and mapping tests;
+  `/tmp/test-vtcode-acp-fix-acp-lody-task-lifecycle-negotiation-epm3-final.out`.
   Impact: usage negotiation is stable across providers, while a response with
   no normalized usage produces no notification rather than invented counts.
 - Observation: usage is emitted once per provider response, including each
   response in a tool loop, and the normalized terminal `choices: []` usage
-  chunk is retained by the custom OpenAI-compatible adapter.
-  Evidence: the official ACP duplex test and the custom-provider wiremock and
-  vidai-mock tests recorded in the EP-M3 artefacts below.
-  Impact: Lody receives additive deltas for intermediate and final responses,
-  including Baseten-style terminal usage, without double-counting.
+  chunk is retained by the custom OpenAI-compatible adapter. Evidence: the
+  official ACP duplex test and the custom-provider wiremock and vidai-mock
+  tests recorded in the EP-M3 artefacts below. Impact: Lody receives additive
+  deltas for intermediate and final responses, including Baseten-style terminal
+  usage, without double-counting.
 - Observation: custom-provider `supports_stream_usage` is sparse and defaults
   to false; resolved profile precedence controls the request, while native
-  OpenAI request behaviour is unchanged.
-  Evidence: the configuration precedence and request-shape tests in
-  `/tmp/test-vtcode-config-fix-acp-lody-task-lifecycle-negotiation-epm3.out`
-  and `/tmp/test-vtcode-llm-wiremock-fix-acp-lody-task-lifecycle-negotiation-epm3.out`.
+  OpenAI request behaviour is unchanged. Evidence: the configuration precedence
+  and request-shape tests in
+  `/tmp/test-vtcode-config-fix-acp-lody-task-lifecycle-negotiation-epm3.out` and
+  `/tmp/test-vtcode-llm-wiremock-fix-acp-lody-task-lifecycle-negotiation-epm3.out`.
   Impact: existing proxy configurations remain safe, and only an explicitly
   opted-in compatible endpoint receives `stream_options.include_usage`.
 - Observation: the first standalone ACP usage duplex check exposed timing and
-  extension-method normalization assumptions; the final test uses the
-  official ACP extension channel and passes after those boundaries were made
-  explicit.
+  extension-method normalization assumptions; the final test uses the official
+  ACP extension channel and passes after those boundaries were made explicit.
   Evidence: the final green transcript is
   `/tmp/test-vtcode-acp-usage-duplex-fix-acp-lody-task-lifecycle-negotiation-epm3-green.out`.
   Impact: the behavioural test validates the wire contract rather than a
   direct helper invocation.
 - Observation: Baseten's aggregate `/v1/model_apis/usage` endpoint is bucketed
-  across requests and API keys.
-  Evidence: Baseten's model API pricing and limits documentation.
-  Impact: it is unsuitable for per-turn ACP usage and is out of scope.
+  across requests and API keys. Evidence: Baseten's model API pricing and
+  limits documentation. Impact: it is unsuitable for per-turn ACP usage and is
+  out of scope.
 
 ## Decision log
 
@@ -276,46 +272,40 @@ management requests return only tasks owned by the requested ACP session.
   skill-discovery or context-limit branches in the original worktree.
   Rationale: the user requested a new stacked PR, and PR #13 is the latest
   published stack layer. This avoids silently coupling the integration to
-  unrelated unpublished commits.
-  Date/Author: 2026-08-28 / Codex.
+  unrelated unpublished commits. Date/Author: 2026-08-28 / Codex.
 - Decision: use standard ACP `ToolCall`/`ToolCallUpdate` messages with stable
-  `task:<task-id>` identifiers and `_meta.lody.task` snapshots.
-  Rationale: this is the Lody contract and remains meaningful to non-Lody ACP
-  clients, unlike a provider-specific lifecycle notification.
-  Date/Author: 2026-08-28 / Codex.
-- Decision: negotiate `usage: {version: 1}` unconditionally, `tasks:
-  {version: 1, background: true}` only when `background_subagents_enabled` is
-  true,
-  and `subagents` only when a controller exists. Advertise list, cancel and
-  output only after their handlers land in the same coherent commit.
-  Rationale: capabilities are promises, not product marketing.
-  Date/Author: 2026-08-28 / Codex.
+  `task:<task-id>` identifiers and `_meta.lody.task` snapshots. Rationale: this
+  is the Lody contract and remains meaningful to non-Lody ACP clients, unlike a
+  provider-specific lifecycle notification. Date/Author: 2026-08-28 / Codex.
+- Decision: negotiate `usage: {version: 1}` unconditionally,
+  `tasks: {version: 1, background: true}` only when
+  `background_subagents_enabled` is true, and `subagents` only when a
+  controller exists. Advertise list, cancel and output only after their
+  handlers land in the same coherent commit. Rationale: capabilities are
+  promises, not product marketing. Date/Author: 2026-08-28 / Codex.
 - Decision: emit usage as per-response deltas, not cumulative session totals.
   Rationale: Lody's usage tracking service sums incoming updates per ACP
-  session; cumulative snapshots would double-count.
-  Date/Author: 2026-08-28 / Codex.
+  session; cumulative snapshots would double-count. Date/Author: 2026-08-28 /
+  Codex.
 - Decision: add `supports_stream_usage` to custom-provider profiles rather than
-  special-casing Baseten hostnames.
-  Rationale: the capability is part of the OpenAI-compatible peer contract,
-  while hostname inference is brittle and would expose other proxies to known
-  400 responses.
-  Date/Author: 2026-08-28 / Codex.
+  special-casing Baseten hostnames. Rationale: the capability is part of the
+  OpenAI-compatible peer contract, while hostname inference is brittle and
+  would expose other proxies to known 400 responses. Date/Author: 2026-08-28 /
+  Codex.
 - Decision: extend persisted background records with an optional owning ACP
   session identifier, treat a missing identifier as legacy unowned state, and
   exclude such records from every ACP list, cancel and output operation. Add a
   controller API that returns a caller-requested output tail under a hard
   bound, while preserving the existing 24-line preview API for current callers.
-  Rationale: explicit ownership is the only available basis for proving
-  session isolation across process restarts. An optional additive field keeps
-  old records deserializable without granting them new authority, and a new
-  bounded API avoids silently changing existing preview behaviour.
-  Date/Author: 2026-08-28 / Codex, approved by the user as option 1.
+  Rationale: explicit ownership is the only available basis for proving session
+  isolation across process restarts. An optional additive field keeps old
+  records deserializable without granting them new authority, and a new bounded
+  API avoids silently changing existing preview behaviour. Date/Author:
+  2026-08-28 / Codex, approved by the user as option 1.
 - Decision: gate the advertised background-task capability with
-  `background_subagents_enabled`.
-  Rationale: negotiation must describe the ACP feature that is actually
-  enabled, rather than infer support from a separate runtime-management
-  predicate.
-  Date/Author: 2026-08-28 / Codex.
+  `background_subagents_enabled`. Rationale: negotiation must describe the ACP
+  feature that is actually enabled, rather than infer support from a separate
+  runtime-management predicate. Date/Author: 2026-08-28 / Codex.
 - Decision: advertise Lody usage version 1 unconditionally, but emit the
   canonical `_lody/session/usage_update` only when a provider response carries
   normalized usage. Emit one delta per response, including every tool-loop
@@ -325,19 +315,17 @@ management requests return only tasks owned by the requested ACP session.
   Date/Author: 2026-08-28 / Codex.
 - Decision: make custom-provider streamed usage a sparse profile capability,
   defaulting to false and following resolved profile precedence; leave native
-  OpenAI behaviour unchanged.
-  Rationale: OpenAI-compatible proxies vary in support for
-  `stream_options.include_usage`, so an explicit opt-in preserves existing
-  request compatibility while enabling Baseten-shaped terminal usage.
+  OpenAI behaviour unchanged. Rationale: OpenAI-compatible proxies vary in
+  support for `stream_options.include_usage`, so an explicit opt-in preserves
+  existing request compatibility while enabling Baseten-shaped terminal usage.
   Date/Author: 2026-08-28 / Codex.
 - Decision: keep the generated configuration reference change scoped to the
   two new `supports_stream_usage` rows rather than committing the generator's
-  unrelated full-file drift.
-  Rationale: `scripts/generate_config_field_reference.py` completed and proved
-  both schema paths exist, but the checked-in reference had broad pre-existing
-  drift across hundreds of unrelated fields. A full regeneration would obscure
-  this feature and violate the stacked PR's review boundary.
-  Date/Author: 2026-08-28 / Codex.
+  unrelated full-file drift. Rationale:
+  `scripts/generate_config_field_reference.py` completed and proved both schema
+  paths exist, but the checked-in reference had broad pre-existing drift across
+  hundreds of unrelated fields. A full regeneration would obscure this feature
+  and violate the stacked PR's review boundary. Date/Author: 2026-08-28 / Codex.
 
 ## Outcomes & retrospective
 
@@ -360,10 +348,9 @@ metadata and scheduled tasks remain explicitly independent follow-ups.
 ## Context and orientation
 
 VTCode's ACP server lives in `crates/codegen/vtcode-acp`. The SACP handler
-registration and initialization response are in
-`src/zed/agent/handlers.rs`; standard session notifications are sent through
-`src/zed/agent/updates.rs` and `src/zed/connection.rs`. Per-session runtime
-state is in `src/zed/types.rs`.
+registration and initialization response are in `src/zed/agent/handlers.rs`;
+standard session notifications are sent through `src/zed/agent/updates.rs` and
+`src/zed/connection.rs`. Per-session runtime state is in `src/zed/types.rs`.
 
 `src/zed/agent/task_lifecycle.rs` subscribes to
 `vtcode_core::subagents::SubagentProgressEvent`, filters events by parent ACP
@@ -375,11 +362,10 @@ output previews.
 
 Lody extensions are negotiated in `agentCapabilities._meta.lody`. Version 1
 defines `usage`, `tasks` and `subagents` independently. Session usage travels
-through `_lody/session/usage_update`. Management uses
-`_lody/subagents/list`, `_lody/subagents/cancel` and
-`_lody/subagents/output`. Lifecycle itself does not use a custom method: it is
-a standard ACP tool call whose `_meta.lody.task` value is a complete task
-snapshot.
+through `_lody/session/usage_update`. Management uses `_lody/subagents/list`,
+`_lody/subagents/cancel` and `_lody/subagents/output`. Lifecycle itself does
+not use a custom method: it is a standard ACP tool call whose `_meta.lody.task`
+value is a complete task snapshot.
 
 The word "task" has three distinct meanings here. VTCode's model-facing
 `task_tracker` is an ACP `Plan`. Lody's `tasks` capability says whether the
@@ -390,8 +376,8 @@ Only the latter two are changed by this plan.
 Provider responses carry `vtcode_commons::llm::Usage` with prompt, completion,
 cache-read and cache-creation counts. OpenAI-compatible streams expose usage in
 a terminal SSE chunk only when requested. The custom-provider OpenAI router
-already parses a received usage chunk, but it does not request one from
-Baseten today.
+already parses a received usage chunk, but it does not request one from Baseten
+today.
 
 ## Conformance basis
 
@@ -403,8 +389,7 @@ Baseten today.
   `23c792b910a903b74601e346473827106f991715` (`capabilities.ts`, `methods.ts`,
   `session.ts`, `usage.ts`).
 - Lody client/parser revision
-  `dd241fd4108ba5de2f7e2d8d627713152d812a06` in
-  `/home/leynos/Projects/Lody`.
+  `dd241fd4108ba5de2f7e2d8d627713152d812a06` in `/home/leynos/Projects/Lody`.
 - Baseten Chat Completions, model API pricing/limits, observability and GLM-5.3
   Flash documentation as observed on 2026-08-28.
 - No separate VTCode technical design or ADR governs Lody extensions. This
@@ -423,89 +408,82 @@ USER-USAGE -> EP-M3 -> baseten_usage_reaches_lody
 
 - Obligation: `NEGOTIATION-TRUTH`. Every advertised Lody feature has a working
   handler or emission path, disabled subagent/background features are omitted,
-  and no unimplemented scheduled support is advertised.
-  Method: parameterized unit tests plus official ACP duplex behavioural tests.
-  Rationale: the state space is the finite cross-product of controller absent,
-  controller present and background disabled/enabled.
-  Domain: all capability combinations VTCode can construct.
-  Artefact: tests beside `advertised_agent_capabilities` and in the ACP duplex
-  harness in `zed/agent/handlers.rs`.
-  Evidence: the red test observes missing `_meta.lody`; the green test parses
-  exact versioned capabilities and successfully invokes every advertised
-  method.
-  Non-vacuity: include witnesses for no controller, child-only controller and
+  and no unimplemented scheduled support is advertised. Method: parameterized
+  unit tests plus official ACP duplex behavioural tests. Rationale: the state
+  space is the finite cross-product of controller absent, controller present
+  and background disabled/enabled. Domain: all capability combinations VTCode
+  can construct. Artefact: tests beside `advertised_agent_capabilities` and in
+  the ACP duplex harness in `zed/agent/handlers.rs`. Evidence: the red test
+  observes missing `_meta.lody`; the green test parses exact versioned
+  capabilities and successfully invokes every advertised method. Non-vacuity:
+  include witnesses for no controller, child-only controller and
   child-plus-background controller; a negative control advertises no
   `scheduled` key and rejects an unknown `_lody` method.
 - Obligation: `TASK-IDENTITY`. Every lifecycle update for one VTCode task uses
   one stable `task:<id>` tool-call identifier, carries a complete valid
-  `_meta.lody.task` snapshot and maps terminal state monotonically.
-  Method: table tests for the finite status enums and a property test over
-  generated valid lifecycle sequences.
-  Rationale: examples prove wire shape while generated sequences catch
-  accidental identifier changes, terminal regressions and incomplete metadata.
-  Domain: child and background statuses, summaries/errors and timestamp
-  presence across sequences of length 1 through 32.
-  Artefact: `task_lifecycle.rs` unit/property tests and official ACP duplex
-  lifecycle test.
-  Evidence: the existing custom-notification assertion fails after the red
-  expectation is changed; green observes an initial `ToolCall`, subsequent
-  `ToolCallUpdate` values and no `_vtcode/taskLifecycle` notification.
-  Non-vacuity: classify child/background and pending/running/terminal cases;
-  include a seeded ID-changing mapper that the stable-ID property rejects.
+  `_meta.lody.task` snapshot and maps terminal state monotonically. Method:
+  table tests for the finite status enums and a property test over generated
+  valid lifecycle sequences. Rationale: examples prove wire shape while
+  generated sequences catch accidental identifier changes, terminal regressions
+  and incomplete metadata. Domain: child and background statuses,
+  summaries/errors and timestamp presence across sequences of length 1 through
+  32. Artefact: `task_lifecycle.rs` unit/property tests and official ACP duplex
+  lifecycle test. Evidence: the existing custom-notification assertion fails
+  after the red expectation is changed; green observes an initial `ToolCall`,
+  subsequent `ToolCallUpdate` values and no `_vtcode/taskLifecycle`
+  notification. Non-vacuity: classify child/background and
+  pending/running/terminal cases; include a seeded ID-changing mapper that the
+  stable-ID property rejects.
 - Obligation: `SESSION-ISOLATION`. List, cancel and output never reveal or
   mutate a task outside the requested ACP session, including nested children.
   Method: proptest-generated task forests plus behavioural requests over the
-  duplex ACP connection.
-  Rationale: ancestry and mixed-session arrangements are combinatorial and
-  deserve wider coverage than hand-picked examples.
-  Domain: acyclic forests up to 32 tasks across two to four session roots,
-  with foreground and background nodes and every status.
-  Artefact: pure ownership-selection property tests and handler-level ACP
-  tests.
-  Evidence: owned nested tasks are listed and manageable; foreign IDs return
-  the same not-found response as unknown IDs and remain unchanged.
-  Non-vacuity: require generators to produce direct, nested, foreign and
-  background tasks; a negative control that filters only direct children must
-  fail on a generated nested witness.
+  duplex ACP connection. Rationale: ancestry and mixed-session arrangements are
+  combinatorial and deserve wider coverage than hand-picked examples. Domain:
+  acyclic forests up to 32 tasks across two to four session roots, with
+  foreground and background nodes and every status. Artefact: pure
+  ownership-selection property tests and handler-level ACP tests. Evidence:
+  owned nested tasks are listed and manageable; foreign IDs return the same
+  not-found response as unknown IDs and remain unchanged. Non-vacuity: require
+  generators to produce direct, nested, foreign and background tasks; a
+  negative control that filters only direct children must fail on a generated
+  nested witness.
 - Obligation: `USAGE-DELTA`. Each provider usage sample produces exactly one
   non-negative Lody delta with the same input, output, cache-read and
   cache-creation counts, keyed by the response model; absence produces no
-  notification.
-  Method: property tests for numeric conversion and ACP behavioural tests.
-  Rationale: generated boundaries exercise zero, ordinary and maximum `u32`
-  values without relying on live billing.
-  Domain: every field across `0..=u32::MAX`, provider usage present/absent and
-  model identifiers including Unicode.
-  Artefact: Lody usage-mapping tests and a duplex notification test.
-  Evidence: red observes no usage notification; green parses a canonical
-  `_lody/session/usage_update` whose per-model and aggregate deltas agree.
-  Non-vacuity: classify zero/non-zero/cache/no-cache samples; a swapped
+  notification. Method: property tests for numeric conversion and ACP
+  behavioural tests. Rationale: generated boundaries exercise zero, ordinary
+  and maximum `u32` values without relying on live billing. Domain: every field
+  across `0..=u32::MAX`, provider usage present/absent and model identifiers
+  including Unicode. Artefact: Lody usage-mapping tests and a duplex
+  notification test. Evidence: red observes no usage notification; green parses
+  a canonical `_lody/session/usage_update` whose per-model and aggregate deltas
+  agree. Non-vacuity: classify zero/non-zero/cache/no-cache samples; a swapped
   prompt/completion negative control must fail.
 - Obligation: `BASETEN-STREAM-USAGE`. A custom OpenAI-chat provider requests
   usage only when its resolved profile opts in, and a Baseten-shaped terminal
-  usage chunk reaches the ACP Lody notification unchanged.
-  Method: request-shape unit tests, wiremock-style deterministic provider
-  playback and a vidai-mock physics test with streamed SSE chunks.
-  Rationale: unit tests prove configuration, playback proves parser contract,
-  and vidai-mock proves the assembled streaming path without external cost or
-  nondeterministic network timing.
-  Domain: provider default/profile override precedence, opt-in/out, content
-  chunks followed by terminal usage, and usage absent despite opt-in.
-  Artefact: custom-provider config/provider tests and the existing ACP provider
-  fixture environment extended with a Baseten usage scenario.
-  Evidence: request capture contains `stream_options.include_usage: true` only
-  for the opted-in profile; Lody receives one delta after the terminal chunk.
-  Non-vacuity: the opt-out request is asserted to omit `stream_options`; a
-  fixture with no terminal usage must produce no notification.
+  usage chunk reaches the ACP Lody notification unchanged. Method:
+  request-shape unit tests, wiremock-style deterministic provider playback and
+  a vidai-mock physics test with streamed SSE chunks. Rationale: unit tests
+  prove configuration, playback proves parser contract, and vidai-mock proves
+  the assembled streaming path without external cost or nondeterministic
+  network timing. Domain: provider default/profile override precedence,
+  opt-in/out, content chunks followed by terminal usage, and usage absent
+  despite opt-in. Artefact: custom-provider config/provider tests and the
+  existing ACP provider fixture environment extended with a Baseten usage
+  scenario. Evidence: request capture contains
+  `stream_options.include_usage: true` only for the opted-in profile; Lody
+  receives one delta after the terminal chunk. Non-vacuity: the opt-out request
+  is asserted to omit `stream_options`; a fixture with no terminal usage must
+  produce no notification.
 
-External axioms are limited to ACP's documented extension routing and Lody
-Core revision `23c792b9` accepting the stated version-1 shapes. Baseten's
-documented final usage chunk is treated as a peer contract; the repository-owned
-request construction and parsing are still exercised against faithful local
-boundaries. No formal prover or model checker is proportionate: the introduced
-invariants are finite serialization, ownership filtering and monotone event
-mapping without concurrency shared-memory semantics beyond the existing
-broadcast channel.
+External axioms are limited to ACP's documented extension routing and Lody Core
+revision `23c792b9` accepting the stated version-1 shapes. Baseten's documented
+final usage chunk is treated as a peer contract; the repository-owned request
+construction and parsing are still exercised against faithful local boundaries.
+No formal prover or model checker is proportionate: the introduced invariants
+are finite serialization, ownership filtering and monotone event mapping
+without concurrency shared-memory semantics beyond the existing broadcast
+channel.
 
 ## Plan of work
 
@@ -513,20 +491,20 @@ EP-M1 adds a private `zed/agent/lody.rs` module containing the versioned
 subagent-lifecycle capability and task-metadata DTOs, then changes
 `task_lifecycle.rs` to retain its broadcast subscription, session filter and
 lifetime while replacing the custom extension notification. The forwarder will
-remember which stable task IDs it has emitted:
-the first snapshot becomes `SessionUpdate::ToolCall`, and later snapshots
-become `SessionUpdate::ToolCallUpdate`. Both carry `_meta.lody.task` and a
-normal ACP status/title. The obsolete method and legacy-shaped message builders
-will be deleted. `handle_initialize` will advertise only
+remember which stable task IDs it has emitted: the first snapshot becomes
+`SessionUpdate::ToolCall`, and later snapshots become
+`SessionUpdate::ToolCallUpdate`. Both carry `_meta.lody.task` and a normal ACP
+status/title. The obsolete method and legacy-shaped message builders will be
+deleted. `handle_initialize` will advertise only
 `subagents: {version: 1, lifecycle: true}` when an actual controller exists.
 
 EP-M2 extends the private Lody module with typed management DTOs and registers
-one `ExtRequest` dispatcher in `handlers::install_handlers`.
-Exact `_lody/subagents/list`, `/cancel` and `/output` methods will parse typed
+one `ExtRequest` dispatcher in `handlers::install_handlers`. Exact
+`_lody/subagents/list`, `/cancel` and `/output` methods will parse typed
 parameters, resolve the requested `SessionHandle` and controller, establish
 task ownership, then call existing controller operations. List will combine
-child and managed-background entries in deterministic ID order. Cancel will
-use child `close` or background `force_cancel_background`. Output will render a
+child and managed-background entries in deterministic ID order. Cancel will use
+child `close` or background `force_cancel_background`. Output will render a
 bounded tail (default 200 lines, hard maximum 10,000) from the existing child
 snapshot or background preview. Unknown or foreign task IDs will share one
 not-found response. The same commit will add `list`, `cancel` and `output`
@@ -534,22 +512,21 @@ negotiation flags, plus `tasks: {version: 1, background: true}` only when the
 `background_subagents_enabled` capability is enabled.
 
 EP-M3 emits a canonical `_lody/session/usage_update` after each provider
-response that contains normalized usage, including every intermediate
-tool-loop response. `usage` and the matching `modelUsage[model]` entry are
-per-response deltas; a response without usage emits no notification. The
-custom-provider profile gains sparse `supports_stream_usage` opt-in with
-resolved profile precedence, while native OpenAI request behaviour remains
-unchanged. The existing stream decoder preserves terminal `choices: []`
-usage. Nested Baseten cached/reasoning detail remains optional: cached tokens
-are included only when represented reliably in normalized `Usage`, and
-reasoning tokens are not fabricated.
+response that contains normalized usage, including every intermediate tool-loop
+response. `usage` and the matching `modelUsage[model]` entry are per-response
+deltas; a response without usage emits no notification. The custom-provider
+profile gains sparse `supports_stream_usage` opt-in with resolved profile
+precedence, while native OpenAI request behaviour remains unchanged. The
+existing stream decoder preserves terminal `choices: []` usage. Nested Baseten
+cached/reasoning detail remains optional: cached tokens are included only when
+represented reliably in normalized `Usage`, and reasoning tokens are not
+fabricated.
 
-EP-M4 updates `docs/acp/ACP_INTEGRATION.md`,
-`docs/acp/ACP_QUICK_REFERENCE.md`, the custom-provider configuration reference
-and any generated schema fixture required by the established config workflow.
-It then runs release gates, installs the user binary, updates this plan with
-evidence, pushes the branch and opens a draft PR based on
-`fix/acp-unresolved-tool-recovery`.
+EP-M4 updates `docs/acp/ACP_INTEGRATION.md`, `docs/acp/ACP_QUICK_REFERENCE.md`,
+the custom-provider configuration reference and any generated schema fixture
+required by the established config workflow. It then runs release gates,
+installs the user binary, updates this plan with evidence, pushes the branch
+and opens a draft PR based on `fix/acp-unresolved-tool-recovery`.
 
 Each milestone is test-first and ends with focused tests, full commit gates, a
 commit and a user-level binary installation before the next milestone begins.
@@ -557,51 +534,42 @@ commit and a user-level binary installation before the next milestone begins.
 ## Milestones and plateaus
 
 - Identifier and outcome: EP-M1, standard task lifecycle visible to Lody and
-  generic ACP clients with truthful lifecycle-only negotiation.
-  Requirements and gaps: discharges USER-LIFECYCLE and advances
-  USER-SUBAGENTS.
-  Acceptance evidence: lifecycle duplex and property tests pass; custom method
-  is absent; initialize advertises lifecycle only when a controller exists.
-  Conformance check: existing event/filter/lifetime contracts remain intact,
-  and no management handler is advertised prematurely.
-  Recovery: revert the lifecycle commit; no persisted migration exists.
-  Remaining gaps: management and usage.
+  generic ACP clients with truthful lifecycle-only negotiation. Requirements
+  and gaps: discharges USER-LIFECYCLE and advances USER-SUBAGENTS. Acceptance
+  evidence: lifecycle duplex and property tests pass; custom method is absent;
+  initialize advertises lifecycle only when a controller exists. Conformance
+  check: existing event/filter/lifetime contracts remain intact, and no
+  management handler is advertised prematurely. Recovery: revert the lifecycle
+  commit; no persisted migration exists. Remaining gaps: management and usage.
   Compatibility decision: no compatibility layer for `_vtcode/taskLifecycle`;
   it had no documented consumer and Lody ignored it.
 - Identifier and outcome: EP-M2, session-scoped Lody subagent/background-task
-  management and truthful management/task negotiation.
-  Requirements and gaps: discharges USER-SUBAGENTS and USER-TASKS.
-  Acceptance evidence: list/cancel/output duplex tests and ownership property
-  tests pass.
+  management and truthful management/task negotiation. Requirements and gaps:
+  discharges USER-SUBAGENTS and USER-TASKS. Acceptance evidence:
+  list/cancel/output duplex tests and ownership property tests pass.
   Conformance check: no cross-session data, management flags match handlers,
-  and scheduled support remains omitted.
-  Recovery: revert handler registration and remove its advertised flags.
-  Remaining gaps: provider usage.
+  and scheduled support remains omitted. Recovery: revert handler registration
+  and remove its advertised flags. Remaining gaps: provider usage.
   Compatibility decision: none; these are new versioned extension methods.
 - Identifier and outcome: EP-M3, provider usage reaches Lody, including
-  explicitly opted-in Baseten streams.
-  Requirements and gaps: discharges USER-USAGE.
-  Acceptance evidence: configuration tests (4/4), custom-provider
+  explicitly opted-in Baseten streams. Requirements and gaps: discharges
+  USER-USAGE. Acceptance evidence: configuration tests (4/4), custom-provider
   wiremock playback (1/1), ACP usage and tool-loop tests (9/9), the official
-  ACP usage duplex test (1/1), and vidai-mock physics (1/1) pass; see the
-  EP-M3 artefact block below.
-  Conformance check: usage is canonical and additive, absent metrics stay
-  absent, and the proxy-safe default remains off.
-  Recovery: disable the profile flag or revert the usage commit.
-  Remaining gaps: documentation/publication only.
-  Compatibility decision: the new optional config field defaults off, so
-  existing custom-provider request bodies remain byte-for-byte compatible.
+  ACP usage duplex test (1/1), and vidai-mock physics (1/1) pass; see the EP-M3
+  artefact block below. Conformance check: usage is canonical and additive,
+  absent metrics stay absent, and the proxy-safe default remains off. Recovery:
+  disable the profile flag or revert the usage commit. Remaining gaps:
+  documentation/publication only. Compatibility decision: the new optional
+  config field defaults off, so existing custom-provider request bodies remain
+  byte-for-byte compatible.
 - Identifier and outcome: EP-M4, documented, gated, installed and published
-  stacked PR.
-  Requirements and gaps: closes documentation and delivery requirements.
-  Acceptance evidence: release gates, binary version/path, remote SHA, PR base
-  and draft state.
-  Conformance check: reconcile every discovery and trace link before marking
-  COMPLETE.
-  Recovery: use `gh stack push` after corrections; never force-push manually.
-  Remaining gaps: provider limits, compaction metadata, notices, final-answer
-  phase metadata and scheduled tasks remain independent follow-ups.
-  Compatibility decision: none.
+  stacked PR. Requirements and gaps: closes documentation and delivery
+  requirements. Acceptance evidence: release gates, binary version/path, remote
+  SHA, PR base and draft state. Conformance check: reconcile every discovery
+  and trace link before marking COMPLETE. Recovery: use `gh stack push` after
+  corrections; never force-push manually. Remaining gaps: provider limits,
+  compaction metadata, notices, final-answer phase metadata and scheduled tasks
+  remain independent follow-ups. Compatibility decision: none.
 
 ## Concrete steps
 
@@ -783,8 +751,8 @@ terminal delta this plan consumes.
 Define private Serde DTOs in `crates/codegen/vtcode-acp/src/zed/agent/lody.rs`
 for the version-1 capability map, task metadata, session usage update and three
 management request/response shapes. The serialized field names must match Lody
-Core revision `23c792b9` exactly. These types are an adapter boundary, not a new
-public crate API.
+Core revision `23c792b9` exactly. These types are an adapter boundary, not a
+new public crate API.
 
 `advertised_agent_capabilities` will accept the agent/controller state needed
 to build `acp::AgentCapabilities.meta`. `task_lifecycle` will construct
@@ -804,10 +772,10 @@ the resolved profile for the request model before adding
 
 No new library dependency or deployed persistent-format migration is planned.
 
----
+______________________________________________________________________
 
 Revision note (2026-08-28): EP-M4 is complete. Canonical per-response usage
-updates, custom-provider streamed-usage opt-in, wiremock playback,
-vidai-mock physics and official ACP duplex coverage are recorded above. The
-complete release gate and user installation passed, and draft PR #14 is the
-fourth layer of stack #16.
+updates, custom-provider streamed-usage opt-in, wiremock playback, vidai-mock
+physics and official ACP duplex coverage are recorded above. The complete
+release gate and user installation passed, and draft PR #14 is the fourth layer
+of stack #16.

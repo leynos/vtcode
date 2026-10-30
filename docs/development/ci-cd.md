@@ -64,12 +64,47 @@ installing the toolchain, `Swatinem/rust-cache` and
   `Swatinem/rust-cache` restoring `target`.
 - **Pin:** bump the `setup-rust@<sha>` reference in all four jobs together.
 
+The workflow also runs Python policy/reference tests with
+`python3 -m unittest discover -s scripts/tests -p 'test_check_*.py'`. The
+formatting job installs `mdtablefix` 0.6.1, runs the generated configuration
+reference test, then runs `make check-fmt`:
+
+```bash
+python3 -m unittest discover \
+  -s scripts/tests \
+  -p test_generate_config_field_reference.py
+```
+
+The maintenance job installs `cargo-unmaintained` 1.10.0, checks findings
+against the reviewed baseline, and captures the scanner JSON. CI retains that
+artifact for 14 days, including on failure. See the
+[cargo-unmaintained guide](../guides/cargo-unmaintained.md) for the capture and
+baseline contract.
+
+The Nextest job has a 40-minute timeout and runs the CI profile. It then runs
+the focused PTY, pipe, and inline-event suites with `make test-harness`. Set
+`BUILD_JOBS` in the environment for the Make target, for example
+`BUILD_JOBS="--jobs 4" make test-harness`; this keeps the assignment out of
+`MAKEFLAGS` so native dependency builds receive Cargo's jobserver flags.
+
+The MSRV job uses Rust 1.93.0 and checks the locked workspace with all targets
+and features:
+
+```bash
+cargo +1.93.0 check --locked --workspace \
+  --all-targets --all-features --jobs 4
+```
+
+For the complete local Make gate and target list, see the
+[Agent Workflow Reference](./agent-workflow-reference.md).
+
 ### 2. Tool Eval Workflow (`tool-eval.yml`)
 
 **Triggers:**
 
-- Push and PR to `main` on `.rs`, `.toml`, `.lock`, `scripts/`,
-  `.github/workflows/`
+- Manual `workflow_dispatch` for a selected branch or tag
+- Push and PR on `.rs`, `.toml`, `.lock`, `scripts/`, and
+  `.github/workflows/` paths; neither trigger is restricted to `main`
 
 **Jobs:**
 
@@ -139,8 +174,18 @@ Cargo.toml so the size-optimized profiles are actually applied.
 
 **Jobs:**
 
-- **Code Coverage**: `cargo tarpaulin` with XML output
-- **Coverage Report**: Uploads to code coverage service
+- **Code Coverage**: Runs `cargo llvm-cov nextest` on the locked workspace
+  and writes LCOV output to `lcov.info`.
+- **Coverage Report**: Uploads `lcov.info` to Codecov.
+
+To reproduce the coverage job locally, install `llvm-tools-preview`,
+`cargo-llvm-cov`, and `cargo-nextest`, then run:
+
+```bash
+cargo llvm-cov nextest --locked --workspace --lcov --output-path lcov.info
+```
+
+This writes the same LCOV file that the workflow uploads.
 
 ### 5. Release (`release.yml`)
 
@@ -259,7 +304,7 @@ To set up the development environment manually:
 
 ```bash
 # Install required components
-rustup component add rustfmt clippy
+rustup component add rustfmt clippy llvm-tools-preview
 
 # Install additional tools
 cargo install cargo-audit      # Security auditing
@@ -267,7 +312,8 @@ cargo install cargo-outdated   # Dependency checking
 cargo install cargo-udeps      # Unused dependencies
 cargo install cargo-msrv       # MSRV checking
 cargo install cargo-license    # License checking
-cargo install cargo-tarpaulin  # Code coverage
+cargo install cargo-llvm-cov   # Code coverage
+cargo install cargo-nextest    # Test runner used by coverage
 ```
 
 ## Best Practices

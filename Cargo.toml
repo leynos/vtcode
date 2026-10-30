@@ -178,6 +178,7 @@ default-members = [
 exclude = [
     "extensions/zed-extension",
     "fuzz",
+    "patches/tree-sitter-bash",
 ]
 
 [patch.crates-io]
@@ -200,6 +201,7 @@ vtcode-eval = { path = "crates/codegen/vtcode-eval" }
 vtcode-agent-plugins = { path = "crates/common/vtcode-agent-plugins" }
 vtcode-webmcp = { path = "crates/codegen/vtcode-webmcp" }
 simdutf = { path = "patches/simdutf" }
+tree-sitter-bash = { path = "patches/tree-sitter-bash" }
 
 [workspace.lints]
 # Rust compiler lints

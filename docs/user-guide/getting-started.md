@@ -26,7 +26,7 @@ featuring:
 
 ### System Requirements
 
-- **Rust**: 1.88+ (stable recommended)
+- **Rust**: 1.93.0 or later (stable recommended)
   - Install from [rustup.rs](https://rustup.rs/)
   - Includes Cargo package manager
 - **Git**: For version control and cloning the repository

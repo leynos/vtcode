@@ -72,6 +72,12 @@ pub(super) fn ast_grep_version(binary: &Path) -> Result<String> {
     Ok(version)
 }
 
+/// Extract a supported release archive into `destination`.
+///
+/// Names ending in `.tar.gz` are unpacked as tarballs; names ending in `.zip`
+/// are unpacked entry by entry, using each ZIP entry's mangled path beneath
+/// the destination. Unsupported suffixes and read, path, or filesystem errors
+/// are returned with archive or destination context.
 fn extract_archive(archive_name: &str, archive_bytes: &[u8], destination: &Path) -> Result<()> {
     if archive_name.ends_with(".tar.gz") {
         let decoder = GzDecoder::new(Cursor::new(archive_bytes));
@@ -177,4 +183,47 @@ fn set_executable_permissions(path: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn zip_file_bytes(entry_name: &str, contents: &[u8]) -> Result<Vec<u8>> {
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        writer.start_file(entry_name, options)?;
+        writer.write_all(contents)?;
+        Ok(writer.finish()?.into_inner())
+    }
+
+    #[test]
+    fn extracts_zip_file_into_nested_directory() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let destination = temp.path().join("extracted");
+        fs::create_dir(&destination)?;
+        let zip_bytes = zip_file_bytes("nested/payload.txt", b"archive payload")?;
+
+        extract_archive("fixture.zip", &zip_bytes, &destination)?;
+
+        assert_eq!(fs::read(destination.join("nested/payload.txt"))?, b"archive payload");
+        Ok(())
+    }
+
+    #[test]
+    fn sanitizes_zip_parent_traversal_without_overwriting_outside_file() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let destination = temp.path().join("extracted");
+        fs::create_dir(&destination)?;
+        let outside_path = temp.path().join("outside.txt");
+        fs::write(&outside_path, b"original sentinel")?;
+        let zip_bytes = zip_file_bytes("../outside.txt", b"archive payload")?;
+
+        extract_archive("fixture.zip", &zip_bytes, &destination)?;
+
+        assert_eq!(fs::read(outside_path)?, b"original sentinel");
+        assert_eq!(fs::read(destination.join("outside.txt"))?, b"archive payload");
+        Ok(())
+    }
 }

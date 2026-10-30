@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -12,8 +11,28 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 
+# Direct importlib loading of this entry point uses the same local package as CLI execution.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from rust_panic_scanner.attributes import (
+    AttributeGroup as AttributeGroup,
+    ModuleDeclaration as ModuleDeclaration,
+    RustAttribute as RustAttribute,
+    SourceSpan as SourceSpan,
+)
+from rust_panic_scanner.lexer import RustLexer as RustLexer, RustToken as RustToken
+from rust_panic_scanner.ownership import (
+    ModuleBody as ModuleBody,
+    ModuleGraph as _OwnershipGraph,
+    ModulePaths as ModulePaths,
+    ModuleReference as ModuleReference,
+    ModuleResolver as ModuleResolver,
+    ModuleScope as ModuleScope,
+)
+from rust_panic_scanner.syntax import RustSource
+
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-UNWRAP_EXPECT_RE = re.compile(r"\.(unwrap|expect)\s*\(")
 TEST_ROOT_DIRECTORIES = ("fuzz", "target", "tests")
 NESTED_TEST_DIRECTORIES = ("tests", "benches", "examples")
 TEST_SOURCE_SUFFIXES = ("_test.rs", "_tests.rs")
@@ -21,11 +40,28 @@ TEST_SOURCE_SUFFIXES = ("_test.rs", "_tests.rs")
 
 @dataclass
 class AllowRule:
+    """A reviewed path-pattern exception, optionally limited to one source line.
+
+    Attributes
+    ----------
+    pattern : str
+        Repository-relative fnmatch pattern, including legacy crate spellings.
+    line : int or None
+        One-based line to allow, or None for all lines matched by the pattern.
+    """
+
     pattern: str
     line: int | None = None
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse the existing warn/enforce CLI and report-limit options.
+
+    Returns
+    -------
+    argparse.Namespace
+        Validated mode, allowlist path and maximum number of printed findings.
+    """
     parser = argparse.ArgumentParser(
         description="Validate production Rust code does not use unwrap()/expect().",
     )
@@ -51,6 +87,18 @@ def parse_args() -> argparse.Namespace:
 
 
 def list_tracked_rust_files() -> list[Path]:
+    """List tracked Rust files using Git in the current repository root.
+
+    Returns
+    -------
+    list of pathlib.Path
+        Repository-rooted file paths in Git's reported order.
+
+    Raises
+    ------
+    subprocess.CalledProcessError
+        If Git cannot enumerate tracked files; enforcement must not scan a subset.
+    """
     proc = subprocess.run(
         ["git", "ls-files", "-z", "*.rs"],
         cwd=REPO_ROOT,
@@ -62,6 +110,18 @@ def list_tracked_rust_files() -> list[Path]:
 
 
 def is_test_path(path: Path) -> bool:
+    """Apply the established filename policy without inferring Rust cfg values.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        File rooted in the current REPO_ROOT spelling.
+
+    Returns
+    -------
+    bool
+        Whether the existing test, example, bench or fuzz path policy excludes it.
+    """
     rel = path.relative_to(REPO_ROOT).as_posix()
     path_parts = rel.split("/")
     return (
@@ -89,7 +149,48 @@ def _is_test_source_path(filename: str) -> bool:
     return filename == "tests.rs" or filename.endswith(TEST_SOURCE_SUFFIXES)
 
 
+def _is_test_target(path: Path) -> bool:
+    # The graph canonicalises paths; restore the entry root spelling for policy.
+    relative = path.relative_to(REPO_ROOT.resolve())
+    return is_test_path(REPO_ROOT / relative)
+
+
+class ModuleGraph(_OwnershipGraph):
+    """Bind module ownership to the entry point's current repository root.
+
+    Parameters
+    ----------
+    files : list of pathlib.Path
+        Tracked Rust paths. Returned test-only paths are always canonical.
+
+    Notes
+    -----
+    The filename policy is evaluated against the current REPO_ROOT, including
+    when a caller monkeypatches it or uses a symlink spelling of that root.
+    """
+
+    def __init__(self, files: list[Path]) -> None:
+        super().__init__(files, is_test_path=_is_test_target)
+
+
 def parse_allow_rules(path: Path) -> list[AllowRule]:
+    """Read reviewed path or path:line allowlist entries.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Absolute path, or path relative to the current REPO_ROOT.
+
+    Returns
+    -------
+    list of AllowRule
+        Parsed non-comment entries; a missing allowlist supplies no exceptions.
+
+    Raises
+    ------
+    OSError
+        If an existing allowlist cannot be read.
+    """
     if not path.is_absolute():
         path = REPO_ROOT / path
     if not path.exists():
@@ -117,10 +218,22 @@ def parse_allow_rules(path: Path) -> list[AllowRule]:
 
 
 def is_allowlisted(rel_path: str, line_no: int, rules: list[AllowRule]) -> bool:
-    # The allowlist was authored against the pre-restructure short form
-    # (e.g. "vtcode-core/src/..."); match both it and the current
-    # "crates/codegen|common/..." form so entries do not go stale when the
-    # workspace layout changes.
+    """Check a source position against current and legacy crate path patterns.
+
+    Parameters
+    ----------
+    rel_path : str
+        Repository-relative POSIX path.
+    line_no : int
+        One-based original source line.
+    rules : list of AllowRule
+        Reviewed exceptions, applied without changing their line scope.
+
+    Returns
+    -------
+    bool
+        Whether at least one path-and-line rule allows this position.
+    """
     candidates = {rel_path}
     if rel_path.startswith("crates/"):
         parts = rel_path.split("/", 2)
@@ -135,95 +248,135 @@ def is_allowlisted(rel_path: str, line_no: int, rules: list[AllowRule]) -> bool:
     return False
 
 
+def test_only_files(files: list[Path]) -> set[Path]:
+    """Find external files proven to have only test code owners.
+
+    Parameters
+    ----------
+    files : list of pathlib.Path
+        Tracked Rust sources in the current REPO_ROOT.
+
+    Returns
+    -------
+    set of pathlib.Path
+        Canonical resolved paths with test ownership and no possible production
+        route. Unknown paths and shared production use retain enforcement.
+
+    Raises
+    ------
+    OSError
+        If any source needed to establish ownership cannot be read.
+    """
+    return ModuleGraph(files).test_only()
+
+
 def scan_file(path: Path, rules: list[AllowRule]) -> list[tuple[str, int, str]]:
+    """Report locally production-reachable unwrap/expect source positions.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Existing Rust file under REPO_ROOT.
+    rules : list of AllowRule
+        Reviewed path/line exceptions.
+
+    Returns
+    -------
+    list of tuple
+        Repository-relative path, one-based line and stripped source text per
+        finding. Local test scopes and literal/comment bait are excluded.
+
+    Notes
+    -----
+    External ownership and filename exclusions belong to scan_files; callers
+    scanning an individual file are intentionally given only local scope proofs.
+    """
     rel_path = path.relative_to(REPO_ROOT).as_posix()
+    source = RustSource.read(path)
+    lines = source.source.splitlines()
     findings: list[tuple[str, int, str]] = []
-
-    pending_cfg_test = False
-
-    in_test_fn = False
-    test_fn_depth = 0
-    pending_test_fn = False
-
-    lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-    for idx, raw_line in enumerate(lines, start=1):
-        line = raw_line
-
-        if re.search(r"#\s*\[\s*cfg\s*\((?!not\s*\()[^]]*test", line):
-            pending_cfg_test = True
-
-        if pending_cfg_test:
-            if re.search(r"\bmod\s+\w+\s*\{", line):
-                break
-            if re.search(r"\bfn\s+\w+\s*\([^)]*\)\s*\{", line):
-                in_test_fn = True
-                test_fn_depth = line.count("{") - line.count("}")
-                pending_cfg_test = False
-                continue
-            if not re.search(r"#\s*\[", line):
-                # cfg(test) on a non-mod/non-fn item (const, struct, ...);
-                # its initializer may still contain unwraps, so just stop
-                # treating the following lines as test-gated.
-                pending_cfg_test = False
-
-        if re.search(r"\bmod\s+\w*tests\w*\s*\{", line):
-            break
-
-        if re.search(r"#\s*\[\s*(?:[a-zA-Z_]\w*(?:::[a-zA-Z_]\w*)*::)?test\s*\]", line):
-            pending_test_fn = True
-
-        if pending_test_fn and re.search(r"\bfn\s+\w+\s*\([^)]*\)\s*\{", line):
-            in_test_fn = True
-            test_fn_depth = line.count("{") - line.count("}")
-            pending_test_fn = False
-            continue
-
-        if in_test_fn:
-            test_fn_depth += line.count("{") - line.count("}")
-            if test_fn_depth <= 0:
-                in_test_fn = False
-            continue
-
-        code_only = line.split("//", 1)[0]
-        if not UNWRAP_EXPECT_RE.search(code_only):
-            continue
-
-        if is_allowlisted(rel_path, idx, rules):
-            continue
-
-        findings.append((rel_path, idx, raw_line.strip()))
-
+    for line_no in source.production_call_lines():
+        if not is_allowlisted(rel_path, line_no, rules):
+            findings.append((rel_path, line_no, lines[line_no - 1].strip()))
     return findings
 
 
-def main() -> int:
-    args = parse_args()
-    allow_rules = parse_allow_rules(args.allowlist)
+@dataclass(frozen=True)
+class ScanResult:
+    """Aggregate of the files enforced and their retained source findings.
 
-    findings: list[tuple[str, int, str]] = []
-    files = list_tracked_rust_files()
+    Attributes
+    ----------
+    scanned_files : int
+        Number of files remaining after filename and ownership exclusions.
+    findings : list of tuple
+        Ordered repository-relative path, one-based line and source text triples.
+    """
 
-    scanned = 0
-    for path in files:
-        if is_test_path(path):
-            continue
-        scanned += 1
-        findings.extend(scan_file(path, allow_rules))
+    scanned_files: int
+    findings: list[tuple[str, int, str]]
 
-    print(
-        f"unwrap/expect scan summary: scanned_files={scanned}, findings={len(findings)}, mode={args.mode}"
-    )
 
-    if findings:
-        print("\nFindings (path:line | source):")
-        for rel_path, line_no, source in findings[: args.max_findings]:
-            print(f"- {rel_path}:{line_no} | {source}")
+def scan_files(files: list[Path], rules: list[AllowRule]) -> ScanResult:
+    """Apply filename, ownership, local-scope and allowlist policies in order.
 
-        if len(findings) > args.max_findings:
-            remaining = len(findings) - args.max_findings
-            print(f"- ... {remaining} additional finding(s) not shown")
+    Parameters
+    ----------
+    files : list of pathlib.Path
+        Complete tracked Rust input. Ownership proofs depend on the whole set.
+    rules : list of AllowRule
+        Reviewed exceptions; an empty list enforces every production position.
 
-    if args.mode == "enforce" and findings:
+    Returns
+    -------
+    ScanResult
+        Count and ordered findings without truncation or console side effects.
+
+    Raises
+    ------
+    OSError
+        If a required input cannot be read; no incomplete result is returned.
+    """
+    excluded = test_only_files(files)
+    production = [path for path in files if not is_test_path(path)]
+    production = [path for path in production if path.resolve() not in excluded]
+    findings = [finding for path in production for finding in scan_file(path, rules)]
+    return ScanResult(len(production), findings)
+
+
+def report_findings(findings: list[tuple[str, int, str]], limit: int) -> None:
+    """Print the existing bounded finding report to standard output.
+
+    Parameters
+    ----------
+    findings : list of tuple
+        Ordered path, one-based line and source triples.
+    limit : int
+        Existing CLI slicing limit; omitted findings are counted in the report.
+    """
+    if not findings:
+        return
+    print("\nFindings (path:line | source):")
+    for rel_path, line_no, line_source in findings[:limit]:
+        print(f"- {rel_path}:{line_no} | {line_source}")
+    if len(findings) > limit:
+        print(f"- ... {len(findings) - limit} additional finding(s) not shown")
+
+
+def report_policy(mode: str) -> int:
+    """Explain a non-empty finding set and return its CLI policy status.
+
+    Parameters
+    ----------
+    mode : {"warn", "enforce"}
+        Already validated CLI mode. Call only when findings exist.
+
+    Returns
+    -------
+    int
+        1 for enforce, with remediation on stderr; 0 for warning-only output.
+    """
+    if mode == "enforce":
         print(
             "\nunwrap/expect enforcement failed.\n\n"
             "Remediation:\n"
@@ -233,14 +386,29 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-
-    if args.mode == "warn" and findings:
-        print(
-            "\nWarning mode: findings reported but not blocking. "
-            "Promote to --mode enforce after cleanup/allowlisting."
-        )
-
+    print(
+        "\nWarning mode: findings reported but not blocking. "
+        "Promote to --mode enforce after cleanup/allowlisting."
+    )
     return 0
+
+
+def main() -> int:
+    """Run the tracked-source scan and print its policy report.
+
+    Returns
+    -------
+    int
+        Zero for clean or warning-only scans; one for enforce-mode findings.
+    """
+    args = parse_args()
+    result = scan_files(list_tracked_rust_files(), parse_allow_rules(args.allowlist))
+    print(
+        f"unwrap/expect scan summary: scanned_files={result.scanned_files}, "
+        f"findings={len(result.findings)}, mode={args.mode}"
+    )
+    report_findings(result.findings, args.max_findings)
+    return report_policy(args.mode) if result.findings else 0
 
 
 if __name__ == "__main__":

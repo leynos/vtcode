@@ -43,17 +43,31 @@ def baseline_entry(
     }
 
 
+def outdated_dependency(
+    req: str = "^1.0",
+    version_used: str = "1.0.0",
+    version_latest: str = "2.0.0",
+) -> dict[str, str]:
+    return {
+        "name": "dep",
+        "req": req,
+        "version_used": version_used,
+        "version_latest": version_latest,
+    }
+
+
 class CheckerHarness:
     """Copy the checker into a temporary repository and run its real wrapper."""
 
     def __init__(
-        self, scanner_output: str, scanner_status: int, baseline: object
+        self, scanner_output: str | bytes, scanner_status: int, baseline: object
     ) -> None:
         self.scanner_output = scanner_output
         self.scanner_status = scanner_status
         self.baseline = baseline
         self.directory = TemporaryDirectory()
         self.root = Path(self.directory.name)
+        self.invocations_path = self.root / "scanner-invocations"
         scripts = self.root / "scripts"
         scripts.mkdir()
         self.checker = scripts / "check_unmaintained_baseline.py"
@@ -68,11 +82,18 @@ class CheckerHarness:
 
     def scanner(self, name: str = "fake-scanner") -> Path:
         scanner = self.root / name
-        payload = repr(self.scanner_output)
+        payload = (
+            self.scanner_output.encode("utf-8")
+            if isinstance(self.scanner_output, str)
+            else self.scanner_output
+        )
         script = (
             "#!/usr/bin/env python3\n"
+            "from pathlib import Path\n"
             "import sys\n"
-            f"sys.stdout.write({payload})\n"
+            f"with Path({str(self.invocations_path)!r}).open('ab') as invocations:\n"
+            "    invocations.write(b'scan\\n')\n"
+            f"sys.stdout.buffer.write({payload!r})\n"
             f"raise SystemExit({self.scanner_status})\n"
         )
         scanner.write_text(script, encoding="utf-8")
@@ -80,11 +101,14 @@ class CheckerHarness:
         return scanner
 
     def run(
-        self, scanner_name: str = "fake-scanner"
+        self, scanner_name: str = "fake-scanner", capture_json: Path | None = None
     ) -> subprocess.CompletedProcess[str]:
         scanner = self.scanner(scanner_name)
+        command = [sys.executable, str(self.checker), "--scanner", str(scanner)]
+        if capture_json is not None:
+            command.extend(["--capture-json", str(capture_json)])
         return subprocess.run(
-            [sys.executable, str(self.checker), "--scanner", str(scanner)],
+            command,
             cwd=self.root,
             capture_output=True,
             text=True,
@@ -174,6 +198,204 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
                 result = self.run_checker([changed], 1, [baseline_entry(known)])
                 self.assertEqual(result.returncode, 1)
                 self.assertIn("unreviewed or changed finding", result.stderr)
+
+    def test_changed_dependency_fields_report_reviewed_and_current_values(self) -> None:
+        reviewed_dependency = outdated_dependency()
+        reviewed = finding(outdated_deps=[reviewed_dependency])
+        changes = {
+            "req": ">=1.0",
+            "version_used": "1.0.1",
+            "version_latest": "2.1.0",
+        }
+        for field, current_value in changes.items():
+            with self.subTest(field=field):
+                current = finding(
+                    outdated_deps=[{**reviewed_dependency, field: current_value}]
+                )
+                result = self.run_checker([current], 1, [baseline_entry(reviewed)])
+
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(
+                    f'outdated_deps["dep"].{field}: '
+                    f'reviewed ["{reviewed_dependency[field]}"] '
+                    f'-> current ["{current_value}"]',
+                    result.stderr,
+                )
+                current_line = next(
+                    line
+                    for line in result.stderr.splitlines()
+                    if line.startswith("  current identity: ")
+                )
+                self.assertEqual(
+                    json.loads(current_line.removeprefix("  current identity: ")),
+                    current,
+                )
+                reviewed_line = next(
+                    line
+                    for line in result.stderr.splitlines()
+                    if line.startswith("  reviewed identity 1/1: ")
+                )
+                self.assertEqual(
+                    json.loads(
+                        reviewed_line.removeprefix("  reviewed identity 1/1: ")
+                    ),
+                    reviewed,
+                )
+
+    def test_changed_repository_status_reports_status_kind_without_age(self) -> None:
+        reviewed = finding(repo_status={"Age": 987})
+        result = self.run_checker(
+            [finding(repo_status="Archived")], 1, [baseline_entry(reviewed)]
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            'repo_status: reviewed "Age" -> current "Archived"', result.stderr
+        )
+        self.assertIn('"repo_status": "Age"', result.stderr)
+        self.assertNotIn("987", result.stderr)
+
+    def test_diagnostics_compare_every_same_package_and_version_candidate(self) -> None:
+        reviewed = [
+            baseline_entry(finding(repo_status="Unassociated")),
+            baseline_entry(finding(repo_status={"Age": 123})),
+            baseline_entry(finding(version="9.0.0", repo_status="Nonexistent")),
+        ]
+        result = self.run_checker([finding(repo_status="Archived")], 1, reviewed)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("reviewed identity 1/2:", result.stderr)
+        self.assertIn("reviewed identity 2/2:", result.stderr)
+        self.assertIn(
+            'repo_status: reviewed "Age" -> current "Archived"', result.stderr
+        )
+        self.assertIn(
+            'repo_status: reviewed "Unassociated" -> current "Archived"', result.stderr
+        )
+        self.assertNotIn('"Nonexistent"', result.stderr)
+
+    def test_new_package_or_version_has_explicit_missing_baseline_diagnostic(self) -> None:
+        for current in (finding(name="new-package"), finding(version="9.0.0")):
+            with self.subTest(current=current):
+                result = self.run_checker([current], 1, [baseline_entry(finding())])
+
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(
+                    "new package/version: no reviewed baseline identity", result.stderr
+                )
+                self.assertNotIn("reviewed identity 1/", result.stderr)
+
+    def test_added_and_removed_dependencies_are_reported_without_pairing_names(self) -> None:
+        reviewed = finding(outdated_deps=[outdated_dependency()])
+        current = finding(outdated_deps=[{**outdated_dependency(), "name": "other"}])
+        result = self.run_checker([current], 1, [baseline_entry(reviewed)])
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            'outdated_deps["dep"].req: reviewed ["^1.0"] -> current []', result.stderr
+        )
+        self.assertIn(
+            'outdated_deps["other"].req: reviewed [] -> current ["^1.0"]', result.stderr
+        )
+
+    def test_dependency_record_associations_remain_part_of_identity(self) -> None:
+        reviewed = finding(
+            outdated_deps=[
+                outdated_dependency(req="^1", version_used="1.0.0"),
+                outdated_dependency(req="^2", version_used="2.0.0"),
+            ]
+        )
+        current = finding(
+            outdated_deps=[
+                outdated_dependency(req="^1", version_used="2.0.0"),
+                outdated_dependency(req="^2", version_used="1.0.0"),
+            ]
+        )
+        result = self.run_checker([current], 1, [baseline_entry(reviewed)])
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('outdated_deps["dep"] records: reviewed', result.stderr)
+        self.assertIn('["dep", "^1", "1.0.0", "2.0.0"]', result.stderr)
+        self.assertIn('["dep", "^1", "2.0.0", "2.0.0"]', result.stderr)
+
+    def test_diagnostics_are_independent_of_finding_and_baseline_order(self) -> None:
+        current = [finding(name="z"), finding(repo_status="Archived")]
+        reviewed = [
+            baseline_entry(finding(repo_status="Unassociated")),
+            baseline_entry(finding(repo_status={"Age": 987})),
+        ]
+        forward = self.run_checker(current, 1, reviewed)
+        reverse = self.run_checker(list(reversed(current)), 1, list(reversed(reviewed)))
+
+        self.assertEqual(forward.returncode, 1)
+        self.assertEqual(reverse.returncode, 1)
+        self.assertEqual(forward.stderr, reverse.stderr)
+
+    def test_capture_retains_exact_stdout_once_without_changing_exit_contract(self) -> None:
+        cases = [
+            ("clean", b" [ ]\r\n", 0, 0, ""),
+            ("finding", json.dumps([finding()]).encode(), 1, 1, "unreviewed"),
+            ("scanner error", b"[]\n", 7, 2, "unexpected status 7"),
+            ("invalid JSON", b"{\r\n", 0, 2, "invalid JSON"),
+            ("invalid encoding", b"\xff\r\n", 1, 2, "could not decode"),
+            ("invalid schema", b'[{"new_key":true}]\n', 1, 2, "keys"),
+            ("contradictory status", b"[]\r\n", 1, 2, "contradicts"),
+        ]
+        for label, payload, scanner_status, expected_status, diagnostic in cases:
+            with self.subTest(label=label):
+                baseline = {
+                    "schema_version": 1,
+                    "repository": "leynos/vtcode",
+                    "entries": [],
+                }
+                with CheckerHarness(payload, scanner_status, baseline) as harness:
+                    capture_path = harness.root / "captured.json"
+                    baseline_path = (
+                        harness.root / "scripts/cargo_unmaintained_baseline.json"
+                    )
+                    original_baseline = baseline_path.read_bytes()
+                    result = harness.run(capture_json=capture_path)
+
+                    self.assertEqual(result.returncode, expected_status)
+                    self.assertIn(diagnostic, result.stderr)
+                    self.assertEqual(capture_path.read_bytes(), payload)
+                    self.assertEqual(harness.invocations_path.read_bytes(), b"scan\n")
+                    self.assertEqual(baseline_path.read_bytes(), original_baseline)
+
+    def test_capture_write_failure_fails_closed_after_one_scanner_invocation(self) -> None:
+        baseline = {"schema_version": 1, "repository": "leynos/vtcode", "entries": []}
+        scanner_results = (("[]", 0), (json.dumps([finding()]), 1), ("{", 7))
+        for payload, scanner_status in scanner_results:
+            for destination in ("directory", "missing parent"):
+                with self.subTest(payload=payload, destination=destination):
+                    with CheckerHarness(payload, scanner_status, baseline) as harness:
+                        capture_path = (
+                            harness.root
+                            if destination == "directory"
+                            else harness.root / "missing" / "capture.json"
+                        )
+                        result = harness.run(capture_json=capture_path)
+
+                        self.assertEqual(result.returncode, 2)
+                        self.assertIn("cannot capture scanner stdout", result.stderr)
+                        self.assertEqual(harness.invocations_path.read_bytes(), b"scan\n")
+
+    def test_capture_precedes_baseline_validation_failure(self) -> None:
+        payload = json.dumps([finding()]).encode("utf-8")
+        baseline = {
+            "schema_version": 1,
+            "repository": "leynos/vtcode",
+            "entries": [],
+            "unexpected": True,
+        }
+        with CheckerHarness(payload, 1, baseline) as harness:
+            capture_path = harness.root / "capture.json"
+            result = harness.run(capture_json=capture_path)
+
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("baseline keys", result.stderr)
+            self.assertEqual(capture_path.read_bytes(), payload)
+            self.assertEqual(harness.invocations_path.read_bytes(), b"scan\n")
 
     def test_missing_current_finding_reports_manual_removal_and_passes(self) -> None:
         result = self.run_checker([], 0, [baseline_entry(finding())])

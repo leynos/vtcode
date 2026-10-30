@@ -24,10 +24,10 @@ Please describe the tests that you ran to verify your changes. Provide
 instructions so others can reproduce. Include any relevant details for your
 test configuration.
 
-- [ ] Rust tests: `cargo test`
-- [ ] Linting: `cargo clippy`
-- [ ] Formatting: `cargo fmt`
-- [ ] Build: `cargo build`
+- [ ] Rust tests: `make test`
+- [ ] Linting: `make lint`
+- [ ] Formatting: `make check-fmt`
+- [ ] Build: `make build`
 
 **Test Configuration**:
 
@@ -44,9 +44,9 @@ test configuration.
 - [ ] I have made corresponding changes to the documentation
 - [ ] My changes generate no new warnings
 - [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes (`cargo test`)
-- [ ] I have run `cargo clippy` and addressed any issues
-- [ ] I have run `cargo fmt` to ensure proper formatting
+- [ ] New and existing unit tests pass locally with my changes (`make test`)
+- [ ] I have run `make lint` and addressed any issues
+- [ ] I have run `make check-fmt` to ensure proper formatting
 - [ ] Any dependent changes have been merged and published in downstream modules
 - [ ] I have updated the `CHANGELOG.md` if this change affects the user-facing
       behavior
