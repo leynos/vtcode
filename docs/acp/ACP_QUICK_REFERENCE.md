@@ -91,13 +91,14 @@ turn finishes, while a cancel arriving after the next turn starts aborts that
 turn.
 
 A cancelled turn always ends with `StopReason::Cancelled`, and a cancellation
-that races a provider failure still reports `Cancelled`. Every non-cancelled
-turn must produce assistant content: a provider turn that completes with no
-assistant message returns an `internal_error` with
+that races a provider failure still reports `Cancelled`. A non-cancelled turn
+that would end with `EndTurn` must produce assistant content: a provider turn
+that completes with no assistant message returns an `internal_error` with
 `data.reason = "empty_response"`, and a tool-execution failure that is not a
 cancellation returns `internal_error` with
 `data.reason = "tool_execution_failed"`. Neither case is acknowledged as a
-silent `EndTurn`.
+silent `EndTurn`. `Refusal` and `MaxTokens` turns keep their own stop reason
+even when they carry no assistant text.
 
 ### Provider rate limits
 

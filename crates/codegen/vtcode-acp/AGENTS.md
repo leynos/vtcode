@@ -16,10 +16,11 @@ Canonical ACP entrypoint. Crate conventions and gotchas live in
   the unknown-session check; reset cancellation only after acquisition. Log
   `wait_ms` and `queued_prompts` after acquisition; observe steers, never cap
   them.
-- A cancelled turn returns `StopReason::Cancelled`; every other turn ends with
-  assistant content or an explicit `internal_error` (`empty_response`,
-  `tool_execution_failed`), never a silent `EndTurn`. Persist any buffered text
-  flushed visible on cancellation.
+- A cancelled turn returns `StopReason::Cancelled`. A non-cancelled turn that
+  would end with `EndTurn` needs assistant content or an explicit
+  `internal_error` (`empty_response`, `tool_execution_failed`); never
+  acknowledge a silent `EndTurn`. Persist any buffered text flushed visible on
+  cancellation.
 - Provider-key resolution uses the configured `AuthCredentialsStoreMode`, not
   the platform default.
 - `zed/agent/prompt_lifecycle_tests.rs` drives the duplex transport with a

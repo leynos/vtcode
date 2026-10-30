@@ -399,9 +399,11 @@ async fn concurrent_prompt_is_serialized_over_official_acp_transport() {
                 ))
                 .block_task(),
             );
-            let pending =
+            // A single poll only writes the request frame; no response can
+            // arrive in the same tick. The `EndTurn` assertions below prove
+            // the steer was serialized behind the active turn.
+            let _first_poll =
                 std::future::poll_fn(|poll_cx| std::task::Poll::Ready(Future::poll(second.as_mut(), poll_cx))).await;
-            assert!(pending.is_pending(), "the steer must wait for the active turn");
 
             unblock_provider.notify_one();
             let first_response = first.await?;

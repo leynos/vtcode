@@ -33,15 +33,7 @@ pub(super) async fn collect_stream_events(
                     metadata: None,
                 };
                 let outcome = classify_stream_poll_failure(&mut request, error).await;
-                // Keep truncated streams retryable. Once a retry cannot
-                // recover and nothing at all reached the client, report
-                // `empty_response` rather than a generic failure notice: ACP
-                // must never acknowledge an empty turn. Visible reasoning or
-                // tool deltas keep the normal failure path and its reporting.
-                if !request.output.assistant_emitted
-                    && !request.output.emitted_output
-                    && matches!(&outcome, StreamAttemptOutcome::Failed { .. })
-                {
+                if is_empty_failed_stream(request.output, &outcome) {
                     return StreamAttemptOutcome::EmptyResponse;
                 }
                 return outcome;
@@ -56,6 +48,14 @@ pub(super) async fn collect_stream_events(
             }
         }
     }
+}
+
+/// A failed stream attempt that never showed the client any assistant text or
+/// reasoning. Truncated streams are retryable; once retries are exhausted,
+/// this shape must become `empty_response` rather than a generic failure
+/// notice. Visible output keeps the normal failure reporting path.
+fn is_empty_failed_stream(output: &ProviderOutput, outcome: &StreamAttemptOutcome) -> bool {
+    !output.assistant_emitted && !output.emitted_output && matches!(outcome, StreamAttemptOutcome::Failed { .. })
 }
 
 enum StreamPollOutcome {
