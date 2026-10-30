@@ -329,7 +329,7 @@ pub(super) async fn run_prompt_with_retry_observer(
 impl PromptExecution {
     async fn run(
         mut self,
-        retry_observed_at: &super::provider::RetryObservationClock,
+        retry_observed_at: &provider::RetryObservationClock<'_>,
     ) -> Result<PromptResponse, SdkError> {
         let outcome = if self.allow_streaming {
             streaming::run_streaming_provider_turn(&mut self, retry_observed_at).await?

@@ -409,7 +409,7 @@ async fn buffered_retry_records_bounded_perf_metrics() {
         &provider,
         LLMRequest::default(),
         &retry_runtime(),
-        &super::super::super::types::SessionCancellation::default(),
+        &SessionCancellation::default(),
         None,
         &SystemTime::now,
         &metric_sink,
