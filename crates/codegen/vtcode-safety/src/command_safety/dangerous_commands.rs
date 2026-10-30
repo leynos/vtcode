@@ -175,6 +175,35 @@ fn git_clean_is_force(clean_args: &[String]) -> bool {
     })
 }
 
+/// Check whether `rm` arguments request force or recursive deletion.
+///
+/// Options are inspected anywhere before the `--` terminator so stacked short
+/// groups (`-rf`, `-v -f`, `-Rf`) and long forms are all recognised, while
+/// operands after `--` (for example `rm -- -f`) are treated as filenames.
+fn rm_is_dangerous(rm_args: &[String]) -> bool {
+    for arg in rm_args {
+        if arg == "--" {
+            break;
+        }
+
+        if matches!(arg.as_str(), "--force" | "--recursive" | "--no-preserve-root")
+            || arg.starts_with("--force=")
+            || arg.starts_with("--recursive=")
+        {
+            return true;
+        }
+
+        if arg.starts_with('-') && !arg.starts_with("--") && arg.len() > 1 {
+            if let Some(target) = arg.chars().skip(1).find(|character| matches!(character, 'f' | 'r' | 'R')) {
+                debug_assert!(target.is_ascii());
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 /// Check if a command is a dangerous git subcommand (without the "git" prefix)
 /// This handles commands parsed from shell scripts where the binary name may be omitted
 fn is_dangerous_git_subcommand(command: &[String]) -> bool {
@@ -278,7 +307,7 @@ fn is_dangerous_to_call_with_exec(command: &[String]) -> bool {
         }
 
         // ──── Rm ────
-        "rm" => matches!(command.get(1).map(String::as_str), Some("-f" | "-rf" | "-fr" | "-r")),
+        "rm" => rm_is_dangerous(&command[1..]),
 
         // ──── Destructive system commands ────
         _ if base_cmd == "mkfs" || base_cmd.starts_with("mkfs.") => true,
@@ -357,6 +386,24 @@ mod tests {
     fn rm_without_flags_is_safe() {
         let cmd = vec!["rm".to_string()];
         assert!(!is_dangerous_to_call_with_exec(&cmd));
+    }
+
+    #[test]
+    fn rm_force_or_recursive_flag_anywhere_is_dangerous() {
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "-R", "file"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "-v", "-f", "file"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "-rvf", "scratch"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "--recursive", "scratch"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "--force", "file"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "--no-preserve-root", "scratch"])));
+        assert!(command_might_be_dangerous(&vec_str(&["/bin/rm", "-rf", "scratch"])));
+        assert!(command_might_be_dangerous(&vec_str(&["sudo", "rm", "-f", "file"])));
+    }
+
+    #[test]
+    fn rm_operands_after_terminator_are_not_options() {
+        assert!(!command_might_be_dangerous(&vec_str(&["rm", "--", "-f"])));
+        assert!(!command_might_be_dangerous(&vec_str(&["rm", "file"])));
     }
 
     #[test]
