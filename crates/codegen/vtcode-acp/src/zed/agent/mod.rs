@@ -114,6 +114,8 @@ mod prompt;
 mod session_state;
 mod task_lifecycle;
 mod task_progress;
+#[cfg(test)]
+mod test_log_capture;
 mod tool_config;
 #[cfg(test)]
 mod tool_config_tests;

@@ -6,6 +6,7 @@ use crate::zed::agent::session_workspace::{WorkspaceRuntimeLifecycle, WorkspaceR
 use assert_fs::TempDir;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 use vtcode_core::config::WorkspaceTrustLevel;
 
 #[derive(Default)]
@@ -59,9 +60,8 @@ fn lifecycle_state(runtime: &SessionWorkspaceRuntime) -> WorkspaceRuntimeLifecyc
 /// otherwise an unmanaged runtime that must never touch the count.
 ///
 /// A fresh `ToolRegistry` carries neither a subagent controller nor an MCP
-/// client, so `spawn_shutdown` has no external side effects to await. Transient
-/// shutdown states are therefore reached through the explicit transitions
-/// below rather than by hoping the scheduler pauses at the right moment.
+/// client, so `spawn_shutdown` has no external side effects to await and the
+/// shutdown task completes as soon as it is scheduled.
 async fn isolated_runtime(managed: bool, workspace: &Path, agent: &ZedAgent) -> Arc<SessionWorkspaceRuntime> {
     let registry = vtcode_core::tools::registry::ToolRegistry::new(workspace.to_path_buf()).await;
     Arc::new(SessionWorkspaceRuntime {
@@ -97,13 +97,18 @@ async fn isolated_runtime(managed: bool, workspace: &Path, agent: &ZedAgent) -> 
 ///
 /// The lifecycle half pins the state machine the count interacts with:
 ///
-/// * `Drop` of the final counted lease only publishes `ShutdownPending`.
+/// * `Drop` of the final counted lease only publishes `ShutdownPending`; it
+///   neither initiates nor completes shutdown.
 /// * `release` of the final counted lease drives shutdown to completion, so the
 ///   runtime is terminal when `release` returns.
-/// * Initiating shutdown from `ShutdownPending` spawns the shutdown task, so
-///   completion is not synchronised with the caller; the model accepts either
-///   `ShuttingDown` or `Closed` until shutdown is marked complete explicitly.
+/// * Acquiring from a `ShutdownPending` runtime initiates shutdown, waits for
+///   it to complete and answers `None`, leaving the runtime terminal.
 /// * A terminal runtime never grants another lease.
+///
+/// Every generated transition runs through the production `acquire`, `release`,
+/// `Drop` and shutdown paths; the driver never assigns lifecycle state itself.
+/// Each lease operation runs under [`LEASE_DEADLINE`] so that a suppressed
+/// shutdown initiation fails the case instead of hanging it.
 ///
 /// The generated sequences are **sequential**. They assert bookkeeping
 /// conservation over single-threaded operation order; they say nothing about
@@ -115,11 +120,15 @@ enum LeaseModelState {
     /// The final counted lease left through `Drop`; shutdown is requested but
     /// not yet initiated.
     ShutdownPending,
-    /// Shutdown was initiated; it may or may not have completed.
-    ShuttingDown,
     /// Terminal.
     Closed,
 }
+
+/// Upper bound for a single lease operation or acquisition.
+///
+/// Shutdown of an empty runtime completes immediately, so reaching this bound
+/// means production stopped initiating or completing shutdown.
+const LEASE_DEADLINE: Duration = Duration::from_secs(10);
 
 #[derive(Debug)]
 struct LeaseModel {
@@ -144,7 +153,7 @@ impl LeaseModel {
             // Acquisition from a pending runtime initiates shutdown and waits
             // for it to complete before answering, so the answer is "no" and
             // the runtime is terminal afterwards.
-            LeaseModelState::ShutdownPending | LeaseModelState::ShuttingDown => {
+            LeaseModelState::ShutdownPending => {
                 self.state = LeaseModelState::Closed;
                 false
             }
@@ -165,24 +174,11 @@ impl LeaseModel {
         }
     }
 
-    fn begin_shutdown(&mut self) {
-        if self.state == LeaseModelState::ShutdownPending {
-            self.state = LeaseModelState::ShuttingDown;
-        }
-    }
-
-    fn finish_shutdown(&mut self) {
-        self.state = LeaseModelState::Closed;
-    }
-
     /// Whether `actual` is an observation the model permits.
     fn admits(&self, actual: WorkspaceRuntimeLifecycleState) -> bool {
         match self.state {
             LeaseModelState::Open => actual == WorkspaceRuntimeLifecycleState::Open,
             LeaseModelState::ShutdownPending => actual == WorkspaceRuntimeLifecycleState::ShutdownPending,
-            LeaseModelState::ShuttingDown => {
-                matches!(actual, WorkspaceRuntimeLifecycleState::ShuttingDown | WorkspaceRuntimeLifecycleState::Closed)
-            }
             LeaseModelState::Closed => actual == WorkspaceRuntimeLifecycleState::Closed,
         }
     }
@@ -194,8 +190,24 @@ enum LeaseOp {
     AcquireUnmanaged,
     Release,
     Drop,
-    BeginShutdown,
-    FinishShutdown,
+}
+
+/// Drive one lease operation to completion under [`LEASE_DEADLINE`].
+///
+/// The proptest closure is synchronous, so async production paths run through
+/// the runtime handle. `block_in_place` requires a multi-threaded runtime,
+/// which the generated cases declare.
+fn bounded<F>(handle: &tokio::runtime::Handle, future: F) -> F::Output
+where
+    F: Future,
+{
+    tokio::task::block_in_place(|| {
+        handle.block_on(async {
+            tokio::time::timeout(LEASE_DEADLINE, future)
+                .await
+                .expect("a lease operation must not stall waiting for workspace shutdown")
+        })
+    })
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -215,15 +227,10 @@ async fn workspace_lease_accounting_matches_the_reference_model() {
             Just(LeaseOp::AcquireUnmanaged),
             Just(LeaseOp::Release),
             Just(LeaseOp::Drop),
-            Just(LeaseOp::BeginShutdown),
-            Just(LeaseOp::FinishShutdown),
         ],
         0..12,
     );
 
-    // The proptest closure is synchronous, so async lease operations are driven
-    // through the runtime handle. `block_in_place` requires a multi-threaded
-    // runtime, which this test declares.
     let handle = tokio::runtime::Handle::current();
 
     proptest!(ProptestConfig { cases: 32, max_shrink_iters: 256, ..ProptestConfig::default() },
@@ -242,10 +249,8 @@ async fn workspace_lease_accounting_matches_the_reference_model() {
                 match op {
                     LeaseOp::Acquire => {
                         let model_grants = model.acquire();
-                        let granted = tokio::task::block_in_place(|| {
-                            handle.block_on(SessionWorkspaceLease::acquire(Arc::clone(&managed)))
-                        })
-                        .expect("acquiring a managed lease must not fail");
+                        let granted = bounded(&handle, SessionWorkspaceLease::acquire(Arc::clone(&managed)))
+                            .expect("acquiring a managed lease must not fail");
                         prop_assert_eq!(
                             granted.is_some(),
                             model_grants,
@@ -257,10 +262,8 @@ async fn workspace_lease_accounting_matches_the_reference_model() {
                         }
                     }
                     LeaseOp::AcquireUnmanaged => {
-                        let lease = tokio::task::block_in_place(|| {
-                            handle.block_on(SessionWorkspaceLease::acquire(Arc::clone(&unmanaged)))
-                        })
-                        .expect("acquiring an unmanaged lease must not fail")
+                        let lease = bounded(&handle, SessionWorkspaceLease::acquire(Arc::clone(&unmanaged)))
+                            .expect("acquiring an unmanaged lease must not fail")
                         .expect("unmanaged runtimes always grant a lease");
                         prop_assert!(
                             !lease.is_counted(),
@@ -275,7 +278,7 @@ async fn workspace_lease_accounting_matches_the_reference_model() {
                     }
                     LeaseOp::Release => {
                         if let Some(lease) = live.pop() {
-                            tokio::task::block_in_place(|| handle.block_on(lease.release()));
+                            bounded(&handle, lease.release());
                             model.leave(true);
                         }
                     }
@@ -284,33 +287,6 @@ async fn workspace_lease_accounting_matches_the_reference_model() {
                             drop(lease);
                             model.leave(false);
                         }
-                    }
-                    LeaseOp::BeginShutdown => {
-                        // The transition a releasing final lease and an
-                        // acquiring session race for.
-                        let initiated = {
-                            let mut lifecycle = managed
-                                .lifecycle
-                                .lock()
-                                .expect("workspace runtime lifecycle lock");
-                            if lifecycle.state == WorkspaceRuntimeLifecycleState::ShutdownPending {
-                                lifecycle.state = WorkspaceRuntimeLifecycleState::ShuttingDown;
-                                true
-                            } else {
-                                false
-                            }
-                        };
-                        if initiated {
-                            managed.spawn_shutdown();
-                        }
-                        model.begin_shutdown();
-                    }
-                    LeaseOp::FinishShutdown => {
-                        // Deterministic completion: mark the runtime terminal
-                        // instead of waiting for the spawned shutdown task to be
-                        // scheduled.
-                        managed.mark_shutdown_complete();
-                        model.finish_shutdown();
                     }
                 }
 
@@ -334,7 +310,7 @@ async fn workspace_lease_accounting_matches_the_reference_model() {
             // same handle a second time.
             while let Some(lease) = live.pop() {
                 let before = active_sessions(&managed);
-                tokio::task::block_in_place(|| handle.block_on(lease.release()));
+                bounded(&handle, lease.release());
                 prop_assert_eq!(
                     active_sessions(&managed),
                     before - 1,
@@ -436,6 +412,48 @@ async fn explicit_release_then_destruction_does_not_decrement_twice() {
         WorkspaceRuntimeLifecycleState::ShutdownPending,
         "a dropped final lease must request shutdown without driving it"
     );
+}
+
+/// Acquiring from a runtime whose final lease went through `Drop` must initiate
+/// shutdown, wait for it to finish and refuse the caller; the now-terminal
+/// runtime must keep refusing afterwards.
+#[tokio::test]
+async fn acquisition_from_a_pending_shutdown_closes_the_runtime_and_refuses() {
+    let launch_workspace = TempDir::new().expect("launch workspace");
+    let session_workspace = TempDir::new().expect("session workspace");
+    let agent = Arc::new(build_agent(launch_workspace.path()).await);
+
+    let runtime = isolated_runtime(true, session_workspace.path(), &agent).await;
+    let lease = SessionWorkspaceLease::acquire(Arc::clone(&runtime))
+        .await
+        .expect("acquiring a managed lease must not fail")
+        .expect("an open runtime must grant a lease");
+    drop(lease);
+    assert_eq!(active_sessions(&runtime), 0);
+    assert_eq!(
+        lifecycle_state(&runtime),
+        WorkspaceRuntimeLifecycleState::ShutdownPending,
+        "the drop must leave shutdown requested but not initiated"
+    );
+
+    let refused = tokio::time::timeout(LEASE_DEADLINE, SessionWorkspaceLease::acquire(Arc::clone(&runtime)))
+        .await
+        .expect("acquisition must not stall waiting for the shutdown it initiated")
+        .expect("acquiring from a pending runtime must not error");
+    assert!(refused.is_none(), "a pending runtime must refuse the old runtime's lease");
+    assert_eq!(
+        lifecycle_state(&runtime),
+        WorkspaceRuntimeLifecycleState::Closed,
+        "acquisition must drive the pending shutdown to completion"
+    );
+    assert_eq!(active_sessions(&runtime), 0, "a refused acquisition must not be counted");
+
+    let refused_again = tokio::time::timeout(LEASE_DEADLINE, SessionWorkspaceLease::acquire(Arc::clone(&runtime)))
+        .await
+        .expect("acquiring from a terminal runtime must answer without waiting")
+        .expect("acquiring from a terminal runtime must not error");
+    assert!(refused_again.is_none(), "a terminal runtime must keep refusing leases");
+    assert_eq!(lifecycle_state(&runtime), WorkspaceRuntimeLifecycleState::Closed);
 }
 
 #[derive(Debug, PartialEq)]

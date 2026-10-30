@@ -97,6 +97,36 @@ The append-only JSONL audit sink is opt-in through `[acp.audit].enabled` and
 hashes, not conversation text, raw arguments, or tool result bodies. It is a
 security audit trail, not session history or a source for resume/compaction.
 
+## Diagnostics privacy
+
+Operator-visible ACP diagnostics (WARN and above) carry a fixed message and
+bounded fields: `operation`, `component`, `outcome`, `error_category`, and, for
+suppressed failures, `error_chain_depth`. Client-facing failures use short
+fixed messages and never embed workspace paths, provider or command text,
+environment values, or tool payloads. Any surface that turns a failure into a
+client error — REST error bodies as well as logs — needs the same treatment;
+sanitizing only the log line still leaks.
+
+The originating `anyhow` chain is retained at `debug` for local diagnosis. That
+is a diagnostic aid, not redaction: debug logs can contain workspace paths,
+provider detail, and prompt or tool payloads. Treat them as sensitive and
+collect or share them deliberately. Severity suppression alone is not
+redaction; where detail must never surface, remove it from the value that
+carries it rather than lowering the level it is logged at.
+
+## Property-model limits
+
+The ACP lease, session-activity, and cancellation models are sequential
+reference models. They check that each operation's bookkeeping matches an
+independent model, and they drive the production acquire, release, drop, close,
+and notification paths rather than assigning lifecycle state directly. They say
+nothing about concurrent interleavings: passing them is not evidence that
+simultaneous acquisition, release, and shutdown are safe.
+
+Notification regressions need a waiter that is registered before the final
+departure. A waiter created afterwards completes from the counter alone and
+therefore does not detect a missing final-guard notification.
+
 ## Task updates
 
 `vtcode-core` publishes protocol-neutral sub-agent and background-process
@@ -129,12 +159,14 @@ Run the ACP and provider crate suites when changing these boundaries:
 cargo nextest run -p vtcode-acp task_tracker_tool_result_emits_standard_acp_plan
 cargo nextest run -p vtcode-acp forwards_lifecycle_events_through_the_official_acp_duplex
 cargo nextest run -p vtcode-acp checkpoint_session_persists_messages_for_a_fresh_runtime
+cargo nextest run -p vtcode-acp -E 'test(session_activity_matches_the_reference_model)'
+cargo nextest run -p vtcode-acp -E 'test(workspace_lease_accounting_matches_the_reference_model)'
 cargo nextest run -p vtcode-llm request_admission
 ```
 
 These cover ACP plan projection and replay, duplex lifecycle forwarding,
-session checkpoint persistence, and the custom-provider admission regressions.
-The relevant provider retry/deadline unit tests are in the ACP
-`zed/provider_runtime.rs` module; run them with
-`cargo nextest run -p vtcode-acp <test-name>` after selecting a test name from
-that module.
+session checkpoint persistence, the sequential activity and lease reference
+models, and the custom-provider admission regressions. The relevant provider
+retry/deadline unit tests are in the ACP `zed/provider_runtime.rs` module; run
+them with `cargo nextest run -p vtcode-acp <test-name>` after selecting a test
+name from that module.

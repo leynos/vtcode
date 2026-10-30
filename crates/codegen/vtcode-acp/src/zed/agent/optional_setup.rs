@@ -450,3 +450,130 @@ pub(super) fn configure_acp_tool_call_limits(registry: &CoreToolRegistry, vt_cfg
         .unwrap_or_else(|| safety_gateway.max_per_session());
     safety_gateway.set_limits(harness.max_tool_calls_per_turn, max_per_session);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        McpSandboxPolicySource, OptionalSetupFailure, OptionalSetupOutcome, attach_acp_mcp_client_with,
+        report_optional_setup_outcome,
+    };
+    use crate::zed::agent::test_log_capture::{capturing, capturing_async};
+    use assert_fs::TempDir;
+    use std::path::Path;
+    use tracing_subscriber::filter::LevelFilter;
+    use vtcode_config::VTCodeConfig;
+    use vtcode_core::mcp::McpSandboxContext;
+    use vtcode_core::tools::registry::ToolRegistry as CoreToolRegistry;
+
+    /// Sandbox-policy construction that always fails with caller-supplied text,
+    /// standing in for a policy builder that cannot read its workspace.
+    struct FailingSandboxPolicy(&'static str);
+
+    impl McpSandboxPolicySource for FailingSandboxPolicy {
+        fn build(&self, _config: &VTCodeConfig, _workspace_root: &Path) -> anyhow::Result<Option<McpSandboxContext>> {
+            anyhow::bail!("sandbox policy build failed for {}", self.0)
+        }
+    }
+
+    /// A policy that cannot be constructed must fail the component closed: no
+    /// MCP client is attached, no unsandboxed fallback is started, and the
+    /// originating detail never reaches default diagnostics.
+    #[tokio::test]
+    async fn sandbox_policy_failure_fails_closed_without_raw_detail() {
+        let temp = TempDir::new().expect("temporary workspace");
+        let registry = CoreToolRegistry::new(temp.path().to_path_buf()).await;
+        let mut vt_cfg = VTCodeConfig::default();
+        vt_cfg.mcp.enabled = true;
+        let sentinel = "private-sentinel-sandbox-policy";
+
+        let (outcome, warnings) = capturing_async(
+            LevelFilter::INFO,
+            attach_acp_mcp_client_with(&registry, Some(&vt_cfg), temp.path(), &FailingSandboxPolicy(sentinel)),
+        )
+        .await;
+
+        assert_eq!(
+            outcome,
+            OptionalSetupOutcome::Failed(OptionalSetupFailure::McpSandboxPolicyUnavailable),
+            "policy construction failure must fail the component closed"
+        );
+        assert!(registry.mcp_client().is_none(), "the failure must happen before MCP initialization or attachment");
+
+        let attached_warnings = warnings.join("\n");
+        assert!(
+            !attached_warnings.contains(sentinel),
+            "originating detail must stay out of operator-visible logs, got {attached_warnings}"
+        );
+        assert!(
+            !attached_warnings.contains("sandbox policy build failed"),
+            "raw error text must stay out of operator-visible logs, got {attached_warnings}"
+        );
+
+        // The operator-facing report is emitted by the caller, so assert its
+        // bounded fields on the reported category rather than on attach.
+        let (_, reported) = capturing(|| report_optional_setup_outcome("MCP client", &outcome));
+        let reported = reported.join("\n");
+        assert!(reported.contains("operation=\"optional_component_setup\""));
+        assert!(reported.contains("component=\"MCP client\""));
+        assert!(reported.contains("outcome=\"failed\""));
+        assert!(reported.contains("error_category=\"mcp_sandbox_policy_unavailable\""));
+        assert!(
+            !reported.contains(sentinel),
+            "the reported category must not carry the originating detail, got {reported}"
+        );
+    }
+
+    /// The suppressed chain remains at debug, which is a diagnostic aid rather
+    /// than redaction.
+    #[tokio::test]
+    async fn sandbox_policy_failure_keeps_the_full_chain_only_at_debug() {
+        let temp = TempDir::new().expect("temporary workspace");
+        let registry = CoreToolRegistry::new(temp.path().to_path_buf()).await;
+        let mut vt_cfg = VTCodeConfig::default();
+        vt_cfg.mcp.enabled = true;
+        let sentinel = "private-sentinel-sandbox-debug";
+
+        let (_, debug_events) = capturing_async(
+            LevelFilter::DEBUG,
+            attach_acp_mcp_client_with(&registry, Some(&vt_cfg), temp.path(), &FailingSandboxPolicy(sentinel)),
+        )
+        .await;
+
+        let debugged = debug_events.join("\n");
+        assert!(
+            debugged.contains(sentinel) && debugged.contains("sandbox policy build failed"),
+            "the debug event must retain the suppressed chain, got {debugged}"
+        );
+        assert!(debugged.contains("error_category=\"mcp_sandbox_policy_unavailable\""));
+    }
+
+    /// Degraded outcomes report a bounded category and count, never the joined
+    /// failure text they replaced.
+    #[test]
+    fn degraded_outcome_reports_bounded_categories() {
+        let outcome = OptionalSetupOutcome::AttachedWithDegradation(vec![
+            OptionalSetupFailure::BackgroundSubagentRestoreFailed,
+            OptionalSetupFailure::McpToolRegistrationFailed,
+        ]);
+
+        let (_, warnings) = capturing(|| report_optional_setup_outcome("MCP client", &outcome));
+
+        let warned = warnings.join("\n");
+        assert!(warned.contains("outcome=\"attached_with_degradation\""));
+        assert!(warned.contains("failure_count=2"));
+        assert!(warned.contains("error_category=\"background_subagent_restore_failed\""));
+        assert!(!warned.contains("failed to restore"), "joined failure text must not return");
+    }
+
+    /// Failed outcomes publish only their stable category code.
+    #[test]
+    fn failed_outcome_reports_a_bounded_category() {
+        let outcome = OptionalSetupOutcome::Failed(OptionalSetupFailure::McpSandboxPolicyUnavailable);
+
+        let (_, warnings) = capturing(|| report_optional_setup_outcome("MCP client", &outcome));
+
+        let warned = warnings.join("\n");
+        assert!(warned.contains("outcome=\"failed\""));
+        assert!(warned.contains("error_category=\"mcp_sandbox_policy_unavailable\""));
+    }
+}

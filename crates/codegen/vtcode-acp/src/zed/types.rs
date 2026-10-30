@@ -332,9 +332,24 @@ impl SessionHandle {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::sync::atomic::Ordering;
+    use std::task::{Context, Poll, Waker};
     use std::time::Duration;
 
     use super::{SessionActivity, SessionCancellation, SessionPromptGuard};
+
+    /// Poll `future` once without installing a real waker.
+    ///
+    /// A `Notify` waiter records itself on its first poll, so this observes
+    /// whether the waiter is still pending without sleeping or depending on a
+    /// scheduler.
+    fn poll_once<F: Future>(mut future: Pin<&mut F>) -> Poll<F::Output> {
+        let waker = Waker::noop();
+        let mut context = Context::from_waker(waker);
+        future.as_mut().poll(&mut context)
+    }
 
     #[tokio::test]
     async fn cancellation_wakes_a_pending_operation() {
@@ -600,32 +615,102 @@ mod tests {
                         "a closing session must refuse every later prompt"
                     );
                 }
+
+                proptest::prop_assert_eq!(
+                    activity.active_prompts.load(Ordering::Acquire),
+                    model.in_flight,
+                    "the in-flight count must match the model after {:?}",
+                    op
+                );
             }
 
-            // Closing is sticky and does not invalidate guards taken earlier:
-            // an outstanding prompt must keep the session non-idle until it is
-            // dropped, and then the wait must complete.
+            // Closing is sticky and does not invalidate guards taken earlier,
+            // so one waiter registered before the drain must stay pending
+            // across every intermediate departure and then complete. Reusing
+            // the same waiter matters: a fresh waiter created after the final
+            // drop would succeed from the count alone and would not detect a
+            // missing `prompts_idle.notify_waiters()`.
             activity.begin_close();
             let outstanding = guards.len();
             proptest::prop_assert_eq!(outstanding, model.in_flight);
+
+            let mut waiter = std::pin::pin!(activity.wait_for_prompts());
             if outstanding > 0 {
                 proptest::prop_assert!(
-                    runtime
-                        .block_on(tokio::time::timeout(
-                            Duration::from_millis(50),
-                            activity.wait_for_prompts()
-                        ))
-                        .is_err(),
-                    "an outstanding prompt must keep the close waiting"
+                    poll_once(waiter.as_mut()).is_pending(),
+                    "an in-flight prompt must keep the close waiting"
                 );
             }
-            guards.clear();
-            runtime
-                .block_on(tokio::time::timeout(
-                    Duration::from_millis(500),
-                    activity.wait_for_prompts(),
-                ))
-                .expect("dropping every guard must let the close finish");
+
+            let mut remaining = outstanding;
+            for guard in guards.drain(..) {
+                drop(guard);
+                model.drop_guard();
+                remaining -= 1;
+                proptest::prop_assert_eq!(
+                    activity.active_prompts.load(Ordering::Acquire),
+                    model.in_flight,
+                    "the in-flight count must match the model mid-drain"
+                );
+                if remaining > 0 {
+                    proptest::prop_assert!(
+                        poll_once(waiter.as_mut()).is_pending(),
+                        "a remaining prompt must keep the registered waiter pending"
+                    );
+                }
+            }
+            proptest::prop_assert_eq!(remaining, 0, "the drain must visit every guard once");
+            proptest::prop_assert!(
+                poll_once(waiter.as_mut()).is_ready(),
+                "dropping every guard must let the registered waiter finish"
+            );
         }
+    }
+
+    /// A waiter registered while prompts are in flight must stay pending across
+    /// every intermediate departure and complete only when the last guard drops.
+    ///
+    /// Polling one waiter throughout is what makes this a regression test for
+    /// the final-guard notification: a waiter created after the last drop would
+    /// return from the count check without ever waiting.
+    #[tokio::test]
+    async fn final_guard_drop_wakes_the_waiter_that_was_already_registered() {
+        let activity = SessionActivity::default();
+        let first = activity.try_start_prompt().expect("an open session admits a prompt");
+        let second = activity.try_start_prompt().expect("an open session admits a second prompt");
+
+        let mut waiter = std::pin::pin!(activity.wait_for_prompts());
+        assert!(poll_once(waiter.as_mut()).is_pending(), "two in-flight prompts must keep the close waiting");
+
+        drop(first);
+        assert_eq!(activity.active_prompts.load(Ordering::Acquire), 1);
+        assert!(
+            poll_once(waiter.as_mut()).is_pending(),
+            "one remaining prompt must keep the registered waiter pending"
+        );
+
+        drop(second);
+        assert_eq!(activity.active_prompts.load(Ordering::Acquire), 0);
+        assert!(poll_once(waiter.as_mut()).is_ready(), "the final guard drop must wake the registered waiter");
+    }
+
+    /// A guard taken before `begin_close` stays valid and observes the sticky
+    /// close; its departure still releases a waiter registered afterwards.
+    #[tokio::test]
+    async fn guards_taken_before_a_close_observe_it_and_still_release_the_waiter() {
+        let activity = SessionActivity::default();
+        let guard = activity.try_start_prompt().expect("an open session admits a prompt");
+        assert!(!guard.is_closing(), "an open session must not report a close");
+
+        activity.begin_close();
+        assert!(guard.is_closing(), "a live guard must observe the sticky close");
+        assert!(activity.try_start_prompt().is_none(), "a closing session must refuse new prompts");
+
+        let mut waiter = std::pin::pin!(activity.wait_for_prompts());
+        assert!(poll_once(waiter.as_mut()).is_pending(), "the live guard must keep the close waiting");
+
+        drop(guard);
+        assert!(poll_once(waiter.as_mut()).is_ready(), "the live guard's departure must release the waiter");
+        assert!(activity.try_start_prompt().is_none(), "closing stays terminal after every prompt departs");
     }
 }

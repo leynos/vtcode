@@ -1,4 +1,5 @@
 //! ACP Zed-agent tests grouped by tool configuration and execution domain.
+mod list_files;
 mod local_tool_execution;
 mod mcp_setup;
 mod optional_setup;

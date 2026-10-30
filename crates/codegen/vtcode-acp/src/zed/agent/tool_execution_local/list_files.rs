@@ -42,7 +42,7 @@ impl ZedAgent {
             .await
     }
 
-    async fn run_list_files_for_tool(
+    pub(in crate::zed::agent) async fn run_list_files_for_tool(
         &self,
         tool: Option<&FileOpsTool>,
         session: Option<&SessionHandle>,
@@ -68,18 +68,10 @@ impl ZedAgent {
         drop(normalized_args.insert(TOOL_LIST_FILES_PATH_ARG.to_string(), Value::String(resolved_path)));
         let normalized_args = Value::Object(normalized_args);
 
-        let listing = tool.execute(normalized_args).await.map_err(|error| {
-            log_suppressed_error(&error, LIST_FILES_OPERATION, "listing_failed");
-            tracing::warn!(
-                operation = LIST_FILES_OPERATION,
-                component = "list_files",
-                outcome = "failed",
-                error_category = "listing_failed",
-                error_chain_depth = error.chain().count(),
-                "ACP list_files tool failed to list the workspace"
-            );
-            TOOL_LIST_FILES_FAILURE.to_string()
-        })?;
+        let listing = tool
+            .execute(normalized_args)
+            .await
+            .map_err(|error| Self::report_list_files_tool_failure(&error))?;
 
         let content = Self::list_files_content(&listing);
         let locations = Self::list_files_locations(&listing);
@@ -139,6 +131,25 @@ impl ZedAgent {
         }
 
         Ok(None)
+    }
+
+    /// Record why the file-listing tool failed and return a fixed client-facing
+    /// failure.
+    ///
+    /// The tool's `anyhow` chain can embed workspace paths, requested modes and
+    /// other caller-supplied text, so only its depth is published at warning
+    /// level while the full chain stays at debug.
+    pub(super) fn report_list_files_tool_failure(error: &anyhow::Error) -> String {
+        log_suppressed_error(error, LIST_FILES_OPERATION, "listing_failed");
+        tracing::warn!(
+            operation = LIST_FILES_OPERATION,
+            component = "list_files",
+            outcome = "failed",
+            error_category = "listing_failed",
+            error_chain_depth = error.chain().count(),
+            "ACP list_files tool failed to list the workspace"
+        );
+        TOOL_LIST_FILES_FAILURE.to_string()
     }
 
     /// Record why the session workspace runtime could not be read and return a
@@ -306,8 +317,12 @@ mod tests {
     }
 
     /// Capture at the default operator-visible severity.
+    ///
+    /// INFO is the level at which the ACP runtime's default diagnostics become
+    /// visible, so events admitted here are the ones an operator sees by
+    /// default.
     fn capturing<T>(run: impl FnOnce() -> T) -> (T, Vec<String>) {
-        capturing_at(tracing_subscriber::filter::LevelFilter::WARN, run)
+        capturing_at(tracing_subscriber::filter::LevelFilter::INFO, run)
     }
 
     #[test]
