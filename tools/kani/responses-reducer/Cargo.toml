@@ -1,0 +1,13 @@
+[package]
+name = "vtcode-responses-reducer-proof"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "../../../crates/codegen/vtcode-llm/src/providers/shared/responses_reconciler.rs"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+
+[workspace]
