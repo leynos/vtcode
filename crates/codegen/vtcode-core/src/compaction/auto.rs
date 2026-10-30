@@ -11,19 +11,19 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::compaction::memory_envelope::{
-    MemoryEnvelopePersistence, MemoryEnvelopePlacement, SessionMemoryEnvelopeUpdate,
-    dedup_repeated_file_reads_for_local_compaction, effective_compaction_threshold,
-    persist_memory_envelope_async_with_update, strip_existing_memory_envelope,
-};
+use super::telemetry::{AutoCompactionMetricSink, AutoCompactionTelemetry};
+use crate::compaction::memory_envelope::{MemoryEnvelopePlacement, SessionMemoryEnvelopeUpdate};
 use crate::compaction::two_pass::fingerprint_prefix;
 use crate::compaction::{
-    CompactionConfig, CompactionStrategy, ManualCompactionOptions, SUPPRESS_NONE, build_local_compacted_history,
-    build_summary_prompt, classify_suppress_reason, compact_history_manual, manual_compaction_strategy,
+    CompactionConfig, ManualCompactionOptions, build_local_compacted_history, build_summary_prompt,
 };
 use crate::exec::events::CompactionMode;
 use crate::llm::provider::{LLMProvider, LLMRequest, Message};
 use vtcode_config::loader::VTCodeConfig;
+
+mod attempt;
+
+use attempt::AutoCompactionAttempt;
 
 /// Result of a successful automatic compaction pass.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,145 +79,32 @@ pub async fn auto_compact_messages(
     input: AutoCompactionInput<'_>,
     history: &mut Vec<Message>,
 ) -> Result<Option<AutoCompactionOutcome>> {
-    let AutoCompactionInput {
-        provider,
-        model,
-        session_id,
-        workspace_root,
-        vt_cfg,
-        current_token_usage,
-        touched_files,
-        engine_cfg,
-        manual_options,
-        placement,
-        prefire,
-        auto_compact_suppressed,
-        force_compaction,
-        steering_update,
-    } = input;
+    auto_compact_messages_with_metrics(input, history, &AutoCompactionMetricSink::Process).await
+}
 
-    if !vt_cfg.is_some_and(|cfg| cfg.agent.harness.auto_compaction_enabled) {
+/// Observe only eligible automatic passes; skipped triggers emit no attempt.
+async fn auto_compact_messages_with_metrics(
+    input: AutoCompactionInput<'_>,
+    history: &mut Vec<Message>,
+    metrics: &AutoCompactionMetricSink,
+) -> Result<Option<AutoCompactionOutcome>> {
+    if !input.is_eligible() {
         return Ok(None);
     }
 
-    let Some(threshold) = effective_compaction_threshold(vt_cfg, provider, model) else {
-        return Ok(None);
-    };
-    if current_token_usage < threshold && !force_compaction {
-        return Ok(None);
-    }
-
-    if *auto_compact_suppressed != SUPPRESS_NONE {
-        return Ok(None);
-    }
-
-    let mut compaction_input = history.clone();
-    strip_existing_memory_envelope(&mut compaction_input);
-    let original_history = compaction_input.clone();
-
+    let observation = AutoCompactionTelemetry::start(metrics, history);
+    let mut attempt = AutoCompactionAttempt::new(input, history);
     let compaction_result: Result<Option<AutoCompactionOutcome>> = async {
-        // Try two-pass with prefire cache before falling back to single-pass.
-        if let Some(prefire_state) = prefire {
-            if let Some(mut compacted) =
-                try_two_pass_with_prefire(prefire_state, provider, model, &original_history, &engine_cfg).await?
-            {
-                let original_len = original_history.len();
-                let envelope = persist_memory_envelope_async_with_update(
-                    workspace_root,
-                    session_id,
-                    vt_cfg,
-                    &original_history,
-                    touched_files,
-                    &mut compacted,
-                    MemoryEnvelopePersistence::PersistToDisk,
-                    placement,
-                    None,
-                    steering_update,
-                )
-                .await?;
-                let history_artefact_path = envelope.as_ref().and_then(|item| item.history_artefact_path.clone());
-                let compacted_len = compacted.len();
-                *history = compacted;
-                return Ok(Some(AutoCompactionOutcome {
-                    original_len,
-                    compacted_len,
-                    mode: CompactionMode::Local,
-                    history_artefact_path,
-                    envelope,
-                }));
-            }
-        }
-
-        // Route through the same strategy dispatch as the manual `/compact` command
-        // so every provider uses its correct native strategy (or falls back to a
-        // local LLM summary). This guarantees a *visible* structured summary plus
-        // envelope for every provider, preserving conversational continuity rather
-        // than relying on opaque server-side compaction.
-        let strategy = manual_compaction_strategy(provider, model);
-        let compaction_history = if matches!(strategy, CompactionStrategy::Local) {
-            dedup_repeated_file_reads_for_local_compaction(&compaction_input)
-        } else {
-            compaction_input.clone()
+        let Some(candidate) = attempt.produce_candidate().await? else {
+            return Ok(None);
         };
-
-        // Preserve the legacy small-segment short-circuit: skip tiny histories.
-        if !force_compaction
-            && !engine_cfg.always_summarize
-            && compaction_history.len() <= engine_cfg.keep_last_messages
-        {
-            return Ok(None);
-        }
-
-        let (mut compacted, mode) =
-            compact_history_manual(provider, model, &compaction_history, &engine_cfg, &manual_options).await?;
-
-        if compacted == compaction_history {
-            return Ok(None);
-        }
-
-        let original_len = original_history.len();
-        let envelope = persist_memory_envelope_async_with_update(
-            workspace_root,
-            session_id,
-            vt_cfg,
-            &original_history,
-            touched_files,
-            &mut compacted,
-            MemoryEnvelopePersistence::PersistToDisk,
-            placement,
-            None,
-            steering_update,
-        )
-        .await?;
-        let history_artefact_path = envelope.as_ref().and_then(|item| item.history_artefact_path.clone());
-        let compacted_len = compacted.len();
-        *history = compacted;
-        Ok(Some(AutoCompactionOutcome {
-            original_len,
-            compacted_len,
-            mode,
-            history_artefact_path,
-            envelope,
-        }))
+        let prepared = attempt.persist_candidate(candidate).await?;
+        Ok(Some(prepared.publish(history)))
     }
     .await;
 
-    match &compaction_result {
-        Ok(Some(_)) => {
-            *auto_compact_suppressed = SUPPRESS_NONE;
-        }
-        Ok(None) => {}
-        Err(error) => {
-            let reason = classify_suppress_reason(&error.root_cause().to_string());
-            let new_state = reason.suppress_state();
-            // Only transition from SUPPRESS_NONE to a new state; don't downgrade
-            // a sticky/until-success suppression.
-            if *auto_compact_suppressed == SUPPRESS_NONE {
-                *auto_compact_suppressed = new_state;
-            }
-        }
-    }
-
+    attempt.update_suppression(&compaction_result);
+    observation.finish(&compaction_result, history, attempt.selected_mode);
     compaction_result
 }
 
@@ -233,6 +120,7 @@ async fn try_two_pass_with_prefire(
     history: &[Message],
     config: &CompactionConfig,
 ) -> Result<Option<Vec<Message>>> {
+    crate::compaction::ensure_protected_user_budget(history, provider, model)?;
     let cache = match prefire.take() {
         Some(cache) => cache,
         None => return Ok(None),
@@ -255,6 +143,15 @@ async fn try_two_pass_with_prefire(
     let prompt = build_summary_prompt(tail, &config.summary_prompt);
     let pass2_history = crate::compaction::two_pass::build_two_pass_pass2_history(prefix, tail, &cache.note1, &prompt);
 
+    // The cached note and duplicated tail prompt can exceed the model window.
+    // Fall back to the bounded single-pass path instead of sending a doomed
+    // pass-2 request or clipping its user-carried instructions.
+    if crate::compaction::compaction_history_budget(provider, model)
+        .is_some_and(|budget| pass2_history.iter().map(Message::estimate_tokens).sum::<usize>() > budget)
+    {
+        return Ok(None);
+    }
+
     let request = LLMRequest {
         messages: std::sync::Arc::new(pass2_history),
         model: model.to_string(),
@@ -269,193 +166,13 @@ async fn try_two_pass_with_prefire(
     }
 
     let effective_config = crate::compaction::context_bounded_compaction_config(provider, model, history, config);
-    let compacted = build_local_compacted_history(
-        history,
-        &note2,
-        effective_config.retained_user_message_tokens,
-        effective_config.retained_user_messages,
-        true,
-    );
+    let compacted = build_local_compacted_history(history, &note2, &effective_config, true);
 
-    Ok(Some(crate::compaction::bound_compacted_history_to_context(compacted, provider, model)))
+    Ok(Some(crate::compaction::bound_compacted_history_to_context(compacted, provider, model)?))
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::compaction::SUPPRESS_STICKY;
-    use crate::llm::provider::{LLMError, LLMProvider, LLMRequest, LLMResponse, Message};
-    use async_trait::async_trait;
+mod tests;
 
-    struct FailingProvider;
-
-    struct SuccessfulProvider;
-
-    #[async_trait]
-    impl LLMProvider for SuccessfulProvider {
-        fn name(&self) -> &str {
-            "successful"
-        }
-
-        async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
-            Ok(LLMResponse::new("successful-model", "summary"))
-        }
-
-        fn supported_models(&self) -> Vec<String> {
-            vec!["successful-model".to_string()]
-        }
-
-        fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
-            Ok(())
-        }
-
-        fn effective_context_size(&self, _model: &str) -> usize {
-            4_096
-        }
-    }
-
-    #[async_trait]
-    impl LLMProvider for FailingProvider {
-        fn name(&self) -> &str {
-            "failing"
-        }
-
-        async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
-            Err(LLMError::Provider {
-                message: "context length exceeded".to_string(),
-                metadata: None,
-            })
-        }
-
-        fn supported_models(&self) -> Vec<String> {
-            vec!["failing-model".to_string()]
-        }
-
-        fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
-            Ok(())
-        }
-
-        fn effective_context_size(&self, _model: &str) -> usize {
-            1000
-        }
-    }
-
-    #[tokio::test]
-    async fn suppressed_state_skips_compaction() {
-        let provider = FailingProvider;
-        let mut vt_cfg = VTCodeConfig::default();
-        vt_cfg.agent.harness.auto_compaction_enabled = true;
-        let mut history = vec![Message::user("hello".to_string())];
-        let mut suppressed = SUPPRESS_STICKY;
-
-        let result = auto_compact_messages(
-            AutoCompactionInput {
-                provider: &provider,
-                model: "failing-model",
-                session_id: "s1",
-                workspace_root: Path::new("."),
-                vt_cfg: Some(&vt_cfg),
-                current_token_usage: 900,
-                touched_files: &[],
-                engine_cfg: CompactionConfig::default(),
-                manual_options: ManualCompactionOptions::default(),
-                placement: MemoryEnvelopePlacement::BeforeLastUserOrSummary,
-                prefire: None,
-                auto_compact_suppressed: &mut suppressed,
-                force_compaction: false,
-                steering_update: None,
-            },
-            &mut history,
-        )
-        .await;
-
-        assert!(result.unwrap().is_none());
-        assert_eq!(suppressed, SUPPRESS_STICKY);
-    }
-
-    #[tokio::test]
-    async fn failure_sets_suppression_on_deterministic_error() {
-        let provider = FailingProvider;
-        let mut vt_cfg = VTCodeConfig::default();
-        vt_cfg.agent.harness.auto_compaction_enabled = true;
-        let mut history = vec![Message::user("hello".to_string())];
-        let mut suppressed = SUPPRESS_NONE;
-
-        let result = auto_compact_messages(
-            AutoCompactionInput {
-                provider: &provider,
-                model: "failing-model",
-                session_id: "s1",
-                workspace_root: Path::new("."),
-                vt_cfg: Some(&vt_cfg),
-                current_token_usage: 900,
-                touched_files: &[],
-                engine_cfg: CompactionConfig {
-                    keep_last_messages: 0,
-                    ..CompactionConfig::default()
-                },
-                manual_options: ManualCompactionOptions::default(),
-                placement: MemoryEnvelopePlacement::BeforeLastUserOrSummary,
-                prefire: None,
-                auto_compact_suppressed: &mut suppressed,
-                force_compaction: false,
-                steering_update: None,
-            },
-            &mut history,
-        )
-        .await;
-
-        assert!(result.is_err());
-        assert_eq!(suppressed, SUPPRESS_STICKY);
-    }
-
-    #[tokio::test]
-    async fn automatic_compaction_persists_live_steering_snapshot() {
-        let provider = SuccessfulProvider;
-        let mut vt_cfg = VTCodeConfig::default();
-        vt_cfg.agent.harness.auto_compaction_enabled = true;
-        vt_cfg.context.dynamic.enabled = true;
-        vt_cfg.context.dynamic.persist_history = true;
-        let workspace = tempfile::tempdir().expect("tempdir");
-        let mut history = (0..12)
-            .map(|index| Message::user(format!("request {index}")))
-            .collect::<Vec<_>>();
-        let intent = crate::core::agent::steering::QueuedFollowUpIntent::from_parts("intent-1", "finish the request");
-        let steering_update = SessionMemoryEnvelopeUpdate {
-            pending_intents: Some(vec![intent.clone()]),
-            applied_intent_ids: vec!["applied-1".to_string()],
-            ..Default::default()
-        };
-        let mut suppressed = SUPPRESS_NONE;
-
-        let result = auto_compact_messages(
-            AutoCompactionInput {
-                provider: &provider,
-                model: "successful-model",
-                session_id: "session-1",
-                workspace_root: workspace.path(),
-                vt_cfg: Some(&vt_cfg),
-                current_token_usage: 4_000,
-                touched_files: &[],
-                engine_cfg: CompactionConfig {
-                    keep_last_messages: 0,
-                    ..CompactionConfig::default()
-                },
-                manual_options: ManualCompactionOptions::default(),
-                placement: MemoryEnvelopePlacement::BeforeLastUserOrSummary,
-                prefire: None,
-                auto_compact_suppressed: &mut suppressed,
-                force_compaction: false,
-                steering_update: Some(&steering_update),
-            },
-            &mut history,
-        )
-        .await
-        .expect("automatic compaction should succeed")
-        .expect("automatic compaction should run");
-
-        let envelope = result.envelope.expect("compaction should produce an envelope");
-        assert_eq!(envelope.pending_intents, vec![intent]);
-        assert_eq!(envelope.applied_intent_ids, vec!["applied-1"]);
-    }
-}
+#[cfg(test)]
+mod prefire_tests;

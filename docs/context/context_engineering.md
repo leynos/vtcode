@@ -58,7 +58,11 @@ VT Code now treats long-horizon context management as three separate jobs:
 - **Compaction** shrinks the whole in-session transcript when token pressure
   gets high. VT Code can use provider-native compaction where available, and
   otherwise falls back to local compaction that preserves a structured summary,
-  recent user prompts, and the session memory envelope.
+  the complete initial task prompt, latest user steering, and the session
+  memory envelope. Tool-message growth does not reduce the space reserved for
+  these user messages. Active-turn work is included in the summary when it
+  cannot fit in the continuity tail; if protected prompts exceed the model's
+  context budget, compaction fails without replacing the source history.
 - **Tool-result clearing / offloading** keeps re-fetchable tool output out of
   the live window. VT Code does this locally with split tool results and output
   spooling, and on Anthropic it can now emit provider-native

@@ -1,0 +1,5 @@
+name: "issue164-active-prompt"
+matcher: "^/v1/issue164/chat/completions$"
+priority: 180
+response_template: "issue164/active_prompt.json.j2"
+status_code: "200"

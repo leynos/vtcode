@@ -181,11 +181,20 @@ enabled and compact display is the default.
 - For providers with native Responses compaction, VT Code uses the
   provider-owned compacted state.
 - For local fallback compaction, VT Code rebuilds history around one
-   structured summary plus retained recent user messages, then injects the
-   session memory envelope.
+  structured summary plus retained recent user messages, then injects the
+  session memory envelope. The summary includes active-turn work. The original
+  task and latest user steering are retained in full, independently of the
+  number of intervening tool calls and the retained-message count, when they
+  fit the selected model's history budget.
 - Automatic compaction also keeps the newest complete protocol groups verbatim
-   in a continuity tail of approximately 20,000 estimated tokens. An
-   interrupted trailing tool call is omitted rather than replayed.
+  in a continuity tail of approximately 20,000 estimated tokens. This is a soft
+  target that can expand to preserve user instructions; the selected model's
+  history budget is the hard limit. An interrupted trailing tool call is
+  omitted rather than replayed.
+- If the original task and latest user instructions exceed that hard limit,
+  compaction is refused and the history is left unchanged. Choose a model with
+  a larger context window or start a new session with a smaller request. This
+  cannot restore instructions already missing from the history.
 - Switching the main session model or provider mid-conversation (via `/model`)
    automatically compacts the existing history before the next turn, so the
    newly selected model starts from a summary instead of the outgoing model's

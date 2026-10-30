@@ -1,7 +1,10 @@
-//! Compact ACP session history to fit provider context limits.
+//! ACP automatic compaction and its provider admission boundary.
 //!
-//! The agent checks prompt size before provider requests and coordinates
-//! automatic, provider-native, and hook-assisted compaction.
+//! A core engine result is only a candidate: ACP validates its complete resolved
+//! prompt, including system/tool overhead and output reservation, before replacing
+//! live history. Refusal leaves history and checkpoint bytes untouched. Accepted
+//! history is published before checkpointing; aggregate admission metrics remain
+//! separate from the engine's compaction result and per-session activity updates.
 
 use super::super::types::SessionHandle;
 use super::{ZedAgent, log_suppressed_error, warn_hook_message};
@@ -19,6 +22,9 @@ use vtcode_core::compaction::{CompactionStrategy, ManualCompactionOptions, manua
 use vtcode_core::exec::events::{CompactionMode, CompactionTrigger};
 use vtcode_core::llm::provider::{LLMProvider, Message, ToolDefinition};
 use vtcode_core::{config::VTCodeConfig, core::threads::ThreadRuntimeHandle};
+
+mod admission;
+use admission::{AdmissionCandidate, AdmissionMetricSink, admit_and_publish};
 
 const DEFAULT_OUTPUT_RESERVE_TOKENS: usize = 16_384;
 const ADMISSION_SAFETY_MARGIN_TOKENS: usize = 1_024;
@@ -68,6 +74,25 @@ pub(super) struct CompactionRequest<'a> {
     pub(super) tools: Option<&'a Arc<Vec<ToolDefinition>>>,
 }
 
+/// Validate the candidate, including resolved prompt and tool overhead, before
+/// the caller publishes live history or writes its checkpoint.
+fn admit_compacted_history(
+    history: &[Message],
+    prompt_tokens: usize,
+    original_history_tokens: usize,
+    admission_budget: Option<usize>,
+) -> Result<usize> {
+    let compacted_prompt_tokens = prompt_tokens
+        .saturating_sub(original_history_tokens)
+        .saturating_add(history.iter().map(Message::estimate_tokens).sum::<usize>());
+    if admission_budget.is_some_and(|budget| compacted_prompt_tokens >= budget) {
+        anyhow::bail!(
+            "ACP compaction reduced the prompt from an estimated {prompt_tokens} to {compacted_prompt_tokens} tokens, which still exceeds its safe provider admission budget"
+        );
+    }
+    Ok(compacted_prompt_tokens)
+}
+
 impl ZedAgent {
     pub(super) async fn maybe_compact_session(&self, request: CompactionRequest<'_>) -> Result<bool> {
         let CompactionRequest { session, provider, runtime, model, tools } = request;
@@ -96,6 +121,7 @@ impl ZedAgent {
         }
         let compaction_result: Result<bool> = async {
             let original_len = snapshot.history.len();
+            let original_history_tokens = snapshot.history.iter().map(Message::estimate_tokens).sum();
             let attempt = self
                 .run_compaction(CompactionRun {
                     session,
@@ -107,19 +133,21 @@ impl ZedAgent {
                     snapshot,
                 })
                 .await?;
-            let Some(outcome) = verify_compaction_result(attempt.outcome, decision)? else {
-                return Ok(false);
-            };
+            let outcome = attempt.outcome;
 
             let compacted_prompt_tokens = self
                 .commit_compacted_history(CompactionCommit {
                     session,
                     thread: attempt.thread,
                     history: attempt.history,
-                    tools,
                     decision,
+                    original_history_tokens,
+                    changed: outcome.is_some(),
                 })
                 .await?;
+            let Some(outcome) = outcome else {
+                return Ok(false);
+            };
             info!(
                 provider = provider.name(),
                 model,
@@ -229,21 +257,36 @@ impl ZedAgent {
     }
 
     async fn commit_compacted_history(&self, commit: CompactionCommit<'_>) -> Result<usize> {
-        let CompactionCommit { session, thread, history, tools, decision } = commit;
-        thread.replace_messages(history);
+        let CompactionCommit {
+            session,
+            thread,
+            history,
+            decision,
+            original_history_tokens,
+            changed,
+        } = commit;
+        let compacted_prompt_tokens = admit_and_publish(
+            AdmissionCandidate {
+                thread,
+                history,
+                prompt_tokens: decision.prompt_tokens,
+                original_history_tokens,
+                configured_threshold: decision.configured_threshold,
+                admission_budget: decision.admission_budget,
+                changed,
+            },
+            &AdmissionMetricSink::Process,
+        )
+        .await?;
+        if !changed {
+            return Ok(compacted_prompt_tokens);
+        }
         if let Err(error) = self.checkpoint_session(session).await {
             log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
             warn!(
                 operation = "session_checkpoint",
                 error_category = "archive_write_failed",
                 "Failed to persist compacted ACP session checkpoint"
-            );
-        }
-        let compacted_prompt_tokens = estimated_prompt_tokens(&self.resolved_messages(session)?, tools);
-        if decision.is_over_admission_budget(compacted_prompt_tokens) {
-            anyhow::bail!(
-                "ACP compaction reduced the prompt from an estimated {} to {compacted_prompt_tokens} tokens, which still exceeds its safe provider admission budget",
-                decision.prompt_tokens
             );
         }
         Ok(compacted_prompt_tokens)
@@ -280,10 +323,6 @@ impl CompactionDecision {
             admission_budget,
             force_compaction,
         })
-    }
-
-    fn is_over_admission_budget(self, prompt_tokens: usize) -> bool {
-        self.admission_budget.is_some_and(|budget| prompt_tokens >= budget)
     }
 }
 
@@ -329,8 +368,9 @@ struct CompactionCommit<'a> {
     session: &'a SessionHandle,
     thread: ThreadRuntimeHandle,
     history: Vec<Message>,
-    tools: Option<&'a Arc<Vec<ToolDefinition>>>,
     decision: CompactionDecision,
+    original_history_tokens: usize,
+    changed: bool,
 }
 
 async fn run_pre_compact_hooks(
@@ -377,28 +417,6 @@ where
             result = compaction => result.context("ACP automatic context compaction failed"),
         }
     }
-}
-
-fn verify_compaction_result(
-    outcome: Option<AutoCompactionOutcome>,
-    decision: CompactionDecision,
-) -> Result<Option<AutoCompactionOutcome>> {
-    let Some(outcome) = outcome else {
-        warn!(
-            prompt_tokens = decision.prompt_tokens,
-            configured_threshold = ?decision.configured_threshold,
-            admission_budget = ?decision.admission_budget,
-            "ACP context pressure crossed its admission budget but compaction made no change"
-        );
-        if decision.is_over_admission_budget(decision.prompt_tokens) {
-            anyhow::bail!(
-                "ACP prompt uses an estimated {} tokens, exceeds its safe provider admission budget, and automatic compaction made no change",
-                decision.prompt_tokens
-            );
-        }
-        return Ok(None);
-    };
-    Ok(Some(outcome))
 }
 
 fn lifecycle_compaction_mode(strategy: CompactionStrategy) -> CompactionMode {

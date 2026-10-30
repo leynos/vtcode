@@ -1,19 +1,44 @@
+//! Compact provider/local history without losing the original task or latest steering.
+//!
+//! This facade owns provider strategy and summary requests. `context_budget`
+//! admits model-window budgets, `history` composes retained turns and summaries,
+//! `bounded_history` limits optional payloads, and `protocol` selects valid tails.
+//! Callers publish history only after compaction and their own admission succeed.
+
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
-use std::fmt::Write;
 use vtcode_commons::llm::FinishReason;
 use vtcode_config::constants::context::DEFAULT_COMPACTION_TRIGGER_RATIO;
 
 use crate::config::types::{ReasoningEffortLevel, VerbosityLevel};
 use crate::exec::events::CompactionMode;
-use crate::llm::provider::{LLMProvider, LLMRequest, Message, MessageContent, MessageRole, ResponsesCompactionOptions};
-use crate::llm::utils::truncate_to_token_limit;
+#[cfg(test)]
+use crate::llm::provider::MessageRole;
+use crate::llm::provider::{LLMProvider, LLMRequest, Message, MessageContent, ResponsesCompactionOptions};
 
 pub mod auto;
+mod bounded_history;
+mod context_budget;
+mod history;
 pub mod memory_envelope;
 pub mod prefire;
+mod protocol;
+mod telemetry;
 pub mod two_pass;
+
+#[cfg(test)]
+use bounded_history::{bounded_protocol_group, select_bounded_history};
+pub(super) use context_budget::is_protected_user_budget_error;
+use context_budget::{
+    bound_compacted_history_to_context, compaction_history_budget, context_bounded_compaction_config,
+    ensure_protected_user_budget, summary_history_for_request,
+};
+#[cfg(test)]
+use history::retention::{UserRetentionPolicy, coherence_tool_call_pairs, collect_retained_user_messages};
+pub(crate) use history::{build_local_compacted_history, build_summary_prompt};
+use history::{build_summary_compacted_history, normalize_provider_compacted_history};
+#[cfg(test)]
+use protocol::{complete_protocol_prefix, continuity_tail};
 
 pub use crate::compaction::memory_envelope::{effective_context_budget, effective_session_context_budget};
 pub use crate::compaction::prefire::{AsyncCompactionCache, PrefireState};
@@ -72,10 +97,6 @@ const DEFAULT_RETAINED_USER_MESSAGES: usize = 6;
 /// it changes the shape of every compacted request and therefore provider cache
 /// behavior.
 const CONTINUITY_TAIL_TARGET_TOKENS: usize = 20_000;
-/// Keep history below the model window after reserving space for the system
-/// prompt, memory envelope, summary framing, and the next response.
-const COMPACTION_CONTEXT_OVERHEAD_FRACTION_DENOMINATOR: usize = 8;
-const COMPACTION_CONTEXT_FIXED_OVERHEAD_TOKENS: usize = 512;
 const SUMMARY_PREFIX: &str = "Previous conversation summary:\n";
 const ABSTRACT_PREFIX: &str = "Earlier context (abstract):\n";
 const DETAIL_PREFIX: &str = "Recent context (summary):\n";
@@ -97,9 +118,11 @@ pub struct CompactionConfig {
     pub summary_prompt: String,
     /// Legacy short-circuit used to skip local compaction for tiny histories.
     pub keep_last_messages: usize,
-    /// Total token budget reserved for retaining real user messages verbatim.
+    /// Soft token budget for optional historical messages; the original task
+    /// and latest user instructions remain complete up to the model budget.
     pub retained_user_message_tokens: usize,
-    /// Maximum number of recent user messages to retain verbatim.
+    /// Soft cap on optional retained messages; protected user instructions
+    /// and complete protocol groups take precedence.
     pub retained_user_messages: usize,
     /// Force local summarization even for short histories and providers with native compaction.
     pub always_summarize: bool,
@@ -146,6 +169,8 @@ pub async fn compact_history(
         return Ok(Vec::new());
     }
 
+    ensure_protected_user_budget(history, provider, model)?;
+
     if !config.always_summarize && history.len() <= config.keep_last_messages {
         return Ok(history.to_vec());
     }
@@ -155,16 +180,16 @@ pub async fn compact_history(
             .compact_history(model, history)
             .await
             .context("Failed to compact history via Responses compact endpoint")?;
-        return Ok(bound_compacted_history_to_context(
+        return bound_compacted_history_to_context(
             normalize_provider_compacted_history(compacted, history),
             provider,
             model,
-        ));
+        );
     }
 
     let effective_config = context_bounded_compaction_config(provider, model, history, config);
-    let (summary_history, _) = split_continuity_history(history);
-    let summary_prompt = build_summary_prompt(summary_history, &effective_config.summary_prompt);
+    let summary_history = summary_history_for_request(history, provider, model)?;
+    let summary_prompt = build_summary_prompt(summary_history.as_ref(), &effective_config.summary_prompt);
     let request = LLMRequest {
         messages: std::sync::Arc::new(vec![Message::user(summary_prompt)]),
         model: model.to_string(),
@@ -177,19 +202,18 @@ pub async fn compact_history(
         .context("Failed to generate compaction summary")?;
 
     let summary = response.content.unwrap_or_default().trim().to_string();
-    Ok(bound_compacted_history_to_context(
+    bound_compacted_history_to_context(
         build_local_compacted_history(
             history,
             &summary,
-            effective_config.retained_user_message_tokens,
-            effective_config.retained_user_messages,
+            &effective_config,
             // Keep the same protocol-safe continuity tail as the live/manual
             // paths. Forked histories must not lose the newest working turn.
             true,
         ),
         provider,
         model,
-    ))
+    )
 }
 
 /// How the manual `/compact` command compacts for a given provider/model.
@@ -295,6 +319,7 @@ pub async fn compact_history_manual(
     if history.is_empty() {
         return Ok((Vec::new(), CompactionMode::Local));
     }
+    ensure_protected_user_budget(history, provider, model)?;
     match manual_compaction_strategy(provider, model) {
         CompactionStrategy::NativeStandalone => {
             let responses_options: ResponsesCompactionOptions = options.clone().into();
@@ -307,7 +332,7 @@ pub async fn compact_history_manual(
                     normalize_provider_compacted_history(compacted, history),
                     provider,
                     model,
-                ),
+                )?,
                 CompactionMode::Provider,
             ))
         }
@@ -389,7 +414,7 @@ async fn compact_history_native_inline(
     {
         let effective_config = context_bounded_compaction_config(provider, model, history, config);
         let compacted = build_summary_compacted_history(history, summary, &effective_config, true);
-        return Ok((bound_compacted_history_to_context(compacted, provider, model), CompactionMode::Provider));
+        return Ok((bound_compacted_history_to_context(compacted, provider, model)?, CompactionMode::Provider));
     }
 
     // Compaction did not fire (e.g. history below the minimum trigger threshold);
@@ -421,8 +446,8 @@ async fn summarize_locally(
 
     let effective_config =
         context_bounded_compaction_config(provider, model, history, &config.clone().with_manual_overrides(options));
-    let (summary_history, _) = split_continuity_history(history);
-    let summary_prompt = build_summary_prompt(summary_history, &effective_config.summary_prompt);
+    let summary_history = summary_history_for_request(history, provider, model)?;
+    let summary_prompt = build_summary_prompt(summary_history.as_ref(), &effective_config.summary_prompt);
     let request = LLMRequest {
         messages: std::sync::Arc::new(vec![Message::user(summary_prompt)]),
         model: model.to_string(),
@@ -438,11 +463,11 @@ async fn summarize_locally(
         .context("Failed to generate compaction summary")?;
 
     let summary = response.content.unwrap_or_default().trim().to_string();
-    Ok(bound_compacted_history_to_context(
+    bound_compacted_history_to_context(
         build_summary_compacted_history(history, summary, &effective_config, true),
         provider,
         model,
-    ))
+    )
 }
 
 /// Hierarchical local summarization: abstract + detail + verbatim pyramid.
@@ -450,8 +475,8 @@ async fn summarize_locally(
 /// Splits the history into three bands and summarizes each with a different
 /// compression target:
 /// - **Abstract** (oldest third): 1-2 sentence overview
-/// - **Detail** (middle third): paragraph-level summary
-/// - **Verbatim** (newest third): kept as-is plus importance-weighted retained messages
+/// - **Detail** (remaining history): paragraph-level summary, including recent work
+/// - **Verbatim**: protected user instructions plus bounded recent protocol work
 ///
 /// This follows the hierarchical summarization strategy from the context window
 /// management literature: recent turns verbatim, older turns as paragraph
@@ -465,13 +490,12 @@ async fn summarize_locally_hierarchical(
 ) -> Result<Vec<Message>> {
     let effective_config =
         context_bounded_compaction_config(provider, model, history, &config.clone().with_manual_overrides(options));
-    let (summary_history, _) = split_continuity_history(history);
+    let summary_history = summary_history_for_request(history, provider, model)?;
 
-    // Split history into three bands at roughly equal thirds.
+    // Abstract the oldest third; detail also covers the active turn.
     let total = summary_history.len();
     let band_size = total / 3;
     let abstract_end = band_size;
-    let detail_end = band_size * 2;
 
     // Band 1 (oldest): compress into 1-2 sentence abstract.
     let abstract_band = &summary_history[..abstract_end];
@@ -494,8 +518,9 @@ async fn summarize_locally_hierarchical(
         .context("Failed to generate abstract summary")?;
     let abstract_summary = abstract_response.content.unwrap_or_default().trim().to_string();
 
-    // Band 2 (middle): paragraph-level summary using the full summary prompt.
-    let detail_band = &summary_history[abstract_end..detail_end];
+    // Include recent work in the detail summary even when its protocol tail
+    // needs a bounded preview.
+    let detail_band = &summary_history[abstract_end..];
     let detail_prompt = build_summary_prompt(detail_band, &effective_config.summary_prompt);
     let detail_request = LLMRequest {
         messages: std::sync::Arc::new(vec![Message::user(detail_prompt)]),
@@ -511,672 +536,15 @@ async fn summarize_locally_hierarchical(
         .context("Failed to generate detail summary")?;
     let detail_summary = detail_response.content.unwrap_or_default().trim().to_string();
 
-    // Band 3 (newest): retain verbatim via the bounded protocol tail.
-    let recent_band = &summary_history[detail_end..];
-    let retained = collect_retained_user_messages(
-        recent_band,
-        effective_config.retained_user_message_tokens,
-        effective_config.retained_user_messages,
-    );
-
-    // Assemble: [abstract, detail, ...retained_recent, ...continuity_tail]
-    let mut new_history = Vec::with_capacity(2 + retained.len());
-    new_history.push(Message::system(format!("{ABSTRACT_PREFIX}{abstract_summary}")));
-    new_history.push(Message::system(format!("{DETAIL_PREFIX}{detail_summary}")));
-    new_history.extend(retained);
-    // Live compaction: retain the most recent turn verbatim for continuity.
-    for message in continuity_tail(history) {
-        new_history.push(message.clone());
+    // Both summaries cover the active turn too; retain the authoritative user
+    // instructions and bounded protocol work through the same builder as the
+    // single-pass path.
+    let mut new_history = build_summary_compacted_history(history, &detail_summary, &effective_config, true);
+    new_history.insert(0, Message::system(format!("{ABSTRACT_PREFIX}{abstract_summary}")));
+    if let Some(detail) = new_history.get_mut(1) {
+        detail.content = MessageContent::Text(format!("{DETAIL_PREFIX}{detail_summary}"));
     }
-    Ok(bound_compacted_history_to_context(new_history, provider, model))
-}
-
-pub(crate) fn build_summary_prompt(history: &[Message], instructions: &str) -> String {
-    // Pre-size for the header plus every (non-empty) message body, avoiding
-    // repeated reallocations while the summary prompt is assembled.
-    let estimated_len =
-        instructions.len() + history.iter().map(|m| m.content.as_text().len()).sum::<usize>() + history.len() * 16;
-    let mut formatted = String::with_capacity(estimated_len);
-    let now: DateTime<Utc> = Utc::now();
-    let _ = writeln!(&mut formatted, "Summary requested at {}.\n{}", now.to_rfc3339(), instructions);
-
-    for message in history {
-        let role = match message.role {
-            MessageRole::System => "system",
-            MessageRole::User => "user",
-            MessageRole::Assistant => "assistant",
-            MessageRole::Tool => "tool",
-        };
-        let content = message.content.as_text();
-        if content.trim().is_empty() {
-            continue;
-        }
-        let _ = writeln!(&mut formatted, "\n[{}]\n{}", role, content.trim());
-    }
-
-    formatted
-}
-
-fn compaction_history_budget(provider: &dyn LLMProvider, model: &str) -> Option<usize> {
-    let context_size = provider.effective_context_size(model);
-    (context_size > 0).then(|| {
-        context_size
-            .saturating_sub(context_size / COMPACTION_CONTEXT_OVERHEAD_FRACTION_DENOMINATOR)
-            .saturating_sub(COMPACTION_CONTEXT_FIXED_OVERHEAD_TOKENS)
-    })
-}
-
-fn context_bounded_compaction_config(
-    provider: &dyn LLMProvider,
-    model: &str,
-    history: &[Message],
-    config: &CompactionConfig,
-) -> CompactionConfig {
-    let mut bounded = config.clone();
-    if let Some(history_budget) = compaction_history_budget(provider, model) {
-        let continuity_tokens = continuity_tail(history).iter().map(Message::estimate_tokens).sum::<usize>();
-        bounded.retained_user_message_tokens = bounded
-            .retained_user_message_tokens
-            .min(history_budget.saturating_sub(continuity_tokens));
-    }
-    bounded
-}
-
-/// Apply the model-window budget to provider-native results as well as local
-/// results. Native providers can return a large prefix or metadata-heavy tool
-/// calls, so retaining the tail alone is not sufficient to guarantee that the
-/// next request fits.
-fn bound_compacted_history_to_context(
-    compacted: Vec<Message>,
-    provider: &dyn LLMProvider,
-    model: &str,
-) -> Vec<Message> {
-    let Some(history_budget) = compaction_history_budget(provider, model) else {
-        return compacted;
-    };
-    if compacted.iter().map(Message::estimate_tokens).sum::<usize>() <= history_budget {
-        return compacted;
-    }
-
-    let Some((tail_start, tail_end, _)) = continuity_tail_selection(&compacted) else {
-        return compacted
-            .into_iter()
-            .scan(history_budget, |remaining, message| {
-                if *remaining < 4 {
-                    return None;
-                }
-                let bounded = bounded_message_preview(&message, *remaining);
-                let used = bounded.estimate_tokens();
-                if used > *remaining {
-                    return None;
-                }
-                *remaining -= used;
-                Some(bounded)
-            })
-            .collect();
-    };
-
-    let raw_tail = &compacted[tail_start..tail_end];
-    let raw_tail_tokens = raw_tail.iter().map(Message::estimate_tokens).sum::<usize>();
-    let tail = if raw_tail_tokens > history_budget {
-        bounded_protocol_group(raw_tail, history_budget.max(4))
-    } else {
-        raw_tail.to_vec()
-    };
-    let tail_tokens = tail.iter().map(Message::estimate_tokens).sum::<usize>();
-    let mut remaining = history_budget.saturating_sub(tail_tokens);
-    let mut bounded_prefix = Vec::new();
-
-    for (index, message) in compacted[..tail_start].iter().enumerate() {
-        if remaining < 4 {
-            break;
-        }
-        // Keep the leading summary/envelope message readable, but cap it so
-        // the newest complete protocol groups retain priority.
-        let message_budget = if index == 0 { remaining.min(4_096) } else { remaining };
-        let bounded = bounded_message_preview(message, message_budget);
-        let used = bounded.estimate_tokens();
-        if used > remaining {
-            if index == 0 {
-                let fallback = Message::system(truncate_to_token_limit(
-                    message.content.as_text().as_ref(),
-                    remaining.saturating_sub(4),
-                ));
-                let fallback_tokens = fallback.estimate_tokens();
-                if fallback_tokens <= remaining {
-                    bounded_prefix.push(fallback);
-                }
-            }
-            break;
-        }
-        remaining -= used;
-        bounded_prefix.push(bounded);
-    }
-
-    bounded_prefix.extend(tail);
-    bounded_prefix
-}
-
-pub(crate) fn build_local_compacted_history(
-    history: &[Message],
-    summary: &str,
-    retained_user_message_tokens: usize,
-    retained_user_messages: usize,
-    include_continuity_tail: bool,
-) -> Vec<Message> {
-    let (retention_history, continuity) = if include_continuity_tail {
-        split_continuity_history(history)
-    } else {
-        (history, Vec::new())
-    };
-    let retained_users =
-        collect_retained_user_messages(retention_history, retained_user_message_tokens, retained_user_messages);
-    let mut new_history = Vec::with_capacity(retained_users.len().saturating_add(1));
-    new_history.push(Message::system(format!("{SUMMARY_PREFIX}{}", summary.trim())));
-    new_history.extend(retained_users);
-
-    // Continuity anchor: retain the newest complete protocol groups verbatim
-    // within the fixed tail budget. Duplicate message text is still valid
-    // across turns, so preserve the sequence by index rather than deduplicating
-    // on role/content.
-    if include_continuity_tail {
-        for message in continuity {
-            new_history.push(message);
-        }
-    }
-    new_history
-}
-
-/// Return the newest complete user-anchored protocol groups that fit the fixed
-/// continuity budget. The returned messages are owned because an oversized
-/// individual group may need a bounded preview.
-fn continuity_tail(history: &[Message]) -> Vec<Message> {
-    let Some((start, end, oversized)) = continuity_tail_selection(history) else {
-        return Vec::new();
-    };
-    if oversized {
-        bounded_protocol_group(&history[start..end], CONTINUITY_TAIL_TARGET_TOKENS)
-    } else {
-        history[start..end].to_vec()
-    }
-}
-
-/// Find one contiguous suffix of complete protocol groups. An incomplete
-/// trailing assistant tool-call group is truncated at the assistant message,
-/// preserving its user anchor while excluding the invalid protocol suffix.
-fn continuity_tail_selection(history: &[Message]) -> Option<(usize, usize, bool)> {
-    if history.is_empty() {
-        return None;
-    }
-    let group_starts: Vec<usize> = history
-        .iter()
-        .enumerate()
-        .filter_map(|(index, message)| (message.role == MessageRole::User).then_some(index))
-        .collect();
-    let last_group_index = group_starts.len().saturating_sub(1);
-    let last_group_start = *group_starts.last()?;
-    let last_group_end = history.len();
-    let last_group = &history[last_group_start..last_group_end];
-    let last_group_prefix_end = complete_protocol_group_prefix(last_group);
-    let tail_end = last_group_start.saturating_add(last_group_prefix_end);
-
-    let mut selected_start = None;
-    let mut estimated_tokens = 0usize;
-    for group_index in (0..group_starts.len()).rev() {
-        let start = group_starts[group_index];
-        let natural_end = group_starts.get(group_index + 1).copied().unwrap_or(history.len());
-        let end = if group_index == last_group_index {
-            tail_end
-        } else {
-            natural_end
-        };
-        if start == end {
-            continue;
-        }
-        let group = &history[start..end];
-        if group_index != last_group_index && !protocol_group_is_complete(group) {
-            break;
-        }
-        let group_tokens = group.iter().map(Message::estimate_tokens).sum::<usize>();
-        if selected_start.is_none() && group_tokens > CONTINUITY_TAIL_TARGET_TOKENS {
-            return Some((start, end, true));
-        }
-        if estimated_tokens.saturating_add(group_tokens) > CONTINUITY_TAIL_TARGET_TOKENS {
-            break;
-        }
-        selected_start = Some(start);
-        estimated_tokens += group_tokens;
-    }
-
-    selected_start.map(|start| (start, tail_end, false))
-}
-
-fn protocol_group_is_complete(group: &[Message]) -> bool {
-    complete_protocol_group_prefix(group) == group.len()
-}
-
-/// Return the length of the valid protocol prefix in a user-anchored group.
-/// When a tool call is still pending, the prefix ends before the assistant
-/// message that introduced it. This handles parallel tool calls and prevents
-/// a partially answered group from entering the continuity tail.
-fn complete_protocol_group_prefix(group: &[Message]) -> usize {
-    if group.first().is_none_or(|message| message.role != MessageRole::User) {
-        return 0;
-    }
-
-    let mut pending_tool_call_ids: Vec<&str> = Vec::new();
-    let mut pending_origin = None;
-
-    for (index, message) in group.iter().enumerate() {
-        if !pending_tool_call_ids.is_empty() {
-            if message.role != MessageRole::Tool {
-                return pending_origin.unwrap_or(index);
-            }
-            let Some(tool_call_id) = message.tool_call_id.as_deref() else {
-                return pending_origin.unwrap_or(index);
-            };
-            let Some(pending_index) = pending_tool_call_ids.iter().position(|pending_id| *pending_id == tool_call_id)
-            else {
-                return pending_origin.unwrap_or(index);
-            };
-            pending_tool_call_ids.swap_remove(pending_index);
-            if pending_tool_call_ids.is_empty() {
-                pending_origin = None;
-            }
-            continue;
-        }
-
-        // Older persisted histories may contain a tool result without the
-        // assistant call metadata that introduced it. Preserve that legacy
-        // pair rather than discarding an otherwise complete protocol group.
-        if message.role == MessageRole::Tool {
-            continue;
-        }
-
-        if message.role == MessageRole::Assistant
-            && let Some(tool_calls) = message.tool_calls.as_ref()
-            && !tool_calls.is_empty()
-        {
-            for (call_index, call) in tool_calls.iter().enumerate() {
-                if call.id.is_empty() || tool_calls[..call_index].iter().any(|prior| prior.id == call.id) {
-                    return index;
-                }
-            }
-            pending_origin = Some(index);
-            pending_tool_call_ids.extend(tool_calls.iter().map(|call| call.id.as_str()));
-        }
-    }
-
-    pending_origin.unwrap_or(group.len())
-}
-
-fn split_continuity_history(history: &[Message]) -> (&[Message], Vec<Message>) {
-    let Some((tail_start, _, _)) = continuity_tail_selection(history) else {
-        return (history, Vec::new());
-    };
-    (&history[..tail_start], continuity_tail(history))
-}
-
-fn build_summary_compacted_history(
-    history: &[Message],
-    summary: impl AsRef<str>,
-    config: &CompactionConfig,
-    include_continuity_tail: bool,
-) -> Vec<Message> {
-    let (retention_history, continuity) = split_continuity_history(history);
-    let retained_users = collect_retained_user_messages(
-        retention_history,
-        config.retained_user_message_tokens,
-        config.retained_user_messages,
-    );
-    let mut compacted = Vec::with_capacity(retained_users.len().saturating_add(1));
-    compacted.push(Message::system(format!("{SUMMARY_PREFIX}{}", summary.as_ref().trim())));
-    compacted.extend(retained_users);
-    if include_continuity_tail {
-        for message in continuity {
-            compacted.push(message);
-        }
-    }
-    compacted
-}
-
-fn bounded_protocol_group(group: &[Message], token_budget: usize) -> Vec<Message> {
-    let per_message_budget = (token_budget / group.len().max(1)).max(4);
-    group
-        .iter()
-        .map(|message| bounded_message_preview(message, per_message_budget))
-        .collect()
-}
-
-fn bounded_message_preview(message: &Message, token_budget: usize) -> Message {
-    if message.estimate_tokens() <= token_budget {
-        return message.clone();
-    }
-    let mut preview = message.clone();
-    let available = token_budget.saturating_sub(4);
-    let text = truncate_to_token_limit(message.content.as_text().as_ref(), available);
-    preview.content = MessageContent::Text(text);
-
-    // Tool-call arguments and provider metadata are part of the message's
-    // token footprint even when `content` is empty. Preserve call IDs and
-    // function names so the protocol group remains correlatable, but replace
-    // oversized argument payloads with valid minimal JSON and drop optional
-    // reasoning/signature metadata.
-    preview.reasoning = preview
-        .reasoning
-        .map(|reasoning| truncate_to_token_limit(&reasoning, available.min(1_024)));
-    preview.reasoning_details = None;
-    preview.metadata = None;
-    preview.origin_tool = None;
-    if let Some(tool_calls) = preview.tool_calls.as_mut() {
-        for call in tool_calls {
-            if let Some(function) = call.function.as_mut()
-                && function.arguments.len() > available.saturating_mul(4)
-            {
-                function.arguments = "{}".to_string();
-            }
-            if let Some(text) = call.text.as_mut() {
-                *text = truncate_to_token_limit(text, available.min(1_024));
-            }
-            call.thought_signature = None;
-        }
-    }
-
-    if preview.estimate_tokens() > token_budget {
-        preview.content = MessageContent::Text(String::new());
-        preview.reasoning = None;
-        preview.reasoning_details = None;
-        if let Some(tool_calls) = preview.tool_calls.as_mut() {
-            for call in tool_calls {
-                if let Some(function) = call.function.as_mut() {
-                    function.arguments = "{}".to_string();
-                }
-                call.text = None;
-                call.thought_signature = None;
-            }
-        }
-    }
-    preview
-}
-
-/// Keep the provider's compacted prefix, but apply the same bounded protocol
-/// tail rules used by local compaction. A provider may return a summary only;
-/// that remains valid, while malformed trailing tool calls are discarded.
-fn normalize_provider_compacted_history(compacted: Vec<Message>, fallback_history: &[Message]) -> Vec<Message> {
-    let mut compacted = compacted;
-    while compacted.last().is_some_and(|message| {
-        message.role == MessageRole::Assistant && message.tool_calls.as_ref().is_some_and(|calls| !calls.is_empty())
-    }) {
-        compacted.pop();
-    }
-    let selection = continuity_tail_selection(&compacted);
-    let tail = selection.map(|(start, end, oversized)| {
-        if oversized {
-            bounded_protocol_group(&compacted[start..end], CONTINUITY_TAIL_TARGET_TOKENS)
-        } else {
-            compacted[start..end].to_vec()
-        }
-    });
-    let mut normalized = if let Some((tail_start, _, _)) = selection {
-        // `tail_end` may be before the physical end when a provider returned
-        // only part of a tool-result group. Discard that invalid suffix by
-        // using the selection's actual start, rather than subtracting the
-        // selected tail length from the physical vector length.
-        compacted[..tail_start].to_vec()
-    } else {
-        compacted
-    };
-    if tail.as_ref().is_none_or(Vec::is_empty) {
-        // Some native endpoints return only their summary. Keep the newest
-        // source protocol groups in that case rather than silently losing the
-        // continuity anchor. Preserve sequence identity: two steering intents
-        // may intentionally have identical text but distinct metadata IDs.
-        normalized.extend(continuity_tail(fallback_history));
-    } else if let Some(tail) = tail {
-        normalized.extend(tail);
-    }
-    normalized
-}
-
-fn collect_retained_user_messages(history: &[Message], token_budget: usize, max_messages: usize) -> Vec<Message> {
-    if token_budget == 0 || max_messages == 0 {
-        return Vec::new();
-    }
-
-    // Phase 1: select up to `max_messages` user messages, scored by importance.
-    let total = history.len();
-    let mut user_scored: Vec<(usize, f64, &Message)> = history
-        .iter()
-        .enumerate()
-        .filter(|(_, m)| m.role == MessageRole::User && !m.content.trim().is_empty())
-        .map(|(i, m)| {
-            let score = score_message(m, i, total);
-            (i, score, m)
-        })
-        .collect();
-    user_scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-    let mut selected: Vec<(usize, Message)> = Vec::with_capacity(max_messages.min(history.len()));
-    let mut remaining = token_budget;
-
-    for (original_idx, _score, message) in &user_scored {
-        if selected.len() >= max_messages {
-            break;
-        }
-        let estimated = message.estimate_tokens();
-        if estimated <= remaining {
-            selected.push((*original_idx, (*message).clone()));
-            remaining = remaining.saturating_sub(estimated);
-            continue;
-        }
-        if let Some(truncated) = truncate_user_message(message, remaining) {
-            selected.push((*original_idx, truncated));
-        }
-        break;
-    }
-
-    // Phase 2: if budget remains, add high-value non-user messages (tool
-    // results, assistant tool calls) that fit within the remaining capacity.
-    if selected.len() < max_messages && remaining > 0 {
-        let mut non_user_scored: Vec<(usize, f64, &Message)> = history
-            .iter()
-            .enumerate()
-            .filter(|(_, m)| m.role != MessageRole::User && m.role != MessageRole::System && is_retainable_message(m))
-            .map(|(i, m)| {
-                let score = score_message(m, i, total);
-                (i, score, m)
-            })
-            .collect();
-        non_user_scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        for (original_idx, _score, message) in &non_user_scored {
-            if selected.len() >= max_messages {
-                break;
-            }
-            let estimated = message.estimate_tokens();
-            if estimated <= remaining {
-                selected.push((*original_idx, (*message).clone()));
-                remaining = remaining.saturating_sub(estimated);
-            }
-        }
-    }
-
-    // Re-sort by original conversation order, then enforce tool-call/turn
-    // coherence so the compacted history is valid to send back to a provider.
-    selected.sort_by_key(|(idx, _)| *idx);
-    coherence_tool_call_pairs(history, &selected)
-        .into_iter()
-        .map(|(_, msg)| msg)
-        .collect()
-}
-
-/// Keep retained tool-call turns internally consistent.
-///
-/// A `Tool` message references a tool call the model must have seen, and an
-/// `Assistant` message that still carries `tool_calls` must be followed by the
-/// results those calls produced. Sending either without its counterpart is
-/// invalid: providers reject unmatched tool calls, and orphaned tool results
-/// reference a call the model never observed. This pass:
-///
-/// - **Force-keeps** the `Tool` messages immediately following any retained
-///   `Assistant` that carries `tool_calls`, so the model observes each call's
-///   return value. A complete turn ends with its results, which survive even
-///   if they push past the soft `max_messages` cap.
-/// - **Drops** a retained `Tool` message whose calling `Assistant` (the message
-///   directly before it in `history`) was *not* retained — an orphaned result
-///   the model cannot reconcile.
-///
-/// Tool results that follow a plain `Assistant` (no `tool_calls`) are ordinary
-/// turn output and are kept exactly as selected.
-fn coherence_tool_call_pairs(history: &[Message], selected: &[(usize, Message)]) -> Vec<(usize, Message)> {
-    let mut keep: std::collections::HashSet<usize> = selected.iter().map(|(i, _)| *i).collect();
-
-    for (idx, msg) in selected {
-        if msg.role == MessageRole::Assistant && msg.tool_calls.as_ref().is_some_and(|calls| !calls.is_empty()) {
-            let mut j = *idx + 1;
-            while let Some(next) = history.get(j) {
-                if next.role == MessageRole::Tool {
-                    keep.insert(j);
-                    j += 1;
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    // Emit every index in `keep` in original history order, dropping orphaned
-    // Tool results whose calling Assistant turn was not retained.
-    let mut indices: Vec<usize> = keep.iter().copied().collect();
-    indices.sort_unstable();
-
-    indices
-        .into_iter()
-        .filter(|idx| {
-            let msg = &history[*idx];
-            if msg.role != MessageRole::Tool {
-                return true;
-            }
-            // Walk backward through this contiguous result run to decide
-            // coherence against the calling assistant turn.
-            let mut cursor = *idx;
-            loop {
-                match history.get(cursor) {
-                    Some(m) if m.role == MessageRole::Tool => {
-                        cursor = match cursor.checked_sub(1) {
-                            Some(c) => c,
-                            None => break,
-                        };
-                    }
-                    Some(m)
-                        if m.role == MessageRole::Assistant && m.tool_calls.as_ref().is_some_and(|c| !c.is_empty()) =>
-                    {
-                        // Reached the calling assistant: coherent only if it
-                        // was retained.
-                        return keep.contains(&cursor);
-                    }
-                    _ => {
-                        // Plain assistant or boundary: ordinary output.
-                        return true;
-                    }
-                }
-            }
-            true
-        })
-        .map(|idx| (idx, history[idx].clone()))
-        .collect()
-}
-
-/// Score a message for importance-weighted retention during compaction.
-///
-/// Uses a weighted combination of content importance and recency:
-/// - Messages containing errors, corrections, or tool results score higher
-/// - Recent messages get a recency bonus
-/// - Assistant messages with tool calls are moderately important
-fn score_message(message: &Message, index: usize, total: usize) -> f64 {
-    let content = message.content.as_text();
-    let content_lower = content.to_lowercase();
-
-    // Importance weight based on content signals.
-    let importance = match message.role {
-        MessageRole::User => {
-            if contains_error_signal(&content_lower) {
-                3.0
-            } else if contains_correction_signal(&content_lower) {
-                2.5
-            } else {
-                1.0
-            }
-        }
-        MessageRole::Tool => {
-            // Tool results contain factual data the model may need.
-            2.0
-        }
-        MessageRole::Assistant => {
-            if message.tool_calls.is_some() {
-                // Assistant messages with tool calls show action taken.
-                0.5
-            } else {
-                0.1
-            }
-        }
-        MessageRole::System => 0.0,
-    };
-
-    // Recency bonus: linear from 0.0 (oldest) to 1.0 (newest).
-    let recency = if total > 0 { index as f64 / total as f64 } else { 0.0 };
-
-    importance + recency
-}
-
-/// Check if content contains error or failure signals.
-fn contains_error_signal(content: &str) -> bool {
-    content.contains("error")
-        || content.contains("failed")
-        || content.contains("failure")
-        || content.contains("panic")
-        || content.contains("bug")
-        || content.contains("broken")
-        || content.contains("regression")
-}
-
-/// Check if content contains user correction signals.
-fn contains_correction_signal(content: &str) -> bool {
-    content.contains("no,")
-        || content.contains("wrong")
-        || content.contains("actually")
-        || content.contains("fix")
-        || content.contains("instead")
-        || content.contains("should be")
-        || content.contains("don't")
-}
-
-/// Whether a message is worth retaining during compaction.
-fn is_retainable_message(message: &Message) -> bool {
-    match message.role {
-        MessageRole::User => !message.content.trim().is_empty(),
-        MessageRole::Tool => !message.content.trim().is_empty(),
-        MessageRole::Assistant => {
-            // Retain assistant messages that contain tool calls (action history).
-            message.tool_calls.is_some()
-        }
-        MessageRole::System => false,
-    }
-}
-
-fn truncate_user_message(message: &Message, token_budget: usize) -> Option<Message> {
-    if token_budget <= 4 {
-        return None;
-    }
-
-    let available_content_tokens = token_budget.saturating_sub(4);
-    let truncated = truncate_to_token_limit(message.content.as_text().as_ref(), available_content_tokens);
-    let trimmed = truncated.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    Some(Message::user(trimmed.to_string()))
+    bound_compacted_history_to_context(new_history, provider, model)
 }
 
 #[cfg(test)]
@@ -1458,7 +826,8 @@ mod tests {
             Message::tool_response("c1".to_string(), "r1".to_string()),
             Message::user("u2".to_string()),
         ];
-        let retained = super::collect_retained_user_messages(&history, 20_000, 4);
+        let retained =
+            super::collect_retained_user_messages(&history, 20_000, 4, super::UserRetentionPolicy::WholeHistory);
         assert!(retained.iter().any(|m| m.content.as_text().contains("u1")));
         assert!(retained.iter().any(|m| m.content.as_text().contains("u2")));
         assert!(
@@ -1479,7 +848,8 @@ mod tests {
             Message::tool_response("c1".to_string(), "r1".to_string()),
             Message::user("u2".to_string()),
         ];
-        let retained = super::collect_retained_user_messages(&history, 20_000, 3);
+        let retained =
+            super::collect_retained_user_messages(&history, 20_000, 3, super::UserRetentionPolicy::WholeHistory);
         assert!(retained.iter().any(|m| m.content.as_text().contains("u1")));
         assert!(retained.iter().any(|m| m.content.as_text().contains("u2")));
         assert!(!retained.iter().any(|m| m.content.as_text().contains("r1")), "orphaned tool result must be dropped");
@@ -1928,7 +1298,7 @@ mod tests {
     }
 
     #[test]
-    fn continuity_tail_bounds_an_oversized_newest_group() {
+    fn continuity_tail_preserves_a_user_anchor_larger_than_soft_budget() {
         let history = vec![
             Message::user("u".repeat(100_000)),
             Message::assistant("a".repeat(100_000)),
@@ -1936,8 +1306,8 @@ mod tests {
 
         let tail = continuity_tail(&history);
 
-        assert_eq!(tail.len(), 2);
-        assert!(tail.iter().map(Message::estimate_tokens).sum::<usize>() <= super::CONTINUITY_TAIL_TARGET_TOKENS);
+        assert_eq!(tail.len(), 1);
+        assert_eq!(tail[0], history[0], "the soft tail budget must never clip user instructions");
     }
 
     #[test]
@@ -2003,7 +1373,8 @@ mod tests {
         ];
         let normalized = super::normalize_provider_compacted_history(partial, &source);
         assert_eq!(normalized[0].content.as_text(), "provider summary");
-        assert_eq!(normalized.last().unwrap().content.as_text(), "latest request");
+        assert_eq!(normalized.last().unwrap().content.as_text(), "finished");
+        assert!(normalized.iter().any(|message| message.content.as_text() == "latest request"));
         assert!(!normalized.iter().any(|message| message.tool_call_id.as_deref() == Some("c1")));
         assert!(!normalized.iter().any(|message| message.tool_calls.is_some()));
     }
@@ -2138,3 +1509,9 @@ mod tests {
         assert_eq!(result[0].0, 0);
     }
 }
+
+#[cfg(test)]
+mod prompt_preservation_tests;
+
+#[cfg(test)]
+mod property_tests;
