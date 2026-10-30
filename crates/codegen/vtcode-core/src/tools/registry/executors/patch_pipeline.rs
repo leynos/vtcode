@@ -402,11 +402,7 @@ impl ToolRegistry {
                     {
                         Ok(rendered) => Some(rendered),
                         Err(err) => {
-                            tracing::debug!(
-                                path = %canonical_path.display(),
-                                error = %err,
-                                "Failed to render patch conflict preview content"
-                            );
+                            log_patch_preview_render_failure(&canonical_path, &err);
                             None
                         }
                     }
@@ -494,5 +490,104 @@ impl ToolRegistry {
                 Ok(writes)
             }
         }
+    }
+}
+
+/// Log a conflict-preview render failure without reproducing patch text.
+///
+/// `PatchError`'s `Display` embeds the failing context or snippet, so the
+/// `error = %err` shortcut would copy user patch text into the tracing stream.
+/// Log the fixed reason code and the embedded text's byte length instead. The
+/// render helper wraps its `PatchError` in `anyhow`, so recover it by downcast
+/// rather than formatting the chain.
+fn log_patch_preview_render_failure(path: &std::path::Path, error: &anyhow::Error) {
+    let patch_error = error
+        .downcast_ref::<crate::tools::editing::PatchError>()
+        .or_else(|| error.root_cause().downcast_ref::<crate::tools::editing::PatchError>());
+    let (reason, text_bytes) = match patch_error {
+        Some(error) => (error.reason_code(), error.embedded_text_bytes()),
+        None => ("patch_render_failed", 0),
+    };
+    tracing::debug!(
+        path = %path.display(),
+        reason,
+        text_bytes,
+        "Failed to render patch conflict preview content"
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::log_patch_preview_render_failure;
+    use crate::tools::editing::patch::{PatchChunk, PatchLine, render_patch_update_content_strict};
+    use std::sync::{Arc, Mutex};
+
+    /// A `tracing` writer that collects formatted output for one test only.
+    #[derive(Clone, Default)]
+    struct CaptureWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for CaptureWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let mut guard = self
+                .0
+                .lock()
+                .map_err(|poisoned| std::io::Error::other(format!("capture poisoned: {poisoned}")))?;
+            guard.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CaptureWriter {
+        type Writer = Self;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    /// A preview-render failure must not leak patch text into tracing.
+    ///
+    /// The subscriber is installed with `with_default` so parallel tests keep
+    /// their own dispatch and cannot contaminate the capture.
+    #[tokio::test]
+    async fn preview_render_failure_logs_reason_code_without_patch_text() {
+        const MARKER: &str = "UNIQUE_PATCH_MARKER_c41f7d";
+        let chunks = vec![PatchChunk {
+            change_context: None,
+            lines: vec![
+                PatchLine::Removal(MARKER.to_string()),
+                PatchLine::Addition("replacement".to_string()),
+            ],
+            is_end_of_file: false,
+        }];
+        let patch_error = render_patch_update_content_strict(
+            std::path::Path::new("secret.txt"),
+            "unrelated current line\n",
+            &chunks,
+            "secret.txt",
+        )
+        .await
+        .expect_err("the marker anchor cannot match the current content");
+        let error: anyhow::Error = patch_error.into();
+        assert!(error.to_string().contains(MARKER), "precondition: the render error embeds patch text");
+
+        let captured = CaptureWriter::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .with_writer(captured.clone())
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            log_patch_preview_render_failure(std::path::Path::new("secret.txt"), &error);
+        });
+
+        let output =
+            String::from_utf8(captured.0.lock().expect("capture lock").clone()).expect("captured output is UTF-8");
+        assert!(output.contains("segment_not_found"), "reason code should be logged: {output}");
+        assert!(!output.contains(MARKER), "patch text must not reach tracing: {output}");
     }
 }

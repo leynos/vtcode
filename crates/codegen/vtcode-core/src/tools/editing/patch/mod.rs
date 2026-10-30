@@ -159,6 +159,20 @@ pub async fn render_patch_update_content(
         .map_err(|err| anyhow!(err))
 }
 
+/// Render a patch update under strict, uniqueness-checking anchors.
+///
+/// Rebase assessment uses this entry point: it accepts only byte-exact anchors
+/// that occur exactly once in the search window, so an ambiguous or merely
+/// similar match is reported as unsafe rather than silently applied.
+pub async fn render_patch_update_content_strict(
+    source_path: &Path,
+    content: &str,
+    chunks: &[PatchChunk],
+    path: &str,
+) -> Result<String, PatchError> {
+    applicator::render_updated_content_strict(source_path, content, chunks, path).await
+}
+
 // ---------------------------------------------------------------------------
 // Shape detection primitives — single source of truth for "is this a VTE
 // patch?" / "is this a unified diff?" Used by tool routing, source-field

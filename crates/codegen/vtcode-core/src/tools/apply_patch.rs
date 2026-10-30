@@ -92,6 +92,13 @@ pub fn patch_precondition_source_paths(patch: &Patch) -> Vec<&str> {
 /// Returns whether the patch can be rebased onto the current content, plus up
 /// to three bounded anchor failures describing the chunks that no longer match.
 /// A patch that is not exactly one same-path update is never rebasable.
+///
+/// The simulation uses [`crate::tools::editing::patch::render_patch_update_content_strict`],
+/// so only byte-exact, unique anchors count. A hunk that the apply path would
+/// resolve fuzzily (whitespace, Unicode normalisation, trailing empty-line
+/// retry, or semantic fallback) is reported as unsafe, as is a hunk whose
+/// anchor occurs more than once. `false` never means "retry the same patch":
+/// the caller's `next_action` still tells the model to reread and regenerate.
 pub(crate) async fn assess_patch_rebase_with_content(
     patch: &Patch,
     source_path: &Path,
@@ -110,21 +117,20 @@ pub(crate) async fn assess_patch_rebase_with_content(
     if new_path.as_ref().is_some_and(|destination| destination != path) {
         return (false, Vec::new());
     }
-    match crate::tools::editing::patch::render_patch_update_content(source_path, current, chunks, path).await {
+    match crate::tools::editing::patch::render_patch_update_content_strict(source_path, current, chunks, path).await {
         Ok(_) => (true, Vec::new()),
         Err(_) => {
             let mut failures = Vec::new();
             for chunk in chunks.iter().take(3) {
-                if crate::tools::editing::patch::render_patch_update_content(
+                if let Err(error) = crate::tools::editing::patch::render_patch_update_content_strict(
                     source_path,
                     current,
                     std::slice::from_ref(chunk),
                     path,
                 )
                 .await
-                .is_err()
                 {
-                    failures.push(patch_anchor_failure(chunk, current));
+                    failures.push(patch_anchor_failure(chunk, current, anchor_failure_reason(&error)));
                 }
             }
             (false, failures)
@@ -132,13 +138,29 @@ pub(crate) async fn assess_patch_rebase_with_content(
     }
 }
 
+/// Map a strict-render failure to the bounded reason shown to the model.
+///
+/// Only anchor-class failures reach this mapping: strict rendering of
+/// in-memory content never performs I/O and does not consult the semantic
+/// resolver, so the remaining variants describe how an anchor failed to match.
+fn anchor_failure_reason(error: &PatchError) -> &'static str {
+    match error {
+        PatchError::AmbiguousAnchor { .. } => "ambiguous_anchor",
+        PatchError::InexactAnchor { .. } => "inexact_anchor",
+        PatchError::SemanticResolutionFailed { .. } | PatchError::SemanticAmbiguous { .. } => "semantic_only_anchor",
+        _ => "missing_anchor",
+    }
+}
+
 /// Describe one hunk whose anchors no longer match the current file.
 ///
 /// The excerpt is deliberately bounded: this payload is shown to the model, so
-/// it reports the chunk's anchor, the first few expected lines, and the closest
-/// window of current lines found by token overlap. That is enough to show why
+/// it reports the chunk's anchor, a fixed reason code, the first few expected
+/// lines, and the closest window of current lines found by token overlap. Every
+/// string field is bounded by [`bounded_excerpt`], including the anchor, which
+/// may be an arbitrarily long explicit `@@` marker. That is enough to show why
 /// the rebase failed without re-reading the whole file into the transcript.
-fn patch_anchor_failure(chunk: &PatchHunk, current: &str) -> Value {
+fn patch_anchor_failure(chunk: &PatchHunk, current: &str, reason: &'static str) -> Value {
     let current_lines = current.lines().collect::<Vec<_>>();
     let expected_lines = chunk
         .lines()
@@ -148,6 +170,9 @@ fn patch_anchor_failure(chunk: &PatchHunk, current: &str) -> Value {
         .take(3)
         .collect::<Vec<_>>();
     let expected_excerpt = bounded_excerpt(&expected_lines.join("\n"));
+    let anchor = chunk
+        .change_context()
+        .unwrap_or_else(|| expected_lines.first().copied().unwrap_or_default().trim());
     let first_expected = expected_lines.first().copied().unwrap_or_default().trim();
     let best_line = current_lines
         .iter()
@@ -159,7 +184,8 @@ fn patch_anchor_failure(chunk: &PatchHunk, current: &str) -> Value {
     let start = best_line.saturating_sub(1);
     let end = (best_line + 2).min(current_lines.len());
     json!({
-        "anchor": chunk.change_context().unwrap_or(first_expected),
+        "reason": reason,
+        "anchor": bounded_excerpt(anchor),
         "expected_excerpt": expected_excerpt,
         "current_excerpt": bounded_excerpt(&current_lines[start..end].join("\n")),
     })
@@ -376,6 +402,34 @@ mod tests {
     }
 
     proptest! {
+        /// Accept every canonical digest and return it unchanged.
+        ///
+        /// The unconstrained strategy below almost never produces this shape,
+        /// so the accept branch needs its own generator.
+        #[test]
+        fn expected_content_hash_accepts_canonical_digests(digest in "[0-9a-f]{64}") {
+            let hash = format!("sha256:{digest}");
+            let args = json!({"expected_content_hash": hash.clone()});
+            prop_assert_eq!(
+                expected_content_hash_from_args(&args).ok().flatten(),
+                Some(hash.as_str())
+            );
+        }
+
+        /// Reject upper-case and wrong-length digests.
+        #[test]
+        fn expected_content_hash_rejects_near_misses(
+            digest in "[0-9A-F]{64}|[0-9a-f]{63}|[0-9a-f]{65}"
+        ) {
+            // `[0-9A-F]` can also produce an all-lower-case digest, which is a
+            // valid wire value rather than a near miss.
+            prop_assume!(digest.len() != 64 || digest.bytes().any(|byte| byte.is_ascii_uppercase()));
+            let hash = format!("sha256:{digest}");
+            let args = json!({"expected_content_hash": hash});
+            let accepted = expected_content_hash_from_args(&args);
+            prop_assert!(accepted.is_err());
+        }
+
         /// Accept only `sha256:` plus 64 lower-case hexadecimal digits.
         #[test]
         fn expected_content_hash_accepts_only_the_canonical_wire_shape(candidate in ".{0,100}") {
@@ -513,6 +567,90 @@ mod tests {
             "unexpected error message: {message}"
         );
         assert!(message.contains("base64=false"));
+    }
+
+    /// Parse a single-hunk update patch for the given removal line.
+    fn single_removal_patch(removal: &str) -> super::Patch {
+        super::Patch::parse(&format!(
+            "*** Begin Patch\n*** Update File: f.txt\n@@\n-{removal}\n+replacement\n*** End Patch"
+        ))
+        .expect("single-removal patch should parse")
+    }
+
+    #[tokio::test]
+    async fn rebase_assessment_rejects_duplicate_anchor_as_ambiguous() {
+        // Two identical `old` lines: the sequenced path would take the first,
+        // but rebase assessment must report the anchor as ambiguous.
+        let patch = single_removal_patch("old");
+        let (can_rebase, failures) =
+            super::assess_patch_rebase_with_content(&patch, std::path::Path::new("f.txt"), "old\nold\n").await;
+
+        assert!(!can_rebase);
+        assert_eq!(failures.len(), 1);
+        assert_eq!(failures[0]["reason"], "ambiguous_anchor");
+        assert_eq!(failures[0]["anchor"], "old");
+    }
+
+    #[tokio::test]
+    async fn rebase_assessment_rejects_trailing_whitespace_inexact_anchor() {
+        let patch = single_removal_patch("old");
+        let (can_rebase, failures) =
+            super::assess_patch_rebase_with_content(&patch, std::path::Path::new("f.txt"), "old   \n").await;
+
+        assert!(!can_rebase);
+        assert_eq!(failures.len(), 1);
+        assert_eq!(failures[0]["reason"], "inexact_anchor");
+    }
+
+    #[tokio::test]
+    async fn rebase_assessment_rejects_unicode_normalised_anchor() {
+        let patch = single_removal_patch("\"quoted\"");
+        let (can_rebase, failures) =
+            super::assess_patch_rebase_with_content(&patch, std::path::Path::new("f.txt"), "\u{201C}quoted\u{201D}\n")
+                .await;
+
+        assert!(!can_rebase);
+        assert_eq!(failures.len(), 1);
+        assert_eq!(failures[0]["reason"], "inexact_anchor");
+    }
+
+    #[tokio::test]
+    async fn rebase_assessment_accepts_exact_unique_anchor() {
+        let patch = single_removal_patch("old");
+        let (can_rebase, failures) =
+            super::assess_patch_rebase_with_content(&patch, std::path::Path::new("f.txt"), "alpha\nold\nomega\n").await;
+
+        assert!(can_rebase);
+        assert!(failures.is_empty());
+    }
+
+    #[tokio::test]
+    async fn rebase_assessment_bounds_oversized_context_marker() {
+        let marker = "c".repeat(300);
+        let patch = super::Patch::parse(&format!(
+            "*** Begin Patch\n*** Update File: f.txt\n@@ {marker}\n-stale\n+replacement\n*** End Patch"
+        ))
+        .expect("oversized-context patch should parse");
+
+        let (can_rebase, failures) =
+            super::assess_patch_rebase_with_content(&patch, std::path::Path::new("f.txt"), "unrelated\n").await;
+
+        assert!(!can_rebase);
+        let anchor = failures[0]["anchor"].as_str().expect("anchor string");
+        assert_eq!(anchor.chars().count(), 240);
+    }
+
+    #[tokio::test]
+    async fn rebase_assessment_bounds_oversized_fallback_line() {
+        let line = "d".repeat(300);
+        let patch = single_removal_patch(&line);
+
+        let (can_rebase, failures) =
+            super::assess_patch_rebase_with_content(&patch, std::path::Path::new("f.txt"), "unrelated\n").await;
+
+        assert!(!can_rebase);
+        let anchor = failures[0]["anchor"].as_str().expect("anchor string");
+        assert_eq!(anchor.chars().count(), 240);
     }
 
     #[test]

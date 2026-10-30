@@ -11,7 +11,7 @@ use crate::reports::{
 };
 use crate::tooling::{TOOL_READ_FILE_LIMIT_ARG, TOOL_READ_FILE_LINE_ARG};
 use crate::zed::connection::ConnectionHandle;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde_json::{Value, json};
 use tracing::warn;
 use vtcode_core::config::constants::tools;
@@ -247,41 +247,62 @@ impl ZedAgent {
             tool_content.push_str("\n\n[truncated]");
         }
 
-        // The ACP client serves the editor's buffer, which may be unsaved and may
-        // differ from the disk. Version the response only when it covers the whole
-        // file and the on-disk bytes still hash to the content the model is about to
-        // receive; otherwise report an absent version rather than certifying bytes
-        // the model never saw. `apply_patch` treats an absent precondition as omitted.
-        let content_hash = if truncated {
-            Value::Null
-        } else {
-            let expected_hash =
-                format!("sha256:{}", vtcode_commons::utils::calculate_sha256(truncated_content.as_bytes()));
-            let record_result = match request.session.workspace_runtime() {
-                Ok(Some(runtime)) => {
-                    runtime
-                        .local_tool_registry
-                        .file_ops_tool()
-                        .record_read_content_hash_if_matches(&path, &expected_hash)
-                        .await
-                }
+        // A certified version asserts that the returned window came from the
+        // current on-disk bytes; it does not assert that the model saw the whole
+        // file. The ACP client serves the editor buffer, which may be unsaved, so
+        // a windowed read is certified only when its text equals the same line
+        // window projected from the on-disk bytes (trailing `\n` ignored), and a
+        // whole-file read only when the returned text hashes to those bytes. Any
+        // mismatch, non-UTF-8 on-disk content, or failed read leaves the version
+        // absent rather than certifying bytes the model never saw; `apply_patch`
+        // treats an absent precondition as omitted.
+        let expected_hash = if truncated {
+            None
+        } else if line.is_some() || limit.is_some() {
+            match Self::windowed_disk_hash(&path, line, limit, &truncated_content).await {
+                Ok(Some(content_hash)) => Some(content_hash),
                 Ok(None) => {
-                    self.local_tool_registry
-                        .file_ops_tool()
-                        .record_read_content_hash_if_matches(&path, &expected_hash)
-                        .await
-                }
-                Err(error) => Err(error),
-            };
-            match record_result {
-                Ok(Some(content_hash)) => json!(content_hash),
-                Ok(None) => {
-                    warn!(path = ?path, "ACP read content does not match the on-disk file version");
-                    Value::Null
+                    warn!(path = ?path, "ACP read window does not match the on-disk file version");
+                    None
                 }
                 Err(error) => {
-                    warn!(%error, path = ?path, "Failed to capture ACP read file version");
-                    Value::Null
+                    warn!(%error, path = ?path, "Failed to verify the ACP read window against disk");
+                    None
+                }
+            }
+        } else {
+            Some(format!("sha256:{}", vtcode_commons::utils::calculate_sha256(truncated_content.as_bytes())))
+        };
+
+        let content_hash = match expected_hash {
+            None => Value::Null,
+            Some(expected_hash) => {
+                let record_result = match request.session.workspace_runtime() {
+                    Ok(Some(runtime)) => {
+                        runtime
+                            .local_tool_registry
+                            .file_ops_tool()
+                            .record_read_content_hash_if_matches(&path, &expected_hash)
+                            .await
+                    }
+                    Ok(None) => {
+                        self.local_tool_registry
+                            .file_ops_tool()
+                            .record_read_content_hash_if_matches(&path, &expected_hash)
+                            .await
+                    }
+                    Err(error) => Err(error),
+                };
+                match record_result {
+                    Ok(Some(content_hash)) => json!(content_hash),
+                    Ok(None) => {
+                        warn!(path = ?path, "ACP read content does not match the on-disk file version");
+                        Value::Null
+                    }
+                    Err(error) => {
+                        warn!(%error, path = ?path, "Failed to capture ACP read file version");
+                        Value::Null
+                    }
                 }
             }
         };
@@ -298,6 +319,30 @@ impl ZedAgent {
         let locations = vec![acp::ToolCallLocation::new(path.clone()).line(line)];
 
         Ok(ToolExecutionReport::success(vec![acp::ToolCallContent::from(tool_content)], locations, payload))
+    }
+
+    /// Hash the whole on-disk file when a returned line window matches its projection.
+    ///
+    /// Returns `Ok(None)` when the returned text is not the same window as the
+    /// on-disk bytes. A read or UTF-8 error is propagated without including
+    /// file content, so the caller can withhold the version and log a bounded
+    /// warning.
+    async fn windowed_disk_hash(
+        path: &std::path::Path,
+        line: Option<u32>,
+        limit: Option<u32>,
+        returned: &str,
+    ) -> Result<Option<String>> {
+        let disk_bytes = tokio::fs::read(path)
+            .await
+            .with_context(|| format!("Failed to read back file for version certification: {}", path.display()))?;
+        let disk_text = std::str::from_utf8(&disk_bytes)
+            .with_context(|| format!("File content is not valid UTF-8: {}", path.display()))?;
+        let projected = vtcode_core::line_window(disk_text, line, limit);
+        if projected.trim_end_matches('\n') != returned.trim_end_matches('\n') {
+            return Ok(None);
+        }
+        Ok(Some(format!("sha256:{}", vtcode_commons::utils::calculate_sha256(&disk_bytes))))
     }
 
     pub(crate) async fn run_list_files(&self, args: &Value) -> Result<ToolExecutionReport, String> {
