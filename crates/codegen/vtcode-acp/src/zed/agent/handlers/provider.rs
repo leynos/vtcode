@@ -260,12 +260,12 @@ pub(super) struct GenerationTelemetry {
     finished: bool,
 }
 
-struct GenerationFailure<'a> {
-    runtime: &'a ProviderRequestRuntime,
-    retry_count: u32,
-    retry_disposition: RetryDisposition,
-    retry_delay: Option<Duration>,
-    error: &'a LLMError,
+pub(super) struct GenerationFailure<'a> {
+    pub(super) runtime: &'a ProviderRequestRuntime,
+    pub(super) retry_count: u32,
+    pub(super) retry_disposition: RetryDisposition,
+    pub(super) retry_delay: Option<Duration>,
+    pub(super) error: &'a LLMError,
 }
 
 impl StreamDeadlineTracker {
@@ -316,6 +316,7 @@ pub(super) async fn generate_with_retry(
     generate_with_retry_with_observer(provider, request, runtime, cancellation, failure_sink, &SystemTime::now).await
 }
 
+#[cfg(test)]
 pub(super) async fn generate_with_retry_with_observer(
     provider: &dyn LLMProvider,
     request: LLMRequest,

@@ -2,6 +2,7 @@
 
 use super::tests::{PROMPT_PROVIDER_TEST_LOCK, PromptProviderFactoryGuard, build_wire_test_agent_with_providers};
 use super::*;
+use crate::acp::{InitializeRequest, NewSessionRequest};
 use agent_client_protocol::{Channel, on_receive_notification};
 use assert_fs::TempDir;
 use std::sync::atomic::{AtomicUsize, Ordering};
