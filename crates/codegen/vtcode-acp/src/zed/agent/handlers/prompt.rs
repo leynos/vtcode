@@ -1,6 +1,7 @@
 //! Coordinates ACP prompt preparation, hooks, compaction, and provider-turn execution.
 use super::super::log_suppressed_error;
 use super::super::tool_config::SessionToolDefinitionRequest;
+use super::super::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
 use super::provider::IncompleteProviderTurn;
 use super::*;
 
@@ -73,6 +74,7 @@ pub(super) struct TurnGuard {
 impl TurnGuard {
     pub(super) fn begin(thread: ThreadRuntimeHandle) -> Result<Self, SdkError> {
         let _submission_id = thread.begin_turn().map_err(|error| {
+            warn!(thread_id = %thread.thread_id(), prompt_outcome = "turn_in_progress_rejected", "Rejected concurrent ACP prompt");
             SdkError::internal_error().data(json!({ "reason": "turn_in_progress", "detail": error.to_string() }))
         })?;
         Ok(Self { thread })
@@ -218,34 +220,26 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
     } else {
         Message::assistant_with_tools(assistant_message.to_string(), tool_calls.to_vec())
     };
-    push_session_message(agent, session, session_id, assistant_tool_message)?;
-    persist_session_checkpoint(agent, session, "assistant_tool_calls").await;
+    let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
+    drop(stage_thread_tool_calls(&thread, assistant_tool_message));
+    let tool_call_count = tool_calls.len();
+    info!(session_id = %session_id, tool_call_count, tool_loop_count = *tool_loop_count,
+          tool_recovery_outcome = "placeholders_staged", "ACP tool recovery placeholders staged");
+    require_session_checkpoint(agent, session, "assistant_tool_calls_write_ahead").await?;
 
     let tool_results = match agent.execute_tool_calls(session, session_id, tool_calls).await {
         Ok(results) => results,
         Err(error) => {
-            warn!(%error, "Tool execution failed");
-            for call in tool_calls {
-                push_session_message(
-                    agent,
-                    session,
-                    session_id,
-                    Message::tool_response(call.id.clone(), format!("Tool execution was interrupted: {error}")),
-                )?;
-            }
+            warn!(%error, session_id = %session_id, tool_call_count,
+                  tool_recovery_outcome = "execution_interrupted", "Tool execution failed");
             persist_session_checkpoint(agent, session, "interrupted_tool_results").await;
             return Err(error);
         }
     };
 
-    for result in tool_results {
-        push_session_message(
-            agent,
-            session,
-            session_id,
-            Message::tool_response(result.tool_call_id, result.llm_response),
-        )?;
-    }
+    let finalized_tool_count = replace_thread_tool_results(&thread, &tool_results);
+    info!(session_id = %session_id, tool_call_count, tool_loop_count = *tool_loop_count,
+          finalized_tool_count, tool_recovery_outcome = "results_replaced", "ACP tool recovery results replaced");
     persist_session_checkpoint(agent, session, "tool_results").await;
 
     Ok(if session.cancellation.is_cancelled() {
@@ -400,4 +394,31 @@ pub(super) fn assistant_tool_call_message(
         message.reasoning = Some(reasoning.to_owned());
     }
     message
+}
+
+/// Persists the strict write-ahead checkpoint required before tool execution.
+///
+/// Ordinary transcript checkpoints remain best-effort through
+/// [`persist_session_checkpoint`].
+async fn require_session_checkpoint(
+    agent: &ZedAgent,
+    session: &SessionHandle,
+    boundary: &'static str,
+) -> Result<(), SdkError> {
+    if let Err(error) = agent.checkpoint_session(session).await {
+        warn!(%error, boundary, "Failed to persist ACP session checkpoint");
+        return Err(
+            SdkError::internal_error().data(format!("Failed to persist ACP session checkpoint at {boundary}: {error}"))
+        );
+    }
+    if let Err(error) = session.update_transcript_path().await {
+        log_suppressed_error(&error, "transcript_update", "transcript_write_failed");
+        warn!(
+            operation = "transcript_update",
+            error_category = "transcript_write_failed",
+            boundary,
+            "Failed to update ACP session transcript path"
+        );
+    }
+    Ok(())
 }

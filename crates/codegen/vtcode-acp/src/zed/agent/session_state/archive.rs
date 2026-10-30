@@ -1,11 +1,16 @@
 //! Durable archive persistence and workspace-bound session restoration.
+//!
+//! Archive recovery records unresolved tool effects as uncertain before a
+//! session becomes active. Ambiguous terminal-result history is rejected
+//! without replaying calls or registering a resumable session.
 use anyhow::Context;
 use futures::future::BoxFuture;
 use std::future::Future;
 use std::path::Path;
 use std::time::Instant;
 use tracing::{Instrument, debug, warn};
-use vtcode_core::core::threads::ThreadBootstrap;
+use vtcode_core::core::agent::snapshots::SnapshotTurnDiagnostics;
+use vtcode_core::core::threads::{ThreadBootstrap, messages_from_session_listing};
 use vtcode_core::hooks::SessionStartTrigger;
 use vtcode_core::llm::provider::MessageRole;
 use vtcode_core::utils::session_archive::{
@@ -19,6 +24,7 @@ use crate::zed::types::{SessionHandle, lock_poison_error};
 
 use super::{SessionHandleBootstrap, ZedAgent, safe_internal_error, safe_invalid_params_error};
 use crate::zed::agent::log_suppressed_error;
+use crate::zed::agent::tool_recovery::{RecoveryReport, repair_unresolved_tool_calls};
 
 pub(super) fn trace_storage_operation<'a, T: 'a, E: 'a, F>(
     operation: &'static str,
@@ -45,10 +51,22 @@ where
 
 impl ZedAgent {
     pub(in crate::zed::agent) async fn checkpoint_session(&self, session: &SessionHandle) -> anyhow::Result<()> {
-        trace_storage_operation("checkpoint", self.checkpoint_session_inner(session)).await
+        self.checkpoint_session_with_turn_diagnostics(session, None).await
     }
 
-    async fn checkpoint_session_inner(&self, session: &SessionHandle) -> anyhow::Result<()> {
+    async fn checkpoint_session_with_turn_diagnostics(
+        &self,
+        session: &SessionHandle,
+        turn_diagnostics: Option<SnapshotTurnDiagnostics>,
+    ) -> anyhow::Result<()> {
+        trace_storage_operation("checkpoint", self.checkpoint_session_inner(session, turn_diagnostics)).await
+    }
+
+    async fn checkpoint_session_inner(
+        &self,
+        session: &SessionHandle,
+        turn_diagnostics: Option<SnapshotTurnDiagnostics>,
+    ) -> anyhow::Result<()> {
         if !history_persistence_enabled() {
             debug!("Skipped ACP session checkpoint because history persistence is disabled");
             return Ok(());
@@ -99,7 +117,7 @@ impl ZedAgent {
                 token_usage: None,
                 max_context_tokens: None,
                 loaded_skills: Some(snapshot.loaded_skills),
-                turn_diagnostics: None,
+                turn_diagnostics,
             })
             .await?;
         let persistence_outcome = match persistence_status {
@@ -121,49 +139,80 @@ impl ZedAgent {
             let listing = find_session_by_identifier(identifier)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("unknown archived session '{identifier}'"))?;
-            let workspace_match = session_listing_workspace_match(&listing, workspace.path())
-                .with_context(|| format!("resolving workspace ownership for archived session '{identifier}'"))?;
-            anyhow::ensure!(
-                workspace_match == WorkspaceMatch::Matches,
-                "archived session '{identifier}' belongs to a different workspace"
-            );
-            let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
-            let thread = self
-                .thread_manager
-                .start_thread_with_identifier(listing.identifier(), ThreadBootstrap::from_listing(listing));
-            let workspace_lease = self
-                .workspace_runtime_for(workspace)
+            self.attach_thread_from_listing(session_id, identifier, workspace, listing)
                 .await
-                .context("Failed to initialize archived ACP session workspace")?;
-            let handle = self.build_session_handle(
-                thread,
-                SessionHandleBootstrap {
-                    session_id: session_id.clone(),
-                    archive: Some(archive),
-                    trigger: SessionStartTrigger::Resume,
-                    workspace_runtime: Some(workspace_lease.runtime().clone()),
-                    workspace_lease: Some(workspace_lease),
-                },
-            );
-            let insert_result = self
-                .sessions
-                .lock()
-                .map_err(|error| lock_poison_error("registering resumed ACP session", error))
-                .map(|mut sessions| drop(sessions.insert(session_id.clone(), handle.clone())));
-            if let Err(error) = insert_result {
-                if let Err(cleanup_error) = handle.release_workspace_lease().await {
-                    log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
-                    warn!(
-                        operation = "archive_attach",
-                        error_category = "workspace_lease_cleanup_failed",
-                        "Failed to release ACP workspace lease after resumed session registration failed"
-                    );
-                }
-                return Err(error);
-            }
-            Ok(handle)
         })
         .await
+    }
+
+    pub(super) async fn attach_thread_from_listing(
+        &self,
+        session_id: &acp::SessionId,
+        identifier: &str,
+        workspace: &AcpSessionWorkspace,
+        mut listing: SessionListing,
+    ) -> anyhow::Result<SessionHandle> {
+        let workspace_match = session_listing_workspace_match(&listing, workspace.path())
+            .with_context(|| format!("resolving workspace ownership for archived session '{identifier}'"))?;
+        anyhow::ensure!(
+            workspace_match == WorkspaceMatch::Matches,
+            "archived session '{identifier}' belongs to a different workspace"
+        );
+        let preserved_turn_diagnostics = listing
+            .snapshot
+            .progress
+            .as_ref()
+            .and_then(|progress| progress.turn_diagnostics.clone());
+        let recovery = repair_archived_tool_calls(&mut listing).map_err(|error| {
+            warn!(session_id = %session_id, tool_recovery_outcome = "ambiguous_history_rejected",
+                  "Rejected archived ACP session with ambiguous tool-result history");
+            anyhow::anyhow!("Archived ACP session has ambiguous tool-result history and was not resumed; inspect the archive before continuing: {error}")
+        })?;
+        let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
+        let thread = self
+            .thread_manager
+            .start_thread_with_identifier(listing.identifier(), ThreadBootstrap::from_listing(listing));
+        let workspace_lease = self
+            .workspace_runtime_for(workspace)
+            .await
+            .context("Failed to initialize archived ACP session workspace")?;
+        let handle = self.build_session_handle(
+            thread,
+            SessionHandleBootstrap {
+                session_id: session_id.clone(),
+                archive: Some(archive),
+                trigger: SessionStartTrigger::Resume,
+                workspace_runtime: Some(workspace_lease.runtime().clone()),
+                workspace_lease: Some(workspace_lease),
+            },
+        );
+        if recovery.repaired_calls > 0 {
+            self.checkpoint_session_with_turn_diagnostics(&handle, preserved_turn_diagnostics)
+                .await
+                .context("Failed to persist repaired ACP tool-call history")?;
+            warn!(
+                session_id = %session_id,
+                repaired_calls = recovery.repaired_calls,
+                "Repaired unresolved tool calls while loading durable ACP session"
+            );
+        }
+        let insert_result = self
+            .sessions
+            .lock()
+            .map_err(|error| lock_poison_error("registering resumed ACP session", error))
+            .map(|mut sessions| drop(sessions.insert(session_id.clone(), handle.clone())));
+        if let Err(error) = insert_result {
+            if let Err(cleanup_error) = handle.release_workspace_lease().await {
+                log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
+                warn!(
+                    operation = "archive_attach",
+                    error_category = "workspace_lease_cleanup_failed",
+                    "Failed to release ACP workspace lease after resumed session registration failed"
+                );
+            }
+            return Err(error);
+        }
+        Ok(handle)
     }
 
     pub(super) async fn attach_or_get_session(
@@ -472,4 +521,17 @@ pub(super) fn session_listing_workspace_match(
     let stored_workspace = session_workspace_path(listing)
         .ok_or_else(|| anyhow::anyhow!("archived session '{}' has no stored workspace path", listing.identifier()))?;
     canonical_workspace_match(&stored_workspace, requested_workspace)
+}
+
+/// Repairs unresolved archived calls into uncertain-effect placeholders for checkpointing.
+pub(super) fn repair_archived_tool_calls(
+    listing: &mut SessionListing,
+) -> Result<RecoveryReport, crate::zed::agent::tool_recovery::AmbiguousToolResultHistory> {
+    let mut messages = messages_from_session_listing(listing);
+    let report = repair_unresolved_tool_calls(&mut messages)?;
+    if report.repaired_calls > 0 {
+        listing.snapshot.total_messages = messages.len();
+        listing.snapshot.messages = messages.iter().map(SessionMessage::from).collect();
+    }
+    Ok(report)
 }
