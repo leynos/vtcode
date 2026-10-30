@@ -202,9 +202,15 @@ impl ZedAgent {
             );
         }
         if recovery.history_changed() {
-            self.checkpoint_session_with_turn_diagnostics(&handle, preserved_turn_diagnostics)
+            if let Err(error) = self
+                .checkpoint_session_with_turn_diagnostics(&handle, preserved_turn_diagnostics)
                 .await
-                .context("Failed to persist repaired ACP tool-call history")?;
+            {
+                if let Err(cleanup_error) = handle.release_workspace_lease().await {
+                    log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
+                }
+                return Err(error).context("Failed to persist repaired ACP tool-call history");
+            }
             warn!(
                 session_id = %session_id,
                 repaired_calls = recovery.repaired_calls,
