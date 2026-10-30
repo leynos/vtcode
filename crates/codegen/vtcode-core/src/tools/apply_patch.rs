@@ -79,21 +79,19 @@ pub fn patch_precondition_source_paths(patch: &Patch) -> Vec<&str> {
         .collect()
 }
 
-/// Assess whether a stale patch could be rebased onto the current file content.
+/// Decide whether `patch` still applies to already-read `current` content.
 ///
-/// Reads `source_path` and reports whether the patch still applies to it, plus
-/// bounded anchor context for chunks that no longer match. A read failure is
-/// returned as `Err` rather than folded into `(false, vec![])`: "the file could
-/// not be read" and "the patch no longer applies" are different outcomes, and
-/// callers must be able to tell the model which one it hit. Reporting the former
-/// as the latter would tell the model its anchors are wrong and send it off to
-/// regenerate a patch that was never actually assessed.
-pub async fn assess_patch_rebase(patch: &Patch, source_path: &Path) -> anyhow::Result<(bool, Vec<Value>)> {
-    let current = tokio::fs::read_to_string(source_path).await.with_context(|| {
-        format!("Failed to read {} while assessing whether the patch could be rebased", source_path.display())
-    })?;
-    Ok(assess_patch_rebase_with_content(patch, source_path, &current).await)
-}
+/// Callers pass the bytes they already hold (such as the precondition check in
+/// the patch pipeline) so the assessment cannot read a different version than
+/// the one they snapshotted. A caller whose read failed has to report that
+/// failure itself: it is a different outcome from "the patch no longer
+/// applies", and folding it into `(false, vec![])` would tell the model its
+/// anchors are wrong and send it off to regenerate a patch that was never
+/// actually assessed.
+///
+/// Returns whether the patch can be rebased onto the current content, plus up
+/// to three bounded anchor failures describing the chunks that no longer match.
+/// A patch that is not exactly one same-path update is never rebasable.
 pub(crate) async fn assess_patch_rebase_with_content(
     patch: &Patch,
     source_path: &Path,
@@ -133,6 +131,13 @@ pub(crate) async fn assess_patch_rebase_with_content(
         }
     }
 }
+
+/// Describe one hunk whose anchors no longer match the current file.
+///
+/// The excerpt is deliberately bounded: this payload is shown to the model, so
+/// it reports the chunk's anchor, the first few expected lines, and the closest
+/// window of current lines found by token overlap. That is enough to show why
+/// the rebase failed without re-reading the whole file into the transcript.
 fn patch_anchor_failure(chunk: &PatchHunk, current: &str) -> Value {
     let current_lines = current.lines().collect::<Vec<_>>();
     let expected_lines = chunk
@@ -160,6 +165,11 @@ fn patch_anchor_failure(chunk: &PatchHunk, current: &str) -> Value {
     })
 }
 
+/// Score how closely a current line matches the line the hunk expects.
+///
+/// Counts whitespace-separated tokens shared between the two lines. Used only
+/// to pick the most promising window for [`patch_anchor_failure`]; the score is
+/// a search heuristic, not a correctness signal.
 fn line_match_score(expected: &str, candidate: &str) -> usize {
     expected
         .split_whitespace()
@@ -167,9 +177,12 @@ fn line_match_score(expected: &str, candidate: &str) -> usize {
         .count()
 }
 
+/// Truncate an excerpt to the 240 characters that fit in a model-visible
+/// diagnostic.
 fn bounded_excerpt(excerpt: &str) -> String {
     excerpt.chars().take(240).collect()
 }
+/// Pick the patch source, preferring the patch-shaped alias when both are present.
 pub fn patch_source_from_args(args: &Value) -> Option<&str> {
     let input = args.get("input").and_then(|value| value.as_str());
     let patch = args.get("patch").and_then(|value| value.as_str());
@@ -363,6 +376,7 @@ mod tests {
     }
 
     proptest! {
+        /// Accept only `sha256:` plus 64 lower-case hexadecimal digits.
         #[test]
         fn expected_content_hash_accepts_only_the_canonical_wire_shape(candidate in ".{0,100}") {
             let digest = candidate.strip_prefix("sha256:");

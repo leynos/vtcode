@@ -14,6 +14,8 @@
 
 use super::ToolRegistry;
 use super::patch_preconditions::{invalid_patch_precondition, repeated_no_op_error, validate_patch_content_hash};
+use crate::config::constants::tools;
+use crate::metrics::{PatchNoOpOutcome, PatchPreconditionOutcome};
 use crate::tools::edited_file_monitor::{FileSnapshot, MutationLease, conflict_override_snapshot};
 use crate::tools::registry::patch_guard::{CanonicalPatchOperation, NoOpPatchDecision, PatchPathState};
 use anyhow::{Result, anyhow};
@@ -21,6 +23,24 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::fs;
+
+/// Records how long one `apply_patch` evaluation took when it returns.
+///
+/// A guard rather than a call at each exit keeps the timing honest: rejections,
+/// planning failures, and successful writes all return through a different
+/// branch, and every one of them is an evaluation worth counting.
+struct PatchEvaluationTimer<'a> {
+    registry: &'a ToolRegistry,
+    started: std::time::Instant,
+}
+
+impl Drop for PatchEvaluationTimer<'_> {
+    /// Record the finished `apply_patch` evaluation duration.
+    fn drop(&mut self) {
+        let duration_ms = u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        self.registry.metrics_collector().record_patch_evaluation(duration_ms);
+    }
+}
 
 enum PlannedPatchWrite {
     Text {
@@ -40,7 +60,14 @@ pub(super) struct CapturedPatchPath {
 }
 
 impl ToolRegistry {
+    /// Plan, validate, and apply one patch through the version and no-op guards.
+    ///
+    /// Every mutation path is snapshotted before planning, so the version
+    /// precondition and the no-op ladder compare the same bytes the applicator
+    /// will write.
     pub(super) async fn execute_apply_patch_internal(&self, args: Value) -> Result<Value> {
+        let _evaluation_timer = PatchEvaluationTimer { registry: self, started: std::time::Instant::now() };
+        let context = self.harness_context_snapshot();
         let patch_input = crate::tools::apply_patch::decode_apply_patch_input(&args)?
             .ok_or_else(|| anyhow!("Missing patch input {}", crate::tools::error_helpers::PATCH_PARAMETER_HINT))?;
         let override_snapshot = conflict_override_snapshot(&args);
@@ -52,6 +79,15 @@ impl ToolRegistry {
         let expected_hash = match crate::tools::apply_patch::expected_content_hash_from_args(&args) {
             Ok(value) => value.map(ToOwned::to_owned),
             Err(error) => {
+                self.metrics_collector()
+                    .record_patch_precondition(PatchPreconditionOutcome::MalformedHash);
+                tracing::info!(
+                    operation = tools::APPLY_PATCH,
+                    outcome = PatchPreconditionOutcome::MalformedHash.as_str(),
+                    session_id = %context.session_id,
+                    task_id = %context.task_id.as_deref().unwrap_or(""),
+                    "apply_patch version precondition rejected"
+                );
                 return Ok(invalid_patch_precondition(
                     error.to_string(),
                     json!({
@@ -62,8 +98,21 @@ impl ToolRegistry {
             }
         };
         if let Some(expected_hash) = expected_hash {
-            if let Some(error) = validate_patch_content_hash(self, &patch, &expected_hash, &captured_paths).await? {
-                return Ok(error);
+            match validate_patch_content_hash(self, &patch, &expected_hash, &captured_paths).await? {
+                Some(rejection) => {
+                    self.metrics_collector().record_patch_precondition(rejection.outcome);
+                    tracing::info!(
+                        operation = tools::APPLY_PATCH,
+                        outcome = rejection.outcome.as_str(),
+                        session_id = %context.session_id,
+                        task_id = %context.task_id.as_deref().unwrap_or(""),
+                        "apply_patch version precondition rejected"
+                    );
+                    return Ok(rejection.response);
+                }
+                None => self
+                    .metrics_collector()
+                    .record_patch_precondition(PatchPreconditionOutcome::Matched),
             }
         }
         for operation in patch.operations() {
@@ -82,8 +131,24 @@ impl ToolRegistry {
             .lock()
             .observe(&patch, &canonical_operations, &before, &after)
         {
-            NoOpPatchDecision::Execute => {}
+            NoOpPatchDecision::Execute => {
+                self.metrics_collector().record_patch_no_op(PatchNoOpOutcome::Execute);
+            }
             NoOpPatchDecision::Success { signature, occurrence } => {
+                let outcome = if occurrence == 1 {
+                    PatchNoOpOutcome::NoOpFirst
+                } else {
+                    PatchNoOpOutcome::NoOpRepeated
+                };
+                self.metrics_collector().record_patch_no_op(outcome);
+                tracing::info!(
+                    operation = tools::APPLY_PATCH,
+                    decision = outcome.as_str(),
+                    occurrence,
+                    session_id = %context.session_id,
+                    task_id = %context.task_id.as_deref().unwrap_or(""),
+                    "apply_patch no-op decision"
+                );
                 let mut response = json!({
                     "success": true,
                     "no_op": true,
@@ -104,6 +169,15 @@ impl ToolRegistry {
                 return Ok(response);
             }
             NoOpPatchDecision::Block { signature, occurrence } => {
+                self.metrics_collector().record_patch_no_op(PatchNoOpOutcome::NoOpBlocked);
+                tracing::info!(
+                    operation = tools::APPLY_PATCH,
+                    decision = PatchNoOpOutcome::NoOpBlocked.as_str(),
+                    occurrence,
+                    session_id = %context.session_id,
+                    task_id = %context.task_id.as_deref().unwrap_or(""),
+                    "apply_patch no-op decision"
+                );
                 return Ok(repeated_no_op_error(signature, occurrence));
             }
         }
@@ -187,6 +261,7 @@ impl ToolRegistry {
         Ok(canonical)
     }
 
+    /// Plan every write the patch will perform, in applicator order.
     async fn planned_patch_writes(
         &self,
         patch: &crate::tools::editing::Patch,
@@ -208,6 +283,7 @@ impl ToolRegistry {
         Ok(writes)
     }
 
+    /// Build the bounded per-file diff previews returned to the model.
     fn patch_diff_previews(&self, writes: &[PlannedPatchWrite]) -> Vec<Value> {
         writes
             .iter()
@@ -252,6 +328,7 @@ impl ToolRegistry {
         Ok(captured)
     }
 
+    /// Derive the before and after path states the no-op guard compares.
     fn planned_patch_states(
         &self,
         captured_paths: &[CapturedPatchPath],
@@ -283,6 +360,7 @@ impl ToolRegistry {
         (before, after)
     }
 
+    /// Take one mutation lease per path so local writers queue behind this patch.
     async fn acquire_patch_mutations(&self, mutation_paths: &[PathBuf]) -> Vec<MutationLease> {
         let mut leases = Vec::new();
         for path in mutation_paths {
@@ -291,6 +369,7 @@ impl ToolRegistry {
         leases
     }
 
+    /// Report an external change to a target before the patch is applied.
     async fn detect_patch_operation_conflict(
         &self,
         operation: &crate::tools::editing::PatchOperation,
@@ -342,6 +421,7 @@ impl ToolRegistry {
         }
     }
 
+    /// Plan the writes for one operation against the previous operation's result.
     async fn planned_patch_writes_for_operation(
         &self,
         operation: &crate::tools::editing::PatchOperation,

@@ -101,6 +101,7 @@ impl ZedAgent {
         vtcode_core::subagents::with_subagent_invocation_context(context, execution).await
     }
 
+    /// Admit and execute one public tool call, mapping the outcome into an ACP report.
     async fn execute_local_tool_with_registry(
         &self,
         registry: &vtcode_core::tools::registry::ToolRegistry,
@@ -214,6 +215,7 @@ impl ZedAgent {
         self.truncate_text(&plain)
     }
 
+    /// Read a file through the ACP client and certify the version for stable bytes.
     pub(super) async fn run_read_file(
         &self,
         request: ClientFileReadRequest<'_>,

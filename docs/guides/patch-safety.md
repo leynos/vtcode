@@ -1,9 +1,15 @@
 # Patch safety: file versions and repeated no-op guards
 
-`apply_patch` refuses to mutate a file it has not seen the current version of,
-and it stops accepting the same no-op patch over and over. Both guards exist to
-keep one failure mode from wasting a turn: the agent regenerating a patch
-against stale content, or resubmitting a patch that cannot change anything.
+`apply_patch` refuses to mutate a file whose tracked version has changed since
+it was read, and it stops accepting the same no-op patch over and over. Both
+guards exist to keep one failure mode from wasting a turn: the agent
+regenerating a patch against stale content, or resubmitting a patch that cannot
+change anything.
+
+Version checking is conditional rather than unconditional. A path is version
+checked once a read has been recorded for it, at which point a subsequent
+change is detected. A caller can additionally supply `expected_content_hash` as
+an explicit precondition. When neither condition holds, the patch proceeds.
 
 This guide covers what the two guards do, what each rejection looks like, and
 how to recover.
@@ -23,8 +29,8 @@ but without a `content_hash`, so they cannot be used as a precondition.
 
 ## Versioned patches
 
-Pass the hash back as `expected_content_hash` when you want the write to be
-conditional on the file still matching:
+Pass the hash back as `expected_content_hash` so the patch applies only while
+the file still matches:
 
 ```json
 {
@@ -39,11 +45,11 @@ Practical rules:
   pre-existing source file. Add-only patches have no prior version, and a
   multi-file patch has several, so split the patch by source file instead of
   guessing which hash to send.
-- Omit the argument when you do not need the guarantee. It is optional, and
-  unversioned patches behave exactly as before.
+- Omit the argument when the guarantee is not required. It is optional, and
+  unversioned patches behave as before.
 - The hash is not a lock. It is a precondition: it is checked immediately
-  before the write, and it never blocks a patch the moment the content still
-  matches.
+  before the patch is applied, and it only blocks a patch whose content has
+  changed.
 
 ### When the version no longer matches
 

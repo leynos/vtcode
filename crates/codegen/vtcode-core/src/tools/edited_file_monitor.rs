@@ -307,6 +307,7 @@ impl EditedFileMonitor {
         monitor
     }
 
+    /// Install or clear the conflict audit log from the permissions config.
     pub fn apply_permissions_config(&self, permissions: &PermissionsConfig) {
         let mut audit_log = self.inner.audit_log.lock();
         if !permissions.audit_enabled {
@@ -324,6 +325,7 @@ impl EditedFileMonitor {
         }
     }
 
+    /// Record the current raw-byte snapshot as the version the model has read.
     pub async fn track_read(&self, path: &Path) -> Result<()> {
         self.capture_read_snapshot(path).await.map(|_| ())
     }
