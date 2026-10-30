@@ -4,7 +4,6 @@
 //! operation. They never change the global subscriber, so a test can assert on
 //! exactly the events the operation emitted without leaking capture into other
 //! tests.
-use std::fmt::Write as FmtWrite;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 use tracing::field::{Field, Visit};
@@ -24,7 +23,9 @@ where
     fn on_event(&self, event: &tracing::Event<'_>, _context: Context<'_, S>) {
         let mut fields = CapturedFields::default();
         event.record(&mut fields);
-        self.0.lock().expect("log capture lock").push(fields.0);
+        // A poisoned capture lock still holds the events recorded before the
+        // panic, which are the evidence an assertion needs.
+        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(fields.0);
     }
 }
 
@@ -33,15 +34,15 @@ struct CapturedFields(String);
 
 impl Visit for CapturedFields {
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        write!(&mut self.0, " {}={value:?}", field.name()).expect("write trace field");
+        self.0.push_str(&format!(" {}={value:?}", field.name()));
     }
 
     fn record_str(&mut self, field: &Field, value: &str) {
-        write!(&mut self.0, " {}={value:?}", field.name()).expect("write trace field");
+        self.0.push_str(&format!(" {}={value:?}", field.name()));
     }
 
     fn record_u64(&mut self, field: &Field, value: u64) {
-        write!(&mut self.0, " {}={value}", field.name()).expect("write trace field");
+        self.0.push_str(&format!(" {}={value}", field.name()));
     }
 }
 
@@ -52,7 +53,7 @@ pub(super) fn capturing_at<T>(level: LevelFilter, run: impl FnOnce() -> T) -> (T
     let events = Arc::clone(&capture.0);
     let subscriber = Registry::default().with(level).with(capture);
     let output = tracing::subscriber::with_default(subscriber, run);
-    let events = events.lock().expect("log capture lock").clone();
+    let events = events.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
     (output, events)
 }
 
@@ -76,6 +77,6 @@ pub(super) async fn capturing_async<T>(level: LevelFilter, future: impl Future<O
     let guard = tracing::subscriber::set_default(subscriber);
     let output = future.await;
     drop(guard);
-    let events = events.lock().expect("log capture lock").clone();
+    let events = events.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
     (output, events)
 }
