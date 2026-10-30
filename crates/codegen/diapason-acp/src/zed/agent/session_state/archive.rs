@@ -1,5 +1,10 @@
 //! Durable archive persistence and workspace-bound session restoration.
+//!
+//! Archive recovery records unresolved tool effects as uncertain before a
+//! session becomes active. Ambiguous terminal-result history is rejected
+//! without replaying calls or registering a resumable session.
 use anyhow::Context;
+use diapason_core::core::agent::snapshots::SnapshotTurnDiagnostics;
 use diapason_core::core::threads::{ThreadBootstrap, messages_from_session_listing};
 use diapason_core::hooks::SessionStartTrigger;
 use diapason_core::llm::provider::MessageRole;
@@ -20,33 +25,6 @@ use crate::zed::types::{SessionHandle, lock_poison_error};
 use super::{SessionHandleBootstrap, ZedAgent, safe_internal_error, safe_invalid_params_error};
 use crate::zed::agent::log_suppressed_error;
 use crate::zed::agent::tool_recovery::{RecoveryReport, repair_unresolved_tool_calls};
-
-use vtcode_core::core::agent::snapshots::SnapshotTurnDiagnostics;
-use vtcode_core::core::threads::{ThreadBootstrap, messages_from_session_listing};
-use vtcode_core::hooks::SessionStartTrigger;
-use vtcode_core::llm::provider::MessageRole;
-use vtcode_core::utils::session_archive::{
-    SessionArchive, SessionListing, SessionMessage, SessionProgressArgs, SessionProgressPersistenceStatus,
-    find_session_by_identifier, history_persistence_enabled, list_recent_sessions, session_workspace_path,
-};
-
-//! Durable archive persistence and workspace-bound session restoration.
-};
-
-
-//! Durable archive persistence and workspace-bound session restoration.
-<<<<<<< ours
-};
-};
-//! Durable archive persistence and workspace-bound session restoration.
-||||||| original
-=======
-//!
-//! Archive recovery records unresolved tool effects as uncertain before a
-//! session becomes active. Ambiguous terminal-result history is rejected
-//! without replaying calls or registering a resumable session.
->>>>>>> theirs
-};
 
 pub(super) fn trace_storage_operation<'a, T: 'a, E: 'a, F>(
     operation: &'static str,

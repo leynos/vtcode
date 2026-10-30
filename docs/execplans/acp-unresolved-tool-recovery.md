@@ -1,9 +1,9 @@
 # Recover interrupted ACP tool calls safely
 
-This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, `Outcomes & Retrospective`, `Conformance Basis`, and
-`Verification Plan` must be kept up to date as work proceeds.
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
+`Outcomes & Retrospective`, `Conformance Basis`, and `Verification Plan` must
+be kept up to date as work proceeds.
 
 Status: COMPLETE
 
@@ -65,43 +65,32 @@ from both lower layers.
 ## Risks
 
 - Risk: a placeholder Tool result could leak into a normal provider request
-  before the actual result replaces it.
-  Severity: high.
-  Likelihood: low.
+  before the actual result replaces it. Severity: high. Likelihood: low.
   Mitigation: retain the existing per-thread turn guard, stage and checkpoint
   placeholders only inside the active turn, and replace them before the next
   provider request. Add a normal-completion regression proving only real
   results reach the continuation request.
 
 - Risk: legacy repair could duplicate a valid result or reorder history.
-  Severity: high.
-  Likelihood: medium.
-  Mitigation: make repair a pure, idempotent transformation and use property
-  tests over generated tool-call groups, partial result subsets, and unrelated
-  messages.
+  Severity: high. Likelihood: medium. Mitigation: make repair a pure,
+  idempotent transformation and use property tests over generated tool-call
+  groups, partial result subsets, and unrelated messages.
 
 - Risk: a process can fail after a tool side effect but before its real result
-  is checkpointed.
-  Severity: high.
-  Likelihood: medium.
-  Mitigation: the durable write-ahead result explicitly marks state as
-  uncertain, prohibits replay, and instructs the model to verify the workspace.
-  This is intentional conservative recovery, not an attempt at distributed
-  transaction semantics.
+  is checkpointed. Severity: high. Likelihood: medium. Mitigation: the durable
+  write-ahead result explicitly marks state as uncertain, prohibits replay, and
+  instructs the model to verify the workspace. This is intentional conservative
+  recovery, not an attempt at distributed transaction semantics.
 
 - Risk: the current turn guard may reject a second prompt only after doing
-  ancillary work such as task-plan replay.
-  Severity: medium.
-  Likelihood: high.
+  ancillary work such as task-plan replay. Severity: medium. Likelihood: high.
   Mitigation: acquire the guard before any prompt-scoped tool or history work,
   and prove ordering through the official ACP duplex harness.
 
 - Risk: generic command classification may overwrite a typed stale-session
-  classification and re-enable the misleading partial-state suffix.
-  Severity: medium.
-  Likelihood: medium.
-  Mitigation: preserve the typed classification through
-  `ToolExecutionError::with_tool_call_context` and assert the complete
+  classification and re-enable the misleading partial-state suffix. Severity:
+  medium. Likelihood: medium. Mitigation: preserve the typed classification
+  through `ToolExecutionError::with_tool_call_context` and assert the complete
   structured and user-facing result.
 
 ## Progress
@@ -130,49 +119,46 @@ from both lower layers.
 ## Surprises & discoveries
 
 - Observation: `run_prompt` already holds a `TurnGuard`, but it calls
-  `replay_persisted_task_plan` before acquiring that guard.
-  Evidence: `crates/codegen/vtcode-acp/src/zed/agent/handlers.rs::run_prompt`.
-  Impact: a concurrent prompt is rejected before history mutation but can still
-  perform ancillary tool work. Guard acquisition must move to the first
-  session-scoped operation.
+  `replay_persisted_task_plan` before acquiring that guard. Evidence:
+  `crates/codegen/vtcode-acp/src/zed/agent/handlers.rs::run_prompt`. Impact: a
+  concurrent prompt is rejected before history mutation but can still perform
+  ancillary tool work. Guard acquisition must move to the first session-scoped
+  operation.
 
 - Observation: the live tool loop checkpoints the assistant tool-call message
   before executing tools, and checkpoints Tool results only after all calls
-  return.
-  Evidence: the `assistant_tool_calls` and `tool_results` checkpoint boundaries
-  in `run_prompt`.
-  Impact: a process failure between those boundaries creates the exact invalid
-  durable history observed in the user archives. The assistant call and its
-  recovery results must become one write-ahead checkpoint.
+  return. Evidence: the `assistant_tool_calls` and `tool_results` checkpoint
+  boundaries in `run_prompt`. Impact: a process failure between those
+  boundaries creates the exact invalid durable history observed in the user
+  archives. The assistant call and its recovery results must become one
+  write-ahead checkpoint.
 
 - Observation: graceful `execute_tool_calls` errors already append interruption
   results, but task abort, process death, or a connection loss can bypass that
-  caller cleanup.
-  Evidence: `execute_tool_calls` returns only after sequential execution and
-  the caller owns error-message insertion.
-  Impact: exception-path cleanup remains useful, but durable safety must not
-  depend on the future reaching that cleanup block.
+  caller cleanup. Evidence: `execute_tool_calls` returns only after sequential
+  execution and the caller owns error-message insertion. Impact: exception-path
+  cleanup remains useful, but durable safety must not depend on the future
+  reaching that cleanup block.
 
 - Observation: archive attachment has no path into the tool executor; it only
   rehydrates messages, builds the workspace runtime, and checkpoints repaired
-  history.
-  Evidence: `attach_thread_from_listing` owns the complete post-discovery load
-  path, and the legacy mutation regression leaves a real file unchanged while
-  persisting the synthetic Tool result.
-  Impact: no-replay is proved directly at the archive attachment seam, while
-  the official ACP duplex harness separately proves continuation-result
-  replacement and prompt admission. No test-only executor bypass was added.
+  history. Evidence: `attach_thread_from_listing` owns the complete
+  post-discovery load path, and the legacy mutation regression leaves a real
+  file unchanged while persisting the synthetic Tool result. Impact: no-replay
+  is proved directly at the archive attachment seam, while the official ACP
+  duplex harness separately proves continuation-result replacement and prompt
+  admission. No test-only executor bypass was added.
 
 - Observation: `with_tool_call_context` marks every command tool as possibly
-  mutating, even when a typed pre-execution lookup proves that a
-  `write_stdin` session does not exist.
-  Evidence: `crates/codegen/vtcode-core/src/tools/registry/error.rs`.
-  Impact: stale-session classification must survive this decoration step.
+  mutating, even when a typed pre-execution lookup proves that a `write_stdin`
+  session does not exist. Evidence:
+  `crates/codegen/vtcode-core/src/tools/registry/error.rs`. Impact:
+  stale-session classification must survive this decoration step.
 
 - Observation: the first full `vtcode-acp` run reported one trust-sync load
   failure in an existing concurrent-workspace test, while all 20 isolated
-  repetitions and the complete 187-test rerun passed.
-  Evidence: `/tmp/nextest-vtcode-acp-VTCode-fix-acp-unresolved-tool-recovery-2.out`,
+  repetitions and the complete 187-test rerun passed. Evidence:
+  `/tmp/nextest-vtcode-acp-VTCode-fix-acp-unresolved-tool-recovery-2.out`,
   `/tmp/alchemist-h1-trust-sync-vtcode-20260816-qualified.log`, and
   `/tmp/nextest-vtcode-acp-VTCode-fix-acp-unresolved-tool-recovery-3.out`.
   Impact: the race hypothesis remains inconclusive, so no unrelated trust-store
@@ -181,41 +167,37 @@ from both lower layers.
 ## Decision log
 
 - Decision: use a durable write-ahead Tool result, not replay metadata or a
-  pending-work queue.
-  Rationale: it restores provider-valid history before a risky operation and
-  naturally prohibits automatic replay. A successful tool replaces the
-  placeholder before the continuation request.
-  Date/Author: 2026-08-16, Codex.
+  pending-work queue. Rationale: it restores provider-valid history before a
+  risky operation and naturally prohibits automatic replay. A successful tool
+  replaces the placeholder before the continuation request. Date/Author:
+  2026-08-16, Codex.
 
 - Decision: repair legacy history as a pure message transformation during
   archive attachment, then persist it through the existing checkpoint method.
   Rationale: this keeps compatibility at the deployed JSON boundary without a
-  second migration store or source-API shim.
-  Date/Author: 2026-08-16, Codex.
+  second migration store or source-API shim. Date/Author: 2026-08-16, Codex.
 
 - Decision: insert a missing result immediately after the existing contiguous
-  Tool results for its assistant call.
-  Rationale: OpenAI-compatible providers require Tool results to remain next to
-  the assistant tool request. Appending repairs at the end would still leave an
-  intervening user message and an invalid conversation.
-  Date/Author: 2026-08-16, Codex.
+  Tool results for its assistant call. Rationale: OpenAI-compatible providers
+  require Tool results to remain next to the assistant tool request. Appending
+  repairs at the end would still leave an intervening user message and an
+  invalid conversation. Date/Author: 2026-08-16, Codex.
 
 - Decision: model stale exec-session lookup as a typed internal error and map
-  it to `ResourceNotFound` at the registry boundary.
-  Rationale: retryability, circuit-breaker impact, partial-state claims, and
-  recovery guidance must not depend on parsing an English error string.
-  Date/Author: 2026-08-16, Codex.
+  it to `ResourceNotFound` at the registry boundary. Rationale: retryability,
+  circuit-breaker impact, partial-state claims, and recovery guidance must not
+  depend on parsing an English error string. Date/Author: 2026-08-16, Codex.
 
 ## Outcomes & retrospective
 
 EP-M1/EP-M2 plateau: an assistant tool request and one conservative incomplete
 Tool result per call now enter the thread before execution and are persisted in
 one write-ahead checkpoint. Successful execution replaces those placeholders
-before provider continuation. Legacy load performs the same closure repair as
-a pure, idempotent transformation and checkpoints it without executing any
-tool. The resumed model receives explicit uncertain-state, no-replay, verify,
-and conditional-resubmit guidance. Prompt admission now precedes task-plan
-replay and all other prompt-scoped work.
+before provider continuation. Legacy load performs the same closure repair as a
+pure, idempotent transformation and checkpoints it without executing any tool.
+The resumed model receives explicit uncertain-state, no-replay, verify, and
+conditional-resubmit guidance. Prompt admission now precedes task-plan replay
+and all other prompt-scoped work.
 
 Red/green evidence:
 
@@ -241,13 +223,12 @@ and all-feature Clippy, the workspace build, 6,582 nextest tests with 16
 configured skips, PTY/TUI harness tests, and documentation. The transcript is
 `/tmp/check-full-VTCode-fix-acp-unresolved-tool-recovery.out`.
 
-The release built from that implementation tip was installed at user level.
-The target binary, Cargo-installed binary, and `~/.local/bin/vtcode` all had
-SHA-256
-`c6c43a1b3ee32ea1f1060a42e03027e8b6c4f52741744614df1ce2f7e830432a`.
-Draft PR #13, <https://github.com/leynos/vtcode/pull/13>, is based on
-`feat/model-visible-file-versions-noop-patch-guard` (draft PR #12), preserving
-the requested three-layer stack. No implementation work remains.
+The release built from that implementation tip was installed at user level. The
+target binary, Cargo-installed binary, and `~/.local/bin/vtcode` all had SHA-256
+`c6c43a1b3ee32ea1f1060a42e03027e8b6c4f52741744614df1ce2f7e830432a`. The draft
+pull request for this work is [#13](https://github.com/leynos/vtcode/pull/13),
+based on `feat/model-visible-file-versions-noop-patch-guard` (draft PR #12),
+preserving the requested three-layer stack. No implementation work remains.
 
 EP-M3 plateau: every exec-session lookup now preserves a typed missing-session
 cause. At the registry boundary, `write_stdin` maps that cause to
@@ -268,9 +249,10 @@ Focused evidence:
   `/tmp/nextest-vtcode-core-VTCode-fix-acp-unresolved-tool-recovery.out`.
 - The ExecPlan passes Markdownlint. `TOOL_SPECS.md` and `zed-acp.md` retain
   their unchanged baselines of 21 and 136 legacy findings respectively; a
-  HEAD/current diagnostic comparison proves this diff adds none. Evidence is
-  in `/tmp/markdownlint-baseline-tools-VTCode-fix-acp-unresolved-tool-recovery.out`
-  and `/tmp/markdownlint-baseline-zed-VTCode-fix-acp-unresolved-tool-recovery.out`.
+  HEAD/current diagnostic comparison proves this diff adds none. Evidence is in
+  `/tmp/markdownlint-baseline-tools-VTCode-fix-acp-unresolved-tool-recovery.out`
+  and
+  `/tmp/markdownlint-baseline-zed-VTCode-fix-acp-unresolved-tool-recovery.out`.
 
 ## Context and orientation
 
@@ -283,9 +265,9 @@ model tool calls into ACP ToolCall updates and local or client-side execution.
 
 A provider tool request is stored as an assistant `Message` whose `tool_calls`
 field contains one or more IDs. Each ID must have a later Tool-role `Message`
-with the same `tool_call_id`. In the failure archives, the assistant message was
-persisted, but no Tool message was ever recorded. A write-ahead Tool result is
-an intentionally conservative placeholder persisted before execution. Its
+with the same `tool_call_id`. In the failure archives, the assistant message
+was persisted, but no Tool message was ever recorded. A write-ahead Tool result
+is an intentionally conservative placeholder persisted before execution. Its
 content says execution is incomplete, side effects are uncertain, replay did
 not occur, and the model must verify state and issue a new call if required.
 Normal completion replaces that placeholder with the actual Tool result.
@@ -331,97 +313,86 @@ ACP-REC-6 -> EP-M3 -> typed exec-session and structured-error tests
 
 ## Verification plan
 
-- Obligation: INV-TOOL-CLOSURE. After staging or repairing a history, every
-  assistant tool-call ID has exactly one contiguous Tool result before the next
-  non-Tool message.
-  Method: property tests plus finite examples.
-  Rationale: generated subsets and orderings cover more partial histories than
-  hand-written examples, while examples make provider ordering legible.
-  Domain: one to eight unique calls, arbitrary subsets of completed results,
-  unrelated preceding/following messages, and repeated repair operations.
-  Artefact: a new tool-recovery test module under
-  `crates/codegen/vtcode-acp/src/zed/agent/`.
-  Evidence: focused `cargo nextest run -p vtcode-acp -E
-  'test(tool_recovery)'`; red must expose at least one unresolved ID before
-  production code exists, and green must pass with 1,000 or more generated
-  cases.
-  Non-vacuity: generators require at least one call and separately force empty,
-  partial, and full result subsets. A negative-control helper that omits repair
-  must fail the closure predicate.
+- Obligation: INV-TOOL-CLOSURE. For every accepted history, after staging or
+  repairing, each assistant tool-call ID has exactly one contiguous Tool result
+  before the next non-Tool message. Histories with duplicate or otherwise
+  ambiguous terminal results are outside this invariant: they must be rejected
+  without rewriting the archive or replaying a call. Method: property tests
+  plus finite examples. Rationale: generated subsets and orderings cover more
+  partial histories than hand-written examples, while examples make provider
+  ordering legible. Domain: one to eight unique calls, arbitrary subsets of
+  completed results, unrelated preceding/following messages, and repeated
+  repair operations. Artefact: a new tool-recovery test module under
+  `crates/codegen/vtcode-acp/src/zed/agent/`. Evidence: focused
+  `cargo nextest run -p vtcode-acp -E 'test(tool_recovery)'`; red must expose
+  at least one unresolved ID before production code exists, and green must pass
+  with 1,000 or more generated cases. Non-vacuity: generators require at least
+  one call and separately force empty, partial, and full result subsets. A
+  negative-control helper that omits repair must fail the closure predicate.
 
 - Obligation: INV-REPAIR-IDEMPOTENCE. Applying legacy repair twice produces
   byte-equivalent message history and never replaces an existing real result.
-  Method: property test.
-  Rationale: idempotence spans many message/result combinations and protects
-  repeated load/resume attempts.
-  Domain: the same generated histories as INV-TOOL-CLOSURE, including arbitrary
-  real result text.
-  Artefact and evidence: the same test module and focused nextest command.
-  Non-vacuity: generated incomplete histories must change once, while complete
-  histories and the second pass must not change.
+  Method: property test. Rationale: idempotence spans many message/result
+  combinations and protects repeated load/resume attempts. Domain: the same
+  generated histories as INV-TOOL-CLOSURE, including arbitrary real result
+  text. Artefact and evidence: the same test module and focused nextest
+  command. Non-vacuity: generated incomplete histories must change once, while
+  complete histories and the second pass must not change.
 
 - Obligation: LEMMA-WRITE-AHEAD. The durable checkpoint visible before tool
   execution contains the assistant call and incomplete Tool results; normal
-  completion replaces those results before provider continuation.
-  Method: deterministic unit tests with an injected blocking tool and explicit
-  barriers, plus the official ACP Rust SDK duplex harness.
-  Rationale: controlled barriers prove the ordering without wall-clock sleeps,
-  and the duplex harness proves the real handler boundary.
-  Domain: one local non-mutating test tool and one mutating-shaped call.
-  Artefact: `crates/codegen/vtcode-acp/src/zed/agent/handlers.rs` tests.
-  Evidence: the red test inspects the archive while the tool is blocked; green
-  sees the incomplete result at that point, then only the real result after
-  release.
+  completion replaces those results before provider continuation. Method:
+  deterministic unit tests with an injected blocking tool and explicit
+  barriers, plus the official ACP Rust SDK duplex harness. Rationale:
+  controlled barriers prove the ordering without wall-clock sleeps, and the
+  duplex harness proves the real handler boundary. Domain: one local
+  non-mutating test tool and one mutating-shaped call. Artefact:
+  `crates/codegen/vtcode-acp/src/zed/agent/handlers.rs` tests. Evidence: the
+  red test inspects the archive while the tool is blocked; green sees the
+  incomplete result at that point, then only the real result after release.
   Non-vacuity: the test asserts the tool has actually started and that its
   completion barrier is still closed when the checkpoint is inspected.
 
 - Obligation: INV-NO-REPLAY. Loading an archive with an unresolved mutating call
   performs zero tool executions and gives the next provider request an
-  incomplete result containing explicit verify-and-resubmit guidance.
-  Method: deterministic archive-attachment test against a real mutation target,
-  combined with the official ACP SDK duplex continuation test.
-  Rationale: archive attachment has no executor edge, so testing that seam
-  directly proves zero replay without a test-only bypass; the duplex test
-  proves Tool messages cross the provider boundary correctly.
-  Domain: a legacy `apply_patch`-named call with no Tool result.
-  Artefact: archive tests in `session_state.rs` and ACP wire tests in
-  `handlers.rs`.
-  Evidence: a real patch target remains byte-identical after attachment; the
-  repaired message contains `replayed: false`, uncertain-state language, and
-  verify-and-resubmit guidance; a normal continuation contains the real result
-  rather than the placeholder.
-  Non-vacuity: the archived `apply_patch` payload would change the asserted
-  fixture if executed, and the test verifies that the repaired archive was
-  written to disk.
+  incomplete result containing explicit verify-and-resubmit guidance. Method:
+  deterministic archive-attachment test against a real mutation target,
+  combined with the official ACP SDK duplex continuation test. Rationale:
+  archive attachment has no executor edge, so testing that seam directly proves
+  zero replay without a test-only bypass; the duplex test proves Tool messages
+  cross the provider boundary correctly. Domain: a legacy `apply_patch`-named
+  call with no Tool result. Artefact: archive tests in `session_state.rs` and
+  ACP wire tests in `handlers.rs`. Evidence: a real patch target remains
+  byte-identical after attachment; the repaired message contains
+  `replayed: false`, uncertain-state language, and verify-and-resubmit
+  guidance; a normal continuation contains the real result rather than the
+  placeholder. Non-vacuity: the archived `apply_patch` payload would change the
+  asserted fixture if executed, and the test verifies that the repaired archive
+  was written to disk.
 
 - Obligation: INV-PROMPT-SERIALITY. A second prompt performs no task replay,
   history append, provider call, or tool call while the first prompt owns the
-  turn.
-  Method: deterministic ACP duplex concurrency test using barriers.
+  turn. Method: deterministic ACP duplex concurrency test using barriers.
   Rationale: this verifies the public request boundary rather than only the
-  `TurnGuard` helper.
-  Domain: two prompts for one session, with the first blocked in a tool; a
-  separate-session control remains independently runnable.
-  Artefact: `handlers.rs` wire tests.
-  Evidence: the second prompt receives `turn_in_progress`; counters and history
-  are unchanged until the first releases.
-  Non-vacuity: the first-tool-start barrier proves overlap; a control that moves
-  guard acquisition after task replay increments the ancillary-work counter and
-  fails.
+  `TurnGuard` helper. Domain: two prompts for one session, with the first
+  blocked in a tool; a separate-session control remains independently runnable.
+  Artefact: `handlers.rs` wire tests. Evidence: the second prompt receives
+  `turn_in_progress`; counters and history are unchanged until the first
+  releases. Non-vacuity: the first-tool-start barrier proves overlap; a control
+  that moves guard acquisition after task replay increments the ancillary-work
+  counter and fails.
 
 - Obligation: INV-STALE-SESSION-CLASSIFICATION. A missing `write_stdin` ID is
   `ResourceNotFound`, non-retryable, recoverable by starting a new command,
   excluded from circuit-breaker failures, and marked as incapable of partial
-  state.
-  Method: focused typed-error unit and registry integration tests.
+  state. Method: focused typed-error unit and registry integration tests.
   Rationale: the finite state vector is small and can be exhaustively asserted.
   Domain: missing ID for write, poll, and wait dispatches, plus an existing
-  session control.
-  Artefact: `exec_session.rs`, `registry/error.rs`, and executor tests.
-  Evidence: focused nextest filters pass and the rendered message omits
-  `Partial changes may still exist`.
-  Non-vacuity: an ordinary command execution error remains partial-state
-  possible, proving the exception is not global.
+  session control. Artefact: `exec_session.rs`, `registry/error.rs`, and
+  executor tests. Evidence: focused nextest filters pass and the rendered
+  message omits `Partial changes may still exist`. Non-vacuity: an ordinary
+  command execution error remains partial-state possible, proving the exception
+  is not global.
 
 Non-trivial axioms are that the existing checkpoint writer atomically replaces
 the session archive, provider tool-call IDs are unique within a conversation,
@@ -437,12 +408,12 @@ production behaviour changes. Each focused test must fail for the named missing
 contract rather than from fixture setup.
 
 EP-M2 introduces a small `tool_recovery` module in `vtcode-acp`. `run_prompt`
-will acquire its turn guard before any session-scoped work, append the assistant
-tool request and write-ahead Tool messages as one in-memory transition, persist
-that transition, execute the calls, replace placeholders with actual results,
-and checkpoint again. The archive attachment path will repair legacy histories
-before `ThreadBootstrap::from_listing`, checkpoint a changed archive, and never
-invoke a recovered tool.
+will acquire its turn guard before any session-scoped work, append the
+assistant tool request and write-ahead Tool messages as one in-memory
+transition, persist that transition, execute the calls, replace placeholders
+with actual results, and checkpoint again. The archive attachment path will
+repair legacy histories before `ThreadBootstrap::from_listing`, checkpoint a
+changed archive, and never invoke a recovered tool.
 
 EP-M3 adds a typed missing-session error in `exec_session.rs` and a narrow
 mapping in `registry/error.rs`. Command-context decoration will preserve this
@@ -452,55 +423,46 @@ and the exact actionable user message.
 EP-M4 updates `docs/guides/zed-acp.md` and the relevant tool/error guidance,
 runs focused tests followed by the repository commit gates through the
 scrutineer, builds and installs the release binary, pushes the branch, opens a
-draft PR based on `feat/model-visible-file-versions-noop-patch-guard`, and links
-the three PRs as a stack when GitHub stacked PR support is available.
+draft PR based on `feat/model-visible-file-versions-noop-patch-guard`, and
+links the three PRs as a stack when GitHub stacked PR support is available.
 
 ## Milestones and plateaus
 
 - Identifier and outcome: EP-M1, executable red specifications exist.
   Requirements and gaps: all six requirements have a failing behavioural or
-  structural test.
-  Acceptance evidence: failure logs show the missing write-ahead result,
-  unrepaired archive, late guard, or generic stale-session classification.
-  Conformance check: no production behaviour changes; no interface or
-  persistence-format deviation.
-  Recovery: tests can be reverted independently.
-  Remaining gaps: all production implementation.
-  Compatibility decision: none; tests describe the deployed archive boundary.
+  structural test. Acceptance evidence: failure logs show the missing
+  write-ahead result, unrepaired archive, late guard, or generic stale-session
+  classification. Conformance check: no production behaviour changes; no
+  interface or persistence-format deviation. Recovery: tests can be reverted
+  independently. Remaining gaps: all production implementation. Compatibility
+  decision: none; tests describe the deployed archive boundary.
 
 - Identifier and outcome: EP-M2, ACP histories remain provider-valid across
-  interruption and durable resume.
-  Requirements and gaps: ACP-REC-1 through ACP-REC-5 are discharged.
-  Acceptance evidence: focused unit, property, archive, and ACP duplex tests.
-  Conformance check: no tool replay, no new wire type, existing checkpoint path
-  retained, and turn ownership remains per session.
-  Recovery: revert the milestone commit; legacy archives remain readable.
-  Remaining gaps: stale `write_stdin` classification and final gates.
-  Compatibility decision: persisted JSON compatibility is required for
-  archives written by released/local VTCode builds; repair is additive in
-  memory and then uses the normal checkpoint writer.
+  interruption and durable resume. Requirements and gaps: ACP-REC-1 through
+  ACP-REC-5 are discharged. Acceptance evidence: focused unit, property,
+  archive, and ACP duplex tests. Conformance check: no tool replay, no new wire
+  type, existing checkpoint path retained, and turn ownership remains per
+  session. Recovery: revert the milestone commit; legacy archives remain
+  readable. Remaining gaps: stale `write_stdin` classification and final gates.
+  Compatibility decision: persisted JSON compatibility is required for archives
+  written by released/local VTCode builds; repair is additive in memory and
+  then uses the normal checkpoint writer.
 
 - Identifier and outcome: EP-M3, stale process-session IDs are actionable and
-  accurately classified.
-  Requirements and gaps: ACP-REC-6 is discharged.
-  Acceptance evidence: typed-error and registry integration tests.
-  Conformance check: only missing exec-session lookup is special-cased; other
-  command failures preserve existing safety semantics.
-  Recovery: revert the typed error and mapping together.
-  Remaining gaps: documentation, full gates, installation, and publication.
-  Compatibility decision: none; the public JSON shape is unchanged and only
-  field values become more accurate.
+  accurately classified. Requirements and gaps: ACP-REC-6 is discharged.
+  Acceptance evidence: typed-error and registry integration tests. Conformance
+  check: only missing exec-session lookup is special-cased; other command
+  failures preserve existing safety semantics. Recovery: revert the typed error
+  and mapping together. Remaining gaps: documentation, full gates,
+  installation, and publication. Compatibility decision: none; the public JSON
+  shape is unchanged and only field values become more accurate.
 
 - Identifier and outcome: EP-M4, validated stacked draft PR and installed
-  aggregate build.
-  Requirements and gaps: all requirements and documentation obligations are
-  complete.
-  Acceptance evidence: full gate logs, release hash/version, PR URL/base, and
-  stack view.
-  Conformance check: every trace link and upstream assumption reconciled.
-  Recovery: commits remain independently revertible; the lower PRs are
-  unaffected.
-  Remaining gaps: none.
+  aggregate build. Requirements and gaps: all requirements and documentation
+  obligations are complete. Acceptance evidence: full gate logs, release
+  hash/version, PR URL/base, and stack view. Conformance check: every trace
+  link and upstream assumption reconciled. Recovery: commits remain
+  independently revertible; the lower PRs are unaffected. Remaining gaps: none.
   Compatibility decision: none beyond the archive compatibility in EP-M2.
 
 ## Concrete steps
@@ -563,8 +525,9 @@ path remains provider-valid. No recovery path executes a historical call.
 
 If a focused test fails after an implementation change, inspect its recorded
 log and revert only the current milestone commit if necessary. Do not delete or
-hand-edit user archives. The final branch can be dropped without affecting
-PR #12 or PR #11.
+hand-edit user archives. The final branch can be dropped without affecting the
+stacked pull requests ([PR #12](https://github.com/leynos/vtcode/pull/12) and
+[PR #11](https://github.com/leynos/vtcode/pull/11)).
 
 ## Artefacts and notes
 
@@ -575,8 +538,7 @@ The motivating evidence is in these user-owned archives:
 ~/.config/vtcode/sessions/vtcode-zed-session-f846c51e-281b-44d6-b924-3d8457a8ef41.json
 ```
 
-In the first archive, apply-patch calls
-`chatcmpl-tool-8d9bf52719b9a7e6` and
+In the first archive, apply-patch calls `chatcmpl-tool-8d9bf52719b9a7e6` and
 `chatcmpl-tool-a1d7be15e92a3af2` have no Tool-role message. Ordinary successful
 calls do have paired Tool results and modified files. Both archives also show a
 later `write_stdin` call using an exec-session ID whose originating command had

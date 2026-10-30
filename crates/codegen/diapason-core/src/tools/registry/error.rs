@@ -219,13 +219,19 @@ impl ToolExecutionError {
         self
     }
 
+    /// Classify whether a failed tool call may have left partial state behind.
+    ///
+    /// A stale `write_stdin` continuation and an `apply_patch` rejection both
+    /// report their own explicit recovery outcome, so they are excluded from
+    /// the generic mutation heuristic.
     #[must_use]
     pub fn with_tool_call_context(mut self, tool_name: &str, args: &Value) -> Self {
         self.tool_name = tool_name.to_string();
 
-        if tool_name == crate::config::constants::tools::APPLY_PATCH
-            || (tool_name == crate::config::constants::tools::WRITE_STDIN && self.is_stale_exec_session())
-        {
+        if tool_name == crate::config::constants::tools::APPLY_PATCH {
+            return self;
+        }
+        if tool_name == crate::config::constants::tools::WRITE_STDIN && self.is_stale_exec_session() {
             return self;
         }
 
@@ -237,6 +243,8 @@ impl ToolExecutionError {
         self
     }
 
+    /// Whether the error records a continuation for an exec session that has
+    /// already terminated.
     fn is_stale_exec_session(&self) -> bool {
         self.details
             .as_ref()

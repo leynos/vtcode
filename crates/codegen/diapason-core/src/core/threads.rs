@@ -14,6 +14,15 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use uuid::Uuid;
 
+use vtcode_macros::StringNewtype;
+
+//! Thread message history, turn admission, and archive lifecycle.
+//!
+//! History edits that must observe and replace messages as one step go
+//! through [`ThreadRuntimeHandle::mutate_messages`], so another owner cannot
+//! interleave a read or write inside the update.
+};
+
 const DEFAULT_EVENT_BUFFER_CAPACITY: usize = 512;
 
 /// Unique identifier for a thread in the runtime.
@@ -237,6 +246,7 @@ impl ThreadRuntimeHandle {
         self.inner.session.lock().archive_listing.clone()
     }
 
+    /// Return a point-in-time copy of the thread's message history.
     pub fn messages(&self) -> Vec<Message> {
         self.inner.session.lock().messages.clone()
     }
@@ -252,10 +262,15 @@ impl ThreadRuntimeHandle {
         mutation(&mut session.messages)
     }
 
+    /// Replace the whole message history in one locked write.
+    ///
+    /// Prefer [`Self::mutate_messages`] when the new history depends on the
+    /// current one.
     pub fn replace_messages(&self, messages: Vec<Message>) {
         self.inner.session.lock().messages = messages;
     }
 
+    /// Append one message to the thread history.
     pub fn append_message(&self, message: Message) {
         self.inner.session.lock().messages.push(message);
     }
