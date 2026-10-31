@@ -84,6 +84,13 @@ checkpoint failure is logged with its operation and error category before the
 prompt is rejected. Prompt admission remains single-turn, so a concurrent
 prompt is rejected without mutating history.
 
+Focused verification:
+
+```sh
+cargo nextest run -p vtcode-acp attaching_legacy_archive_repairs_without_replaying_mutating_call
+cargo nextest run -p vtcode-core stale_write_stdin_modes_are_resource_not_found_without_partial_state
+```
+
 ## Providers
 
 For custom-provider configuration and defaults, see
@@ -157,14 +164,12 @@ Run the ACP and provider crate suites when changing these boundaries:
 cargo nextest run -p vtcode-acp task_tracker_tool_result_emits_standard_acp_plan
 cargo nextest run -p vtcode-acp forwards_lifecycle_events_through_the_official_acp_duplex
 cargo nextest run -p vtcode-acp checkpoint_session_persists_messages_for_a_fresh_runtime
-cargo nextest run -p vtcode-acp attaching_legacy_archive_repairs_without_replaying_mutating_call
-cargo nextest run -p vtcode-core stale_write_stdin_modes_are_resource_not_found_without_partial_state
 cargo nextest run -p vtcode-llm request_admission
 ```
 
 These cover ACP plan projection and replay, duplex lifecycle forwarding,
-session checkpoint persistence, interrupted-tool repair and stale-session
-mapping, and the custom-provider admission regressions. The relevant provider
-retry/deadline unit tests are in the ACP `zed/provider_runtime.rs` module; run
-them with `cargo nextest run -p vtcode-acp <test-name>` after selecting a test
-name from that module.
+session checkpoint persistence, and the custom-provider admission regressions.
+The relevant provider retry/deadline unit tests are in the ACP
+`zed/provider_runtime.rs` module; run them with
+`cargo nextest run -p vtcode-acp <test-name>` after selecting a test name from
+that module.
