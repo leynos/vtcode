@@ -32,12 +32,12 @@ recognizes that header independently as a retry instruction.
 
 Custom providers start with four standard mappings for per-minute request and
 token limits. Provider names that identify Fireworks or Together also receive
-their provider-specific defaults. Values that you set in
-`rate_limit_headers` take precedence for those fields, while other fields can
-continue to use the effective provider defaults.
+their provider-specific defaults. Values that you set in `rate_limit_headers`
+take precedence for those fields, while other fields can continue to use the
+effective provider defaults.
 
-For the complete field list and provider mapping tables, see the [provider
-rate-limit header developer reference](../development/provider-rate-limit-headers.md).
+For the complete field list and provider mapping tables, see the
+[provider rate-limit header developer reference](../development/provider-rate-limit-headers.md).
 
 ## Retry timing and quota resets
 

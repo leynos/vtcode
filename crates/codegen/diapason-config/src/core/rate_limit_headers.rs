@@ -18,7 +18,7 @@ macro_rules! rate_limit_header_fields {
             generated_tokens_limit_per_second => None,
             prompt_tokens => None,
             cached_prompt_tokens => None,
-            #[doc = "Header containing a provider-suggested reset interval in seconds."]
+            #[doc = "Header containing a suggested retry interval in seconds, such as Together's `x-ratelimit-reset`. Independent of the always-recognized `Retry-After` header."]
             reset_after_seconds => None,
         );
     };

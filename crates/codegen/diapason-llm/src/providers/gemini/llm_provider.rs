@@ -61,11 +61,7 @@ impl LLMProvider for GeminiProvider {
                 .await
                 .map_err(|e| format_network_error("Gemini", &e))?;
 
-            if !response.status().is_success() {
-                let status = response.status();
-                let error_text = crate::providers::common::read_provider_error_body(response).await;
-                return Err(Self::handle_http_error(status, &error_text));
-            }
+            let response = handle_gemini_http_error(response).await?;
 
             let interaction_response: Interaction =
                 response.json().await.map_err(|e| format_parse_error("Gemini", &e))?;
@@ -86,11 +82,7 @@ impl LLMProvider for GeminiProvider {
             .await
             .map_err(|e| format_network_error("Gemini", &e))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = crate::providers::common::read_provider_error_body(response).await;
-            return Err(Self::handle_http_error(status, &error_text));
-        }
+        let response = handle_gemini_http_error(response).await?;
 
         let gemini_response: GenerateContentResponse =
             response.json().await.map_err(|e| format_parse_error("Gemini", &e))?;
@@ -112,11 +104,7 @@ impl LLMProvider for GeminiProvider {
                 .await
                 .map_err(|e| format_network_error("Gemini", &e))?;
 
-            if !response.status().is_success() {
-                let status = response.status();
-                let error_text = crate::providers::common::read_provider_error_body(response).await;
-                return Err(Self::handle_http_error(status, &error_text));
-            }
+            let response = handle_gemini_http_error(response).await?;
 
             let stream = {
                 try_stream! {
@@ -199,11 +187,7 @@ impl LLMProvider for GeminiProvider {
             .await
             .map_err(|e| format_network_error("Gemini", &e))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = crate::providers::common::read_provider_error_body(response).await;
-            return Err(Self::handle_http_error(status, &error_text));
-        }
+        let response = handle_gemini_http_error(response).await?;
 
         let (event_tx, event_rx) = mpsc::unbounded_channel::<Result<LLMStreamEvent, LLMError>>();
         let completion_sender = event_tx.clone();
