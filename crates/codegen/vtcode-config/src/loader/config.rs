@@ -866,7 +866,7 @@ allow_regex = []
 
 # Regular expression patterns for denied commands (if needed)
 deny_regex = [
-    'rm\s+(-rf|--force)',   # Exact `-rf` and `--force` spellings; other recursive flags still pass
+    'rm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)',   # Any recursive or forced spelling
 ]
 
 # Security configuration - Safety settings for automated operations

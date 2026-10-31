@@ -117,11 +117,9 @@ to
 for the complete contract.
 
 Configured denials still win: the shipped defaults keep the `rm -rf /`,
-`rm -rf ~`, and `sudo rm` denies and the `rm\s+(-rf|--force)` deny regex, so
-the exact `rm -rf` and `rm --force` spellings stay blocked unless the configured
-`deny_regex` is relaxed. Reordered or separated flags such as `rm -f -r` are
-accepted by the recognizer; add a `deny_regex` covering them if recursive
-deletion must stay blocked.
+`rm -rf ~`, and `sudo rm` denies and the default recursive-or-forced deny
+regex, so `rm -rf`, `rm -fr`, `rm -Rf`, `rm -f -r`, `rm -r`, `--recursive`, and
+`--force` stay blocked unless the configured `deny_regex` is relaxed.
 
 Under `--dangerously-skip-permissions`, a confirmed supported deletion is
 auto-approved at the runloop after the permission and policy checks; the

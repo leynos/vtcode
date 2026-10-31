@@ -215,8 +215,8 @@ rmdir, del, format, fdisk, mkfs, dd, shred, wipe, srm, unlink
 one simple, confirmed `rm` invocation whose targets resolve inside the
 workspace; see
 [Workspace-Scoped Deletion](../development/COMMAND_SECURITY_MODEL.md#workspace-scoped-deletion).
-Configured deny rules, including the default `rm\s+(-rf|--force)` regex, still
-win.
+Configured deny rules, including the default regex that blocks recursive or
+forced removal in any flag order, still win.
 
 ### Permission & System Changes
 

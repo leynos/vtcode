@@ -114,11 +114,10 @@ paths is allowed only with `confirm=true`, and the executor re-assesses every
 target for workspace containment, symlink escapes, the workspace root, the home
 directory, and protected metadata directories. Chains, pipes, redirects,
 wrappers, environment prefixes, globs, and shell expansion are refused as
-unsupported shapes. Configured deny rules and the default `rm\s+(-rf|--force)`
-regex still win, so the exact `rm -rf` and `rm --force` spellings remain
-blocked by default; reordered or separated flags such as `rm -f -r` are
-accepted, so add a `deny_regex` if recursive deletion must be blocked outright.
-See
+unsupported shapes. Configured deny rules and the default deny regex still win,
+so recursive or forced removals (`rm -rf`, `rm -fr`, `rm -Rf`, `rm -f -r`,
+`rm -r`, `--recursive`, `--force`) remain blocked by default in any flag order;
+relaxing that `deny_regex` permits them. See
 [COMMAND_SECURITY_MODEL.md](../development/COMMAND_SECURITY_MODEL.md#workspace-scoped-deletion).
 
 VT Code supports automation through its internal scheduler instead of raw shell
