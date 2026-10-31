@@ -1,5 +1,6 @@
 //! Checkpoints session state and commits non-cancelled provider failures.
 use super::*;
+use crate::zed::agent::log_suppressed_error;
 
 #[tracing::instrument(skip_all, fields(boundary = boundary))]
 pub(in crate::zed::agent::handlers) async fn persist_session_checkpoint(
