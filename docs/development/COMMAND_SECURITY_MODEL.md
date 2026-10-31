@@ -253,12 +253,12 @@ invocation when all of these hold:
    `.agents`). A nonexistent in-workspace operand is allowed.
 
 Configured denials still win. The shipped defaults allow `rm *` but keep the
-absolute-path denies and the `rm\s+(-rf|--force)` deny regex, so the exact
-`rm -rf` and `rm --force` spellings remain blocked by default even inside the
-workspace. The default regex does not catch reordered or separated flags such as
-`rm -f -r`; add a `deny_regex` that matches them if recursive deletion must
-stay blocked. Conversely, relaxing the configured `deny_regex` permits the
-bundled spellings.
+absolute-path denies and the
+`rm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)` deny regex,
+so recursive and forced removals stay blocked by default in any flag order or
+grouping (`rm -rf`, `rm -fr`, `rm -Rf`, `rm -f -r`, `rm -r`, `--recursive`,
+`--force`). A plain `rm -f file` remains allowed. Relaxing the configured
+`deny_regex` permits the bundled spellings.
 
 Under `--dangerously-skip-permissions`, a confirmed supported deletion is
 auto-approved by the runloop; the executor still performs the target assessment.
@@ -339,7 +339,7 @@ Regular expressions to block patterns.
 
 ```toml
 deny_regex = [
-  r"rm\s+(-rf|--force|--recursive)",
+  r"rm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)",
   r"sudo\s+.*",
   r"docker\s+run\s+.*--privileged",
 ]

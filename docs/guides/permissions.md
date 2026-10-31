@@ -60,8 +60,9 @@ globs, and shell expansion are refused; targets may not leave the workspace or
 touch the workspace root, the home directory, or protected metadata directories
 (`.git`, `.vtcode`, `.codex`, `.agents`). Global and agent deny rules still
 win, so `deny = ["exec_command(rm -rf *)"]` continues to block the exact
-`rm -rf` spelling. Other recursive spellings, such as `rm -r` or `rm -fr`, need
-their own deny rules; see the `deny_regex` guidance in
+`rm -rf` spelling, and the default deny regex blocks recursive or forced
+removals in any flag order, including `rm -r` and `rm -fr`. Relaxing that regex
+permits those spellings; see the `deny_regex` guidance in
 [the command security model](../development/COMMAND_SECURITY_MODEL.md).
 
 Deletion cannot be typed into an already-running session: `write_stdin`,

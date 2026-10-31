@@ -261,6 +261,16 @@ mod tests {
         assert!(!evaluator.allows_text("rmx scratch"));
         assert!(!evaluator.allows_text("rm -rf /"));
         assert!(!evaluator.allows_text("rm --force scratch/tmp.txt"));
+        // Recursive and forced removals stay denied in any flag order.
+        for command in [
+            "rm -r scratch",
+            "rm -fr scratch",
+            "rm -Rf scratch",
+            "rm -f -r scratch",
+            "rm --recursive scratch",
+        ] {
+            assert!(!evaluator.allows_text(command), "expected denial: {command}");
+        }
     }
 
     #[test]

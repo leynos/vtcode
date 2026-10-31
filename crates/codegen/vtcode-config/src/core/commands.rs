@@ -312,8 +312,8 @@ impl Default for CommandsConfig {
                 r"^(docker|docker-compose)\b".into(),
             ],
             deny_regex: vec![
-                // Force removal
-                r"rm\s+(-rf|--force)".into(),
+                // Recursive or forced removal, in any flag order or grouping.
+                r"rm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)".into(),
                 // Sudo commands
                 r"sudo\s+.*".into(),
                 // Permission changes
