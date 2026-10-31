@@ -231,6 +231,10 @@ impl ToolExecutionError {
         if tool_name == crate::config::constants::tools::APPLY_PATCH {
             return self;
         }
+        // Returning `self` preserves the explicit classification set by
+        // `apply_explicit_error_state`. In particular, a session lost after the
+        // input write keeps `partial_state_possible = true` instead of being
+        // overwritten here by the generic command heuristic.
         if tool_name == crate::config::constants::tools::WRITE_STDIN && self.is_stale_exec_session() {
             return self;
         }
@@ -453,33 +457,65 @@ fn format_retry_delay(delay_ms: u64) -> String {
 }
 
 fn apply_explicit_error_state(mut error: ToolExecutionError, tool_name: &str, source: &Error) -> ToolExecutionError {
-    if tool_name == crate::config::constants::tools::WRITE_STDIN
-        && let Some(missing) = source.downcast_ref::<crate::tools::exec_session::ExecSessionNotFound>()
-    {
-        debug!(
-            tool_name,
-            session_id = %missing.session_id,
-            tool_recovery_outcome = "stale_exec_session_rejected",
-            "Rejected stale write_stdin session"
-        );
-        error.category = ErrorCategory::ResourceNotFound;
-        error.error_type = ToolErrorType::ResourceNotFound;
-        error.retryable = false;
-        error.is_recoverable = true;
-        error.recovery_suggestions = vec![Cow::Borrowed(
-            "Start a new exec_command and use the new active session ID",
-        )];
-        error.retry_delay_ms = None;
-        error.retry_after_ms = None;
-        error.circuit_breaker_impact = false;
-        error.partial_state_possible = false;
-        error.rollback_performed = false;
-        error.details = Some(json!({
-            "reason": "stale_exec_session",
-            "session_id": missing.session_id,
-            "next_action": "Start a new exec_command and use the returned session ID."
-        }));
-        return error;
+    if tool_name == crate::config::constants::tools::WRITE_STDIN {
+        // Input written to the session may already have been consumed, so a
+        // concurrent close *after* the write cannot claim "no partial state".
+        // This branch must precede the stale-session one: the post-write error
+        // is a distinct typed cause that warrants the partial-state flag.
+        if let Some(lost) = source.downcast_ref::<crate::tools::exec_session::ExecSessionLostAfterInput>() {
+            debug!(
+                tool_name,
+                session_id = %lost.session_id,
+                tool_recovery_outcome = "exec_session_lost_after_input",
+                "Lost write_stdin session after delivering input"
+            );
+            error.category = ErrorCategory::ResourceNotFound;
+            error.error_type = ToolErrorType::ResourceNotFound;
+            error.retryable = false;
+            error.is_recoverable = true;
+            error.recovery_suggestions = vec![Cow::Borrowed(
+                "Start a new exec_command and use the new active session ID",
+            )];
+            error.retry_delay_ms = None;
+            error.retry_after_ms = None;
+            error.circuit_breaker_impact = false;
+            error.partial_state_possible = true;
+            error.rollback_performed = false;
+            error.details = Some(json!({
+                "reason": "stale_exec_session",
+                "session_id": lost.session_id,
+                "input_delivered": true,
+                "next_action": "Start a new exec_command and use the returned session ID."
+            }));
+            return error;
+        }
+
+        if let Some(missing) = source.downcast_ref::<crate::tools::exec_session::ExecSessionNotFound>() {
+            debug!(
+                tool_name,
+                session_id = %missing.session_id,
+                tool_recovery_outcome = "stale_exec_session_rejected",
+                "Rejected stale write_stdin session"
+            );
+            error.category = ErrorCategory::ResourceNotFound;
+            error.error_type = ToolErrorType::ResourceNotFound;
+            error.retryable = false;
+            error.is_recoverable = true;
+            error.recovery_suggestions = vec![Cow::Borrowed(
+                "Start a new exec_command and use the new active session ID",
+            )];
+            error.retry_delay_ms = None;
+            error.retry_after_ms = None;
+            error.circuit_breaker_impact = false;
+            error.partial_state_possible = false;
+            error.rollback_performed = false;
+            error.details = Some(json!({
+                "reason": "stale_exec_session",
+                "session_id": missing.session_id,
+                "next_action": "Start a new exec_command and use the returned session ID."
+            }));
+            return error;
+        }
     }
 
     if tool_name != crate::config::constants::tools::APPLY_PATCH {
@@ -702,8 +738,55 @@ mod tests {
                 .and_then(Value::as_str),
             Some("run-stale")
         );
+        assert!(
+            error
+                .details
+                .as_ref()
+                .is_some_and(|details| details.get("input_delivered").is_none()),
+            "a pre-write missing session must not report that input was delivered"
+        );
         let message = error.user_message();
         assert!(!message.contains("Partial changes may still exist"));
+        assert!(message.contains("Start a new exec_command"));
+    }
+
+    #[test]
+    fn write_stdin_session_lost_after_input_reports_partial_state() {
+        // Input written to the session may already have been consumed, so a
+        // concurrent close after the write cannot claim "no partial state".
+        let source =
+            Error::new(crate::tools::exec_session::ExecSessionLostAfterInput { session_id: "run-lost".to_string() });
+
+        let error = ToolExecutionError::from_anyhow(
+            crate::config::constants::tools::WRITE_STDIN,
+            &source,
+            1,
+            false,
+            false,
+            None,
+        )
+        .with_tool_call_context(
+            crate::config::constants::tools::WRITE_STDIN,
+            &serde_json::json!({"session_id": "run-lost", "chars": ""}),
+        );
+
+        assert_eq!(error.category, ErrorCategory::ResourceNotFound);
+        assert_eq!(error.error_type, ToolErrorType::ResourceNotFound);
+        assert!(!error.retryable);
+        assert!(error.is_recoverable);
+        assert!(!error.circuit_breaker_impact);
+        assert!(error.partial_state_possible);
+        assert!(!error.rollback_performed);
+        assert_eq!(error.retry_delay_ms, None);
+        assert_eq!(error.retry_after_ms, None);
+
+        let details = error.details.as_ref().expect("typed session loss should carry details");
+        assert_eq!(details.get("reason").and_then(Value::as_str), Some("stale_exec_session"));
+        assert_eq!(details.get("session_id").and_then(Value::as_str), Some("run-lost"));
+        assert_eq!(details.get("input_delivered").and_then(Value::as_bool), Some(true));
+
+        let message = error.user_message();
+        assert!(message.contains("Partial changes may still exist"));
         assert!(message.contains("Start a new exec_command"));
     }
 

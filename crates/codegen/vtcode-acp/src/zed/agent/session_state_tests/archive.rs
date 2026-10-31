@@ -414,6 +414,63 @@ fn legacy_archive_repair_closes_tool_call_before_later_user_message() {
     assert_eq!(repaired[2].role, MessageRole::User);
 }
 
+#[test]
+fn relocation_only_repair_is_persisted_to_the_archive() {
+    let temp = TempDir::new().unwrap();
+    let mut listing = archived_listing("relocation-only", temp.path(), "continue");
+    listing.snapshot.messages = vec![
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                "late-call".to_string(),
+                "read_file".to_string(),
+                "{}".to_string(),
+            )],
+        )),
+        SessionMessage::from(&Message::user("continue".to_string())),
+        SessionMessage::from(&Message::tool_response("late-call".to_string(), "late result".to_string())),
+    ];
+    listing.snapshot.total_messages = listing.snapshot.messages.len();
+
+    let report = repair_archived_tool_calls(&mut listing).expect("relocation-only repair should succeed");
+    let repaired = messages_from_session_listing(&listing);
+
+    assert_eq!(report.repaired_calls, 0);
+    assert_eq!(report.relocated_calls, 1);
+    assert_eq!(repaired.len(), 3);
+    assert_eq!(repaired[0].role, MessageRole::Assistant);
+    assert_eq!(repaired[1].role, MessageRole::Tool);
+    assert_eq!(repaired[1].tool_call_id.as_deref(), Some("late-call"));
+    assert_eq!(repaired[1].content.as_text(), "late result");
+    assert_eq!(repaired[2].role, MessageRole::User);
+}
+
+#[test]
+fn truncated_archive_prefix_resumes_without_ambiguity() {
+    // Front compaction can retain tool results whose assistant request was
+    // trimmed away; that shape must resume rather than being rejected.
+    let temp = TempDir::new().unwrap();
+    let mut listing = archived_listing("truncated-prefix", temp.path(), "continue");
+    listing.snapshot.messages = vec![
+        SessionMessage::from(&Message::tool_response("trimmed-call".to_string(), "earlier result".to_string())),
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                "live-call".to_string(),
+                "read_file".to_string(),
+                "{}".to_string(),
+            )],
+        )),
+        SessionMessage::from(&Message::tool_response("live-call".to_string(), "live result".to_string())),
+    ];
+    listing.snapshot.total_messages = listing.snapshot.messages.len();
+
+    let report = repair_archived_tool_calls(&mut listing).expect("front-truncated archives must stay resumable");
+
+    assert!(report.truncated_prefix >= 1);
+    assert_eq!(report.repaired_calls, 0);
+}
+
 #[tokio::test]
 async fn attaching_legacy_archive_repairs_without_replaying_mutating_call() {
     let _history_test_lock = HISTORY_TEST_LOCK.lock().await;

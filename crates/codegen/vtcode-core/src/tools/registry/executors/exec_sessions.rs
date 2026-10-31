@@ -3,6 +3,7 @@ use super::{
     ExecRunBackendKind, ExecSettlementMode, ToolRegistry, acquire_executor_rate_limit, annotate_exec_run_response,
 };
 use crate::config::constants::tools;
+use crate::tools::exec_session::{ExecSessionLostAfterInput, ExecSessionNotFound};
 use crate::tools::registry::ToolTimeoutCategory;
 use crate::tools::types::VTCodeExecSession;
 use crate::zsh_exec_bridge::ZshExecBridgeSession;
@@ -171,6 +172,7 @@ impl ToolRegistry {
             progress_tool_name,
         )
         .await
+        .map_err(|error| mark_input_delivered(error, session.metadata.id.as_str()))
     }
 
     pub(super) async fn execute_command_session_poll_internal(
@@ -726,6 +728,19 @@ impl ToolRegistry {
         let session_id = resolve_exec_session_id(args, object_error, session_id_error, validation_context)?;
         let metadata = self.exec_session_metadata(&session_id).await?;
         Ok(ResolvedExecSession::new(metadata))
+    }
+}
+
+/// Marks a post-write failure that lost its exec session as input-delivered.
+///
+/// The input bytes were already handed to the session before the response was
+/// captured, so a missing-session error afterwards must not claim that no
+/// partial state exists. Unrelated errors are returned unchanged.
+fn mark_input_delivered(error: anyhow::Error, session_id: &str) -> anyhow::Error {
+    if error.chain().any(|cause| cause.is::<ExecSessionNotFound>()) {
+        anyhow::Error::new(ExecSessionLostAfterInput { session_id: session_id.to_string() })
+    } else {
+        error
     }
 }
 
