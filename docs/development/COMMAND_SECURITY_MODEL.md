@@ -252,6 +252,21 @@ invocation when all of these hold:
    and paths inside protected metadata directories (`.git`, `.vtcode`, `.codex`,
    `.agents`). A nonexistent in-workspace operand is allowed.
 
+Each recognized operand is also reported to the dotfile guardian as a delete
+target, so protected files such as `.env` and `.gitignore` still require
+approval even though `rm *` is allowed.
+
+Target assessment is a path check performed immediately before launch, not a
+filesystem transaction. A process that replaces a checked parent directory with
+a symlink between assessment and `rm` opening the path could redirect the
+deletion outside the workspace. Closing that window needs descriptor-relative
+deletion (`openat`/`unlinkat` with `RESOLVE_BENEATH`) or a kernel sandbox that
+confines writes; neither can be added without replacing the real `rm` execution
+or forcing the optional execution sandbox. The window is limited to the launch
+sequence and requires concurrent filesystem mutation. Explicit confirmation,
+workspace containment, and, when enabled, the execution sandbox remain the
+compensating controls.
+
 Configured denials still win. The shipped defaults allow `rm *` but keep the
 absolute-path denies and the
 `\brm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)` deny

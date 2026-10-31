@@ -186,10 +186,7 @@ fn rm_is_dangerous(rm_args: &[String]) -> bool {
             break;
         }
 
-        if matches!(arg.as_str(), "--force" | "--recursive" | "--no-preserve-root")
-            || arg.starts_with("--force=")
-            || arg.starts_with("--recursive=")
-        {
+        if is_dangerous_rm_long_option(arg) {
             return true;
         }
 
@@ -199,6 +196,28 @@ fn rm_is_dangerous(rm_args: &[String]) -> bool {
     }
 
     false
+}
+
+/// Whether a long `rm` option is a dangerous one, including abbreviations.
+///
+/// GNU `rm` parses long options with `getopt_long`, which accepts any
+/// unambiguous prefix. `rm --recurs dir` and `rm --forc file` therefore behave
+/// like the full spellings, and `--no-pre` selects `--no-preserve-root`. This
+/// over-approximates (it does not model which prefixes are ambiguous across
+/// the whole `rm` option table), which is the safe direction for a danger
+/// detector. The empty name produced by the `--` terminator never matches.
+fn is_dangerous_rm_long_option(arg: &str) -> bool {
+    let Some(option) = arg.strip_prefix("--") else {
+        return false;
+    };
+    let name = option.split('=').next().unwrap_or(option);
+    if name.is_empty() {
+        return false;
+    }
+
+    ["force", "recursive", "no-preserve-root"]
+        .iter()
+        .any(|dangerous| dangerous.starts_with(name))
 }
 
 /// Check if a command is a dangerous git subcommand (without the "git" prefix)
@@ -401,6 +420,16 @@ mod tests {
     fn rm_operands_after_terminator_are_not_options() {
         assert!(!command_might_be_dangerous(&vec_str(&["rm", "--", "-f"])));
         assert!(!command_might_be_dangerous(&vec_str(&["rm", "file"])));
+    }
+
+    /// GNU `getopt_long` accepts unambiguous prefixes, so abbreviated
+    /// dangerous options are as dangerous as the full spellings.
+    #[test]
+    fn rm_abbreviated_long_options_are_dangerous() {
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "--recurs", "scratch"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "--forc", "file"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "--no-pre", "scratch"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "--force=always", "file"])));
     }
 
     #[test]
