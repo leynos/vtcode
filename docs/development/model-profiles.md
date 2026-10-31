@@ -44,7 +44,7 @@ Example:
 
 ```toml
 [custom_providers.profiles."gpt-5.6-sol"]
-api_format = "openai-responses"
+api_format = "openai-chat"
 context_window = 131072
 supports_tools = true
 supports_vision = false
