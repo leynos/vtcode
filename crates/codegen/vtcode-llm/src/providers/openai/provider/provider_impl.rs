@@ -62,12 +62,18 @@ impl provider::LLMProvider for OpenAIProvider {
             model
         };
 
-        if let Some(value) = self
-            .custom_provider_config
-            .as_ref()
-            .and_then(|config| config.resolved_profile(requested).supports_reasoning_effort)
-        {
-            return value;
+        if let Some(config) = self.custom_provider_config.as_ref() {
+            // Match the custom-provider router: a pin in this model's own
+            // profile implies effort support unless that profile explicitly
+            // disables it. Provider-level defaults must not decide this.
+            if let Some(own) = config.profile(requested)
+                && own.reasoning_effort.is_some()
+            {
+                return own.supports_reasoning_effort != Some(false);
+            }
+            if let Some(value) = config.resolved_profile(requested).supports_reasoning_effort {
+                return value;
+            }
         }
 
         // Same robustness logic for reasoning effort

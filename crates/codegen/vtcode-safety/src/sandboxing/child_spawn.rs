@@ -238,12 +238,8 @@ pub fn setup_parent_death_signal_with_check(expected_parent_pid: nix::unistd::Pi
         .map_err(|e| Error::other(format!("prctl(PR_SET_PDEATHSIG) failed: {e}")))?;
 
     // Re-check parent PID to catch race condition where parent exited between
-    // fork and this prctl call. If parent changed, self-terminate immediately.
-    // Signal delivery here is deliberately best-effort: nothing can recover it.
-    #[allow(
-        clippy::let_underscore_must_use,
-        reason = "best-effort self-signal during pdeathsig race"
-    )]
+    // fork and this prctl call. If parent changed, self-terminate immediately;
+    // a failed self-signal is reported and aborts child setup.
     if nix::unistd::getppid() != expected_parent_pid {
         raise(Signal::SIGTERM)
             .map_err(|error| Error::other(format!("failed to self-terminate orphaned child: {error}")))?;

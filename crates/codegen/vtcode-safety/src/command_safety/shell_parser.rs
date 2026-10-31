@@ -216,6 +216,12 @@ impl FindExecSyntaxClassifier {
 
                 if context != FindCommandContext::Expression && matches!(word, ";" | "\\;" | "+") {
                     self.context = FindCommandContext::Expression;
+                } else if context != FindCommandContext::Expression && is_shell_interpreter(word) {
+                    // A shell interpreter reached through wrappers such as
+                    // `timeout`, `nice`, `nohup`, `stdbuf`, or `xargs` is still
+                    // an executable position; without this transition a
+                    // following `-c {}` would stay classified as static.
+                    self.context = FindCommandContext::ShellArguments;
                 }
 
                 is_dynamic
@@ -895,6 +901,23 @@ mod tests {
             let script = format!("find . -exec {shell} -c {{}} \\;");
             assert!(contains_dynamic_find_syntax(&script), "expected dynamic shell source: {script}");
         }
+    }
+
+    #[test]
+    fn find_exec_wrapped_shell_interpreter_detects_command_source() {
+        for script in [
+            "find . -exec timeout 5 bash -c {} \\;",
+            "find . -exec nice -n 5 sh -c {} \\;",
+            "find . -exec nohup bash -c {} \\;",
+            "find . -exec stdbuf -oL bash -c {} \\;",
+            "find . -exec xargs bash -c {} \\;",
+        ] {
+            assert!(contains_dynamic_find_syntax(script), "expected dynamic shell source: {script}");
+        }
+
+        // A literal interpreter-name argument is not an executable position.
+        assert!(!contains_dynamic_find_syntax("find src -type f -exec cp bash {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find src -type f -exec grep -e bash {} \\;"));
     }
 
     #[test]

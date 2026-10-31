@@ -98,11 +98,15 @@ pub(crate) struct SessionPromptGuard {
 
 impl SessionActivity {
     fn try_start_prompt(&self) -> Option<SessionPromptGuard> {
-        if self.closing.load(Ordering::Acquire) {
+        // Paired with `begin_close` and `wait_for_prompts` as a Dekker-style
+        // handshake: seq-cst ordering makes the closing store and the active
+        // prompt counter observe each other, so a close cannot both miss a
+        // starting prompt and let that prompt miss the close.
+        if self.closing.load(Ordering::SeqCst) {
             return None;
         }
-        let _previous_active_prompts = self.active_prompts.fetch_add(1, Ordering::AcqRel);
-        if self.closing.load(Ordering::Acquire) {
+        let _previous_active_prompts = self.active_prompts.fetch_add(1, Ordering::SeqCst);
+        if self.closing.load(Ordering::SeqCst) {
             self.finish_prompt();
             return None;
         }
@@ -110,7 +114,7 @@ impl SessionActivity {
     }
 
     fn begin_close(&self) {
-        self.closing.store(true, Ordering::Release);
+        self.closing.store(true, Ordering::SeqCst);
     }
 
     async fn wait_for_prompts(&self) {
@@ -118,7 +122,7 @@ impl SessionActivity {
             let notified = self.prompts_idle.notified();
             tokio::pin!(notified);
             let _was_newly_enabled = notified.as_mut().enable();
-            if self.active_prompts.load(Ordering::Acquire) == 0 {
+            if self.active_prompts.load(Ordering::SeqCst) == 0 {
                 return;
             }
             notified.await;
@@ -126,7 +130,7 @@ impl SessionActivity {
     }
 
     fn finish_prompt(&self) {
-        if self.active_prompts.fetch_sub(1, Ordering::AcqRel) == 1 {
+        if self.active_prompts.fetch_sub(1, Ordering::SeqCst) == 1 {
             self.prompts_idle.notify_waiters();
         }
     }
@@ -134,7 +138,7 @@ impl SessionActivity {
 
 impl SessionPromptGuard {
     pub(crate) fn is_closing(&self) -> bool {
-        self.activity.closing.load(Ordering::Acquire)
+        self.activity.closing.load(Ordering::SeqCst)
     }
 }
 

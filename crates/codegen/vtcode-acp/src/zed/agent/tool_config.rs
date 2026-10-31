@@ -241,7 +241,7 @@ impl ZedAgent {
     ) -> Result<Option<PathBuf>, String> {
         let Some(runtime) = session
             .workspace_runtime()
-            .map_err(|error| format!("Failed to read ACP session workspace runtime: {error:#}"))?
+            .map_err(|error| super::report_session_runtime_failure(&error))?
         else {
             return self.resolve_terminal_working_dir(args);
         };

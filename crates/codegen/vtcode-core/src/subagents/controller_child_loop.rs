@@ -44,6 +44,7 @@ use super::*;
 struct ChildExecutionContext {
     spec: SubagentSpec,
     session_id: String,
+    parent_thread_id: String,
     bootstrap_messages: Vec<Message>,
     display_label: String,
     background: bool,
@@ -282,6 +283,7 @@ impl SubagentController {
             ChildExecutionContext {
                 spec: record.spec.clone(),
                 session_id: record.session_id.clone(),
+                parent_thread_id: record.parent_thread_id.clone(),
                 bootstrap_messages: record.stored_messages.clone(),
                 display_label: record.display_label.clone(),
                 background: record.background,
@@ -403,7 +405,10 @@ impl SubagentController {
         Ok(ResolvedChildRuntime {
             effective_workspace,
             allow_nested_delegation,
-            parent_session_id: self.parent_session_id.read().await.clone(),
+            // Attribute the run to the record's own parent thread rather than
+            // this controller's parent; a nested controller serves several
+            // parent threads and must not re-attribute their children.
+            parent_session_id: context.parent_thread_id.clone(),
             resolved_model,
             child_reasoning_effort,
             child_cfg,
