@@ -135,13 +135,44 @@ impl ZedAgent {
             Ok(true)
         }
         .await;
-        let used_tokens_after = compaction_result.as_ref().ok().and_then(|_| {
+        // `Ok(false)` means the attempt produced no compaction outcome while
+        // staying inside the admission budget, so report a completed but
+        // non-compacting activity instead of a misleading token reduction.
+        let compacted = matches!(compaction_result, Ok(true));
+        let used_tokens_after = if compacted {
             self.resolved_messages(session)
                 .ok()
                 .map(|messages| estimated_prompt_tokens(&messages, tools))
-        });
+        } else {
+            None
+        };
         let failure_reason = compaction_result.as_ref().err().map(ToString::to_string);
-        match activity.finished_update(used_tokens_after, failure_reason.as_deref()) {
+        let outcome = if failure_reason.is_some() {
+            "failed"
+        } else if compacted {
+            "compacted"
+        } else {
+            "no_change"
+        };
+        let elapsed_ms = activity.elapsed_millis();
+        if let Some(reason) = failure_reason.as_deref() {
+            warn!(
+                provider = provider.name(),
+                model,
+                prompt_tokens,
+                elapsed_ms,
+                outcome,
+                error_category = "compaction_failed",
+                error = %reason,
+                "ACP automatic context compaction failed"
+            );
+        } else {
+            info!(
+                provider = provider.name(),
+                model, prompt_tokens, compacted, elapsed_ms, outcome, "ACP automatic context compaction finished"
+            );
+        }
+        match activity.finished_update(compacted, used_tokens_after, failure_reason.as_deref()) {
             Ok(update) => {
                 if let Err(error) = self.send_update(&acp_session_id, update).await {
                     warn!(%error, session_id = %acp_session_id, "Failed to publish ACP compaction terminal update");

@@ -1186,16 +1186,14 @@ pub(crate) fn parse_usage_openai_format(
 /// providers use the corresponding `output_tokens_details` shape.
 #[inline]
 pub(crate) fn parse_reasoning_tokens_from_usage(usage_value: &Value) -> Option<u32> {
-    usage_value
-        .get("completion_tokens_details")
-        .and_then(|details| details.get("reasoning_tokens"))
-        .or_else(|| {
-            usage_value
-                .get("output_tokens_details")
-                .and_then(|details| details.get("reasoning_tokens"))
-        })
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok())
+    let reasoning_tokens_in = |details_key: &str| {
+        usage_value
+            .get(details_key)
+            .and_then(|details| details.get("reasoning_tokens"))
+            .and_then(Value::as_u64)
+            .and_then(|value| u32::try_from(value).ok())
+    };
+    reasoning_tokens_in("completion_tokens_details").or_else(|| reasoning_tokens_in("output_tokens_details"))
 }
 
 #[inline]
@@ -1433,7 +1431,8 @@ mod tests {
         PROVIDER_ERROR_BODY_MAX_BYTES, assistant_interleaved_history_text, extract_reasoning_text_from_detail_values,
         extract_reasoning_text_from_serialized_details, float_to_json_number, is_interleaved_thinking_model,
         is_minimax_m2_model, normalize_reasoning_detail_object, parse_chat_request_openai_format,
-        parse_response_openai_format, parse_usage_openai_format, read_provider_error_body, sampling_param_f64,
+        parse_reasoning_tokens_from_usage, parse_response_openai_format, parse_usage_openai_format,
+        read_provider_error_body, sampling_param_f64,
     };
     use crate::provider::{AssistantPhase, Message};
     use serde_json::{Value, json};
@@ -1458,6 +1457,23 @@ mod tests {
 
         assert_eq!(body.len(), PROVIDER_ERROR_BODY_MAX_BYTES);
         assert!(!body.contains("tail-that-must-not-be-read"));
+    }
+
+    #[test]
+    fn reasoning_tokens_fall_back_when_the_primary_detail_is_unusable() {
+        let null_primary = json!({
+            "completion_tokens_details": { "reasoning_tokens": null },
+            "output_tokens_details": { "reasoning_tokens": 7 }
+        });
+        assert_eq!(parse_reasoning_tokens_from_usage(&null_primary), Some(7));
+
+        let oversized_primary = json!({
+            "completion_tokens_details": { "reasoning_tokens": u64::from(u32::MAX) + 1 },
+            "output_tokens_details": { "reasoning_tokens": 9 }
+        });
+        assert_eq!(parse_reasoning_tokens_from_usage(&oversized_primary), Some(9));
+
+        assert_eq!(parse_reasoning_tokens_from_usage(&json!({})), None);
     }
 
     #[test]
