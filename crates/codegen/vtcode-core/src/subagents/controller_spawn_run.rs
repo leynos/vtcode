@@ -1,3 +1,4 @@
+//! Creates and starts subagent runs from controller requests and their configured execution context.
 #![allow(
     unused_imports,
     reason = "Intentional compatibility, platform, or test-only suppression."
@@ -7,6 +8,7 @@ use chrono::Utc;
 use futures::future::{BoxFuture, select_all};
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{Notify, RwLock};
@@ -37,6 +39,37 @@ use vtcode_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
 )]
 use super::*;
 
+struct SubagentSpawnOptions {
+    fork_context: bool,
+    background: bool,
+    max_turns: Option<usize>,
+    model_override: Option<String>,
+    reasoning_override: Option<String>,
+}
+
+struct PreparedSubagentSpawn {
+    spec: SubagentSpec,
+    prompt: String,
+    options: SubagentSpawnOptions,
+    delegation: PreparedDelegationContext,
+}
+
+struct PreparedChildRuntimeConfig {
+    effective_config: VTCodeConfig,
+    max_turns: Option<usize>,
+}
+
+struct QueuedChildRecord {
+    id: String,
+    record: ChildRecord,
+}
+
+enum ChildWaitOutcome {
+    Notified,
+    Terminal(Box<SubagentStatusEntry>),
+    TimedOut,
+}
+
 impl SubagentController {
     /// Spawns a new subagent child process from a [`SpawnAgentRequest`].
     pub async fn spawn(&self, request: SpawnAgentRequest) -> Result<SubagentStatusEntry> {
@@ -58,143 +91,83 @@ impl SubagentController {
             "spawn_agent",
             "spawning the subagent",
         )?;
-        self.spawn_with_spec(
+        self.spawn_with_spec(PreparedSubagentSpawn {
             spec,
             prompt,
-            request.fork_context,
-            request.background,
-            request.max_turns,
-            request.model,
-            request.reasoning_effort,
-        )
-        .await
-    }
-
-    /// Spawns a background subprocess for a subagent marked `background: true`.
-    pub async fn spawn_background_subprocess(
-        &self,
-        request: SpawnBackgroundSubprocessRequest,
-    ) -> Result<BackgroundSubprocessEntry> {
-        if self.config.managed_background_runtime {
-            bail!("managed background subprocesses cannot launch nested background subprocesses");
-        }
-        if !self.config.vt_cfg.subagents.background.enabled {
-            bail!("Background subagents are disabled by configuration");
-        }
-
-        let mut request = request;
-        let delegation = self
-            .prepare_delegation_context(
-                request.agent_type.clone(),
-                &mut request.items,
-                &mut request.model,
-                "spawn_background_subprocess",
-            )
-            .await?;
-        let spec = self.resolve_requested_spec(delegation.requested_agent.as_deref()).await?;
-        if !spec.background {
-            bail!(
-                "spawn_background_subprocess requires an agent with `background: true`; '{}' is a normal delegated child agent. Use spawn_agent instead.",
-                spec.name
-            );
-        }
-        let prompt = self.prepare_delegation_prompt(
-            &spec,
-            &delegation,
-            &request.message,
-            &request.items,
-            "spawn_background_subprocess",
-            "launching the background subprocess",
-        )?;
-        let desired_max_turns = normalize_background_child_max_turns(request.max_turns.or(spec.max_turns), true);
-        let desired_model_override = request.model.clone().or_else(|| spec.model.clone());
-        let desired_reasoning_override = request
-            .reasoning_effort
-            .clone()
-            .or_else(|| spec.reasoning_effort.as_ref().map(|e| e.as_str().to_string()));
-
-        let record_id = background_record_id(spec.name.as_str());
-        let _ = self.refresh_background_processes().await?;
-        {
-            let state = self.state.read().await;
-            if let Some(record) = state.background_children.get(&record_id)
-                && record.desired_enabled
-                && record.status.is_active()
-            {
-                let conflicts = Self::active_background_launch_conflicts(
-                    record,
-                    prompt.as_str(),
-                    desired_max_turns,
-                    desired_model_override.as_deref(),
-                    desired_reasoning_override.as_deref(),
-                );
-                if !conflicts.is_empty() {
-                    bail!(
-                        "spawn_background_subprocess found active background subprocess '{}' with different {}. Stop or restart the existing subprocess before changing its launch settings.",
-                        spec.name,
-                        conflicts.join(", "),
-                    );
-                }
-                return Ok(record.build_status_entry());
-            }
-        }
-
-        self.ensure_background_record_running(
-            spec.name.as_str(),
-            Some(record_id.as_str()),
-            0,
-            Some(BackgroundLaunchOverrides {
-                prompt: Some(prompt),
+            options: SubagentSpawnOptions {
+                fork_context: request.fork_context,
+                background: request.background,
                 max_turns: request.max_turns,
                 model_override: request.model,
                 reasoning_override: request.reasoning_effort,
-            }),
-        )
+            },
+            delegation,
+        })
         .await
     }
 
     /// Spawns a subagent with a custom [`SubagentSpec`] that must be read-only.
-    pub async fn spawn_custom(&self, spec: SubagentSpec, request: SpawnAgentRequest) -> Result<SubagentStatusEntry> {
-        if !spec.is_subagent() {
-            bail!("custom subagent spawn only supports subagent-capable specs; '{}' is primary-only", spec.name);
-        }
+    pub fn spawn_custom(
+        &self,
+        spec: SubagentSpec,
+        request: SpawnAgentRequest,
+    ) -> BoxFuture<'_, Result<SubagentStatusEntry>> {
+        Box::pin(async move {
+            if !spec.is_subagent() {
+                bail!("custom subagent spawn only supports subagent-capable specs; '{}' is primary-only", spec.name);
+            }
 
-        if !spec.is_read_only() {
-            bail!(
-                "custom subagent spawn only supports read-only specs; '{}' exposes write-capable behaviour",
-                spec.name
-            );
-        }
+            if !spec.is_read_only() {
+                bail!(
+                    "custom subagent spawn only supports read-only specs; '{}' exposes write-capable behaviour",
+                    spec.name
+                );
+            }
 
-        let mut request = request;
-        sanitize_subagent_input_items(&mut request.items);
+            let mut request = request;
+            sanitize_subagent_input_items(&mut request.items);
 
-        let prompt = request_prompt(&request.message, &request.items)
-            .or_else(|| spec.initial_prompt.clone())
-            .filter(|value| !value.trim().is_empty())
-            .ok_or_else(|| anyhow!("custom subagent spawn requires a task message or items"))?;
-        if delegated_task_requires_clarification(&prompt) {
-            bail!(
-                "custom subagent task for '{}' is too vague ('{}'). Provide a specific delegated task before spawning the subagent.",
-                spec.name,
-                prompt.trim()
-            );
-        }
+            let prompt = request_prompt(&request.message, &request.items)
+                .or_else(|| spec.initial_prompt.clone())
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| anyhow!("custom subagent spawn requires a task message or items"))?;
+            if delegated_task_requires_clarification(&prompt) {
+                bail!(
+                    "custom subagent task for '{}' is too vague ('{}'). Provide a specific delegated task before spawning the subagent.",
+                    spec.name,
+                    prompt.trim()
+                );
+            }
 
-        self.spawn_with_spec(
-            spec,
-            prompt,
-            request.fork_context,
-            request.background,
-            request.max_turns,
-            request.model,
-            request.reasoning_effort,
-        )
-        .await
+            let mut custom_items = Vec::new();
+            let mut custom_model = None;
+            let delegation = self
+                .prepare_delegation_context(
+                    Some(spec.name.clone()),
+                    &mut custom_items,
+                    &mut custom_model,
+                    "spawn_custom",
+                )
+                .await?;
+            self.spawn_with_spec(PreparedSubagentSpawn {
+                spec,
+                prompt,
+                options: SubagentSpawnOptions {
+                    fork_context: request.fork_context,
+                    background: request.background,
+                    max_turns: request.max_turns,
+                    model_override: request.model,
+                    reasoning_override: request.reasoning_effort,
+                },
+                delegation,
+            })
+            .await
+        })
     }
 
     /// Sends additional input to a running or queued subagent.
     pub async fn send_input(&self, request: SendInputRequest) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned_by_invocation(&request.target).await?;
         let prompt = request_prompt(&request.message, &request.items)
             .ok_or_else(|| anyhow!("send_input requires a message or items"))?;
 
@@ -235,7 +208,11 @@ impl SubagentController {
             self.restart_child(&request.target).await?;
         }
 
-        self.status_for(&request.target).await
+        let status = self.status_for_unchecked(&request.target).await?;
+        if !maybe_restart {
+            self.publish_subagent_progress(status.clone()).await;
+        }
+        Ok(status)
     }
 
     /// Resumes a closed or errored subagent and its descendants by re-queuing
@@ -243,6 +220,7 @@ impl SubagentController {
     /// grandchildren closed by `close_tree` are resumed too, not merely
     /// un-gated.
     pub async fn resume(&self, target: &str) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned_by_invocation(target).await?;
         self.resume_tree(target).await
     }
 
@@ -285,12 +263,13 @@ impl SubagentController {
             for restart_id in restart_ids {
                 self_owned.restart_child(&restart_id).await?;
             }
-            self_owned.status_for(&target_owned).await
+            self_owned.status_for_unchecked(&target_owned).await
         })
     }
 
     /// Closes a subagent and all its descendants, aborting any in-flight work.
     pub async fn close(&self, target: &str) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned_by_invocation(target).await?;
         // `close_tree` walks the full nesting tree (including grandchildren
         // spawned through child-scoped controllers) and closes bottom-up.
         self.close_tree(target).await
@@ -352,18 +331,17 @@ impl SubagentController {
                     }
                 }
             }
-            self_owned.status_for(&target_owned).await
+            self_owned.status_for_unchecked(&target_owned).await
         })
     }
 
     /// Blocks until one of the target subagents reaches a terminal state or the timeout expires.
     pub async fn wait(&self, targets: &[String], timeout_ms: Option<u64>) -> Result<Option<SubagentStatusEntry>> {
         for target in targets {
-            if let Ok(entry) = self.status_for(target).await
-                && entry.status.is_terminal()
-            {
-                return Ok(Some(entry));
-            }
+            self.ensure_child_owned_by_invocation(target).await?;
+        }
+        if let Some(entry) = self.first_terminal_wait_target(targets).await {
+            return Ok(Some(entry));
         }
 
         let timeout = std::time::Duration::from_millis(
@@ -372,55 +350,63 @@ impl SubagentController {
         let deadline = tokio::time::Instant::now() + timeout;
 
         loop {
-            // Collect notify handles from child records.
-            let notifies = {
-                let state = self.state.read().await;
-                targets
-                    .iter()
-                    .filter_map(|target| state.children.get(target).map(|record| record.notify.clone()))
-                    .collect::<Vec<_>>()
-            };
-            if notifies.is_empty() {
-                return Ok(None);
+            match self.wait_for_child_change(targets, deadline).await {
+                ChildWaitOutcome::Notified => {}
+                ChildWaitOutcome::Terminal(entry) => return Ok(Some(*entry)),
+                ChildWaitOutcome::TimedOut => return Ok(None),
             }
+        }
+    }
 
-            // Register notified() futures BEFORE checking terminal status.
-            // This prevents a Tokio Notify race condition: if apply_result()
-            // calls notify_waiters() between a status check and future
-            // creation, the notification is permanently lost. By registering
-            // futures first, any concurrent notification either:
-            //   (a) arrives before we poll the future → stored as a permit,
-            //       select! returns immediately, loop re-checks status, or
-            //   (b) arrives after we start waiting → wakes the future normally.
-            let wait_any = select_all(
-                notifies
-                    .into_iter()
-                    .map(|notify| Box::pin(async move { notify.notified().await }))
-                    .collect::<Vec<_>>(),
-            );
-            tokio::pin!(wait_any);
-
-            // Now check if any target is already terminal.
-            for target in targets {
-                if let Ok(entry) = self.status_for(target).await
-                    && entry.status.is_terminal()
-                {
-                    return Ok(Some(entry));
-                }
+    async fn first_terminal_wait_target(&self, targets: &[String]) -> Option<SubagentStatusEntry> {
+        for target in targets {
+            if let Ok(entry) = self.status_for_unchecked(target).await
+                && entry.status.is_terminal()
+            {
+                return Some(entry);
             }
+        }
+        None
+    }
 
-            let sleep = tokio::time::sleep_until(deadline);
-            tokio::pin!(sleep);
+    async fn wait_for_child_change(&self, targets: &[String], deadline: tokio::time::Instant) -> ChildWaitOutcome {
+        let notifies = {
+            let state = self.state.read().await;
+            targets
+                .iter()
+                .filter_map(|target| state.children.get(target).map(|record| record.notify.clone()))
+                .collect::<Vec<_>>()
+        };
+        if notifies.is_empty() {
+            return ChildWaitOutcome::TimedOut;
+        }
 
-            tokio::select! {
-                _ = &mut sleep => return Ok(None),
-                _ = &mut wait_any => {}
-            }
+        // Register notified() futures before rechecking status. Merely
+        // constructing a Notified future does not register it; enable() is
+        // needed because notify_waiters() does not retain a permit for futures
+        // that have not yet been polled.
+        let wait_any = select_all(register_notify_waiters(&notifies));
+        tokio::pin!(wait_any);
+
+        if let Some(entry) = self.first_terminal_wait_target(targets).await {
+            return ChildWaitOutcome::Terminal(Box::new(entry));
+        }
+
+        let sleep = tokio::time::sleep_until(deadline);
+        tokio::pin!(sleep);
+        tokio::select! {
+            _ = &mut sleep => ChildWaitOutcome::TimedOut,
+            _ = &mut wait_any => ChildWaitOutcome::Notified,
         }
     }
 
     /// Returns the current status of a tracked subagent by its target id.
     pub async fn status_for(&self, target: &str) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned_by_invocation(target).await?;
+        self.status_for_unchecked(target).await
+    }
+
+    async fn status_for_unchecked(&self, target: &str) -> Result<SubagentStatusEntry> {
         let state = self.state.read().await;
         let record = state
             .children
@@ -522,206 +508,10 @@ impl SubagentController {
         record.updated_at = Utc::now();
         record.completed_at = Some(Utc::now());
         record.notify.notify_waiters();
-        Ok(record.build_status_entry())
-    }
-
-    pub(super) async fn background_status_for(&self, target: &str) -> Result<BackgroundSubprocessEntry> {
-        let state = self.state.read().await;
-        let record = state
-            .background_children
-            .get(target)
-            .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?;
-        Ok(record.build_status_entry())
-    }
-
-    pub(super) async fn ensure_background_record_running(
-        &self,
-        agent_name: &str,
-        stable_id: Option<&str>,
-        restart_attempts: u8,
-        overrides: Option<BackgroundLaunchOverrides>,
-    ) -> Result<BackgroundSubprocessEntry> {
-        let spec = self
-            .resolve_requested_spec(Some(agent_name))
-            .await
-            .with_context(|| format!("Failed to resolve background subagent '{agent_name}'"))?;
-        let record_id = stable_id
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| background_record_id(agent_name));
-        let previous_record = {
-            let state = self.state.read().await;
-            state.background_children.get(&record_id).map(|record| {
-                (
-                    record.created_at,
-                    record.prompt.clone(),
-                    record.max_turns,
-                    record.model_override.clone(),
-                    record.reasoning_override.clone(),
-                )
-            })
-        };
-        let parent_session_id = self.parent_session_id.read().await.clone();
-        let session_id = format!(
-            "{}-{}-{}",
-            sanitize_component(parent_session_id.as_str()),
-            sanitize_component(record_id.as_str()),
-            Utc::now().format("%Y%m%dT%H%M%S%3fZ")
-        );
-        let exec_session_id = format!("exec-{session_id}");
-        let (created_at, previous_prompt, previous_max_turns, previous_model_override, previous_reasoning_override) =
-            previous_record.unwrap_or((Utc::now(), String::new(), None, None, None));
-        let prompt = overrides
-            .as_ref()
-            .and_then(|overrides| overrides.prompt.clone())
-            .filter(|value| !value.trim().is_empty())
-            .or_else(|| (!previous_prompt.trim().is_empty()).then_some(previous_prompt))
-            .or_else(|| spec.initial_prompt.clone())
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| {
-                format!(
-                    "You are the VT Code background subagent `{}`. Summarize readiness briefly, inspect the workspace at a high level, then remain idle until the process is terminated.",
-                    spec.name
-                )
-            });
-        let max_turns = normalize_background_child_max_turns(
-            overrides
-                .as_ref()
-                .and_then(|overrides| overrides.max_turns)
-                .or(previous_max_turns)
-                .or(spec.max_turns),
-            true,
-        );
-        let model_override = overrides
-            .as_ref()
-            .and_then(|overrides| overrides.model_override.clone())
-            .or(previous_model_override)
-            .or_else(|| spec.model.clone());
-        let reasoning_override = overrides
-            .as_ref()
-            .and_then(|overrides| overrides.reasoning_override.clone())
-            .or(previous_reasoning_override)
-            .or_else(|| spec.reasoning_effort.as_ref().map(|e| e.as_str().to_string()));
-
-        {
-            let mut state = self.state.write().await;
-            state.background_children.insert(
-                record_id.clone(),
-                BackgroundRecord {
-                    id: record_id.clone(),
-                    agent_name: spec.name.clone(),
-                    display_label: subagent_display_label(&spec),
-                    description: spec.description.clone(),
-                    source: spec.source.label(),
-                    color: spec.color.clone(),
-                    session_id: session_id.clone(),
-                    exec_session_id: exec_session_id.clone(),
-                    desired_enabled: true,
-                    status: BackgroundSubprocessStatus::Starting,
-                    created_at,
-                    updated_at: Utc::now(),
-                    started_at: None,
-                    ended_at: None,
-                    pid: None,
-                    prompt: prompt.clone(),
-                    summary: Some("Starting background subagent".to_string()),
-                    error: None,
-                    archive_path: None,
-                    transcript_path: None,
-                    max_turns,
-                    model_override: model_override.clone(),
-                    reasoning_override: reasoning_override.clone(),
-                    restart_attempts,
-                },
-            );
-        }
-
-        let launch = build_background_launch_spec(
-            &self.config.workspace_root,
-            spec.name.as_str(),
-            parent_session_id.as_str(),
-            session_id.as_str(),
-            prompt.as_str(),
-            max_turns,
-            model_override.as_deref(),
-            reasoning_override.as_deref(),
-        )?;
-        let metadata = if launch.use_pty {
-            self.config
-                .exec_sessions
-                .create_pty_session(
-                    exec_session_id.clone().into(),
-                    launch.command,
-                    self.config.workspace_root.clone(),
-                    PtySize {
-                        rows: 24,
-                        cols: 80,
-                        pixel_width: 0,
-                        pixel_height: 0,
-                    },
-                    hashbrown::HashMap::new(),
-                    None,
-                )
-                .await
-        } else {
-            self.config
-                .exec_sessions
-                .create_pipe_session(
-                    exec_session_id.clone().into(),
-                    launch.command,
-                    self.config.workspace_root.clone(),
-                    hashbrown::HashMap::new(),
-                )
-                .await
-        }
-        .with_context(|| format!("Failed to spawn background subprocess for subagent '{}'", spec.name))?;
-
-        tracing::info!(
-            agent_name = spec.name.as_str(),
-            record_id = record_id.as_str(),
-            exec_session_id = exec_session_id.as_str(),
-            pid = metadata.child_pid,
-            "Spawned background subagent subprocess"
-        );
-
-        {
-            let mut state = self.state.write().await;
-            let record = state
-                .background_children
-                .get_mut(&record_id)
-                .ok_or_else(|| anyhow!("Unknown background subprocess {record_id}"))?;
-            record.exec_session_id = exec_session_id;
-            record.pid = metadata.child_pid;
-            record.started_at = metadata.started_at;
-            record.status = BackgroundSubprocessStatus::Running;
-            record.updated_at = Utc::now();
-            record.ended_at = None;
-            record.error = None;
-            record.summary = Some("Background subagent is running".to_string());
-        }
-
-        self.save_background_state().await?;
-        self.background_status_for(&record_id).await
-    }
-
-    pub(super) async fn refresh_background_archive_metadata(&self, target: &str) -> Result<()> {
-        let session_id = {
-            let state = self.state.read().await;
-            state
-                .background_children
-                .get(target)
-                .map(|record| record.session_id.clone())
-                .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?
-        };
-
-        if let Some(listing) = find_session_by_identifier(&session_id).await? {
-            let mut state = self.state.write().await;
-            if let Some(record) = state.background_children.get_mut(target) {
-                record.archive_path = Some(listing.path.clone());
-                record.transcript_path = Some(listing.path);
-            }
-        }
-
-        Ok(())
+        let entry = record.build_status_entry();
+        drop(state);
+        self.publish_subagent_progress(entry.clone()).await;
+        Ok(entry)
     }
 
     /// Marks this controller as closing so [`Self::spawn`] rejects new spawns.
@@ -746,22 +536,32 @@ impl SubagentController {
     /// are aborted so subagent tasks do not outlive the parent session.
     pub async fn signal_shutdown(&self) {
         self.shutdown_requested.store(true, Ordering::Relaxed);
-        let nested = {
-            let mut state = self.state.write().await;
-            let mut nested = Vec::new();
-            for record in state.children.values_mut() {
-                if let Some(handle) = record.handle.take() {
-                    handle.abort();
-                }
-                record.status = SubagentStatus::Closed;
-                record.completed_at = Some(Utc::now());
-                record.notify.notify_waiters();
-                if let Some(controller) = record.child_controller.clone() {
-                    nested.push((controller, record.session_id.clone()));
-                }
+        let (nested, entries) = self.close_children_for_shutdown().await;
+        for entry in entries {
+            self.publish_subagent_progress(entry).await;
+        }
+        self.shutdown_nested_controllers(nested).await;
+    }
+
+    async fn close_children_for_shutdown(&self) -> (Vec<(Arc<SubagentController>, String)>, Vec<SubagentStatusEntry>) {
+        let mut state = self.state.write().await;
+        let mut nested = Vec::new();
+        for record in state.children.values_mut() {
+            if let Some(handle) = record.handle.take() {
+                handle.abort();
             }
-            nested
-        };
+            record.status = SubagentStatus::Closed;
+            record.completed_at = Some(Utc::now());
+            record.notify.notify_waiters();
+            if let Some(controller) = record.child_controller.clone() {
+                nested.push((controller, record.session_id.clone()));
+            }
+        }
+        let entries = state.children.values().map(ChildRecord::build_status_entry).collect::<Vec<_>>();
+        (nested, entries)
+    }
+
+    async fn shutdown_nested_controllers(&self, nested: Vec<(Arc<SubagentController>, String)>) {
         // Mark every child-scoped controller as permanently shut down (so its
         // background state is not saved) and as closing (so a race cannot let
         // a fresh grandchild outlive shutdown), then cascade.
@@ -815,7 +615,7 @@ impl SubagentController {
             .ok_or_else(|| anyhow!("Unknown subagent type {requested}"))
     }
 
-    async fn prepare_delegation_context(
+    pub(super) async fn prepare_delegation_context(
         &self,
         requested_agent: Option<String>,
         items: &mut Vec<SubagentInputItem>,
@@ -824,11 +624,22 @@ impl SubagentController {
     ) -> Result<PreparedDelegationContext> {
         let state = self.state.read().await;
         sanitize_subagent_input_items(items);
-        *model = normalize_requested_model_override(model.take(), &state.turn_hints.current_input);
+        let invocation = current_subagent_invocation_context();
+        let current_input = invocation
+            .as_ref()
+            .map_or(state.turn_hints.current_input.as_str(), |context| context.current_input.as_str());
+        let explicit_mentions = invocation.as_ref().map_or_else(
+            || state.turn_hints.explicit_mentions.clone(),
+            |_| extract_explicit_agent_mentions(current_input, state.discovered.effective.as_slice()),
+        );
+        let explicit_request = invocation.as_ref().map_or(state.turn_hints.explicit_request, |_| {
+            contains_explicit_delegation_request(current_input, explicit_mentions.as_slice())
+        });
+        *model = normalize_requested_model_override(model.take(), current_input);
         let requested_agent = if let Some(agent_type) = requested_agent {
             Some(agent_type)
         } else {
-            match state.turn_hints.explicit_mentions.as_slice() {
+            match explicit_mentions.as_slice() {
                 [] => None,
                 [single] => Some(single.clone()),
                 mentions => {
@@ -840,14 +651,25 @@ impl SubagentController {
                 }
             }
         };
+        let parent_messages = invocation
+            .as_ref()
+            .map(|context| context.parent_messages.clone())
+            .unwrap_or_else(|| state.parent_messages.clone());
+        drop(state);
+        let parent_session_id = match invocation {
+            Some(context) => context.parent_session_id,
+            None => self.parent_session_id.read().await.clone(),
+        };
         Ok(PreparedDelegationContext {
             requested_agent,
-            explicit_mentions: state.turn_hints.explicit_mentions.clone(),
-            explicit_request: state.turn_hints.explicit_request,
+            explicit_mentions,
+            explicit_request,
+            parent_session_id,
+            parent_messages,
         })
     }
 
-    fn prepare_delegation_prompt(
+    pub(super) fn prepare_delegation_prompt(
         &self,
         spec: &SubagentSpec,
         delegation: &PreparedDelegationContext,
@@ -898,39 +720,32 @@ impl SubagentController {
         Ok(prompt)
     }
 
-    fn active_background_launch_conflicts(
-        record: &BackgroundRecord,
-        prompt: &str,
-        max_turns: Option<usize>,
-        model_override: Option<&str>,
-        reasoning_override: Option<&str>,
-    ) -> Vec<&'static str> {
-        let mut conflicts = Vec::new();
-        if record.prompt != prompt {
-            conflicts.push("prompt");
-        }
-        if record.max_turns != max_turns {
-            conflicts.push("max_turns");
-        }
-        if record.model_override.as_deref() != model_override {
-            conflicts.push("model");
-        }
-        if record.reasoning_override.as_deref() != reasoning_override {
-            conflicts.push("reasoning_effort");
-        }
-        conflicts
+    fn spawn_with_spec(&self, launch: PreparedSubagentSpawn) -> BoxFuture<'_, Result<SubagentStatusEntry>> {
+        Box::pin(async move {
+            // Admit and validate before creating a worktree: every rejection
+            // that can happen here would otherwise leave an unreferenced
+            // checkout behind.
+            self.ensure_spawn_allowed(&launch.spec)?;
+            self.ensure_spawn_capacity().await?;
+            let runtime = self.prepare_spawn_runtime(&launch)?;
+            let worktree_path = self.create_spawn_worktree(&launch.spec).await?;
+            let worktree_path_for_cleanup = worktree_path.clone();
+            let child = self.prepare_queued_child(launch, worktree_path, runtime);
+            let id = child.id.clone();
+            if let Err(error) = Box::pin(self.insert_queued_child(child)).await {
+                // The record never became visible, so nothing owns the
+                // worktree; reclaim it rather than leaking the checkout.
+                if let Some(worktree_path) = worktree_path_for_cleanup.as_deref() {
+                    self.remove_unused_spawn_worktree(worktree_path).await;
+                }
+                return Err(error);
+            }
+            self.launch_child(&id).await?;
+            self.status_for(&id).await
+        })
     }
 
-    async fn spawn_with_spec(
-        &self,
-        spec: SubagentSpec,
-        prompt: String,
-        fork_context: bool,
-        background: bool,
-        max_turns: Option<usize>,
-        model_override: Option<String>,
-        reasoning_override: Option<String>,
-    ) -> Result<SubagentStatusEntry> {
+    fn ensure_spawn_allowed(&self, spec: &SubagentSpec) -> Result<()> {
         if !self.config.vt_cfg.subagents.enabled {
             bail!("Subagents are disabled by configuration");
         }
@@ -948,8 +763,12 @@ impl SubagentController {
                 spec.name
             );
         }
+        Ok(())
+    }
+
+    async fn create_spawn_worktree(&self, spec: &SubagentSpec) -> Result<Option<PathBuf>> {
         // Create a worktree for isolation if requested.
-        let worktree_path = if spec.isolation == Some(vtcode_config::IsolationMode::Worktree) {
+        if spec.isolation == Some(vtcode_config::IsolationMode::Worktree) {
             let workspace_root = self.config.workspace_root.clone();
             let worktree_name =
                 format!("{}-{}", sanitize_component(spec.name.as_str()), Utc::now().format("%Y%m%dT%H%M%S"));
@@ -959,14 +778,45 @@ impl SubagentController {
             })
             .await
             .context("Worktree creation task panicked")?;
-            Some(
-                worktree_result
-                    .with_context(|| format!("Failed to create worktree for subagent '{}'", worktree_name_for_error))?,
-            )
+            Ok(Some(worktree_result.with_context(|| {
+                format!("Failed to create worktree for subagent '{}'", worktree_name_for_error)
+            })?))
         } else {
-            None
-        };
+            Ok(None)
+        }
+    }
 
+    /// Best-effort removal of a worktree whose child record was never registered.
+    ///
+    /// Cleanup failures are logged rather than propagated so they cannot mask
+    /// the registration error that caused the rollback.
+    async fn remove_unused_spawn_worktree(&self, worktree_path: &std::path::Path) {
+        let Some(name) = worktree_path.file_name().and_then(|name| name.to_str()).map(str::to_owned) else {
+            tracing::warn!(
+                path = %worktree_path.display(),
+                "Cannot reclaim subagent worktree with a non-UTF-8 name"
+            );
+            return;
+        };
+        let workspace_root = self.config.workspace_root.clone();
+        let removal =
+            tokio::task::spawn_blocking(move || crate::git::WorktreeManager::new(workspace_root).remove(&name)).await;
+        match removal {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => tracing::warn!(
+                path = %worktree_path.display(),
+                error = %error,
+                "Failed to reclaim subagent worktree after registration failed"
+            ),
+            Err(error) => tracing::warn!(
+                path = %worktree_path.display(),
+                error = %error,
+                "Subagent worktree cleanup task panicked"
+            ),
+        }
+    }
+
+    async fn ensure_spawn_capacity(&self) -> Result<()> {
         let active_count = {
             let state = self.state.read().await;
             state
@@ -981,48 +831,60 @@ impl SubagentController {
         if active_count >= effective_max_concurrent {
             bail!("Subagent concurrency limit reached (max_concurrent={effective_max_concurrent})");
         }
-        let is_background_child = background;
-        let child_max_turns = normalize_background_child_max_turns(max_turns.or(spec.max_turns), is_background_child);
+        Ok(())
+    }
+
+    fn prepare_spawn_runtime(&self, launch: &PreparedSubagentSpawn) -> Result<PreparedChildRuntimeConfig> {
+        let is_background_child = launch.options.background;
+        let child_max_turns = normalize_background_child_max_turns(
+            launch.options.max_turns.or(launch.spec.max_turns),
+            is_background_child,
+        );
         let (_, _, effective_config) = prepare_child_runtime_config(
             &self.config.vt_cfg,
-            &spec,
+            &launch.spec,
             self.config.parent_model.as_str(),
             self.config.parent_provider.as_str(),
             self.config.parent_reasoning_effort,
             child_max_turns,
-            model_override.as_deref(),
-            reasoning_override.as_deref(),
-            !spec.is_read_only() && self.config.depth.saturating_add(2) <= self.config.vt_cfg.subagents.max_depth,
+            launch.options.model_override.as_deref(),
+            launch.options.reasoning_override.as_deref(),
+            !launch.spec.is_read_only()
+                && self.config.depth.saturating_add(2) <= self.config.vt_cfg.subagents.max_depth,
             resolve_effective_subagent_model,
         )?;
+        Ok(PreparedChildRuntimeConfig { effective_config, max_turns: child_max_turns })
+    }
 
-        let id = format!("agent-{}-{}", sanitize_component(spec.name.as_str()), Utc::now().format("%Y%m%dT%H%M%S%3fZ"));
-        let parent_session_id = self.parent_session_id.read().await.clone();
+    fn prepare_queued_child(
+        &self,
+        launch: PreparedSubagentSpawn,
+        worktree_path: Option<PathBuf>,
+        runtime: PreparedChildRuntimeConfig,
+    ) -> QueuedChildRecord {
+        let id = format!(
+            "agent-{}-{}",
+            sanitize_component(launch.spec.name.as_str()),
+            Utc::now().format("%Y%m%dT%H%M%S%3fZ")
+        );
+        let parent_session_id = launch.delegation.parent_session_id.clone();
         let session_id =
             format!("{}-{}", sanitize_component(parent_session_id.as_str()), sanitize_component(id.as_str()));
-        let display_label = subagent_display_label(&spec);
+        let display_label = subagent_display_label(&launch.spec);
         let notify = Arc::new(Notify::new());
-        let mut state = self.state.write().await;
-        // Re-check the close gates while the write lock is held. The earlier
-        // check can race with a concurrent `close_tree` that snapshots and
-        // closes the subtree between this spawn's admission and its record
-        // insertion; checking after acquisition closes that window.
-        if self.shutdown_requested.load(Ordering::Relaxed) || self.closing.load(Ordering::Relaxed) {
-            bail!("Subagent controller is shutting down; cannot spawn new subagents");
-        }
-        let initial_messages = if fork_context {
-            state.parent_messages.clone()
+        let initial_messages = if launch.options.fork_context {
+            launch.delegation.parent_messages
         } else {
             Vec::new()
         };
-        let entry = ChildRecord {
+        let record = ChildRecord {
             id: id.clone(),
             session_id,
             parent_thread_id: parent_session_id,
-            spec: spec.clone(),
+            spec: launch.spec,
             display_label,
             status: SubagentStatus::Queued,
-            background: is_background_child,
+            background: launch.options.background,
             depth: self.config.depth.saturating_add(1),
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -1032,24 +894,33 @@ impl SubagentController {
             archive_metadata: None,
             archive_path: None,
             transcript_path: None,
-            effective_config: Some(effective_config),
+            effective_config: Some(runtime.effective_config),
             stored_messages: initial_messages,
-            last_prompt: Some(prompt.clone()),
-            queued_prompts: VecDeque::from([prompt]),
-            max_turns: child_max_turns,
-            model_override,
-            reasoning_override,
+            last_prompt: Some(launch.prompt.clone()),
+            queued_prompts: VecDeque::from([launch.prompt]),
+            max_turns: runtime.max_turns,
+            model_override: launch.options.model_override,
+            reasoning_override: launch.options.reasoning_override,
             thread_handle: None,
             handle: None,
             notify,
             worktree_path,
             child_controller: None,
         };
-        state.children.insert(id.clone(), entry);
-        drop(state);
+        QueuedChildRecord { id, record }
+    }
 
-        self.launch_child(id.as_str()).await?;
-        self.status_for(&id).await
+    async fn insert_queued_child(&self, child: QueuedChildRecord) -> Result<()> {
+        let mut state = self.state.write().await;
+        // Re-check the close gates while the write lock is held. The earlier
+        // check can race with a concurrent `close_tree` that snapshots and
+        // closes the subtree between this spawn's admission and its record
+        // insertion; checking after acquisition closes that window.
+        if self.shutdown_requested.load(Ordering::Relaxed) || self.closing.load(Ordering::Relaxed) {
+            bail!("Subagent controller is shutting down; cannot spawn new subagents");
+        }
+        state.children.insert(child.id, child.record);
+        Ok(())
     }
 
     async fn restart_child(&self, target: &str) -> Result<()> {
@@ -1070,5 +941,33 @@ impl SubagentController {
             bail!("Subagent {target} has no queued input");
         }
         self.launch_child(target).await
+    }
+}
+
+fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync::futures::Notified<'_>>>> {
+    let mut waiters = notifies.iter().map(|notify| Box::pin(notify.notified())).collect::<Vec<_>>();
+    for waiter in &mut waiters {
+        waiter.as_mut().enable();
+    }
+    waiters
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn registered_waiter_observes_notify_waiters_before_first_wait_poll() {
+        let notify = Arc::new(Notify::new());
+        let notifies = [Arc::clone(&notify)];
+        let waiters = register_notify_waiters(&notifies);
+
+        // notify_waiters() is lossy for futures that have not registered.
+        // Deliver it after enable() but before select_all first polls a waiter.
+        notify.notify_waiters();
+
+        let outcome = tokio::time::timeout(Duration::from_millis(50), select_all(waiters)).await;
+        assert!(outcome.is_ok(), "registered waiter should retain the wakeup");
     }
 }

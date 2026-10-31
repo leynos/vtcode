@@ -35,7 +35,7 @@ pub mod traits;
 pub mod types;
 pub(crate) mod utils;
 
-pub use client::McpClient;
+pub use client::{McpClient, McpClientStartupOutcome, McpProviderStartupOutcome, McpStartupObserver};
 
 pub(crate) use connection_pool::{
     ConnectionPoolStats, McpConnectionPool, McpPoolError, PooledMcpManager, PooledMcpStats,

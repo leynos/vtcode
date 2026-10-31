@@ -1061,7 +1061,7 @@ Apache License 2.0 — SPDX: Apache-2.0
   rustls-native-certs 0.8.4
     Source: https://github.com/rustls/rustls-native-certs
     License: Apache-2.0 OR ISC OR MIT
-  rustls 0.23.45
+  rustls 0.23.46
     Source: https://github.com/rustls/rustls
     License: Apache-2.0 OR ISC OR MIT
   rusty-fork 0.3.1
@@ -1897,13 +1897,13 @@ Creative Commons Zero v1.0 Universal — SPDX: CC0-1.0
 --------------------------------------------------------------------------------
 Community Data License Agreement Permissive 2.0 — SPDX: CDLA-Permissive-2.0
 --------------------------------------------------------------------------------
-  webpki-root-certs 1.0.9
+  webpki-root-certs 1.0.11
     Source: https://github.com/rustls/webpki-roots
     License: CDLA-Permissive-2.0
   webpki-roots 0.26.11
     Source: https://github.com/rustls/webpki-roots
     License: CDLA-Permissive-2.0
-  webpki-roots 1.0.9
+  webpki-roots 1.0.11
     Source: https://github.com/rustls/webpki-roots
     License: CDLA-Permissive-2.0
 --------------------------------------------------------------------------------
@@ -2029,7 +2029,7 @@ ISC License — SPDX: ISC
 --------------------------------------------------------------------------------
 ISC License — SPDX: ISC
 --------------------------------------------------------------------------------
-  rustls-webpki 0.103.15
+  rustls-webpki 0.103.16
     Source: https://github.com/rustls/webpki
     License: ISC
 --------------------------------------------------------------------------------
@@ -2521,7 +2521,7 @@ MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
-  ruzstd 0.9.0
+  ruzstd 0.9.1
     Source: https://github.com/KillingSpark/zstd-rs
     License: MIT
 --------------------------------------------------------------------------------
@@ -2845,7 +2845,7 @@ MIT License — SPDX: MIT
   pulldown-cmark-escape 0.11.0
     Source: https://github.com/raphlinus/pulldown-cmark
     License: MIT
-  pulldown-cmark 0.13.4
+  pulldown-cmark 0.13.5
     Source: https://github.com/raphlinus/pulldown-cmark
     License: MIT
 --------------------------------------------------------------------------------
@@ -2866,7 +2866,7 @@ MIT License — SPDX: MIT
   tracing-core 0.1.36
     Source: https://github.com/tokio-rs/tracing
     License: MIT
-  zip 8.6.0
+  zip 9.0.5
     Source: https://github.com/zip-rs/zip2
     License: MIT
 --------------------------------------------------------------------------------

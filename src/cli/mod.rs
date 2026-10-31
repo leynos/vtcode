@@ -1,7 +1,10 @@
+//! Defines CLI startup dispatch and groups command handlers and their supporting modules.
 use anyhow::Result;
 
 use crate::startup::StartupContext;
+use vtcode::acp::{StandardAcpAdapter, ZedAcpAdapter};
 use vtcode_core::cli::args::{Cli, Commands};
+use vtcode_core::core::interfaces::acp::AcpClientAdapter;
 
 mod acp;
 mod action_resolution;
@@ -57,6 +60,16 @@ pub struct SkillsCommandOptions {
 }
 
 pub async fn dispatch(args: &Cli, startup: &StartupContext, print_mode: Option<String>) -> Result<()> {
+    dispatch_with_acp_adapters(args, startup, print_mode, &ZedAcpAdapter, &StandardAcpAdapter).await
+}
+
+async fn dispatch_with_acp_adapters(
+    args: &Cli,
+    startup: &StartupContext,
+    print_mode: Option<String>,
+    zed_adapter: &dyn AcpClientAdapter,
+    standard_adapter: &dyn AcpClientAdapter,
+) -> Result<()> {
     let cfg = &startup.config;
     let core_cfg = &startup.agent_config;
 
@@ -64,7 +77,7 @@ pub async fn dispatch(args: &Cli, startup: &StartupContext, print_mode: Option<S
         && args.command.is_none()
         && let Some(ide_target) = crate::main_helpers::detect_available_ide()?
     {
-        acp::handle_acp_command(core_cfg, cfg, ide_target).await?;
+        acp::handle_acp_command(core_cfg, cfg, ide_target, startup.skip_confirmations).await?;
         return Ok(());
     }
 
@@ -87,7 +100,7 @@ pub async fn dispatch(args: &Cli, startup: &StartupContext, print_mode: Option<S
             .await?;
         }
         ResolvedCliAction::Command(command) => {
-            dispatch::dispatch_command(args, startup, command).await?;
+            dispatch::dispatch_command_with_acp_adapters(args, startup, command, zed_adapter, standard_adapter).await?;
         }
         ResolvedCliAction::Chat => {
             handle_chat_command(

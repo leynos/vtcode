@@ -1,3 +1,4 @@
+//! Implements the OpenAI-compatible provider adapter and assembles its request and response modules.
 #![allow(
     clippy::collapsible_if,
     clippy::manual_contains,
@@ -29,8 +30,8 @@ use vtcode_config::TimeoutsConfig;
 use vtcode_config::auth::{OpenAIChatGptAuthHandle, OpenAIChatGptSession};
 use vtcode_config::constants::models;
 use vtcode_config::core::{
-    AnthropicConfig, ModelConfig, OpenAIConfig, OpenAIHostedShellConfig, OpenAIPromptCacheSettings, OpenAIServiceTier,
-    PromptCachingConfig,
+    AnthropicConfig, CustomProviderConfig, ModelConfig, OpenAIConfig, OpenAIHostedShellConfig,
+    OpenAIPromptCacheSettings, OpenAIServiceTier, PromptCachingConfig,
 };
 
 // Import from extracted modules
@@ -80,6 +81,7 @@ pub struct OpenAIProvider {
     prompt_cache_enabled: bool,
     prompt_cache_settings: OpenAIPromptCacheSettings,
     model_behaviour: Option<ModelConfig>,
+    custom_provider_config: Option<Arc<CustomProviderConfig>>,
     websocket_mode: bool,
     responses_store: Option<bool>,
     responses_include: Vec<String>,
@@ -93,17 +95,107 @@ pub struct OpenAIProvider {
     service_tier_unsupported_cache: Mutex<HashMap<String, bool>>,
 }
 
+struct OpenAIProviderSetupRequest<'a> {
+    model: &'a str,
+    uses_chatgpt_auth: bool,
+    prompt_cache: Option<PromptCachingConfig>,
+    base_url: Option<String>,
+    openai: Option<OpenAIConfig>,
+}
+
+struct OpenAIProviderSettings {
+    prompt_cache_enabled: bool,
+    prompt_cache_settings: OpenAIPromptCacheSettings,
+    backend_setup: OpenAIBackendSetup,
+    resolved_base_url: String,
+    responses_api_modes: HashMap<String, ResponsesApiState>,
+    websocket_mode: bool,
+    responses_store: Option<bool>,
+    responses_include: Vec<String>,
+    service_tier: Option<OpenAIServiceTier>,
+    hosted_shell: OpenAIHostedShellConfig,
+}
+
+impl OpenAIProviderSettings {
+    fn resolve(request: OpenAIProviderSetupRequest<'_>) -> Self {
+        let (prompt_cache_enabled, prompt_cache_settings) = extract_prompt_cache_settings(
+            request.prompt_cache,
+            |providers| &providers.openai,
+            |cfg, provider_settings| cfg.enabled && provider_settings.enabled,
+        );
+
+        let backend_setup = if request.uses_chatgpt_auth {
+            OpenAIBackendSetup::from_chatgpt_subscription_config(request.base_url)
+        } else {
+            OpenAIBackendSetup::from_api_key_config(request.base_url)
+        };
+        let resolved_base_url = backend_setup.base_url().to_string();
+        let default_state = OpenAIProvider::default_responses_state(request.model);
+        let initial_state = if resolved_base_url.contains("api.x.ai") {
+            ResponsesApiState::Disabled
+        } else if backend_setup.is_chatgpt_codex_backend() {
+            match default_state {
+                ResponsesApiState::Disabled => ResponsesApiState::Allowed,
+                state => state,
+            }
+        } else {
+            default_state
+        };
+        let mut responses_api_modes = HashMap::new();
+        responses_api_modes.insert(request.model.to_owned(), initial_state);
+
+        let websocket_mode = request.openai.as_ref().map(|config| config.websocket_mode).unwrap_or(false);
+        let responses_store = request.openai.as_ref().and_then(|config| config.responses_store);
+        let responses_include = request
+            .openai
+            .as_ref()
+            .map(|config| {
+                config
+                    .responses_include
+                    .iter()
+                    .map(|value| value.trim())
+                    .filter(|value| !value.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let service_tier = request.openai.as_ref().and_then(|config| config.service_tier);
+        let hosted_shell = request
+            .openai
+            .as_ref()
+            .map(|config| config.hosted_shell.clone())
+            .unwrap_or_default();
+
+        Self {
+            prompt_cache_enabled,
+            prompt_cache_settings,
+            backend_setup,
+            resolved_base_url,
+            responses_api_modes,
+            websocket_mode,
+            responses_store,
+            responses_include,
+            service_tier,
+            hosted_shell,
+        }
+    }
+}
+
 impl OpenAIProvider {
     fn requires_streaming_responses(model: &str) -> bool {
         matches!(model, models::openai::GPT | models::openai::GPT_5_6_SOL)
     }
 
-    fn model_supports_reasoning_summaries(model: &str) -> bool {
-        find_family_for_model(model).supports_reasoning_summaries
+    fn model_supports_reasoning(&self, model: &str) -> bool {
+        // Family recognition is broader than the explicit reasoning-model list:
+        // every `o3*`/`o4*` variant (and Gemini 3) retains reasoning output even
+        // when its exact slug is absent from `REASONING_MODELS`. Keep that
+        // behaviour while honouring custom-provider capabilities.
+        find_family_for_model(model).supports_reasoning_summaries || LLMProvider::supports_reasoning(self, model)
     }
 
-    fn normalize_reasoning_output(model: &str, mut response: provider::LLMResponse) -> provider::LLMResponse {
-        if !Self::model_supports_reasoning_summaries(model) {
+    fn normalize_reasoning_output(&self, model: &str, mut response: provider::LLMResponse) -> provider::LLMResponse {
+        if !self.model_supports_reasoning(model) {
             response.reasoning = None;
             response.reasoning_details = None;
         }
@@ -188,6 +280,7 @@ impl OpenAIProvider {
             prompt_cache_settings: Default::default(),
             responses_api_modes: Mutex::new(HashMap::new()),
             model_behaviour: None,
+            custom_provider_config: None,
             websocket_mode: false,
             responses_store: None,
             responses_include: Vec::new(),
@@ -265,6 +358,11 @@ impl OpenAIProvider {
         provider
     }
 
+    pub(crate) fn with_custom_provider_config(mut self, config: CustomProviderConfig) -> Self {
+        self.custom_provider_config = Some(Arc::new(config));
+        self
+    }
+
     pub(crate) fn with_api_format_override(mut self, api_format: Option<CustomProviderApiFormat>) -> Self {
         self.api_format_override = api_format;
         self
@@ -286,50 +384,13 @@ impl OpenAIProvider {
         openai: Option<OpenAIConfig>,
         model_behaviour: Option<ModelConfig>,
     ) -> Self {
-        let (prompt_cache_enabled, prompt_cache_settings) = extract_prompt_cache_settings(
+        let settings = OpenAIProviderSettings::resolve(OpenAIProviderSetupRequest {
+            model: &model,
+            uses_chatgpt_auth: openai_chatgpt_auth.is_some(),
             prompt_cache,
-            |providers| &providers.openai,
-            |cfg, provider_settings| cfg.enabled && provider_settings.enabled,
-        );
-
-        let backend_setup = if openai_chatgpt_auth.is_some() {
-            OpenAIBackendSetup::from_chatgpt_subscription_config(base_url)
-        } else {
-            OpenAIBackendSetup::from_api_key_config(base_url)
-        };
-        let resolved_base_url = backend_setup.base_url().to_string();
-
-        let mut responses_api_modes = HashMap::new();
-        let default_state = Self::default_responses_state(&model);
-        let is_chatgpt_backend = backend_setup.is_chatgpt_codex_backend();
-        let is_xai = resolved_base_url.contains("api.x.ai");
-        let websocket_mode = openai.as_ref().map(|cfg| cfg.websocket_mode).unwrap_or(false);
-        let responses_store = openai.as_ref().and_then(|cfg| cfg.responses_store);
-        let responses_include = openai
-            .as_ref()
-            .map(|cfg| {
-                cfg.responses_include
-                    .iter()
-                    .map(|value| value.trim())
-                    .filter(|value| !value.is_empty())
-                    .map(ToOwned::to_owned)
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let service_tier = openai.as_ref().and_then(|cfg| cfg.service_tier);
-        let hosted_shell = openai.as_ref().map(|cfg| cfg.hosted_shell.clone()).unwrap_or_default();
-
-        let initial_state = if is_xai {
-            ResponsesApiState::Disabled
-        } else if is_chatgpt_backend {
-            match default_state {
-                ResponsesApiState::Disabled => ResponsesApiState::Allowed,
-                state => state,
-            }
-        } else {
-            default_state
-        };
-        responses_api_modes.insert(model.clone(), initial_state);
+            base_url,
+            openai,
+        });
 
         use crate::http_client::HttpClientFactory;
         let http_client = HttpClientFactory::for_llm(&timeouts);
@@ -342,23 +403,24 @@ impl OpenAIProvider {
             api_format_override: None,
             openai_chatgpt_auth,
             http_client,
-            base_url: Arc::from(resolved_base_url.as_str()),
-            responses_url: Arc::from(format!("{resolved_base_url}/responses")),
-            responses_compact_url: Arc::from(format!("{resolved_base_url}/responses/compact")),
-            chat_completions_url: Arc::from(format!("{resolved_base_url}/chat/completions")),
-            backend_setup,
+            base_url: Arc::from(settings.resolved_base_url.as_str()),
+            responses_url: Arc::from(format!("{}/responses", settings.resolved_base_url)),
+            responses_compact_url: Arc::from(format!("{}/responses/compact", settings.resolved_base_url)),
+            chat_completions_url: Arc::from(format!("{}/chat/completions", settings.resolved_base_url)),
+            backend_setup: settings.backend_setup,
             model: Arc::from(model.as_str()),
             supported_models_override: None,
             context_window_override: None,
-            responses_api_modes: Mutex::new(responses_api_modes),
-            prompt_cache_enabled,
-            prompt_cache_settings,
+            responses_api_modes: Mutex::new(settings.responses_api_modes),
+            prompt_cache_enabled: settings.prompt_cache_enabled,
+            prompt_cache_settings: settings.prompt_cache_settings,
             model_behaviour,
-            websocket_mode,
-            responses_store,
-            responses_include,
-            service_tier,
-            hosted_shell,
+            custom_provider_config: None,
+            websocket_mode: settings.websocket_mode,
+            responses_store: settings.responses_store,
+            responses_include: settings.responses_include,
+            service_tier: settings.service_tier,
+            hosted_shell: settings.hosted_shell,
             websocket_session: AsyncMutex::new(None),
             websocket_continuation_cache: Mutex::new(None),
             service_tier_unsupported_cache: Mutex::new(HashMap::new()),
@@ -467,12 +529,9 @@ impl OpenAIProvider {
         format!("vtcode-{}", Uuid::new_v4())
     }
 
-    fn format_network_error(&self, error: impl std::fmt::Display) -> provider::LLMError {
+    fn format_network_error(&self, error: &reqwest::Error) -> provider::LLMError {
         let label = self.provider_display_override.as_deref().unwrap_or("OpenAI");
-        provider::LLMError::Network {
-            message: error_display::format_llm_error(label, &format!("Network error: {error}")),
-            metadata: None,
-        }
+        super::super::error_handling::format_reqwest_network_error(label, error)
     }
 
     fn format_auth_error(&self, error: impl std::fmt::Display) -> provider::LLMError {
@@ -550,14 +609,14 @@ impl OpenAIProvider {
         F: Fn(&OpenAIRequestAuth) -> reqwest::RequestBuilder,
     {
         let auth = self.current_request_auth().await?;
-        let response = build_request(&auth).send().await.map_err(|e| self.format_network_error(e))?;
+        let response = build_request(&auth).send().await.map_err(|e| self.format_network_error(&e))?;
 
         if self.uses_refreshable_auth() && Self::auth_retryable_status(response.status()) {
             let retry_auth = self.refresh_request_auth_for_retry().await?;
             return build_request(&retry_auth)
                 .send()
                 .await
-                .map_err(|e| self.format_network_error(e));
+                .map_err(|e| self.format_network_error(&e));
         }
 
         Ok(response)
@@ -687,6 +746,11 @@ impl OpenAIProvider {
             supports_tools: self.supports_tools(&request.model),
             supports_parallel_tool_config: self.supports_parallel_tool_config(&request.model),
             supports_temperature: Self::supports_temperature_parameter(&request.model),
+            include_reasoning: self
+                .custom_provider_config
+                .as_ref()
+                .is_some_and(|config| config.resolved_profile(&request.model).supports_reasoning == Some(true)),
+            supports_reasoning_effort: self.supports_reasoning_effort(&request.model),
             prompt_cache_key,
             default_service_tier,
         };
@@ -749,7 +813,7 @@ impl OpenAIProvider {
         let include_cached_prompt_tokens = self.prompt_cache_enabled && self.prompt_cache_settings.surface_metrics;
         let response =
             response_parser::parse_chat_response(response_json, model.clone(), include_cached_prompt_tokens)?;
-        Ok(Self::normalize_reasoning_output(&model, response))
+        Ok(self.normalize_reasoning_output(&model, response))
     }
 
     fn parse_openai_responses_response(
@@ -759,7 +823,7 @@ impl OpenAIProvider {
     ) -> Result<provider::LLMResponse, provider::LLMError> {
         let include_metrics = self.prompt_cache_enabled && self.prompt_cache_settings.surface_metrics;
         let response = parse_responses_payload(response_json, model.clone(), include_metrics)?;
-        Ok(Self::normalize_reasoning_output(&model, response))
+        Ok(self.normalize_reasoning_output(&model, response))
     }
 }
 

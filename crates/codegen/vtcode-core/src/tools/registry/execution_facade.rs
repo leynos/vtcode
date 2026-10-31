@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tokio::task::Id as TokioTaskId;
 use tracing::{trace, warn};
@@ -91,22 +92,36 @@ fn tool_error_value_to_string(value: &Value) -> String {
     value.to_string()
 }
 
-/// Global reentrancy stacks for tokio tasks.
+/// Reentrancy stacks keyed by Tokio tasks or scoped parallel tool calls.
 ///
-/// Uses `parking_lot::Mutex` for lower overhead on short critical sections.
-/// Each entry/exit is a single Vec push/pop under a task ID key.
-///
-/// If contention becomes an issue under high concurrency, consider:
-/// - Using a concurrent hash map (e.g., `dashmap`)
-/// - Using task-local storage via `tokio::task_local!`
-/// - Partitioning the map by task ID hash to reduce contention
-static TOOL_REENTRANCY_STACKS: Lazy<Mutex<HashMap<TokioTaskId, Vec<String>>>> =
+/// Parallel sibling futures share a Tokio task ID, so each receives a task-local
+/// scope ID. Recursive tool calls inherit that scope and still share one stack.
+/// The mutex protects only the short push/pop operations.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum ReentrancyStackKey {
+    Task(TokioTaskId),
+    Scoped(u64),
+}
+
+static TOOL_REENTRANCY_STACKS: Lazy<Mutex<HashMap<ReentrancyStackKey, Vec<String>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+static NEXT_REENTRANCY_SCOPE_ID: AtomicU64 = AtomicU64::new(1);
+tokio::task_local! {
+    static REENTRANCY_SCOPE_ID: u64;
+}
 thread_local! {
     static THREAD_REENTRANCY_STACK: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
-fn lock_reentrancy_stacks() -> parking_lot::MutexGuard<'static, HashMap<TokioTaskId, Vec<String>>> {
+pub(crate) async fn with_tool_reentrancy_scope<F>(future: F) -> F::Output
+where
+    F: Future,
+{
+    let scope_id = NEXT_REENTRANCY_SCOPE_ID.fetch_add(1, Ordering::Relaxed);
+    REENTRANCY_SCOPE_ID.scope(scope_id, future).await
+}
+
+fn lock_reentrancy_stacks() -> parking_lot::MutexGuard<'static, HashMap<ReentrancyStackKey, Vec<String>>> {
     TOOL_REENTRANCY_STACKS.lock()
 }
 
@@ -118,7 +133,7 @@ struct ReentrancyViolation {
 }
 
 enum ReentrancyContext {
-    Task(TokioTaskId),
+    Stack(ReentrancyStackKey),
     Thread,
 }
 
@@ -128,9 +143,14 @@ struct ToolReentrancyGuard {
 
 impl ToolReentrancyGuard {
     fn enter(tool_name: &str) -> std::result::Result<Self, ReentrancyViolation> {
-        if let Some(task_id) = tokio::task::try_id() {
+        let stack_key = REENTRANCY_SCOPE_ID
+            .try_with(|scope_id| ReentrancyStackKey::Scoped(*scope_id))
+            .ok()
+            .or_else(|| tokio::task::try_id().map(ReentrancyStackKey::Task));
+
+        if let Some(stack_key) = stack_key {
             let mut stacks = lock_reentrancy_stacks();
-            let stack = stacks.entry(task_id).or_default();
+            let stack = stacks.entry(stack_key).or_default();
             let stack_depth = stack.len();
             let tool_reentry_count = stack.iter().filter(|active_tool| active_tool.as_str() == tool_name).count();
 
@@ -144,7 +164,7 @@ impl ToolReentrancyGuard {
             }
 
             stack.push(tool_name.to_string());
-            return Ok(Self { context: Some(ReentrancyContext::Task(task_id)) });
+            return Ok(Self { context: Some(ReentrancyContext::Stack(stack_key)) });
         }
 
         let violation = THREAD_REENTRANCY_STACK.with(|stack_cell| {
@@ -180,16 +200,16 @@ impl Drop for ToolReentrancyGuard {
         };
 
         match context {
-            ReentrancyContext::Task(task_id) => {
+            ReentrancyContext::Stack(stack_key) => {
                 let mut stacks = lock_reentrancy_stacks();
-                let should_remove = if let Some(stack) = stacks.get_mut(&task_id) {
+                let should_remove = if let Some(stack) = stacks.get_mut(&stack_key) {
                     let _ = stack.pop();
                     stack.is_empty()
                 } else {
                     false
                 };
                 if should_remove {
-                    stacks.remove(&task_id);
+                    stacks.remove(&stack_key);
                 }
             }
             ReentrancyContext::Thread => {

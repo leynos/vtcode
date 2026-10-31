@@ -80,26 +80,201 @@ pub fn contains_dynamic_shell_syntax(command: &str) -> bool {
 /// Returns whether a `find` command contains shell syntax that can change the
 /// literal option tokens after approval-time tokenization.
 pub fn contains_dynamic_find_syntax(script: &str) -> bool {
-    if let Ok(commands) = parse_shell_commands_tree_sitter(script)
-        && commands.iter().any(|command| {
-            command
-                .first()
-                .map(|program| base_command_name(program) == "find")
-                .unwrap_or(false)
-                && command.iter().any(|word| contains_dynamic_shell_syntax(word))
-        })
-    {
+    FindScript(script).contains_dynamic_syntax()
+}
+
+#[derive(Clone, Copy)]
+struct FindScript<'a>(&'a str);
+
+impl FindScript<'_> {
+    fn contains_dynamic_syntax(self) -> bool {
+        match parse_shell_commands_tree_sitter(self.0) {
+            Ok(commands) => commands.iter().any(|command| FindCommand(command).contains_dynamic_syntax()),
+            Err(_) => self.raw_script_might_be_dynamic(),
+        }
+    }
+
+    fn raw_script_might_be_dynamic(self) -> bool {
+        // Be conservative when the grammar cannot identify the command shape: a
+        // raw script containing a find invocation and dynamic syntax must not pass
+        // preflight just because parsing was incomplete.
+        let has_find_invocation = self.0.split_whitespace().any(|word| {
+            let command = word.trim_matches(|character: char| !character.is_ascii_alphanumeric() && character != '/');
+            base_command_name(command) == "find"
+        });
+        has_find_invocation && contains_dynamic_shell_syntax(self.0)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct FindCommand<'a>(&'a [String]);
+
+impl FindCommand<'_> {
+    fn contains_dynamic_syntax(self) -> bool {
+        let is_find_command = self.0.first().is_some_and(|program| base_command_name(program) == "find");
+        if !is_find_command {
+            return false;
+        }
+
+        let mut classifier = FindExecSyntaxClassifier::default();
+        self.0
+            .iter()
+            .any(|word| classifier.contains_dynamic_syntax(FindExecArgument(word)))
+    }
+}
+
+#[derive(Clone, Copy)]
+struct FindExecArgument<'a>(&'a str);
+
+#[derive(Default)]
+struct FindExecSyntaxClassifier {
+    context: FindCommandContext,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum FindCommandContext {
+    #[default]
+    Expression,
+    ExecProgram,
+    ExecArguments,
+    EnvArguments,
+    EnvOptionArgument,
+    EnvCommand,
+    ShellArguments,
+    ShellCommand,
+}
+
+impl FindExecSyntaxClassifier {
+    fn contains_dynamic_syntax(&mut self, argument: FindExecArgument<'_>) -> bool {
+        let word = argument.0;
+        if matches!(word, "-exec" | "-execdir") {
+            self.context = FindCommandContext::ExecProgram;
+            return false;
+        }
+
+        match self.context {
+            FindCommandContext::ExecProgram => {
+                if word.contains("{}") {
+                    return true;
+                }
+
+                if matches!(word, ";" | "\\;" | "+") {
+                    self.context = FindCommandContext::Expression;
+                } else {
+                    self.context = match base_command_name(word) {
+                        "env" => FindCommandContext::EnvArguments,
+                        _ if is_shell_interpreter(word) => FindCommandContext::ShellArguments,
+                        _ => FindCommandContext::ExecArguments,
+                    };
+                }
+
+                contains_dynamic_shell_syntax(word)
+            }
+            FindCommandContext::EnvArguments if is_env_split_string_option(word) => true,
+            FindCommandContext::EnvArguments if is_env_option_with_argument(word) => {
+                self.context = FindCommandContext::EnvOptionArgument;
+                false
+            }
+            FindCommandContext::EnvArguments if is_env_option(word) => false,
+            FindCommandContext::EnvArguments if is_env_assignment(word) => false,
+            FindCommandContext::EnvArguments if word == "--" => {
+                self.context = FindCommandContext::EnvCommand;
+                false
+            }
+            FindCommandContext::EnvArguments if word.starts_with('-') => true,
+            FindCommandContext::EnvArguments if matches!(word, ";" | "\\;" | "+") => {
+                self.context = FindCommandContext::Expression;
+                false
+            }
+            FindCommandContext::EnvCommand if matches!(word, ";" | "\\;" | "+") => {
+                self.context = FindCommandContext::Expression;
+                false
+            }
+            FindCommandContext::EnvArguments | FindCommandContext::EnvCommand => {
+                self.context = if is_shell_interpreter(word) {
+                    FindCommandContext::ShellArguments
+                } else {
+                    FindCommandContext::ExecArguments
+                };
+                contains_dynamic_shell_syntax(word)
+            }
+            FindCommandContext::EnvOptionArgument => {
+                self.context = FindCommandContext::EnvArguments;
+                false
+            }
+            FindCommandContext::ShellArguments if is_shell_command_option(word) => {
+                self.context = FindCommandContext::ShellCommand;
+                false
+            }
+            FindCommandContext::ShellCommand => {
+                self.context = FindCommandContext::ExecArguments;
+                word.contains("{}") || contains_dynamic_shell_syntax(word)
+            }
+            context => {
+                let is_static_exec_token = context != FindCommandContext::Expression && matches!(word, "{}" | "\\;");
+                let is_dynamic = !is_static_exec_token && contains_dynamic_shell_syntax(word);
+
+                if context != FindCommandContext::Expression && matches!(word, ";" | "\\;" | "+") {
+                    self.context = FindCommandContext::Expression;
+                } else if context != FindCommandContext::Expression && is_shell_interpreter(word) {
+                    // A shell interpreter reached through wrappers such as
+                    // `timeout`, `nice`, `nohup`, `stdbuf`, or `xargs` is still
+                    // an executable position; without this transition a
+                    // following `-c {}` would stay classified as static.
+                    self.context = FindCommandContext::ShellArguments;
+                }
+
+                is_dynamic
+            }
+        }
+    }
+}
+
+fn is_env_option(argument: &str) -> bool {
+    matches!(
+        argument,
+        "-i" | "--ignore-environment" | "-0" | "--null" | "-v" | "--debug" | "--list-signal-handling"
+    ) || argument.starts_with("--unset=")
+        || argument.starts_with("--chdir=")
+        || argument.starts_with("--argv0=")
+        || argument.starts_with("--block-signal=")
+        || argument.starts_with("--default-signal=")
+        || argument.starts_with("--ignore-signal=")
+}
+
+fn is_env_option_with_argument(argument: &str) -> bool {
+    matches!(argument, "-u" | "--unset" | "-C" | "--chdir" | "--argv0")
+}
+
+fn is_env_split_string_option(argument: &str) -> bool {
+    argument == "-S"
+        || argument.starts_with("-S")
+        || argument == "--split-string"
+        || argument.starts_with("--split-string=")
+        || argument
+            .strip_prefix('-')
+            .is_some_and(|short_options| !short_options.starts_with('-') && short_options.contains('S'))
+}
+
+fn is_env_assignment(argument: &str) -> bool {
+    argument.split_once('=').is_some_and(|(name, _)| !name.is_empty())
+}
+
+fn is_shell_interpreter(program: &str) -> bool {
+    matches!(
+        base_command_name(program).to_ascii_lowercase().as_str(),
+        "sh" | "bash" | "dash" | "zsh" | "ksh" | "ksh93" | "ash" | "mksh"
+    )
+}
+
+fn is_shell_command_option(argument: &str) -> bool {
+    if argument == "-c" {
         return true;
     }
 
-    // Be conservative when the grammar cannot identify the command shape: a
-    // raw script containing a find invocation and dynamic syntax must not pass
-    // preflight just because parsing was incomplete.
-    let has_find_word = script.split_whitespace().any(|word| {
-        let command = word.trim_matches(|character: char| !character.is_ascii_alphanumeric() && character != '/');
-        base_command_name(command) == "find"
-    });
-    has_find_word && contains_dynamic_shell_syntax(script)
+    argument.strip_prefix('-').is_some_and(|short_options| {
+        short_options.len() > 1 && !short_options.starts_with('-') && short_options.contains('c')
+    })
 }
 
 /// Gets or initializes the bash parser
@@ -115,6 +290,20 @@ fn get_bash_parser() -> Result<&'static Mutex<tree_sitter::Parser>, String> {
         })
         .as_ref()
         .map_err(Clone::clone)
+}
+
+/// Detects the input shape documented in tree-sitter-bash issue #337, where a
+/// brace before a later four-byte UTF-8 character can crash the native parser.
+fn matches_tree_sitter_bash_issue_337_shape(script: &str) -> bool {
+    let mut saw_open_brace = false;
+
+    script.bytes().any(|byte| {
+        if byte == b'{' {
+            saw_open_brace = true;
+        }
+
+        saw_open_brace && (0xF0..=0xF4).contains(&byte)
+    })
 }
 
 /// Ensures the bash tree-sitter parser is initialized.
@@ -158,13 +347,20 @@ pub fn parse_shell_commands_tree_sitter(script: &str) -> Result<Vec<Vec<String>>
 /// command output. Input, heredoc, and descriptor-closing redirections remain
 /// unsupported so progress classification can fail closed.
 pub fn has_only_output_redirections(script: &str) -> bool {
-    if contains_dynamic_shell_syntax(script) {
-        return false;
-    }
-    if contains_background_operator(script) {
+    if !has_static_shell_shape_for_redirection_check(script) {
         return false;
     }
 
+    parsed_script_has_only_output_redirections(script)
+}
+
+fn has_static_shell_shape_for_redirection_check(script: &str) -> bool {
+    !matches_tree_sitter_bash_issue_337_shape(script)
+        && !contains_dynamic_shell_syntax(script)
+        && !contains_background_operator(script)
+}
+
+fn parsed_script_has_only_output_redirections(script: &str) -> bool {
     let Ok(parser) = get_bash_parser() else {
         return false;
     };
@@ -264,6 +460,10 @@ fn is_output_redirection(text: &str) -> bool {
 
 /// Parses shell script using tree-sitter bash grammar.
 fn parse_with_tree_sitter(script: &str, reject_syntax_errors: bool) -> Result<Vec<Vec<String>>, String> {
+    if matches_tree_sitter_bash_issue_337_shape(script) {
+        return Err("Shell script matches the tree-sitter-bash issue #337 crash pattern".to_string());
+    }
+
     let parser_guard = get_bash_parser()?;
     let mut parser = parser_guard.lock().map_err(|e| format!("Failed to lock parser: {e}"))?;
 
@@ -329,7 +529,17 @@ fn extract_command_from_node(node: tree_sitter::Node, source: &str) -> Option<Ve
 
         if matches!(
             child.kind(),
-            "word" | "string" | "raw_string" | "ansi_c_string" | "simple_expansion" | "variable_expansion"
+            "word"
+                | "string"
+                | "raw_string"
+                | "ansi_c_string"
+                | "concatenation"
+                | "brace_expression"
+                | "expansion"
+                | "simple_expansion"
+                | "variable_expansion"
+                | "command_substitution"
+                | "process_substitution"
         ) {
             let text = child.utf8_text(source.as_bytes());
             if let Ok(arg) = text {
@@ -433,6 +643,7 @@ pub fn parse_bash_lc_commands(command: &[String]) -> Option<Vec<Vec<String>>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn tokenize_simple_command() {
@@ -470,22 +681,19 @@ mod tests {
         let script = "cd crates/codegen/vtcode-core/src/tools/registry && for f in *.rs; do echo \"=== $f ===\"; grep -nE '^(pub )?(struct|enum|fn)' \"$f\" | head -50; done";
         let commands = parse_shell_commands(script).unwrap();
 
-        assert_eq!(commands[0], vec!["cd", "crates/codegen/vtcode-core/src/tools/registry"]);
-        assert!(
+        let expected_directory_change = vec![
+            "cd".to_owned(),
+            "crates/codegen/vtcode-core/src/tools/registry".to_owned(),
+        ];
+        assert_eq!(commands.first(), Some(&expected_directory_change));
+
+        let expected_loop_commands = ["echo", "grep", "head"];
+        let loop_commands_were_extracted = expected_loop_commands.iter().all(|expected| {
             commands
                 .iter()
-                .any(|command| command.first().is_some_and(|name| name == "echo"))
-        );
-        assert!(
-            commands
-                .iter()
-                .any(|command| command.first().is_some_and(|name| name == "grep"))
-        );
-        assert!(
-            commands
-                .iter()
-                .any(|command| command.first().is_some_and(|name| name == "head"))
-        );
+                .any(|command| command.first().is_some_and(|name| name == *expected))
+        });
+        assert!(loop_commands_were_extracted);
     }
 
     #[test]
@@ -615,6 +823,27 @@ mod tests {
     }
 
     #[test]
+    fn tree_sitter_issue_337_inputs_are_rejected_before_native_parsing() {
+        for script in ["{𱡀", "{echo; printf '💩'}"] {
+            assert_eq!(
+                parse_shell_commands_tree_sitter(script),
+                Err("Shell script matches the tree-sitter-bash issue #337 crash pattern".to_string())
+            );
+            assert_eq!(parse_shell_commands(script), parse_with_basic_tokenization(script));
+            assert!(!has_only_output_redirections(script));
+        }
+
+        // Quoting would normally let the output-redirection check reach the
+        // native parser, so this verifies its issue-pattern preflight directly.
+        assert!(!has_only_output_redirections("echo '{' '💩' > build.log"));
+    }
+
+    #[test]
+    fn tree_sitter_issue_337_guard_requires_brace_before_four_byte_character() {
+        assert!(!matches_tree_sitter_bash_issue_337_shape("𱡀{"));
+    }
+
+    #[test]
     fn parse_bash_lc_with_pipe() {
         let cmd = vec!["bash".to_string(), "-lc".to_string(), "ls -la | head -5".to_string()];
         let commands = parse_bash_lc_commands(&cmd);
@@ -640,6 +869,85 @@ mod tests {
     fn dynamic_find_syntax_is_detected_without_rejecting_quoted_globs() {
         assert!(contains_dynamic_find_syntax("find src -maxdepth 0 -exe$''c touch /tmp/VT_BYPASS_POC {} +"));
         assert!(!contains_dynamic_find_syntax("find src -type f -name '*.rs'"));
+    }
+
+    #[test]
+    fn find_exec_placeholder_is_distinct_from_dynamic_braces_and_expansions() {
+        assert!(!contains_dynamic_find_syntax("find src -type f -exec printf '%s\\n' {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find src -type f -execdir wc -l {} +"));
+        assert!(contains_dynamic_find_syntax("find . -exec {} \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec sh -c {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec printf {} \\;"));
+        assert!(contains_dynamic_find_syntax("find src -name {}"));
+        assert!(contains_dynamic_find_syntax("find src -name {one,two}"));
+        assert!(contains_dynamic_find_syntax("find src -exec printf '%s\\n' ${path} \\;"));
+    }
+
+    #[test]
+    fn find_exec_bash_command_option_classifies_command_source_as_dynamic() {
+        assert!(contains_dynamic_find_syntax("find . -exec bash -c {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_combined_shell_flags_detect_command_source_without_reclassifying_placeholders() {
+        assert!(contains_dynamic_find_syntax("find . -exec sh -ec {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec sh -ec 'printf %s' {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec sh -e printf {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_recognizes_supported_shell_interpreters() {
+        for shell in ["sh", "bash", "dash", "zsh", "ksh", "ksh93", "ash", "mksh"] {
+            let script = format!("find . -exec {shell} -c {{}} \\;");
+            assert!(contains_dynamic_find_syntax(&script), "expected dynamic shell source: {script}");
+        }
+    }
+
+    #[test]
+    fn find_exec_wrapped_shell_interpreter_detects_command_source() {
+        for script in [
+            "find . -exec timeout 5 bash -c {} \\;",
+            "find . -exec nice -n 5 sh -c {} \\;",
+            "find . -exec nohup bash -c {} \\;",
+            "find . -exec stdbuf -oL bash -c {} \\;",
+            "find . -exec xargs bash -c {} \\;",
+        ] {
+            assert!(contains_dynamic_find_syntax(script), "expected dynamic shell source: {script}");
+        }
+
+        // A literal interpreter-name argument is not an executable position.
+        assert!(!contains_dynamic_find_syntax("find src -type f -exec cp bash {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find src -type f -exec grep -e bash {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_env_wrapper_detects_nested_shell_command_source() {
+        assert!(contains_dynamic_find_syntax("find . -exec env bash -c {} \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env -i -- bash -ec {} \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env -u HOME -- bash -c {} \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env --split-string 'bash -c {}' \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec env bash -c 'printf %s' {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_env_end_of_options_preserves_following_find_expressions() {
+        assert!(contains_dynamic_find_syntax("find . -exec env -- \\; -exec bash -c {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec env -- \\; -exec printf {} \\;"));
+    }
+
+    proptest! {
+        #[test]
+        fn literal_placeholder_remains_static_across_find_exec_commands(
+            root in "[a-zA-Z0-9_./-]{1,40}",
+            utility in "[a-zA-Z][a-zA-Z0-9_-]{0,20}",
+            argument in "[a-zA-Z0-9_./:-]{1,40}",
+            exec_option in prop_oneof![Just("-exec"), Just("-execdir")],
+            terminator in prop_oneof![Just("+"), Just("\\;")],
+        ) {
+            let script = format!("find {root} -type f {exec_option} {utility} {argument} {{}} {terminator}");
+
+            prop_assert!(!contains_dynamic_find_syntax(&script), "unexpectedly dynamic: {script}");
+        }
     }
 }
 

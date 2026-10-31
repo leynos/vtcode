@@ -1,3 +1,4 @@
+//! Validates and dispatches tool executions through the shared tool registry boundary.
 use anyhow::{Result, anyhow};
 use serde_json::Map;
 use serde_json::Value;
@@ -692,10 +693,10 @@ pub(super) fn preflight_validate_resolved_call(
 mod tests {
     use super::super::assembly::public_tool_name_candidates;
     use super::{
-        ToolRegistry, coerce_string_to_schema_type_in_place, configured_file_operation_max_payload_bytes,
-        enforce_file_operation_payload_limit, is_missing_required_arg, normalize_tool_args,
-        parse_file_operation_max_payload_bytes, parse_string_as_schema_type, preflight_validate_call,
-        preflight_validate_resolved_call,
+        ToolPreflightOutcome, ToolRegistry, coerce_string_to_schema_type_in_place,
+        configured_file_operation_max_payload_bytes, enforce_file_operation_payload_limit, is_missing_required_arg,
+        normalize_tool_args, parse_file_operation_max_payload_bytes, parse_string_as_schema_type,
+        preflight_validate_call, preflight_validate_resolved_call,
     };
     use crate::config::constants::tools as tool_names;
     use crate::tools::command_args::parse_indexed_command_parts;
@@ -708,6 +709,20 @@ mod tests {
         let temp = tempfile::tempdir().expect("temp workspace");
         let registry = ToolRegistry::new(temp.path().to_path_buf()).await;
         (temp, registry)
+    }
+
+    async fn preflight_stdin_action_without_chars(action: &str) -> Result<ToolPreflightOutcome> {
+        let (_temp, registry) = new_test_registry().await;
+        preflight_validate_call(&registry, tool_names::WRITE_STDIN, &json!({"action": action, "session_id": "run-1"}))
+    }
+
+    async fn assert_explicit_read_only_stdin_action_without_chars(action: &str) -> Result<()> {
+        let result = preflight_stdin_action_without_chars(action).await?;
+
+        assert_eq!(result.effective_args["action"], action);
+        assert!(result.effective_args.get("input").is_none());
+        assert!(result.readonly_classification);
+        Ok(())
     }
 
     #[tokio::test]
@@ -1238,6 +1253,25 @@ mod tests {
         assert_eq!(result.effective_args["max_output_tokens"], 7);
         assert!(result.readonly_classification);
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn write_stdin_preflight_accepts_explicit_poll_without_chars() -> Result<()> {
+        assert_explicit_read_only_stdin_action_without_chars("poll").await
+    }
+
+    #[tokio::test]
+    async fn write_stdin_preflight_accepts_explicit_wait_without_chars() -> Result<()> {
+        assert_explicit_read_only_stdin_action_without_chars("wait").await
+    }
+
+    #[tokio::test]
+    async fn write_stdin_preflight_rejects_explicit_write_without_chars() {
+        let error = preflight_stdin_action_without_chars("write")
+            .await
+            .expect_err("explicit write without chars should fail preflight");
+
+        assert!(error.to_string().contains("write_stdin action write requires string chars"));
     }
 
     #[tokio::test]

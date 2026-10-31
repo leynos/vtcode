@@ -1,3 +1,4 @@
+//! Builds normalized OpenAI response streams and handles provider-specific stream fallbacks.
 use super::super::errors::{
     fallback_model_if_not_found, format_openai_error, is_model_not_found, is_responses_api_unsupported,
 };
@@ -29,7 +30,149 @@ fn should_prefer_responses_stream(state: ResponsesApiState) -> bool {
     !matches!(state, ResponsesApiState::Disabled)
 }
 
+enum ResponsesStreamRoute {
+    Responses(reqwest::Response),
+    ChatCompletions,
+}
+
+enum ResponsesStreamAttempt {
+    Responses(reqwest::Response),
+    RetryWithModel(String),
+    ChatCompletions,
+}
+
+struct ResponsesStreamContext<'a> {
+    model: &'a str,
+    state: ResponsesApiState,
+    request_id: &'a str,
+}
+
+fn responses_model_fallback(model: &str, status: reqwest::StatusCode, error_text: &str) -> Option<String> {
+    if !is_model_not_found(status, error_text) {
+        return None;
+    }
+
+    fallback_model_if_not_found(model).filter(|fallback_model| fallback_model != model)
+}
+
+fn responses_stream_error(
+    status: reqwest::StatusCode,
+    error_text: &str,
+    headers: &reqwest::header::HeaderMap,
+    request_id: &str,
+) -> provider::LLMError {
+    if is_rate_limit_error(status.as_u16(), error_text) {
+        return parse_api_error("OpenAI", status, error_text);
+    }
+
+    let formatted_error = error_display::format_llm_error(
+        "OpenAI",
+        &format_openai_error(status, error_text, headers, "Responses API error", Some(request_id)),
+    );
+    provider::LLMError::Provider { message: formatted_error, metadata: None }
+}
+
 impl OpenAIProvider {
+    async fn send_responses_stream_request(
+        &self,
+        request: &provider::LLMRequest,
+        request_id: &str,
+    ) -> Result<reqwest::Response, provider::LLMError> {
+        let mut payload = self.convert_to_openai_responses_format(request)?;
+        payload["stream"] = Value::Bool(true);
+
+        self.send_authorized(|auth| {
+            headers::apply_turn_metadata(
+                headers::apply_client_request_id(
+                    headers::apply_responses_beta(
+                        self.authorize_with_api_key(self.http_client.post(&self.responses_url[..]), auth),
+                    ),
+                    request_id,
+                ),
+                &request.metadata,
+            )
+            .json(&payload)
+        })
+        .await
+    }
+
+    async fn route_responses_stream_response(
+        &self,
+        response: reqwest::Response,
+        context: ResponsesStreamContext<'_>,
+    ) -> Result<ResponsesStreamAttempt, provider::LLMError> {
+        if response.status().is_success() {
+            return Ok(ResponsesStreamAttempt::Responses(response));
+        }
+
+        let status = response.status();
+        let headers = response.headers().clone();
+        let error_text = crate::providers::common::read_provider_error_body(response).await;
+
+        if let Some(fallback_model) = responses_model_fallback(context.model, status, &error_text) {
+            return Ok(ResponsesStreamAttempt::RetryWithModel(fallback_model));
+        }
+
+        if self.should_fallback_to_chat_completions(context.state, status, &error_text) {
+            self.set_responses_api_state(context.model, ResponsesApiState::Disabled);
+            return Ok(ResponsesStreamAttempt::ChatCompletions);
+        }
+
+        if is_model_not_found(status, &error_text) {
+            let formatted_error = error_display::format_llm_error(
+                "OpenAI",
+                &format_openai_error(status, &error_text, &headers, "Model not available", Some(context.request_id)),
+            );
+            return Err(provider::LLMError::Provider { message: formatted_error, metadata: None });
+        }
+
+        Err(responses_stream_error(status, &error_text, &headers, context.request_id))
+    }
+
+    fn should_fallback_to_chat_completions(
+        &self,
+        state: ResponsesApiState,
+        status: reqwest::StatusCode,
+        error_text: &str,
+    ) -> bool {
+        if !matches!(state, ResponsesApiState::Allowed) {
+            return false;
+        }
+        if !is_responses_api_unsupported(status, error_text) {
+            return false;
+        }
+
+        self.allows_chat_completions_fallback()
+    }
+
+    async fn request_responses_stream(
+        &self,
+        request: &mut provider::LLMRequest,
+        responses_state: ResponsesApiState,
+    ) -> Result<ResponsesStreamRoute, provider::LLMError> {
+        loop {
+            let request_id = Self::new_client_request_id();
+            let response = self.send_responses_stream_request(request, &request_id).await?;
+            match self
+                .route_responses_stream_response(
+                    response,
+                    ResponsesStreamContext {
+                        model: &request.model,
+                        state: responses_state,
+                        request_id: &request_id,
+                    },
+                )
+                .await?
+            {
+                ResponsesStreamAttempt::RetryWithModel(model) => request.model = model,
+                ResponsesStreamAttempt::Responses(response) => {
+                    return Ok(ResponsesStreamRoute::Responses(response));
+                }
+                ResponsesStreamAttempt::ChatCompletions => return Ok(ResponsesStreamRoute::ChatCompletions),
+            }
+        }
+    }
+
     pub(crate) async fn stream_normalized_request(
         &self,
         mut request: provider::LLMRequest,
@@ -44,33 +187,13 @@ impl OpenAIProvider {
             return self.stream_chat_completions_normalized(&request).await;
         }
 
-        let url = &self.responses_url[..];
-        loop {
-            let model = request.model.clone();
-            let include_metrics = self.prompt_cache_enabled && self.prompt_cache_settings.surface_metrics;
-            let mut openai_request = self.convert_to_openai_responses_format(&request)?;
-            openai_request["stream"] = Value::Bool(true);
-            let client_request_id = Self::new_client_request_id();
-
-            let response = self
-                .send_authorized(|auth| {
-                    headers::apply_turn_metadata(
-                        headers::apply_client_request_id(
-                            headers::apply_responses_beta(
-                                self.authorize_with_api_key(self.http_client.post(url), auth),
-                            ),
-                            &client_request_id,
-                        ),
-                        &request.metadata,
-                    )
-                    .json(&openai_request)
-                })
-                .await?;
-
-            if response.status().is_success() {
-                let emit_reasoning = Self::model_supports_reasoning_summaries(&model);
+        match self.request_responses_stream(&mut request, responses_state).await? {
+            ResponsesStreamRoute::Responses(response) => {
+                let model = request.model.clone();
+                let include_metrics = self.prompt_cache_enabled && self.prompt_cache_settings.surface_metrics;
+                let emit_reasoning = self.model_supports_reasoning(&model);
                 let parse_model = model.clone();
-                return Ok(create_responses_normalized_stream(
+                Ok(create_responses_normalized_stream(
                     response,
                     ResponsesNormalizedStreamOptions {
                         provider_name: "OpenAI",
@@ -79,53 +202,16 @@ impl OpenAIProvider {
                         include_cached_prompt_metrics: include_metrics,
                     },
                     move |value| {
-                        let response = parse_responses_payload(value, parse_model.clone(), include_metrics)?;
-                        Ok(Self::normalize_reasoning_output(&parse_model, response))
+                        let mut response = parse_responses_payload(value, parse_model.clone(), include_metrics)?;
+                        if !emit_reasoning {
+                            response.reasoning = None;
+                            response.reasoning_details = None;
+                        }
+                        Ok(response)
                     },
-                ));
+                ))
             }
-
-            let status = response.status();
-            let headers = response.headers().clone();
-            let error_text = crate::providers::common::read_provider_error_body(response).await;
-
-            if is_model_not_found(status, &error_text) {
-                if let Some(fallback_model) = fallback_model_if_not_found(&request.model)
-                    && fallback_model != request.model
-                {
-                    request.model = fallback_model;
-                    continue;
-                }
-                let formatted_error = error_display::format_llm_error(
-                    "OpenAI",
-                    &format_openai_error(
-                        status,
-                        &error_text,
-                        &headers,
-                        "Model not available",
-                        Some(&client_request_id),
-                    ),
-                );
-                return Err(provider::LLMError::Provider { message: formatted_error, metadata: None });
-            }
-
-            if matches!(responses_state, ResponsesApiState::Allowed)
-                && is_responses_api_unsupported(status, &error_text)
-                && self.allows_chat_completions_fallback()
-            {
-                self.set_responses_api_state(&request.model, ResponsesApiState::Disabled);
-                return self.stream_chat_completions_normalized(&request).await;
-            }
-
-            if is_rate_limit_error(status.as_u16(), &error_text) {
-                return Err(parse_api_error("OpenAI", status, &error_text));
-            }
-
-            let formatted_error = error_display::format_llm_error(
-                "OpenAI",
-                &format_openai_error(status, &error_text, &headers, "Responses API error", Some(&client_request_id)),
-            );
-            return Err(provider::LLMError::Provider { message: formatted_error, metadata: None });
+            ResponsesStreamRoute::ChatCompletions => self.stream_chat_completions_normalized(&request).await,
         }
     }
 
@@ -146,75 +232,19 @@ impl OpenAIProvider {
             return self.stream_chat_completions(&request).await;
         }
 
-        let url = &self.responses_url[..];
-        loop {
-            let model = request.model.clone();
-            let include_metrics = self.prompt_cache_enabled && self.prompt_cache_settings.surface_metrics;
-            let mut openai_request = self.convert_to_openai_responses_format(&request)?;
-            openai_request["stream"] = Value::Bool(true);
-            let client_request_id = Self::new_client_request_id();
-
-            let response = self
-                .send_authorized(|auth| {
-                    headers::apply_turn_metadata(
-                        headers::apply_client_request_id(
-                            headers::apply_responses_beta(
-                                self.authorize_with_api_key(self.http_client.post(url), auth),
-                            ),
-                            &client_request_id,
-                        ),
-                        &request.metadata,
-                    )
-                    .json(&openai_request)
-                })
-                .await?;
-
-            if response.status().is_success() {
-                return Ok(stream_decoder::create_responses_stream(response, model, include_metrics, None, None));
+        match self.request_responses_stream(&mut request, responses_state).await? {
+            ResponsesStreamRoute::Responses(response) => {
+                let model = request.model.clone();
+                let include_metrics = self.prompt_cache_enabled && self.prompt_cache_settings.surface_metrics;
+                Ok(stream_decoder::create_responses_stream(
+                    response,
+                    self.provider_display_override.as_deref().unwrap_or("OpenAI").to_owned(),
+                    model.clone(),
+                    include_metrics,
+                    self.model_supports_reasoning(&model),
+                ))
             }
-
-            let status = response.status();
-            let headers = response.headers().clone();
-            let error_text = crate::providers::common::read_provider_error_body(response).await;
-
-            if is_model_not_found(status, &error_text) {
-                if let Some(fallback_model) = fallback_model_if_not_found(&request.model)
-                    && fallback_model != request.model
-                {
-                    request.model = fallback_model;
-                    continue;
-                }
-                let formatted_error = error_display::format_llm_error(
-                    "OpenAI",
-                    &format_openai_error(
-                        status,
-                        &error_text,
-                        &headers,
-                        "Model not available",
-                        Some(&client_request_id),
-                    ),
-                );
-                return Err(provider::LLMError::Provider { message: formatted_error, metadata: None });
-            }
-
-            if matches!(responses_state, ResponsesApiState::Allowed)
-                && is_responses_api_unsupported(status, &error_text)
-            {
-                if self.allows_chat_completions_fallback() {
-                    self.set_responses_api_state(&request.model, ResponsesApiState::Disabled);
-                    return self.stream_chat_completions(&request).await;
-                }
-            }
-
-            if is_rate_limit_error(status.as_u16(), &error_text) {
-                return Err(parse_api_error("OpenAI", status, &error_text));
-            }
-
-            let formatted_error = error_display::format_llm_error(
-                "OpenAI",
-                &format_openai_error(status, &error_text, &headers, "Responses API error", Some(&client_request_id)),
-            );
-            return Err(provider::LLMError::Provider { message: formatted_error, metadata: None });
+            ResponsesStreamRoute::ChatCompletions => self.stream_chat_completions(&request).await,
         }
     }
 
@@ -263,7 +293,12 @@ impl OpenAIProvider {
             return Err(provider::LLMError::Provider { message: formatted_error, metadata: None });
         }
 
-        Ok(stream_decoder::create_chat_stream(response, model))
+        Ok(stream_decoder::create_chat_stream(
+            response,
+            self.provider_display_override.as_deref().unwrap_or("OpenAI").to_owned(),
+            model.clone(),
+            self.model_supports_reasoning(&model),
+        ))
     }
 
     async fn stream_chat_completions_normalized(

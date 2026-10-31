@@ -298,6 +298,7 @@ pub use exec::events::{
     TurnCompletedEvent, TurnFailedEvent, TurnStartedEvent, Usage, VersionedThreadEvent, WebSearchItem,
 };
 pub use exec::{CodeExecutor, ExecutionConfig, ExecutionResult, Language};
+pub use llm::admission_metrics::ProcessProviderAdmissionMetricsSource;
 pub use llm::providers::gemini::wire::{Content, FunctionDeclaration, Part};
 pub use llm::{AnyClient, make_client};
 pub use mcp::{

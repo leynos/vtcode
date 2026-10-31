@@ -58,17 +58,44 @@ PowerShell example:
 
 ### `write_stdin`
 
-Sends input to a live session created by `exec_command`.
+Sends input to, polls, or waits on a live session created by `exec_command`.
+Omit `action` to send input when `chars` is non-empty and to poll when `chars`
+is an empty string.
 
 Required:
 
 - `session_id`: identifier returned by a still-running command.
-- `chars`: bytes or text to send.
+- `chars`: bytes or text to send. Required for the write form; an empty string
+  polls without sending input.
+
+Common optional fields:
+
+- `action`: `write`, `poll`, or `wait`. `write` sends `chars`; `poll` fetches
+  fresh output without input; `wait` blocks until the command exits or
+  `wait_timeout_seconds` expires. A wait never kills the session.
+- `yield_time_ms`: how long to wait for fresh session output before returning.
+  The write form defaults to 250 ms and the poll form to 1000 ms; both are
+  clamped to 250-30000 ms.
+- `wait_timeout_seconds`: wait deadline in seconds (minimum 1), clamped to
+  `timeouts.long_running_command_ceiling_seconds` (3600 by default).
+  `timeout_seconds` is an alias. A deadline returns an in-progress session that
+  can be waited on again.
+- `max_output_tokens`: output budget for the continuation response.
+
+Write and poll return one bounded capture. The response reports `output`,
+`wall_time`, `session_id`, and `is_exited`; it includes `exit_code` once the
+process has exited, or `next_continue_args` and `next_wait_args` while it is
+still running. `total_output_bytes` and `output_truncated` describe the
+complete output, and a healthy spool adds `spool_path`.
+`spool_complete = false` marks a readable partial snapshot, and
+`spool_pending = true` marks an exited session whose spool is still draining. A
+wait also reports `waited_seconds` and `wait_deadline_seconds`, and streams
+newly observed output to the session progress display while it blocks.
 
 Example:
 
 ```json
-{"session_id":42,"chars":"q"}
+{"session_id":"42","chars":"q"}
 ```
 
 ### `apply_patch`

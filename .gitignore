@@ -632,7 +632,8 @@ MANIFEST
 .gem
 *.gem
 *.rbc
-.config/
+.config/*
+!.config/nextest.toml
 coverage/
 InstalledFiles
 lib/bundler/man/

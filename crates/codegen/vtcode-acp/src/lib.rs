@@ -9,6 +9,7 @@
 //! This crate exposes both the ACP client library and the VT Code Zed bridge.
 //! Downstream crates should treat this as the canonical ACP entrypoint.
 
+pub(crate) mod audit;
 pub mod capabilities;
 pub(crate) mod client;
 pub(crate) mod client_v2;
