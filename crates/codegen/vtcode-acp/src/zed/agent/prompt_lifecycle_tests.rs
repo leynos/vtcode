@@ -29,7 +29,8 @@ async fn overlapping_prompts_run_sequentially_and_both_answer() {
     )
     .await;
 
-    let notifications = run_client(&harness, async |cx, workspace, provider| {
+    let agent = std::sync::Arc::clone(&harness.agent);
+    let notifications = run_client(&harness, async move |cx, workspace, provider| {
         let session_id = initialize_and_create_session(&cx, workspace).await?;
         let first = hold_first_prompt_until_provider_starts(
             &provider,
@@ -38,10 +39,12 @@ async fn overlapping_prompts_run_sequentially_and_both_answer() {
         .await;
 
         // One poll writes the request frame without waiting for a response.
-        // The final stop reasons and provider call count prove the second turn
-        // ran only after the first released the gate.
         let mut second = Box::pin(cx.send_request(prompt_request(&session_id, "second prompt")).block_task());
         let _first_poll = poll_once(second.as_mut()).await;
+        // Wait until the steer is queued on the gate before releasing the first
+        // turn. The stop reasons and provider call count then prove it ran
+        // only after the first turn completed.
+        wait_for_gate_waiters(&agent, &session_id, 1).await;
 
         provider.release_call();
         let first_response = first.await?;
@@ -117,7 +120,8 @@ async fn queued_steer_survives_cancel_aimed_at_the_active_turn() {
     )
     .await;
 
-    let notifications = run_client(&harness, async |cx, workspace, provider| {
+    let agent = std::sync::Arc::clone(&harness.agent);
+    let notifications = run_client(&harness, async move |cx, workspace, provider| {
         let session_id = initialize_and_create_session(&cx, workspace).await?;
         let first = hold_first_prompt_until_provider_starts(
             &provider,
@@ -125,13 +129,13 @@ async fn queued_steer_survives_cancel_aimed_at_the_active_turn() {
         )
         .await;
 
-        // Queue the steer first, then cancel the turn it arrived during. The
-        // steer frame is written before the cancel frame, so the agent admits
-        // it before applying the cancellation.
+        // Queue the steer first, then cancel the turn it arrived during.
         let mut steer = Box::pin(cx.send_request(prompt_request(&session_id, "steer prompt")).block_task());
-        // One poll writes the steer frame ahead of the cancel frame; the stop
-        // reasons below prove it survived the cancellation.
         let _first_poll = poll_once(steer.as_mut()).await;
+        // Wait until the steer is admitted and queued on the gate: only then is
+        // the cancel unambiguously aimed at the turn the steer waited for. The
+        // stop reasons below prove the steer survived that cancellation.
+        wait_for_gate_waiters(&agent, &session_id, 1).await;
         cx.send_notification(CancelNotification::new(session_id.clone()))?;
 
         let first_response = first.await?;

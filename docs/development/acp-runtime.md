@@ -133,9 +133,12 @@ and `buffered.rs` drive providers, `cancelled.rs` commits cancellation,
 `finish.rs` owns failure finalization and checkpoints, and `output.rs` tracks
 assistant output visible to the client.
 
-A queued `session/prompt` reports `wait_ms` and `queued_prompts` after it
-acquires `SessionHandle::prompt_gate`, so a stalled earlier turn is observable
-without rejecting steers: ACP permits them, and the gate only serializes.
+A queued `session/prompt` reports `queued_prompts` before it waits and
+`wait_ms` after it acquires `SessionHandle::prompt_gate`, so a turn stalled on
+the gate is observable while it is stalled. Neither event rejects a steer: ACP
+permits them, and the gate only serializes. Tests that must order a steer
+against `session/cancel` poll `SessionHandle::prompt_gate_waiter_count` until
+the steer is queued, instead of relying on sleeps.
 
 `zed/agent/handlers.rs` is the canonical SACP handler wiring;
 `zed/connection.rs` wraps `ConnectionTo<Client>`. `ZedAgent::new` attaches and

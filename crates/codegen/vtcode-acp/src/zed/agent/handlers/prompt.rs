@@ -288,6 +288,15 @@ pub(super) async fn run_prompt_with_retry_observer(
     // which ACP deliberately allows.
     let queued_prompts = session.admitted_prompt_count().saturating_sub(1);
     let gate_wait_started = Instant::now();
+    if queued_prompts > 0 {
+        // Emit before waiting: a turn stalled on the gate must be visible
+        // while it is stalled, not only once it finally runs.
+        info!(
+            session_id = %args.session_id,
+            queued_prompts,
+            "Waiting for the ACP prompt gate"
+        );
+    }
     let _prompt_gate = session.acquire_prompt_gate().await;
     debug!(
         session_id = %args.session_id,

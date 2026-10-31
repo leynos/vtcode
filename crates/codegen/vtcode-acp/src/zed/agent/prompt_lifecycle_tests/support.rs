@@ -366,6 +366,27 @@ pub(super) async fn poll_once<F: Future + Unpin>(mut future: F) -> Poll<F::Outpu
     std::future::poll_fn(|cx| Poll::Ready(Pin::new(&mut future).poll(cx))).await
 }
 
+/// Waits until `expected` prompts are acquiring the session's prompt gate.
+///
+/// A steer only becomes observable here after the agent admits the request and
+/// its spawned task reaches the gate, so this proves the steer is queued before
+/// a test releases or cancels the turn it waits for. Yielding, rather than
+/// sleeping, keeps the ordering deterministic.
+pub(super) async fn wait_for_gate_waiters(agent: &ZedAgent, session_id: &acp::SessionId, expected: usize) {
+    for _ in 0..10_000 {
+        let waiters = agent
+            .session_handle(session_id)
+            .expect("look up lifecycle session")
+            .expect("lifecycle session exists")
+            .prompt_gate_waiter_count();
+        if waiters >= expected {
+            return;
+        }
+        tokio::task::yield_now().await;
+    }
+    panic!("the prompt gate never reported {expected} waiter(s)");
+}
+
 pub(super) async fn initialize_and_create_session(
     cx: &ConnectionTo<Agent>,
     workspace: PathBuf,

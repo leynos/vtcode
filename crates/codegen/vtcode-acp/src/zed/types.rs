@@ -165,6 +165,28 @@ pub(crate) struct SessionHandle {
     /// held for the whole turn, so the guard must only be awaited inside a
     /// spawned task.
     pub(crate) prompt_gate: Arc<AsyncMutex<()>>,
+    /// Prompts currently inside `acquire_prompt_gate`, including one whose
+    /// acquisition is ready without yielding. Observability and test
+    /// synchronization only; it never gates admission.
+    pub(crate) prompt_gate_waiters: Arc<AtomicUsize>,
+}
+
+/// Counts one prompt's gate acquisition and decrements when the acquisition
+/// finishes or its task is dropped, so a cancelled waiter cannot leave a stale
+/// queue depth behind.
+struct PromptGateWaiter(Arc<AtomicUsize>);
+
+impl PromptGateWaiter {
+    fn new(waiters: Arc<AtomicUsize>) -> Self {
+        let _ = waiters.fetch_add(1, Ordering::AcqRel);
+        Self(waiters)
+    }
+}
+
+impl Drop for PromptGateWaiter {
+    fn drop(&mut self) {
+        let _ = self.0.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 impl SessionHandle {
@@ -172,7 +194,10 @@ impl SessionHandle {
     /// finish. Callers must already have distinguished an unknown session;
     /// awaiting here is only safe inside a spawned task.
     pub(crate) async fn acquire_prompt_gate(&self) -> tokio::sync::OwnedMutexGuard<()> {
-        Arc::clone(&self.prompt_gate).lock_owned().await
+        let waiter = PromptGateWaiter::new(Arc::clone(&self.prompt_gate_waiters));
+        let guard = Arc::clone(&self.prompt_gate).lock_owned().await;
+        drop(waiter);
+        guard
     }
 
     /// Prompts admitted for this session that have not finished yet, including
@@ -181,6 +206,14 @@ impl SessionHandle {
     /// steer.
     pub(crate) fn admitted_prompt_count(&self) -> usize {
         self.activity.admitted_prompt_count()
+    }
+
+    /// Prompts currently acquiring the per-session prompt gate. A steer's task
+    /// is observable here only after it has been admitted and spawned, which
+    /// lets tests prove a steer is queued before releasing or cancelling the
+    /// turn it waits for.
+    pub(crate) fn prompt_gate_waiter_count(&self) -> usize {
+        self.prompt_gate_waiters.load(Ordering::Acquire)
     }
 }
 

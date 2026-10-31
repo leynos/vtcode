@@ -330,6 +330,23 @@ impl LLMProvider for BlockingPromptProvider {
     }
 }
 
+/// Waits until a steer is admitted and queued on the session's prompt gate.
+/// Yielding lets the spawned prompt task reach the gate without sleeping.
+async fn wait_for_prompt_gate_waiter(agent: &ZedAgent, session_id: &acp::SessionId) {
+    for _ in 0..10_000 {
+        let waiters = agent
+            .session_handle(session_id)
+            .expect("look up wire session")
+            .expect("wire session exists")
+            .prompt_gate_waiter_count();
+        if waiters >= 1 {
+            return;
+        }
+        tokio::task::yield_now().await;
+    }
+    panic!("the steer never queued on the prompt gate");
+}
+
 #[tokio::test]
 async fn concurrent_prompt_is_serialized_over_official_acp_transport() {
     let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
@@ -365,6 +382,7 @@ async fn concurrent_prompt_is_serialized_over_official_acp_transport() {
     let agent_task = tokio::spawn(agent_connection);
     let wait_for_provider = Arc::clone(&started);
     let unblock_provider = Arc::clone(&release);
+    let gate_agent = Arc::clone(&inspected_agent);
     let client_connection = Client
         .builder()
         .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
@@ -390,8 +408,7 @@ async fn concurrent_prompt_is_serialized_over_official_acp_transport() {
             }
 
             // Poll once so the steer frame is written while the first turn
-            // still holds the session gate; it must not resolve until that
-            // turn completes.
+            // still holds the session gate.
             let mut second = Box::pin(
                 cx.send_request(PromptRequest::new(
                     session.session_id.clone(),
@@ -399,11 +416,12 @@ async fn concurrent_prompt_is_serialized_over_official_acp_transport() {
                 ))
                 .block_task(),
             );
-            // A single poll only writes the request frame; no response can
-            // arrive in the same tick. The `EndTurn` assertions below prove
-            // the steer was serialized behind the active turn.
             let _first_poll =
                 std::future::poll_fn(|poll_cx| std::task::Poll::Ready(Future::poll(second.as_mut(), poll_cx))).await;
+            // Wait until the steer has been admitted and is queued on the gate
+            // before releasing the first turn. The `EndTurn` assertions below
+            // then prove it was serialized behind that turn.
+            wait_for_prompt_gate_waiter(&gate_agent, &session.session_id).await;
 
             unblock_provider.notify_one();
             let first_response = first.await?;
