@@ -6,7 +6,7 @@ use super::{ZedAgent, log_suppressed_error};
 use crate::acp;
 use crate::workspace::{WorkspaceTrustSyncOutcome, WorkspaceTrustSynchronizer};
 use anyhow::Context;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, warn};
 use uuid::Uuid;
@@ -207,6 +207,8 @@ impl ZedAgent {
             })),
             cancellation: super::super::types::SessionCancellation::default(),
             activity: super::super::types::SessionActivity::default(),
+            prompt_gate: Arc::new(tokio::sync::Mutex::new(())),
+            prompt_gate_waiters: Arc::new(AtomicUsize::new(0)),
         }
     }
 

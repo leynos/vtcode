@@ -3,7 +3,7 @@ use crate::acp;
 use anyhow::Context;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use tokio::sync::Notify;
+use tokio::sync::{Mutex as AsyncMutex, Notify};
 use tokio::time::Instant;
 use vtcode_core::config::types::ReasoningEffortLevel;
 use vtcode_core::core::threads::ThreadRuntimeHandle;
@@ -130,6 +130,10 @@ impl SessionActivity {
             self.prompts_idle.notify_waiters();
         }
     }
+
+    fn admitted_prompt_count(&self) -> usize {
+        self.active_prompts.load(Ordering::Acquire)
+    }
 }
 
 impl SessionPromptGuard {
@@ -153,6 +157,64 @@ pub(crate) struct SessionHandle {
     pub(crate) data: Arc<Mutex<SessionData>>,
     pub(crate) cancellation: SessionCancellation,
     pub(crate) activity: SessionActivity,
+    /// Serializes prompt turns for this session. ACP permits clients to send a
+    /// new `session/prompt` while another turn is active; turns run one at a
+    /// time instead of failing the turn guard or racing the cancellation flag.
+    /// Waiters acquire the gate in the order their spawned tasks reach it, so
+    /// queued steers have no stricter arrival-order guarantee. The mutex is
+    /// held for the whole turn, so the guard must only be awaited inside a
+    /// spawned task.
+    pub(crate) prompt_gate: Arc<AsyncMutex<()>>,
+    /// Prompts currently inside `acquire_prompt_gate`, including one whose
+    /// acquisition is ready without yielding. Observability and test
+    /// synchronization only; it never gates admission.
+    pub(crate) prompt_gate_waiters: Arc<AtomicUsize>,
+}
+
+/// Counts one prompt's gate acquisition and decrements when the acquisition
+/// finishes or its task is dropped, so a cancelled waiter cannot leave a stale
+/// queue depth behind.
+struct PromptGateWaiter(Arc<AtomicUsize>);
+
+impl PromptGateWaiter {
+    fn new(waiters: Arc<AtomicUsize>) -> Self {
+        let _ = waiters.fetch_add(1, Ordering::AcqRel);
+        Self(waiters)
+    }
+}
+
+impl Drop for PromptGateWaiter {
+    fn drop(&mut self) {
+        let _ = self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+impl SessionHandle {
+    /// Acquires the per-session turn gate, waiting for any earlier prompt to
+    /// finish. Callers must already have distinguished an unknown session;
+    /// awaiting here is only safe inside a spawned task.
+    pub(crate) async fn acquire_prompt_gate(&self) -> tokio::sync::OwnedMutexGuard<()> {
+        let waiter = PromptGateWaiter::new(Arc::clone(&self.prompt_gate_waiters));
+        let guard = Arc::clone(&self.prompt_gate).lock_owned().await;
+        drop(waiter);
+        guard
+    }
+
+    /// Prompts admitted for this session that have not finished yet, including
+    /// the caller. Sampled before waiting on the gate, this is the queue depth
+    /// a steering prompt joins; it is observational only and never rejects a
+    /// steer.
+    pub(crate) fn admitted_prompt_count(&self) -> usize {
+        self.activity.admitted_prompt_count()
+    }
+
+    /// Prompts currently acquiring the per-session prompt gate. A steer's task
+    /// is observable here only after it has been admitted and spawned, which
+    /// lets tests prove a steer is queued before releasing or cancelling the
+    /// turn it waits for.
+    pub(crate) fn prompt_gate_waiter_count(&self) -> usize {
+        self.prompt_gate_waiters.load(Ordering::Acquire)
+    }
 }
 
 impl SessionHandle {

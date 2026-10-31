@@ -68,10 +68,12 @@ retry backoff, and during an active request.
 Retry is bounded exponential backoff with optional jitter. Only transient
 failures before visible text or reasoning may be retried; a failure after
 visible stream output is returned without replaying content and the incomplete
-assistant response is checkpointed. Connection, first-token, inter-token idle,
-and total-generation deadlines are configured independently. First-token and
-idle limits apply to streaming calls; connection and total-generation limits
-also cover buffered calls. A value of zero disables its deadline.
+assistant response is checkpointed. When retries are exhausted after a stream
+ends before a completion event without visible output, the turn reports
+`empty_response`. Connection, first-token, inter-token idle, and
+total-generation deadlines are configured independently. First-token and idle
+limits apply to streaming calls; connection and total-generation limits also
+cover buffered calls. A value of zero disables its deadline.
 
 Provider request metrics omit provider-name labels. The shared custom-provider
 admission router records current queue depth, in-flight permits, cumulative
@@ -120,6 +122,56 @@ blocked items are pending and marked `[blocked]`. On `session/load`,
 `session/resume`, and a later prompt, ACP reads the persisted tracker state and
 re-emits the plan. Replay sends a plan update only: it does not fabricate a
 model-visible tool call or repeat a tool side effect.
+
+## Crate conventions and gotchas
+
+Module map: `capabilities/` protocol negotiation, `client/` deprecated legacy
+client, `client_v2/` current client, `discovery/` agent registry, `session/`
+session lifecycle, `transport/` stdio transport, `jsonrpc/` JSON-RPC types,
+`tooling/` tool adapters, `zed/` Zed adapter, `workspace/` workspace helpers,
+`permissions/` permission flow, `reports/` reporting, and `error/` `AcpError`.
+Within `zed/agent/handlers/prompt/`, `input.rs` prepares a turn, `streaming/`
+and `buffered.rs` drive providers, `cancelled.rs` commits cancellation,
+`finish.rs` owns failure finalization and checkpoints, and `output.rs` tracks
+assistant output visible to the client.
+
+A queued `session/prompt` reports `queued_prompts` before it waits and
+`wait_ms` after it acquires `SessionHandle::prompt_gate`, so a turn stalled on
+the gate is observable while it is stalled. Neither event rejects a steer: ACP
+permits them, and the gate only serializes. Tests that must order a steer
+against `session/cancel` poll `SessionHandle::prompt_gate_waiter_count` until
+the steer is queued, instead of relying on sleeps.
+
+`zed/agent/handlers.rs` is the canonical SACP handler wiring;
+`zed/connection.rs` wraps `ConnectionTo<Client>`. `ZedAgent::new` attaches and
+refreshes parent MCP providers before snapshotting model tools. `AcpClientV2`
+is the current client API (`AcpClient` is deprecated since 0.60.x), and
+`StandardAcpAdapter` / `ZedAcpAdapter` in `zed/` bridge protocol to Zed.
+`register_acp_connection()` is a process-global
+`OnceLock<Arc<ConnectionHandle>>`; call it once from the host protocol after
+the SACP `connect_with` closure receives the `cx`. The `acp` module in
+`vtcode-core` is a compatibility facade; canonical code lives in this crate.
+
+- Update `PROTOCOL_VERSION` and `SUPPORTED_VERSIONS` together when protocol
+  negotiation changes.
+- `messages.rs` types are deprecated; use the `jsonrpc/` module.
+- `ConnectionHandle` wraps `agent_client_protocol::ConnectionTo<Client>`.
+  `cx.send_request(...).block_task()` is only safe in a `cx.spawn` task;
+  calling it from a request handler deadlocks.
+- The `acp` module re-exports `agent_client_protocol::schema::v1::*` plus
+  `ProtocolVersion` from `schema::*`. `Client` and `Agent` (role structs) are
+  at the crate root.
+- `SessionUpdateNotification` decodes through a direct wire shape for SSE
+  performance; new update variants must update that shape and its regression
+  tests.
+- Permission-flow tests use the duplex SACP connection harness; preserve
+  allow, deny, cancel, unknown-option and request-failure coverage. Stdio EOF,
+  timeout and cancellation paths must clear pending calls; frames and stderr
+  stay bounded and sanitized.
+- Provider quota observations use Lody's push-only rate-limit snapshots plus
+  warning notices; never infer utilization without valid limit/remaining pairs,
+  or treat `Retry-After` as a quota reset. See
+  [provider rate-limit headers](provider-rate-limit-headers.md).
 
 ## Focused verification
 

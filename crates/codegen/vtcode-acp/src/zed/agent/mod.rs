@@ -119,10 +119,14 @@ mod lody_rate_limits;
 mod lody_tests;
 mod lody_usage;
 mod prompt;
+#[cfg(test)]
+mod prompt_lifecycle_tests;
 mod provider_telemetry;
 mod session_state;
 mod task_lifecycle;
 mod task_progress;
+#[cfg(test)]
+mod test_support;
 mod tool_config;
 #[cfg(test)]
 mod tool_config_tests;
@@ -131,6 +135,8 @@ mod tool_execution_local;
 mod tool_execution_output;
 mod tool_recovery;
 mod updates;
+#[cfg(test)]
+mod updates_tests;
 
 #[cfg(test)]
 mod acp_logging_tests {

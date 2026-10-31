@@ -1,73 +1,27 @@
 //! Coordinates ACP prompt preparation, hooks, compaction, and provider-turn execution.
-use super::super::log_suppressed_error;
 use super::super::tool_config::SessionToolDefinitionRequest;
-use super::super::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
 use super::provider::IncompleteProviderTurn;
 use super::*;
 
 mod buffered;
+mod cancelled;
+mod finish;
+#[cfg(test)]
+mod flush_tests;
 mod input;
 mod lifecycle;
+mod output;
 mod provider_context;
 mod streaming;
+mod tool_round;
 
-pub(super) use buffered::response_reasoning_update;
+pub(super) use tool_round::{ToolRoundOutcome, ToolRoundRequest, execute_tool_round};
 
-#[tracing::instrument(skip_all, fields(boundary = boundary))]
-pub(super) async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, boundary: &'static str) {
-    if let Err(error) = agent.checkpoint_session(session).await {
-        log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
-        warn!(
-            operation = "session_checkpoint",
-            error_category = "archive_write_failed",
-            boundary,
-            "Failed to persist ACP session checkpoint"
-        );
-    }
-    if let Err(error) = session.update_transcript_path().await {
-        log_suppressed_error(&error, "transcript_update", "transcript_write_failed");
-        warn!(
-            operation = "transcript_update",
-            error_category = "transcript_write_failed",
-            boundary,
-            "Failed to update ACP session transcript path"
-        );
-    }
-}
-
-pub(super) async fn finish_failed_provider_turn(
-    turn: &PromptExecution,
-    error: SafeProviderProjection,
-) -> Result<PromptResponse, SdkError> {
-    let IncompleteProviderTurn { message, visible_update, response } =
-        IncompleteProviderTurn::from_failure(&turn.assistant_message, &turn.assistant_reasoning, error);
-    drop(
-        turn.agent
-            .send_update(&turn.args.session_id, acp::SessionUpdate::AgentMessageChunk(text_chunk(visible_update)))
-            .await,
-    );
-    push_session_message(&turn.agent, &turn.session, &turn.args.session_id, message)?;
-    persist_session_checkpoint(&turn.agent, &turn.session, "incomplete_provider_turn").await;
-    warn!(
-        error_category = error.category(),
-        error_status = ?error.status(),
-        partial_text_bytes = turn.assistant_message.len(),
-        partial_reasoning_bytes = turn.assistant_reasoning.len(),
-        "ACP provider failed to complete the turn"
-    );
-    Ok(response)
-}
-
-pub(super) async fn finish_failed_output(
-    turn: &mut PromptExecution,
-    output: ProviderOutput,
-    error: SafeProviderProjection,
-) -> Result<ProviderTurnOutcome, SdkError> {
-    output.store_in(turn);
-    finish_failed_provider_turn(turn, error)
-        .await
-        .map(ProviderTurnOutcome::Response)
-}
+pub(super) use cancelled::{finish_cancelled_output, finish_failed_or_cancelled_output};
+pub(super) use finish::{
+    finish_failed_output, finish_failed_provider_turn, persist_session_checkpoint, require_session_checkpoint,
+};
+pub(super) use output::{ProviderOutput, assistant_tool_call_message};
 
 pub(super) struct TurnGuard {
     thread: ThreadRuntimeHandle,
@@ -140,24 +94,6 @@ impl PromptToolState {
     }
 }
 
-pub(super) struct ToolRoundRequest<'a> {
-    pub(super) agent: &'a ZedAgent,
-    pub(super) session: &'a SessionHandle,
-    pub(super) session_id: &'a acp::SessionId,
-    pub(super) tool_calls: &'a [LLMToolCall],
-    pub(super) assistant_message: &'a str,
-    pub(super) assistant_reasoning: &'a str,
-    pub(super) reasoning_details: Option<Vec<String>>,
-    pub(super) tool_loop_count: &'a mut usize,
-    pub(super) streamed: bool,
-}
-
-pub(super) enum ToolRoundOutcome {
-    Continue,
-    Cancelled,
-    LimitReached(String),
-}
-
 pub(super) struct PromptInput {
     agent: Arc<ZedAgent>,
     args: PromptRequest,
@@ -191,65 +127,14 @@ pub(super) struct PromptExecution {
     tool_state: PromptToolState,
     assistant_message: String,
     assistant_reasoning: String,
+    /// Whether at least one assistant `AgentMessageChunk` reached the client
+    /// during this turn. Thought chunks and tool updates do not count: a turn
+    /// that ends without visible assistant content is a failure, not a silent
+    /// `EndTurn`.
+    assistant_emitted: bool,
+    provider_iteration: usize,
     stop_hook_active: bool,
     stop_hook_checked: bool,
-}
-
-pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<ToolRoundOutcome, SdkError> {
-    let ToolRoundRequest {
-        agent,
-        session,
-        session_id,
-        tool_calls,
-        assistant_message,
-        assistant_reasoning,
-        reasoning_details,
-        tool_loop_count,
-        streamed,
-    } = request;
-
-    if agent.tool_loop_limit_reached(*tool_loop_count) {
-        return Ok(ToolRoundOutcome::LimitReached(agent.tool_loop_limit_message()));
-    }
-    *tool_loop_count = tool_loop_count.saturating_add(1);
-
-    let assistant_tool_message = if streamed {
-        assistant_tool_call_message(
-            assistant_message.to_string(),
-            tool_calls.to_vec(),
-            assistant_reasoning,
-            reasoning_details,
-        )
-    } else {
-        Message::assistant_with_tools(assistant_message.to_string(), tool_calls.to_vec())
-    };
-    let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
-    drop(stage_thread_tool_calls(&thread, assistant_tool_message));
-    let tool_call_count = tool_calls.len();
-    info!(session_id = %session_id, tool_call_count, tool_loop_count = *tool_loop_count,
-          tool_recovery_outcome = "placeholders_staged", "ACP tool recovery placeholders staged");
-    require_session_checkpoint(agent, session, "assistant_tool_calls_write_ahead").await?;
-
-    let tool_results = match agent.execute_tool_calls(session, session_id, tool_calls).await {
-        Ok(results) => results,
-        Err(error) => {
-            warn!(%error, session_id = %session_id, tool_call_count,
-                  tool_recovery_outcome = "execution_interrupted", "Tool execution failed");
-            persist_session_checkpoint(agent, session, "interrupted_tool_results").await;
-            return Err(error);
-        }
-    };
-
-    let finalized_tool_count = replace_thread_tool_results(&thread, &tool_results);
-    info!(session_id = %session_id, tool_call_count, tool_loop_count = *tool_loop_count,
-          finalized_tool_count, tool_recovery_outcome = "results_replaced", "ACP tool recovery results replaced");
-    persist_session_checkpoint(agent, session, "tool_results").await;
-
-    Ok(if session.cancellation.is_cancelled() {
-        ToolRoundOutcome::Cancelled
-    } else {
-        ToolRoundOutcome::Continue
-    })
 }
 
 async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecution, SdkError> {
@@ -277,6 +162,8 @@ async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecuti
         tool_state,
         assistant_message: String::with_capacity(4096),
         assistant_reasoning: String::with_capacity(2048),
+        assistant_emitted: false,
+        provider_iteration: 0,
         stop_hook_active: false,
         stop_hook_checked: false,
     })
@@ -310,6 +197,42 @@ pub(super) async fn run_prompt_with_retry_observer(
     retry_observed_at: impl Fn() -> SystemTime + Send + Sync,
     metric_sink: ProviderMetricSink,
 ) -> Result<PromptResponse, SdkError> {
+    let session = agent
+        .session_handle(&args.session_id)
+        .map_err(|error| session_access_error(&args.session_id, "looking up session", error))?
+        .ok_or_else(|| SdkError::invalid_params().data(json!({ "reason": "unknown_session" })))?;
+    // ACP lets a client steer an active turn by sending another
+    // `session/prompt`. Serialize the turns per session instead of rejecting
+    // the steer or racing the active turn's state; this is only awaited here,
+    // inside the spawned prompt task.
+    //
+    // Sample the admitted count before waiting: it is the queue depth this
+    // prompt joined, including any turn already holding the gate. Reporting it
+    // alongside the wait keeps a stalled turn visible without capping steers,
+    // which ACP deliberately allows.
+    let queued_prompts = session.admitted_prompt_count().saturating_sub(1);
+    let gate_wait_started = Instant::now();
+    if queued_prompts > 0 {
+        // Emit before waiting: a turn stalled on the gate must be visible
+        // while it is stalled, not only once it finally runs.
+        info!(
+            session_id = %args.session_id,
+            queued_prompts,
+            "Waiting for the ACP prompt gate"
+        );
+    }
+    let _prompt_gate = session.acquire_prompt_gate().await;
+    debug!(
+        session_id = %args.session_id,
+        queued_prompts,
+        wait_ms = u64::try_from(gate_wait_started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        "Acquired ACP prompt gate"
+    );
+    // Clear cancellation only once the previous turn has fully completed. A
+    // queued steer must not clear a cancel aimed at the turn it waited for.
+    if !session.cancellation.reset() {
+        return Ok(PromptResponse::new(acp::StopReason::Cancelled));
+    }
     let input = match input::prepare_prompt_input(agent, args).await? {
         PromptInputOutcome::Response(response) => return Ok(response),
         PromptInputOutcome::Ready(input) => input,
@@ -338,46 +261,27 @@ impl PromptExecution {
         }
     }
 }
-pub(super) struct ProviderOutput {
-    assistant_message: String,
-    assistant_reasoning: String,
-    emitted_output: bool,
-}
-
-impl ProviderOutput {
-    pub(super) fn empty() -> Self {
-        Self {
-            assistant_message: String::new(),
-            assistant_reasoning: String::new(),
-            emitted_output: false,
-        }
-    }
-
-    pub(super) fn take_from(turn: &mut PromptExecution) -> Self {
-        let assistant_message = std::mem::take(&mut turn.assistant_message);
-        let assistant_reasoning = std::mem::take(&mut turn.assistant_reasoning);
-        let emitted_output = !assistant_message.is_empty() || !assistant_reasoning.is_empty();
-        Self {
-            assistant_message,
-            assistant_reasoning,
-            emitted_output,
-        }
-    }
-
-    pub(super) fn reset(&mut self) {
-        self.assistant_message.clear();
-        self.assistant_reasoning.clear();
-        self.emitted_output = false;
-    }
-
-    pub(super) fn store_in(self, turn: &mut PromptExecution) {
-        turn.assistant_message = self.assistant_message;
-        turn.assistant_reasoning = self.assistant_reasoning;
-    }
-}
-
 pub(super) fn session_access_error(session_id: &acp::SessionId, operation: &str, error: impl Display) -> SdkError {
     SdkError::internal_error().data(format!("Failed to {operation} for ACP session {session_id}: {error}"))
+}
+
+/// A non-cancelled turn completed without ever sending the client assistant
+/// content. Returning `EndTurn` here would acknowledge a prompt with no
+/// response, so surface an explicit, sanitized failure instead.
+pub(super) fn empty_response_error() -> SdkError {
+    SdkError::internal_error().data(json!({
+        "reason": "empty_response",
+        "message": "The provider completed the turn without emitting assistant content.",
+    }))
+}
+
+/// Tool execution failed before producing results. The underlying error stays
+/// in logs; the client receives a stable, sanitized provider-failure shape.
+pub(super) fn tool_execution_failed_error() -> SdkError {
+    SdkError::internal_error().data(json!({
+        "reason": "tool_execution_failed",
+        "message": "Tool execution failed before producing results.",
+    }))
 }
 
 pub(super) fn push_session_message(
@@ -399,53 +303,4 @@ pub(super) fn should_allow_streaming(supports_streaming: bool, _tools_allowed: b
 
 pub(super) fn should_emit_buffered_final_chunk(allow_streaming: bool) -> bool {
     !allow_streaming
-}
-
-pub(super) fn assistant_tool_call_message(
-    content: String,
-    tool_calls: Vec<vtcode_core::llm::provider::ToolCall>,
-    reasoning: &str,
-    reasoning_details: Option<Vec<String>>,
-) -> Message {
-    let reasoning_details = reasoning_details.map(|details| {
-        details
-            .into_iter()
-            .map(|detail| match serde_json::from_str::<serde_json::Value>(&detail) {
-                Ok(value) if value.is_object() || value.is_array() => value,
-                _ => serde_json::Value::String(detail),
-            })
-            .collect()
-    });
-    let mut message = Message::assistant_with_tools_and_reasoning(content, tool_calls, reasoning_details);
-    if !reasoning.is_empty() {
-        message.reasoning = Some(reasoning.to_owned());
-    }
-    message
-}
-
-/// Persists the strict write-ahead checkpoint required before tool execution.
-///
-/// Ordinary transcript checkpoints remain best-effort through
-/// [`persist_session_checkpoint`].
-async fn require_session_checkpoint(
-    agent: &ZedAgent,
-    session: &SessionHandle,
-    boundary: &'static str,
-) -> Result<(), SdkError> {
-    if let Err(error) = agent.checkpoint_session(session).await {
-        warn!(%error, boundary, "Failed to persist ACP session checkpoint");
-        return Err(
-            SdkError::internal_error().data(format!("Failed to persist ACP session checkpoint at {boundary}: {error}"))
-        );
-    }
-    if let Err(error) = session.update_transcript_path().await {
-        log_suppressed_error(&error, "transcript_update", "transcript_write_failed");
-        warn!(
-            operation = "transcript_update",
-            error_category = "transcript_write_failed",
-            boundary,
-            "Failed to update ACP session transcript path"
-        );
-    }
-    Ok(())
 }

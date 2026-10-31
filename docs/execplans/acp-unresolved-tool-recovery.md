@@ -374,11 +374,13 @@ ACP-REC-6 -> EP-M3 -> typed exec-session and structured-error tests
   Rationale: this verifies the public request boundary rather than only the
   `TurnGuard` helper. Domain: two prompts for one session, with the first
   blocked in a tool; a separate-session control remains independently runnable.
-  Artefact: `handlers.rs` wire tests. Evidence: the second prompt receives
-  `turn_in_progress`; counters and history are unchanged until the first
-  releases. Non-vacuity: the first-tool-start barrier proves overlap; a control
-  that moves guard acquisition after task replay increments the ancillary-work
-  counter and fails.
+  Artefact: `handlers.rs` wire tests, now backed by
+  `prompt_lifecycle_tests.rs`. Evidence: the second prompt is admitted but runs
+  no task replay, history append, provider call, or tool call until the first
+  releases; the earlier `turn_in_progress` rejection was replaced by
+  per-session gate serialization in issue #160. Non-vacuity: the
+  first-tool-start barrier proves overlap; a control that moves guard
+  acquisition after task replay increments the ancillary-work counter and fails.
 
 - Obligation: INV-STALE-SESSION-CLASSIFICATION. A missing `write_stdin` ID is
   `ResourceNotFound`, non-retryable, recoverable by starting a new command,

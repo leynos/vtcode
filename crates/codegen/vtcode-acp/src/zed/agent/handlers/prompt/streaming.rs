@@ -19,6 +19,9 @@ enum StreamAttemptOutcome {
         error: LLMError,
         observed_at: SystemTime,
     },
+    /// The provider stream ended before a completion event and retries could
+    /// not recover it, without any assistant content ever reaching the client.
+    EmptyResponse,
     Cancelled,
 }
 
@@ -150,13 +153,18 @@ async fn handle_streaming_attempt(
                     provider_class: turn.provider_runtime.provider_class(),
                 })
                 .await;
-            let response = finish_failed_output(
-                turn,
-                std::mem::replace(output, ProviderOutput::empty()),
-                SafeProviderProjection::from_llm_error(&error),
-            )
-            .await?;
+            let response =
+                finish_failed_or_cancelled_output(turn, output, SafeProviderProjection::from_llm_error(&error)).await?;
             Ok(StreamingTurnOutcome::Finished(response))
+        }
+        StreamAttemptOutcome::EmptyResponse => {
+            // Cancellation can arrive after the retry budget is spent. ACP
+            // requires `Cancelled` for a cancelled turn, so it outranks the
+            // empty-response failure.
+            if turn.session.cancellation.is_cancelled() {
+                return Ok(StreamingTurnOutcome::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)));
+            }
+            Err(empty_response_error())
         }
         StreamAttemptOutcome::Cancelled => {
             Ok(StreamingTurnOutcome::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)))
@@ -185,8 +193,7 @@ async fn retry_stream_attempt(
             Ok(StreamingTurnOutcome::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)))
         }
         Err(ProviderCallError::Failed(error)) => {
-            let response =
-                finish_failed_output(turn, std::mem::replace(output, ProviderOutput::empty()), error).await?;
+            let response = finish_failed_or_cancelled_output(turn, output, error).await?;
             Ok(StreamingTurnOutcome::Finished(response))
         }
     }
@@ -310,7 +317,18 @@ async fn process_stream_response(
                 return Ok(StreamResponseOutcome::StopReason(acp::StopReason::Cancelled));
             }
             ToolRoundOutcome::LimitReached(message) => {
+                // Streaming has no final-chunk emission step, so send the
+                // synthesized limit notice here rather than ending silently.
+                drop(
+                    turn.agent
+                        .send_update(
+                            &turn.args.session_id,
+                            acp::SessionUpdate::AgentMessageChunk(text_chunk(message.clone())),
+                        )
+                        .await,
+                );
                 output.assistant_message = message;
+                output.assistant_emitted = true;
                 return Ok(StreamResponseOutcome::StopReason(acp::StopReason::EndTurn));
             }
             ToolRoundOutcome::Continue => {}
