@@ -13,11 +13,12 @@ vtcode acp
 ```
 
 The server negotiates protocol version 1 during `initialize`. Its Lody usage
-capability is always advertised as `_meta.lody.usage = { "version": 1 }`.
-When a subagent controller is configured, the handshake also advertises
-`_meta.lody.subagents` version 1 with `lifecycle`, `list`, `cancel`, and `output`
-operations. The `_meta.lody.tasks = { "version": 1, "background": true }`
-capability is included only when background subagents are enabled.
+capability is always advertised as `_meta.lody.usage = { "version": 1 }`. When
+a subagent controller is configured, the handshake also advertises
+`_meta.lody.subagents` version 1 with `lifecycle`, `list`, `cancel`, and
+`output` operations. The
+`_meta.lody.tasks = { "version": 1, "background": true }` capability is
+included only when background subagents are enabled.
 
 Subagent and background-process progress is sent through standard ACP
 `session/update` tool calls and tool-call updates. The standard task fields
@@ -54,8 +55,8 @@ notification `_lody/session/usage_update`. Its parameters contain:
 ```
 
 `modelUsage` is keyed by the response model. The values are deltas for one
-provider response, and no notification is emitted when the provider supplies
-no usage data.
+provider response, and no notification is emitted when the provider supplies no
+usage data.
 
 ## Legacy REST ACP client reference
 
