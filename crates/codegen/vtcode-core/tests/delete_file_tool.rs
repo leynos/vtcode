@@ -31,7 +31,7 @@ fn recursive_delete_fixture_commands_config() -> CommandsConfig {
     config.deny_glob.retain(|command| command != "rm *");
     config
         .deny_regex
-        .retain(|pattern| pattern != r"rm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)");
+        .retain(|pattern| pattern != r"\brm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)");
     config
 }
 

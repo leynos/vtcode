@@ -273,6 +273,19 @@ mod tests {
         }
     }
 
+    /// The default deny regex matches `rm` as a command word, not as the
+    /// suffix of another command name such as `terraform`.
+    #[test]
+    fn default_deny_regex_matches_rm_as_a_word_only() {
+        let mut config = CommandsConfig::default();
+        config.allow_glob.push("terraform *".to_string());
+        let evaluator = CommandPolicyEvaluator::from_config(&config);
+
+        assert!(evaluator.allows_text("terraform -r apply"));
+        assert!(!evaluator.allows_text("rm -r scratch"));
+        assert!(!evaluator.allows_text("ls && rm -r scratch"));
+    }
+
     #[test]
     fn allow_list_allows_exact_git_and_cargo_commands() {
         let mut config = CommandsConfig::default();

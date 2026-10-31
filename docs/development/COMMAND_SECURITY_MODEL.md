@@ -254,12 +254,12 @@ invocation when all of these hold:
 
 Configured denials still win. The shipped defaults allow `rm *` but keep the
 absolute-path denies and the
-`rm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)` deny regex,
-so recursive spellings and the long `--force` option stay blocked by default in
-any flag order or grouping (`rm -rf`, `rm -fr`, `rm -Rf`, `rm -f -r`, `rm -r`,
-`--recursive`, `--force`). The short `-f` is not matched by that regex, so a
-plain `rm -f file` remains allowed. Relaxing the configured `deny_regex`
-permits the blocked spellings.
+`\brm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)` deny
+regex, so recursive spellings and the long `--force` option stay blocked by
+default in any flag order or grouping (`rm -rf`, `rm -fr`, `rm -Rf`, `rm -f -r`,
+`rm -r`, `--recursive`, `--force`). The short `-f` is not matched by that
+regex, so a plain `rm -f file` remains allowed. Relaxing the configured
+`deny_regex` permits the blocked spellings.
 
 Under `--dangerously-skip-permissions`, a confirmed supported deletion is
 auto-approved by the runloop; the executor still performs the target assessment.
@@ -340,7 +340,7 @@ Regular expressions to block patterns.
 
 ```toml
 deny_regex = [
-  r"rm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)",
+  r"\brm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)",
   r"sudo\s+.*",
   r"docker\s+run\s+.*--privileged",
 ]

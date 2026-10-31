@@ -866,7 +866,7 @@ allow_regex = []
 
 # Regular expression patterns for denied commands (if needed)
 deny_regex = [
-    'rm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)',   # Recursive spellings and long --force
+    '\brm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)',   # Recursive spellings and long --force
 ]
 
 # Security configuration - Safety settings for automated operations

@@ -314,7 +314,7 @@ impl Default for CommandsConfig {
             deny_regex: vec![
                 // Recursive spellings and the long --force option, in any
                 // flag order or grouping. The short -f is deliberately allowed.
-                r"rm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)".into(),
+                r"\brm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)".into(),
                 // Sudo commands
                 r"sudo\s+.*".into(),
                 // Permission changes
