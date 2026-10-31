@@ -6,9 +6,8 @@
 //! workspace. Confirmation, approvals, configured deny rules, and sandbox
 //! enforcement remain the responsibility of the caller.
 //!
-//! Recognition is deliberately strict and fails closed; see
-//! [`recognition`] for the accepted shapes. Target assessment reuses the
-//! workspace containment helpers; see [`assessment`].
+//! Recognition (`recognition`) is deliberately strict and fails closed.
+//! Target assessment (`assessment`) reuses the workspace containment helpers.
 
 mod assessment;
 mod recognition;
