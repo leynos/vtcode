@@ -28,6 +28,14 @@ pub(in crate::zed::agent::handlers) enum ToolRoundOutcome {
     LimitReached(String),
 }
 
+/// Whether a buffered turn still needs to relay assistant updates.
+///
+/// Streamed turns have already sent each chunk, and a cancelled turn must not
+/// send updates the client can no longer render as live output.
+fn should_relay_assistant_updates(streamed: bool, session: &SessionHandle) -> bool {
+    !streamed && !session.cancellation.is_cancelled()
+}
+
 pub(in crate::zed::agent::handlers) async fn execute_tool_round(
     request: ToolRoundRequest<'_>,
 ) -> Result<ToolRoundOutcome, SdkError> {
@@ -44,7 +52,7 @@ pub(in crate::zed::agent::handlers) async fn execute_tool_round(
     } = request;
 
     if agent.tool_loop_limit_reached(*tool_loop_count) {
-        if !streamed && !session.cancellation.is_cancelled() {
+        if should_relay_assistant_updates(streamed, session) {
             agent
                 .send_assistant_updates(
                     session_id,
@@ -72,7 +80,7 @@ pub(in crate::zed::agent::handlers) async fn execute_tool_round(
           tool_recovery_outcome = "placeholders_staged", "ACP tool recovery placeholders staged");
     require_session_checkpoint(agent, session, "assistant_tool_calls_write_ahead").await?;
 
-    if !streamed && !session.cancellation.is_cancelled() {
+    if should_relay_assistant_updates(streamed, session) {
         agent
             .send_assistant_updates(
                 session_id,

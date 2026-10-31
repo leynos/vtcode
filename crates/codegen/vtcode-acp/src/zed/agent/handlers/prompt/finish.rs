@@ -16,6 +16,11 @@ pub(in crate::zed::agent::handlers) async fn persist_session_checkpoint(
             "Failed to persist ACP session checkpoint"
         );
     }
+    update_transcript_path_best_effort(session, boundary).await;
+}
+
+/// Refreshes the session transcript path, logging a failure without failing the turn.
+async fn update_transcript_path_best_effort(session: &SessionHandle, boundary: &'static str) {
     if let Err(error) = session.update_transcript_path().await {
         log_suppressed_error(&error, "transcript_update", "transcript_write_failed");
         warn!(
@@ -83,14 +88,6 @@ pub(in crate::zed::agent::handlers) async fn require_session_checkpoint(
             SdkError::internal_error().data(format!("Failed to persist ACP session checkpoint at {boundary}: {error}"))
         );
     }
-    if let Err(error) = session.update_transcript_path().await {
-        log_suppressed_error(&error, "transcript_update", "transcript_write_failed");
-        warn!(
-            operation = "transcript_update",
-            error_category = "transcript_write_failed",
-            boundary,
-            "Failed to update ACP session transcript path"
-        );
-    }
+    update_transcript_path_best_effort(session, boundary).await;
     Ok(())
 }

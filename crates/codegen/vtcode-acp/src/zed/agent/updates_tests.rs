@@ -1,5 +1,5 @@
 //! Verifies ordering and emptiness handling for ACP assistant updates.
-use super::updates::{AssistantChunkKind, assistant_chunk_kind, assistant_updates};
+use super::updates::{AssistantChunkKind, assistant_updates};
 use crate::acp;
 use rstest::rstest;
 
@@ -41,9 +41,9 @@ fn assistant_updates_emit_each_non_empty_channel_in_order(
     let updates = assistant_updates(content, reasoning);
 
     assert_eq!(updates.len(), expected.len());
-    for (update, (kind, text)) in updates.iter().zip(expected) {
-        assert_eq!(assistant_chunk_kind(update), Some(*kind));
-        assert_eq!(text_of(update), *text);
+    for ((kind, update), (expected_kind, expected_text)) in updates.iter().zip(expected) {
+        assert_eq!(kind, expected_kind);
+        assert_eq!(text_of(update), *expected_text);
     }
 }
 
