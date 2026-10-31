@@ -141,37 +141,8 @@ async fn run_permission_flow(decision: ClientDecision) -> Option<ToolExecutionRe
             Ok(())
         });
 
-    let client = Client
-        .builder()
-        .on_receive_request(
-            async move |request: RequestPermissionRequest, responder, _connection| {
-                assert_eq!(request.options.len(), 4);
-                let response = match decision {
-                    ClientDecision::Allow => RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
-                        SelectedPermissionOutcome::new(TOOL_PERMISSION_ALLOW_OPTION_ID),
-                    )),
-                    ClientDecision::AllowAlways => RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
-                        SelectedPermissionOutcome::new(TOOL_PERMISSION_ALLOW_ALWAYS_OPTION_ID),
-                    )),
-                    ClientDecision::Deny => RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
-                        SelectedPermissionOutcome::new(TOOL_PERMISSION_DENY_OPTION_ID),
-                    )),
-                    ClientDecision::DenyAlways => RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
-                        SelectedPermissionOutcome::new(TOOL_PERMISSION_DENY_ALWAYS_OPTION_ID),
-                    )),
-                    ClientDecision::Cancel => RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled),
-                    ClientDecision::Unknown => RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
-                        SelectedPermissionOutcome::new("unsupported-option"),
-                    )),
-                    ClientDecision::RequestFailure => {
-                        return responder.respond_with_internal_error("simulated permission request failure");
-                    }
-                };
-                responder.respond(response)
-            },
-            on_receive_request!(),
-        )
-        .connect_to(client_channel);
+    // The request counter is discarded: this flow asserts only the outcome.
+    let client = permission_client(decision, Arc::new(AtomicUsize::new(0)), client_channel);
 
     let (agent_result, client_result) = tokio::join!(agent, client);
     agent_result.expect("agent duplex connection should complete");
