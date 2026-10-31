@@ -104,7 +104,72 @@ fn maps_worker_and_background_states_to_lody_task_metadata() {
     }
 }
 
+fn lifecycle_ladder(kind_index: usize) -> (&'static [&'static str], &'static [u8]) {
+    const SUBAGENT: &[&str] = &["queued", "running", "waiting", "completed", "failed", "closed"];
+    const SUBAGENT_ORDINALS: &[u8] = &[0, 1, 1, 2, 2, 2];
+    const BACKGROUND: &[&str] = &["starting", "running", "stopped", "error"];
+    const BACKGROUND_ORDINALS: &[u8] = &[0, 1, 2, 2];
+    if kind_index == 0 {
+        (SUBAGENT, SUBAGENT_ORDINALS)
+    } else {
+        (BACKGROUND, BACKGROUND_ORDINALS)
+    }
+}
+
+fn projected_ordinal(status: &str) -> u8 {
+    match status {
+        "pending" => 0,
+        "in_progress" => 1,
+        "completed" | "failed" => 2,
+        other => panic!("unexpected projected task status {other}"),
+    }
+}
+
 proptest! {
+    /// A task's lifecycle walk is a non-decreasing sequence of states. Whatever
+    /// its length, projection must keep one stable tool-call ID and must never
+    /// report a terminal state as pending or in progress again.
+    #[test]
+    fn lifecycle_sequences_keep_stable_ids_and_monotonic_terminality(
+        kind_index in 0usize..2,
+        steps in prop::collection::vec(0usize..4, 1..=32),
+    ) {
+        let (ladder, ordinals) = lifecycle_ladder(kind_index);
+        // The two fixtures use different ids; the kind selects which.
+        let expected_task_id = if kind_index == 0 { "child-1" } else { "background-1" };
+        let expected_call_id = format!("task:{expected_task_id}");
+        let mut walked = steps.into_iter().map(|step| step % ladder.len()).collect::<Vec<_>>();
+        walked.sort_unstable();
+
+        let mut last_ordinal = 0_u8;
+        for (index, status_index) in walked.iter().copied().enumerate() {
+            let status = ladder[status_index];
+            let event = if kind_index == 0 { subagent_event(status) } else { background_event(status) };
+            let update = lody_task_session_update(event, index > 0).expect("valid lifecycle projection");
+            let task_id = match &update {
+                acp::SessionUpdate::ToolCall(call) => {
+                    prop_assert_eq!(index, 0, "only the first snapshot may create the tool call");
+                    prop_assert_eq!(call.tool_call_id.0.as_ref(), expected_call_id.as_str());
+                    task_meta(&update)["taskId"].as_str().expect("task ID")
+                }
+                acp::SessionUpdate::ToolCallUpdate(call_update) => {
+                    prop_assert!(index > 0, "later snapshots must update the existing tool call");
+                    prop_assert_eq!(call_update.tool_call_id.0.as_ref(), expected_call_id.as_str());
+                    task_meta(&update)["taskId"].as_str().expect("task ID")
+                }
+                other => {
+                    prop_assert!(false, "unexpected lifecycle projection {other:?}");
+                    return Ok(());
+                }
+            };
+            prop_assert_eq!(task_id, expected_task_id);
+            let ordinal = projected_ordinal(task_meta(&update)["status"].as_str().expect("projected status"));
+            prop_assert_eq!(ordinal, ordinals[status_index], "status {} must map to its ladder rung", status);
+            prop_assert!(ordinal >= last_ordinal, "terminality must never regress for status {}", status);
+            last_ordinal = ordinal;
+        }
+    }
+
     #[test]
     fn task_updates_keep_stable_ids_across_statuses(
         task_id in "[A-Za-z0-9_-]{1,64}",

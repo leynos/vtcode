@@ -498,7 +498,12 @@ impl SubagentController {
             .children
             .get_mut(target)
             .ok_or_else(|| anyhow!("Unknown subagent id {target}"))?;
-        if record.status == SubagentStatus::Closed {
+        // Cancellation must not rewrite a settled outcome. `Completed` and
+        // `Failed` children already stopped running, and ACP projects
+        // `Closed` as a failure, so closing them again would turn a
+        // successful task into a visibly failed one and overwrite its
+        // completion timestamp.
+        if record.status.is_terminal() {
             return Ok(record.build_status_entry());
         }
         if let Some(handle) = record.handle.take() {

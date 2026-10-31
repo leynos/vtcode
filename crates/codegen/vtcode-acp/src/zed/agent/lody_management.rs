@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 use vtcode_core::subagents::{
-    BackgroundSubprocessEntry, BackgroundSubprocessStatus, SubagentStatus, SubagentStatusEntry, extract_tail_lines,
-    normalize_output_tail_lines,
+    BackgroundSubprocessEntry, BackgroundSubprocessStatus, SubagentController, SubagentStatus, SubagentStatusEntry,
+    extract_tail_lines, normalize_output_tail_lines,
 };
 
 use super::super::types::SessionHandle;
@@ -88,7 +88,7 @@ fn parse_params<T: for<'de> Deserialize<'de>>(params: Value) -> Result<T, SdkErr
 fn session_controller(
     agent: &ZedAgent,
     session_id: &str,
-) -> Result<(SessionHandle, Arc<vtcode_core::subagents::SubagentController>), SdkError> {
+) -> Result<(SessionHandle, Arc<SubagentController>), SdkError> {
     let session_id = acp::SessionId::new(session_id);
     let session = agent
         .session_handle(&session_id)
@@ -103,9 +103,72 @@ fn session_controller(
     Ok((session, controller))
 }
 
+/// Returns the session's root controller followed by every child-scoped
+/// controller reachable from it.
+///
+/// Grandchildren live in the child controller that spawned them, not in the
+/// root controller's `children` map, so management operations must walk the
+/// whole owned tree. The tree is reachable only through records this session
+/// already owns, which preserves the root-session authorization boundary.
+async fn session_controllers(
+    agent: &ZedAgent,
+    session_id: &str,
+) -> Result<(SessionHandle, Vec<Arc<SubagentController>>), SdkError> {
+    let (session, root) = session_controller(agent, session_id)?;
+    let mut controllers = vec![Arc::clone(&root)];
+    controllers.extend(root.descendant_controllers().await);
+    Ok((session, controllers))
+}
+
+async fn child_status_entries(controllers: &[Arc<SubagentController>]) -> Vec<SubagentStatusEntry> {
+    let mut entries = Vec::new();
+    for controller in controllers {
+        entries.extend(controller.status_entries().await);
+    }
+    entries
+}
+
+async fn background_status_entries(controllers: &[Arc<SubagentController>]) -> Vec<BackgroundSubprocessEntry> {
+    let mut entries = Vec::new();
+    for controller in controllers {
+        entries.extend(controller.background_status_entries().await);
+    }
+    entries
+}
+
+async fn controller_tracking_child(
+    controllers: &[Arc<SubagentController>],
+    task_id: &str,
+) -> Option<Arc<SubagentController>> {
+    for controller in controllers {
+        if controller.status_entries().await.iter().any(|entry| entry.id == task_id) {
+            return Some(Arc::clone(controller));
+        }
+    }
+    None
+}
+
+async fn controller_tracking_background(
+    controllers: &[Arc<SubagentController>],
+    session_id: &str,
+    task_id: &str,
+) -> Option<Arc<SubagentController>> {
+    for controller in controllers {
+        let owned = controller
+            .background_status_entries()
+            .await
+            .into_iter()
+            .any(|entry| entry.id == task_id && entry.owner_session_id.as_deref() == Some(session_id));
+        if owned {
+            return Some(Arc::clone(controller));
+        }
+    }
+    None
+}
+
 async fn list_subagents(agent: &ZedAgent, request: ListSubagentsRequest) -> Result<Value, SdkError> {
-    let (_session, controller) = session_controller(agent, &request.session_id)?;
-    let children = controller.status_entries().await;
+    let (_session, controllers) = session_controllers(agent, &request.session_id).await?;
+    let children = child_status_entries(&controllers).await;
     let owned_children = owned_child_ids(&request.session_id, &children);
     let mut tasks = children
         .iter()
@@ -114,8 +177,7 @@ async fn list_subagents(agent: &ZedAgent, request: ListSubagentsRequest) -> Resu
         .map(managed_child_task)
         .collect::<Vec<_>>();
     tasks.extend(
-        controller
-            .background_status_entries()
+        background_status_entries(&controllers)
             .await
             .iter()
             .filter(|entry| entry.owner_session_id.as_deref() == Some(request.session_id.as_str()))
@@ -127,16 +189,17 @@ async fn list_subagents(agent: &ZedAgent, request: ListSubagentsRequest) -> Resu
 }
 
 async fn cancel_subagent(agent: &ZedAgent, request: CancelSubagentRequest) -> Result<Value, SdkError> {
-    let (_session, controller) = session_controller(agent, &request.session_id)?;
-    let children = controller.status_entries().await;
+    let (_session, controllers) = session_controllers(agent, &request.session_id).await?;
+    let children = child_status_entries(&controllers).await;
     if owned_child_ids(&request.session_id, &children).contains(request.task_id.as_str()) {
+        let controller = controller_tracking_child(&controllers, &request.task_id)
+            .await
+            .ok_or_else(unknown_task_error)?;
         drop(controller.close(&request.task_id).await.map_err(internal_management_error)?);
         return Ok(serde_json::json!({}));
     }
-    let owned_background = controller.background_status_entries().await.into_iter().any(|entry| {
-        entry.id == request.task_id && entry.owner_session_id.as_deref() == Some(request.session_id.as_str())
-    });
-    if owned_background {
+    if let Some(controller) = controller_tracking_background(&controllers, &request.session_id, &request.task_id).await
+    {
         drop(
             controller
                 .force_cancel_background(&request.task_id)
@@ -150,15 +213,18 @@ async fn cancel_subagent(agent: &ZedAgent, request: CancelSubagentRequest) -> Re
 }
 
 async fn subagent_output(agent: &ZedAgent, request: SubagentOutputRequest) -> Result<Value, SdkError> {
-    let (_session, controller) = session_controller(agent, &request.session_id)?;
+    let (_session, controllers) = session_controllers(agent, &request.session_id).await?;
     let tail = normalize_output_tail_lines(request.tail).map_err(|error| {
         SdkError::invalid_params().data(serde_json::json!({
             "reason": "invalid_tail",
             "detail": error.to_string(),
         }))
     })?;
-    let children = controller.status_entries().await;
+    let children = child_status_entries(&controllers).await;
     let output = if owned_child_ids(&request.session_id, &children).contains(request.task_id.as_str()) {
+        let controller = controller_tracking_child(&controllers, &request.task_id)
+            .await
+            .ok_or_else(unknown_task_error)?;
         let snapshot = controller
             .snapshot_for_thread(&request.task_id)
             .await
@@ -173,12 +239,11 @@ async fn subagent_output(agent: &ZedAgent, request: SubagentOutputRequest) -> Re
             .join("\n");
         extract_tail_lines(&transcript, tail)
     } else {
-        let owned_background = controller.background_status_entries().await.into_iter().any(|entry| {
-            entry.id == request.task_id && entry.owner_session_id.as_deref() == Some(request.session_id.as_str())
-        });
-        if !owned_background {
+        let Some(controller) =
+            controller_tracking_background(&controllers, &request.session_id, &request.task_id).await
+        else {
             return Err(unknown_task_error());
-        }
+        };
         controller
             .background_output_tail(&request.task_id, Some(tail))
             .await
