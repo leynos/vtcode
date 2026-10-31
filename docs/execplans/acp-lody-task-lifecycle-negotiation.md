@@ -440,8 +440,9 @@ or management, cancelling a settled task rewrote its terminal outcome, and a
 forwarder attached after restoration never published already-active work. EP-M5
 repaired all three through the existing controller tree and added the boundary
 coverage those gaps implied. The scope deviation recorded under Tolerances is
-the honest cost of the approved ownership expansion plus that repair round.
-Provider limits, compaction metadata, notices, final-answer phase metadata and
+the honest cost of the approved ownership expansion plus that repair round. The
+follow-on layer, PR #17, then delivered compaction activity metadata and
+provider rate-limit notices. Provider limits, final-answer phase metadata and
 scheduled tasks remain explicitly independent follow-ups.
 
 ## Context and orientation
@@ -700,8 +701,9 @@ commit and a user-level binary installation before the next milestone begins.
   SHA, PR base and draft state. Conformance check: reconcile every discovery
   and trace link before marking COMPLETE. Recovery: use `gh stack push` after
   corrections; never force-push manually. Remaining gaps: provider limits,
-  compaction metadata, notices, final-answer phase metadata and scheduled tasks
-  remain independent follow-ups. Compatibility decision: none.
+  final-answer phase metadata and scheduled tasks remain independent
+  follow-ups; compaction activity metadata and provider rate-limit notices were
+  delivered by the follow-on PR #17 layer. Compatibility decision: none.
 
 ## Concrete steps
 

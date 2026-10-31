@@ -725,9 +725,9 @@ async fn resume_archive_is_disabled_when_history_persistence_is_disabled() {
 
 #[tokio::test]
 async fn new_session_does_not_restore_a_background_record_owned_by_another_session() {
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("temporary ACP workspace");
     let state_dir = temp.path().join(".vtcode/state");
-    fs::create_dir_all(&state_dir).unwrap();
+    fs::create_dir_all(&state_dir).expect("create background state directory");
     fs::write(
         state_dir.join("background_subagents.json"),
         serde_json::json!({
@@ -761,18 +761,24 @@ async fn new_session_does_not_restore_a_background_record_owned_by_another_sessi
         })
         .to_string(),
     )
-    .unwrap();
+    .expect("write background state fixture");
 
     let mut vt_config = VTCodeConfig::default();
     vt_config.subagents.enabled = true;
     vt_config.subagents.background.enabled = true;
     vt_config.subagents.background.auto_restore = true;
     let agent = build_agent_with_vt_config(temp.path(), "duck", Some(&vt_config)).await;
-    let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
-    let session = agent.session_handle(&response.session_id).unwrap().unwrap();
+    let response = agent
+        .new_session(acp::NewSessionRequest::new(temp.path()))
+        .await
+        .expect("create ACP session");
+    let session = agent
+        .session_handle(&response.session_id)
+        .expect("session registry lookup")
+        .expect("session handle");
     let controller = agent
         .session_subagent_controller(&session)
-        .unwrap()
+        .expect("subagent controller lookup")
         .expect("per-session subagent controller");
 
     assert!(controller.background_status_entries().await.is_empty());

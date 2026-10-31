@@ -1,3 +1,7 @@
+//! Projects automatic context-compaction activity into standard ACP tool-call
+//! updates carrying `_meta.lody.activity`, and advertises the matching
+//! capability so clients can render compaction progress.
+
 use crate::acp;
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -25,6 +29,8 @@ struct LodyActivityMeta<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     used_tokens_after: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    compacted: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     duration_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     failure_reason: Option<&'a str>,
@@ -39,6 +45,10 @@ impl CompactionActivity {
         }
     }
 
+    pub(super) fn elapsed_millis(&self) -> u64 {
+        duration_millis(self.started_at.elapsed())
+    }
+
     pub(super) fn started_update(&self) -> anyhow::Result<acp::SessionUpdate> {
         let meta = activity_meta(LodyActivityMeta {
             version: LODY_EXTENSION_VERSION,
@@ -46,6 +56,7 @@ impl CompactionActivity {
             automatic: true,
             used_tokens_before: self.used_tokens_before,
             used_tokens_after: None,
+            compacted: None,
             duration_ms: None,
             failure_reason: None,
         })?;
@@ -59,6 +70,7 @@ impl CompactionActivity {
 
     pub(super) fn finished_update(
         &self,
+        compacted: bool,
         used_tokens_after: Option<usize>,
         failure_reason: Option<&str>,
     ) -> anyhow::Result<acp::SessionUpdate> {
@@ -73,6 +85,7 @@ impl CompactionActivity {
             automatic: true,
             used_tokens_before: self.used_tokens_before,
             used_tokens_after,
+            compacted: Some(compacted),
             duration_ms: Some(duration_millis(self.started_at.elapsed())),
             failure_reason,
         })?;
@@ -126,11 +139,30 @@ mod tests {
         assert_eq!(started["_meta"]["lody"]["activity"]["kind"], "context_compaction");
         assert_eq!(started["_meta"]["lody"]["activity"]["usedTokensBefore"], 120_000);
 
-        let finished = serde_json::to_value(activity.finished_update(Some(42_000), None).expect("finished update"))
-            .expect("finished JSON");
+        let finished =
+            serde_json::to_value(activity.finished_update(true, Some(42_000), None).expect("finished update"))
+                .expect("finished JSON");
         assert_eq!(finished["sessionUpdate"], "tool_call_update");
         assert_eq!(finished["status"], "completed");
+        assert_eq!(finished["_meta"]["lody"]["activity"]["compacted"], true);
         assert_eq!(finished["_meta"]["lody"]["activity"]["usedTokensAfter"], 42_000);
+    }
+
+    #[test]
+    fn no_op_compaction_is_reported_as_not_compacted_without_token_after() {
+        let activity = CompactionActivity {
+            tool_call_id: "activity:compaction:noop".to_string(),
+            used_tokens_before: 12_000,
+            started_at: Instant::now(),
+        };
+
+        let finished =
+            serde_json::to_value(activity.finished_update(false, None, None).expect("no-op finished update"))
+                .expect("no-op finished JSON");
+
+        assert_eq!(finished["status"], "completed");
+        assert_eq!(finished["_meta"]["lody"]["activity"]["compacted"], false);
+        assert!(finished["_meta"]["lody"]["activity"].get("usedTokensAfter").is_none());
     }
 
     #[test]
@@ -138,12 +170,13 @@ mod tests {
         let activity = CompactionActivity::begin(&acp::SessionId::new(Arc::from("session-a")), 32_000);
         let update = serde_json::to_value(
             activity
-                .finished_update(None, Some("provider timed out"))
+                .finished_update(false, None, Some("provider timed out"))
                 .expect("failed update"),
         )
         .expect("failed JSON");
 
         assert_eq!(update["status"], "failed");
+        assert_eq!(update["_meta"]["lody"]["activity"]["compacted"], false);
         assert_eq!(update["_meta"]["lody"]["activity"]["failureReason"], "provider timed out");
     }
 
@@ -169,7 +202,7 @@ mod tests {
                 let client = ConnectionHandle::new(cx);
                 for update in [
                     activity.started_update().expect("start update"),
-                    activity.finished_update(Some(30_000), None).expect("terminal update"),
+                    activity.finished_update(true, Some(30_000), None).expect("terminal update"),
                 ] {
                     client
                         .send_session_notification(acp::SessionNotification::new(session_id.clone(), update))

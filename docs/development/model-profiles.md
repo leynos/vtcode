@@ -42,13 +42,19 @@ Profiles live under a top-level table keyed by the literal path
 
 Example:
 
-[custom_providers.profiles."gpt-5.6-sol"] api_format = "openai-responses"
-context_window = 131072 supports_tools = true supports_vision = false
-supports_structured_output = true supports_parallel_tool_calls = true
-supports_stream_usage = true # only when this endpoint emits terminal stream
-usage
+```toml
+[custom_providers.profiles."gpt-5.6-sol"]
+api_format = "openai-responses"
+context_window = 131072
+supports_tools = true
+supports_vision = false
+supports_structured_output = true
+supports_parallel_tool_calls = true
+# Set only when this endpoint emits usage in the terminal streamed chunk.
+supports_stream_usage = true
+```
 
-Notes and semantics
+## Notes and semantics
 
 - model / models remain the allowlist/defaults used to control the `/model`
   picker and what models are available. Profiles do NOT make a model available;

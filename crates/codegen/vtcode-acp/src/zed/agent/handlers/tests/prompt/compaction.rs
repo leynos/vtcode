@@ -43,10 +43,18 @@ async fn streamed_acp_prompt_compacts_and_checkpoints_session_history() {
 
     let history_agent = Arc::clone(&agent);
     let client_requests = Arc::clone(&requests);
+    let compaction_notifications = Arc::new(Mutex::new(Vec::new()));
+    let captured_notifications = Arc::clone(&compaction_notifications);
     let client_connection = Client
         .builder()
         .on_receive_notification(
-            async move |_notification: acp::SessionNotification, _cx| Ok(()),
+            async move |notification: acp::SessionNotification, _cx| {
+                captured_notifications
+                    .lock()
+                    .expect("capture compaction notifications")
+                    .push(notification);
+                Ok(())
+            },
             on_receive_notification!(),
         )
         .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
@@ -113,6 +121,37 @@ async fn streamed_acp_prompt_compacts_and_checkpoints_session_history() {
         .expect("ACP compaction protocol flow should succeed");
     agent_task.abort();
     drop(agent_task.await);
+
+    let activity_updates = compaction_notifications
+        .lock()
+        .expect("capture compaction notifications")
+        .iter()
+        .filter_map(|notification| serde_json::to_value(&notification.update).ok())
+        .filter(|update| update["_meta"]["lody"]["activity"].is_object())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        activity_updates.len(),
+        2,
+        "a threshold crossing must publish exactly one started and one terminal compaction activity"
+    );
+    let started = &activity_updates[0];
+    let finished = &activity_updates[1];
+    assert_eq!(started["sessionUpdate"], "tool_call");
+    assert_eq!(started["status"], "in_progress");
+    assert_eq!(started["_meta"]["lody"]["activity"]["kind"], "context_compaction");
+    assert_eq!(finished["sessionUpdate"], "tool_call_update");
+    assert_eq!(finished["status"], "completed");
+    assert_eq!(
+        started["toolCallId"], finished["toolCallId"],
+        "the terminal compaction update must keep the started tool call ID"
+    );
+    assert_eq!(finished["_meta"]["lody"]["activity"]["compacted"], true);
+    assert!(
+        finished["_meta"]["lody"]["activity"]["usedTokensAfter"]
+            .as_u64()
+            .is_some_and(|tokens| tokens > 0),
+        "a completed compaction must report the reduced prompt size"
+    );
 
     {
         let requests = requests.lock().expect("compaction provider requests");

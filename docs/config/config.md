@@ -394,7 +394,7 @@ supports_responses_compaction = true
 supports_context_edits = false
 supports_stream_usage = true # only for endpoints with a terminal usage chunk
 
-[custom_providers.profiles."gpt-5.4".pricing]
+[custom_providers.profiles."corp-model".pricing]
 # Rates are USD per million tokens. Both input and output are required before
 # ACP usage updates include costUSD.
 input_per_million_usd = 0.15

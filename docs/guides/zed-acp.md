@@ -480,35 +480,16 @@ and `[history]` settings do not control ACP audit output.
   parent context with the sub-agent controller. The active primary agent's tool
   permissions still apply; delegation does not bypass its allowed or disallowed
   tools.
-- **Task lifecycle notifications** – When the session has an ACP sub-agent
+- **Task lifecycle updates** – When the session has an ACP sub-agent
   controller, VT Code forwards sub-agent and background-process status changes
-  through the `_vtcode/taskLifecycle` extension notification. Clients that do
-  not use this extension can ignore it. Its parameters contain the parent
-  session ID in both `sessionId` and `acpSessionId`, plus a `message` with a
-  `task_id`, `task_type` (`subagent` or `background_process`), `subagent_type`,
-  and the source status snapshot in `details`. Queued or starting tasks use
-  `task_started` with `status: "pending"`; running and waiting tasks use
-  `task_progress` with `status: "in_progress"`. Terminal changes use
-  `task_updated` with `patch.status` set to `completed`, `failed`, or `killed`
-  and the updated snapshot in `patch.details`. For example:
-
-  ```json
-  {
-    "sessionId": "parent-session-id",
-    "acpSessionId": "parent-session-id",
-    "message": {
-      "type": "task_progress",
-      "task_id": "child-task-id",
-      "task_type": "subagent",
-      "subagent_type": "worker",
-      "status": "in_progress",
-      "details": { "status": "running" }
-    }
-  }
-  ```
-
-  Forwarding is best-effort: queued updates may be dropped if the bounded
-  notification queue is full or the connection closes.
+  as standard ACP `tool_call` and `tool_call_update` session updates. Their
+  standard title, kind, content, and status fields carry the client-visible
+  state, and `_meta.lody.task` carries the additional Lody task snapshot: task
+  ID, kind, actor, timestamps, summary, and error details. Queued and starting
+  tasks report `in_progress`; completion, failure, and closure report the
+  corresponding terminal status. Forwarding is best-effort: queued updates may
+  be dropped if the bounded notification queue is full or the connection
+  closes. VT Code does not emit a private `_vtcode/taskLifecycle` notification.
 - **Provider request capacity** – For a custom provider with
   `max_in_flight_requests` configured, one request slot is reserved for the
   parent ACP request and child concurrency is capped at the remaining slots. A

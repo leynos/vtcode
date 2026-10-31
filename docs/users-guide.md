@@ -8,6 +8,31 @@
 - [MCP integration](./mcp/MCP_INTEGRATION_GUIDE.md)
 - [User data directories](./guides/user-data-directories.md)
 
+## ACP usage, compaction, and subagents
+
+The Zed ACP integration advertises its Lody extensions during `initialize` and
+falls back cleanly when a client ignores them. The
+[Zed ACP guide](./guides/zed-acp.md) covers setup and session behaviour, and the
+[ACP integration guide](./acp/ACP_INTEGRATION.md) documents the wire contracts.
+
+- **Usage and cost.** `_lody/session/usage_update` reports per-response input,
+  output, cache, and reasoning token counts. `contextWindow` comes from the
+  resolved model profile, and `costUSD` appears only when custom-provider
+  pricing supplies both input and output rates.
+- **Automatic compaction.** `_meta.lody.compaction` announces the capability.
+  Each compaction is a standard tool call whose terminal update carries
+  `_meta.lody.activity` with the `compacted` outcome, token counts, duration,
+  and any failure reason.
+- **Subagent management.** `_lody/subagents/list`, `_lody/subagents/cancel`, and
+  `_lody/subagents/output` act only on tasks owned by the calling session.
+  Progress arrives as standard ACP tool calls with `_meta.lody.task`.
+- **Rate limits.** A provider HTTP 429 produces a warning notice carrying the
+  provider's `Retry-After` value and the scheduled retry. VT Code does not
+  invent quota windows or reset times.
+- **Custom-provider pricing.** Opt in per provider or per profile under
+  `custom_providers.*.pricing`; rates are USD per million tokens. See the
+  [configuration guide](./config/config.md).
+
 ## Patch safety in brief
 
 `read_file` returns a whole-file `content_hash` alongside the text. Passing

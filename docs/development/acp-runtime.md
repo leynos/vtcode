@@ -145,17 +145,14 @@ security audit trail, not session history or a source for resume/compaction.
 ## Task updates
 
 `vtcode-core` publishes protocol-neutral sub-agent and background-process
-status snapshots through its progress observer. The ACP adapter forwards those
-snapshots as extension notifications using the method `_vtcode/taskLifecycle`.
-Notification parameters have `sessionId`, `acpSessionId`, and `message` fields.
-`message` uses `task_started`, `task_progress`, or `task_updated` with
-`task_id`, `task_type`, `subagent_type`, and the status/details for that
-snapshot. Terminal updates place status and details under `patch`; non-terminal
-updates place them at the message top level. A queued task or starting
-background process maps to `task_started`; active work maps to `task_progress`;
-completion, failure, closure, stop or error maps to `task_updated` with its
-terminal status in the patch. This is a VT Code extension notification rather
-than a standard ACP session update.
+status snapshots through its progress observer. The ACP adapter filters those
+snapshots by parent session and projects each one into a standard ACP
+`tool_call` or `tool_call_update` session update. The standard title, kind,
+content, and status fields carry the client-visible state; `_meta.lody.task`
+carries the additional Lody task ID, kind, actor, timestamps, summary, and
+error details. Queued or starting work reports `in_progress`; completion,
+failure, closure, stop, or error reports the corresponding terminal status.
+This is a standard ACP session update, not a private extension notification.
 
 The model-facing `task_tracker` tool remains implemented by core. The ACP
 adapter converts each successful checklist result to a standard ACP plan
