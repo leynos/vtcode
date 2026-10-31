@@ -21,47 +21,52 @@ impl PromptExecution {
         self.finish_assistant_turn(stop_reason).await
     }
 
-    /// Relays a buffered final draft the client has not seen, commits the
-    /// assistant message to durable history, and enforces the content-or-error
-    /// rule for the turn.
+    /// Relays a buffered draft the client has not seen, commits the assistant
+    /// message to durable history, and enforces the content-or-error rule for
+    /// the turn.
     async fn finish_assistant_turn(mut self, stop_reason: acp::StopReason) -> Result<PromptResponse, SdkError> {
-        let has_assistant_output = !self.assistant_message.is_empty() || !self.assistant_reasoning.is_empty();
-        let mut assistant_emitted = self.assistant_emitted;
-        if has_assistant_output && !assistant_emitted && should_emit_buffered_final_chunk(self.allow_streaming) {
-            for failure in self
-                .agent
-                .send_assistant_updates(
-                    &self.args.session_id,
-                    self.provider_iteration,
-                    &self.assistant_message,
-                    &self.assistant_reasoning,
-                    0,
-                )
-                .await
-            {
-                warn!(
-                    session_id = %self.args.session_id,
-                    update_kind = failure.kind.as_str(),
-                    error = %failure.error,
-                    "Failed to send assistant update to ACP client"
-                );
-            }
-            // Thought chunks do not satisfy the content rule; only a delivered
-            // commentary chunk makes the turn visible to the client.
-            assistant_emitted |= !self.assistant_message.is_empty();
+        if self.emit_final_assistant_updates().await {
+            self.assistant_emitted = true;
         }
+        self.persist_completed_assistant_message().await?;
+        require_assistant_content(stop_reason, self.assistant_emitted)?;
+        Ok(PromptResponse::new(stop_reason))
+    }
+
+    /// Relays the buffered draft when the client has not already seen it.
+    ///
+    /// Returns whether commentary was sent: thought chunks alone do not make
+    /// the turn visible, so they do not satisfy the content rule.
+    async fn emit_final_assistant_updates(&self) -> bool {
+        if self.assistant_emitted
+            || !should_emit_buffered_final_chunk(self.allow_streaming)
+            || (self.assistant_message.is_empty() && self.assistant_reasoning.is_empty())
+        {
+            return false;
+        }
+        self.agent
+            .send_assistant_updates(
+                &self.args.session_id,
+                self.provider_iteration,
+                &self.assistant_message,
+                &self.assistant_reasoning,
+                0,
+            )
+            .await;
+        !self.assistant_message.is_empty()
+    }
+
+    async fn persist_completed_assistant_message(&mut self) -> Result<(), SdkError> {
         if self.assistant_message.is_empty() {
-            require_assistant_content(stop_reason, assistant_emitted)?;
-            return Ok(PromptResponse::new(stop_reason));
+            return Ok(());
         }
-        let mut completed_message = Message::assistant(self.assistant_message);
+        let mut completed_message = Message::assistant(std::mem::take(&mut self.assistant_message));
         if !self.assistant_reasoning.is_empty() {
-            completed_message.reasoning = Some(self.assistant_reasoning);
+            completed_message.reasoning = Some(std::mem::take(&mut self.assistant_reasoning));
         }
         push_session_message(&self.agent, &self.session, &self.args.session_id, completed_message)?;
         persist_session_checkpoint(&self.agent, &self.session, "assistant_response").await;
-        require_assistant_content(stop_reason, assistant_emitted)?;
-        Ok(PromptResponse::new(stop_reason))
+        Ok(())
     }
 }
 

@@ -550,7 +550,10 @@ and `[history]` settings do not control ACP audit output.
 - **Provider reasoning and commentary** – When a buffered provider response
   exposes reasoning or assistant commentary alongside tool calls, VT Code sends
   the reasoning as an `AgentThoughtChunk` and then the commentary as an
-  `AgentMessageChunk` before executing those tools. Exposed reasoning and
+  `AgentMessageChunk` before executing those tools. The buffered assistant tool
+  message also retains that reasoning, matching streamed turns. When the shared
+  tool-loop limit refuses the calls, the same reasoning and commentary are
+  relayed before the limit message ends the turn. Exposed reasoning and
   commentary on the final buffered provider response are relayed in the same
   order. Cancellation suppresses updates that have not yet been sent, but it
   cannot recall chunks already relayed to the client. Debug logs record

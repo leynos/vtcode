@@ -51,12 +51,6 @@ pub(super) fn assistant_updates(content: &str, reasoning: &str) -> Vec<acp::Sess
     updates
 }
 
-/// A failed delivery of one assistant update, returned to the caller for logging.
-pub(super) struct AssistantChunkFailure {
-    pub(super) kind: AssistantChunkKind,
-    pub(super) error: SdkError,
-}
-
 impl ZedAgent {
     pub(super) async fn send_update(
         &self,
@@ -73,7 +67,8 @@ impl ZedAgent {
     /// Relays one provider response's reasoning and commentary to the ACP client.
     ///
     /// Thought chunks are sent before message chunks. Delivery failures do not
-    /// abort the turn; they are returned so the caller can warn with context.
+    /// abort the turn: each failure is warned with its session and channel so
+    /// the remaining update still reaches the client.
     pub(super) async fn send_assistant_updates(
         &self,
         session_id: &acp::SessionId,
@@ -81,7 +76,7 @@ impl ZedAgent {
         content: &str,
         reasoning: &str,
         tool_call_count: usize,
-    ) -> Vec<AssistantChunkFailure> {
+    ) {
         let has_tool_calls = tool_call_count > 0;
         let updates = assistant_updates(content, reasoning);
         if updates.is_empty() {
@@ -94,10 +89,9 @@ impl ZedAgent {
                     "Tool-bearing provider response carried no assistant commentary or reasoning"
                 );
             }
-            return Vec::new();
+            return;
         }
 
-        let mut failures = Vec::new();
         for update in updates {
             let Some(kind) = assistant_chunk_kind(&update) else {
                 continue;
@@ -121,10 +115,14 @@ impl ZedAgent {
                 ),
             }
             if let Err(error) = self.send_update(session_id, update).await {
-                failures.push(AssistantChunkFailure { kind, error });
+                tracing::warn!(
+                    session_id = %session_id,
+                    update_kind = kind.as_str(),
+                    error = %error,
+                    "Failed to send assistant update to ACP client"
+                );
             }
         }
-        failures
     }
 
     pub(super) async fn send_available_commands_update(&self, session_id: &acp::SessionId) -> Result<(), SdkError> {
