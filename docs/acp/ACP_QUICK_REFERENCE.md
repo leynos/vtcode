@@ -71,10 +71,10 @@ rates (USD per million tokens). Cache pricing is optional.
 
 Automatic context compaction is advertised as `_meta.lody.compaction` version 1
 and is emitted through standard `tool_call` and `tool_call_update` updates. The
-updates carry `_meta.lody.activity` for token counts, duration, and failure
-details. VT Code does not advertise `_meta.lody.rateLimits` without trustworthy
-quota state; HTTP 429 and `Retry-After` are instead reported in warning notices
-and provider telemetry.
+updates carry `_meta.lody.activity` for the `compacted` outcome, token counts,
+duration, and failure details. VT Code does not advertise
+`_meta.lody.rateLimits` without trustworthy quota state; HTTP 429 and
+`Retry-After` are instead reported in warning notices and provider telemetry.
 
 ## Legacy REST ACP client reference
 
