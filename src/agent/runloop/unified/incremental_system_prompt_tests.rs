@@ -41,7 +41,9 @@ async fn test_base_prompt_hash_is_stable() {
 
 #[tokio::test]
 async fn test_instruction_appendix_uses_explicit_directory() {
-    let prompt_builder = IncrementalSystemPrompt::new();
+    // `None` disables user-scope discovery so the budget and instruction map
+    // depend only on the temporary workspace, not the developer's home.
+    let prompt_builder = IncrementalSystemPrompt::with_instruction_home(None);
     let workspace = tempfile::TempDir::new().expect("workspace");
     std::fs::write(workspace.path().join(".git"), "gitdir: /tmp/git").expect("write git");
     std::fs::write(workspace.path().join("AGENTS.md"), "root rule").expect("write root");

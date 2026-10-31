@@ -863,7 +863,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_default_live_prompt_budget_with_instruction_inline() {
-        use crate::project_doc::build_instruction_appendix_with_context;
+        use crate::project_doc::build_instruction_appendix_with_context_and_home;
 
         let workspace = tempfile::TempDir::new().expect("workspace");
         std::fs::write(workspace.path().join(".git"), "gitdir: /tmp/git").expect("git marker");
@@ -885,10 +885,11 @@ mod tests {
         config.agent.include_temporal_context = false;
         config.agent.include_working_directory = false;
         let base = compose_system_instruction_text(workspace.path(), Some(&config), None).await;
-        let appendix = build_instruction_appendix_with_context(
+        let appendix = build_instruction_appendix_with_context_and_home(
             &config.agent,
             workspace.path(),
             &[workspace.path().join("src/lib.rs")],
+            None,
         )
         .await
         .expect("instruction appendix");
