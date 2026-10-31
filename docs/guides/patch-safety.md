@@ -22,9 +22,11 @@ can prove it was written against that content and not against an older copy.
 
 The hash always describes the whole file, including for a windowed read. Under
 ACP, where the client may serve an unsaved editor buffer, the version is
-returned only when the requested window matches what is on disk, so a buffer
-that diverges from the file yields no `content_hash` rather than a hash for
-bytes that were never saved.
+returned only when the returned window matches the same window on disk, so a
+buffer that diverges within that window yields no `content_hash` rather than a
+hash for bytes that were never saved. The comparison covers the returned window
+only: an unsaved edit outside it is invisible to this check, and the certified
+hash still describes the on-disk bytes rather than the buffer.
 
 The hash is sampled around the read itself rather than after it, so a file that
 changes while it is being read does not silently produce a hash describing

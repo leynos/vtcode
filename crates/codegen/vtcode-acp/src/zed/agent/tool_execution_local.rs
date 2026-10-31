@@ -339,7 +339,7 @@ impl ZedAgent {
         let disk_text = std::str::from_utf8(&disk_bytes)
             .with_context(|| format!("File content is not valid UTF-8: {}", path.display()))?;
         let projected = vtcode_core::line_window(disk_text, line, limit);
-        if projected.trim_end_matches('\n') != returned.trim_end_matches('\n') {
+        if !window_matches_projection(projected, returned) {
             return Ok(None);
         }
         Ok(Some(format!("sha256:{}", vtcode_commons::utils::calculate_sha256(&disk_bytes))))
@@ -355,5 +355,67 @@ impl ZedAgent {
         args: &Value,
     ) -> Result<ToolExecutionReport, String> {
         self.run_session_list_files_inner(session, args).await
+    }
+}
+
+/// Decide whether a returned read window is the on-disk projection.
+///
+/// `line_window` keeps line terminators, so the projections it produces end
+/// with `\n` unless the file's last line is unterminated. The only tolerated
+/// transport difference is a client dropping the terminator of the final line,
+/// so `projected` may carry exactly one `\n` more than `returned` — and only
+/// when `returned` is itself unterminated. A response that ends with `\n` is a
+/// complete set of lines, so a shorter one has dropped a whole line; extra
+/// blank lines are retained as well, because a client returning more text than
+/// the window may be showing unsaved buffer content. Trimming every trailing
+/// newline would accept such a buffer and certify disk bytes the model never
+/// saw within its window, which is why the rule is deliberately asymmetric.
+fn window_matches_projection(projected: &str, returned: &str) -> bool {
+    if projected == returned {
+        return true;
+    }
+    !returned.ends_with('\n') && projected.strip_suffix('\n') == Some(returned)
+}
+
+#[cfg(test)]
+mod window_match_tests {
+    use super::window_matches_projection;
+
+    /// An identical window always matches.
+    #[test]
+    fn identical_windows_match() {
+        assert!(window_matches_projection("alpha\n", "alpha\n"));
+        assert!(window_matches_projection("", ""));
+    }
+
+    /// The client may omit the projection's single trailing terminator, but it
+    /// may not add one: `returned` must never carry more than `projected`.
+    #[test]
+    fn one_trailing_newline_may_differ() {
+        assert!(window_matches_projection("alpha\n", "alpha"));
+        assert!(!window_matches_projection("alpha", "alpha\n"));
+    }
+
+    /// A response that is itself newline-terminated is a complete set of
+    /// lines, so a shorter one has dropped a line rather than a terminator.
+    #[test]
+    fn a_shorter_complete_line_set_does_not_match() {
+        assert!(!window_matches_projection("alpha\n\n", "alpha\n"));
+        assert!(!window_matches_projection("alpha\nbeta\n", "alpha\n"));
+    }
+
+    /// Extra blank lines stay significant, because they can be unsaved edits.
+    #[test]
+    fn extra_blank_lines_do_not_match() {
+        assert!(!window_matches_projection("alpha\n", "alpha\n\n"));
+        assert!(!window_matches_projection("alpha\n\n", "alpha\n\n\n"));
+        assert!(!window_matches_projection("alpha\n", "alpha\nbeta\n"));
+    }
+
+    /// A response that ignores the window and returns another line differs.
+    #[test]
+    fn a_wider_response_does_not_match() {
+        assert!(!window_matches_projection("beta\n", "alpha\nbeta\n"));
+        assert!(!window_matches_projection("beta\n", "beta\ngamma\n"));
     }
 }

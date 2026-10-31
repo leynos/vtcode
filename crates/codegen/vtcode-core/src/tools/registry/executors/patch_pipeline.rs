@@ -590,4 +590,64 @@ mod tests {
         assert!(output.contains("segment_not_found"), "reason code should be logged: {output}");
         assert!(!output.contains(MARKER), "patch text must not reach tracing: {output}");
     }
+
+    /// Patch-safety diagnostics must stay bounded to enums and identifiers.
+    ///
+    /// These records can be shipped to a log sink for a session editing
+    /// private files, so the file name, patch text, no-op signature, and
+    /// content hash must all be absent while the bounded outcomes are still
+    /// present.
+    #[tokio::test]
+    async fn patch_safety_events_never_carry_patch_text_paths_or_hashes() -> anyhow::Result<()> {
+        const MARKER: &str = "UNIQUE_PATCH_MARKER_c41f7d";
+        let temp_dir = tempfile::TempDir::new()?;
+        let file_name = format!("{MARKER}.txt");
+        let path = temp_dir.path().join(&file_name);
+        std::fs::write(&path, format!("{MARKER}\n"))?;
+        let on_disk_hash =
+            format!("sha256:{}", vtcode_commons::utils::calculate_sha256(format!("{MARKER}\n").as_bytes()));
+
+        let registry = crate::tools::ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+        registry.allow_all_tools().await?;
+
+        let no_op = format!("*** Begin Patch\n*** Update File: {file_name}\n@@\n-{MARKER}\n+{MARKER}\n*** End Patch\n");
+        let stale_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"a different revision\n"));
+        let stale = format!("*** Begin Patch\n*** Update File: {file_name}\n@@\n-{MARKER}\n+changed\n*** End Patch\n");
+
+        let captured = CaptureWriter::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .with_writer(captured.clone())
+            .finish();
+        let guard = tracing::subscriber::set_default(subscriber);
+
+        let first = registry
+            .execute_tool(crate::config::constants::tools::APPLY_PATCH, serde_json::json!({ "input": no_op }))
+            .await?;
+        assert_eq!(first["no_op"], true, "precondition: the first submission is a no-op: {first:?}");
+        let signature = first["signature"].as_str().expect("no-op signature").to_string();
+
+        let rejected = registry
+            .execute_tool(
+                crate::config::constants::tools::APPLY_PATCH,
+                serde_json::json!({ "input": stale, "expected_content_hash": stale_hash }),
+            )
+            .await?;
+        assert_eq!(
+            rejected["error"]["details"]["reason"], "content_hash_mismatch",
+            "precondition: the stale hash is rejected: {rejected:?}"
+        );
+
+        drop(guard);
+        let output =
+            String::from_utf8(captured.0.lock().expect("capture lock").clone()).expect("captured output is UTF-8");
+        assert!(output.contains("apply_patch no-op decision"), "the no-op decision must be logged: {output}");
+        assert!(output.contains("content_hash_mismatch"), "the rejection outcome must be logged: {output}");
+        assert!(!output.contains(MARKER), "patch text and file names must not reach tracing: {output}");
+        assert!(!output.contains(&signature), "the no-op signature must not reach tracing: {output}");
+        assert!(!output.contains(&stale_hash), "expected hashes must not reach tracing: {output}");
+        assert!(!output.contains(&on_disk_hash), "on-disk hashes must not reach tracing: {output}");
+        Ok(())
+    }
 }

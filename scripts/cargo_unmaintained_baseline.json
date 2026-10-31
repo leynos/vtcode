@@ -302,6 +302,19 @@
       "issue": 108
     },
     {
+      "name": "terminfo",
+      "version": "0.9.0",
+      "repo_status": { "Age": 365 },
+      "outdated_deps": [
+        { "name": "nom", "req": "^7", "version_used": "7.1.3", "version_latest": "8.0.0" },
+        { "name": "phf", "req": "^0.11", "version_used": "0.11.3", "version_latest": "0.14.0" },
+        { "name": "phf_codegen", "req": "^0.11", "version_used": "0.11.3", "version_latest": "0.14.0" }
+      ],
+      "classification": "inactive-locked-resolution-debt",
+      "rationale": "Inactive ratatui-termwiz lockfile family; preserve Cargo resolution until a focused dependency-resolution review in #108.",
+      "issue": 108
+    },
+    {
       "name": "miow",
       "version": "0.6.1",
       "repo_status": { "Age": 373 },
