@@ -1,14 +1,14 @@
 //! Wire-level ACP rate-limit contracts and their shared scripted harness.
 
-use super::install_handlers;
 use super::rate_limit_test_support::{
     PROVIDER, assert_request_floor, notice_messages, notice_values, provider_config, rate_limit_snapshots,
-    rate_limited_response, run_scripted_prompt, successful_stream_response,
+    rate_limited_response, run_scripted_prompt, spawn_agent_connection, stop_agent_connection,
+    successful_stream_response,
 };
 use super::tests::build_wire_test_agent_with_providers;
 use crate::acp;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
-use agent_client_protocol::{Agent, Channel, Client, ConnectionTo, on_receive_notification};
+use agent_client_protocol::{Agent, Client, ConnectionTo, on_receive_notification};
 use assert_fs::TempDir;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration as StdDuration, UNIX_EPOCH};
@@ -201,22 +201,9 @@ async fn fixed_epoch_rate_limit_snapshot_uses_transport_observation() {
     let workspace = TempDir::new().expect("fixed-epoch rate-limit workspace");
     let workspace_path = workspace.path().to_path_buf();
     let agent = Arc::new(build_wire_test_agent_with_providers(workspace.path(), &[provider_config()]).await);
-    let (agent_channel, client_channel) = Channel::duplex();
     let notifications = Arc::new(Mutex::new(Vec::<acp::AgentNotification>::new()));
     let snapshot_received = Arc::new(Notify::new());
-
-    let agent_connection = install_handlers(
-        Agent.builder().name("vtcode-fixed-epoch-rate-limit-test"),
-        Arc::clone(&agent),
-    )
-    .connect_with(agent_channel, {
-        let agent = Arc::clone(&agent);
-        async move |cx: ConnectionTo<Client>| {
-            agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
-            std::future::pending::<agent_client_protocol::Result<()>>().await
-        }
-    });
-    let agent_task = tokio::spawn(agent_connection);
+    let (client_channel, agent_task) = spawn_agent_connection(&agent, "vtcode-fixed-epoch-rate-limit-test");
 
     let client_connection = Client
         .builder()
@@ -290,8 +277,7 @@ async fn fixed_epoch_rate_limit_snapshot_uses_transport_observation() {
         .await
         .expect("fixed-epoch ACP flow should finish")
         .expect("fixed-epoch ACP flow should succeed");
-    agent_task.abort();
-    drop(agent_task.await);
+    stop_agent_connection(agent_task).await;
 
     let notifications = std::mem::take(&mut *notifications.lock().expect("fixed-epoch notifications"));
     let snapshots = rate_limit_snapshots(&notifications);

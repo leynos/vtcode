@@ -2,12 +2,12 @@
 
 use super::rate_limit_test_support::{
     PROVIDER, ScriptedResponder, assert_request_floor, custom_provider, provider_config, rate_limited_response,
-    successful_stream_response,
+    spawn_agent_connection, stop_agent_connection, successful_stream_response,
 };
 use super::tests::{PROMPT_PROVIDER_TEST_LOCK, PromptProviderFactoryGuard, build_wire_test_agent_with_providers};
 use super::*;
 use crate::acp::{InitializeRequest, NewSessionRequest};
-use agent_client_protocol::{Channel, on_receive_notification};
+use agent_client_protocol::on_receive_notification;
 use assert_fs::TempDir;
 use axum::Router;
 use axum::body::{Body, Bytes};
@@ -54,19 +54,10 @@ async fn cancelling_during_provider_retry_wait_prevents_another_http_request() {
     let workspace = TempDir::new().expect("rate-limit cancellation workspace");
     let workspace_path = workspace.path().to_path_buf();
     let agent = Arc::new(build_wire_test_agent_with_providers(workspace.path(), &[config]).await);
-    let (agent_channel, client_channel) = Channel::duplex();
     let retry_notice = Arc::new(Notify::new());
     let callback_notice = Arc::clone(&retry_notice);
+    let (client_channel, agent_task) = spawn_agent_connection(&agent, "vtcode-rate-limit-cancel-test");
 
-    let agent_connection = install_handlers(Agent.builder().name("vtcode-rate-limit-cancel-test"), Arc::clone(&agent))
-        .connect_with(agent_channel, {
-            let agent = Arc::clone(&agent);
-            async move |cx: ConnectionTo<Client>| {
-                agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
-                std::future::pending::<agent_client_protocol::Result<()>>().await
-            }
-        });
-    let agent_task = tokio::spawn(agent_connection);
     let client_connection = Client
         .builder()
         .on_receive_notification(
@@ -111,8 +102,7 @@ async fn cancelling_during_provider_retry_wait_prevents_another_http_request() {
         .expect("cancelled prompt should finish")
         .expect("cancelled protocol flow should succeed");
     tokio::time::sleep(Duration::from_millis(250)).await;
-    agent_task.abort();
-    drop(agent_task.await);
+    stop_agent_connection(agent_task).await;
     assert_eq!(request_times.lock().expect("cancel request times").len(), 1);
 }
 
@@ -262,20 +252,11 @@ async fn vidaimock_gateway_preserves_retry_floors_and_stream_token_cadence() {
     let workspace = TempDir::new().expect("VidaiMock ACP workspace");
     let workspace_path = workspace.path().to_path_buf();
     let agent = Arc::new(build_wire_test_agent_with_providers(workspace.path(), &[config]).await);
-    let (agent_channel, client_channel) = Channel::duplex();
     let output_times = Arc::new(Mutex::new(Vec::new()));
     let observed_output_times = Arc::clone(&output_times);
     let (text_tx, mut text_rx) = mpsc::unbounded_channel();
+    let (client_channel, agent_task) = spawn_agent_connection(&agent, "vtcode-vidaimock-rate-test");
 
-    let agent_connection = install_handlers(Agent.builder().name("vtcode-vidaimock-rate-test"), Arc::clone(&agent))
-        .connect_with(agent_channel, {
-            let agent = Arc::clone(&agent);
-            async move |cx: ConnectionTo<Client>| {
-                agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
-                std::future::pending::<agent_client_protocol::Result<()>>().await
-            }
-        });
-    let agent_task = tokio::spawn(agent_connection);
     let client_connection = Client
         .builder()
         .on_receive_notification(
@@ -317,8 +298,7 @@ async fn vidaimock_gateway_preserves_retry_floors_and_stream_token_cadence() {
         .await
         .expect("VidaiMock ACP flow should finish")
         .expect("VidaiMock ACP flow should succeed");
-    agent_task.abort();
-    drop(agent_task.await);
+    stop_agent_connection(agent_task).await;
     gateway_task.abort();
     drop(gateway_task.await);
 
