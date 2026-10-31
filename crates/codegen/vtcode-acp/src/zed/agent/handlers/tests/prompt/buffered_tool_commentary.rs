@@ -105,21 +105,22 @@ fn blocked_draft_then_answer(index: usize) -> LLMResponse {
 fn stop_hook_config() -> VTCodeConfig {
     use vtcode_core::config::{HookCommandConfig, HookGroupConfig, HooksConfig, LifecycleHooksConfig};
 
-    let mut config = VTCodeConfig::default();
-    config.hooks = HooksConfig {
-        lifecycle: LifecycleHooksConfig {
-            stop: vec![HookGroupConfig {
-                matcher: None,
-                hooks: vec![HookCommandConfig {
-                    command: r#"count=$(cat "$VT_PROJECT_DIR/stop-count" 2>/dev/null || printf 0); count=$((count + 1)); printf '%s' "$count" > "$VT_PROJECT_DIR/stop-count"; if [ "$count" -eq 1 ]; then printf '%s' '{"continue":false,"stopReason":"retry the draft"}'; fi"#
-                        .to_string(),
-                    ..HookCommandConfig::default()
+    VTCodeConfig {
+        hooks: HooksConfig {
+            lifecycle: LifecycleHooksConfig {
+                stop: vec![HookGroupConfig {
+                    matcher: None,
+                    hooks: vec![HookCommandConfig {
+                        command: r#"count=$(cat "$VT_PROJECT_DIR/stop-count" 2>/dev/null || printf 0); count=$((count + 1)); printf '%s' "$count" > "$VT_PROJECT_DIR/stop-count"; if [ "$count" -eq 1 ]; then printf '%s' '{"continue":false,"stopReason":"retry the draft"}'; fi"#
+                            .to_string(),
+                        ..HookCommandConfig::default()
+                    }],
                 }],
-            }],
-            ..LifecycleHooksConfig::default()
+                ..LifecycleHooksConfig::default()
+            },
         },
-    };
-    config
+        ..VTCodeConfig::default()
+    }
 }
 
 fn thought_text(update: &acp::SessionUpdate) -> Option<&str> {
