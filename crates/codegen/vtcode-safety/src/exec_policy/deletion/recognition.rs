@@ -122,11 +122,29 @@ pub fn recognize_deletion_command(command: &str) -> DeletionRecognition {
         return DeletionRecognition::NotDeletion;
     }
 
-    if shell_parser::contains_shell_control_syntax(command) || shell_parser::contains_dynamic_shell_syntax(command) {
+    // Dynamic syntax must fail closed before any parsing: the shell could
+    // expand it into an `rm` invocation the parsed text never shows.
+    if shell_parser::contains_dynamic_shell_syntax(command) {
         return unsupported_if_rm(
             command,
             "only one static `rm` invocation with literal operands is supported; chaining, pipes, redirects, and shell expansion are not",
         );
+    }
+
+    // Control syntax is parsed first so `rm` used only as an argument, as in
+    // `rg rm src | head`, is not mistaken for a deletion. A parsed segment
+    // that really invokes `rm`, including `rm -f x > out`, stays unsupported.
+    if shell_parser::contains_shell_control_syntax(command) {
+        return match shell_parser::parse_shell_commands_tree_sitter(command) {
+            Ok(commands) => classify_segments(
+                &commands,
+                "only one static `rm` invocation with literal operands is supported; chaining, pipes, redirects, and shell expansion are not",
+            ),
+            Err(_) => unsupported_if_rm(
+                command,
+                "only one static `rm` invocation with literal operands is supported; chaining, pipes, redirects, and shell expansion are not",
+            ),
+        };
     }
 
     match shell_parser::parse_shell_commands_tree_sitter(command) {
@@ -144,20 +162,23 @@ pub fn recognize_deletion_command(command: &str) -> DeletionRecognition {
             }
             recognize_single_command(&parsed)
         }
-        Ok(commands) => {
-            if commands.iter().any(|segment| segment_mentions_rm(segment)) {
-                DeletionRecognition::Unsupported {
-                    reason: "only one static `rm` invocation with literal operands is supported; split chained commands and run `rm` directly"
-                        .to_string(),
-                }
-            } else {
-                DeletionRecognition::NotDeletion
-            }
-        }
+        Ok(commands) => classify_segments(
+            &commands,
+            "only one static `rm` invocation with literal operands is supported; split chained commands and run `rm` directly",
+        ),
         Err(_) => unsupported_if_rm(
             command,
             "the command could not be parsed as one static `rm` invocation with literal operands",
         ),
+    }
+}
+
+/// Refuse parsed segments when any of them invokes `rm`.
+fn classify_segments(commands: &[Vec<String>], reason: &str) -> DeletionRecognition {
+    if commands.iter().any(|segment| segment_mentions_rm(segment)) {
+        DeletionRecognition::Unsupported { reason: reason.to_string() }
+    } else {
+        DeletionRecognition::NotDeletion
     }
 }
 
@@ -193,44 +214,29 @@ fn recognize_single_command(command: &[String]) -> DeletionRecognition {
     DeletionRecognition::NotDeletion
 }
 
+/// How one `rm` argument participates in the invocation.
+enum RmArgument {
+    /// `--` ends option parsing.
+    Terminator,
+    /// A supported option.
+    Option,
+    /// A literal operand.
+    Operand,
+    /// An option outside the supported set, with a user-readable reason.
+    Rejected(String),
+}
+
 fn recognize_rm(command: &[String]) -> DeletionRecognition {
     let mut operands = Vec::new();
     let mut end_of_options = false;
 
     for argument in command.iter().skip(1) {
-        if !end_of_options {
-            if argument == "--" {
-                end_of_options = true;
-                continue;
-            }
-
-            if argument.starts_with("--") {
-                if RM_LONG_OPTIONS.contains(&argument.as_str()) {
-                    continue;
-                }
-                if let Some(value) = argument.strip_prefix("--interactive=") {
-                    if matches!(value, "always" | "once" | "never") {
-                        continue;
-                    }
-                }
-                return DeletionRecognition::Unsupported {
-                    reason: format!("unsupported `rm` option `{argument}`"),
-                };
-            }
-
-            if let Some(flags) = argument.strip_prefix('-') {
-                if !flags.is_empty() {
-                    if let Some(unknown) = flags.chars().find(|flag| !RM_SHORT_OPTIONS.contains(flag)) {
-                        return DeletionRecognition::Unsupported {
-                            reason: format!("unsupported `rm` option `-{unknown}`"),
-                        };
-                    }
-                    continue;
-                }
-            }
+        match classify_rm_argument(argument, end_of_options) {
+            RmArgument::Terminator => end_of_options = true,
+            RmArgument::Option => {}
+            RmArgument::Operand => operands.push(argument.clone()),
+            RmArgument::Rejected(reason) => return DeletionRecognition::Unsupported { reason },
         }
-
-        operands.push(argument.clone());
     }
 
     if operands.is_empty() {
@@ -246,6 +252,43 @@ fn recognize_rm(command: &[String]) -> DeletionRecognition {
     }
 
     DeletionRecognition::Supported(DeletionPlan { operands })
+}
+
+fn classify_rm_argument(argument: &str, end_of_options: bool) -> RmArgument {
+    if end_of_options {
+        return RmArgument::Operand;
+    }
+    if argument == "--" {
+        return RmArgument::Terminator;
+    }
+    if argument.starts_with("--") {
+        return classify_long_option(argument);
+    }
+    match argument.strip_prefix('-') {
+        // A bare `-` names a file called `-`, not an option group.
+        Some("") | None => RmArgument::Operand,
+        Some(flags) => classify_short_options(flags),
+    }
+}
+
+fn classify_long_option(argument: &str) -> RmArgument {
+    if RM_LONG_OPTIONS.contains(&argument) {
+        return RmArgument::Option;
+    }
+    if argument
+        .strip_prefix("--interactive=")
+        .is_some_and(|value| matches!(value, "always" | "once" | "never"))
+    {
+        return RmArgument::Option;
+    }
+    RmArgument::Rejected(format!("unsupported `rm` option `{argument}`"))
+}
+
+fn classify_short_options(flags: &str) -> RmArgument {
+    match flags.chars().find(|flag| !RM_SHORT_OPTIONS.contains(flag)) {
+        Some(unknown) => RmArgument::Rejected(format!("unsupported `rm` option `-{unknown}`")),
+        None => RmArgument::Option,
+    }
 }
 
 fn operand_rejection(operand: &str) -> Option<&'static str> {
@@ -278,9 +321,25 @@ fn unsupported_if_rm(command: &str, reason: &str) -> DeletionRecognition {
     }
 }
 
+/// Whether a parsed segment actually invokes `rm`.
+///
+/// Arguments are only inspected for wrappers and shell interpreters, whose
+/// later arguments name the real command. Elsewhere `rm` is ordinary text:
+/// `grep rm file` does not delete anything.
 fn segment_mentions_rm(segment: &[String]) -> bool {
-    segment.first().is_some_and(|program| base_command_name(program) == "rm")
-        || segment.iter().skip(1).any(|argument| base_command_name(argument) == "rm")
+    let Some(program) = segment.first() else {
+        return false;
+    };
+    let name = base_command_name(program);
+    if name == "rm" {
+        return true;
+    }
+    if is_shell_interpreter(name) {
+        // A shell body arrives as one quoted argument, so it must be scanned
+        // as text rather than token by token.
+        return segment.iter().skip(1).any(|argument| contains_rm_token(argument));
+    }
+    is_deletion_wrapper(name) && segment.iter().skip(1).any(|argument| base_command_name(argument) == "rm")
 }
 
 fn contains_rm_token(text: &str) -> bool {
