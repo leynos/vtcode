@@ -64,15 +64,19 @@ management requests return only tasks owned by the requested ACP session.
   failure and record the competing hypotheses.
 - Ambiguity: stop if Lody's published extension contract and its checked-out
   client disagree in a way that changes wire compatibility.
-- Deviation, recorded 2026-10-31: the branch exceeds both scope numbers
-  measured against `fix/acp-unresolved-tool-recovery`
-  (`dd5989899154e895a910fe101c216d2d8c1ff41d`): 38 changed files and 1,307 net
-  lines outside tests, documentation and this plan, against tolerances of 16
-  and 1,200. The overrun comes from approved scope, not incidental drift: the
-  EP-M2 security expansion touches the config schema, the core controller
-  model, provider profiles and the ACP adapter, and the review-repair round
-  added tree-aware routing across those same modules. The requirement to keep
-  the ownership expansion additive and the subsequent repair round were both
+- Deviation, recorded 2026-10-31 and re-measured after the review repair and
+  the restack onto the current base head: the branch exceeds the file-count
+  tolerance and sits just below the line tolerance against
+  `fix/acp-unresolved-tool-recovery`
+  (`51aa49eb66c0243155763d31b79a6cf7a4ce8f4f`). Counting production paths only
+  — every path except `docs/`, `*.md`, `proptest-regressions/`, and any path
+  segment containing `test` — 30 files changed with 1,348 insertions and 160
+  deletions, 1,188 net lines, against tolerances of 16 files and 1,200 lines.
+  The overrun comes from approved scope, not incidental drift: the EP-M2
+  security expansion touches the config schema, the core controller model,
+  provider profiles and the ACP adapter, and the review-repair round added
+  tree-aware routing across those same modules. The requirement to keep the
+  ownership expansion additive and the subsequent repair round were both
   directed by the user, so the deviation is recorded rather than treated as a
   live stop condition.
 
