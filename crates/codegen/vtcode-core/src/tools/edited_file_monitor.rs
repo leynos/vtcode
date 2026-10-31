@@ -1,3 +1,12 @@
+//! Per-path read/mutation bookkeeping for edited files.
+//!
+//! The monitor tracks the most recent version of each file the agent has read or
+//! written, so `apply_patch` can reject a patch built from stale content and so a
+//! repeated identical no-op patch is refused rather than silently re-applied. It
+//! owns the `FileSnapshot` type, the mutation leases that serialise concurrent
+//! writes through `ToolRegistry`, and the conflict-audit trail surfaced to the
+//! model when a write is rejected.
+
 use crate::audit::{FileConflictAuditEvent, FileConflictAuditLog};
 use crate::config::PermissionsConfig;
 use crate::tools::file_ops::{build_diff_preview, diff_preview_error_skip};
@@ -298,6 +307,7 @@ impl EditedFileMonitor {
         monitor
     }
 
+    /// Install or clear the conflict audit log from the permissions config.
     pub fn apply_permissions_config(&self, permissions: &PermissionsConfig) {
         let mut audit_log = self.inner.audit_log.lock();
         if !permissions.audit_enabled {
@@ -315,10 +325,24 @@ impl EditedFileMonitor {
         }
     }
 
+    /// Record the current raw-byte snapshot as the version the model has read.
     pub async fn track_read(&self, path: &Path) -> Result<()> {
+        self.capture_read_snapshot(path).await.map(|_| ())
+    }
+
+    /// Capture the file's current raw-byte snapshot and record it as the
+    /// version most recently observed by the model.
+    pub async fn capture_read_snapshot(&self, path: &Path) -> Result<FileSnapshot> {
+        let snapshot = Self::current_snapshot(path).await?;
         let path = normalize_event_path(path);
-        let snapshot = snapshot_path_async(path.clone()).await?;
-        self.record_read_snapshot(&path, snapshot)
+        self.record_read_snapshot(&path, snapshot.clone())?;
+        Ok(snapshot)
+    }
+
+    /// Capture the current raw-byte snapshot without changing which version
+    /// the model is recorded as having read.
+    pub async fn current_snapshot(path: &Path) -> Result<FileSnapshot> {
+        snapshot_path_async(normalize_event_path(path)).await
     }
 
     pub async fn accept_disk_version(&self, path: &Path) -> Result<()> {

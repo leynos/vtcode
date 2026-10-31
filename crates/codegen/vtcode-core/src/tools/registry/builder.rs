@@ -113,6 +113,7 @@ impl ToolRegistry {
         Self::build_with_policy(workspace_root, pty_config, None, true).await
     }
 
+    /// Build the registry with an optional policy manager and policy initialization.
     async fn build_with_policy(
         workspace_root: PathBuf,
         pty_config: PtyConfig,
@@ -179,6 +180,7 @@ impl ToolRegistry {
             persistent_memory_config: Arc::new(persistent_memory_config),
             persistent_memory_enabled,
             edited_file_monitor,
+            no_op_patch_guard: Arc::new(Mutex::new(super::patch_guard::NoOpPatchGuard::default())),
             policy_gateway: Arc::new(policy_gateway),
             pty_sessions,
             exec_sessions,

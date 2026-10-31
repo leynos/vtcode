@@ -63,3 +63,14 @@ pub(crate) fn render_updated_content<'a>(
 ) -> impl Future<Output = Result<String, PatchError>> + 'a {
     text::render_patched_text_from_content(source_path, content, chunks, path)
 }
+
+/// Render under strict, uniqueness-checking anchors. Rebase assessment uses
+/// this so a fuzzy or ambiguous match is reported as unsafe.
+pub(crate) fn render_updated_content_strict<'a>(
+    source_path: &'a Path,
+    content: &'a str,
+    chunks: &'a [PatchChunk],
+    path: &'a str,
+) -> impl Future<Output = Result<String, PatchError>> + 'a {
+    text::render_patched_text_from_content_strict(source_path, content, chunks, path)
+}

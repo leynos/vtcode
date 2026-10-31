@@ -14,25 +14,33 @@ use crate::tools::registry::mcp_helpers::normalize_mcp_tool_identifier;
 use crate::tools::traits::Tool;
 use anyhow::Result;
 use async_trait::async_trait;
+use base64::Engine;
 use futures::future::BoxFuture;
 use rstest::{fixture, rstest};
 use serde_json::Value;
 use serde_json::json;
 use std::fs;
+use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 use vtcode_commons::canonicalize;
 
 #[path = "../../../tests/support/config_defaults.rs"]
 mod config_defaults;
+
 #[cfg(unix)]
 mod pipe_session;
 
 const CUSTOM_TOOL_NAME: &str = "custom_test_tool";
+
 const SLOW_TIMEOUT_TOOL_NAME: &str = "slow_timeout_test_tool";
+
 const REENTRANT_TOOL_NAME: &str = "reentrant_guard_test_tool";
+
 const MUTUAL_REENTRANT_TOOL_A: &str = "mutual_reentrant_tool_a";
+
 const MUTUAL_REENTRANT_TOOL_B: &str = "mutual_reentrant_tool_b";
+
 const REPLACE_DISPATCH_TOOL_NAME: &str = "replace_dispatch_test_tool";
 
 fn command_session_fixture_commands_config() -> CommandsConfig {
@@ -69,6 +77,7 @@ async fn command_session_fixture() -> Result<CommandSessionFixture> {
 }
 
 struct CustomEchoTool;
+
 struct SlowTimeoutTool;
 
 #[async_trait]
@@ -646,12 +655,26 @@ async fn harness_terminal_runs_retain_completed_sessions_until_close(
     .await
     .expect("terminal session should complete before deadline")?;
     assert_eq!(exit_code, 0);
-    let retained_output = registry
-        .read_harness_exec_session_output(&session_id, false)
-        .await?
-        .unwrap_or_default();
     let initial_output = response["output"].as_str().unwrap_or_default();
-    let complete_output = format!("{initial_output}{retained_output}");
+    // The child can exit before the PTY reader thread publishes its final
+    // bytes, so completion alone does not prove the output has been flushed.
+    // Poll the retained buffer until the flush is observable, and fail the
+    // retention assertion only when it never arrives.
+    let complete_output = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let retained_output = registry
+                .read_harness_exec_session_output(&session_id, false)
+                .await?
+                .unwrap_or_default();
+            let complete_output = format!("{initial_output}{retained_output}");
+            if complete_output.contains("vtcode-terminal") {
+                return Ok::<_, anyhow::Error>(complete_output);
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("terminal output must remain observable until close")?;
     assert!(complete_output.contains("vtcode-terminal"), "terminal output must remain observable until close");
     assert_eq!(registry.harness_exec_session_completed(&session_id).await?, Some(0));
 
@@ -1786,6 +1809,369 @@ async fn apply_patch_accepts_input_payload() -> Result<()> {
     let file_contents = fs::read_to_string(temp_dir.path().join("patched_via_input.txt"))?;
     assert_eq!(file_contents, "patched\n");
 
+    Ok(())
+}
+
+/// Check a stale hash returns diagnostics and leaves the file untouched.
+#[tokio::test]
+async fn stale_apply_patch_hash_returns_diagnostics_without_writing() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let path = temp_dir.path().join("versioned.txt");
+    fs::write(&path, "current\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+    let patch = "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n";
+    let expected = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"));
+
+    let outcome = registry
+        .execute_public_tool_request(ToolExecutionRequest::new(
+            tools::APPLY_PATCH,
+            json!({ "input": patch, "expected_content_hash": expected }),
+        ))
+        .await;
+
+    assert!(!outcome.is_success());
+    let error = outcome.error.expect("hash mismatch error");
+    assert_eq!(error.error_type, ToolErrorType::InvalidParameters);
+    let details = error.details.expect("structured mismatch details");
+    assert_eq!(details["reason"], "content_hash_mismatch");
+    assert_eq!(details["expected_content_hash"], expected);
+    assert_eq!(
+        details["current_content_hash"],
+        format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"current\n"))
+    );
+    assert_eq!(details["can_safely_rebase"], true);
+    assert!(
+        details["next_action"]
+            .as_str()
+            .is_some_and(|action| action.contains("Reread versioned.txt"))
+    );
+    let records = registry.get_recent_tool_records(1);
+    let recorded_error = records
+        .first()
+        .and_then(|record| record.result.as_ref().err())
+        .expect("structured mismatch is retained in execution history");
+    let recorded_error: Value = serde_json::from_str(recorded_error)?;
+    assert_eq!(recorded_error["details"]["reason"], "content_hash_mismatch");
+    assert_eq!(recorded_error["details"]["expected_content_hash"], expected);
+    assert_eq!(fs::read_to_string(path)?, "current\n");
+    Ok(())
+}
+
+/// Check an unrebasable stale patch reports bounded anchor excerpts.
+#[tokio::test]
+async fn stale_unrebasable_patch_reports_bounded_anchor_context() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let path = temp_dir.path().join("versioned.txt");
+    fs::write(&path, "fn nearby() {\n    current();\n}\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+    let patch = "*** Begin Patch\n*** Update File: versioned.txt\n@@ fn missing()\n-    stale();\n+    changed();\n*** End Patch\n";
+    let expected = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"fn missing() {\n    stale();\n}\n"));
+
+    let outcome = registry
+        .execute_public_tool_request(ToolExecutionRequest::new(
+            tools::APPLY_PATCH,
+            json!({ "input": patch, "expected_content_hash": expected }),
+        ))
+        .await;
+
+    let details = outcome.error.and_then(|error| error.details).expect("mismatch details");
+    assert_eq!(details["can_safely_rebase"], false);
+    let failure = details["anchor_failures"]
+        .as_array()
+        .and_then(|failures| failures.first())
+        .expect("anchor failure");
+    assert_eq!(failure["anchor"], "fn missing()");
+    assert_eq!(failure["reason"], "missing_anchor");
+    assert!(
+        failure["expected_excerpt"]
+            .as_str()
+            .is_some_and(|excerpt| excerpt.contains("stale"))
+    );
+    assert!(
+        failure["current_excerpt"]
+            .as_str()
+            .is_some_and(|excerpt| excerpt.contains("current"))
+    );
+    assert!(
+        failure["expected_excerpt"]
+            .as_str()
+            .is_some_and(|excerpt| excerpt.chars().count() <= 240)
+    );
+    assert!(
+        failure["current_excerpt"]
+            .as_str()
+            .is_some_and(|excerpt| excerpt.chars().count() <= 240)
+    );
+    assert_eq!(fs::read_to_string(path)?, "fn nearby() {\n    current();\n}\n");
+    Ok(())
+}
+
+/// Check a matching hash lets the write proceed.
+#[tokio::test]
+async fn matching_apply_patch_hash_allows_the_write() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let path = temp_dir.path().join("versioned.txt");
+    fs::write(&path, "current\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+    let current = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"current\n"));
+    let patch = "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n";
+
+    let response = registry
+        .execute_tool(tools::APPLY_PATCH, json!({ "input": patch, "expected_content_hash": current }))
+        .await?;
+
+    assert_eq!(response["success"], true);
+    assert_eq!(fs::read_to_string(path)?, "changed\n");
+    Ok(())
+}
+
+/// Check a matching hash is accepted for the single-source delete and rename forms.
+#[tokio::test]
+async fn matching_apply_patch_hash_allows_single_source_delete_and_rename() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let obsolete = temp_dir.path().join("obsolete.txt");
+    let renamed_from = temp_dir.path().join("before.txt");
+    let renamed_to = temp_dir.path().join("after.txt");
+    fs::write(&obsolete, "obsolete\n")?;
+    fs::write(&renamed_from, "moved\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+
+    let delete_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"obsolete\n"));
+    let delete_patch = "*** Begin Patch\n*** Delete File: obsolete.txt\n*** End Patch\n";
+    let delete_response = registry
+        .execute_tool(tools::APPLY_PATCH, json!({ "input": delete_patch, "expected_content_hash": delete_hash }))
+        .await?;
+    assert_eq!(delete_response["success"], true);
+    assert!(!obsolete.exists());
+
+    let rename_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"moved\n"));
+    let rename_patch =
+        "*** Begin Patch\n*** Update File: before.txt\n*** Move to: after.txt\n@@\n-moved\n+relocated\n*** End Patch\n";
+    let rename_response = registry
+        .execute_tool(tools::APPLY_PATCH, json!({ "input": rename_patch, "expected_content_hash": rename_hash }))
+        .await?;
+    assert_eq!(rename_response["success"], true);
+    assert!(!renamed_from.exists());
+    assert_eq!(fs::read_to_string(renamed_to)?, "relocated\n");
+    Ok(())
+}
+
+/// Check identical no-ops escalate across registry clones without writing.
+#[tokio::test]
+async fn identical_no_op_patch_escalates_across_registry_clones_without_writing() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let path = temp_dir.path().join("same.txt");
+    fs::write(&path, "same\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+    let breaker = Arc::new(crate::tools::circuit_breaker::CircuitBreaker::new(Default::default()));
+    registry.set_shared_circuit_breaker(Arc::clone(&breaker));
+    let patch = "*** Begin Patch\n*** Update File: same.txt\n@@\n-same\n+same\n*** End Patch\n";
+    #[cfg(unix)]
+    let original_inode = {
+        use std::os::unix::fs::MetadataExt;
+        fs::metadata(&path)?.ino()
+    };
+
+    let first = registry.execute_tool(tools::APPLY_PATCH, json!({ "input": patch })).await?;
+    assert_eq!(first["success"], true);
+    assert_eq!(first["no_op"], true);
+    assert_eq!(first["occurrence"], 1);
+    assert!(first.get("modified_files").is_none());
+    assert!(first["message"].as_str().is_some_and(|message| message.contains("final bytes")));
+
+    let second_registry = registry.clone();
+    let third_registry = registry.clone();
+    let encoded_patch = format!("base64:{}", base64::engine::general_purpose::STANDARD.encode(patch.as_bytes()));
+    let left = tokio::spawn(async move {
+        second_registry
+            .execute_public_tool_request(ToolExecutionRequest::new(tools::APPLY_PATCH, json!({ "patch": patch })))
+            .await
+    });
+    let right = tokio::spawn(async move {
+        third_registry
+            .execute_public_tool_request(ToolExecutionRequest::new(
+                tools::APPLY_PATCH,
+                json!({ "input": encoded_patch }),
+            ))
+            .await
+    });
+    let (left, right) = tokio::try_join!(left, right)?;
+    let (second, third) = if left.is_success() {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    let second = second.output.expect("second no-op response");
+    assert_eq!(second["success"], true);
+    assert_eq!(second["no_op"], true);
+    assert_eq!(second["occurrence"], 2);
+    assert_eq!(second["retry_prohibited"], true);
+    assert!(second.get("modified_files").is_none());
+
+    let error = third.error.expect("third identical no-op must be blocked");
+    assert_eq!(error.error_type, ToolErrorType::PolicyViolation);
+    assert!(!error.retryable);
+    assert!(!error.circuit_breaker_impact);
+    assert_eq!(
+        error.details.as_ref().and_then(|details| details["reason"].as_str()),
+        Some("repeated_identical_no_op")
+    );
+    assert_eq!(breaker.state_for_tool(tools::APPLY_PATCH), crate::tools::circuit_breaker::CircuitState::Closed);
+    assert_eq!(fs::read_to_string(path)?, "same\n");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(fs::metadata(temp_dir.path().join("same.txt"))?.ino(), original_inode);
+    }
+
+    let different = "*** Begin Patch\n*** Update File: same.txt\n@@\n-same\n+different\n*** End Patch\n";
+    let available = registry.execute_tool(tools::APPLY_PATCH, json!({ "input": different })).await?;
+    assert_eq!(available["success"], true);
+    assert!(available.get("no_op").is_none());
+    assert_eq!(fs::read_to_string(temp_dir.path().join("same.txt"))?, "different\n");
+    Ok(())
+}
+
+/// Check repeated updates to one path apply in order instead of as a no-op.
+#[tokio::test]
+async fn repeated_updates_to_one_path_apply_in_order_instead_of_reporting_a_no_op() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let path = temp_dir.path().join("chain.txt");
+    fs::write(&path, "alpha\nbeta\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+    // Both operations target the same file. Planning every operation against the
+    // pre-patch snapshot made the planned final state equal the original, so the
+    // guard reported a no-op and the productive first update never ran.
+    let patch = concat!(
+        "*** Begin Patch\n",
+        "*** Update File: chain.txt\n",
+        "@@\n",
+        "-alpha\n",
+        "+ALPHA\n",
+        "*** Update File: chain.txt\n",
+        "@@\n",
+        "-beta\n",
+        "+beta\n",
+        "*** End Patch\n",
+    );
+
+    let response = registry.execute_tool(tools::APPLY_PATCH, json!({ "input": patch })).await?;
+
+    assert_eq!(response["success"], true);
+    assert!(response.get("no_op").is_none(), "chained updates must not be reported as a no-op");
+    assert_eq!(fs::read_to_string(&path)?, "ALPHA\nbeta\n");
+    Ok(())
+}
+
+/// Check reordering independent no-op updates cannot reset the ladder.
+#[tokio::test]
+async fn reordered_independent_no_op_updates_escalate_the_ladder() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    fs::write(temp_dir.path().join("a.txt"), "alpha\n")?;
+    fs::write(temp_dir.path().join("b.txt"), "beta\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+    let forward = concat!(
+        "*** Begin Patch\n",
+        "*** Update File: a.txt\n",
+        "@@\n",
+        "-alpha\n",
+        "+alpha\n",
+        "*** Update File: b.txt\n",
+        "@@\n",
+        "-beta\n",
+        "+beta\n",
+        "*** End Patch\n",
+    );
+    let reverse = concat!(
+        "*** Begin Patch\n",
+        "*** Update File: b.txt\n",
+        "@@\n",
+        "-beta\n",
+        "+beta\n",
+        "*** Update File: a.txt\n",
+        "@@\n",
+        "-alpha\n",
+        "+alpha\n",
+        "*** End Patch\n",
+    );
+
+    let first = registry.execute_tool(tools::APPLY_PATCH, json!({ "input": forward })).await?;
+    assert_eq!(first["success"], true);
+    assert_eq!(first["no_op"], true);
+    assert_eq!(first["occurrence"], 1);
+
+    let second = registry.execute_tool(tools::APPLY_PATCH, json!({ "input": reverse })).await?;
+    assert_eq!(second["success"], true);
+    assert_eq!(second["no_op"], true);
+    assert_eq!(second["occurrence"], 2);
+    assert_eq!(second["warning"], true);
+    assert_eq!(second["retry_prohibited"], true);
+
+    let error = registry
+        .execute_public_tool_request(ToolExecutionRequest::new(tools::APPLY_PATCH, json!({ "input": forward })))
+        .await
+        .error
+        .expect("third reordered no-op must be blocked");
+    assert_eq!(error.error_type, ToolErrorType::PolicyViolation);
+    assert!(!error.retryable);
+    assert_eq!(
+        error.details.as_ref().and_then(|details| details["reason"].as_str()),
+        Some("repeated_identical_no_op")
+    );
+    assert_eq!(fs::read_to_string(temp_dir.path().join("a.txt"))?, "alpha\n");
+    assert_eq!(fs::read_to_string(temp_dir.path().join("b.txt"))?, "beta\n");
+    Ok(())
+}
+
+/// Check malformed hashes and invalid scopes are rejected.
+#[tokio::test]
+async fn apply_patch_hash_rejects_malformed_and_invalid_scopes() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    fs::write(temp_dir.path().join("one.txt"), "one\n")?;
+    fs::write(temp_dir.path().join("two.txt"), "two\n")?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+    let valid = format!("sha256:{}", "0".repeat(64));
+    let cases = [
+        (
+            "sha256:ABC",
+            "*** Begin Patch\n*** Update File: one.txt\n@@\n-one\n+changed\n*** End Patch\n",
+            "invalid_expected_content_hash",
+        ),
+        (
+            valid.as_str(),
+            "*** Begin Patch\n*** Add File: added.txt\n+added\n*** End Patch\n",
+            "invalid_precondition_scope",
+        ),
+        (
+            valid.as_str(),
+            "*** Begin Patch\n*** Delete File: one.txt\n*** Delete File: two.txt\n*** End Patch\n",
+            "invalid_precondition_scope",
+        ),
+    ];
+
+    for (hash, patch, reason) in cases {
+        let outcome = registry
+            .execute_public_tool_request(ToolExecutionRequest::new(
+                tools::APPLY_PATCH,
+                json!({ "input": patch, "expected_content_hash": hash }),
+            ))
+            .await;
+        let error = outcome.error.expect("invalid precondition error");
+        assert_eq!(error.error_type, ToolErrorType::InvalidParameters);
+        assert_eq!(error.details.as_ref().and_then(|details| details["reason"].as_str()), Some(reason));
+    }
+
+    assert_eq!(fs::read_to_string(temp_dir.path().join("one.txt"))?, "one\n");
+    assert_eq!(fs::read_to_string(temp_dir.path().join("two.txt"))?, "two\n");
+    assert!(!temp_dir.path().join("added.txt").exists());
     Ok(())
 }
 

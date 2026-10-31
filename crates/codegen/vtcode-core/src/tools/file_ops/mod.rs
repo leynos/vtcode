@@ -19,6 +19,7 @@ pub use diff_preview::{
     build_diff_preview, canonical_diff_previews, diff_output_has_effective_change, diff_preview_error_skip,
     diff_preview_size_skip, diff_preview_suppressed,
 };
+pub use read::line_window;
 pub use tool::FileOpsTool;
 pub use vtcode_commons::fs::is_image_path;
 
