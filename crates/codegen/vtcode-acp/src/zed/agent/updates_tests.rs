@@ -1,6 +1,7 @@
 //! Verifies ordering and emptiness handling for ACP assistant updates.
 use super::updates::{AssistantChunkKind, assistant_chunk_kind, assistant_updates};
 use crate::acp;
+use rstest::rstest;
 
 fn text_of(update: &acp::SessionUpdate) -> &str {
     let chunk = match update {
@@ -13,37 +14,37 @@ fn text_of(update: &acp::SessionUpdate) -> &str {
     }
 }
 
-#[test]
-fn reasoning_and_content_emit_thought_before_message() {
-    let updates = assistant_updates("Checking files.", "I need the workspace listing.");
+#[rstest]
+#[case::reasoning_before_commentary(
+    "Checking files.",
+    "I need the workspace listing.",
+    &[
+        (AssistantChunkKind::Reasoning, "I need the workspace listing."),
+        (AssistantChunkKind::Commentary, "Checking files."),
+    ],
+)]
+#[case::commentary_only(
+    "Checking files.",
+    "",
+    &[(AssistantChunkKind::Commentary, "Checking files.")],
+)]
+#[case::reasoning_only(
+    "",
+    "I need the workspace listing.",
+    &[(AssistantChunkKind::Reasoning, "I need the workspace listing.")],
+)]
+fn assistant_updates_emit_each_non_empty_channel_in_order(
+    #[case] content: &str,
+    #[case] reasoning: &str,
+    #[case] expected: &[(AssistantChunkKind, &str)],
+) {
+    let updates = assistant_updates(content, reasoning);
 
-    assert_eq!(updates.len(), 2);
-    assert!(matches!(&updates[0], acp::SessionUpdate::AgentThoughtChunk(_)));
-    assert_eq!(assistant_chunk_kind(&updates[0]), Some(AssistantChunkKind::Reasoning));
-    assert_eq!(text_of(&updates[0]), "I need the workspace listing.");
-    assert!(matches!(&updates[1], acp::SessionUpdate::AgentMessageChunk(_)));
-    assert_eq!(assistant_chunk_kind(&updates[1]), Some(AssistantChunkKind::Commentary));
-    assert_eq!(text_of(&updates[1]), "Checking files.");
-}
-
-#[test]
-fn content_only_emits_a_message() {
-    let updates = assistant_updates("Checking files.", "");
-
-    assert_eq!(updates.len(), 1);
-    assert!(matches!(&updates[0], acp::SessionUpdate::AgentMessageChunk(_)));
-    assert_eq!(assistant_chunk_kind(&updates[0]), Some(AssistantChunkKind::Commentary));
-    assert_eq!(text_of(&updates[0]), "Checking files.");
-}
-
-#[test]
-fn reasoning_only_emits_a_thought() {
-    let updates = assistant_updates("", "I need the workspace listing.");
-
-    assert_eq!(updates.len(), 1);
-    assert!(matches!(&updates[0], acp::SessionUpdate::AgentThoughtChunk(_)));
-    assert_eq!(assistant_chunk_kind(&updates[0]), Some(AssistantChunkKind::Reasoning));
-    assert_eq!(text_of(&updates[0]), "I need the workspace listing.");
+    assert_eq!(updates.len(), expected.len());
+    for (update, (kind, text)) in updates.iter().zip(expected) {
+        assert_eq!(assistant_chunk_kind(update), Some(*kind));
+        assert_eq!(text_of(update), *text);
+    }
 }
 
 #[test]
