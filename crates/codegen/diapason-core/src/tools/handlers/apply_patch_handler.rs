@@ -125,10 +125,10 @@ impl Approvable<ApplyPatchRequest> for ApplyPatchRuntime {
 impl ToolRuntime<ApplyPatchRequest, ExecToolCallOutput> for ApplyPatchRuntime {
     /// Validate the cwd, parse the patch, and apply it.
     ///
-    /// The `expected_content_hash` precondition is enforced by the handler
-    /// before the orchestrator reaches this runtime, because a rejection has to
-    /// reach the model as a structured envelope rather than as a flat
-    /// `ToolError` string.
+    /// The handler checks `expected_content_hash` before the orchestrator
+    /// reaches this runtime, but this runtime re-validates it immediately
+    /// before applying. A file read during the handler's check can change
+    /// before the write, and only the recheck closes that window.
     async fn run(
         &mut self,
         req: &ApplyPatchRequest,
@@ -155,6 +155,13 @@ impl ToolRuntime<ApplyPatchRequest, ExecToolCallOutput> for ApplyPatchRuntime {
                 exit_code: 0,
             });
         }
+
+        // Re-validate the version precondition immediately before mutating. The
+        // handler checked it already, but a concurrent writer can change the
+        // file between that check and this apply.
+        validate_request_content_hash(req, &patch, ctx.session.workspace_root())
+            .await
+            .map_err(|failure| ToolError::Rejected(failure.to_string()))?;
 
         // Apply the patch
         match patch.apply(&req.cwd).await {
@@ -348,9 +355,33 @@ async fn validate_request_content_hash(
                 "apply_patch rejected precondition path '{source_path}' outside session workspace: {error}"
             ))
         })?;
-    let bytes = tokio::fs::read(&disk_path).await.map_err(|error| {
-        PatchPreconditionFailure::Rejected(format!("Failed to read {source_path} for hash validation: {error}"))
-    })?;
+    let bytes = match tokio::fs::read(&disk_path).await {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // A removed file has no current version. Report it with a null
+            // hash rather than the malformed empty `sha256:` value a vanished
+            // read would otherwise produce.
+            return Err(PatchPreconditionFailure::Structured(invalid_patch_precondition(
+                format!("Source file no longer exists: {source_path}"),
+                json!({
+                    "reason": "content_hash_mismatch",
+                    "path": source_path,
+                    "expected_content_hash": expected_hash,
+                    "current_content_hash": Value::Null,
+                    "anchor_failures": [],
+                    "can_safely_rebase": false,
+                    "next_action": format!(
+                        "The file was removed after its version was captured; list the directory containing {source_path} and regenerate the patch against the current workspace."
+                    ),
+                }),
+            )));
+        }
+        Err(error) => {
+            return Err(PatchPreconditionFailure::Rejected(format!(
+                "Failed to read {source_path} for hash validation: {error}"
+            )));
+        }
+    };
     let current_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(&bytes));
     if current_hash == expected_hash {
         return Ok(());
@@ -539,9 +570,6 @@ mod tests {
     use super::*;
     use crate::exec_policy::RejectConfig;
     use crate::tools::handlers::adapter::DefaultToolSession;
-    // Only the `#[cfg(unix)]` symlink-escape test builds a `SandboxAttempt`, so
-    // importing these unconditionally fails Windows' `-D warnings` build.
-    #[cfg(unix)]
     use crate::tools::handlers::sandboxing::{SandboxConfig, SandboxType};
     use crate::tools::handlers::tool_handler::{Constrained, ShellEnvironmentPolicy, TurnContext};
     use std::sync::Arc;
@@ -885,5 +913,134 @@ mod tests {
             .expect_err("direct apply_patch must reject an escaped cwd");
         assert!(error.to_string().contains("outside session workspace"));
         assert!(!outside.path().join("created.txt").exists());
+    }
+
+    /// Build the direct `ToolCtx`/`SandboxAttempt` pair a runtime test needs.
+    fn direct_runtime_fixture(workspace: &TempDir) -> (ToolCtx, SandboxConfig) {
+        let session = Arc::new(DefaultToolSession::with_workspace(
+            workspace.path().to_path_buf(),
+            workspace.path().to_path_buf(),
+        ));
+        let turn = Arc::new(TurnContext {
+            cwd: workspace.path().to_path_buf(),
+            turn_id: "direct-apply-patch-test".to_string(),
+            sub_id: None,
+            shell_environment_policy: ShellEnvironmentPolicy::default(),
+            approval_policy: Constrained::default(),
+            codex_linux_sandbox_exe: None,
+            sandbox_policy: Constrained::default(),
+        });
+        let tool_ctx = ToolCtx {
+            session,
+            turn,
+            call_id: "call-1".to_string(),
+            tool_name: "apply_patch".to_string(),
+        };
+        (tool_ctx, SandboxConfig::default())
+    }
+
+    /// The runtime must re-check `expected_content_hash` immediately before it
+    /// writes, so a change after the handler's check cannot be applied.
+    #[tokio::test]
+    async fn direct_runtime_rejects_stale_expected_content_hash_before_apply() {
+        let workspace = TempDir::new().expect("workspace should be created");
+        let fixture = workspace.path().join("versioned.txt");
+        std::fs::write(&fixture, "current\n").expect("write fixture");
+        let (tool_ctx, policy) = direct_runtime_fixture(&workspace);
+        let attempt = SandboxAttempt {
+            sandbox: SandboxType::None,
+            policy: &policy,
+            sandbox_cwd: workspace.path(),
+            codex_linux_sandbox_exe: None,
+        };
+        let request = ApplyPatchRequest {
+            patch: "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n"
+                .to_string(),
+            expected_content_hash: Some(format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"))),
+            cwd: workspace.path().to_path_buf(),
+            timeout_ms: None,
+            user_explicitly_approved: true,
+        };
+
+        let error = ApplyPatchRuntime::new()
+            .run(&request, &attempt, &tool_ctx)
+            .await
+            .expect_err("the runtime must reject a stale expected_content_hash");
+        assert!(error.to_string().contains("content_hash_mismatch"), "unexpected error: {error}");
+        assert_eq!(
+            std::fs::read_to_string(&fixture).expect("read unchanged fixture"),
+            "current\n",
+            "a rejected precondition must not mutate the file"
+        );
+    }
+
+    /// A matching hash must still apply through the direct runtime, proving the
+    /// recheck is a precondition rather than a blanket rejection.
+    #[tokio::test]
+    async fn direct_runtime_applies_patch_with_matching_expected_content_hash() {
+        let workspace = TempDir::new().expect("workspace should be created");
+        let fixture = workspace.path().join("versioned.txt");
+        std::fs::write(&fixture, "current\n").expect("write fixture");
+        let (tool_ctx, policy) = direct_runtime_fixture(&workspace);
+        let attempt = SandboxAttempt {
+            sandbox: SandboxType::None,
+            policy: &policy,
+            sandbox_cwd: workspace.path(),
+            codex_linux_sandbox_exe: None,
+        };
+        let request = ApplyPatchRequest {
+            patch: "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n"
+                .to_string(),
+            expected_content_hash: Some(format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"current\n"))),
+            cwd: workspace.path().to_path_buf(),
+            timeout_ms: None,
+            user_explicitly_approved: true,
+        };
+
+        ApplyPatchRuntime::new()
+            .run(&request, &attempt, &tool_ctx)
+            .await
+            .expect("a matching content hash must allow the patch to apply");
+        assert_eq!(
+            std::fs::read_to_string(&fixture).expect("read patched fixture"),
+            "changed\n",
+            "the runtime should have applied the patch"
+        );
+    }
+
+    /// A source file removed after the handler captured its version must report
+    /// a null current hash instead of the malformed empty `sha256:` value.
+    #[tokio::test]
+    async fn deleted_source_file_reports_a_null_current_hash() {
+        let workspace = TempDir::new().expect("temporary workspace");
+        let fixture = workspace.path().join("gone.txt");
+        std::fs::write(&fixture, "captured\n").expect("write fixture");
+        let expected_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"captured\n"));
+        std::fs::remove_file(&fixture).expect("remove fixture");
+        let patch =
+            Patch::parse("*** Begin Patch\n*** Update File: gone.txt\n@@\n-captured\n+changed\n*** End Patch\n")
+                .expect("valid patch");
+        let request = ApplyPatchRequest {
+            patch: String::new(),
+            expected_content_hash: Some(expected_hash),
+            cwd: workspace.path().to_path_buf(),
+            timeout_ms: None,
+            user_explicitly_approved: true,
+        };
+
+        let error = validate_request_content_hash(&request, &patch, workspace.path())
+            .await
+            .expect_err("a removed source file must be rejected")
+            .into_tool_call_error();
+
+        let envelope = precondition_envelope(&error);
+        let details = &envelope["error"]["details"];
+        assert_eq!(details["reason"], "content_hash_mismatch", "unexpected error: {envelope}");
+        assert!(details["current_content_hash"].is_null(), "a removed file has no version: {envelope}");
+        assert!(
+            !envelope.to_string().contains("\"sha256:\""),
+            "the malformed empty hash must not appear: {envelope}"
+        );
+        assert!(!fixture.exists(), "a rejected precondition must not recreate the file");
     }
 }

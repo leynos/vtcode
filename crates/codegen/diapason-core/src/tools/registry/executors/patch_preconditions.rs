@@ -53,6 +53,25 @@ pub(super) async fn validate_patch_content_hash(
         .find(|captured| captured.path == canonical_path)
         .map(|captured| &captured.snapshot)
         .ok_or_else(|| anyhow!("Missing captured patch state for {}", canonical_path.display()))?;
+    if !snapshot.exists {
+        return Ok(Some(PatchPreconditionRejection {
+            response: invalid_patch_precondition(
+                format!("Source file no longer exists: {source_path}"),
+                json!({
+                    "reason": "content_hash_mismatch",
+                    "path": source_path,
+                    "expected_content_hash": expected_hash,
+                    "current_content_hash": Value::Null,
+                    "anchor_failures": [],
+                    "can_safely_rebase": false,
+                    "next_action": format!(
+                        "The file was removed after its version was captured; list the directory containing {source_path} and regenerate the patch against the current workspace."
+                    ),
+                }),
+            ),
+            outcome: PatchPreconditionOutcome::ContentHashMismatch,
+        }));
+    }
     let current_hash = format!("sha256:{}", snapshot.sha256);
     if current_hash == expected_hash {
         return Ok(None);
