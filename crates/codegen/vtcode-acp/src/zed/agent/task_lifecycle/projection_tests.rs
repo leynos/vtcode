@@ -2,6 +2,7 @@
 use super::super::lody::lody_task_session_update;
 use super::*;
 use agent_client_protocol::{Agent, Builder, Client, ConnectionTo, RunWithConnectionTo, on_receive_notification};
+use chrono::{DateTime, Utc};
 use proptest::prelude::*;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -62,6 +63,15 @@ fn task_meta(update: &acp::SessionUpdate) -> &Value {
     }
     .expect("task update metadata");
     &meta["lody"]["task"]
+}
+
+fn with_updated_at(mut event: LifecycleUpdate, value: &str) -> LifecycleUpdate {
+    let timestamp: DateTime<Utc> = value.parse().expect("RFC 3339 transition timestamp");
+    match &mut event {
+        LifecycleUpdate::Subagent { task, .. } => task.updated_at = timestamp,
+        LifecycleUpdate::BackgroundProcess { task, .. } => task.updated_at = timestamp,
+    }
+    event
 }
 
 fn with_task_id(mut event: LifecycleUpdate, task_id: String) -> LifecycleUpdate {
@@ -132,7 +142,7 @@ proptest! {
     #[test]
     fn lifecycle_sequences_keep_stable_ids_and_monotonic_terminality(
         kind_index in 0usize..2,
-        steps in prop::collection::vec(0usize..4, 1..=32),
+        steps in prop::collection::vec(0usize..8, 1..=32),
     ) {
         let (ladder, ordinals) = lifecycle_ladder(kind_index);
         // The two fixtures use different ids; the kind selects which.
@@ -209,6 +219,129 @@ proptest! {
         prop_assert_eq!(initial_task_id, task_id.as_str());
         prop_assert_eq!(subsequent_task_id, task_id.as_str());
     }
+}
+
+#[test]
+fn stale_initial_snapshot_is_rejected_after_a_terminal_transition() {
+    let mut ordering = LifecycleOrdering::default();
+    let running = with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z");
+    let completed = with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z");
+
+    assert!(ordering.admit(&running), "the first snapshot must be forwarded");
+    assert!(ordering.admit(&completed), "a newer terminal transition must be forwarded");
+    assert!(
+        !ordering.admit(&running),
+        "an initial snapshot captured before the terminal transition must not roll the task back"
+    );
+
+    // A transition the controller really recorded after settlement still wins.
+    let resumed = with_updated_at(subagent_event("running"), "2026-08-14T12:06:00Z");
+    assert!(ordering.admit(&resumed), "newer lifecycle transitions must still be forwarded");
+}
+
+#[test]
+fn equal_timestamp_revisions_never_regress_terminality() {
+    let mut ordering = LifecycleOrdering::default();
+    let completed = with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z");
+    assert!(ordering.admit(&completed));
+
+    let same_instant_running = with_updated_at(subagent_event("running"), "2026-08-14T12:05:00Z");
+    assert!(
+        !ordering.admit(&same_instant_running),
+        "a coarsened clock must not let a terminal task regress to running"
+    );
+
+    let mut background = LifecycleOrdering::default();
+    let running = with_updated_at(background_event("running"), "2026-08-14T12:01:00Z");
+    let stopped = with_updated_at(background_event("stopped"), "2026-08-14T12:05:00Z");
+    assert!(background.admit(&running));
+    assert!(background.admit(&stopped));
+    assert!(
+        !background.admit(&with_updated_at(background_event("running"), "2026-08-14T12:01:00Z")),
+        "a stale background snapshot must not revive a stopped task"
+    );
+}
+
+#[tokio::test]
+async fn stale_initial_task_snapshot_is_not_forwarded_after_settlement() {
+    let (agent_channel, client_channel) = agent_client_protocol::Channel::duplex();
+    let (progress_tx, progress_rx) = mpsc::channel(8);
+    let (received_tx, mut received_rx) = mpsc::unbounded_channel();
+
+    let agent_connection = Agent.builder().name("vtcode-task-ordering-test").connect_with(
+        agent_channel,
+        move |cx: ConnectionTo<Client>| async move {
+            let client = ConnectionHandle::new(cx);
+            let metrics = Arc::new(vtcode_core::metrics::MetricsCollector::new());
+            let queue = Arc::new(LifecycleQueueTracker::new(metrics));
+            let forwarder = spawn_task_lifecycle_forwarder(
+                progress_rx,
+                acp::SessionId::new(Arc::from("parent-session")),
+                client,
+                Arc::clone(&queue),
+            );
+            // Live delivery first, then the older snapshot the initial
+            // publisher captured before the terminal transition.
+            queue
+                .try_send(&progress_tx, with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z"))
+                .unwrap();
+            queue
+                .try_send(&progress_tx, with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z"))
+                .unwrap();
+            queue
+                .try_send(&progress_tx, with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z"))
+                .unwrap();
+            drop(progress_tx);
+            forwarder.await.expect("lifecycle forwarder");
+            Ok(())
+        },
+    );
+    let agent_task = tokio::spawn(agent_connection);
+
+    let client_connection = Client
+        .builder()
+        .on_receive_notification(
+            async move |notification: acp::AgentNotification, _cx| {
+                drop(received_tx.send(notification));
+                Ok(())
+            },
+            on_receive_notification!(),
+        )
+        .connect_with(client_channel, async move |_cx: ConnectionTo<Agent>| {
+            let first = tokio::time::timeout(std::time::Duration::from_secs(2), received_rx.recv())
+                .await
+                .expect("initial task update deadline")
+                .expect("initial task update");
+            let acp::AgentNotification::SessionNotification(first) = first else {
+                panic!("task lifecycle must use standard session notifications");
+            };
+            let acp::SessionUpdate::ToolCall(call) = first.update else {
+                panic!("first task snapshot must create a tool call");
+            };
+            assert_eq!(call.meta.expect("initial task metadata")["lody"]["task"]["status"], "in_progress");
+
+            let second = tokio::time::timeout(std::time::Duration::from_secs(2), received_rx.recv())
+                .await
+                .expect("task progress update deadline")
+                .expect("task progress update");
+            let acp::AgentNotification::SessionNotification(second) = second else {
+                panic!("task progress must remain a standard session notification");
+            };
+            let acp::SessionUpdate::ToolCallUpdate(update) = second.update else {
+                panic!("later task snapshots must update the existing tool call");
+            };
+            assert_eq!(update.meta.expect("progress task metadata")["lody"]["task"]["status"], "completed");
+
+            let stale = tokio::time::timeout(std::time::Duration::from_millis(250), received_rx.recv()).await;
+            assert!(stale.is_err(), "a stale initial snapshot must not be forwarded after settlement");
+            Ok(())
+        });
+
+    tokio::time::timeout(std::time::Duration::from_secs(3), client_connection)
+        .await
+        .expect("client connection deadline")
+        .expect("client connection");
+    agent_task.await.expect("agent task").expect("agent connection");
 }
 
 #[tokio::test]

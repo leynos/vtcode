@@ -414,7 +414,7 @@ async fn concurrent_prompt_is_rejected_over_official_acp_transport() {
     assert_eq!(user_messages, 1, "the rejected prompt must not mutate durable history");
 }
 
-use vtcode_core::subagents::SpawnBackgroundSubprocessRequest;
+use vtcode_core::subagents::{SpawnAgentRequest, SpawnBackgroundSubprocessRequest};
 
 #[test]
 fn advertised_capabilities_include_lody_subagent_management_with_subagents() {
@@ -501,6 +501,13 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 .await?;
             let owned_session = inspected_agent.session_handle(&session.session_id).unwrap().unwrap();
             let controller = inspected_agent.session_subagent_controller(&owned_session).unwrap().unwrap();
+            // Session creation installs a forwarder. Detach it first so the task
+            // starts with no observer registered, which is the state a resumed
+            // session restores into.
+            owned_session
+                .stop_task_lifecycle_forwarder()
+                .await
+                .expect("stop lifecycle forwarder before spawning");
             let background = controller
                 .spawn_background_subprocess(SpawnBackgroundSubprocessRequest {
                     agent_type: Some("background-demo".to_string()),
@@ -508,6 +515,12 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 })
                 .await
                 .expect("spawn owned background task");
+            while let Ok(notification) = notification_rx.try_recv() {
+                assert!(
+                    lifecycle_task_id(&notification).is_none(),
+                    "no lifecycle notification may be forwarded before the forwarder attaches"
+                );
+            }
 
             // Attaching the lifecycle forwarder after the task is already
             // running must publish its current snapshot; otherwise a resumed
@@ -515,19 +528,25 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             inspected_agent
                 .ensure_task_lifecycle_forwarder(&owned_session)
                 .expect("start lifecycle forwarder for the attached session");
-            let initial_task_id = tokio::time::timeout(Duration::from_secs(2), async {
+            let initial_task = tokio::time::timeout(Duration::from_secs(2), async {
                 loop {
                     let notification = notification_rx.recv().await.expect("lifecycle notification stream");
-                    if let Some(task_id) = lifecycle_task_id(&notification) {
-                        break task_id;
+                    if let Some(task) = lifecycle_task_meta(&notification) {
+                        break task;
                     }
                 }
             })
             .await
             .expect("initial lifecycle snapshot deadline");
             assert_eq!(
-                initial_task_id, background.id,
+                initial_task["taskId"], background.id,
                 "a task that was already running must be published when the forwarder attaches"
+            );
+            assert_eq!(initial_task["kind"], "background");
+            let restored_status = initial_task["status"].as_str().expect("projected task status");
+            assert!(
+                matches!(restored_status, "pending" | "in_progress"),
+                "a restored task that is still running must be published as active, got {restored_status}"
             );
 
             let params = serde_json::value::to_raw_value(&serde_json::json!({
@@ -720,8 +739,343 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
     drop(agent_task.await);
 }
 
-/// Extracts the Lody task ID from a task-lifecycle session notification.
-fn lifecycle_task_id(notification: &acp::AgentNotification) -> Option<String> {
+// ─── Nested delegation over ACP ─────────────────────────────────────────────
+
+/// Provider used by the child and grandchild runners in the nested-management
+/// regression.
+///
+/// Child runners resolve providers through the process-global
+/// `create_provider_with_config`, not through the ACP prompt override, so the
+/// mock has to be registered in the global factory for the duration of the
+/// test.
+const NESTED_PROVIDER: &str = "nested-delegation-mock";
+const NESTED_MODEL: &str = vtcode_config::constants::models::anthropic::CLAUDE_SONNET_5;
+/// Task handed to the `default` child.
+const NESTED_CHILD_TASK: &str = "Survey the delegated fixture and report readiness.";
+/// Task the child delegates to its read-only grandchild.
+const NESTED_GRANDCHILD_TASK: &str = "grandchild-marker: list every source file and report each path.";
+
+/// Removes the mock provider from the process-global factory on drop.
+struct GlobalProviderRegistration(&'static str);
+
+impl Drop for GlobalProviderRegistration {
+    fn drop(&mut self) {
+        if let Ok(mut factory) = vtcode_core::llm::factory::get_factory().lock() {
+            factory.remove_provider(self.0);
+        }
+    }
+}
+
+/// Provider that never answers, parking every child run it serves.
+///
+/// Parking instead of completing keeps the nested tree alive and observable
+/// while the test inspects it; the ACP cancel aborts the parked futures.
+struct ParkedProvider;
+
+#[async_trait]
+impl LLMProvider for ParkedProvider {
+    fn name(&self) -> &str {
+        NESTED_PROVIDER
+    }
+
+    fn supported_models(&self) -> Vec<String> {
+        vec![NESTED_MODEL.to_string()]
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+
+    fn supports_tools(&self, _model: &str) -> bool {
+        true
+    }
+
+    fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+        Ok(())
+    }
+
+    async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
+        std::future::pending().await
+    }
+
+    async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+        std::future::pending().await
+    }
+}
+
+async fn lody_output(
+    connection: &ConnectionTo<Agent>,
+    session_id: &acp::SessionId,
+    task_id: &str,
+) -> Result<serde_json::Value, acp::Error> {
+    let params = serde_json::value::to_raw_value(&serde_json::json!({
+        "sessionId": session_id,
+        "taskId": task_id,
+        "tail": 20,
+    }))
+    .expect("serialize Lody output request");
+    connection
+        .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+            crate::zed::agent::lody::LODY_SUBAGENTS_OUTPUT_METHOD,
+            params.into(),
+        )))
+        .block_task()
+        .await
+}
+
+/// A session's management surface must reach grandchildren spawned by its own
+/// children, and must not reach a sibling session's tree.
+///
+/// The root controller tracks the `default` child; that child's scoped
+/// controller tracks the `explorer` grandchild. Ownership is derived from the
+/// parent/child session chain, so the sibling sees neither task even though it
+/// shares the same workspace runtime.
+#[tokio::test]
+async fn nested_subagent_management_is_owned_by_the_root_session() {
+    let _history_test_guard = lock_history_test_guard().await;
+    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
+    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
+    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+
+    vtcode_core::llm::factory::get_factory()
+        .lock()
+        .expect("global LLM factory")
+        .register_provider(NESTED_PROVIDER, |_config| Box::new(ParkedProvider));
+    let _provider_registration = GlobalProviderRegistration(NESTED_PROVIDER);
+
+    let launch_workspace = TempDir::new().expect("separate launch workspace");
+    let session_workspace = TempDir::new().expect("nested delegation workspace");
+    let mut agent = build_wire_test_agent(launch_workspace.path()).await;
+    // Child runners parse the parent model, so it must be a real model id.
+    agent.config.model = NESTED_MODEL.to_string();
+    agent.config.provider = NESTED_PROVIDER.to_string();
+    let mut vt_config = VTCodeConfig::default();
+    vt_config.subagents.enabled = true;
+    // The child needs room to delegate one level deeper.
+    vt_config.subagents.max_depth = 2;
+    vt_config.agent.provider = NESTED_PROVIDER.to_string();
+    vt_config.agent.default_model = NESTED_MODEL.to_string();
+    vt_config.agent.small_model.model = NESTED_MODEL.to_string();
+    // Delegation is the behaviour under test, not planner/generator/evaluator
+    // orchestration: keep the child on the single-pass loop so it never issues
+    // a tool-less planner request against the parked provider.
+    vt_config.agent.harness.orchestration_mode = vtcode_config::core::agent::HarnessOrchestrationMode::Single;
+    agent.vt_config = Some(Box::new(vt_config));
+    let agent = Arc::new(agent);
+    let (agent_channel, client_channel) = Channel::duplex();
+    let agent_connection = install_handlers(Agent.builder().name("vtcode-nested-delegation-test"), Arc::clone(&agent))
+        .connect_with(agent_channel, {
+            let agent = Arc::clone(&agent);
+            async move |cx: ConnectionTo<Client>| {
+                agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                std::future::pending::<agent_client_protocol::Result<()>>().await
+            }
+        });
+    let agent_task = tokio::spawn(agent_connection);
+
+    let session_workspace_path = session_workspace.path().to_path_buf();
+    let inspected_agent = Arc::clone(&agent);
+    let client_connection = Client
+        .builder()
+        .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+            drop(
+                cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                    .block_task()
+                    .await?,
+            );
+            let session = cx
+                .send_request(NewSessionRequest::new(session_workspace_path.clone()))
+                .block_task()
+                .await?;
+            let owned_session = inspected_agent.session_handle(&session.session_id).unwrap().unwrap();
+            let root = inspected_agent.session_subagent_controller(&owned_session).unwrap().unwrap();
+
+            let child = root
+                .spawn(SpawnAgentRequest {
+                    agent_type: Some("default".to_string()),
+                    message: Some(NESTED_CHILD_TASK.to_string()),
+                    ..SpawnAgentRequest::default()
+                })
+                .await
+                .expect("spawn the default child");
+            assert_eq!(child.agent_name, "default");
+            assert_eq!(child.depth, 1, "a direct child of the root session sits at depth 1");
+
+            // The child's scoped controller is the seam its own `agent` tool
+            // uses to delegate. It is attached before the child's first model
+            // turn, so poll briefly for it, then spawn the grandchild through
+            // it: the tree shape must not depend on which tool profile the
+            // child runner happens to expose to its model.
+            let polled = tokio::time::timeout(Duration::from_secs(15), async {
+                loop {
+                    if let Some(controller) = root.descendant_controllers().await.into_iter().next() {
+                        return controller;
+                    }
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await;
+            let child_controller = match polled {
+                Ok(controller) => controller,
+                Err(_) => {
+                    let entries = root.status_entries().await;
+                    panic!("the default child must expose a child-scoped controller (child entries={entries:?})");
+                }
+            };
+            let grandchild = child_controller
+                .spawn(SpawnAgentRequest {
+                    agent_type: Some("explorer".to_string()),
+                    message: Some(NESTED_GRANDCHILD_TASK.to_string()),
+                    ..SpawnAgentRequest::default()
+                })
+                .await
+                .expect("spawn the explorer grandchild through the child's controller");
+            assert_eq!(grandchild.agent_name, "explorer");
+            assert_eq!(grandchild.parent_thread_id, child.session_id);
+            assert_eq!(grandchild.depth, 2, "a grandchild of the root session sits at depth 2");
+
+            // The owning session sees the whole tree.
+            let params = serde_json::value::to_raw_value(&serde_json::json!({
+                "sessionId": session.session_id,
+                "activeOnly": false,
+            }))?;
+            let listed = cx
+                .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                    crate::zed::agent::lody::LODY_SUBAGENTS_LIST_METHOD,
+                    params.into(),
+                )))
+                .block_task()
+                .await?;
+            let tasks = listed["tasks"].as_array().expect("Lody task list").clone();
+            let mut listed_ids = tasks.iter().filter_map(|task| task["taskId"].as_str()).collect::<Vec<_>>();
+            listed_ids.sort_unstable();
+            let mut expected_ids = vec![child.id.as_str(), grandchild.id.as_str()];
+            expected_ids.sort_unstable();
+            assert_eq!(
+                listed_ids, expected_ids,
+                "the root session must list its child and grandchild exactly once: {listed}"
+            );
+
+            // A sibling session shares the workspace runtime but owns nothing.
+            let foreign_session = cx
+                .send_request(NewSessionRequest::new(session_workspace_path.clone()))
+                .block_task()
+                .await?;
+            let params = serde_json::value::to_raw_value(&serde_json::json!({
+                "sessionId": foreign_session.session_id,
+                "activeOnly": false,
+            }))?;
+            let foreign_list = cx
+                .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                    crate::zed::agent::lody::LODY_SUBAGENTS_LIST_METHOD,
+                    params.into(),
+                )))
+                .block_task()
+                .await?;
+            assert_eq!(foreign_list, serde_json::json!({ "tasks": [] }));
+
+            let foreign_output = lody_output(&cx, &foreign_session.session_id, &grandchild.id)
+                .await
+                .expect_err("a sibling must not read a grandchild's output");
+            assert_eq!(foreign_output.data, Some(serde_json::json!({ "reason": "unknown_task" })));
+
+            let params = serde_json::value::to_raw_value(&serde_json::json!({
+                "sessionId": foreign_session.session_id,
+                "taskId": grandchild.id,
+            }))?;
+            let foreign_cancel = cx
+                .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                    crate::zed::agent::lody::LODY_SUBAGENTS_CANCEL_METHOD,
+                    params.into(),
+                )))
+                .block_task()
+                .await
+                .expect_err("a sibling must not cancel a grandchild");
+            assert_eq!(foreign_cancel.data, Some(serde_json::json!({ "reason": "unknown_task" })));
+            assert!(
+                !child_controller
+                    .status_entries()
+                    .await
+                    .into_iter()
+                    .find(|entry| entry.id == grandchild.id)
+                    .expect("grandchild record")
+                    .status
+                    .is_terminal(),
+                "a rejected sibling cancel must not stop the grandchild"
+            );
+
+            // The owner can read the grandchild through the child's scoped
+            // controller. The runtime snapshot materialises once the child run
+            // has recorded its configuration, so poll briefly.
+            let owned_output = tokio::time::timeout(Duration::from_secs(15), async {
+                loop {
+                    if let Ok(output) = lody_output(&cx, &session.session_id, &grandchild.id).await {
+                        break output;
+                    }
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
+            })
+            .await
+            .expect("the owning session must read the grandchild's output");
+            assert!(
+                owned_output.get("output").is_some(),
+                "grandchild output must use the managed output envelope: {owned_output}"
+            );
+
+            // Cancelling the child closes its whole subtree.
+            let params = serde_json::value::to_raw_value(&serde_json::json!({
+                "sessionId": session.session_id,
+                "taskId": child.id,
+                "reason": "test complete",
+            }))?;
+            let cancelled = cx
+                .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+                    crate::zed::agent::lody::LODY_SUBAGENTS_CANCEL_METHOD,
+                    params.into(),
+                )))
+                .block_task()
+                .await?;
+            assert_eq!(cancelled, serde_json::json!({}));
+            tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    let terminal = child_controller
+                        .status_entries()
+                        .await
+                        .into_iter()
+                        .find(|entry| entry.id == grandchild.id)
+                        .is_some_and(|entry| entry.status.is_terminal());
+                    if terminal {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .expect("closing the child must close its grandchild subtree");
+
+            drop(
+                cx.send_request(CloseSessionRequest::new(session.session_id.clone()))
+                    .block_task()
+                    .await?,
+            );
+            drop(
+                cx.send_request(CloseSessionRequest::new(foreign_session.session_id.clone()))
+                    .block_task()
+                    .await?,
+            );
+            Ok(())
+        });
+
+    tokio::time::timeout(Duration::from_secs(60), client_connection)
+        .await
+        .expect("nested delegation client should finish")
+        .expect("nested delegation protocol flow should succeed");
+    agent_task.abort();
+    drop(agent_task.await);
+}
+
+/// Extracts the Lody task metadata from a task-lifecycle session notification.
+fn lifecycle_task_meta(notification: &acp::AgentNotification) -> Option<serde_json::Value> {
     let acp::AgentNotification::SessionNotification(notification) = notification else {
         return None;
     };
@@ -731,7 +1085,12 @@ fn lifecycle_task_id(notification: &acp::AgentNotification) -> Option<String> {
         _ => None,
     }?;
     let task = &meta["lody"]["task"];
-    task.get("taskId")?.as_str().map(str::to_owned)
+    task.get("taskId")?.as_str().map(|_| task.clone())
+}
+
+/// Extracts the Lody task ID from a task-lifecycle session notification.
+fn lifecycle_task_id(notification: &acp::AgentNotification) -> Option<String> {
+    lifecycle_task_meta(notification)?.get("taskId")?.as_str().map(str::to_owned)
 }
 
 async fn lody_output_error(connection: &ConnectionTo<Agent>, session_id: &acp::SessionId, task_id: &str) -> acp::Error {

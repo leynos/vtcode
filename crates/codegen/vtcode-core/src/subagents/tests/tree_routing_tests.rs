@@ -62,6 +62,9 @@ async fn nested_child_controller(workspace_root: PathBuf, parent_session_id: &st
     let mut config = test_controller_config(workspace_root, VTCodeConfig::default());
     config.parent_session_id = parent_session_id.to_string();
     config.depth = 1;
+    // Mirror `child_controller_for`: nested scopes run under the managed
+    // background runtime guard and therefore never own background work.
+    config.managed_background_runtime = true;
     Arc::new(SubagentController::new(config).await.expect("nested controller"))
 }
 
@@ -344,4 +347,56 @@ async fn cancel_preserves_settled_background_outcomes() {
     }
 
     controller.signal_shutdown().await;
+}
+
+#[tokio::test]
+async fn nested_scope_never_restores_the_workspace_background_ledger() {
+    let temp = TempDir::new().expect("tempdir");
+    let workspace_root = temp.path().to_path_buf();
+    let root = SubagentController::new(test_controller_config(workspace_root.clone(), VTCodeConfig::default()))
+        .await
+        .expect("root controller");
+
+    {
+        let mut state = root.state.write().await;
+        state.background_children.insert(
+            "background-root".to_string(),
+            settled_background_record("background-root", "parent-session", BackgroundSubprocessStatus::Running, None),
+        );
+    }
+    root.save_background_state().await.expect("persist root ledger");
+    assert_eq!(root.background_status_entries().await.len(), 1);
+
+    // A nested scope in the same workspace cannot own background work, so it
+    // must not adopt the root's record as a second, stale copy.
+    let nested = nested_child_controller(workspace_root.clone(), "child-session").await;
+    assert!(
+        nested.background_status_entries().await.is_empty(),
+        "nested scopes must not restore records owned by another controller"
+    );
+
+    // Cancelling through the owner settles the one authoritative entry.
+    let cancelled = root
+        .force_cancel_background("background-root")
+        .await
+        .expect("cancel root background task");
+    assert_eq!(cancelled.status, BackgroundSubprocessStatus::Stopped);
+    let root_entries = root.background_status_entries().await;
+    assert_eq!(root_entries.len(), 1, "the root must report exactly one entry");
+    assert_eq!(root_entries[0].status, BackgroundSubprocessStatus::Stopped);
+    assert!(nested.background_status_entries().await.is_empty());
+
+    // The nested scope's persistence guard must leave the ledger intact.
+    nested.save_background_state().await.expect("nested save is a no-op");
+    let restored = SubagentController::new(test_controller_config(workspace_root, VTCodeConfig::default()))
+        .await
+        .expect("restoring controller");
+    let restored_entries = restored.background_status_entries().await;
+    assert_eq!(restored_entries.len(), 1, "the workspace ledger must survive the nested scope");
+    assert_eq!(restored_entries[0].id, "background-root");
+    assert_eq!(restored_entries[0].status, BackgroundSubprocessStatus::Stopped);
+
+    nested.signal_shutdown().await;
+    restored.signal_shutdown().await;
+    root.signal_shutdown().await;
 }
