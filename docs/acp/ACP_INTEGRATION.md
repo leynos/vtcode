@@ -50,8 +50,8 @@ was advertised:
 - `_lody/subagents/output` returns a bounded output tail for an owned task.
 
 Usage is reported with the `_lody/session/usage_update` extension notification.
-Its parameters contain `sessionId`, a `usage` object, and `modelUsage`, keyed by
-model name. The notification represents the usage delta for one provider
+Its parameters contain `sessionId`, a `usage` object, and `modelUsage`, keyed
+by model name. The notification represents the usage delta for one provider
 response, not a running total. The normalized usage object may contain:
 
 - `inputTokens`, `outputTokens`, `cacheReadInputTokens`, and
@@ -65,11 +65,12 @@ response, not a running total. The normalized usage object may contain:
   output rates. Pricing is configured in USD per million tokens, with optional
   cache-read and cache-write rates.
 
-Automatic context compaction is advertised as `_meta.lody.compaction = {
-"version": 1 }`. Each compaction is represented by standard ACP
-`tool_call`/`tool_call_update` session updates. The updates use a stable tool
-call ID and carry `_meta.lody.activity` with the activity kind, token counts,
-duration, and any failure reason; no private ACP update type is required.
+Automatic context compaction is advertised as
+`_meta.lody.compaction = { "version": 1 }`. Each compaction is represented by
+standard ACP `tool_call`/`tool_call_update` session updates. The updates use a
+stable tool call ID and carry `_meta.lody.activity` with the activity kind,
+token counts, duration, and any failure reason; no private ACP update type is
+required.
 
 VT Code does not advertise `_meta.lody.rateLimits` unless it has trustworthy
 quota state. A Baseten HTTP 429 is not treated as a quota window: the response

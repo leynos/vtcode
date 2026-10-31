@@ -64,15 +64,14 @@ usage data.
 
 `reasoningOutputTokens`, `contextWindow`, and `costUSD` are optional. The
 visible `outputTokens` value excludes reasoning tokens when the provider
-reports them; Baseten's nested
-`completion_tokens_details.reasoning_tokens` field is preserved during
-normalization. `costUSD` is emitted only when explicitly configured custom
-provider pricing supplies both input and output rates (USD per million
-tokens). Cache pricing is optional.
+reports them; Baseten's nested `completion_tokens_details.reasoning_tokens`
+field is preserved during normalization. `costUSD` is emitted only when
+explicitly configured custom provider pricing supplies both input and output
+rates (USD per million tokens). Cache pricing is optional.
 
-Automatic context compaction is advertised as `_meta.lody.compaction` version
-1 and is emitted through standard `tool_call` and `tool_call_update` updates.
-The updates carry `_meta.lody.activity` for token counts, duration, and failure
+Automatic context compaction is advertised as `_meta.lody.compaction` version 1
+and is emitted through standard `tool_call` and `tool_call_update` updates. The
+updates carry `_meta.lody.activity` for token counts, duration, and failure
 details. VT Code does not advertise `_meta.lody.rateLimits` without trustworthy
 quota state; HTTP 429 and `Retry-After` are instead reported in warning notices
 and provider telemetry.
