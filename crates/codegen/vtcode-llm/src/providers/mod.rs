@@ -1,3 +1,4 @@
+//! Declares provider adapters and shared helpers used to build LLM backends.
 #![expect(
     unused_results,
     reason = "Provider adapters intentionally discard map replacement, stream-drain, builder, and background-task results after applying wire state."
@@ -59,7 +60,9 @@ pub use reasoning::{ReasoningBuffer, ReasoningSegment, extract_reasoning_trace, 
 pub use anthropic::AnthropicProvider;
 #[cfg(feature = "copilot")]
 pub use copilot::CopilotProvider;
-pub use custom_provider::CustomProviderBackendRouter;
+pub use custom_provider::{
+    CustomProviderAdmissionMetrics, CustomProviderBackendRouter, custom_provider_admission_metrics,
+};
 pub use deepseek::DeepSeekProvider;
 pub use evolink::EvolinkProvider;
 pub use gemini::GeminiProvider;

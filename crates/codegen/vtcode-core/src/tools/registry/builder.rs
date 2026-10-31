@@ -141,7 +141,14 @@ impl ToolRegistry {
         } = workspace_config;
         let edited_file_monitor = Arc::new(crate::tools::edited_file_monitor::EditedFileMonitor::new());
         let inventory = ToolInventory::new(workspace_root.clone(), Arc::clone(&edited_file_monitor));
-        let metrics = Arc::new(crate::metrics::MetricsCollector::new());
+        // Composition boundary: install the concrete provider admission source
+        // explicitly so the core metrics module stays free of provider
+        // sampling. This is the construction path behind every `ToolRegistry`
+        // variant, so registry-owned collectors sample the live process-wide
+        // counters rather than a substitute.
+        let metrics = Arc::new(crate::metrics::MetricsCollector::with_admission_metrics_source(Arc::new(
+            crate::llm::admission_metrics::ProcessProviderAdmissionMetricsSource::new(),
+        )));
         let planning_workflow_state = PlanningWorkflowState::new(workspace_root.clone()).with_metrics(metrics.clone());
 
         register_builtin_packs(&inventory, &planning_workflow_state, &tool_config).await;
@@ -298,5 +305,36 @@ tool_output_threshold = "oops"
         let _registry = ToolRegistry::new_for_schema(temp.path().to_path_buf()).await;
 
         assert!(!temp.path().join(".vtcode").exists());
+    }
+
+    /// Production composition must install the live provider admission source,
+    /// not an inert one. The registry is the single construction path for every
+    /// production collector, so its admission sample must track the real
+    /// process-wide provider counters.
+    #[tokio::test]
+    async fn registry_metrics_sample_the_live_provider_admission_counters() {
+        let temp = tempdir().expect("workspace");
+        let registry = ToolRegistry::new(temp.path().to_path_buf()).await;
+        let collector = registry.metrics_collector();
+
+        let expected = vtcode_llm::providers::custom_provider_admission_metrics();
+        let exported = collector.get_provider_request_metrics();
+
+        assert_eq!(
+            exported.custom_provider_queue_depth, expected.queue_depth,
+            "the registry collector must sample the live provider queue depth"
+        );
+        assert_eq!(
+            exported.custom_provider_in_flight, expected.in_flight,
+            "the registry collector must sample the live provider in-flight count"
+        );
+        assert_eq!(exported.custom_provider_queue_waits, expected.queue_waits);
+        assert_eq!(exported.custom_provider_queue_wait_ms, expected.queue_wait_ms);
+        assert_eq!(exported.custom_provider_queue_timeouts, expected.queue_timeouts);
+
+        // A collector built through `new()` must agree with the registry's, which
+        // proves neither path substitutes a permanently zero snapshot.
+        let direct = crate::metrics::MetricsCollector::new().get_provider_request_metrics();
+        assert_eq!(direct.custom_provider_queue_waits, exported.custom_provider_queue_waits);
     }
 }

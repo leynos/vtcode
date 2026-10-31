@@ -59,6 +59,7 @@ hotpath = { workspace = true, optional = true }
 assert_fs = { workspace = true }
 rstest = { workspace = true }
 serial_test = { workspace = true }
+proptest = "1.11"
 tempfile = { workspace = true }
 wiremock = "0.6.5"
 

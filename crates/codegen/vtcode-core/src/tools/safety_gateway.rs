@@ -144,9 +144,9 @@ pub struct SafetyCheckResult {
 /// Configuration for the safety gateway
 #[derive(Debug, Clone)]
 pub struct SafetyGatewayConfig {
-    /// Maximum tool calls per turn
+    /// Maximum tool calls per turn. Set to `0` to disable the cap.
     pub max_per_turn: usize,
-    /// Maximum tool calls per session
+    /// Maximum tool calls per session. Set to `0` to disable the cap.
     pub max_per_session: usize,
     /// Rate limit: calls per second
     pub rate_limit_per_second: usize,
@@ -463,6 +463,9 @@ impl SafetyGateway {
     /// Increase session limit dynamically
     pub fn increase_session_limit(&self, increment: usize) {
         let mut config = self.config.write();
+        if config.max_per_session == 0 {
+            return;
+        }
         let new_max = config.max_per_session.saturating_add(increment);
         config.max_per_session = new_max;
         tracing::info!("Session tool limit increased to {}", new_max);
@@ -705,35 +708,9 @@ impl SafetyGateway {
         let config = self.config.read();
         self.prune_rate_windows(state, now);
 
-        if config.enforce_rate_limits {
-            if state.calls_per_second.len() >= config.rate_limit_per_second {
-                return Err(SafetyError::RateLimitExceeded {
-                    current: state.calls_per_second.len(),
-                    max: config.rate_limit_per_second,
-                    window: "1s",
-                });
-            }
-
-            if let Some(limit) = config.rate_limit_per_minute
-                && state.calls_per_minute.len() >= limit
-            {
-                return Err(SafetyError::RateLimitExceeded {
-                    current: state.calls_per_minute.len(),
-                    max: limit,
-                    window: "60s",
-                });
-            }
-        }
-
-        if state.current_turn_count >= config.max_per_turn {
-            return Err(SafetyError::TurnLimitReached { max: config.max_per_turn });
-        }
-
-        if state.session_count >= config.max_per_session {
-            return Err(SafetyError::SessionLimitReached { max: config.max_per_session });
-        }
-
-        Ok(())
+        rate_limit_violation(&config, state)
+            .or_else(|| tool_budget_violation(&config, state))
+            .map_or(Ok(()), Err)
     }
 
     fn record_execution_locked(&self, state: &mut RateLimiterState, now: Instant) {
@@ -943,6 +920,34 @@ impl SafetyGateway {
     }
 }
 
+fn rate_limit_violation(config: &SafetyGatewayConfig, state: &RateLimiterState) -> Option<SafetyError> {
+    if !config.enforce_rate_limits {
+        return None;
+    }
+
+    rate_window_violation(state.calls_per_second.len(), config.rate_limit_per_second, "1s").or_else(|| {
+        config
+            .rate_limit_per_minute
+            .and_then(|limit| rate_window_violation(state.calls_per_minute.len(), limit, "60s"))
+    })
+}
+
+fn rate_window_violation(current: usize, max: usize, window: &'static str) -> Option<SafetyError> {
+    (current >= max).then_some(SafetyError::RateLimitExceeded { current, max, window })
+}
+
+fn tool_budget_violation(config: &SafetyGatewayConfig, state: &RateLimiterState) -> Option<SafetyError> {
+    if config.max_per_turn > 0 && state.current_turn_count >= config.max_per_turn {
+        return Some(SafetyError::TurnLimitReached { max: config.max_per_turn });
+    }
+
+    if config.max_per_session > 0 && state.session_count >= config.max_per_session {
+        return Some(SafetyError::SessionLimitReached { max: config.max_per_session });
+    }
+
+    None
+}
+
 impl Default for SafetyGateway {
     fn default() -> Self {
         Self::new()
@@ -1073,6 +1078,70 @@ mod tests {
         assert!(third.decision.is_denied());
         assert!(third.retry_after.is_some());
         assert!(matches!(third.violation, Some(SafetyError::RateLimitExceeded { .. })));
+    }
+
+    #[tokio::test]
+    async fn zero_turn_and_session_limits_allow_repeated_calls() {
+        let config = SafetyGatewayConfig {
+            max_per_turn: 0,
+            max_per_session: 0,
+            enforce_rate_limits: false,
+            ..Default::default()
+        };
+        let gateway = SafetyGateway::with_config(config);
+        let ctx = make_ctx();
+
+        for _ in 0..150 {
+            let result = gateway.check_and_record(&ctx, "read_file", &serde_json::json!({})).await;
+            assert!(result.decision.is_allowed());
+        }
+    }
+
+    #[tokio::test]
+    async fn zero_disables_only_the_selected_tool_limit() {
+        let ctx = make_ctx();
+        let turn_limited = SafetyGateway::with_config(SafetyGatewayConfig {
+            max_per_turn: 1,
+            max_per_session: 0,
+            enforce_rate_limits: false,
+            ..Default::default()
+        });
+        assert!(
+            turn_limited
+                .check_and_record(&ctx, "read_file", &serde_json::json!({}))
+                .await
+                .decision
+                .is_allowed()
+        );
+        assert!(
+            turn_limited
+                .check_and_record(&ctx, "read_file", &serde_json::json!({}))
+                .await
+                .decision
+                .is_denied()
+        );
+
+        let session_limited = SafetyGateway::with_config(SafetyGatewayConfig {
+            max_per_turn: 0,
+            max_per_session: 1,
+            enforce_rate_limits: false,
+            ..Default::default()
+        });
+        assert!(
+            session_limited
+                .check_and_record(&ctx, "read_file", &serde_json::json!({}))
+                .await
+                .decision
+                .is_allowed()
+        );
+        session_limited.start_turn();
+        assert!(
+            session_limited
+                .check_and_record(&ctx, "read_file", &serde_json::json!({}))
+                .await
+                .decision
+                .is_denied()
+        );
     }
 
     #[tokio::test]
@@ -1273,5 +1342,24 @@ mod tests {
 
         let third = gateway.check_and_record(&ctx, "read_file", &serde_json::json!({})).await;
         assert!(third.decision.is_allowed());
+    }
+
+    #[tokio::test]
+    async fn increasing_zero_session_limit_preserves_unlimited_mode() {
+        let gateway = SafetyGateway::with_config(SafetyGatewayConfig {
+            max_per_turn: 0,
+            max_per_session: 0,
+            enforce_rate_limits: false,
+            ..Default::default()
+        });
+        gateway.increase_session_limit(1);
+
+        assert_eq!(gateway.max_per_session(), 0);
+
+        let ctx = make_ctx();
+        for _ in 0..3 {
+            let result = gateway.check_and_record(&ctx, "read_file", &serde_json::json!({})).await;
+            assert!(result.decision.is_allowed());
+        }
     }
 }

@@ -1,3 +1,4 @@
+//! Defines subagent run state, outcomes, and the data shared by controller components.
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -141,6 +142,39 @@ pub struct BackgroundSubprocessSnapshot {
     pub preview: String,
 }
 
+/// Receives domain status snapshots when a delegated child or managed
+/// background process changes state.
+///
+/// Adapters implement this port to project status into their own delivery
+/// protocol. The snapshots remain domain data; this trait does not prescribe
+/// transport, serialization, or buffering.
+pub trait SubagentProgressObserver: Send + Sync {
+    /// Receives an updated delegated-child status snapshot.
+    fn subagent_status_changed(&self, entry: SubagentStatusEntry);
+
+    /// Receives an updated managed-background-process status snapshot.
+    fn background_status_changed(&self, entry: BackgroundSubprocessEntry);
+}
+
+/// Session-specific parent data for one model tool-execution task.
+///
+/// ACP sessions can share a subagent controller, so this snapshot must travel
+/// with the invocation rather than being stored as mutable controller state.
+#[derive(Clone)]
+pub struct SubagentInvocationContext {
+    pub(crate) parent_session_id: String,
+    pub(crate) parent_messages: Vec<Message>,
+    pub(crate) current_input: String,
+}
+
+impl SubagentInvocationContext {
+    /// Creates an invocation context captured from one parent session turn.
+    #[must_use]
+    pub fn new(parent_session_id: String, parent_messages: Vec<Message>, current_input: String) -> Self {
+        Self { parent_session_id, parent_messages, current_input }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SubagentThreadSnapshot {
     pub id: String,
@@ -276,6 +310,10 @@ pub struct PersistedBackgroundRecord {
     source: String,
     color: Option<String>,
     session_id: String,
+    /// ACP/terminal parent that owns this long-lived task. Older state files
+    /// predate owner tracking and deserialize to an empty owner.
+    #[serde(default)]
+    parent_session_id: String,
     exec_session_id: String,
     desired_enabled: bool,
     status: BackgroundSubprocessStatus,
@@ -310,6 +348,8 @@ pub struct BackgroundRecord {
     pub(crate) source: String,
     pub(crate) color: Option<String>,
     pub(crate) session_id: String,
+    #[serde(default)]
+    pub(crate) parent_session_id: String,
     pub(crate) exec_session_id: String,
     pub(crate) desired_enabled: bool,
     pub(crate) status: BackgroundSubprocessStatus,
@@ -467,6 +507,7 @@ impl BackgroundRecord {
             source: self.source,
             color: self.color,
             session_id: self.session_id,
+            parent_session_id: self.parent_session_id,
             exec_session_id: self.exec_session_id,
             desired_enabled: self.desired_enabled,
             status: self.status,
@@ -496,6 +537,7 @@ impl BackgroundRecord {
             source: record.source,
             color: record.color,
             session_id: record.session_id,
+            parent_session_id: record.parent_session_id,
             exec_session_id: record.exec_session_id,
             desired_enabled: record.desired_enabled,
             status: record.status,

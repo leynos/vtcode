@@ -165,6 +165,7 @@
 //! with provider-specific implementations.
 
 /// Provider capability declarations and feature detection.
+pub(crate) mod admission_metrics;
 pub mod capabilities;
 /// Context-Generic Provider (CGP) wiring for the LLM factory.
 pub mod cgp;

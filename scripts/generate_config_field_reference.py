@@ -55,7 +55,7 @@ def load_schema_from_cargo() -> dict[str, Any]:
     result = subprocess.run(
         CARGO_SCHEMA_CMD,
         cwd=REPO_ROOT,
-        env={**os.environ, "RUSTC_WRAPPER": ""},
+        env=os.environ.copy(),
         capture_output=True,
         text=True,
         check=False,
@@ -353,6 +353,50 @@ def collect_fields(root_schema: dict[str, Any]) -> list[FieldEntry]:
     return entries
 
 
+def apply_reference_overrides(entries: list[FieldEntry]) -> None:
+    """Apply the ACP audit reference descriptions and default to schema fields.
+
+    This replaces the descriptions for ``acp.audit.enabled``,
+    ``acp.audit.max_files``, ``acp.audit.max_size_bytes``, and
+    ``acp.audit.path``. It also sets the documented default for
+    ``acp.audit.path``.
+
+    Every configured override must match a schema field so schema changes cannot
+    silently leave stale reference policy behind.
+
+    Parameters
+    ----------
+    entries : list[FieldEntry]
+        Collected configuration fields that will be updated in place.
+
+    Raises
+    ------
+    RuntimeError
+        If any configured override does not match a collected schema field.
+    """
+    descriptions = {
+        "acp.audit.enabled": "Persist ACP tool invocation metadata and hashes as JSONL audit entries",
+        "acp.audit.max_files": "Maximum number of ACP audit files to retain",
+        "acp.audit.max_size_bytes": "Maximum active ACP audit file size before rotation",
+        "acp.audit.path": (
+            "JSONL path for the opt-in ACP tool audit. The default resolves "
+            'through `VtCodePaths::state_path("audit/tools.jsonl")`.'
+        ),
+    }
+    matched: set[str] = set()
+    for entry in entries:
+        if entry.path in descriptions:
+            entry.description = descriptions[entry.path]
+            matched.add(entry.path)
+        if entry.path == "acp.audit.path":
+            entry.default = "<state>/audit/tools.jsonl"
+
+    unmatched = descriptions.keys() - matched
+    if unmatched:
+        paths = ", ".join(sorted(unmatched))
+        raise RuntimeError(f"Configuration reference overrides do not match schema fields: {paths}")
+
+
 def escape_cell(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", " ").strip()
 
@@ -394,6 +438,7 @@ def main() -> int:
     try:
         schema = load_schema_from_cargo()
         entries = collect_fields(schema)
+        apply_reference_overrides(entries)
         markdown = render_markdown(entries)
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)

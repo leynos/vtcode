@@ -163,7 +163,7 @@ fn extract_zip_safely(zip_bytes: &[u8], dest: &Path) -> Result<()> {
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).with_context(|| format!("reading zip entry {i}"))?;
-        let raw_name = file.name().to_string();
+        let raw_name = file.name().context("Failed to read zip entry name")?.into_owned();
 
         if raw_name.contains("..") {
             bail!("Path traversal detected in zip entry: {raw_name}");

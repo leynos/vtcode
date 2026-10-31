@@ -1,3 +1,4 @@
+//! Groups the configuration types that describe the agent and its runtime capabilities.
 pub mod advisor;
 pub mod agent;
 pub mod auth;
@@ -26,7 +27,7 @@ pub use automation::{AutomationConfig, FullAutoConfig, ScheduledTasksConfig};
 pub use commands::CommandsConfig;
 pub use custom_provider::{
     CustomProviderApiFormat, CustomProviderCommandAuthConfig, CustomProviderConfig, CustomProviderProfileConfig,
-    ResolvedCustomProviderProfile,
+    CustomProviderRequestPolicyConfig, ResolvedCustomProviderProfile,
 };
 pub use dotfile_protection::DotfileProtectionConfig;
 pub use model::ModelConfig;

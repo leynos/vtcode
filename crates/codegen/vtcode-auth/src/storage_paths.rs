@@ -1,3 +1,4 @@
+//! Resolves canonical and compatibility paths used to store authentication credentials and sessions.
 use anyhow::{Context, Result, anyhow};
 use std::fs;
 use std::io::{Read, Write};

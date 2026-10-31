@@ -1,3 +1,4 @@
+//! Tests OpenAI provider request construction, authentication, streaming, and error handling.
 use super::super::CustomProviderAuthHandle;
 use super::super::backend_setup::{
     CHATGPT_CODEX_BASE, ChatGptSubscriptionAuthSource, OpenAIBackendKind, OpenAIBackendRefreshBehaviour,
@@ -18,9 +19,10 @@ use vtcode_config::auth::{AuthCredentialsStoreMode, OpenAIChatGptAuthHandle, Ope
 use vtcode_config::constants::urls;
 use vtcode_config::core::CustomProviderCommandAuthConfig;
 use vtcode_config::core::{
-    CustomProviderApiFormat, OpenAIHostedShellConfig, OpenAIHostedShellDomainSecret, OpenAIHostedShellEnvironment,
-    OpenAIHostedShellNetworkPolicy, OpenAIHostedShellNetworkPolicyType, OpenAIHostedSkill, OpenAIHostedSkillVersion,
-    OpenAIServiceTier, PromptCacheRetention,
+    CustomProviderApiFormat, CustomProviderConfig, CustomProviderProfileConfig, ModelConfig, OpenAIHostedShellConfig,
+    OpenAIHostedShellDomainSecret, OpenAIHostedShellEnvironment, OpenAIHostedShellNetworkPolicy,
+    OpenAIHostedShellNetworkPolicyType, OpenAIHostedSkill, OpenAIHostedSkillVersion, OpenAIServiceTier,
+    PromptCacheRetention,
 };
 use vtcode_config::{OpenAIAuthConfig, auth::OpenAIChatGptSessionRefresher};
 use wiremock::matchers::{header, method, path};
@@ -175,6 +177,45 @@ fn test_provider(base_url: &str, model: &str) -> OpenAIProvider {
         base_url.to_string(),
         TimeoutsConfig::default(),
     )
+}
+
+fn custom_openai_provider(
+    model: &str,
+    model_behaviour: Option<ModelConfig>,
+    supports_reasoning: Option<bool>,
+) -> OpenAIProvider {
+    let mut config = CustomProviderConfig {
+        name: "reasoning-test".to_string(),
+        display_name: "Reasoning Test".to_string(),
+        base_url: "https://llm.example/v1".to_string(),
+        model: model.to_string(),
+        models: vec![model.to_string()],
+        ..Default::default()
+    };
+    if let Some(supports_reasoning) = supports_reasoning {
+        config.profiles.insert(
+            model.to_string(),
+            CustomProviderProfileConfig {
+                supports_reasoning: Some(supports_reasoning),
+                ..Default::default()
+            },
+        );
+    }
+
+    OpenAIProvider::from_custom_config(
+        config.name.clone(),
+        config.display_name.clone(),
+        Some("test-key".to_string()),
+        Some(model.to_string()),
+        Some(config.base_url.clone()),
+        None,
+        None,
+        None,
+        model_behaviour,
+        None,
+        Some(vec![model.to_string()]),
+    )
+    .with_custom_provider_config(config)
 }
 
 fn native_openai_mock_base_url(server: &MockServer) -> String {
@@ -1440,6 +1481,123 @@ fn chat_payload_serializes_deferred_function_for_tool_search() {
 }
 
 // ─── Chat Completions Payload Tests ──────────────────────────────────────────
+
+#[test]
+fn custom_provider_omits_reasoning_request_field_without_explicit_capability() {
+    let model = models::openai::GPT_5_CODEX;
+    let provider = custom_openai_provider(model, None, None);
+    let payload = provider
+        .convert_to_openai_format(&sample_request(model))
+        .expect("conversion should succeed");
+
+    assert_absent(&payload, "include_reasoning");
+}
+
+#[test]
+fn custom_provider_includes_reasoning_request_field_when_profile_enables_it() {
+    let model = models::openai::GPT_5_CODEX;
+    let provider = custom_openai_provider(model, None, Some(true));
+    let payload = provider
+        .convert_to_openai_format(&sample_request(model))
+        .expect("conversion should succeed");
+
+    assert_eq!(payload.get("include_reasoning"), Some(&Value::Bool(true)));
+}
+
+#[test]
+fn custom_provider_retains_reasoning_for_non_openai_model_behaviour_capability() {
+    let model = "deepseek-v4-flash";
+    let mut model_behaviour = ModelConfig::default();
+    model_behaviour.model_supports_reasoning = Some(true);
+    let provider = custom_openai_provider(model, Some(model_behaviour), None);
+    let response = provider::LLMResponse {
+        reasoning: Some("private reasoning".to_string()),
+        reasoning_details: Some(vec!["private trace".to_string()]),
+        ..Default::default()
+    };
+
+    let normalized = provider.normalize_reasoning_output(model, response);
+
+    assert_eq!(normalized.reasoning.as_deref(), Some("private reasoning"));
+    assert_eq!(normalized.reasoning_details.as_deref(), Some(&["private trace".to_string()][..]));
+}
+
+#[test]
+fn reasoning_output_survives_for_o_series_family_variants() {
+    let provider = OpenAIProvider::new("test-key".to_string());
+    for model in ["o3-mini", "o3-pro", "o3-2025-04-16", "o4-mini-2025-04-16"] {
+        let response = provider::LLMResponse {
+            reasoning: Some("private reasoning".to_string()),
+            reasoning_details: Some(vec!["private trace".to_string()]),
+            ..Default::default()
+        };
+
+        let normalized = provider.normalize_reasoning_output(model, response);
+
+        assert_eq!(normalized.reasoning.as_deref(), Some("private reasoning"), "model {model}");
+        assert_eq!(normalized.reasoning_details.as_deref(), Some(&["private trace".to_string()][..]), "model {model}");
+    }
+}
+
+#[test]
+fn custom_provider_effort_pin_implies_support_unless_explicitly_disabled() {
+    let model = "reasoning-pinned-model";
+    let mut config = CustomProviderConfig {
+        name: "pinned".to_string(),
+        display_name: "Pinned".to_string(),
+        base_url: "https://llm.example/v1".to_string(),
+        model: model.to_string(),
+        models: vec![model.to_string()],
+        ..Default::default()
+    };
+    config.profiles.insert(
+        model.to_string(),
+        CustomProviderProfileConfig {
+            reasoning_effort: Some(vtcode_config::types::ReasoningEffortLevel::Medium),
+            ..Default::default()
+        },
+    );
+    let provider = OpenAIProvider::from_custom_config(
+        config.name.clone(),
+        config.display_name.clone(),
+        Some("test-key".to_string()),
+        Some(model.to_string()),
+        Some(config.base_url.clone()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(vec![model.to_string()]),
+    )
+    .with_custom_provider_config(config);
+
+    assert!(provider.supports_reasoning_effort(model));
+
+    let mut disabled = provider.custom_provider_config.as_ref().expect("config").as_ref().clone();
+    disabled.profiles.get_mut(model).expect("profile").supports_reasoning_effort = Some(false);
+    let provider = provider.with_custom_provider_config(disabled);
+
+    assert!(!provider.supports_reasoning_effort(model));
+}
+
+#[test]
+fn explicit_custom_provider_reasoning_false_overrides_model_behaviour() {
+    let model = "deepseek-v4-flash";
+    let mut model_behaviour = ModelConfig::default();
+    model_behaviour.model_supports_reasoning = Some(true);
+    let provider = custom_openai_provider(model, Some(model_behaviour), Some(false));
+    let response = provider::LLMResponse {
+        reasoning: Some("private reasoning".to_string()),
+        reasoning_details: Some(vec!["private trace".to_string()]),
+        ..Default::default()
+    };
+
+    let normalized = provider.normalize_reasoning_output(model, response);
+
+    assert_eq!(normalized.reasoning, None);
+    assert_eq!(normalized.reasoning_details, None);
+}
 
 #[test]
 fn chat_completions_payload_uses_function_wrapper() {

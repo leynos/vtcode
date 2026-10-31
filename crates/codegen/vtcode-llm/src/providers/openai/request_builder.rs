@@ -81,6 +81,8 @@ pub(crate) struct ChatRequestContext<'a> {
     pub supports_tools: bool,
     pub supports_parallel_tool_config: bool,
     pub supports_temperature: bool,
+    pub include_reasoning: bool,
+    pub supports_reasoning_effort: bool,
     pub prompt_cache_key: Option<&'a str>,
     pub default_service_tier: Option<&'a str>,
 }
@@ -286,6 +288,37 @@ fn allows_sampling_parameters(model: &str, reasoning_effort: Option<ReasoningEff
     }
 }
 
+fn chat_reasoning_effort_for_wire(
+    supports_reasoning_effort: bool,
+    effective_effort: Option<ReasoningEffortLevel>,
+) -> Option<ReasoningEffortLevel> {
+    if !supports_reasoning_effort {
+        return None;
+    }
+
+    effective_effort.filter(|effort| !matches!(effort, ReasoningEffortLevel::None | ReasoningEffortLevel::Unknown))
+}
+
+fn serialize_chat_reasoning_controls(
+    openai_request: &mut Value,
+    request: &provider::LLMRequest,
+    ctx: &ChatRequestContext<'_>,
+) -> Option<ReasoningEffortLevel> {
+    let effective_effort = request
+        .reasoning_effort
+        .or_else(|| default_reasoning_effort_for_model(&request.model));
+
+    if ctx.include_reasoning {
+        openai_request["include_reasoning"] = Value::Bool(true);
+    }
+
+    if let Some(effort) = chat_reasoning_effort_for_wire(ctx.supports_reasoning_effort, effective_effort) {
+        openai_request["reasoning_effort"] = json!(effort.as_str());
+    }
+
+    effective_effort
+}
+
 pub(crate) fn build_chat_request(
     request: &provider::LLMRequest,
     ctx: &ChatRequestContext<'_>,
@@ -374,9 +407,7 @@ pub(crate) fn build_chat_request(
         "messages": messages,
         "stream": request.stream
     });
-    let effective_reasoning_effort = request
-        .reasoning_effort
-        .or_else(|| default_reasoning_effort_for_model(&request.model));
+    let effective_reasoning_effort = serialize_chat_reasoning_controls(&mut openai_request, request, ctx);
 
     let max_tokens_field = if !ctx.is_native_openai {
         "max_tokens"
@@ -784,6 +815,7 @@ mod tests {
     use crate::provider;
     use serde_json::{Value, json};
     use vtcode_config::constants::models;
+    use vtcode_config::types::ReasoningEffortLevel;
 
     fn base_context<'a>(default_responses_include: Option<&'a [String]>) -> ResponsesRequestContext<'a> {
         ResponsesRequestContext {
@@ -831,6 +863,8 @@ mod tests {
             supports_tools: false,
             supports_parallel_tool_config: false,
             supports_temperature: true,
+            include_reasoning: false,
+            supports_reasoning_effort: false,
             prompt_cache_key: None,
             default_service_tier: None,
         }
@@ -855,6 +889,34 @@ mod tests {
         );
         assert_eq!(payload.get("presence_penalty").and_then(Value::as_f64), Some(0.1));
         assert_eq!(payload.get("frequency_penalty").and_then(Value::as_f64), Some(-0.5));
+    }
+
+    #[test]
+    fn custom_chat_request_serialises_reasoning_controls() {
+        let request = provider::LLMRequest {
+            model: "DeepSeek-V4-Flash-0731".to_owned(),
+            messages: vec![provider::Message::user("Hello".to_owned())].into(),
+            reasoning_effort: Some(ReasoningEffortLevel::High),
+            ..Default::default()
+        };
+        let payload = build_chat_request(
+            &request,
+            &ChatRequestContext {
+                model: &request.model,
+                is_native_openai: false,
+                supports_tools: false,
+                supports_parallel_tool_config: false,
+                supports_temperature: true,
+                include_reasoning: true,
+                supports_reasoning_effort: true,
+                prompt_cache_key: None,
+                default_service_tier: None,
+            },
+        )
+        .expect("chat request should build");
+
+        assert_eq!(payload["include_reasoning"], true);
+        assert_eq!(payload["reasoning_effort"], "high");
     }
 
     #[test]

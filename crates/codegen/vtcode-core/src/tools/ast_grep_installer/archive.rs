@@ -1,3 +1,15 @@
+//! Extraction of downloaded `ast-grep` release archives.
+//!
+//! Supports both `.zip` and `.tar.gz` assets. Each archive is unpacked into a
+//! temporary directory, the extracted binary is validated and renamed to the
+//! canonical `ast-grep` name, then installed under `InstallPaths::bin_dir`.
+//! Archive entry names are untrusted input: traversal and symlink escapes are
+//! rejected before anything is written outside the staging directory.
+//!
+//! `super` orchestrates the download and chooses the asset; this module owns
+//! only the byte-to-binary step and reports failures through `anyhow` so the
+//! installer can decide whether to fall back.
+
 use std::fs::{self, File};
 use std::io::{self, Cursor};
 use std::path::{Path, PathBuf};
@@ -77,7 +89,10 @@ fn extract_archive(archive_name: &str, archive_bytes: &[u8], destination: &Path)
             let mut file = archive
                 .by_index(index)
                 .with_context(|| format!("Failed to read {archive_name} entry {index}"))?;
-            let outpath = destination.join(file.mangled_name());
+            let outpath = destination.join(
+                file.mangled_name()
+                    .with_context(|| format!("Failed to validate {archive_name} entry path {index}"))?,
+            );
 
             if file.is_dir() {
                 fs::create_dir_all(&outpath).with_context(|| format!("Failed to create {}", outpath.display()))?;
