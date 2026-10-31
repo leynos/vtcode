@@ -17,6 +17,22 @@ const RM_SHORT_OPTIONS: &[char] = &['f', 'r', 'R', 'd', 'v', 'i', 'I'];
 /// Long `rm` options accepted by the recognizer.
 const RM_LONG_OPTIONS: &[&str] = &["--force", "--recursive", "--dir", "--verbose", "--interactive"];
 
+/// Reason reported when `rm` is chained, piped, redirected, or expanded.
+const UNSUPPORTED_SHAPE_REASON: &str = "only one static `rm` invocation with literal operands is supported; chaining, pipes, redirects, and shell expansion are not";
+
+/// Reason reported when a command without control syntax parses into several
+/// segments.
+const SPLIT_CHAINED_REASON: &str =
+    "only one static `rm` invocation with literal operands is supported; split chained commands and run `rm` directly";
+
+/// Reason reported when a command cannot be parsed at all.
+const UNPARSABLE_COMMAND_REASON: &str =
+    "the command could not be parsed as one static `rm` invocation with literal operands";
+
+/// Reason reported when the command representations of one call disagree.
+const MISMATCHED_REPRESENTATIONS_REASON: &str =
+    "the call supplies more than one command representation and they do not all describe the same `rm` invocation";
+
 /// The supported shape of a deletion invocation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeletionPlan {
@@ -90,8 +106,7 @@ pub fn classify_deletion_commands(commands: &[String]) -> DeletionCommandSet {
             DeletionRecognition::Supported(candidate) => match &plan {
                 Some(existing) if *existing != candidate => {
                     return DeletionCommandSet::Unsupported {
-                        reason: "the call supplies more than one command representation and they do not all describe the same `rm` invocation"
-                            .to_string(),
+                        reason: MISMATCHED_REPRESENTATIONS_REASON.to_string(),
                     };
                 }
                 Some(_) => {}
@@ -103,8 +118,7 @@ pub fn classify_deletion_commands(commands: &[String]) -> DeletionCommandSet {
     match plan {
         None => DeletionCommandSet::NotDeletion,
         Some(_) if saw_non_deletion => DeletionCommandSet::Unsupported {
-            reason: "the call supplies more than one command representation and they do not all describe the same `rm` invocation"
-                .to_string(),
+            reason: MISMATCHED_REPRESENTATIONS_REASON.to_string(),
         },
         Some(plan) => DeletionCommandSet::Supported(vec![plan]),
     }
@@ -125,52 +139,51 @@ pub fn recognize_deletion_command(command: &str) -> DeletionRecognition {
     // Dynamic syntax must fail closed before any parsing: the shell could
     // expand it into an `rm` invocation the parsed text never shows.
     if shell_parser::contains_dynamic_shell_syntax(command) {
-        return unsupported_if_rm(
-            command,
-            "only one static `rm` invocation with literal operands is supported; chaining, pipes, redirects, and shell expansion are not",
-        );
+        return unsupported_if_rm(command, UNSUPPORTED_SHAPE_REASON);
     }
 
-    // Control syntax is parsed first so `rm` used only as an argument, as in
-    // `rg rm src | head`, is not mistaken for a deletion. A parsed segment
-    // that really invokes `rm`, including `rm -f x > out`, stays unsupported.
     if shell_parser::contains_shell_control_syntax(command) {
-        return match shell_parser::parse_shell_commands_tree_sitter(command) {
-            Ok(commands) => classify_segments(
-                &commands,
-                "only one static `rm` invocation with literal operands is supported; chaining, pipes, redirects, and shell expansion are not",
-            ),
-            Err(_) => unsupported_if_rm(
-                command,
-                "only one static `rm` invocation with literal operands is supported; chaining, pipes, redirects, and shell expansion are not",
-            ),
+        return recognize_with_control_syntax(command);
+    }
+
+    recognize_plain_command(command)
+}
+
+/// Classify a command that contains shell control syntax.
+///
+/// Control syntax is parsed first so `rm` used only as an argument, as in
+/// `rg rm src | head`, is not mistaken for a deletion. A parsed segment that
+/// really invokes `rm`, including `rm -f x > out`, stays unsupported.
+fn recognize_with_control_syntax(command: &str) -> DeletionRecognition {
+    match shell_parser::parse_shell_commands_tree_sitter(command) {
+        Ok(commands) => classify_segments(&commands, UNSUPPORTED_SHAPE_REASON),
+        Err(_) => unsupported_if_rm(command, UNSUPPORTED_SHAPE_REASON),
+    }
+}
+
+/// Classify a command with no control or dynamic shell syntax.
+fn recognize_plain_command(command: &str) -> DeletionRecognition {
+    let commands = match shell_parser::parse_shell_commands_tree_sitter(command) {
+        Ok(commands) => commands,
+        Err(_) => return unsupported_if_rm(command, UNPARSABLE_COMMAND_REASON),
+    };
+
+    if commands.len() != 1 {
+        return classify_segments(&commands, SPLIT_CHAINED_REASON);
+    }
+
+    let parsed = commands.into_iter().next().unwrap_or_default();
+    // Tree-sitter's simple-command extraction drops leading `NAME=value`
+    // prefixes, so the raw text decides whether the invocation was
+    // environment-prefixed.
+    if starts_with_environment_assignment(command)
+        && parsed.first().is_some_and(|program| base_command_name(program) == "rm")
+    {
+        return DeletionRecognition::Unsupported {
+            reason: "environment-prefixed `rm` invocations are not supported; run `rm` directly".to_string(),
         };
     }
-
-    match shell_parser::parse_shell_commands_tree_sitter(command) {
-        Ok(commands) if commands.len() == 1 => {
-            let parsed = commands.into_iter().next().unwrap_or_default();
-            // Tree-sitter's simple-command extraction drops leading
-            // `NAME=value` prefixes, so the raw text decides whether the
-            // invocation was environment-prefixed.
-            if starts_with_environment_assignment(command)
-                && parsed.first().is_some_and(|program| base_command_name(program) == "rm")
-            {
-                return DeletionRecognition::Unsupported {
-                    reason: "environment-prefixed `rm` invocations are not supported; run `rm` directly".to_string(),
-                };
-            }
-            recognize_single_command(&parsed)
-        }
-        Ok(commands) => classify_segments(
-            &commands,
-            "only one static `rm` invocation with literal operands is supported; split chained commands and run `rm` directly",
-        ),
-        Err(_) => unsupported_if_rm(
-            command,
-            "the command could not be parsed as one static `rm` invocation with literal operands",
-        ),
-    }
+    recognize_single_command(&parsed)
 }
 
 /// Refuse parsed segments when any of them invokes `rm`.
