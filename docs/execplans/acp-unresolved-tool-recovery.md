@@ -57,7 +57,7 @@ from both lower layers.
 - Dependencies: stop if a new crate is required.
 - Iterations: stop if a focused red test remains unexplained after three
   implementation attempts.
-- Concurrency: stop if preventing the race requires serialising prompts across
+- Concurrency: stop if preventing the race requires serializing prompts across
   different ACP sessions rather than only within one session.
 - Ambiguity: stop if evidence shows that the client expects automatic replay;
   that would conflict with the explicit safety requirement.
@@ -106,7 +106,7 @@ from both lower layers.
 - [x] (2026-08-16) EP-M1: added red unit and 1,024-case property tests for
   missing-result repair, plus deterministic archive and official ACP duplex
   tests for no replay, real-result replacement, and prompt ordering.
-- [x] (2026-08-16) EP-M2: implemented ACP write-ahead terminalisation,
+- [x] (2026-08-16) EP-M2: implemented ACP write-ahead terminalization,
   idempotent legacy repair during archive attachment, and guard-first prompt
   admission. Focused unit, property, archive, and ACP wire tests pass.
 - [x] (2026-08-16) EP-M3: added typed missing exec-session errors and mapped
@@ -115,6 +115,14 @@ from both lower layers.
 - [x] (2026-08-16) EP-M4: updated user/developer documentation, passed the
   complete repository gate, installed the release binary, pushed the branch,
   and opened stacked draft PR #13 on PR #12.
+- [x] (2026-10-31) Review round 2 integration: the stack merge ref for this
+  PR is evaluated against the parent layer's merge ref, and appending to the
+  shared ACP verification fence/paragraph conflicted with the lower layer, so
+  the tool-recovery verification now lives inside its own section.
+- [x] (2026-10-31) Review round 2 produced six findings, all verified and
+  fixed: last-match tool-result replacement for reused ids, relocation
+  persistence, truncated-prefix acceptance, `write_stdin` post-write partial
+  state, the test-module split for the 400-line limit, and `-ize` spelling.
 
 ## Surprises & discoveries
 
@@ -163,6 +171,23 @@ from both lower layers.
   `/tmp/nextest-vtcode-acp-VTCode-fix-acp-unresolved-tool-recovery-3.out`.
   Impact: the race hypothesis remains inconclusive, so no unrelated trust-store
   change is included without a deterministic reproducer.
+
+- Observation: the stack merge ref for this PR is evaluated against the parent
+  layer's merge ref, and the shared ACP verification fence/paragraph is also
+  edited by the lower layer. Evidence: appending the tool-recovery verification
+  there conflicted with the parent layer. Impact: the tool-recovery
+  verification now lives inside its own section, so the stacked diff stays
+  mergeable without rewriting the lower layer's prose.
+
+- Observation: review round 2 produced six findings, all verified and fixed:
+  last-match tool-result replacement for reused ids, relocation persistence,
+  truncated-prefix acceptance, `write_stdin` post-write partial state, the
+  test-module split for the 400-line limit, and `-ize` spelling. Evidence:
+  focused unit, archive, and registry tests cover each behaviour change.
+  Impact: reused call ids no longer overwrite earlier terminal results, a
+  relocation-only repair is durable, compacted archives with a truncated
+  leading tool-result run resume, and a `write_stdin` session lost after the
+  input write reports partial state.
 
 ## Decision log
 
@@ -315,20 +340,23 @@ ACP-REC-6 -> EP-M3 -> typed exec-session and structured-error tests
 
 - Obligation: INV-TOOL-CLOSURE. For every accepted history, after staging or
   repairing, each assistant tool-call ID has exactly one contiguous Tool result
-  before the next non-Tool message. Histories with duplicate or otherwise
-  ambiguous terminal results are outside this invariant: they must be rejected
-  without rewriting the archive or replaying a call. Method: property tests
-  plus finite examples. Rationale: generated subsets and orderings cover more
-  partial histories than hand-written examples, while examples make provider
-  ordering legible. Domain: one to eight unique calls, arbitrary subsets of
-  completed results, unrelated preceding/following messages, and repeated
-  repair operations. Artefact: a new tool-recovery test module under
-  `crates/codegen/vtcode-acp/src/zed/agent/`. Evidence: focused
-  `cargo nextest run -p vtcode-acp -E 'test(tool_recovery)'`; red must expose
-  at least one unresolved ID before production code exists, and green must pass
-  with 1,000 or more generated cases. Non-vacuity: generators require at least
-  one call and separately force empty, partial, and full result subsets. A
-  negative-control helper that omits repair must fail the closure predicate.
+  before the next non-Tool message. A front-truncated prefix of Tool results is
+  accepted, not ambiguous: front trimming of a snapshot is the only way to
+  produce that shape, and providers strip orphan tool blocks at serialization.
+  Duplicate, mismatched, or orphan results inside the retained history remain
+  outside this invariant: they must be rejected without rewriting the archive
+  or replaying a call. Method: property tests plus finite examples. Rationale:
+  generated subsets and orderings cover more partial histories than
+  hand-written examples, while examples make provider ordering legible. Domain:
+  one to eight unique calls, arbitrary subsets of completed results, unrelated
+  preceding/following messages, and repeated repair operations. Artefact: a new
+  tool-recovery test module under `crates/codegen/vtcode-acp/src/zed/agent/`.
+  Evidence: focused `cargo nextest run -p vtcode-acp -E 'test(tool_recovery)'`;
+  red must expose at least one unresolved ID before production code exists, and
+  green must pass with 1,000 or more generated cases. Non-vacuity: generators
+  require at least one call and separately force empty, partial, and full
+  result subsets. A negative-control helper that omits repair must fail the
+  closure predicate.
 
 - Obligation: INV-REPAIR-IDEMPOTENCE. Applying legacy repair twice produces
   byte-equivalent message history and never replaces an existing real result.
