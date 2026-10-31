@@ -222,7 +222,10 @@ proptest! {
             ended_at: Utc::now(),
             total_messages: 1,
             distinct_tools: vec!["tool".repeat(payload_bytes / 8)],
-            transcript: vec!["transcript ".repeat(payload_bytes)],
+            transcript: vec![
+                "transcript ".repeat(payload_bytes),
+                "✓│•—".repeat(payload_bytes / 4 + 1),
+            ],
             messages: Vec::new(),
             progress: None,
             error_logs: Vec::new(),
@@ -243,6 +246,35 @@ proptest! {
             ),
         }
     }
+}
+
+#[test]
+fn snapshot_compaction_truncates_multibyte_text_on_char_boundaries() -> Result<()> {
+    let multibyte = "✓│•—".repeat(512);
+    let snapshot = SessionSnapshot {
+        metadata: SessionArchiveMetadata::new("Wörkspace", "/tmp/workspace", "mödel", "provider", "dark", "medium"),
+        started_at: Utc::now(),
+        ended_at: Utc::now(),
+        total_messages: 1,
+        distinct_tools: vec!["tööl".repeat(128)],
+        transcript: vec![multibyte.clone()],
+        messages: vec![SessionMessage::new(MessageRole::Assistant, multibyte)],
+        progress: None,
+        error_logs: Vec::new(),
+    };
+
+    match compact_snapshot_to_max_bytes(snapshot, 512) {
+        Ok(compacted) => {
+            let serialized = serde_json::to_vec(&compacted)?;
+            assert!(serialized.len() <= 512);
+        }
+        Err(error) => assert!(
+            error
+                .to_string()
+                .starts_with("session archive snapshot cannot fit the configured size limit after compaction:")
+        ),
+    }
+    Ok(())
 }
 
 #[test]

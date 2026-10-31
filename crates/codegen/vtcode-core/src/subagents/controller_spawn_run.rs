@@ -722,13 +722,24 @@ impl SubagentController {
 
     fn spawn_with_spec(&self, launch: PreparedSubagentSpawn) -> BoxFuture<'_, Result<SubagentStatusEntry>> {
         Box::pin(async move {
+            // Admit and validate before creating a worktree: every rejection
+            // that can happen here would otherwise leave an unreferenced
+            // checkout behind.
             self.ensure_spawn_allowed(&launch.spec)?;
-            let worktree_path = self.create_spawn_worktree(&launch.spec).await?;
             self.ensure_spawn_capacity().await?;
             let runtime = self.prepare_spawn_runtime(&launch)?;
+            let worktree_path = self.create_spawn_worktree(&launch.spec).await?;
+            let worktree_path_for_cleanup = worktree_path.clone();
             let child = self.prepare_queued_child(launch, worktree_path, runtime);
             let id = child.id.clone();
-            Box::pin(self.insert_queued_child(child)).await?;
+            if let Err(error) = Box::pin(self.insert_queued_child(child)).await {
+                // The record never became visible, so nothing owns the
+                // worktree; reclaim it rather than leaking the checkout.
+                if let Some(worktree_path) = worktree_path_for_cleanup.as_deref() {
+                    self.remove_unused_spawn_worktree(worktree_path).await;
+                }
+                return Err(error);
+            }
             self.launch_child(&id).await?;
             self.status_for(&id).await
         })
@@ -772,6 +783,36 @@ impl SubagentController {
             })?))
         } else {
             Ok(None)
+        }
+    }
+
+    /// Best-effort removal of a worktree whose child record was never registered.
+    ///
+    /// Cleanup failures are logged rather than propagated so they cannot mask
+    /// the registration error that caused the rollback.
+    async fn remove_unused_spawn_worktree(&self, worktree_path: &std::path::Path) {
+        let Some(name) = worktree_path.file_name().and_then(|name| name.to_str()).map(str::to_owned) else {
+            tracing::warn!(
+                path = %worktree_path.display(),
+                "Cannot reclaim subagent worktree with a non-UTF-8 name"
+            );
+            return;
+        };
+        let workspace_root = self.config.workspace_root.clone();
+        let removal =
+            tokio::task::spawn_blocking(move || crate::git::WorktreeManager::new(workspace_root).remove(&name)).await;
+        match removal {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => tracing::warn!(
+                path = %worktree_path.display(),
+                error = %error,
+                "Failed to reclaim subagent worktree after registration failed"
+            ),
+            Err(error) => tracing::warn!(
+                path = %worktree_path.display(),
+                error = %error,
+                "Subagent worktree cleanup task panicked"
+            ),
         }
     }
 

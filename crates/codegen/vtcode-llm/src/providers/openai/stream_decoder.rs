@@ -348,7 +348,7 @@ pub(crate) fn create_chat_stream(
             }
         }
 
-        termination.ensure_terminal_frame()?;
+        termination.ensure_terminal_frame(&provider_name)?;
 
         let response = aggregator.finalize();
         let response = strip_reasoning(retain_reasoning, response);
@@ -379,13 +379,13 @@ impl ChatStreamTermination {
         }
     }
 
-    fn ensure_terminal_frame(&self) -> Result<(), provider::LLMError> {
+    fn ensure_terminal_frame(&self, provider_name: &str) -> Result<(), provider::LLMError> {
         if self.terminal_frame_seen {
             return Ok(());
         }
 
         let formatted_error =
-            error_display::format_llm_error("OpenAI", "Streaming error: response ended before a terminal frame");
+            error_display::format_llm_error(provider_name, "Streaming error: response ended before a terminal frame");
         Err(provider::LLMError::Network { message: formatted_error, metadata: None })
     }
 }
@@ -400,7 +400,7 @@ mod chat_stream_termination_tests {
         let mut termination = ChatStreamTermination::default();
         termination.observe_done_frame();
 
-        assert!(termination.ensure_terminal_frame().is_ok());
+        assert!(termination.ensure_terminal_frame("OpenAI").is_ok());
     }
 
     #[test]
@@ -408,14 +408,17 @@ mod chat_stream_termination_tests {
         let mut termination = ChatStreamTermination::default();
 
         assert!(matches!(termination.observe_finish_reason("tool_calls"), provider::FinishReason::ToolCalls));
-        assert!(termination.ensure_terminal_frame().is_ok());
+        assert!(termination.ensure_terminal_frame("OpenAI").is_ok());
     }
 
     #[test]
     fn eof_without_terminal_signal_is_a_network_error() {
         let termination = ChatStreamTermination::default();
 
-        assert!(matches!(termination.ensure_terminal_frame(), Err(provider::LLMError::Network { .. })));
+        let Err(provider::LLMError::Network { message, .. }) = termination.ensure_terminal_frame("Acme") else {
+            panic!("an EOF without a terminal frame must be a network error");
+        };
+        assert!(message.contains("Acme"), "terminal-frame error must name the provider: {message}");
     }
 }
 

@@ -157,7 +157,9 @@ cargo nextest run --run-ignored ignored-only \
 
 The physics tests bind only to an ephemeral localhost port. Their fixtures are
 under `tests/fixtures/vidaimock/`; never put API keys, request bodies, or
-unsanitized provider captures there.
+unsanitized provider captures there. See
+[VidaiMock Arli scenarios](vidaimock-fixtures.md) for the scenario catalogue
+and probe instructions.
 
 ### Structural Rule Checks
 

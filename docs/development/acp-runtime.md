@@ -18,11 +18,11 @@ translation and session orchestration; reusable agent behaviour remains in
 - `vtcode-llm` owns provider interfaces and the custom-provider router. The
   router enforces the configured per-provider request limit once, so ACP and
   child-agent calls routed through the same configured provider share permits.
-  ACP's provider runtime supplies cancellation, retry, deadline and telemetry
+  ACP's provider runtime supplies cancellation, retry, deadline, and telemetry
   policy without taking a second permit.
 
 When changing a contract, keep translation at the adapter and preserve shared
-core/provider behavior for non-ACP callers. The crate-specific rules are in
+core/provider behaviour for non-ACP callers. The crate-specific rules are in
 [`vtcode-acp/AGENTS.md`](../../crates/codegen/vtcode-acp/AGENTS.md),
 [`vtcode-core/AGENTS.md`](../../crates/codegen/vtcode-core/AGENTS.md), and
 [`vtcode-llm/AGENTS.md`](../../crates/codegen/vtcode-llm/AGENTS.md).
@@ -145,7 +145,7 @@ Notification parameters have `sessionId`, `acpSessionId`, and `message` fields.
 snapshot. Terminal updates place status and details under `patch`; non-terminal
 updates place them at the message top level. A queued task or starting
 background process maps to `task_started`; active work maps to `task_progress`;
-completion, failure, closure, stop or error maps to `task_updated` with its
+completion, failure, closure, stop, or error maps to `task_updated` with its
 terminal status in the patch. This is a VT Code extension notification rather
 than a standard ACP session update.
 

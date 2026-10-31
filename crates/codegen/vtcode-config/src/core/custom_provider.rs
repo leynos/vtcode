@@ -402,11 +402,23 @@ impl Default for CustomProviderRequestPolicyConfig {
     }
 }
 
+/// Mirror of Tokio's `Semaphore::MAX_PERMITS`.
+///
+/// `vtcode-config` does not depend on Tokio, but the admission semaphore is
+/// constructed from this bound, so validating it here keeps an invalid setting
+/// a named configuration error instead of a panic at provider construction.
+const MAX_IN_FLIGHT_REQUESTS: usize = usize::MAX >> 3;
+
 impl CustomProviderRequestPolicyConfig {
     fn validate(&self, provider_name: &str) -> Result<(), String> {
         if self.max_in_flight_requests == Some(0) {
             return Err(format!(
                 "custom_providers[{provider_name}].request_policy: `max_in_flight_requests` must be greater than 0"
+            ));
+        }
+        if self.max_in_flight_requests.is_some_and(|limit| limit > MAX_IN_FLIGHT_REQUESTS) {
+            return Err(format!(
+                "custom_providers[{provider_name}].request_policy: `max_in_flight_requests` must not exceed {MAX_IN_FLIGHT_REQUESTS}"
             ));
         }
         if self.queue_timeout_seconds == 0 {
@@ -1409,6 +1421,9 @@ total_generation_timeout_seconds = 900
         };
 
         config.request_policy.max_in_flight_requests = Some(0);
+        assert!(config.validate().is_err_and(|error| error.contains("max_in_flight_requests")));
+
+        config.request_policy.max_in_flight_requests = Some(usize::MAX);
         assert!(config.validate().is_err_and(|error| error.contains("max_in_flight_requests")));
 
         config.request_policy.max_in_flight_requests = Some(1);

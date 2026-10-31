@@ -1523,6 +1523,65 @@ fn custom_provider_retains_reasoning_for_non_openai_model_behaviour_capability()
 }
 
 #[test]
+fn reasoning_output_survives_for_o_series_family_variants() {
+    let provider = OpenAIProvider::new("test-key".to_string());
+    for model in ["o3-mini", "o3-pro", "o3-2025-04-16", "o4-mini-2025-04-16"] {
+        let response = provider::LLMResponse {
+            reasoning: Some("private reasoning".to_string()),
+            reasoning_details: Some(vec!["private trace".to_string()]),
+            ..Default::default()
+        };
+
+        let normalized = provider.normalize_reasoning_output(model, response);
+
+        assert_eq!(normalized.reasoning.as_deref(), Some("private reasoning"), "model {model}");
+        assert_eq!(normalized.reasoning_details.as_deref(), Some(&["private trace".to_string()][..]), "model {model}");
+    }
+}
+
+#[test]
+fn custom_provider_effort_pin_implies_support_unless_explicitly_disabled() {
+    let model = "reasoning-pinned-model";
+    let mut config = CustomProviderConfig {
+        name: "pinned".to_string(),
+        display_name: "Pinned".to_string(),
+        base_url: "https://llm.example/v1".to_string(),
+        model: model.to_string(),
+        models: vec![model.to_string()],
+        ..Default::default()
+    };
+    config.profiles.insert(
+        model.to_string(),
+        CustomProviderProfileConfig {
+            reasoning_effort: Some(vtcode_config::types::ReasoningEffortLevel::Medium),
+            ..Default::default()
+        },
+    );
+    let provider = OpenAIProvider::from_custom_config(
+        config.name.clone(),
+        config.display_name.clone(),
+        Some("test-key".to_string()),
+        Some(model.to_string()),
+        Some(config.base_url.clone()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(vec![model.to_string()]),
+    )
+    .with_custom_provider_config(config);
+
+    assert!(provider.supports_reasoning_effort(model));
+
+    let mut disabled = provider.custom_provider_config.as_ref().expect("config").as_ref().clone();
+    disabled.profiles.get_mut(model).expect("profile").supports_reasoning_effort = Some(false);
+    let provider = provider.with_custom_provider_config(disabled);
+
+    assert!(!provider.supports_reasoning_effort(model));
+}
+
+#[test]
 fn explicit_custom_provider_reasoning_false_overrides_model_behaviour() {
     let model = "deepseek-v4-flash";
     let mut model_behaviour = ModelConfig::default();

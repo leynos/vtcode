@@ -95,24 +95,14 @@ async fn child_status_progress_is_scoped_to_parent_session() {
 
     controller.signal_shutdown().await;
 
-    let parent_update = parent_observer
-        .children
-        .lock()
-        .expect("children lock")
-        .last()
-        .cloned()
-        .expect("parent child update");
-    let parent_ids = [parent_update.id.clone()];
-    let other_ids = other_observer
-        .children
-        .lock()
-        .expect("children lock")
-        .iter()
-        .map(|entry| entry.id.clone())
-        .collect::<Vec<_>>();
+    let parent_children = parent_observer.children.lock().expect("children lock").clone();
+    let other_children = other_observer.children.lock().expect("children lock").clone();
+    let parent_update = parent_children.last().expect("parent child update");
+    let parent_ids = parent_children.iter().map(|entry| entry.id.as_str()).collect::<Vec<_>>();
+    let other_ids = other_children.iter().map(|entry| entry.id.as_str()).collect::<Vec<_>>();
     assert_eq!(parent_update.status, SubagentStatus::Closed);
-    assert_eq!(parent_ids.last().map(String::as_str), Some("child-1"));
-    assert_eq!(other_ids.last().map(String::as_str), Some("child-2"));
+    assert_eq!(parent_ids, ["child-1"]);
+    assert_eq!(other_ids, ["child-2"]);
 }
 
 #[tokio::test]
@@ -134,22 +124,12 @@ async fn background_status_progress_is_scoped_to_parent_session() {
     controller.publish_background_status("background-1").await;
     controller.publish_background_status("background-2").await;
 
-    let parent_update = parent_observer
-        .background
-        .lock()
-        .expect("background lock")
-        .last()
-        .cloned()
-        .expect("parent background update");
-    let parent_ids = [parent_update.id.clone()];
-    let other_ids = other_observer
-        .background
-        .lock()
-        .expect("background lock")
-        .iter()
-        .map(|entry| entry.id.clone())
-        .collect::<Vec<_>>();
+    let parent_background = parent_observer.background.lock().expect("background lock").clone();
+    let other_background = other_observer.background.lock().expect("background lock").clone();
+    let parent_update = parent_background.last().expect("parent background update");
+    let parent_ids = parent_background.iter().map(|entry| entry.id.as_str()).collect::<Vec<_>>();
+    let other_ids = other_background.iter().map(|entry| entry.id.as_str()).collect::<Vec<_>>();
     assert_eq!(parent_update.status, BackgroundSubprocessStatus::Running);
-    assert_eq!(parent_ids.last().map(String::as_str), Some("background-1"));
-    assert_eq!(other_ids.last().map(String::as_str), Some("background-2"));
+    assert_eq!(parent_ids, ["background-1"]);
+    assert_eq!(other_ids, ["background-2"]);
 }

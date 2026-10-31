@@ -25,6 +25,7 @@ use tokio::sync::Mutex as AsyncMutex;
 use tracing::debug;
 use uuid::Uuid;
 use vtcode_commons::file_input::{MAX_INPUT_FILE_BYTES, decoded_base64_size};
+use vtcode_commons::model_family::find_family_for_model;
 use vtcode_config::TimeoutsConfig;
 use vtcode_config::auth::{OpenAIChatGptAuthHandle, OpenAIChatGptSession};
 use vtcode_config::constants::models;
@@ -186,7 +187,11 @@ impl OpenAIProvider {
     }
 
     fn model_supports_reasoning(&self, model: &str) -> bool {
-        LLMProvider::supports_reasoning(self, model)
+        // Family recognition is broader than the explicit reasoning-model list:
+        // every `o3*`/`o4*` variant (and Gemini 3) retains reasoning output even
+        // when its exact slug is absent from `REASONING_MODELS`. Keep that
+        // behaviour while honouring custom-provider capabilities.
+        find_family_for_model(model).supports_reasoning_summaries || LLMProvider::supports_reasoning(self, model)
     }
 
     fn normalize_reasoning_output(&self, model: &str, mut response: provider::LLMResponse) -> provider::LLMResponse {

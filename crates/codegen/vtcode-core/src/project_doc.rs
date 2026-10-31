@@ -1,3 +1,4 @@
+//! Assembles and renders the project documentation bundle exposed to the agent.
 use std::fmt::Write as _;
 use std::future::Future;
 use std::path::{Path, PathBuf};

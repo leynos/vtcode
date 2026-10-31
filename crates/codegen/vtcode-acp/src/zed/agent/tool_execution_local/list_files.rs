@@ -263,67 +263,10 @@ impl ZedAgent {
 #[cfg(test)]
 mod tests {
     use super::ZedAgent;
+    use crate::zed::agent::test_log_capture::{capturing, capturing_at};
     use crate::zed::constants::{
         SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE, TOOL_LIST_FILES_FAILURE, TOOL_LIST_FILES_UNAVAILABLE_FAILURE,
     };
-    use std::fmt::Write as FmtWrite;
-    use std::sync::{Arc, Mutex};
-    use tracing::field::{Field, Visit};
-    use tracing_subscriber::layer::{Context, SubscriberExt};
-    use tracing_subscriber::{Layer, Registry};
-
-    /// Collect every emitted log event so tests can assert on the exact fields
-    /// that reach the diagnostics pipeline.
-    #[derive(Clone, Default)]
-    struct LogCapture(Arc<Mutex<Vec<String>>>);
-
-    impl<S> Layer<S> for LogCapture
-    where
-        S: tracing::Subscriber + for<'lookup> tracing_subscriber::registry::LookupSpan<'lookup>,
-    {
-        fn on_event(&self, event: &tracing::Event<'_>, _context: Context<'_, S>) {
-            let mut fields = CapturedFields::default();
-            event.record(&mut fields);
-            self.0.lock().expect("log capture lock").push(fields.0);
-        }
-    }
-
-    #[derive(Default)]
-    struct CapturedFields(String);
-
-    impl Visit for CapturedFields {
-        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-            write!(&mut self.0, " {}={value:?}", field.name()).expect("write trace field");
-        }
-
-        fn record_str(&mut self, field: &Field, value: &str) {
-            write!(&mut self.0, " {}={value:?}", field.name()).expect("write trace field");
-        }
-
-        fn record_u64(&mut self, field: &Field, value: u64) {
-            write!(&mut self.0, " {}={value}", field.name()).expect("write trace field");
-        }
-    }
-
-    /// Run `run` with log capture installed and return its output plus the
-    /// events admitted at `level` and above.
-    fn capturing_at<T>(level: tracing_subscriber::filter::LevelFilter, run: impl FnOnce() -> T) -> (T, Vec<String>) {
-        let capture = LogCapture::default();
-        let events = Arc::clone(&capture.0);
-        let subscriber = Registry::default().with(level).with(capture);
-        let output = tracing::subscriber::with_default(subscriber, run);
-        let events = events.lock().expect("log capture lock").clone();
-        (output, events)
-    }
-
-    /// Capture at the default operator-visible severity.
-    ///
-    /// INFO is the level at which the ACP runtime's default diagnostics become
-    /// visible, so events admitted here are the ones an operator sees by
-    /// default.
-    fn capturing<T>(run: impl FnOnce() -> T) -> (T, Vec<String>) {
-        capturing_at(tracing_subscriber::filter::LevelFilter::INFO, run)
-    }
 
     #[test]
     fn runtime_failure_reports_a_fixed_reason_without_workspace_detail() {

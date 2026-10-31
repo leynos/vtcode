@@ -145,21 +145,42 @@ impl ZedAgent {
                     workspace_lease: Some(workspace_lease),
                 },
             );
-            let insert_result = self
+            let registration = self
                 .sessions
                 .lock()
                 .map_err(|error| lock_poison_error("registering resumed ACP session", error))
-                .map(|mut sessions| drop(sessions.insert(session_id.clone(), handle.clone())));
-            if let Err(error) = insert_result {
+                .map(|mut sessions| {
+                    if let Some(existing) = sessions.get(session_id) {
+                        return Some(existing.clone());
+                    }
+                    let replaced = sessions.insert(session_id.clone(), handle.clone());
+                    debug_assert!(replaced.is_none(), "resumed session registration must not replace a handle");
+                    None
+                });
+            let existing = match registration {
+                Ok(existing) => existing,
+                Err(error) => {
+                    if let Err(cleanup_error) = handle.release_workspace_lease().await {
+                        log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
+                        warn!(
+                            operation = "archive_attach",
+                            error_category = "workspace_lease_cleanup_failed",
+                            "Failed to release ACP workspace lease after resumed session registration failed"
+                        );
+                    }
+                    return Err(error);
+                }
+            };
+            if let Some(existing) = existing {
                 if let Err(cleanup_error) = handle.release_workspace_lease().await {
                     log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
                     warn!(
                         operation = "archive_attach",
                         error_category = "workspace_lease_cleanup_failed",
-                        "Failed to release ACP workspace lease after resumed session registration failed"
+                        "Failed to release ACP workspace lease for a concurrently registered resumed session"
                     );
                 }
-                return Err(error);
+                return Ok(existing);
             }
             Ok(handle)
         })

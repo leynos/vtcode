@@ -353,7 +353,7 @@ fn shrink_string(value: &mut String) -> bool {
     }
 
     let keep_len = (value.len() / 2).max(MIN_RETAINED_CHARS);
-    let prefix_len = keep_len.saturating_sub(TRUNCATION_MARKER.len());
+    let prefix_len = value.floor_char_boundary(keep_len.saturating_sub(TRUNCATION_MARKER.len()));
     value.truncate(prefix_len);
     value.push_str(TRUNCATION_MARKER);
     true
