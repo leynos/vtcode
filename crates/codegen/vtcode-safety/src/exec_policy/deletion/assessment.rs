@@ -60,78 +60,92 @@ pub async fn assess_deletion_targets(
     let mut targets = Vec::with_capacity(operands.len());
 
     for operand in operands {
-        let candidate = match build_candidate_path(&normalized_root, working_dir, operand).await {
-            Ok(candidate) => candidate,
-            Err(error) => {
-                return DeletionDecision::Denied {
-                    target: operand.clone(),
-                    reason: format!("path is outside the workspace or escapes it through a symlink: {error}"),
-                };
-            }
-        };
-
-        if candidate == normalized_root {
-            return DeletionDecision::Denied {
-                target: operand.clone(),
-                reason: "the workspace root cannot be deleted".to_string(),
-            };
+        match assess_operand(operand, working_dir, &normalized_root, &canonical_root, canonical_home.as_deref()).await {
+            Ok(candidate) => targets.push(candidate),
+            Err(denied) => return denied,
         }
-
-        let mut resolved_target = None;
-        match canonicalize_async(&candidate).await {
-            Ok(resolved) => {
-                if resolved == canonical_root {
-                    return DeletionDecision::Denied {
-                        target: operand.clone(),
-                        reason: "the target resolves to the workspace root".to_string(),
-                    };
-                }
-                if canonical_home.as_ref().is_some_and(|home| resolved == *home) {
-                    return DeletionDecision::Denied {
-                        target: operand.clone(),
-                        reason: "the home directory cannot be deleted".to_string(),
-                    };
-                }
-                if !resolved.starts_with(&canonical_root) {
-                    return DeletionDecision::Denied {
-                        target: operand.clone(),
-                        reason: "the target resolves outside the workspace".to_string(),
-                    };
-                }
-                resolved_target = Some(resolved);
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                // A missing target is harmless: `rm -f` treats it as success.
-            }
-            Err(error) => {
-                return DeletionDecision::Denied {
-                    target: operand.clone(),
-                    reason: format!("cannot verify the target path: {error}"),
-                };
-            }
-        }
-
-        // Check the resolved path as well so a symlink inside the workspace
-        // cannot route a deletion into protected metadata. The resolved path
-        // is canonical, so it must be compared against the canonical root;
-        // stripping a lexically normalized root would silently skip the check
-        // when the workspace path itself contains a symlink.
-        let protected = protected_component(&candidate, &normalized_root).or_else(|| {
-            resolved_target
-                .as_deref()
-                .and_then(|resolved| protected_component(resolved, &canonical_root))
-        });
-        if let Some(protected) = protected {
-            return DeletionDecision::Denied {
-                target: operand.clone(),
-                reason: format!("deletion inside protected metadata directory `{protected}` is not permitted"),
-            };
-        }
-
-        targets.push(candidate);
     }
 
     DeletionDecision::Allowed { targets }
+}
+
+/// Resolve one operand and apply every containment check to it.
+///
+/// Returns the normalized candidate path when the operand is safe to delete,
+/// or the denial for the caller to propagate unchanged.
+async fn assess_operand(
+    operand: &str,
+    working_dir: &Path,
+    normalized_root: &Path,
+    canonical_root: &Path,
+    canonical_home: Option<&Path>,
+) -> Result<PathBuf, DeletionDecision> {
+    let candidate = build_candidate_path(normalized_root, working_dir, operand)
+        .await
+        .map_err(|error| {
+            denied(operand, format!("path is outside the workspace or escapes it through a symlink: {error}"))
+        })?;
+
+    if candidate == normalized_root {
+        return Err(denied(operand, "the workspace root cannot be deleted".to_string()));
+    }
+
+    let mut resolved_target = None;
+    match canonicalize_async(&candidate).await {
+        Ok(resolved) => {
+            if let Some(reason) = canonical_target_denial(&resolved, canonical_root, canonical_home) {
+                return Err(denied(operand, reason.to_string()));
+            }
+            resolved_target = Some(resolved);
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // A missing target is harmless: `rm -f` treats it as success.
+        }
+        Err(error) => {
+            return Err(denied(operand, format!("cannot verify the target path: {error}")));
+        }
+    }
+
+    // Check the resolved path as well so a symlink inside the workspace
+    // cannot route a deletion into protected metadata. The resolved path
+    // is canonical, so it must be compared against the canonical root;
+    // stripping a lexically normalized root would silently skip the check
+    // when the workspace path itself contains a symlink.
+    let protected = protected_component(&candidate, normalized_root).or_else(|| {
+        resolved_target
+            .as_deref()
+            .and_then(|resolved| protected_component(resolved, canonical_root))
+    });
+    if let Some(protected) = protected {
+        return Err(denied(
+            operand,
+            format!("deletion inside protected metadata directory `{protected}` is not permitted"),
+        ));
+    }
+
+    Ok(candidate)
+}
+
+/// Classify a canonical target that must not be deleted, if any.
+fn canonical_target_denial(
+    resolved: &Path,
+    canonical_root: &Path,
+    canonical_home: Option<&Path>,
+) -> Option<&'static str> {
+    if resolved == canonical_root {
+        return Some("the target resolves to the workspace root");
+    }
+    if canonical_home.is_some_and(|home| resolved == home) {
+        return Some("the home directory cannot be deleted");
+    }
+    if !resolved.starts_with(canonical_root) {
+        return Some("the target resolves outside the workspace");
+    }
+    None
+}
+
+fn denied(operand: &str, reason: String) -> DeletionDecision {
+    DeletionDecision::Denied { target: operand.to_string(), reason }
 }
 
 fn protected_component(candidate: &Path, root: &Path) -> Option<&'static str> {
