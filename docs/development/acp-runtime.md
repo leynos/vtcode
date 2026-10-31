@@ -68,10 +68,12 @@ retry backoff, and during an active request.
 Retry is bounded exponential backoff with optional jitter. Only transient
 failures before visible text or reasoning may be retried; a failure after
 visible stream output is returned without replaying content and the incomplete
-assistant response is checkpointed. Connection, first-token, inter-token idle,
-and total-generation deadlines are configured independently. First-token and
-idle limits apply to streaming calls; connection and total-generation limits
-also cover buffered calls. A value of zero disables its deadline.
+assistant response is checkpointed. When retries are exhausted after a stream
+ends before a completion event without visible output, the turn reports
+`empty_response`. Connection, first-token, inter-token idle, and
+total-generation deadlines are configured independently. First-token and idle
+limits apply to streaming calls; connection and total-generation limits also
+cover buffered calls. A value of zero disables its deadline.
 
 Provider request metrics omit provider-name labels. The shared custom-provider
 admission router records current queue depth, in-flight permits, cumulative

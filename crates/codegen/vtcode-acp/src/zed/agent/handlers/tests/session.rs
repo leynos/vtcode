@@ -1,5 +1,6 @@
 //! Checks ACP session capabilities, turn serialization, recovery, and lifecycle-hook effects.
 use super::*;
+use crate::zed::agent::test_support::wait_for_gate_waiters;
 use agent_client_protocol::schema::v1::{CloseSessionRequest, InitializeRequest, NewSessionRequest};
 use std::time::Duration;
 
@@ -330,23 +331,6 @@ impl LLMProvider for BlockingPromptProvider {
     }
 }
 
-/// Waits until a steer is admitted and queued on the session's prompt gate.
-/// Yielding lets the spawned prompt task reach the gate without sleeping.
-async fn wait_for_prompt_gate_waiter(agent: &ZedAgent, session_id: &acp::SessionId) {
-    for _ in 0..10_000 {
-        let waiters = agent
-            .session_handle(session_id)
-            .expect("look up wire session")
-            .expect("wire session exists")
-            .prompt_gate_waiter_count();
-        if waiters >= 1 {
-            return;
-        }
-        tokio::task::yield_now().await;
-    }
-    panic!("the steer never queued on the prompt gate");
-}
-
 #[tokio::test]
 async fn concurrent_prompt_is_serialized_over_official_acp_transport() {
     let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
@@ -383,6 +367,7 @@ async fn concurrent_prompt_is_serialized_over_official_acp_transport() {
     let wait_for_provider = Arc::clone(&started);
     let unblock_provider = Arc::clone(&release);
     let gate_agent = Arc::clone(&inspected_agent);
+    let gate_calls = Arc::clone(&calls);
     let client_connection = Client
         .builder()
         .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
@@ -419,9 +404,15 @@ async fn concurrent_prompt_is_serialized_over_official_acp_transport() {
             let _first_poll =
                 std::future::poll_fn(|poll_cx| std::task::Poll::Ready(Future::poll(second.as_mut(), poll_cx))).await;
             // Wait until the steer has been admitted and is queued on the gate
-            // before releasing the first turn. The `EndTurn` assertions below
-            // then prove it was serialized behind that turn.
-            wait_for_prompt_gate_waiter(&gate_agent, &session.session_id).await;
+            // before releasing the first turn. The provider must still be on
+            // its first call here, and the `EndTurn` assertions below prove the
+            // steer was serialized behind that turn.
+            wait_for_gate_waiters(&gate_agent, &session.session_id, 1).await;
+            assert_eq!(
+                gate_calls.load(Ordering::SeqCst),
+                1,
+                "a queued steer must not reach the provider while the first turn holds the gate"
+            );
 
             unblock_provider.notify_one();
             let first_response = first.await?;

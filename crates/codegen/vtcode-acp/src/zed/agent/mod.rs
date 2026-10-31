@@ -125,6 +125,8 @@ mod provider_telemetry;
 mod session_state;
 mod task_lifecycle;
 mod task_progress;
+#[cfg(test)]
+mod test_support;
 mod tool_config;
 #[cfg(test)]
 mod tool_config_tests;

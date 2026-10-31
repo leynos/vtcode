@@ -34,6 +34,10 @@ pub(super) async fn collect_stream_events(
                 };
                 let outcome = classify_stream_poll_failure(&mut request, error).await;
                 if is_empty_failed_stream(request.output, &outcome) {
+                    warn!(
+                        attempt_index = request.attempt_index,
+                        "ACP provider stream ended without content after exhausting retries"
+                    );
                     return StreamAttemptOutcome::EmptyResponse;
                 }
                 return outcome;

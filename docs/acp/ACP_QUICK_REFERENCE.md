@@ -96,9 +96,11 @@ that would end with `EndTurn` must produce assistant content: a provider turn
 that completes with no assistant message returns an `internal_error` with
 `data.reason = "empty_response"`, and a tool-execution failure that is not a
 cancellation returns `internal_error` with
-`data.reason = "tool_execution_failed"`. Neither case is acknowledged as a
-silent `EndTurn`. `Refusal` and `MaxTokens` turns keep their own stop reason
-even when they carry no assistant text.
+`data.reason = "tool_execution_failed"`. A provider stream that ends before a
+completion event, after retries are exhausted and with no assistant content
+shown, also returns `empty_response`. Neither case is acknowledged as a silent
+`EndTurn`. `Refusal` and `MaxTokens` turns keep their own stop reason even when
+they carry no assistant text.
 
 ### Provider rate limits
 

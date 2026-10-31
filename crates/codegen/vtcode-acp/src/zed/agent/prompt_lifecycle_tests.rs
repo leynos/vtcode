@@ -9,9 +9,11 @@
 //! The scripted provider, temporary-workspace agent and client runner live in
 //! [`support`].
 
+mod scripted_provider;
 mod support;
 
 use crate::acp::{CancelNotification, StopReason};
+use crate::zed::agent::test_support::wait_for_gate_waiters;
 use std::time::Duration;
 use support::*;
 
