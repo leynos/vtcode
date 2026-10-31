@@ -134,7 +134,10 @@ fn rejects_operand_only_dot() {
 #[test]
 fn parse_failure_with_rm_fails_closed() {
     let recognition = recognize_deletion_command("rm -f 'unterminated");
-    assert!(recognition.is_deletion());
+    assert!(
+        matches!(recognition, DeletionRecognition::Unsupported { .. }),
+        "an unparsable `rm` must fail closed, got {recognition:?}"
+    );
 }
 
 #[tokio::test]
