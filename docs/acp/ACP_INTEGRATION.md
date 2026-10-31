@@ -37,9 +37,10 @@ capabilities are conditional; a client must not assume that subagent management
 or background tasks are available when they are absent from the handshake.
 
 Subagent and background-process progress uses ordinary ACP `session/update`
-tool calls and tool-call updates. The update carries task description and status
-in standard fields, while `meta.lody.task` contains the additional Lody task
-snapshot, such as task ID, kind, actor, timestamps, summary, and error details.
+tool calls and tool-call updates. The update carries task description and
+status in standard fields, while `meta.lody.task` contains the additional Lody
+task snapshot, such as task ID, kind, actor, timestamps, summary, and error
+details.
 
 The following Lody extension requests are available when subagent management
 was advertised:

@@ -343,11 +343,11 @@ use when model metadata is absent. These are useful for gateways and
 aggregators that do not provide per-model descriptors. Set fields such as
 `supports_tools`, `supports_vision`, `supports_structured_output`,
 `supports_parallel_tool_calls`, or `supports_stream_usage` directly on the
-provider entry. `supports_stream_usage` is optional and defaults to `false`; set
-it to `true` only when an OpenAI-chat endpoint supports a terminal usage chunk
-in streamed responses. It enables `stream_options.include_usage = true` for that
-custom provider's OpenAI-chat requests. Native OpenAI provider behaviour is
-unchanged.
+provider entry. `supports_stream_usage` is optional and defaults to `false`;
+set it to `true` only when an OpenAI-chat endpoint supports a terminal usage
+chunk in streamed responses. It enables `stream_options.include_usage = true`
+for that custom provider's OpenAI-chat requests. Native OpenAI provider
+behaviour is unchanged.
 
 Providers and profiles can also pin sampling values. Available fields:
 `temperature` (0.0-2.0), `top_p` (0.0-1.0), `top_k` (>= 0), `presence_penalty` /
@@ -413,9 +413,9 @@ Additional rules:
   not silently fall back.
 - `supports_stream_usage` follows the same precedence: a profile value
   overrides the provider default. When `true`, only custom OpenAI-chat streams
-  request `stream_options.include_usage = true`; the endpoint should return usage
-  in the terminal empty-choices chunk. When omitted or `false`, VT Code does not
-  request streamed usage. Native OpenAI requests are unaffected.
+  request `stream_options.include_usage = true`; the endpoint should return
+  usage in the terminal empty-choices chunk. When omitted or `false`, VT Code
+  does not request streamed usage. Native OpenAI requests are unaffected.
 - Profiles do not make a model available in the picker — use `model` or
   `models` to control availability.
 - Wire delivery depends on the backend's API format. The OpenAI Chat shape sends
