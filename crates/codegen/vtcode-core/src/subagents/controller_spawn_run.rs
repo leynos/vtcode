@@ -590,6 +590,12 @@ impl SubagentController {
         if self.shutdown_requested.load(Ordering::Relaxed) {
             return Ok(());
         }
+        if self.config.managed_background_runtime {
+            // Nested scopes never own background records. Persisting their
+            // always-empty view would erase the ledger owned by the root
+            // controller.
+            return Ok(());
+        }
         let records = {
             let state = self.state.read().await;
             state

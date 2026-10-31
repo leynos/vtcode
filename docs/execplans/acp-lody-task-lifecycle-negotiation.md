@@ -78,7 +78,12 @@ management requests return only tasks owned by the requested ACP session.
   tree-aware routing across those same modules. The requirement to keep the
   ownership expansion additive and the subsequent repair round were both
   directed by the user, so the deviation is recorded rather than treated as a
-  live stop condition.
+  live stop condition. The documentation share is excluded from that count, but
+  the generated configuration reference alone changes 928 added and 926 removed
+  lines: a generator run that restored truncated JSON defaults, followed by
+  mdtablefix's canonical re-padding of the widened table (see the Decision
+  log). A diff of that size is expected for this one generated table and is not
+  separate feature work.
 
 ## Risks
 
@@ -385,13 +390,19 @@ management requests return only tasks owned by the requested ACP session.
   support for `stream_options.include_usage`, so an explicit opt-in preserves
   existing request compatibility while enabling Baseten-shaped terminal usage.
   Date/Author: 2026-08-28 / Codex.
-- Decision: keep the generated configuration reference change scoped to the
-  two new `supports_stream_usage` rows rather than committing the generator's
-  unrelated full-file drift. Rationale:
-  `scripts/generate_config_field_reference.py` completed and proved both schema
-  paths exist, but the checked-in reference had broad pre-existing drift across
-  hundreds of unrelated fields. A full regeneration would obscure this feature
-  and violate the stacked PR's review boundary. Date/Author: 2026-08-28 / Codex.
+- Decision: carry the generated configuration reference as a full regeneration
+  — 928 added and 926 removed lines — instead of the two-row change first
+  intended. Rationale: `scripts/generate_config_field_reference.py` proved both
+  `supports_stream_usage` schema paths exist; a later commit then regenerated
+  the file and a formatting pass re-laid it out. `8de48ee03` restored the full
+  JSON defaults the checked-in reference had truncated
+  (`agent.onboarding.recommended_actions`, `commands.extra_path_entries`,
+  `permissions.auto.block_rules` and peers), and the formatting pass re-laid
+  the widened table at mdtablefix's canonical column widths. Keeping only the
+  two new rows would have reverted those deliberate corrections and left the
+  reference disagreeing with the schema, so the file is carried in full and its
+  cost is recorded under Tolerances rather than hidden. Date/Author: 2026-08-28
+  / Codex; revised 2026-10-31 / Claude Code.
 - Decision: derive nested-task visibility from the existing controller tree
   instead of introducing a session-to-controller registry. Rationale: the tree
   is already the authority for which controller spawned which child, it is

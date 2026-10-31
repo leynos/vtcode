@@ -2,6 +2,7 @@
 use super::super::lody::lody_task_session_update;
 use crate::acp;
 use crate::zed::connection::ConnectionHandle;
+use chrono::{DateTime, Utc};
 use vtcode_core::subagents::{BackgroundSubprocessEntry, SubagentStatusEntry};
 
 /// Observer snapshots queued for one ACP session and projected onto its wire updates.
@@ -23,6 +24,24 @@ impl LifecycleUpdate {
             Self::Subagent { parent_session_id, .. } | Self::BackgroundProcess { parent_session_id, .. } => {
                 parent_session_id
             }
+        }
+    }
+
+    /// Last transition time of the snapshotted task.
+    ///
+    /// Controllers refresh this field on every status change, so it orders two
+    /// snapshots of the same task even when they arrive out of order.
+    pub(super) fn updated_at(&self) -> DateTime<Utc> {
+        match self {
+            Self::Subagent { task, .. } => task.updated_at,
+            Self::BackgroundProcess { task, .. } => task.updated_at,
+        }
+    }
+
+    pub(super) fn is_terminal(&self) -> bool {
+        match self {
+            Self::Subagent { task, .. } => task.status.is_terminal(),
+            Self::BackgroundProcess { task, .. } => !task.status.is_active(),
         }
     }
 }
