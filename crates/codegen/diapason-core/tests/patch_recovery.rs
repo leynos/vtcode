@@ -68,6 +68,65 @@ async fn update_failure_restores_file_after_partial_write() {
     fs::set_permissions(&locked_dir, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
+/// A later operation's I/O failure rolls back the writes that preceded it.
+///
+/// The first update succeeds and the second one fails while creating its
+/// destination, which is the case a preflight-only guard cannot catch: both
+/// sections planned cleanly, so only the journal can restore the first file.
+#[cfg(unix)]
+#[tokio::test]
+async fn multi_file_failure_restores_earlier_writes() {
+    use nix::unistd::Uid;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    if Uid::effective().is_root() {
+        eprintln!("skipping permission failure test when running as root");
+        return;
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let updated_path = temp_dir.path().join("updated.txt");
+    let moved_path = temp_dir.path().join("moved.txt");
+    tokio::fs::write(&updated_path, "one\n").await.unwrap();
+    tokio::fs::write(&moved_path, "two\n").await.unwrap();
+
+    let locked_dir = temp_dir.path().join("locked");
+    tokio::fs::create_dir(&locked_dir).await.unwrap();
+    fs::set_permissions(&locked_dir, fs::Permissions::from_mode(0o555)).unwrap();
+
+    let patch_text = "*** Begin Patch\n\
+        *** Update File: updated.txt\n\
+        @@\n\
+        -one\n\
+        +ONE\n\
+        *** Update File: moved.txt\n\
+        *** Move to: locked/target.txt\n\
+        @@\n\
+        -two\n\
+        +TWO\n\
+        *** End Patch";
+    let patch = Patch::parse(patch_text).unwrap();
+
+    let err = patch.apply(temp_dir.path()).await.unwrap_err();
+    let patch_err = err.downcast::<PatchError>().unwrap();
+    if let PatchError::Io { action, .. } = original_patch_error(&patch_err) {
+        assert_eq!(*action, "create");
+    } else {
+        panic!("expected I/O error, got {patch_err:?}");
+    }
+
+    assert_eq!(
+        tokio::fs::read_to_string(&updated_path).await.unwrap(),
+        "one\n",
+        "the first file's write must be rolled back after the later operation fails"
+    );
+    assert_eq!(tokio::fs::read_to_string(&moved_path).await.unwrap(), "two\n");
+    assert!(!locked_dir.join("target.txt").exists());
+
+    fs::set_permissions(&locked_dir, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
 #[tokio::test]
 async fn add_file_validation_errors_when_target_exists() {
     let temp_dir = TempDir::new().unwrap();

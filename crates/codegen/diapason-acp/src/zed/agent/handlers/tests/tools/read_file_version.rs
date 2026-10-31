@@ -92,14 +92,38 @@ impl LLMProvider for ScriptedToolCallProvider {
     }
 }
 
+/// How the scripted client answers a windowed read request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClientWindowMode {
+    /// Slice the requested `line`/`limit` the way a conforming editor does.
+    Honours,
+    /// Return the whole client-visible content, ignoring the requested window.
+    Ignores,
+    /// Return only the first line of the requested window, dropping the rest.
+    Truncates,
+}
+
 /// Answer a `fs/read_text_file` request the way an editor does: slice the
 /// client-visible content with the shared 1-based line-window convention.
-fn windowed_read_response(request: &acp::ReadTextFileRequest, buffer: Option<&str>) -> acp::ReadTextFileResponse {
+///
+/// `Ignores` and `Truncates` model the two ways a client can return the wrong
+/// amount of text: more than the window, or less of it.
+fn windowed_read_response(
+    request: &acp::ReadTextFileRequest,
+    buffer: Option<&str>,
+    mode: ClientWindowMode,
+) -> acp::ReadTextFileResponse {
     let content = match buffer {
         Some(buffer) => buffer.to_string(),
         None => std::fs::read_to_string(&request.path).expect("read client fixture"),
     };
-    acp::ReadTextFileResponse::new(vtcode_core::line_window(&content, request.line, request.limit).to_string())
+    let window = || vtcode_core::line_window(&content, request.line, request.limit).to_string();
+    let response = match mode {
+        ClientWindowMode::Honours => window(),
+        ClientWindowMode::Ignores => content,
+        ClientWindowMode::Truncates => window().split_inclusive('\n').next().unwrap_or_default().to_string(),
+    };
+    acp::ReadTextFileResponse::new(response)
 }
 
 /// One completed scripted read/patch sequence over the official ACP transport.
@@ -122,6 +146,7 @@ async fn run_windowed_read_flow(
     client_buffer: Option<&str>,
     tool_calls: Vec<(String, String)>,
     mutation_before_call: Option<(usize, &str)>,
+    window_mode: ClientWindowMode,
 ) -> WindowedReadFlow {
     let test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
     let workspace = TempDir::new().expect("wire test workspace");
@@ -167,7 +192,7 @@ async fn run_windowed_read_flow(
         .on_receive_request(
             async move |request: acp::ReadTextFileRequest, responder, _connection| {
                 assert_eq!(request.path, client_workspace_path.join(&client_file_name));
-                responder.respond(windowed_read_response(&request, client_buffer.as_deref()))
+                responder.respond(windowed_read_response(&request, client_buffer.as_deref(), window_mode))
             },
             on_receive_request!(),
         )
@@ -273,7 +298,7 @@ async fn file_versions_and_no_op_guard_survive_the_official_acp_transport() {
         .on_receive_request(
             async move |request: acp::ReadTextFileRequest, responder, _connection| {
                 assert_eq!(request.path, client_workspace_path.join("versioned.txt"));
-                responder.respond(windowed_read_response(&request, None))
+                responder.respond(windowed_read_response(&request, None, ClientWindowMode::Honours))
             },
             on_receive_request!(),
         )
@@ -340,7 +365,7 @@ async fn windowed_read_certifies_the_whole_file_and_patches_with_its_hash() {
         ),
     ];
 
-    let flow = run_windowed_read_flow("windowed.txt", disk, None, tool_calls, None).await;
+    let flow = run_windowed_read_flow("windowed.txt", disk, None, tool_calls, None, ClientWindowMode::Honours).await;
 
     assert_eq!(flow.calls, 3, "one result per tool call plus the final turn");
     let requests = flow.requests.lock().expect("stream requests");
@@ -375,7 +400,8 @@ async fn windowed_read_of_a_dirty_buffer_returns_no_version_and_rejects_the_stal
         ),
     ];
 
-    let flow = run_windowed_read_flow("buffer.txt", disk, Some(buffer), tool_calls, None).await;
+    let flow =
+        run_windowed_read_flow("buffer.txt", disk, Some(buffer), tool_calls, None, ClientWindowMode::Honours).await;
 
     assert_eq!(flow.calls, 3, "one result per tool call plus the final turn");
     let requests = flow.requests.lock().expect("stream requests");
@@ -390,5 +416,66 @@ async fn windowed_read_of_a_dirty_buffer_returns_no_version_and_rejects_the_stal
     };
     assert!(payload(1)["content_hash"].is_null(), "a dirty buffer window must not certify the on-disk bytes");
     assert_eq!(payload(2)["error"]["details"]["reason"], "content_hash_mismatch");
+    assert_eq!(std::fs::read_to_string(&flow.path).expect("read final fixture"), disk);
+}
+
+/// A client that returns more than the requested window is not certifying the
+/// bytes the model asked for, so no version is issued.
+///
+/// The disk ends with a blank line and the client ignores the window and
+/// returns it whole. Collapsing every trailing newline would make the two sides
+/// compare equal and certify a response that carries content the window never
+/// included.
+#[tokio::test]
+async fn ignored_read_window_returns_no_version() {
+    let disk = "alpha\n\n";
+    let read = serde_json::json!({"path": "ignored.txt", "line": 1, "limit": 1}).to_string();
+    let tool_calls = vec![("read_file".to_string(), read)];
+
+    let flow = run_windowed_read_flow("ignored.txt", disk, None, tool_calls, None, ClientWindowMode::Ignores).await;
+
+    assert_eq!(flow.calls, 2, "one result per tool call plus the final turn");
+    let requests = flow.requests.lock().expect("stream requests");
+    let message = requests[1]
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.tool_call_id.is_some())
+        .expect("tool result message");
+    let payload =
+        serde_json::from_str::<serde_json::Value>(&message.content.as_text()).expect("structured tool result");
+    assert!(
+        payload["content_hash"].is_null(),
+        "a response wider than the requested window must not certify the on-disk bytes"
+    );
+    assert_eq!(std::fs::read_to_string(&flow.path).expect("read final fixture"), disk);
+}
+
+/// A client that returns less than the requested window never received the
+/// bytes the version would describe, so no version is issued.
+///
+/// The window spans two lines and the client returns only the first. That
+/// response is itself newline-terminated, so it is a complete set of lines that
+/// is short by one and must not be mistaken for the projection minus a final
+/// terminator.
+#[tokio::test]
+async fn truncated_read_window_returns_no_version() {
+    let disk = "alpha\nbeta\n";
+    let read = serde_json::json!({"path": "truncated.txt", "line": 1, "limit": 2}).to_string();
+    let tool_calls = vec![("read_file".to_string(), read)];
+
+    let flow = run_windowed_read_flow("truncated.txt", disk, None, tool_calls, None, ClientWindowMode::Truncates).await;
+
+    assert_eq!(flow.calls, 2, "one result per tool call plus the final turn");
+    let requests = flow.requests.lock().expect("stream requests");
+    let message = requests[1]
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.tool_call_id.is_some())
+        .expect("tool result message");
+    let payload =
+        serde_json::from_str::<serde_json::Value>(&message.content.as_text()).expect("structured tool result");
+    assert!(payload["content_hash"].is_null(), "a truncated response must not certify the on-disk window");
     assert_eq!(std::fs::read_to_string(&flow.path).expect("read final fixture"), disk);
 }

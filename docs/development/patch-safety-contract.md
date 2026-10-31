@@ -59,11 +59,17 @@ A windowed ACP read is certified through
 `tool_execution_local::windowed_disk_hash` instead of the returned-text hash.
 It projects the same window from the on-disk bytes with
 `vtcode_core::line_window` and certifies the whole-file hash only when that
-projection equals the returned text (trailing `\n` ignored). The certified
-version therefore means "this window came from the current on-disk bytes"; it
-does not claim the model saw the whole file. A dirty buffer, a non-UTF-8 file,
-or a client that ignores `line`/`limit` leaves the version absent, and
-`apply_patch` treats absence as an omitted precondition.
+projection equals the returned text, tolerating only a client that drops the
+terminator of the final line. That difference is asymmetric: the returned text
+may be one terminator shorter than the projection, never longer, and a returned
+text that is itself newline-terminated must match exactly because it is a
+complete set of lines. Trimming every trailing newline would accept extra blank
+lines and certify a buffer that was never on disk, so no wider difference is
+tolerated. The certified version therefore means "this window came from the
+current on-disk bytes"; it does not claim the model saw the whole file, and it
+does not detect unsaved edits outside the returned window. A non-UTF-8 file, or
+a response that differs from the projected window, leaves the version absent,
+and `apply_patch` treats absence as an omitted precondition.
 
 ### What a version is not
 

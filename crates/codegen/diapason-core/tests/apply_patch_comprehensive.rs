@@ -68,6 +68,44 @@ async fn test_multiple_chunks_precision() {
     assert_eq!(new_content, expected_content);
 }
 
+/// Multi-hunk line numbers address the original snapshot, not the partially
+/// patched result.
+///
+/// The fixture repeats `dup` and deletes a line above it, so the two
+/// interpretations disagree: original-state coordinates rename the first
+/// `dup`, whereas sequentially modified coordinates would rename the second.
+/// Adapted from the OhMyPi snapshot/preflight design, where every hunk is
+/// validated against the same captured original.
+#[tokio::test]
+async fn test_multi_hunk_offsets_resolve_against_the_original_snapshot() {
+    let temp_dir = TempDir::new().unwrap();
+    let file_path = temp_dir.path().join("original_state.txt");
+    fs::write(&file_path, "p\nq\ndup\nr\ndup\ns\n").unwrap();
+
+    let patch_text = r#"*** Begin Patch
+*** Update File: original_state.txt
+@@ -1,2 +1,1 @@
+ p
+-q
+@@ -3,1 +2,1 @@
+-dup
++first-dup
+*** End Patch"#;
+
+    let registry = setup_registry(temp_dir.path()).await;
+    let result = registry
+        .execute_tool("apply_patch", json!({ "patch": patch_text }))
+        .await
+        .unwrap();
+
+    assert!(result["success"].as_bool().unwrap_or(false), "Tool failed: {result:?}");
+    assert_eq!(
+        fs::read_to_string(&file_path).unwrap(),
+        "p\nfirst-dup\nr\ndup\ns\n",
+        "hunk 2 must keep its original line-3 anchor after hunk 1 shortens the file"
+    );
+}
+
 #[tokio::test]
 async fn test_fuzzy_matching_whitespace() {
     let temp_dir = TempDir::new().unwrap();
@@ -182,6 +220,45 @@ async fn test_eof_handling_no_newline() {
     // The tool should ideally preserve the missing trailing newline if it was missing,
     // or at least handle it gracefully.
     assert_eq!(new_content, "line 1\nline 2 modified");
+}
+
+/// A multi-file batch is planned in full before any file is written.
+///
+/// The first update is valid and the second one's anchor is absent. Planning
+/// fails on the second section, so the batch is rejected without the first
+/// file ever being written: no partial batch is observed.
+#[tokio::test]
+async fn test_batch_is_rejected_before_any_write_when_a_later_section_fails_preflight() {
+    let temp_dir = TempDir::new().unwrap();
+    let first = temp_dir.path().join("first.txt");
+    let second = temp_dir.path().join("second.txt");
+    fs::write(&first, "alpha\n").unwrap();
+    fs::write(&second, "beta\n").unwrap();
+
+    let patch_text = r#"*** Begin Patch
+*** Update File: first.txt
+@@
+-alpha
++changed
+*** Update File: second.txt
+@@
+-absent anchor
++replacement
+*** End Patch"#;
+
+    let registry = setup_registry(temp_dir.path()).await;
+    let result = registry
+        .execute_tool("apply_patch", json!({ "input": patch_text }))
+        .await
+        .unwrap();
+
+    assert!(result["error"].is_object(), "the whole batch must be rejected: {result:?}");
+    assert_eq!(
+        fs::read_to_string(&first).unwrap(),
+        "alpha\n",
+        "the first file must not be written when a later section fails preflight"
+    );
+    assert_eq!(fs::read_to_string(&second).unwrap(), "beta\n");
 }
 
 #[tokio::test]
