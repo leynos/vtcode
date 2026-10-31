@@ -8,8 +8,8 @@ the configuration field reference, and the provider-header guide consistent
 with the implemented rate-limit behaviour. It does not change Rust code,
 configuration, tests, or provider semantics.
 
-The source findings are CodeRabbit `3952440917`, `3952440923`, `3952440926`,
-and `3952440929`. Their full text and verified disposition are retained in
+The source findings are CodeRabbit `3952440917`, `3952440923`, `3952440926`, and
+`3952440929`. Their full text and verified disposition are retained in
 `/tmp/acp-pr103-review-intake-f63adf8.md`.
 
 ## Constraints
@@ -41,13 +41,13 @@ and preserves the documented runtime behaviour.
 
 ### M2: Apply the smallest truthful prose changes
 
-Split the ACP paragraph after activity details. Mark only
-`reset_after_seconds` as optional. Use `case-insensitive` and `behavioural`.
-Do not describe unimplemented provider mappings, changed retry behaviour, or
-new configuration requirements.
+Split the ACP paragraph after activity details. Mark only `reset_after_seconds`
+as optional. Use `case-insensitive` and `behavioural`. Do not describe
+unimplemented provider mappings, changed retry behaviour, or new configuration
+requirements.
 
-Acceptance evidence: the diff changes only the four owned files and retains
-all existing rate-limit details and links.
+Acceptance evidence: the diff changes only the four owned files and retains all
+existing rate-limit details and links.
 
 ### M3: Shared validation and handoff
 
@@ -70,8 +70,8 @@ the stack lead owns publication and review replies.
   table back to the exact `f63adf8` schema.
 - 2026-09-08: Parent approved a narrow stable-home rendering rule in the
   generator: actual home-directory prefixes render as `$HOME`, so local host
-  roots do not enter the generated reference. A focused contract will cover
-  two home roots and a non-home path. Generator iteration reuses its existing
+  roots do not enter the generated reference. A focused contract will cover two
+  home roots and a non-home path. Generator iteration reuses its existing
   schema snapshot while the shared runner owns the build slot.
 - 2026-09-08: An existing exact-worktree `schema_dump` binary captured
   unmodified JSON at `/tmp/acp-pr103-f63-schema.json` for provisional offline
@@ -80,8 +80,8 @@ the stack lead owns publication and review replies.
   not manually reduced; a fresh Cargo schema/render byte comparison remains
   required from the shared runner.
 - 2026-09-08: Shared validation passed the five focused Python tests, Ruff
-  lint, snapshot-to-proposed-reference comparison, Markdown, and spelling.
-  The runner then found only Ruff formatting and an external `--output` status
+  lint, snapshot-to-proposed-reference comparison, Markdown, and spelling. The
+  runner then found only Ruff formatting and an external `--output` status
   display exception after a valid write. This bounded follow-up adds the exact
   formatter edits and a CLI regression using a temporary schema and output
   path; it does not alter generated content.
@@ -105,11 +105,11 @@ the stack lead owns publication and review replies.
   candidate CodeScene analysis.
 - 2026-09-19: D1 adds the missing end-user provider rate-limit guide and its
   `docs/INDEX.md` entry. The guide uses a safe
-  `custom_providers.rate_limit_headers` example, links to the existing developer
-  reference for provider tables, distinguishes `Retry-After` from configured
-  quota resets, and documents ACP/Lody notices without inferring utilisation or
-  account data from incomplete headers. Shared Markdown, link, and spelling
-  validation remains pending.
+  `custom_providers.rate_limit_headers` example, links to the existing
+  developer reference for provider tables, distinguishes `Retry-After` from
+  configured quota resets, and documents ACP/Lody notices without inferring
+  utilisation or account data from incomplete headers. Shared Markdown, link,
+  and spelling validation remains pending.
 
 ## Decisions and discoveries
 
@@ -126,9 +126,9 @@ the stack lead owns publication and review replies.
   contract, and a regenerated reference as this batch's limited source
   ownership expansion.
 - The generated table's requiredness means the complete dotted path is
-  required. Generator traversal now composes every parent requirement with
-  the child schema requirement, so an optional object cannot have an
-  absolutely required child path.
+  required. Generator traversal now composes every parent requirement with the
+  child schema requirement, so an optional object cannot have an absolutely
+  required child path.
 - D1 is an end-user documentation follow-up only. It links to the developer
   reference instead of duplicating provider mapping tables, and preserves the
   published ACP wire names `_meta.lody.rateLimits` and
@@ -136,9 +136,9 @@ the stack lead owns publication and review replies.
 
 ## Risks and conformance
 
-The only material risk is documentation drift. M1 anchors the correction to
-the current configuration type and existing guide. The batch introduces no
-public API, dependency, persistent format, or architecture change.
+The only material risk is documentation drift. M1 anchors the correction to the
+current configuration type and existing guide. The batch introduces no public
+API, dependency, persistent format, or architecture change.
 
 ## Outcome and retrospective
 

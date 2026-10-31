@@ -439,6 +439,12 @@ fn parse_api_error_with_metadata(
 
 fn authentication_error_message(provider_name: &str, error_message: &str) -> String {
     let trimmed = error_message.trim();
+    if provider_name.eq_ignore_ascii_case("Gemini") {
+        return format!(
+            "authentication failed: {trimmed}. check your GOOGLE_API_KEY or GEMINI_API_KEY environment variable."
+        );
+    }
+
     if provider_name.eq_ignore_ascii_case("Moonshot") {
         return format!(
             "authentication failed: {trimmed}. get your API key from https://platform.kimi.ai/console/api-keys; Kimi web or app login credentials do not work for the API."

@@ -1,9 +1,9 @@
 # Provider rate-limit headers in ACP
 
 When a provider returns HTTP 429, VT Code includes recognized quota headers in
-the ACP back-off notice. Missing or malformed optional values are ignored;
-they do not prevent the normal retry policy from running. Zero remaining
-requests or tokens is a meaningful value and is shown.
+the ACP back-off notice. Missing or malformed optional values are ignored; they
+do not prevent the normal retry policy from running. Zero remaining requests or
+tokens is a meaningful value and is shown.
 
 Each custom provider can map response header names to specific metrics under
 `[custom_providers.rate_limit_headers]`. Header matching is case-insensitive.
@@ -35,8 +35,8 @@ cached_prompt_tokens = "fireworks-cached-prompt-tokens"
 Fireworks' limits are measured in tokens per second. Its `fireworks-*-tokens`
 headers describe usage for the individual request, not remaining quota. The
 notice preserves that distinction. See the provider's
-[rate-limit documentation](https://docs.fireworks.ai/serverless/rate-limits)
-and [response-header reference](https://docs.fireworks.ai/serverless/overview).
+[rate-limit documentation](https://docs.fireworks.ai/serverless/rate-limits) and
+[response-header reference](https://docs.fireworks.ai/serverless/overview).
 
 For a Together provider, use:
 
@@ -50,9 +50,10 @@ reset_after_seconds = "x-ratelimit-reset"
 ```
 
 Together's reset header is a suggested interval in seconds, not a Unix
-timestamp. Its [header reference](https://docs.together.ai/docs/serverless/rate-limits)
-defines the request and token limits per second. Fractional reset intervals
-are rounded upward to milliseconds.
+timestamp. Its
+[header reference](https://docs.together.ai/docs/serverless/rate-limits)
+defines the request and token limits per second. Fractional reset intervals are
+rounded upward to milliseconds.
 
 ## Retry timing
 
@@ -64,15 +65,15 @@ interval is used. Invalid values fall back to the ordinary retry policy.
 For a generation's retry sequence, the base delay is the greater of the
 configured initial back-off and the largest provider minimum seen so far.
 Delays grow exponentially from that base. For example, with a 10-second local
-base and `Retry-After: 15`, retries wait at least 15, 30, and 60 seconds.
-The remembered minimum survives later failures that omit the header and
-resets for the next generation, including the next tool-loop segment.
+base and `Retry-After: 15`, retries wait at least 15, 30, and 60 seconds. The
+remembered minimum survives later failures that omit the header and resets for
+the next generation, including the next tool-loop segment.
 
-Jitter can add time but cannot shorten the minimum. The local maximum
-back-off caps the ordinary delay curve; it cannot shorten the provider's
-exponential minimum. Extremely large intervals remain cancellable and do not
-overflow the timer. Retry budgets and the rule against replaying a stream
-after visible output still apply.
+Jitter can add time but cannot shorten the minimum. The local maximum back-off
+caps the ordinary delay curve; it cannot shorten the provider's exponential
+minimum. Extremely large intervals remain cancellable and do not overflow the
+timer. Retry budgets and the rule against replaying a stream after visible
+output still apply.
 
 ## ACP and Lody rendering
 
@@ -93,25 +94,24 @@ Notices use the existing standard `session/update` notification with
 }
 ```
 
-The shape follows `LodyNotice` in
-`Lody/acp-extension-core/src/session.ts` and the warning handler in
-`Lody/apps/cli/src/agent/agent-client.ts`. Notices do not require a negotiated
-rate-limit capability. Clients that do not consume this optional metadata
-can ignore it; the diagnostics are not inserted into model conversation
-history.
+The shape follows `LodyNotice` in `Lody/acp-extension-core/src/session.ts` and
+the warning handler in `Lody/apps/cli/src/agent/agent-client.ts`. Notices do
+not require a negotiated rate-limit capability. Clients that do not consume
+this optional metadata can ignore it; the diagnostics are not inserted into
+model conversation history.
 
 VT Code also advertises push-only `_meta.lody.rateLimits = { "version": 1 }`
 and emits `_lody/rate_limits/update`, following
 `Lody/acp-extension-core/src/rate-limits.ts`. Each quota record has a stable
-`limitId`, provider/model scope, and a `limitName` retaining the absolute limit.
-Complete limit/remaining pairs produce a bounded `usedPercent` and a 60-second
-or 1-second window, according to the configured metric. A known request reset
-interval supplies `resetsAtEpochSeconds` for Together's request window only;
-otherwise the reset time is null. `Retry-After` is a retry instruction and is
-never interpreted as a quota reset timestamp.
+`limitId`, provider/model scope, and a `limitName` retaining the absolute
+limit. Complete limit/remaining pairs produce a bounded `usedPercent` and a
+60-second or 1-second window, according to the configured metric. A known
+request reset interval supplies `resetsAtEpochSeconds` for Together's request
+window only; otherwise the reset time is null. `Retry-After` is a retry
+instruction and is never interpreted as a quota reset timestamp.
 
-For limit-only Fireworks throughput headers, `windows` is empty: the ceiling
-is known but utilization is not. Missing or inconsistent counts do not produce
+For limit-only Fireworks throughput headers, `windows` is empty: the ceiling is
+known but utilization is not. Missing or inconsistent counts do not produce
 invented utilization. Request prompt/cached-token counters stay in the notice
 because reporting them as another usage delta would double count. No account
 identity, wallet, plan, or quota query API is inferred from response headers.
@@ -126,7 +126,7 @@ scripted HTTP errors and successful streams. They inspect the same warning
 metadata consumed by Lody.
 
 The ignored VidaiMock physics tests use a local HTTP gateway to attach quota
-headers to scripted 429 responses, then forward VidaiMock's actual stream.
-The gateway is needed because the pinned VidaiMock provider schema cannot
-configure arbitrary response headers. These tests observe real request
-spacing and streamed recovery without using a paid provider.
+headers to scripted 429 responses, then forward VidaiMock's actual stream. The
+gateway is needed because the pinned VidaiMock provider schema cannot configure
+arbitrary response headers. These tests observe real request spacing and
+streamed recovery without using a paid provider.
