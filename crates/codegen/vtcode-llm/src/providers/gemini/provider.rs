@@ -102,37 +102,4 @@ impl GeminiProvider {
             model_behaviour,
         }
     }
-
-    /// Handle HTTP response errors and convert to appropriate LLMError.
-    /// Uses shared rate limit detection from error_handling module.
-    #[inline]
-    pub(super) fn handle_http_error(status: reqwest::StatusCode, error_text: &str) -> LLMError {
-        let status_code = status.as_u16();
-
-        // Handle authentication errors
-        if status_code == 401 || status_code == 403 {
-            let formatted_error = error_display::format_llm_error(
-                "Gemini",
-                &format!(
-                    "Authentication failed: {error_text}. Check your GOOGLE_API_KEY or GEMINI_API_KEY environment variable."
-                ),
-            );
-            return LLMError::Authentication { message: formatted_error, metadata: None };
-        }
-
-        // Handle rate limit and quota errors using shared detection
-        if is_rate_limit_error(status_code, error_text) {
-            return LLMError::RateLimit { metadata: None };
-        }
-
-        // Handle invalid request errors
-        if status_code == 400 {
-            let formatted_error = error_display::format_llm_error("Gemini", &format!("Invalid request: {error_text}"));
-            return LLMError::InvalidRequest { message: formatted_error, metadata: None };
-        }
-
-        // Generic error for other cases
-        let formatted_error = error_display::format_llm_error("Gemini", &format!("HTTP {status}: {error_text}"));
-        LLMError::Provider { message: formatted_error, metadata: None }
-    }
 }

@@ -32,7 +32,7 @@ use vtcode_config::core::{AnthropicConfig, GeminiPromptCacheMode, GeminiPromptCa
 use vtcode_config::types::ReasoningEffortLevel;
 
 use super::common::{extract_prompt_cache_settings, override_base_url, resolve_model};
-use super::error_handling::{format_network_error, format_parse_error, is_rate_limit_error};
+use super::error_handling::{format_network_error, format_parse_error, handle_gemini_http_error};
 
 mod client;
 pub(crate) mod helpers;

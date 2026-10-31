@@ -81,8 +81,8 @@ silent. See
 [provider rate-limit headers](../development/provider-rate-limit-headers.md).
 VT Code advertises push-only `_meta.lody.rateLimits` version 1 and emits
 `_lody/rate_limits/update` for observed quota headers. Complete limit/remaining
-pairs produce utilization windows; limit-only headers retain the absolute
-limit in `limitName` with no invented utilization. There is no query method.
+pairs produce utilization windows; limit-only headers retain the absolute limit
+in `limitName` with no invented utilization. There is no query method.
 
 ## Legacy REST ACP client reference
 

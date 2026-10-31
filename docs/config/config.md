@@ -329,8 +329,8 @@ Notes:
   Optional `rate_limit_headers` maps quota response headers into ACP 429
   notices, with Baseten's four per-minute headers as defaults. See
   [provider rate-limit headers](../development/provider-rate-limit-headers.md)
-  for Fireworks/Together mappings and the exponential `Retry-After` floor.
-  The defaults are `queue_timeout_seconds = 600`, `max_retries = 2`,
+  for Fireworks/Together mappings and the exponential `Retry-After` floor. The
+  defaults are `queue_timeout_seconds = 600`, `max_retries = 2`,
   `retry_initial_backoff_ms = 10000`, `retry_max_backoff_ms = 160000`, and
   `retry_jitter = true`. Provider deadlines default to 30 seconds to connect,
   180 seconds to the first streamed token, 120 seconds between streamed tokens,

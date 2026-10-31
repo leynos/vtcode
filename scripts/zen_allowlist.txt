@@ -83,6 +83,8 @@ vtcode-ui/src/tui/ui/markdown/tables.rs:14 | from_utf8 on SPACES static bytes; a
 # Runtime operations that use expect() for invariant assertions
 src/agent/runloop/prompt.rs:81 | fallback_to_main_model() should succeed when called after route check
 src/agent/runloop/unified/turn/turn_processing/test_support.rs | test-support helpers (TempDir, primary agent resolution); line-agnostic to avoid drift
+vtcode-acp/src/zed/agent/rate_limit_test_support.rs | test-only WireMock harness declared under #[cfg(test)]; poisoning/panic surfaces harness faults
+vtcode-acp/src/zed/agent/provider_telemetry.rs:232 | #[cfg(test)] recorder arm; expectation surfaces test recorder failure
 src/cli/exec/prep.rs:257 | required stdin prompt should always produce content in interactive mode
 src/updater/release_notes.rs:70 | hardcoded release-notes regex literal compiled at startup; failure indicates programmer error
 src/cli/init.rs:197 | dialoguer recommended option; interactive CLI, user must select

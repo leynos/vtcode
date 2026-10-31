@@ -23,6 +23,8 @@ patches/simdutf/cpp/simdutf.cpp=3_000_000
 resources/gif/vtcode.gif=2_000_000
 resources/logo/vtcode_logo.png=1_200_000
 
-# Generated field reference: `make fmt` (mdtablefix) pads its 900-row table
+# Generated field reference: `make fmt` (mdtablefix) pads its ~950-row table
 # to the widest cell, which multiplies the file size; the content is unchanged.
-docs/config/CONFIG_FIELD_REFERENCE.md=1_000_000
+# One serialized default in the table is 1111 bytes wide, so the padded
+# Markdown is roughly 1.8 MB even though its unpadded text is under 800 KB.
+docs/config/CONFIG_FIELD_REFERENCE.md=2_000_000
