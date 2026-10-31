@@ -9,7 +9,7 @@ mod tests;
 
 pub(super) use self::messages::LifecycleUpdate;
 use self::messages::send_task_lifecycle;
-use super::lody::lody_task_id;
+use super::lody::{lody_task_id, owned_child_ids};
 use hashbrown::HashSet;
 #[cfg(test)]
 mod projection_tests;
@@ -221,12 +221,22 @@ impl ZedAgent {
         let (sender, receiver) = mpsc::channel(128);
         let queue = Arc::new(LifecycleQueueTracker::new(metrics));
         let observer = Arc::new(AcpTaskLifecycleObserver {
-            sender,
+            sender: sender.clone(),
             queue: Arc::clone(&queue),
             session_id: session_id.to_string(),
         });
         let registration = controller.register_progress_observer(session_id.0.to_string(), observer);
-        let forwarder = spawn_task_lifecycle_forwarder(receiver, session_id, client, queue);
+        let forwarder = spawn_task_lifecycle_forwarder(receiver, session_id.clone(), client, queue);
+        // Background restoration runs before this observer is registered, so
+        // tasks that were already active at registration have no queued
+        // transition. Publish their current snapshot explicitly: otherwise a
+        // resumed task that never changes again stays invisible to the client.
+        let initial_sender = sender.clone();
+        let initial_session_id = session_id.clone();
+        let initial_controller = Arc::clone(&controller);
+        let _initial_snapshot_task = tokio::spawn(async move {
+            publish_initial_task_snapshots(&initial_controller, &initial_session_id, &initial_sender).await;
+        });
 
         let mut data = match session
             .data
@@ -246,6 +256,60 @@ impl ZedAgent {
             data.task_lifecycle_registration = Some(registration);
         }
         Ok(())
+    }
+}
+
+/// Queues one snapshot for every task that is still active when the observer
+/// is registered.
+///
+/// Restoration and session attach can publish `Starting`/`Running`
+/// transitions before the forwarder exists. Replaying the live snapshot
+/// closes that gap without replaying terminal history the client never saw,
+/// and because the observer is already registered, any later transition still
+/// arrives as a regular update.
+async fn publish_initial_task_snapshots(
+    controller: &Arc<vtcode_core::subagents::SubagentController>,
+    session_id: &acp::SessionId,
+    sender: &mpsc::Sender<LifecycleUpdate>,
+) {
+    let mut controllers = vec![Arc::clone(controller)];
+    controllers.extend(controller.descendant_controllers().await);
+
+    let mut child_entries = Vec::new();
+    for controller in &controllers {
+        child_entries.extend(controller.status_entries().await);
+    }
+    let owned_children = owned_child_ids(session_id.0.as_ref(), &child_entries)
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<HashSet<_>>();
+    for entry in child_entries {
+        if entry.status.is_terminal() || !owned_children.contains(entry.id.as_str()) {
+            continue;
+        }
+        let update = LifecycleUpdate::Subagent {
+            parent_session_id: session_id.0.to_string(),
+            task: entry,
+        };
+        if sender.send(update).await.is_err() {
+            return;
+        }
+    }
+
+    for controller in &controllers {
+        for entry in controller.background_status_entries().await {
+            let owned = entry.owner_session_id.as_deref() == Some(session_id.0.as_ref());
+            if !owned || !entry.status.is_active() {
+                continue;
+            }
+            let update = LifecycleUpdate::BackgroundProcess {
+                parent_session_id: session_id.0.to_string(),
+                task: entry,
+            };
+            if sender.send(update).await.is_err() {
+                return;
+            }
+        }
     }
 }
 

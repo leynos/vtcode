@@ -54,6 +54,9 @@ struct CapturedSubagentThread {
 struct BackgroundCancellation {
     agent_name: String,
     exec_session_id: String,
+    /// The record had already reached a terminal status, so cancellation left
+    /// its outcome and timestamps untouched.
+    already_terminal: bool,
 }
 
 enum BackgroundCancellationMode {
@@ -478,6 +481,12 @@ impl SubagentController {
         mode: BackgroundCancellationMode,
     ) -> Result<BackgroundSubprocessEntry> {
         let cancellation = self.begin_background_cancellation(target).await?;
+        if cancellation.already_terminal {
+            // A stopped or errored record is already settled. Preserve its
+            // status, timestamps, and error text instead of rewriting it to
+            // `Stopped` (which ACP would project as a successful completion).
+            return self.background_status_for(target).await;
+        }
         self.log_background_cancellation(target, &cancellation, &mode);
         if !cancellation.exec_session_id.is_empty() {
             match mode {
@@ -526,6 +535,13 @@ impl SubagentController {
         {
             bail!("Unknown background subprocess {target}");
         }
+        if !record.status.is_active() {
+            return Ok(BackgroundCancellation {
+                agent_name: record.agent_name.clone(),
+                exec_session_id: record.exec_session_id.clone(),
+                already_terminal: true,
+            });
+        }
         record.desired_enabled = false;
         record.status = BackgroundSubprocessStatus::Stopped;
         record.updated_at = Utc::now();
@@ -533,6 +549,7 @@ impl SubagentController {
         Ok(BackgroundCancellation {
             agent_name: record.agent_name.clone(),
             exec_session_id: record.exec_session_id.clone(),
+            already_terminal: false,
         })
     }
 

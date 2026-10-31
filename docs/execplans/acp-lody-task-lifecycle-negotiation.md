@@ -64,6 +64,17 @@ management requests return only tasks owned by the requested ACP session.
   failure and record the competing hypotheses.
 - Ambiguity: stop if Lody's published extension contract and its checked-out
   client disagree in a way that changes wire compatibility.
+- Deviation, recorded 2026-10-31: the branch exceeds both scope numbers
+  measured against `fix/acp-unresolved-tool-recovery`
+  (`dd5989899154e895a910fe101c216d2d8c1ff41d`): 38 changed files and 1,307 net
+  lines outside tests, documentation and this plan, against tolerances of 16
+  and 1,200. The overrun comes from approved scope, not incidental drift: the
+  EP-M2 security expansion touches the config schema, the core controller
+  model, provider profiles and the ACP adapter, and the review-repair round
+  added tree-aware routing across those same modules. The requirement to keep
+  the ownership expansion additive and the subsequent repair round were both
+  directed by the user, so the deviation is recorded rather than treated as a
+  live stop condition.
 
 ## Risks
 
@@ -130,12 +141,44 @@ management requests return only tasks owned by the requested ACP session.
     documented alongside the custom-provider streamed-usage opt-in.
   - The config-reference generator completed; its unrelated pre-existing
     full-file drift was excluded and the two new schema rows were retained.
+    A later formatting commit (`677c32f15`) re-laid the whole table at the
+    formatter's canonical column widths, so the file's diff against the base
+    is 922 reformatted lines plus the two-row content change, not 922 lines of
+    new content.
   - Both user-level Baseten profiles now opt into streamed usage.
   - The final release gate passed with 6,588 tests and 16 skips; the user-level
     binary was reinstalled and resolves through `/home/leynos/.local/bin/vtcode`.
   - Draft PR [#14](https://github.com/leynos/vtcode/pull/14) targets
     `fix/acp-unresolved-tool-recovery`. PRs #11 through #14 form stack #16,
     preserving the intended four-layer base chain.
+- [x] (2026-10-31) EP-M5 review repair: close the three CodeRabbit correctness
+  gaps and add the boundary coverage it asked for.
+  - Nested tasks are now reachable. `SubagentController` exposes
+    `descendant_controllers()` (pointer-deduplicated breadth-first walk over
+    `ChildRecord::child_controller`), an `attach_child_controller` seam that
+    fails closed on an unknown task, and observer-scope inheritance so a
+    child-scoped controller publishes under the root session's observer key.
+    `_lody/subagents/{list,cancel,output}` walk the root plus every descendant
+    controller and route each operation to the controller that actually owns
+    the task, still filtered by the requested session's ownership closure.
+  - A settled task no longer changes outcome when it is cancelled. Foreground
+    `close` returns the existing entry for any terminal status, and background
+    cancellation returns the recorded entry when the process is already
+    inactive, so `completed`/`failed`/`closed` and `stopped`/`error` keep their
+    status, timestamps and error text.
+  - Attaching a lifecycle forwarder to a session that already has active work
+    publishes an initial snapshot for every owned active child and background
+    task. Without it, a resumed task that never transitions again stays
+    invisible to the client.
+  - New boundary coverage: `subagents/tests/tree_routing_tests.rs` (descendant
+    discovery, deduplication, unknown-task rejection, observer-scope
+    inheritance through two levels, and settled-outcome preservation for both
+    close and cancel), a projection property test asserting stable tool-call
+    IDs and non-regressing terminality over generated lifecycle walks, and a
+    duplex assertion that an already-running background task is published when
+    the forwarder attaches. Assembled provider-stream usage was already covered
+    end to end by `streamed_audit.rs`; the Baseten parser and opt-in paths stay
+    covered by `vtcode-llm/tests/vidaimock_streaming.rs`.
 
 ## Surprises & discoveries
 
@@ -265,6 +308,25 @@ management requests return only tasks owned by the requested ACP session.
   across requests and API keys. Evidence: Baseten's model API pricing and
   limits documentation. Impact: it is unsuitable for per-turn ACP usage and is
   out of scope.
+- Observation: nested subagents were invisible to both lifecycle forwarding and
+  management. Evidence: a nested controller is stored in the parent's
+  `ChildRecord::child_controller`, not in the root controller's `children` map,
+  and the ACP observer registry is keyed by the session passed to
+  `register_progress_observer`. Impact: the root's status list, its observer
+  and the management RPCs all missed grandchildren, and a nested controller
+  published under its own child session key. The repair adds descendant
+  traversal plus observer-scope inheritance rather than duplicating registries.
+- Observation: cancelling an already-settled task rewrote its outcome. Evidence:
+  `close_single` unconditionally set `Closed`, and background cancellation
+  transitioned any non-`Running` record through the cancellation path. Impact:
+  a client that re-sent cancel for a completed task observed a
+  `failed`/`killed` task, so close and cancel now return the recorded terminal
+  entry unchanged.
+- Observation: a lifecycle forwarder attached after background restoration saw
+  no events for tasks that were already running and never changed again.
+  Evidence: the forwarder only receives transitions queued after observer
+  registration, while restoration loads active records first. Impact: the
+  forwarder now publishes an initial owned-and-active snapshot on attach.
 
 ## Decision log
 
@@ -326,6 +388,21 @@ management requests return only tasks owned by the requested ACP session.
   paths exist, but the checked-in reference had broad pre-existing drift across
   hundreds of unrelated fields. A full regeneration would obscure this feature
   and violate the stacked PR's review boundary. Date/Author: 2026-08-28 / Codex.
+- Decision: derive nested-task visibility from the existing controller tree
+  instead of introducing a session-to-controller registry. Rationale: the tree
+  is already the authority for which controller spawned which child, it is
+  reachable only through records the session already owns, and a second
+  registry would have to be kept in sync with spawn, restore and shutdown.
+  Date/Author: 2026-10-31 / Claude Code.
+- Decision: a terminal task is immutable to cancel. Rationale: Lody's task
+  lifecycle is a monotonic ladder, so re-sending cancel for a completed or
+  failed task must return the recorded outcome rather than manufacture a new
+  terminal state. Date/Author: 2026-10-31 / Claude Code.
+- Decision: publish an initial snapshot when the forwarder attaches rather than
+  buffering restoration transitions. Rationale: the forwarder is attached per
+  session and may attach after restoration has already completed; replaying the
+  live owned-and-active snapshot is bounded, idempotent and does not resurrect
+  terminal history the client never saw. Date/Author: 2026-10-31 / Claude Code.
 
 ## Outcomes & retrospective
 
@@ -342,8 +419,15 @@ profile-controlled custom-provider streamed usage and local Baseten-shaped
 playback/physics coverage. EP-M4 documented the negotiated extensions and
 custom-provider opt-in, passed the complete release gate, installed the user
 binary and published draft PR #14 as the fourth layer of stack #16. The plan is
-complete. Provider limits, compaction metadata, notices, final-answer phase
-metadata and scheduled tasks remain explicitly independent follow-ups.
+complete. Review feedback then exposed three correctness gaps that the original
+milestones missed: nested controllers were not walked by lifecycle forwarding
+or management, cancelling a settled task rewrote its terminal outcome, and a
+forwarder attached after restoration never published already-active work. EP-M5
+repaired all three through the existing controller tree and added the boundary
+coverage those gaps implied. The scope deviation recorded under Tolerances is
+the honest cost of the approved ownership expansion plus that repair round.
+Provider limits, compaction metadata, notices, final-answer phase metadata and
+scheduled tasks remain explicitly independent follow-ups.
 
 ## Context and orientation
 
@@ -484,6 +568,39 @@ No formal prover or model checker is proportionate: the introduced invariants
 are finite serialization, ownership filtering and monotone event mapping
 without concurrency shared-memory semantics beyond the existing broadcast
 channel.
+
+EP-M5 evidence addendum (2026-10-31):
+
+- `TASK-IDENTITY`: `subagents` projection property test
+  `lifecycle_sequences_keep_stable_ids_and_monotonic_terminality` generates
+  child and background lifecycle walks of length 1 to 32, asserts one stable
+  `task:child-1` identifier, asserts only the first projection is a `ToolCall`,
+  and asserts the projected terminality ordinal never regresses. The seeded
+  ID-changing style negative control is the table test
+  `maps_worker_and_background_states_to_lody_task_metadata`, which pins the
+  identifier for every enum value.
+- `SESSION-ISOLATION`: nested ownership is behavioural rather than only
+  combinatorial.
+  `subagents/tests/tree_routing_tests.rs::descendant_controllers_include_only_attached_child_scopes`
+  and `descendant_controllers_deduplicate_shared_child_scopes` prove the walk
+  reaches exactly the attached child scopes, once each.
+  `nested_controller_publishes_under_the_root_observer_scope` and
+  `nested_scope_is_inherited_through_more_than_one_level` prove a grandchild
+  and great-grandchild publish under the root session key while the child key
+  receives nothing. The official ACP duplex test now asserts that a background
+  task which was already running is published when the forwarder attaches,
+  closing the observation gap that allowed a running task to stay invisible.
+- Settled-outcome preservation is covered by
+  `close_preserves_settled_foreground_outcomes` and
+  `cancel_preserves_settled_background_outcomes`, which table the terminal
+  statuses and assert status, completion/end timestamps and error text survive
+  a cancel.
+- `USAGE-DELTA` assembled coverage remains
+  `crates/codegen/vtcode-acp/src/zed/agent/tests/streamed_audit.rs`, which
+  drives a two-response provider stream into the ACP session and asserts the
+  emitted `_lody/session/usage_update` token deltas; the Baseten parser and
+  opt-in request shape remain covered by
+  `crates/codegen/vtcode-llm/tests/vidaimock_streaming.rs`.
 
 ## Plan of work
 

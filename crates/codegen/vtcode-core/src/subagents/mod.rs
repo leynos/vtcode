@@ -212,6 +212,11 @@ pub struct SubagentController {
     /// subtree down.
     closing: Arc<AtomicBool>,
     progress_observers: Arc<ProgressObserverRegistry>,
+    /// Observer key inherited from the owning controller. Child-scoped
+    /// controllers serve exactly one parent session, so their lifecycle
+    /// events are published under that session's observer key even though the
+    /// tasks' immediate `parent_thread_id` is the child's own session.
+    progress_observer_scope: Option<String>,
 }
 
 impl SubagentController {
@@ -271,6 +276,7 @@ impl SubagentController {
                 shutdown_requested: Arc::new(AtomicBool::new(false)),
                 closing: Arc::new(AtomicBool::new(false)),
                 progress_observers: Arc::default(),
+                progress_observer_scope: None,
             })
         })
     }
@@ -333,6 +339,90 @@ impl SubagentController {
             .collect()
     }
 
+    /// Returns every child-scoped controller reachable from this controller's
+    /// tracked children, recursively.
+    ///
+    /// Grandchildren spawned by a child run inside that child's own
+    /// [`SubagentController`], so a caller that only reads `status_entries`
+    /// sees direct children but not the rest of the owned tree. Management and
+    /// lifecycle adapters walk this list to reach the whole subtree.
+    ///
+    /// Controllers are deduplicated by allocation so a re-parented or
+    /// re-attached controller cannot produce a cycle, and the returned order
+    /// is breadth-first from the nearest children outwards.
+    pub async fn descendant_controllers(&self) -> Vec<Arc<SubagentController>> {
+        let mut descendants = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+        let mut frontier = {
+            let state = self.state.read().await;
+            state
+                .children
+                .values()
+                .filter_map(|record| record.child_controller.clone())
+                .collect::<Vec<_>>()
+        };
+        while !frontier.is_empty() {
+            let mut next = Vec::new();
+            for controller in frontier.drain(..) {
+                if !visited.insert(Arc::as_ptr(&controller) as usize) {
+                    continue;
+                }
+                let nested = {
+                    let state = controller.state.read().await;
+                    state
+                        .children
+                        .values()
+                        .filter_map(|record| record.child_controller.clone())
+                        .collect::<Vec<_>>()
+                };
+                next.extend(nested);
+                descendants.push(controller);
+            }
+            frontier = next;
+        }
+        descendants
+    }
+
+    /// Shares lifecycle observation with the controller that owns this one.
+    ///
+    /// The nested-delegation loop creates a child-scoped controller per child
+    /// run. That controller must publish its progress through the parent's
+    /// observer registry, under the parent's observer key, so an adapter that
+    /// registered for the root session still receives grandchild snapshots.
+    /// Child-scoped controllers only ever serve their parent's session, so the
+    /// inherited key cannot widen the observer's session boundary.
+    pub(crate) async fn inherit_progress_observers(&mut self, parent: &SubagentController) {
+        self.progress_observers = Arc::clone(&parent.progress_observers);
+        self.progress_observer_scope = Some(match parent.progress_observer_scope.clone() {
+            Some(scope) => scope,
+            None => parent.parent_session_id.read().await.clone(),
+        });
+    }
+
+    /// Attaches an already-created child-scoped controller to a tracked child.
+    ///
+    /// The nested-delegation loop attaches the controller as soon as the child
+    /// run creates it so grandchildren stay reachable across resumes. Fails
+    /// closed for an unknown child so a controller can never be grafted onto a
+    /// record this controller does not track.
+    pub async fn attach_child_controller(&self, child_id: &str, controller: Arc<SubagentController>) -> Result<()> {
+        let mut state = self.state.write().await;
+        Self::attach_child_controller_to_state(&mut state, child_id, controller)
+    }
+
+    pub(super) fn attach_child_controller_to_state(
+        state: &mut ControllerState,
+        child_id: &str,
+        controller: Arc<SubagentController>,
+    ) -> Result<()> {
+        let record = state
+            .children
+            .get_mut(child_id)
+            .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
+        record.child_controller = Some(controller);
+        Ok(())
+    }
+
     pub(super) async fn ensure_child_owned_by_invocation(&self, target: &str) -> Result<()> {
         let Some(context) = current_subagent_invocation_context() else {
             return Ok(());
@@ -376,6 +466,10 @@ impl SubagentController {
     }
 
     fn with_progress_observers(&self, parent_session_id: &str, notify: impl Fn(&dyn SubagentProgressObserver)) {
+        // A child-scoped controller inherits its owner's observer key, so
+        // grandchild events reach the adapter registered for the root session
+        // instead of being dropped for an unknown intermediate session.
+        let observer_key = self.progress_observer_scope.as_deref().unwrap_or(parent_session_id);
         let observers = {
             let observers = self
                 .progress_observers
@@ -384,7 +478,7 @@ impl SubagentController {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             observers
                 .values()
-                .filter(|registration| registration.parent_session_id == parent_session_id)
+                .filter(|registration| registration.parent_session_id == observer_key)
                 .map(|registration| Arc::clone(&registration.observer))
                 .collect::<Vec<_>>()
         };
