@@ -1298,8 +1298,23 @@ fn default_primary_agent() -> String {
 #[cfg(test)]
 mod tests {
     use super::VTCodeConfig;
+    use crate::constants::commands as command_constants;
     use crate::constants::tool_limits;
     use tempfile::tempdir;
+
+    /// The bootstrap template is a raw TOML literal, so it cannot interpolate
+    /// [`command_constants::DEFAULT_RM_DENY_REGEX`]. Assert the literal stays
+    /// in step with the constant used by the in-code defaults.
+    #[cfg(feature = "bootstrap")]
+    #[test]
+    fn sample_config_template_contains_default_rm_deny_regex() {
+        let template = VTCodeConfig::default_vtcode_toml_template();
+
+        assert!(
+            template.contains(command_constants::DEFAULT_RM_DENY_REGEX),
+            "bootstrap template must ship the default recursive-rm deny regex"
+        );
+    }
 
     #[cfg(feature = "bootstrap")]
     #[test]
