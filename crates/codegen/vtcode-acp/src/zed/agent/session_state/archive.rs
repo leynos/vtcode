@@ -190,13 +190,21 @@ impl ZedAgent {
                 workspace_lease: Some(workspace_lease),
             },
         );
-        if recovery.repaired_calls > 0 {
+        if recovery.truncated_prefix > 0 {
+            warn!(
+                session_id = %session_id,
+                truncated_results = recovery.truncated_prefix,
+                "Archived ACP session prefix was truncated; leading tool results have no retained request"
+            );
+        }
+        if recovery.history_changed() {
             self.checkpoint_session_with_turn_diagnostics(&handle, preserved_turn_diagnostics)
                 .await
                 .context("Failed to persist repaired ACP tool-call history")?;
             warn!(
                 session_id = %session_id,
                 repaired_calls = recovery.repaired_calls,
+                relocated_calls = recovery.relocated_calls,
                 "Repaired unresolved tool calls while loading durable ACP session"
             );
         }
@@ -569,7 +577,7 @@ pub(super) fn repair_archived_tool_calls(
 ) -> Result<RecoveryReport, crate::zed::agent::tool_recovery::AmbiguousToolResultHistory> {
     let mut messages = messages_from_session_listing(listing);
     let report = repair_unresolved_tool_calls(&mut messages)?;
-    if report.repaired_calls > 0 {
+    if report.history_changed() {
         listing.snapshot.total_messages = messages.len();
         listing.snapshot.messages = messages.iter().map(SessionMessage::from).collect();
     }

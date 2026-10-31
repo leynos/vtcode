@@ -36,6 +36,14 @@ impl ExecSessionNotFound {
     }
 }
 
+/// A `write_stdin` continuation lost its session after the input bytes were
+/// already handed to the session, so the effect of that input is uncertain.
+#[derive(Debug, thiserror::Error)]
+#[error("exec session '{session_id}' ended after the write was delivered")]
+pub(crate) struct ExecSessionLostAfterInput {
+    pub(crate) session_id: String,
+}
+
 /// Wrap [`ExecSessionNotFound`] so callers can recover the typed source.
 fn missing_session(session_id: &str) -> anyhow::Error {
     anyhow::Error::new(ExecSessionNotFound::new(session_id))
