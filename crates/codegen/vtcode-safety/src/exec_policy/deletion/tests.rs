@@ -1,3 +1,5 @@
+//! Tests for deletion recognition and workspace target assessment.
+
 use super::*;
 use tempfile::TempDir;
 

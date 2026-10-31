@@ -59,8 +59,10 @@ permission decision. Chains, pipes, redirects, wrappers, environment prefixes,
 globs, and shell expansion are refused; targets may not leave the workspace or
 touch the workspace root, the home directory, or protected metadata directories
 (`.git`, `.vtcode`, `.codex`, `.agents`). Global and agent deny rules still
-win, so `deny = ["exec_command(rm -rf *)"]` continues to block recursive
-deletion.
+win, so `deny = ["exec_command(rm -rf *)"]` continues to block the exact
+`rm -rf` spelling. Other recursive spellings, such as `rm -r` or `rm -fr`, need
+their own deny rules; see the `deny_regex` guidance in
+[the command security model](../development/COMMAND_SECURITY_MODEL.md).
 
 A confirmed supported deletion still prompts in an ordinary session. Under
 `--dangerously-skip-permissions` it is auto-approved by the runloop, because

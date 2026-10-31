@@ -178,7 +178,7 @@ fn git_clean_is_force(clean_args: &[String]) -> bool {
 /// Check whether `rm` arguments request force or recursive deletion.
 ///
 /// Options are inspected anywhere before the `--` terminator so stacked short
-/// groups (`-rf`, `-v -f`, `-Rf`) and long forms are all recognised, while
+/// groups (`-rf`, `-v -f`, `-Rf`) and long forms are all recognized, while
 /// operands after `--` (for example `rm -- -f`) are treated as filenames.
 fn rm_is_dangerous(rm_args: &[String]) -> bool {
     for arg in rm_args {
