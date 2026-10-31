@@ -131,6 +131,8 @@ mod tool_execution_local;
 mod tool_execution_output;
 mod tool_recovery;
 mod updates;
+#[cfg(test)]
+mod updates_tests;
 
 #[cfg(test)]
 mod acp_logging_tests {
