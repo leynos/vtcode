@@ -623,6 +623,68 @@ and `[history]` settings do not control ACP audit output.
 - **Graceful degradation** – Unsupported payloads (images, binary blobs) emit
   structured placeholders rather than failing the prompt turn.
 
+### Assistant update relay
+
+The diagrams below describe how a buffered provider response reaches the ACP
+client. Each diagram carries a Mermaid accessible title and description, so a
+screen reader announces the same caption that is shown visually.
+
+**Figure 1: Buffered tool-bearing turn.** Reasoning and commentary reach the
+client after the write-ahead checkpoint and before tool execution.
+
+```mermaid
+sequenceDiagram
+    accTitle: Buffered tool-bearing turn update order
+    accDescr {
+        The provider returns a buffered response to ToolRound. ToolRound writes
+        a session checkpoint, sends reasoning as an AgentThoughtChunk and
+        commentary as an AgentMessageChunk to the ACP client, then executes the
+        tool calls. Tool results return to ToolRound, which persists a session
+        checkpoint.
+    }
+    participant Provider
+    participant ToolRound as ToolRound
+    participant Session as Session
+    participant ACP as ACPClient
+    participant Tools as ToolExecutor
+
+    Provider->>ToolRound: generate_buffered_response()
+    ToolRound->>Session: require_session_checkpoint()
+    ToolRound->>ACP: send_assistant_updates()
+    ACP-->>ACP: AgentThoughtChunk
+    ACP-->>ACP: AgentMessageChunk
+    ToolRound->>Tools: execute_tool_calls()
+    Tools-->>ToolRound: tool_results
+    ToolRound->>Session: persist_session_checkpoint()
+```
+
+**Figure 2: Stop-hook-blocked draft.** A blocked iteration relays its
+reasoning, keeps its rejected commentary hidden, and retries generation.
+
+```mermaid
+sequenceDiagram
+    accTitle: Stop-hook-blocked buffered draft
+    accDescr {
+        The provider returns a buffered response to PromptExecution, which runs
+        the Stop hook check. The hook blocks the draft. PromptExecution sends
+        the draft reasoning to the ACP client as an AgentThoughtChunk, keeps the
+        blocked commentary hidden, and asks the provider for a retried
+        generation.
+    }
+    participant Provider
+    participant Prompt as PromptExecution
+    participant ACP as ACPClient
+    participant Hook as StopHook
+
+    Provider->>Prompt: generate_buffered_response()
+    Prompt->>Hook: stop hook check
+    Hook-->>Prompt: blocked
+    Prompt->>ACP: send_assistant_updates()
+    ACP-->>ACP: AgentThoughtChunk
+    Prompt-->>Prompt: Hide blocked commentary
+    Prompt->>Provider: retry generation
+```
+
 ### Capability negotiation and safety
 
 - VT Code inspects the Zed initialization payload before enabling each tool.
