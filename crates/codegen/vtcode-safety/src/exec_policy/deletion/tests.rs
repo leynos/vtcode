@@ -122,6 +122,8 @@ fn rejects_unsupported_rm_shapes() {
         "rm --no-preserve-root -rf scratch",
         "rm --wat scratch/tmp.txt",
         "rm -q scratch/tmp.txt",
+        "\\rm scratch/tmp.txt",
+        "r\\m scratch/tmp.txt",
     ] {
         let reason = unsupported(command);
         assert!(!reason.is_empty(), "reason should be user-readable for {command}");
