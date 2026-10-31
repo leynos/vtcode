@@ -239,7 +239,10 @@ invocation when all of these hold:
    supplies more than one representation of the command (`command`, `cmd`, or
    `raw_command`), every representation must describe the same supported `rm`;
    mixing a deletion with other command text is refused, because the executor
-   may run a different field from the one preflight inspected.
+   may run a different field from the one preflight inspected. Operands must be
+   unquoted and unescaped; quote and escape characters are rejected because the
+   shell removes them before deleting, so the assessed text would differ from
+   the deleted path.
 3. Options are limited to `-f`, `-r`, `-R`, `-d`, `-v`, `-i`, `-I` (stacked
    short groups included), their long forms, and `--`. `--no-preserve-root` and
    unknown options are rejected.
@@ -259,6 +262,12 @@ bundled spellings.
 
 Under `--dangerously-skip-permissions`, a confirmed supported deletion is
 auto-approved by the runloop; the executor still performs the target assessment.
+
+Deletion text typed into an already-running session (`write_stdin`,
+`send_pty_input`, or a command-session `write`/`continue` action) is refused by
+the safety gateway. That path never reaches the executor gate, so it could not
+enforce `confirm=true` or assess targets; deletion must go through
+`exec_command`.
 
 ## Validation Rules (Configuration Reference)
 

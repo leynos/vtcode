@@ -260,6 +260,15 @@ fn command_text_for_tool(tool_name: &str, args: &Value) -> Option<String> {
     }
 }
 
+/// Whether the tool's command text is input typed into a running session.
+fn is_interactive_input_tool(tool_name: &str, args: &Value) -> bool {
+    match tool_name {
+        tools::WRITE_STDIN | tools::SEND_PTY_INPUT => true,
+        tools::UNIFIED_EXEC => command_session_action_in(args, &["write", "continue"]),
+        _ => false,
+    }
+}
+
 fn patch_file_access_targets(args: &Value) -> Vec<FileAccessTarget> {
     let Ok(Some(patch_input)) = decode_apply_patch_input(args) else {
         return Vec::new();
@@ -633,17 +642,36 @@ impl SafetyGateway {
             return decision;
         }
 
-        if let Some(ref policy) = self.command_policy
-            && let Some(command) = command_text_for_tool(tool_name, args)
-            && !policy.allows_text(&command)
-        {
-            let reason = format!("Command '{command}' blocked by policy");
-            tracing::info!(
-                invocation_id = %inv_id,
-                command = %command,
-                "SafetyGateway: command policy denied"
-            );
-            return SafetyDecision::Deny(reason);
+        if let Some(command) = command_text_for_tool(tool_name, args) {
+            // Interactive input reaches a shell that is already running, so it
+            // never passes the executor deletion gate. Refuse deletion input
+            // here rather than letting it bypass `confirm=true` and target
+            // assessment.
+            if is_interactive_input_tool(tool_name, args)
+                && crate::tools::validation::commands::recognize_deletion_command(&command).is_deletion()
+            {
+                tracing::info!(
+                    invocation_id = %inv_id,
+                    "SafetyGateway: interactive deletion input denied"
+                );
+                return SafetyDecision::Deny(
+                    "interactive input cannot perform a deletion; use exec_command with confirm=true for a \
+                     workspace-scoped `rm`"
+                        .to_string(),
+                );
+            }
+
+            if let Some(ref policy) = self.command_policy
+                && !policy.allows_text(&command)
+            {
+                let reason = format!("Command '{command}' blocked by policy");
+                tracing::info!(
+                    invocation_id = %inv_id,
+                    command = %command,
+                    "SafetyGateway: command policy denied"
+                );
+                return SafetyDecision::Deny(reason);
+            }
         }
 
         if self.is_preapproved(tool_name) {
@@ -1225,6 +1253,29 @@ mod tests {
             .await;
 
         assert!(decision.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_interactive_deletion_input_is_denied_without_executor_gate() {
+        let gateway = SafetyGateway::new().with_commands_config(&CommandsConfig::default());
+        let ctx = make_ctx();
+
+        for (tool, args) in [
+            (tools::WRITE_STDIN, serde_json::json!({"session_id": "run-1", "input": "rm scratch/tmp.txt\n"})),
+            (
+                tools::UNIFIED_EXEC,
+                serde_json::json!({"action": "continue", "session_id": "run-1", "input": "rm -f scratch/tmp.txt\n"}),
+            ),
+            (tools::SEND_PTY_INPUT, serde_json::json!({"session_id": "run-1", "input": "\\rm scratch/tmp.txt\n"})),
+        ] {
+            let decision = gateway.check_safety(&ctx, tool, &args).await;
+            assert!(decision.is_denied(), "interactive deletion input must be denied for {tool}");
+        }
+
+        let argument_only = gateway
+            .check_safety(&ctx, tools::WRITE_STDIN, &serde_json::json!({"session_id": "run-1", "input": "echo rm\n"}))
+            .await;
+        assert!(!argument_only.is_denied(), "`rm` used as an argument must not be denied");
     }
 
     #[tokio::test]
