@@ -413,6 +413,23 @@ async fn concurrent_prompt_is_serialized_over_official_acp_transport() {
                 1,
                 "a queued steer must not reach the provider while the first turn holds the gate"
             );
+            let queued_session = gate_agent
+                .session_handle(&session.session_id)
+                .expect("look up ACP session")
+                .expect("ACP session exists");
+            let queued_user_messages = queued_session
+                .data
+                .lock()
+                .expect("wire session data")
+                .thread
+                .messages()
+                .into_iter()
+                .filter(|message| message.role == vtcode_core::llm::provider::MessageRole::User)
+                .count();
+            assert_eq!(
+                queued_user_messages, 1,
+                "a queued steer must not append its user message before it holds the gate"
+            );
 
             unblock_provider.notify_one();
             let first_response = first.await?;
