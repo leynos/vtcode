@@ -20,9 +20,11 @@ use crate::tools::edited_file_monitor::{FileSnapshot, MutationLease, conflict_ov
 use crate::tools::registry::patch_guard::{CanonicalPatchOperation, NoOpPatchDecision, PatchPathState};
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
+mod planning;
+
+use planning::PlannedPatchWrite;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tokio::fs;
 
 /// Records how long one `apply_patch` evaluation took when it returns.
 ///
@@ -40,18 +42,6 @@ impl Drop for PatchEvaluationTimer<'_> {
         let duration_ms = u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX);
         self.registry.metrics_collector().record_patch_evaluation(duration_ms);
     }
-}
-
-enum PlannedPatchWrite {
-    Text {
-        path: PathBuf,
-        before: Option<String>,
-        content: String,
-    },
-    Removal {
-        path: PathBuf,
-        before: Option<String>,
-    },
 }
 
 pub(super) struct CapturedPatchPath {
@@ -368,129 +358,6 @@ impl ToolRegistry {
         }
         leases
     }
-
-    /// Report an external change to a target before the patch is applied.
-    async fn detect_patch_operation_conflict(
-        &self,
-        operation: &crate::tools::editing::PatchOperation,
-        override_snapshot: Option<FileSnapshot>,
-    ) -> Result<Option<crate::tools::edited_file_monitor::FileConflict>> {
-        let monitor = self.edited_file_monitor_ref();
-        match operation {
-            crate::tools::editing::PatchOperation::AddFile { path, content } => {
-                let canonical_path = self.file_ops_tool().normalize_user_path(path).await?;
-                monitor
-                    .detect_conflict(&canonical_path, Some(content.clone()), override_snapshot)
-                    .await
-            }
-            crate::tools::editing::PatchOperation::DeleteFile { path } => {
-                let canonical_path = self.file_ops_tool().normalize_user_path(path).await?;
-                monitor
-                    .detect_conflict(&canonical_path, Some(String::new()), override_snapshot)
-                    .await
-            }
-            crate::tools::editing::PatchOperation::UpdateFile { path, chunks, .. } => {
-                let canonical_path = self.file_ops_tool().normalize_user_path(path).await?;
-                let intended_content = if let Some(content) = monitor.tracked_read_text(&canonical_path).await {
-                    match crate::tools::editing::patch::render_patch_update_content(
-                        &canonical_path,
-                        &content,
-                        chunks,
-                        path,
-                    )
-                    .await
-                    {
-                        Ok(rendered) => Some(rendered),
-                        Err(err) => {
-                            log_patch_preview_render_failure(&canonical_path, &err);
-                            None
-                        }
-                    }
-                } else {
-                    None
-                };
-
-                monitor
-                    .detect_conflict(&canonical_path, intended_content, override_snapshot)
-                    .await
-            }
-        }
-    }
-
-    /// Plan the writes for one operation against the previous operation's result.
-    async fn planned_patch_writes_for_operation(
-        &self,
-        operation: &crate::tools::editing::PatchOperation,
-        captured_paths: &[CapturedPatchPath],
-        pending_content: &mut HashMap<PathBuf, String>,
-    ) -> Result<Vec<PlannedPatchWrite>> {
-        match operation {
-            crate::tools::editing::PatchOperation::AddFile { path, content } => {
-                let path = self.file_ops_tool().normalize_user_path(path).await?;
-                pending_content.insert(path.clone(), content.clone());
-                Ok(vec![PlannedPatchWrite::Text { path, before: None, content: content.clone() }])
-            }
-            crate::tools::editing::PatchOperation::DeleteFile { path } => {
-                let path = self.file_ops_tool().normalize_user_path(path).await?;
-                let before = match pending_content.remove(&path) {
-                    Some(content) => Some(content),
-                    None => fs::read_to_string(&path).await.ok(),
-                };
-                Ok(vec![PlannedPatchWrite::Removal { path, before }])
-            }
-            crate::tools::editing::PatchOperation::UpdateFile { path, new_path, chunks } => {
-                let canonical_path = self.file_ops_tool().normalize_user_path(path).await?;
-                let source_content = match pending_content.get(&canonical_path) {
-                    Some(content) => content.clone(),
-                    None => {
-                        let snapshot = captured_paths
-                            .iter()
-                            .find(|captured| captured.path == canonical_path)
-                            .map(|captured| &captured.snapshot)
-                            .ok_or_else(|| anyhow!("Missing captured patch state for {}", canonical_path.display()))?;
-                        if !snapshot.exists {
-                            return Err(anyhow!(crate::tools::editing::PatchError::MissingFile {
-                                path: canonical_path.display().to_string(),
-                            }));
-                        }
-                        snapshot.text_content.clone().ok_or_else(|| {
-                            anyhow!(
-                                "Failed to read patch source content for {}: file is not valid UTF-8",
-                                canonical_path.display()
-                            )
-                        })?
-                    }
-                };
-
-                let rendered = crate::tools::editing::patch::render_patch_update_content(
-                    &canonical_path,
-                    &source_content,
-                    chunks,
-                    path,
-                )
-                .await
-                .map_err(|err| anyhow!("Failed to plan patch output for {}: {err}", canonical_path.display()))?;
-
-                let mut writes = Vec::new();
-                if let Some(destination) = new_path.as_ref().filter(|candidate| candidate.as_str() != path.as_str()) {
-                    let destination = self.file_ops_tool().normalize_user_path(destination).await?;
-                    pending_content.remove(&canonical_path);
-                    pending_content.insert(destination.clone(), rendered.clone());
-                    writes.push(PlannedPatchWrite::Removal { path: canonical_path, before: Some(source_content) });
-                    writes.push(PlannedPatchWrite::Text { path: destination, before: None, content: rendered });
-                } else {
-                    pending_content.insert(canonical_path.clone(), rendered.clone());
-                    writes.push(PlannedPatchWrite::Text {
-                        path: canonical_path,
-                        before: Some(source_content),
-                        content: rendered,
-                    });
-                }
-
-                Ok(writes)
-            }
-        }
-    }
 }
 
 /// Log a conflict-preview render failure without reproducing patch text.
@@ -500,7 +367,7 @@ impl ToolRegistry {
 /// Log the fixed reason code and the embedded text's byte length instead. The
 /// render helper wraps its `PatchError` in `anyhow`, so recover it by downcast
 /// rather than formatting the chain.
-fn log_patch_preview_render_failure(path: &std::path::Path, error: &anyhow::Error) {
+pub(super) fn log_patch_preview_render_failure(path: &std::path::Path, error: &anyhow::Error) {
     let patch_error = error
         .downcast_ref::<crate::tools::editing::PatchError>()
         .or_else(|| error.root_cause().downcast_ref::<crate::tools::editing::PatchError>());
@@ -517,137 +384,4 @@ fn log_patch_preview_render_failure(path: &std::path::Path, error: &anyhow::Erro
 }
 
 #[cfg(test)]
-mod tests {
-    use super::log_patch_preview_render_failure;
-    use crate::tools::editing::patch::{PatchChunk, PatchLine, render_patch_update_content_strict};
-    use std::sync::{Arc, Mutex};
-
-    /// A `tracing` writer that collects formatted output for one test only.
-    #[derive(Clone, Default)]
-    struct CaptureWriter(Arc<Mutex<Vec<u8>>>);
-
-    impl std::io::Write for CaptureWriter {
-        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            let mut guard = self
-                .0
-                .lock()
-                .map_err(|poisoned| std::io::Error::other(format!("capture poisoned: {poisoned}")))?;
-            guard.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CaptureWriter {
-        type Writer = Self;
-
-        fn make_writer(&'a self) -> Self::Writer {
-            self.clone()
-        }
-    }
-
-    /// A preview-render failure must not leak patch text into tracing.
-    ///
-    /// The subscriber is installed with `with_default` so parallel tests keep
-    /// their own dispatch and cannot contaminate the capture.
-    #[tokio::test]
-    async fn preview_render_failure_logs_reason_code_without_patch_text() {
-        const MARKER: &str = "UNIQUE_PATCH_MARKER_c41f7d";
-        let chunks = vec![PatchChunk {
-            change_context: None,
-            lines: vec![
-                PatchLine::Removal(MARKER.to_string()),
-                PatchLine::Addition("replacement".to_string()),
-            ],
-            is_end_of_file: false,
-        }];
-        let patch_error = render_patch_update_content_strict(
-            std::path::Path::new("secret.txt"),
-            "unrelated current line\n",
-            &chunks,
-            "secret.txt",
-        )
-        .await
-        .expect_err("the marker anchor cannot match the current content");
-        let error: anyhow::Error = patch_error.into();
-        assert!(error.to_string().contains(MARKER), "precondition: the render error embeds patch text");
-
-        let captured = CaptureWriter::default();
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::DEBUG)
-            .with_ansi(false)
-            .with_writer(captured.clone())
-            .finish();
-        tracing::subscriber::with_default(subscriber, || {
-            log_patch_preview_render_failure(std::path::Path::new("secret.txt"), &error);
-        });
-
-        let output =
-            String::from_utf8(captured.0.lock().expect("capture lock").clone()).expect("captured output is UTF-8");
-        assert!(output.contains("segment_not_found"), "reason code should be logged: {output}");
-        assert!(!output.contains(MARKER), "patch text must not reach tracing: {output}");
-    }
-
-    /// Patch-safety diagnostics must stay bounded to enums and identifiers.
-    ///
-    /// These records can be shipped to a log sink for a session editing
-    /// private files, so the file name, patch text, no-op signature, and
-    /// content hash must all be absent while the bounded outcomes are still
-    /// present.
-    #[tokio::test]
-    async fn patch_safety_events_never_carry_patch_text_paths_or_hashes() -> anyhow::Result<()> {
-        const MARKER: &str = "UNIQUE_PATCH_MARKER_c41f7d";
-        let temp_dir = tempfile::TempDir::new()?;
-        let file_name = format!("{MARKER}.txt");
-        let path = temp_dir.path().join(&file_name);
-        std::fs::write(&path, format!("{MARKER}\n"))?;
-        let on_disk_hash =
-            format!("sha256:{}", vtcode_commons::utils::calculate_sha256(format!("{MARKER}\n").as_bytes()));
-
-        let registry = crate::tools::ToolRegistry::new(temp_dir.path().to_path_buf()).await;
-        registry.allow_all_tools().await?;
-
-        let no_op = format!("*** Begin Patch\n*** Update File: {file_name}\n@@\n-{MARKER}\n+{MARKER}\n*** End Patch\n");
-        let stale_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"a different revision\n"));
-        let stale = format!("*** Begin Patch\n*** Update File: {file_name}\n@@\n-{MARKER}\n+changed\n*** End Patch\n");
-
-        let captured = CaptureWriter::default();
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::DEBUG)
-            .with_ansi(false)
-            .with_writer(captured.clone())
-            .finish();
-        let guard = tracing::subscriber::set_default(subscriber);
-
-        let first = registry
-            .execute_tool(crate::config::constants::tools::APPLY_PATCH, serde_json::json!({ "input": no_op }))
-            .await?;
-        assert_eq!(first["no_op"], true, "precondition: the first submission is a no-op: {first:?}");
-        let signature = first["signature"].as_str().expect("no-op signature").to_string();
-
-        let rejected = registry
-            .execute_tool(
-                crate::config::constants::tools::APPLY_PATCH,
-                serde_json::json!({ "input": stale, "expected_content_hash": stale_hash }),
-            )
-            .await?;
-        assert_eq!(
-            rejected["error"]["details"]["reason"], "content_hash_mismatch",
-            "precondition: the stale hash is rejected: {rejected:?}"
-        );
-
-        drop(guard);
-        let output =
-            String::from_utf8(captured.0.lock().expect("capture lock").clone()).expect("captured output is UTF-8");
-        assert!(output.contains("apply_patch no-op decision"), "the no-op decision must be logged: {output}");
-        assert!(output.contains("content_hash_mismatch"), "the rejection outcome must be logged: {output}");
-        assert!(!output.contains(MARKER), "patch text and file names must not reach tracing: {output}");
-        assert!(!output.contains(&signature), "the no-op signature must not reach tracing: {output}");
-        assert!(!output.contains(&stale_hash), "expected hashes must not reach tracing: {output}");
-        assert!(!output.contains(&on_disk_hash), "on-disk hashes must not reach tracing: {output}");
-        Ok(())
-    }
-}
+mod tests;
