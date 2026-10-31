@@ -86,3 +86,25 @@ async fn preflight_rejects_deletion_mixed_with_a_different_raw_command() -> Resu
 
     Ok(())
 }
+
+#[tokio::test]
+async fn harness_terminal_run_refuses_escaped_deletion_forms() -> Result<()> {
+    // The harness path reaches the executor gate without command preflight, so
+    // the gate alone must refuse a shell spelling the recognizer would
+    // otherwise miss.
+    let temp_dir = TempDir::new()?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+
+    for args in [
+        json!({"action": "run", "cmd": "\\rm scratch/tmp.txt", "yield_time_ms": 100}),
+        json!({"action": "run", "cmd": "\\rm scratch/tmp.txt", "confirm": true, "yield_time_ms": 100}),
+    ] {
+        let error = registry
+            .execute_harness_command_session_terminal_run(args)
+            .await
+            .expect_err("an escaped deletion form must be refused");
+        assert!(error.to_string().contains("deletion"), "unexpected error: {error}");
+    }
+
+    Ok(())
+}

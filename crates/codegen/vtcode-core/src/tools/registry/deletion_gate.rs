@@ -29,10 +29,14 @@ impl ToolRegistry {
         working_dir: &Path,
         confirm: bool,
     ) -> Result<()> {
-        let mut extra = Vec::new();
-        if prepared_command.command == prepared_command.requested_command {
-            extra.push(shell_words::join(prepared_command.requested_command.iter().map(String::as_str)));
-        } else if let Some(shell_command) = prepared_command.command.last() {
+        // The joined argv and the shell string can differ, so both are
+        // inspected; either may be the text the shell actually runs.
+        let mut extra = vec![shell_words::join(
+            prepared_command.requested_command.iter().map(String::as_str),
+        )];
+        if prepared_command.command != prepared_command.requested_command
+            && let Some(shell_command) = prepared_command.command.last()
+        {
             extra.push(shell_command.clone());
         }
         let candidates = commands::deletion_candidates(args, extra);

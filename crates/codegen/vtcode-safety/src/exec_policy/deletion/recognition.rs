@@ -355,12 +355,21 @@ fn segment_mentions_rm(segment: &[String]) -> bool {
     is_deletion_wrapper(name) && segment.iter().skip(1).any(|argument| base_command_name(argument) == "rm")
 }
 
+/// Whether `text` contains an `rm` token in any escaped or quoted spelling.
+///
+/// This is the fail-closed path for text the parser cannot trust, so it
+/// deliberately over-refuses: quote and escape characters are removed before
+/// tokenizing, which makes `\rm`, `r\m`, `'rm'`, and `"rm"` all match.
 fn contains_rm_token(text: &str) -> bool {
-    text.split(|character: char| {
-        character.is_whitespace() || matches!(character, ';' | '&' | '|' | '(' | ')' | '<' | '>' | '`' | '\'' | '"')
-    })
-    .map(strip_wrapping_quotes)
-    .any(|token| base_command_name(token) == "rm")
+    let unquoted: String = text
+        .chars()
+        .filter(|character| !matches!(character, '\\' | '\'' | '"'))
+        .collect();
+    unquoted
+        .split(|character: char| {
+            character.is_whitespace() || matches!(character, ';' | '&' | '|' | '(' | ')' | '<' | '>' | '`')
+        })
+        .any(|token| base_command_name(token) == "rm")
 }
 
 fn strip_wrapping_quotes(token: &str) -> &str {
