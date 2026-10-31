@@ -476,8 +476,16 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
 
     let workspace_path = workspace.path().to_path_buf();
     let inspected_agent = Arc::clone(&agent);
+    let (notification_tx, mut notification_rx) = mpsc::unbounded_channel();
     let client_connection = Client
         .builder()
+        .on_receive_notification(
+            async move |notification: acp::AgentNotification, _cx| {
+                drop(notification_tx.send(notification));
+                Ok(())
+            },
+            on_receive_notification!(),
+        )
         .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
             let initialized = cx
                 .send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
@@ -500,6 +508,28 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 })
                 .await
                 .expect("spawn owned background task");
+
+            // Attaching the lifecycle forwarder after the task is already
+            // running must publish its current snapshot; otherwise a resumed
+            // task that never transitions again stays invisible to the client.
+            inspected_agent
+                .ensure_task_lifecycle_forwarder(&owned_session)
+                .expect("start lifecycle forwarder for the attached session");
+            let initial_task_id = tokio::time::timeout(Duration::from_secs(2), async {
+                loop {
+                    let notification = notification_rx.recv().await.expect("lifecycle notification stream");
+                    if let Some(task_id) = lifecycle_task_id(&notification) {
+                        break task_id;
+                    }
+                }
+            })
+            .await
+            .expect("initial lifecycle snapshot deadline");
+            assert_eq!(
+                initial_task_id, background.id,
+                "a task that was already running must be published when the forwarder attaches"
+            );
+
             let params = serde_json::value::to_raw_value(&serde_json::json!({
                 "sessionId": session.session_id,
                 "activeOnly": false,
@@ -688,6 +718,20 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
         .expect("Lody management protocol flow should succeed");
     agent_task.abort();
     drop(agent_task.await);
+}
+
+/// Extracts the Lody task ID from a task-lifecycle session notification.
+fn lifecycle_task_id(notification: &acp::AgentNotification) -> Option<String> {
+    let acp::AgentNotification::SessionNotification(notification) = notification else {
+        return None;
+    };
+    let meta = match &notification.update {
+        acp::SessionUpdate::ToolCall(call) => call.meta.as_ref(),
+        acp::SessionUpdate::ToolCallUpdate(update) => update.meta.as_ref(),
+        _ => None,
+    }?;
+    let task = &meta["lody"]["task"];
+    task.get("taskId")?.as_str().map(str::to_owned)
 }
 
 async fn lody_output_error(connection: &ConnectionTo<Agent>, session_id: &acp::SessionId, task_id: &str) -> acp::Error {

@@ -123,6 +123,7 @@ fn test_child_record(
 mod invocation_context_tests;
 mod progress_observer_tests;
 mod spawn_custom_tests;
+mod tree_routing_tests;
 
 fn write_test_background_subagent(workspace_root: &std::path::Path) {
     let agent_dir = workspace_root.join(".vtcode/agents");

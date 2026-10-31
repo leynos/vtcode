@@ -301,7 +301,7 @@ impl SubagentController {
         Box::pin(async move {
             let context = self.begin_child_run(child_id).await?;
             let mut execution = self.prepare_child_execution(context, request).await?;
-            self.attach_child_controller(child_id, &mut execution).await;
+            self.attach_nested_controller(child_id, &mut execution).await;
             let thread_handle = self.record_child_runtime(child_id, &execution).await?;
             self.run_child_start_hook(child_id, &execution, &thread_handle).await;
             self.execute_child_task(execution).await
@@ -430,7 +430,7 @@ impl SubagentController {
         Ok(PreparedChildArchive { metadata, bootstrap, archive })
     }
 
-    async fn attach_child_controller(&self, child_id: &str, execution: &mut PreparedChildExecution) {
+    async fn attach_nested_controller(&self, child_id: &str, execution: &mut PreparedChildExecution) {
         let child_controller = self.child_controller_for(child_id, execution).await;
         execution.child_controller = child_controller;
         if let Some(controller) = execution.child_controller.as_ref() {
@@ -469,7 +469,10 @@ impl SubagentController {
             managed_background_runtime: true,
         };
         match SubagentController::new(nested_config).await {
-            Ok(controller) => Some(Arc::new(controller)),
+            Ok(mut controller) => {
+                controller.inherit_progress_observers(self).await;
+                Some(Arc::new(controller))
+            }
             Err(err) => {
                 // Fail closed: without a controller the child keeps the current
                 // non-nested toolset and cannot delegate.
@@ -501,7 +504,7 @@ impl SubagentController {
             record.effective_config = Some(execution.child_cfg.clone());
             record.thread_handle = Some(thread_handle.clone());
             if let Some(controller) = execution.child_controller.clone() {
-                record.child_controller = Some(controller);
+                Self::attach_child_controller_to_state(&mut state, child_id, controller)?;
             }
         }
         Ok(thread_handle)
