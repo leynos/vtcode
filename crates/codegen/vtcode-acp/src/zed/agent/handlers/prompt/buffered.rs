@@ -252,6 +252,14 @@ async fn process_buffered_response(
     )?;
     push_session_message(&turn.agent, &turn.session, &turn.args.session_id, Message::system(reason))?;
     refresh_resolved_tool_state(turn)?;
+    // A blocked draft's commentary stays hidden from the client, but its
+    // reasoning was already visible before this relay path existed and must
+    // not disappear when the retry discards the buffered output.
+    if !turn.session.cancellation.is_cancelled() {
+        turn.agent
+            .send_assistant_updates(&turn.args.session_id, turn.provider_iteration, "", &output.assistant_reasoning, 0)
+            .await;
+    }
     output.reset();
     turn.stop_hook_checked = false;
     Ok(BufferedResponseOutcome::Continue)

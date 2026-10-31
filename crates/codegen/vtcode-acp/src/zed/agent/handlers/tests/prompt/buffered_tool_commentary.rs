@@ -85,6 +85,43 @@ fn always_tool_call(index: usize) -> LLMResponse {
     }
 }
 
+/// Replays a draft that the Stop hook blocks once, then a final answer.
+fn blocked_draft_then_answer(index: usize) -> LLMResponse {
+    let (content, reasoning) = if index == 0 {
+        ("Draft answer.", "Draft reasoning.")
+    } else {
+        ("Final answer.", "Final reasoning.")
+    };
+    LLMResponse {
+        content: Some(content.to_string()),
+        reasoning: Some(reasoning.to_string()),
+        finish_reason: vtcode_core::llm::provider::FinishReason::Stop,
+        model: "wire-model".to_string(),
+        ..LLMResponse::default()
+    }
+}
+
+/// Blocks the first Stop hook invocation, then allows the retry.
+fn stop_hook_config() -> VTCodeConfig {
+    use vtcode_core::config::{HookCommandConfig, HookGroupConfig, HooksConfig, LifecycleHooksConfig};
+
+    let mut config = VTCodeConfig::default();
+    config.hooks = HooksConfig {
+        lifecycle: LifecycleHooksConfig {
+            stop: vec![HookGroupConfig {
+                matcher: None,
+                hooks: vec![HookCommandConfig {
+                    command: r#"count=$(cat "$VT_PROJECT_DIR/stop-count" 2>/dev/null || printf 0); count=$((count + 1)); printf '%s' "$count" > "$VT_PROJECT_DIR/stop-count"; if [ "$count" -eq 1 ]; then printf '%s' '{"continue":false,"stopReason":"retry the draft"}'; fi"#
+                        .to_string(),
+                    ..HookCommandConfig::default()
+                }],
+            }],
+            ..LifecycleHooksConfig::default()
+        },
+    };
+    config
+}
+
 fn thought_text(update: &acp::SessionUpdate) -> Option<&str> {
     let acp::SessionUpdate::AgentThoughtChunk(chunk) = update else {
         return None;
@@ -118,6 +155,7 @@ struct WirePromptRun {
 async fn run_buffered_wire_prompt(
     factory: Arc<PromptProviderFactory>,
     calls: Arc<AtomicUsize>,
+    vt_config: Option<&VTCodeConfig>,
     configure: impl FnOnce(&mut ZedAgent),
 ) -> WirePromptRun {
     let _history_test_guard = lock_history_test_guard().await;
@@ -127,7 +165,7 @@ async fn run_buffered_wire_prompt(
     let _factory_guard = PromptProviderFactoryGuard::install("wire-test", factory);
     let workspace = TempDir::new().expect("wire test workspace");
     let workspace_path = workspace.path().to_path_buf();
-    let mut agent_instance = build_wire_test_agent(workspace.path()).await;
+    let mut agent_instance = build_wire_test_agent_with_options(workspace.path(), vt_config, None).await;
     configure(&mut agent_instance);
     let agent = Arc::new(agent_instance);
     let (agent_channel, client_channel) = Channel::duplex();
@@ -198,6 +236,7 @@ async fn buffered_tool_turns_emit_reasoning_and_commentary_before_tool_lifecycle
             })
         }),
         Arc::clone(&calls),
+        None,
         |_| {},
     )
     .await;
@@ -251,6 +290,7 @@ async fn buffered_tool_limit_relays_the_refused_response_before_the_limit_messag
             })
         }),
         Arc::clone(&calls),
+        None,
         |agent| agent.tool_loop_limit = 1,
     )
     .await;
@@ -270,4 +310,42 @@ async fn buffered_tool_limit_relays_the_refused_response_before_the_limit_messag
     assert!(refused_reasoning < refused_commentary, "reasoning must precede commentary");
     assert!(refused_commentary < limit_message, "the refused response must be relayed before the limit message");
     assert_eq!(run.calls.load(Ordering::SeqCst), 2, "one executed tool round and one refused response");
+}
+
+#[tokio::test]
+async fn stop_hook_blocked_draft_reasoning_reaches_the_client_before_the_retry() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let factory_calls = Arc::clone(&calls);
+    let config = stop_hook_config();
+    let run = run_buffered_wire_prompt(
+        Arc::new(move || {
+            Box::new(ScriptedProvider {
+                calls: Arc::clone(&factory_calls),
+                respond: blocked_draft_then_answer,
+            })
+        }),
+        Arc::clone(&calls),
+        Some(&config),
+        |_| {},
+    )
+    .await;
+    let updates = &run.updates;
+    let position_of = |predicate: &dyn Fn(&acp::SessionUpdate) -> bool| {
+        updates.iter().position(|notification| predicate(&notification.update))
+    };
+
+    let draft_reasoning = position_of(&|update| thought_text(update) == Some("Draft reasoning."))
+        .expect("a Stop-hook-blocked iteration must still relay its reasoning");
+    let final_reasoning = position_of(&|update| thought_text(update) == Some("Final reasoning."))
+        .expect("the retried iteration must relay its reasoning");
+    let final_message = position_of(&|update| message_text(update) == Some("Final answer."))
+        .expect("the retried answer must reach ACP");
+
+    assert!(draft_reasoning < final_reasoning, "the blocked draft's reasoning must precede the retry");
+    assert!(final_reasoning < final_message, "reasoning must precede commentary");
+    assert!(
+        position_of(&|update| message_text(update) == Some("Draft answer.")).is_none(),
+        "a Stop-hook-blocked draft's commentary must stay hidden from the client"
+    );
+    assert_eq!(run.calls.load(Ordering::SeqCst), 2, "one blocked draft and one retried answer");
 }
