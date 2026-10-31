@@ -30,7 +30,7 @@ use crate::tools::registry::unified_actions::CommandSessionAction;
 use crate::tools::{native_memory, tool_intent};
 
 mod cargo_failure_diagnostics;
-mod exec_command;
+pub(super) mod exec_command;
 mod exec_output;
 mod exec_sessions;
 mod exec_support;
@@ -289,67 +289,6 @@ impl ToolRegistry {
         Box::pin(async move { self.execute_code_search(args).await })
     }
 
-    /// Reject unsupported deletion shapes and verify every confirmed deletion
-    /// target resolves inside the workspace.
-    ///
-    /// The dangerous-command preflight defers `rm` so this gate can see the
-    /// launch working directory and the final raw command. Recognition covers
-    /// both the merged argv and any supplied `raw_command`, because either can
-    /// become the string the shell actually runs.
-    async fn enforce_deletion_policy(
-        &self,
-        payload: &serde_json::Map<String, Value>,
-        prepared_command: &PreparedExecCommand,
-        working_dir: &std::path::Path,
-        confirm: bool,
-    ) -> Result<()> {
-        use crate::tools::validation::commands::{self, DeletionCommandSet, DeletionDecision};
-
-        // Recognise every text that could become the executed command:
-        // verbatim string fields preserve shell operators that joining an argv
-        // would quote away, while the prepared shell string is the exact text
-        // handed to `-c` (or the plain argv when no shell wrapper was added).
-        let mut candidates = Vec::new();
-        for key in ["raw_command", "command", "cmd"] {
-            if let Some(text) = payload.get(key).and_then(Value::as_str) {
-                candidates.push(text.to_string());
-            }
-        }
-        if prepared_command.command == prepared_command.requested_command {
-            candidates.push(shell_words::join(prepared_command.requested_command.iter().map(String::as_str)));
-        } else if let Some(shell_command) = prepared_command.command.last() {
-            candidates.push(shell_command.clone());
-        }
-        candidates.sort_unstable();
-        candidates.dedup();
-
-        let plans = match commands::classify_deletion_commands(&candidates) {
-            DeletionCommandSet::NotDeletion => return Ok(()),
-            DeletionCommandSet::Unsupported { reason } => {
-                return Err(anyhow!(
-                    "deletion command is not supported: {reason}. Use one simple `rm` invocation with literal \
-                     workspace paths and confirm=true"
-                ));
-            }
-            DeletionCommandSet::Supported(plans) => plans,
-        };
-
-        if !confirm {
-            return Err(anyhow!("deletion via exec_command requires confirm=true"));
-        }
-
-        for plan in &plans {
-            match commands::assess_deletion_targets(&plan.operands, working_dir, self.workspace_root()).await {
-                DeletionDecision::Allowed { .. } => {}
-                DeletionDecision::Denied { target, reason } => {
-                    return Err(anyhow!("refusing to delete '{target}': {reason}"));
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     async fn prepare_exec_run_request(
         &self,
         args: &Value,
@@ -388,11 +327,11 @@ impl ToolRegistry {
         }
 
         let sandbox_request = self.resolve_exec_sandbox_request(payload).await?;
-        self.enforce_deletion_policy(payload, &prepared_command, &sandbox_request.working_dir_path, confirm)
+        self.enforce_deletion_policy(args, &prepared_command, &sandbox_request.working_dir_path, confirm)
             .await?;
         let output_config = exec_run_output_config(payload, &prepared_command.display_command);
 
-        enforce_pty_command_policy(&prepared_command.display_command, confirm)?;
+        enforce_pty_command_policy(&prepared_command.display_command)?;
         let sandbox_config = self.sandbox_config();
         let sandbox_plan = build_shell_execution_plan(
             &sandbox_config,

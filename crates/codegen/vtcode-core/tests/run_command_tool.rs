@@ -229,7 +229,8 @@ async fn exec_command_rejects_traversal_escape() -> Result<()> {
     let outside = tempfile::TempDir::new()?;
     let sentinel = outside.path().join("sentinel.txt");
     std::fs::write(&sentinel, b"sentinel")?;
-    let relative = format!("../{}/sentinel.txt", outside.path().file_name().unwrap().to_string_lossy());
+    let outside_name = outside.path().file_name().expect("temp dir has a file name");
+    let relative = format!("../{}/sentinel.txt", outside_name.to_string_lossy());
     let registry = harness.registry().await;
     registry.allow_all_tools().await?;
 

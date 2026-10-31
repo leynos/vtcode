@@ -193,11 +193,8 @@ fn rm_is_dangerous(rm_args: &[String]) -> bool {
             return true;
         }
 
-        if arg.starts_with('-') && !arg.starts_with("--") && arg.len() > 1 {
-            if let Some(target) = arg.chars().skip(1).find(|character| matches!(character, 'f' | 'r' | 'R')) {
-                debug_assert!(target.is_ascii());
-                return true;
-            }
+        if ['f', 'r', 'R'].into_iter().any(|flag| short_flag_group_contains(arg, flag)) {
+            return true;
         }
     }
 

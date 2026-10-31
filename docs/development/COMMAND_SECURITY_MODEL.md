@@ -165,7 +165,7 @@ allow_glob = [
 
 Workspace-scoped deletion is not blanket-denied; see
 [Workspace-scoped deletion](#workspace-scoped-deletion). A bare `rm` prefix in
-your own `deny_list` still blocks every deletion.
+a user-defined `deny_list` still blocks every deletion.
 
 #### 2. System Shutdown/Reboot
 
@@ -254,8 +254,8 @@ absolute-path denies and the `rm\s+(-rf|--force)` deny regex, so the exact
 `rm -rf` and `rm --force` spellings remain blocked by default even inside the
 workspace. The default regex does not catch reordered or separated flags such as
 `rm -f -r`; add a `deny_regex` that matches them if recursive deletion must
-stay blocked. Conversely, relax your own `deny_regex` if you want the bundled
-spellings to work.
+stay blocked. Conversely, relaxing the configured `deny_regex` permits the
+bundled spellings.
 
 Under `--dangerously-skip-permissions`, a confirmed supported deletion is
 auto-approved by the runloop; the executor still performs the target assessment.
