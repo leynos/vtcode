@@ -555,9 +555,11 @@ and `[history]` settings do not control ACP audit output.
   tool-loop limit refuses the calls, the same reasoning and commentary are
   relayed before the limit message ends the turn. Exposed reasoning and
   commentary on the final buffered provider response are relayed in the same
-  order. Cancellation suppresses updates that have not yet been sent, but it
-  cannot recall chunks already relayed to the client. Debug logs record
-  `Sending provider reasoning to ACP client`,
+  order. When a Stop hook blocks a buffered draft and generation retries, that
+  iteration's reasoning is still relayed as a thought chunk while its blocked
+  commentary stays hidden from the client. Cancellation suppresses updates that
+  have not yet been sent, but it cannot recall chunks already relayed to the
+  client. Debug logs record `Sending provider reasoning to ACP client`,
   `Sending assistant commentary to ACP client`, and
   `Tool-bearing provider response carried no assistant commentary or reasoning`;
   they log byte counts and tool metadata only, never the text content.
