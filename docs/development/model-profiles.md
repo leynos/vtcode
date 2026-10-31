@@ -42,16 +42,22 @@ Profiles live under a top-level table keyed by the literal path
 
 Example:
 
-[custom_providers.profiles."gpt-5.6-sol"] api_format = "openai-responses"
-context_window = 131072 supports_tools = true supports_vision = false
-supports_structured_output = true supports_parallel_tool_calls = true
+```toml
+[custom_providers.profiles."gpt-5.6-sol"]
+api_format = "openai-responses"
+context_window = 131072
+supports_tools = true
+supports_vision = false
+supports_structured_output = true
+supports_parallel_tool_calls = true
+```
 
 `supports_stream_usage` only affects OpenAI Chat Completions streams. In a
 Responses profile, it has no effect, so set it on an
 `api_format = "openai-chat"` profile (or provider entry) whose endpoint emits a
 terminal usage chunk instead.
 
-Notes and semantics
+## Notes and semantics
 
 - model / models remain the allowlist/defaults used to control the `/model`
   picker and what models are available. Profiles do NOT make a model available;

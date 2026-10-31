@@ -1,3 +1,7 @@
+//! Publishes provider rate-limit warnings as ACP session-info notices carrying
+//! `_meta.lody.notice`, reporting only retry information the provider actually
+//! supplied and never a fabricated quota window.
+
 use crate::acp;
 use serde_json::{Map, Value};
 use std::time::Duration;

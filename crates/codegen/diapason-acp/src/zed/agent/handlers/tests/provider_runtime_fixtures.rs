@@ -57,6 +57,10 @@ pub(super) struct BadGatewayProvider {
     pub(super) attempts: AtomicUsize,
 }
 
+pub(super) struct RateLimitedProvider {
+    pub(super) attempts: AtomicUsize,
+}
+
 #[async_trait]
 impl LLMProvider for PendingProvider {
     fn name(&self) -> &str {
@@ -112,6 +116,39 @@ impl LLMProvider for BadGatewayProvider {
                 Some("502 Bad Gateway".to_string()),
             )),
         })
+    }
+}
+
+#[async_trait]
+impl LLMProvider for RateLimitedProvider {
+    fn name(&self) -> &str {
+        "retry-test"
+    }
+
+    fn supported_models(&self) -> Vec<String> {
+        vec!["test-model".to_string()]
+    }
+
+    fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+        Ok(())
+    }
+
+    async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+        let attempt = self.attempts.fetch_add(1, Ordering::SeqCst);
+        if attempt == 0 {
+            return Err(LLMError::RateLimit {
+                metadata: Some(LLMErrorMetadata::new(
+                    "baseten",
+                    Some(429),
+                    Some("rate_limit_error".to_string()),
+                    None,
+                    None,
+                    Some("0.2".to_string()),
+                    Some("capacity temporarily exhausted".to_string()),
+                )),
+            });
+        }
+        Ok(LLMResponse::new("test-model", "recovered"))
     }
 }
 
