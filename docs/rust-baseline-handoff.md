@@ -357,7 +357,19 @@ parent, so the first two replay commits became empty and were skipped. The
 replay conflicted only in the two module guidance files and this handoff; each
 resolution keeps the parent's wording and applies the residual native colour
 spelling. The residual APIs, table alignment, local bindings and prose remain
-intact. The rebased candidate is validated with the repository's sequential
-commit gates. Logs use `restack-1` on `harden-lint-spelling-colour`; final
-handoff checks use `handoff-restack-1`. The push uses an explicit lease against
-the original published PR #27 head.
+intact.
+
+The df12 lineage predates main's instruction-discovery test isolation, so the
+first candidate failed `make test` in `project_doc`, `prompts::system` and
+`incremental_system_prompt`: those tests resolved the developer's real home and
+folded `~/.claude/CLAUDE.md` into fixtures that expect only workspace
+instructions. None of the affected files is changed by df12 or by this layer,
+so the reviewed fix from main `7fecc7f7c` is replayed verbatim here: the
+`*_with_home` discovery entry points and the explicit `None` instruction home
+in the tests. That is test isolation, not part of the colour scope, and it
+unblocks the same failure in the layers above.
+
+The rebased candidate is validated with the repository's sequential commit
+gates. Logs use `restack-2` on `harden-lint-spelling-colour`; final handoff
+checks use `handoff-restack-2`. The push uses an explicit lease against the
+original published PR #27 head.
