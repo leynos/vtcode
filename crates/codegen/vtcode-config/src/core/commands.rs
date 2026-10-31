@@ -312,7 +312,8 @@ impl Default for CommandsConfig {
                 r"^(docker|docker-compose)\b".into(),
             ],
             deny_regex: vec![
-                // Recursive or forced removal, in any flag order or grouping.
+                // Recursive spellings and the long --force option, in any
+                // flag order or grouping. The short -f is deliberately allowed.
                 r"rm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)".into(),
                 // Sudo commands
                 r"sudo\s+.*".into(),
