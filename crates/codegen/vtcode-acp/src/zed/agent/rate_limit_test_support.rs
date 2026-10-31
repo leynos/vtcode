@@ -105,6 +105,32 @@ pub(super) fn successful_stream_response() -> ResponseTemplate {
     ResponseTemplate::new(200).set_body_raw(body, "text/event-stream")
 }
 
+/// Task running the agent side of a duplex ACP connection.
+pub(super) type AgentConnectionTask = tokio::task::JoinHandle<agent_client_protocol::Result<()>>;
+
+/// Attach `agent` to a fresh duplex connection and spawn its ACP driver.
+///
+/// Returns the client endpoint and the spawned agent task. The caller owns the
+/// client-side flow and finishes with [`stop_agent_connection`].
+pub(super) fn spawn_agent_connection(agent: &Arc<ZedAgent>, name: &'static str) -> (Channel, AgentConnectionTask) {
+    let (agent_channel, client_channel) = Channel::duplex();
+    let agent = Arc::clone(agent);
+    let connection = install_handlers(Agent.builder().name(name), Arc::clone(&agent)).connect_with(
+        agent_channel,
+        async move |cx: ConnectionTo<Client>| {
+            agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+            std::future::pending::<agent_client_protocol::Result<()>>().await
+        },
+    );
+    (client_channel, tokio::spawn(connection))
+}
+
+/// Abort the spawned agent driver and wait for it to unwind.
+pub(super) async fn stop_agent_connection(task: AgentConnectionTask) {
+    task.abort();
+    drop(task.await);
+}
+
 pub(super) async fn run_scripted_prompt(
     mut config: CustomProviderConfig,
     responses: Vec<ResponseTemplate>,
@@ -131,18 +157,8 @@ pub(super) async fn run_scripted_prompt(
     let workspace = TempDir::new().expect("rate-limit wire workspace");
     let workspace_path = workspace.path().to_path_buf();
     let agent = Arc::new(build_wire_test_agent_with_providers(workspace.path(), &[config]).await);
-    let (agent_channel, client_channel) = Channel::duplex();
     let (notifications_tx, mut notifications_rx) = mpsc::unbounded_channel();
-
-    let agent_connection = install_handlers(Agent.builder().name("vtcode-rate-limit-test"), Arc::clone(&agent))
-        .connect_with(agent_channel, {
-            let agent = Arc::clone(&agent);
-            async move |cx: ConnectionTo<Client>| {
-                agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
-                std::future::pending::<agent_client_protocol::Result<()>>().await
-            }
-        });
-    let agent_task = tokio::spawn(agent_connection);
+    let (client_channel, agent_task) = spawn_agent_connection(&agent, "vtcode-rate-limit-test");
 
     let client_connection = Client
         .builder()
@@ -183,8 +199,7 @@ pub(super) async fn run_scripted_prompt(
         .await
         .expect("rate-limit protocol flow should finish")
         .expect("rate-limit protocol flow should succeed");
-    agent_task.abort();
-    drop(agent_task.await);
+    stop_agent_connection(agent_task).await;
 
     let notifications = std::iter::from_fn(|| notifications_rx.try_recv().ok()).collect::<Vec<_>>();
     let visible_text = visible_text(&notifications);
