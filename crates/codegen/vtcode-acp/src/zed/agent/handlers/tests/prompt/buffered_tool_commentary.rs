@@ -2,114 +2,86 @@
 use super::*;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
 
+/// Replays buffered responses produced by a call-indexed script.
+struct ScriptedProvider {
+    calls: Arc<AtomicUsize>,
+    respond: fn(usize) -> LLMResponse,
+}
+
+#[async_trait]
+impl LLMProvider for ScriptedProvider {
+    fn name(&self) -> &str {
+        "wire-test"
+    }
+
+    fn supported_models(&self) -> Vec<String> {
+        vec!["wire-model".to_string()]
+    }
+
+    fn supports_streaming(&self) -> bool {
+        false
+    }
+
+    fn supports_tools(&self, _model: &str) -> bool {
+        true
+    }
+
+    fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+        Ok(())
+    }
+
+    async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
+        Err(LLMError::InvalidRequest {
+            message: "buffered commentary test must not stream".to_string(),
+            metadata: None,
+        })
+    }
+
+    async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+        let index = self.calls.fetch_add(1, Ordering::SeqCst);
+        Ok((self.respond)(index))
+    }
+}
+
 /// Replays one tool-bearing buffered turn followed by a final answer.
-struct BufferedToolThenAnswerProvider {
-    calls: Arc<AtomicUsize>,
-}
-
-#[async_trait]
-impl LLMProvider for BufferedToolThenAnswerProvider {
-    fn name(&self) -> &str {
-        "wire-test"
-    }
-
-    fn supported_models(&self) -> Vec<String> {
-        vec!["wire-model".to_string()]
-    }
-
-    fn supports_streaming(&self) -> bool {
-        false
-    }
-
-    fn supports_tools(&self, _model: &str) -> bool {
-        true
-    }
-
-    fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
-        Ok(())
-    }
-
-    async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
-        Err(LLMError::InvalidRequest {
-            message: "buffered commentary test must not stream".to_string(),
-            metadata: None,
-        })
-    }
-
-    async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
-        let response_index = self.calls.fetch_add(1, Ordering::SeqCst);
-        Ok(if response_index == 0 {
-            LLMResponse {
-                content: Some("Checking files.".to_string()),
-                reasoning: Some("I need the workspace listing.".to_string()),
-                tool_calls: Some(vec![vtcode_core::llm::provider::ToolCall::function(
-                    "call-tool".to_string(),
-                    "list_files".to_string(),
-                    r#"{"path":""}"#.to_string(),
-                )]),
-                finish_reason: vtcode_core::llm::provider::FinishReason::ToolCalls,
-                model: "wire-model".to_string(),
-                ..LLMResponse::default()
-            }
-        } else {
-            LLMResponse {
-                content: Some("Tool complete.".to_string()),
-                finish_reason: vtcode_core::llm::provider::FinishReason::Stop,
-                model: "wire-model".to_string(),
-                ..LLMResponse::default()
-            }
-        })
-    }
-}
-
-/// Requests a tool on every turn so the shared tool-loop limit ends the turn.
-struct AlwaysToolCallProvider {
-    calls: Arc<AtomicUsize>,
-}
-
-#[async_trait]
-impl LLMProvider for AlwaysToolCallProvider {
-    fn name(&self) -> &str {
-        "wire-test"
-    }
-
-    fn supported_models(&self) -> Vec<String> {
-        vec!["wire-model".to_string()]
-    }
-
-    fn supports_streaming(&self) -> bool {
-        false
-    }
-
-    fn supports_tools(&self, _model: &str) -> bool {
-        true
-    }
-
-    fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
-        Ok(())
-    }
-
-    async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
-        Err(LLMError::InvalidRequest {
-            message: "buffered commentary test must not stream".to_string(),
-            metadata: None,
-        })
-    }
-
-    async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
-        let iteration = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
-        Ok(LLMResponse {
-            content: Some(format!("Iteration {iteration}.")),
-            reasoning: Some(format!("Reasoning {iteration}.")),
+fn tool_then_answer(index: usize) -> LLMResponse {
+    if index == 0 {
+        LLMResponse {
+            content: Some("Checking files.".to_string()),
+            reasoning: Some("I need the workspace listing.".to_string()),
             tool_calls: Some(vec![vtcode_core::llm::provider::ToolCall::function(
-                format!("call-{iteration}"),
+                "call-tool".to_string(),
                 "list_files".to_string(),
                 r#"{"path":""}"#.to_string(),
             )]),
             finish_reason: vtcode_core::llm::provider::FinishReason::ToolCalls,
             model: "wire-model".to_string(),
             ..LLMResponse::default()
-        })
+        }
+    } else {
+        LLMResponse {
+            content: Some("Tool complete.".to_string()),
+            finish_reason: vtcode_core::llm::provider::FinishReason::Stop,
+            model: "wire-model".to_string(),
+            ..LLMResponse::default()
+        }
+    }
+}
+
+/// Requests a tool on every turn so the shared tool-loop limit ends the turn.
+fn always_tool_call(index: usize) -> LLMResponse {
+    let iteration = index + 1;
+    LLMResponse {
+        content: Some(format!("Iteration {iteration}.")),
+        reasoning: Some(format!("Reasoning {iteration}.")),
+        tool_calls: Some(vec![vtcode_core::llm::provider::ToolCall::function(
+            format!("call-{iteration}"),
+            "list_files".to_string(),
+            r#"{"path":""}"#.to_string(),
+        )]),
+        finish_reason: vtcode_core::llm::provider::FinishReason::ToolCalls,
+        model: "wire-model".to_string(),
+        ..LLMResponse::default()
     }
 }
 
@@ -219,7 +191,12 @@ async fn buffered_tool_turns_emit_reasoning_and_commentary_before_tool_lifecycle
     let calls = Arc::new(AtomicUsize::new(0));
     let factory_calls = Arc::clone(&calls);
     let run = run_buffered_wire_prompt(
-        Arc::new(move || Box::new(BufferedToolThenAnswerProvider { calls: Arc::clone(&factory_calls) })),
+        Arc::new(move || {
+            Box::new(ScriptedProvider {
+                calls: Arc::clone(&factory_calls),
+                respond: tool_then_answer,
+            })
+        }),
         Arc::clone(&calls),
         |_| {},
     )
@@ -267,7 +244,12 @@ async fn buffered_tool_limit_relays_the_refused_response_before_the_limit_messag
     let calls = Arc::new(AtomicUsize::new(0));
     let factory_calls = Arc::clone(&calls);
     let run = run_buffered_wire_prompt(
-        Arc::new(move || Box::new(AlwaysToolCallProvider { calls: Arc::clone(&factory_calls) })),
+        Arc::new(move || {
+            Box::new(ScriptedProvider {
+                calls: Arc::clone(&factory_calls),
+                respond: always_tool_call,
+            })
+        }),
         Arc::clone(&calls),
         |agent| agent.tool_loop_limit = 1,
     )

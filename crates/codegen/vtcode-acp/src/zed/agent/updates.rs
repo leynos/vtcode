@@ -26,29 +26,55 @@ impl AssistantChunkKind {
     }
 }
 
-/// Identifies the channel of an assistant update built by [`assistant_updates`].
-pub(super) fn assistant_chunk_kind(update: &acp::SessionUpdate) -> Option<AssistantChunkKind> {
-    match update {
-        acp::SessionUpdate::AgentThoughtChunk(_) => Some(AssistantChunkKind::Reasoning),
-        acp::SessionUpdate::AgentMessageChunk(_) => Some(AssistantChunkKind::Commentary),
-        _ => None,
-    }
-}
-
 /// Builds the ordered user-facing updates for one provider response.
 ///
 /// Reasoning travels as a thought chunk ahead of commentary so clients that
 /// render updates in arrival order show the model's intent before its answer.
 /// Empty channels produce no update, and no text is trimmed or rewritten.
-pub(super) fn assistant_updates(content: &str, reasoning: &str) -> Vec<acp::SessionUpdate> {
+pub(super) fn assistant_updates(content: &str, reasoning: &str) -> Vec<(AssistantChunkKind, acp::SessionUpdate)> {
     let mut updates = Vec::with_capacity(2);
     if !reasoning.is_empty() {
-        updates.push(acp::SessionUpdate::AgentThoughtChunk(text_chunk(reasoning.to_owned())));
+        updates.push((
+            AssistantChunkKind::Reasoning,
+            acp::SessionUpdate::AgentThoughtChunk(text_chunk(reasoning.to_owned())),
+        ));
     }
     if !content.is_empty() {
-        updates.push(acp::SessionUpdate::AgentMessageChunk(text_chunk(content.to_owned())));
+        updates.push((
+            AssistantChunkKind::Commentary,
+            acp::SessionUpdate::AgentMessageChunk(text_chunk(content.to_owned())),
+        ));
     }
     updates
+}
+
+fn log_assistant_update(
+    kind: AssistantChunkKind,
+    session_id: &acp::SessionId,
+    loop_iteration: usize,
+    content: &str,
+    reasoning: &str,
+    has_tool_calls: bool,
+    tool_call_count: usize,
+) {
+    match kind {
+        AssistantChunkKind::Reasoning => tracing::debug!(
+            session_id = %session_id,
+            loop_iteration,
+            reasoning_bytes = reasoning.len(),
+            has_tool_calls,
+            tool_call_count,
+            "Sending provider reasoning to ACP client"
+        ),
+        AssistantChunkKind::Commentary => tracing::debug!(
+            session_id = %session_id,
+            loop_iteration,
+            content_bytes = content.len(),
+            has_tool_calls,
+            tool_call_count,
+            "Sending assistant commentary to ACP client"
+        ),
+    }
 }
 
 impl ZedAgent {
@@ -92,28 +118,8 @@ impl ZedAgent {
             return;
         }
 
-        for update in updates {
-            let Some(kind) = assistant_chunk_kind(&update) else {
-                continue;
-            };
-            match kind {
-                AssistantChunkKind::Reasoning => tracing::debug!(
-                    session_id = %session_id,
-                    loop_iteration,
-                    reasoning_bytes = reasoning.len(),
-                    has_tool_calls,
-                    tool_call_count,
-                    "Sending provider reasoning to ACP client"
-                ),
-                AssistantChunkKind::Commentary => tracing::debug!(
-                    session_id = %session_id,
-                    loop_iteration,
-                    content_bytes = content.len(),
-                    has_tool_calls,
-                    tool_call_count,
-                    "Sending assistant commentary to ACP client"
-                ),
-            }
+        for (kind, update) in updates {
+            log_assistant_update(kind, session_id, loop_iteration, content, reasoning, has_tool_calls, tool_call_count);
             if let Err(error) = self.send_update(session_id, update).await {
                 tracing::warn!(
                     session_id = %session_id,

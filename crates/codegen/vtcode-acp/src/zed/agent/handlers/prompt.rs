@@ -24,6 +24,11 @@ pub(super) async fn persist_session_checkpoint(agent: &ZedAgent, session: &Sessi
             "Failed to persist ACP session checkpoint"
         );
     }
+    update_transcript_path_best_effort(session, boundary).await;
+}
+
+/// Refreshes the session transcript path, logging a failure without failing the turn.
+async fn update_transcript_path_best_effort(session: &SessionHandle, boundary: &'static str) {
     if let Err(error) = session.update_transcript_path().await {
         log_suppressed_error(&error, "transcript_update", "transcript_write_failed");
         warn!(

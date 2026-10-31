@@ -1,9 +1,9 @@
 //! Executes tool rounds requested by a provider response.
-use super::persist_session_checkpoint;
+use super::{persist_session_checkpoint, update_transcript_path_best_effort};
 use crate::acp;
 use crate::acp::Error as SdkError;
+use crate::zed::agent::ZedAgent;
 use crate::zed::agent::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
-use crate::zed::agent::{ZedAgent, log_suppressed_error};
 use crate::zed::types::SessionHandle;
 use tracing::{info, warn};
 use vtcode_core::llm::provider::{Message, ToolCall as LLMToolCall};
@@ -26,6 +26,14 @@ pub(in crate::zed::agent::handlers) enum ToolRoundOutcome {
     LimitReached(String),
 }
 
+/// Whether a buffered turn still needs to relay assistant updates.
+///
+/// Streamed turns have already sent each chunk, and a cancelled turn must not
+/// send updates the client can no longer render as live output.
+fn should_relay_assistant_updates(streamed: bool, session: &SessionHandle) -> bool {
+    !streamed && !session.cancellation.is_cancelled()
+}
+
 pub(in crate::zed::agent::handlers) async fn execute_tool_round(
     request: ToolRoundRequest<'_>,
 ) -> Result<ToolRoundOutcome, SdkError> {
@@ -42,7 +50,7 @@ pub(in crate::zed::agent::handlers) async fn execute_tool_round(
     } = request;
 
     if agent.tool_loop_limit_reached(*tool_loop_count) {
-        if !streamed && !session.cancellation.is_cancelled() {
+        if should_relay_assistant_updates(streamed, session) {
             agent
                 .send_assistant_updates(
                     session_id,
@@ -70,7 +78,7 @@ pub(in crate::zed::agent::handlers) async fn execute_tool_round(
           tool_recovery_outcome = "placeholders_staged", "ACP tool recovery placeholders staged");
     require_session_checkpoint(agent, session, "assistant_tool_calls_write_ahead").await?;
 
-    if !streamed && !session.cancellation.is_cancelled() {
+    if should_relay_assistant_updates(streamed, session) {
         agent
             .send_assistant_updates(
                 session_id,
@@ -141,14 +149,6 @@ async fn require_session_checkpoint(
             SdkError::internal_error().data(format!("Failed to persist ACP session checkpoint at {boundary}: {error}"))
         );
     }
-    if let Err(error) = session.update_transcript_path().await {
-        log_suppressed_error(&error, "transcript_update", "transcript_write_failed");
-        warn!(
-            operation = "transcript_update",
-            error_category = "transcript_write_failed",
-            boundary,
-            "Failed to update ACP session transcript path"
-        );
-    }
+    update_transcript_path_best_effort(session, boundary).await;
     Ok(())
 }

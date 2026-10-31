@@ -1,6 +1,6 @@
 //! Verifies ACP prompt streaming, partial-turn recovery, compaction, and reasoning projection.
 use super::*;
-use crate::zed::agent::updates::assistant_updates;
+use crate::zed::agent::updates::{AssistantChunkKind, assistant_updates};
 use agent_client_protocol::schema::v1::{InitializeRequest, LoadSessionRequest, NewSessionRequest};
 
 mod buffered_tool_commentary;
@@ -58,14 +58,16 @@ fn reasoning_and_commentary_remain_visible_when_response_requests_a_tool() {
         response.reasoning.as_deref().unwrap_or_default(),
     );
     assert_eq!(updates.len(), 2, "a tool-bearing response must expose both channels");
-    let acp::SessionUpdate::AgentThoughtChunk(thought) = &updates[0] else {
+    assert_eq!(updates[0].0, AssistantChunkKind::Reasoning);
+    let acp::SessionUpdate::AgentThoughtChunk(thought) = &updates[0].1 else {
         panic!("reasoning should produce the first ACP thought update");
     };
     let acp::ContentBlock::Text(thought_text) = &thought.content else {
         panic!("reasoning update should contain text");
     };
     assert_eq!(thought_text.text, "Inspect the call graph before editing.");
-    let acp::SessionUpdate::AgentMessageChunk(message) = &updates[1] else {
+    assert_eq!(updates[1].0, AssistantChunkKind::Commentary);
+    let acp::SessionUpdate::AgentMessageChunk(message) = &updates[1].1 else {
         panic!("commentary should produce an ACP message update");
     };
     let acp::ContentBlock::Text(message_text) = &message.content else {
