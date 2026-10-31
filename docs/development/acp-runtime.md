@@ -73,9 +73,19 @@ mutating tools:
   repaired history before the session becomes visible. The repair records that
   the call was not replayed and tells the model to verify workspace state
   before resubmitting.
+- A repair that only relocates a uniquely attributable late result changes
+  message order, so it is persisted and checkpointed exactly like a repair that
+  inserts a placeholder.
 - History with duplicate or otherwise ambiguous terminal results is rejected
   rather than guessed at. The archive is left untouched and the session does
-  not become resumable.
+  not become resumable. A compacted history whose retained prefix begins with
+  Tool results is not ambiguous: only front trimming can produce that shape,
+  and providers strip orphan tool blocks at serialization, so it resumes. Every
+  duplicate, mismatched, or orphan result inside the retained history is still
+  rejected.
+- `write_stdin` reports partial state when the session is lost after the input
+  write, because the bytes may already have been consumed. A pre-write
+  resolution failure and a poll or wait failure do not.
 
 Recovery never executes a tool a second time. Related failures carry typed
 outcomes: a `write_stdin` continuation for a terminated exec session becomes a
