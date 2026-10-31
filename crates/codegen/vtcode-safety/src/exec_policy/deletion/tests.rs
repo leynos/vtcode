@@ -164,6 +164,28 @@ fn refuses_rm_invoked_inside_a_chain_or_shell_body() {
 }
 
 #[test]
+fn rejects_quoted_and_escaped_operands() {
+    // Assessment sees the parser's raw operand text, but the shell removes
+    // quoting before deleting. Accepting quoted text would assess a different
+    // path from the one actually deleted.
+    for command in [
+        "rm -f '../outside dir/x'",
+        "rm -f '.git/some file'",
+        "rm -f \"scratch/my file.txt\"",
+    ] {
+        let reason = unsupported(command);
+        assert!(reason.contains("quoted or escaped operands"), "unexpected reason for {command:?}: {reason}");
+    }
+
+    // An unquoted backslash is dynamic shell syntax, so it fails closed
+    // before operand classification.
+    assert!(matches!(
+        recognize_deletion_command("rm -f scratch/my\\ file.txt"),
+        DeletionRecognition::Unsupported { .. }
+    ));
+}
+
+#[test]
 fn rejects_operand_only_dot() {
     assert!(unsupported("rm -f .").contains("current directory"));
 }

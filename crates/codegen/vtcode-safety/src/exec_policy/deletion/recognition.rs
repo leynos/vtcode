@@ -7,9 +7,14 @@
 //! [`DeletionRecognition::Unsupported`] so a caller never accidentally treats
 //! an unparsed command as a harmless non-deletion.
 
-use std::path::Path;
-
 use crate::command_safety::shell_parser;
+
+use tokens::{
+    base_command_name, contains_rm_token, is_deletion_wrapper, is_environment_assignment, is_shell_interpreter,
+    starts_with_environment_assignment,
+};
+
+mod tokens;
 
 /// Short `rm` options accepted by the recognizer.
 const RM_SHORT_OPTIONS: &[char] = &['f', 'r', 'R', 'd', 'v', 'i', 'I'];
@@ -314,6 +319,12 @@ fn operand_rejection(operand: &str) -> Option<&'static str> {
     if operand.contains(['$', '`']) {
         return Some("shell expansion in operands is not supported");
     }
+    // Operands reach assessment as the parser's raw text, quotes included, but
+    // the shell removes quoting before deleting. Comparing the quoted text
+    // would assess a different path from the one actually deleted.
+    if operand.contains(['\'', '"', '\\']) {
+        return Some("quoted or escaped operands are not supported; name the exact path without quotes or escapes");
+    }
     if operand == "." {
         return Some("the current directory cannot be deleted");
     }
@@ -353,56 +364,4 @@ fn segment_mentions_rm(segment: &[String]) -> bool {
         return segment.iter().skip(1).any(|argument| contains_rm_token(argument));
     }
     is_deletion_wrapper(name) && segment.iter().skip(1).any(|argument| base_command_name(argument) == "rm")
-}
-
-/// Whether `text` contains an `rm` token in any escaped or quoted spelling.
-///
-/// This is the fail-closed path for text the parser cannot trust, so it
-/// deliberately over-refuses: quote and escape characters are removed before
-/// tokenizing, which makes `\rm`, `r\m`, `'rm'`, and `"rm"` all match.
-fn contains_rm_token(text: &str) -> bool {
-    let unquoted: String = text
-        .chars()
-        .filter(|character| !matches!(character, '\\' | '\'' | '"'))
-        .collect();
-    unquoted
-        .split(|character: char| {
-            character.is_whitespace() || matches!(character, ';' | '&' | '|' | '(' | ')' | '<' | '>' | '`')
-        })
-        .any(|token| base_command_name(token) == "rm")
-}
-
-fn strip_wrapping_quotes(token: &str) -> &str {
-    token
-        .strip_prefix('\'')
-        .and_then(|token| token.strip_suffix('\''))
-        .or_else(|| token.strip_prefix('"').and_then(|token| token.strip_suffix('"')))
-        .unwrap_or(token)
-}
-
-fn base_command_name(command: &str) -> &str {
-    let command = strip_wrapping_quotes(command);
-    Path::new(command).file_name().and_then(|name| name.to_str()).unwrap_or(command)
-}
-
-fn is_shell_interpreter(program: &str) -> bool {
-    matches!(program, "bash" | "sh" | "zsh" | "dash" | "ksh")
-}
-
-fn is_deletion_wrapper(program: &str) -> bool {
-    matches!(program, "sudo" | "env" | "command" | "nohup" | "time" | "exec" | "xargs")
-}
-
-/// Detect a leading `NAME=value` environment assignment in raw command text.
-fn starts_with_environment_assignment(command: &str) -> bool {
-    command.split_whitespace().next().is_some_and(is_environment_assignment)
-}
-
-fn is_environment_assignment(token: &str) -> bool {
-    token.split_once('=').is_some_and(|(name, _value)| {
-        !name.is_empty()
-            && name
-                .chars()
-                .all(|character| character.is_ascii_alphanumeric() || character == '_')
-    })
 }

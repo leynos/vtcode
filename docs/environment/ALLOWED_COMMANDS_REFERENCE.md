@@ -208,8 +208,15 @@ The following commands are **ALWAYS BLOCKED** and cannot be overridden:
 ### Destructive File Operations
 
 ```
-rm, rmdir, del, format, fdisk, mkfs, dd, shred, wipe, srm, unlink
+rmdir, del, format, fdisk, mkfs, dd, shred, wipe, srm, unlink
 ```
+
+`rm` is not on this list. `exec_command` (and its PTY and pipe backends) allows
+one simple, confirmed `rm` invocation whose targets resolve inside the
+workspace; see
+[Workspace-Scoped Deletion](../development/COMMAND_SECURITY_MODEL.md#workspace-scoped-deletion).
+Configured deny rules, including the default `rm\s+(-rf|--force)` regex, still
+win.
 
 ### Permission & System Changes
 
@@ -307,7 +314,6 @@ deny_list = [
 ]
 
 deny_glob = [
-    "rm -rf *",
     "sudo *",
     "chmod *",
     "chown *",

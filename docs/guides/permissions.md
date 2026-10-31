@@ -64,6 +64,10 @@ win, so `deny = ["exec_command(rm -rf *)"]` continues to block the exact
 their own deny rules; see the `deny_regex` guidance in
 [the command security model](../development/COMMAND_SECURITY_MODEL.md).
 
+Deletion cannot be typed into an already-running session: `write_stdin`,
+`send_pty_input`, and command-session `write`/`continue` input are refused when
+they name an `rm` invocation, because that path never reaches the executor gate.
+
 A confirmed supported deletion still prompts in an ordinary session. Under
 `--dangerously-skip-permissions` it is auto-approved by the runloop, because
 the executor repeats the target assessment; unconfirmed and unsupported
