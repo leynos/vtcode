@@ -15,11 +15,11 @@ use hashbrown::HashMap;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-pub(super) struct PreparedExecCommand {
-    pub(super) command: Vec<String>,
-    pub(super) requested_command: Vec<String>,
-    pub(super) display_command: String,
-    pub(super) requested_command_display: String,
+pub(in crate::tools::registry) struct PreparedExecCommand {
+    pub(in crate::tools::registry) command: Vec<String>,
+    pub(in crate::tools::registry) requested_command: Vec<String>,
+    pub(in crate::tools::registry) display_command: String,
+    pub(in crate::tools::registry) requested_command_display: String,
 }
 
 pub(super) fn parse_command_parts(

@@ -19,6 +19,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::oneshot;
 
+mod deletion;
+
 #[derive(Clone, Copy)]
 enum ClientDecision {
     Allow,
@@ -46,6 +48,40 @@ fn permission_client_action(decision: ClientDecision) -> PermissionClientAction 
         ClientDecision::Unknown => PermissionClientAction::Select("unsupported-option"),
         ClientDecision::RequestFailure => PermissionClientAction::Fail,
     }
+}
+
+fn permission_response(action: PermissionClientAction) -> Option<RequestPermissionResponse> {
+    match action {
+        PermissionClientAction::Select(option_id) => Some(RequestPermissionResponse::new(
+            RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(option_id)),
+        )),
+        PermissionClientAction::Cancel => Some(RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled)),
+        PermissionClientAction::Fail => None,
+    }
+}
+
+/// Build and connect a permission client that answers with `decision` and
+/// counts every permission request it receives.
+fn permission_client(
+    decision: ClientDecision,
+    request_count: Arc<AtomicUsize>,
+    client_channel: impl agent_client_protocol::ConnectTo<Client> + 'static,
+) -> impl Future<Output = Result<(), agent_client_protocol::Error>> {
+    let client_request_count = Arc::clone(&request_count);
+    Client
+        .builder()
+        .on_receive_request(
+            async move |request: RequestPermissionRequest, responder, _connection| {
+                let _previous_count = client_request_count.fetch_add(1, Ordering::Relaxed);
+                assert_eq!(request.options.len(), 4);
+                match permission_response(permission_client_action(decision)) {
+                    Some(response) => responder.respond(response),
+                    None => responder.respond_with_internal_error("simulated permission request failure"),
+                }
+            },
+            on_receive_request!(),
+        )
+        .connect_to(client_channel)
 }
 
 fn test_prompter() -> DefaultPermissionPrompter<AcpToolRegistry> {
@@ -184,27 +220,7 @@ async fn run_repeated_permission_flow(
             Ok(())
         });
 
-    let client = Client
-        .builder()
-        .on_receive_request(
-            async move |request: RequestPermissionRequest, responder, _connection| {
-                let _previous_count = client_request_count.fetch_add(1, Ordering::Relaxed);
-                assert_eq!(request.options.len(), 4);
-                match permission_client_action(decision) {
-                    PermissionClientAction::Select(option_id) => responder.respond(RequestPermissionResponse::new(
-                        RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(option_id)),
-                    )),
-                    PermissionClientAction::Cancel => {
-                        responder.respond(RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled))
-                    }
-                    PermissionClientAction::Fail => {
-                        responder.respond_with_internal_error("simulated permission request failure")
-                    }
-                }
-            },
-            on_receive_request!(),
-        )
-        .connect_to(client_channel);
+    let client = permission_client(decision, client_request_count, client_channel);
 
     let (agent_result, client_result) = tokio::join!(agent, client);
     agent_result.expect("agent duplex connection should complete");
@@ -216,96 +232,6 @@ async fn run_repeated_permission_flow(
         .map(|result| result.expect("prompter should return a result"))
         .collect();
     (results, request_count.load(Ordering::Relaxed))
-}
-
-/// Drive one `exec_command` permission request through the duplex ACP
-/// connection, returning the report and how many client permission requests
-/// were observed.
-async fn run_exec_command_permission_flow(
-    args: Value,
-    decision: ClientDecision,
-    skip_confirmations: bool,
-) -> (Option<ToolExecutionReport>, usize) {
-    let (agent_channel, client_channel) = Channel::duplex();
-    let (result_tx, result_rx) = oneshot::channel();
-    let request_count = Arc::new(AtomicUsize::new(0));
-    let client_request_count = Arc::clone(&request_count);
-    let session_id = acp::SessionId::new("deletion-permission-test-session");
-    let call = acp::ToolCall::new("deletion-permission-test-call", "Run command");
-
-    let agent = Agent
-        .builder()
-        .connect_with(agent_channel, async move |cx: ConnectionTo<Client>| {
-            let handle = ConnectionHandle::new(cx);
-            let prompter = DefaultPermissionPrompter::with_skip_confirmations(
-                AcpToolRegistry::new(Path::new("/tmp"), true, true, Vec::new()),
-                skip_confirmations,
-            );
-            let tool = PermissionToolContext::new("exec_command", acp::ToolKind::Execute, "Run command");
-            let result = prompter
-                .request_named_tool_permission(&handle, &session_id, &call, tool, &args)
-                .await;
-            drop(result_tx.send(result));
-            Ok(())
-        });
-
-    let client = Client
-        .builder()
-        .on_receive_request(
-            async move |request: RequestPermissionRequest, responder, _connection| {
-                let _previous_count = client_request_count.fetch_add(1, Ordering::Relaxed);
-                assert_eq!(request.options.len(), 4);
-                match permission_client_action(decision) {
-                    PermissionClientAction::Select(option_id) => responder.respond(RequestPermissionResponse::new(
-                        RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(option_id)),
-                    )),
-                    PermissionClientAction::Cancel => {
-                        responder.respond(RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled))
-                    }
-                    PermissionClientAction::Fail => {
-                        responder.respond_with_internal_error("simulated permission request failure")
-                    }
-                }
-            },
-            on_receive_request!(),
-        )
-        .connect_to(client_channel);
-
-    let (agent_result, client_result) = tokio::join!(agent, client);
-    agent_result.expect("agent duplex connection should complete");
-    client_result.expect("client duplex connection should complete");
-    let report = result_rx
-        .await
-        .expect("agent should report the permission result")
-        .expect("prompter should return a result");
-    (report, request_count.load(Ordering::Relaxed))
-}
-
-#[tokio::test]
-async fn confirmed_deletion_still_prompts_for_permission() {
-    let (report, request_count) = run_exec_command_permission_flow(
-        json!({ "cmd": "rm -f scratch/tmp.txt", "confirm": true }),
-        ClientDecision::Deny,
-        false,
-    )
-    .await;
-
-    assert_eq!(request_count, 1, "a confirmed deletion is not a read-only auto-allow; it must prompt");
-    let report = report.expect("denial should produce a report");
-    assert!(report.llm_response.contains(TOOL_PERMISSION_DENIED_MESSAGE));
-}
-
-#[tokio::test]
-async fn confirmed_deletion_permission_prompt_is_bypassed_when_confirmations_are_skipped() {
-    let (report, request_count) = run_exec_command_permission_flow(
-        json!({ "cmd": "rm -f scratch/tmp.txt", "confirm": true }),
-        ClientDecision::Deny,
-        true,
-    )
-    .await;
-
-    assert_eq!(request_count, 0, "skip_confirmations must bypass the ACP prompt");
-    assert!(report.is_none());
 }
 
 #[tokio::test]

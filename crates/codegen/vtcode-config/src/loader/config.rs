@@ -865,7 +865,9 @@ deny_glob = [
 allow_regex = []
 
 # Regular expression patterns for denied commands (if needed)
-deny_regex = []
+deny_regex = [
+    'rm\s+(-rf|--force)',   # Forced or recursive removal spellings
+]
 
 # Security configuration - Safety settings for automated operations
 [security]

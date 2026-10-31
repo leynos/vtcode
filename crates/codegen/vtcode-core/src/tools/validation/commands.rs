@@ -13,6 +13,24 @@ pub use crate::exec_policy::{
     classify_deletion_commands, recognize_deletion_command,
 };
 
+/// Collect every textual representation of the command a tool call could run.
+///
+/// The verbatim string fields preserve shell operators that joining an argv
+/// would quote away. Preflight and the exec executor must inspect the same
+/// set — a mismatch between them is exactly the bypass the deletion gate
+/// guards against — so both call this helper and pass their own derived
+/// candidate (the joined argv or the prepared shell line) as `extra`.
+pub fn deletion_candidates(payload: &serde_json::Value, extra: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut candidates: Vec<String> = ["raw_command", "command", "cmd"]
+        .into_iter()
+        .filter_map(|key| payload.get(key).and_then(serde_json::Value::as_str).map(str::to_owned))
+        .chain(extra)
+        .collect();
+    candidates.sort_unstable();
+    candidates.dedup();
+    candidates
+}
+
 #[cfg(test)]
 mod tests {
     use super::validate_command_safety;

@@ -118,8 +118,9 @@ for the complete contract.
 
 Configured denials still win: the shipped defaults keep the `rm -rf /`,
 `rm -rf ~`, and `sudo rm` denies and the `rm\s+(-rf|--force)` deny regex, so
-the exact `rm -rf` and `rm --force` spellings stay blocked unless you relax
-them. Reordered or separated flags such as `rm -f -r` are accepted by the
+the exact `rm -rf` and `rm --force` spellings stay blocked unless the
+configured `deny_regex` is relaxed. Reordered or separated flags such as
+`rm -f -r` are accepted by the
 recognizer; add a `deny_regex` covering them if recursive deletion must stay
 blocked.
 

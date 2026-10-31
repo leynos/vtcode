@@ -81,7 +81,7 @@ pub fn contains_dynamic_shell_syntax(command: &str) -> bool {
 /// pipe, background operator, subshell grouping, or redirection.
 ///
 /// Callers that must classify a *single simple command* (for example the
-/// workspace-scoped deletion recogniser) use this to fail closed on shell
+/// workspace-scoped deletion recognizer) use this to fail closed on shell
 /// structure that the tree-sitter command list would otherwise flatten:
 /// `rm -f x > out`, `rm -f x | cat`, and `rm -f x &` all contain control
 /// syntax even though they may still parse to a single command vector.
