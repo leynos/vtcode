@@ -249,17 +249,27 @@ impl SubagentController {
             if let Some(engine) = lifecycle_hooks.as_ref() {
                 crate::hooks::lifecycle::restore_workspace_hook_approval(engine, &config.workspace_root).await;
             }
-            let background_children = load_background_state(&config.workspace_root)
-                .await?
-                .records
-                .into_iter()
-                .filter(|record| {
-                    background_owner_session_id
-                        .as_deref()
-                        .is_none_or(|owner| record.owner_session_id.as_deref() == Some(owner))
-                })
-                .map(|record| (record.id.clone(), BackgroundRecord::from_persisted(record)))
-                .collect();
+            // A nested scope never owns background work:
+            // `ensure_background_subprocess_enabled` refuses to launch one.
+            // Loading the workspace ledger here would give the nested scope a
+            // second copy of records another controller already owns, so a
+            // list/cancel routed to either scope could report a stale copy
+            // (for example `Running` after the owner cancelled it).
+            let background_children = if config.managed_background_runtime {
+                BTreeMap::new()
+            } else {
+                load_background_state(&config.workspace_root)
+                    .await?
+                    .records
+                    .into_iter()
+                    .filter(|record| {
+                        background_owner_session_id
+                            .as_deref()
+                            .is_none_or(|owner| record.owner_session_id.as_deref() == Some(owner))
+                    })
+                    .map(|record| (record.id.clone(), BackgroundRecord::from_persisted(record)))
+                    .collect()
+            };
             let parent_session_id = Arc::new(RwLock::new(config.parent_session_id.clone()));
             Ok(Self {
                 config: Arc::new(config),

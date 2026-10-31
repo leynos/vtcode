@@ -17,6 +17,8 @@ use super::super::types::{SessionHandle, lock_poison_error};
 use super::ZedAgent;
 use crate::acp;
 use crate::zed::connection::ConnectionHandle;
+use chrono::{DateTime, Utc};
+use hashbrown::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::sync::mpsc;
@@ -178,6 +180,60 @@ impl Drop for TaskLifecycleForwarderSpan {
 
 fn task_lifecycle_forwarder_outcome(send_failures: u64) -> &'static str {
     if send_failures == 0 { "completed" } else { "send_failed" }
+}
+
+/// Ordering key for one task snapshot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct LifecycleRevision {
+    updated_at: DateTime<Utc>,
+    terminal: bool,
+}
+
+impl LifecycleRevision {
+    fn of(update: &LifecycleUpdate) -> Self {
+        Self {
+            updated_at: update.updated_at(),
+            terminal: update.is_terminal(),
+        }
+    }
+
+    /// Whether this revision may supersede `latest` on the wire.
+    ///
+    /// The initial-snapshot publisher runs concurrently with live delivery, so
+    /// a snapshot captured before a transition can be queued after it. An
+    /// update that predates the last one forwarded is stale and must not roll
+    /// the client's task back. At an identical timestamp, a terminal state
+    /// still wins: a terminal→non-terminal step there is a replay artefact,
+    /// not a transition the controller recorded.
+    fn supersedes(self, latest: Option<Self>) -> bool {
+        latest.is_none_or(|latest| {
+            if self.updated_at != latest.updated_at {
+                return self.updated_at > latest.updated_at;
+            }
+            self.terminal || !latest.terminal
+        })
+    }
+}
+
+/// Tracks the newest revision forwarded for each task in one session.
+#[derive(Default)]
+struct LifecycleOrdering {
+    revisions: HashMap<String, LifecycleRevision>,
+}
+
+impl LifecycleOrdering {
+    /// Records `update` and reports whether it should be forwarded.
+    fn admit(&mut self, update: &LifecycleUpdate) -> bool {
+        let revision = LifecycleRevision::of(update);
+        let latest = self.revisions.get(lody_task_id(update)).copied();
+        if !revision.supersedes(latest) {
+            return false;
+        }
+        // The replaced revision is intentionally discarded: the new one is the
+        // only revision that may judge later updates.
+        let _ = self.revisions.insert(lody_task_id(update).to_owned(), revision);
+        true
+    }
 }
 
 fn warn_task_lifecycle_notification_failure(session_correlation: &str, notification_send_elapsed_ms: u64) {
@@ -370,9 +426,14 @@ fn spawn_task_lifecycle_forwarder(
             let _queue_guard = queue_guard;
             let mut forwarder_span = TaskLifecycleForwarderSpan::new(Span::current());
             let mut emitted_task_ids = HashSet::new();
+            let mut ordering = LifecycleOrdering::default();
             while let Some(update) = receiver.recv().await {
                 queue.dequeued();
                 if update.parent_session_id() != session_id.0.as_ref() {
+                    continue;
+                }
+                if !ordering.admit(&update) {
+                    debug!(task_id = lody_task_id(&update), "Dropped superseded ACP task lifecycle update");
                     continue;
                 }
                 let task_id = lody_task_id(&update).to_string();
