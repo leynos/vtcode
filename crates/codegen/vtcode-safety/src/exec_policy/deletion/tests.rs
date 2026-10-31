@@ -129,6 +129,39 @@ fn rejects_unsupported_rm_shapes() {
 }
 
 #[test]
+fn ignores_rm_used_only_as_an_argument_in_pipelines_and_chains() {
+    // `rm` in argument position is ordinary text; refusing it would block
+    // harmless searches and messages.
+    for command in [
+        "rg rm src | head",
+        "cat README.md | grep rm",
+        "cargo test && echo \"do not rm\"",
+        "grep rm file && ls",
+    ] {
+        assert_eq!(
+            recognize_deletion_command(command),
+            DeletionRecognition::NotDeletion,
+            "unexpected recognition for {command:?}"
+        );
+    }
+}
+
+#[test]
+fn refuses_rm_invoked_inside_a_chain_or_shell_body() {
+    for command in [
+        "ls && rm -f scratch/tmp.txt > out",
+        "sudo rm -f scratch/tmp.txt && ls",
+        "bash -c 'rm -f scratch/tmp.txt' && ls",
+        "rm -f scratch/tmp.txt | cat",
+    ] {
+        assert!(
+            matches!(recognize_deletion_command(command), DeletionRecognition::Unsupported { .. }),
+            "expected unsupported for {command:?}"
+        );
+    }
+}
+
+#[test]
 fn rejects_operand_only_dot() {
     assert!(unsupported("rm -f .").contains("current directory"));
 }
