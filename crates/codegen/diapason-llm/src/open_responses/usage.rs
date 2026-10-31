@@ -109,10 +109,13 @@ impl OpenUsage {
             details.cached_tokens = Some(cached as u64);
         }
 
-        let output_details = OutputTokensDetails {
-            reasoning_tokens: usage.reasoning_output_tokens.map(u64::from),
-            ..OutputTokensDetails::default()
-        };
+        // Providers occasionally report reasoning counts that exceed the
+        // completion total; clamp them so the breakdown never sums to more than
+        // `output_tokens`.
+        let reasoning_tokens = usage
+            .reasoning_output_tokens
+            .map(|reasoning| u64::from(reasoning.min(usage.completion_tokens)));
+        let output_details = OutputTokensDetails { reasoning_tokens, ..OutputTokensDetails::default() };
 
         Self {
             input_tokens: usage.prompt_tokens as u64,
@@ -228,6 +231,23 @@ mod tests {
         });
 
         assert_eq!(usage.output_tokens_details.and_then(|details| details.reasoning_tokens), Some(35));
+    }
+
+    #[test]
+    fn test_from_llm_usage_clamps_reasoning_tokens_to_completion_tokens() {
+        let usage = OpenUsage::from_llm_usage(&crate::provider::Usage {
+            prompt_tokens: 100,
+            completion_tokens: 5,
+            reasoning_output_tokens: Some(10),
+            total_tokens: 105,
+            cached_prompt_tokens: None,
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            iterations: None,
+        });
+
+        assert_eq!(usage.output_tokens, 5);
+        assert_eq!(usage.output_tokens_details.and_then(|details| details.reasoning_tokens), Some(5));
     }
 
     #[test]
