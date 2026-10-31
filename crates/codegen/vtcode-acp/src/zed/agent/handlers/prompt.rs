@@ -215,20 +215,27 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
     } = request;
 
     if agent.tool_loop_limit_reached(*tool_loop_count) {
+        if !streamed && !session.cancellation.is_cancelled() {
+            agent
+                .send_assistant_updates(
+                    session_id,
+                    tool_loop_count.saturating_add(1),
+                    assistant_message,
+                    assistant_reasoning,
+                    tool_calls.len(),
+                )
+                .await;
+        }
         return Ok(ToolRoundOutcome::LimitReached(agent.tool_loop_limit_message()));
     }
     *tool_loop_count = tool_loop_count.saturating_add(1);
 
-    let assistant_tool_message = if streamed {
-        assistant_tool_call_message(
-            assistant_message.to_string(),
-            tool_calls.to_vec(),
-            assistant_reasoning,
-            reasoning_details,
-        )
-    } else {
-        Message::assistant_with_tools(assistant_message.to_string(), tool_calls.to_vec())
-    };
+    let assistant_tool_message = assistant_tool_call_message(
+        assistant_message.to_string(),
+        tool_calls.to_vec(),
+        assistant_reasoning,
+        reasoning_details,
+    );
     let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
     drop(stage_thread_tool_calls(&thread, assistant_tool_message));
     let tool_call_count = tool_calls.len();
@@ -237,18 +244,15 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
     require_session_checkpoint(agent, session, "assistant_tool_calls_write_ahead").await?;
 
     if !streamed && !session.cancellation.is_cancelled() {
-        let loop_iteration = *tool_loop_count;
-        for failure in agent
-            .send_assistant_updates(session_id, loop_iteration, assistant_message, assistant_reasoning, tool_call_count)
-            .await
-        {
-            warn!(
-                session_id = %session_id,
-                update_kind = failure.kind.as_str(),
-                error = %failure.error,
-                "Failed to send assistant update to ACP client"
-            );
-        }
+        agent
+            .send_assistant_updates(
+                session_id,
+                *tool_loop_count,
+                assistant_message,
+                assistant_reasoning,
+                tool_call_count,
+            )
+            .await;
     }
 
     let tool_results = match agent.execute_tool_calls(session, session_id, tool_calls).await {

@@ -3,7 +3,7 @@ use super::super::super::{warn_hook_block_reason, warn_hook_message};
 use super::*;
 
 impl PromptExecution {
-    pub(super) async fn finish(self, stop_reason: acp::StopReason) -> Result<PromptResponse, SdkError> {
+    pub(super) async fn finish(mut self, stop_reason: acp::StopReason) -> Result<PromptResponse, SdkError> {
         if stop_reason != acp::StopReason::Cancelled {
             if !self.stop_hook_checked
                 && let Some(reason) = self
@@ -16,39 +16,40 @@ impl PromptExecution {
                 persist_session_checkpoint(&self.agent, &self.session, "stop_hook_blocked").await;
                 return Ok(PromptResponse::new(acp::StopReason::Refusal));
             }
-            let has_assistant_output = !self.assistant_message.is_empty() || !self.assistant_reasoning.is_empty();
-            if has_assistant_output {
-                if should_emit_buffered_final_chunk(self.allow_streaming) {
-                    for failure in self
-                        .agent
-                        .send_assistant_updates(
-                            &self.args.session_id,
-                            self.provider_iteration,
-                            &self.assistant_message,
-                            &self.assistant_reasoning,
-                            0,
-                        )
-                        .await
-                    {
-                        warn!(
-                            session_id = %self.args.session_id,
-                            update_kind = failure.kind.as_str(),
-                            error = %failure.error,
-                            "Failed to send assistant update to ACP client"
-                        );
-                    }
-                }
-                if !self.assistant_message.is_empty() {
-                    let mut completed_message = Message::assistant(self.assistant_message);
-                    if !self.assistant_reasoning.is_empty() {
-                        completed_message.reasoning = Some(self.assistant_reasoning);
-                    }
-                    push_session_message(&self.agent, &self.session, &self.args.session_id, completed_message)?;
-                    persist_session_checkpoint(&self.agent, &self.session, "assistant_response").await;
-                }
-            }
+            self.emit_final_assistant_updates().await;
+            self.persist_completed_assistant_message().await?;
         }
         Ok(PromptResponse::new(stop_reason))
+    }
+
+    async fn emit_final_assistant_updates(&self) {
+        if !should_emit_buffered_final_chunk(self.allow_streaming)
+            || (self.assistant_message.is_empty() && self.assistant_reasoning.is_empty())
+        {
+            return;
+        }
+        self.agent
+            .send_assistant_updates(
+                &self.args.session_id,
+                self.provider_iteration,
+                &self.assistant_message,
+                &self.assistant_reasoning,
+                0,
+            )
+            .await;
+    }
+
+    async fn persist_completed_assistant_message(&mut self) -> Result<(), SdkError> {
+        if self.assistant_message.is_empty() {
+            return Ok(());
+        }
+        let mut completed_message = Message::assistant(std::mem::take(&mut self.assistant_message));
+        if !self.assistant_reasoning.is_empty() {
+            completed_message.reasoning = Some(std::mem::take(&mut self.assistant_reasoning));
+        }
+        push_session_message(&self.agent, &self.session, &self.args.session_id, completed_message)?;
+        persist_session_checkpoint(&self.agent, &self.session, "assistant_response").await;
+        Ok(())
     }
 }
 
