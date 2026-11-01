@@ -596,6 +596,11 @@ impl SubagentController {
             // controller.
             return Ok(());
         }
+        // Take the persistence lock before snapshotting in-memory state.
+        // Reading first lets two concurrent saves snapshot v1 and v2, then
+        // write v2 before v1, leaving the older snapshot as the file. The lock
+        // must cover the read so the last write is always the newest state.
+        let _guard = background_state_persistence_lock().lock().await;
         let records = {
             let state = self.state.read().await;
             state
@@ -605,7 +610,6 @@ impl SubagentController {
                 .map(BackgroundRecord::into_persisted)
                 .collect()
         };
-        let _guard = background_state_persistence_lock().lock().await;
         if let Some(owner_session_id) = self.background_owner_session_id.as_deref() {
             let mut persisted_records = load_background_state(&self.config.workspace_root).await?.records;
             persisted_records.retain(|record| record.owner_session_id.as_deref() != Some(owner_session_id));

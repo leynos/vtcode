@@ -12,7 +12,11 @@ use self::messages::send_task_lifecycle;
 use super::lody::{lody_task_id, owned_child_ids};
 use hashbrown::HashSet;
 #[cfg(test)]
+mod forwarder_duplex_tests;
+#[cfg(test)]
 mod projection_tests;
+#[cfg(test)]
+mod queue_accounting_tests;
 use super::super::types::{SessionHandle, lock_poison_error};
 use super::ZedAgent;
 use crate::acp;

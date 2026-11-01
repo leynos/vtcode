@@ -31,6 +31,14 @@ def test_override_requires_every_configured_schema_field() -> None:
         generator.apply_reference_overrides(entries)
 
 
+def test_format_code_span_pads_a_leading_backtick() -> None:
+    assert generator.format_code_span("`value") == "`` `value ``"
+
+
+def test_format_code_span_pads_a_trailing_backtick() -> None:
+    assert generator.format_code_span("value`") == "`` value` ``"
+
+
 def test_long_default_remains_parseable_json() -> None:
     value = [f"entry-{index}-with-enough-text-to-exceed-the-old-limit" for index in range(4)]
 

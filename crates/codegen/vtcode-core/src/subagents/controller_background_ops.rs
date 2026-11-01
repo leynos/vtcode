@@ -486,6 +486,9 @@ impl SubagentController {
             // A stopped or errored record is already settled. Preserve its
             // status, timestamps, and error text instead of rewriting it to
             // `Stopped` (which ACP would project as a successful completion).
+            // The cleared `desired_enabled` flag still has to reach disk so a
+            // resumed session does not restore the cancelled record.
+            self.save_background_state().await?;
             return self.background_status_for(target).await;
         }
         self.log_background_cancellation(target, &cancellation, &mode);
@@ -537,6 +540,12 @@ impl SubagentController {
             bail!("Unknown background subprocess {target}");
         }
         if !record.status.is_active() {
+            // The record is already settled, so keep its status, timestamps,
+            // and error text. The owner still asked to stop it, though, and
+            // restore selection reads only `desired_enabled`, so clear the
+            // flag to keep a settled record from being relaunched on resume.
+            record.desired_enabled = false;
+            record.updated_at = Utc::now();
             return Ok(BackgroundCancellation {
                 agent_name: record.agent_name.clone(),
                 exec_session_id: record.exec_session_id.clone(),

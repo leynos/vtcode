@@ -6,6 +6,7 @@ use super::*;
 
 mod archive_test_support;
 mod client;
+mod lody_management;
 mod prompt;
 mod provider;
 mod session;
