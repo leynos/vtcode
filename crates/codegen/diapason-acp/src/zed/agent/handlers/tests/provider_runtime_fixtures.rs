@@ -5,7 +5,7 @@ use std::sync::atomic::AtomicU64;
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Default)]
-pub(super) struct TraceCapture(pub(super) Arc<Mutex<Vec<String>>>);
+pub(crate) struct TraceCapture(pub(crate) Arc<Mutex<Vec<String>>>);
 
 impl<S> Layer<S> for TraceCapture
 where
@@ -184,7 +184,7 @@ impl LLMProvider for FlakyProvider {
     }
 }
 
-pub(super) fn retry_runtime() -> ProviderRequestRuntime {
+pub(crate) fn retry_runtime() -> ProviderRequestRuntime {
     let provider = CustomProviderConfig {
         name: "retry-test".to_string(),
         request_policy: CustomProviderRequestPolicyConfig {
