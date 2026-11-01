@@ -400,6 +400,24 @@ def escape_cell(value: str) -> str:
 
 
 def format_code_span(value: str) -> str:
+    """Render ``value`` as an inline Markdown code span.
+
+    Parameters
+    ----------
+    value : str
+        Text to render. It may contain backtick runs, so the delimiter is one
+        backtick longer than the longest run in ``value`` to avoid closing the
+        span early.
+
+    Returns
+    -------
+    str
+        An inline code span delimited by the chosen backtick run. Values that
+        start or end with a backtick are padded with one space inside the
+        delimiters; otherwise that boundary backtick would extend the
+        adjacent delimiter run and stop it matching its partner. GFM removes
+        the padding when it renders the span.
+    """
     longest_backtick_run = 0
     current_backtick_run = 0
     for character in value:
@@ -409,7 +427,8 @@ def format_code_span(value: str) -> str:
         else:
             current_backtick_run = 0
     delimiter = "`" * (longest_backtick_run + 1)
-    return f"{delimiter}{value}{delimiter}"
+    content = f" {value} " if value.startswith("`") or value.endswith("`") else value
+    return f"{delimiter}{content}{delimiter}"
 
 
 def render_markdown(entries: list[FieldEntry]) -> str:

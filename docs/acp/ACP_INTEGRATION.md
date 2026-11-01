@@ -29,12 +29,17 @@ the standard session capabilities it implements. It always includes the Lody
 extension capability `_meta.lody.usage = { "version": 1 }`. Usage notifications
 are sent only when the provider response includes usage data.
 
-When the session has a subagent controller, the response additionally includes
-`_meta.lody.subagents` version 1 with `lifecycle`, `list`, `cancel`, and
-`output` set to `true`. If background subagents are enabled, it also includes
-`_meta.lody.tasks = { "version": 1, "background": true }`. These extension
-capabilities are conditional; a client must not assume that subagent management
-or background tasks are available when they are absent from the handshake.
+When the launch workspace has a subagent controller, the response additionally
+includes `_meta.lody.subagents` version 1 with `lifecycle`, `list`, `cancel`,
+and `output` set to `true`. If background subagents are enabled, it also
+includes `_meta.lody.tasks = { "version": 1, "background": true }`. These
+extension capabilities describe the launch workspace configuration, not the
+workspace selected by an individual session. A client must not assume that
+subagent management or background tasks are available when they are absent from
+the handshake. The converse is also not guaranteed: VT Code creates a
+session-scoped controller for the selected session workspace, and if that setup
+fails, Lody management requests for the session return
+`subagent_management_unavailable`.
 
 Subagent and background-process progress uses ordinary ACP `session/update`
 tool calls and tool-call updates. The update carries task description and

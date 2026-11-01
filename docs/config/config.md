@@ -382,8 +382,11 @@ supports_parallel_tool_calls = true
 supports_context_caching = false
 supports_responses_compaction = true
 supports_context_edits = false
-supports_stream_usage = true # only for endpoints with a terminal usage chunk
 ```
+
+`supports_stream_usage` applies only to OpenAI Chat Completions streams, so set
+it on an `api_format = "openai-chat"` profile (or provider entry) rather than
+on a Responses profile, where it has no effect.
 
 Precedence and semantics
 

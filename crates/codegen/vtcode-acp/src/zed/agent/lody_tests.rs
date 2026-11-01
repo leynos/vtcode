@@ -12,8 +12,9 @@ use super::lody::{owned_background_ids, owned_child_ids};
 
 /// Upper bound from the `SESSION-ISOLATION` verification domain.
 const MAX_FOREST_TASKS: usize = 32;
-/// Session roots per generated forest: the requested root plus one to three
-/// foreign roots.
+/// Prefix for generated forest session ids. The number of roots comes from
+/// the `root_count in 2usize..=4` strategy: the requested root plus one to
+/// three foreign roots.
 const SESSION_ROOT_PREFIX: &str = "session-root-";
 
 fn child(id: &str, session_id: &str, parent_thread_id: &str) -> SubagentStatusEntry {
@@ -204,8 +205,8 @@ fn background_status_strategy() -> impl Strategy<Value = BackgroundSubprocessSta
 }
 
 /// One generated managed background record. `owner` selects the requested
-/// session (0), a foreign session root (1) or no owner at all (2); when the
-/// second is set the field carries the string `None`.
+/// session (0), a foreign session root (1) or no owner at all (2); the last
+/// case carries no owner.
 #[derive(Debug, Clone)]
 struct BackgroundRecordSpec {
     owner: usize,

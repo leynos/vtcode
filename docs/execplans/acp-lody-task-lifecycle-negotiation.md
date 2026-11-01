@@ -264,7 +264,7 @@ management requests return only tasks owned by the requested ACP session.
     release gates ran again on that commit and installation from the worktree
     succeeded; the resolved binary is `/home/leynos/.cargo/bin/vtcode`
     reporting `vtcode-core 0.156.1`. Evidence bundle recorded below.
-- [ ] (2026-11-01) EP-M5 fifth review repair: close the two Codex P2 findings.
+- [x] (2026-11-01) EP-M5 fifth review repair: close the two Codex P2 findings.
   - **Owner-derived ids collided.** `background_record_id` derived the record
     id from the agent name alone, so two sessions in one workspace that both
     launched `worker` produced the same id. The unscoped controller loads the
@@ -296,6 +296,47 @@ management requests return only tasks owned by the requested ACP session.
     missing with `desired_enabled: false` and shows the cached projection
     reports `Running` while the refreshed one reports `Stopped` without a
     respawn.
+- [ ] (2026-11-01) EP-M5 sixth review repair: close the CodeRabbit findings on
+  `0094f4928` and the regression that repair introduced.
+  - **Settled cancel kept restoring.** `begin_background_cancellation` returned
+    early for an already-terminal record without clearing `desired_enabled`, and
+    the already-terminal path in `cancel_background` returned without saving.
+    Restore selection reads `desired_enabled` alone, so a cancelled settled task
+    could be relaunched. Cancel now clears the flag for a settled record while
+    preserving its status, timestamps and error text, and saves the state.
+    Regression: `cancelling_a_settled_background_record_keeps_it_out_of_restore`
+    cancels an errored record, checks the error survives, then checks a
+    restored controller keeps the flag clear and does not relaunch it.
+  - **Snapshot taken outside the persistence lock.** `save_background_state`
+    read the in-memory map before acquiring
+    `background_state_persistence_lock`, so two concurrent saves could snapshot
+    v1 and v2 and write them in the opposite order, leaving the older snapshot
+    on disk. The snapshot is now taken while the lock is held.
+  - **Owner-qualified ids broke a restore fixture.**
+    `nested_scope_never_restores_the_workspace_background_ledger` persisted
+    `background-root` while its helper's `agent_name` is `watcher`, and
+    `canonicalize_id` rewrites the id on load, so the restore assertion compared
+    `background-watcher@parent-session` with `background-root`. The fixture now
+    builds its id with
+    `background_record_id_for_owner("watcher", Some("parent-session"))` and uses
+    that id throughout.
+  - **Config-reference code spans.** `format_code_span` pads a value that starts
+    or ends with a backtick, and its parameters are documented in a NumPy-style
+    docstring. Two tests pin the leading- and trailing-backtick cases.
+  - **Docs corrections.** `docs/config/config.md` and
+    `docs/development/model-profiles.md` no longer claim
+    `supports_stream_usage` applies to an `openai-responses` profile, and
+    `docs/guides/zed-acp.md` together with `docs/acp/ACP_INTEGRATION.md` state
+    that the advertised capabilities describe the launch workspace and that a
+    session-scoped setup failure returns `subagent_management_unavailable`.
+  - **Test module cohesion.** The Lody management tests moved from
+    `handlers/tests/session.rs` to `handlers/tests/lody_management.rs`, with a
+    `lody_list` helper replacing duplicated request construction and every
+    `unwrap()` replaced by an expectation message. The 607-line
+    `task_lifecycle/projection_tests.rs` was split into `projection_tests.rs`
+    (projection and ordering properties), `forwarder_duplex_tests.rs` (duplex
+    transport ordering) and `queue_accounting_tests.rs` (accounting invariants),
+    with the shared fixtures made `pub(super)` in `projection_tests`.
 
 ## Surprises & discoveries
 

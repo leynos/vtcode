@@ -349,6 +349,57 @@ async fn cancel_preserves_settled_background_outcomes() {
     controller.signal_shutdown().await;
 }
 
+/// A settled record keeps its outcome, but cancelling it still clears the
+/// restore flag. Restore selection reads only `desired_enabled`, so a flag
+/// left set would silently relaunch a task the owner had cancelled.
+#[tokio::test]
+async fn cancelling_a_settled_background_record_keeps_it_out_of_restore() {
+    let temp = TempDir::new().expect("tempdir");
+    let workspace_root = temp.path().to_path_buf();
+    let mut vt_cfg = VTCodeConfig::default();
+    vt_cfg.subagents.background.auto_restore = true;
+    let controller = SubagentController::new(test_controller_config(workspace_root.clone(), vt_cfg.clone()))
+        .await
+        .expect("controller");
+
+    let record_id = background_record_id_for_owner("watcher", Some("parent-session"));
+    let mut settled = settled_background_record(
+        &record_id,
+        "parent-session",
+        BackgroundSubprocessStatus::Error,
+        Some("exited with status 3"),
+    );
+    settled.desired_enabled = true;
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(record_id.clone(), settled);
+    }
+
+    let entry = controller
+        .force_cancel_background(&record_id)
+        .await
+        .expect("cancel errored background task");
+    assert_eq!(entry.status, BackgroundSubprocessStatus::Error, "the settled error must survive the cancel");
+    assert_eq!(entry.error.as_deref(), Some("exited with status 3"));
+    assert!(!entry.desired_enabled, "cancel must clear the restore flag");
+    controller.signal_shutdown().await;
+
+    let restored = SubagentController::new(test_controller_config(workspace_root, vt_cfg))
+        .await
+        .expect("restoring controller");
+    let entries = restored
+        .restore_background_subagents()
+        .await
+        .expect("restore background records");
+    let record = entries
+        .iter()
+        .find(|entry| entry.id == record_id)
+        .expect("the cancelled record stays in the ledger");
+    assert!(!record.desired_enabled, "restoring must keep the cleared flag");
+    assert!(!record.status.is_active(), "a cancelled record must not be relaunched on restore");
+    restored.signal_shutdown().await;
+}
+
 #[tokio::test]
 async fn nested_scope_never_restores_the_workspace_background_ledger() {
     let temp = TempDir::new().expect("tempdir");
@@ -357,11 +408,16 @@ async fn nested_scope_never_restores_the_workspace_background_ledger() {
         .await
         .expect("root controller");
 
+    // Owner-scoped records use canonical owner-qualified ids, and the loader
+    // rewrites any legacy plain id from `(agent_name, owner_session_id)`. Build
+    // the fixture with the same helper so the persisted ledger round-trips with
+    // the identity the restore path expects.
+    let record_id = background_record_id_for_owner("watcher", Some("parent-session"));
     {
         let mut state = root.state.write().await;
         state.background_children.insert(
-            "background-root".to_string(),
-            settled_background_record("background-root", "parent-session", BackgroundSubprocessStatus::Running, None),
+            record_id.clone(),
+            settled_background_record(&record_id, "parent-session", BackgroundSubprocessStatus::Running, None),
         );
     }
     root.save_background_state().await.expect("persist root ledger");
@@ -377,7 +433,7 @@ async fn nested_scope_never_restores_the_workspace_background_ledger() {
 
     // Cancelling through the owner settles the one authoritative entry.
     let cancelled = root
-        .force_cancel_background("background-root")
+        .force_cancel_background(&record_id)
         .await
         .expect("cancel root background task");
     assert_eq!(cancelled.status, BackgroundSubprocessStatus::Stopped);
@@ -393,7 +449,7 @@ async fn nested_scope_never_restores_the_workspace_background_ledger() {
         .expect("restoring controller");
     let restored_entries = restored.background_status_entries().await;
     assert_eq!(restored_entries.len(), 1, "the workspace ledger must survive the nested scope");
-    assert_eq!(restored_entries[0].id, "background-root");
+    assert_eq!(restored_entries[0].id, record_id);
     assert_eq!(restored_entries[0].status, BackgroundSubprocessStatus::Stopped);
 
     nested.signal_shutdown().await;
