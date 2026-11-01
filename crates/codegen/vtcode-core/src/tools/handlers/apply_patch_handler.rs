@@ -167,7 +167,10 @@ impl ToolRuntime<ApplyPatchRequest, ExecToolCallOutput> for ApplyPatchRuntime {
         // Re-validate the version precondition immediately before mutating. The
         // handler checked it already, but a concurrent writer can change the
         // file between that check and this apply. The recheck narrows that
-        // window; it does not make the check and the apply atomic (#168).
+        // window; it does not make the check and the apply atomic (#168). The
+        // verdict keeps the same shape the preflight would have returned, so a
+        // structured failure stays a model-facing envelope rather than becoming
+        // an approval rejection.
         validate_request_content_hash(
             req.expected_content_hash.as_deref(),
             &patch,
@@ -175,7 +178,7 @@ impl ToolRuntime<ApplyPatchRequest, ExecToolCallOutput> for ApplyPatchRuntime {
             ctx.session.workspace_root(),
         )
         .await
-        .map_err(|failure| ToolError::Rejected(failure.to_string()))?;
+        .map_err(PatchPreconditionFailure::into_tool_error)?;
 
         // Apply the patch
         match patch.apply(&req.cwd).await {

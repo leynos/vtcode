@@ -9,10 +9,12 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
+use super::super::sandboxing::ToolError;
 use super::super::tool_handler::ToolCallError;
 use crate::tools::editing::Patch;
 use crate::tools::registry::patch_preconditions::{
     content_hash_mismatch_details, invalid_patch_precondition, patch_precondition_scope_error,
+    precondition_scope_details,
 };
 
 /// A rejected `expected_content_hash` precondition on the handler surface.
@@ -37,6 +39,18 @@ impl PatchPreconditionFailure {
             // The adapter treats `RespondToModel` as a model-facing failure,
             // so the serialized envelope is not reclassified as internal.
             Self::Structured(envelope) => ToolCallError::RespondToModel(envelope.to_string()),
+        }
+    }
+
+    /// Convert into the runtime error the orchestrator reports.
+    ///
+    /// A structured failure keeps its model-facing envelope; a plain rejection
+    /// stays a rejection so an approval decision is not implied by a read or
+    /// containment failure.
+    pub(super) fn into_tool_error(self) -> ToolError {
+        match self {
+            Self::Rejected(message) => ToolError::Rejected(message),
+            Self::Structured(envelope) => ToolError::RespondToModel(envelope.to_string()),
         }
     }
 }
@@ -74,11 +88,7 @@ pub(super) async fn validate_request_content_hash(
         let scope = patch_precondition_scope_error(source_paths.len());
         return Err(PatchPreconditionFailure::Structured(invalid_patch_precondition(
             scope.message,
-            json!({
-                "reason": "invalid_precondition_scope",
-                "source_file_count": scope.source_file_count,
-                "next_action": "Split the patch by source file, reread each file, and retry with its content_hash."
-            }),
+            precondition_scope_details(&scope),
         )));
     };
     let disk_path = cwd.join(source_path);

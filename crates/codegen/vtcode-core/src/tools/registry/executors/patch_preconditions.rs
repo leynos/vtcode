@@ -36,14 +36,7 @@ pub(super) async fn validate_patch_content_hash(
     let [source_path] = source_paths.as_slice() else {
         let scope = patch_precondition_scope_error(source_paths.len());
         return Ok(Some(PatchPreconditionRejection {
-            response: invalid_patch_precondition(
-                scope.message,
-                json!({
-                    "reason": "invalid_precondition_scope",
-                    "source_file_count": scope.source_file_count,
-                    "next_action": "Split the patch by source file, reread each file, and retry with its content_hash."
-                }),
-            ),
+            response: invalid_patch_precondition(scope.message, precondition_scope_details(&scope)),
             outcome: PatchPreconditionOutcome::InvalidScope,
         }));
     };
@@ -112,6 +105,20 @@ pub(crate) fn patch_precondition_scope_error(source_file_count: usize) -> PatchP
         "expected_content_hash requires exactly one pre-existing source file; split the patch by source file"
     };
     PatchPreconditionScope { message, source_file_count }
+}
+
+/// Build the `invalid_precondition_scope` details shared by both surfaces.
+///
+/// The registry pipeline and the Codex-style handler must report the same
+/// reason, source count, and next-action wording for an out-of-scope
+/// `expected_content_hash` (`docs/development/patch-safety-contract.md`), so the
+/// payload is built here once instead of being duplicated per surface.
+pub(crate) fn precondition_scope_details(scope: &PatchPreconditionScope) -> Value {
+    json!({
+        "reason": "invalid_precondition_scope",
+        "source_file_count": scope.source_file_count,
+        "next_action": "Split the patch by source file, reread each file, and retry with its content_hash."
+    })
 }
 
 /// Build the `content_hash_mismatch` details shared by both apply-patch surfaces.

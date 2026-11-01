@@ -67,6 +67,10 @@ async fn direct_runtime_rejects_stale_expected_content_hash_before_apply() {
         .run(&request, &attempt, &tool_ctx)
         .await
         .expect_err("the runtime must reject a stale expected_content_hash");
+    assert!(
+        matches!(&error, ToolError::RespondToModel(_)),
+        "the recheck must keep the structured envelope model-facing, got {error:?}"
+    );
     assert!(error.to_string().contains("content_hash_mismatch"), "unexpected error: {error}");
     assert_eq!(
         std::fs::read_to_string(&fixture).expect("read unchanged fixture"),

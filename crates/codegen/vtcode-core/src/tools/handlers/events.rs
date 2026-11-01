@@ -261,6 +261,11 @@ impl ToolEmitter {
                     .await;
                 Err(ToolCallError::Rejected(msg))
             }
+            Err(ToolError::RespondToModel(msg)) => {
+                self.emit(ctx, ToolEventStage::Failure(ToolEventFailureKind::Message(msg.clone())))
+                    .await;
+                Err(ToolCallError::RespondToModel(msg))
+            }
             Err(ToolError::Timeout(ms)) => {
                 let msg = format!("Command timed out after {ms}ms");
                 self.emit(ctx, ToolEventStage::Failure(ToolEventFailureKind::Message(msg.clone())))

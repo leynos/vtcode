@@ -5,6 +5,7 @@
 //! together rather than the precondition helper alone.
 
 use super::*;
+use rstest::rstest;
 use serde_json::json;
 
 /// Check a stale expected hash is rejected before the handler writes.
@@ -88,76 +89,60 @@ async fn handler_runtime_applies_patch_with_matching_expected_content_hash() {
     );
 }
 
-/// An add-only patch has no pre-existing content to version, so the handler
-/// must reject the hash with the registry's scope envelope rather than a
-/// generic message.
+/// An `expected_content_hash` can only gate a patch with exactly one
+/// pre-existing source file, so the handler must reject an add-only or a
+/// multi-source patch with the registry's scope envelope rather than a generic
+/// message. Each row pins one reason the scope is invalid, so the two cases
+/// stay distinguishable even though they share one disposition.
+#[rstest]
+#[case::add_only(&[], "*** Begin Patch\n*** Add File: fresh.txt\n+hello\n*** End Patch\n", 0, "add-only")]
+#[case::multi_source(
+    &["left.txt", "right.txt"],
+    "*** Begin Patch\n*** Update File: left.txt\n@@\n-left.txt\n+changed left\n*** Update File: right.txt\n@@\n-right.txt\n+changed right\n*** End Patch\n",
+    2,
+    "exactly one pre-existing source file"
+)]
 #[tokio::test]
-async fn handler_runtime_rejects_expected_hash_on_add_only_patch() {
+async fn handler_runtime_rejects_out_of_scope_expected_hash(
+    #[case] fixtures: &[&str],
+    #[case] patch: &str,
+    #[case] source_file_count: usize,
+    #[case] message_fragment: &str,
+) {
     let workspace = TempDir::new().expect("temporary workspace");
-    let expected_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"anything\n"));
-    let arguments = json!({
-        "input": "*** Begin Patch\n*** Add File: fresh.txt\n+hello\n*** End Patch\n",
-        "expected_content_hash": expected_hash,
-    })
-    .to_string();
-
-    let error = ApplyPatchHandler
-        .handle(test_invocation(workspace.path().to_path_buf(), arguments))
-        .await
-        .expect_err("an add-only patch must reject expected_content_hash");
-
-    let envelope = precondition_envelope(&error);
-    let body = &envelope["error"];
-    assert_eq!(body["error_type"], "InvalidParameters", "unexpected error: {envelope}");
-    assert_eq!(body["details"]["reason"], "invalid_precondition_scope", "unexpected error: {envelope}");
-    assert_eq!(body["details"]["source_file_count"], 0, "unexpected error: {envelope}");
-    assert!(
-        body["message"]
-            .as_str()
-            .expect("message should be a string")
-            .contains("add-only"),
-        "unexpected error: {envelope}"
-    );
-    assert!(!workspace.path().join("fresh.txt").exists(), "a rejected precondition must not add files");
-}
-
-/// A patch touching several source files has more than one version to check,
-/// so the handler must report the multi-source scope distinct from add-only.
-#[tokio::test]
-async fn handler_runtime_rejects_expected_hash_on_multi_source_patch() {
-    let workspace = TempDir::new().expect("temporary workspace");
-    for name in ["left.txt", "right.txt"] {
+    for name in fixtures {
         std::fs::write(workspace.path().join(name), format!("{name}\n")).expect("write fixture");
     }
-    let expected_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"left.txt\n"));
-    let arguments = json!({
-        "input": "*** Begin Patch\n*** Update File: left.txt\n@@\n-left.txt\n+changed left\n*** Update File: right.txt\n@@\n-right.txt\n+changed right\n*** End Patch\n",
-        "expected_content_hash": expected_hash,
-    })
-    .to_string();
+    let expected_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"anything\n"));
+    let arguments = json!({ "input": patch, "expected_content_hash": expected_hash }).to_string();
 
     let error = ApplyPatchHandler
         .handle(test_invocation(workspace.path().to_path_buf(), arguments))
         .await
-        .expect_err("a multi-source patch must reject expected_content_hash");
+        .expect_err("an out-of-scope expected_content_hash must be rejected");
 
     let envelope = precondition_envelope(&error);
     let body = &envelope["error"];
     assert_eq!(body["error_type"], "InvalidParameters", "unexpected error: {envelope}");
     assert_eq!(body["details"]["reason"], "invalid_precondition_scope", "unexpected error: {envelope}");
-    assert_eq!(body["details"]["source_file_count"], 2, "unexpected error: {envelope}");
+    assert_eq!(body["details"]["source_file_count"], source_file_count, "unexpected error: {envelope}");
     assert!(
         body["message"]
             .as_str()
             .expect("message should be a string")
-            .contains("exactly one pre-existing source file"),
+            .contains(message_fragment),
         "unexpected error: {envelope}"
     );
-    assert_eq!(
-        std::fs::read_to_string(workspace.path().join("left.txt")).expect("read unchanged fixture"),
-        "left.txt\n",
-        "a rejected precondition must not mutate the file"
-    );
+    for name in fixtures {
+        assert_eq!(
+            std::fs::read_to_string(workspace.path().join(name)).expect("read unchanged fixture"),
+            format!("{name}\n"),
+            "a rejected precondition must not mutate the file"
+        );
+    }
+    // The add-only row names a file the patch would have created; no row may
+    // leave a new file behind.
+    assert!(!workspace.path().join("fresh.txt").exists(), "a rejected precondition must not add files");
 }
 
 /// A non-UTF-8 file cannot be assessed for rebase, so the mismatch must
