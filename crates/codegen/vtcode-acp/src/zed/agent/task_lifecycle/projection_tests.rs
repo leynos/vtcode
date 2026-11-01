@@ -5,6 +5,7 @@ use agent_client_protocol::{Agent, Builder, Client, ConnectionTo, RunWithConnect
 use chrono::{DateTime, Utc};
 use proptest::prelude::*;
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::mpsc;
 
 fn subagent_event(status: &str) -> LifecycleUpdate {
@@ -342,6 +343,108 @@ async fn stale_initial_task_snapshot_is_not_forwarded_after_settlement() {
         .expect("client connection deadline")
         .expect("client connection");
     agent_task.await.expect("agent task").expect("agent connection");
+}
+
+/// Counts each accounting callback so the test can assert that every enqueue
+/// path reaches the same driven port, not merely the tracker's own counter.
+#[derive(Default)]
+struct RecordingQueueMetrics {
+    enqueued: AtomicUsize,
+    dequeued: AtomicUsize,
+    drained: AtomicUsize,
+}
+
+impl TaskLifecycleNotificationQueueMetricsObserver for RecordingQueueMetrics {
+    fn queue_item_enqueued(&self) {
+        let _ = self.enqueued.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn queue_item_dequeued(&self) {
+        let _ = self.dequeued.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn queue_items_drained(&self, entries: usize) {
+        let _ = self.drained.fetch_add(entries, Ordering::SeqCst);
+    }
+
+    fn queue_item_dropped(&self, _reason: TaskLifecycleNotificationQueueDrop) -> u64 {
+        0
+    }
+}
+
+/// The attach-time publisher awaits capacity while live observers use
+/// `try_send`. If only one path incremented depth, a single dequeue would
+/// cancel two pending updates and report an empty queue that is not empty.
+#[tokio::test]
+async fn initial_snapshot_enqueue_shares_accounting_with_live_updates() {
+    let metrics = Arc::new(RecordingQueueMetrics::default());
+    let observer = metrics.clone() as Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>;
+    let queue = LifecycleQueueTracker::new(observer);
+    let (sender, mut receiver) = mpsc::channel(4);
+
+    queue
+        .send(&sender, subagent_event("running"))
+        .await
+        .expect("an awaited initial snapshot must enqueue");
+    queue
+        .try_send(&sender, background_event("running"))
+        .expect("a live update must enqueue");
+    assert_eq!(queue.depth(), 2, "both enqueue paths must count against one depth");
+    assert_eq!(metrics.enqueued.load(Ordering::SeqCst), 2);
+
+    // The forwarder decrements once per item it takes off the channel.
+    drop(receiver.recv().await.expect("first queued update"));
+    queue.dequeued();
+    assert_eq!(queue.depth(), 1, "one dequeue must not cancel two enqueues");
+    drop(receiver.recv().await.expect("second queued update"));
+    queue.dequeued();
+    assert_eq!(queue.depth(), 0);
+    assert_eq!(metrics.dequeued.load(Ordering::SeqCst), 2);
+
+    // Closing drains what is still pending and rejects both paths afterwards.
+    queue
+        .try_send(&sender, subagent_event("completed"))
+        .expect("queued before close");
+    assert_eq!(queue.depth(), 1);
+    queue.close_and_drain();
+    assert_eq!(metrics.drained.load(Ordering::SeqCst), 1, "the guard must account for the leftover item");
+    assert_eq!(queue.depth(), 0);
+    assert_eq!(
+        queue
+            .try_send(&sender, subagent_event("completed"))
+            .expect_err("closed try_send"),
+        LifecycleQueueDropKind::Closed
+    );
+    assert_eq!(
+        queue
+            .send(&sender, subagent_event("completed"))
+            .await
+            .expect_err("closed awaited send"),
+        LifecycleQueueDropKind::Closed
+    );
+    assert_eq!(queue.depth(), 0, "a refused enqueue must not inflate depth");
+    assert_eq!(metrics.enqueued.load(Ordering::SeqCst), 3, "only accepted enqueues may be counted");
+    drop(receiver);
+
+    // Bounded delivery is preserved: a full channel refuses instead of
+    // waiting, and a refused item is not counted.
+    let full_metrics = Arc::new(RecordingQueueMetrics::default());
+    let full_observer = full_metrics.clone() as Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>;
+    let full_queue = LifecycleQueueTracker::new(full_observer);
+    let (full_sender, full_receiver) = mpsc::channel(1);
+    full_queue
+        .send(&full_sender, subagent_event("running"))
+        .await
+        .expect("fills the only slot");
+    assert_eq!(
+        full_queue
+            .try_send(&full_sender, subagent_event("completed"))
+            .expect_err("full channel"),
+        LifecycleQueueDropKind::Full
+    );
+    assert_eq!(full_queue.depth(), 1);
+    assert_eq!(full_metrics.enqueued.load(Ordering::SeqCst), 1);
+    drop(full_receiver);
 }
 
 #[tokio::test]

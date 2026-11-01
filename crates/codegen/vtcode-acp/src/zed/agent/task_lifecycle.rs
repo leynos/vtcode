@@ -80,20 +80,59 @@ impl LifecycleQueueTracker {
         }
     }
 
-    fn try_send<T>(&self, sender: &mpsc::Sender<T>, update: T) -> Result<(), LifecycleQueueDropKind> {
+    fn is_closed(&self) -> bool {
+        self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner).closed
+    }
+
+    /// Counts one item that is now queued behind the forwarder's receiver.
+    ///
+    /// Every enqueue path must call this, because the receiver decrements the
+    /// same counter once per item it takes off the channel. Counting only some
+    /// of them lets one dequeue cancel another item's depth and reports an
+    /// empty queue while updates are still pending.
+    fn record_enqueued(&self) {
         let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if state.closed {
+            return;
+        }
+        state.depth = state.depth.saturating_add(1);
+        self.metrics.queue_item_enqueued();
+    }
+
+    fn try_send<T>(&self, sender: &mpsc::Sender<T>, update: T) -> Result<(), LifecycleQueueDropKind> {
+        if self.is_closed() {
             return Err(LifecycleQueueDropKind::Closed);
         }
 
         match sender.try_send(update) {
             Ok(()) => {
-                state.depth = state.depth.saturating_add(1);
-                self.metrics.queue_item_enqueued();
+                self.record_enqueued();
                 Ok(())
             }
             Err(error) => Err(lifecycle_queue_drop_kind(error)),
         }
+    }
+
+    /// Enqueues while waiting for capacity instead of dropping.
+    ///
+    /// The attach-time snapshot publisher uses this path: a snapshot it drops
+    /// is a task the client never learns about, so it waits for room instead.
+    /// Accounting stays identical to [`Self::try_send`], so dequeues remain
+    /// balanced whichever path produced the item.
+    async fn send<T>(&self, sender: &mpsc::Sender<T>, update: T) -> Result<(), LifecycleQueueDropKind> {
+        if self.is_closed() {
+            return Err(LifecycleQueueDropKind::Closed);
+        }
+        if sender.send(update).await.is_err() {
+            return Err(LifecycleQueueDropKind::Closed);
+        }
+        self.record_enqueued();
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn depth(&self) -> usize {
+        self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner).depth
     }
 
     fn dequeued(&self) {
@@ -282,7 +321,7 @@ impl ZedAgent {
             session_id: session_id.to_string(),
         });
         let registration = controller.register_progress_observer(session_id.0.to_string(), observer);
-        let forwarder = spawn_task_lifecycle_forwarder(receiver, session_id.clone(), client, queue);
+        let forwarder = spawn_task_lifecycle_forwarder(receiver, session_id.clone(), client, Arc::clone(&queue));
         // Background restoration runs before this observer is registered, so
         // tasks that were already active at registration have no queued
         // transition. Publish their current snapshot explicitly: otherwise a
@@ -290,8 +329,10 @@ impl ZedAgent {
         let initial_sender = sender.clone();
         let initial_session_id = session_id.clone();
         let initial_controller = Arc::clone(&controller);
+        let initial_queue = queue;
         let _initial_snapshot_task = tokio::spawn(async move {
-            publish_initial_task_snapshots(&initial_controller, &initial_session_id, &initial_sender).await;
+            publish_initial_task_snapshots(&initial_controller, &initial_session_id, &initial_sender, &initial_queue)
+                .await;
         });
 
         let mut data = match session
@@ -327,6 +368,7 @@ async fn publish_initial_task_snapshots(
     controller: &Arc<vtcode_core::subagents::SubagentController>,
     session_id: &acp::SessionId,
     sender: &mpsc::Sender<LifecycleUpdate>,
+    queue: &LifecycleQueueTracker,
 ) {
     let mut controllers = vec![Arc::clone(controller)];
     controllers.extend(controller.descendant_controllers().await);
@@ -347,7 +389,7 @@ async fn publish_initial_task_snapshots(
             parent_session_id: session_id.0.to_string(),
             task: entry,
         };
-        if sender.send(update).await.is_err() {
+        if queue.send(sender, update).await.is_err() {
             return;
         }
     }
@@ -362,7 +404,7 @@ async fn publish_initial_task_snapshots(
                 parent_session_id: session_id.0.to_string(),
                 task: entry,
             };
-            if sender.send(update).await.is_err() {
+            if queue.send(sender, update).await.is_err() {
                 return;
             }
         }

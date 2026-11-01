@@ -64,26 +64,27 @@ management requests return only tasks owned by the requested ACP session.
   failure and record the competing hypotheses.
 - Ambiguity: stop if Lody's published extension contract and its checked-out
   client disagree in a way that changes wire compatibility.
-- Deviation, recorded 2026-10-31 and re-measured after the review repair and
-  the restack onto the current base head: the branch exceeds the file-count
-  tolerance and sits just below the line tolerance against
-  `fix/acp-unresolved-tool-recovery`
+- Deviation, recorded 2026-10-31 and re-measured after the review repairs and
+  the restack onto the current base head: the branch exceeds both tolerances
+  against `fix/acp-unresolved-tool-recovery`
   (`51aa49eb66c0243155763d31b79a6cf7a4ce8f4f`). Counting production paths only
   — every path except `docs/`, `*.md`, `proptest-regressions/`, and any path
-  segment containing `test` — 30 files changed with 1,348 insertions and 160
-  deletions, 1,188 net lines, against tolerances of 16 files and 1,200 lines.
-  The overrun comes from approved scope, not incidental drift: the EP-M2
-  security expansion touches the config schema, the core controller model,
-  provider profiles and the ACP adapter, and the review-repair round added
-  tree-aware routing across those same modules. The requirement to keep the
-  ownership expansion additive and the subsequent repair round were both
-  directed by the user, so the deviation is recorded rather than treated as a
-  live stop condition. The documentation share is excluded from that count, but
-  the generated configuration reference alone changes 928 added and 926 removed
-  lines: a generator run that restored truncated JSON defaults, followed by
-  mdtablefix's canonical re-padding of the widened table (see the Decision
-  log). A diff of that size is expected for this one generated table and is not
-  separate feature work.
+  segment containing `test` — 32 files changed with 1,496 insertions and 168
+  deletions, 1,328 net lines, against tolerances of 16 files and 1,200 lines.
+  The file-count overrun and the additional line-tolerance overrun come from
+  approved scope, not incidental drift: the EP-M2 security expansion touches
+  the config schema, the core controller model, provider profiles and the ACP
+  adapter; the first review-repair round added tree-aware routing across those
+  same modules; and the second added shared queue accounting for the
+  attach-time snapshot publisher. The requirement to keep the ownership
+  expansion additive and both repair rounds were directed by the user, so the
+  deviation is recorded rather than treated as a live stop condition. The
+  documentation share is excluded from that count, but the generated
+  configuration reference alone changes 928 added and 926 removed lines: a
+  generator run that restored truncated JSON defaults, followed by mdtablefix's
+  canonical re-padding of the widened table (see the Decision log). A diff of
+  that size is expected for this one generated table and is not separate
+  feature work.
 
 ## Risks
 
@@ -188,6 +189,27 @@ management requests return only tasks owned by the requested ACP session.
     the forwarder attaches. Assembled provider-stream usage was already covered
     end to end by `streamed_audit.rs`; the Baseten parser and opt-in paths stay
     covered by `vtcode-llm/tests/vidaimock_streaming.rs`.
+- [x] (2026-11-01) EP-M5 second review repair: close the findings from
+  Assessment-ID ACP-LODY-EP-20261031-2.
+  - Attach-time snapshots now share the live path's queue accounting.
+    `LifecycleQueueTracker` owns `is_closed`, `record_enqueued`, an awaited
+    `send` and the test-only `depth`, and `publish_initial_task_snapshots`
+    enqueues through `queue.send`, so one receiver dequeue can no longer cancel
+    another source's tracked depth.
+  - The `SESSION-ISOLATION` property now covers its stated domain: acyclic
+    mixed forests of 3 to 32 tasks across two to four session roots, with
+    foreground and background nodes, every status, shuffled delivery order and
+    a direct-child-only negative control rejected by a generated nested
+    witness.
+  - The nested duplex test cancels an owned grandchild directly while its
+    sibling and parent stay running, then confirms that closing the child
+    settles the remaining subtree. It also compares the complete foreign and
+    unknown error values for both output and cancel.
+  - The assembled Baseten usage tests now carry the `USAGE-DELTA` assembled
+    evidence, replacing the older split provenance in the EP-M5 addendum.
+  - Tolerances record the measured scope for this head (32 production paths,
+    1,496 insertions, 168 deletions, 1,328 net) and state that both the file
+    and line tolerances are exceeded under directed scope.
 
 ## Surprises & discoveries
 
@@ -594,28 +616,49 @@ EP-M5 evidence addendum (2026-10-31):
   ID-changing style negative control is the table test
   `maps_worker_and_background_states_to_lody_task_metadata`, which pins the
   identifier for every enum value.
-- `SESSION-ISOLATION`: nested ownership is behavioural rather than only
-  combinatorial.
+- `SESSION-ISOLATION`: the ownership closure is proven combinatorially and
+  behaviourally.
+  `lody_tests.rs::ownership_selection_is_the_transitive_session_closure_of_a_mixed_forest`
+  generates acyclic mixed forests of 3 to 32 tasks across two to four session
+  roots, with foreground and background nodes and every status, delivers the
+  entries in shuffled order, and compares the answer with the generation-order
+  answer. Its negative control is a direct-child-only filter that a generated
+  nested witness rejects. Behaviourally,
   `subagents/tests/tree_routing_tests.rs::descendant_controllers_include_only_attached_child_scopes`
   and `descendant_controllers_deduplicate_shared_child_scopes` prove the walk
   reaches exactly the attached child scopes, once each.
   `nested_controller_publishes_under_the_root_observer_scope` and
   `nested_scope_is_inherited_through_more_than_one_level` prove a grandchild
   and great-grandchild publish under the root session key while the child key
-  receives nothing. The official ACP duplex test now asserts that a background
+  receives nothing. The official ACP duplex test
+  `nested_subagent_management_is_owned_by_the_root_session` lists a child and
+  two grandchildren, cancels one owned grandchild directly through the
+  descendant controller, confirms the sibling and the parent stay running, and
+  asserts that a foreign task returns exactly the same error value as an
+  unknown task for both output and cancel. It also asserts that a background
   task which was already running is published when the forwarder attaches,
   closing the observation gap that allowed a running task to stay invisible.
+- Attach-time publication accounting:
+  `task_lifecycle/projection_tests.rs::initial_snapshot_enqueue_shares_accounting_with_live_updates`
+  mixes an awaited initial snapshot with a live `try_send`, checks depth
+  before and after each dequeue, and covers the closed-channel and full-channel
+  paths, so neither enqueue source can cancel the other's tracked depth.
 - Settled-outcome preservation is covered by
   `close_preserves_settled_foreground_outcomes` and
   `cancel_preserves_settled_background_outcomes`, which table the terminal
   statuses and assert status, completion/end timestamps and error text survive
   a cancel.
-- `USAGE-DELTA` assembled coverage remains
-  `crates/codegen/vtcode-acp/src/zed/agent/tests/streamed_audit.rs`, which
-  drives a two-response provider stream into the ACP session and asserts the
-  emitted `_lody/session/usage_update` token deltas; the Baseten parser and
-  opt-in request shape remain covered by
-  `crates/codegen/vtcode-llm/tests/vidaimock_streaming.rs`.
+- `USAGE-DELTA` assembled coverage is
+  `crates/codegen/vtcode-acp/src/zed/agent/handlers/tests/tools/baseten_usage.rs`,
+  which starts a real custom-provider profile against a wiremock
+  OpenAI-compatible origin, drives the ACP prompt pipeline, and asserts the
+  terminal-usage chunk produces exactly one `_lody/session/usage_update` while
+  a usage-free stream publishes no delta; the same test also asserts the opt-in
+  `stream_options.include_usage` request shape.
+  `crates/codegen/vtcode-acp/src/zed/agent/tests/streamed_audit.rs` remains the
+  synthetic-provider projection check, and
+  `crates/codegen/vtcode-llm/tests/vidaimock_streaming.rs` remains the parser
+  boundary check.
 
 ## Plan of work
 
@@ -862,6 +905,40 @@ SCHEMA: /tmp/generate-config-reference-VTCode-fix-acp-lody-task-lifecycle-negoti
         Exported 836 schema fields successfully; only the two feature-specific
         reference rows are retained because the remaining generated diff was
         unrelated pre-existing drift.
+```
+
+EP-M5 second review repair release-gate evidence (2026-11-01, candidate =
+`7519a004` plus the review-repair working tree; gates run sequentially, once
+each, by the scrutineer):
+
+```plaintext
+FORMAT:  /tmp/check-fmt-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0, 8s. rustfmt clean; mdtablefix left 365 files unchanged.
+LINT:    /tmp/lint-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0, 227s. Shell syntax, repository policy scripts, workspace
+         Clippy with --all-targets --all-features -D warnings, and cargo doc.
+TYPE:    /tmp/typecheck-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0, 158s. cargo check --locked --workspace --all-targets
+         --all-features.
+TEST:    /tmp/test-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0, 317s. 10,521 tests run, 10,521 passed, 23 skipped.
+BUILD:   /tmp/build-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0, 221s.
+HARNESS: /tmp/test-harness-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0, 589s. 8 PTY, 10 pipe and 49 inline-event harness tests passed.
+AST-GREP: /tmp/check-ast-grep-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0 through the Makefile's optional-skip branch. The only installed
+         ast-grep binary (/home/leynos/.local/bin/ast-grep, mode 0600) is not
+         executable, so the repository scan did not run on this host. Recorded
+         as an environment limitation, not as passing scan evidence.
+ADVISORY: /tmp/advisory-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0, 2s. File-length, unwrap/expect, zen-allowlist and
+         agent-legibility advisories completed in warn mode; the unwrap/expect
+         scan reported 0 findings across 1,990 files.
+INSTALL: /tmp/install-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         cargo install --path . --locked --force replaced the user binary with
+         vtcode-core 0.156.1 in 21m50s; /home/leynos/.local/bin/vtcode
+         resolves to /home/leynos/.cargo/bin/vtcode and reports 0.156.1.
 ```
 
 Baseten's documented streamed-usage request is:
