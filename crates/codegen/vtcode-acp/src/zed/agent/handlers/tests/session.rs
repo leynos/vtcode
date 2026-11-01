@@ -823,6 +823,26 @@ async fn lody_output(
         .await
 }
 
+async fn lody_cancel(
+    connection: &ConnectionTo<Agent>,
+    session_id: &acp::SessionId,
+    task_id: &str,
+) -> Result<serde_json::Value, acp::Error> {
+    let params = serde_json::value::to_raw_value(&serde_json::json!({
+        "sessionId": session_id,
+        "taskId": task_id,
+        "reason": "nested management regression",
+    }))
+    .expect("serialize Lody cancel request");
+    connection
+        .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
+            crate::zed::agent::lody::LODY_SUBAGENTS_CANCEL_METHOD,
+            params.into(),
+        )))
+        .block_task()
+        .await
+}
+
 /// A session's management surface must reach grandchildren spawned by its own
 /// children, and must not reach a sibling session's tree.
 ///
@@ -934,6 +954,19 @@ async fn nested_subagent_management_is_owned_by_the_root_session() {
             assert_eq!(grandchild.parent_thread_id, child.session_id);
             assert_eq!(grandchild.depth, 2, "a grandchild of the root session sits at depth 2");
 
+            // A second grandchild keeps a live witness for the subtree-close
+            // assertion after the first one is cancelled directly.
+            let second_grandchild = child_controller
+                .spawn(SpawnAgentRequest {
+                    agent_type: Some("explorer".to_string()),
+                    message: Some(NESTED_GRANDCHILD_TASK.to_string()),
+                    ..SpawnAgentRequest::default()
+                })
+                .await
+                .expect("spawn a second explorer grandchild through the child's controller");
+            assert_eq!(second_grandchild.parent_thread_id, child.session_id);
+            assert_eq!(second_grandchild.depth, 2);
+
             // The owning session sees the whole tree.
             let params = serde_json::value::to_raw_value(&serde_json::json!({
                 "sessionId": session.session_id,
@@ -949,11 +982,11 @@ async fn nested_subagent_management_is_owned_by_the_root_session() {
             let tasks = listed["tasks"].as_array().expect("Lody task list").clone();
             let mut listed_ids = tasks.iter().filter_map(|task| task["taskId"].as_str()).collect::<Vec<_>>();
             listed_ids.sort_unstable();
-            let mut expected_ids = vec![child.id.as_str(), grandchild.id.as_str()];
+            let mut expected_ids = vec![child.id.as_str(), grandchild.id.as_str(), second_grandchild.id.as_str()];
             expected_ids.sort_unstable();
             assert_eq!(
                 listed_ids, expected_ids,
-                "the root session must list its child and grandchild exactly once: {listed}"
+                "the root session must list its child and both grandchildren exactly once: {listed}"
             );
 
             // A sibling session shares the workspace runtime but owns nothing.
@@ -974,23 +1007,30 @@ async fn nested_subagent_management_is_owned_by_the_root_session() {
                 .await?;
             assert_eq!(foreign_list, serde_json::json!({ "tasks": [] }));
 
+            // A foreign task must be indistinguishable from an unknown one on
+            // both management methods, so ownership is not an oracle.
             let foreign_output = lody_output(&cx, &foreign_session.session_id, &grandchild.id)
                 .await
                 .expect_err("a sibling must not read a grandchild's output");
+            let unknown_output = lody_output(&cx, &session.session_id, "task-that-does-not-exist")
+                .await
+                .expect_err("an unknown task ID must not resolve");
+            assert_eq!(
+                foreign_output, unknown_output,
+                "a foreign output request must return the same error value as an unknown one"
+            );
             assert_eq!(foreign_output.data, Some(serde_json::json!({ "reason": "unknown_task" })));
 
-            let params = serde_json::value::to_raw_value(&serde_json::json!({
-                "sessionId": foreign_session.session_id,
-                "taskId": grandchild.id,
-            }))?;
-            let foreign_cancel = cx
-                .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
-                    crate::zed::agent::lody::LODY_SUBAGENTS_CANCEL_METHOD,
-                    params.into(),
-                )))
-                .block_task()
+            let foreign_cancel = lody_cancel(&cx, &foreign_session.session_id, &grandchild.id)
                 .await
                 .expect_err("a sibling must not cancel a grandchild");
+            let unknown_cancel = lody_cancel(&cx, &session.session_id, "task-that-does-not-exist")
+                .await
+                .expect_err("cancelling an unknown task must fail");
+            assert_eq!(
+                foreign_cancel, unknown_cancel,
+                "a foreign cancel must return the same error value as an unknown one"
+            );
             assert_eq!(foreign_cancel.data, Some(serde_json::json!({ "reason": "unknown_task" })));
             assert!(
                 !child_controller
@@ -1022,20 +1062,13 @@ async fn nested_subagent_management_is_owned_by_the_root_session() {
                 "grandchild output must use the managed output envelope: {owned_output}"
             );
 
-            // Cancelling the child closes its whole subtree.
-            let params = serde_json::value::to_raw_value(&serde_json::json!({
-                "sessionId": session.session_id,
-                "taskId": child.id,
-                "reason": "test complete",
-            }))?;
-            let cancelled = cx
-                .send_request(acp::ClientRequest::ExtMethodRequest(acp::ExtRequest::new(
-                    crate::zed::agent::lody::LODY_SUBAGENTS_CANCEL_METHOD,
-                    params.into(),
-                )))
-                .block_task()
-                .await?;
-            assert_eq!(cancelled, serde_json::json!({}));
+            // The owner cancels one grandchild directly: management must route
+            // through the child-scoped controller that owns it, not merely
+            // through the root the task was listed from.
+            let cancelled_grandchild = lody_cancel(&cx, &session.session_id, &grandchild.id)
+                .await
+                .expect("the owning session must cancel an owned grandchild");
+            assert_eq!(cancelled_grandchild, serde_json::json!({}));
             tokio::time::timeout(Duration::from_secs(10), async {
                 loop {
                     let terminal = child_controller
@@ -1051,7 +1084,44 @@ async fn nested_subagent_management_is_owned_by_the_root_session() {
                 }
             })
             .await
-            .expect("closing the child must close its grandchild subtree");
+            .expect("cancelling an owned grandchild must settle it directly");
+
+            let sibling_still_running = child_controller
+                .status_entries()
+                .await
+                .into_iter()
+                .find(|entry| entry.id == second_grandchild.id)
+                .is_some_and(|entry| !entry.status.is_terminal());
+            assert!(sibling_still_running, "cancelling one grandchild must not cancel its sibling");
+            let child_still_running = root
+                .status_entries()
+                .await
+                .into_iter()
+                .find(|entry| entry.id == child.id)
+                .is_some_and(|entry| !entry.status.is_terminal());
+            assert!(child_still_running, "cancelling a grandchild must not cancel its parent");
+
+            // Cancelling the child closes the rest of its subtree.
+            let cancelled = lody_cancel(&cx, &session.session_id, &child.id)
+                .await
+                .expect("the owning session must cancel its child");
+            assert_eq!(cancelled, serde_json::json!({}));
+            tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    let terminal = child_controller
+                        .status_entries()
+                        .await
+                        .into_iter()
+                        .find(|entry| entry.id == second_grandchild.id)
+                        .is_some_and(|entry| entry.status.is_terminal());
+                    if terminal {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .expect("closing the child must close its remaining grandchild subtree");
 
             drop(
                 cx.send_request(CloseSessionRequest::new(session.session_id.clone()))
