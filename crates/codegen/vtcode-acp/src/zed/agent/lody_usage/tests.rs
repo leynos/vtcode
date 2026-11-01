@@ -6,6 +6,7 @@ use proptest::prelude::*;
 use tokio::sync::{Notify, mpsc};
 use vtcode_config::{CustomProviderPricingConfig, CustomProviderProfileConfig};
 
+/// Assert normalized usage maps to the Lody delta contract.
 #[test]
 fn maps_normalized_usage_to_the_lody_delta_contract() {
     let usage = Usage {
@@ -46,6 +47,7 @@ fn maps_normalized_usage_to_the_lody_delta_contract() {
     assert_eq!(value["modelUsage"]["model-a"], value["usage"]);
 }
 
+/// Assert the backend format decides input semantics over the provider name.
 #[test]
 fn backend_selects_input_semantics_over_the_provider_name() {
     let cases = [
@@ -66,6 +68,7 @@ fn backend_selects_input_semantics_over_the_provider_name() {
     }
 }
 
+/// Assert cost normalization follows the selected backend, not the provider name.
 #[test]
 fn cost_normalization_follows_the_selected_backend_not_the_provider_name() {
     // `baseten` is a custom name either way; only the backend decides
@@ -130,6 +133,7 @@ fn per_million(input: f64, output: f64) -> CustomProviderPricingConfig {
     }
 }
 
+/// Assert a custom provider supplies its context window and pricing.
 #[test]
 fn custom_provider_supplies_the_context_window_and_cost_pricing() {
     let providers = vec![custom_provider(
@@ -149,6 +153,7 @@ fn custom_provider_supplies_the_context_window_and_cost_pricing() {
     assert!((pricing.output.expect("output rate") - 15.0 / 1_000_000.0).abs() < f64::EPSILON);
 }
 
+/// Assert an exact model profile overrides the provider defaults.
 #[test]
 fn model_profile_overrides_the_provider_default() {
     let providers = vec![CustomProviderConfig {
@@ -183,6 +188,37 @@ fn model_profile_overrides_the_provider_default() {
     assert!((pricing.output.expect("output rate") - 1.0 / 1_000_000.0).abs() < f64::EPSILON);
 }
 
+/// Assert the usage profile follows the model the provider actually served.
+#[test]
+fn response_pricing_follows_the_model_the_provider_served() {
+    let providers = vec![CustomProviderConfig {
+        context_window: Some(200_000),
+        pricing: per_million(3.0, 15.0),
+        profiles: BTreeMap::from([(
+            "served-model".to_string(),
+            CustomProviderProfileConfig {
+                context_window: Some(32_768),
+                pricing: per_million(0.25, 1.0),
+                ..CustomProviderProfileConfig::default()
+            },
+        )]),
+        ..custom_provider("acme", CustomProviderApiFormat::OpenAIChat, None, CustomProviderPricingConfig::default())
+    }];
+    let response = vtcode_core::llm::provider::LLMResponse {
+        model: "served-model".to_string(),
+        ..vtcode_core::llm::provider::LLMResponse::new("session-model", "answer")
+    };
+
+    let profile = usage_profile(&providers, "acme", effective_model("session-model", &response));
+
+    assert_eq!(
+        profile.context_window,
+        Some(32_768),
+        "pricing must describe the served model, not the session's requested model"
+    );
+}
+
+/// Assert a custom provider profile drives the notification window and cost.
 #[test]
 fn custom_provider_profile_drives_the_notification_context_window_and_cost() {
     let providers = vec![custom_provider(
@@ -208,6 +244,7 @@ fn custom_provider_profile_drives_the_notification_context_window_and_cost() {
     assert!((cost - 18.0).abs() < 1e-9, "1M input at $3/M plus 1M output at $15/M, got {cost}");
 }
 
+/// Assert a built-in provider falls back to the model catalogue.
 #[test]
 fn built_in_provider_falls_back_to_the_model_catalogue() {
     let profile = usage_profile(&[], "anthropic", "claude-fable-5");
@@ -218,6 +255,7 @@ fn built_in_provider_falls_back_to_the_model_catalogue() {
     assert!(profile.exclusive_input);
 }
 
+/// Assert a response without usage produces no notification.
 #[test]
 fn response_without_usage_produces_no_notification() {
     let response = vtcode_core::llm::provider::LLMResponse::new("model-a", "answer");
@@ -240,6 +278,7 @@ fn reported_model_names(notification: acp::ExtNotification) -> Vec<String> {
     model_usage.keys().cloned().collect()
 }
 
+/// Assert usage is attributed to the model the provider reported.
 #[test]
 fn response_usage_is_attributed_to_the_model_the_provider_served() {
     let response = vtcode_core::llm::provider::LLMResponse {
@@ -254,7 +293,7 @@ fn response_usage_is_attributed_to_the_model_the_provider_served() {
 
     let notification = response_usage_notification(
         &acp::SessionId::new(Arc::from("session-1")),
-        "fallback-model",
+        effective_model("fallback-model", &response),
         &response,
         UsageProfile::default(),
     )
@@ -264,6 +303,7 @@ fn response_usage_is_attributed_to_the_model_the_provider_served() {
     assert_eq!(reported_model_names(notification), vec!["served-model".to_string()]);
 }
 
+/// Assert a response without a model uses the session model.
 #[test]
 fn response_without_a_model_falls_back_to_the_session_model() {
     let response = vtcode_core::llm::provider::LLMResponse {
@@ -278,7 +318,7 @@ fn response_without_a_model_falls_back_to_the_session_model() {
 
     let notification = response_usage_notification(
         &acp::SessionId::new(Arc::from("session-1")),
-        "fallback-model",
+        effective_model("fallback-model", &response),
         &response,
         UsageProfile::default(),
     )
@@ -289,6 +329,7 @@ fn response_without_a_model_falls_back_to_the_session_model() {
 }
 
 proptest! {
+    /// Assert every normalized u32 usage count survives serialization.
     #[test]
     fn preserves_all_normalized_u32_usage_counts(
         input in any::<u32>(),
@@ -335,6 +376,7 @@ proptest! {
     }
 }
 
+/// Assert usage travels over the official ACP extension channel.
 #[tokio::test]
 async fn sends_usage_through_the_official_acp_extension_channel() {
     let (agent_channel, client_channel) = agent_client_protocol::Channel::duplex();
