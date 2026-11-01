@@ -37,18 +37,31 @@ struct LodyActivityMeta<'a> {
 }
 
 impl CompactionActivity {
-    pub(super) fn begin(session_id: &acp::SessionId, used_tokens_before: usize) -> Self {
+    /// Start a compaction activity from a caller-supplied identity and clock.
+    ///
+    /// The identifier and start instant are inputs rather than ambient
+    /// dependencies, so the projection stays pure and an edge adapter owns the
+    /// random and monotonic-clock choices. Tests can then supply fixed values
+    /// and assert exact durations.
+    pub(super) fn begin(
+        session_id: &acp::SessionId,
+        used_tokens_before: usize,
+        activity_id: uuid::Uuid,
+        started_at: Instant,
+    ) -> Self {
         Self {
-            tool_call_id: format!("activity:compaction:{}:{}", session_id.0, uuid::Uuid::new_v4()),
+            tool_call_id: format!("activity:compaction:{}:{activity_id}", session_id.0),
             used_tokens_before,
-            started_at: Instant::now(),
+            started_at,
         }
     }
 
-    pub(super) fn elapsed_millis(&self) -> u64 {
-        duration_millis(self.started_at.elapsed())
+    /// Report how long this activity has been running at `now`.
+    pub(super) fn elapsed_millis(&self, now: Instant) -> u64 {
+        duration_millis(now.saturating_duration_since(self.started_at))
     }
 
+    /// Build the in-progress `tool_call` update that announces this attempt.
     pub(super) fn started_update(&self) -> anyhow::Result<acp::SessionUpdate> {
         let meta = activity_meta(LodyActivityMeta {
             version: LODY_EXTENSION_VERSION,
@@ -68,8 +81,13 @@ impl CompactionActivity {
         ))
     }
 
+    /// Build the terminal `tool_call_update` for this attempt at `now`.
+    ///
+    /// A failure reason makes the update `failed`; otherwise it reports the
+    /// outcome as completed, including an attempt that changed nothing.
     pub(super) fn finished_update(
         &self,
+        now: Instant,
         compacted: bool,
         used_tokens_after: Option<usize>,
         failure_reason: Option<&str>,
@@ -86,7 +104,7 @@ impl CompactionActivity {
             used_tokens_before: self.used_tokens_before,
             used_tokens_after,
             compacted: Some(compacted),
-            duration_ms: Some(duration_millis(self.started_at.elapsed())),
+            duration_ms: Some(duration_millis(now.saturating_duration_since(self.started_at))),
             failure_reason,
         })?;
         let fields = acp::ToolCallUpdateFields::new()
@@ -99,12 +117,14 @@ impl CompactionActivity {
     }
 }
 
+/// Advertise the `_meta.lody.compaction` extension during negotiation.
 pub(super) fn add_lody_compaction_capability(capabilities: &mut acp::AgentCapabilities) {
     if let Some(lody) = lody_capabilities_mut(capabilities) {
         let _ = lody.insert("compaction".to_string(), serde_json::json!({ "version": LODY_EXTENSION_VERSION }));
     }
 }
 
+/// Wrap an activity snapshot in the `_meta.lody.activity` envelope.
 fn activity_meta(activity: LodyActivityMeta<'_>) -> anyhow::Result<Map<String, Value>> {
     let mut lody = Map::new();
     let _ = lody.insert("activity".to_string(), serde_json::to_value(activity)?);
@@ -113,6 +133,7 @@ fn activity_meta(activity: LodyActivityMeta<'_>) -> anyhow::Result<Map<String, V
     Ok(meta)
 }
 
+/// Convert a duration to whole milliseconds, saturating on overflow.
 fn duration_millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
@@ -139,13 +160,18 @@ mod tests {
         assert_eq!(started["_meta"]["lody"]["activity"]["kind"], "context_compaction");
         assert_eq!(started["_meta"]["lody"]["activity"]["usedTokensBefore"], 120_000);
 
-        let finished =
-            serde_json::to_value(activity.finished_update(true, Some(42_000), None).expect("finished update"))
-                .expect("finished JSON");
+        let finished_at = activity.started_at + Duration::from_millis(250);
+        let finished = serde_json::to_value(
+            activity
+                .finished_update(finished_at, true, Some(42_000), None)
+                .expect("finished update"),
+        )
+        .expect("finished JSON");
         assert_eq!(finished["sessionUpdate"], "tool_call_update");
         assert_eq!(finished["status"], "completed");
         assert_eq!(finished["_meta"]["lody"]["activity"]["compacted"], true);
         assert_eq!(finished["_meta"]["lody"]["activity"]["usedTokensAfter"], 42_000);
+        assert_eq!(finished["_meta"]["lody"]["activity"]["durationMs"], 250);
     }
 
     #[test]
@@ -156,9 +182,13 @@ mod tests {
             started_at: Instant::now(),
         };
 
-        let finished =
-            serde_json::to_value(activity.finished_update(false, None, None).expect("no-op finished update"))
-                .expect("no-op finished JSON");
+        let finished_at = activity.started_at + Duration::from_millis(10);
+        let finished = serde_json::to_value(
+            activity
+                .finished_update(finished_at, false, None, None)
+                .expect("no-op finished update"),
+        )
+        .expect("no-op finished JSON");
 
         assert_eq!(finished["status"], "completed");
         assert_eq!(finished["_meta"]["lody"]["activity"]["compacted"], false);
@@ -167,10 +197,15 @@ mod tests {
 
     #[test]
     fn failed_compaction_update_carries_the_failure_reason() {
-        let activity = CompactionActivity::begin(&acp::SessionId::new(Arc::from("session-a")), 32_000);
+        let activity = CompactionActivity::begin(
+            &acp::SessionId::new(Arc::from("session-a")),
+            32_000,
+            uuid::Uuid::nil(),
+            Instant::now(),
+        );
         let update = serde_json::to_value(
             activity
-                .finished_update(false, None, Some("provider timed out"))
+                .finished_update(Instant::now(), false, None, Some("provider timed out"))
                 .expect("failed update"),
         )
         .expect("failed JSON");
@@ -202,7 +237,9 @@ mod tests {
                 let client = ConnectionHandle::new(cx);
                 for update in [
                     activity.started_update().expect("start update"),
-                    activity.finished_update(true, Some(30_000), None).expect("terminal update"),
+                    activity
+                        .finished_update(activity.started_at, true, Some(30_000), None)
+                        .expect("terminal update"),
                 ] {
                     client
                         .send_session_notification(acp::SessionNotification::new(session_id.clone(), update))

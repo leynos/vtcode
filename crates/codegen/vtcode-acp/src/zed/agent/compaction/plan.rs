@@ -17,12 +17,14 @@ use vtcode_core::llm::provider::{LLMProvider, Message, ToolDefinition};
 const DEFAULT_OUTPUT_RESERVE_TOKENS: usize = 16_384;
 const ADMISSION_SAFETY_MARGIN_TOKENS: usize = 1_024;
 
+/// Estimate the prompt tokens the tool definitions occupy.
 fn estimated_tool_tokens(tools: Option<&Arc<Vec<ToolDefinition>>>) -> usize {
     tools
         .and_then(|definitions| serde_json::to_vec(definitions.as_ref()).ok())
         .map_or(0, |encoded| encoded.len().div_ceil(4))
 }
 
+/// Estimate the prompt tokens for a message history and its tool definitions.
 pub(in crate::zed::agent) fn estimated_prompt_tokens(
     messages: &[Message],
     tools: Option<&Arc<Vec<ToolDefinition>>>,
@@ -34,6 +36,10 @@ pub(in crate::zed::agent) fn estimated_prompt_tokens(
         .saturating_add(estimated_tool_tokens(tools))
 }
 
+/// Reserve output space and a safety margin from the provider context window.
+///
+/// Returns `None` when the provider reports no context window, because no
+/// admission limit can be derived.
 pub(in crate::zed::agent) fn admission_prompt_budget(provider: &dyn LLMProvider, model: &str) -> Option<usize> {
     let context_size = provider.effective_context_size(model);
     if context_size == 0 {
@@ -45,6 +51,7 @@ pub(in crate::zed::agent) fn admission_prompt_budget(provider: &dyn LLMProvider,
     Some(context_size.saturating_sub(output_reserve).saturating_sub(safety_margin).max(1))
 }
 
+/// Report whether a prompt has reached the tighter applicable budget.
 #[cfg(test)]
 pub(in crate::zed::agent) fn should_compact(provider: &dyn LLMProvider, model: &str, prompt_tokens: usize) -> bool {
     let threshold = effective_compaction_threshold(None, provider, model);
@@ -65,6 +72,12 @@ pub(in crate::zed::agent) struct CompactionDecision {
 }
 
 impl CompactionDecision {
+    /// Decide whether this prompt needs compaction, and why.
+    ///
+    /// Returns `None` while the prompt stays below every applicable budget.
+    /// Admission pressure forces compaction even when the configured
+    /// threshold has not been reached, because the request would otherwise be
+    /// rejected by the provider.
     pub(super) fn for_prompt(
         vt_config: Option<&VTCodeConfig>,
         provider: &dyn LLMProvider,
@@ -88,6 +101,7 @@ impl CompactionDecision {
         })
     }
 
+    /// Report whether a token count has reached the admission budget.
     pub(super) fn is_over_admission_budget(self, prompt_tokens: usize) -> bool {
         self.admission_budget.is_some_and(|budget| prompt_tokens >= budget)
     }
@@ -101,6 +115,7 @@ pub(in crate::zed::agent) struct CompactionSessionSnapshot {
 }
 
 impl CompactionSessionSnapshot {
+    /// Snapshot the session state that one compaction attempt works from.
     pub(super) fn load(session: &SessionHandle) -> Result<Self> {
         let data = session
             .data
