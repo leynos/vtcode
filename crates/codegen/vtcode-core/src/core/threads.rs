@@ -238,6 +238,10 @@ impl ThreadRuntimeHandle {
         self.inner.session.lock().metadata = metadata;
     }
 
+    /// Returns the archive listing this thread was resumed from, if any.
+    ///
+    /// ACP uses it to detect that a persisted session was attached from
+    /// storage and therefore may need tool-result repair.
     pub fn archive_listing(&self) -> Option<SessionListing> {
         self.inner.session.lock().archive_listing.clone()
     }

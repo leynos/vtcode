@@ -456,6 +456,11 @@ fn format_retry_delay(delay_ms: u64) -> String {
     }
 }
 
+/// Applies the typed recovery state this error cause implies for the tool.
+///
+/// `write_stdin` distinguishes a pre-write resolution failure (nothing was
+/// delivered) from a session lost after the input was written, so callers are
+/// told accurately whether partial state is possible.
 fn apply_explicit_error_state(mut error: ToolExecutionError, tool_name: &str, source: &Error) -> ToolExecutionError {
     if tool_name == crate::config::constants::tools::WRITE_STDIN {
         // Input written to the session may already have been consumed, so a

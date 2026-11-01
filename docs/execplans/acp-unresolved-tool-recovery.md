@@ -129,6 +129,15 @@ from both lower layers.
   session registration while retaining `history_changed()`-gated checkpointing;
   `make check-fmt`, `make lint`, `make typecheck`, and `make test` all pass on
   the restacked candidate.
+- [x] (2026-11-01) Addressed the four outstanding CodeRabbit pre-merge
+  warnings on that head: documented every diff-touched non-test function, added
+  "ACP recovery in brief" to the user guide, added the recovery-contract
+  section to the developer guide, and added bounded
+  `ToolRecoveryMetrics`/`vtcode_tool_recovery_total` counters for staged,
+  replaced, interrupted, relocated, and archive-repaired calls, ambiguous
+  histories, concurrent prompt rejections, stale `write_stdin` requests, and
+  checkpoint failures. Removed three stray `weave` resolution markers left at
+  the end of `session_state/archive.rs`.
 
 ## Surprises & discoveries
 

@@ -397,6 +397,10 @@ impl PipeSessionManager {
         Ok(())
     }
 
+    /// Removes and terminates a pipe-backed session.
+    ///
+    /// A missing identifier is reported through [`missing_session`]; callers
+    /// surface that as a precise, non-mutating recovery hint.
     async fn close_session(&self, session_id: &str) -> Result<VTCodeExecSession> {
         let record = {
             let mut sessions = self.sessions.write().await;
@@ -442,6 +446,7 @@ impl PipeSessionManager {
         Ok(())
     }
 
+    /// Looks up a live pipe session record by identifier.
     async fn session_record(&self, session_id: &str) -> Result<Arc<PipeSessionRecord>> {
         let sessions = self.sessions.read().await;
         sessions.get(session_id).cloned().ok_or_else(|| missing_session(session_id))
@@ -673,6 +678,10 @@ impl ExecSessionManager {
         }
     }
 
+    /// Removes and terminates a session, whatever its backend.
+    ///
+    /// A missing identifier is reported through [`missing_session`] rather
+    /// than being treated as a successful no-op.
     pub(crate) async fn close_session(&self, session_id: &str) -> Result<VTCodeExecSession> {
         let record = {
             let mut sessions = self.sessions.write().await;
@@ -747,6 +756,7 @@ impl ExecSessionManager {
         Ok(())
     }
 
+    /// Looks up a live exec session record by identifier.
     async fn session_record(&self, session_id: &str) -> Result<Arc<ExecSessionRecord>> {
         let sessions = self.sessions.read().await;
         sessions.get(session_id).cloned().ok_or_else(|| missing_session(session_id))
@@ -766,6 +776,7 @@ mod tests {
     use crate::tools::registry::PtySessionManager;
     use crate::utils::path::canonicalize_workspace;
 
+    /// Polls the session's activity channel until output appears or times out.
     async fn wait_for_pipe_output(
         manager: &ExecSessionManager,
         session_id: &str,
