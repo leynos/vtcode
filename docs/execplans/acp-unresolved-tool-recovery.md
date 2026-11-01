@@ -123,6 +123,12 @@ from both lower layers.
   fixed: last-match tool-result replacement for reused ids, relocation
   persistence, truncated-prefix acceptance, `write_stdin` post-write partial
   state, the test-module split for the 400-line limit, and `-ize` spelling.
+- [x] (2026-11-01) Replayed the 14 feature commits onto PR #12's rebased head
+  (`d610b4db8`) after PR #11 landed on `main`. The conflict in
+  `session_state/archive.rs` keeps the lower layer's concurrency-safe resumed
+  session registration while retaining `history_changed()`-gated checkpointing;
+  `make check-fmt`, `make lint`, `make typecheck`, and `make test` all pass on
+  the restacked candidate.
 
 ## Surprises & discoveries
 
