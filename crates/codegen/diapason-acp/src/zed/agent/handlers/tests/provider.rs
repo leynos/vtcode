@@ -1,4 +1,5 @@
 //! Covers provider attempt telemetry, deadline phases, retry policy, and failure classification.
+use super::super::prompt::RateLimitNoticeSink;
 use super::*;
 use crate::zed::types::SessionCancellation;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
@@ -247,12 +248,13 @@ async fn retryable_rate_limit_publishes_a_notice_over_the_acp_transport() {
                     .await?,
             );
             let session = cx.send_request(NewSessionRequest::new(client_workspace)).block_task().await?;
+            let notice_sink = RateLimitNoticeSink::new(notice_agent.as_ref(), &session.session_id);
             let response = generate_with_retry(
                 &provider,
                 LLMRequest::default(),
                 &runtime,
                 &SessionCancellation::default(),
-                Some((notice_agent.as_ref(), &session.session_id)),
+                Some(&notice_sink),
             )
             .await
             .expect("a retryable rate limit should recover");
