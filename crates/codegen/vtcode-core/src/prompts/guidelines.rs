@@ -297,7 +297,7 @@ fn shell_browse_guidance(shell_profile: ResolvedShellPromptProfile) -> &'static 
 fn shell_task_guidance(shell_profile: ResolvedShellPromptProfile) -> &'static str {
     match shell_profile {
         ResolvedShellPromptProfile::UnixLike => {
-            "- Use `exec_command.cmd`: build tools, test tools, `git diff -- <path>`, shell tasks. One-shot `exec_command` calls: do not use `!!`, `!$`, `!ssh`, or `fc`; write full command arguments explicitly from conversation or tool results. Interactive shells: use review-safe history expansion (Bash `histverify`, zsh `HIST_VERIFY`)."
+            "- Use `exec_command.cmd`: build tools, test tools, `git diff -- <path>`, shell tasks. One-shot `exec_command` calls: do not use `!!`, `!$`, `!ssh`, or `fc`; write full command arguments explicitly from conversation or tool results. Interactive shells: use review-safe history expansion (Bash `histverify`, zsh `HIST_VERIFY`). Workspace deletion needs one static `rm` and `confirm: true`; other shapes are refused."
         }
         ResolvedShellPromptProfile::PowerShell => {
             "- Use `exec_command.cmd` for build tools, test tools, `git diff -- <path>`, and shell-only tasks using native PowerShell syntax."
@@ -612,9 +612,10 @@ mod tests {
         assert!(guidelines.contains("Batch independent read-only calls"));
         assert!(guidelines.contains("code_search"));
         let approx_tokens = guidelines.len() / 4;
-        // The batching and bounded-diff guardrails are intentionally part of
-        // the compact shared prompt; keep the budget below 400 tokens.
-        assert!(approx_tokens < 400, "got ~{approx_tokens} tokens");
+        // The batching and bounded-diff guardrails, plus the workspace
+        // deletion confirmation cue, are intentionally part of the compact
+        // shared prompt; keep the budget below 425 tokens.
+        assert!(approx_tokens < 425, "got ~{approx_tokens} tokens");
     }
 
     #[test]

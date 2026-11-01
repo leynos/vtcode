@@ -28,6 +28,8 @@ use vtcode_commons::{ErrorCategory, canonicalize};
 #[path = "../../../tests/support/config_defaults.rs"]
 mod config_defaults;
 
+mod deletion;
+
 #[cfg(unix)]
 mod pipe_session;
 

@@ -11,6 +11,7 @@ mod cgp_facade;
 mod circuit_breaker;
 mod commands_facade;
 mod config_helpers;
+mod deletion_gate;
 mod distributed;
 mod dual_output;
 mod error;

@@ -30,7 +30,7 @@ use crate::tools::registry::unified_actions::CommandSessionAction;
 use crate::tools::{native_memory, tool_intent};
 
 mod cargo_failure_diagnostics;
-mod exec_command;
+pub(super) mod exec_command;
 mod exec_output;
 mod exec_sessions;
 mod exec_support;
@@ -327,9 +327,11 @@ impl ToolRegistry {
         }
 
         let sandbox_request = self.resolve_exec_sandbox_request(payload).await?;
+        self.enforce_deletion_policy(args, &prepared_command, &sandbox_request.working_dir_path, confirm)
+            .await?;
         let output_config = exec_run_output_config(payload, &prepared_command.display_command);
 
-        enforce_pty_command_policy(&prepared_command.display_command, confirm)?;
+        enforce_pty_command_policy(&prepared_command.display_command)?;
         let sandbox_config = self.sandbox_config();
         let sandbox_plan = build_shell_execution_plan(
             &sandbox_config,

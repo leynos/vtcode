@@ -31,6 +31,7 @@ use crate::tools::tool_intent::{
     action_qualified_policy_name, classify_tool_intent, command_session_action_in, command_session_action_is,
     file_operation_action_is,
 };
+use crate::tools::validation::commands::{DeletionRecognition, recognize_deletion_command};
 use vtcode_config::constants::tool_limits::{
     DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SAFETY_MAX_TOOL_CALLS_PER_SESSION,
 };
@@ -260,6 +261,15 @@ fn command_text_for_tool(tool_name: &str, args: &Value) -> Option<String> {
     }
 }
 
+/// Whether the tool's command text is input typed into a running session.
+fn is_interactive_input_tool(tool_name: &str, args: &Value) -> bool {
+    match tool_name {
+        tools::WRITE_STDIN | tools::SEND_PTY_INPUT => true,
+        tools::UNIFIED_EXEC => command_session_action_in(args, &["write", "continue"]),
+        _ => false,
+    }
+}
+
 fn patch_file_access_targets(args: &Value) -> Vec<FileAccessTarget> {
     let Ok(Some(patch_input)) = decode_apply_patch_input(args) else {
         return Vec::new();
@@ -324,6 +334,12 @@ fn file_access_targets(tool_name: &str, args: &Value) -> Vec<FileAccessTarget> {
         tools::APPLY_PATCH => {
             targets.extend(patch_file_access_targets(args));
         }
+        tools::EXEC_COMMAND | tools::SHELL | tools::RUN_PTY_CMD => {
+            targets.extend(command_deletion_targets(tool_name, args));
+        }
+        tools::UNIFIED_EXEC if command_session_action_is(args, "run") => {
+            targets.extend(command_deletion_targets(tool_name, args));
+        }
         tools::UNIFIED_FILE if file_operation_action_is(args, "write") => {
             if let Some(path) = primary_path_arg(args) {
                 push_file_access_target(&mut targets, path, AccessType::Write);
@@ -355,6 +371,27 @@ fn file_access_targets(tool_name: &str, args: &Value) -> Vec<FileAccessTarget> {
         _ => {}
     }
 
+    targets
+}
+
+/// Deletion operands carried by a recognized, supported `rm` command.
+///
+/// Unsupported forms never reach execution because the executor gate refuses
+/// them, so only a supported plan contributes targets. Adding the operands
+/// with [`AccessType::Delete`] lets the dotfile guardian see deletions such as
+/// `rm -f .env` and `rm -f .gitignore`, which the command policy allows.
+fn command_deletion_targets(tool_name: &str, args: &Value) -> Vec<FileAccessTarget> {
+    let Some(command) = command_text_for_tool(tool_name, args) else {
+        return Vec::new();
+    };
+    let DeletionRecognition::Supported(plan) = recognize_deletion_command(&command) else {
+        return Vec::new();
+    };
+
+    let mut targets = Vec::new();
+    for operand in plan.operands {
+        push_file_access_target(&mut targets, &operand, AccessType::Delete);
+    }
     targets
 }
 
@@ -633,17 +670,34 @@ impl SafetyGateway {
             return decision;
         }
 
-        if let Some(ref policy) = self.command_policy
-            && let Some(command) = command_text_for_tool(tool_name, args)
-            && !policy.allows_text(&command)
-        {
-            let reason = format!("Command '{command}' blocked by policy");
-            tracing::info!(
-                invocation_id = %inv_id,
-                command = %command,
-                "SafetyGateway: command policy denied"
-            );
-            return SafetyDecision::Deny(reason);
+        if let Some(command) = command_text_for_tool(tool_name, args) {
+            // Interactive input reaches a shell that is already running, so it
+            // never passes the executor deletion gate. Refuse deletion input
+            // here rather than letting it bypass `confirm=true` and target
+            // assessment.
+            if is_interactive_input_tool(tool_name, args) && recognize_deletion_command(&command).is_deletion() {
+                tracing::info!(
+                    invocation_id = %inv_id,
+                    "SafetyGateway: interactive deletion input denied"
+                );
+                return SafetyDecision::Deny(
+                    "interactive input cannot perform a deletion; use exec_command with confirm=true for a \
+                     workspace-scoped `rm`"
+                        .to_string(),
+                );
+            }
+
+            if let Some(ref policy) = self.command_policy
+                && !policy.allows_text(&command)
+            {
+                let reason = format!("Command '{command}' blocked by policy");
+                tracing::info!(
+                    invocation_id = %inv_id,
+                    command = %command,
+                    "SafetyGateway: command policy denied"
+                );
+                return SafetyDecision::Deny(reason);
+            }
         }
 
         if self.is_preapproved(tool_name) {
@@ -1228,6 +1282,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_interactive_deletion_input_is_denied_without_executor_gate() {
+        let gateway = SafetyGateway::new().with_commands_config(&CommandsConfig::default());
+        let ctx = make_ctx();
+
+        for (tool, args) in [
+            (tools::WRITE_STDIN, serde_json::json!({"session_id": "run-1", "input": "rm scratch/tmp.txt\n"})),
+            (
+                tools::UNIFIED_EXEC,
+                serde_json::json!({"action": "continue", "session_id": "run-1", "input": "rm -f scratch/tmp.txt\n"}),
+            ),
+            (tools::SEND_PTY_INPUT, serde_json::json!({"session_id": "run-1", "input": "\\rm scratch/tmp.txt\n"})),
+        ] {
+            let decision = gateway.check_safety(&ctx, tool, &args).await;
+            assert!(decision.is_denied(), "interactive deletion input must be denied for {tool}");
+        }
+
+        let argument_only = gateway
+            .check_safety(&ctx, tools::WRITE_STDIN, &serde_json::json!({"session_id": "run-1", "input": "echo rm\n"}))
+            .await;
+        assert!(!argument_only.is_denied(), "`rm` used as an argument must not be denied");
+    }
+
+    #[tokio::test]
     async fn test_apply_patch_dotfile_input_dotfile_protection_requires_approval() {
         let guardian = Arc::new(
             DotfileGuardian::new(DotfileProtectionConfig {
@@ -1253,6 +1330,49 @@ mod tests {
 
         assert!(decision.needs_approval());
         assert!(decision.reason().is_some_and(|reason| reason.contains(".gitignore")));
+    }
+
+    /// A supported `rm` command contributes its operands as deletion targets so
+    /// the dotfile guardian sees them.
+    #[test]
+    fn test_command_deletion_targets_include_operands() {
+        let targets = file_access_targets(tools::EXEC_COMMAND, &serde_json::json!({"command": "rm -f .gitignore"}));
+
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].path, PathBuf::from(".gitignore"));
+        assert_eq!(targets[0].access_type, AccessType::Delete);
+    }
+
+    /// Unsupported shapes are refused by the executor gate, so they need no
+    /// guardian targets and must not look like ordinary file operations.
+    #[test]
+    fn test_command_deletion_targets_skip_unsupported_shapes() {
+        for command in ["echo hi && rm -f .env", "rm -rf $DIR", "sudo rm -f .env"] {
+            let targets = file_access_targets(tools::EXEC_COMMAND, &serde_json::json!({ "command": command }));
+            assert!(targets.is_empty(), "unexpected targets for {command}: {targets:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_exec_command_dotfile_deletion_requires_approval() {
+        let guardian = Arc::new(
+            DotfileGuardian::new(DotfileProtectionConfig {
+                audit_logging_enabled: false,
+                create_backups: false,
+                ..Default::default()
+            })
+            .await
+            .expect("guardian should initialize"),
+        );
+        let gateway = SafetyGateway::new().with_dotfile_guardian(guardian);
+        let ctx = make_ctx();
+
+        let decision = gateway
+            .check_safety(&ctx, tools::EXEC_COMMAND, &serde_json::json!({"command": "rm -f .env", "confirm": true}))
+            .await;
+
+        assert!(decision.needs_approval());
+        assert!(decision.reason().is_some_and(|reason| reason.contains(".env")));
     }
 
     #[test]

@@ -441,9 +441,10 @@ async fn validate_git(args: &[String], workspace_root: &Path, working_dir: &Path
 
         "force-push" => Err(anyhow!("git force-push is not permitted by the execution policy")),
 
-        "clean" => {
-            Err(anyhow!("git clean is not permitted by the execution policy. Use explicit rm commands instead."))
-        }
+        "clean" => Err(anyhow!(
+            "git clean is not permitted by the execution policy. Use an explicit `rm` on workspace paths with \
+             confirm=true instead."
+        )),
 
         "gc" if subargs.iter().any(|a| a.contains("aggressive")) => {
             Err(anyhow!("git gc with aggressive flag is not permitted"))
@@ -765,7 +766,7 @@ async fn resolve_path_allow_dir(workspace_root: &Path, working_dir: &Path, value
     Ok(candidate)
 }
 
-async fn build_candidate_path(workspace_root: &Path, working_dir: &Path, value: &str) -> Result<PathBuf> {
+pub(crate) async fn build_candidate_path(workspace_root: &Path, working_dir: &Path, value: &str) -> Result<PathBuf> {
     let normalized_root = normalize_workspace_root(workspace_root)?;
     let normalized_working = normalize_path(working_dir);
     let raw_path = Path::new(value);
@@ -782,7 +783,7 @@ async fn build_candidate_path(workspace_root: &Path, working_dir: &Path, value: 
     Ok(candidate)
 }
 
-fn normalize_workspace_root(workspace_root: &Path) -> Result<PathBuf> {
+pub(crate) fn normalize_workspace_root(workspace_root: &Path) -> Result<PathBuf> {
     if workspace_root.is_absolute() {
         return Ok(normalize_path(workspace_root));
     }

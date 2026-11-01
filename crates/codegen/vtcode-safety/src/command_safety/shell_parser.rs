@@ -25,6 +25,56 @@ use std::sync::OnceLock;
 /// Lazy-initialized tree-sitter bash parser (wrapped in Mutex for mutation)
 static BASH_PARSER: OnceLock<Result<Mutex<tree_sitter::Parser>, String>> = OnceLock::new();
 
+#[derive(Clone, Copy)]
+enum ShellQuote {
+    Single,
+    Double,
+}
+
+/// Outcome of scanning shell text for unquoted trigger characters.
+struct UnquotedScan {
+    /// A character matched, or the text ended with a dangling escape.
+    matched: bool,
+    /// The text ended inside a quote that never closed.
+    unterminated_quote: bool,
+}
+
+/// Scan `command` outside shell quoting and report whether `is_trigger`
+/// matches a character in its quoting context.
+///
+/// Single quotes are literal, so their contents are never offered to the
+/// predicate. A backslash consumes the next character outside single quotes,
+/// and a trailing backslash counts as a match. Characters inside double quotes
+/// are offered with `Some(ShellQuote::Double)` so a caller can decide whether
+/// they are significant. Callers decide how an unterminated quote is treated.
+fn scan_unquoted(command: &str, mut is_trigger: impl FnMut(Option<ShellQuote>, char) -> bool) -> UnquotedScan {
+    let mut quote: Option<ShellQuote> = None;
+    let mut characters = command.chars();
+
+    while let Some(character) = characters.next() {
+        match (quote, character) {
+            (Some(ShellQuote::Single), '\'') | (Some(ShellQuote::Double), '"') => quote = None,
+            (Some(ShellQuote::Single), _) => {}
+            (_, trigger) if is_trigger(quote, trigger) => {
+                return UnquotedScan { matched: true, unterminated_quote: false };
+            }
+            (_, '\\') => {
+                if characters.next().is_none() {
+                    return UnquotedScan { matched: true, unterminated_quote: false };
+                }
+            }
+            (None, '\'') => quote = Some(ShellQuote::Single),
+            (None, '"') => quote = Some(ShellQuote::Double),
+            _ => {}
+        }
+    }
+
+    UnquotedScan {
+        matched: false,
+        unterminated_quote: quote.is_some(),
+    }
+}
+
 /// Returns whether a shell command contains syntax whose meaning depends on
 /// shell expansion rather than the literal argument text.
 ///
@@ -35,46 +85,27 @@ static BASH_PARSER: OnceLock<Result<Mutex<tree_sitter::Parser>, String>> = OnceL
 /// Backslash escapes inside double-quoted arguments are consumed as literal
 /// argument syntax so patterns such as `rg -n "\\[profile"` remain classifiable.
 pub fn contains_dynamic_shell_syntax(command: &str) -> bool {
-    enum ShellQuote {
-        Single,
-        Double,
-    }
+    let scan = scan_unquoted(command, |quote, character| match quote {
+        None => matches!(character, '\\' | '$' | '`' | '{' | '}' | '*' | '?' | '[' | ']'),
+        Some(ShellQuote::Double) => matches!(character, '$' | '`'),
+        Some(ShellQuote::Single) => false,
+    });
+    scan.matched || scan.unterminated_quote
+}
 
-    let mut quote: Option<ShellQuote> = None;
-    let mut characters = command.chars();
-
-    while let Some(character) = characters.next() {
-        match quote {
-            Some(ShellQuote::Single) => {
-                if character == '\'' {
-                    quote = None;
-                }
-            }
-            Some(ShellQuote::Double) => match character {
-                '"' => quote = None,
-                '$' | '`' => return true,
-                '\\' => {
-                    // Backslash escapes inside double quotes are literal
-                    // argument syntax. Consume the escaped character so an
-                    // escaped quote cannot incorrectly end the quoted region;
-                    // unquoted escapes remain rejected below because they can
-                    // alter the command token or its shell structure.
-                    if characters.next().is_none() {
-                        return true;
-                    }
-                }
-                _ => {}
-            },
-            None => match character {
-                '\'' => quote = Some(ShellQuote::Single),
-                '"' => quote = Some(ShellQuote::Double),
-                '\\' | '$' | '`' | '{' | '}' | '*' | '?' | '[' | ']' => return true,
-                _ => {}
-            },
-        }
-    }
-
-    quote.is_some()
+/// Returns whether a shell script contains an unquoted command separator,
+/// pipe, background operator, subshell grouping, or redirection.
+///
+/// Callers that must classify a *single simple command* (for example the
+/// workspace-scoped deletion recognizer) use this to fail closed on shell
+/// structure that the tree-sitter command list would otherwise flatten:
+/// `rm -f x > out`, `rm -f x | cat`, and `rm -f x &` all contain control
+/// syntax even though they may still parse to a single command vector.
+pub fn contains_shell_control_syntax(command: &str) -> bool {
+    scan_unquoted(command, |quote, character| {
+        quote.is_none() && matches!(character, ';' | '&' | '|' | '<' | '>' | '(' | ')' | '\n' | '\r')
+    })
+    .matched
 }
 
 /// Returns whether a `find` command contains shell syntax that can change the

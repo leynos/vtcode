@@ -45,6 +45,39 @@ deny = ["exec_command(rm -rf *)", "apply_patch(/.git/**)"]
 Global rules do not define a default decision. The active primary agent or
 active subagent supplies `permissions.default` after global deny and ask checks.
 
+## Workspace Deletion
+
+`exec_command` (and its PTY and pipe backends) accepts one simple `rm`
+invocation only when the call also sets `confirm: true`:
+
+```json
+{ "cmd": "rm -f scratch/tmp.txt", "confirm": true }
+```
+
+The command shape and every resolved target are validated independently of the
+permission decision. Chains, pipes, redirects, wrappers, environment prefixes,
+globs, and shell expansion are refused; targets may not leave the workspace or
+touch the workspace root, the home directory, or protected metadata directories
+(`.git`, `.vtcode`, `.codex`, `.agents`). Global and agent deny rules still
+win, so `deny = ["exec_command(rm -rf *)"]` continues to block the exact
+`rm -rf` spelling, and the default deny regex blocks recursive spellings and
+the long `--force` option in any flag order, including `rm -r` and `rm -fr`,
+while the short `-f` remains allowed. Relaxing that regex permits the blocked
+spellings; see the `deny_regex` guidance in
+[the command security model](../development/COMMAND_SECURITY_MODEL.md).
+
+Deletion cannot be typed into an already-running session: `write_stdin`,
+`send_pty_input`, and command-session `write`/`continue` input are refused when
+they name an `rm` invocation, because that path never reaches the executor gate.
+
+A confirmed supported deletion still prompts in an ordinary session. Under
+`--dangerously-skip-permissions` it is auto-approved by the runloop, because
+the executor repeats the target assessment; unconfirmed and unsupported
+deletions are still refused by command preflight. An ACP client without
+skip-confirmations receives a normal permission request for the deletion rather
+than a read-only auto-allow. See
+[Command Security Model](../development/COMMAND_SECURITY_MODEL.md#workspace-scoped-deletion).
+
 ## Classifier Review Settings
 
 The classifier used by `permissions.auto` can be tuned from the permission

@@ -6,6 +6,7 @@ mod config_defaults;
 use anyhow::Result;
 use serde_json::json;
 use vtcode_config::CommandsConfig;
+use vtcode_config::constants::DEFAULT_RM_DENY_REGEX;
 use vtcode_config::constants::tools;
 use vtcode_core::tool_policy::ToolPolicyManager;
 use vtcode_core::tools::ToolRegistry;
@@ -29,7 +30,7 @@ fn recursive_delete_fixture_commands_config() -> CommandsConfig {
     config.allow_regex = vec![r"^rm -rf nested$".to_owned()];
     config.deny_list.retain(|command| command != "rm");
     config.deny_glob.retain(|command| command != "rm *");
-    config.deny_regex.retain(|pattern| pattern != r"rm\s+(-rf|--force)");
+    config.deny_regex.retain(|pattern| pattern != DEFAULT_RM_DENY_REGEX);
     config
 }
 
