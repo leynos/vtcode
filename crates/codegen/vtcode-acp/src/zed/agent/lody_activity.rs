@@ -146,6 +146,7 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::{Notify, mpsc};
 
+    /// Assert compaction uses standard tool calls carrying Lody activity metadata.
     #[test]
     fn compaction_updates_use_standard_tool_lifecycle_with_lody_activity_meta() {
         let activity = CompactionActivity {
@@ -174,6 +175,7 @@ mod tests {
         assert_eq!(finished["_meta"]["lody"]["activity"]["durationMs"], 250);
     }
 
+    /// Assert a no-op compaction reports not-compacted without a post token count.
     #[test]
     fn no_op_compaction_is_reported_as_not_compacted_without_token_after() {
         let activity = CompactionActivity {
@@ -195,6 +197,7 @@ mod tests {
         assert!(finished["_meta"]["lody"]["activity"].get("usedTokensAfter").is_none());
     }
 
+    /// Assert a failed compaction update carries its failure reason.
     #[test]
     fn failed_compaction_update_carries_the_failure_reason() {
         let activity = CompactionActivity::begin(
@@ -215,6 +218,7 @@ mod tests {
         assert_eq!(update["_meta"]["lody"]["activity"]["failureReason"], "provider timed out");
     }
 
+    /// Assert the compaction activity pair round-trips over the ACP duplex.
     #[tokio::test]
     async fn compaction_lifecycle_round_trips_over_the_official_acp_duplex() {
         let (agent_channel, client_channel) = agent_client_protocol::Channel::duplex();

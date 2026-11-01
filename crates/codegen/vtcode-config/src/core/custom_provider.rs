@@ -7,14 +7,17 @@ use serde::{Deserialize, Serialize};
 use crate::models::ModelPricing;
 use crate::types::ReasoningEffortLevel;
 
+/// Return the default command-auth timeout in milliseconds.
 fn default_auth_timeout_ms() -> u64 {
     5_000
 }
 
+/// Return the default cached-token refresh interval in milliseconds.
 fn default_auth_refresh_interval_ms() -> u64 {
     300_000
 }
 
+/// Skip serializing the API format when it is `auto`.
 fn skip_serializing_custom_provider_api_format(api_format: &CustomProviderApiFormat) -> bool {
     api_format.is_auto()
 }
@@ -112,6 +115,7 @@ impl CustomProviderPricingConfig {
     }
 }
 impl CustomProviderApiFormat {
+    /// Return the wire name of this API format.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Auto => "auto",
@@ -121,10 +125,12 @@ impl CustomProviderApiFormat {
         }
     }
 
+    /// Report whether this format leaves backend selection automatic.
     pub const fn is_auto(self) -> bool {
         matches!(self, Self::Auto)
     }
 
+    /// Return the concrete format, or `None` when selection is automatic.
     pub const fn resolved(self) -> Option<Self> {
         match self {
             Self::Auto => None,
@@ -210,6 +216,7 @@ pub struct CustomProviderProfileConfig {
 }
 
 impl CustomProviderProfileConfig {
+    /// Validate this profile's bounds, pricing, and reasoning level.
     fn validate(&self, provider_name: &str, profile_key: &str) -> Result<(), String> {
         if self.context_window == Some(0) {
             return Err(format!(
@@ -299,6 +306,7 @@ pub struct ResolvedCustomProviderProfile {
 }
 
 impl ResolvedCustomProviderProfile {
+    /// Layer a profile over provider defaults, preferring profile values.
     fn from_layers(defaults: &CustomProviderProfileConfig, profile: Option<&CustomProviderProfileConfig>) -> Self {
         let fallback_profile;
         let profile = match profile {
@@ -366,6 +374,7 @@ pub struct CustomProviderCommandAuthConfig {
 }
 
 impl Default for CustomProviderCommandAuthConfig {
+    /// Return an empty command with the default timeouts.
     fn default() -> Self {
         Self {
             command: String::new(),
@@ -378,6 +387,7 @@ impl Default for CustomProviderCommandAuthConfig {
 }
 
 impl CustomProviderCommandAuthConfig {
+    /// Reject an empty command or zero timeout values.
     fn validate(&self, provider_name: &str) -> Result<(), String> {
         if self.command.trim().is_empty() {
             return Err(format!("custom_providers[{provider_name}]: `auth.command` must not be empty"));
@@ -397,38 +407,47 @@ impl CustomProviderCommandAuthConfig {
     }
 }
 
+/// Return the default provider queue timeout in seconds.
 const fn default_provider_queue_timeout_seconds() -> u64 {
     600
 }
 
+/// Return the default number of provider retries.
 const fn default_provider_max_retries() -> u32 {
     2
 }
 
+/// Return the default initial retry backoff in milliseconds.
 const fn default_provider_retry_initial_backoff_ms() -> u64 {
     10_000
 }
 
+/// Return the default maximum retry backoff in milliseconds.
 const fn default_provider_retry_max_backoff_ms() -> u64 {
     160_000
 }
 
+/// Return whether retry delays are jittered by default.
 const fn default_provider_retry_jitter() -> bool {
     true
 }
 
+/// Return the default connection timeout in seconds.
 const fn default_provider_connect_timeout_seconds() -> u64 {
     30
 }
 
+/// Return the default first-token timeout in seconds.
 const fn default_provider_first_token_timeout_seconds() -> u64 {
     180
 }
 
+/// Return the default stream idle timeout in seconds.
 const fn default_provider_stream_idle_timeout_seconds() -> u64 {
     120
 }
 
+/// Return the default total-generation timeout in seconds.
 const fn default_provider_total_generation_timeout_seconds() -> u64 {
     600
 }
@@ -479,6 +498,7 @@ pub struct CustomProviderRequestPolicyConfig {
 }
 
 impl Default for CustomProviderRequestPolicyConfig {
+    /// Return the default admission and retry policy.
     fn default() -> Self {
         Self {
             max_in_flight_requests: None,
@@ -496,6 +516,7 @@ impl Default for CustomProviderRequestPolicyConfig {
 }
 
 impl CustomProviderRequestPolicyConfig {
+    /// Reject zero bounds and an inverted retry backoff range.
     fn validate(&self, provider_name: &str) -> Result<(), String> {
         if self.max_in_flight_requests == Some(0) {
             return Err(format!(
@@ -675,6 +696,7 @@ impl CustomProviderConfig {
         crate::api_keys::api_key_env_var(&self.name)
     }
 
+    /// Report whether this provider obtains credentials from a command.
     pub fn uses_command_auth(&self) -> bool {
         self.auth.is_some()
     }
@@ -702,15 +724,18 @@ impl CustomProviderConfig {
         }
     }
 
+    /// Return the exact model profile for `model`, if configured.
     pub fn profile(&self, model: &str) -> Option<&CustomProviderProfileConfig> {
         self.profiles.get(model)
     }
 
+    /// Resolve the profile for `model` over the provider defaults.
     pub fn resolved_profile(&self, model: &str) -> ResolvedCustomProviderProfile {
         let defaults = self.provider_defaults_profile();
         ResolvedCustomProviderProfile::from_layers(&defaults, self.profile(model))
     }
 
+    /// Collect the provider-wide fields as a profile layer.
     pub fn provider_defaults_profile(&self) -> CustomProviderProfileConfig {
         CustomProviderProfileConfig {
             api_format: self.api_format,
@@ -952,6 +977,7 @@ impl SamplingBound {
     }
 }
 
+/// Report whether `name` is a lowercase, bounded provider identifier.
 fn is_valid_provider_name(name: &str) -> bool {
     let bytes = name.as_bytes();
     let Some(first) = bytes.first() else {
@@ -978,6 +1004,7 @@ mod tests {
         default_auth_refresh_interval_ms, default_auth_timeout_ms,
     };
 
+    /// Assert per-million pricing converts to per-token rates.
     #[test]
     fn custom_provider_pricing_converts_per_million_rates_to_per_token_rates() {
         let pricing = CustomProviderPricingConfig {
@@ -995,6 +1022,7 @@ mod tests {
         assert_eq!(pricing.cache_write, None);
     }
 
+    /// Assert negative or non-finite rates are rejected.
     #[test]
     fn custom_provider_pricing_rejects_negative_or_non_finite_rates() {
         for invalid_rate in [-0.01, f64::INFINITY, f64::NAN] {
@@ -1006,6 +1034,7 @@ mod tests {
         }
     }
 
+    /// Assert a lowercase provider name validates and derives its env var.
     #[test]
     fn validate_accepts_lowercase_provider_name() {
         let config = CustomProviderConfig {
@@ -1044,6 +1073,7 @@ mod tests {
         assert_eq!(config.resolved_api_key_env(), "MYCORP_API_KEY");
     }
 
+    /// Assert a name with spaces or uppercase is rejected.
     #[test]
     fn validate_rejects_invalid_provider_name() {
         let config = CustomProviderConfig {
@@ -1082,6 +1112,7 @@ mod tests {
         assert!(err.contains("must use lowercase letters, digits, hyphens, or underscores"));
     }
 
+    /// Assert command auth and `api_key_env` cannot be combined.
     #[test]
     fn validate_rejects_auth_and_api_key_env_together() {
         let config = CustomProviderConfig {
@@ -1126,6 +1157,7 @@ mod tests {
         assert!(err.contains("`auth` cannot be combined with `api_key_env`"));
     }
 
+    /// Assert command auth without a static env key validates.
     #[test]
     fn validate_accepts_command_auth_without_static_env_key() {
         let config = CustomProviderConfig {
@@ -1170,6 +1202,7 @@ mod tests {
         assert!(config.uses_command_auth());
     }
 
+    /// Assert blank entries in `models` are rejected.
     #[test]
     fn validate_rejects_empty_model_entry_in_models_list() {
         let config = CustomProviderConfig {
@@ -1208,6 +1241,7 @@ mod tests {
         assert!(err.contains("`models` entries must not be empty"));
     }
 
+    /// Assert a zero context window is rejected.
     #[test]
     fn validate_rejects_zero_context_window() {
         let config = CustomProviderConfig {
@@ -1246,6 +1280,7 @@ mod tests {
         assert!(err.contains("`context_window` must be greater than 0"));
     }
 
+    /// Assert profile keys with surrounding whitespace are rejected.
     #[test]
     fn validate_rejects_malformed_profile_key() {
         let mut profiles = BTreeMap::new();
@@ -1311,6 +1346,7 @@ mod tests {
         assert!(err.contains("profile key"));
     }
 
+    /// Assert `effective_models` returns the `models` list when present.
     #[test]
     fn effective_models_uses_models_list_when_present() {
         let config = CustomProviderConfig {
@@ -1369,6 +1405,7 @@ mod tests {
         );
     }
 
+    /// Assert `effective_models` falls back to the single `model` field.
     #[test]
     fn effective_models_falls_back_to_single_model_field() {
         let config = CustomProviderConfig {
@@ -1386,6 +1423,7 @@ mod tests {
         assert_eq!(config.effective_models(), vec!["gpt-5-mini".to_string()]);
     }
 
+    /// Assert an exact model profile overrides provider defaults.
     #[test]
     fn resolved_profile_prefers_exact_model_key() {
         let mut profiles = BTreeMap::new();
@@ -1426,6 +1464,7 @@ mod tests {
         assert!(config.profile("gpt-5").is_none());
     }
 
+    /// Assert sparse profiles inherit provider defaults unless set explicitly.
     #[test]
     fn sparse_inheritance_preserves_provider_defaults() {
         let mut profiles = BTreeMap::new();
@@ -1501,6 +1540,7 @@ mod tests {
         assert_eq!(resolved.supports_context_edits, None);
     }
 
+    /// Assert a legacy config keeps automatic format and empty profiles.
     #[test]
     fn legacy_default_behaviour_retains_auto_and_empty_profiles() {
         let parsed: CustomProviderConfig = toml::from_str(
@@ -1519,6 +1559,7 @@ model = "gpt-5-mini"
         assert_eq!(parsed.request_policy, CustomProviderRequestPolicyConfig::default());
     }
 
+    /// Assert the default backoffs cover five exponential retry delays.
     #[test]
     fn request_policy_defaults_allow_five_exponential_retry_delays() {
         let policy = CustomProviderRequestPolicyConfig::default();
@@ -1527,6 +1568,7 @@ model = "gpt-5-mini"
         assert_eq!(policy.retry_max_backoff_ms, 160_000);
     }
 
+    /// Assert request-policy limits and retries deserialize from config.
     #[test]
     fn request_policy_deserializes_provider_limits_and_retries() {
         let parsed: CustomProviderConfig = toml::from_str(
@@ -1564,6 +1606,7 @@ total_generation_timeout_seconds = 900
         assert!(parsed.validate().is_ok());
     }
 
+    /// Assert unsafe request-policy bounds are rejected.
     #[test]
     fn request_policy_validation_rejects_unsafe_bounds() {
         let mut config = CustomProviderConfig {
@@ -1583,6 +1626,7 @@ total_generation_timeout_seconds = 900
         assert!(config.validate().is_err_and(|error| error.contains("retry_max_backoff_ms")));
     }
 
+    /// Assert an unknown API format fails deserialization.
     #[test]
     fn deserialize_rejects_invalid_api_format() {
         let err = toml::from_str::<CustomProviderConfig>(

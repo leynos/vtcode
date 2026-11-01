@@ -1148,12 +1148,19 @@ fn extract_content_from_message(message: &Value) -> Option<String> {
 }
 
 /// Parses usage information from OpenAI-compatible response format.
+///
+/// Returns `None` when the payload reports no usage: a missing key, an
+/// explicit `null` (OpenAI sends this on intermediate chat chunks), or an
+/// object without token counts. Callers that accumulate streaming usage rely
+/// on this so an unpopulated frame leaves reported counts intact instead of
+/// replacing them with zeros.
 #[inline]
 pub(crate) fn parse_usage_openai_format(
     response_json: &Value,
     include_cache_metrics: bool,
 ) -> Option<crate::provider::Usage> {
-    response_json.get("usage").map(|usage_value| crate::provider::Usage {
+    let usage_value = response_json.get("usage").filter(|value| reports_token_counts(value))?;
+    Some(crate::provider::Usage {
         prompt_tokens: usage_value.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
         completion_tokens: usage_value.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
         reasoning_output_tokens: parse_reasoning_tokens_from_usage(usage_value),
@@ -1178,6 +1185,13 @@ pub(crate) fn parse_usage_openai_format(
         cache_read_tokens: None,
         iterations: None,
     })
+}
+
+/// Whether a usage object reports at least one token count.
+fn reports_token_counts(usage_value: &Value) -> bool {
+    ["prompt_tokens", "completion_tokens", "total_tokens"]
+        .iter()
+        .any(|key| usage_value.get(*key).and_then(Value::as_u64).is_some())
 }
 
 /// Extracts provider-side reasoning token usage from OpenAI-compatible usage details.
@@ -1769,6 +1783,25 @@ mod tests {
     fn parse_usage_openai_format_handles_missing_usage() {
         let response = json!({"choices": []});
         assert!(parse_usage_openai_format(&response, true).is_none());
+    }
+
+    #[test]
+    fn parse_usage_openai_format_rejects_unpopulated_usage() {
+        let null_usage = json!({"choices": [], "usage": null});
+        let empty_usage = json!({"choices": [], "usage": {}});
+
+        assert!(parse_usage_openai_format(&null_usage, true).is_none());
+        assert!(parse_usage_openai_format(&empty_usage, true).is_none());
+    }
+
+    #[test]
+    fn parse_usage_openai_format_keeps_explicitly_reported_zeros() {
+        let response = json!({
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        });
+        let usage = parse_usage_openai_format(&response, true).expect("reported zero usage");
+
+        assert_eq!(usage.total_tokens, 0);
     }
 
     #[test]

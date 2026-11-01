@@ -60,10 +60,12 @@ impl CompactionFailure {
         Self { kind, message: message.into(), detail }
     }
 
+    /// Create a failure for a session cancelled during compaction.
     pub(super) fn cancelled() -> Self {
         Self::new(CompactionFailureKind::Cancelled, "ACP compaction cancelled", None)
     }
 
+    /// Create a failure for an expired provider total-generation deadline.
     pub(super) fn timeout() -> Self {
         Self::new(
             CompactionFailureKind::Timeout,
@@ -72,14 +74,17 @@ impl CompactionFailure {
         )
     }
 
+    /// Create a failure for a prompt that still exceeds the admission budget.
     pub(super) fn admission_budget(message: impl Into<Cow<'static, str>>) -> Self {
         Self::new(CompactionFailureKind::AdmissionBudget, message, None)
     }
 
+    /// Create a failure for a failed `PreCompact` lifecycle hook.
     pub(super) fn pre_compact_hook(error: &Error) -> Self {
         Self::new(CompactionFailureKind::PreCompactHook, "ACP PreCompact hooks failed", Some(format!("{error:#}")))
     }
 
+    /// Create a failure for an unattributed provider or pipeline error.
     pub(super) fn provider(error: &Error) -> Self {
         Self::new(
             CompactionFailureKind::Provider,
@@ -88,6 +93,7 @@ impl CompactionFailure {
         )
     }
 
+    /// Create a provider-category failure from caller-supplied untrusted detail.
     pub(super) fn provider_detail(detail: impl Into<String>) -> Self {
         Self::new(CompactionFailureKind::Provider, "ACP automatic context compaction failed", Some(detail.into()))
     }
@@ -104,6 +110,7 @@ impl CompactionFailure {
 }
 
 impl fmt::Display for CompactionFailure {
+    /// Write the client-safe message, never the untrusted detail.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.message)
     }
@@ -126,6 +133,7 @@ pub(super) fn classify(error: &Error) -> CompactionFailureKind {
 mod tests {
     use super::*;
 
+    /// Assert each typed failure classifies as its own category.
     #[test]
     fn typed_failures_are_classified_by_their_own_category() {
         let cases = [
@@ -143,6 +151,7 @@ mod tests {
         }
     }
 
+    /// Assert `.context()` wrapping does not hide the failure category.
     #[test]
     fn context_wrapping_preserves_the_failure_category() {
         let error = CompactionFailure::cancelled()
@@ -152,6 +161,7 @@ mod tests {
         assert_eq!(classify(&error), CompactionFailureKind::Cancelled);
     }
 
+    /// Assert untyped errors classify as provider failures.
     #[test]
     fn untyped_errors_fall_back_to_the_provider_category() {
         let error = anyhow::anyhow!("session archive could not be read");
@@ -159,6 +169,7 @@ mod tests {
         assert_eq!(classify(&error), CompactionFailureKind::Provider);
     }
 
+    /// Assert client-facing messages exclude untrusted provider detail.
     #[test]
     fn client_facing_messages_never_include_untrusted_detail() {
         let failure = CompactionFailure::provider_detail("/secret/workspace/archive.json failed");

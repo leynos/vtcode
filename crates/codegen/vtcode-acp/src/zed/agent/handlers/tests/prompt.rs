@@ -3,9 +3,11 @@ use super::*;
 use agent_client_protocol::schema::v1::{InitializeRequest, LoadSessionRequest, NewSessionRequest};
 
 mod compaction;
+mod compaction_failure;
 mod partial_stream;
 mod rate_limit_notice;
 
+/// Assert assistant continuation keeps signed and raw reasoning details.
 #[test]
 fn assistant_tool_call_continuation_preserves_signed_reasoning_details() {
     let signed_reasoning = serde_json::json!({
@@ -37,6 +39,7 @@ fn assistant_tool_call_continuation_preserves_signed_reasoning_details() {
     assert_eq!(archived["reasoning_details"][1], array_reasoning);
     assert_eq!(archived["reasoning_details"][2], serde_json::json!(raw_reasoning));
 }
+/// Assert reasoning still produces an ACP thought chunk when tools are requested.
 #[test]
 fn reasoning_remains_visible_when_response_requests_a_tool() {
     let response = LLMResponse {
@@ -60,6 +63,7 @@ fn reasoning_remains_visible_when_response_requests_a_tool() {
     assert_eq!(text.text, "Inspect the call graph before editing.");
 }
 
+/// Assert streamed reasoning reaches the client as a protocol thought chunk.
 #[tokio::test]
 async fn streamed_reasoning_is_emitted_as_an_acp_thought_chunk_over_wire() {
     let _history_test_guard = lock_history_test_guard().await;
@@ -144,6 +148,7 @@ async fn streamed_reasoning_is_emitted_as_an_acp_thought_chunk_over_wire() {
     );
 }
 
+/// Assert a failed partial stream keeps its output and is marked incomplete.
 #[test]
 fn partial_stream_message_preserves_output_and_marks_it_incomplete() {
     let failed_turn =
@@ -162,6 +167,7 @@ fn partial_stream_message_preserves_output_and_marks_it_incomplete() {
     );
 }
 
+/// Assert a failure without output becomes a retryable end turn with ANSI stripped.
 #[test]
 fn provider_failure_without_output_becomes_a_normal_retryable_turn() {
     let failed_turn = IncompleteProviderTurn::from_failure("", "", "\u{1b}[31m502 Bad Gateway\u{1b}[0m");
@@ -176,6 +182,7 @@ fn provider_failure_without_output_becomes_a_normal_retryable_turn() {
     assert_eq!(metadata.incomplete_reason(), Some("502 Bad Gateway"));
 }
 
+/// Assert a failed turn ends normally and the session accepts another prompt.
 #[tokio::test]
 async fn provider_failure_is_normal_end_turn_and_same_session_accepts_a_second_prompt() {
     let _history_test_guard = lock_history_test_guard().await;
