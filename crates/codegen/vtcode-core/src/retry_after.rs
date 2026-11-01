@@ -21,51 +21,81 @@ fn parse_retry_after_header_at(raw: &str, now: SystemTime) -> Option<Duration> {
 
 fn parse_delta_seconds(raw: &str) -> Option<Duration> {
     if !raw.is_empty() && raw.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Some(
-            raw.parse::<u64>()
-                .map_or(MAX_RETRY_AFTER, Duration::from_secs)
-                .min(MAX_RETRY_AFTER),
-        );
+        return Some(raw.parse::<u64>().map_or(MAX_RETRY_AFTER, saturating_seconds));
     }
 
-    let (whole_seconds, fractional_seconds) = raw.split_once('.')?;
-    if (whole_seconds.is_empty() && fractional_seconds.is_empty())
-        || !whole_seconds.bytes().all(|byte| byte.is_ascii_digit())
-        || !fractional_seconds.bytes().all(|byte| byte.is_ascii_digit())
-    {
+    let (whole, fraction) = raw.split_once('.')?;
+    let decimal = DecimalSeconds { whole, fraction };
+    if !decimal.is_valid() {
         return None;
     }
 
-    let mut seconds = if whole_seconds.is_empty() {
-        0
-    } else {
-        match whole_seconds.parse::<u64>() {
-            Ok(seconds) => seconds,
-            Err(_) => return Some(MAX_RETRY_AFTER),
-        }
+    let nanoseconds = decimal.nanoseconds()?;
+    let Some((seconds, nanoseconds)) = carry_nanoseconds(decimal.seconds(), nanoseconds) else {
+        return Some(MAX_RETRY_AFTER);
     };
-    let nanos_digits = fractional_seconds.get(..fractional_seconds.len().min(9))?;
-    let mut nanoseconds = if nanos_digits.is_empty() {
-        0
-    } else {
-        nanos_digits.parse::<u32>().ok()?
-    };
-    for _ in nanos_digits.len()..9 {
-        nanoseconds = nanoseconds.checked_mul(10)?;
-    }
-
-    if fractional_seconds.get(nanos_digits.len()..)?.bytes().any(|byte| byte != b'0') {
-        nanoseconds = nanoseconds.checked_add(1)?;
-    }
-    if nanoseconds == 1_000_000_000 {
-        seconds = match seconds.checked_add(1) {
-            Some(seconds) => seconds,
-            None => return Some(MAX_RETRY_AFTER),
-        };
-        nanoseconds = 0;
-    }
 
     Some(Duration::new(seconds, nanoseconds).min(MAX_RETRY_AFTER))
+}
+
+/// A `whole.fraction` seconds pair split from a `Retry-After` delta.
+struct DecimalSeconds<'a> {
+    whole: &'a str,
+    fraction: &'a str,
+}
+
+impl DecimalSeconds<'_> {
+    /// Accepts a pair where at least one side is non-empty and both sides are
+    /// decimal digits.
+    fn is_valid(&self) -> bool {
+        if self.whole.is_empty() && self.fraction.is_empty() {
+            return false;
+        }
+        self.whole.bytes().all(|byte| byte.is_ascii_digit()) && self.fraction.bytes().all(|byte| byte.is_ascii_digit())
+    }
+
+    /// Whole seconds, saturating when the integer part exceeds `u64`.
+    ///
+    /// Saturated values are clamped by [`MAX_RETRY_AFTER`] before they become
+    /// a wait, so they never escape as a real delay.
+    fn seconds(&self) -> u64 {
+        if self.whole.is_empty() {
+            return 0;
+        }
+        self.whole.parse().unwrap_or(u64::MAX)
+    }
+
+    /// Converts the fractional seconds to nanoseconds, rounding up any digits
+    /// beyond nanosecond precision so a sub-nanosecond wait is never dropped.
+    fn nanoseconds(&self) -> Option<u32> {
+        let digits = self.fraction.get(..self.fraction.len().min(9))?;
+        let scale = 10_u32.pow(u32::try_from(9 - digits.len()).ok()?);
+        let base = if digits.is_empty() {
+            0
+        } else {
+            digits.parse::<u32>().ok()?
+        };
+        let rounds_up = self
+            .fraction
+            .as_bytes()
+            .get(digits.len()..)
+            .is_some_and(|tail| tail.iter().any(|digit| *digit != b'0'));
+        base.checked_mul(scale)?.checked_add(u32::from(rounds_up))
+    }
+}
+
+fn saturating_seconds(seconds: u64) -> Duration {
+    Duration::from_secs(seconds).min(MAX_RETRY_AFTER)
+}
+
+/// Folds a full second of nanoseconds into the seconds field.
+///
+/// `None` reports a seconds overflow, which callers saturate.
+fn carry_nanoseconds(seconds: u64, nanoseconds: u32) -> Option<(u64, u32)> {
+    if nanoseconds < 1_000_000_000 {
+        return Some((seconds, nanoseconds));
+    }
+    Some((seconds.checked_add(1)?, 0))
 }
 
 pub(crate) fn retry_after_is_http_date(metadata: &LLMErrorMetadata) -> bool {
@@ -157,13 +187,18 @@ mod tests {
         }
     }
 
+    /// Metadata carrying a raw `Retry-After` header and a reset floor.
+    fn metadata_with(retry_after: &str, reset_after_millis: u64) -> Box<LLMErrorMetadata> {
+        LLMErrorMetadata::new("Together", Some(429), None, None, None, Some(retry_after.to_string()), None)
+            .with_rate_limit(Some(RateLimitMetadata {
+                reset_after_millis: Some(reset_after_millis),
+                ..RateLimitMetadata::default()
+            }))
+    }
+
     #[test]
     fn metadata_uses_larger_of_retry_after_and_rate_limit_reset() {
-        let metadata = LLMErrorMetadata::new("Together", Some(429), None, None, None, Some("0.5".to_string()), None)
-            .with_rate_limit(Some(RateLimitMetadata {
-                reset_after_millis: Some(750),
-                ..RateLimitMetadata::default()
-            }));
+        let metadata = metadata_with("0.5", 750);
 
         assert_eq!(
             retry_after_from_llm_metadata_at(&metadata, SystemTime::UNIX_EPOCH),
@@ -173,11 +208,7 @@ mod tests {
 
     #[test]
     fn metadata_uses_rate_limit_reset_when_retry_after_is_malformed() {
-        let metadata = LLMErrorMetadata::new("Together", Some(429), None, None, None, Some("soon".to_string()), None)
-            .with_rate_limit(Some(RateLimitMetadata {
-                reset_after_millis: Some(250),
-                ..RateLimitMetadata::default()
-            }));
+        let metadata = metadata_with("soon", 250);
 
         assert_eq!(
             retry_after_from_llm_metadata_at(&metadata, SystemTime::UNIX_EPOCH),

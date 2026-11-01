@@ -135,6 +135,24 @@ pub(super) async fn run_scripted_prompt(
     mut config: CustomProviderConfig,
     responses: Vec<ResponseTemplate>,
 ) -> PromptRun {
+    let (_server, request_times) = start_scripted_server(&mut config, responses).await;
+    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+    let _factory_guard = install_scripted_factory(&config);
+    let workspace = TempDir::new().expect("rate-limit wire workspace");
+    let workspace_path = workspace.path().to_path_buf();
+    let agent = Arc::new(build_wire_test_agent_with_providers(workspace.path(), &[config]).await);
+    let (notifications_tx, mut notifications_rx) = mpsc::unbounded_channel();
+    let (client_channel, agent_task) = spawn_agent_connection(&agent, "vtcode-rate-limit-test");
+    let initialized_lody = run_scripted_client(client_channel, workspace_path, notifications_tx).await;
+    stop_agent_connection(agent_task).await;
+    finish_scripted_run(initialized_lody, &mut notifications_rx, request_times)
+}
+
+/// Starts a mock provider that replays `responses` in order and records request times.
+pub(super) async fn start_scripted_server(
+    config: &mut CustomProviderConfig,
+    responses: Vec<ResponseTemplate>,
+) -> (MockServer, Arc<Mutex<Vec<StdInstant>>>) {
     let server = MockServer::start().await;
     config.base_url = server.uri();
     let request_times = Arc::new(Mutex::new(Vec::new()));
@@ -147,19 +165,19 @@ pub(super) async fn run_scripted_prompt(
         })
         .mount(&server)
         .await;
+    (server, request_times)
+}
 
-    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+pub(super) fn install_scripted_factory(config: &CustomProviderConfig) -> PromptProviderFactoryGuard {
     let factory_config = config.clone();
-    let _factory_guard = PromptProviderFactoryGuard::install(
-        PROVIDER,
-        Arc::new(move || Box::new(custom_provider(factory_config.clone()))),
-    );
-    let workspace = TempDir::new().expect("rate-limit wire workspace");
-    let workspace_path = workspace.path().to_path_buf();
-    let agent = Arc::new(build_wire_test_agent_with_providers(workspace.path(), &[config]).await);
-    let (notifications_tx, mut notifications_rx) = mpsc::unbounded_channel();
-    let (client_channel, agent_task) = spawn_agent_connection(&agent, "vtcode-rate-limit-test");
+    PromptProviderFactoryGuard::install(PROVIDER, Arc::new(move || Box::new(custom_provider(factory_config.clone()))))
+}
 
+async fn run_scripted_client(
+    client_channel: Channel,
+    workspace_path: std::path::PathBuf,
+    notifications_tx: mpsc::UnboundedSender<acp::AgentNotification>,
+) -> serde_json::Value {
     let client_connection = Client
         .builder()
         .on_receive_notification(
@@ -195,12 +213,17 @@ pub(super) async fn run_scripted_prompt(
             Ok(initialized_lody)
         });
 
-    let initialized_lody = tokio::time::timeout(Duration::from_secs(3), client_connection)
+    tokio::time::timeout(Duration::from_secs(3), client_connection)
         .await
         .expect("rate-limit protocol flow should finish")
-        .expect("rate-limit protocol flow should succeed");
-    stop_agent_connection(agent_task).await;
+        .expect("rate-limit protocol flow should succeed")
+}
 
+fn finish_scripted_run(
+    initialized_lody: serde_json::Value,
+    notifications_rx: &mut mpsc::UnboundedReceiver<acp::AgentNotification>,
+    request_times: Arc<Mutex<Vec<StdInstant>>>,
+) -> PromptRun {
     let notifications = std::iter::from_fn(|| notifications_rx.try_recv().ok()).collect::<Vec<_>>();
     let visible_text = visible_text(&notifications);
     let request_times = request_times.lock().expect("scripted request times").clone();

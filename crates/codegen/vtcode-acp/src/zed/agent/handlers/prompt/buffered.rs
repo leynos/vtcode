@@ -163,17 +163,10 @@ async fn generate_buffered_response(
 ) -> Result<BufferedGenerationOutcome, SdkError> {
     let request = prepare_buffered_request(turn).await?;
     let notice_sink = RateLimitNoticeSink::new(&turn.agent, &turn.args.session_id);
-    match generate_with_retry_with_observer_and_metric_sink(
-        turn.provider.as_ref(),
-        request,
-        &turn.provider_runtime,
-        &turn.session.cancellation,
-        Some(&notice_sink),
-        retry_observed_at,
-        &turn.metric_sink,
-    )
-    .await
-    {
+    let retry_request =
+        RetryRequest::new(turn.provider.as_ref(), request, &turn.provider_runtime, &turn.session.cancellation)
+            .with_failure_sink(&notice_sink);
+    match generate_with_retry_with_observer_and_metric_sink(retry_request, retry_observed_at, &turn.metric_sink).await {
         Ok(response) => Ok(BufferedGenerationOutcome::Response(Box::new(response))),
         Err(ProviderCallError::Cancelled) => Ok(BufferedGenerationOutcome::Cancelled),
         Err(ProviderCallError::Failed(error)) => Ok(BufferedGenerationOutcome::Failed(error)),
@@ -299,4 +292,5 @@ async fn process_buffered_response(
     turn.stop_hook_checked = false;
     Ok(BufferedResponseOutcome::Continue)
 }
+// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/prompt/buffered.rs' for per-hunk detail, 'weave check' to verify your resolution
 // weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/prompt/buffered.rs' for per-hunk detail, 'weave check' to verify your resolution

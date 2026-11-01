@@ -40,7 +40,6 @@ fn custom_provider_round_trip_config() -> CustomProviderConfig {
             "gpt-5-mini".to_string(),
             CustomProviderProfileConfig {
                 api_format: CustomProviderApiFormat::OpenAIResponses,
-                context_window: None,
                 pricing: CustomProviderPricingConfig {
                     output_per_million_usd: Some(0.50),
                     ..Default::default()
@@ -53,15 +52,8 @@ fn custom_provider_round_trip_config() -> CustomProviderConfig {
                 max_tokens: Some(4_096),
                 reasoning_effort: Some(ReasoningEffortLevel::Low),
                 supports_tools: Some(false),
-                supports_reasoning: None,
-                supports_reasoning_effort: None,
-                supports_vision: None,
-                supports_structured_output: None,
-                supports_parallel_tool_calls: None,
-                supports_context_caching: None,
-                supports_responses_compaction: None,
                 supports_stream_usage: Some(false),
-                supports_context_edits: None,
+                ..Default::default()
             },
         )]),
         rate_limit_headers: RateLimitHeaderConfig {

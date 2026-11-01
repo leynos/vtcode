@@ -65,7 +65,7 @@ use vtcode_core::llm::provider::{
     LLMError, LLMErrorMetadata, LLMProvider, LLMRequest, LLMResponse, LLMStream, LLMStreamEvent, Message,
     ToolCall as LLMToolCall, ToolDefinition,
 };
-use vtcode_core::retry::{RetryBackoff, RetryDecision, RetryPolicyCoreExt};
+use vtcode_core::retry::{AttemptIndex, LlmRetryAttempt, RetryBackoff, RetryDecision, RetryPolicyCoreExt};
 
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderDeadlinePolicy, ProviderRequestRuntime};
 

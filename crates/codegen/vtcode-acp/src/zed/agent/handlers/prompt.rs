@@ -2,7 +2,7 @@
 use super::super::log_suppressed_error;
 use super::super::tool_config::SessionToolDefinitionRequest;
 use super::super::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
-use super::provider::{AttemptFailureFuture, AttemptFailureSink, IncompleteProviderTurn};
+use super::provider::{AttemptFailure, AttemptFailureFuture, AttemptFailureSink, IncompleteProviderTurn};
 use super::*;
 use vtcode_core::metrics::ToolRecoveryEvent;
 

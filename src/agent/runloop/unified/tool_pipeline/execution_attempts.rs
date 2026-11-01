@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use vtcode_core::retry::RetryPolicy;
 #[cfg(test)]
-use vtcode_core::retry::RetryPolicyCoreExt;
+use vtcode_core::retry::{AttemptIndex, RetryPolicyCoreExt};
 use vtcode_core::tools::registry::ToolTimeoutCategory;
 use vtcode_core::tools::registry::{
     ExecSettlementMode, ExecutionPolicySnapshot, ToolExecutionError, ToolExecutionRequest, ToolRegistry,
@@ -556,7 +556,8 @@ mod tests {
 
     #[test]
     fn first_retry_backoff_is_non_zero_and_meaningful() {
-        let delay = RetryPolicy::from_retries(2, RETRY_BACKOFF_BASE, MAX_RETRY_BACKOFF, 2.0).delay_for_attempt(0);
+        let delay = RetryPolicy::from_retries(2, RETRY_BACKOFF_BASE, MAX_RETRY_BACKOFF, 2.0)
+            .delay_for_attempt(AttemptIndex::new(0));
         assert!(delay >= RETRY_BACKOFF_BASE);
         assert!(delay <= MAX_RETRY_BACKOFF);
     }

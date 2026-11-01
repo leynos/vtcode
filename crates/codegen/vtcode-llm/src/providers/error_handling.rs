@@ -105,6 +105,102 @@ struct ApiResponseMetadata {
     rate_limit: Option<RateLimitMetadata>,
 }
 
+/// The transport details of a failed provider response.
+///
+/// Grouping the status, body, and headers keeps call sites from threading the
+/// same three values through every parse and metadata helper.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ProviderFailure<'a> {
+    pub(crate) status: reqwest::StatusCode,
+    pub(crate) body: &'a str,
+    pub(crate) headers: &'a HeaderMap,
+}
+
+impl<'a> ProviderFailure<'a> {
+    pub(crate) const fn new(status: reqwest::StatusCode, body: &'a str, headers: &'a HeaderMap) -> Self {
+        Self { status, body, headers }
+    }
+}
+
+/// A failed provider response together with the identity and header mapping
+/// needed to build canonical [`LLMErrorMetadata`].
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ProviderHttpError<'a> {
+    pub(crate) failure: ProviderFailure<'a>,
+    pub(crate) provider_name: &'a str,
+    pub(crate) rate_limit_headers: &'a RateLimitHeaderConfig,
+}
+
+impl<'a> ProviderHttpError<'a> {
+    pub(crate) const fn new(
+        failure: ProviderFailure<'a>,
+        provider_name: &'a str,
+        rate_limit_headers: &'a RateLimitHeaderConfig,
+    ) -> Self {
+        Self { failure, provider_name, rate_limit_headers }
+    }
+}
+
+/// Category assigned to a failed provider HTTP response.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ApiErrorKind {
+    Authentication,
+    InsufficientBalance,
+    InvalidParameters,
+    RateLimit,
+    QuotaExceeded,
+    InvalidRequest,
+    Provider,
+}
+
+impl ApiErrorKind {
+    fn classify(failure: ProviderFailure<'_>) -> Self {
+        match failure.status.as_u16() {
+            STATUS_UNAUTHORIZED | STATUS_FORBIDDEN => Self::Authentication,
+            402 => Self::InsufficientBalance,
+            422 => Self::InvalidParameters,
+            STATUS_TOO_MANY_REQUESTS => Self::RateLimit,
+            STATUS_BAD_REQUEST if is_rate_limit_error(STATUS_BAD_REQUEST, failure.body) => Self::QuotaExceeded,
+            STATUS_BAD_REQUEST => Self::InvalidRequest,
+            _ => Self::Provider,
+        }
+    }
+
+    /// Metadata code recorded for this category, when one is defined.
+    const fn metadata_code(self) -> Option<&'static str> {
+        match self {
+            Self::Authentication => Some("authentication_error"),
+            Self::InsufficientBalance => Some("insufficient_balance"),
+            Self::InvalidParameters => Some("invalid_parameters"),
+            Self::RateLimit => Some("rate_limit_error"),
+            Self::QuotaExceeded => Some("quota_exceeded"),
+            Self::InvalidRequest => Some("invalid_request"),
+            Self::Provider => None,
+        }
+    }
+
+    /// Diagnostic text retained in metadata for this category.
+    ///
+    /// Rate-limit categories keep the human-readable provider message; other
+    /// categories keep the sanitised response diagnostic.
+    const fn metadata_detail<'a>(self, detail: &'a ErrorDetail<'a>) -> &'a str {
+        match self {
+            Self::RateLimit | Self::QuotaExceeded => detail.message,
+            Self::Authentication
+            | Self::InsufficientBalance
+            | Self::InvalidParameters
+            | Self::InvalidRequest
+            | Self::Provider => detail.diagnostic,
+        }
+    }
+}
+
+/// Sanitised text derived from one provider error body.
+struct ErrorDetail<'a> {
+    message: &'a str,
+    diagnostic: &'a str,
+}
+
 /// HTTP status codes for common error types
 const STATUS_UNAUTHORIZED: u16 = 401;
 const STATUS_FORBIDDEN: u16 = 403;
@@ -114,7 +210,7 @@ const STATUS_TOO_MANY_REQUESTS: u16 = 429;
 // Gemini does not expose the OpenAI-compatible quota headers. Keep the
 // mapping explicit so a future default mapping cannot project another
 // provider's headers as Gemini quota metadata.
-const GEMINI_RATE_LIMIT_HEADERS: RateLimitHeaderConfig = RateLimitHeaderConfig {
+pub(crate) const NO_RATE_LIMIT_HEADERS: RateLimitHeaderConfig = RateLimitHeaderConfig {
     requests_limit_per_minute: None,
     requests_remaining_per_minute: None,
     tokens_limit_per_minute: None,
@@ -148,23 +244,14 @@ const RATE_LIMIT_PATTERNS: &[&str] = &[
     "package has expired",
 ];
 
-/// Handle HTTP response errors for Gemini provider
+/// Convert a non-success provider response into an [`LLMError`].
+///
+/// Shared by every provider that maps documented rate-limit headers, so the
+/// metadata-preserving path cannot drift between providers.
 #[cold]
-pub async fn handle_gemini_http_error(response: Response) -> Result<Response, LLMError> {
-    if response.status().is_success() {
-        return Ok(response);
-    }
-
-    let status = response.status();
-    let metadata = extract_response_metadata(response.headers(), &GEMINI_RATE_LIMIT_HEADERS);
-    let error_text = read_provider_error_body(response).await;
-    Err(parse_api_error_with_metadata("Gemini", status, &error_text, metadata))
-}
-
-/// Handle HTTP response errors for Anthropic provider
-#[cold]
-pub(crate) async fn handle_anthropic_http_error(
+pub(crate) async fn handle_provider_http_error(
     response: Response,
+    provider_name: &'static str,
     rate_limit_headers: &RateLimitHeaderConfig,
 ) -> Result<Response, LLMError> {
     if response.status().is_success() {
@@ -172,37 +259,32 @@ pub(crate) async fn handle_anthropic_http_error(
     }
 
     let status = response.status();
-    let metadata = extract_response_metadata(response.headers(), rate_limit_headers);
+    let headers = response.headers().clone();
     let error_text = read_provider_error_body(response).await;
-    Err(parse_api_error_with_metadata("Anthropic", status, &error_text, metadata))
+    Err(parse_api_error(ProviderHttpError::new(
+        ProviderFailure::new(status, &error_text, &headers),
+        provider_name,
+        rate_limit_headers,
+    )))
 }
 
-/// Handle HTTP response errors for OpenAI-compatible providers
+/// Handle HTTP response errors for OpenAI-compatible providers.
 #[cold]
 pub(crate) async fn handle_openai_http_error(
     response: Response,
     provider_name: &'static str,
-    _api_key_env_var: &str,
 ) -> Result<Response, LLMError> {
-    if response.status().is_success() {
-        return Ok(response);
-    }
-
-    let status = response.status();
-    let metadata =
-        extract_response_metadata(response.headers(), &RateLimitHeaderConfig::for_provider_name(provider_name));
-    let error_text = read_provider_error_body(response).await;
-
     // Keep response bodies out of logs: providers may include customer prompts
     // or other sensitive content in their error messages.
     tracing::warn!(
         provider = provider_name,
-        status = %status,
+        status = %response.status(),
         "{} HTTP error",
         provider_name
     );
 
-    Err(parse_api_error_with_metadata(provider_name, status, &error_text, metadata))
+    let rate_limit_headers = RateLimitHeaderConfig::for_provider_name(provider_name);
+    handle_provider_http_error(response, provider_name, &rate_limit_headers).await
 }
 
 /// Check if an error is a rate limit error based on status code and message
@@ -295,144 +377,59 @@ pub fn format_http_error(provider: &str, status: reqwest::StatusCode, error_text
 ///
 /// Falls back to raw body if JSON parsing fails.
 #[cold]
-pub(crate) fn parse_api_error(provider_name: &str, status: reqwest::StatusCode, body: &str) -> LLMError {
-    parse_api_error_with_metadata(provider_name, status, body, ApiResponseMetadata::default())
-}
-
-/// Parse an API error while retaining the standard `Retry-After` value and
-/// only the explicitly mapped, numeric rate-limit headers.
-#[cold]
-pub(crate) fn parse_api_error_with_headers(
-    provider_name: &str,
-    status: reqwest::StatusCode,
-    body: &str,
-    headers: &HeaderMap,
-    rate_limit_headers: &RateLimitHeaderConfig,
-) -> LLMError {
-    let metadata = extract_response_metadata(headers, rate_limit_headers);
-    parse_api_error_with_metadata(provider_name, status, body, metadata)
+pub(crate) fn parse_api_error(error: ProviderHttpError<'_>) -> LLMError {
+    let metadata = extract_response_metadata(error.failure.headers, error.rate_limit_headers);
+    parse_api_error_with_metadata(error, metadata)
 }
 
 #[cold]
-fn parse_api_error_with_metadata(
-    provider_name: &str,
-    status: reqwest::StatusCode,
-    body: &str,
-    response_metadata: ApiResponseMetadata,
-) -> LLMError {
+fn parse_api_error_with_metadata(error: ProviderHttpError<'_>, response_metadata: ApiResponseMetadata) -> LLMError {
+    let ProviderHttpError { failure, provider_name, .. } = error;
     // Try to extract a meaningful error message from JSON
-    let error_message = sanitize_provider_diagnostic(extract_human_error_message(body).as_bytes());
-    let diagnostic = sanitize_provider_diagnostic(body.as_bytes());
+    let error_message = sanitize_provider_diagnostic(extract_human_error_message(failure.body).as_bytes());
+    let diagnostic = sanitize_provider_diagnostic(failure.body.as_bytes());
+    let detail = ErrorDetail { message: &error_message, diagnostic: &diagnostic };
+    let status_code = failure.status.as_u16();
+    let kind = ApiErrorKind::classify(failure);
 
-    // Categorize by status code
-    let status_code = status.as_u16();
+    let metadata = LLMErrorMetadata::new(
+        provider_name,
+        Some(status_code),
+        kind.metadata_code().map(str::to_owned),
+        response_metadata.request_id,
+        response_metadata.organization_id,
+        response_metadata.retry_after,
+        Some(kind.metadata_detail(&detail).to_owned()),
+    )
+    .with_rate_limit(response_metadata.rate_limit);
 
-    match status_code {
-        401 | 403 => LLMError::Authentication {
+    match kind {
+        ApiErrorKind::Authentication => LLMError::Authentication {
             message: error_display::format_llm_error(
                 provider_name,
                 &authentication_error_message(provider_name, &error_message),
             ),
-            metadata: Some(
-                LLMErrorMetadata::new(
-                    provider_name,
-                    Some(status_code),
-                    Some("authentication_error".to_string()),
-                    response_metadata.request_id.clone(),
-                    response_metadata.organization_id.clone(),
-                    response_metadata.retry_after.clone(),
-                    Some(diagnostic.clone()),
-                )
-                .with_rate_limit(response_metadata.rate_limit.clone()),
-            ),
+            metadata: Some(metadata),
         },
-        402 => LLMError::InvalidRequest {
+        ApiErrorKind::InsufficientBalance => LLMError::InvalidRequest {
             message: error_display::format_llm_error(provider_name, &format!("insufficient balance: {error_message}")),
-            metadata: Some(
-                LLMErrorMetadata::new(
-                    provider_name,
-                    Some(status_code),
-                    Some("insufficient_balance".to_string()),
-                    response_metadata.request_id.clone(),
-                    response_metadata.organization_id.clone(),
-                    response_metadata.retry_after.clone(),
-                    Some(diagnostic.clone()),
-                )
-                .with_rate_limit(response_metadata.rate_limit.clone()),
-            ),
+            metadata: Some(metadata),
         },
-        422 => LLMError::InvalidRequest {
+        ApiErrorKind::InvalidParameters => LLMError::InvalidRequest {
             message: error_display::format_llm_error(provider_name, &format!("invalid parameters: {error_message}")),
-            metadata: Some(
-                LLMErrorMetadata::new(
-                    provider_name,
-                    Some(status_code),
-                    Some("invalid_parameters".to_string()),
-                    response_metadata.request_id.clone(),
-                    response_metadata.organization_id.clone(),
-                    response_metadata.retry_after.clone(),
-                    Some(diagnostic.clone()),
-                )
-                .with_rate_limit(response_metadata.rate_limit.clone()),
-            ),
+            metadata: Some(metadata),
         },
-        429 => LLMError::RateLimit {
-            metadata: Some(
-                LLMErrorMetadata::new(
-                    provider_name,
-                    Some(status_code),
-                    Some("rate_limit_error".to_string()),
-                    response_metadata.request_id.clone(),
-                    response_metadata.organization_id.clone(),
-                    response_metadata.retry_after.clone(),
-                    Some(error_message.clone()),
-                )
-                .with_rate_limit(response_metadata.rate_limit.clone()),
-            ),
-        },
-        400 if is_rate_limit_error(status_code, body) => LLMError::RateLimit {
-            metadata: Some(
-                LLMErrorMetadata::new(
-                    provider_name,
-                    Some(status_code),
-                    Some("quota_exceeded".to_string()),
-                    response_metadata.request_id.clone(),
-                    response_metadata.organization_id.clone(),
-                    response_metadata.retry_after.clone(),
-                    Some(error_message.clone()),
-                )
-                .with_rate_limit(response_metadata.rate_limit.clone()),
-            ),
-        },
-        400 => LLMError::InvalidRequest {
+        ApiErrorKind::RateLimit | ApiErrorKind::QuotaExceeded => LLMError::RateLimit { metadata: Some(metadata) },
+        ApiErrorKind::InvalidRequest => LLMError::InvalidRequest {
             message: error_display::format_llm_error(provider_name, &format!("invalid request: {error_message}")),
-            metadata: Some(
-                LLMErrorMetadata::new(
-                    provider_name,
-                    Some(status_code),
-                    Some("invalid_request".to_string()),
-                    response_metadata.request_id.clone(),
-                    response_metadata.organization_id.clone(),
-                    response_metadata.retry_after.clone(),
-                    Some(diagnostic.clone()),
-                )
-                .with_rate_limit(response_metadata.rate_limit.clone()),
-            ),
+            metadata: Some(metadata),
         },
-        _ => LLMError::Provider {
-            message: error_display::format_llm_error(provider_name, &format!("http {status}: {error_message}")),
-            metadata: Some(
-                LLMErrorMetadata::new(
-                    provider_name,
-                    Some(status_code),
-                    None,
-                    response_metadata.request_id,
-                    response_metadata.organization_id,
-                    response_metadata.retry_after,
-                    Some(diagnostic),
-                )
-                .with_rate_limit(response_metadata.rate_limit),
+        ApiErrorKind::Provider => LLMError::Provider {
+            message: error_display::format_llm_error(
+                provider_name,
+                &format!("http {}: {error_message}", failure.status),
             ),
+            metadata: Some(metadata),
         },
     }
 }
@@ -519,17 +516,11 @@ pub fn extract_human_error_message(body: &str) -> String {
     body.to_string()
 }
 
-pub(crate) fn error_metadata_from_headers(
-    provider_name: &str,
-    status: reqwest::StatusCode,
-    _body: &str,
-    headers: &HeaderMap,
-    rate_limit_headers: &RateLimitHeaderConfig,
-) -> Box<LLMErrorMetadata> {
-    let metadata = extract_response_metadata(headers, rate_limit_headers);
+pub(crate) fn error_metadata_from_headers(error: ProviderHttpError<'_>) -> Box<LLMErrorMetadata> {
+    let metadata = extract_response_metadata(error.failure.headers, error.rate_limit_headers);
     LLMErrorMetadata::new(
-        provider_name,
-        Some(status.as_u16()),
+        error.provider_name,
+        Some(error.failure.status.as_u16()),
         None,
         metadata.request_id,
         metadata.organization_id,
@@ -548,6 +539,16 @@ mod tests {
     use tracing::field::{Field, Visit};
     use tracing::span::{Attributes, Id, Record};
     use tracing::{Event, Metadata, Subscriber};
+
+    /// Parse an error body that has no mapped rate-limit headers.
+    fn parse_provider_error(provider_name: &str, status: reqwest::StatusCode, body: &str) -> LLMError {
+        let headers = HeaderMap::new();
+        parse_api_error(ProviderHttpError::new(
+            ProviderFailure::new(status, body, &headers),
+            provider_name,
+            &NO_RATE_LIMIT_HEADERS,
+        ))
+    }
 
     struct CapturedEvents {
         events: Arc<Mutex<Vec<String>>>,
@@ -707,7 +708,7 @@ mod tests {
                     .await
                     .expect("mock provider response should be received");
 
-                handle_openai_http_error(response, "Test Provider", "TEST_API_KEY")
+                handle_openai_http_error(response, "Test Provider")
                     .await
                     .expect_err("HTTP error response should be returned as an LLM error")
             })
@@ -741,7 +742,7 @@ mod tests {
 
     #[test]
     fn parse_openai_rate_limit_error_preserves_provider_message() {
-        let error = parse_api_error(
+        let error = parse_provider_error(
             "OpenAI",
             reqwest::StatusCode::TOO_MANY_REQUESTS,
             r#"{"error":{"message":"Project rate limit exceeded for this model.","type":"rate_limit_error"}}"#,
@@ -761,13 +762,12 @@ mod tests {
     #[test]
     fn error_metadata_from_headers_does_not_retain_provider_body() {
         let provider_body = r#"{"error":{"message":"customer-record=confidential-123"}}"#;
-        let metadata = error_metadata_from_headers(
+        let headers = HeaderMap::new();
+        let metadata = error_metadata_from_headers(ProviderHttpError::new(
+            ProviderFailure::new(reqwest::StatusCode::BAD_GATEWAY, provider_body, &headers),
             "OpenAI",
-            reqwest::StatusCode::BAD_GATEWAY,
-            provider_body,
-            &HeaderMap::new(),
-            &RateLimitHeaderConfig::default(),
-        );
+            &NO_RATE_LIMIT_HEADERS,
+        ));
 
         assert_eq!(metadata.message, None);
         let serialized = serde_json::to_string(&metadata).expect("metadata should serialize");
@@ -795,7 +795,7 @@ mod tests {
             .send()
             .await
             .expect("offline Gemini response should be available");
-        let error = handle_gemini_http_error(response)
+        let error = handle_provider_http_error(response, "Gemini", &NO_RATE_LIMIT_HEADERS)
             .await
             .expect_err("Gemini 429 response should become an LLM error");
 
@@ -816,30 +816,37 @@ mod tests {
         headers.insert("x-ratelimit-remaining-tokens", "400".parse().expect("numeric header"));
         headers.insert("x-secret-provider-note", "do-not-retain".parse().expect("static header"));
 
-        let error = parse_api_error_with_headers(
+        let error = parse_api_error(ProviderHttpError::new(
+            ProviderFailure::new(
+                reqwest::StatusCode::TOO_MANY_REQUESTS,
+                r#"{"error":{"message":"slow down"}}"#,
+                &headers,
+            ),
             "Baseten",
-            reqwest::StatusCode::TOO_MANY_REQUESTS,
-            r#"{"error":{"message":"slow down"}}"#,
-            &headers,
             &RateLimitHeaderConfig::default(),
-        );
+        ));
         let LLMError::RateLimit { metadata: Some(metadata) } = error else {
             panic!("expected rate-limit metadata");
         };
         assert_eq!(metadata.retry_after.as_deref(), Some("7"));
         let rate_limit = metadata.rate_limit.as_ref().expect("mapped rate-limit headers");
-        assert_eq!(rate_limit.requests_limit_per_minute, Some(120));
-        assert_eq!(rate_limit.requests_remaining_per_minute, Some(3));
-        assert_eq!(rate_limit.tokens_limit_per_minute, Some(50_000));
-        assert_eq!(rate_limit.tokens_remaining_per_minute, Some(400));
+        let observed = [
+            rate_limit.requests_limit_per_minute,
+            rate_limit.requests_remaining_per_minute,
+            rate_limit.tokens_limit_per_minute,
+            rate_limit.tokens_remaining_per_minute,
+        ];
+        assert_eq!(observed, [Some(120), Some(3), Some(50_000), Some(400)]);
         let serialized = serde_json::to_string(&metadata).expect("metadata serialization");
-        assert!(!serialized.contains("x-secret-provider-note"));
-        assert!(!serialized.contains("do-not-retain"));
+        assert!(
+            !serialized.contains("x-secret-provider-note") && !serialized.contains("do-not-retain"),
+            "raw provider headers must not be retained: {serialized}"
+        );
     }
 
     #[test]
     fn parse_moonshot_auth_error_includes_platform_key_guidance() {
-        let error = parse_api_error(
+        let error = parse_provider_error(
             "Moonshot",
             reqwest::StatusCode::UNAUTHORIZED,
             r#"{"error":{"message":"Invalid Authentication","type":"invalid_authentication_error"}}"#,
@@ -902,7 +909,7 @@ mod tests {
 
     #[test]
     fn stepfun_401_includes_platform_url_and_no_cli_hint() {
-        let err = parse_api_error(
+        let err = parse_provider_error(
             "StepFun",
             reqwest::StatusCode::UNAUTHORIZED,
             r#"{"error":{"message":"Incorrect API key provided"}}"#,
@@ -918,7 +925,7 @@ mod tests {
 
     #[test]
     fn moonshot_401_includes_platform_url_and_no_cli_hint() {
-        let err = parse_api_error(
+        let err = parse_provider_error(
             "Moonshot",
             reqwest::StatusCode::UNAUTHORIZED,
             r#"{"error":{"message":"Invalid API key"}}"#,
@@ -937,8 +944,11 @@ mod tests {
 
     #[test]
     fn qwen_401_includes_platform_url_and_no_cli_hint() {
-        let err =
-            parse_api_error("Qwen", reqwest::StatusCode::UNAUTHORIZED, r#"{"error":{"message":"Invalid API key"}}"#);
+        let err = parse_provider_error(
+            "Qwen",
+            reqwest::StatusCode::UNAUTHORIZED,
+            r#"{"error":{"message":"Invalid API key"}}"#,
+        );
         match err {
             LLMError::Authentication { message, .. } => {
                 assert!(message.contains("https://dashscope.console.aliyun.com"), "missing platform URL: {message}");
@@ -950,7 +960,7 @@ mod tests {
 
     #[test]
     fn openai_401_has_generic_auth_message() {
-        let err = parse_api_error(
+        let err = parse_provider_error(
             "OpenAI",
             reqwest::StatusCode::UNAUTHORIZED,
             r#"{"error":{"message":"Incorrect API key provided"}}"#,

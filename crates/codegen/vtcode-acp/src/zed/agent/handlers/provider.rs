@@ -2,6 +2,7 @@
 use super::*;
 use crate::zed::provider_runtime::ProviderClass;
 use crate::zed::types::SessionCancellation;
+use vtcode_core::retry::RetryPolicy;
 
 mod telemetry;
 pub(super) use telemetry::{ProviderErrorTelemetry, duration_millis, provider_error_telemetry, retry_disposition};
@@ -305,47 +306,121 @@ impl StreamDeadlineTracker {
 
 pub(super) type RetryObservationClock<'clock> = dyn Fn() -> SystemTime + Send + Sync + 'clock;
 
+/// The provider call a retry loop owns, and where its failures are announced.
+pub(super) struct RetryRequest<'a> {
+    pub(super) provider: &'a dyn LLMProvider,
+    pub(super) request: LLMRequest,
+    pub(super) runtime: &'a ProviderRequestRuntime,
+    pub(super) cancellation: &'a SessionCancellation,
+    pub(super) failure_sink: Option<&'a dyn AttemptFailureSink>,
+}
+
+impl<'a> RetryRequest<'a> {
+    pub(super) fn new(
+        provider: &'a dyn LLMProvider,
+        request: LLMRequest,
+        runtime: &'a ProviderRequestRuntime,
+        cancellation: &'a SessionCancellation,
+    ) -> Self {
+        Self {
+            provider,
+            request,
+            runtime,
+            cancellation,
+            failure_sink: None,
+        }
+    }
+
+    pub(super) fn with_failure_sink(mut self, failure_sink: &'a dyn AttemptFailureSink) -> Self {
+        self.failure_sink = Some(failure_sink);
+        self
+    }
+}
+
 #[cfg(test)]
-pub(super) async fn generate_with_retry(
-    provider: &dyn LLMProvider,
-    request: LLMRequest,
-    runtime: &ProviderRequestRuntime,
-    cancellation: &SessionCancellation,
-    failure_sink: Option<&dyn AttemptFailureSink>,
-) -> Result<LLMResponse, ProviderCallError> {
-    generate_with_retry_with_observer(provider, request, runtime, cancellation, failure_sink, &SystemTime::now).await
+pub(super) async fn generate_with_retry(request: RetryRequest<'_>) -> Result<LLMResponse, ProviderCallError> {
+    generate_with_retry_with_observer(request, &SystemTime::now).await
 }
 
 #[cfg(test)]
 pub(super) async fn generate_with_retry_with_observer(
-    provider: &dyn LLMProvider,
-    request: LLMRequest,
-    runtime: &ProviderRequestRuntime,
-    cancellation: &SessionCancellation,
-    failure_sink: Option<&dyn AttemptFailureSink>,
+    request: RetryRequest<'_>,
     retry_observed_at: &RetryObservationClock<'_>,
 ) -> Result<LLMResponse, ProviderCallError> {
-    generate_with_retry_with_observer_and_metric_sink(
+    generate_with_retry_with_observer_and_metric_sink(request, retry_observed_at, &ProviderMetricSink::production())
+        .await
+}
+
+enum GenerateOutcome {
+    /// Boxed because a full response dwarfs the other two variants.
+    Completed(Box<LLMResponse>),
+    Failed(LLMError),
+    Cancelled,
+}
+
+/// Runs one buffered provider request under the total-generation deadline.
+async fn generate_once(
+    provider: &dyn LLMProvider,
+    request: &LLMRequest,
+    runtime: &ProviderRequestRuntime,
+    cancellation: &SessionCancellation,
+) -> GenerateOutcome {
+    let deadline_policy = runtime.deadline_policy();
+    let total_deadline = deadline_after(deadline_policy.total_generation);
+    tokio::select! {
+        () = cancellation.cancelled() => GenerateOutcome::Cancelled,
+        () = sleep_until_optional(total_deadline) => GenerateOutcome::Failed(provider_timeout_error(
+            runtime.provider_name(),
+            StreamTimeoutPhase::TotalGeneration,
+            deadline_policy.total_generation,
+        )),
+        result = provider.generate(request.clone()).instrument(tracing::info_span!(
+            "acp_provider_generate",
+            provider = runtime.provider_name()
+        )) => match result {
+            Ok(response) => GenerateOutcome::Completed(Box::new(response)),
+            Err(error) => GenerateOutcome::Failed(error),
+        },
+    }
+}
+
+fn observe_buffered_response(
+    telemetry: &mut GenerationTelemetry,
+    runtime: &ProviderRequestRuntime,
+    response: &LLMResponse,
+    attempt_index: u32,
+) {
+    if let Some(content) = response.content.as_deref() {
+        telemetry.observe_output(runtime, content, attempt_index);
+    }
+    if let Some(reasoning) = response.reasoning.as_deref() {
+        telemetry.observe_output(runtime, reasoning, attempt_index);
+    }
+}
+
+fn log_retry_scheduled(runtime: &ProviderRequestRuntime, policy: &RetryPolicy, attempt_index: u32, delay: Duration) {
+    info!(
+        provider_class = runtime.provider_class().as_str(),
+        next_attempt = attempt_index + 2,
+        retry_count = attempt_index + 1,
+        max_retries = policy.max_attempts.saturating_sub(1),
+        ?delay,
+        "Retrying transient ACP provider request"
+    );
+}
+
+pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
+    retry_request: RetryRequest<'_>,
+    retry_observed_at: &RetryObservationClock<'_>,
+    metric_sink: &ProviderMetricSink,
+) -> Result<LLMResponse, ProviderCallError> {
+    let RetryRequest {
         provider,
         request,
         runtime,
         cancellation,
         failure_sink,
-        retry_observed_at,
-        &ProviderMetricSink::production(),
-    )
-    .await
-}
-
-pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
-    provider: &dyn LLMProvider,
-    request: LLMRequest,
-    runtime: &ProviderRequestRuntime,
-    cancellation: &SessionCancellation,
-    failure_sink: Option<&dyn AttemptFailureSink>,
-    retry_observed_at: &RetryObservationClock<'_>,
-    metric_sink: &ProviderMetricSink,
-) -> Result<LLMResponse, ProviderCallError> {
+    } = retry_request;
     let policy = runtime.retry_policy();
     let mut attempt_index = 0;
     let mut backoff = RetryBackoff::new();
@@ -354,41 +429,26 @@ pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
         let permit = runtime.acquire(cancellation).await?;
         let mut telemetry = GenerationTelemetry::start(runtime, metric_sink.clone(), ProviderMode::Buffered);
         telemetry.record_attempt(runtime).await;
-        let deadline_policy = runtime.deadline_policy();
-        let total_deadline = deadline_after(deadline_policy.total_generation);
-        let result = tokio::select! {
-            () = cancellation.cancelled() => return Err(ProviderCallError::Cancelled),
-            () = sleep_until_optional(total_deadline) => {
-                Err(provider_timeout_error(
-                    runtime.provider_name(),
-                    StreamTimeoutPhase::TotalGeneration,
-                    deadline_policy.total_generation,
-                ))
-            }
-            result = provider.generate(request.clone()).instrument(tracing::info_span!(
-                "acp_provider_generate",
-                provider = runtime.provider_name()
-            )) => result,
-        };
-        match result {
-            Ok(response) => {
-                if let Some(content) = response.content.as_deref() {
-                    telemetry.observe_output(runtime, content, attempt_index);
-                }
-                if let Some(reasoning) = response.reasoning.as_deref() {
-                    telemetry.observe_output(runtime, reasoning, attempt_index);
-                }
+        match generate_once(provider, &request, runtime, cancellation).await {
+            GenerateOutcome::Cancelled => return Err(ProviderCallError::Cancelled),
+            GenerateOutcome::Completed(response) => {
+                observe_buffered_response(&mut telemetry, runtime, &response, attempt_index);
                 telemetry.complete(runtime, &response, attempt_index, true).await;
                 drop(permit);
-                return Ok(response);
+                return Ok(*response);
             }
-            Err(error) => {
+            GenerateOutcome::Failed(error) => {
                 let observed_at = retry_observed_at();
-                let decision =
-                    policy.decision_for_llm_error_with_backoff_at(&error, attempt_index, &mut backoff, observed_at);
-                let retry_delay = decision
-                    .retryable
-                    .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
+                let decision = policy.decision_for_llm_error_with_backoff_at(
+                    &error,
+                    LlmRetryAttempt::new(attempt_index, observed_at),
+                    &mut backoff,
+                );
+                let retry_delay = decision.retryable.then(|| {
+                    decision
+                        .delay
+                        .unwrap_or_else(|| policy.delay_for_attempt(AttemptIndex::new(attempt_index)))
+                });
                 telemetry
                     .failed(GenerationFailure {
                         runtime,
@@ -413,18 +473,12 @@ pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
                 if !decision.retryable {
                     return Err(ProviderCallError::Failed(SafeProviderProjection::from_llm_error(&error)));
                 }
-                let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
-                info!(
-                    provider_class = runtime.provider_class().as_str(),
-                    next_attempt = attempt_index + 2,
-                    retry_count = attempt_index + 1,
-                    max_retries = policy.max_attempts.saturating_sub(1),
-                    ?delay,
-                    "Retrying transient ACP provider request"
-                );
+                let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(AttemptIndex::new(attempt_index)));
+                log_retry_scheduled(runtime, &policy, attempt_index, delay);
                 cancellable_backoff(delay, cancellation).await?;
                 attempt_index = attempt_index.saturating_add(1);
             }
         }
     }
 }
+// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/provider.rs' for per-hunk detail, 'weave check' to verify your resolution

@@ -18,7 +18,39 @@ use crate::tools::tool_intent::is_command_tool;
 use crate::tools::unified_error::UnifiedToolError;
 use vtcode_commons::llm::{LLMError, LLMErrorMetadata};
 
-pub use vtcode_commons::retry::{RetryBackoff, RetryDecision, RetryPolicy};
+pub use vtcode_commons::retry::{AttemptIndex, RetryAttempt, RetryBackoff, RetryDecision, RetryPolicy};
+
+/// One LLM retry attempt paired with the wall-clock instant it was observed.
+///
+/// A provider `Retry-After` value may be an absolute HTTP date, which is only
+/// meaningful relative to the moment the failure was seen, so the ordinal and
+/// the observation travel together.
+#[derive(Debug, Clone, Copy)]
+pub struct LlmRetryAttempt {
+    attempt_index: u32,
+    observed_at: SystemTime,
+}
+
+impl LlmRetryAttempt {
+    #[must_use]
+    pub const fn new(attempt_index: u32, observed_at: SystemTime) -> Self {
+        Self { attempt_index, observed_at }
+    }
+
+    /// Pair an attempt ordinal with the current wall-clock time.
+    #[must_use]
+    pub fn now(attempt_index: u32) -> Self {
+        Self::new(attempt_index, SystemTime::now())
+    }
+
+    const fn index(self) -> AttemptIndex {
+        AttemptIndex::new(self.attempt_index)
+    }
+
+    const fn observed_at(self) -> SystemTime {
+        self.observed_at
+    }
+}
 
 /// Domain-aware retry decisions layered over the shared [`RetryPolicy`].
 ///
@@ -53,31 +85,17 @@ pub trait RetryPolicyCoreExt {
     }
 
     /// Classify an LLM error while retaining a provider retry floor across
-    /// attempts in the current logical segment, using the compatibility
-    /// wall-clock observation.
-    fn decision_for_llm_error_with_backoff(
-        &self,
-        error: &LLMError,
-        attempt_index: u32,
-        backoff: &mut RetryBackoff,
-    ) -> RetryDecision;
-
-    /// Classify an LLM error with a retry floor against its observation time.
+    /// attempts in the current logical segment.
     ///
-    /// Existing implementers inherit a compatibility fallback that delegates
-    /// to [`Self::decision_for_llm_error_with_backoff`] and ignores
-    /// `observed_at`. [`RetryPolicy`] overrides this method to honour the
-    /// supplied time.
+    /// Implementers must honour the observation carried by
+    /// [`LlmRetryAttempt`]: an absolute `Retry-After` date is meaningless
+    /// without the instant the failure was observed.
     fn decision_for_llm_error_with_backoff_at(
         &self,
         error: &LLMError,
-        attempt_index: u32,
+        attempt: LlmRetryAttempt,
         backoff: &mut RetryBackoff,
-        observed_at: SystemTime,
-    ) -> RetryDecision {
-        let _ = observed_at;
-        self.decision_for_llm_error_with_backoff(error, attempt_index, backoff)
-    }
+    ) -> RetryDecision;
 
     fn decision_for_tool_error(&self, error: &UnifiedToolError, attempt_index: u32) -> RetryDecision;
 
@@ -146,23 +164,13 @@ impl RetryPolicyCoreExt for RetryPolicy {
         decision_for_category_with_tool(self, ErrorCategory::from(error), attempt_index, retry_after, None)
     }
 
-    fn decision_for_llm_error_with_backoff(
-        &self,
-        error: &LLMError,
-        attempt_index: u32,
-        backoff: &mut RetryBackoff,
-    ) -> RetryDecision {
-        self.decision_for_llm_error_with_backoff_at(error, attempt_index, backoff, SystemTime::now())
-    }
-
     fn decision_for_llm_error_with_backoff_at(
         &self,
         error: &LLMError,
-        attempt_index: u32,
+        attempt: LlmRetryAttempt,
         backoff: &mut RetryBackoff,
-        observed_at: SystemTime,
     ) -> RetryDecision {
-        decision_for_llm_error_with_backoff_at_impl(self, error, attempt_index, backoff, observed_at)
+        decision_for_llm_error_with_backoff_at_impl(self, error, attempt, backoff)
     }
 
     fn decision_for_tool_error(&self, error: &UnifiedToolError, attempt_index: u32) -> RetryDecision {
@@ -187,7 +195,9 @@ impl RetryPolicyCoreExt for RetryPolicy {
     fn step_for_vtcode_error(&self, error: VtCodeError, attempt_index: u32, tool_name: Option<&str>) -> RetryStep {
         let decision = self.decision_for_vtcode_error(&error, attempt_index, tool_name);
         if decision.retryable {
-            let delay = decision.delay.unwrap_or_else(|| self.delay_for_attempt(attempt_index));
+            let delay = decision
+                .delay
+                .unwrap_or_else(|| self.delay_for_attempt(AttemptIndex::new(attempt_index)));
             RetryStep::Backoff { delay, decision, error }
         } else {
             RetryStep::GiveUp { decision, error }
@@ -214,21 +224,21 @@ impl RetryPolicyCoreExt for RetryPolicy {
 fn decision_for_llm_error_with_backoff_at_impl(
     policy: &RetryPolicy,
     error: &LLMError,
-    attempt_index: u32,
+    attempt: LlmRetryAttempt,
     backoff: &mut RetryBackoff,
-    now: SystemTime,
 ) -> RetryDecision {
+    let category = ErrorCategory::from(error);
     let Some(metadata) = llm_metadata(error) else {
-        return policy.decision_for_category_with_backoff(ErrorCategory::from(error), attempt_index, None, backoff);
+        return policy.decision_for_category_with_backoff(RetryAttempt::new(category, attempt.index(), None, backoff));
     };
-    let retry_after = retry_after_from_llm_metadata_at(metadata, now);
+    let retry_after = retry_after_from_llm_metadata_at(metadata, attempt.observed_at());
     if !retry_after_is_http_date(metadata) {
-        return policy.decision_for_category_with_backoff(
-            ErrorCategory::from(error),
-            attempt_index,
+        return policy.decision_for_category_with_backoff(RetryAttempt::new(
+            category,
+            attempt.index(),
             retry_after,
             backoff,
-        );
+        ));
     }
 
     let reset_floor = metadata
@@ -237,7 +247,7 @@ fn decision_for_llm_error_with_backoff_at_impl(
         .and_then(|rate_limit| rate_limit.reset_after_millis)
         .map(Duration::from_millis);
     let mut decision =
-        policy.decision_for_category_with_backoff(ErrorCategory::from(error), attempt_index, reset_floor, backoff);
+        policy.decision_for_category_with_backoff(RetryAttempt::new(category, attempt.index(), reset_floor, backoff));
     if let Some(retry_after) = retry_after
         && decision.retryable
     {
@@ -264,7 +274,7 @@ fn decision_for_category_with_tool(
         };
     }
 
-    policy.decision_for_category(category, attempt_index, retry_after)
+    policy.decision_for_category(category, AttemptIndex::new(attempt_index), retry_after)
 }
 
 /// The single tool-aware retry rule: command tool timeouts are never
