@@ -57,17 +57,7 @@ pub(super) async fn validate_patch_content_hash(
         return Ok(Some(PatchPreconditionRejection {
             response: invalid_patch_precondition(
                 format!("Source file no longer exists: {source_path}"),
-                json!({
-                    "reason": "content_hash_mismatch",
-                    "path": source_path,
-                    "expected_content_hash": expected_hash,
-                    "current_content_hash": Value::Null,
-                    "anchor_failures": [],
-                    "can_safely_rebase": false,
-                    "next_action": format!(
-                        "The file was removed after its version was captured; list the directory containing {source_path} and regenerate the patch against the current workspace."
-                    ),
-                }),
+                content_hash_mismatch_details(source_path, expected_hash, None, false, json!([])),
             ),
             outcome: PatchPreconditionOutcome::ContentHashMismatch,
         }));
@@ -83,15 +73,13 @@ pub(super) async fn validate_patch_content_hash(
         }
         None => (false, Vec::new()),
     };
-    let details = json!({
-        "reason": "content_hash_mismatch",
-        "path": source_path,
-        "expected_content_hash": expected_hash,
-        "current_content_hash": current_hash,
-        "anchor_failures": anchor_failures,
-        "can_safely_rebase": can_safely_rebase,
-        "next_action": format!("Reread {source_path} and regenerate the patch using the new content_hash."),
-    });
+    let details = content_hash_mismatch_details(
+        source_path,
+        expected_hash,
+        Some(&current_hash),
+        can_safely_rebase,
+        json!(anchor_failures),
+    );
     Ok(Some(PatchPreconditionRejection {
         response: invalid_patch_precondition(
             format!("File version changed before apply_patch: {source_path}"),
@@ -124,6 +112,40 @@ pub(crate) fn patch_precondition_scope_error(source_file_count: usize) -> PatchP
         "expected_content_hash requires exactly one pre-existing source file; split the patch by source file"
     };
     PatchPreconditionScope { message, source_file_count }
+}
+
+/// Build the `content_hash_mismatch` details shared by both apply-patch surfaces.
+///
+/// The registry pipeline and the Codex-style handler must return identical
+/// payloads for the same rejection (`docs/development/patch-safety-contract.md`),
+/// so the keys, the null current hash for a removed file, and the next-action
+/// wording are built here once instead of being duplicated per surface.
+///
+/// `current_hash` is `None` when the source file no longer exists: a removed
+/// file has no version, and the wire shape documents `sha256:<64 lower-hex>`,
+/// which an empty `sha256:` would violate.
+pub(crate) fn content_hash_mismatch_details(
+    source_path: &str,
+    expected_hash: &str,
+    current_hash: Option<&str>,
+    can_safely_rebase: bool,
+    anchor_failures: Value,
+) -> Value {
+    let next_action = match current_hash {
+        Some(_) => format!("Reread {source_path} and regenerate the patch using the new content_hash."),
+        None => format!(
+            "The file was removed after its version was captured; list the directory containing {source_path} and regenerate the patch against the current workspace."
+        ),
+    };
+    json!({
+        "reason": "content_hash_mismatch",
+        "path": source_path,
+        "expected_content_hash": expected_hash,
+        "current_content_hash": current_hash,
+        "anchor_failures": anchor_failures,
+        "can_safely_rebase": can_safely_rebase,
+        "next_action": next_action,
+    })
 }
 
 /// Build the structured rejection payload shared by every precondition failure.

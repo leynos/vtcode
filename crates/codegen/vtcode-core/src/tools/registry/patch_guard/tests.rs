@@ -1,3 +1,9 @@
+//! Tests for the patch-guard no-op ladder and its operation signature.
+//!
+//! Named cases pin the equivalences the ladder depends on; property tests
+//! assert that the signature ignores path and operation ordering and that the
+//! ladder resets when either the recorded state or the patch changes.
+
 use super::*;
 use proptest::prelude::*;
 use rstest::rstest;
