@@ -1,6 +1,10 @@
 //! Collects provider stream events and records their user-visible outcomes.
 use super::*;
 
+/// Collect events from one stream attempt until it finishes or fails.
+///
+/// Cancellation and deadline expiry are classified here; an event error is
+/// passed to the retry policy so a transient failure can be retried.
 pub(super) async fn collect_stream_events(
     stream: &mut LLMStream,
     request: StreamCollectionRequest<'_>,
@@ -133,6 +137,10 @@ fn observe_response_output(request: &mut StreamCollectionRequest<'_>, response: 
     }
 }
 
+/// Decide whether a failed stream attempt may be retried.
+///
+/// Visible partial output makes the failure terminal regardless of the retry
+/// policy, because the user has already seen text that a retry would replace.
 pub(super) fn classify_stream_failure(request: StreamFailureRequest<'_>) -> StreamAttemptOutcome {
     let StreamFailureRequest { turn, telemetry, output, attempt_index, error } = request;
     let policy = turn.provider_runtime.retry_policy();

@@ -31,6 +31,23 @@ use diapason_core::llm::usage_cost::{
 #[cfg(test)]
 };
 
+use diapason_config::models::ModelPricing;
+use diapason_config::{CustomProviderApiFormat, CustomProviderConfig};
+use diapason_core::llm::Usage;
+use diapason_core::llm::model_resolver::ModelResolver;
+use diapason_core::llm::usage_cost::{
+    estimate_session_costs_with_pricing, normalized_turn_usage_with_input_semantics, provider_reports_exclusive_input,
+};
+
+//! Publishes usage deltas and advertises the Lody usage capability, including
+//! the `_lody/session/usage_update` extension notification.
+#[cfg(test)]
+};
+//! Publishes usage deltas and advertises the Lody usage capability, including
+//! the `_lody/session/usage_update` extension notification.
+#[cfg(test)]
+};
+
 const LODY_EXTENSION_VERSION: u8 = 1;
 
 pub(super) const LODY_SESSION_USAGE_UPDATE_METHOD: &str = "_lody/session/usage_update";
@@ -90,6 +107,12 @@ pub(super) fn add_lody_usage_capability(capabilities: &mut acp::AgentCapabilitie
     }
 }
 
+/// Build the `_lody/session/usage_update` notification for one turn's usage.
+///
+/// Reasoning tokens are reported separately and subtracted from the output
+/// count, so the two fields describe disjoint token sets. Cost is omitted when
+/// the provider has no pricing, and reported in the provider's input-token
+/// semantics rather than reinterpreting a shared total.
 fn usage_notification(
     session_id: &acp::SessionId,
     model: &str,
@@ -178,33 +201,46 @@ fn record_usage_failure(
     warn!(session_correlation, error_category, elapsed_ms, %error, "Failed to publish Lody ACP usage update");
 }
 
-impl ZedAgent {
-    fn lody_usage_profile(&self, provider: &str, model: &str) -> UsageProfile {
-        if let Some(custom_provider) = self
-            .workspace_runtime_config
-            .custom_providers
-            .iter()
-            .find(|candidate| candidate.name.eq_ignore_ascii_case(provider))
-        {
-            let resolved = custom_provider.resolved_profile(model);
-            return UsageProfile {
-                context_window: resolved.context_window.filter(|window| *window > 0),
-                pricing: resolved.pricing.model_pricing(),
-                exclusive_input: exclusive_input_semantics(resolved.api_format, provider),
-            };
-        }
+/// Resolve the usage profile of the backend that served `provider`.
+///
+/// A configured custom provider wins over the built-in catalogue: its
+/// resolved profile carries the context window and pricing the operator
+/// declared, and its `api_format` names the backend that produced the usage.
+/// Otherwise the built-in model catalogue supplies what it knows, and the
+/// provider name alone decides the input-token semantics.
+fn usage_profile(custom_providers: &[CustomProviderConfig], provider: &str, model: &str) -> UsageProfile {
+    if let Some(custom_provider) = custom_providers
+        .iter()
+        .find(|candidate| candidate.name.eq_ignore_ascii_case(provider))
+    {
+        let resolved = custom_provider.resolved_profile(model);
+        return UsageProfile {
+            context_window: resolved.context_window.filter(|window| *window > 0),
+            pricing: resolved.pricing.model_pricing(),
+            exclusive_input: exclusive_input_semantics(resolved.api_format, provider),
+        };
+    }
 
-        ModelResolver::resolve(Some(provider), model, &[], None).map_or_else(
-            || UsageProfile {
-                exclusive_input: exclusive_input_semantics(None, provider),
-                ..UsageProfile::default()
-            },
-            |resolved| UsageProfile {
-                context_window: resolved.context_window(),
-                pricing: resolved.pricing(),
-                exclusive_input: exclusive_input_semantics(None, provider),
-            },
-        )
+    ModelResolver::resolve(Some(provider), model, &[], None).map_or_else(
+        || UsageProfile {
+            exclusive_input: exclusive_input_semantics(None, provider),
+            ..UsageProfile::default()
+        },
+        |resolved| UsageProfile {
+            context_window: resolved.context_window(),
+            pricing: resolved.pricing(),
+            exclusive_input: exclusive_input_semantics(None, provider),
+        },
+    )
+}
+
+impl ZedAgent {
+    /// Look up the pricing and context window configured for this provider.
+    ///
+    /// Custom provider entries supply both; a provider without one reports
+    /// neither, so no cost is invented for it.
+    fn lody_usage_profile(&self, provider: &str, model: &str) -> UsageProfile {
+        usage_profile(&self.workspace_runtime_config.custom_providers, provider, model)
     }
 
     pub(super) fn publish_lody_usage(
@@ -254,8 +290,4 @@ impl ZedAgent {
 #[cfg(test)]
 #[path = "lody_usage/tests.rs"]
 mod tests;
-
-
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/lody_usage.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/lody_usage.rs' for per-hunk detail, 'weave check' to verify your resolution
 // weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/lody_usage.rs' for per-hunk detail, 'weave check' to verify your resolution

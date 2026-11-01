@@ -5,6 +5,27 @@ use crate::zed::types::SessionCancellation;
 mod telemetry;
 pub(super) use telemetry::{ProviderErrorTelemetry, duration_millis, provider_error_telemetry, retry_disposition};
 
+/// A future returned when announcing a failed provider attempt.
+pub(super) type AttemptFailureFuture<'a> = std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>>;
+
+/// Announces failed provider attempts to whatever observes the turn.
+///
+/// Retry orchestration depends on this narrow port rather than on the ACP
+/// transport, so retry policy stays independent of how a notice is built and
+/// delivered. The ACP adapter that implements it lives at the handler
+/// boundary.
+pub(super) trait AttemptFailureSink {
+    /// Announce that `provider` failed with `error`.
+    ///
+    /// `retry_delay` is `Some` when another attempt is scheduled.
+    fn announce<'a>(
+        &'a self,
+        provider: &'a str,
+        error: &'a LLMError,
+        retry_delay: Option<std::time::Duration>,
+    ) -> AttemptFailureFuture<'a>;
+}
+
 #[cfg(test)]
 pub(super) type PromptProviderFactory = dyn Fn() -> Box<dyn LLMProvider> + Send + Sync;
 
@@ -253,7 +274,7 @@ pub(super) async fn generate_with_retry(
     request: LLMRequest,
     runtime: &ProviderRequestRuntime,
     cancellation: &SessionCancellation,
-    notice_target: Option<(&ZedAgent, &acp::SessionId)>,
+    failure_sink: Option<&dyn AttemptFailureSink>,
 ) -> Result<LLMResponse, ProviderCallError> {
     let policy = runtime.retry_policy();
     let mut attempt_index = 0;
@@ -296,10 +317,8 @@ pub(super) async fn generate_with_retry(
                 let retry_delay = decision
                     .retryable
                     .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
-                if let Some((agent, session_id)) = notice_target {
-                    agent
-                        .publish_rate_limit_notice(session_id, runtime.provider_name(), &error, retry_delay)
-                        .await;
+                if let Some(sink) = failure_sink {
+                    sink.announce(runtime.provider_name(), &error, retry_delay).await;
                 }
                 if !decision.retryable {
                     return Err(ProviderCallError::Failed(error.to_string()));

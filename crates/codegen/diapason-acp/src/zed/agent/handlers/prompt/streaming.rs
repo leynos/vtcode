@@ -52,6 +52,11 @@ enum StreamingTurnOutcome {
     Finished(ProviderTurnOutcome),
 }
 
+/// Drive a streaming provider turn, including tool rounds and retries.
+///
+/// The attempt counter resets after a tool round because a fresh provider call
+/// follows tool output. Output is only stored back on the turn when the turn
+/// ends, so a retried attempt cannot leak a partial answer into history.
 pub(super) async fn run_streaming_provider_turn(turn: &mut PromptExecution) -> Result<ProviderTurnOutcome, SdkError> {
     let mut output = ProviderOutput::take_from(turn);
     let mut tool_loop_count = 0usize;
@@ -85,6 +90,10 @@ fn preserve_streaming_output(
     outcome
 }
 
+/// Turn one collected stream attempt into the next loop step.
+///
+/// A completed attempt either starts a tool round, finishes the turn, or asks
+/// for a retry after publishing the provider's rate-limit notice.
 async fn handle_streaming_attempt(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,
@@ -127,6 +136,10 @@ async fn handle_streaming_attempt(
     }
 }
 
+/// Wait out the scheduled retry delay, honouring cancellation.
+///
+/// A cancelled backoff finishes the turn as cancelled; a failed backoff ends
+/// it with the partial output recorded so far.
 async fn retry_stream_attempt(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,
