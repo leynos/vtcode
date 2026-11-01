@@ -6,7 +6,7 @@ mod telemetry;
 pub(super) use telemetry::{ProviderErrorTelemetry, duration_millis, provider_error_telemetry, retry_disposition};
 
 /// A future returned when announcing a failed provider attempt.
-pub(super) type AttemptFailureFuture<'a> = std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>>;
+pub(super) type AttemptFailureFuture<'a> = std::pin::Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
 
 /// Announces failed provider attempts to whatever observes the turn.
 ///
@@ -14,7 +14,12 @@ pub(super) type AttemptFailureFuture<'a> = std::pin::Pin<Box<dyn std::future::Fu
 /// transport, so retry policy stays independent of how a notice is built and
 /// delivered. The ACP adapter that implements it lives at the handler
 /// boundary.
-pub(super) trait AttemptFailureSink {
+///
+/// The sink travels through the retry loop, which runs inside the ACP
+/// dispatch task, so it must be sharable across that task boundary: `Send`
+/// because the future owning it is spawned, and `Sync` because it is held by
+/// shared reference across the loop's awaits.
+pub(super) trait AttemptFailureSink: Send + Sync {
     /// Announce that `provider` failed with `error`.
     ///
     /// `retry_delay` is `Some` when another attempt is scheduled.
@@ -22,7 +27,7 @@ pub(super) trait AttemptFailureSink {
         &'a self,
         provider: &'a str,
         error: &'a LLMError,
-        retry_delay: Option<std::time::Duration>,
+        retry_delay: Option<Duration>,
     ) -> AttemptFailureFuture<'a>;
 }
 
