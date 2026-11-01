@@ -279,12 +279,21 @@ impl From<anyhow::Error> for VtCodeError {
     }
 }
 
+/// Boundary adapter converting an [`LLMError`] into a [`VtCodeError`].
+///
+/// A `From` implementation cannot accept an observation instant, so this
+/// adapter reads the wall clock. It only classifies the error and copies its
+/// metadata; no retry decision is made here. `from_llm_error_at` is the
+/// deterministic core used by tests and by callers that already know when the
+/// failure was observed.
 impl From<LLMError> for VtCodeError {
     fn from(err: LLMError) -> Self {
         from_llm_error_at(err, SystemTime::now())
     }
 }
 
+/// Deterministic conversion core shared by the [`From`] boundary adapter and
+/// tests; `observed_at` anchors absolute `Retry-After` HTTP dates.
 fn from_llm_error_at(err: LLMError, observed_at: SystemTime) -> VtCodeError {
     let category = ErrorCategory::from(&err);
     let code = match &err {

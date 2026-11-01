@@ -110,6 +110,70 @@ fn quota_exhaustion_is_not_retryable() {
     assert!(!decision.retryable);
 }
 
+fn quota_exhausted_error() -> LLMError {
+    LLMError::RateLimit {
+        metadata: Some(LLMErrorMetadata::new(
+            "OpenAI",
+            Some(429),
+            Some("insufficient_quota".to_string()),
+            None,
+            None,
+            None,
+            Some("quota exceeded".to_string()),
+        )),
+    }
+}
+
+#[test]
+fn clock_free_retry_eligibility_matches_anyhow_decisions() {
+    let policy = floor_policy();
+    let llm_errors = [
+        rate_limit_error(Some("7")),
+        rate_limit_error(None),
+        quota_exhausted_error(),
+        LLMError::Network {
+            message: "temporary disconnect".to_string(),
+            metadata: None,
+        },
+        LLMError::InvalidRequest { message: "bad request".to_string(), metadata: None },
+    ];
+
+    for error in llm_errors {
+        let wrapped = anyhow::Error::new(error);
+        assert_eq!(
+            policy.is_retryable_anyhow(&wrapped, 0, None),
+            policy.decision_for_anyhow(&wrapped, 0, None).retryable,
+            "clock-free eligibility must match the typed anyhow decision"
+        );
+    }
+
+    let typed_vtcode = anyhow::Error::new(VtCodeError::network(ErrorCode::ConnectionFailed, "transient"));
+    assert!(policy.is_retryable_anyhow(&typed_vtcode, 0, None));
+    assert_eq!(
+        policy.is_retryable_anyhow(&typed_vtcode, 0, None),
+        policy.decision_for_anyhow(&typed_vtcode, 0, None).retryable
+    );
+}
+
+#[test]
+fn retry_eligibility_ignores_future_http_date_retry_after() {
+    let policy = floor_policy();
+    let future = SystemTime::now() + Duration::from_secs(3_600);
+    let with_date = anyhow::Error::new(rate_limit_error(Some(&httpdate::fmt_http_date(future))));
+    let without_date = anyhow::Error::new(rate_limit_error(None));
+
+    assert_eq!(
+        policy.is_retryable_anyhow(&with_date, 0, None),
+        policy.decision_for_anyhow(&with_date, 0, None).retryable
+    );
+    assert_eq!(
+        policy.is_retryable_anyhow(&with_date, 0, None),
+        policy.is_retryable_anyhow(&without_date, 0, None),
+        "eligibility must not depend on an absolute Retry-After date"
+    );
+    assert!(policy.is_retryable_anyhow(&with_date, 0, None));
+}
+
 #[test]
 fn anyhow_fallback_uses_shared_classifier() {
     let policy = RetryPolicy::from_retries(1, Duration::from_secs(1), Duration::from_secs(8), 2.0);

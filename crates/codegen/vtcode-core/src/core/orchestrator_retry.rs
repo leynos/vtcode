@@ -5,7 +5,7 @@
 
 use crate::config::models::ModelId;
 use crate::error::{ErrorCode, Result as VtCodeResult, VtCodeError};
-use crate::retry::{RetryEvent, RetryPolicy, RetryPolicyCoreExt, RetryStep};
+use crate::retry::{RetryEvent, RetryPolicy, RetryPolicyCoreExt, RetryStep, is_retryable_anyhow_error};
 use std::future::Future;
 use std::result::Result as StdResult;
 use std::time::{Duration, Instant};
@@ -296,9 +296,12 @@ pub fn is_empty_response(response: &serde_json::Value) -> bool {
 }
 
 /// Detect if an error indicates a temporary failure that should be retried.
+///
 /// Uses the shared VT Code retry policy for typed and fallback classification.
+/// The predicate is clock-free: retry eligibility never depends on when a
+/// provider failure was observed.
 pub fn is_retryable_error(error: &anyhow::Error) -> bool {
-    RetryPolicy::default().decision_for_anyhow(error, 0, None).retryable
+    is_retryable_anyhow_error(error)
 }
 
 #[cfg(test)]
