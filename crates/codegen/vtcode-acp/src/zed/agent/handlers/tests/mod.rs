@@ -35,7 +35,7 @@ use vtcode_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_M
 use vtcode_core::core::threads::{ThreadBootstrap, ThreadManager};
 
 mod prompt_fixtures;
-mod provider_runtime_fixtures;
+pub(super) mod provider_runtime_fixtures;
 
 use archive_test_support::{EnvGuard, SESSION_DIR_ENV, lock_history_test_guard};
 use prompt_fixtures::*;

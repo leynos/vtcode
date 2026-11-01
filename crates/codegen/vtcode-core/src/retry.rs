@@ -66,7 +66,20 @@ pub trait RetryPolicyCoreExt {
 
     fn decision_for_anyhow(&self, error: &anyhow::Error, attempt_index: u32, tool_name: Option<&str>) -> RetryDecision;
 
+    /// Report whether an `anyhow::Error` is retryable without reading the clock.
+    ///
+    /// Retry eligibility is a property of the error category (and the remaining
+    /// attempt budget); only the delay depends on the instant a failure was
+    /// observed. This predicate mirrors [`Self::decision_for_anyhow`]'s typed
+    /// downcast chain but never extracts a provider `Retry-After` value.
+    fn is_retryable_anyhow(&self, error: &anyhow::Error, attempt_index: u32, tool_name: Option<&str>) -> bool;
+
     /// Classify an LLM error using the compatibility wall-clock observation.
+    ///
+    /// This is a compatibility adapter over the deterministic
+    /// [`Self::decision_for_llm_error_at`]: it observes `SystemTime::now()` and
+    /// delegates. Callers that already know when the failure was observed
+    /// should use `decision_for_llm_error_at` (or the backoff variant) directly.
     fn decision_for_llm_error(&self, error: &LLMError, attempt_index: u32) -> RetryDecision;
 
     /// Classify an LLM error against the time at which it was observed.
@@ -147,6 +160,31 @@ impl RetryPolicyCoreExt for RetryPolicy {
 
         let category = vtcode_commons::classify_anyhow_error(error);
         decision_for_category_with_tool(self, category, attempt_index, None, tool_name)
+    }
+
+    fn is_retryable_anyhow(&self, error: &anyhow::Error, attempt_index: u32, tool_name: Option<&str>) -> bool {
+        if let Some(vtcode_error) = error.downcast_ref::<VtCodeError>() {
+            return decision_for_category_with_tool(self, vtcode_error.category, attempt_index, None, tool_name)
+                .retryable;
+        }
+        if let Some(llm_error) = error.downcast_ref::<LLMError>() {
+            return decision_for_category_with_tool(self, ErrorCategory::from(llm_error), attempt_index, None, None)
+                .retryable;
+        }
+        if let Some(tool_error) = error.downcast_ref::<UnifiedToolError>() {
+            let tool_name = tool_name.or_else(|| {
+                tool_error
+                    .debug_context
+                    .as_ref()
+                    .map(|ctx| ctx.tool_name.as_str())
+                    .filter(|tool_name| !tool_name.is_empty())
+            });
+            return decision_for_category_with_tool(self, tool_error.category(), attempt_index, None, tool_name)
+                .retryable;
+        }
+
+        let category = vtcode_commons::classify_anyhow_error(error);
+        decision_for_category_with_tool(self, category, attempt_index, None, tool_name).retryable
     }
 
     fn decision_for_llm_error(&self, error: &LLMError, attempt_index: u32) -> RetryDecision {
@@ -452,6 +490,14 @@ pub fn decision_for_anyhow_error(
 ) -> RetryDecision {
     let policy = policy_override.unwrap_or(&RetryPolicy::DEFAULT);
     policy.decision_for_anyhow(error, attempt_index, tool_name)
+}
+
+/// Report whether an `anyhow::Error` is retryable under the default policy.
+///
+/// This predicate never reads the wall clock: retry eligibility depends only on
+/// the typed error category, so a provider `Retry-After` date cannot change it.
+pub fn is_retryable_anyhow_error(error: &anyhow::Error) -> bool {
+    RetryPolicy::DEFAULT.is_retryable_anyhow(error, 0, None)
 }
 
 #[cfg(test)]

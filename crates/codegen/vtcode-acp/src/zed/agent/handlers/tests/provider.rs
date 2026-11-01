@@ -2,6 +2,21 @@
 use super::*;
 use crate::zed::types::SessionCancellation;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
+use rstest::rstest;
+
+/// Runs an async body under a capturing subscriber and returns the joined trace.
+fn capture_trace(body: impl Future<Output = ()>) -> String {
+    let capture = TraceCapture::default();
+    let subscriber = Registry::default().with(capture.clone());
+    tracing::subscriber::with_default(subscriber, || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime should build")
+            .block_on(body);
+    });
+    capture.0.lock().expect("trace capture lock").join("\n")
+}
 
 #[test]
 fn stream_poll_runs_inside_safe_attempt_span() {
@@ -39,6 +54,100 @@ fn stream_poll_runs_inside_safe_attempt_span() {
     assert!(!captured.contains("prompt"));
     assert!(!captured.contains("api_key"));
     assert!(!captured.contains("/home/"));
+}
+
+/// One completion path of [`cancellable_backoff`] and the span fields it must record.
+#[derive(Clone, Copy)]
+enum RetryWaitCase {
+    Elapsed {
+        delay: Duration,
+        expected_delay_ms: u64,
+    },
+    Cancelled {
+        delay: Duration,
+        cancel_after: Duration,
+        expected_delay_ms: u64,
+    },
+}
+
+impl RetryWaitCase {
+    const fn expected_outcome(self) -> &'static str {
+        match self {
+            Self::Elapsed { .. } => "elapsed",
+            Self::Cancelled { .. } => "cancelled",
+        }
+    }
+
+    const fn expected_delay_ms(self) -> u64 {
+        match self {
+            Self::Elapsed { expected_delay_ms, .. } | Self::Cancelled { expected_delay_ms, .. } => expected_delay_ms,
+        }
+    }
+}
+
+#[rstest]
+#[case::elapsed(RetryWaitCase::Elapsed { delay: Duration::from_millis(1), expected_delay_ms: 1 })]
+#[case::cancelled(RetryWaitCase::Cancelled {
+    delay: Duration::from_secs(60),
+    cancel_after: Duration::from_millis(1),
+    expected_delay_ms: 60_000,
+})]
+fn cancellable_backoff_records_retry_wait_span(#[case] case: RetryWaitCase) {
+    let captured = capture_trace(async {
+        let cancellation = SessionCancellation::default();
+        match case {
+            RetryWaitCase::Elapsed { delay, .. } => {
+                let result = cancellable_backoff(delay, &cancellation).await;
+                assert!(result.is_ok(), "an uncancelled retry wait should elapse");
+            }
+            RetryWaitCase::Cancelled { delay, cancel_after, .. } => {
+                let cancel = async {
+                    tokio::time::sleep(cancel_after).await;
+                    cancellation.cancel();
+                };
+                let (result, ()) = tokio::join!(cancellable_backoff(delay, &cancellation), cancel);
+                assert!(matches!(result, Err(ProviderCallError::Cancelled)));
+            }
+        }
+    });
+
+    assert!(captured.contains("span=acp_retry_wait"));
+    assert!(captured.contains(&format!("retry_delay_ms={}", case.expected_delay_ms())));
+    assert!(captured.contains(&format!("outcome={:?}", case.expected_outcome())));
+}
+
+#[test]
+fn buffered_attempt_span_uses_bounded_provider_class() {
+    let capture = TraceCapture::default();
+    let subscriber = Registry::default().with(capture.clone());
+    tracing::subscriber::with_default(subscriber, || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime should build")
+            .block_on(async {
+                let provider = FlakyProvider {
+                    attempts: AtomicUsize::new(0),
+                    network_failures: 1,
+                    invalid_request: false,
+                };
+                let response = retry_once(&provider, &retry_runtime())
+                    .await
+                    .expect("transient request should recover");
+                assert_eq!(response.content.as_deref(), Some("recovered"));
+            });
+    });
+
+    let captured = capture.0.lock().expect("trace capture lock").join("\n");
+    let span_line = captured
+        .lines()
+        .find(|line| line.starts_with("span=acp_provider_generate"))
+        .expect("the provider generate span should be captured");
+    assert!(span_line.contains("provider_class=\"custom\""));
+    assert!(
+        !span_line.contains("provider=\"retry-test\""),
+        "attempt spans must not record the raw provider name"
+    );
 }
 
 #[test]

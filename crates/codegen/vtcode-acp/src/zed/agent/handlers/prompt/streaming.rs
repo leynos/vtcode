@@ -279,7 +279,7 @@ fn stream_attempt_span(provider_runtime: &ProviderRequestRuntime) -> Span {
     tracing::info_span!(
         "acp_provider_stream_attempt",
         operation = "provider_stream_attempt",
-        provider = provider_runtime.provider_name(),
+        provider_class = provider_runtime.provider_class().as_str(),
         outcome = tracing::field::Empty,
         elapsed_ms = tracing::field::Empty,
     )
@@ -411,4 +411,33 @@ async fn refresh_stream_tool_state(turn: &mut PromptExecution) -> Result<(), Sdk
         })?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::zed::agent::handlers::tests::provider_runtime_fixtures::{TraceCapture, retry_runtime};
+    use tracing_subscriber::Registry;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    #[test]
+    fn stream_attempt_span_uses_bounded_provider_class() {
+        let capture = TraceCapture::default();
+        let subscriber = Registry::default().with(capture.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            let _span = stream_attempt_span(&retry_runtime());
+        });
+
+        let captured = capture.0.lock().expect("trace capture lock").join("\n");
+        let span_line = captured
+            .lines()
+            .find(|line| line.starts_with("span=acp_provider_stream_attempt"))
+            .expect("the stream attempt span should be captured");
+        assert!(span_line.contains("operation=\"provider_stream_attempt\""));
+        assert!(span_line.contains("provider_class=\"custom\""));
+        assert!(
+            !span_line.contains("provider=\"retry-test\""),
+            "stream attempt spans must not record the raw provider name"
+        );
+    }
 }

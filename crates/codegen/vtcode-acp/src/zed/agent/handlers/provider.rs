@@ -68,10 +68,17 @@ pub(super) async fn cancellable_backoff(
     delay: Duration,
     cancellation: &SessionCancellation,
 ) -> Result<(), ProviderCallError> {
-    tokio::select! {
-        () = cancellation.cancelled() => Err(ProviderCallError::Cancelled),
-        () = sleep_until_optional(Instant::now().checked_add(delay)) => Ok(()),
-    }
+    let retry_delay_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX);
+    let span = tracing::info_span!("acp_retry_wait", retry_delay_ms = retry_delay_ms, outcome = tracing::field::Empty);
+    let wait = async {
+        tokio::select! {
+            () = cancellation.cancelled() => Err(ProviderCallError::Cancelled),
+            () = sleep_until_optional(Instant::now().checked_add(delay)) => Ok(()),
+        }
+    };
+    let result = wait.instrument(span.clone()).await;
+    let _ = span.record("outcome", if result.is_ok() { "elapsed" } else { "cancelled" });
+    result
 }
 
 pub(super) async fn sleep_until_optional(deadline: Option<Instant>) {
@@ -321,7 +328,7 @@ async fn generate_once(
         )),
         result = provider.generate(request.clone()).instrument(tracing::info_span!(
             "acp_provider_generate",
-            provider = runtime.provider_name()
+            provider_class = runtime.provider_class().as_str()
         )) => match result {
             Ok(response) => GenerateOutcome::Completed(Box::new(response)),
             Err(error) => GenerateOutcome::Failed(error),

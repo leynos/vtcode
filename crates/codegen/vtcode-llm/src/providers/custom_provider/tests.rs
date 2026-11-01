@@ -7,6 +7,8 @@ mod command_auth;
 mod openai_streaming;
 #[path = "tests/profiles.rs"]
 mod profiles;
+#[path = "tests/rate_limit_headers.rs"]
+mod rate_limit_headers;
 
 #[path = "tests/error_metadata.rs"]
 mod error_metadata;
