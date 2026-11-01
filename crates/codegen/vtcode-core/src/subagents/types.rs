@@ -567,6 +567,21 @@ impl BackgroundRecord {
     }
 }
 
+impl PersistedBackgroundRecord {
+    /// Rewrites the persisted id into its canonical owner-scoped form.
+    ///
+    /// State written before ids were owner-scoped stored the
+    /// workspace-global id for records that carry an owner. Canonicalizing on
+    /// load keeps a relaunch looking at the same record instead of creating a
+    /// second one, and keeps every id derivation identical to the launch path.
+    pub(crate) fn canonicalize_id(&mut self) {
+        self.id = super::background::background_record_id_for_owner(
+            self.agent_name.as_str(),
+            self.owner_session_id.as_deref(),
+        );
+    }
+}
+
 // ─── Controller State ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Default)]

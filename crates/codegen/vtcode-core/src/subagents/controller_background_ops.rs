@@ -242,7 +242,8 @@ impl SubagentController {
             .configured_default_background_agent()
             .ok_or_else(|| anyhow!("No default background subagent is configured"))?
             .to_string();
-        let target_id = background_record_id(agent_name.as_str());
+        let target_id =
+            background_record_id_for_owner(agent_name.as_str(), self.background_owner_session_id.as_deref());
         let should_stop = {
             let state = self.state.read().await;
             state
@@ -730,7 +731,7 @@ impl SubagentController {
             .reasoning_effort
             .clone()
             .or_else(|| spec.reasoning_effort.as_ref().map(|e| e.as_str().to_string()));
-        let record_id = background_record_id(spec.name.as_str());
+        let record_id = background_record_id_for_owner(spec.name.as_str(), self.background_owner_session_id.as_deref());
 
         Ok(PreparedBackgroundSubprocess {
             agent_name: spec.name.to_string(),
@@ -800,10 +801,9 @@ impl SubagentController {
             .resolve_requested_spec(Some(request.agent_name.as_str()))
             .await
             .with_context(|| format!("Failed to resolve background subagent '{}'", request.agent_name))?;
-        let record_id = request
-            .stable_id
-            .clone()
-            .unwrap_or_else(|| background_record_id(request.agent_name.as_str()));
+        let record_id = request.stable_id.clone().unwrap_or_else(|| {
+            background_record_id_for_owner(request.agent_name.as_str(), self.background_owner_session_id.as_deref())
+        });
         let previous_record = {
             let state = self.state.read().await;
             state.background_children.get(&record_id).cloned()
@@ -886,9 +886,14 @@ impl SubagentController {
                     .map(|effort| effort.as_str().to_string())
             });
 
+        // An owner-scoped controller tags its own records so sibling sessions
+        // in one workspace cannot adopt or overwrite them. An unscoped
+        // controller manages the whole workspace ledger, so the records it
+        // creates are workspace-global and ownerless; giving them a per-run
+        // owner would change their canonical id on every restart.
         let owner_session_id = match previous_record {
             Some(record) => record.owner_session_id.clone(),
-            None => Some(identity.parent_session_id.clone()),
+            None => self.background_owner_session_id.clone(),
         };
         Ok(BackgroundRunPlan {
             owner_session_id,
