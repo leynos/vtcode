@@ -296,7 +296,7 @@ management requests return only tasks owned by the requested ACP session.
     missing with `desired_enabled: false` and shows the cached projection
     reports `Running` while the refreshed one reports `Stopped` without a
     respawn.
-- [ ] (2026-11-01) EP-M5 sixth review repair: close the CodeRabbit findings on
+- [x] (2026-11-01) EP-M5 sixth review repair: close the CodeRabbit findings on
   `0094f4928` and the regression that repair introduced.
   - **Settled cancel kept restoring.** `begin_background_cancellation` returned
     early for an already-terminal record without clearing `desired_enabled`, and
@@ -337,6 +337,26 @@ management requests return only tasks owned by the requested ACP session.
     (projection and ordering properties), `forwarder_duplex_tests.rs` (duplex
     transport ordering) and `queue_accounting_tests.rs` (accounting invariants),
     with the shared fixtures made `pub(super)` in `projection_tests`.
+  - Committed as `547a601f2`, then amended to `3f8f65c67` after
+    `make check-fmt` reported `mdtablefix` re-wrapping in
+    `docs/acp/ACP_INTEGRATION.md`, `docs/config/config.md` and
+    `docs/development/model-profiles.md`. That failed run is
+    `/tmp/check-fmt-pr14-r12-20261101T060516Z.out`; `make fmt` applied the
+    re-wrap and the amended candidate passes.
+  - All eight deterministic gates ran sequentially on `3f8f65c67`:
+    `check-fmt` 0 (`/tmp/check-fmt-pr14-r13-20261101T060914Z.out`), `lint` 0
+    (`/tmp/lint-pr14-r13-20261101T064128Z.out`; the first attempt at
+    `/tmp/lint-pr14-r13-20261101T061010Z.out` was stopped by the harness time
+    limit while queued behind compiler admission and restarted once),
+    `typecheck` 0 (`/tmp/typecheck-pr14-r13-20261101T065452Z.out`), `test` 0
+    with 10,528 passed and 23 skipped
+    (`/tmp/test-pr14-r13-20261101T071432Z.out`), `build` 0
+    (`/tmp/build-pr14-r13-20261101T073441Z.out`), `test-harness` 0
+    (`/tmp/test-harness-pr14-r13-20261101T074705Z.out`), `check-ast-grep` 0 by
+    the Makefile's optional-skip branch because the host binary is not
+    executable (`/tmp/check-ast-grep-pr14-r13-20261101T075855Z.out`), and
+    `advisory` 0 in warn mode
+    (`/tmp/advisory-pr14-r13-20261101T080037Z.out`). No ast-grep scan ran.
 
 ## Surprises & discoveries
 
