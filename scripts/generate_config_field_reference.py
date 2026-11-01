@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -279,6 +280,18 @@ def _is_array_schema(node: dict[str, Any]) -> bool:
     return node.get("type") == "array" or "items" in node
 
 
+def _prefer_non_empty(primary: str, fallback: str) -> str:
+    if not primary and fallback:
+        return fallback
+    return primary
+
+
+def _prefer_known_type_name(primary: str, fallback: str) -> str:
+    if primary == "unknown" and fallback != "unknown":
+        return fallback
+    return primary
+
+
 class _FieldCollector:
     def __init__(self, root_schema: dict[str, Any]) -> None:
         self.root_schema = root_schema
@@ -296,21 +309,12 @@ class _FieldCollector:
             self.field_map[entry.path] = entry
             return
 
-        description = existing.description
-        if not description and entry.description:
-            description = entry.description
-        default = existing.default
-        if default == "" and entry.default:
-            default = entry.default
-        type_name = existing.type_name
-        if type_name == "unknown" and entry.type_name != "unknown":
-            type_name = entry.type_name
         self.field_map[entry.path] = FieldEntry(
             path=existing.path,
-            type_name=type_name,
+            type_name=_prefer_known_type_name(existing.type_name, entry.type_name),
             required=existing.required or entry.required,
-            default=default,
-            description=description,
+            default=_prefer_non_empty(existing.default, entry.default),
+            description=_prefer_non_empty(existing.description, entry.description),
         )
 
     def _build_field_entry(
@@ -467,6 +471,20 @@ def escape_cell(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", " ").strip()
 
 
+def code_span(value: str) -> str:
+    """Render a table cell as an inline code span that survives backticks and pipes.
+
+    A value containing backticks needs a longer fence than any backtick run
+    inside it, otherwise Markdown closes the span early and leaves the rest of
+    the value as literal text.
+    """
+    escaped = escape_cell(value)
+    longest_run = max((len(run) for run in re.findall(r"`+", escaped)), default=0)
+    fence = "`" * (longest_run + 1)
+    padding = " " if escaped.startswith("`") or escaped.endswith("`") else ""
+    return f"{fence}{padding}{escaped}{padding}{fence}"
+
+
 def render_markdown(entries: list[FieldEntry]) -> str:
     lines = [
         "# Config Field Reference",
@@ -488,8 +506,8 @@ def render_markdown(entries: list[FieldEntry]) -> str:
         default = entry.default or "-"
         description = entry.description or "-"
         lines.append(
-            f"| `{escape_cell(entry.path)}` | `{escape_cell(entry.type_name)}` | "
-            f"{required} | `{escape_cell(default)}` | {escape_cell(description)} |"
+            f"| {code_span(entry.path)} | {code_span(entry.type_name)} | "
+            f"{required} | {code_span(default)} | {escape_cell(description)} |"
         )
     lines.append("")
     return "\n".join(lines)
