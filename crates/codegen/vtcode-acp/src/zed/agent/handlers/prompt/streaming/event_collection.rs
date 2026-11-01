@@ -47,6 +47,7 @@ enum StreamPollOutcome {
     Item(Option<Result<LLMStreamEvent, LLMError>>),
 }
 
+/// Poll the stream until an event, cancellation, or deadline wins.
 async fn poll_next_stream_event(stream: &mut LLMStream, request: &StreamCollectionRequest<'_>) -> StreamPollOutcome {
     let next_deadline = request.deadlines.next();
     tokio::select! {
@@ -56,6 +57,7 @@ async fn poll_next_stream_event(stream: &mut LLMStream, request: &StreamCollecti
     }
 }
 
+/// Record the failed attempt and classify it for retry or terminal failure.
 fn classify_stream_poll_failure(request: &mut StreamCollectionRequest<'_>, error: LLMError) -> StreamAttemptOutcome {
     record_stream_attempt(request.span, request.started_at, "failure");
     classify_stream_failure(StreamFailureRequest {
@@ -67,6 +69,7 @@ fn classify_stream_poll_failure(request: &mut StreamCollectionRequest<'_>, error
     })
 }
 
+/// Apply one stream event, returning an outcome when the attempt finishes.
 async fn process_stream_event(
     event: LLMStreamEvent,
     request: &mut StreamCollectionRequest<'_>,
@@ -103,6 +106,7 @@ async fn process_stream_event(
     }
 }
 
+/// Record completion, publish usage, and emit any missing final output.
 async fn complete_stream_response(
     request: &mut StreamCollectionRequest<'_>,
     response: LLMResponse,
@@ -124,6 +128,7 @@ async fn complete_stream_response(
     StreamAttemptOutcome::Completed(Box::new(response))
 }
 
+/// Observe final content and reasoning as output for telemetry.
 fn observe_response_output(request: &mut StreamCollectionRequest<'_>, response: &LLMResponse) {
     if let Some(content) = response.content.as_deref() {
         request
@@ -159,6 +164,7 @@ pub(super) fn classify_stream_failure(request: StreamFailureRequest<'_>) -> Stre
     }
 }
 
+/// Append a streamed text or reasoning delta and forward it to the client.
 async fn append_stream_delta(request: StreamDeltaRequest<'_>) {
     let StreamDeltaRequest {
         turn,
@@ -185,6 +191,7 @@ async fn append_stream_delta(request: StreamDeltaRequest<'_>) {
     drop(turn.agent.send_update(&turn.args.session_id, update).await);
 }
 
+/// Emit content or reasoning the stream did not deliver as deltas.
 async fn emit_response_fallback(turn: &PromptExecution, output: &mut ProviderOutput, response: &LLMResponse) {
     if output.assistant_message.is_empty()
         && let Some(content) = response.content.as_deref().filter(|content| !content.is_empty())

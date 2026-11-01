@@ -89,6 +89,7 @@ mod tests {
     use super::*;
     use vtcode_core::llm::provider::LLMErrorMetadata;
 
+    /// Assert retry metadata is reported without inventing a quota window.
     #[test]
     fn rate_limit_notice_preserves_retry_after_without_fabricating_a_window() {
         let error = LLMError::RateLimit {
@@ -116,6 +117,7 @@ mod tests {
         assert!(value["_meta"]["lody"].get("rateLimits").is_none());
     }
 
+    /// Assert a rate limit without metadata still publishes a notice.
     #[test]
     fn rate_limit_without_metadata_still_publishes_a_notice() {
         let error = LLMError::RateLimit { metadata: None };
@@ -130,6 +132,7 @@ mod tests {
         assert!(message.contains("no further automatic retry is scheduled"));
     }
 
+    /// Assert a missing HTTP status is not reported as a 429.
     #[test]
     fn rate_limit_without_status_does_not_claim_http_429() {
         let error = LLMError::RateLimit {
@@ -151,6 +154,7 @@ mod tests {
         assert!(!message.contains("Retry-After"));
     }
 
+    /// Assert non-rate-limit errors publish no notice.
     #[test]
     fn non_rate_limit_errors_do_not_emit_rate_limit_notices() {
         let error = LLMError::Network {
@@ -160,6 +164,7 @@ mod tests {
         assert!(rate_limit_notice_update("baseten", &error, None).is_none());
     }
 
+    /// Assert a metadata status of 429 is reported even for an unclassified error.
     #[test]
     fn metadata_status_429_is_reported_even_when_error_is_not_reclassified() {
         let error = LLMError::Provider {

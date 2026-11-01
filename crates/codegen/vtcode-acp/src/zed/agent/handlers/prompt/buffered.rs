@@ -1,4 +1,5 @@
 //! Handles complete provider responses, including reasoning updates and buffered tool calls.
+/// Project response reasoning into an ACP thought chunk when it is non-empty.
 pub(in crate::zed::agent::handlers) fn response_reasoning_update(response: &LLMResponse) -> Option<acp::SessionUpdate> {
     response
         .reasoning
@@ -7,6 +8,7 @@ pub(in crate::zed::agent::handlers) fn response_reasoning_update(response: &LLMR
         .map(|reasoning| acp::SessionUpdate::AgentThoughtChunk(text_chunk(reasoning.to_string())))
 }
 
+/// Send the response's reasoning to the ACP client, logging failures.
 async fn emit_response_reasoning(agent: &ZedAgent, session_id: &acp::SessionId, response: &LLMResponse) {
     let has_tool_calls = response.tool_calls.as_ref().is_some_and(|calls| !calls.is_empty());
     let Some(update) = response_reasoning_update(response) else {
@@ -59,6 +61,7 @@ enum BufferedTurnStep {
     Finished(ProviderTurnOutcome),
 }
 
+/// Drive a buffered provider turn through its tool rounds.
 pub(super) async fn run_buffered_provider_turn(turn: &mut PromptExecution) -> Result<ProviderTurnOutcome, SdkError> {
     let mut output = ProviderOutput::take_from(turn);
     let mut tool_loop_count = 0usize;
@@ -71,6 +74,7 @@ pub(super) async fn run_buffered_provider_turn(turn: &mut PromptExecution) -> Re
     }
 }
 
+/// Run one buffered generation and any tool calls it requests.
 async fn buffered_turn_step(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,
@@ -102,6 +106,7 @@ async fn buffered_turn_step(
     }
 }
 
+/// Generate one buffered response, honouring cancellation.
 async fn next_buffered_generation(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,
@@ -141,10 +146,12 @@ async fn next_buffered_generation(
     Ok(BufferedGenerationStep::Ready(Box::new(response)))
 }
 
+/// Move buffered output back into the turn.
 fn store_buffered_output(turn: &mut PromptExecution, output: &mut ProviderOutput) {
     std::mem::replace(output, ProviderOutput::empty()).store_in(turn);
 }
 
+/// Generate a response with retries and classify the outcome.
 async fn generate_buffered_response(turn: &mut PromptExecution) -> Result<BufferedGenerationOutcome, SdkError> {
     let request = prepare_buffered_request(turn).await?;
     let notice_sink = RateLimitNoticeSink::new(&turn.agent, &turn.args.session_id);
@@ -163,6 +170,7 @@ async fn generate_buffered_response(turn: &mut PromptExecution) -> Result<Buffer
     }
 }
 
+/// Compact the session if needed, then build the buffered request.
 async fn prepare_buffered_request(turn: &mut PromptExecution) -> Result<LLMRequest, SdkError> {
     if turn
         .agent
@@ -191,6 +199,7 @@ async fn prepare_buffered_request(turn: &mut PromptExecution) -> Result<LLMReque
     })
 }
 
+/// Execute any tool calls in a buffered response.
 async fn execute_buffered_tool_calls(
     turn: &mut PromptExecution,
     response: &LLMResponse,
@@ -227,6 +236,7 @@ async fn execute_buffered_tool_calls(
     }
 }
 
+/// Reload session messages and re-resolve tool availability.
 pub(super) fn refresh_resolved_tool_state(turn: &mut PromptExecution) -> Result<(), SdkError> {
     turn.tool_state.messages = turn
         .agent
@@ -240,6 +250,7 @@ pub(super) fn refresh_resolved_tool_state(turn: &mut PromptExecution) -> Result<
     )
 }
 
+/// Record content, run the stop hook, and decide whether the turn continues.
 async fn process_buffered_response(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,

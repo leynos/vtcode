@@ -7,6 +7,7 @@ pub(super) static PROMPT_PROVIDER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_
 pub(super) struct PromptProviderFactoryGuard;
 
 impl PromptProviderFactoryGuard {
+    /// Install the factory override for the named provider until dropped.
     pub(super) fn install(provider_name: &str, factory: Arc<PromptProviderFactory>) -> Self {
         *PROMPT_PROVIDER_OVERRIDE.lock().expect("prompt provider factory lock") =
             Some(PromptProviderOverride { provider_name: provider_name.to_string(), factory });
@@ -15,6 +16,7 @@ impl PromptProviderFactoryGuard {
 }
 
 impl Drop for PromptProviderFactoryGuard {
+    /// Remove the installed provider factory override.
     fn drop(&mut self) {
         *PROMPT_PROVIDER_OVERRIDE.lock().expect("prompt provider factory lock") = None;
     }
@@ -44,6 +46,7 @@ pub(super) struct PendingCompactionProvider {
 }
 
 impl PendingCompactionProvider {
+    /// Create a provider that blocks until its compaction request starts.
     pub(super) fn new(started: Arc<tokio::sync::Notify>) -> Self {
         Self { started }
     }
@@ -56,6 +59,7 @@ pub(super) struct FailingCompactionProvider {
 }
 
 impl FailingCompactionProvider {
+    /// Create a provider that fails after signalling its compaction request.
     pub(super) fn new(started: Arc<tokio::sync::Notify>) -> Self {
         Self { started }
     }
@@ -70,26 +74,32 @@ pub(super) struct PartialThenRateLimitProvider;
 
 #[async_trait]
 impl LLMProvider for StreamToolThenAnswerProvider {
+    /// Return the provider name used by prompt-routing tests.
     fn name(&self) -> &str {
         "wire-test"
     }
 
+    /// Return the models this fixture serves.
     fn supported_models(&self) -> Vec<String> {
         vec!["wire-model".to_string()]
     }
 
+    /// Report that this fixture streams responses.
     fn supports_streaming(&self) -> bool {
         true
     }
 
+    /// Report that this fixture supports tool calls.
     fn supports_tools(&self, _model: &str) -> bool {
         true
     }
 
+    /// Accept every request.
     fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
         Ok(())
     }
 
+    /// Emit a tool call first, then a final answer on the next attempt.
     async fn stream(&self, request: LLMRequest) -> Result<LLMStream, LLMError> {
         self.requests.lock().expect("stream requests").push(request);
         let response_index = self.calls.fetch_add(1, Ordering::SeqCst);
@@ -138,6 +148,7 @@ impl LLMProvider for StreamToolThenAnswerProvider {
         Ok(Box::pin(futures::stream::iter(events)))
     }
 
+    /// Reject buffered generation, which this fixture does not exercise.
     async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
         Err(LLMError::InvalidRequest {
             message: "tool-enabled ACP turn used buffered generation".to_string(),
@@ -148,26 +159,32 @@ impl LLMProvider for StreamToolThenAnswerProvider {
 
 #[async_trait]
 impl LLMProvider for CompactThenAnswerProvider {
+    /// Return the provider name used by prompt-routing tests.
     fn name(&self) -> &str {
         "wire-test"
     }
 
+    /// Report the configured context size that triggers compaction.
     fn effective_context_size(&self, _model: &str) -> usize {
         self.context_size
     }
 
+    /// Return the models this fixture serves.
     fn supported_models(&self) -> Vec<String> {
         vec!["wire-model".to_string()]
     }
 
+    /// Report that this fixture streams responses.
     fn supports_streaming(&self) -> bool {
         true
     }
 
+    /// Accept every request.
     fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
         Ok(())
     }
 
+    /// Stream a canned answer after compaction.
     async fn stream(&self, request: LLMRequest) -> Result<LLMStream, LLMError> {
         self.requests.lock().expect("compaction provider requests").push(request);
         let response = LLMResponse {
@@ -182,6 +199,7 @@ impl LLMProvider for CompactThenAnswerProvider {
         ])))
     }
 
+    /// Return the configured compaction summary and record the request.
     async fn generate(&self, request: LLMRequest) -> Result<LLMResponse, LLMError> {
         self.requests.lock().expect("compaction provider requests").push(request);
         Ok(LLMResponse::new("wire-model", self.summary.clone()))
@@ -190,22 +208,27 @@ impl LLMProvider for CompactThenAnswerProvider {
 
 #[async_trait]
 impl LLMProvider for PendingCompactionProvider {
+    /// Return the provider name used by prompt-routing tests.
     fn name(&self) -> &str {
         "wire-test"
     }
 
+    /// Report a small context size so compaction is attempted.
     fn effective_context_size(&self, _model: &str) -> usize {
         8_192
     }
 
+    /// Return the models this fixture serves.
     fn supported_models(&self) -> Vec<String> {
         vec!["wire-model".to_string()]
     }
 
+    /// Accept every request.
     fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
         Ok(())
     }
 
+    /// Block after signalling that the compaction request started.
     async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
         self.started.notify_one();
         std::future::pending().await
@@ -214,22 +237,27 @@ impl LLMProvider for PendingCompactionProvider {
 
 #[async_trait]
 impl LLMProvider for FailingCompactionProvider {
+    /// Return the provider name used by prompt-routing tests.
     fn name(&self) -> &str {
         "wire-test"
     }
 
+    /// Report a small context size so compaction is attempted.
     fn effective_context_size(&self, _model: &str) -> usize {
         8_192
     }
 
+    /// Return the models this fixture serves.
     fn supported_models(&self) -> Vec<String> {
         vec!["wire-model".to_string()]
     }
 
+    /// Accept every request.
     fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
         Ok(())
     }
 
+    /// Fail after signalling that the compaction request started.
     async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
         self.started.notify_one();
         Err(LLMError::Provider {
@@ -241,22 +269,27 @@ impl LLMProvider for FailingCompactionProvider {
 
 #[async_trait]
 impl LLMProvider for PartialThenFailProvider {
+    /// Return the provider name used by prompt-routing tests.
     fn name(&self) -> &str {
         "wire-test"
     }
 
+    /// Return the models this fixture serves.
     fn supported_models(&self) -> Vec<String> {
         vec!["wire-model".to_string()]
     }
 
+    /// Report that this fixture streams responses.
     fn supports_streaming(&self) -> bool {
         true
     }
 
+    /// Accept every request.
     fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
         Ok(())
     }
 
+    /// Emit one token and then a terminal network failure.
     async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
         Ok(Box::pin(futures::stream::iter(vec![
             Ok(LLMStreamEvent::Token { delta: "partial answer".to_string() }),
@@ -267,6 +300,7 @@ impl LLMProvider for PartialThenFailProvider {
         ])))
     }
 
+    /// Panic, because this fixture is only used for streaming.
     async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
         panic!("partial-stream test must not use buffered generation")
     }
@@ -274,22 +308,27 @@ impl LLMProvider for PartialThenFailProvider {
 
 #[async_trait]
 impl LLMProvider for PartialThenRateLimitProvider {
+    /// Return the provider name used by prompt-routing tests.
     fn name(&self) -> &str {
         "wire-test"
     }
 
+    /// Return the models this fixture serves.
     fn supported_models(&self) -> Vec<String> {
         vec!["wire-model".to_string()]
     }
 
+    /// Report that this fixture streams responses.
     fn supports_streaming(&self) -> bool {
         true
     }
 
+    /// Accept every request.
     fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
         Ok(())
     }
 
+    /// Emit one token and then a provider rate-limit error.
     async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
         Ok(Box::pin(futures::stream::iter(vec![
             Ok(LLMStreamEvent::Token { delta: "partial answer".to_string() }),
@@ -307,6 +346,7 @@ impl LLMProvider for PartialThenRateLimitProvider {
         ])))
     }
 
+    /// Panic, because this fixture is only used for streaming.
     async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
         panic!("rate-limited stream test must not use buffered generation")
     }
@@ -320,6 +360,7 @@ pub(super) struct RetryableRateLimitThenAnswerProvider {
 }
 
 impl RetryableRateLimitThenAnswerProvider {
+    /// Create a provider that rate-limits once before answering.
     pub(super) fn new() -> Self {
         Self { calls: AtomicUsize::new(0) }
     }
@@ -327,22 +368,27 @@ impl RetryableRateLimitThenAnswerProvider {
 
 #[async_trait]
 impl LLMProvider for RetryableRateLimitThenAnswerProvider {
+    /// Return the provider name used by prompt-routing tests.
     fn name(&self) -> &str {
         "wire-test"
     }
 
+    /// Return the models this fixture serves.
     fn supported_models(&self) -> Vec<String> {
         vec!["wire-model".to_string()]
     }
 
+    /// Report that this fixture streams responses.
     fn supports_streaming(&self) -> bool {
         true
     }
 
+    /// Accept every request.
     fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
         Ok(())
     }
 
+    /// Fail the first attempt with a retryable 429, then emit the answer.
     async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             return Err(LLMError::RateLimit {
@@ -370,6 +416,7 @@ impl LLMProvider for RetryableRateLimitThenAnswerProvider {
         ])))
     }
 
+    /// Panic, because this fixture is only used for streaming.
     async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
         panic!("scheduled-retry stream test must not use buffered generation")
     }
@@ -377,26 +424,32 @@ impl LLMProvider for RetryableRateLimitThenAnswerProvider {
 
 #[async_trait]
 impl LLMProvider for FailThenSucceedProvider {
+    /// Return the provider name used by prompt-routing tests.
     fn name(&self) -> &str {
         "wire-test"
     }
 
+    /// Return the models this fixture serves.
     fn supported_models(&self) -> Vec<String> {
         vec!["wire-model".to_string()]
     }
 
+    /// Report that this fixture uses buffered generation.
     fn supports_streaming(&self) -> bool {
         false
     }
 
+    /// Report that this fixture does not support tools.
     fn supports_tools(&self, _model: &str) -> bool {
         false
     }
 
+    /// Accept every request.
     fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
         Ok(())
     }
 
+    /// Fail the first turn with ANSI-wrapped text, then answer.
     async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             Err(LLMError::InvalidRequest {
@@ -409,10 +462,12 @@ impl LLMProvider for FailThenSucceedProvider {
     }
 }
 
+/// Build a wire-test agent with default options.
 pub(super) async fn build_wire_test_agent(workspace: &std::path::Path) -> ZedAgent {
     build_wire_test_agent_with_options(workspace, None, None).await
 }
 
+/// Build a wire-test agent for the given workspace and options.
 pub(super) async fn build_wire_test_agent_with_options(
     workspace: &std::path::Path,
     vt_config: Option<&VTCodeConfig>,
@@ -475,6 +530,7 @@ pub(super) async fn build_wire_test_agent_with_options(
     .expect("build test ACP agent")
 }
 
+/// Create a session whose history exceeds the compaction threshold.
 pub(super) async fn large_compaction_session(agent: &ZedAgent, workspace: &std::path::Path) -> SessionHandle {
     let response = agent
         .new_session(NewSessionRequest::new(workspace))
@@ -498,6 +554,7 @@ pub(super) async fn large_compaction_session(agent: &ZedAgent, workspace: &std::
     session
 }
 
+/// Build a config that enables or disables compaction at a one-token threshold.
 pub(super) fn compaction_config(enabled: bool) -> VTCodeConfig {
     let mut config = VTCodeConfig::default();
     config.agent.harness.auto_compaction_enabled = enabled;

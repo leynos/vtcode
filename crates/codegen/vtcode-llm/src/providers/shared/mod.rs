@@ -23,18 +23,23 @@ pub(crate) fn parse_cached_prompt_tokens_from_usage(
         return None;
     }
 
-    let cached_prompt_tokens = usage_value
-        .get("input_tokens_details")
-        .and_then(|details| details.get("cached_tokens"))
-        .or_else(|| {
-            usage_value
-                .get("prompt_tokens_details")
-                .and_then(|details| details.get("cached_tokens"))
-        })
-        .or_else(|| usage_value.get("prompt_cache_hit_tokens"))
-        .or_else(|| usage_value.get("cached_tokens"))
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok());
+    // Convert every candidate before falling back. Providers can send an
+    // explicit `null` for one shape while reporting a count in another, and a
+    // null selected as a candidate would otherwise mask the real count.
+    let cached_prompt_tokens = [
+        usage_value
+            .get("input_tokens_details")
+            .and_then(|details| details.get("cached_tokens")),
+        usage_value
+            .get("prompt_tokens_details")
+            .and_then(|details| details.get("cached_tokens")),
+        usage_value.get("prompt_cache_hit_tokens"),
+        usage_value.get("cached_tokens"),
+    ]
+    .into_iter()
+    .flatten()
+    .find_map(Value::as_u64)
+    .and_then(|value| u32::try_from(value).ok());
 
     if let Some(cached_prompt_tokens) = cached_prompt_tokens {
         tracing::debug!(
@@ -61,16 +66,18 @@ pub(crate) fn parse_cache_write_tokens_from_usage(
         return None;
     }
 
-    let cache_write_tokens = usage_value
-        .get("input_tokens_details")
-        .and_then(|details| details.get("cache_write_tokens"))
-        .or_else(|| {
-            usage_value
-                .get("prompt_tokens_details")
-                .and_then(|details| details.get("cache_write_tokens"))
-        })
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok());
+    let cache_write_tokens = [
+        usage_value
+            .get("input_tokens_details")
+            .and_then(|details| details.get("cache_write_tokens")),
+        usage_value
+            .get("prompt_tokens_details")
+            .and_then(|details| details.get("cache_write_tokens")),
+    ]
+    .into_iter()
+    .flatten()
+    .find_map(Value::as_u64)
+    .and_then(|value| u32::try_from(value).ok());
 
     if let Some(cache_write_tokens) = cache_write_tokens {
         tracing::debug!(
@@ -1704,5 +1711,71 @@ mod tests {
         assert_eq!(usage2.cached_prompt_tokens, Some(30));
         assert_eq!(usage2.cache_creation_tokens, Some(70));
         assert_eq!(usage2.reasoning_output_tokens, Some(30));
+    }
+
+    #[test]
+    fn nested_null_cached_tokens_falls_back_to_a_reported_count() {
+        let usage = json!({
+            "prompt_tokens_details": {"cached_tokens": null},
+            "prompt_cache_hit_tokens": 42
+        });
+
+        assert_eq!(parse_cached_prompt_tokens_from_usage(&usage, true), Some(42));
+    }
+
+    #[test]
+    fn nested_null_cache_write_tokens_falls_back_to_a_reported_count() {
+        let usage = json!({
+            "input_tokens_details": {"cache_write_tokens": null},
+            "prompt_tokens_details": {"cache_write_tokens": 17}
+        });
+
+        assert_eq!(parse_cache_write_tokens_from_usage(&usage, true), Some(17));
+    }
+
+    #[test]
+    fn null_stream_usage_never_replaces_reported_counts() {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut aggregator = StreamAggregator::new("test-model".to_string());
+        let populated =
+            json!({"choices": [], "usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}});
+
+        handle_openai_compatible_chunk(&populated, &mut aggregator, &tx, &[], OpenAiDeltaOrder::ContentFirst, true);
+        handle_openai_compatible_chunk(
+            &json!({"choices": [], "usage": null}),
+            &mut aggregator,
+            &tx,
+            &[],
+            OpenAiDeltaOrder::ContentFirst,
+            true,
+        );
+
+        let usage = aggregator.finalize().usage.expect("reported usage should survive a null frame");
+        assert_eq!(usage.total_tokens, 10);
+    }
+
+    #[test]
+    fn stream_without_populated_usage_reports_unknown_usage() {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut aggregator = StreamAggregator::new("test-model".to_string());
+
+        handle_openai_compatible_chunk(
+            &json!({"choices": [], "usage": null}),
+            &mut aggregator,
+            &tx,
+            &[],
+            OpenAiDeltaOrder::ContentFirst,
+            true,
+        );
+
+        assert_eq!(aggregator.finalize().usage, None);
+    }
+
+    #[test]
+    fn cache_metrics_are_absent_when_disabled() {
+        let usage = json!({"prompt_tokens_details": {"cached_tokens": 9}});
+
+        assert_eq!(parse_cached_prompt_tokens_from_usage(&usage, false), None);
+        assert_eq!(parse_cache_write_tokens_from_usage(&usage, false), None);
     }
 }
