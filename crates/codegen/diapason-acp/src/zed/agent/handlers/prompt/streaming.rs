@@ -79,6 +79,7 @@ pub(super) async fn run_streaming_provider_turn(turn: &mut PromptExecution) -> R
     }
 }
 
+/// Store streamed output on the turn when the turn ends with a stop reason.
 fn preserve_streaming_output(
     turn: &mut PromptExecution,
     output: ProviderOutput,
@@ -168,6 +169,7 @@ async fn retry_stream_attempt(
     }
 }
 
+/// Build a streaming request from the turn's current state.
 fn streaming_request(turn: &PromptExecution) -> LLMRequest {
     LLMRequest {
         messages: Arc::new(turn.tool_state.messages.clone()),
@@ -180,6 +182,7 @@ fn streaming_request(turn: &PromptExecution) -> LLMRequest {
     }
 }
 
+/// Run one provider stream attempt under admission and deadline control.
 async fn collect_streaming_attempt(
     turn: &PromptExecution,
     request: &LLMRequest,
@@ -250,6 +253,7 @@ async fn collect_streaming_attempt(
     Ok(outcome)
 }
 
+/// Execute tool calls from a completed stream response, or finish the turn.
 async fn process_stream_response(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,
@@ -289,6 +293,7 @@ async fn process_stream_response(
     Ok(StreamResponseOutcome::StopReason(ZedAgent::stop_reason_from_finish(response.finish_reason)))
 }
 
+/// Refresh messages and tools after a streamed tool round, compacting if needed.
 async fn refresh_stream_tool_state(turn: &mut PromptExecution) -> Result<(), SdkError> {
     refresh_resolved_tool_state(turn)?;
     if turn

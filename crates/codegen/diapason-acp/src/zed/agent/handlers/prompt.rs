@@ -28,6 +28,7 @@ impl<'a> RateLimitNoticeSink<'a> {
 }
 
 impl AttemptFailureSink for RateLimitNoticeSink<'_> {
+    /// Publish the failed attempt as a rate-limit notice for this session.
     fn announce<'a>(
         &'a self,
         provider: &'a str,
@@ -54,8 +55,7 @@ mod streaming;
 
 pub(super) use buffered::response_reasoning_update;
 
-/// Persists the session checkpoint and transcript path, logging failures
-/// without failing the prompt.
+/// Persist the session archive and refresh its transcript path, logging failures.
 #[tracing::instrument(skip_all, fields(boundary = boundary))]
 pub(super) async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, boundary: &'static str) {
     if let Err(error) = agent.checkpoint_session(session).await {
@@ -81,6 +81,7 @@ pub(super) async fn persist_session_checkpoint(agent: &ZedAgent, session: &Sessi
     }
 }
 
+/// Emit the partial answer and return an incomplete-turn response.
 pub(super) async fn finish_failed_provider_turn(
     turn: &PromptExecution,
     error: &str,
@@ -102,6 +103,7 @@ pub(super) async fn finish_failed_provider_turn(
     Ok(response)
 }
 
+/// Store partial provider output on the turn, then finish it as failed.
 pub(super) async fn finish_failed_output(
     turn: &mut PromptExecution,
     output: ProviderOutput,
@@ -132,6 +134,7 @@ impl TurnGuard {
 }
 
 impl Drop for TurnGuard {
+    /// Release the thread's turn slot.
     fn drop(&mut self) {
         self.thread.finish_turn();
     }
@@ -147,6 +150,7 @@ pub(super) struct PromptToolState {
 }
 
 impl PromptToolState {
+    /// Create tool state for a prompt that has not resolved tools yet.
     pub(super) fn new(enabled_tools: Vec<SupportedTool>, primary_agent: String, provider_supports_tools: bool) -> Self {
         Self {
             enabled_tools,
@@ -158,6 +162,7 @@ impl PromptToolState {
         }
     }
 
+    /// Re-resolve tool availability and definitions from the session.
     pub(super) fn refresh_availability(
         &mut self,
         agent: &ZedAgent,
@@ -378,6 +383,7 @@ fn elapsed_ms(started: std::time::Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
+/// Build the provider and tool state that will drive the prompt.
 async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecution, SdkError> {
     let provider = provider_context::create_prompt_provider_context(&input)?;
     let tool_state = provider_context::initialize_prompt_tool_state(&input, &provider).await?;
@@ -416,6 +422,7 @@ pub(super) struct PromptProviderContext {
     supports_tools: bool,
 }
 
+/// Prepare input, accept the user prompt, and run the provider turn.
 pub(super) async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptResponse, SdkError> {
     let input = match input::prepare_prompt_input(agent, args).await? {
         PromptInputOutcome::Response(response) => return Ok(response),
@@ -428,6 +435,7 @@ pub(super) async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Res
 }
 
 impl PromptExecution {
+    /// Run the streaming or buffered provider turn and finish it.
     async fn run(mut self) -> Result<PromptResponse, SdkError> {
         let outcome = if self.allow_streaming {
             streaming::run_streaming_provider_turn(&mut self).await?
@@ -448,6 +456,7 @@ pub(super) struct ProviderOutput {
 }
 
 impl ProviderOutput {
+    /// Create an output buffer with no visible text.
     pub(super) fn empty() -> Self {
         Self {
             assistant_message: String::new(),
@@ -456,6 +465,7 @@ impl ProviderOutput {
         }
     }
 
+    /// Move the turn's buffered output into a new provider output.
     pub(super) fn take_from(turn: &mut PromptExecution) -> Self {
         let assistant_message = std::mem::take(&mut turn.assistant_message);
         let assistant_reasoning = std::mem::take(&mut turn.assistant_reasoning);
@@ -467,22 +477,26 @@ impl ProviderOutput {
         }
     }
 
+    /// Clear buffered text and discard any emission marker.
     pub(super) fn reset(&mut self) {
         self.assistant_message.clear();
         self.assistant_reasoning.clear();
         self.emitted_output = false;
     }
 
+    /// Copy this output back into the turn's buffers.
     pub(super) fn store_in(self, turn: &mut PromptExecution) {
         turn.assistant_message = self.assistant_message;
         turn.assistant_reasoning = self.assistant_reasoning;
     }
 }
 
+/// Build an internal error naming the session operation that failed.
 pub(super) fn session_access_error(session_id: &acp::SessionId, operation: &str, error: impl Display) -> SdkError {
     SdkError::internal_error().data(format!("Failed to {operation} for ACP session {session_id}: {error}"))
 }
 
+/// Append a message to the session, mapping failures to a session error.
 pub(super) fn push_session_message(
     agent: &ZedAgent,
     session: &SessionHandle,
@@ -500,6 +514,7 @@ pub(super) fn should_allow_streaming(supports_streaming: bool, _tools_allowed: b
     supports_streaming && !has_stop_hooks
 }
 
+/// Report whether the final chunk is emitted from the buffered path.
 pub(super) fn should_emit_buffered_final_chunk(allow_streaming: bool) -> bool {
     !allow_streaming
 }
@@ -567,3 +582,5 @@ async fn require_session_checkpoint(
     }
     Ok(())
 }
+// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/handlers/prompt.rs' for per-hunk detail, 'weave check' to verify your resolution
+// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/handlers/prompt.rs' for per-hunk detail, 'weave check' to verify your resolution
