@@ -7,9 +7,12 @@ use super::*;
 mod archive_test_support;
 mod client;
 mod lody_management;
+mod lody_nested_management;
+mod lody_support;
 mod prompt;
 mod provider;
 mod session;
+mod session_prompt_race;
 mod tools;
 
 use agent_client_protocol::{Channel, on_receive_notification};
