@@ -251,6 +251,19 @@ management requests return only tasks owned by the requested ACP session.
     passed with exit 0, and `check-ast-grep` took the Makefile's optional-skip
     branch because the host binary is not executable. The test gate ran 10,523
     tests with 10,523 passes and 23 skips. Evidence bundle recorded below.
+- [x] (2026-11-01) EP-M5 fourth review repair: close the qualifications from
+  Assessment-ID ACP-LODY-EP-20261101-4.
+  - The 256-round concurrency test is documented as a concurrent invariant
+    regression, not a deterministic reproduction of the removed window.
+  - `the_pre_repair_publish_then_count_order_fails_the_invariant` supplies the
+    deterministic negative control: it reproduces the old publish, receive,
+    dequeue and count order against the same tracker without involving the
+    scheduler and shows the invariant failing, so the concurrent test's
+    observation point is known to discriminate the old ordering.
+  - Committed as `80eb649ed51fa856609f7c766a7a29f332a24716` and pushed. The
+    release gates ran again on that commit and installation from the worktree
+    succeeded; the resolved binary is `/home/leynos/.cargo/bin/vtcode`
+    reporting `vtcode-core 0.156.1`. Evidence bundle recorded below.
 
 ## Surprises & discoveries
 
@@ -1020,6 +1033,34 @@ ADVISORY: /tmp/advisory-r8-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0. File-length, unwrap/expect, zen-allowlist and
          agent-legibility advisories completed in warn mode with 0
          unwrap/expect findings and 0 allowlist or legibility gaps.
+```
+
+EP-M5 fourth review repair release-gate and installation evidence (2026-11-01,
+candidate = `80eb649ed`; gates run sequentially, once each, by the scrutineer):
+
+```plaintext
+FORMAT:  /tmp/check-fmt-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0. rustfmt clean; mdtablefix left 365 files unchanged.
+LINT:    /tmp/lint-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0. Shell, policy, Clippy (-D warnings) and documentation checks.
+TYPE:    /tmp/typecheck-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0. sccache was not serving; the workspace check compiled uncached.
+TEST:    /tmp/test-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0. 10,524 tests run, 10,524 passed (1 leaky), 23 skipped.
+BUILD:   /tmp/build-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0.
+HARNESS: /tmp/test-harness-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0. 8 PTY, 10 pipe and 49 inline-event harness tests passed.
+AST-GREP: /tmp/check-ast-grep-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0 through the Makefile's optional-skip branch; the guard found
+         no executable ast-grep, so no scan ran.
+ADVISORY: /tmp/advisory-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0. Warn mode; 0 unwrap/expect findings, 0 allowlist or
+         legibility gaps.
+INSTALL: /tmp/install-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+         EXIT 0. cargo install --path . --locked --force replaced the user
+         binary from this worktree; /home/leynos/.cargo/bin/vtcode reports
+         vtcode-core 0.156.1.
 ```
 
 Baseten's documented streamed-usage request is:
