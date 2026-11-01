@@ -328,6 +328,16 @@ pub enum ToolError {
     #[error("Tool rejected: {0}")]
     Rejected(String),
 
+    /// A rejection whose message is the payload the model is meant to read.
+    ///
+    /// [`ToolError::Rejected`] means an approval policy refused the call and
+    /// the adapter reports it as such. This variant instead carries a
+    /// structured, model-facing envelope - an `apply_patch` version
+    /// precondition failure, for example - so the payload must reach the model
+    /// unclassified rather than being reported as an approval rejection.
+    #[error("Tool error: {0}")]
+    RespondToModel(String),
+
     #[error("Internal error: {0}")]
     Codex(#[from] anyhow::Error),
 

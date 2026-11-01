@@ -287,6 +287,7 @@ impl From<crate::tools::handlers::sandboxing::ToolError> for UnifiedToolError {
         use crate::tools::handlers::sandboxing::ToolError;
         match err {
             ToolError::Rejected(msg) => UnifiedToolError::new(UnifiedErrorKind::PermissionDenied, msg),
+            ToolError::RespondToModel(msg) => UnifiedToolError::new(UnifiedErrorKind::ArgumentValidation, msg),
             ToolError::Codex(e) => {
                 let kind = UnifiedErrorKind::from(vtcode_commons::classify_anyhow_error(&e));
                 UnifiedToolError::new(kind, e.to_string()).with_source(e)

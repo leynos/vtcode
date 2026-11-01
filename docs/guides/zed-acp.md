@@ -540,6 +540,30 @@ and `[history]` settings do not control ACP audit output.
   content so the client can show the proposed edit before execution. Paths
   supplied by tools are normalized against the trusted workspace so relative
   segments stay inside the project before the request reaches the client.
+- **File versions and patch preconditions** – `read_file` results include a
+  full-file `content_hash` in `sha256:<64 lower-hex>` form. A windowed read is
+  versioned only when the returned window matches the same window projected
+  from the on-disk bytes, so a response that differs within that window yields
+  no hash rather than certifying possibly unsaved content. The check covers the
+  returned window only; unsaved edits elsewhere in the buffer are not detected.
+  A model can carry that value into `apply_patch.expected_content_hash` when a
+  patch has exactly one pre-existing source file. A mismatch is write-free and
+  reports the expected and current hashes, bounded failed-anchor context with a
+  fixed `reason`, whether the patch can be safely rebased, and an explicit
+  reread or regeneration action. Rebaseability is assessed with strict, unique
+  anchors: a patch that would only apply fuzzily or to one of several identical
+  locations reports `false`. Omitting the precondition remains supported and
+  retains VT Code's internal external-mutation protection.
+- **Identical patch guard** – If the rendered post-patch bytes already equal the
+  initial bytes, the first identical request succeeds with an explanation and
+  the second succeeds with a warning not to retry it. The third is a
+  non-retryable structured tool error. Changing the parsed patch, canonical
+  path set, or file versions resets this streak; changing only the
+  `input`/`patch` alias, base64 wrapper, path order, line-ending envelope, or
+  the order of operations on disjoint files does not. Operations on the same
+  file keep their supplied order, which is part of the signature. These
+  structured results and errors are forwarded through ACP and retained in tool
+  execution history.
 - **Tool policy compatibility** – VT Code advertises the current core tool suite
   through ACP when the model supports function calling, including
   `exec_command`, `write_stdin`, `apply_patch`, and advanced `code_search`

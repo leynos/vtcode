@@ -1,3 +1,26 @@
+/// How a hunk's anchors are matched against the current file.
+///
+/// `Sequenced` is the historical apply path: exact, then whitespace-tolerant,
+/// then Unicode-normalised matching, with semantic fallback layered on top.
+/// `StrictUnique` is used only by rebase assessment and accepts a single
+/// byte-exact occurrence, so an ambiguous or merely similar anchor cannot be
+/// reported as safely rebasable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MatchPolicy {
+    Sequenced,
+    StrictUnique,
+}
+
+/// The outcome of a strict, uniqueness-checking anchor search.
+pub(crate) enum SeekOutcome {
+    /// Exactly one byte-exact occurrence was found at this index.
+    Unique(usize),
+    /// More than one byte-exact occurrence exists in the search window.
+    Ambiguous,
+    /// No byte-exact occurrence exists in the search window.
+    NotFound,
+}
+
 pub(crate) struct PatchContextMatcher<'a> {
     lines: &'a [String],
     /// Normalised form of every file line, computed once at construction so
@@ -79,6 +102,52 @@ impl<'a> PatchContextMatcher<'a> {
         }
 
         None
+    }
+
+    /// Search for a byte-exact occurrence in the same window [`Self::seek`] uses.
+    ///
+    /// Unlike `seek`, this performs no whitespace, Unicode, or semantic
+    /// tolerance and reports ambiguity instead of returning the first hit. It
+    /// is the anchor test used by rebase assessment.
+    pub(crate) fn seek_exact_unique(&self, pattern: &[String], start: usize, eof: bool) -> SeekOutcome {
+        if pattern.is_empty() {
+            return SeekOutcome::Unique(start);
+        }
+        if pattern.len() > self.lines.len() {
+            return SeekOutcome::NotFound;
+        }
+
+        let search_start = if eof && self.lines.len() >= pattern.len() {
+            self.lines.len().saturating_sub(pattern.len())
+        } else {
+            start
+        };
+        let max_start = self.lines.len().saturating_sub(pattern.len());
+        let mut found = None;
+
+        for idx in search_start..=max_start {
+            if self.lines[idx..idx + pattern.len()] == *pattern {
+                if found.is_some() {
+                    return SeekOutcome::Ambiguous;
+                }
+                found = Some(idx);
+            }
+        }
+
+        match found {
+            Some(idx) => SeekOutcome::Unique(idx),
+            None => SeekOutcome::NotFound,
+        }
+    }
+
+    /// Report whether a whitespace- or Unicode-tolerant match exists.
+    ///
+    /// Only meaningful after [`Self::seek_exact_unique`] returned
+    /// [`SeekOutcome::NotFound`] for the same window and pattern: `seek` tries
+    /// the exact pass first, so any hit in that situation is necessarily
+    /// inexact.
+    pub(crate) fn has_inexact_match(&self, pattern: &[String], start: usize, eof: bool) -> bool {
+        !pattern.is_empty() && self.seek(pattern, start, eof).is_some()
     }
 }
 

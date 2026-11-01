@@ -3,6 +3,11 @@
 //! Implements the apply_patch tool using the Codex-style handler pattern.
 //! Supports both freeform and JSON function call formats.
 //!
+//! This surface enforces only the `expected_content_hash` version precondition.
+//! The no-op ladder and mutation leases are registry session state, not handler
+//! state; parity between this handler's guard and the registry's leases belongs
+//! to the deferred architecture work (#168) and must not be assumed here.
+//!
 //! Based on [openai/codex] tool handler patterns (Apache-2.0).
 //! Copyright 2025 OpenAI. See the repository `THIRD-PARTY-NOTICES` file for
 //! full attribution.
@@ -14,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::events::{ToolEmitter, ToolEventCtx};
 use super::sandboxing::{
@@ -22,12 +27,19 @@ use super::sandboxing::{
     SandboxAttempt, Sandboxable, SandboxablePreference, ToolCtx, ToolError, ToolRuntime,
 };
 use super::tool_handler::{
-    ApprovalPolicy, FileChange, FreeformTool, FreeformToolFormat, ResponsesApiTool, ToolCallError, ToolHandler,
-    ToolInvocation, ToolKind, ToolOutput, ToolPayload, ToolSpec,
+    ApprovalPolicy, FileChange, ToolCallError, ToolHandler, ToolInvocation, ToolKind, ToolOutput, ToolPayload,
 };
 use super::tool_orchestrator::ToolOrchestrator;
-use crate::config::constants::tools;
 use crate::tools::editing::{Patch, PatchOperation};
+
+mod preconditions;
+mod specs;
+#[cfg(test)]
+mod tests;
+
+use preconditions::{PatchPreconditionFailure, validate_request_content_hash};
+pub(crate) use specs::parse_apply_patch_command;
+pub use specs::{create_apply_patch_freeform_tool, create_apply_patch_json_tool};
 
 /// Apply patch handler
 pub struct ApplyPatchHandler;
@@ -37,12 +49,15 @@ pub struct ApplyPatchHandler;
 pub struct ApplyPatchToolArgs {
     pub input: Option<String>,
     pub patch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_content_hash: Option<String>,
 }
 
 /// Request for apply_patch runtime
 #[derive(Clone, Debug)]
 pub struct ApplyPatchRequest {
     pub patch: String,
+    pub expected_content_hash: Option<String>,
     pub cwd: PathBuf,
     pub timeout_ms: Option<u64>,
     pub user_explicitly_approved: bool,
@@ -114,6 +129,14 @@ impl Approvable<ApplyPatchRequest> for ApplyPatchRuntime {
 
 #[async_trait]
 impl ToolRuntime<ApplyPatchRequest, ExecToolCallOutput> for ApplyPatchRuntime {
+    /// Validate the cwd, parse the patch, and apply it.
+    ///
+    /// The handler checks `expected_content_hash` before the orchestrator
+    /// reaches this runtime, but this runtime re-validates it immediately
+    /// before applying. A file read during the handler's check can change
+    /// before the write. The recheck narrows that window but does not make the
+    /// check and the write atomic; atomic check-and-write needs a mutation
+    /// lease, which issue #168 tracks.
     async fn run(
         &mut self,
         req: &ApplyPatchRequest,
@@ -140,6 +163,22 @@ impl ToolRuntime<ApplyPatchRequest, ExecToolCallOutput> for ApplyPatchRuntime {
                 exit_code: 0,
             });
         }
+
+        // Re-validate the version precondition immediately before mutating. The
+        // handler checked it already, but a concurrent writer can change the
+        // file between that check and this apply. The recheck narrows that
+        // window; it does not make the check and the apply atomic (#168). The
+        // verdict keeps the same shape the preflight would have returned, so a
+        // structured failure stays a model-facing envelope rather than becoming
+        // an approval rejection.
+        validate_request_content_hash(
+            req.expected_content_hash.as_deref(),
+            &patch,
+            &req.cwd,
+            ctx.session.workspace_root(),
+        )
+        .await
+        .map_err(PatchPreconditionFailure::into_tool_error)?;
 
         // Apply the patch
         match patch.apply(&req.cwd).await {
@@ -174,6 +213,7 @@ impl ToolHandler for ApplyPatchHandler {
         true // apply_patch always mutates
     }
 
+    /// Decode the patch payload and run it through the orchestrator.
     async fn handle(&self, invocation: ToolInvocation) -> Result<ToolOutput, ToolCallError> {
         let ToolInvocation {
             session,
@@ -185,11 +225,14 @@ impl ToolHandler for ApplyPatchHandler {
         } = invocation;
 
         // Extract patch input from payload
-        let patch_input = match payload {
+        let (patch_input, expected_content_hash) = match payload {
             ToolPayload::Function { arguments } => {
                 let args: Value = serde_json::from_str(&arguments)
                     .map_err(|e| ToolCallError::respond(format!("Failed to parse function arguments: {e}")))?;
-                crate::tools::apply_patch::decode_apply_patch_input(&args)
+                let expected_content_hash = crate::tools::apply_patch::expected_content_hash_from_args(&args)
+                    .map_err(|e| ToolCallError::respond(format!("Invalid expected_content_hash: {e}")))?
+                    .map(ToOwned::to_owned);
+                let patch_input = crate::tools::apply_patch::decode_apply_patch_input(&args)
                     .map_err(|e| ToolCallError::respond(format!("Failed to decode patch input: {e}")))?
                     .map(|input| input.text)
                     .ok_or_else(|| {
@@ -197,9 +240,10 @@ impl ToolHandler for ApplyPatchHandler {
                             "Missing patch input {}",
                             crate::tools::error_helpers::PATCH_PARAMETER_HINT
                         ))
-                    })?
+                    })?;
+                (patch_input, expected_content_hash)
             }
-            ToolPayload::Custom { input } => input,
+            ToolPayload::Custom { input } => (input, None),
             _ => {
                 return Err(ToolCallError::respond("apply_patch handler received unsupported payload"));
             }
@@ -209,6 +253,22 @@ impl ToolHandler for ApplyPatchHandler {
         let patch =
             Patch::parse(&patch_input).map_err(|e| ToolCallError::respond(format!("Failed to parse patch: {e}")))?;
 
+        // Create request
+        let req = ApplyPatchRequest {
+            patch: patch_input.clone(),
+            expected_content_hash,
+            cwd: turn.cwd.clone(),
+            timeout_ms: None,
+            user_explicitly_approved: true,
+        };
+
+        // Enforce the version precondition before any mutation event is emitted
+        // so a rejection reaches the model as the registry's structured
+        // envelope rather than a flat `ToolError::Rejected` string.
+        validate_request_content_hash(req.expected_content_hash.as_deref(), &patch, &req.cwd, session.workspace_root())
+            .await
+            .map_err(PatchPreconditionFailure::into_tool_call_error)?;
+
         // Convert patch operations to file changes for tracking
         let changes = convert_patch_to_changes(&patch, &turn.cwd);
 
@@ -216,14 +276,6 @@ impl ToolHandler for ApplyPatchHandler {
         let emitter = ToolEmitter::apply_patch(changes.clone(), true);
         let event_ctx = ToolEventCtx::new(session.as_ref(), turn.as_ref(), &call_id, tracker.as_ref());
         emitter.begin(event_ctx).await;
-
-        // Create request
-        let req = ApplyPatchRequest {
-            patch: patch_input.clone(),
-            cwd: turn.cwd.clone(),
-            timeout_ms: None,
-            user_explicitly_approved: true,
-        };
 
         // Execute using orchestrator
         let mut orchestrator = ToolOrchestrator::new();
@@ -288,238 +340,5 @@ fn map_approval_policy(policy: ApprovalPolicy) -> AskForApproval {
         ApprovalPolicy::Never => AskForApproval::Never,
         ApprovalPolicy::OnMutation => AskForApproval::OnRequest,
         ApprovalPolicy::Always => AskForApproval::UnlessTrusted,
-    }
-}
-
-/// Create freeform apply_patch tool spec (for GPT-5 style models)
-pub fn create_apply_patch_freeform_tool() -> ToolSpec {
-    ToolSpec::Freeform(FreeformTool {
-        name: tools::APPLY_PATCH.to_string(),
-        description: APPLY_PATCH_DESCRIPTION.to_string(),
-        format: FreeformToolFormat {
-            lark_grammar: Some(APPLY_PATCH_LARK_GRAMMAR.to_string()),
-            examples: vec![
-                APPLY_PATCH_ADD_EXAMPLE.to_string(),
-                APPLY_PATCH_UPDATE_EXAMPLE.to_string(),
-            ],
-        },
-    })
-}
-
-/// Create JSON function apply_patch tool spec (for standard function calling)
-pub fn create_apply_patch_json_tool() -> ToolSpec {
-    use crate::tools::apply_patch::{
-        APPLY_PATCH_ALIAS_DESCRIPTION, DEFAULT_APPLY_PATCH_INPUT_DESCRIPTION, with_semantic_anchor_guidance,
-    };
-    ToolSpec::Function(ResponsesApiTool {
-        name: tools::APPLY_PATCH.to_string(),
-        description: format!("{APPLY_PATCH_DESCRIPTION}\n\n{APPLY_PATCH_GRAMMAR_HELP}"),
-        strict: false,
-        parameters: json!({
-            "type": "object",
-            "properties": {
-                "input": {
-                    "type": "string",
-                    "description": with_semantic_anchor_guidance(DEFAULT_APPLY_PATCH_INPUT_DESCRIPTION)
-                },
-                "patch": {
-                    "type": "string",
-                    "description": with_semantic_anchor_guidance(APPLY_PATCH_ALIAS_DESCRIPTION)
-                }
-            },
-            "required": ["input"],
-            "additionalProperties": false
-        }),
-    })
-}
-
-/// Parse a shell command to check if it's an apply_patch invocation
-pub(crate) fn parse_apply_patch_command(command: &[String]) -> (bool, Option<String>) {
-    const APPLY_PATCH_COMMANDS: &[&str] = &["apply_patch", "applypatch"];
-
-    match command {
-        // Direct invocation: apply_patch <patch>
-        [cmd, body] if APPLY_PATCH_COMMANDS.contains(&cmd.as_str()) => (true, Some(body.clone())),
-        // Shell heredoc form is not directly supported here
-        // The Codex implementation uses tree-sitter to parse these
-        _ => (false, None),
-    }
-}
-
-// Constants for tool descriptions
-const APPLY_PATCH_DESCRIPTION: &str = r#"Use the `apply_patch` tool to edit files.
-Your patch language is a stripped-down, file-oriented diff format designed to be easy to parse and safe to apply. Every patch path must be workspace-relative; never use absolute paths, `..`, or traversal-like forms.
-
-You can think of it as a high-level envelope:
-
-*** Begin Patch
-[ one or more file sections ]
-*** End Patch
-
-Within that envelope, you get a sequence of file operations.
-You MUST include a header to specify the action you are taking.
-Each operation starts with one of three headers:
-
-*** Add File: <path> - create a new file. Every following line is a + line (the initial contents).
-*** Delete File: <path> - remove an existing file. Nothing follows.
-*** Update File: <path> - patch an existing file in place (optionally with a rename)."#;
-
-const APPLY_PATCH_GRAMMAR_HELP: &str = r#"May be immediately followed by *** Move to: <new path> if you want to rename the file.
-Then one or more "hunks", each introduced by @@ (optionally followed by a hunk header).
-Within a hunk each line starts with:
-
-- ` ` (space) for context lines
-- `-` for lines to remove
-- `+` for lines to add
-
-Important rules:
-- You must include a header with your intended action (Add/Delete/Update)
-- You must prefix new lines with `+` even when creating a new file
-- File references must be workspace-relative; never use absolute paths, `..`, or traversal-like forms
-- Prefer small hunks with stable semantic @@ anchors like function, class, method, or impl names"#;
-
-const APPLY_PATCH_LARK_GRAMMAR: &str = r#"
-patch := "*** Begin Patch" NEWLINE { operation } "*** End Patch"
-operation := AddFile | DeleteFile | UpdateFile
-AddFile := "*** Add File: " path NEWLINE { "+" text NEWLINE }
-DeleteFile := "*** Delete File: " path NEWLINE
-UpdateFile := "*** Update File: " path NEWLINE [ MoveTo ] { Hunk }
-MoveTo := "*** Move to: " newPath NEWLINE
-Hunk := "@@" [ header ] NEWLINE { HunkLine } [ "*** End of File" NEWLINE ]
-HunkLine := (" " | "-" | "+") text NEWLINE
-"#;
-
-const APPLY_PATCH_ADD_EXAMPLE: &str = r#"*** Begin Patch
-*** Add File: hello.txt
-+Hello world
-*** End Patch"#;
-
-const APPLY_PATCH_UPDATE_EXAMPLE: &str = r#"*** Begin Patch
-*** Update File: src/app.py
-*** Move to: src/main.py
-@@ def greet():
--print("Hi")
-+print("Hello, world!")
-*** End Patch"#;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::exec_policy::RejectConfig;
-    #[cfg(unix)]
-    use crate::tools::handlers::adapter::DefaultToolSession;
-    #[cfg(unix)]
-    use crate::tools::handlers::sandboxing::{SandboxConfig, SandboxType};
-    #[cfg(unix)]
-    use crate::tools::handlers::tool_handler::{Constrained, ShellEnvironmentPolicy, TurnContext};
-    #[cfg(unix)]
-    use std::sync::Arc;
-    #[cfg(unix)]
-    use tempfile::TempDir;
-
-    #[test]
-    fn test_parse_apply_patch_command_direct() {
-        let cmd = vec!["apply_patch".to_string(), "*** Begin Patch\n*** End Patch".to_string()];
-        let (is_patch, content) = parse_apply_patch_command(&cmd);
-        assert!(is_patch);
-        assert!(content.is_some());
-    }
-
-    #[test]
-    fn test_parse_apply_patch_command_not_patch() {
-        let cmd = vec!["ls".to_string(), "-la".to_string()];
-        let (is_patch, content) = parse_apply_patch_command(&cmd);
-        assert!(!is_patch);
-        assert!(content.is_none());
-    }
-
-    #[test]
-    fn test_create_freeform_tool() {
-        let tool = create_apply_patch_freeform_tool();
-        assert_eq!(tool.name(), "apply_patch");
-    }
-
-    #[test]
-    fn test_create_json_tool() {
-        let tool = create_apply_patch_json_tool();
-        assert_eq!(tool.name(), "apply_patch");
-    }
-
-    #[test]
-    fn test_apply_patch_json_args_support_patch_alias() {
-        let parsed: ApplyPatchToolArgs =
-            serde_json::from_str(r#"{"patch":"*** Begin Patch\n*** End Patch\n"}"#).expect("json args should parse");
-
-        assert_eq!(parsed.input, None);
-        assert_eq!(parsed.patch.as_deref(), Some("*** Begin Patch\n*** End Patch\n"));
-    }
-
-    #[test]
-    fn wants_no_sandbox_approval_reject_respects_sandbox_flag() {
-        let runtime = ApplyPatchRuntime::new();
-        assert!(runtime.wants_no_sandbox_approval(AskForApproval::OnRequest));
-        assert!(!runtime.wants_no_sandbox_approval(AskForApproval::Reject(RejectConfig {
-            sandbox_approval: true,
-            rules: false,
-            request_permissions: false,
-            mcp_elicitations: false,
-        })));
-        assert!(runtime.wants_no_sandbox_approval(AskForApproval::Reject(RejectConfig {
-            sandbox_approval: false,
-            rules: false,
-            request_permissions: false,
-            mcp_elicitations: false,
-        })));
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn direct_runtime_rejects_symlink_escaped_cwd_before_mutation() {
-        use std::os::unix::fs::symlink;
-
-        let workspace = TempDir::new().expect("workspace should be created");
-        let outside = TempDir::new().expect("outside directory should be created");
-        let escaped_cwd = workspace.path().join("escaped");
-        symlink(outside.path(), &escaped_cwd).expect("cwd symlink should be created");
-
-        let session = Arc::new(DefaultToolSession::with_workspace(
-            workspace.path().to_path_buf(),
-            workspace.path().to_path_buf(),
-        ));
-        let turn = Arc::new(TurnContext {
-            cwd: escaped_cwd.clone(),
-            turn_id: "direct-apply-patch-test".to_string(),
-            sub_id: None,
-            shell_environment_policy: ShellEnvironmentPolicy::default(),
-            approval_policy: Constrained::default(),
-            codex_linux_sandbox_exe: None,
-            sandbox_policy: Constrained::default(),
-        });
-        let tool_ctx = ToolCtx {
-            session,
-            turn,
-            call_id: "call-1".to_string(),
-            tool_name: "apply_patch".to_string(),
-        };
-        let policy = SandboxConfig::default();
-        let attempt = SandboxAttempt {
-            sandbox: SandboxType::None,
-            policy: &policy,
-            sandbox_cwd: workspace.path(),
-            codex_linux_sandbox_exe: None,
-        };
-        let request = ApplyPatchRequest {
-            patch: "*** Begin Patch\n*** Add File: created.txt\n+must not exist\n*** End Patch\n".to_string(),
-            cwd: escaped_cwd,
-            timeout_ms: None,
-            user_explicitly_approved: true,
-        };
-
-        let error = ApplyPatchRuntime::new()
-            .run(&request, &attempt, &tool_ctx)
-            .await
-            .expect_err("direct apply_patch must reject an escaped cwd");
-        assert!(error.to_string().contains("outside session workspace"));
-        assert!(!outside.path().join("created.txt").exists());
     }
 }

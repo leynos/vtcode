@@ -20,6 +20,7 @@ use std::time::Instant;
 pub mod discovery_metrics;
 pub mod execution_metrics;
 pub mod filtering_metrics;
+pub mod patch_safety_metrics;
 pub mod planning_metrics;
 pub mod sdk_metrics;
 pub mod security_metrics;
@@ -28,6 +29,7 @@ pub mod skill_metrics;
 pub use discovery_metrics::DiscoveryMetrics;
 pub use execution_metrics::ExecutionMetrics;
 pub use filtering_metrics::FilteringMetrics;
+pub use patch_safety_metrics::{PatchNoOpOutcome, PatchPreconditionOutcome, PatchSafetyMetrics};
 pub use planning_metrics::{PlanValidationRejectionReason, PlanningValidationMetrics};
 pub use sdk_metrics::SdkMetrics;
 pub use security_metrics::SecurityMetrics;
@@ -195,6 +197,7 @@ pub struct MetricsCollector {
     execution: Arc<Mutex<ExecutionMetrics>>,
     sdk: Arc<Mutex<SdkMetrics>>,
     filtering: Arc<Mutex<FilteringMetrics>>,
+    patch_safety: Arc<Mutex<PatchSafetyMetrics>>,
     planning: Arc<Mutex<PlanningValidationMetrics>>,
     skills: Arc<Mutex<SkillMetrics>>,
     security: Arc<Mutex<SecurityMetrics>>,
@@ -214,6 +217,8 @@ pub struct MetricsSummary {
     pub execution: ExecutionMetrics,
     pub sdk: SdkMetrics,
     pub filtering: FilteringMetrics,
+    #[serde(default)]
+    pub patch_safety: PatchSafetyMetrics,
     pub planning: PlanningValidationMetrics,
     pub skills: SkillMetrics,
     pub security: SecurityMetrics,
@@ -251,6 +256,7 @@ impl MetricsCollector {
             execution: Arc::new(Mutex::new(ExecutionMetrics::new())),
             sdk: Arc::new(Mutex::new(SdkMetrics::new())),
             filtering: Arc::new(Mutex::new(FilteringMetrics::new())),
+            patch_safety: Arc::new(Mutex::new(PatchSafetyMetrics::default())),
             planning: Arc::new(Mutex::new(PlanningValidationMetrics::default())),
             skills: Arc::new(Mutex::new(SkillMetrics::new())),
             security: Arc::new(Mutex::new(SecurityMetrics::new())),
@@ -511,6 +517,23 @@ impl MetricsCollector {
         self.planning.lock().record_rejection(reason);
     }
 
+    // ========== Patch Safety Metrics ==========
+
+    /// Record one bounded `apply_patch` version-precondition outcome.
+    pub fn record_patch_precondition(&self, outcome: PatchPreconditionOutcome) {
+        self.patch_safety.lock().record_precondition(outcome);
+    }
+
+    /// Record one bounded repeated no-op ladder decision.
+    pub fn record_patch_no_op(&self, decision: PatchNoOpOutcome) {
+        self.patch_safety.lock().record_no_op(decision);
+    }
+
+    /// Record one completed `apply_patch` evaluation and its duration.
+    pub fn record_patch_evaluation(&self, duration_ms: u64) {
+        self.patch_safety.lock().record_evaluation(duration_ms);
+    }
+
     // ========== Skill Metrics ==========
 
     /// Record skill execution
@@ -578,6 +601,11 @@ impl MetricsCollector {
         self.planning.lock().clone()
     }
 
+    /// Get the current `apply_patch` safety metrics snapshot.
+    pub fn get_patch_safety_metrics(&self) -> PatchSafetyMetrics {
+        self.patch_safety.lock().clone()
+    }
+
     /// Get current skill metrics snapshot
     pub fn get_skill_metrics(&self) -> SkillMetrics {
         self.skills.lock().clone()
@@ -597,6 +625,7 @@ impl MetricsCollector {
             execution: self.get_execution_metrics(),
             sdk: self.get_sdk_metrics(),
             filtering: self.get_filtering_metrics(),
+            patch_safety: self.get_patch_safety_metrics(),
             planning: self.get_planning_metrics(),
             skills: self.get_skill_metrics(),
             security: self.get_security_metrics(),
@@ -625,6 +654,7 @@ struct PrometheusMetricsSnapshot {
     discovery: DiscoveryMetrics,
     execution: ExecutionMetrics,
     filtering: FilteringMetrics,
+    patch_safety: PatchSafetyMetrics,
     planning: PlanningValidationMetrics,
     skills: SkillMetrics,
     security: SecurityMetrics,
@@ -635,11 +665,13 @@ struct PrometheusMetricsSnapshot {
 }
 
 impl PrometheusMetricsSnapshot {
+    /// Gather one snapshot of every metric family for Prometheus rendering.
     fn collect(collector: &MetricsCollector) -> Self {
         Self {
             discovery: collector.get_discovery_metrics(),
             execution: collector.get_execution_metrics(),
             filtering: collector.get_filtering_metrics(),
+            patch_safety: collector.get_patch_safety_metrics(),
             planning: collector.get_planning_metrics(),
             skills: collector.get_skill_metrics(),
             security: collector.get_security_metrics(),
@@ -650,11 +682,13 @@ impl PrometheusMetricsSnapshot {
         }
     }
 
+    /// Render all metric families into one Prometheus text payload.
     fn render(&self) -> String {
         let mut output = String::new();
         self.append_discovery(&mut output);
         self.append_execution(&mut output);
         self.append_filtering(&mut output);
+        self.append_patch_safety(&mut output);
         self.append_skills(&mut output);
         self.append_pii_detections(&mut output);
         self.append_provider_requests(&mut output);
@@ -775,6 +809,51 @@ impl PrometheusMetricsSnapshot {
              # TYPE vtcode_context_tokens_saved counter\n\
              vtcode_context_tokens_saved {}\n\n",
             self.filtering.estimated_tokens_saved()
+        );
+    }
+
+    /// Append the apply_patch precondition, no-op, and duration series.
+    fn append_patch_safety(&self, output: &mut String) {
+        // Patch safety metrics. Labels are fixed enum variants, never paths or
+        // patch content, so the series stay bounded and content-free.
+        let _ = write!(
+            output,
+            "# HELP vtcode_apply_patch_precondition_total Total apply_patch version precondition outcomes\n\
+             # TYPE vtcode_apply_patch_precondition_total counter\n\
+             vtcode_apply_patch_precondition_total{{outcome=\"matched\"}} {}\n\
+             vtcode_apply_patch_precondition_total{{outcome=\"content_hash_mismatch\"}} {}\n\
+             vtcode_apply_patch_precondition_total{{outcome=\"invalid_scope\"}} {}\n\
+             vtcode_apply_patch_precondition_total{{outcome=\"malformed_hash\"}} {}\n\n",
+            self.patch_safety.precondition_matched,
+            self.patch_safety.precondition_content_hash_mismatch,
+            self.patch_safety.precondition_invalid_scope,
+            self.patch_safety.precondition_malformed_hash
+        );
+
+        let _ = write!(
+            output,
+            "# HELP vtcode_apply_patch_no_op_total Total apply_patch no-op ladder decisions\n\
+             # TYPE vtcode_apply_patch_no_op_total counter\n\
+             vtcode_apply_patch_no_op_total{{decision=\"execute\"}} {}\n\
+             vtcode_apply_patch_no_op_total{{decision=\"no_op_first\"}} {}\n\
+             vtcode_apply_patch_no_op_total{{decision=\"no_op_repeated\"}} {}\n\
+             vtcode_apply_patch_no_op_total{{decision=\"no_op_blocked\"}} {}\n\n",
+            self.patch_safety.no_op_execute,
+            self.patch_safety.no_op_first,
+            self.patch_safety.no_op_repeated,
+            self.patch_safety.no_op_blocked
+        );
+
+        let _ = write!(
+            output,
+            "# HELP vtcode_apply_patch_evaluations_total Total evaluated apply_patch requests\n\
+             # TYPE vtcode_apply_patch_evaluations_total counter\n\
+             vtcode_apply_patch_evaluations_total {}\n\n\
+             # HELP vtcode_apply_patch_avg_duration_ms Average apply_patch evaluation duration\n\
+             # TYPE vtcode_apply_patch_avg_duration_ms gauge\n\
+             vtcode_apply_patch_avg_duration_ms {}\n\n",
+            self.patch_safety.evaluations,
+            self.patch_safety.avg_duration_ms()
         );
     }
 

@@ -39,6 +39,7 @@ mod optimization_facade;
 mod output_processing;
 mod pack;
 mod pack_impls;
+mod patch_guard;
 mod planning_workflow_checks;
 mod planning_workflow_facade;
 mod policy;
@@ -82,6 +83,7 @@ pub use execution_history::{
 };
 pub use execution_kernel::ToolPreflightOutcome;
 pub use execution_request::{ExecSettlementMode, ExecutionPolicySnapshot, ToolExecutionOutcome, ToolExecutionRequest};
+pub(crate) use executors::patch_preconditions;
 pub use executors::sandbox_policy_from_runtime_config;
 pub use harness::HarnessContext;
 pub use justification::{ApprovalPattern, JustificationManager, ToolJustification};
@@ -147,6 +149,7 @@ pub struct ToolRegistry {
     persistent_memory_config: Arc<crate::config::PersistentMemoryConfig>,
     persistent_memory_enabled: bool,
     edited_file_monitor: Arc<EditedFileMonitor>,
+    no_op_patch_guard: Arc<Mutex<patch_guard::NoOpPatchGuard>>,
     policy_gateway: Arc<ToolPolicyGateway>,
     pty_sessions: PtySessionManager,
     exec_sessions: ExecSessionManager,
