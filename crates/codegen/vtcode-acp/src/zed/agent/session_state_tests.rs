@@ -7,8 +7,6 @@ use chrono::Utc;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
-use std::sync::LazyLock;
-use tokio::sync::Mutex as AsyncMutex;
 use vtcode_config::codex::HistoryPersistence;
 use vtcode_config::{SubagentDiscoveryInput, discover_subagents};
 use vtcode_core::config::core::PromptCachingConfig;
@@ -34,27 +32,8 @@ impl WorkspaceTrustSynchronizer for NoOpWorkspaceTrustSynchronizer {
     }
 }
 
-static HISTORY_TEST_LOCK: LazyLock<AsyncMutex<()>> = LazyLock::new(|| AsyncMutex::new(()));
-
-struct HistorySettingsGuard;
-
-impl HistorySettingsGuard {
-    fn set(persistence: HistoryPersistence, max_bytes: Option<usize>) -> Self {
-        let mut config = vtcode_core::config::VTCodeConfig::default();
-        config.history.persistence = persistence;
-        config.history.max_bytes = max_bytes;
-        vtcode_core::utils::session_archive::apply_session_history_config_from_vtcode(&config);
-        Self
-    }
-}
-
-impl Drop for HistorySettingsGuard {
-    fn drop(&mut self) {
-        vtcode_core::utils::session_archive::apply_session_history_config_from_vtcode(
-            &vtcode_core::config::VTCodeConfig::default(),
-        );
-    }
-}
+use crate::zed::agent::test_support::HistorySettingsGuard;
+use crate::zed::agent::test_support::SESSION_HISTORY_TEST_LOCK as HISTORY_TEST_LOCK;
 #[derive(Debug, PartialEq)]
 struct SessionConfigProjection {
     primary_agent: String,
@@ -187,5 +166,7 @@ mod archive;
 mod configuration;
 #[path = "session_state_tests/metadata.rs"]
 mod metadata;
+#[path = "session_state_tests/tool_recovery.rs"]
+mod tool_recovery;
 #[path = "session_state_tests/workspace.rs"]
 mod workspace;

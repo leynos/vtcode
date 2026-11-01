@@ -3,6 +3,7 @@ use super::*;
 use agent_client_protocol::schema::v1::{InitializeRequest, LoadSessionRequest, NewSessionRequest};
 
 mod compaction;
+mod interrupted_tool;
 mod partial_stream;
 
 #[test]

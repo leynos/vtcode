@@ -101,8 +101,10 @@ Example:
 Session identifiers are process-local and expire when the command finishes, the
 session is closed, or VT Code restarts. A stale identifier returns a
 non-retryable `ResourceNotFound` result with `reason: "stale_exec_session"`.
-Start a new `exec_command` and use its returned session ID; VT Code does not
-claim that the failed lookup could have made partial changes.
+Start a new `exec_command` and use its returned session ID. A lookup that fails
+before input delivery reports no partial changes. If the session ends after
+`write_stdin` delivered its input, the result keeps the same reason, adds
+`input_delivered: true`, and reports that partial changes may exist.
 
 ### `apply_patch`
 

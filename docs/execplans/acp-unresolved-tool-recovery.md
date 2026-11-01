@@ -619,3 +619,18 @@ legacy migration, prompt-seriality, and typed stale-session milestones.
 
 2026-08-16: Closed the plan after both implementation commits, all focused and
 full gates, release installation, and publication of stacked draft PR #13.
+
+2026-11-01: Reopened for review remediation on PR #13. The write-ahead
+checkpoint now requires a `Persisted` outcome, so a disabled or throttled
+history write fails the prompt instead of letting a tool run without a durable
+record; the archive-repair checkpoint uses the same strict path and releases
+its workspace lease when it fails. The duplicated stale-session classification
+in `registry/error.rs` is one helper behind a shared reason constant, and
+`docs/tools/TOOL_SPECS.md` documents both stale-session outcomes. Test
+isolation now uses one process-wide history lock shared by handler and
+session-state tests, the write-ahead and tool-recovery cases moved into their
+own modules to keep files under 400 lines, and the `mutate_messages` test
+detects a missing lock by construction rather than by timing. The partial-state
+test now formats the timeout error into its message: `-D warnings` promotes
+`clippy::map_err_ignore`, so discarding the source error fails the lint gate
+rather than only losing diagnostics.

@@ -1,16 +1,10 @@
 //! Isolates ACP tests that persist session archives from the user's session directory.
 use std::ffi::OsString;
 use std::path::Path;
-use std::sync::LazyLock;
-use tokio::sync::MutexGuard;
 
-static SESSION_HISTORY_TEST_LOCK: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
+pub(super) use crate::zed::agent::test_support::lock_history_test_guard;
 
 pub(super) const SESSION_DIR_ENV: &str = vtcode_core::utils::session_archive::SESSION_DIR_ENV;
-
-pub(super) async fn lock_history_test_guard() -> MutexGuard<'static, ()> {
-    SESSION_HISTORY_TEST_LOCK.lock().await
-}
 
 pub(super) struct EnvGuard {
     key: &'static str,

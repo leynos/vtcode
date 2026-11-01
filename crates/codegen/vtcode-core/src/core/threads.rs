@@ -548,6 +548,7 @@ mod tests {
     #[test]
     fn mutate_messages_keeps_an_append_started_during_the_mutation() {
         use std::sync::{Arc, Barrier, mpsc};
+        use std::time::Duration;
 
         let manager = ThreadManager::new();
         let handle = manager.start_thread_with_identifier(
@@ -565,9 +566,15 @@ mod tests {
             let release_mutation_for_worker = Arc::clone(&release_mutation);
             let mutation = scope.spawn(move || {
                 mutation_handle.mutate_messages(|messages| {
-                    messages.push(Message::assistant("staged".to_string()));
+                    // Read before the barrier and write after it, so a
+                    // concurrent append that interleaves would be overwritten
+                    // by this assignment. Only a lock held for the whole
+                    // closure keeps the append.
+                    let mut staged = messages.clone();
+                    staged.push(Message::assistant("staged".to_string()));
                     mutation_started_for_worker.wait();
                     release_mutation_for_worker.wait();
+                    *messages = staged;
                 });
             });
 
@@ -583,7 +590,7 @@ mod tests {
                 .recv()
                 .expect("append worker starts after mutation lock acquisition");
             assert!(
-                append_finished_rx.try_recv().is_err(),
+                append_finished_rx.recv_timeout(Duration::from_millis(100)).is_err(),
                 "an append begun while the mutation holds the lock must not finish before release"
             );
             release_mutation.wait();

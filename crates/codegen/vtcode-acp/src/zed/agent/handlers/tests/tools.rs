@@ -8,3 +8,4 @@ mod read_file_version;
 mod streamed_audit;
 mod task_plan;
 mod terminal_create_wire;
+mod write_ahead_checkpoint;

@@ -50,13 +50,37 @@ where
     })
 }
 
+/// How strictly a checkpoint must reach durable storage.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CheckpointDurability {
+    /// A skipped or throttled checkpoint is logged and tolerated.
+    BestEffort,
+    /// The caller cannot proceed unless the snapshot was persisted.
+    Required,
+}
+
 impl ZedAgent {
     /// Persists the session snapshot without turn diagnostics.
     ///
-    /// Callers that have diagnostics should use
-    /// [`Self::checkpoint_session_with_turn_diagnostics`].
+    /// This is the best-effort form used for ordinary transcript checkpoints.
+    /// Callers that must not proceed without durable storage use
+    /// [`Self::checkpoint_session_required`].
     pub(in crate::zed::agent) async fn checkpoint_session(&self, session: &SessionHandle) -> anyhow::Result<()> {
-        self.checkpoint_session_with_turn_diagnostics(session, None).await
+        self.checkpoint_session_with_turn_diagnostics(session, None, CheckpointDurability::BestEffort)
+            .await
+    }
+
+    /// Persists the session snapshot and fails unless it reached storage.
+    ///
+    /// Used for the write-ahead checkpoint that gates tool execution: a
+    /// disabled or throttled write is an error, so no tool runs without a
+    /// durable record of the staged calls.
+    pub(in crate::zed::agent) async fn checkpoint_session_required(
+        &self,
+        session: &SessionHandle,
+    ) -> anyhow::Result<()> {
+        self.checkpoint_session_with_turn_diagnostics(session, None, CheckpointDurability::Required)
+            .await
     }
 
     /// Persists the session snapshot, optionally carrying turn diagnostics.
@@ -64,8 +88,10 @@ impl ZedAgent {
         &self,
         session: &SessionHandle,
         turn_diagnostics: Option<SnapshotTurnDiagnostics>,
+        durability: CheckpointDurability,
     ) -> anyhow::Result<()> {
-        trace_storage_operation("checkpoint", self.checkpoint_session_inner(session, turn_diagnostics)).await
+        trace_storage_operation("checkpoint", self.checkpoint_session_inner(session, turn_diagnostics, durability))
+            .await
     }
 
     /// Writes the checkpoint unless history persistence is disabled.
@@ -73,8 +99,12 @@ impl ZedAgent {
         &self,
         session: &SessionHandle,
         turn_diagnostics: Option<SnapshotTurnDiagnostics>,
+        durability: CheckpointDurability,
     ) -> anyhow::Result<()> {
         if !history_persistence_enabled() {
+            if durability == CheckpointDurability::Required {
+                return Err(anyhow::anyhow!("ACP session checkpoint requires history persistence, which is disabled"));
+            }
             debug!("Skipped ACP session checkpoint because history persistence is disabled");
             return Ok(());
         }
@@ -127,12 +157,15 @@ impl ZedAgent {
                 turn_diagnostics,
             })
             .await?;
-        let persistence_outcome = match persistence_status {
-            SessionProgressPersistenceStatus::Persisted(_) => "persisted",
-            SessionProgressPersistenceStatus::Throttled(_) => "throttled",
-            SessionProgressPersistenceStatus::Disabled(_) => "disabled",
+        let (persistence_outcome, persisted) = match persistence_status {
+            SessionProgressPersistenceStatus::Persisted(_) => ("persisted", true),
+            SessionProgressPersistenceStatus::Throttled(_) => ("throttled", false),
+            SessionProgressPersistenceStatus::Disabled(_) => ("disabled", false),
         };
         debug!(persistence_outcome, "Processed ACP session checkpoint");
+        if durability == CheckpointDurability::Required && !persisted {
+            return Err(anyhow::anyhow!("ACP session checkpoint was not persisted (outcome: {persistence_outcome})"));
+        }
         Ok(())
     }
 
@@ -213,10 +246,25 @@ impl ZedAgent {
             let metrics = self.recovery_metrics();
             metrics.record_tool_recovery_events(ToolRecoveryEvent::InterruptedCall, recovery.repaired_calls);
             metrics.record_tool_recovery_events(ToolRecoveryEvent::RelocatedResult, recovery.relocated_calls);
-            self.checkpoint_session_with_turn_diagnostics(&handle, preserved_turn_diagnostics)
+            if let Err(error) = self
+                .checkpoint_session_with_turn_diagnostics(
+                    &handle,
+                    preserved_turn_diagnostics,
+                    CheckpointDurability::Required,
+                )
                 .await
-                .inspect_err(|_| metrics.record_tool_recovery(ToolRecoveryEvent::CheckpointFailure))
-                .context("Failed to persist repaired ACP tool-call history")?;
+            {
+                metrics.record_tool_recovery(ToolRecoveryEvent::CheckpointFailure);
+                if let Err(cleanup_error) = handle.release_workspace_lease().await {
+                    log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
+                    warn!(
+                        operation = "archive_attach",
+                        error_category = "workspace_lease_cleanup_failed",
+                        "Failed to release ACP workspace lease after repaired history checkpoint failed"
+                    );
+                }
+                return Err(error).context("Failed to persist repaired ACP tool-call history");
+            }
             metrics.record_tool_recovery(ToolRecoveryEvent::RepairedArchive);
             warn!(
                 session_id = %session_id,

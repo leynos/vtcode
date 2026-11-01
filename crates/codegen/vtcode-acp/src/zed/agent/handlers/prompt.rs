@@ -422,13 +422,15 @@ pub(super) fn assistant_tool_call_message(
 /// Persists the strict write-ahead checkpoint required before tool execution.
 ///
 /// Ordinary transcript checkpoints remain best-effort through
-/// [`persist_session_checkpoint`].
+/// [`persist_session_checkpoint`]. This path fails when the snapshot was not
+/// durably persisted, including when history persistence is disabled, so a
+/// tool never runs without a recoverable record of its staged call.
 async fn require_session_checkpoint(
     agent: &ZedAgent,
     session: &SessionHandle,
     boundary: &'static str,
 ) -> Result<(), SdkError> {
-    if let Err(error) = agent.checkpoint_session(session).await {
+    if let Err(error) = agent.checkpoint_session_required(session).await {
         agent
             .recovery_metrics()
             .record_tool_recovery(ToolRecoveryEvent::CheckpointFailure);

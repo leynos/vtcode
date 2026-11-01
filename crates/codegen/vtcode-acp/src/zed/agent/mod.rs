@@ -116,6 +116,8 @@ mod task_lifecycle;
 mod task_progress;
 #[cfg(test)]
 mod test_log_capture;
+#[cfg(test)]
+pub(crate) mod test_support;
 mod tool_config;
 #[cfg(test)]
 mod tool_config_tests;
