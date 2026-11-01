@@ -321,7 +321,7 @@ async fn prompt_over_budget_fails_closed_when_compaction_stays_over_budget() {
 }
 
 #[tokio::test]
-async fn cancelled_acp_compaction_aborts_the_pending_provider_request() {
+async fn cancelled_acp_compaction_publishes_a_failed_terminal_update() {
     let _history_test_guard = lock_history_test_guard().await;
     let session_dir = TempDir::new().expect("temporary ACP session archive directory");
     let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
@@ -331,6 +331,59 @@ async fn cancelled_acp_compaction_aborts_the_pending_provider_request() {
     let config = compaction_config(true);
     let agent = Arc::new(build_wire_test_agent_with_options(workspace.path(), Some(&config), None).await);
     let session = large_compaction_session(&agent, workspace.path()).await;
+
+    let (agent_channel, client_channel) = Channel::duplex();
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let captured_notifications = Arc::clone(&captured);
+    let agent_attached = Arc::new(tokio::sync::Notify::new());
+    let client_initialized = Arc::new(tokio::sync::Notify::new());
+    let agent_attached_signal = Arc::clone(&agent_attached);
+    let client_initialized_signal = Arc::clone(&client_initialized);
+
+    let agent_connection = install_handlers(
+        Agent.builder().name("vtcode-compaction-cancellation-test"),
+        Arc::clone(&agent),
+    )
+    .connect_with(agent_channel, {
+        let agent = Arc::clone(&agent);
+        async move |cx: ConnectionTo<Client>| {
+            agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+            agent_attached_signal.notify_one();
+            std::future::pending::<agent_client_protocol::Result<()>>().await
+        }
+    });
+    let agent_task = tokio::spawn(agent_connection);
+
+    let client_connection = Client
+        .builder()
+        .on_receive_notification(
+            async move |notification: acp::SessionNotification, _cx| {
+                captured_notifications
+                    .lock()
+                    .expect("capture cancellation notifications")
+                    .push(notification);
+                Ok(())
+            },
+            on_receive_notification!(),
+        )
+        .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+            drop(
+                cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                    .block_task()
+                    .await?,
+            );
+            client_initialized_signal.notify_one();
+            std::future::pending::<agent_client_protocol::Result<()>>().await
+        });
+    let client_task = tokio::spawn(client_connection);
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        agent_attached.notified().await;
+        client_initialized.notified().await;
+    })
+    .await
+    .expect("the ACP test transport should attach the client and finish initialisation");
+
     let started = Arc::new(tokio::sync::Notify::new());
     let provider = Arc::new(PendingCompactionProvider::new(Arc::clone(&started)));
     let runtime = agent.provider_runtime.for_provider("wire-test");
@@ -362,4 +415,53 @@ async fn cancelled_acp_compaction_aborts_the_pending_provider_request() {
         .expect_err("cancelled compaction must not report success");
 
     assert!(error.to_string().contains("ACP compaction cancelled"));
+
+    let activity_updates = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let updates = captured
+                .lock()
+                .expect("capture cancellation notifications")
+                .iter()
+                .filter_map(|notification| serde_json::to_value(&notification.update).ok())
+                .filter(|update| update["_meta"]["lody"]["activity"].is_object())
+                .collect::<Vec<_>>();
+            if updates.len() >= 2 {
+                break updates;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("a cancelled compaction must publish a terminal activity update");
+
+    agent_task.abort();
+    client_task.abort();
+    drop(agent_task.await);
+    drop(client_task.await);
+
+    assert_eq!(
+        activity_updates.len(),
+        2,
+        "a cancelled compaction must publish exactly one started and one terminal activity"
+    );
+    let started_update = &activity_updates[0];
+    let finished_update = &activity_updates[1];
+    assert_eq!(started_update["sessionUpdate"], "tool_call");
+    assert_eq!(started_update["status"], "in_progress");
+    assert_eq!(started_update["_meta"]["lody"]["activity"]["kind"], "context_compaction");
+    assert_eq!(finished_update["sessionUpdate"], "tool_call_update");
+    assert_eq!(finished_update["status"], "failed");
+    assert_eq!(
+        started_update["toolCallId"], finished_update["toolCallId"],
+        "the failed terminal update must keep the started tool call ID"
+    );
+    assert_eq!(finished_update["_meta"]["lody"]["activity"]["kind"], "context_compaction");
+    assert_eq!(finished_update["_meta"]["lody"]["activity"]["compacted"], false);
+    let failure_reason = finished_update["_meta"]["lody"]["activity"]["failureReason"]
+        .as_str()
+        .expect("a failed compaction must report its failure reason");
+    assert!(
+        failure_reason.contains("cancelled"),
+        "the terminal update must carry the cancellation reason, got {failure_reason:?}"
+    );
 }
