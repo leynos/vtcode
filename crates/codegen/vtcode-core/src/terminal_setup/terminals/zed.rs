@@ -34,7 +34,7 @@ pub fn generate_config(features: &[crate::terminal_setup::detector::TerminalFeat
                 config_sections.push(String::new());
             }
             crate::terminal_setup::detector::TerminalFeature::ThemeSync => {
-                config_sections.push("// Theme colors will be configured separately".to_string());
+                config_sections.push("// Theme colours will be configured separately".to_string());
                 config_sections.push(String::new());
             }
             crate::terminal_setup::detector::TerminalFeature::Notifications => {

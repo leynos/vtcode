@@ -31,7 +31,7 @@ impl RiskLevel {
         }
     }
 
-    pub fn color_code(self) -> &'static str {
+    pub fn colour_code(self) -> &'static str {
         match self {
             Self::Low => FG_GREEN,
             Self::Medium => FG_YELLOW,

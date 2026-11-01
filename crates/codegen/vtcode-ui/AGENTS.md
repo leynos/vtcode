@@ -6,7 +6,7 @@
 
 | Area | Path |
 |---|---|
-| Design system | `design/` — color conversion, style bridging, layout, diff, panel primitives |
+| Design system | `design/` — colour conversion, style bridging, layout, diff, panel primitives |
 | Theme registry | `theme/` — ThemeStyles, runtime state, syntax theme resolution |
 | TUI framework | `tui/` — session, widgets, runner, markdown rendering, config |
 
@@ -24,7 +24,7 @@
 - Floating overlays reuse one bottom-half rectangle for popup rendering and transcript clipping; keep `transcript_area` as the source of truth for scroll metrics and hit-testing.
 - `ActivityState` is the authoritative global busy/idle signal for fresh-thread handoffs; use it for input and mode-switch guards even when animation is disabled.
 - The shared active-PTY counter is also a global loading observer; compact PTY rendering may hide live rows, so keep its footer status fallback in `session/state.rs`.
-- PTY/tool reflow must preserve explicit status color on the `•` prefix; apply action/tool styling only to the verb so success, failure, and warning remain visually distinct; fullscreen `Ctrl+T` opens ordered session-local Transcript Review (rich/raw via `r`) but remains text transpose outside fullscreen, and complete PTY captures stay behind bounded live lines. Compact review hints are the only normal-transcript open target; derive their label from the primary binding and rebuild their hit regions after transcript reflow.
-- Tool and PTY blocks reserve at least one blank line above and below; shell syntax highlighting is accepted only when it produces distinct token colors, otherwise semantic token styles are the fallback.
+- PTY/tool reflow must preserve explicit status colour on the `•` prefix; apply action/tool styling only to the verb so success, failure, and warning remain visually distinct; fullscreen `Ctrl+T` opens ordered session-local Transcript Review (rich/raw via `r`) but remains text transpose outside fullscreen, and complete PTY captures stay behind bounded live lines. Compact review hints are the only normal-transcript open target; derive their label from the primary binding and rebuild their hit regions after transcript reflow.
+- Tool and PTY blocks reserve at least one blank line above and below; shell syntax highlighting is accepted only when it produces distinct token colours. Otherwise, semantic token styles are the fallback.
 - Task-panel tree rows use the shared hanging-prefix wrapper in `session/text_utils.rs`; keep panel row heights derived from wrapped content so transcript and docked panel stay aligned. `toggle_tool_display_mode` is a rebindable session action (default `Alt+T`); dispatch it before the legacy `Alt+T` text-edit shortcut and invalidate transcript caches after toggling. Info/Warning/Error transcript blocks must invalidate from their first line when a member changes or is appended, because later lines affect the cached block head; each Info tool-summary line is a boundary, not part of the box.
 - Panic-hook terminal mutation tracking is set only after a successful terminal mutation, so partial TUI setup errors do not emit restore sequences. Alternate-screen teardown clears the alternate viewport before leaving it, and render/finalize writes must use the shared terminal-operation lock so no final frame reaches the main scrollback after restoration is claimed.

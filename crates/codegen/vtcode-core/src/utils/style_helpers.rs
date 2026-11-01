@@ -1,6 +1,6 @@
-// Central style factory and helpers
-// Provides semantic color palettes and safe style construction
+//! Central style factory and helpers.
 //!
-//! Re-exports from vtcode-commons for backward compatibility.
+//! Provides semantic colour palettes and safe style construction, and
+//! re-exports from `vtcode-commons` for backward compatibility.
 
 pub use vtcode_commons::styling::*;

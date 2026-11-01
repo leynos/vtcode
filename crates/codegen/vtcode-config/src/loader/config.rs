@@ -901,7 +901,7 @@ tool_output_spool_bytes = 200000
 # If not set, defaults to .vtcode/tool-output/
 # tool_output_spool_dir = "/path/to/custom/spool/dir"
 
-# Allow ANSI escape sequences in tool output (enables colors but may cause layout issues)
+# Allow ANSI escape sequences in tool output (enables colours but may cause layout issues)
 allow_tool_ansi = false
 
 # Number of rows to allocate for inline UI viewport
