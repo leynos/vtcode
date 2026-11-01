@@ -219,6 +219,14 @@ impl Default for CommandsConfig {
                 "rm *".into(),
                 // Version control
                 "git *".into(),
+                // GitHub CLI version queries. These entries contain no
+                // wildcard, so they are exact full-command matches: only the
+                // local `gh --version` and `gh version` queries are allowed.
+                // Every other `gh` invocation (api, auth, alias, extension,
+                // resource subcommands, composed commands) needs a separate,
+                // narrow allow rule.
+                "gh --version".into(),
+                "gh version".into(),
                 // Rust ecosystem
                 "cargo *".into(),
                 "rustc *".into(),

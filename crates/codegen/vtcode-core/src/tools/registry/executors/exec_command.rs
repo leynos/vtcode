@@ -20,6 +20,10 @@ pub(in crate::tools::registry) struct PreparedExecCommand {
     pub(in crate::tools::registry) requested_command: Vec<String>,
     pub(in crate::tools::registry) display_command: String,
     pub(in crate::tools::registry) requested_command_display: String,
+    /// Raw shell source handed to the shell when the argv was wrapped in a
+    /// shell invocation. `None` when the requested argv already starts with
+    /// the selected shell and is executed as provided.
+    pub(in crate::tools::registry) executed_shell_source: Option<String>,
 }
 
 pub(super) fn parse_command_parts(
@@ -212,6 +216,7 @@ pub(super) fn prepare_exec_command(
 
     let normalized_shell = normalized_shell_name(shell_program);
     let existing_shell = command.first().map(|existing| normalized_shell_name(existing));
+    let mut executed_shell_source = None;
 
     if existing_shell != Some(normalized_shell.clone()) {
         let raw_command = payload
@@ -221,6 +226,7 @@ pub(super) fn prepare_exec_command(
             .or(auto_raw_command);
 
         let command_string = build_shell_command_string(raw_command.as_deref(), &command, shell_program);
+        executed_shell_source = Some(command_string.clone());
 
         let mut shell_invocation = Vec::with_capacity(4);
         shell_invocation.push(shell_program.to_string());
@@ -239,6 +245,7 @@ pub(super) fn prepare_exec_command(
         requested_command_display: command_display_for_shell(&requested_command, shell_program),
         command,
         requested_command,
+        executed_shell_source,
     }
 }
 

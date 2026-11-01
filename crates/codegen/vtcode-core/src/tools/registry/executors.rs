@@ -319,11 +319,26 @@ impl ToolRegistry {
             prepare_exec_command(payload, &shell_program, login_shell, command, auto_raw_command);
         let is_git_diff = is_git_diff_command(&prepared_command.requested_command);
 
-        if !self.inventory.command_policy_allows(&prepared_command.requested_command) {
-            return Err(anyhow!(
-                "command '{}' is not permitted by the execution policy",
-                prepared_command.requested_command_display
-            ));
+        // Evaluate the configured policy against the requested argv. When the
+        // executor wraps that argv in a shell invocation, the raw shell source
+        // is a second representation; both must pass before dispatch.
+        let requested_program = prepared_command
+            .requested_command
+            .first()
+            .map(String::as_str)
+            .unwrap_or_default();
+        let requested_decision = self.inventory.command_policy_decision(&prepared_command.requested_command);
+        if let Some(message) = requested_decision.denial_message(requested_program) {
+            return Err(anyhow!("{message}"));
+        }
+        if let Some(source) = prepared_command.executed_shell_source.as_deref() {
+            let joined_requested = prepared_command.requested_command.join(" ");
+            if source.trim() != joined_requested.trim() {
+                let source_decision = self.inventory.command_policy_decision_text(source);
+                if let Some(message) = source_decision.denial_message(requested_program) {
+                    return Err(anyhow!("{message}"));
+                }
+            }
         }
 
         let sandbox_request = self.resolve_exec_sandbox_request(payload).await?;
