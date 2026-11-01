@@ -279,6 +279,68 @@ regex, so a plain `rm -f file` remains allowed. Relaxing the configured
 Under `--dangerously-skip-permissions`, a confirmed supported deletion is
 auto-approved by the runloop; the executor still performs the target assessment.
 
+The decision flow for one call is shown below.
+
+```mermaid
+stateDiagram-v2
+    accTitle: Workspace-scoped rm decision flow
+    accDescr {
+        A call that does not invoke rm is ignored. Unsupported rm shapes are refused.
+        A supported rm requires confirm=true and target assessment, which denies
+        escapes, the workspace root, home, and protected metadata, sends protected
+        dotfiles for guardian approval, and launches only when every target is allowed.
+    }
+    [*] --> InspectCommand
+    InspectCommand --> NotDeletion: no rm invocation
+    InspectCommand --> Unsupported: chain, wrapper, expansion, glob, unknown option
+    InspectCommand --> Supported: one static rm with literal operands
+    Supported --> NeedsConfirmation: confirm != true
+    Supported --> AssessTargets: confirm == true
+    AssessTargets --> Denied: outside workspace, symlink escape, root, home, metadata
+    AssessTargets --> GuardianApproval: protected dotfile target
+    AssessTargets --> ReadyToLaunch: all targets allowed
+    GuardianApproval --> ReadyToLaunch: approved
+    GuardianApproval --> Denied: refused
+    ReadyToLaunch --> [*]
+    NotDeletion --> [*]
+    NeedsConfirmation --> [*]
+    Unsupported --> [*]
+    Denied --> [*]
+```
+
+The sequence below shows where each check runs for a confirmed deletion.
+
+```mermaid
+sequenceDiagram
+    accTitle: Confirmed rm through safety gateway, preflight, and executor
+    accDescr {
+        The safety gateway applies the command policy and auto-approves under
+        skip-permissions. Preflight classifies the deletion and defers a supported
+        shape. The executor rechecks policy, assesses the operands against the
+        launch working directory, and runs the static workspace rm.
+    }
+    participant Caller
+    participant SafetyGateway
+    participant Preflight
+    participant CommandPolicy
+    participant Executor
+    participant TargetAssessment
+    participant RM
+
+    Caller->>SafetyGateway: exec_command(rm, confirm=true)
+    SafetyGateway->>CommandPolicy: allows_text(command)
+    CommandPolicy-->>SafetyGateway: allowed
+    SafetyGateway-->>Caller: auto-approved under skip-permissions
+    Caller->>Preflight: validate command
+    Preflight->>Preflight: classify_deletion_commands
+    Preflight-->>Caller: defer supported deletion
+    Caller->>Executor: launch command
+    Executor->>Executor: command_policy_allows
+    Executor->>TargetAssessment: assess_deletion_targets(operands, launch_working_dir)
+    TargetAssessment-->>Executor: Allowed or Denied
+    Executor->>RM: execute static workspace rm
+```
+
 Deletion text typed into an already-running session (`write_stdin`,
 `send_pty_input`, or a command-session `write`/`continue` action) is refused by
 the safety gateway. That path never reaches the executor gate, so it could not
