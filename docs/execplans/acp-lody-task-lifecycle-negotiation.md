@@ -357,6 +357,38 @@ management requests return only tasks owned by the requested ACP session.
     executable (`/tmp/check-ast-grep-pr14-r13-20261101T075855Z.out`), and
     `advisory` 0 in warn mode
     (`/tmp/advisory-pr14-r13-20261101T080037Z.out`). No ast-grep scan ran.
+- [x] (2026-11-01) EP-M5 seventh review repair: close the two qualifications
+  CodeRabbit raised on `efaed7edf` after reading the disposition replies.
+  - **Module line limit.** `handlers/tests/session.rs` (415 lines) kept the
+    session-lifecycle, turn-semantics and hook tests and moved the blocking
+    provider, the `reject_concurrent_prompt` helper and the concurrency duplex
+    test to `session_prompt_race.rs`. `handlers/tests/lody_management.rs`
+    (841 lines) was split into `lody_management.rs` (capability tests and the
+    management round trip), `lody_nested_management.rs` (the nested delegation
+    test) and `lody_support.rs` (fixtures, the parked provider and the Lody
+    request helpers, all `pub(super)`). Final sizes: 281, 137, 344, 295 and
+    199 lines.
+  - **Remaining inline requests.** The two `LODY_SUBAGENTS_LIST_METHOD`
+    requests still built inside the nested test now call `lody_list` for the
+    owning session and for the sibling session.
+  - **Duplex harness.** `task_lifecycle/forwarder_duplex_tests.rs` now owns a
+    single `ForwarderDuplex` helper that builds the channels, the metrics
+    collector and queue, the forwarder, the notification sink, the bounded
+    receive and the teardown; both transport tests supply only their event
+    sequence and assertions. The file is 155 lines.
+  - Test names, assertions and behaviour are unchanged. Committed as
+    `2cfcabb81`, and both replies were posted inline through the comment-token
+    pool.
+  - All eight deterministic gates ran sequentially on `2cfcabb81`: `check-fmt`
+    0 (`/tmp/pr14-r14-check-fmt.out`), `lint` 0
+    (`/tmp/pr14-r14-lint.out`), `typecheck` 0
+    (`/tmp/pr14-r14-typecheck.out`), `test` 0 with 10,528 passed and 23
+    skipped (`/tmp/pr14-r14-test.out`), `build` 0
+    (`/tmp/pr14-r14-build.out`), `test-harness` 0
+    (`/tmp/pr14-r14-test-harness.out`), `check-ast-grep` 0 by the Makefile's
+    optional-skip branch because `ast-grep` is absent
+    (`/tmp/pr14-r14-check-ast-grep.out`), and `advisory` 0 in warn mode
+    (`/tmp/pr14-r14-advisory.out`). No ast-grep scan ran.
 
 ## Surprises & discoveries
 
