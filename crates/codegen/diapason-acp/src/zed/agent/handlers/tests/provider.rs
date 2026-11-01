@@ -4,6 +4,7 @@ use super::*;
 use crate::zed::types::SessionCancellation;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
 
+/// Assert stream polling runs in the attempt span without leaking prompt data.
 #[test]
 fn stream_poll_runs_inside_safe_attempt_span() {
     let capture = TraceCapture::default();
@@ -42,6 +43,7 @@ fn stream_poll_runs_inside_safe_attempt_span() {
     assert!(!captured.contains("/home/"));
 }
 
+/// Assert network error metadata maps to stable telemetry fields.
 #[test]
 fn provider_error_telemetry_exposes_stable_network_metadata() {
     let error = LLMError::Network {
@@ -67,6 +69,7 @@ fn provider_error_telemetry_exposes_stable_network_metadata() {
     );
 }
 
+/// Assert ACP timeout phases surface as their own telemetry field.
 #[test]
 fn provider_error_telemetry_exposes_acp_timeout_phase_separately() {
     let error = provider_timeout_error("wire-test", StreamTimeoutPhase::InterTokenIdle, Some(Duration::from_secs(30)));
@@ -83,6 +86,7 @@ fn provider_error_telemetry_exposes_acp_timeout_phase_separately() {
 }
 
 proptest! {
+    /// Assert streaming depends only on provider support and Stop hooks.
     #[test]
     fn streaming_eligibility_depends_only_on_provider_support_and_stop_hooks(
         supports_streaming in any::<bool>(),
@@ -95,6 +99,7 @@ proptest! {
         );
     }
 
+    /// Assert observed output resets first-token and idle deadlines, not total.
     #[test]
     fn observing_stream_output_replaces_only_the_first_token_deadline(
         first_token_secs in prop::option::of(1u64..3_601),
@@ -121,6 +126,7 @@ proptest! {
     }
 }
 
+/// Assert buffered generation fails at its total-generation deadline.
 #[tokio::test]
 async fn buffered_generation_obeys_total_generation_timeout() {
     let result = generate_with_retry(
@@ -138,6 +144,7 @@ async fn buffered_generation_obeys_total_generation_timeout() {
     assert!(error.contains("total generation"));
 }
 
+/// Assert the deadline moves from first token to idle without extending total.
 #[test]
 fn stream_deadline_moves_from_first_token_to_idle_without_resetting_total() {
     let policy = ProviderDeadlinePolicy {
@@ -158,6 +165,7 @@ fn stream_deadline_moves_from_first_token_to_idle_without_resetting_total() {
     assert_eq!(tracker.total, total, "observing output must not extend the total generation deadline");
 }
 
+/// Assert a transient network failure retries once and recovers.
 #[tokio::test]
 async fn transient_network_failure_retries_and_recovers() {
     let provider = FlakyProvider {
@@ -175,6 +183,7 @@ async fn transient_network_failure_retries_and_recovers() {
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 2);
 }
 
+/// Assert persistent 502 responses exhaust the retry budget.
 #[tokio::test]
 async fn bad_gateway_retries_until_the_configured_budget_is_exhausted() {
     let provider = BadGatewayProvider { attempts: AtomicUsize::new(0) };
@@ -190,6 +199,7 @@ async fn bad_gateway_retries_until_the_configured_budget_is_exhausted() {
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 3);
 }
 
+/// Assert invalid requests are not retried.
 #[tokio::test]
 async fn invalid_request_is_not_retried() {
     let provider = FlakyProvider {
@@ -206,6 +216,7 @@ async fn invalid_request_is_not_retried() {
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 1);
 }
 
+/// Assert a retryable rate limit publishes a notice and recovers.
 #[tokio::test]
 async fn retryable_rate_limit_publishes_a_notice_over_the_acp_transport() {
     let session_dir = TempDir::new().expect("temporary ACP session archive directory");
@@ -292,6 +303,7 @@ async fn retryable_rate_limit_publishes_a_notice_over_the_acp_transport() {
     drop(agent_task.await);
 }
 
+/// Assert rate-limit metadata maps to telemetry diagnostics.
 #[test]
 fn provider_error_telemetry_exposes_rate_limit_diagnostics() {
     let error = LLMError::RateLimit {
