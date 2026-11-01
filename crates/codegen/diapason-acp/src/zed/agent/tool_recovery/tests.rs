@@ -1,9 +1,16 @@
+//! Validates the parent `tool_recovery` module's history repair.
+//!
+//! The cases cover write-ahead staging of incomplete placeholders, their
+//! replacement by terminal results, repair of legacy archives that lack
+//! results, rejection of ambiguous attribution, and idempotence when recovery
+//! runs over already-repaired history.
+
 use super::*;
 use proptest::collection::btree_map;
 use proptest::prelude::*;
 use std::collections::BTreeSet;
-use vtcode_core::llm::provider::MessageContent;
-use vtcode_safety::audit_log::ToolAuditStatus;
+use diapason_core::llm::provider::MessageContent;
+use diapason_safety::audit_log::ToolAuditStatus;
 
 fn call(id: &str) -> ToolCall {
     ToolCall::function(id.to_string(), "apply_patch".to_string(), "{}".to_string())
