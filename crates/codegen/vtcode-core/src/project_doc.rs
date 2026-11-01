@@ -93,8 +93,14 @@ pub async fn read_project_doc(cwd: &Path, max_bytes: usize) -> Result<Option<Pro
 
 /// Reads the project documentation for `cwd` using an explicit home directory.
 ///
-/// Pass `None` to disable user-scope instruction discovery, which keeps callers
-/// (notably tests) independent of the developer's home directory.
+/// Pass `None` to disable user-scope instruction discovery.
+///
+/// `None` does not by itself isolate a caller from its environment:
+/// workspace-scope discovery still walks from the working directory up to the
+/// resolved project root, which falls back to the filesystem root when no
+/// `.git` marker is found. A fixture that must not observe the developer's
+/// home directory should therefore also be its own project root, for example
+/// by containing a `.git` marker.
 pub async fn read_project_doc_with_home(
     cwd: &Path,
     max_bytes: usize,
@@ -145,8 +151,14 @@ pub async fn build_instruction_appendix_with_context(
 
 /// Builds the instruction appendix with an explicit home directory.
 ///
-/// Pass `None` to disable user-scope instruction discovery, which keeps callers
-/// (notably tests) independent of the developer's home directory.
+/// Pass `None` to disable user-scope instruction discovery.
+///
+/// `None` does not by itself isolate a caller from its environment:
+/// workspace-scope discovery still walks from the working directory up to the
+/// resolved project root, which falls back to the filesystem root when no
+/// `.git` marker is found. A fixture that must not observe the developer's
+/// home directory should therefore also be its own project root, for example
+/// by containing a `.git` marker.
 pub async fn build_instruction_appendix_with_context_and_home(
     config: &AgentConfig,
     active_dir: &Path,
@@ -168,8 +180,14 @@ pub async fn load_instruction_appendix(
 
 /// Loads the instruction appendix with an explicit home directory.
 ///
-/// Pass `None` to disable user-scope instruction discovery, which keeps callers
-/// (notably tests) independent of the developer's home directory.
+/// Pass `None` to disable user-scope instruction discovery.
+///
+/// `None` does not by itself isolate a caller from its environment:
+/// workspace-scope discovery still walks from the working directory up to the
+/// resolved project root, which falls back to the filesystem root when no
+/// `.git` marker is found. A fixture that must not observe the developer's
+/// home directory should therefore also be its own project root, for example
+/// by containing a `.git` marker.
 pub async fn load_instruction_appendix_with_home(
     config: &AgentConfig,
     active_dir: &Path,
@@ -350,9 +368,19 @@ mod tests {
         Ok(())
     }
 
+    // Bounds workspace-scope discovery at the fixture: without a `.git` marker
+    // `resolve_project_root` walks to the filesystem root, where an ancestor of
+    // the temporary directory (possibly the developer's home) can contribute
+    // instruction files even when user-scope discovery is disabled.
+    fn mark_project_root(dir: &Path) -> Result<()> {
+        std::fs::write(dir.join(".git"), "gitdir: /tmp/git").context("write .git marker")?;
+        Ok(())
+    }
+
     #[tokio::test]
     async fn returns_none_when_no_docs_present() {
         let tmp = tempdir().expect("failed to unwrap");
+        mark_project_root(tmp.path()).expect("mark project root");
         let result = read_project_doc_with_home(tmp.path(), 4096, None)
             .await
             .expect("failed to unwrap");
@@ -362,6 +390,7 @@ mod tests {
     #[tokio::test]
     async fn reads_doc_within_limit() {
         let tmp = tempdir().expect("failed to unwrap");
+        mark_project_root(tmp.path()).expect("mark project root");
         write_doc(tmp.path(), "hello world").expect("write doc");
 
         let result = read_project_doc_with_home(tmp.path(), 4096, None)
@@ -375,6 +404,7 @@ mod tests {
     #[tokio::test]
     async fn truncates_when_limit_exceeded() {
         let tmp = tempdir().expect("failed to unwrap");
+        mark_project_root(tmp.path()).expect("mark project root");
         let content = "A".repeat(64);
         write_doc(tmp.path(), &content).expect("write doc");
 
@@ -389,7 +419,7 @@ mod tests {
     #[tokio::test]
     async fn reads_docs_from_repo_root_downwards() {
         let repo = tempdir().expect("failed to unwrap");
-        std::fs::write(repo.path().join(".git"), "gitdir: /tmp/git").expect("failed to unwrap");
+        mark_project_root(repo.path()).expect("mark project root");
         write_doc(repo.path(), "root doc").expect("write doc");
 
         let nested = repo.path().join("nested/sub");
@@ -460,6 +490,7 @@ mod tests {
     #[tokio::test]
     async fn instruction_appendix_returns_none_when_empty() {
         let tmp = tempdir().expect("tmp");
+        mark_project_root(tmp.path()).expect("mark project root");
         let appendix =
             build_instruction_appendix_with_context_and_home(&AgentConfig::default(), tmp.path(), &[], None).await;
         assert!(appendix.is_none());
@@ -538,7 +569,7 @@ mod tests {
     #[tokio::test]
     async fn renders_instruction_appendix_inlining_full_content() {
         let repo = tempdir().expect("failed to unwrap");
-        std::fs::write(repo.path().join(".git"), "gitdir: /tmp/git").expect("failed to unwrap");
+        mark_project_root(repo.path()).expect("mark project root");
         write_doc(repo.path(), "- Root summary\n\nFollow the repository-level guidance first.\n").expect("write doc");
 
         let nested = repo.path().join("nested/sub");
