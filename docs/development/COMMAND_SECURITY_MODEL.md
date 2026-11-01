@@ -68,10 +68,28 @@ Commands are validated against these layers in order:
 ```
 Input: command → Check deny_list → Check deny_glob → Check deny_regex
                     ↓ MATCH = DENY
+              No allow rules configured at all → ALLOW (permissive default)
+                    ↓ otherwise
               Check allow_list → Check allow_glob → Check allow_regex
                     ↓ MATCH = ALLOW
               Otherwise → DENY (fail-closed)
 ```
+
+The "no allow rules at all" branch covers the case where `allow_list`,
+`allow_glob`, and `allow_regex` are all empty. It exists so an otherwise
+unconfigured policy does not block every command. The shipped defaults
+configure allow rules, so an unmatched command is denied.
+
+When a request carries both an argv and a distinct raw shell source (for
+example a `raw_command` field), both representations are evaluated against this
+same pipeline. The command runs only when both pass, so a shell source cannot
+smuggle an allowlisted command past the configured policy and vice versa.
+
+Permission modes are a separate gate: `--dangerously-skip-permissions`,
+`--skip-confirmations`, and `--full-auto` auto-approve promptable actions but
+do not override a configured deny rule, an allowlist miss, the curated command
+validator, or an active sandbox. See
+[Granular Permissions](../guides/permissions.md#execution-policy-and-skip-permissions).
 
 ## Safe Commands (Enabled by Default)
 
@@ -95,6 +113,17 @@ Inspect repository state and manage commits safely:
 - **Safe workflows**: `git fetch`, `git pull`, `git add`, `git commit`,
     `git stash`, `git tag`
 - **Other VCS**: `hg`, `svn`, `git-lfs`
+
+#### 2a. GitHub CLI (Exact Version Queries)
+
+The shipped `allow_glob` contains the wildcard-free entries `gh --version` and
+`gh version`. Glob matching is anchored at both ends, so these entries match
+only the exact command text. They do not cover `gh api`, `gh auth`, `gh alias`,
+`gh extension`, resource subcommands, trailing arguments, absolute paths,
+composed commands, or `bash -lc` wrappers. Every other `gh` invocation needs an
+explicit narrow allow rule; `gh *` is deliberately not shipped. The curated
+command validator likewise accepts only `gh --version` and `gh version` and
+ignores `confirm` for `gh`.
 
 #### 3. Build Systems
 
@@ -324,8 +353,14 @@ allow_glob = [
   "cargo *",      # All cargo commands
   "npm run *",    # NPM scripts
   "rm *",         # Workspace-scoped deletion; still needs confirm=true
+  "gh --version", # Exact local GitHub CLI version query (wildcard-free)
+  "gh version",   # Exact local GitHub CLI version query (wildcard-free)
 ]
 ```
+
+A wildcard-free entry is an exact full-command match. The shipped `gh` entries
+above allow only those two version queries; any other `gh` invocation requires
+a separate rule.
 
 ### `deny_glob` - Denied Patterns
 
@@ -360,6 +395,21 @@ deny_regex = [
   r"docker\s+run\s+.*--privileged",
 ]
 ```
+
+### Denial Diagnostics
+
+A policy denial keeps the stable
+`command '<program>' is not permitted by the execution policy` prefix and
+appends the deciding category:
+
+- the matched deny collection and configured pattern, for `deny_list`,
+  `deny_glob`, or `deny_regex`; or
+- that no `allow_list`, `allow_glob`, or `allow_regex` rule matches.
+
+The message ends by stating that `--dangerously-skip-permissions` does not
+override the command policy. It names only the program basename; command
+arguments are never included, so secrets passed on the command line do not
+reach logs or tool results.
 
 ## PATH Configuration
 

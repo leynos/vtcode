@@ -151,6 +151,37 @@ fn rejection_text(result: Result<serde_json::Value>) -> String {
     }
 }
 
+/// Regression for issue #175: dispatching a local GitHub CLI version query
+/// through the registry must not be refused by the execution policy. `gh`
+/// need not be installed for this test; a command-not-found result is fine,
+/// a policy denial is not.
+#[tokio::test]
+async fn run_command_dispatches_gh_version_query_without_policy_denial() -> Result<()> {
+    let harness = TestHarness::new()?;
+    let registry = harness.registry().await;
+    registry.allow_all_tools().await?;
+
+    for command in [json!("gh --version"), json!("gh version"), json!(["gh", "--version"])] {
+        let text = rejection_text(
+            registry
+                .execute_tool(
+                    tools::RUN_PTY_CMD,
+                    json!({
+                        "command": command,
+                        "working_dir": "."
+                    }),
+                )
+                .await,
+        );
+        assert!(
+            !text.contains("not permitted by the execution policy"),
+            "gh version query must not be policy-denied: {text}"
+        );
+    }
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn exec_command_deletes_confirmed_workspace_file() -> Result<()> {
     let harness = TestHarness::new()?;

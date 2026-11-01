@@ -6,7 +6,7 @@ use crate::command_safety::command_might_be_dangerous;
 use crate::command_safety::unified::EvaluationReason;
 use crate::config::CommandsConfig;
 use crate::exec_policy::command_validation::{sanitize_working_dir, validate_command};
-use crate::tools::command_policy::CommandPolicyEvaluator;
+use crate::tools::command_policy::{CommandPolicyDecision, CommandPolicyEvaluator};
 use crate::tools::path_env;
 use crate::tools::shell::resolve_fallback_shell;
 use anyhow::{Result, anyhow};
@@ -103,6 +103,16 @@ impl CommandTool {
         self.policy.allows(command)
     }
 
+    /// Structured configured-policy decision for an argv request.
+    pub fn policy_decision(&self, command: &[String]) -> CommandPolicyDecision {
+        self.policy.decision(command)
+    }
+
+    /// Structured configured-policy decision for a raw shell source.
+    pub fn policy_decision_text(&self, command_text: &str) -> CommandPolicyDecision {
+        self.policy.decision_text(command_text)
+    }
+
     #[cfg_attr(
         not(test),
         expect(
@@ -134,7 +144,8 @@ impl CommandTool {
             return Err(anyhow!("Command appears destructive; set the `confirm` field to true to proceed."));
         }
 
-        let policy_allowed = self.policy.allows(command);
+        let policy_decision = self.policy.decision(command);
+        let policy_allowed = policy_decision.is_allowed();
 
         // Use unified evaluator with policy layer
         let eval_result = self
@@ -144,6 +155,9 @@ impl CommandTool {
 
         if !eval_result.allowed {
             if !policy_allowed {
+                if let Some(message) = policy_decision.denial_message(program) {
+                    return Err(anyhow!("{message}"));
+                }
                 return Err(anyhow!("command '{program}' is not permitted by the execution policy"));
             }
             // If unified evaluator denied, still allow explicitly confirmed risky commands

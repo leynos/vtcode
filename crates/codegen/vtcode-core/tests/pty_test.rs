@@ -60,6 +60,17 @@ fn pty_fixture_commands_config() -> CommandsConfig {
             .to_owned(),
         r"^i=0; while \[ \$i -lt 20000 \]; do printf line-%05d\\n \$i; i=\$\(\(i\+1\)\); done; sleep 1$"
             .to_owned(),
+        // The configured policy checks both the normalized argv and the raw
+        // shell source that actually runs, so these commands are allow-listed
+        // in both representations.
+        r"^printf 'small output\\n'$".to_owned(),
+        r#"^IFS= read -r line; printf '<%s>\\n' "\$line"$"#.to_owned(),
+        r"^sleep 0\.5; printf 'abcdefghijklmnopqrstuvwxyz\\n'; sleep 2$".to_owned(),
+        r"^sleep 0\.5; printf 'delayed-output\\n'; sleep 1\.2$".to_owned(),
+        r"^sleep 0\.2; printf 'wait-output'; i=0; while \[ \$i -lt 9000 \]; do printf 'x'; i=\$\(\(i\+1\)\); done; printf '\\n'; sleep 2$"
+            .to_owned(),
+        r#"^i=0; while \[ \$i -lt 20000 \]; do printf 'line-%05d\\n' "\$i"; i=\$\(\(i\+1\)\); done; sleep 1$"#
+            .to_owned(),
     ];
     config
 }

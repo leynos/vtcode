@@ -78,6 +78,50 @@ skip-confirmations receives a normal permission request for the deletion rather
 than a read-only auto-allow. See
 [Command Security Model](../development/COMMAND_SECURITY_MODEL.md#workspace-scoped-deletion).
 
+## Execution Policy and Skip-Permissions
+
+Permission rules and the configured `[commands]` policy are separate gates.
+Global and agent `allow`/`ask`/`auto`/`deny` rules decide whether a tool call
+may proceed. `--full-auto`, `--skip-confirmations`, and
+`--dangerously-skip-permissions` only auto-approve the promptable part of that
+decision. They never relax the configured command policy, the curated command
+validator, or mandatory sandbox restrictions.
+
+A command denied by the configured policy is reported as:
+
+```text
+command '<program>' is not permitted by the execution policy: <category>;
+--dangerously-skip-permissions does not override the command policy
+```
+
+The category names the rule collection that decided and its configured pattern,
+or states that no allow rule matched:
+
+- a `deny_list`, `deny_glob`, or `deny_regex` match names the collection and
+  the configured pattern; deny rules win over every allow rule;
+- an allowlist miss states that no `allow_list`, `allow_glob`, or `allow_regex`
+  rule matches.
+
+Diagnostics name only the program basename. Command arguments are never echoed,
+so values passed to a command do not leak into logs or tool results.
+
+When all three allow collections are empty, the configured policy falls back to
+allowing unmatched commands. The shipped defaults configure allow rules, so an
+unmatched command is denied. When a request carries both an argv and a distinct
+raw shell source, both representations are evaluated and the command runs only
+when both pass. Composition, aliases, wrappers such as `bash -lc`, and leading
+environment prefixes do not inherit an exact match.
+
+### GitHub CLI
+
+The shipped defaults allow the local version queries `gh --version` and
+`gh version`. The exception is an exact match: it does not extend to `gh api`,
+`gh auth`, `gh alias`, `gh extension`, resource subcommands, or extra
+arguments, and it cannot be combined with `&&`, `;`, `|`, or command
+substitution. Every other `gh` invocation needs an explicit, narrow allow rule
+in `[commands]`. The curated command validator accepts only those two forms for
+`gh` and ignores `confirm` for that program.
+
 ## Classifier Review Settings
 
 The classifier used by `permissions.auto` can be tuned from the permission
