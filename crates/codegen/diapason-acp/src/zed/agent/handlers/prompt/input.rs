@@ -1,7 +1,13 @@
 //! Resolves an incoming ACP prompt and applies user-prompt lifecycle hooks.
 use super::super::super::{warn_hook_block_reason, warn_hook_message};
 use super::*;
+use vtcode_core::metrics::ToolRecoveryEvent;
 
+/// Resolves the target session and claims its turn for an incoming prompt.
+///
+/// Returns early with a `Cancelled` stop reason when the session was closed or
+/// its cancellation token is still asserted, so no turn is started for a
+/// prompt that can no longer be answered.
 pub(super) async fn prepare_prompt_input(
     agent: Arc<ZedAgent>,
     args: PromptRequest,
@@ -18,7 +24,11 @@ pub(super) async fn prepare_prompt_input(
     }
 
     let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
-    let turn_guard = TurnGuard::begin(thread)?;
+    let turn_guard = TurnGuard::begin(thread).inspect_err(|_| {
+        agent
+            .recovery_metrics()
+            .record_tool_recovery(ToolRecoveryEvent::ConcurrentPromptRejection);
+    })?;
 
     if let Err(error) = agent.replay_persisted_task_plan(&session, &args.session_id).await {
         warn!(%error, session_id = %args.session_id, "Failed to replay persisted ACP task plan");

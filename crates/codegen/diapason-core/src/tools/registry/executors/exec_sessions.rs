@@ -137,6 +137,10 @@ impl ToolRegistry {
         self.execute_command_session_write_for_tool(args, tools::UNIFIED_EXEC).await
     }
 
+    /// Writes to an existing exec session on behalf of `progress_tool_name`.
+    ///
+    /// The tool name is threaded through so progress events and error recovery
+    /// state are attributed to the tool the caller actually invoked.
     pub(crate) async fn execute_command_session_write_for_tool(
         &self,
         args: Value,
@@ -718,6 +722,7 @@ impl ToolRegistry {
         Ok(())
     }
 
+    /// Parses and validates the session identifier plus its live metadata.
     async fn resolve_exec_session(
         &self,
         args: &Value,
@@ -726,7 +731,15 @@ impl ToolRegistry {
         validation_context: &str,
     ) -> Result<ResolvedExecSession> {
         let session_id = resolve_exec_session_id(args, object_error, session_id_error, validation_context)?;
-        let metadata = self.exec_session_metadata(&session_id).await?;
+        let metadata = self.exec_session_metadata(&session_id).await.inspect_err(|error| {
+            // A missing session is the stale-continuation case: the model is
+            // referring to an exec session that has already terminated, so it
+            // is counted separately from validation failures.
+            if error.downcast_ref::<ExecSessionNotFound>().is_some() {
+                self.metrics_collector()
+                    .record_tool_recovery(crate::metrics::ToolRecoveryEvent::StaleWriteStdinRequest);
+            }
+        })?;
         Ok(ResolvedExecSession::new(metadata))
     }
 }
