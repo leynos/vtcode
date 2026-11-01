@@ -11,10 +11,16 @@ use vtcode_core::llm::provider::{
 
 pub(super) const MODEL: &str = "lifecycle-model";
 
-/// One scripted buffered provider response.
+/// One scripted provider response.
 #[derive(Clone, Copy)]
 pub(super) enum ScriptedStep {
     Answer(&'static str),
+    /// A completion carrying reasoning but no assistant content.
+    ReasoningOnly,
+    /// A stream `Completed` event with neither content nor reasoning.
+    EmptyCompletion,
+    /// No completion event at all: a truncated stream, or an empty buffered
+    /// response.
     Empty,
     Failure,
 }
@@ -23,6 +29,8 @@ pub(super) enum ScriptedStep {
 /// observe and release each generation.
 struct ScriptedShared {
     steps: Mutex<VecDeque<ScriptedStep>>,
+    /// Every `LLMRequest` the agent sent, in call order.
+    requests: Mutex<Vec<LLMRequest>>,
     call_started: Notify,
     call_release: Notify,
     /// When set, the next `generate` waits for `call_release` before returning.
@@ -44,6 +52,7 @@ impl ScriptedProvider {
             name: name.to_string(),
             shared: Arc::new(ScriptedShared {
                 steps: Mutex::new(VecDeque::from(steps)),
+                requests: Mutex::new(Vec::new()),
                 call_started: Notify::new(),
                 call_release: Notify::new(),
                 hold_next: AtomicBool::new(hold_first),
@@ -62,6 +71,20 @@ impl ScriptedProvider {
             .expect("scripted lifecycle steps")
             .pop_front()
             .unwrap_or(ScriptedStep::Empty)
+    }
+
+    /// Records the request the agent sent for later assertion.
+    fn record_request(&self, request: &LLMRequest) {
+        self.shared
+            .requests
+            .lock()
+            .expect("scripted lifecycle requests")
+            .push(request.clone());
+    }
+
+    /// Every request sent so far, in call order.
+    pub(super) fn requests(&self) -> Vec<LLMRequest> {
+        self.shared.requests.lock().expect("scripted lifecycle requests").clone()
     }
 
     /// Counts a provider entry, signals the test, and applies the optional hold.
@@ -109,7 +132,8 @@ impl LLMProvider for ScriptedProvider {
         Ok(())
     }
 
-    async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+    async fn generate(&self, request: LLMRequest) -> Result<LLMResponse, LLMError> {
+        self.record_request(&request);
         let step = self.begin_call(self.take_step()).await;
         match step {
             ScriptedStep::Answer(text) => Ok(LLMResponse {
@@ -118,7 +142,14 @@ impl LLMProvider for ScriptedProvider {
                 model: MODEL.to_string(),
                 ..LLMResponse::default()
             }),
-            ScriptedStep::Empty => Ok(LLMResponse {
+            ScriptedStep::ReasoningOnly => Ok(LLMResponse {
+                content: None,
+                reasoning: Some("scripted reasoning".to_string()),
+                finish_reason: FinishReason::Stop,
+                model: MODEL.to_string(),
+                ..LLMResponse::default()
+            }),
+            ScriptedStep::Empty | ScriptedStep::EmptyCompletion => Ok(LLMResponse {
                 content: None,
                 finish_reason: FinishReason::Stop,
                 model: MODEL.to_string(),
@@ -131,7 +162,8 @@ impl LLMProvider for ScriptedProvider {
         }
     }
 
-    async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
+    async fn stream(&self, request: LLMRequest) -> Result<LLMStream, LLMError> {
+        self.record_request(&request);
         if !self.streaming {
             return Err(LLMError::InvalidRequest {
                 message: "lifecycle buffered harness does not stream".to_string(),
@@ -143,6 +175,25 @@ impl LLMProvider for ScriptedProvider {
             ScriptedStep::Answer(text) => {
                 let response = LLMResponse {
                     content: Some(text.to_string()),
+                    finish_reason: FinishReason::Stop,
+                    model: MODEL.to_string(),
+                    ..LLMResponse::default()
+                };
+                Ok(Box::pin(futures::stream::iter([Ok(LLMStreamEvent::Completed { response: Box::new(response) })])))
+            }
+            ScriptedStep::ReasoningOnly => {
+                let response = LLMResponse {
+                    content: None,
+                    reasoning: Some("scripted reasoning".to_string()),
+                    finish_reason: FinishReason::Stop,
+                    model: MODEL.to_string(),
+                    ..LLMResponse::default()
+                };
+                Ok(Box::pin(futures::stream::iter([Ok(LLMStreamEvent::Completed { response: Box::new(response) })])))
+            }
+            ScriptedStep::EmptyCompletion => {
+                let response = LLMResponse {
+                    content: None,
                     finish_reason: FinishReason::Stop,
                     model: MODEL.to_string(),
                     ..LLMResponse::default()

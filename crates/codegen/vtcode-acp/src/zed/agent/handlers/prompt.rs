@@ -326,15 +326,27 @@ impl PromptExecution {
         mut self,
         retry_observed_at: &provider::RetryObservationClock<'_>,
     ) -> Result<PromptResponse, SdkError> {
+        let cancellation = self.session.cancellation.clone();
         let outcome = if self.allow_streaming {
             streaming::run_streaming_provider_turn(&mut self, retry_observed_at).await?
         } else {
             buffered::run_buffered_provider_turn(&mut self, retry_observed_at).await?
         };
-        match outcome {
+        let result = match outcome {
             ProviderTurnOutcome::StopReason(stop_reason) => self.finish(stop_reason).await,
             ProviderTurnOutcome::Response(response) => Ok(response),
+        };
+        // Finalizing a turn awaits checkpoint persistence. A `session/cancel`
+        // that arrives during that window must still win: ACP requires the
+        // prompt to answer `Cancelled` once cancellation has been observed, so
+        // re-check after the last await rather than returning a stale
+        // pre-cancel result to the client and the gate. This covers outcomes
+        // that never reached the cancelled path, including a failure whose
+        // notice and history were already committed.
+        if cancellation.is_cancelled() {
+            return Ok(PromptResponse::new(acp::StopReason::Cancelled));
         }
+        result
     }
 }
 pub(super) fn session_access_error(session_id: &acp::SessionId, operation: &str, error: impl Display) -> SdkError {

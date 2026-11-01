@@ -13,9 +13,23 @@ mod scripted_provider;
 mod support;
 
 use crate::acp::{CancelNotification, StopReason};
-use crate::zed::agent::test_support::wait_for_gate_waiters;
+use crate::zed::agent::test_support::{wait_for_cancellation, wait_for_gate_waiters};
 use std::time::Duration;
 use support::*;
+use vtcode_core::llm::provider::{LLMRequest, MessageRole};
+
+/// The visible conversation an `LLMRequest` carries, in order.
+///
+/// System messages are excluded: the agent supplies prompt guidance separately
+/// from the conversation the client steered.
+fn conversation(request: &LLMRequest) -> Vec<(MessageRole, String)> {
+    request
+        .messages
+        .iter()
+        .filter(|message| message.role != MessageRole::System)
+        .map(|message| (message.role, message.content.as_text().into_owned()))
+        .collect()
+}
 
 /// Two prompts sent while the first turn is active must both receive their own
 /// response. The first turn must finish before the second starts, so no
@@ -62,6 +76,17 @@ async fn overlapping_prompts_run_sequentially_and_both_answer() {
         assistant_messages(&notifications),
         vec!["first-answer".to_string(), "second-answer".to_string()],
         "each turn must send its own assistant content without interleaving"
+    );
+    let requests = harness.provider.requests();
+    assert_eq!(requests.len(), 2, "each prompt must send exactly one provider request");
+    assert_eq!(
+        conversation(&requests[1]),
+        vec![
+            (MessageRole::User, "first prompt".to_string()),
+            (MessageRole::Assistant, "first-answer".to_string()),
+            (MessageRole::User, "second prompt".to_string()),
+        ],
+        "the steer request must carry the exact steering text after the preceding history"
     );
 }
 
@@ -230,4 +255,97 @@ async fn truncated_stream_retries_then_reports_empty_response() {
 
     assert_eq!(harness.provider.call_count(), 3, "a truncated stream must exhaust the retry budget before failing");
     assert!(assistant_messages(&notifications).is_empty(), "a truncated turn must not emit assistant content");
+}
+
+/// A `session/cancel` that arrives while a buffered provider failure is being
+/// finalized must still answer `Cancelled`, even though the pre-cancel turn
+/// result (`EndTurn` with a failure notice) was already built.
+#[tokio::test]
+async fn cancel_during_buffered_failure_checkpoint_returns_cancelled() {
+    let harness = lifecycle_harness(vec![ScriptedStep::Failure], true).await;
+    assert_cancel_during_failure_checkpoint(harness).await;
+}
+
+/// The same race on the streaming failure path: cancellation observed while
+/// the failure checkpoint is persisted must outrank the failure notice.
+#[tokio::test]
+async fn cancel_during_streaming_failure_checkpoint_returns_cancelled() {
+    let harness = streaming_lifecycle_harness(vec![ScriptedStep::Failure], true).await;
+    assert_cancel_during_failure_checkpoint(harness).await;
+}
+
+/// Holds `incomplete_provider_turn` checkpoint persistence, waits for the
+/// cancellation to be observed, then releases the checkpoint and checks the
+/// prompt response. Every step is ordered by a signal, so the cancellation
+/// cannot lose to the release by timing.
+async fn assert_cancel_during_failure_checkpoint(harness: LifecycleHarness) {
+    let agent = std::sync::Arc::clone(&harness.agent);
+    agent.checkpoint_pause.arm("incomplete_provider_turn");
+
+    let _notifications = run_client(&harness, async move |cx, workspace, provider| {
+        let session_id = initialize_and_create_session(&cx, workspace).await?;
+        let prompt = hold_first_prompt_until_provider_starts(
+            &provider,
+            Box::pin(cx.send_request(prompt_request(&session_id, "fail prompt")).block_task()),
+        )
+        .await;
+        provider.release_call();
+        // The turn is now finalizing the failure; wait until it is paused
+        // inside the checkpoint write before cancelling.
+        agent.checkpoint_pause.reached().await;
+        cx.send_notification(CancelNotification::new(session_id.clone()))?;
+        // The notification is only a frame until the agent processes it. Wait
+        // for the observed cancellation so releasing the checkpoint cannot
+        // outrun the cancel.
+        wait_for_cancellation(&agent, &session_id).await;
+        agent.checkpoint_pause.release();
+
+        let response = prompt.await?;
+        assert_eq!(response.stop_reason, StopReason::Cancelled);
+        Ok(())
+    })
+    .await;
+}
+
+/// A streaming `Completed` event with no content is a successful provider
+/// turn, but acknowledging it with `EndTurn` would answer the prompt with
+/// nothing. It must fail as an empty response instead.
+#[tokio::test]
+async fn empty_stream_completion_reports_empty_response() {
+    let harness = streaming_lifecycle_harness(vec![ScriptedStep::EmptyCompletion], false).await;
+
+    let notifications = run_client(&harness, async |cx, workspace, _provider| {
+        let session_id = initialize_and_create_session(&cx, workspace).await?;
+        let error = cx
+            .send_request(prompt_request(&session_id, "empty completion prompt"))
+            .block_task()
+            .await
+            .expect_err("an empty completion must not be acknowledged as EndTurn");
+        assert_eq!(error_reason(&error), Some("empty_response"));
+        Ok(())
+    })
+    .await;
+
+    assert!(assistant_messages(&notifications).is_empty(), "an empty completion must not emit assistant content");
+}
+
+/// Reasoning without assistant content is still an empty response: a thought
+/// chunk is not a response to the prompt.
+#[tokio::test]
+async fn reasoning_only_completion_reports_empty_response() {
+    let harness = lifecycle_harness(vec![ScriptedStep::ReasoningOnly], false).await;
+
+    let notifications = run_client(&harness, async |cx, workspace, _provider| {
+        let session_id = initialize_and_create_session(&cx, workspace).await?;
+        let error = cx
+            .send_request(prompt_request(&session_id, "reasoning prompt"))
+            .block_task()
+            .await
+            .expect_err("reasoning without assistant content must not be acknowledged as EndTurn");
+        assert_eq!(error_reason(&error), Some("empty_response"));
+        Ok(())
+    })
+    .await;
+
+    assert!(assistant_messages(&notifications).is_empty(), "reasoning alone must not emit assistant content");
 }

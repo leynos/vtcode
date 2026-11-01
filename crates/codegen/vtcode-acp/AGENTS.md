@@ -20,7 +20,8 @@ Canonical ACP entrypoint. Crate conventions and gotchas live in
   would end with `EndTurn` needs assistant content or an explicit
   `internal_error` (`empty_response`, `tool_execution_failed`); never
   acknowledge a silent `EndTurn`. Persist any buffered text flushed visible on
-  cancellation.
+  cancellation. Re-check cancellation after the turn's final checkpoint await,
+  so a cancel that arrives during finalization still answers `Cancelled`.
 - Provider-key resolution uses the configured `AuthCredentialsStoreMode`, not
   the platform default.
 - `zed/agent/prompt_lifecycle_tests.rs` drives the duplex transport with a

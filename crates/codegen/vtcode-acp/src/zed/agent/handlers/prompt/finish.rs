@@ -7,6 +7,8 @@ pub(in crate::zed::agent::handlers) async fn persist_session_checkpoint(
     session: &SessionHandle,
     boundary: &'static str,
 ) {
+    #[cfg(test)]
+    agent.checkpoint_pause.wait_at(boundary).await;
     if let Err(error) = agent.checkpoint_session(session).await {
         log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
         warn!(

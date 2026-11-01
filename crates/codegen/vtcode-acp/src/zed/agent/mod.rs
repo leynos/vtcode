@@ -314,6 +314,10 @@ pub(crate) struct ZedAgent {
     launch_workspace_runtime: Arc<SessionWorkspaceRuntime>,
     workspace_runtimes: tokio::sync::Mutex<WorkspaceRuntimeCache<SessionWorkspaceRuntime>>,
     workspace_trust_synchronizer: Arc<dyn crate::workspace::WorkspaceTrustSynchronizer + Send + Sync>,
+    /// Test-only pause point that lets a test interleave `session/cancel` with
+    /// an in-flight checkpoint write.
+    #[cfg(test)]
+    pub(crate) checkpoint_pause: test_support::CheckpointPause,
 }
 
 pub(crate) struct ZedAgentSetup<'a> {
@@ -388,6 +392,8 @@ impl ZedAgent {
             launch_workspace_runtime: Arc::clone(&launch_runtime),
             workspace_runtimes: tokio::sync::Mutex::new(workspace_runtimes),
             workspace_trust_synchronizer: Arc::new(crate::workspace::DefaultWorkspaceTrustSynchronizer::new()),
+            #[cfg(test)]
+            checkpoint_pause: test_support::CheckpointPause::default(),
         })
     }
 
