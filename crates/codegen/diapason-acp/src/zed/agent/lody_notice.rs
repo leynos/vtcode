@@ -33,8 +33,11 @@ fn rate_limit_notice_update(
     retry_delay: Option<Duration>,
 ) -> Option<acp::SessionUpdate> {
     let metadata = rate_limit_metadata(error)?;
-    let retry_after = metadata.retry_after.as_deref();
-    let mut message = format!("{provider} returned HTTP 429 (rate limited)");
+    let retry_after = metadata.and_then(|metadata| metadata.retry_after.as_deref());
+    let mut message = match metadata.and_then(|metadata| metadata.status) {
+        Some(status) => format!("{provider} returned HTTP {status} (rate limited)"),
+        None => format!("{provider} reported a rate limit"),
+    };
     if let Some(retry_after) = retry_after {
         message.push_str(&format!("; provider Retry-After: {retry_after}"));
     }
@@ -55,17 +58,24 @@ fn rate_limit_notice_update(
     Some(acp::SessionUpdate::SessionInfoUpdate(acp::SessionInfoUpdate::new().meta(meta)))
 }
 
-fn rate_limit_metadata(error: &LLMError) -> Option<&LLMErrorMetadata> {
-    let metadata = match error {
+/// Classify `error` as a rate limit.
+///
+/// The outer option says whether the error is a rate limit at all; the inner
+/// option carries the provider metadata, which may be absent even for
+/// [`LLMError::RateLimit`]. A notice is still published in that case, without
+/// claiming an HTTP status the provider never supplied.
+fn rate_limit_metadata(error: &LLMError) -> Option<Option<&LLMErrorMetadata>> {
+    let (is_rate_limit, metadata) = match error {
+        LLMError::RateLimit { metadata } => (true, metadata.as_deref()),
         LLMError::Authentication { metadata, .. }
-        | LLMError::RateLimit { metadata }
         | LLMError::InvalidRequest { metadata, .. }
         | LLMError::Network { metadata, .. }
-        | LLMError::Provider { metadata, .. } => metadata.as_deref(),
-    }?;
-    matches!(error, LLMError::RateLimit { .. })
-        .then_some(metadata)
-        .or_else(|| (metadata.status == Some(429)).then_some(metadata))
+        | LLMError::Provider { metadata, .. } => {
+            let metadata = metadata.as_deref()?;
+            (metadata.status == Some(429), Some(metadata))
+        }
+    };
+    is_rate_limit.then_some(metadata)
 }
 
 #[cfg(test)]
@@ -94,9 +104,45 @@ mod tests {
         assert_eq!(value["_meta"]["lody"]["notice"]["level"], "warning");
         assert_eq!(value["_meta"]["lody"]["notice"]["source"], "provider_rate_limit");
         let message = value["_meta"]["lody"]["notice"]["message"].as_str().expect("notice message");
+        assert!(message.contains("HTTP 429"));
         assert!(message.contains("Retry-After: 17"));
         assert!(message.contains("retry in 20.0s"));
         assert!(value["_meta"]["lody"].get("rateLimits").is_none());
+    }
+
+    #[test]
+    fn rate_limit_without_metadata_still_publishes_a_notice() {
+        let error = LLMError::RateLimit { metadata: None };
+        let update = rate_limit_notice_update("baseten", &error, None).expect("generic rate-limit notice");
+        let value = serde_json::to_value(update).expect("notice JSON");
+        let message = value["_meta"]["lody"]["notice"]["message"].as_str().expect("notice message");
+
+        assert_eq!(value["_meta"]["lody"]["notice"]["source"], "provider_rate_limit");
+        assert!(message.contains("rate limit"));
+        assert!(!message.contains("HTTP"), "a missing status must not be reported as HTTP 429: {message}");
+        assert!(!message.contains("Retry-After"));
+        assert!(message.contains("no further automatic retry is scheduled"));
+    }
+
+    #[test]
+    fn rate_limit_without_status_does_not_claim_http_429() {
+        let error = LLMError::RateLimit {
+            metadata: Some(LLMErrorMetadata::new(
+                "baseten",
+                None,
+                Some("rate_limit_error".to_string()),
+                None,
+                None,
+                None,
+                None,
+            )),
+        };
+        let update = rate_limit_notice_update("baseten", &error, None).expect("generic rate-limit notice");
+        let value = serde_json::to_value(update).expect("notice JSON");
+        let message = value["_meta"]["lody"]["notice"]["message"].as_str().expect("notice message");
+
+        assert!(!message.contains("HTTP 429"), "an unstated status must not be named: {message}");
+        assert!(!message.contains("Retry-After"));
     }
 
     #[test]
