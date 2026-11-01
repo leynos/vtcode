@@ -218,11 +218,22 @@ management requests return only tasks owned by the requested ACP session.
     `Sender::try_send`, and the awaited path reserves capacity first, then
     checks closure, counts and publishes through the permit under the same
     lock, so the synchronous lock is never held across an await.
-  - `the_forwarder_never_observes_an_unaccounted_item` exercises receiver
-    progress at the publication boundary over 256 rounds on a multi-threaded
-    runtime: it asserts the receiver sees depth one before dequeueing, and an
-    empty channel leaves tracked depth, the metric depth and the drain count
-    at zero.
+  - `the_forwarder_never_observes_an_unaccounted_item` is a concurrent
+    invariant regression, not a deterministic reproduction of the removed
+    window. Over 256 rounds on a multi-threaded runtime it asserts the
+    receiver observes depth one at its own observation point before
+    dequeueing, and that an empty channel leaves tracked depth, the metric
+    depth and the drain count at zero. A scheduler that never selects the
+    producer's former publish/count interval cannot make this test fail a
+    faulty implementation.
+  - `the_pre_repair_publish_then_count_order_fails_the_invariant` supplies the
+    deterministic negative control the concurrency test cannot: it reproduces
+    the old order literally against the same tracker (publish, receive,
+    dequeue, then count) with no scheduler involvement, and shows the
+    observation point reports zero, the dequeue is lost and the channel is
+    empty while depth stays one. The repaired production paths cannot reach
+    that state because they hold the state lock from before publication
+    through the count.
   - The managed-background ownership predicate is now shared:
     `lody::owned_background_ids` selects by `owner_session_id` for both list
     and cancel, and

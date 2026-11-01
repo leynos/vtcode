@@ -448,9 +448,13 @@ async fn initial_snapshot_enqueue_shares_accounting_with_live_updates() {
 }
 
 /// The forwarder decrements depth the moment it receives an item, so the count
-/// must already be visible by then. Publishing before counting left a race:
-/// a receiver that drained the item first found depth zero, its dequeue was
-/// lost, and an empty channel kept reporting a pending update.
+/// must already be visible by then.
+///
+/// This is a concurrent invariant regression, not a deterministic
+/// reproduction of the removed window: it starts the enqueue and the receiver
+/// concurrently and checks the invariant at the receiver's observation point
+/// for 256 rounds. The deterministic ordering proof lives beside it in
+/// `the_pre_repair_publish_then_count_order_fails_the_invariant`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_forwarder_never_observes_an_unaccounted_item() {
     const ROUNDS: usize = 256;
@@ -488,6 +492,41 @@ async fn the_forwarder_never_observes_an_unaccounted_item() {
     assert_eq!(metrics.enqueued.load(Ordering::SeqCst), ROUNDS);
     assert_eq!(metrics.dequeued.load(Ordering::SeqCst), ROUNDS);
     assert_eq!(metrics.drained.load(Ordering::SeqCst), 0, "a balanced channel drains nothing");
+}
+
+/// Negative control: the pre-repair publish-then-count order fails the same
+/// invariant deterministically, with no scheduler involvement.
+///
+/// The repaired tracker counts under the lock that publishes, so the item is
+/// never observable while its depth is still zero. This control reproduces the
+/// old order literally against the same tracker: it publishes through the
+/// channel first, lets the forwarder receive and dequeue, and only then
+/// records the enqueue. The observation point that must report one therefore
+/// reports zero, the dequeue is lost at zero depth, and the late count leaves
+/// a permanent phantom depth with the channel already empty. The production
+/// paths cannot reach this state because they keep the state lock from before
+/// publication until after the count.
+#[test]
+fn the_pre_repair_publish_then_count_order_fails_the_invariant() {
+    let metrics = Arc::new(RecordingQueueMetrics::default());
+    let observer = metrics.clone() as Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>;
+    let queue = LifecycleQueueTracker::new(observer);
+    let (sender, mut receiver) = mpsc::channel(1);
+
+    sender.try_send(subagent_event("running")).expect("the channel has room");
+    assert_eq!(queue.depth(), 0, "publishing before counting exposes an item the tracked depth has not counted");
+
+    drop(receiver.try_recv().expect("the forwarder received the published item"));
+    queue.dequeued();
+    {
+        let mut state = queue.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        queue.record_enqueued_locked(&mut state);
+    }
+
+    assert_eq!(queue.depth(), 1, "the late count survives as a phantom depth");
+    assert!(receiver.try_recv().is_err(), "the channel is empty although depth reports an item");
+    assert_eq!(metrics.enqueued.load(Ordering::SeqCst), 1);
+    assert_eq!(metrics.dequeued.load(Ordering::SeqCst), 0, "the dequeue was lost at zero depth");
 }
 
 #[tokio::test]
