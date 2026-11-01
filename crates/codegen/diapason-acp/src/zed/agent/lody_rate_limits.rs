@@ -66,7 +66,15 @@ fn rate_limit_snapshot<'a>(
     let reset = limits
         .reset_after_millis
         .and_then(|millis| now.checked_add(millis.div_ceil(1_000)));
-    let dimensions = [
+    let rate_limits = quota_dimensions(limits, reset)
+        .into_iter()
+        .filter_map(|dimension| rate_limit_from_dimension(provider, model, dimension))
+        .collect::<Vec<_>>();
+    (!rate_limits.is_empty()).then_some(RateLimitsSnapshot { rate_limits, fetched_at_epoch_seconds: now })
+}
+
+fn quota_dimensions(limits: &RateLimitMetadata, reset_epoch_seconds: Option<u64>) -> [QuotaDimension; 7] {
+    [
         QuotaDimension {
             id: "requests-minute",
             label: "Requests/min",
@@ -89,7 +97,7 @@ fn rate_limit_snapshot<'a>(
             limit: limits.requests_limit_per_second,
             remaining: limits.requests_remaining_per_second,
             window_seconds: 1,
-            reset_epoch_seconds: reset,
+            reset_epoch_seconds,
         },
         QuotaDimension {
             id: "tokens-second",
@@ -123,31 +131,32 @@ fn rate_limit_snapshot<'a>(
             window_seconds: 1,
             reset_epoch_seconds: None,
         },
-    ];
-    let rate_limits = dimensions
-        .into_iter()
-        .filter_map(|dimension| {
-            let limit = dimension.limit.filter(|limit| *limit > 0)?;
-            let windows = dimension
-                .remaining
-                .filter(|remaining| *remaining <= limit)
-                .map(|remaining| RateLimitWindow {
-                    used_percent: percentage_used(limit, remaining),
-                    window_duration_seconds: dimension.window_seconds,
-                    resets_at_epoch_seconds: dimension.reset_epoch_seconds,
-                })
-                .into_iter()
-                .collect();
-            Some(RateLimit {
-                limit_id: format!("{provider}:{model}:{}", dimension.id),
-                scope: RateLimitScope { provider_id: provider, model_id: model },
-                // Lody has no absolute quota field; retain it in the supported name.
-                limit_name: format!("{} (limit {limit})", dimension.label),
-                windows,
-            })
+    ]
+}
+
+fn rate_limit_from_dimension<'a>(
+    provider: &'a str,
+    model: &'a str,
+    dimension: QuotaDimension,
+) -> Option<RateLimit<'a>> {
+    let limit = dimension.limit.filter(|limit| *limit > 0)?;
+    let windows = dimension
+        .remaining
+        .filter(|remaining| *remaining <= limit)
+        .map(|remaining| RateLimitWindow {
+            used_percent: percentage_used(limit, remaining),
+            window_duration_seconds: dimension.window_seconds,
+            resets_at_epoch_seconds: dimension.reset_epoch_seconds,
         })
-        .collect::<Vec<_>>();
-    (!rate_limits.is_empty()).then_some(RateLimitsSnapshot { rate_limits, fetched_at_epoch_seconds: now })
+        .into_iter()
+        .collect();
+    Some(RateLimit {
+        limit_id: format!("{provider}:{model}:{}", dimension.id),
+        scope: RateLimitScope { provider_id: provider, model_id: model },
+        // Lody has no absolute quota field; retain it in the supported name.
+        limit_name: format!("{} (limit {limit})", dimension.label),
+        windows,
+    })
 }
 
 #[expect(
@@ -158,14 +167,22 @@ fn percentage_used(limit: u64, remaining: u64) -> f64 {
     ((limit.saturating_sub(remaining) as f64 / limit as f64) * 100.0).clamp(0.0, 100.0)
 }
 
+/// A rate-limit observation ready to be projected into Lody's snapshot contract.
+pub(super) struct LodyRateLimitObservation<'a> {
+    pub(super) session_id: &'a acp::SessionId,
+    pub(super) provider: &'a str,
+    pub(super) limits: &'a RateLimitMetadata,
+    pub(super) observed_epoch_seconds: u64,
+}
+
 impl ZedAgent {
-    pub(super) fn publish_lody_rate_limits_at(
-        &self,
-        session_id: &acp::SessionId,
-        provider: &str,
-        limits: &RateLimitMetadata,
-        observed_epoch_seconds: u64,
-    ) {
+    pub(super) fn publish_lody_rate_limits_at(&self, observation: LodyRateLimitObservation<'_>) {
+        let LodyRateLimitObservation {
+            session_id,
+            provider,
+            limits,
+            observed_epoch_seconds,
+        } = observation;
         let Some(client) = self.client() else {
             return;
         };

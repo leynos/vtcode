@@ -61,7 +61,7 @@ async fn responses_requests_include_client_request_id_and_debug_metadata() {
                 .get("x-client-request-id")
                 .and_then(|v| v.to_str().ok())
                 .expect("x-client-request-id required");
-            assert!(req_id.starts_with("vtcode-"));
+            assert!(req_id.starts_with("diapason-"));
             ResponseTemplate::new(400)
                 .insert_header("x-request-id", "req_123")
                 .insert_header("retry-after", "15")
@@ -85,7 +85,7 @@ async fn responses_requests_include_client_request_id_and_debug_metadata() {
     let text = err.to_string();
     assert!(
         text.contains("request_id=req_123")
-            && text.contains("client_request_id=vtcode-")
+            && text.contains("client_request_id=diapason-")
             && text.contains("retry_after=15")
             && text.contains("type=invalid_request_error")
     );

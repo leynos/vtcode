@@ -3,6 +3,7 @@ use super::super::prompt::RateLimitNoticeSink;
 use super::*;
 use crate::zed::types::SessionCancellation;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
+use diapason_core::telemetry::TelemetryEvent;
 use diapason_core::telemetry::perf::TestPerfRecorder;
 
 mod telemetry;
@@ -49,7 +50,6 @@ fn stream_poll_runs_inside_safe_attempt_span() {
 
 
 proptest! {
-    /// Assert streaming depends only on provider support and Stop hooks.
     #[test]
     fn streaming_eligibility_depends_only_on_provider_support_and_stop_hooks(
         supports_streaming in any::<bool>(),
@@ -62,7 +62,6 @@ proptest! {
         );
     }
 
-    /// Assert observed output resets first-token and idle deadlines, not total.
     #[test]
     fn observing_stream_output_replaces_only_the_first_token_deadline(
         first_token_secs in prop::option::of(1u64..3_601),
@@ -89,17 +88,20 @@ proptest! {
     }
 }
 
+/// Runs one default buffered retry sequence against a fresh cancellation token.
+async fn retry_once(
+    provider: &dyn LLMProvider,
+    runtime: &ProviderRequestRuntime,
+) -> Result<LLMResponse, ProviderCallError> {
+    let cancellation = SessionCancellation::default();
+    let request = RetryRequest::new(provider, LLMRequest::default(), runtime, &cancellation);
+    generate_with_retry(request).await
+}
+
 /// Assert buffered generation fails at its total-generation deadline.
 #[tokio::test]
 async fn buffered_generation_obeys_total_generation_timeout() {
-    let result = generate_with_retry(
-        &PendingProvider,
-        LLMRequest::default(),
-        &timeout_runtime(),
-        &SessionCancellation::default(),
-        None,
-    )
-    .await;
+    let result = retry_once(&PendingProvider, &timeout_runtime()).await;
 
     let Err(ProviderCallError::Failed(error)) = result else {
         panic!("pending generation should fail at its total deadline");
@@ -138,10 +140,9 @@ async fn transient_network_failure_retries_and_recovers() {
         invalid_request: false,
     };
 
-    let response =
-        generate_with_retry(&provider, LLMRequest::default(), &retry_runtime(), &SessionCancellation::default(), None)
-            .await
-            .expect("transient request should recover");
+    let response = retry_once(&provider, &retry_runtime())
+        .await
+        .expect("transient request should recover");
 
     assert_eq!(response.content.as_deref(), Some("recovered"));
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 2);
@@ -152,9 +153,7 @@ async fn transient_network_failure_retries_and_recovers() {
 async fn bad_gateway_retries_until_the_configured_budget_is_exhausted() {
     let provider = BadGatewayProvider { attempts: AtomicUsize::new(0) };
 
-    let result =
-        generate_with_retry(&provider, LLMRequest::default(), &retry_runtime(), &SessionCancellation::default(), None)
-            .await;
+    let result = retry_once(&provider, &retry_runtime()).await;
 
     let Err(ProviderCallError::Failed(error)) = result else {
         panic!("persistent 502 response should exhaust the retry budget");
@@ -173,9 +172,7 @@ async fn invalid_request_is_not_retried() {
         invalid_request: true,
     };
 
-    let result =
-        generate_with_retry(&provider, LLMRequest::default(), &retry_runtime(), &SessionCancellation::default(), None)
-            .await;
+    let result = retry_once(&provider, &retry_runtime()).await;
 
     assert!(matches!(result, Err(ProviderCallError::Failed(_))));
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 1);
@@ -227,16 +224,13 @@ async fn retryable_rate_limit_publishes_a_notice_over_the_acp_transport() {
                     .await?,
             );
             let session = cx.send_request(NewSessionRequest::new(client_workspace)).block_task().await?;
+            let cancellation = SessionCancellation::default();
             let notice_sink = RateLimitNoticeSink::new(notice_agent.as_ref(), &session.session_id);
-            let response = generate_with_retry(
-                &provider,
-                LLMRequest::default(),
-                &runtime,
-                &SessionCancellation::default(),
-                Some(&notice_sink),
-            )
-            .await
-            .expect("a retryable rate limit should recover");
+            let request = RetryRequest::new(&provider, LLMRequest::default(), &runtime, &cancellation)
+                .with_failure_sink(&notice_sink);
+            let response = generate_with_retry(request)
+                .await
+                .expect("a retryable rate limit should recover");
             assert_eq!(response.content.as_deref(), Some("recovered"));
 
             let update = loop {
@@ -271,33 +265,6 @@ async fn retryable_rate_limit_publishes_a_notice_over_the_acp_transport() {
     drop(agent_task.await);
 }
 
-/// Assert every allowlisted code survives unchanged.
-#[test]
-fn provider_error_telemetry_preserves_allowlisted_codes() {
-    for code in KNOWN_ERROR_CODES {
-        let error = LLMError::Network {
-            message: "request failed".to_string(),
-            metadata: Some(LLMErrorMetadata::new(
-                "Arli AI",
-                Some(503),
-                Some((*code).to_string()),
-                None,
-                None,
-                None,
-                None,
-            )),
-        };
-
-        let telemetry = provider_error_telemetry(&error);
-        if code.starts_with("acp_timeout_") {
-            assert!(telemetry.timeout_phase.is_some(), "{code} must be reported as its timeout phase");
-            assert_eq!(telemetry.code, None, "a timeout code must not also be reported as a code");
-        } else {
-            assert_eq!(telemetry.code, Some(*code), "{code} must be recognised");
-        }
-    }
-use diapason_core::telemetry::TelemetryEvent;
-use diapason_core::telemetry::perf::TestPerfRecorder;
 struct RetryMetricWitness<'a> {
     expected_names: &'a [&'a str],
     forbidden_marker: &'a str,
@@ -324,33 +291,6 @@ impl<'a> RetryMetricWitness<'a> {
         assert_eq!(events[1].tags.get("retry_disposition").map(String::as_str), Some(self.retry_disposition));
     }
 }
-
-/// Assert every allowlisted code survives unchanged.
-#[test]
-fn provider_error_telemetry_preserves_allowlisted_codes() {
-    for code in KNOWN_ERROR_CODES {
-        let error = LLMError::Network {
-            message: "request failed".to_string(),
-            metadata: Some(LLMErrorMetadata::new(
-                "Arli AI",
-                Some(503),
-                Some((*code).to_string()),
-                None,
-                None,
-                None,
-                None,
-            )),
-        };
-
-        let telemetry = provider_error_telemetry(&error);
-        if code.starts_with("acp_timeout_") {
-            assert!(telemetry.timeout_phase.is_some(), "{code} must be reported as its timeout phase");
-            assert_eq!(telemetry.code, None, "a timeout code must not also be reported as a code");
-        } else {
-            assert_eq!(telemetry.code, Some(*code), "{code} must be recognised");
-        }
-    }
-
 
 struct RetryingStreamProvider {
     calls: Arc<AtomicUsize>,
@@ -411,17 +351,12 @@ async fn buffered_retry_records_bounded_perf_metrics() {
     let recorder = Arc::new(TestPerfRecorder::new());
     let metric_sink = ProviderMetricSink::test(Arc::clone(&recorder));
 
-    let response = generate_with_retry_with_observer_and_metric_sink(
-        &provider,
-        LLMRequest::default(),
-        &retry_runtime(),
-        &SessionCancellation::default(),
-        None,
-        &SystemTime::now,
-        &metric_sink,
-    )
-    .await
-    .expect("transient request should recover");
+    let runtime = retry_runtime();
+    let cancellation = SessionCancellation::default();
+    let request = RetryRequest::new(&provider, LLMRequest::default(), &runtime, &cancellation);
+    let response = generate_with_retry_with_observer_and_metric_sink(request, &SystemTime::now, &metric_sink)
+        .await
+        .expect("transient request should recover");
 
     assert_eq!(response.content.as_deref(), Some("recovered"));
     let events = recorder.drain().await;

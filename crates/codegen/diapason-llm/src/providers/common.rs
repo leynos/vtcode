@@ -1206,14 +1206,12 @@ fn reports_token_counts(usage_value: &Value) -> bool {
 /// providers use the corresponding `output_tokens_details` shape.
 #[inline]
 pub(crate) fn parse_reasoning_tokens_from_usage(usage_value: &Value) -> Option<u32> {
-    let reasoning_tokens_in = |details_key: &str| {
-        usage_value
-            .get(details_key)
-            .and_then(|details| details.get("reasoning_tokens"))
-            .and_then(Value::as_u64)
-            .and_then(|value| u32::try_from(value).ok())
-    };
-    reasoning_tokens_in("completion_tokens_details").or_else(|| reasoning_tokens_in("output_tokens_details"))
+    ["completion_tokens_details", "output_tokens_details"]
+        .into_iter()
+        .find_map(|field| {
+            let tokens = usage_value.get(field)?.get("reasoning_tokens")?.as_u64()?;
+            u32::try_from(tokens).ok()
+        })
 }
 
 #[inline]

@@ -20,6 +20,72 @@ use std::time::Duration;
 
 use crate::error_category::{ErrorCategory, classify_anyhow_error};
 
+/// Zero-based ordinal of an attempt inside one retry segment.
+///
+/// Keeping the ordinal in its own type stops bare integers standing in for it
+/// at policy boundaries, where an off-by-one shifts the whole backoff curve.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct AttemptIndex(u32);
+
+impl AttemptIndex {
+    /// Ordinal of the first attempt in a segment.
+    pub const INITIAL: Self = Self(0);
+
+    #[must_use]
+    pub const fn new(index: u32) -> Self {
+        Self(index)
+    }
+
+    #[must_use]
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+
+    /// Ordinal of the following attempt, saturating at [`u32::MAX`].
+    #[must_use]
+    pub const fn next(self) -> Self {
+        Self(self.0.saturating_add(1))
+    }
+}
+
+impl From<u32> for AttemptIndex {
+    fn from(index: u32) -> Self {
+        Self(index)
+    }
+}
+
+impl From<AttemptIndex> for u32 {
+    fn from(index: AttemptIndex) -> Self {
+        index.0
+    }
+}
+
+/// Inputs for one category-based retry decision.
+///
+/// Bundles the attempt ordinal, the classified failure category, the wait the
+/// provider advertised for this attempt, and the segment's retained floor so a
+/// decision takes one domain value instead of four loosely related parameters.
+#[derive(Debug)]
+pub struct RetryAttempt<'a> {
+    category: ErrorCategory,
+    index: AttemptIndex,
+    retry_after: Option<Duration>,
+    backoff: &'a mut RetryBackoff,
+}
+
+impl<'a> RetryAttempt<'a> {
+    #[must_use]
+    pub const fn new(
+        category: ErrorCategory,
+        index: AttemptIndex,
+        retry_after: Option<Duration>,
+        backoff: &'a mut RetryBackoff,
+    ) -> Self {
+        Self { category, index, retry_after, backoff }
+    }
+}
+
 /// Typed retry policy shared across runtime layers.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RetryPolicy {
@@ -53,11 +119,11 @@ impl RetryPolicy {
     /// Uses a 2.0 multiplier and no jitter, so
     /// [`Self::delay_for_attempt`] reproduces the classic
     /// `base_ms << attempt` doubling curve capped at `max_delay_ms`.
-    fn simple(max_retries: u32, base_delay_ms: u64, max_delay_ms: u64) -> Self {
-        Self::from_retries(max_retries, Duration::from_millis(base_delay_ms), Duration::from_millis(max_delay_ms), 2.0)
+    fn simple(max_retries: u32, base_delay: Duration, max_delay: Duration) -> Self {
+        Self::from_retries(max_retries, base_delay, max_delay, 2.0)
     }
 
-    pub fn delay_for_attempt(&self, attempt_index: u32) -> Duration {
+    pub fn delay_for_attempt(&self, attempt_index: AttemptIndex) -> Duration {
         self.delay_for_attempt_with_floor(attempt_index, None)
     }
 
@@ -69,7 +135,11 @@ impl RetryPolicy {
     /// of that floor and [`Self::initial_delay`] and grows without being
     /// reduced by the local cap. Jitter is additive, so it can never shorten
     /// either minimum.
-    pub fn delay_for_attempt_with_floor(&self, attempt_index: u32, provider_floor: Option<Duration>) -> Duration {
+    pub fn delay_for_attempt_with_floor(
+        &self,
+        attempt_index: AttemptIndex,
+        provider_floor: Option<Duration>,
+    ) -> Duration {
         let policy_delay = exponential_delay(self.initial_delay, self.multiplier, attempt_index).min(self.max_delay);
         let minimum_delay =
             provider_floor
@@ -94,17 +164,17 @@ impl RetryPolicy {
             return minimum_delay;
         }
 
-        let offset = (u64::from(attempt_index) * 31) % max_jitter_ms.saturating_add(1);
+        let offset = (u64::from(attempt_index.get()) * 31) % max_jitter_ms.saturating_add(1);
         minimum_delay.saturating_add(Duration::from_millis(offset))
     }
 
     pub fn decision_for_category(
         &self,
         category: ErrorCategory,
-        attempt_index: u32,
+        attempt_index: AttemptIndex,
         retry_after: Option<Duration>,
     ) -> RetryDecision {
-        let has_remaining_attempts = attempt_index.saturating_add(1) < self.max_attempts;
+        let has_remaining_attempts = attempt_index.get().saturating_add(1) < self.max_attempts;
         if !category.is_retryable() || !has_remaining_attempts {
             return RetryDecision {
                 category,
@@ -126,13 +196,13 @@ impl RetryPolicy {
     /// Make a retry decision while retaining provider backoff state across
     /// attempts. Later, larger floors raise the retained minimum; missing or
     /// smaller floors do not lower it.
-    pub fn decision_for_category_with_backoff(
-        &self,
-        category: ErrorCategory,
-        attempt_index: u32,
-        retry_after: Option<Duration>,
-        backoff: &mut RetryBackoff,
-    ) -> RetryDecision {
+    pub fn decision_for_category_with_backoff(&self, attempt: RetryAttempt<'_>) -> RetryDecision {
+        let RetryAttempt {
+            category,
+            index: attempt_index,
+            retry_after,
+            backoff,
+        } = attempt;
         backoff.observe(retry_after);
 
         let mut decision = self.decision_for_category(category, attempt_index, None);
@@ -179,8 +249,8 @@ impl RetryPolicy {
     }
 }
 
-fn exponential_delay(base: Duration, multiplier: f64, attempt_index: u32) -> Duration {
-    let exponent = i32::try_from(attempt_index).unwrap_or(i32::MAX);
+fn exponential_delay(base: Duration, multiplier: f64, attempt_index: AttemptIndex) -> Duration {
+    let exponent = i32::try_from(attempt_index.get()).unwrap_or(i32::MAX);
     let multiplier = if multiplier.is_finite() && multiplier >= 1.0 {
         multiplier
     } else {

@@ -15,100 +15,79 @@ fn non_retryable_categories_stop_immediately() {
     assert!(decision.delay.is_none());
 }
 
-#[test]
-fn retry_after_header_overrides_backoff_delay() {
-    let policy = RetryPolicy::from_retries(3, Duration::from_secs(1), Duration::from_secs(8), 2.0);
-    let err = LLMError::RateLimit {
+/// Rate-limit failure carrying the provider's advertised wait, if any.
+fn rate_limit_error(retry_after: Option<&str>) -> LLMError {
+    LLMError::RateLimit {
         metadata: Some(LLMErrorMetadata::new(
             "Anthropic",
             Some(429),
             Some("rate_limit_error".to_string()),
             None,
             None,
-            Some("7".to_string()),
+            retry_after.map(str::to_string),
             Some("too many requests".to_string()),
         )),
-    };
+    }
+}
 
-    let decision = policy.decision_for_llm_error(&err, 0);
-    assert!(decision.retryable);
-    assert_eq!(decision.retry_after, Some(Duration::from_secs(7)));
-    assert_eq!(decision.delay, Some(Duration::from_secs(7)));
+fn floor_policy() -> RetryPolicy {
+    RetryPolicy::from_retries(3, Duration::from_secs(1), Duration::from_secs(8), 2.0)
+}
+
+#[test]
+fn retry_after_header_overrides_backoff_delay_for_typed_and_wrapped_errors() {
+    let policy = floor_policy();
+    let typed = policy.decision_for_llm_error(&rate_limit_error(Some("7")), 0);
+    let wrapped = policy.decision_for_anyhow(&anyhow::Error::new(rate_limit_error(Some("7"))), 0, None);
+    let expected = (true, Some(Duration::from_secs(7)), Some(Duration::from_secs(7)));
+
+    for (label, decision) in [("typed", typed), ("wrapped", wrapped)] {
+        assert_eq!((decision.retryable, decision.retry_after, decision.delay), expected, "{label}");
+    }
 }
 
 #[test]
 fn retry_backoff_retains_floor_when_later_provider_error_omits_header() {
-    let policy = RetryPolicy::from_retries(3, Duration::from_secs(1), Duration::from_secs(8), 2.0);
-    let first_error = LLMError::RateLimit {
-        metadata: Some(LLMErrorMetadata::new(
-            "Anthropic",
-            Some(429),
-            Some("rate_limit_error".to_string()),
-            None,
-            None,
-            Some("7".to_string()),
-            Some("too many requests".to_string()),
-        )),
-    };
-    let later_error = LLMError::RateLimit {
-        metadata: Some(LLMErrorMetadata::new(
-            "Anthropic",
-            Some(429),
-            Some("rate_limit_error".to_string()),
-            None,
-            None,
-            None,
-            Some("too many requests".to_string()),
-        )),
-    };
+    let policy = floor_policy();
     let mut backoff = RetryBackoff::new();
 
-    let first = policy.decision_for_llm_error_with_backoff(&first_error, 0, &mut backoff);
-    let later = policy.decision_for_llm_error_with_backoff(&later_error, 1, &mut backoff);
+    let first = policy.decision_for_llm_error_with_backoff_at(
+        &rate_limit_error(Some("7")),
+        LlmRetryAttempt::now(0),
+        &mut backoff,
+    );
+    let later =
+        policy.decision_for_llm_error_with_backoff_at(&rate_limit_error(None), LlmRetryAttempt::now(1), &mut backoff);
 
-    assert_eq!(first.delay, Some(Duration::from_secs(7)));
-    assert_eq!(later.retry_after, None);
-    assert_eq!(later.delay, Some(Duration::from_secs(14)));
+    assert_eq!(
+        (first.delay, later.retry_after, later.delay),
+        (Some(Duration::from_secs(7)), None, Some(Duration::from_secs(14)))
+    );
 }
 
 #[test]
 fn retry_backoff_does_not_retain_an_http_date_floor() {
-    let policy = RetryPolicy::from_retries(3, Duration::from_secs(1), Duration::from_secs(8), 2.0);
+    let policy = floor_policy();
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_445_412_420);
     let retry_date = httpdate::fmt_http_date(now + Duration::from_secs(60));
-    let first_error = LLMError::RateLimit {
-        metadata: Some(LLMErrorMetadata::new(
-            "Anthropic",
-            Some(429),
-            Some("rate_limit_error".to_string()),
-            None,
-            None,
-            Some(retry_date),
-            Some("too many requests".to_string()),
-        )),
-    };
-    let later_error = LLMError::RateLimit {
-        metadata: Some(LLMErrorMetadata::new(
-            "Anthropic",
-            Some(429),
-            Some("rate_limit_error".to_string()),
-            None,
-            None,
-            None,
-            Some("too many requests".to_string()),
-        )),
-    };
     let mut backoff = RetryBackoff::new();
 
-    let first = policy.decision_for_llm_error_with_backoff_at(&first_error, 0, &mut backoff, now);
-    let later =
-        policy.decision_for_llm_error_with_backoff_at(&later_error, 1, &mut backoff, now + Duration::from_secs(61));
+    let first = policy.decision_for_llm_error_with_backoff_at(
+        &rate_limit_error(Some(&retry_date)),
+        LlmRetryAttempt::new(0, now),
+        &mut backoff,
+    );
+    let later = policy.decision_for_llm_error_with_backoff_at(
+        &rate_limit_error(None),
+        LlmRetryAttempt::new(1, now + Duration::from_secs(61)),
+        &mut backoff,
+    );
 
-    assert_eq!(first.retry_after, Some(Duration::from_secs(60)));
-    assert_eq!(first.delay, Some(Duration::from_secs(60)));
-    assert_eq!(backoff.provider_floor(), None);
-    assert_eq!(later.retry_after, None);
-    assert_eq!(later.delay, Some(Duration::from_secs(2)));
+    assert_eq!(
+        (first.retry_after, first.delay, backoff.provider_floor()),
+        (Some(Duration::from_secs(60)), Some(Duration::from_secs(60)), None)
+    );
+    assert_eq!((later.retry_after, later.delay), (None, Some(Duration::from_secs(2))));
 }
 
 #[test]
@@ -139,27 +118,6 @@ fn anyhow_fallback_uses_shared_classifier() {
     assert_eq!(decision.category, ErrorCategory::ServiceUnavailable);
     assert!(decision.retryable);
     assert_eq!(decision.delay, Some(Duration::from_secs(1)));
-}
-
-#[test]
-fn anyhow_prefers_typed_llm_errors() {
-    let policy = RetryPolicy::from_retries(3, Duration::from_secs(1), Duration::from_secs(8), 2.0);
-    let err = anyhow::Error::new(LLMError::RateLimit {
-        metadata: Some(LLMErrorMetadata::new(
-            "Anthropic",
-            Some(429),
-            Some("rate_limit_error".to_string()),
-            None,
-            None,
-            Some("9".to_string()),
-            Some("too many requests".to_string()),
-        )),
-    });
-
-    let decision = policy.decision_for_anyhow(&err, 0, None);
-    assert!(decision.retryable);
-    assert_eq!(decision.retry_after, Some(Duration::from_secs(9)));
-    assert_eq!(decision.delay, Some(Duration::from_secs(9)));
 }
 
 #[test]

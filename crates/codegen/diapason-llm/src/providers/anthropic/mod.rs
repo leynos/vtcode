@@ -27,4 +27,6 @@ pub(crate) mod validation;
 pub use provider::AnthropicProvider;
 
 #[cfg(test)]
+mod native_error_metadata_tests;
+#[cfg(test)]
 mod tests;

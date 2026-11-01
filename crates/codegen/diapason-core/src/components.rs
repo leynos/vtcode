@@ -64,6 +64,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
+use diapason_commons::retry::AttemptIndex;
 use diapason_commons::serde_helpers::json_to_string_pretty;
 use serde_json::Value;
 
@@ -404,7 +405,7 @@ impl<Ctx: HasRetryPolicy> RetryProvider<Ctx> for ExponentialBackoffRetry {
     fn backoff_duration(ctx: &Ctx, _tool_name: &str, attempt: u32) -> Duration {
         let policy = ctx.retry_policy();
         // The CGP pipeline uses 1-indexed attempts; delay_for_attempt is 0-indexed.
-        policy.delay_for_attempt(attempt.saturating_sub(1))
+        policy.delay_for_attempt(AttemptIndex::new(attempt.saturating_sub(1)))
     }
 }
 

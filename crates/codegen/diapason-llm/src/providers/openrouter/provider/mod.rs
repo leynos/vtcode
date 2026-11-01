@@ -8,7 +8,7 @@ use tracing::warn;
 use crate::error_display;
 use crate::provider::{LLMError, LLMRequest, Message, MessageRole, ToolChoice};
 use crate::providers::common::{chat_completions_url, extract_prompt_cache_settings, override_base_url, resolve_model};
-use crate::providers::error_handling::{format_network_error, parse_api_error_with_headers};
+use crate::providers::error_handling::{ProviderFailure, ProviderHttpError, format_network_error, parse_api_error};
 use diapason_commons::sanitizer::sanitize_provider_diagnostic;
 use diapason_config::TimeoutsConfig;
 use diapason_config::constants::{env_vars, models, urls};
@@ -26,6 +26,12 @@ const OPENROUTER_PROVIDER_NAME: &str = "OpenRouter";
 
 fn openrouter_rate_limit_headers() -> RateLimitHeaderConfig {
     RateLimitHeaderConfig::for_provider_name(OPENROUTER_PROVIDER_NAME)
+}
+
+/// Build an OpenRouter error that retains mapped rate-limit and retry metadata.
+fn openrouter_error(failure: ProviderFailure<'_>) -> LLMError {
+    let rate_limit_headers = openrouter_rate_limit_headers();
+    parse_api_error(ProviderHttpError::new(failure, OPENROUTER_PROVIDER_NAME, &rate_limit_headers))
 }
 
 mod client_impl;
@@ -236,13 +242,7 @@ impl OpenRouterProvider {
         let fallback_text = crate::providers::common::read_provider_error_body(fallback_response).await;
 
         if fallback_status.as_u16() == 429 || fallback_text.contains("quota") {
-            return Err(parse_api_error_with_headers(
-                OPENROUTER_PROVIDER_NAME,
-                fallback_status,
-                &fallback_text,
-                &fallback_headers,
-                &openrouter_rate_limit_headers(),
-            ));
+            return Err(openrouter_error(ProviderFailure::new(fallback_status, &fallback_text, &fallback_headers)));
         }
 
         let combined_error = format!(
@@ -325,13 +325,7 @@ impl OpenRouterProvider {
         let error_text = crate::providers::common::read_provider_error_body(response).await;
 
         if status.as_u16() == 429 || error_text.contains("quota") {
-            return Err(parse_api_error_with_headers(
-                OPENROUTER_PROVIDER_NAME,
-                status,
-                &error_text,
-                &headers,
-                &openrouter_rate_limit_headers(),
-            ));
+            return Err(openrouter_error(ProviderFailure::new(status, &error_text, &headers)));
         }
 
         if let Some(resp) = self
@@ -369,12 +363,6 @@ impl OpenRouterProvider {
         }
 
         // Use unified error parsing for consistent error categorization
-        Err(parse_api_error_with_headers(
-            OPENROUTER_PROVIDER_NAME,
-            status,
-            &error_text,
-            &headers,
-            &openrouter_rate_limit_headers(),
-        ))
+        Err(openrouter_error(ProviderFailure::new(status, &error_text, &headers)))
     }
 }

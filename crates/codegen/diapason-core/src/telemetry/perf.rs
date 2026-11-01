@@ -113,13 +113,13 @@ mod tests {
         ]);
 
         recorder
-            .record_value("vtcode.test.metric", 42.0, tags.clone())
+            .record_value("diapason.test.metric", 42.0, tags.clone())
             .await
             .expect("recording an event should succeed");
 
         let events = recorder.drain().await;
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].name, "vtcode.test.metric");
+        assert_eq!(events[0].name, "diapason.test.metric");
         assert_eq!(events[0].value.to_bits(), 42.0_f64.to_bits());
         assert_eq!(events[0].tags, tags);
         assert!(recorder.drain().await.is_empty());
