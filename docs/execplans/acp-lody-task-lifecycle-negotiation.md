@@ -69,22 +69,23 @@ management requests return only tasks owned by the requested ACP session.
   against `fix/acp-unresolved-tool-recovery`
   (`51aa49eb66c0243155763d31b79a6cf7a4ce8f4f`). Counting production paths only
   — every path except `docs/`, `*.md`, `proptest-regressions/`, and any path
-  segment containing `test` — 32 files changed with 1,496 insertions and 168
-  deletions, 1,328 net lines, against tolerances of 16 files and 1,200 lines.
+  segment containing `test` — 32 files changed with 1,509 insertions and 168
+  deletions, 1,341 net lines, against tolerances of 16 files and 1,200 lines.
   The file-count overrun and the additional line-tolerance overrun come from
   approved scope, not incidental drift: the EP-M2 security expansion touches
   the config schema, the core controller model, provider profiles and the ACP
   adapter; the first review-repair round added tree-aware routing across those
-  same modules; and the second added shared queue accounting for the
-  attach-time snapshot publisher. The requirement to keep the ownership
-  expansion additive and both repair rounds were directed by the user, so the
-  deviation is recorded rather than treated as a live stop condition. The
-  documentation share is excluded from that count, but the generated
-  configuration reference alone changes 928 added and 926 removed lines: a
-  generator run that restored truncated JSON defaults, followed by mdtablefix's
-  canonical re-padding of the widened table (see the Decision log). A diff of
-  that size is expected for this one generated table and is not separate
-  feature work.
+  same modules; the second added shared queue accounting for the attach-time
+  snapshot publisher; and the third made that accounting atomic against the
+  forwarder's dequeue and extracted the managed-background ownership predicate.
+  The requirement to keep the ownership expansion additive and both repair
+  rounds were directed by the user, so the deviation is recorded rather than
+  treated as a live stop condition. The documentation share is excluded from
+  that count, but the generated configuration reference alone changes 928 added
+  and 926 removed lines: a generator run that restored truncated JSON defaults,
+  followed by mdtablefix's canonical re-padding of the widened table (see the
+  Decision log). A diff of that size is expected for this one generated table
+  and is not separate feature work.
 
 ## Risks
 
@@ -210,6 +211,30 @@ management requests return only tasks owned by the requested ACP session.
   - Tolerances record the measured scope for this head (32 production paths,
     1,496 insertions, 168 deletions, 1,328 net) and state that both the file
     and line tolerances are exceeded under directed scope.
+- [x] (2026-11-01) EP-M5 third review repair: close the findings from
+  Assessment-ID ACP-LODY-EP-20261101-3.
+  - Channel publication and its accounting now share one synchronous critical
+    section. `try_send` counts while holding the state lock across
+    `Sender::try_send`, and the awaited path reserves capacity first, then
+    checks closure, counts and publishes through the permit under the same
+    lock, so the synchronous lock is never held across an await.
+  - `the_forwarder_never_observes_an_unaccounted_item` exercises receiver
+    progress at the publication boundary over 256 rounds on a multi-threaded
+    runtime: it asserts the receiver sees depth one before dequeueing, and an
+    empty channel leaves tracked depth, the metric depth and the drain count
+    at zero.
+  - The managed-background ownership predicate is now shared:
+    `lody::owned_background_ids` selects by `owner_session_id` for both list
+    and cancel, and
+    `lody_tests.rs::background_ownership_is_the_owner_session_field` proves it
+    over generated owned, foreign and ownerless records in shuffled order with
+    an owner-agnostic negative control.
+  - The forest property is documented as foreground-controller ancestry that
+    includes the entry's `background` flag, and node 0 is forced background so
+    every case carries a background witness. Managed background records are
+    covered separately by the owner-session property.
+  - Tolerances re-measured for this head: 32 production paths, 1,509
+    insertions, 168 deletions, 1,341 net.
 
 ## Surprises & discoveries
 
@@ -620,10 +645,17 @@ EP-M5 evidence addendum (2026-10-31):
   behaviourally.
   `lody_tests.rs::ownership_selection_is_the_transitive_session_closure_of_a_mixed_forest`
   generates acyclic mixed forests of 3 to 32 tasks across two to four session
-  roots, with foreground and background nodes and every status, delivers the
-  entries in shuffled order, and compares the answer with the generation-order
-  answer. Its negative control is a direct-child-only filter that a generated
-  nested witness rejects. Behaviourally,
+  roots, with foreground-controller entries of every status, covers the entry's
+  own `background` flag, forces a background witness in every case, delivers
+  the entries in shuffled order, and compares the answer with the
+  generation-order answer. Its negative control is a direct-child-only filter
+  that a generated nested witness rejects.
+  `lody_tests.rs::background_ownership_is_the_owner_session_field` covers the
+  separate managed-background path used by list, cancel and output:
+  `lody::owned_background_ids` selects by `owner_session_id`, and the property
+  generates records owned by the requested session, by a foreign root and by no
+  session at all, in shuffled order, with an owner-agnostic filter as its
+  negative control. Behaviourally,
   `subagents/tests/tree_routing_tests.rs::descendant_controllers_include_only_attached_child_scopes`
   and `descendant_controllers_deduplicate_shared_child_scopes` prove the walk
   reaches exactly the attached child scopes, once each.
@@ -643,6 +675,11 @@ EP-M5 evidence addendum (2026-10-31):
   mixes an awaited initial snapshot with a live `try_send`, checks depth
   before and after each dequeue, and covers the closed-channel and full-channel
   paths, so neither enqueue source can cancel the other's tracked depth.
+  `task_lifecycle/projection_tests.rs::the_forwarder_never_observes_an_unaccounted_item`
+  exercises the concurrency boundary over 256 rounds on a multi-threaded
+  runtime: publication and counting share one critical section, so the receiver
+  sees depth one before it dequeues and an empty channel leaves depth, the
+  metric count and the drain count at zero.
 - Settled-outcome preservation is covered by
   `close_preserves_settled_foreground_outcomes` and
   `cancel_preserves_settled_background_outcomes`, which table the terminal

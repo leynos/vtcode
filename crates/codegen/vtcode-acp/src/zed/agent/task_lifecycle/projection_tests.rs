@@ -447,6 +447,49 @@ async fn initial_snapshot_enqueue_shares_accounting_with_live_updates() {
     drop(full_receiver);
 }
 
+/// The forwarder decrements depth the moment it receives an item, so the count
+/// must already be visible by then. Publishing before counting left a race:
+/// a receiver that drained the item first found depth zero, its dequeue was
+/// lost, and an empty channel kept reporting a pending update.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_forwarder_never_observes_an_unaccounted_item() {
+    const ROUNDS: usize = 256;
+
+    let metrics = Arc::new(RecordingQueueMetrics::default());
+    let observer = metrics.clone() as Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>;
+    let queue = Arc::new(LifecycleQueueTracker::new(observer));
+    let (sender, mut receiver) = mpsc::channel(1);
+
+    let (observed_tx, mut observed_rx) = mpsc::unbounded_channel();
+    let (release_tx, mut release_rx) = mpsc::unbounded_channel::<()>();
+    let (dequeued_tx, mut dequeued_rx) = mpsc::unbounded_channel::<()>();
+    let receiver_queue = Arc::clone(&queue);
+    let receiver_task = tokio::spawn(async move {
+        while let Some(update) = receiver.recv().await {
+            observed_tx.send(receiver_queue.depth()).expect("report the observed depth");
+            release_rx.recv().await.expect("release the receiver");
+            drop(update);
+            receiver_queue.dequeued();
+            dequeued_tx.send(()).expect("report the dequeue");
+        }
+    });
+
+    for round in 0..ROUNDS {
+        queue.send(&sender, subagent_event("running")).await.expect("awaited enqueue");
+        let observed = observed_rx.recv().await.expect("the receiver observed the item");
+        assert_eq!(observed, 1, "round {round}: an item must be counted before it is observable");
+        release_tx.send(()).expect("release the receiver");
+        dequeued_rx.recv().await.expect("the dequeue landed");
+        assert_eq!(queue.depth(), 0, "round {round}: an empty channel must report zero depth");
+    }
+
+    drop(sender);
+    receiver_task.await.expect("receiver task");
+    assert_eq!(metrics.enqueued.load(Ordering::SeqCst), ROUNDS);
+    assert_eq!(metrics.dequeued.load(Ordering::SeqCst), ROUNDS);
+    assert_eq!(metrics.drained.load(Ordering::SeqCst), 0, "a balanced channel drains nothing");
+}
+
 #[tokio::test]
 async fn forwards_lifecycle_events_through_the_official_acp_duplex() {
     let (agent_channel, client_channel) = agent_client_protocol::Channel::duplex();

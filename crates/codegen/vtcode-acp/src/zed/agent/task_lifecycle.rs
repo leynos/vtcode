@@ -80,33 +80,26 @@ impl LifecycleQueueTracker {
         }
     }
 
-    fn is_closed(&self) -> bool {
-        self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner).closed
-    }
-
-    /// Counts one item that is now queued behind the forwarder's receiver.
+    /// Counts one accepted enqueue while the queue state is already locked.
     ///
-    /// Every enqueue path must call this, because the receiver decrements the
-    /// same counter once per item it takes off the channel. Counting only some
-    /// of them lets one dequeue cancel another item's depth and reports an
-    /// empty queue while updates are still pending.
-    fn record_enqueued(&self) {
-        let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.closed {
-            return;
-        }
+    /// Every enqueue path must count under the same lock that publishes the
+    /// item, because the forwarder decrements the same counter as soon as it
+    /// receives. An item that becomes observable before it is counted lets
+    /// that dequeue find a zero depth and leave a permanent over-count behind,
+    /// reporting a non-empty queue after the channel has emptied.
+    fn record_enqueued_locked(&self, state: &mut LifecycleQueueState) {
         state.depth = state.depth.saturating_add(1);
         self.metrics.queue_item_enqueued();
     }
 
     fn try_send<T>(&self, sender: &mpsc::Sender<T>, update: T) -> Result<(), LifecycleQueueDropKind> {
-        if self.is_closed() {
+        let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.closed {
             return Err(LifecycleQueueDropKind::Closed);
         }
-
         match sender.try_send(update) {
             Ok(()) => {
-                self.record_enqueued();
+                self.record_enqueued_locked(&mut state);
                 Ok(())
             }
             Err(error) => Err(lifecycle_queue_drop_kind(error)),
@@ -117,16 +110,22 @@ impl LifecycleQueueTracker {
     ///
     /// The attach-time snapshot publisher uses this path: a snapshot it drops
     /// is a task the client never learns about, so it waits for room instead.
-    /// Accounting stays identical to [`Self::try_send`], so dequeues remain
-    /// balanced whichever path produced the item.
+    /// Capacity is reserved before the state lock is taken, so the synchronous
+    /// lock is never held across an await. The closure check, the count and
+    /// the publication through the permit then share one critical section,
+    /// matching [`Self::try_send`] and keeping dequeues balanced whichever
+    /// path produced the item.
     async fn send<T>(&self, sender: &mpsc::Sender<T>, update: T) -> Result<(), LifecycleQueueDropKind> {
-        if self.is_closed() {
+        let permit = match sender.reserve().await {
+            Ok(permit) => permit,
+            Err(_) => return Err(LifecycleQueueDropKind::Closed),
+        };
+        let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.closed {
             return Err(LifecycleQueueDropKind::Closed);
         }
-        if sender.send(update).await.is_err() {
-            return Err(LifecycleQueueDropKind::Closed);
-        }
-        self.record_enqueued();
+        self.record_enqueued_locked(&mut state);
+        permit.send(update);
         Ok(())
     }
 
