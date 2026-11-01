@@ -27,6 +27,30 @@ fn chat_completion_test_provider(base_url: &str, model: &str) -> OpenAIProvider 
     .with_api_format_override(Some(CustomProviderApiFormat::OpenAIChat))
 }
 
+fn assert_rate_limit_metadata(error: &provider::LLMError, request_id: &str) {
+    let provider::LLMError::RateLimit { metadata: Some(metadata) } = error else {
+        panic!("expected a rate-limit error with header metadata: {error:?}");
+    };
+    assert_eq!(metadata.status, Some(429));
+    assert_eq!(metadata.retry_after.as_deref(), Some("15"));
+    assert_eq!(metadata.message.as_deref(), Some("customer-record=confidential-123"));
+    let rate_limit = metadata.rate_limit.as_ref().expect("quota metadata should be mapped");
+    assert_eq!(rate_limit.requests_limit_per_minute, Some(60));
+    assert_eq!(rate_limit.requests_remaining_per_minute, Some(2));
+
+    let serialized = serde_json::to_value(metadata).expect("metadata should serialize");
+    assert_eq!(serialized.get("request_id").and_then(Value::as_str), Some(request_id));
+    assert!(!serialized.to_string().contains("x-ratelimit-limit-requests"));
+}
+
+fn rate_limited_template() -> ResponseTemplate {
+    ResponseTemplate::new(429)
+        .insert_header("retry-after", "15")
+        .insert_header("x-ratelimit-limit-requests", "60")
+        .insert_header("x-ratelimit-remaining-requests", "2")
+        .set_body_string(r#"{"error":{"message":"customer-record=confidential-123","type":"rate_limit_error"}}"#)
+}
+
 fn assert_header_metadata_without_provider_body(error: &provider::LLMError, request_id: &str) {
     let provider::LLMError::Provider { metadata: Some(metadata), .. } = error else {
         panic!("expected a provider error with header metadata: {error:?}");
@@ -113,20 +137,25 @@ impl ResponsesStreamErrorPath {
     }
 }
 
-async fn assert_responses_stream_error(error_path: ResponsesStreamErrorPath) {
+fn provider_error_template() -> ResponseTemplate {
+    ResponseTemplate::new(400)
+        .insert_header("retry-after", "15")
+        .insert_header("x-ratelimit-limit-requests", "60")
+        .set_body_string(r#"{"error":{"message":"customer-record=confidential-123"}}"#)
+}
+
+async fn assert_responses_stream_error(
+    error_path: ResponsesStreamErrorPath,
+    respond: fn() -> ResponseTemplate,
+    assert_error: fn(&provider::LLMError, &str),
+) {
     let Some(server) = start_mock_server_or_skip().await else {
         return;
     };
     let provider = test_provider(&server.uri(), models::openai::GPT_5);
     Mock::given(method("POST"))
         .and(path("/responses"))
-        .respond_with(
-            ResponseTemplate::new(400)
-                .insert_header("x-request-id", error_path.request_id())
-                .insert_header("retry-after", "15")
-                .insert_header("x-ratelimit-limit-requests", "60")
-                .set_body_string(r#"{"error":{"message":"customer-record=confidential-123"}}"#),
-        )
+        .respond_with(respond().insert_header("x-request-id", error_path.request_id()))
         .expect(1)
         .mount(&server)
         .await;
@@ -147,7 +176,7 @@ async fn assert_responses_stream_error(error_path: ResponsesStreamErrorPath) {
         },
     };
 
-    assert_header_metadata_without_provider_body(&error, error_path.request_id());
+    assert_error(&error, error_path.request_id());
 }
 
 #[rstest]
@@ -157,7 +186,8 @@ async fn assert_responses_stream_error(error_path: ResponsesStreamErrorPath) {
 async fn responses_stream_errors_keep_header_metadata_without_provider_body(
     #[case] error_path: ResponsesStreamErrorPath,
 ) {
-    assert_responses_stream_error(error_path).await;
+    assert_responses_stream_error(error_path, provider_error_template, assert_header_metadata_without_provider_body)
+        .await;
 }
 
 #[tokio::test]
@@ -232,4 +262,65 @@ async fn responses_fallback_reports_terminal_chat_header_metadata() {
         .expect_err("terminal Chat fallback error should surface");
 
     assert_header_metadata_without_provider_body(&error, "req_fallback_chat_123");
+}
+
+#[tokio::test]
+async fn responses_rate_limit_errors_keep_mapped_quota_metadata() {
+    let Some(server) = start_mock_server_or_skip().await else {
+        return;
+    };
+    let provider = test_provider(&server.uri(), models::openai::GPT_5);
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(rate_limited_template().insert_header("x-request-id", "req_rate_limited"))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let error = provider
+        .generate(provider::LLMRequest {
+            messages: vec![provider::Message::user("Hello".to_string())].into(),
+            model: models::openai::GPT_5.to_string(),
+            ..Default::default()
+        })
+        .await
+        .expect_err("responses rate limit should surface");
+
+    assert_rate_limit_metadata(&error, "req_rate_limited");
+}
+
+#[rstest]
+#[case::legacy(ResponsesStreamErrorPath::Legacy)]
+#[case::normalized(ResponsesStreamErrorPath::Normalized)]
+#[tokio::test]
+async fn responses_stream_rate_limit_errors_keep_mapped_quota_metadata(#[case] error_path: ResponsesStreamErrorPath) {
+    assert_responses_stream_error(error_path, rate_limited_template, assert_rate_limit_metadata).await;
+}
+
+#[tokio::test]
+async fn chat_rate_limit_errors_keep_mapped_quota_metadata() {
+    let Some(server) = start_mock_server_or_skip().await else {
+        return;
+    };
+    let provider = chat_completion_test_provider(&server.uri(), models::openai::GPT_5_6);
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(rate_limited_template().insert_header("x-request-id", "req_chat_rate_limited"))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let request = provider::LLMRequest {
+        messages: vec![provider::Message::user("Hello".to_string())].into(),
+        model: models::openai::GPT_5_6.to_string(),
+        ..Default::default()
+    };
+
+    let buffered_error = provider.generate(request.clone()).await.expect_err("chat generate should fail");
+    assert_rate_limit_metadata(&buffered_error, "req_chat_rate_limited");
+
+    let stream_error = match provider.stream(request).await {
+        Err(error) => error,
+        Ok(_) => panic!("chat stream should fail"),
+    };
+    assert_rate_limit_metadata(&stream_error, "req_chat_rate_limited");
 }
