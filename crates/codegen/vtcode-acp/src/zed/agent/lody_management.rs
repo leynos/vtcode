@@ -11,7 +11,10 @@ use vtcode_core::subagents::{
 };
 
 use super::super::types::SessionHandle;
-use super::{ZedAgent, lody::owned_child_ids};
+use super::{
+    ZedAgent,
+    lody::{owned_background_ids, owned_child_ids},
+};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -154,12 +157,8 @@ async fn controller_tracking_background(
     task_id: &str,
 ) -> Option<Arc<SubagentController>> {
     for controller in controllers {
-        let owned = controller
-            .background_status_entries()
-            .await
-            .into_iter()
-            .any(|entry| entry.id == task_id && entry.owner_session_id.as_deref() == Some(session_id));
-        if owned {
+        let entries = controller.background_status_entries().await;
+        if owned_background_ids(session_id, &entries).contains(task_id) {
             return Some(Arc::clone(controller));
         }
     }
@@ -176,11 +175,12 @@ async fn list_subagents(agent: &ZedAgent, request: ListSubagentsRequest) -> Resu
         .filter(|entry| !request.active_only || !entry.status.is_terminal())
         .map(managed_child_task)
         .collect::<Vec<_>>();
+    let backgrounds = background_status_entries(&controllers).await;
+    let owned_backgrounds = owned_background_ids(&request.session_id, &backgrounds);
     tasks.extend(
-        background_status_entries(&controllers)
-            .await
+        backgrounds
             .iter()
-            .filter(|entry| entry.owner_session_id.as_deref() == Some(request.session_id.as_str()))
+            .filter(|entry| owned_backgrounds.contains(entry.id.as_str()))
             .filter(|entry| !request.active_only || entry.status.is_active())
             .map(managed_background_task),
     );

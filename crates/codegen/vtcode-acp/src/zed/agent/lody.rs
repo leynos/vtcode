@@ -139,6 +139,20 @@ pub(super) fn owned_child_ids<'a>(session_id: &str, entries: &'a [SubagentStatus
     owned_ids
 }
 
+/// Selects the managed background records this session owns.
+///
+/// Managed background processes carry an explicit `owner_session_id`, so
+/// unlike child agents their ownership neither follows `parent_thread_id` nor
+/// transitions through a child's session. A record with no owner belongs to no
+/// ACP session and stays invisible to every caller.
+pub(super) fn owned_background_ids<'a>(session_id: &str, entries: &'a [BackgroundSubprocessEntry]) -> HashSet<&'a str> {
+    entries
+        .iter()
+        .filter(|entry| entry.owner_session_id.as_deref() == Some(session_id))
+        .map(|entry| entry.id.as_str())
+        .collect()
+}
+
 fn subagent_snapshot(entry: &SubagentStatusEntry) -> TaskSnapshot<'_> {
     let (lody_status, acp_status) = match entry.status {
         SubagentStatus::Queued => ("pending", acp::ToolCallStatus::Pending),
