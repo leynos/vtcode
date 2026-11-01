@@ -56,6 +56,66 @@ controlled by `[context.dynamic]`; it supports summarization but is not a
 resumable ACP archive. ACP tool audit output is a third, independent store.
 Changing one store's configuration does not enable or disable the others.
 
+## Interrupted tool recovery
+
+A turn can end after the model emits tool calls but before every call has a
+terminal result, for example when the process exits or an archive is resumed
+mid-round. ACP closes that gap with a write-ahead protocol instead of replaying
+mutating tools:
+
+- Before executing a tool round, ACP appends an incomplete result placeholder
+  for every call and requires a durable checkpoint. If that checkpoint fails,
+  the prompt fails and no tool runs.
+- After execution, ACP replaces the placeholders with terminal results and
+  checkpoints again, so a resumed archive never observes an unresolved batch.
+- `session/load` and `session/resume` repair legacy archives by inserting an
+  explicit incomplete result before later messages, then checkpoint the
+  repaired history before the session becomes visible. The repair records that
+  the call was not replayed and tells the model to verify workspace state
+  before resubmitting.
+- A repair that only relocates a uniquely attributable late result changes
+  message order, so it is persisted and checkpointed exactly like a repair that
+  inserts a placeholder.
+- History with duplicate or otherwise ambiguous terminal results is rejected
+  rather than guessed at. The archive is left untouched and the session does
+  not become resumable. A compacted history whose retained prefix begins with
+  Tool results is not ambiguous: only front trimming can produce that shape,
+  and providers strip orphan tool blocks at serialization, so it resumes. Every
+  duplicate, mismatched, or orphan result inside the retained history is still
+  rejected.
+- `write_stdin` reports partial state when the session is lost after the input
+  write, because the bytes may already have been consumed. A pre-write
+  resolution failure and a poll or wait failure do not.
+
+Recovery never executes a tool a second time. Related failures carry typed
+outcomes: a `write_stdin` continuation for a terminated exec session becomes a
+non-retryable resource-not-found error with no partial-state claim, and a
+checkpoint failure is logged with its operation and error category before the
+prompt is rejected. Prompt admission remains single-turn, so a concurrent
+prompt is rejected without mutating history.
+
+Focused verification:
+
+```sh
+cargo nextest run -p vtcode-acp attaching_legacy_archive_repairs_without_replaying_mutating_call
+cargo nextest run -p vtcode-core stale_write_stdin_modes_are_resource_not_found_without_partial_state
+```
+
+### Recovery observability
+
+`metrics::tool_recovery_metrics` counts recovery events in bounded,
+fixed-variant counters: staged calls, replaced calls, interrupted calls,
+relocated results, repaired archives, ambiguous histories, concurrent prompt
+rejections, stale `write_stdin` requests, and checkpoint failures. The snapshot
+appears as `tool_recovery` in the metrics summary JSON and as
+`vtcode_tool_recovery_total{event=...}` in the Prometheus export.
+
+Every label is a fixed event variant. Session identifiers, tool-call
+identifiers, tool names, and tool output never become a label or a log value,
+so a session can export the snapshot without leaking which tools it invoked or
+what they returned. Adding a dimension means adding an enum variant and its
+`as_str` arm; a free-form string label is not acceptable.
+
 ## Providers
 
 For custom-provider configuration and defaults, see

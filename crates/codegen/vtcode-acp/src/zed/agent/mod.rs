@@ -116,12 +116,15 @@ mod task_lifecycle;
 mod task_progress;
 #[cfg(test)]
 mod test_log_capture;
+#[cfg(test)]
+pub(crate) mod test_support;
 mod tool_config;
 #[cfg(test)]
 mod tool_config_tests;
 mod tool_execution;
 mod tool_execution_local;
 mod tool_execution_output;
+mod tool_recovery;
 mod updates;
 
 #[cfg(test)]
@@ -377,6 +380,14 @@ impl ZedAgent {
             workspace_runtimes: tokio::sync::Mutex::new(workspace_runtimes),
             workspace_trust_synchronizer: Arc::new(crate::workspace::DefaultWorkspaceTrustSynchronizer::new()),
         })
+    }
+
+    /// Metrics collector that receives bounded ACP recovery counters.
+    ///
+    /// Recovery events are agent-scoped rather than workspace-scoped, so a
+    /// session that never opened a workspace runtime still reports them.
+    pub(super) fn recovery_metrics(&self) -> Arc<vtcode_core::metrics::MetricsCollector> {
+        self.local_tool_registry.metrics_collector()
     }
 
     fn session_subagent_controller(&self, session: &SessionHandle) -> anyhow::Result<Option<Arc<SubagentController>>> {

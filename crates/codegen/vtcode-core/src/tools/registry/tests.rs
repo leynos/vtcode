@@ -23,10 +23,12 @@ use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
-use vtcode_commons::canonicalize;
+use vtcode_commons::{ErrorCategory, canonicalize};
 
 #[path = "../../../tests/support/config_defaults.rs"]
 mod config_defaults;
+
+mod stale_exec_session;
 
 #[cfg(unix)]
 mod pipe_session;
@@ -2507,7 +2509,7 @@ async fn timeout_errors_are_structured_and_track_failures() -> Result<()> {
     let error = outcome.error.expect("timeout outcome should include error");
     assert_eq!(error.tool_name, SLOW_TIMEOUT_TOOL_NAME);
     assert!(matches!(error.error_type, ToolErrorType::Timeout));
-    assert_eq!(error.category, vtcode_commons::ErrorCategory::Timeout);
+    assert_eq!(error.category, ErrorCategory::Timeout);
     assert!(error.is_recoverable);
     assert!(error.retry_after_ms.is_some());
     assert!(error.message.contains("exceeded the standard timeout ceiling"));
