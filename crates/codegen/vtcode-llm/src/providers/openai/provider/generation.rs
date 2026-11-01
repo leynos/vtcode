@@ -8,7 +8,7 @@ use super::OpenAIProvider;
 use crate::error_display;
 use crate::provider;
 use crate::provider::LLMProvider;
-use crate::providers::error_handling::{is_rate_limit_error, parse_api_error_with_headers};
+use crate::providers::error_handling::{ProviderFailure, is_rate_limit_error};
 use crate::providers::shared::parse_compacted_output_messages;
 use futures::StreamExt;
 use serde_json::{Value, json};
@@ -251,7 +251,7 @@ impl OpenAIProvider {
                     Some(&client_request_id),
                 ),
             );
-            return Err(self.provider_error_with_headers(formatted_error, status, &error_text, &headers));
+            return Err(self.provider_error(formatted_error, ProviderFailure::new(status, &error_text, &headers)));
         }
 
         let response_json: Value = response.json().await.map_err(|e| {
@@ -359,14 +359,14 @@ impl OpenAIProvider {
                             provider::LLMError::Provider { message: formatted_error, metadata: None }
                         })?;
 
-                        let response = self.parse_openai_responses_response(openai_response, model.clone())?;
-                        return Ok(response);
+                        return self.parse_openai_responses_response(openai_response, model.clone());
                     }
 
                     status = retry_response.status();
                     headers = retry_response.headers().clone();
                     error_text = crate::providers::common::read_provider_error_body(retry_response).await;
                 }
+                let failure = ProviderFailure::new(status, &error_text, &headers);
                 let lower_error = error_text.to_ascii_lowercase();
                 if status == reqwest::StatusCode::BAD_REQUEST
                     && lower_error.contains("invalid_request_error")
@@ -425,7 +425,7 @@ impl OpenAIProvider {
                             Some(&effective_client_request_id),
                         ),
                     );
-                    return Err(self.provider_error_with_headers(formatted_error, status, &error_text, &headers));
+                    return Err(self.provider_error(formatted_error, failure));
                 } else if matches!(responses_state, ResponsesApiState::Allowed)
                     && is_responses_api_unsupported(status, &error_text)
                 {
@@ -444,15 +444,9 @@ impl OpenAIProvider {
                             Some(&effective_client_request_id),
                         ),
                     );
-                    return Err(self.provider_error_with_headers(formatted_error, status, &error_text, &headers));
+                    return Err(self.provider_error(formatted_error, failure));
                 } else if is_rate_limit_error(status.as_u16(), &error_text) {
-                    return Err(parse_api_error_with_headers(
-                        self.error_provider_name(),
-                        status,
-                        &error_text,
-                        &headers,
-                        &self.rate_limit_headers(),
-                    ));
+                    return Err(self.rate_limit_error(ProviderFailure::new(status, &error_text, &headers)));
                 } else {
                     let formatted_error = error_display::format_llm_error(
                         "OpenAI",
@@ -464,7 +458,7 @@ impl OpenAIProvider {
                             Some(&effective_client_request_id),
                         ),
                     );
-                    return Err(self.provider_error_with_headers(formatted_error, status, &error_text, &headers));
+                    return Err(self.provider_error(formatted_error, failure));
                 }
             } else {
                 let openai_response: Value = response.json().await.map_err(|e| {
@@ -473,8 +467,7 @@ impl OpenAIProvider {
                     provider::LLMError::Provider { message: formatted_error, metadata: None }
                 })?;
 
-                let response = self.parse_openai_responses_response(openai_response, model.clone())?;
-                return Ok(response);
+                return self.parse_openai_responses_response(openai_response, model.clone());
             }
         }
 
@@ -541,13 +534,7 @@ impl OpenAIProvider {
             }
 
             if is_rate_limit_error(status.as_u16(), &error_text) {
-                return Err(parse_api_error_with_headers(
-                    self.error_provider_name(),
-                    status,
-                    &error_text,
-                    &headers,
-                    &self.rate_limit_headers(),
-                ));
+                return Err(self.rate_limit_error(ProviderFailure::new(status, &error_text, &headers)));
             }
 
             let formatted_error = error_display::format_llm_error(
@@ -560,7 +547,7 @@ impl OpenAIProvider {
                     Some(&effective_client_request_id),
                 ),
             );
-            return Err(self.provider_error_with_headers(formatted_error, status, &error_text, &headers));
+            return Err(self.provider_error(formatted_error, ProviderFailure::new(status, &error_text, &headers)));
         }
 
         let openai_response: Value = response.json().await.map_err(|e| {

@@ -94,14 +94,20 @@ fn optional_seconds(seconds: u64) -> Option<Duration> {
     (seconds > 0).then(|| Duration::from_secs(seconds))
 }
 
+/// Per-provider policy inputs shared by every runtime construction path.
+struct ProviderRuntimeSettings<'a> {
+    provider_class: ProviderClass,
+    config: &'a CustomProviderRequestPolicyConfig,
+    deadline_policy: ProviderDeadlinePolicy,
+}
+
 impl ProviderRequestRuntime {
     fn new(
         provider_name: impl Into<Arc<str>>,
-        provider_class: ProviderClass,
-        config: &CustomProviderRequestPolicyConfig,
-        deadline_policy: ProviderDeadlinePolicy,
+        settings: ProviderRuntimeSettings<'_>,
         metrics: Arc<MetricsCollector>,
     ) -> Self {
+        let ProviderRuntimeSettings { provider_class, config, deadline_policy } = settings;
         let provider_name = provider_name.into();
         // Request concurrency is enforced once, at the custom-provider router,
         // so child/core and ACP requests consume the same process-wide permits.
@@ -337,9 +343,11 @@ impl ProviderRuntimeRegistry {
                     provider.name.to_ascii_lowercase(),
                     ProviderRequestRuntime::new(
                         provider.name.clone(),
-                        ProviderClass::Custom,
-                        &provider.request_policy,
-                        ProviderDeadlinePolicy::from_config(&provider.request_policy),
+                        ProviderRuntimeSettings {
+                            provider_class: ProviderClass::Custom,
+                            config: &provider.request_policy,
+                            deadline_policy: ProviderDeadlinePolicy::from_config(&provider.request_policy),
+                        },
                         Arc::clone(&metrics),
                     ),
                 )
@@ -349,9 +357,11 @@ impl ProviderRuntimeRegistry {
         Self {
             default_runtime: ProviderRequestRuntime::new(
                 "default",
-                ProviderClass::Unknown,
-                &default_config,
-                ProviderDeadlinePolicy::from_timeouts(timeouts),
+                ProviderRuntimeSettings {
+                    provider_class: ProviderClass::Unknown,
+                    config: &default_config,
+                    deadline_policy: ProviderDeadlinePolicy::from_timeouts(timeouts),
+                },
                 metrics,
             ),
             custom_runtimes,

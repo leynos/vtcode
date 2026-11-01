@@ -1,13 +1,13 @@
 //! Cancellation and real-clock streaming physics for ACP rate-limit tests.
 
 use super::rate_limit_test_support::{
-    PROVIDER, ScriptedResponder, assert_request_floor, custom_provider, provider_config, rate_limited_response,
-    spawn_agent_connection, stop_agent_connection, successful_stream_response,
+    assert_request_floor, install_scripted_factory, provider_config, rate_limited_response, spawn_agent_connection,
+    start_scripted_server, stop_agent_connection, successful_stream_response,
 };
-use super::tests::{PROMPT_PROVIDER_TEST_LOCK, PromptProviderFactoryGuard, build_wire_test_agent_with_providers};
+use super::tests::{PROMPT_PROVIDER_TEST_LOCK, build_wire_test_agent_with_providers};
 use super::*;
 use crate::acp::{InitializeRequest, NewSessionRequest};
-use agent_client_protocol::on_receive_notification;
+use agent_client_protocol::{Channel, on_receive_notification};
 use assert_fs::TempDir;
 use axum::Router;
 use axum::body::{Body, Bytes};
@@ -22,51 +22,38 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration as StdDuration, Instant as StdInstant};
 use tokio::sync::{Notify, mpsc};
-use wiremock::matchers::{method, path};
-use wiremock::{Mock, MockServer};
 
 #[tokio::test]
 async fn cancelling_during_provider_retry_wait_prevents_another_http_request() {
-    let server = MockServer::start().await;
     let mut config = provider_config();
-    config.base_url = server.uri();
-    let request_times = Arc::new(Mutex::new(Vec::new()));
-    Mock::given(method("POST"))
-        .and(path("/chat/completions"))
-        .respond_with(ScriptedResponder {
-            responses: vec![
-                rate_limited_response(&[("retry-after", "0.2")]),
-                successful_stream_response(),
-            ]
-            .into(),
-            request_times: Arc::clone(&request_times),
-            next_response: Arc::new(AtomicUsize::new(0)),
-        })
-        .mount(&server)
-        .await;
+    let (_server, request_times) = start_scripted_server(
+        &mut config,
+        vec![
+            rate_limited_response(&[("retry-after", "0.2")]),
+            successful_stream_response(),
+        ],
+    )
+    .await;
 
     let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
-    let factory_config = config.clone();
-    let _factory_guard = PromptProviderFactoryGuard::install(
-        PROVIDER,
-        Arc::new(move || Box::new(custom_provider(factory_config.clone()))),
-    );
+    let _factory_guard = install_scripted_factory(&config);
     let workspace = TempDir::new().expect("rate-limit cancellation workspace");
     let workspace_path = workspace.path().to_path_buf();
     let agent = Arc::new(build_wire_test_agent_with_providers(workspace.path(), &[config]).await);
-    let retry_notice = Arc::new(Notify::new());
-    let callback_notice = Arc::clone(&retry_notice);
     let (client_channel, agent_task) = spawn_agent_connection(&agent, "vtcode-rate-limit-cancel-test");
+    run_cancellation_client(client_channel, workspace_path, Arc::new(Notify::new())).await;
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    stop_agent_connection(agent_task).await;
+    assert_eq!(request_times.lock().expect("cancel request times").len(), 1);
+}
 
+async fn run_cancellation_client(client_channel: Channel, workspace_path: PathBuf, retry_notice: Arc<Notify>) {
+    let callback_notice = Arc::clone(&retry_notice);
     let client_connection = Client
         .builder()
         .on_receive_notification(
             async move |notification: acp::AgentNotification, _cx| {
-                if matches!(
-                    notification,
-                    acp::AgentNotification::SessionNotification(ref notification)
-                        if matches!(&notification.update, acp::SessionUpdate::SessionInfoUpdate(_))
-                ) {
+                if is_session_info_update(&notification) {
                     callback_notice.notify_one();
                 }
                 Ok(())
@@ -101,9 +88,14 @@ async fn cancelling_during_provider_retry_wait_prevents_another_http_request() {
         .await
         .expect("cancelled prompt should finish")
         .expect("cancelled protocol flow should succeed");
-    tokio::time::sleep(Duration::from_millis(250)).await;
-    stop_agent_connection(agent_task).await;
-    assert_eq!(request_times.lock().expect("cancel request times").len(), 1);
+}
+
+fn is_session_info_update(notification: &acp::AgentNotification) -> bool {
+    matches!(
+        notification,
+        acp::AgentNotification::SessionNotification(notification)
+            if matches!(&notification.update, acp::SessionUpdate::SessionInfoUpdate(_))
+    )
 }
 
 struct RunningVidaiMock {
@@ -219,15 +211,19 @@ async fn physics_gateway(State(state): State<PhysicsGatewayState>, body: Bytes) 
     }
 }
 
-#[tokio::test]
-#[ignore = "requires pinned VidaiMock 0.1.3 and validates real wall-clock streaming physics"]
-async fn vidaimock_gateway_preserves_retry_floors_and_stream_token_cadence() {
-    let vidaimock = RunningVidaiMock::start("trickled-stream.toml").expect("start VidaiMock physics fixture");
-    let request_times = Arc::new(Mutex::new(Vec::new()));
+struct PhysicsGateway {
+    address: std::net::SocketAddr,
+    task: tokio::task::JoinHandle<()>,
+}
+
+async fn start_physics_gateway(
+    upstream_chat_url: String,
+    request_times: Arc<Mutex<Vec<StdInstant>>>,
+) -> PhysicsGateway {
     let gateway_state = PhysicsGatewayState {
-        upstream_chat_url: vidaimock.chat_url.clone(),
+        upstream_chat_url,
         attempts: Arc::new(AtomicUsize::new(0)),
-        request_times: Arc::clone(&request_times),
+        request_times,
         client: reqwest::Client::new(),
     };
     let gateway = Router::new()
@@ -236,41 +232,35 @@ async fn vidaimock_gateway_preserves_retry_floors_and_stream_token_cadence() {
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
         .await
         .expect("bind physics gateway");
-    let gateway_address = listener.local_addr().expect("physics gateway address");
-    let gateway_task = tokio::spawn(async move {
+    let address = listener.local_addr().expect("physics gateway address");
+    let task = tokio::spawn(async move {
         axum::serve(listener, gateway).await.expect("serve physics gateway");
     });
+    PhysicsGateway { address, task }
+}
 
-    let mut config = provider_config();
-    config.base_url = format!("http://{gateway_address}");
-    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
-    let factory_config = config.clone();
-    let _factory_guard = PromptProviderFactoryGuard::install(
-        PROVIDER,
-        Arc::new(move || Box::new(custom_provider(factory_config.clone()))),
-    );
-    let workspace = TempDir::new().expect("VidaiMock ACP workspace");
-    let workspace_path = workspace.path().to_path_buf();
-    let agent = Arc::new(build_wire_test_agent_with_providers(workspace.path(), &[config]).await);
-    let output_times = Arc::new(Mutex::new(Vec::new()));
-    let observed_output_times = Arc::clone(&output_times);
-    let (text_tx, mut text_rx) = mpsc::unbounded_channel();
-    let (client_channel, agent_task) = spawn_agent_connection(&agent, "vtcode-vidaimock-rate-test");
+struct VidaiClient {
+    workspace_path: PathBuf,
+    output_times: Arc<Mutex<Vec<StdInstant>>>,
+    text_tx: mpsc::UnboundedSender<String>,
+}
 
+async fn run_vidaimock_client(client_channel: Channel, client: VidaiClient) {
+    let VidaiClient {
+        workspace_path,
+        output_times: observed_output_times,
+        text_tx,
+    } = client;
     let client_connection = Client
         .builder()
         .on_receive_notification(
             async move |notification: acp::AgentNotification, _cx| {
-                if let acp::AgentNotification::SessionNotification(notification) = notification
-                    && let acp::SessionUpdate::AgentMessageChunk(chunk) = notification.update
-                    && let acp::ContentBlock::Text(text) = chunk.content
-                    && !text.text.is_empty()
-                {
+                if let Some(text) = streamed_token_text(notification) {
                     observed_output_times
                         .lock()
                         .expect("physics output times")
                         .push(StdInstant::now());
-                    drop(text_tx.send(text.text));
+                    drop(text_tx.send(text));
                 }
                 Ok(())
             },
@@ -298,16 +288,25 @@ async fn vidaimock_gateway_preserves_retry_floors_and_stream_token_cadence() {
         .await
         .expect("VidaiMock ACP flow should finish")
         .expect("VidaiMock ACP flow should succeed");
-    stop_agent_connection(agent_task).await;
-    gateway_task.abort();
-    drop(gateway_task.await);
+}
 
-    let provider_requests = request_times.lock().expect("physics request times").clone();
-    assert_eq!(provider_requests.len(), 3);
-    assert_request_floor(&provider_requests, 0, StdDuration::from_millis(70));
-    assert_request_floor(&provider_requests, 1, StdDuration::from_millis(145));
+fn streamed_token_text(notification: acp::AgentNotification) -> Option<String> {
+    let acp::AgentNotification::SessionNotification(notification) = notification else {
+        return None;
+    };
+    let acp::SessionUpdate::AgentMessageChunk(chunk) = notification.update else {
+        return None;
+    };
+    let acp::ContentBlock::Text(text) = chunk.content else {
+        return None;
+    };
+    (!text.text.is_empty()).then_some(text.text)
+}
 
-    let output_times = output_times.lock().expect("physics output times").clone();
+fn assert_vidaimock_physics(request_times: &[StdInstant], output_times: &[StdInstant], text: String) {
+    assert_eq!(request_times.len(), 3);
+    assert_request_floor(request_times, 0, StdDuration::from_millis(70));
+    assert_request_floor(request_times, 1, StdDuration::from_millis(145));
     assert!(output_times.len() >= 4, "expected four streamed VidaiMock chunks, got {output_times:?}");
     for (index, pair) in output_times.windows(2).take(3).enumerate() {
         let cadence = pair[1].duration_since(pair[0]);
@@ -316,6 +315,42 @@ async fn vidaimock_gateway_preserves_retry_floors_and_stream_token_cadence() {
             "VidaiMock token interval {index} was buffered or too short: {cadence:?}"
         );
     }
-    let text = std::iter::from_fn(|| text_rx.try_recv().ok()).collect::<String>();
     assert_eq!(text.split_whitespace().collect::<Vec<_>>(), ["one", "two", "three", "four"]);
+}
+
+#[tokio::test]
+#[ignore = "requires pinned VidaiMock 0.1.3 and validates real wall-clock streaming physics"]
+async fn vidaimock_gateway_preserves_retry_floors_and_stream_token_cadence() {
+    let vidaimock = RunningVidaiMock::start("trickled-stream.toml").expect("start VidaiMock physics fixture");
+    let request_times = Arc::new(Mutex::new(Vec::new()));
+    let gateway = start_physics_gateway(vidaimock.chat_url.clone(), Arc::clone(&request_times)).await;
+
+    let mut config = provider_config();
+    config.base_url = format!("http://{}", gateway.address);
+    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+    let _factory_guard = install_scripted_factory(&config);
+    let workspace = TempDir::new().expect("VidaiMock ACP workspace");
+    let workspace_path = workspace.path().to_path_buf();
+    let agent = Arc::new(build_wire_test_agent_with_providers(workspace.path(), &[config]).await);
+    let output_times = Arc::new(Mutex::new(Vec::new()));
+    let (text_tx, mut text_rx) = mpsc::unbounded_channel();
+    let (client_channel, agent_task) = spawn_agent_connection(&agent, "vtcode-vidaimock-rate-test");
+    run_vidaimock_client(
+        client_channel,
+        VidaiClient {
+            workspace_path,
+            output_times: Arc::clone(&output_times),
+            text_tx,
+        },
+    )
+    .await;
+
+    stop_agent_connection(agent_task).await;
+    gateway.task.abort();
+    drop(gateway.task.await);
+
+    let provider_requests = request_times.lock().expect("physics request times").clone();
+    let output_times = output_times.lock().expect("physics output times").clone();
+    let text = std::iter::from_fn(|| text_rx.try_recv().ok()).collect::<String>();
+    assert_vidaimock_physics(&provider_requests, &output_times, text);
 }

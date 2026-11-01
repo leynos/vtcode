@@ -155,17 +155,10 @@ async fn generate_buffered_response(
     retry_observed_at: &RetryObservationClock<'_>,
 ) -> Result<BufferedGenerationOutcome, SdkError> {
     let request = prepare_buffered_request(turn).await?;
-    match generate_with_retry_with_observer_and_metric_sink(
-        turn.provider.as_ref(),
-        request,
-        &turn.provider_runtime,
-        &turn.session.cancellation,
-        Some((&turn.agent, &turn.args.session_id)),
-        retry_observed_at,
-        &turn.metric_sink,
-    )
-    .await
-    {
+    let retry_request =
+        RetryRequest::new(turn.provider.as_ref(), request, &turn.provider_runtime, &turn.session.cancellation)
+            .noticing(&turn.agent, &turn.args.session_id);
+    match generate_with_retry_with_observer_and_metric_sink(retry_request, retry_observed_at, &turn.metric_sink).await {
         Ok(response) => Ok(BufferedGenerationOutcome::Response(Box::new(response))),
         Err(ProviderCallError::Cancelled) => Ok(BufferedGenerationOutcome::Cancelled),
         Err(ProviderCallError::Failed(error)) => Ok(BufferedGenerationOutcome::Failed(error)),

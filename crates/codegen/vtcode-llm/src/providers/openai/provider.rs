@@ -11,7 +11,9 @@
 use crate::error_display;
 use crate::provider;
 use crate::provider::LLMProvider;
-use crate::providers::error_handling::error_metadata_from_headers;
+use crate::providers::error_handling::{
+    ProviderFailure, ProviderHttpError, error_metadata_from_headers, parse_api_error,
+};
 use hashbrown::{HashMap, HashSet};
 use reqwest::Client as HttpClient;
 use reqwest::StatusCode;
@@ -193,23 +195,23 @@ impl OpenAIProvider {
         )
     }
 
-    fn provider_error_with_headers(
-        &self,
-        message: String,
-        status: StatusCode,
-        body: &str,
-        headers: &HeaderMap,
-    ) -> provider::LLMError {
+    /// Build a provider error that retains header-derived retry metadata.
+    fn provider_error(&self, message: String, failure: ProviderFailure<'_>) -> provider::LLMError {
+        let rate_limit_headers = self.rate_limit_headers();
         provider::LLMError::Provider {
             message,
-            metadata: Some(error_metadata_from_headers(
+            metadata: Some(error_metadata_from_headers(ProviderHttpError::new(
+                failure,
                 self.error_provider_name(),
-                status,
-                body,
-                headers,
-                &self.rate_limit_headers(),
-            )),
+                &rate_limit_headers,
+            ))),
         }
+    }
+
+    /// Build a rate-limit error that retains mapped quota headers.
+    fn rate_limit_error(&self, failure: ProviderFailure<'_>) -> provider::LLMError {
+        let rate_limit_headers = self.rate_limit_headers();
+        parse_api_error(ProviderHttpError::new(failure, self.error_provider_name(), &rate_limit_headers))
     }
 
     fn requires_streaming_responses(model: &str) -> bool {

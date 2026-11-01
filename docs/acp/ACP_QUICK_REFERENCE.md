@@ -69,10 +69,10 @@ field is preserved during normalization. `costUSD` is emitted only when
 explicitly configured custom provider pricing supplies both input and output
 rates (USD per million tokens). Cache pricing is optional.
 
-Automatic context compaction is advertised as `_meta.lody.compaction` version
-1 and is emitted through standard `tool_call` and `tool_call_update` updates.
-The updates carry `_meta.lody.activity` for the `compacted` outcome, token
-counts, duration, and failure details.
+Automatic context compaction is advertised as `_meta.lody.compaction` version 1
+and is emitted through standard `tool_call` and `tool_call_update` updates. The
+updates carry `_meta.lody.activity` for the `compacted` outcome, token counts,
+duration, and failure details.
 
 HTTP 429 notices include configured provider quota headers, preserving
 per-minute, per-second, and per-request units. `Retry-After` and configured

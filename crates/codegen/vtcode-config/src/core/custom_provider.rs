@@ -1494,15 +1494,11 @@ mod tests {
         let resolved = config.resolved_profile("gpt-5-mini");
         assert_eq!(resolved.api_format, Some(CustomProviderApiFormat::OpenAIChat));
         assert_eq!(resolved.context_window, Some(256_000));
-        assert_eq!(resolved.supports_tools, Some(false));
-        assert_eq!(resolved.supports_reasoning, Some(false));
-        assert_eq!(resolved.supports_reasoning_effort, Some(true));
-        assert_eq!(resolved.supports_vision, Some(true));
+        assert_eq!((resolved.supports_tools, resolved.supports_reasoning), (Some(false), Some(false)));
+        assert_eq!((resolved.supports_reasoning_effort, resolved.supports_vision), (Some(true), Some(true)));
         assert_eq!(resolved.supports_parallel_tool_calls, Some(true));
-        assert_eq!(resolved.supports_context_caching, Some(false));
-        assert_eq!(resolved.supports_responses_compaction, None);
-        assert_eq!(resolved.supports_stream_usage, Some(false));
-        assert_eq!(resolved.supports_context_edits, None);
+        assert_eq!((resolved.supports_responses_compaction, resolved.supports_stream_usage), (None, Some(false)));
+        assert_eq!((resolved.supports_context_caching, resolved.supports_context_edits), (Some(false), None));
     }
 
     #[test]

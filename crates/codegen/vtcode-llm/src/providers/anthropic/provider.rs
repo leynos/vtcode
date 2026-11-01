@@ -27,7 +27,7 @@ use super::stream_decoder;
 use super::validation;
 
 use crate::providers::common::{extract_prompt_cache_settings, override_base_url, resolve_model};
-use crate::providers::error_handling::{format_network_error, format_parse_error, handle_anthropic_http_error};
+use crate::providers::error_handling::{format_network_error, format_parse_error, handle_provider_http_error};
 use crate::providers::openai::CustomProviderAuthHandle;
 
 use async_trait::async_trait;
@@ -520,7 +520,7 @@ impl AnthropicProvider {
             response
         };
 
-        let response = handle_anthropic_http_error(response, &self.rate_limit_headers).await?;
+        let response = handle_provider_http_error(response, "Anthropic", &self.rate_limit_headers).await?;
 
         let request_id = response
             .headers()

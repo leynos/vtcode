@@ -62,12 +62,11 @@ fn extract_reset_after_millis(headers: &HeaderMap, configured_name: &Option<Stri
 }
 
 fn parse_reset_after_millis(raw_seconds: &str) -> Option<u64> {
+    // Malformed splits (`".5"`, `"5."`, `"5.5.5"`) are rejected by the numeric
+    // parsers below, so the split itself needs no validity guard.
     let raw_seconds = raw_seconds.trim();
     let (whole_seconds, fractional_seconds) = match raw_seconds.split_once('.') {
-        Some((whole, fraction)) if !whole.is_empty() && !fraction.is_empty() && !fraction.contains('.') => {
-            (whole, Some(fraction))
-        }
-        Some(_) => return None,
+        Some((whole, fraction)) => (whole, Some(fraction)),
         None => (raw_seconds, None),
     };
     let whole_millis = parse_ascii_u64(whole_seconds)?.checked_mul(1_000)?;

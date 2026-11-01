@@ -7,9 +7,12 @@ use super::rate_limit_test_support::{
 };
 use super::tests::build_wire_test_agent_with_providers;
 use crate::acp;
+use crate::zed::agent::ZedAgent;
+use crate::zed::agent::lody_notice::ObservedRateLimitNotice;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
-use agent_client_protocol::{Agent, Client, ConnectionTo, on_receive_notification};
+use agent_client_protocol::{Agent, Channel, Client, ConnectionTo, on_receive_notification};
 use assert_fs::TempDir;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration as StdDuration, UNIX_EPOCH};
 use tokio::sync::Notify;
@@ -36,37 +39,51 @@ async fn baseten_headers_publish_notices_and_lody_snapshots_across_retained_retr
     )
     .await;
 
-    assert_eq!(run.initialized_lody["rateLimits"]["version"], 1);
-    assert!(run.initialized_lody["rateLimits"].get("query").is_none());
-    assert_eq!(run.request_times.len(), 3);
-    assert_request_floor(&run.request_times, 0, StdDuration::from_millis(70));
-    assert_request_floor(&run.request_times, 1, StdDuration::from_millis(145));
-    assert_eq!(run.visible_text, "recovered");
+    let rate_limits = &run.initialized_lody["rateLimits"];
+    assert_eq!(rate_limits["version"], 1);
+    assert!(rate_limits.get("query").is_none());
+
+    let request_times = &run.request_times;
+    assert_eq!(request_times.len(), 3);
+    assert_request_floor(request_times, 0, StdDuration::from_millis(70));
+    assert_request_floor(request_times, 1, StdDuration::from_millis(145));
+
+    let visible_text = run.visible_text.as_str();
+    assert_eq!(visible_text, "recovered");
 
     let messages = notice_messages(&run.notifications);
     assert_eq!(messages.len(), 2);
-    assert!(messages[0].contains("provider Retry-After: 0.08"));
-    assert!(messages[0].contains("request limit/min: 120"));
-    assert!(messages[0].contains("requests remaining/min: 30"));
-    assert!(messages[0].contains("token limit/min: 12000"));
-    assert!(messages[0].contains("tokens remaining/min: 3000"));
-    assert!(messages[1].contains("VTCode will retry in 0.2s"));
-    assert!(
-        notice_values(&run.notifications)
-            .iter()
-            .all(|notice| notice["_meta"]["lody"].get("rateLimits").is_none()),
-        "standard ACP notices must not fabricate inline Lody rateLimits metadata"
-    );
+
+    let retry_notice = messages[0].as_str();
+    assert!(retry_notice.contains("provider Retry-After: 0.08"));
+    assert!(retry_notice.contains("request limit/min: 120"));
+    assert!(retry_notice.contains("requests remaining/min: 30"));
+
+    let retry_notice_tokens = messages[0].as_str();
+    assert!(retry_notice_tokens.contains("token limit/min: 12000"));
+    assert!(retry_notice_tokens.contains("tokens remaining/min: 3000"));
+
+    let next_retry_notice = messages[1].as_str();
+    assert!(next_retry_notice.contains("VTCode will retry in 0.2s"));
+
+    let inline_rate_limits = notice_values(&run.notifications)
+        .iter()
+        .filter(|notice| notice["_meta"]["lody"].get("rateLimits").is_some())
+        .count();
+    assert_eq!(inline_rate_limits, 0, "standard ACP notices must not fabricate inline Lody rateLimits metadata");
 
     let snapshots = rate_limit_snapshots(&run.notifications);
     assert_eq!(snapshots.len(), 1, "only the response with usable quota metrics should publish a snapshot");
+
     let limits = snapshots[0]["rateLimits"].as_array().expect("Lody rateLimits array");
     let windows = limits
         .iter()
         .flat_map(|limit| limit["windows"].as_array().into_iter().flatten())
         .collect::<Vec<_>>();
     assert_eq!(windows.len(), 2);
-    assert!(windows.iter().all(|window| window["usedPercent"].as_f64() == Some(75.0)));
+
+    let used_percent_matches = windows.iter().all(|window| window["usedPercent"].as_f64() == Some(75.0));
+    assert!(used_percent_matches);
     assert!(windows.iter().all(|window| window["windowDurationSeconds"] == 60));
     assert!(limits.iter().all(|limit| limit["scope"]["providerId"] == PROVIDER));
 }
@@ -157,15 +174,15 @@ async fn together_fractional_reset_sets_retry_floor_and_one_second_lody_windows(
     assert_eq!(windows.len(), 2);
     assert!(windows.iter().any(|window| window["usedPercent"].as_f64() == Some(60.0)));
     assert!(windows.iter().any(|window| window["usedPercent"].as_f64() == Some(80.0)));
-    assert!(windows.iter().all(|window| window["windowDurationSeconds"] == 1));
-    assert_eq!(
-        windows
-            .iter()
-            .filter(|window| window["resetsAtEpochSeconds"].is_number())
-            .count(),
-        1,
-        "Together reset applies only to the request window"
-    );
+
+    let one_second_windows = windows.iter().all(|window| window["windowDurationSeconds"] == 1);
+    assert!(one_second_windows);
+
+    let reset_windows = windows
+        .iter()
+        .filter(|window| window["resetsAtEpochSeconds"].is_number())
+        .count();
+    assert_eq!(reset_windows, 1, "Together reset applies only to the request window");
 }
 
 #[tokio::test]
@@ -192,8 +209,101 @@ async fn malformed_and_headerless_rate_limits_fall_back_to_the_capped_local_poli
     assert_eq!(messages.len(), 2);
     assert!(messages[0].contains("provider Retry-After: soon"));
     assert!(messages[0].contains("VTCode will retry in 0.1s"));
-    assert!(messages[1].contains("VTCode will retry in 0.1s"));
-    assert!(rate_limit_snapshots(&run.notifications).is_empty());
+
+    let second_retry_notice = messages[1].as_str();
+    assert!(second_retry_notice.contains("VTCode will retry in 0.1s"));
+
+    let published_snapshots = rate_limit_snapshots(&run.notifications);
+    assert!(published_snapshots.is_empty());
+}
+
+struct FixedEpochClient {
+    workspace_path: PathBuf,
+    agent: Arc<ZedAgent>,
+    notifications: Arc<Mutex<Vec<acp::AgentNotification>>>,
+    snapshot_received: Arc<Notify>,
+}
+
+async fn run_fixed_epoch_client(client_channel: Channel, client: FixedEpochClient) {
+    let FixedEpochClient {
+        workspace_path,
+        agent,
+        notifications,
+        snapshot_received,
+    } = client;
+    let notified = Arc::clone(&snapshot_received);
+    let client_connection = Client
+        .builder()
+        .on_receive_notification(
+            async move |notification: acp::AgentNotification, _cx| {
+                let is_rate_limit_snapshot = is_rate_limit_snapshot_notification(&notification);
+                notifications.lock().expect("fixed-epoch notifications").push(notification);
+                if is_rate_limit_snapshot {
+                    notified.notify_one();
+                }
+                Ok(())
+            },
+            on_receive_notification!(),
+        )
+        .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+            drop(
+                cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                    .block_task()
+                    .await?,
+            );
+            let session = cx.send_request(NewSessionRequest::new(workspace_path)).block_task().await?;
+            let error = fixed_epoch_rate_limit_error();
+            agent
+                .publish_rate_limit_notice_at(ObservedRateLimitNotice {
+                    session_id: &session.session_id,
+                    provider: PROVIDER,
+                    error: &error,
+                    retry_delay: None,
+                    observed_at: UNIX_EPOCH + StdDuration::from_secs(FIXED_OBSERVED_EPOCH_SECONDS),
+                })
+                .await;
+            tokio::time::timeout(StdDuration::from_secs(2), snapshot_received.notified())
+                .await
+                .expect("fixed-epoch rate-limit snapshot deadline");
+            Ok(())
+        });
+
+    tokio::time::timeout(StdDuration::from_secs(3), client_connection)
+        .await
+        .expect("fixed-epoch ACP flow should finish")
+        .expect("fixed-epoch ACP flow should succeed");
+}
+
+fn fixed_epoch_rate_limit_error() -> LLMError {
+    let metadata = LLMErrorMetadata::new(
+        PROVIDER,
+        Some(429),
+        None,
+        None,
+        None,
+        Some("1".to_string()),
+        Some("fixture quota exhausted".to_string()),
+    )
+    .with_rate_limit(Some(RateLimitMetadata {
+        requests_limit_per_minute: Some(120),
+        requests_remaining_per_minute: Some(30),
+        tokens_limit_per_minute: Some(12_000),
+        tokens_remaining_per_minute: Some(3_000),
+        ..RateLimitMetadata::default()
+    }));
+    LLMError::RateLimit { metadata: Some(metadata) }
+}
+
+fn is_rate_limit_snapshot_notification(notification: &acp::AgentNotification) -> bool {
+    matches!(
+        notification,
+        acp::AgentNotification::ExtNotification(notification)
+            if notification
+                .method
+                .as_ref()
+                .trim_start_matches('_')
+                .ends_with("lody/rate_limits/update")
+    )
 }
 
 #[tokio::test]
@@ -205,78 +315,16 @@ async fn fixed_epoch_rate_limit_snapshot_uses_transport_observation() {
     let snapshot_received = Arc::new(Notify::new());
     let (client_channel, agent_task) = spawn_agent_connection(&agent, "vtcode-fixed-epoch-rate-limit-test");
 
-    let client_connection = Client
-        .builder()
-        .on_receive_notification(
-            {
-                let notifications = Arc::clone(&notifications);
-                let snapshot_received = Arc::clone(&snapshot_received);
-                async move |notification: acp::AgentNotification, _cx| {
-                    let is_rate_limit_snapshot = matches!(
-                        &notification,
-                        acp::AgentNotification::ExtNotification(notification)
-                            if notification
-                                .method
-                                .as_ref()
-                                .trim_start_matches('_')
-                                .ends_with("lody/rate_limits/update")
-                    );
-                    notifications.lock().expect("fixed-epoch notifications").push(notification);
-                    if is_rate_limit_snapshot {
-                        snapshot_received.notify_one();
-                    }
-                    Ok(())
-                }
-            },
-            on_receive_notification!(),
-        )
-        .connect_with(client_channel, {
-            let agent = Arc::clone(&agent);
-            let snapshot_received = Arc::clone(&snapshot_received);
-            async move |cx: ConnectionTo<Agent>| {
-                drop(
-                    cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
-                        .block_task()
-                        .await?,
-                );
-                let session = cx.send_request(NewSessionRequest::new(workspace_path)).block_task().await?;
-                let metadata = LLMErrorMetadata::new(
-                    PROVIDER,
-                    Some(429),
-                    None,
-                    None,
-                    None,
-                    Some("1".to_string()),
-                    Some("fixture quota exhausted".to_string()),
-                )
-                .with_rate_limit(Some(RateLimitMetadata {
-                    requests_limit_per_minute: Some(120),
-                    requests_remaining_per_minute: Some(30),
-                    tokens_limit_per_minute: Some(12_000),
-                    tokens_remaining_per_minute: Some(3_000),
-                    ..RateLimitMetadata::default()
-                }));
-                let error = LLMError::RateLimit { metadata: Some(metadata) };
-                agent
-                    .publish_rate_limit_notice_at(
-                        &session.session_id,
-                        PROVIDER,
-                        &error,
-                        None,
-                        UNIX_EPOCH + StdDuration::from_secs(FIXED_OBSERVED_EPOCH_SECONDS),
-                    )
-                    .await;
-                tokio::time::timeout(StdDuration::from_secs(2), snapshot_received.notified())
-                    .await
-                    .expect("fixed-epoch rate-limit snapshot deadline");
-                Ok(())
-            }
-        });
-
-    tokio::time::timeout(StdDuration::from_secs(3), client_connection)
-        .await
-        .expect("fixed-epoch ACP flow should finish")
-        .expect("fixed-epoch ACP flow should succeed");
+    run_fixed_epoch_client(
+        client_channel,
+        FixedEpochClient {
+            workspace_path,
+            agent: Arc::clone(&agent),
+            notifications: Arc::clone(&notifications),
+            snapshot_received,
+        },
+    )
+    .await;
     stop_agent_connection(agent_task).await;
 
     let notifications = std::mem::take(&mut *notifications.lock().expect("fixed-epoch notifications"));

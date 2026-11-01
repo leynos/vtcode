@@ -26,26 +26,24 @@ pub(super) struct RateLimitNotice<'a> {
     pub(super) provider_class: ProviderClass,
 }
 
-impl ZedAgent {
-    pub(super) async fn publish_rate_limit_notice(
-        &self,
-        session_id: &acp::SessionId,
-        provider: &str,
-        error: &LLMError,
-        retry_delay: Option<Duration>,
-    ) {
-        self.publish_rate_limit_notice_at(session_id, provider, error, retry_delay, SystemTime::now())
-            .await;
-    }
+/// A rate-limit observation published outside a provider turn's telemetry context.
+pub(super) struct ObservedRateLimitNotice<'a> {
+    pub(super) session_id: &'a acp::SessionId,
+    pub(super) provider: &'a str,
+    pub(super) error: &'a LLMError,
+    pub(super) retry_delay: Option<Duration>,
+    pub(super) observed_at: SystemTime,
+}
 
-    pub(super) async fn publish_rate_limit_notice_at(
-        &self,
-        session_id: &acp::SessionId,
-        provider: &str,
-        error: &LLMError,
-        retry_delay: Option<Duration>,
-        observed_at: SystemTime,
-    ) {
+impl ZedAgent {
+    pub(super) async fn publish_rate_limit_notice_at(&self, notice: ObservedRateLimitNotice<'_>) {
+        let ObservedRateLimitNotice {
+            session_id,
+            provider,
+            error,
+            retry_delay,
+            observed_at,
+        } = notice;
         self.publish_rate_limit_notice_with_context(RateLimitNotice {
             session_id,
             provider,
@@ -71,7 +69,12 @@ impl ZedAgent {
         let observed_epoch_seconds = observed_at.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
         if is_rate_limit(error) {
             if let Some(limits) = rate_limit_metadata(error).and_then(|metadata| metadata.rate_limit.as_ref()) {
-                self.publish_lody_rate_limits_at(session_id, provider, limits, observed_epoch_seconds);
+                self.publish_lody_rate_limits_at(super::lody_rate_limits::LodyRateLimitObservation {
+                    session_id,
+                    provider,
+                    limits,
+                    observed_epoch_seconds,
+                });
             }
         }
         let Some(update) = rate_limit_notice_update(provider, error, retry_delay) else {

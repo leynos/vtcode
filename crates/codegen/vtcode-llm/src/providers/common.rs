@@ -890,9 +890,13 @@ pub(crate) fn map_finish_reason_common(reason: &str) -> FinishReason {
 
 // Pre-allocated keys to avoid repeated allocations
 const KEY_ROLE: &str = "role";
+
 const KEY_CONTENT: &str = "content";
+
 const KEY_TOOL_CALLS: &str = "tool_calls";
+
 const KEY_TOOL_CALL_ID: &str = "tool_call_id";
+
 const KEY_REASONING_CONTENT: &str = "reasoning_content";
 
 /// Serializes messages to OpenAI-compatible JSON format.
@@ -1186,14 +1190,12 @@ pub(crate) fn parse_usage_openai_format(
 /// providers use the corresponding `output_tokens_details` shape.
 #[inline]
 pub(crate) fn parse_reasoning_tokens_from_usage(usage_value: &Value) -> Option<u32> {
-    let reasoning_tokens_in = |details_key: &str| {
-        usage_value
-            .get(details_key)
-            .and_then(|details| details.get("reasoning_tokens"))
-            .and_then(Value::as_u64)
-            .and_then(|value| u32::try_from(value).ok())
-    };
-    reasoning_tokens_in("completion_tokens_details").or_else(|| reasoning_tokens_in("output_tokens_details"))
+    ["completion_tokens_details", "output_tokens_details"]
+        .into_iter()
+        .find_map(|field| {
+            let tokens = usage_value.get(field)?.get("reasoning_tokens")?.as_u64()?;
+            u32::try_from(tokens).ok()
+        })
 }
 
 #[inline]
@@ -1767,3 +1769,4 @@ mod tests {
         );
     }
 }
+// weave: run 'weave explain crates/codegen/vtcode-llm/src/providers/common.rs' for per-hunk detail, 'weave check' to verify your resolution

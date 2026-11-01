@@ -365,7 +365,7 @@ impl<S: OpenAiCompatSpec> OpenAiCompatCore<S> {
         let url = chat_completions_url(&self.base_url);
         let builder = S::apply_auth(self, self.http_client.post(&url));
         let response = send_chat_completions(builder, &payload, S::NAME).await?;
-        handle_openai_http_error(response, S::NAME, S::api_key_env(self)).await
+        handle_openai_http_error(response, S::NAME).await
     }
 
     /// Executes a prepared (model-resolved, validated as needed) generate call.

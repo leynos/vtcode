@@ -47,6 +47,37 @@ struct StreamFailureRequest<'a> {
     retry_observed_at: &'a RetryObservationClock<'a>,
 }
 
+struct StreamAttemptRequest<'a> {
+    turn: &'a PromptExecution,
+    request: &'a LLMRequest,
+    output: &'a mut ProviderOutput,
+    attempt_index: u32,
+    backoff: &'a mut RetryBackoff,
+    retry_observed_at: &'a RetryObservationClock<'a>,
+}
+
+struct StreamHandleRequest<'a> {
+    turn: &'a mut PromptExecution,
+    output: &'a mut ProviderOutput,
+    attempt: StreamAttemptOutcome,
+    attempt_index: u32,
+    tool_loop_count: &'a mut usize,
+}
+
+struct StreamStartRequest<'a> {
+    turn: &'a PromptExecution,
+    request: &'a LLMRequest,
+    deadline_policy: ProviderDeadlinePolicy,
+    deadlines: &'a mut StreamDeadlineTracker,
+    span: &'a Span,
+    started_at: Instant,
+}
+
+enum StreamStartError {
+    Cancelled,
+    Failed(LLMError),
+}
+
 struct StreamDeltaRequest<'a> {
     turn: &'a PromptExecution,
     output: &'a mut ProviderOutput,
@@ -78,10 +109,24 @@ pub(super) async fn run_streaming_provider_turn(
             return Ok(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled));
         }
         let request = streaming_request(turn);
-        let attempt =
-            collect_streaming_attempt(turn, &request, &mut output, attempt_index, &mut backoff, retry_observed_at)
-                .await?;
-        match handle_streaming_attempt(turn, &mut output, attempt, attempt_index, &mut tool_loop_count).await? {
+        let attempt = collect_streaming_attempt(StreamAttemptRequest {
+            turn,
+            request: &request,
+            output: &mut output,
+            attempt_index,
+            backoff: &mut backoff,
+            retry_observed_at,
+        })
+        .await?;
+        match handle_streaming_attempt(StreamHandleRequest {
+            turn,
+            output: &mut output,
+            attempt,
+            attempt_index,
+            tool_loop_count: &mut tool_loop_count,
+        })
+        .await?
+        {
             StreamingTurnOutcome::Retry => attempt_index = attempt_index.saturating_add(1),
             StreamingTurnOutcome::ContinueAfterTools => {
                 attempt_index = 0;
@@ -105,13 +150,14 @@ fn preserve_streaming_output(
     outcome
 }
 
-async fn handle_streaming_attempt(
-    turn: &mut PromptExecution,
-    output: &mut ProviderOutput,
-    attempt: StreamAttemptOutcome,
-    attempt_index: u32,
-    tool_loop_count: &mut usize,
-) -> Result<StreamingTurnOutcome, SdkError> {
+async fn handle_streaming_attempt(request: StreamHandleRequest<'_>) -> Result<StreamingTurnOutcome, SdkError> {
+    let StreamHandleRequest {
+        turn,
+        output,
+        attempt,
+        attempt_index,
+        tool_loop_count,
+    } = request;
     match attempt {
         StreamAttemptOutcome::Completed(response) => {
             match process_stream_response(turn, output, *response, tool_loop_count).await? {
@@ -201,14 +247,53 @@ fn streaming_request(turn: &PromptExecution) -> LLMRequest {
     }
 }
 
-async fn collect_streaming_attempt(
-    turn: &PromptExecution,
-    request: &LLMRequest,
-    output: &mut ProviderOutput,
-    attempt_index: u32,
-    backoff: &mut RetryBackoff,
-    retry_observed_at: &RetryObservationClock<'_>,
-) -> Result<StreamAttemptOutcome, SdkError> {
+async fn start_provider_stream(request: StreamStartRequest<'_>) -> Result<LLMStream, StreamStartError> {
+    let StreamStartRequest {
+        turn,
+        request,
+        deadline_policy,
+        deadlines,
+        span,
+        started_at,
+    } = request;
+    let next_deadline = deadlines.next();
+    let stream_result = tokio::select! {
+        () = turn.session.cancellation.cancelled() => {
+            record_stream_attempt(span, started_at, "cancelled");
+            return Err(StreamStartError::Cancelled);
+        }
+        phase = sleep_until_stream_deadline(next_deadline) => {
+            Err(provider_timeout_error(
+                turn.provider_runtime.provider_name(),
+                phase,
+                phase.timeout(deadline_policy),
+            ))
+        }
+        result = turn.provider.stream(request.clone()).instrument(span.clone()) => result,
+    };
+    stream_result.map_err(StreamStartError::Failed)
+}
+
+/// Instrumentation span for one provider stream attempt.
+fn stream_attempt_span(provider_runtime: &ProviderRequestRuntime) -> Span {
+    tracing::info_span!(
+        "acp_provider_stream_attempt",
+        operation = "provider_stream_attempt",
+        provider = provider_runtime.provider_name(),
+        outcome = tracing::field::Empty,
+        elapsed_ms = tracing::field::Empty,
+    )
+}
+
+async fn collect_streaming_attempt(request: StreamAttemptRequest<'_>) -> Result<StreamAttemptOutcome, SdkError> {
+    let StreamAttemptRequest {
+        turn,
+        request,
+        output,
+        attempt_index,
+        backoff,
+        retry_observed_at,
+    } = request;
     let provider_runtime = &turn.provider_runtime;
     let deadline_policy = provider_runtime.deadline_policy();
     let permit = match provider_runtime.acquire(&turn.session.cancellation).await {
@@ -220,31 +305,20 @@ async fn collect_streaming_attempt(
     telemetry.record_attempt(provider_runtime).await;
     let mut deadlines = StreamDeadlineTracker::new(deadline_policy, Instant::now());
     let started_at = Instant::now();
-    let span = tracing::info_span!(
-        "acp_provider_stream_attempt",
-        operation = "provider_stream_attempt",
-        provider = provider_runtime.provider_name(),
-        outcome = tracing::field::Empty,
-        elapsed_ms = tracing::field::Empty,
-    );
-    let next_deadline = deadlines.next();
-    let stream_result = tokio::select! {
-        () = turn.session.cancellation.cancelled() => {
-            record_stream_attempt(&span, started_at, "cancelled");
-            return Ok(StreamAttemptOutcome::Cancelled);
-        }
-        phase = sleep_until_stream_deadline(next_deadline) => {
-            Err(provider_timeout_error(
-                provider_runtime.provider_name(),
-                phase,
-                phase.timeout(deadline_policy),
-            ))
-        }
-        result = turn.provider.stream(request.clone()).instrument(span.clone()) => result,
-    };
-    let mut stream = match stream_result {
+    let span = stream_attempt_span(provider_runtime);
+    let mut stream = match start_provider_stream(StreamStartRequest {
+        turn,
+        request,
+        deadline_policy,
+        deadlines: &mut deadlines,
+        span: &span,
+        started_at,
+    })
+    .await
+    {
         Ok(stream) => stream,
-        Err(error) => {
+        Err(StreamStartError::Cancelled) => return Ok(StreamAttemptOutcome::Cancelled),
+        Err(StreamStartError::Failed(error)) => {
             record_stream_attempt(&span, started_at, "failure");
             return Ok(classify_stream_failure(StreamFailureRequest {
                 turn,

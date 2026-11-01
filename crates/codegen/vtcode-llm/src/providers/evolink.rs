@@ -252,7 +252,7 @@ impl EvolinkProvider {
             .await
             .map_err(|error| format_network_error(PROVIDER_NAME, &error))?;
 
-        let response = handle_openai_http_error(response, PROVIDER_NAME, PRIMARY_API_KEY_ENV).await?;
+        let response = handle_openai_http_error(response, PROVIDER_NAME).await?;
 
         let response_json: Value = response.json().await.map_err(|error| LLMError::Provider {
             message: error_display::format_llm_error(

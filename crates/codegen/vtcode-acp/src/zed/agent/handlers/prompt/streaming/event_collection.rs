@@ -152,14 +152,21 @@ pub(super) async fn classify_stream_failure(request: StreamFailureRequest<'_>) -
     } = request;
     let policy = turn.provider_runtime.retry_policy();
     let observed_at = retry_observed_at();
-    let decision = policy.decision_for_llm_error_with_backoff_at(&error, attempt_index, backoff, observed_at);
+    let decision = policy.decision_for_llm_error_with_backoff_at(
+        &error,
+        LlmRetryAttempt::new(attempt_index, observed_at),
+        backoff,
+    );
     let disposition = if output.emitted_output {
         RetryDisposition::PartialOutputVisible
     } else {
         retry_disposition(&decision)
     };
-    let retry_delay = (!output.emitted_output && decision.retryable)
-        .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
+    let retry_delay = (!output.emitted_output && decision.retryable).then(|| {
+        decision
+            .delay
+            .unwrap_or_else(|| policy.delay_for_attempt(AttemptIndex::new(attempt_index)))
+    });
     telemetry
         .failed(GenerationFailure {
             runtime: &turn.provider_runtime,
@@ -172,7 +179,9 @@ pub(super) async fn classify_stream_failure(request: StreamFailureRequest<'_>) -
     if output.emitted_output || !decision.retryable {
         StreamAttemptOutcome::Failed { error, observed_at }
     } else {
-        let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
+        let delay = decision
+            .delay
+            .unwrap_or_else(|| policy.delay_for_attempt(AttemptIndex::new(attempt_index)));
         StreamAttemptOutcome::Retry { delay, error, observed_at }
     }
 }

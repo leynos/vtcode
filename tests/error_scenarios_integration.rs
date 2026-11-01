@@ -15,6 +15,7 @@
 mod error_scenarios {
     use std::time::Duration;
 
+    use vtcode_commons::retry::AttemptIndex;
     use vtcode_commons::{BackoffStrategy, ErrorCategory, Retryability};
 
     // -----------------------------------------------------------------------
@@ -192,7 +193,11 @@ mod error_scenarios {
     #[test]
     fn retry_policy_surfaces_circuit_open_backoff() {
         let policy = vtcode_core::retry::RetryPolicy::default();
-        let decision = policy.decision_for_category(ErrorCategory::CircuitOpen, 0, Some(Duration::from_secs(7)));
+        let decision = policy.decision_for_category(
+            ErrorCategory::CircuitOpen,
+            AttemptIndex::new(0),
+            Some(Duration::from_secs(7)),
+        );
 
         assert!(decision.retryable);
         assert_eq!(decision.delay, Some(Duration::from_secs(7)));

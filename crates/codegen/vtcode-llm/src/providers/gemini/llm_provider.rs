@@ -61,7 +61,7 @@ impl LLMProvider for GeminiProvider {
                 .await
                 .map_err(|e| format_network_error("Gemini", &e))?;
 
-            let response = handle_gemini_http_error(response).await?;
+            let response = handle_provider_http_error(response, "Gemini", &NO_RATE_LIMIT_HEADERS).await?;
 
             let interaction_response: Interaction =
                 response.json().await.map_err(|e| format_parse_error("Gemini", &e))?;
@@ -82,7 +82,7 @@ impl LLMProvider for GeminiProvider {
             .await
             .map_err(|e| format_network_error("Gemini", &e))?;
 
-        let response = handle_gemini_http_error(response).await?;
+        let response = handle_provider_http_error(response, "Gemini", &NO_RATE_LIMIT_HEADERS).await?;
 
         let gemini_response: GenerateContentResponse =
             response.json().await.map_err(|e| format_parse_error("Gemini", &e))?;
@@ -104,7 +104,7 @@ impl LLMProvider for GeminiProvider {
                 .await
                 .map_err(|e| format_network_error("Gemini", &e))?;
 
-            let response = handle_gemini_http_error(response).await?;
+            let response = handle_provider_http_error(response, "Gemini", &NO_RATE_LIMIT_HEADERS).await?;
 
             let stream = {
                 try_stream! {
@@ -187,7 +187,7 @@ impl LLMProvider for GeminiProvider {
             .await
             .map_err(|e| format_network_error("Gemini", &e))?;
 
-        let response = handle_gemini_http_error(response).await?;
+        let response = handle_provider_http_error(response, "Gemini", &NO_RATE_LIMIT_HEADERS).await?;
 
         let (event_tx, event_rx) = mpsc::unbounded_channel::<Result<LLMStreamEvent, LLMError>>();
         let completion_sender = event_tx.clone();

@@ -73,10 +73,9 @@ async fn buffered_acp_retries_remember_server_floor_with_injected_time() {
         Arc::new(vtcode_core::metrics::MetricsCollector::new()),
     )
     .for_provider("timing");
-    let response =
-        generate_with_retry(&provider, LLMRequest::default(), &runtime, &SessionCancellation::default(), None)
-            .await
-            .expect("retry should recover");
+    let cancellation = SessionCancellation::default();
+    let request = RetryRequest::new(&provider, LLMRequest::default(), &runtime, &cancellation);
+    let response = generate_with_retry(request).await.expect("retry should recover");
     assert_eq!(response.content.as_deref(), Some("recovered"));
     let attempts = provider.attempts.lock().expect("attempt times");
     assert_eq!(attempts.len(), 3);
@@ -232,16 +231,12 @@ fn assert_http_date_then_local_backoff(attempts: &[Instant]) {
 #[tokio::test(start_paused = true)]
 async fn buffered_acp_retry_uses_fixed_http_date_observation_and_drops_it_afterward() {
     let provider = FixedObservationBufferedProvider { attempts: Mutex::new(Vec::new()) };
-    let response = generate_with_retry_with_observer(
-        &provider,
-        LLMRequest::default(),
-        &fixed_observation_runtime(),
-        &SessionCancellation::default(),
-        None,
-        &fixed_observation_time,
-    )
-    .await
-    .expect("buffered fixed-observation retry should recover");
+    let runtime = fixed_observation_runtime();
+    let cancellation = SessionCancellation::default();
+    let request = RetryRequest::new(&provider, LLMRequest::default(), &runtime, &cancellation);
+    let response = generate_with_retry_with_observer(request, &fixed_observation_time)
+        .await
+        .expect("buffered fixed-observation retry should recover");
 
     assert_eq!(response.content.as_deref(), Some("buffered recovered"));
     let attempts = provider.attempts.lock().expect("buffered retry attempt times");
