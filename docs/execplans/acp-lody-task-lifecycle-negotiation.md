@@ -264,6 +264,38 @@ management requests return only tasks owned by the requested ACP session.
     release gates ran again on that commit and installation from the worktree
     succeeded; the resolved binary is `/home/leynos/.cargo/bin/vtcode`
     reporting `vtcode-core 0.156.1`. Evidence bundle recorded below.
+- [ ] (2026-11-01) EP-M5 fifth review repair: close the two Codex P2 findings.
+  - **Owner-derived ids collided.** `background_record_id` derived the record
+    id from the agent name alone, so two sessions in one workspace that both
+    launched `worker` produced the same id. The unscoped controller loads the
+    shared ledger into a map keyed only by `record.id`, which collapsed the
+    pair, and the unscoped save then rewrote the ledger from that map and
+    erased the loser permanently. `background_record_id_for_owner` now
+    qualifies the id with the sanitized owner (`background-worker@<owner>`)
+    while an unscoped controller keeps the workspace-global plain id, because
+    ownerless records it creates must not change id on every restart.
+    `PersistedBackgroundRecord::canonicalize_id` rewrites older persisted ids
+    on load from `(agent_name, owner_session_id)`, so the ledger's own
+    records migrate to the same canonical form.
+  - **List never detected exit.** `_lody/subagents/list` projected the cached
+    `background_status_entries()`. Only `refresh_background_processes`
+    detects process exit and publishes the terminal lifecycle state, and the
+    ACP management handlers never called it, so a process that had already
+    exited kept being reported as running until an unrelated cancel or output
+    request refreshed it. The list path now calls
+    `refreshed_background_entries`, which refreshes each owned controller
+    before projecting.
+  - New coverage: `sibling_owners_keep_distinct_records_for_the_same_agent`
+    (two owners sharing one persisted id survive an unscoped load and save),
+    `owner_scoped_record_ids_distinguish_owners_and_keep_the_global_id`,
+    `managed_background_records_capture_the_owning_scope` (a scoped controller
+    tags its record with the owner; an unscoped controller leaves it
+    ownerless), updated canonical-id expectations in the existing owner-scope
+    test, and `listing_refreshes_background_records_before_projection` in
+    `lody_management.rs`, which seeds a running record whose exec session is
+    missing with `desired_enabled: false` and shows the cached projection
+    reports `Running` while the refreshed one reports `Stopped` without a
+    respawn.
 
 ## Surprises & discoveries
 

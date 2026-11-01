@@ -139,6 +139,28 @@ async fn background_status_entries(controllers: &[Arc<SubagentController>]) -> V
     entries
 }
 
+/// Collects background entries after refreshing each controller from the
+/// exec-session manager.
+///
+/// `background_status_entries` reads the cached projection, and exit
+/// detection exists only in `refresh_background_processes`. Listing without a
+/// refresh would therefore keep reporting a process that already exited as
+/// running until an unrelated cancel or output request refreshed it.
+async fn refreshed_background_entries(
+    controllers: &[Arc<SubagentController>],
+) -> Result<Vec<BackgroundSubprocessEntry>, SdkError> {
+    let mut entries = Vec::new();
+    for controller in controllers {
+        entries.extend(
+            controller
+                .refresh_background_processes()
+                .await
+                .map_err(internal_management_error)?,
+        );
+    }
+    Ok(entries)
+}
+
 async fn controller_tracking_child(
     controllers: &[Arc<SubagentController>],
     task_id: &str,
@@ -175,7 +197,7 @@ async fn list_subagents(agent: &ZedAgent, request: ListSubagentsRequest) -> Resu
         .filter(|entry| !request.active_only || !entry.status.is_terminal())
         .map(managed_child_task)
         .collect::<Vec<_>>();
-    let backgrounds = background_status_entries(&controllers).await;
+    let backgrounds = refreshed_background_entries(&controllers).await?;
     let owned_backgrounds = owned_background_ids(&request.session_id, &backgrounds);
     tasks.extend(
         backgrounds
@@ -302,4 +324,102 @@ fn internal_management_error(error: anyhow::Error) -> SdkError {
 
 fn epoch_seconds(timestamp: chrono::DateTime<chrono::Utc>) -> f64 {
     timestamp.timestamp_millis().max(0) as f64 / 1_000.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use assert_fs::TempDir;
+    use vtcode_config::VTCodeConfig;
+    use vtcode_core::config::types::ReasoningEffortLevel;
+    use vtcode_core::subagents::SubagentControllerConfig;
+    use vtcode_core::tools::exec_session::ExecSessionManager;
+    use vtcode_core::tools::registry::PtySessionManager;
+
+    fn persisted_running_record_json() -> Value {
+        serde_json::json!({
+            "records": [{
+                "id": "background-worker",
+                "agent_name": "worker",
+                "display_label": "worker",
+                "description": "worker",
+                "source": "builtin",
+                "color": null,
+                "owner_session_id": "session-a",
+                "session_id": "session-worker",
+                "exec_session_id": "exec-missing",
+                "desired_enabled": false,
+                "status": "running",
+                "created_at": "2026-08-28T00:00:00Z",
+                "updated_at": "2026-08-28T00:00:00Z",
+                "started_at": "2026-08-28T00:00:00Z",
+                "ended_at": null,
+                "pid": 4321,
+                "prompt": "work",
+                "summary": null,
+                "error": null,
+                "archive_path": null,
+                "transcript_path": null,
+                "max_turns": null,
+                "model_override": null,
+                "reasoning_override": null,
+                "restart_attempts": 0
+            }]
+        })
+    }
+
+    /// `_lody/subagents/list` projects the cached record set, and exit
+    /// detection lives only in `refresh_background_processes`. Without the
+    /// refresh, a process that already exited is still listed as running.
+    #[tokio::test]
+    async fn listing_refreshes_background_records_before_projection() {
+        let temp = TempDir::new().expect("tempdir");
+        let state_dir = temp.path().join(".vtcode/state");
+        std::fs::create_dir_all(&state_dir).expect("state dir");
+        std::fs::write(state_dir.join("background_subagents.json"), persisted_running_record_json().to_string())
+            .expect("write state");
+
+        let vt_cfg = VTCodeConfig::default();
+        let pty_sessions = PtySessionManager::new(temp.path().to_path_buf(), vt_cfg.pty.clone());
+        let exec_sessions = ExecSessionManager::new(temp.path().to_path_buf(), pty_sessions.clone());
+        let controller = Arc::new(
+            SubagentController::new_with_background_owner(
+                SubagentControllerConfig {
+                    workspace_root: temp.path().to_path_buf(),
+                    parent_session_id: "session-a".to_string(),
+                    parent_model: "test-model".to_string(),
+                    parent_provider: "openai".to_string(),
+                    parent_reasoning_effort: ReasoningEffortLevel::Medium,
+                    api_key: "test-key".to_string(),
+                    vt_cfg,
+                    openai_chatgpt_auth: None,
+                    depth: 0,
+                    workspace_gated: false,
+                    exec_sessions,
+                    pty_manager: pty_sessions.manager().clone(),
+                    managed_background_runtime: false,
+                },
+                Some("session-a"),
+            )
+            .await
+            .expect("scoped controller"),
+        );
+        let controllers = [Arc::clone(&controller)];
+
+        let cached = background_status_entries(&controllers).await;
+        assert_eq!(
+            cached.iter().map(|entry| entry.status).collect::<Vec<_>>(),
+            [BackgroundSubprocessStatus::Running],
+            "the cached projection is what the list path used before the refresh"
+        );
+
+        let refreshed = refreshed_background_entries(&controllers)
+            .await
+            .expect("refresh background entries");
+        assert_eq!(
+            refreshed.iter().map(|entry| entry.status).collect::<Vec<_>>(),
+            [BackgroundSubprocessStatus::Stopped],
+            "listing must observe the exit instead of reporting a stale running process"
+        );
+    }
 }

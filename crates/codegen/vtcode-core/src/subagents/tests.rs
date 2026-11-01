@@ -258,12 +258,18 @@ async fn owner_scoped_controller_loads_only_exact_owner_and_cli_remains_unscoped
     .await
     .expect("scoped controller");
     let scoped_entries = scoped.background_status_entries().await;
-    assert_eq!(scoped_entries.iter().map(|entry| entry.id.as_str()).collect::<Vec<_>>(), ["owned"]);
+    assert_eq!(
+        scoped_entries.iter().map(|entry| entry.id.as_str()).collect::<Vec<_>>(),
+        ["background-worker@session-a"]
+    );
 
     {
         let mut state = scoped.state.write().await;
-        state.background_children.get_mut("owned").expect("owned record").summary =
-            Some("updated by session-a".to_string());
+        state
+            .background_children
+            .get_mut("background-worker@session-a")
+            .expect("owned record")
+            .summary = Some("updated by session-a".to_string());
     }
     scoped.save_background_state().await.expect("save scoped state");
     let persisted: serde_json::Value = serde_json::from_str(
@@ -277,36 +283,111 @@ async fn owner_scoped_controller_loads_only_exact_owner_and_cli_remains_unscoped
         .iter()
         .map(|record| (record["id"].as_str().expect("record id"), record))
         .collect::<std::collections::HashMap<_, _>>();
-    assert_eq!(by_id["owned"]["summary"], "updated by session-a");
+    assert_eq!(by_id["background-worker@session-a"]["summary"], "updated by session-a");
+    // Records owned by another session, and legacy ownerless records, are
+    // retained verbatim until their own owner rewrites them.
     assert_eq!(by_id["foreign"]["owner_session_id"], "session-b");
     assert!(by_id["legacy"]["owner_session_id"].is_null());
 
     let unscoped = SubagentController::new(test_controller_config(temp.path().to_path_buf(), VTCodeConfig::default()))
         .await
         .expect("unscoped controller");
-    assert_eq!(unscoped.background_status_entries().await.len(), 3);
+    let unscoped_ids = unscoped
+        .background_status_entries()
+        .await
+        .into_iter()
+        .map(|entry| entry.id)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        unscoped_ids,
+        [
+            "background-worker",
+            "background-worker@session-a",
+            "background-worker@session-b"
+        ]
+    );
+}
+
+/// Two sessions may launch the same agent in one workspace. Their records are
+/// persisted with the same logical agent but must never collapse into one map
+/// entry, because the surviving unscoped save would delete the other owner's
+/// task from the shared ledger.
+#[tokio::test]
+async fn sibling_owners_keep_distinct_records_for_the_same_agent() {
+    let temp = TempDir::new().expect("tempdir");
+    let state_dir = temp.path().join(".vtcode/state");
+    std::fs::create_dir_all(&state_dir).expect("state dir");
+    let records = vec![
+        persisted_background_record_for_owner("background-worker", Some("session-a")),
+        persisted_background_record_for_owner("background-worker", Some("session-b")),
+    ];
+    std::fs::write(
+        state_dir.join("background_subagents.json"),
+        serde_json::to_string(&PersistedBackgroundState { records }).expect("serialize state"),
+    )
+    .expect("write state");
+
+    let unscoped = SubagentController::new(test_controller_config(temp.path().to_path_buf(), VTCodeConfig::default()))
+        .await
+        .expect("unscoped controller");
+    let ids = unscoped
+        .background_status_entries()
+        .await
+        .into_iter()
+        .map(|entry| entry.id)
+        .collect::<Vec<_>>();
+    assert_eq!(ids, ["background-worker@session-a", "background-worker@session-b"]);
+
+    unscoped.save_background_state().await.expect("save unscoped state");
+    let persisted: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(state_dir.join("background_subagents.json"))
+            .expect("read persisted background_subagents state"),
+    )
+    .expect("persisted state");
+    let owners = persisted["records"]
+        .as_array()
+        .expect("records array")
+        .iter()
+        .map(|record| record["owner_session_id"].as_str().expect("owner").to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(owners, ["session-a", "session-b"], "a workspace-global save must persist both owners' records");
 }
 
 #[cfg(unix)]
-#[tokio::test]
-async fn new_background_records_capture_controller_parent_session() {
+async fn spawn_background_demo(owner_session_id: Option<&str>) -> BackgroundSubprocessEntry {
     let temp = TempDir::new().expect("tempdir");
     write_test_background_subagent(temp.path());
     let mut cfg = VTCodeConfig::default();
     cfg.subagents.background.enabled = true;
-    let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf(), cfg))
-        .await
-        .expect("controller");
+    let controller = SubagentController::new_with_background_owner(
+        test_controller_config(temp.path().to_path_buf(), cfg),
+        owner_session_id,
+    )
+    .await
+    .expect("controller");
 
-    let entry = controller
+    controller
         .spawn_background_subprocess(SpawnBackgroundSubprocessRequest {
             agent_type: Some("background-demo".to_string()),
             ..SpawnBackgroundSubprocessRequest::default()
         })
         .await
-        .expect("background subprocess");
+        .expect("background subprocess")
+}
 
-    assert_eq!(entry.owner_session_id.as_deref(), Some("parent-session"));
+#[cfg(unix)]
+#[tokio::test]
+async fn managed_background_records_capture_the_owning_scope() {
+    let scoped = spawn_background_demo(Some("session-a")).await;
+    assert_eq!(scoped.owner_session_id.as_deref(), Some("session-a"));
+    assert_eq!(scoped.id, "background-background-demo@session-a");
+
+    let unscoped = spawn_background_demo(None).await;
+    assert!(
+        unscoped.owner_session_id.is_none(),
+        "an unscoped controller manages workspace-global records and must not tag them with a per-run owner"
+    );
+    assert_eq!(unscoped.id, "background-background-demo");
 }
 
 #[test]
@@ -592,6 +673,21 @@ fn resolve_effective_subagent_model_falls_back_to_spec_model_on_invalid_override
 fn background_record_ids_are_stable_and_sanitized() {
     assert_eq!(background_record_id("Rust Engineer"), "background-Rust-Engineer");
     assert_eq!(background_record_id("plugin:reviewer/default"), "background-plugin-reviewer-default");
+}
+
+#[test]
+fn owner_scoped_record_ids_distinguish_owners_and_keep_the_global_id() {
+    assert_eq!(background_record_id_for_owner("worker", Some("session-a")), "background-worker@session-a");
+    assert_ne!(
+        background_record_id_for_owner("worker", Some("session-a")),
+        background_record_id_for_owner("worker", Some("session-b"))
+    );
+    assert_eq!(background_record_id_for_owner("worker", None), background_record_id("worker"));
+    assert_eq!(
+        background_record_id_for_owner("worker", Some("")),
+        background_record_id("worker"),
+        "an empty owner cannot produce a distinct scope"
+    );
 }
 
 #[test]

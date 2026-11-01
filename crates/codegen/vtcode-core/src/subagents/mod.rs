@@ -16,8 +16,8 @@ mod types;
 // ─── Re-exports ─────────────────────────────────────────────────────────────
 
 pub use background::{
-    background_record_id, build_background_subagent_command, extract_tail_lines, load_archive_preview,
-    normalize_output_tail_lines, subagent_display_label,
+    background_record_id, background_record_id_for_owner, build_background_subagent_command, extract_tail_lines,
+    load_archive_preview, normalize_output_tail_lines, subagent_display_label,
 };
 pub use config::{
     ResolvedAgentRuntimeView, build_child_config, compose_subagent_instructions, filter_child_tools,
@@ -267,7 +267,10 @@ impl SubagentController {
                             .as_deref()
                             .is_none_or(|owner| record.owner_session_id.as_deref() == Some(owner))
                     })
-                    .map(|record| (record.id.clone(), BackgroundRecord::from_persisted(record)))
+                    .map(|mut record| {
+                        record.canonicalize_id();
+                        (record.id.clone(), BackgroundRecord::from_persisted(record))
+                    })
                     .collect()
             };
             let parent_session_id = Arc::new(RwLock::new(config.parent_session_id.clone()));
