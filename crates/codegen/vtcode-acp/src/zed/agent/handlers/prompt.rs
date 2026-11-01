@@ -4,6 +4,7 @@ use super::super::tool_config::SessionToolDefinitionRequest;
 use super::super::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
 use super::provider::IncompleteProviderTurn;
 use super::*;
+use vtcode_core::metrics::ToolRecoveryEvent;
 
 mod buffered;
 mod input;
@@ -16,6 +17,9 @@ pub(super) use buffered::response_reasoning_update;
 #[tracing::instrument(skip_all, fields(boundary = boundary))]
 pub(super) async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, boundary: &'static str) {
     if let Err(error) = agent.checkpoint_session(session).await {
+        agent
+            .recovery_metrics()
+            .record_tool_recovery(ToolRecoveryEvent::CheckpointFailure);
         log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
         warn!(
             operation = "session_checkpoint",
@@ -72,6 +76,10 @@ pub(super) struct TurnGuard {
 }
 
 impl TurnGuard {
+    /// Claims the thread's turn slot for this prompt.
+    ///
+    /// A concurrent prompt is rejected with `turn_in_progress` instead of
+    /// interleaving tool results with the turn that already owns the thread.
     pub(super) fn begin(thread: ThreadRuntimeHandle) -> Result<Self, SdkError> {
         let _submission_id = thread.begin_turn().map_err(|error| {
             warn!(thread_id = %thread.thread_id(), prompt_outcome = "turn_in_progress_rejected", "Rejected concurrent ACP prompt");
@@ -192,6 +200,11 @@ pub(super) struct PromptExecution {
     stop_hook_checked: bool,
 }
 
+/// Executes one assistant tool-call round and records every result.
+///
+/// The assistant message is appended before the tool calls run so an
+/// interruption leaves a recoverable, unambiguous history for
+/// `tool_recovery` to repair on the next session attach.
 pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<ToolRoundOutcome, SdkError> {
     let ToolRoundRequest {
         agent,
@@ -223,6 +236,9 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
     let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
     drop(stage_thread_tool_calls(&thread, assistant_tool_message));
     let tool_call_count = tool_calls.len();
+    agent
+        .recovery_metrics()
+        .record_tool_recovery_events(ToolRecoveryEvent::StagedCall, tool_call_count);
     info!(session_id = %session_id, tool_call_count, tool_loop_count = *tool_loop_count,
           tool_recovery_outcome = "placeholders_staged", "ACP tool recovery placeholders staged");
     require_session_checkpoint(agent, session, "assistant_tool_calls_write_ahead").await?;
@@ -238,6 +254,9 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
     };
 
     let finalized_tool_count = replace_thread_tool_results(&thread, &tool_results);
+    agent
+        .recovery_metrics()
+        .record_tool_recovery_events(ToolRecoveryEvent::ReplacedCall, finalized_tool_count);
     info!(session_id = %session_id, tool_call_count, tool_loop_count = *tool_loop_count,
           finalized_tool_count, tool_recovery_outcome = "results_replaced", "ACP tool recovery results replaced");
     persist_session_checkpoint(agent, session, "tool_results").await;
@@ -374,6 +393,10 @@ pub(super) fn should_emit_buffered_final_chunk(allow_streaming: bool) -> bool {
     !allow_streaming
 }
 
+/// Builds the assistant message that introduces a batch of tool calls.
+///
+/// The tool-call identifiers it carries are the join keys that interrupted
+/// recovery uses to pair each placeholder with its stageable result.
 pub(super) fn assistant_tool_call_message(
     content: String,
     tool_calls: Vec<vtcode_core::llm::provider::ToolCall>,
@@ -406,6 +429,9 @@ async fn require_session_checkpoint(
     boundary: &'static str,
 ) -> Result<(), SdkError> {
     if let Err(error) = agent.checkpoint_session(session).await {
+        agent
+            .recovery_metrics()
+            .record_tool_recovery(ToolRecoveryEvent::CheckpointFailure);
         log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
         warn!(
             operation = "session_checkpoint",

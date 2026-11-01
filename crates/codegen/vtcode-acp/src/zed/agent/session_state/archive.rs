@@ -13,6 +13,7 @@ use vtcode_core::core::agent::snapshots::SnapshotTurnDiagnostics;
 use vtcode_core::core::threads::{ThreadBootstrap, messages_from_session_listing};
 use vtcode_core::hooks::SessionStartTrigger;
 use vtcode_core::llm::provider::MessageRole;
+use vtcode_core::metrics::ToolRecoveryEvent;
 use vtcode_core::utils::session_archive::{
     SessionArchive, SessionListing, SessionMessage, SessionProgressArgs, SessionProgressPersistenceStatus,
     find_session_by_identifier, history_persistence_enabled, list_recent_sessions, session_workspace_path,
@@ -50,10 +51,15 @@ where
 }
 
 impl ZedAgent {
+    /// Persists the session snapshot without turn diagnostics.
+    ///
+    /// Callers that have diagnostics should use
+    /// [`Self::checkpoint_session_with_turn_diagnostics`].
     pub(in crate::zed::agent) async fn checkpoint_session(&self, session: &SessionHandle) -> anyhow::Result<()> {
         self.checkpoint_session_with_turn_diagnostics(session, None).await
     }
 
+    /// Persists the session snapshot, optionally carrying turn diagnostics.
     async fn checkpoint_session_with_turn_diagnostics(
         &self,
         session: &SessionHandle,
@@ -62,6 +68,7 @@ impl ZedAgent {
         trace_storage_operation("checkpoint", self.checkpoint_session_inner(session, turn_diagnostics)).await
     }
 
+    /// Writes the checkpoint unless history persistence is disabled.
     async fn checkpoint_session_inner(
         &self,
         session: &SessionHandle,
@@ -129,6 +136,10 @@ impl ZedAgent {
         Ok(())
     }
 
+    /// Rebuilds a thread from an archived listing and registers it.
+    ///
+    /// Interrupted tool calls are staged before the thread is handed out, and
+    /// the repaired history is checkpointed when recovery changed it.
     async fn attach_thread_from_archive(
         &self,
         session_id: &acp::SessionId,
@@ -168,6 +179,7 @@ impl ZedAgent {
             .as_ref()
             .and_then(|progress| progress.turn_diagnostics.clone());
         let recovery = repair_archived_tool_calls(&mut listing).map_err(|error| {
+            self.recovery_metrics().record_tool_recovery(ToolRecoveryEvent::AmbiguousHistory);
             warn!(session_id = %session_id, tool_recovery_outcome = "ambiguous_history_rejected",
                   "Rejected archived ACP session with ambiguous tool-result history");
             anyhow::anyhow!("Archived ACP session has ambiguous tool-result history and was not resumed; inspect the archive before continuing: {error}")
@@ -198,9 +210,14 @@ impl ZedAgent {
             );
         }
         if recovery.history_changed() {
+            let metrics = self.recovery_metrics();
+            metrics.record_tool_recovery_events(ToolRecoveryEvent::InterruptedCall, recovery.repaired_calls);
+            metrics.record_tool_recovery_events(ToolRecoveryEvent::RelocatedResult, recovery.relocated_calls);
             self.checkpoint_session_with_turn_diagnostics(&handle, preserved_turn_diagnostics)
                 .await
+                .inspect_err(|_| metrics.record_tool_recovery(ToolRecoveryEvent::CheckpointFailure))
                 .context("Failed to persist repaired ACP tool-call history")?;
+            metrics.record_tool_recovery(ToolRecoveryEvent::RepairedArchive);
             warn!(
                 session_id = %session_id,
                 repaired_calls = recovery.repaired_calls,
@@ -562,6 +579,10 @@ fn canonical_workspace_match(stored_workspace: &Path, requested_workspace: &Path
     })
 }
 
+/// Compares an archived listing's workspace with the requested one.
+///
+/// Fails when the listing carries no stored workspace path, because resuming
+/// in an unknown directory would defeat the workspace isolation check.
 pub(super) fn session_listing_workspace_match(
     listing: &SessionListing,
     requested_workspace: &Path,
@@ -583,6 +604,3 @@ pub(super) fn repair_archived_tool_calls(
     }
     Ok(report)
 }
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/session_state/archive.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/session_state/archive.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/session_state/archive.rs' for per-hunk detail, 'weave check' to verify your resolution

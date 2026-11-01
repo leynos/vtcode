@@ -380,6 +380,14 @@ impl ZedAgent {
         })
     }
 
+    /// Metrics collector that receives bounded ACP recovery counters.
+    ///
+    /// Recovery events are agent-scoped rather than workspace-scoped, so a
+    /// session that never opened a workspace runtime still reports them.
+    pub(super) fn recovery_metrics(&self) -> Arc<vtcode_core::metrics::MetricsCollector> {
+        self.local_tool_registry.metrics_collector()
+    }
+
     fn session_subagent_controller(&self, session: &SessionHandle) -> anyhow::Result<Option<Arc<SubagentController>>> {
         let workspace_runtime = session
             .workspace_runtime()
