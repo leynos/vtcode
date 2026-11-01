@@ -147,19 +147,28 @@ fn usage_notification(
     Ok(acp::ExtNotification::new(LODY_SESSION_USAGE_UPDATE_METHOD, Arc::from(params)))
 }
 
+/// The model a provider actually served.
+///
+/// A router can answer a request with a different model than the one it was
+/// asked for, so the response wins whenever it names one. Resolving this once
+/// keeps the reported attribution and the pricing profile describing the same
+/// model.
+fn effective_model<'a>(session_model: &'a str, response: &'a diapason_core::llm::provider::LLMResponse) -> &'a str {
+    if response.model.is_empty() {
+        session_model
+    } else {
+        response.model.as_str()
+    }
+}
+
 fn response_usage_notification(
     session_id: &acp::SessionId,
-    fallback_model: &str,
+    model: &str,
     response: &diapason_core::llm::provider::LLMResponse,
     profile: UsageProfile,
 ) -> anyhow::Result<Option<acp::ExtNotification>> {
     let Some(usage) = response.usage.as_ref() else {
         return Ok(None);
-    };
-    let model = if response.model.is_empty() {
-        fallback_model
-    } else {
-        response.model.as_str()
     };
     usage_notification(session_id, model, usage, profile).map(Some)
 }
@@ -264,8 +273,12 @@ impl ZedAgent {
         );
         let _span_entered = span.enter();
         let started_at = Instant::now();
-        let profile = self.lody_usage_profile(provider, fallback_model);
-        let notification = match response_usage_notification(session_id, fallback_model, response, profile) {
+        let model = effective_model(fallback_model, response);
+        let profile = self.lody_usage_profile(provider, model);
+        let _outcome_recorded = span.record("outcome", "sent");
+        let _elapsed_ms_recorded = span.record("elapsed_ms", usage_elapsed_ms(started_at));
+        metrics.record_acp_usage_notification(true);
+        let notification = match response_usage_notification(session_id, model, response, profile) {
             Ok(Some(notification)) => notification,
             Ok(None) => {
                 let _outcome_recorded = span.record("outcome", "no_usage");
@@ -281,9 +294,6 @@ impl ZedAgent {
             record_usage_failure(&span, started_at, &metrics, "notification_send_failed", &session_correlation, &error);
             return;
         }
-        let _outcome_recorded = span.record("outcome", "sent");
-        let _elapsed_ms_recorded = span.record("elapsed_ms", usage_elapsed_ms(started_at));
-        metrics.record_acp_usage_notification(true);
     }
 }
 

@@ -84,12 +84,14 @@ fn rate_limit_notice(updates: &[serde_json::Value]) -> &serde_json::Value {
     notice
 }
 
+/// Read the notice message, requiring it to be a string.
 fn notice_message(notice: &serde_json::Value) -> &str {
     notice["_meta"]["lody"]["notice"]["message"]
         .as_str()
         .expect("rate-limit notice message")
 }
 
+/// Assert a terminal 429 publishes a notice without claiming a scheduled retry.
 #[tokio::test]
 async fn terminal_stream_rate_limit_publishes_a_notice_without_a_scheduled_retry() {
     let updates = prompt_updates(Arc::new(|| Box::new(PartialThenRateLimitProvider))).await;
@@ -108,6 +110,7 @@ async fn terminal_stream_rate_limit_publishes_a_notice_without_a_scheduled_retry
     );
 }
 
+/// Assert a retryable 429 publishes a notice announcing the scheduled retry.
 #[tokio::test]
 async fn retryable_stream_rate_limit_publishes_a_notice_announcing_the_retry() {
     let updates = prompt_updates(Arc::new(|| Box::new(RetryableRateLimitThenAnswerProvider::new()))).await;
