@@ -65,9 +65,11 @@ usage data.
 `reasoningOutputTokens`, `contextWindow`, and `costUSD` are optional. The
 visible `outputTokens` value excludes reasoning tokens when the provider
 reports them; Baseten's nested `completion_tokens_details.reasoning_tokens`
-field is preserved during normalization. `costUSD` is emitted only when
-explicitly configured custom provider pricing supplies both input and output
-rates (USD per million tokens). Cache pricing is optional.
+field is preserved during normalization. `costUSD` is emitted when the resolved
+model profile supplies both input and output rates (USD per million tokens):
+catalogue pricing for catalogue models, or explicitly configured custom
+provider pricing. Cache pricing is optional, and normalization follows the
+selected backend's input-token semantics rather than the provider name.
 
 Automatic context compaction is advertised as `_meta.lody.compaction` version 1
 and is emitted through standard `tool_call` and `tool_call_update` updates. The
