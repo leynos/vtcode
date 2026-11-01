@@ -289,6 +289,34 @@ impl ToolRegistry {
         Box::pin(async move { self.execute_code_search(args).await })
     }
 
+    /// Evaluate the configured policy against the requested argv.
+    ///
+    /// When the executor wraps that argv in a shell invocation, the raw shell
+    /// source is a second representation; both must pass before dispatch.
+    /// This stays synchronous so the decision payload does not enlarge the
+    /// async state machine of the command executor.
+    fn enforce_exec_command_policy(&self, prepared_command: &PreparedExecCommand) -> Result<()> {
+        let requested_program = prepared_command
+            .requested_command
+            .first()
+            .map(String::as_str)
+            .unwrap_or_default();
+        let requested_decision = self.inventory.command_policy_decision(&prepared_command.requested_command);
+        if let Some(message) = requested_decision.denial_message(requested_program) {
+            return Err(anyhow!("{message}"));
+        }
+        if let Some(source) = prepared_command.executed_shell_source.as_deref() {
+            let joined_requested = prepared_command.requested_command.join(" ");
+            if source.trim() != joined_requested.trim() {
+                let source_decision = self.inventory.command_policy_decision_text(source);
+                if let Some(message) = source_decision.denial_message(requested_program) {
+                    return Err(anyhow!("{message}"));
+                }
+            }
+        }
+        Ok(())
+    }
+
     async fn prepare_exec_run_request(
         &self,
         args: &Value,
@@ -319,27 +347,7 @@ impl ToolRegistry {
             prepare_exec_command(payload, &shell_program, login_shell, command, auto_raw_command);
         let is_git_diff = is_git_diff_command(&prepared_command.requested_command);
 
-        // Evaluate the configured policy against the requested argv. When the
-        // executor wraps that argv in a shell invocation, the raw shell source
-        // is a second representation; both must pass before dispatch.
-        let requested_program = prepared_command
-            .requested_command
-            .first()
-            .map(String::as_str)
-            .unwrap_or_default();
-        let requested_decision = self.inventory.command_policy_decision(&prepared_command.requested_command);
-        if let Some(message) = requested_decision.denial_message(requested_program) {
-            return Err(anyhow!("{message}"));
-        }
-        if let Some(source) = prepared_command.executed_shell_source.as_deref() {
-            let joined_requested = prepared_command.requested_command.join(" ");
-            if source.trim() != joined_requested.trim() {
-                let source_decision = self.inventory.command_policy_decision_text(source);
-                if let Some(message) = source_decision.denial_message(requested_program) {
-                    return Err(anyhow!("{message}"));
-                }
-            }
-        }
+        self.enforce_exec_command_policy(&prepared_command)?;
 
         let sandbox_request = self.resolve_exec_sandbox_request(payload).await?;
         self.enforce_deletion_policy(args, &prepared_command, &sandbox_request.working_dir_path, confirm)

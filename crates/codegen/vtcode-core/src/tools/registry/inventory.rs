@@ -144,12 +144,9 @@ impl ToolInventory {
         self.command_tool.write().update_commands_config(commands_config);
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Boolean-only compatibility accessor; runtime call sites use the structured decision."
-        )
+    #[expect(
+        dead_code,
+        reason = "Boolean-only compatibility accessor; runtime call sites use the structured decision."
     )]
     pub(super) fn command_policy_allows(&self, command: &[String]) -> bool {
         self.command_tool.read().policy_allows(command)
