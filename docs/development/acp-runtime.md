@@ -101,6 +101,21 @@ cargo nextest run -p vtcode-acp attaching_legacy_archive_repairs_without_replayi
 cargo nextest run -p vtcode-core stale_write_stdin_modes_are_resource_not_found_without_partial_state
 ```
 
+### Recovery observability
+
+`metrics::tool_recovery_metrics` counts recovery events in bounded,
+fixed-variant counters: staged calls, replaced calls, interrupted calls,
+relocated results, repaired archives, ambiguous histories, concurrent prompt
+rejections, stale `write_stdin` requests, and checkpoint failures. The snapshot
+appears as `tool_recovery` in the metrics summary JSON and as
+`vtcode_tool_recovery_total{event=...}` in the Prometheus export.
+
+Every label is a fixed event variant. Session identifiers, tool-call
+identifiers, tool names, and tool output never become a label or a log value,
+so a session can export the snapshot without leaking which tools it invoked or
+what they returned. Adding a dimension means adding an enum variant and its
+`as_str` arm; a free-form string label is not acceptable.
+
 ## Providers
 
 For custom-provider configuration and defaults, see
