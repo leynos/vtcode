@@ -100,10 +100,20 @@ The `apply_patch_handler.rs` path enforces the same hash precondition
 independently via `validate_request_content_hash`, and it does so before the
 orchestrator emits a mutation event, so a rejected patch never looks started.
 Scope and mismatch rejections use the registry's shared builders
-(`patch_precondition_scope_error`, `invalid_patch_precondition`), which is why
+(`patch_precondition_scope_error`, `precondition_scope_details`,
+`content_hash_mismatch_details`, `invalid_patch_precondition`), which is why
 the add-only/multi-source distinction, the `source_file_count`, and a non-UTF-8
 mismatch reported as `can_safely_rebase: false` with no anchor failures are
 identical on both surfaces.
+
+The runtime recheck that runs immediately before the write
+(`ApplyPatchRuntime::run`) keeps the same split: a structured precondition
+failure becomes `ToolError::RespondToModel`, which `ToolEmitter::finish` maps to
+`ToolCallError::RespondToModel`, while containment and read failures stay
+`ToolError::Rejected`. A race-lost version check therefore hands the model the
+same reread-and-regenerate envelope instead of reporting the call as rejected
+by approval policy. The two are not interchangeable: the adapter renders
+`Rejected` with `"rejected": true`.
 
 The no-op ladder and mutation leases are *not* available on the handler
 surface: they are registry session state, and the handler has no registry
