@@ -49,7 +49,24 @@ impl PendingCompactionProvider {
     }
 }
 
+/// Fails the compaction summary request after signalling that it started, so
+/// a transport test can observe the terminal failure update.
+pub(super) struct FailingCompactionProvider {
+    started: Arc<tokio::sync::Notify>,
+}
+
+impl FailingCompactionProvider {
+    pub(super) fn new(started: Arc<tokio::sync::Notify>) -> Self {
+        Self { started }
+    }
+}
+
 pub(super) struct PartialThenFailProvider;
+
+/// Emits one token and then a provider-supplied 429, so the failure is
+/// terminal: partial output is already visible, and the retry budget cannot
+/// resume a stream the user has seen.
+pub(super) struct PartialThenRateLimitProvider;
 
 #[async_trait]
 impl LLMProvider for StreamToolThenAnswerProvider {
@@ -196,6 +213,33 @@ impl LLMProvider for PendingCompactionProvider {
 }
 
 #[async_trait]
+impl LLMProvider for FailingCompactionProvider {
+    fn name(&self) -> &str {
+        "wire-test"
+    }
+
+    fn effective_context_size(&self, _model: &str) -> usize {
+        8_192
+    }
+
+    fn supported_models(&self) -> Vec<String> {
+        vec!["wire-model".to_string()]
+    }
+
+    fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+        Ok(())
+    }
+
+    async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+        self.started.notify_one();
+        Err(LLMError::Provider {
+            message: "compaction summary request failed".to_string(),
+            metadata: None,
+        })
+    }
+}
+
+#[async_trait]
 impl LLMProvider for PartialThenFailProvider {
     fn name(&self) -> &str {
         "wire-test"
@@ -225,6 +269,109 @@ impl LLMProvider for PartialThenFailProvider {
 
     async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
         panic!("partial-stream test must not use buffered generation")
+    }
+}
+
+#[async_trait]
+impl LLMProvider for PartialThenRateLimitProvider {
+    fn name(&self) -> &str {
+        "wire-test"
+    }
+
+    fn supported_models(&self) -> Vec<String> {
+        vec!["wire-model".to_string()]
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+
+    fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+        Ok(())
+    }
+
+    async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
+        Ok(Box::pin(futures::stream::iter(vec![
+            Ok(LLMStreamEvent::Token { delta: "partial answer".to_string() }),
+            Err(LLMError::RateLimit {
+                metadata: Some(LLMErrorMetadata::new(
+                    "wire-test",
+                    Some(429),
+                    Some("rate_limit_error".to_string()),
+                    None,
+                    None,
+                    Some("12".to_string()),
+                    None,
+                )),
+            }),
+        ])))
+    }
+
+    async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+        panic!("rate-limited stream test must not use buffered generation")
+    }
+}
+
+/// Fails the first stream attempt with a retryable 429 before any output is
+/// visible, then answers on the next attempt. A transport test can therefore
+/// observe the rate-limit notice and the scheduled retry it announces.
+pub(super) struct RetryableRateLimitThenAnswerProvider {
+    calls: AtomicUsize,
+}
+
+impl RetryableRateLimitThenAnswerProvider {
+    pub(super) fn new() -> Self {
+        Self { calls: AtomicUsize::new(0) }
+    }
+}
+
+#[async_trait]
+impl LLMProvider for RetryableRateLimitThenAnswerProvider {
+    fn name(&self) -> &str {
+        "wire-test"
+    }
+
+    fn supported_models(&self) -> Vec<String> {
+        vec!["wire-model".to_string()]
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+
+    fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+        Ok(())
+    }
+
+    async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Err(LLMError::RateLimit {
+                metadata: Some(LLMErrorMetadata::new(
+                    "wire-test",
+                    Some(429),
+                    Some("rate_limit_error".to_string()),
+                    None,
+                    None,
+                    Some("0.5".to_string()),
+                    None,
+                )),
+            });
+        }
+        Ok(Box::pin(futures::stream::iter(vec![
+            Ok(LLMStreamEvent::Token { delta: "retried answer".to_string() }),
+            Ok(LLMStreamEvent::Completed {
+                response: Box::new(LLMResponse {
+                    content: Some("retried answer".to_string()),
+                    finish_reason: vtcode_core::llm::provider::FinishReason::Stop,
+                    model: "wire-model".to_string(),
+                    ..LLMResponse::default()
+                }),
+            }),
+        ])))
+    }
+
+    async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+        panic!("scheduled-retry stream test must not use buffered generation")
     }
 }
 
