@@ -373,3 +373,19 @@ The rebased candidate is validated with the repository's sequential commit
 gates. Logs use `restack-2` on `harden-lint-spelling-colour`; final handoff
 checks use `handoff-restack-2`. The push uses an explicit lease against the
 original published PR #27 head.
+
+## PR 27 review follow-up
+
+CodeRabbit's full review at `feb027e70` raised one finding. An explicit `None`
+instruction home disables user-scope discovery but not workspace-scope
+discovery, which walks from the working directory to the resolved project
+root. Without a `.git` marker that root falls back to the filesystem root, so a
+temporary fixture below the home directory could still read `AGENTS.md` or
+`CLAUDE.md` from an ancestor directory.
+
+The fix marks the four affected `project_doc` fixtures as their own project
+root through a `mark_project_root` helper, and rewrites the `None` guarantee on
+the three `*_with_home` entry points to state the remaining workspace-scope
+walk. The four sequential gates pass at `13d4e7a49`, including 10,110 workspace
+tests and 17 skips. Logs use `restack-2`; final handoff checks use
+`handoff-restack-3`.
