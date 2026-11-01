@@ -1,3 +1,10 @@
+//! Tests for patch-pipeline observability and precondition reporting.
+//!
+//! Covers what reaches the event stream: a preview render failure must log its
+//! reason code without patch text, safety events must never carry patch
+//! content, paths, or hashes, and a removed source file must report a null
+//! current hash.
+
 use super::log_patch_preview_render_failure;
 use crate::tools::editing::patch::{PatchChunk, PatchLine, render_patch_update_content_strict};
 use std::sync::{Arc, Mutex};
