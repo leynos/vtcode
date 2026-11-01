@@ -22,6 +22,15 @@ tools work automatically, while dangerous operations require confirmation.
   `merge`, `stash` (select ops)
 - **Blocked**: `push --force`, `clean`, `rebase`, `cherry-pick`, `filter-branch`
 
+### GitHub CLI
+
+- **Allowed**: `gh --version` and `gh version` (exact local version queries)
+- **Blocked by default**: every other `gh` invocation, including `gh api`,
+  `gh auth`, `gh alias`, `gh extension`, resource subcommands, trailing
+  arguments, composed commands, and `bash -lc` wrappers
+- Add a narrow `[commands]` allow rule when a workflow needs more (`gh *` is
+  deliberately not shipped)
+
 ### Build Tools (Cargo)
 
 - **Safe operations**: `build`, `check`, `test`, `doc`, `clippy`, `fmt`, `run`,
@@ -128,6 +137,20 @@ auto-approved at the runloop after the permission and policy checks; the
 executor target assessment still runs. An unconfirmed or unsupported deletion
 is still refused by command preflight, so skip-permissions cannot delete a
 scratch file without `confirm=true`.
+
+## Permission Modes and the Command Policy
+
+`--dangerously-skip-permissions`, `--skip-confirmations`, and `--full-auto`
+change how promptable tool calls are approved. They do not grant commands that
+the configured `[commands]` policy denies, and they do not bypass the curated
+command validator or an active sandbox. A policy denial names the rule
+collection and configured pattern that decided (or states that no allow rule
+matched) and prints only the program basename. See
+[Granular Permissions](../guides/permissions.md#execution-policy-and-skip-permissions).
+
+When no allow rules are configured at all (`allow_list`, `allow_glob`, and
+`allow_regex` all empty), the configured policy allows unmatched commands. The
+shipped defaults configure allow rules, so an unmatched command is denied.
 
 ## Dangerous Operations (Blocked)
 

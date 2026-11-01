@@ -96,6 +96,16 @@ fn preflight_blocks_network_commands_when_network_disabled() {
     assert!(error.to_string().contains("denies network"));
 }
 
+/// A local `gh --version` query needs no network, so the sandbox preflight
+/// must not classify it as a network command and refuse it.
+#[test]
+fn preflight_allows_gh_version_query_without_network() {
+    let policy = SandboxPolicy::workspace_write(vec![PathBuf::from("/tmp/ws")]);
+    let command = vec!["gh".to_string(), "--version".to_string()];
+    enforce_sandbox_preflight_guards(&command, &policy, PathBuf::from(".").as_path())
+        .expect("version query requires no network access");
+}
+
 #[test]
 fn workspace_write_allow_all_network_is_not_blocked() {
     let mut config = vtcode_config::SandboxConfig {
@@ -479,6 +489,178 @@ fn prepare_exec_command_keeps_existing_shell_invocation() {
     assert_eq!(prepared.command, command);
     assert_eq!(prepared.requested_command_display, "/bin/zsh -c 'echo hi'");
     assert_eq!(prepared.display_command, "/bin/zsh -c 'echo hi'");
+}
+
+/// The executor rate limiter is process-global. Reset its bucket before each
+/// policy probe so these assertions measure the configured policy rather than
+/// token exhaustion shared with tests running in parallel.
+fn reset_exec_command_rate_limit() {
+    if let Ok(mut limiter) = crate::tools::rate_limiter::PER_TOOL_RATE_LIMITER.lock() {
+        limiter.reset_tool("exec_command:run");
+    }
+}
+
+/// Regression for issue #175: local GitHub CLI version queries are allowed by
+/// the default configured policy, with and without confirmation.
+#[tokio::test]
+async fn prepare_exec_run_request_allows_gh_version_queries() {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
+
+    for command in [vec!["gh", "--version"], vec!["gh", "version"]] {
+        for confirm in [false, true] {
+            reset_exec_command_rate_limit();
+            let args = serde_json::json!({
+                "command": command,
+                "confirm": confirm,
+            });
+            let prepared = super::ToolRegistry::prepare_exec_run_request(
+                &registry,
+                &args,
+                super::ExecRunBackendKind::Pipe,
+                "missing command",
+                "empty command",
+            )
+            .await
+            .unwrap_or_else(|error| panic!("default policy should allow {command:?} (confirm={confirm}): {error}"));
+            assert_eq!(prepared.prepared_command.requested_command, command);
+        }
+    }
+}
+
+/// Only the two exact version queries are exempt. Every other `gh` shape,
+/// including composed shell source, stays behind the fail-closed allowlist.
+#[tokio::test]
+async fn prepare_exec_run_request_denies_non_version_gh_invocations() {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
+
+    let denied_commands = [
+        json!(["gh"]),
+        json!(["gh", "--version", "extra"]),
+        json!(["gh", "api", "repos/owner/repo"]),
+        json!(["gh", "auth", "status"]),
+        json!(["gh", "alias", "list"]),
+        json!(["gh", "extension", "list"]),
+        json!(["gh", "repo", "delete", "owner/repo"]),
+        json!(["gh", "workflow", "run", "ci"]),
+        json!(["gh", "version", "--json"]),
+        json!(["/usr/bin/gh", "--version"]),
+        json!(["bash", "-lc", "gh --version"]),
+        json!("/bin/gh --version"),
+        json!(["gh", "--version", "&&", "rm", "-rf", "build"]),
+        json!(["gh", "--version", ";", "id"]),
+        json!(["gh", "--version", "|", "cat"]),
+        json!(["gh", "--version", "$(", "id", ")"]),
+    ];
+
+    for command in denied_commands {
+        for confirm in [false, true] {
+            reset_exec_command_rate_limit();
+            let args = serde_json::json!({
+                "command": command,
+                "confirm": confirm,
+            });
+            let error = match super::ToolRegistry::prepare_exec_run_request(
+                &registry,
+                &args,
+                super::ExecRunBackendKind::Pipe,
+                "missing command",
+                "empty command",
+            )
+            .await
+            {
+                Ok(_) => panic!("policy should deny {command} (confirm={confirm})"),
+                Err(error) => error,
+            };
+            assert!(
+                error.to_string().contains("not permitted by the execution policy"),
+                "confirm={confirm}: unexpected error for {command}: {error}"
+            );
+        }
+    }
+}
+
+/// Composing a permitted argv with extra shell source cannot smuggle the
+/// unpermitted source past the configured policy.
+#[tokio::test]
+async fn prepare_exec_run_request_denies_composed_gh_raw_command() {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
+
+    for confirm in [false, true] {
+        reset_exec_command_rate_limit();
+        let args = serde_json::json!({
+            "command": ["gh", "--version"],
+            "raw_command": "gh --version && curl https://example.com",
+            "confirm": confirm,
+        });
+        let error = match super::ToolRegistry::prepare_exec_run_request(
+            &registry,
+            &args,
+            super::ExecRunBackendKind::Pipe,
+            "missing command",
+            "empty command",
+        )
+        .await
+        {
+            Ok(_) => panic!("composed raw_command must be denied (confirm={confirm})"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains("not permitted by the execution policy"),
+            "confirm={confirm}: unexpected error: {error}"
+        );
+    }
+}
+
+/// Explicit deny rules keep precedence over the exact `gh` allow globs.
+#[tokio::test]
+async fn prepare_exec_run_request_explicit_deny_wins_over_gh_allow() {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
+
+    let deny_configs = [
+        ("deny_list", "gh"),
+        ("deny_glob", "*--version*"),
+        ("deny_regex", r"^gh\s"),
+    ];
+
+    for (rule, pattern) in deny_configs {
+        let mut config = vtcode_config::CommandsConfig::default();
+        match rule {
+            "deny_list" => config.deny_list.push(pattern.to_string()),
+            "deny_glob" => config.deny_glob.push(pattern.to_string()),
+            "deny_regex" => config.deny_regex.push(pattern.to_string()),
+            other => panic!("unexpected rule fixture: {other}"),
+        }
+        registry.apply_commands_config(&config);
+
+        for confirm in [false, true] {
+            reset_exec_command_rate_limit();
+            let args = serde_json::json!({
+                "command": ["gh", "--version"],
+                "confirm": confirm,
+            });
+            let error = match super::ToolRegistry::prepare_exec_run_request(
+                &registry,
+                &args,
+                super::ExecRunBackendKind::Pipe,
+                "missing command",
+                "empty command",
+            )
+            .await
+            {
+                Ok(_) => panic!("{rule} must win over the gh allow glob (confirm={confirm})"),
+                Err(error) => error,
+            };
+            assert!(error.to_string().contains(rule), "confirm={confirm}: expected the {rule} rule named in: {error}");
+            assert!(
+                error.to_string().contains("--dangerously-skip-permissions does not override"),
+                "confirm={confirm}: denial must state the skip flag cannot override: {error}"
+            );
+        }
+    }
 }
 
 #[test]

@@ -168,6 +168,12 @@ gh, gitlab-ci, bitbucket, azure-pipelines, circleci,
 jenkins, drone, buildkite, travis, appveyor
 ```
 
+This catalogue lists tools VT Code can work with; it is not the configured
+allowlist. The shipped command policy allows only the exact local queries
+`gh --version` and `gh version`. Every other `gh` invocation needs an explicit,
+narrow rule in `[commands]`. See
+[Command Security Model](../development/COMMAND_SECURITY_MODEL.md#2a-github-cli-exact-version-queries).
+
 ### Web Development (15+)
 
 ```
