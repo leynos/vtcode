@@ -147,12 +147,13 @@ fn store_buffered_output(turn: &mut PromptExecution, output: &mut ProviderOutput
 
 async fn generate_buffered_response(turn: &mut PromptExecution) -> Result<BufferedGenerationOutcome, SdkError> {
     let request = prepare_buffered_request(turn).await?;
+    let notice_sink = RateLimitNoticeSink::new(&turn.agent, &turn.args.session_id);
     match generate_with_retry(
         turn.provider.as_ref(),
         request,
         &turn.provider_runtime,
         &turn.session.cancellation,
-        Some((&turn.agent, &turn.args.session_id)),
+        Some(&notice_sink),
     )
     .await
     {

@@ -4,6 +4,7 @@ use agent_client_protocol::schema::v1::{InitializeRequest, LoadSessionRequest, N
 
 mod compaction;
 mod partial_stream;
+mod rate_limit_notice;
 
 #[test]
 fn assistant_tool_call_continuation_preserves_signed_reasoning_details() {

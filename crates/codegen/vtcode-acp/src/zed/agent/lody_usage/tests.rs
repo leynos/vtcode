@@ -4,6 +4,7 @@ use super::*;
 use agent_client_protocol::{Agent, Builder, Client, ConnectionTo, RunWithConnectionTo, on_receive_notification};
 use proptest::prelude::*;
 use tokio::sync::{Notify, mpsc};
+use vtcode_config::{CustomProviderPricingConfig, CustomProviderProfileConfig};
 
 #[test]
 fn maps_normalized_usage_to_the_lody_delta_contract() {
@@ -101,6 +102,122 @@ fn cost_normalization_follows_the_selected_backend_not_the_provider_name() {
     assert!((cost(true) - 100.0 / 1_000_000.0).abs() < f64::EPSILON);
 }
 
+/// Build a custom provider with the fields usage reporting reads.
+fn custom_provider(
+    name: &str,
+    api_format: CustomProviderApiFormat,
+    context_window: Option<usize>,
+    pricing: CustomProviderPricingConfig,
+) -> CustomProviderConfig {
+    CustomProviderConfig {
+        name: name.to_string(),
+        display_name: name.to_string(),
+        base_url: "https://llm.example/v1".to_string(),
+        api_format,
+        context_window,
+        pricing,
+        ..CustomProviderConfig::default()
+    }
+}
+
+/// Declare pricing in the per-million-token units configuration uses.
+fn per_million(input: f64, output: f64) -> CustomProviderPricingConfig {
+    CustomProviderPricingConfig {
+        input_per_million_usd: Some(input),
+        output_per_million_usd: Some(output),
+        cache_read_per_million_usd: None,
+        cache_write_per_million_usd: None,
+    }
+}
+
+#[test]
+fn custom_provider_supplies_the_context_window_and_cost_pricing() {
+    let providers = vec![custom_provider(
+        "acme",
+        CustomProviderApiFormat::AnthropicMessages,
+        Some(200_000),
+        per_million(3.0, 15.0),
+    )];
+
+    // Provider names are matched case-insensitively, as routing does.
+    let profile = usage_profile(&providers, "AcMe", "acme-large");
+
+    assert_eq!(profile.context_window, Some(200_000));
+    assert!(profile.exclusive_input, "Anthropic Messages excludes cached tokens from prompt_tokens");
+    let pricing = profile.pricing.expect("custom provider pricing should reach cost reporting");
+    assert!((pricing.input.expect("input rate") - 3.0 / 1_000_000.0).abs() < f64::EPSILON);
+    assert!((pricing.output.expect("output rate") - 15.0 / 1_000_000.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn model_profile_overrides_the_provider_default() {
+    let providers = vec![CustomProviderConfig {
+        context_window: Some(200_000),
+        pricing: per_million(3.0, 15.0),
+        profiles: BTreeMap::from([(
+            "acme-small".to_string(),
+            CustomProviderProfileConfig {
+                api_format: CustomProviderApiFormat::OpenAIChat,
+                context_window: Some(32_768),
+                pricing: per_million(0.25, 1.0),
+                ..CustomProviderProfileConfig::default()
+            },
+        )]),
+        ..custom_provider(
+            "acme",
+            CustomProviderApiFormat::AnthropicMessages,
+            None,
+            CustomProviderPricingConfig::default(),
+        )
+    }];
+
+    let profile = usage_profile(&providers, "acme", "acme-small");
+
+    assert_eq!(profile.context_window, Some(32_768));
+    assert!(
+        !profile.exclusive_input,
+        "the model profile's OpenAI Chat backend includes cached tokens in prompt_tokens"
+    );
+    let pricing = profile.pricing.expect("model profile pricing should reach cost reporting");
+    assert!((pricing.input.expect("input rate") - 0.25 / 1_000_000.0).abs() < f64::EPSILON);
+    assert!((pricing.output.expect("output rate") - 1.0 / 1_000_000.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn custom_provider_profile_drives_the_notification_context_window_and_cost() {
+    let providers = vec![custom_provider(
+        "acme",
+        CustomProviderApiFormat::AnthropicMessages,
+        Some(200_000),
+        per_million(3.0, 15.0),
+    )];
+    let profile = usage_profile(&providers, "acme", "acme-large");
+    let usage = Usage {
+        prompt_tokens: 1_000_000,
+        completion_tokens: 1_000_000,
+        ..Usage::default()
+    };
+
+    let notification =
+        usage_notification(&acp::SessionId::new(Arc::from("session-cost")), "acme-large", &usage, profile)
+            .expect("usage notification");
+    let value: serde_json::Value = serde_json::from_str(notification.params.get()).expect("usage JSON");
+
+    assert_eq!(value["usage"]["contextWindow"], 200_000);
+    let cost = value["usage"]["costUSD"].as_f64().expect("costUSD");
+    assert!((cost - 18.0).abs() < 1e-9, "1M input at $3/M plus 1M output at $15/M, got {cost}");
+}
+
+#[test]
+fn built_in_provider_falls_back_to_the_model_catalogue() {
+    let profile = usage_profile(&[], "anthropic", "claude-fable-5");
+    let catalog = vtcode_config::models::model_catalog_entry("anthropic", "claude-fable-5")
+        .expect("catalogue entry for a shipped model");
+
+    assert_eq!(profile.context_window, Some(catalog.context_window));
+    assert!(profile.exclusive_input);
+}
+
 #[test]
 fn response_without_usage_produces_no_notification() {
     let response = vtcode_core::llm::provider::LLMResponse::new("model-a", "answer");
@@ -114,6 +231,61 @@ fn response_without_usage_produces_no_notification() {
     .expect("optional usage notification");
 
     assert!(notification.is_none());
+}
+
+/// Read back the model keys a usage notification attributes the usage to.
+fn reported_model_names(notification: acp::ExtNotification) -> Vec<String> {
+    let value: serde_json::Value = serde_json::from_str(notification.params.get()).expect("usage JSON");
+    let model_usage = value["modelUsage"].as_object().expect("modelUsage object");
+    model_usage.keys().cloned().collect()
+}
+
+#[test]
+fn response_usage_is_attributed_to_the_model_the_provider_served() {
+    let response = vtcode_core::llm::provider::LLMResponse {
+        model: "served-model".to_string(),
+        usage: Some(Usage {
+            prompt_tokens: 4,
+            completion_tokens: 2,
+            ..Usage::default()
+        }),
+        ..vtcode_core::llm::provider::LLMResponse::new("fallback-model", "answer")
+    };
+
+    let notification = response_usage_notification(
+        &acp::SessionId::new(Arc::from("session-1")),
+        "fallback-model",
+        &response,
+        UsageProfile::default(),
+    )
+    .expect("optional usage notification")
+    .expect("usage notification");
+
+    assert_eq!(reported_model_names(notification), vec!["served-model".to_string()]);
+}
+
+#[test]
+fn response_without_a_model_falls_back_to_the_session_model() {
+    let response = vtcode_core::llm::provider::LLMResponse {
+        model: String::new(),
+        usage: Some(Usage {
+            prompt_tokens: 4,
+            completion_tokens: 2,
+            ..Usage::default()
+        }),
+        ..vtcode_core::llm::provider::LLMResponse::new("fallback-model", "answer")
+    };
+
+    let notification = response_usage_notification(
+        &acp::SessionId::new(Arc::from("session-1")),
+        "fallback-model",
+        &response,
+        UsageProfile::default(),
+    )
+    .expect("optional usage notification")
+    .expect("usage notification");
+
+    assert_eq!(reported_model_names(notification), vec!["fallback-model".to_string()]);
 }
 
 proptest! {

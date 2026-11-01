@@ -11,6 +11,11 @@ use vtcode_core::llm::provider::{LLMError, LLMErrorMetadata};
 use super::ZedAgent;
 
 impl ZedAgent {
+    /// Publish a warning notice when `error` reports a provider rate limit.
+    ///
+    /// `retry_delay` is the delay VTCode actually scheduled, or `None` when no
+    /// further attempt will be made. Errors that report no rate limit publish
+    /// nothing.
     pub(super) async fn publish_rate_limit_notice(
         &self,
         session_id: &acp::SessionId,
@@ -27,6 +32,7 @@ impl ZedAgent {
     }
 }
 
+/// Build the session-info update for a rate-limit error, if it is one.
 fn rate_limit_notice_update(
     provider: &str,
     error: &LLMError,

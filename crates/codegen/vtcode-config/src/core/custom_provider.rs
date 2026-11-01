@@ -57,6 +57,9 @@ pub struct CustomProviderPricingConfig {
 impl CustomProviderPricingConfig {
     const TOKENS_PER_MILLION: f64 = 1_000_000.0;
 
+    /// Overlay one layer's pricing onto another's, field by field.
+    ///
+    /// A rate set on the overlay wins; an unset rate inherits the base value.
     fn from_layers(defaults: Self, profile: Self) -> Self {
         Self {
             input_per_million_usd: profile.input_per_million_usd.or(defaults.input_per_million_usd),
@@ -66,6 +69,10 @@ impl CustomProviderPricingConfig {
         }
     }
 
+    /// Convert the configured per-million rates to per-token pricing.
+    ///
+    /// Returns `None` until both input and output rates are configured, since
+    /// a partial price cannot describe a complete model cost.
     pub fn model_pricing(self) -> Option<ModelPricing> {
         let input = self.input_per_million_usd? / Self::TOKENS_PER_MILLION;
         let output = self.output_per_million_usd? / Self::TOKENS_PER_MILLION;
@@ -77,6 +84,10 @@ impl CustomProviderPricingConfig {
         })
     }
 
+    /// Reject rates that are negative or not finite.
+    ///
+    /// `subject` prefixes the error so the report names the configuration
+    /// layer the invalid rate came from.
     fn validate(self, subject: &str) -> Result<(), String> {
         let rates = [
             ("input_per_million_usd", self.input_per_million_usd),
@@ -92,6 +103,7 @@ impl CustomProviderPricingConfig {
         Ok(())
     }
 
+    /// Report whether no rate is configured at all.
     fn is_empty(&self) -> bool {
         self.input_per_million_usd.is_none()
             && self.output_per_million_usd.is_none()
@@ -738,6 +750,7 @@ impl CustomProviderConfig {
         self.validate_name_is_not_reserved()
     }
 
+    /// Reject an empty or malformed provider identity.
     fn validate_identity(&self) -> Result<(), String> {
         if self.name.trim().is_empty() {
             return Err("custom_providers: `name` must not be empty".to_string());
@@ -761,12 +774,14 @@ impl CustomProviderConfig {
         Ok(())
     }
 
+    /// Check every numeric bound declared for this provider.
     fn validate_provider_bounds(&self) -> Result<(), String> {
         self.validate_context_window_bound()?;
         self.validate_sampling_bounds()?;
         self.validate_output_bounds()
     }
 
+    /// Reject a zero context window, which would admit no prompt at all.
     fn validate_context_window_bound(&self) -> Result<(), String> {
         if self.context_window == Some(0) {
             return Err(format!("custom_providers[{}]: `context_window` must be greater than 0", self.name));
@@ -775,6 +790,7 @@ impl CustomProviderConfig {
         Ok(())
     }
 
+    /// Check sampling parameters against their supported ranges.
     fn validate_sampling_bounds(&self) -> Result<(), String> {
         for bound in [
             SamplingBound {
@@ -819,6 +835,7 @@ impl CustomProviderConfig {
         Ok(())
     }
 
+    /// Reject a zero token cap or an unrecognised reasoning level.
     fn validate_output_bounds(&self) -> Result<(), String> {
         if self.max_tokens == Some(0) {
             return Err(format!("custom_providers[{}]: `max_tokens` must be greater than 0", self.name));
@@ -834,6 +851,7 @@ impl CustomProviderConfig {
         Ok(())
     }
 
+    /// Check the command-auth block and its exclusivity with `api_key_env`.
     fn validate_auth(&self) -> Result<(), String> {
         if let Some(auth) = &self.auth {
             auth.validate(&self.name)?;
@@ -845,6 +863,7 @@ impl CustomProviderConfig {
         Ok(())
     }
 
+    /// Check that the API-key environment variable names a usable credential.
     fn validate_api_key_env(&self) -> Result<(), String> {
         if !self.api_key_env.trim().is_empty()
             && let Err(err) = crate::auth::CredentialIdentity::new(&self.name, &self.api_key_env)
@@ -855,6 +874,7 @@ impl CustomProviderConfig {
         Ok(())
     }
 
+    /// Reject empty model identifiers.
     fn validate_models(&self) -> Result<(), String> {
         if self.models.iter().any(|m| m.trim().is_empty()) {
             return Err(format!("custom_providers[{}]: `models` entries must not be empty", self.name));
@@ -863,6 +883,7 @@ impl CustomProviderConfig {
         Ok(())
     }
 
+    /// Check every profile key and the configuration layered under it.
     fn validate_profiles(&self) -> Result<(), String> {
         for (profile_key, profile) in &self.profiles {
             if profile_key.trim().is_empty() || profile_key.trim() != profile_key {
@@ -878,6 +899,7 @@ impl CustomProviderConfig {
         Ok(())
     }
 
+    /// Reject a name that would shadow a built-in provider.
     fn validate_name_is_not_reserved(&self) -> Result<(), String> {
         let reserved = [
             "openai",
@@ -914,6 +936,7 @@ struct SamplingBound {
 }
 
 impl SamplingBound {
+    /// Report a value outside the bound's inclusive range.
     fn validate(&self, provider_name: &str) -> Result<(), String> {
         let Some(value) = self.value else {
             return Ok(());

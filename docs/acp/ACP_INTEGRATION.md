@@ -72,10 +72,12 @@ Automatic context compaction is advertised as
 `_meta.lody.compaction = { "version": 1 }`. Each compaction is represented by
 standard ACP `tool_call`/`tool_call_update` session updates. The updates use a
 stable tool call ID and carry `_meta.lody.activity` with the activity kind, the
-terminal `compacted` outcome, token counts, duration, and any failure reason. A
-completed activity with `compacted: false` reports that the attempt made no
-change, and it omits `usedTokensAfter` because no token count was reduced. No
-private ACP update type is required.
+terminal `compacted` outcome, token counts, and duration. A failed attempt adds
+`failureReason` as a closed-set category — `cancelled`, `timeout`,
+`admission_budget`, `pre_compact_hook`, or `provider` — and never a raw
+provider or filesystem diagnostic. A completed activity with `compacted: false`
+reports that the attempt made no change, and it omits `usedTokensAfter` because
+no token count was reduced. No private ACP update type is required.
 
 VT Code does not advertise `_meta.lody.rateLimits` unless it has trustworthy
 quota state. A Baseten HTTP 429 is not treated as a quota window: the response
