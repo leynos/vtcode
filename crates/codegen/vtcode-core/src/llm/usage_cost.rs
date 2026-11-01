@@ -55,10 +55,25 @@ pub fn provider_reports_exclusive_input(provider: &str) -> bool {
 /// [`provider_reports_exclusive_input`] so `input_tokens` always represents
 /// the total prompt token count across every provider.
 pub fn normalized_turn_usage(provider: &str, usage: &ProviderUsage) -> vtcode_exec_events::Usage {
+    normalized_turn_usage_with_input_semantics(provider_reports_exclusive_input(provider), usage)
+}
+
+/// Build a per-turn harness `Usage` sample from raw provider usage using an
+/// explicit input-semantics decision.
+///
+/// Callers that select a wire backend rather than a provider name — a custom
+/// provider routed to the Anthropic Messages API reports cache counts
+/// separately even though its name is not `anthropic` — pass
+/// `exclusive_input` directly instead of relying on
+/// [`provider_reports_exclusive_input`]'s name match.
+pub fn normalized_turn_usage_with_input_semantics(
+    exclusive_input: bool,
+    usage: &ProviderUsage,
+) -> vtcode_exec_events::Usage {
     let cached = u64::from(usage.cache_read_tokens_or_fallback());
     let creation = u64::from(usage.cache_creation_tokens_or_zero());
     let mut input = u64::from(usage.prompt_tokens);
-    if provider_reports_exclusive_input(provider) {
+    if exclusive_input {
         input = input.saturating_add(cached).saturating_add(creation);
     }
     let output = u64::from(usage.completion_tokens);
@@ -207,6 +222,25 @@ mod tests {
         assert_eq!(normalized.cached_input_tokens, 400);
         assert_eq!(normalized.cache_creation_tokens, 50);
         assert_eq!(normalized.output_tokens, 20);
+    }
+
+    #[test]
+    fn explicit_input_semantics_override_the_provider_name() {
+        let usage = ProviderUsage {
+            prompt_tokens: 100,
+            completion_tokens: 20,
+            reasoning_output_tokens: None,
+            total_tokens: 120,
+            cached_prompt_tokens: None,
+            cache_creation_tokens: Some(50),
+            cache_read_tokens: Some(400),
+            iterations: None,
+        };
+
+        let exclusive = normalized_turn_usage_with_input_semantics(true, &usage);
+        assert_eq!(exclusive.input_tokens, 550);
+        let inclusive = normalized_turn_usage_with_input_semantics(false, &usage);
+        assert_eq!(inclusive.input_tokens, 100);
     }
 
     #[test]

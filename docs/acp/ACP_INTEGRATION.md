@@ -61,9 +61,12 @@ response, not a running total. The normalized usage object may contain:
   Baseten's OpenAI-compatible responses). `outputTokens` is the visible output
   portion after reasoning tokens are split out;
 - `contextWindow`, from the resolved provider/model profile; and
-- `costUSD`, only when opt-in custom-provider pricing resolves both input and
-  output rates. Pricing is configured in USD per million tokens, with optional
-  cache-read and cache-write rates.
+- `costUSD`, when the resolved profile supplies both input and output rates:
+  catalogue pricing for catalogue models, or opt-in custom-provider pricing.
+  Pricing is expressed in USD per million tokens, with optional cache-read and
+  cache-write rates. Cost normalization uses the input-token semantics of the
+  backend the request was routed to, so a custom provider on the Anthropic
+  Messages API is priced with cache reads reported separately.
 
 Automatic context compaction is advertised as
 `_meta.lody.compaction = { "version": 1 }`. Each compaction is represented by

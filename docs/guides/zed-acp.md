@@ -485,11 +485,12 @@ and `[history]` settings do not control ACP audit output.
   as standard ACP `tool_call` and `tool_call_update` session updates. Their
   standard title, kind, content, and status fields carry the client-visible
   state, and `_meta.lody.task` carries the additional Lody task snapshot: task
-  ID, kind, actor, timestamps, summary, and error details. Queued and starting
-  tasks report `in_progress`; completion, failure, and closure report the
-  corresponding terminal status. Forwarding is best-effort: queued updates may
-  be dropped if the bounded notification queue is full or the connection
-  closes. VT Code does not emit a private `_vtcode/taskLifecycle` notification.
+  ID, kind, actor, timestamps, summary, and error details. Queued sub-agents
+  and starting background processes report `pending`, running work reports
+  `in_progress`, and completion, failure, and closure report the corresponding
+  terminal status. Forwarding is best-effort: queued updates may be dropped if
+  the bounded notification queue is full or the connection closes. VT Code does
+  not emit a private `_vtcode/taskLifecycle` notification.
 - **Provider request capacity** – For a custom provider with
   `max_in_flight_requests` configured, one request slot is reserved for the
   parent ACP request and child concurrency is capped at the remaining slots. A

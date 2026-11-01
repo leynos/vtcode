@@ -1158,14 +1158,15 @@ pub(crate) fn parse_usage_openai_format(
         completion_tokens: usage_value.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
         reasoning_output_tokens: parse_reasoning_tokens_from_usage(usage_value),
         total_tokens: usage_value.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-        cached_prompt_tokens: if include_cache_metrics {
-            usage_value
-                .get("prompt_cache_hit_tokens")
-                .and_then(|v| v.as_u64())
-                .map(|v| v as u32)
-        } else {
-            None
-        },
+        // OpenAI-compatible providers report cache reads in several shapes:
+        // `prompt_cache_hit_tokens` (DeepSeek-style), `prompt_tokens_details.
+        // cached_tokens` (Chat Completions), and `input_tokens_details.
+        // cached_tokens` (Responses). Share one parser so this path cannot
+        // silently drop a shape the streaming paths already understand.
+        cached_prompt_tokens: crate::providers::shared::parse_cached_prompt_tokens_from_usage(
+            usage_value,
+            include_cache_metrics,
+        ),
         cache_creation_tokens: if include_cache_metrics {
             usage_value
                 .get("prompt_cache_miss_tokens")
@@ -1711,6 +1712,40 @@ mod tests {
         assert_eq!(usage.total_tokens, 150);
         assert_eq!(usage.cached_prompt_tokens, Some(30));
         assert_eq!(usage.cache_creation_tokens, Some(70));
+    }
+
+    #[test]
+    fn parse_usage_openai_format_reads_nested_cached_tokens() {
+        for usage_value in [
+            json!({
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150,
+                "prompt_tokens_details": { "cached_tokens": 40 }
+            }),
+            json!({
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150,
+                "input_tokens_details": { "cached_tokens": 40 }
+            }),
+            json!({
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150,
+                "cached_tokens": 40
+            }),
+        ] {
+            let response = json!({ "usage": usage_value });
+            let usage = parse_usage_openai_format(&response, true).expect("usage expected");
+            assert_eq!(usage.cached_prompt_tokens, Some(40), "usage {usage:?}");
+            assert_eq!(
+                parse_usage_openai_format(&response, false)
+                    .expect("usage expected")
+                    .cached_prompt_tokens,
+                None
+            );
+        }
     }
 
     #[test]

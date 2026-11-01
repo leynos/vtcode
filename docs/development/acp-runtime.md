@@ -150,9 +150,10 @@ snapshots by parent session and projects each one into a standard ACP
 `tool_call` or `tool_call_update` session update. The standard title, kind,
 content, and status fields carry the client-visible state; `_meta.lody.task`
 carries the additional Lody task ID, kind, actor, timestamps, summary, and
-error details. Queued or starting work reports `in_progress`; completion,
-failure, closure, stop, or error reports the corresponding terminal status.
-This is a standard ACP session update, not a private extension notification.
+error details. Queued sub-agents and starting background processes report
+`pending`; running work reports `in_progress`; completion, failure, closure,
+stop, or error reports the corresponding terminal status. This is a standard
+ACP session update, not a private extension notification.
 
 The model-facing `task_tracker` tool remains implemented by core. The ACP
 adapter converts each successful checklist result to a standard ACP plan
