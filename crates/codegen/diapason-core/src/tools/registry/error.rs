@@ -254,7 +254,7 @@ impl ToolExecutionError {
             .as_ref()
             .and_then(|details| details.get("reason"))
             .and_then(Value::as_str)
-            == Some("stale_exec_session")
+            == Some(STALE_EXEC_SESSION_REASON)
     }
 
     #[must_use]
@@ -456,6 +456,43 @@ fn format_retry_delay(delay_ms: u64) -> String {
     }
 }
 
+/// `details.reason` value shared by every stale exec-session classification.
+const STALE_EXEC_SESSION_REASON: &str = "stale_exec_session";
+
+/// Applies the shared stale-session classification to `error`.
+///
+/// `input_delivered` separates a session lost after `write_stdin` wrote its
+/// input, where side effects may already exist, from a lookup that failed
+/// before anything was delivered.
+fn classify_stale_exec_session(
+    mut error: ToolExecutionError,
+    session_id: &str,
+    input_delivered: bool,
+) -> ToolExecutionError {
+    error.category = ErrorCategory::ResourceNotFound;
+    error.error_type = ToolErrorType::ResourceNotFound;
+    error.retryable = false;
+    error.is_recoverable = true;
+    error.recovery_suggestions = vec![Cow::Borrowed(
+        "Start a new exec_command and use the new active session ID",
+    )];
+    error.retry_delay_ms = None;
+    error.retry_after_ms = None;
+    error.circuit_breaker_impact = false;
+    error.partial_state_possible = input_delivered;
+    error.rollback_performed = false;
+    let mut details = json!({
+        "reason": STALE_EXEC_SESSION_REASON,
+        "session_id": session_id,
+        "next_action": "Start a new exec_command and use the returned session ID."
+    });
+    if input_delivered {
+        details["input_delivered"] = json!(true);
+    }
+    error.details = Some(details);
+    error
+}
+
 /// Applies the typed recovery state this error cause implies for the tool.
 ///
 /// `write_stdin` distinguishes a pre-write resolution failure (nothing was
@@ -474,25 +511,7 @@ fn apply_explicit_error_state(mut error: ToolExecutionError, tool_name: &str, so
                 tool_recovery_outcome = "exec_session_lost_after_input",
                 "Lost write_stdin session after delivering input"
             );
-            error.category = ErrorCategory::ResourceNotFound;
-            error.error_type = ToolErrorType::ResourceNotFound;
-            error.retryable = false;
-            error.is_recoverable = true;
-            error.recovery_suggestions = vec![Cow::Borrowed(
-                "Start a new exec_command and use the new active session ID",
-            )];
-            error.retry_delay_ms = None;
-            error.retry_after_ms = None;
-            error.circuit_breaker_impact = false;
-            error.partial_state_possible = true;
-            error.rollback_performed = false;
-            error.details = Some(json!({
-                "reason": "stale_exec_session",
-                "session_id": lost.session_id,
-                "input_delivered": true,
-                "next_action": "Start a new exec_command and use the returned session ID."
-            }));
-            return error;
+            return classify_stale_exec_session(error, &lost.session_id, true);
         }
 
         if let Some(missing) = source.downcast_ref::<crate::tools::exec_session::ExecSessionNotFound>() {
@@ -502,24 +521,7 @@ fn apply_explicit_error_state(mut error: ToolExecutionError, tool_name: &str, so
                 tool_recovery_outcome = "stale_exec_session_rejected",
                 "Rejected stale write_stdin session"
             );
-            error.category = ErrorCategory::ResourceNotFound;
-            error.error_type = ToolErrorType::ResourceNotFound;
-            error.retryable = false;
-            error.is_recoverable = true;
-            error.recovery_suggestions = vec![Cow::Borrowed(
-                "Start a new exec_command and use the new active session ID",
-            )];
-            error.retry_delay_ms = None;
-            error.retry_after_ms = None;
-            error.circuit_breaker_impact = false;
-            error.partial_state_possible = false;
-            error.rollback_performed = false;
-            error.details = Some(json!({
-                "reason": "stale_exec_session",
-                "session_id": missing.session_id,
-                "next_action": "Start a new exec_command and use the returned session ID."
-            }));
-            return error;
+            return classify_stale_exec_session(error, &missing.session_id, false);
         }
     }
 

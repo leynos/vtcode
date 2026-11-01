@@ -360,6 +360,9 @@ async fn reject_concurrent_prompt(
 
 #[tokio::test]
 async fn concurrent_prompt_is_rejected_over_official_acp_transport() {
+    let _history_test_guard = lock_history_test_guard().await;
+    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
+    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
     let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
     let started = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
